@@ -1,0 +1,96 @@
+{
+  "version": "0.1.0",
+  "lastUpdated": "2026-03-27",
+  "steelhead": {
+    "baseUrl": "https://app.gosteelhead.com",
+    "graphqlEndpoint": "/graphql",
+    "keepAliveEndpoint": "/api/session/keep-alive",
+    "apolloClientVersion": "4.0.8",
+    "hashes": {
+      "mutations": {
+        "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129",
+        "UpdateQuote": "765fc26af87241f0f614a51fe3583e10d2f1765dafb1426402f69dcc79e33a8e",
+        "SaveQuoteLines": "b227e2f5a5b40021383077e58ab311169da2d5438d566bfe389fd7642e4d1937",
+        "SaveManyPNP_Quote": "af7b81567691854da4b9bbdf473b2732d89e3e6224ba52cbfb3d13dbfa93841b",
+        "SaveManyPNP_PN": "bd2db06e8e0b0a66cb65ada5b5433d9c5abe981b4aee4b39b86be4bba077cd05",
+        "SavePartNumber": "31a6c7d99c525979acea562cc892fa0968b439f10c79341f4de8748cc4a6cce9",
+        "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363",
+        "SetPNPricesDefault": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293",
+        "UpdatePartNumber": "af584fa8ebb7487fc84de18fa3a5e360e99699a3280185fe98b840c157bbf2c7",
+        "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202",
+        "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797"
+      },
+      "queries": {
+        "GetQuote_v8": "15db7a9b0325c45c181d7be61e223d1dbede8179433a25db36ebc9699097acb6",
+        "GetQuote_v71": "083046b3bca84f1bc8039145b40bdb10625194735ff18ce0c3815d83600ecd99",
+        "GetQuoteRelatedData": "04cc75ea43a2860a31e3f5043bb00e83d4c67a8b49b1d86c59cf65b72583f480",
+        "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02",
+        "CustomerFinancialById": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9",
+        "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca",
+        "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3",
+        "AllProcesses": "b66651f7c159e7fdef35d67fe27048ea68f1f206531a31256fc8663f52707092",
+        "AllLabels": "2b16b142d01daddf7cf4b29efc7754161a414afdd22630daa6494d894aa3073c",
+        "SearchSpecsForSelect": "8e7723b3a4cf3e7b692999e45d20b7299952253089c7bf146d36ff2872507e2b",
+        "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea",
+        "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3",
+        "SearchUnits": "b0750f8a59b649944906b1a6275bfbe562b3eb79836292807f760b3b5b425428",
+        "SearchProducts": "b835021eff4113acd5529f63fa742a9b70373c62a5d9cb39f4203fe2bbba9f8a",
+        "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91",
+        "GetPartNumber": "55bf9e21d5d1e1c9dbb7ddb4d993005a7f0ae1f75fe556e63300d43754a412d0",
+        "PNGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c",
+        "PNCreatableSelect": "723dbb599905cf895d306707fc01ed232486ad8190b1cf2649166f57b137d83f"
+      }
+    },
+    "domain": {
+      "id": 344,
+      "inputSchemaId_PN": 3456,
+      "inputSchemaId_Quote": 659,
+      "stagesRevisionId": 306,
+      "geometryGenericaId": 831,
+      "validacionProcessNodeId": 231176,
+      "unitIds": {
+        "KGM": 3969,
+        "LBR": 3972,
+        "FTK": 4797,
+        "CMK": 4907,
+        "FOT": 5148,
+        "LM": 5150,
+        "LO": 5348,
+        "MTR": 3971
+      },
+      "conversions": {
+        "KGM_TO_LBR": 2.20462,
+        "CMK_TO_FTK": 0.00107639,
+        "LM_TO_FOT": 3.28084
+      },
+      "geometryDimensions": {
+        "LENGTH": 1284,
+        "WIDTH": 1011,
+        "HEIGHT": 1012,
+        "OUTER_DIAM": 1013,
+        "INNER_DIAM": 1014
+      },
+      "empresas": {
+        "ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Calle Francisco I Madero No. 205, Barrio de Tlapaltitlán, Toluca, México, 50120",
+        "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Calle Francisco I Madero No. 205, Barrio de Tlapaltitlán, Toluca, México, 50120"
+      },
+      "predictiveMaterials": {
+        "PlataFina": 55113,
+        "EstanoPuro": 55114,
+        "Niquel": 55115,
+        "Zinc": 55116,
+        "Cobre": 55117,
+        "Sterlingshield_S": 55118,
+        "Epoxy_MT": 55119,
+        "Epoxica_BT": 55120,
+        "Epoxica_MT_Red": 55121
+      }
+    }
+  },
+  "scripts": [
+    "scripts/steelhead-api.js",
+    "scripts/bulk-upload.js",
+    "scripts/catalog-fetcher.js"
+  ],
+  "templateUrl": ""
+}
