@@ -7,31 +7,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnUpload = document.getElementById('btn-upload');
   const btnTemplate = document.getElementById('btn-template');
   const btnStatus = document.getElementById('btn-status');
-  const fileInput = document.getElementById('file-input');
 
-  // Check connection status on popup open
   checkStatus();
 
-  // Button handlers
-  btnUpload.addEventListener('click', () => {
-    fileInput.click();
-  });
-
-  btnTemplate.addEventListener('click', () => {
-    downloadTemplate();
-  });
-
-  btnStatus.addEventListener('click', () => {
-    checkStatus();
-  });
-
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleFileUpload(e.target.files[0]);
+  // "Cargar Excel" — triggers file picker in the Steelhead page context
+  btnUpload.addEventListener('click', async () => {
+    try {
+      btnUpload.disabled = true;
+      showProgress('Abriendo selector de archivo...', 5);
+      // Use pick-and-run: opens native file picker in the page, runs pipeline
+      const result = await sendToContent('pick-and-run');
+      if (result?.cancelled) {
+        hideProgress();
+      } else {
+        showProgress('Pipeline ejecutado. Revisa la pestaña de Steelhead.', 100);
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+      hideProgress();
+    } finally {
+      btnUpload.disabled = false;
     }
   });
 
-  // Send message to content script via background
+  btnTemplate.addEventListener('click', () => downloadTemplate());
+  btnStatus.addEventListener('click', () => checkStatus());
+
   function sendToContent(action, data = {}) {
     return new Promise((resolve, reject) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -70,59 +71,19 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       btnTemplate.disabled = true;
       const config = await sendToContent('get-config');
-      if (!config) {
-        alert('No hay configuración disponible. Abre Steelhead primero.');
-        return;
-      }
-      // TODO: Fetch catalogs from Steelhead API and generate Excel with SheetJS
-      // For now, open the static template URL
+      if (!config) { alert('No hay configuración disponible. Abre Steelhead primero.'); return; }
+      // TODO: Phase 3 — fetch catalogs from API and generate Excel with SheetJS
       const templateUrl = config.templateUrl;
       if (templateUrl) {
         chrome.tabs.create({ url: templateUrl });
       } else {
-        alert('URL de plantilla no configurada');
+        alert('Descarga de plantilla con catálogos dinámicos aún no disponible.\nUsa la plantilla Excel existente por ahora.');
       }
     } catch (err) {
       alert('Error: ' + err.message);
     } finally {
       btnTemplate.disabled = false;
     }
-  }
-
-  async function handleFileUpload(file) {
-    try {
-      btnUpload.disabled = true;
-      showProgress('Leyendo archivo...', 10);
-
-      // Read file as ArrayBuffer
-      const buffer = await file.arrayBuffer();
-      const base64 = arrayBufferToBase64(buffer);
-
-      showProgress('Enviando a Steelhead...', 30);
-      const result = await sendToContent('run-bulk-upload', {
-        fileName: file.name,
-        fileData: base64,
-        fileType: file.name.endsWith('.csv') ? 'csv' : 'xlsx'
-      });
-
-      showProgress('Completado', 100);
-      console.log('[SteelheadAutomator] Resultado:', result);
-    } catch (err) {
-      alert('Error: ' + err.message);
-      hideProgress();
-    } finally {
-      btnUpload.disabled = false;
-      fileInput.value = '';
-    }
-  }
-
-  function arrayBufferToBase64(buffer) {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
   }
 
   function showProgress(text, percent) {
