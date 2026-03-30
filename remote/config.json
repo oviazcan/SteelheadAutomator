@@ -47,7 +47,7 @@
       "inputSchemaId_Quote": 659,
       "stagesRevisionId": 306,
       "geometryGenericaId": 831,
-      "validacionProcessNodeId": 231176,
+      "validacionProcessNodeIds": [231176, 231174],
       "unitIds": {
         "KGM": 3969,
         "LBR": 3972,

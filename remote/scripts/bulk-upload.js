@@ -574,9 +574,12 @@ const BulkUpload = (() => {
 
         const optInOuts = [];
         if (part.validacion1er) {
-          optInOuts.push({ processNodeId: DOMAIN.validacionProcessNodeId, processNodeOccurrence: 1, cancelOthers: false });
+          const nodeIds = DOMAIN.validacionProcessNodeIds || [DOMAIN.validacionProcessNodeId];
+          for (const nodeId of nodeIds) {
+            optInOuts.push({ processNodeId: nodeId, processNodeOccurrence: 1, cancelOthers: false });
+          }
           stats.validacionSet++;
-          log(`  -> ${pn.name}: OptIn validación processNodeId:${DOMAIN.validacionProcessNodeId}`);
+          log(`  -> ${pn.name}: OptIn validación processNodeIds:${JSON.stringify(nodeIds)}`);
         }
 
         const pnGroupId = part.pnGroup ? (await resolveGroupId(part.pnGroup)) : pn.partNumberGroupId || null;
