@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steelhead Automator — Política de Privacidad</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; color: #1a1a2e; line-height: 1.7; }
+    h1 { font-size: 22px; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px; }
+    h2 { font-size: 16px; margin-top: 24px; color: #16213e; }
+    p, li { font-size: 14px; }
+    .updated { font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Steelhead Automator — Política de Privacidad</h1>
+  <p class="updated">Última actualización: 30 de marzo de 2026</p>
+
+  <h2>Resumen</h2>
+  <p>Steelhead Automator es una extensión de Chrome para uso interno del equipo de Ecoplating. No recopila, transmite ni almacena datos personales de los usuarios.</p>
+
+  <h2>Datos que procesa la extensión</h2>
+  <ul>
+    <li><strong>Archivos CSV:</strong> Los archivos que el usuario selecciona se leen localmente en el navegador y se envían directamente a la API de Steelhead ERP (app.gosteelhead.com). Ningún dato del archivo se transmite a terceros ni se almacena fuera del navegador.</li>
+    <li><strong>Configuración remota:</strong> La extensión descarga archivos de configuración y scripts desde GitHub Pages (oviazcan.github.io). Estas descargas no contienen ni transmiten datos del usuario.</li>
+    <li><strong>Cache local:</strong> La extensión almacena en <code>chrome.storage.local</code> únicamente la versión de configuración para verificar actualizaciones. No se almacenan datos personales ni contenido de archivos.</li>
+  </ul>
+
+  <h2>Datos que NO recopila</h2>
+  <ul>
+    <li>Información personal identificable</li>
+    <li>Historial de navegación</li>
+    <li>Cookies o credenciales</li>
+    <li>Datos de uso o analítica</li>
+    <li>Información de otros sitios web</li>
+  </ul>
+
+  <h2>Permisos de la extensión</h2>
+  <ul>
+    <li><strong>activeTab:</strong> Para interactuar con la pestaña activa de Steelhead ERP.</li>
+    <li><strong>storage:</strong> Para almacenar la versión de configuración localmente.</li>
+    <li><strong>scripting:</strong> Para ejecutar los scripts de automatización en la página de Steelhead ERP.</li>
+    <li><strong>host_permissions (app.gosteelhead.com):</strong> Para comunicarse con la API de Steelhead ERP.</li>
+  </ul>
+
+  <h2>Terceros</h2>
+  <p>La extensión no comparte datos con terceros. Los únicos servicios externos que utiliza son:</p>
+  <ul>
+    <li><strong>GitHub Pages:</strong> Para descargar archivos de configuración y scripts (solo lectura, sin envío de datos del usuario).</li>
+    <li><strong>Steelhead ERP:</strong> La API del sistema ERP al que el usuario ya tiene acceso autenticado.</li>
+  </ul>
+
+  <h2>Contacto</h2>
+  <p>Para preguntas sobre esta política, contactar a: oviazcan@gmail.com</p>
+</body>
+</html>
