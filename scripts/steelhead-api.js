@@ -32,9 +32,10 @@ const SteelheadAPI = (() => {
   function warn(msg) { const s = `[SA] WARN: ${msg}`; console.warn(s); _log.push(s); }
 
   // Core GraphQL call using Apollo Persisted Queries
-  async function query(operationName, variables = {}) {
-    const hash = getHash(operationName);
-    if (!hash) throw new Error(`Hash no encontrado para operación: ${operationName}`);
+  // hashKey is optional — if provided, uses that key to look up the hash but sends operationName to GraphQL
+  async function query(operationName, variables = {}, hashKey) {
+    const hash = getHash(hashKey || operationName);
+    if (!hash) throw new Error(`Hash no encontrado para operación: ${hashKey || operationName}`);
 
     const body = {
       operationName,

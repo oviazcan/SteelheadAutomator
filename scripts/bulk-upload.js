@@ -303,7 +303,7 @@ const BulkUpload = (() => {
       const customerContactId = custCont[0]?.id || null;
 
       let invoiceTermsId = null;
-      try { const fin = await api().query('CustomerFinancialById', { id: customerId }); invoiceTermsId = fin?.customerById?.invoiceTermsId || null; } catch (e) { warn(`CustomerFinancial: ${String(e).substring(0, 80)}`); }
+      try { const fin = await api().query('CustomerFinancialByCustomerId', { id: customerId }, 'CustomerFinancialById'); invoiceTermsId = fin?.customerById?.invoiceTermsId || null; } catch (e) { warn(`CustomerFinancial: ${String(e).substring(0, 80)}`); }
       if (!invoiceTermsId) {
         try { const t = await api().query('SearchInvoiceTerms', { termsLike: '%%' }); const tn = t?.allInvoiceTerms?.nodes || t?.pagedData?.nodes || t?.searchInvoiceTerms?.nodes || []; if (tn.length) invoiceTermsId = tn[0].id; } catch (e) { warn(`SearchInvoiceTerms: ${String(e).substring(0, 80)}`); }
       }
@@ -339,7 +339,7 @@ const BulkUpload = (() => {
         api().query('AllRackTypes', {}),
         api().query('SearchUnits', {}),
         api().query('SearchProducts', { searchQuery: '%%', first: 200 }),
-        api().query('PNGroupSelect', { partNumberGroupLike: '%%' }).catch(() => api().query('PNGroupSelect', {})).catch(() => null),
+        api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%' }, 'PNGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PNGroupSelect')).catch(() => null),
       ]);
 
       const labelByName = new Map(); for (const l of (labelsD?.allLabels?.nodes || [])) labelByName.set(l.name, l.id);
@@ -630,7 +630,7 @@ const BulkUpload = (() => {
         if (status.status === 'forceDup' && part.archivarAnterior && status.existingId) oldPnsToArchive.push({ id: status.existingId, name: part.pn + ' (ant)' });
       }
       if (priceIdsForDefault.length) {
-        try { await api().query('SetPNPricesDefault', { partNumberPriceIds: priceIdsForDefault }); stats.defaultPriceSet = priceIdsForDefault.length; }
+        try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPNPricesDefault'); stats.defaultPriceSet = priceIdsForDefault.length; }
         catch (e) { errors.push(`SetDefaultPrice: ${String(e).substring(0, 120)}`); }
       }
       for (const p of pnsToArchive) {
