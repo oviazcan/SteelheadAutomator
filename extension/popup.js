@@ -1,4 +1,5 @@
 // Steelhead Automator — Popup Logic
+// Communicates with background.js (service worker) instead of content script
 
 document.addEventListener('DOMContentLoaded', () => {
   const statusBar = document.getElementById('status-bar');
@@ -15,9 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       btnUpload.disabled = true;
       showProgress('Abriendo selector de archivo...', 5);
-      // Use pick-and-run: opens native file picker in the page, runs pipeline
-      const result = await sendToContent('pick-and-run');
+      const result = await sendToBackground('pick-and-run');
       if (result?.cancelled) {
+        hideProgress();
+      } else if (result?.error) {
+        alert('Error: ' + result.error);
         hideProgress();
       } else {
         showProgress('Pipeline ejecutado. Revisa la pestaña de Steelhead.', 100);
@@ -44,22 +47,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  function sendToContent(action, data = {}) {
+  // Send message to background service worker
+  function sendToBackground(action, data = {}) {
     return new Promise((resolve, reject) => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!tabs[0] || !tabs[0].url?.includes('app.gosteelhead.com')) {
-          reject(new Error('Abre Steelhead primero (app.gosteelhead.com)'));
-          return;
+      chrome.runtime.sendMessage({ action, ...data }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response?.error) {
+          reject(new Error(response.error));
+        } else {
+          resolve(response);
         }
-        chrome.tabs.sendMessage(tabs[0].id, { action, ...data }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else if (response?.error) {
-            reject(new Error(response.error));
-          } else {
-            resolve(response);
-          }
-        });
       });
     });
   }
@@ -67,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function checkStatus() {
     try {
       statusText.textContent = 'Conectando...';
-      const status = await sendToContent('get-status');
+      const status = await sendToBackground('get-status');
       statusBar.classList.remove('error');
       statusText.textContent = status.connected ? 'Conectado' : 'Sin conexión remota';
       versionText.textContent = `v${status.version}`;
@@ -81,9 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
   async function downloadTemplate() {
     try {
       btnTemplate.disabled = true;
-      const config = await sendToContent('get-config');
-      if (!config) { alert('No hay configuración disponible. Abre Steelhead primero.'); return; }
-      // TODO: Phase 3 — fetch catalogs from API and generate Excel with SheetJS
+      const config = await sendToBackground('get-config');
+      if (!config) { alert('No hay configuración disponible.'); return; }
       const templateUrl = config.templateUrl;
       if (templateUrl) {
         chrome.tabs.create({ url: templateUrl });
