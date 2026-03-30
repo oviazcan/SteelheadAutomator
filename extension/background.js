@@ -102,52 +102,40 @@ async function handleMessage(message, sender) {
       return { injected: true };
     }
 
-    case 'pick-and-run': {
+    case 'run-csv': {
+      // CSV text comes from popup's file picker
+      const csvText = message.csvText;
+      if (!csvText) throw new Error('No se recibió CSV');
+
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const tab = tabs[0];
-      if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero');
+      if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero (app.gosteelhead.com)');
 
       // Inject scripts first
       await injectScripts(tab.id);
 
-      // Then trigger the file picker and pipeline in the MAIN world
+      // Execute pipeline in MAIN world with the CSV data
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: 'MAIN',
-        func: () => {
-          return new Promise(resolve => {
-            if (!window.BulkUpload) { resolve({ error: 'BulkUpload no disponible después de inyección' }); return; }
-            const inp = document.createElement('input');
-            inp.type = 'file'; inp.accept = '.csv';
-            inp.onchange = () => {
-              const f = inp.files[0];
-              if (!f) { resolve({ cancelled: true }); return; }
-              const r = new FileReader();
-              r.onload = async () => {
-                try {
-                  const result = await window.BulkUpload.execute(r.result);
-                  resolve(result);
-                } catch (e) { resolve({ error: e.message }); }
-              };
-              r.readAsText(f, 'UTF-8');
-            };
-            inp.click();
+        func: (csv) => {
+          if (!window.BulkUpload) return { error: 'BulkUpload no disponible' };
+          // Execute async — pipeline shows its own UI (preview modal, progress, results)
+          window.BulkUpload.execute(csv).then(r => {
+            console.log('[SA] Pipeline resultado:', r);
+          }).catch(e => {
+            console.error('[SA] Pipeline error:', e);
           });
-        }
+          return { started: true, message: 'Pipeline iniciado. Revisa la pestaña de Steelhead.' };
+        },
+        args: [csvText]
       });
 
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
     default:
-      // Relay to content script
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs[0]) {
-        return new Promise((resolve) => {
-          chrome.tabs.sendMessage(tabs[0].id, message, resolve);
-        });
-      }
-      throw new Error('No hay pestaña activa');
+      throw new Error(`Acción desconocida: ${message.action}`);
   }
 }
 

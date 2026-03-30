@@ -1,5 +1,5 @@
 // Steelhead Automator — Popup Logic
-// Communicates with background.js (service worker) instead of content script
+// File picker runs HERE (visible to user), CSV sent to background for execution
 
 document.addEventListener('DOMContentLoaded', () => {
   const statusBar = document.getElementById('status-bar');
@@ -8,20 +8,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnUpload = document.getElementById('btn-upload');
   const btnTemplate = document.getElementById('btn-template');
   const btnStatus = document.getElementById('btn-status');
+  const fileInput = document.getElementById('file-input');
 
   checkStatus();
 
-  // "Cargar Excel" — triggers file picker in the Steelhead page context
-  btnUpload.addEventListener('click', async () => {
+  // "Cargar Excel" — open file picker in popup, then send CSV to background
+  btnUpload.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async (e) => {
+    if (!e.target.files.length) return;
+    const file = e.target.files[0];
     try {
       btnUpload.disabled = true;
-      showProgress('Abriendo selector de archivo...', 5);
-      const result = await sendToBackground('pick-and-run');
+      showProgress('Leyendo archivo...', 5);
+
+      const csvText = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(new Error('Error leyendo archivo'));
+        r.readAsText(file, 'UTF-8');
+      });
+
+      showProgress('Inyectando scripts y ejecutando pipeline...', 15);
+
+      // Send CSV to background, which injects scripts + runs pipeline in page
+      const result = await sendToBackground('run-csv', { csvText });
+
       if (result?.cancelled) {
         hideProgress();
       } else if (result?.error) {
-        alert('Error: ' + result.error);
-        hideProgress();
+        showProgress('Error: ' + result.error, 0);
       } else {
         showProgress('Pipeline ejecutado. Revisa la pestaña de Steelhead.', 100);
       }
@@ -30,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hideProgress();
     } finally {
       btnUpload.disabled = false;
+      fileInput.value = '';
     }
   });
 
@@ -47,14 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Send message to background service worker
   function sendToBackground(action, data = {}) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({ action, ...data }, (response) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
-        } else if (response?.error) {
-          reject(new Error(response.error));
         } else {
           resolve(response);
         }
