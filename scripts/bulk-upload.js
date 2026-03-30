@@ -356,7 +356,10 @@ const BulkUpload = (() => {
         if (!name) return null; const n = name.trim(); if (!n) return null;
         const existing = groupByName.get(n); if (existing) return existing;
         try {
-          const res = await api().query('CreatePartNumberGroup', { input: { name: n } });
+          // Try {input:{name}} first, fallback to {name} if schema changed
+          let res;
+          try { res = await api().query('CreatePartNumberGroup', { input: { name: n } }); }
+          catch (_) { res = await api().query('CreatePartNumberGroup', { name: n }); }
           const id = res?.createPartNumberGroup?.partNumberGroup?.id;
           if (id) { groupByName.set(n, id); log(`  Grupo "${n}" creado id:${id}`); return id; }
         } catch (e) { warn(`Crear grupo "${n}": ${String(e).substring(0, 100)}`); }
@@ -570,7 +573,11 @@ const BulkUpload = (() => {
         if (part.predictiveUsage.length) stats.predictiveSet++;
 
         const optInOuts = [];
-        if (part.validacion1er) { optInOuts.push({ processNodeId: DOMAIN.validacionProcessNodeId, processNodeOccurrence: 1, cancelOthers: false }); stats.validacionSet++; }
+        if (part.validacion1er) {
+          optInOuts.push({ processNodeId: DOMAIN.validacionProcessNodeId, processNodeOccurrence: 1, cancelOthers: false });
+          stats.validacionSet++;
+          log(`  -> ${pn.name}: OptIn validación processNodeId:${DOMAIN.validacionProcessNodeId}`);
+        }
 
         const pnGroupId = part.pnGroup ? (await resolveGroupId(part.pnGroup)) : pn.partNumberGroupId || null;
         const pnProcessId = part.processIdOverride || pn.defaultProcessNodeId || defaultProcessId;
@@ -590,7 +597,11 @@ const BulkUpload = (() => {
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
         };
 
-        try { await api().query('SavePartNumber', { input: [pnInput] }); okSP++; }
+        try {
+          const spRes = await api().query('SavePartNumber', { input: [pnInput] });
+          okSP++;
+          log(`  -> ${pnInput.name}: enrich OK (labels:${labelIds.length} specs:${specsToApply.length} dims:${dims.length} optIn:${optInOuts.length} pred:${part.predictiveUsage.length})`);
+        }
         catch (e) {
           if (String(e).includes('unique_constraint') || String(e).includes('exclusion constraint')) {
             try { await api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [] }] }); retrySP++; log(`  -> ${pnInput.name}: retry sin specs OK`); }
