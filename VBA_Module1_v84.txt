@@ -1,0 +1,41 @@
+Attribute VB_Name = "Module1"
+' === MACRO 1: ExportarCSV ===
+' v8.4: Exporta 61 columnas (A-BI), no 41
+Sub ExportarCSV()
+    Dim ws As Worksheet, csvName As String, savePath As String
+    Set ws = ThisWorkbook.Sheets("Upload")
+    
+    csvName = Trim(CStr(ws.Range("C4").Value))
+    If csvName = "" Then csvName = "cotizacion"
+    Dim inv As Variant, ch As Variant
+    inv = Array("/", "\", ":", "*", "?", Chr(34), "<", ">", "|")
+    For Each ch In inv: csvName = Replace(csvName, CStr(ch), "_"): Next
+    
+    #If Mac Then
+        savePath = Application.GetSaveAsFilename(csvName & ".csv")
+    #Else
+        savePath = Application.GetSaveAsFilename(csvName & ".csv", "CSV (*.csv), *.csv")
+    #End If
+    If CStr(savePath) = "False" Or savePath = "" Then Exit Sub
+    If Right(savePath, 4) <> ".csv" Then savePath = savePath & ".csv"
+    
+    ' Copiar hoja a libro temporal
+    ws.Copy
+    Dim tmpWb As Workbook
+    Set tmpWb = ActiveWorkbook
+    
+    ' Eliminar columnas extra (solo las primeras 61 = A-BI)
+    Dim tmpWs As Worksheet
+    Set tmpWs = tmpWb.Sheets(1)
+    If tmpWs.UsedRange.Columns.Count > 61 Then
+        tmpWs.Range(tmpWs.Columns(62), tmpWs.Columns(tmpWs.UsedRange.Columns.Count)).Delete
+    End If
+    
+    ' Guardar como CSV UTF-8 (formato 62)
+    Application.DisplayAlerts = False
+    tmpWb.SaveAs FileName:=savePath, FileFormat:=62
+    tmpWb.Close False
+    Application.DisplayAlerts = True
+    
+    MsgBox "CSV UTF-8 exportado:" & vbCrLf & savePath, vbInformation, "Listo"
+End Sub
