@@ -126,6 +126,15 @@
       color: rgba(255,255,255,0.6);
     }
 
+    .btn-reload {
+      border-style: dashed;
+      opacity: 0.7;
+    }
+
+    .btn-reload:hover {
+      opacity: 1;
+    }
+
     .footer {
       padding: 8px 16px 12px;
       text-align: center;
@@ -197,6 +206,14 @@
       <span class="label">
         Ver Estado
         <small>Versión, conexión y sincronización</small>
+      </span>
+    </button>
+
+    <button class="btn btn-reload" id="btn-reload">
+      <span class="icon">🔃</span>
+      <span class="label">
+        Recargar Steelhead
+        <small>Recarga la pestaña para aplicar cambios</small>
       </span>
     </button>
   </div>

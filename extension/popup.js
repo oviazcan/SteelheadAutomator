@@ -33,6 +33,17 @@ document.addEventListener('DOMContentLoaded', () => {
   btnTemplate.addEventListener('click', () => downloadTemplate());
   btnStatus.addEventListener('click', () => checkStatus());
 
+  document.getElementById('btn-reload').addEventListener('click', () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0] && tabs[0].url?.includes('app.gosteelhead.com')) {
+        chrome.tabs.reload(tabs[0].id);
+        window.close();
+      } else {
+        alert('No hay pestaña activa de Steelhead.');
+      }
+    });
+  });
+
   function sendToContent(action, data = {}) {
     return new Promise((resolve, reject) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
