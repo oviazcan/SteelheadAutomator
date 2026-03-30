@@ -278,11 +278,11 @@ const BulkUpload = (() => {
       if (!parts.length) throw new Error('No se encontraron filas de datos.');
 
       const modo = (header.modo || '').toUpperCase();
-      if (modo.includes('SOLO')) throw new Error('Modo SOLO_PN no soportado aún. Usa COTIZACIÓN+NP.');
-      const quoteName = header.quoteName;
-      if (!quoteName) throw new Error('Falta "Nombre Cotización" en header.');
-      stats.quoteName = quoteName;
-      log(`Modo: COTIZACIÓN+NP — "${quoteName}"`);
+      const isSoloPN = modo.includes('SOLO');
+      const quoteName = header.quoteName || '';
+      if (!isSoloPN && !quoteName) throw new Error('Falta "Nombre Cotización" en header.');
+      stats.quoteName = isSoloPN ? '(SOLO_PN)' : quoteName;
+      log(`Modo: ${isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP'} ${isSoloPN ? '' : '— "' + quoteName + '"'}`);
 
       // ── Resolve customer ──
       const customerRaw = header.customer || '';
@@ -389,30 +389,36 @@ const BulkUpload = (() => {
       // ═══════════════════════════════════════
       showProgressUI('Iniciando...');
 
-      // STEP 1: CreateQuote
-      showProgressUI('Paso 1/9: Creando cotización...'); setProgressBar(5);
+      let quoteId = null, quoteIdInDomain = null;
       const divisaLinea = (header.divisaLinea || 'USD').toUpperCase();
-      const divisaCot = (header.divisaCotizacion || divisaLinea).toUpperCase();
-      const empresaKey = (header.empresaEmisora || 'ECO').toUpperCase();
-      const empresaStr = DOMAIN.empresas[empresaKey] || DOMAIN.empresas.ECO;
-      const validDays = parseInt(header.validaDias) || 30;
-      const quoteCI = {
-        Comentarios: { CargosFletes: true, CotizacionSujetaPruebas: true, ReferirNumeroCotizacion: true, ModificacionRequiereRecotizar: true },
-        DatosAdicionales: { Divisa: divisaCot, Decimales: '2', EmpresaEmisora: empresaStr, MostrarProceso: false, MostrarTotales: true },
-        Autorizacion: {}, CondicionesComerciales: {},
-      };
-      const createResult = await api().query('CreateQuote', {
-        name: quoteName, assigneeId, customerId, validUntil: isoDate(validDays), followUpDate: isoDate(3),
-        customerAddressId, customerContactId, stagesRevisionId: DOMAIN.stagesRevisionId,
-        lowCodeEnabled: false, autoGenerateLines: false, lowCodeId: null,
-        customInputs: quoteCI, inputSchemaId: DOMAIN.inputSchemaId_Quote, invoiceTermsId,
-        orderDueAt: null, shipToAddressId: customerAddressId
-      });
-      const quoteId = createResult?.createQuote?.quote?.id;
-      const quoteIdInDomain = createResult?.createQuote?.quote?.idInDomain;
-      if (!quoteId) throw new Error('CreateQuote no devolvió id.');
-      stats.quoteIdInDomain = quoteIdInDomain;
-      log(`  Quote #${quoteIdInDomain} (id:${quoteId})`); showProgressUI(`  -> Quote #${quoteIdInDomain} creada`);
+
+      // STEP 1: CreateQuote (skip in SOLO_PN)
+      if (!isSoloPN) {
+        showProgressUI('Paso 1: Creando cotización...'); setProgressBar(5);
+        const divisaCot = (header.divisaCotizacion || divisaLinea).toUpperCase();
+        const empresaKey = (header.empresaEmisora || 'ECO').toUpperCase();
+        const empresaStr = DOMAIN.empresas[empresaKey] || DOMAIN.empresas.ECO;
+        const validDays = parseInt(header.validaDias) || 30;
+        const quoteCI = {
+          Comentarios: { CargosFletes: true, CotizacionSujetaPruebas: true, ReferirNumeroCotizacion: true, ModificacionRequiereRecotizar: true },
+          DatosAdicionales: { Divisa: divisaCot, Decimales: '2', EmpresaEmisora: empresaStr, MostrarProceso: false, MostrarTotales: true },
+          Autorizacion: {}, CondicionesComerciales: {},
+        };
+        const createResult = await api().query('CreateQuote', {
+          name: quoteName, assigneeId, customerId, validUntil: isoDate(validDays), followUpDate: isoDate(3),
+          customerAddressId, customerContactId, stagesRevisionId: DOMAIN.stagesRevisionId,
+          lowCodeEnabled: false, autoGenerateLines: false, lowCodeId: null,
+          customInputs: quoteCI, inputSchemaId: DOMAIN.inputSchemaId_Quote, invoiceTermsId,
+          orderDueAt: null, shipToAddressId: customerAddressId
+        });
+        quoteId = createResult?.createQuote?.quote?.id;
+        quoteIdInDomain = createResult?.createQuote?.quote?.idInDomain;
+        if (!quoteId) throw new Error('CreateQuote no devolvió id.');
+        stats.quoteIdInDomain = quoteIdInDomain;
+        log(`  Quote #${quoteIdInDomain} (id:${quoteId})`); showProgressUI(`  -> Quote #${quoteIdInDomain} creada`);
+      } else {
+        showProgressUI('Modo SOLO_PN — omitiendo cotización'); setProgressBar(5);
+      }
 
       // STEP 2a: Create new PNs via SavePartNumber (minimal)
       showProgressUI('Paso 2/9: Creando PNs nuevos...'); setProgressBar(10);
@@ -449,82 +455,104 @@ const BulkUpload = (() => {
       }
       showProgressUI(`  -> ${newPnIds.size} PNs creados`);
 
-      // STEP 2b: SaveManyPartNumberPrices
-      showProgressUI('Paso 2/9: Vinculando precios...'); setProgressBar(15);
-      const pnpItems = []; let lineNum = 0;
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i]; const status = pnStatus[i]; lineNum++;
-        let partNumberId;
-        if (status.status === 'existing') { partNumberId = status.existingId; stats.pnsExisting++; }
-        else { partNumberId = newPnIds.get(part.pn.toUpperCase()); if (!partNumberId) { errors.push(`PN "${part.pn}" no fue creado, omitido de quote.`); continue; } }
-        pnpItems.push({
-          partNumberId, processId: part.processIdOverride || defaultProcessId,
-          customInputs: { DatosPrecio: { Divisa: divisaLinea } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
-          partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
-          usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
-          unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
-          partNumberCustomInputs: null,
-          quotePartNumberPrice: { savedQuotePartNumberPriceId: null, quoteId, quantityPerParent: part.qty, lineNumber: lineNum }
-        });
-      }
-      for (let i = 0; i < pnpItems.length; i += 20) {
-        const batch = pnpItems.slice(i, i + 20);
-        const { usedHash } = await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
-          { input: { quoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
-        showProgressUI(`  -> Batch ${Math.floor(i / 20) + 1}: ${batch.length} PNs (hash ${usedHash})`);
-      }
-      log(`  SaveManyPNP: ${pnpItems.length}`);
-
-      // STEP 3: Re-read quote
-      showProgressUI('Paso 3/9: Leyendo cotización...'); setProgressBar(30);
-      const { data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: quoteIdInDomain, revisionNumber: 1 });
-      const quote = qData?.quoteByIdInDomainAndRevisionNumber || qData?.quoteByIdInDomain;
-      if (!quote) throw new Error(`No se pudo leer quote #${quoteIdInDomain}.`);
-      const qpnpNodes = quote.quotePartNumberPricesByQuoteId?.nodes || [];
-      const qlNodes = quote.quoteLinesByQuoteId?.nodes || [];
-      const qlByQpnpId = new Map(); for (const ql of qlNodes) if (ql.autoGeneratedFromQuotePartNumberPriceId) qlByQpnpId.set(ql.autoGeneratedFromQuotePartNumberPriceId, ql);
+      // STEP 2b-5: Quote-only steps (skip in SOLO_PN)
       const pnLookup = new Map();
-      for (const qpnp of qpnpNodes) {
-        const pnp = qpnp.partNumberPriceByPartNumberPriceId; if (!pnp) continue;
-        const pn = pnp.partNumberByPartNumberId; if (!pn?.name) continue;
-        pnLookup.set(pn.name.toUpperCase(), { qpnp, pnp, pn, ql: qlByQpnpId.get(qpnp.id) || null });
-      }
-      log(`  ${pnLookup.size} PNs en quote`);
-      const allProdNodes = quote.allProducts?.nodes || qData.allProducts?.nodes || [];
-      if (allProdNodes.length) for (const p of allProdNodes) productByName.set(p.name, p);
 
-      // STEP 4: SaveQuoteLines (products)
-      showProgressUI('Paso 4/9: Products en líneas...'); setProgressBar(40);
-      let prodAdded = 0;
-      for (const part of parts) {
-        if (!part.products.length) continue;
-        const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) { errors.push(`PN "${part.pn}" no en quote.`); continue; }
-        const ql = entry.ql; if (!ql) { errors.push(`QuoteLine no encontrada para "${part.pn}".`); continue; }
-        const existing = ql.quoteLineItemsByQuoteLineId?.nodes || [];
-        const idsToDelete = existing.map(ei => ei.id).filter(Boolean);
-        const items = [];
-        for (let idx = 0; idx < part.products.length; idx++) {
-          const np = part.products[idx]; const pr = productByName.get(np.name);
-          if (!pr) { errors.push(`Product "${np.name}" no en catálogo.`); continue; }
-          items.push({ savedQuoteLineItemId: null, title: np.name, price: np.price, quantity: np.qty, productId: pr.id, displayOrder: idx, description: '', dimensionCustomValueIds: [], quotePartNumberPriceIds: [entry.qpnp.id], unitId: resolveUnitId(np.unit) });
-          prodAdded++;
+      if (!isSoloPN) {
+        // STEP 2b: SaveManyPartNumberPrices
+        showProgressUI('Paso 2b: Vinculando precios...'); setProgressBar(15);
+        const pnpItems = []; let lineNum = 0;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i]; const status = pnStatus[i]; lineNum++;
+          let partNumberId;
+          if (status.status === 'existing') { partNumberId = status.existingId; stats.pnsExisting++; }
+          else { partNumberId = newPnIds.get(part.pn.toUpperCase()); if (!partNumberId) { errors.push(`PN "${part.pn}" no fue creado, omitido de quote.`); continue; } }
+          pnpItems.push({
+            partNumberId, processId: part.processIdOverride || defaultProcessId,
+            customInputs: { DatosPrecio: { Divisa: divisaLinea } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
+            partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
+            usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
+            unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
+            partNumberCustomInputs: null,
+            quotePartNumberPrice: { savedQuotePartNumberPriceId: null, quoteId, quantityPerParent: part.qty, lineNumber: lineNum }
+          });
         }
-        if (!items.length) continue;
+        for (let i = 0; i < pnpItems.length; i += 20) {
+          const batch = pnpItems.slice(i, i + 20);
+          const { usedHash } = await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
+            { input: { quoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
+          showProgressUI(`  -> Batch ${Math.floor(i / 20) + 1}: ${batch.length} PNs (hash ${usedHash})`);
+        }
+        log(`  SaveManyPNP: ${pnpItems.length}`);
+
+        // STEP 3: Re-read quote
+        showProgressUI('Paso 3: Leyendo cotización...'); setProgressBar(30);
+        const { data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: quoteIdInDomain, revisionNumber: 1 });
+        const quote = qData?.quoteByIdInDomainAndRevisionNumber || qData?.quoteByIdInDomain;
+        if (!quote) throw new Error(`No se pudo leer quote #${quoteIdInDomain}.`);
+        const qpnpNodes = quote.quotePartNumberPricesByQuoteId?.nodes || [];
+        const qlNodes = quote.quoteLinesByQuoteId?.nodes || [];
+        const qlByQpnpId = new Map(); for (const ql of qlNodes) if (ql.autoGeneratedFromQuotePartNumberPriceId) qlByQpnpId.set(ql.autoGeneratedFromQuotePartNumberPriceId, ql);
+        for (const qpnp of qpnpNodes) {
+          const pnp = qpnp.partNumberPriceByPartNumberPriceId; if (!pnp) continue;
+          const pn = pnp.partNumberByPartNumberId; if (!pn?.name) continue;
+          pnLookup.set(pn.name.toUpperCase(), { qpnp, pnp, pn, ql: qlByQpnpId.get(qpnp.id) || null });
+        }
+        log(`  ${pnLookup.size} PNs en quote`);
+        const allProdNodes = quote.allProducts?.nodes || qData.allProducts?.nodes || [];
+        if (allProdNodes.length) for (const p of allProdNodes) productByName.set(p.name, p);
+
+        // STEP 4: SaveQuoteLines (products)
+        showProgressUI('Paso 4: Products en líneas...'); setProgressBar(40);
+        let prodAdded = 0;
+        for (const part of parts) {
+          if (!part.products.length) continue;
+          const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) { errors.push(`PN "${part.pn}" no en quote.`); continue; }
+          const ql = entry.ql; if (!ql) { errors.push(`QuoteLine no encontrada para "${part.pn}".`); continue; }
+          const existing = ql.quoteLineItemsByQuoteLineId?.nodes || [];
+          const idsToDelete = existing.map(ei => ei.id).filter(Boolean);
+          const items = [];
+          for (let idx = 0; idx < part.products.length; idx++) {
+            const np = part.products[idx]; const pr = productByName.get(np.name);
+            if (!pr) { errors.push(`Product "${np.name}" no en catálogo.`); continue; }
+            items.push({ savedQuoteLineItemId: null, title: np.name, price: np.price, quantity: np.qty, productId: pr.id, displayOrder: idx, description: '', dimensionCustomValueIds: [], quotePartNumberPriceIds: [entry.qpnp.id], unitId: resolveUnitId(np.unit) });
+            prodAdded++;
+          }
+          if (!items.length) continue;
+          try {
+            await api().query('SaveQuoteLines', { input: { quoteId, quoteLines: [{ savedQuoteLineId: ql.id, lineNumber: ql.lineNumber, title: ql.title, description: ql.description || '', autoGeneratedFromQuotePartNumberPriceId: ql.autoGeneratedFromQuotePartNumberPriceId, quoteLineItems: items }], quoteLinesToDelete: [], quoteLineItemsToDelete: idsToDelete, quoteLineNumberUpdates: [] } });
+          } catch (e) { errors.push(`SaveQuoteLines "${part.pn}": ${String(e).substring(0, 100)}`); }
+        }
+        stats.productsSet = prodAdded; showProgressUI(`  -> ${prodAdded} products`);
+
+        // STEP 5: UpdateQuote (notes)
+        showProgressUI('Paso 5: Notas...'); setProgressBar(50);
         try {
-          await api().query('SaveQuoteLines', { input: { quoteId, quoteLines: [{ savedQuoteLineId: ql.id, lineNumber: ql.lineNumber, title: ql.title, description: ql.description || '', autoGeneratedFromQuotePartNumberPriceId: ql.autoGeneratedFromQuotePartNumberPriceId, quoteLineItems: items }], quoteLinesToDelete: [], quoteLineItemsToDelete: idsToDelete, quoteLineNumberUpdates: [] } });
-        } catch (e) { errors.push(`SaveQuoteLines "${part.pn}": ${String(e).substring(0, 100)}`); }
+          if (header.notasExternas) await api().query('UpdateQuote', { id: quoteId, notesMarkdown: header.notasExternas });
+          if (header.notasInternas) await api().query('UpdateQuote', { id: quoteId, internalNotesMarkdown: header.notasInternas });
+        } catch (e) { errors.push(`UpdateQuote: ${String(e).substring(0, 100)}`); }
+      } else {
+        // SOLO_PN: build pnLookup from existing/new PN IDs (no quote context)
+        showProgressUI('Modo SOLO_PN: construyendo mapa de PNs...'); setProgressBar(30);
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i]; const status = pnStatus[i];
+          let pnId;
+          if (status.status === 'existing') { pnId = status.existingId; stats.pnsExisting++; }
+          else { pnId = newPnIds.get(part.pn.toUpperCase()); }
+          if (!pnId) continue;
+          // Minimal pn object for enrich step
+          pnLookup.set(part.pn.toUpperCase(), {
+            qpnp: null, pnp: null,
+            pn: { id: pnId, name: part.pn, customerId: customerId, defaultProcessNodeId: part.processIdOverride || defaultProcessId, customInputs: {}, descriptionMarkdown: '', customerFacingNotes: '', geometryTypeId: null, partNumberGroupId: null },
+            ql: null
+          });
+        }
+        log(`  ${pnLookup.size} PNs mapeados (SOLO_PN)`);
+        setProgressBar(50);
       }
-      stats.productsSet = prodAdded; showProgressUI(`  -> ${prodAdded} products`);
 
-      // STEP 5: UpdateQuote (notes)
-      showProgressUI('Paso 5/9: Notas...'); setProgressBar(50);
-      try {
-        if (header.notasExternas) await api().query('UpdateQuote', { id: quoteId, notesMarkdown: header.notasExternas });
-        if (header.notasInternas) await api().query('UpdateQuote', { id: quoteId, internalNotesMarkdown: header.notasInternas });
-      } catch (e) { errors.push(`UpdateQuote: ${String(e).substring(0, 100)}`); }
-
-      // STEP 6: SavePartNumber (enrich)
-      showProgressUI('Paso 6/9: Enriqueciendo PNs...'); setProgressBar(55);
+      // STEP 6: SavePartNumber (enrich) — runs in BOTH modes
+      showProgressUI(`${isSoloPN ? 'Paso 3' : 'Paso 6'}: Enriqueciendo PNs...`); setProgressBar(55);
       let okSP = 0, retrySP = 0;
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
@@ -614,8 +642,8 @@ const BulkUpload = (() => {
       }
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`); showProgressUI(`  -> ${okSP} OK, ${retrySP} retry`);
 
-      // STEP 7: RackTypes
-      showProgressUI('Paso 7/9: Racks...'); setProgressBar(78);
+      // STEP 7: RackTypes — runs in BOTH modes
+      showProgressUI(`${isSoloPN ? 'Paso 4' : 'Paso 7'}: Racks...`); setProgressBar(78);
       const rackIn = [];
       for (const part of parts) {
         if (!part.racks.length) continue;
@@ -634,18 +662,26 @@ const BulkUpload = (() => {
       stats.racksSet = rackIn.length; log(`  Racks: ${rackIn.length}`);
 
       // STEP 8: Default Price + Archive
-      showProgressUI('Paso 8/9: Default price + archivado...'); setProgressBar(85);
-      const priceIdsForDefault = [], pnsToArchive = [], oldPnsToArchive = [];
+      showProgressUI(`${isSoloPN ? 'Paso 5' : 'Paso 8'}: Archivado...`); setProgressBar(85);
+      const pnsToArchive = [], oldPnsToArchive = [];
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
         const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
-        if (part.precioDefault) { const pnpId = entry.pnp?.id; if (pnpId) priceIdsForDefault.push(pnpId); }
         if (part.archivado) pnsToArchive.push({ id: entry.pn.id, name: part.pn });
         if (status.status === 'forceDup' && part.archivarAnterior && status.existingId) oldPnsToArchive.push({ id: status.existingId, name: part.pn + ' (ant)' });
       }
-      if (priceIdsForDefault.length) {
-        try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPNPricesDefault'); stats.defaultPriceSet = priceIdsForDefault.length; }
-        catch (e) { errors.push(`SetDefaultPrice: ${String(e).substring(0, 120)}`); }
+      // Default price only in quote mode
+      if (!isSoloPN) {
+        const priceIdsForDefault = [];
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+          if (part.precioDefault) { const pnpId = entry.pnp?.id; if (pnpId) priceIdsForDefault.push(pnpId); }
+        }
+        if (priceIdsForDefault.length) {
+          try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPNPricesDefault'); stats.defaultPriceSet = priceIdsForDefault.length; }
+          catch (e) { errors.push(`SetDefaultPrice: ${String(e).substring(0, 120)}`); }
+        }
       }
       for (const p of pnsToArchive) {
         try { await api().query('UpdatePartNumber', { id: p.id, archivedAt: new Date().toISOString() }); stats.archived++; }
@@ -657,11 +693,11 @@ const BulkUpload = (() => {
       }
 
       // STEP 9: Done
-      showProgressUI('Paso 9/9: Completado.'); setProgressBar(100);
+      showProgressUI('Completado.'); setProgressBar(100);
       const domainId = window.location.pathname.match(/\/Domains\/(\d+)/)?.[1] || DOMAIN.id;
-      const quoteUrl = `/Domains/${domainId}/Quotes/${quoteIdInDomain}`;
+      const quoteUrl = isSoloPN ? null : `/Domains/${domainId}/Quotes/${quoteIdInDomain}`;
       log(`\n=== RESULTADO ===`);
-      log(`Quote: "${quoteName}" #${quoteIdInDomain}`);
+      log(`${isSoloPN ? 'Modo: SOLO_PN' : `Quote: "${quoteName}" #${quoteIdInDomain}`}`);
       log(`PNs: ${stats.pnsCreated} nuevos, ${stats.pnsExisting} existentes, ${stats.pnsDuplicated} dup`);
       if (errors.length) log(`ERRORES: ${errors.length}\n${errors.join('\n')}`);
       await new Promise(r => setTimeout(r, 500));
