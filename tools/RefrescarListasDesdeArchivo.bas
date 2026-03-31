@@ -32,6 +32,8 @@ Sub RefrescarListas()
     CargarEtiquetasDesde wbCat, wsL
     CargarSpecsDesde wbCat, wsL
     CargarRacksDesde wbCat, wsL
+    CargarLineasDesde wbCat, wsL
+    CargarDepartamentosDesde wbCat, wsL
 
     ' Cerrar archivo de catálogos sin guardar
     wbCat.Close SaveChanges:=False
@@ -46,7 +48,9 @@ Sub RefrescarListas()
         NContar(wsL, 4) & " etiquetas" & vbCrLf & _
         NContar(wsL, 5) & " specs" & vbCrLf & _
         NContar(wsL, 6) & " racks línea" & vbCrLf & _
-        NContar(wsL, 7) & " racks todos", vbInformation, "RefrescarListas"
+        NContar(wsL, 7) & " racks todos" & vbCrLf & _
+        NContar(wsL, 12) & " líneas" & vbCrLf & _
+        NContar(wsL, 13) & " departamentos", vbInformation, "RefrescarListas"
     Exit Sub
 
 ErrorHandler:
@@ -106,9 +110,15 @@ Private Function BuscarArchivoCatalogos() As String
 
     ' Selector manual
     Dim result As Variant
-    result = Application.GetOpenFilename( _
-        FileFilter:="Archivos Excel (*.xlsx),*.xlsx,Todos (*.*),*.*", _
-        Title:="Selecciona el archivo de Catálogos Steelhead")
+    #If Mac Then
+        ' Mac: GetOpenFilename sin FileFilter
+        result = Application.GetOpenFilename( _
+            Title:="Selecciona el archivo de Catálogos Steelhead")
+    #Else
+        result = Application.GetOpenFilename( _
+            FileFilter:="Archivos Excel (*.xlsx),*.xlsx,Todos (*.*),*.*", _
+            Title:="Selecciona el archivo de Catálogos Steelhead")
+    #End If
     If VarType(result) = vbBoolean Then
         BuscarArchivoCatalogos = ""
     Else
@@ -311,6 +321,40 @@ Private Sub CargarRacksDesde(wbCat As Workbook, wsL As Worksheet)
     Next r
     EscribirOrdenado wsL, 6, linea
     EscribirOrdenado wsL, 7, todos
+End Sub
+
+' === LÍNEAS (col L en Listas) ===
+Private Sub CargarLineasDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    On Error Resume Next
+    Set ws = wbCat.Sheets("Líneas")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 12, items
+End Sub
+
+' === DEPARTAMENTOS (col M en Listas) ===
+Private Sub CargarDepartamentosDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    On Error Resume Next
+    Set ws = wbCat.Sheets("Departamentos")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 13, items
 End Sub
 
 ' === HELPERS ===
