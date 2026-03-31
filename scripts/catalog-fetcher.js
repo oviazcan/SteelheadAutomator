@@ -216,6 +216,37 @@ const CatalogFetcher = (() => {
     for (const r of catalogs.racks.all) rackRows.push(['', '', '', '', r]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rackRows), 'Racks');
 
+    // Dimensiones Contables (Líneas y Departamentos) — datos estáticos de config
+    const domain = api().getDomain();
+    const lineas = (domain.lineas || [
+      'T101-LI Pre Limpieza (4 - 5)', 'T102-LI Estaño e Iridizado (12)', 'T103-LI Cromo Duro (11)',
+      'T104-LI Zinc y Estaño Manual (6)', 'T105-LI Zinc Semiautomático (7)', 'T106-LI Zinc Automático (8)',
+      'T107-LI Plata (9)', 'T108-LI Electroless Níquel (14)', 'T109-LI Varios Manual (10)',
+      'T110-LI Rack Automático (13)', 'T111-LI Ensamble (13.1)', 'T112-LI Barril Automático (15)',
+      'T113-LI Rack Automático (16)', 'T114-LI Barril Automático (16.1)', 'T115-LI Anodizado (17)',
+      'T116-LI Rack Automático (18)', 'T117-LI Rack Automático (19)',
+      'T200-LI CuSO4 Automático (1)', 'T201-LI Níquel Automático (2)', 'T202-LI Cromo Decorativo (3)',
+      'T203-LI Zinc (7.1)', 'T204-LI Varios Manual (10.1)', 'T205-LI Plata (9.1)',
+      'T206-LI Electroless Níquel (14.1)', 'T207-LI Enjuague Rack Auto (2.1)', 'T208-LI Pre Limpieza (4.1)'
+    ]).sort();
+    const departamentos = (domain.departamentos || [
+      'Administración', 'Almacén', 'Almacén de Materia Prima', 'Calidad', 'Compras',
+      'Contabilidad', 'Dirección', 'Ingeniería de Procesos', 'Laboratorio', 'Logística',
+      'Mantenimiento', 'Planta 1', 'Planta 2', 'Producción', 'Recursos Humanos',
+      'Seguridad e Higiene', 'Sistemas', 'Taller Mecánico', 'Tratamiento de Aguas',
+      'Ventas', 'Ventas Internacionales'
+    ]).sort();
+
+    // Líneas sheet
+    const lineaRows = [['Línea']];
+    for (const l of lineas) lineaRows.push([l]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(lineaRows), 'Líneas');
+
+    // Departamentos sheet
+    const deptoRows = [['Departamento']];
+    for (const d of departamentos) deptoRows.push([d]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(deptoRows), 'Departamentos');
+
     // Resumen sheet
     const counts = {
       clientes: catalogs.customers.length,
@@ -224,7 +255,9 @@ const CatalogFetcher = (() => {
       etiquetas: catalogs.labels.length,
       specs: catalogs.specs.length,
       racksLinea: catalogs.racks.linea.length,
-      racksTodos: catalogs.racks.all.length
+      racksTodos: catalogs.racks.all.length,
+      lineas: lineas.length,
+      departamentos: departamentos.length
     };
     const resumenRows = [
       ['Catálogos Steelhead — ' + new Date().toLocaleDateString('es-MX')],
@@ -237,6 +270,8 @@ const CatalogFetcher = (() => {
       ['Especificaciones', counts.specs],
       ['Racks (Línea)', counts.racksLinea],
       ['Racks (Todos)', counts.racksTodos],
+      ['Líneas', counts.lineas],
+      ['Departamentos', counts.departamentos],
       [],
       ['Instrucciones:'],
       ['1. Abre tu Plantilla de Cotizaciones (.xlsm)'],
@@ -271,7 +306,9 @@ const CatalogFetcher = (() => {
       `${counts.productos} productos\n` +
       `${counts.etiquetas} etiquetas\n` +
       `${counts.specs} especificaciones\n` +
-      `${counts.racksLinea} racks línea / ${counts.racksTodos} racks total\n\n` +
+      `${counts.racksLinea} racks línea / ${counts.racksTodos} racks total\n` +
+      `${counts.lineas} líneas\n` +
+      `${counts.departamentos} departamentos\n\n` +
       `Archivo descargado: Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx\n\n` +
       `Siguiente paso: Abre tu plantilla y ejecuta "RefrescarListas".\n` +
       `La macro detectará el archivo automáticamente.`);
