@@ -240,8 +240,9 @@ const CatalogFetcher = (() => {
       [],
       ['Instrucciones:'],
       ['1. Abre tu Plantilla de Cotizaciones (.xlsm)'],
-      ['2. Copia cada hoja de este archivo a tu plantilla (reemplazando la existente)'],
-      ['3. Ejecuta la macro "RefrescarListas" para actualizar los dropdowns'],
+      ['2. Ejecuta la macro "RefrescarListas" (botón en la plantilla)'],
+      ['3. La macro detectará este archivo automáticamente'],
+      ['4. Si no lo detecta, te pedirá seleccionarlo manualmente'],
     ];
     const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
     XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
@@ -271,8 +272,9 @@ const CatalogFetcher = (() => {
       `${counts.etiquetas} etiquetas\n` +
       `${counts.specs} especificaciones\n` +
       `${counts.racksLinea} racks línea / ${counts.racksTodos} racks total\n\n` +
-      `Archivo: Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx\n` +
-      `Copia las hojas a tu plantilla y ejecuta "RefrescarListas".`);
+      `Archivo descargado: Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx\n\n` +
+      `Siguiente paso: Abre tu plantilla y ejecuta "RefrescarListas".\n` +
+      `La macro detectará el archivo automáticamente.`);
 
     return counts;
   }

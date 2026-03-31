@@ -115,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Error: ' + result.error);
         hideProgress();
       } else {
-        showProgress('Catálogos descargados. Importa las hojas en tu plantilla.', 100);
+        showProgress('Catálogos descargados. Ejecuta RefrescarListas en tu plantilla.', 100);
       }
     } catch (err) {
       alert('Error: ' + err.message);

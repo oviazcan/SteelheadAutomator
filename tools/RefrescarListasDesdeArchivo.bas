@@ -4,20 +4,9 @@ Attribute VB_Name = "Module2"
 ' generado por la extensión Chrome "Actualizar Catálogos"
 
 Sub RefrescarListas()
-    ' Pedir al usuario que seleccione el archivo de catálogos
     Dim catFile As String
-
-    #If Mac Then
-        catFile = MacScript("choose file with prompt ""Selecciona el archivo de Catálogos Steelhead (.xlsx)"" of type {""xlsx""}")
-        If catFile = "" Then Exit Sub
-        ' Convert Mac path to Windows-style for VBA
-        catFile = Replace(catFile, ":", Application.PathSeparator)
-    #Else
-        catFile = Application.GetOpenFilename( _
-            FileFilter:="Catálogos Steelhead (*.xlsx),*.xlsx", _
-            Title:="Selecciona el archivo de Catálogos Steelhead")
-        If catFile = "Falso" Or catFile = "False" Then Exit Sub
-    #End If
+    catFile = BuscarArchivoCatalogos()
+    If catFile = "" Then Exit Sub
 
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
@@ -65,6 +54,95 @@ ErrorHandler:
     Application.ScreenUpdating = True
     MsgBox "Error abriendo archivo de catálogos: " & Err.Description, vbCritical
 End Sub
+
+' === BUSCAR ARCHIVO DE CATÁLOGOS ===
+' Busca el archivo más reciente "Catalogos_Steelhead_*.xlsx" en:
+' 1. Misma carpeta que la plantilla
+' 2. Carpeta Downloads del usuario
+' Si encuentra, pregunta al usuario si lo acepta. Si no, deja buscar manual.
+Private Function BuscarArchivoCatalogos() As String
+    Dim found As String
+    found = ""
+
+    ' Buscar en misma carpeta que la plantilla
+    Dim plantillaDir As String
+    plantillaDir = ThisWorkbook.Path
+    If plantillaDir <> "" Then
+        found = BuscarMasReciente(plantillaDir)
+    End If
+
+    ' Si no encontró, buscar en Downloads
+    If found = "" Then
+        Dim downloadsDir As String
+        #If Mac Then
+            downloadsDir = Environ("HOME") & "/Downloads"
+        #Else
+            downloadsDir = Environ("USERPROFILE") & "\Downloads"
+        #End If
+        found = BuscarMasReciente(downloadsDir)
+    End If
+
+    If found <> "" Then
+        ' Mostrar al usuario el archivo encontrado
+        Dim resp As VbMsgBoxResult
+        resp = MsgBox("Archivo de catálogos encontrado:" & vbCrLf & vbCrLf & _
+            Dir(found) & vbCrLf & _
+            "(" & found & ")" & vbCrLf & vbCrLf & _
+            "¿Usar este archivo?" & vbCrLf & vbCrLf & _
+            "Sí = Usar este archivo" & vbCrLf & _
+            "No = Buscar otro manualmente" & vbCrLf & _
+            "Cancelar = No actualizar", _
+            vbYesNoCancel + vbQuestion, "RefrescarListas")
+
+        If resp = vbYes Then
+            BuscarArchivoCatalogos = found
+            Exit Function
+        ElseIf resp = vbCancel Then
+            BuscarArchivoCatalogos = ""
+            Exit Function
+        End If
+        ' resp = vbNo → cae al selector manual
+    End If
+
+    ' Selector manual
+    Dim result As Variant
+    result = Application.GetOpenFilename( _
+        FileFilter:="Archivos Excel (*.xlsx),*.xlsx,Todos (*.*),*.*", _
+        Title:="Selecciona el archivo de Catálogos Steelhead")
+    If VarType(result) = vbBoolean Then
+        BuscarArchivoCatalogos = ""
+    Else
+        BuscarArchivoCatalogos = CStr(result)
+    End If
+End Function
+
+' Busca el archivo "Catalogos_Steelhead_*.xlsx" más reciente en una carpeta
+Private Function BuscarMasReciente(folderPath As String) As String
+    Dim fileName As String
+    Dim bestFile As String
+    Dim bestDate As Date
+
+    bestFile = ""
+    bestDate = 0
+
+    On Error Resume Next
+    fileName = Dir(folderPath & Application.PathSeparator & "Catalogos_Steelhead_*.xlsx")
+    On Error GoTo 0
+
+    Do While fileName <> ""
+        Dim fullPath As String
+        fullPath = folderPath & Application.PathSeparator & fileName
+        Dim fDate As Date
+        fDate = FileDateTime(fullPath)
+        If fDate > bestDate Then
+            bestDate = fDate
+            bestFile = fullPath
+        End If
+        fileName = Dir()
+    Loop
+
+    BuscarMasReciente = bestFile
+End Function
 
 ' === CLIENTES: "Nombre — Dirección", ID, Etiquetas ===
 Private Sub CargarClientesDesde(wbCat As Workbook, wsL As Worksheet)
