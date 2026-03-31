@@ -751,7 +751,27 @@ const BulkUpload = (() => {
       }
       if (rackIn.length) {
         for (let i = 0; i < rackIn.length; i += 50) {
-          await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: rackIn.slice(i, i + 50), partNumberRackTypeIdsToDelete: [] } });
+          try {
+            await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: rackIn.slice(i, i + 50), partNumberRackTypeIdsToDelete: [] } });
+          } catch (e) {
+            if (String(e).includes('duplicate key') || String(e).includes('23505')) {
+              // Racks already exist — try one by one, skip duplicates
+              log(`  Racks batch ${Math.floor(i / 50) + 1}: duplicados detectados, insertando uno por uno...`);
+              for (const rk of rackIn.slice(i, i + 50)) {
+                try {
+                  await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
+                } catch (e2) {
+                  if (String(e2).includes('duplicate key') || String(e2).includes('23505')) {
+                    log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: ya existe, omitido`);
+                  } else {
+                    errors.push(`Rack PN ${rk.partNumberId}: ${String(e2).substring(0, 100)}`);
+                  }
+                }
+              }
+            } else {
+              errors.push(`SavePartNumberRackTypes: ${String(e).substring(0, 120)}`);
+            }
+          }
         }
       }
       stats.racksSet = rackIn.length; log(`  Racks: ${rackIn.length}`);
