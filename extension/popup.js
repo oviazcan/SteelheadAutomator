@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   btnTemplate.addEventListener('click', () => downloadTemplate());
+  document.getElementById('btn-catalogs').addEventListener('click', () => updateCatalogs());
   btnStatus.addEventListener('click', () => checkStatus());
 
   document.getElementById('btn-reload').addEventListener('click', () => {
@@ -95,18 +96,32 @@ document.addEventListener('DOMContentLoaded', () => {
   async function downloadTemplate() {
     try {
       btnTemplate.disabled = true;
-      showProgress('Consultando catálogos de Steelhead...', 20);
-      const result = await sendToBackground('download-template');
-      if (result?.error) {
-        alert('Error: ' + result.error);
-        hideProgress();
-      } else {
-        showProgress('Plantilla descargándose con catálogos frescos...', 100);
-      }
+      const config = await sendToBackground('get-config');
+      if (!config?.templateUrl) { alert('URL de plantilla no configurada.'); return; }
+      chrome.tabs.create({ url: config.templateUrl });
     } catch (err) {
       alert('Error: ' + err.message);
     } finally {
       btnTemplate.disabled = false;
+    }
+  }
+
+  async function updateCatalogs() {
+    try {
+      document.getElementById('btn-catalogs').disabled = true;
+      showProgress('Consultando catálogos de Steelhead...', 20);
+      const result = await sendToBackground('update-catalogs');
+      if (result?.error) {
+        alert('Error: ' + result.error);
+        hideProgress();
+      } else {
+        showProgress('Catálogos descargados. Importa las hojas en tu plantilla.', 100);
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+      hideProgress();
+    } finally {
+      document.getElementById('btn-catalogs').disabled = false;
     }
   }
 

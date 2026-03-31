@@ -102,40 +102,33 @@ async function handleMessage(message, sender) {
       return { injected: true };
     }
 
-    case 'download-template': {
+    case 'update-catalogs': {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const tab = tabs[0];
       if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero (app.gosteelhead.com)');
 
-      // Inject SheetJS library first
-      const config = cachedConfig || await loadConfig();
+      // Inject SheetJS + all scripts
       const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
       await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
         func: (code) => { if (!window.XLSX) new Function(code)(); },
         args: [xlsxCode]
       });
-
-      // Inject all scripts (API + catalog fetcher)
       await injectScripts(tab.id);
 
-      // Generate template with fresh catalogs
-      const templateUrl = config.templateUrl;
-      if (!templateUrl) throw new Error('templateUrl no configurada');
-
+      // Generate catalogs-only file
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
-        func: (url) => {
+        func: () => {
           if (!window.CatalogFetcher) return { error: 'CatalogFetcher no disponible' };
-          window.CatalogFetcher.generateTemplate(url).then(counts => {
-            console.log('[SA] Plantilla generada:', counts);
+          window.CatalogFetcher.generateCatalogsFile().then(counts => {
+            console.log('[SA] Catálogos generados:', counts);
           }).catch(e => {
-            console.error('[SA] Error generando plantilla:', e);
-            alert('Error generando plantilla: ' + e.message);
+            console.error('[SA] Error:', e);
+            alert('Error actualizando catálogos: ' + e.message);
           });
-          return { started: true, message: 'Generando plantilla con catálogos frescos...' };
-        },
-        args: [templateUrl]
+          return { started: true };
+        }
       });
 
       return results?.[0]?.result || { error: 'Sin resultado' };

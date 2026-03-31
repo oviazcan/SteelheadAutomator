@@ -166,96 +166,57 @@ const CatalogFetcher = (() => {
   }
 
   // ═══════════════════════════════════════════
-  // GENERATE EXCEL WITH FRESH CATALOGS
+  // GENERATE CATALOGS-ONLY FILE (preserves template formatting)
   // ═══════════════════════════════════════════
 
-  async function generateTemplate(templateUrl) {
+  async function generateCatalogsFile() {
     if (!window.XLSX) throw new Error('SheetJS (XLSX) no cargado');
 
-    // 1. Download base template
-    log('Descargando plantilla base...');
-    const resp = await fetch(templateUrl, { cache: 'no-cache' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} descargando plantilla`);
-    const templateData = await resp.arrayBuffer();
-
-    // 2. Fetch fresh catalogs
     const catalogs = await fetchAll();
 
-    // 3. Open workbook with SheetJS
-    log('Actualizando catálogos en Excel...');
-    const wb = XLSX.read(new Uint8Array(templateData), { type: 'array', cellStyles: true });
-    const wsListas = wb.Sheets['Listas'];
-    if (!wsListas) throw new Error('Hoja "Listas" no encontrada en plantilla');
+    // Create new workbook with catalog sheets matching the template's internal sheets
+    const wb = XLSX.utils.book_new();
 
-    // 4. Clear existing catalog data (cols A-I, rows 2+)
-    // Keep headers (row 1) and cols J-K (CodigoSAT, MetalBase)
-    const clearCols = ['A','B','C','D','E','F','G','H','I','L','M'];
-    for (const col of clearCols) {
-      for (let r = 2; r <= 1000; r++) {
-        const ref = `${col}${r}`;
-        if (wsListas[ref]) delete wsListas[ref];
+    // Clientes sheet: col1=id, col2=name, col3-5=other fields, col6=active, col10=address, col12=labels
+    const custRows = [['ID', 'Nombre', '', '', '', 'Activo', '', '', '', 'Dirección', '', 'Etiquetas']];
+    for (const c of catalogs.customers) {
+      custRows.push([c.id, c.display.split(' \u2014 ')[0], '', '', '', true, '', '', '', c.display.includes('\u2014') ? c.display.split(' \u2014 ')[1] : '', '', c.labels]);
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(custRows), 'Clientes');
+
+    // Procesos sheet: col2=name, col3=type, col5=archived
+    const procRows = [['', 'Nombre', 'Tipo', '', 'Archivado']];
+    for (const p of catalogs.processes) procRows.push(['', p, 'process', '', 'No']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(procRows), 'Procesos');
+
+    // Productos sheet: col2=name, col4=estado
+    const prodRows = [['', 'Nombre', '', 'Estado']];
+    for (const p of catalogs.products) prodRows.push(['', p, '', 'Activo']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(prodRows), 'Productos');
+
+    // Etiquetas sheet: col4=archivedAt (empty=active), col6=name
+    const labelRows = [['', '', '', 'ArchivedAt', '', 'Nombre']];
+    for (const l of catalogs.labels) labelRows.push(['', '', '', '', '', l]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(labelRows), 'Etiquetas');
+
+    // Especificaciones sheet: col3=specName, col17=fieldName, col22=paramName
+    const specRows = [['', '', 'SpecName', '', '', '', '', '', '', '', '', '', '', '', '', '', 'FieldName', '', '', '', '', 'ParamName']];
+    for (const s of catalogs.specs) {
+      if (s.includes(' | ')) {
+        const [specName, paramName] = s.split(' | ');
+        specRows.push(['', '', specName, '', '', '', '', '', '', '', '', '', '', '', '', '', 'espesor', '', '', '', '', paramName]);
+      } else {
+        specRows.push(['', '', s]);
       }
     }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(specRows), 'Especificaciones');
 
-    // 5. Write catalogs
+    // Racks sheet: col5=name
+    const rackRows = [['', '', '', '', 'Nombre']];
+    for (const r of catalogs.racks.all) rackRows.push(['', '', '', '', r]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rackRows), 'Racks');
 
-    // Col A: Clientes (display), Col H: ID, Col I: Labels
-    for (let i = 0; i < catalogs.customers.length; i++) {
-      wsListas[`A${i + 2}`] = { t: 's', v: catalogs.customers[i].display };
-      wsListas[`H${i + 2}`] = { t: 's', v: catalogs.customers[i].id };
-      wsListas[`I${i + 2}`] = { t: 's', v: catalogs.customers[i].labels };
-    }
-
-    // Col B: Procesos
-    for (let i = 0; i < catalogs.processes.length; i++) {
-      wsListas[`B${i + 2}`] = { t: 's', v: catalogs.processes[i] };
-    }
-
-    // Col C: Productos
-    for (let i = 0; i < catalogs.products.length; i++) {
-      wsListas[`C${i + 2}`] = { t: 's', v: catalogs.products[i] };
-    }
-
-    // Col D: Etiquetas
-    for (let i = 0; i < catalogs.labels.length; i++) {
-      wsListas[`D${i + 2}`] = { t: 's', v: catalogs.labels[i] };
-    }
-
-    // Col E: Specs
-    for (let i = 0; i < catalogs.specs.length; i++) {
-      wsListas[`E${i + 2}`] = { t: 's', v: catalogs.specs[i] };
-    }
-
-    // Col F: Racks Línea
-    for (let i = 0; i < catalogs.racks.linea.length; i++) {
-      wsListas[`F${i + 2}`] = { t: 's', v: catalogs.racks.linea[i] };
-    }
-
-    // Col G: Racks Todos
-    for (let i = 0; i < catalogs.racks.all.length; i++) {
-      wsListas[`G${i + 2}`] = { t: 's', v: catalogs.racks.all[i] };
-    }
-
-    // Update sheet range
-    const maxRow = Math.max(
-      catalogs.customers.length, catalogs.processes.length, catalogs.products.length,
-      catalogs.labels.length, catalogs.specs.length, catalogs.racks.all.length
-    ) + 1;
-    wsListas['!ref'] = `A1:M${maxRow}`;
-
-    // 6. Generate file and trigger download
-    log('Generando archivo...');
-    const wbOut = XLSX.write(wb, { bookType: 'xlsm', type: 'array', bookVBA: true });
-    const blob = new Blob([wbOut], { type: 'application/vnd.ms-excel.sheet.macroEnabled.12' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Plantilla_Cotizaciones_v9_${new Date().toISOString().slice(0,10)}.xlsm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
+    // Resumen sheet
     const counts = {
       clientes: catalogs.customers.length,
       procesos: catalogs.processes.length,
@@ -265,11 +226,58 @@ const CatalogFetcher = (() => {
       racksLinea: catalogs.racks.linea.length,
       racksTodos: catalogs.racks.all.length
     };
-    log(`Plantilla descargada con catálogos: ${JSON.stringify(counts)}`);
+    const resumenRows = [
+      ['Catálogos Steelhead — ' + new Date().toLocaleDateString('es-MX')],
+      [],
+      ['Catálogo', 'Registros'],
+      ['Clientes', counts.clientes],
+      ['Procesos', counts.procesos],
+      ['Productos', counts.productos],
+      ['Etiquetas', counts.etiquetas],
+      ['Especificaciones', counts.specs],
+      ['Racks (Línea)', counts.racksLinea],
+      ['Racks (Todos)', counts.racksTodos],
+      [],
+      ['Instrucciones:'],
+      ['1. Abre tu Plantilla de Cotizaciones (.xlsm)'],
+      ['2. Copia cada hoja de este archivo a tu plantilla (reemplazando la existente)'],
+      ['3. Ejecuta la macro "RefrescarListas" para actualizar los dropdowns'],
+    ];
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+    // Move Resumen to first position
+    wb.SheetNames.unshift(wb.SheetNames.pop());
+
+    // Download
+    const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    log(`Catálogos descargados: ${JSON.stringify(counts)}`);
+
+    // Show summary alert
+    alert(`Catálogos actualizados:\n\n` +
+      `${counts.clientes} clientes\n` +
+      `${counts.procesos} procesos\n` +
+      `${counts.productos} productos\n` +
+      `${counts.etiquetas} etiquetas\n` +
+      `${counts.specs} especificaciones\n` +
+      `${counts.racksLinea} racks línea / ${counts.racksTodos} racks total\n\n` +
+      `Archivo: Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx\n` +
+      `Copia las hojas a tu plantilla y ejecuta "RefrescarListas".`);
+
     return counts;
   }
 
-  return { fetchAll, generateTemplate };
+  return { fetchAll, generateCatalogsFile };
 })();
 
 if (typeof window !== 'undefined') window.CatalogFetcher = CatalogFetcher;
