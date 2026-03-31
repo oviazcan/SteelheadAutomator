@@ -102,6 +102,45 @@ async function handleMessage(message, sender) {
       return { injected: true };
     }
 
+    case 'download-template': {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero (app.gosteelhead.com)');
+
+      // Inject SheetJS library first
+      const config = cachedConfig || await loadConfig();
+      const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (code) => { if (!window.XLSX) new Function(code)(); },
+        args: [xlsxCode]
+      });
+
+      // Inject all scripts (API + catalog fetcher)
+      await injectScripts(tab.id);
+
+      // Generate template with fresh catalogs
+      const templateUrl = config.templateUrl;
+      if (!templateUrl) throw new Error('templateUrl no configurada');
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (url) => {
+          if (!window.CatalogFetcher) return { error: 'CatalogFetcher no disponible' };
+          window.CatalogFetcher.generateTemplate(url).then(counts => {
+            console.log('[SA] Plantilla generada:', counts);
+          }).catch(e => {
+            console.error('[SA] Error generando plantilla:', e);
+            alert('Error generando plantilla: ' + e.message);
+          });
+          return { started: true, message: 'Generando plantilla con catálogos frescos...' };
+        },
+        args: [templateUrl]
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     case 'run-csv': {
       // CSV text comes from popup's file picker
       const csvText = message.csvText;

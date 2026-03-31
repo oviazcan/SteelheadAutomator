@@ -95,13 +95,13 @@ document.addEventListener('DOMContentLoaded', () => {
   async function downloadTemplate() {
     try {
       btnTemplate.disabled = true;
-      const config = await sendToBackground('get-config');
-      if (!config) { alert('No hay configuración disponible.'); return; }
-      const templateUrl = config.templateUrl;
-      if (templateUrl) {
-        chrome.tabs.create({ url: templateUrl });
+      showProgress('Consultando catálogos de Steelhead...', 20);
+      const result = await sendToBackground('download-template');
+      if (result?.error) {
+        alert('Error: ' + result.error);
+        hideProgress();
       } else {
-        alert('Descarga de plantilla con catálogos dinámicos aún no disponible.\nUsa la plantilla Excel existente por ahora.');
+        showProgress('Plantilla descargándose con catálogos frescos...', 100);
       }
     } catch (err) {
       alert('Error: ' + err.message);
