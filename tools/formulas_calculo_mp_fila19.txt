@@ -1,0 +1,33 @@
+INSTRUCCIONES:
+Copia cada fórmula y pégala en la celda indicada de la hoja "Cálculo MP".
+Luego selecciona J19:R19 y jala hacia abajo.
+NOTA: Aunque las veas en inglés aquí, Excel las mostrará en español automáticamente.
+
+---
+
+J19 (Plata):
+=IFERROR(IF(OR(C19="",IF(ISNUMBER(SEARCH("Plata",G19)),E19,IF(ISNUMBER(SEARCH("Plata",H19)),F19,""))=""),"",$D$6*C19*(IF(ISNUMBER(SEARCH("Plata",G19)),E19,IF(ISNUMBER(SEARCH("Plata",H19)),F19,"")))/10000000),"")
+
+K19 (Estaño):
+=IFERROR(IF(OR(C19="",IF(OR(ISNUMBER(SEARCH("Estaño",G19)),ISNUMBER(SEARCH("Estañ",G19)),ISNUMBER(SEARCH("Tin",G19))),E19,IF(OR(ISNUMBER(SEARCH("Estaño",H19)),ISNUMBER(SEARCH("Estañ",H19)),ISNUMBER(SEARCH("Tin",H19))),F19,""))=""),"",$D$7*C19*(IF(OR(ISNUMBER(SEARCH("Estaño",G19)),ISNUMBER(SEARCH("Estañ",G19)),ISNUMBER(SEARCH("Tin",G19))),E19,IF(OR(ISNUMBER(SEARCH("Estaño",H19)),ISNUMBER(SEARCH("Estañ",H19)),ISNUMBER(SEARCH("Tin",H19))),F19,"")))/10000000),"")
+
+L19 (Níquel):
+=IFERROR(IF(OR(C19="",IF(OR(ISNUMBER(SEARCH("Níquel",G19)),ISNUMBER(SEARCH("Niquel",G19))),E19,IF(OR(ISNUMBER(SEARCH("Níquel",H19)),ISNUMBER(SEARCH("Niquel",H19))),F19,""))=""),"",$D$8*C19*(IF(OR(ISNUMBER(SEARCH("Níquel",G19)),ISNUMBER(SEARCH("Niquel",G19))),E19,IF(OR(ISNUMBER(SEARCH("Níquel",H19)),ISNUMBER(SEARCH("Niquel",H19))),F19,"")))/10000000),"")
+
+M19 (Zinc):
+=IFERROR(IF(OR(C19="",IF(ISNUMBER(SEARCH("Zinc",G19)),E19,IF(ISNUMBER(SEARCH("Zinc",H19)),F19,""))=""),"",$D$9*C19*(IF(ISNUMBER(SEARCH("Zinc",G19)),E19,IF(ISNUMBER(SEARCH("Zinc",H19)),F19,"")))/10000000),"")
+
+N19 (Cobre):
+=IFERROR(IF(OR(C19="",IF(OR(ISNUMBER(SEARCH("Cobre",G19)),ISNUMBER(SEARCH("Bondal",G19))),E19,IF(OR(ISNUMBER(SEARCH("Cobre",H19)),ISNUMBER(SEARCH("Bondal",H19))),F19,""))=""),"",$D$10*C19*(IF(OR(ISNUMBER(SEARCH("Cobre",G19)),ISNUMBER(SEARCH("Bondal",G19))),E19,IF(OR(ISNUMBER(SEARCH("Cobre",H19)),ISNUMBER(SEARCH("Bondal",H19))),F19,"")))/10000000),"")
+
+O19 (Antitarnish):
+=IF(OR(N19="",NOT(OR(ISNUMBER(SEARCH("Antitarnish",Upload!N22&Upload!O22&Upload!P22&Upload!Q22)),ISNUMBER(SEARCH("Anti Tarnish",Upload!N22&Upload!O22&Upload!P22&Upload!Q22))))),"",0.0012*N19)
+
+P19 (Epoxy MT):
+=IF(OR(D19="",NOT(OR(ISNUMBER(SEARCH("Epóx",Upload!N22&Upload!O22&Upload!P22&Upload!Q22)),ISNUMBER(SEARCH("Epox",Upload!N22&Upload!O22&Upload!P22&Upload!Q22)),ISNUMBER(SEARCH("Barniz",Upload!N22&Upload!O22&Upload!P22&Upload!Q22))))),"",D19*0.000035)
+
+Q19 (Epoxy BT):
+=IF(OR(D19="",NOT(OR(ISNUMBER(SEARCH("Epóx",Upload!N22&Upload!O22&Upload!P22&Upload!Q22)),ISNUMBER(SEARCH("Epox",Upload!N22&Upload!O22&Upload!P22&Upload!Q22)),ISNUMBER(SEARCH("Barniz",Upload!N22&Upload!O22&Upload!P22&Upload!Q22))))),"",D19*0.000035)
+
+R19 (Epoxy MTR):
+=IF(P19="","",P19*1.07)
