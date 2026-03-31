@@ -363,7 +363,11 @@ const BulkUpload = (() => {
       const modo = (header.modo || '').toUpperCase();
       const isSoloPN = modo.includes('SOLO');
       const quoteName = header.quoteName || '';
-      if (!isSoloPN && !quoteName) throw new Error('Falta "Nombre Cotización" en header.');
+      if (!isSoloPN) {
+        if (!quoteName) throw new Error('Falta "Nombre Cotización" en header.');
+        const sinQty = parts.filter(p => p.qty === null);
+        if (sinQty.length) throw new Error(`Modo COTIZACIÓN+NP requiere Cantidad en todas las filas. ${sinQty.length} filas sin cantidad: ${sinQty.slice(0, 3).map(p => p.pn).join(', ')}...`);
+      }
       stats.quoteName = isSoloPN ? '(SOLO_PN)' : quoteName;
       log(`Modo: ${isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP'} ${isSoloPN ? '' : '— "' + quoteName + '"'}`);
 
