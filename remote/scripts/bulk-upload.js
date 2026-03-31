@@ -97,7 +97,7 @@ const BulkUpload = (() => {
 
       const pn = g(row, 4);
       const qty = gn(row, 7);
-      if (!pn || qty === null) continue;
+      if (!pn) continue; // PN is required; qty can be null in SOLO_PN mode
 
       const products = [];
       for (const b of [19, 23, 27]) {
