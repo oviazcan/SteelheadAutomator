@@ -35,7 +35,9 @@ const CatalogFetcher = (() => {
     const seen = new Set();
     const result = [];
     for (const c of nodes) {
-      if (!c.name || !c.active) continue;
+      if (!c.name) continue;
+      // active field may not exist in response — skip only if explicitly false
+      if (c.active === false) continue;
       const name = c.name;
       if (seen.has(name)) continue;
       seen.add(name);
