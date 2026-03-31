@@ -729,10 +729,19 @@ const BulkUpload = (() => {
           log(`  -> ${pnInput.name}: enrich OK (labels:${labelIds.length} specs:${specsToApply.length} dims:${dims.length} optIn:${optInOuts.length} pred:${part.predictiveUsage.length})`);
         }
         catch (e) {
-          if (String(e).includes('unique_constraint') || String(e).includes('exclusion constraint')) {
-            try { await api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [] }] }); retrySP++; log(`  -> ${pnInput.name}: retry sin specs OK`); }
-            catch (e2) { errors.push(`${pnInput.name}: retry falló: ${String(e2).substring(0, 120)}`); }
-          } else errors.push(`SavePartNumber "${pnInput.name}": ${String(e).substring(0, 120)}`);
+          const errStr = String(e);
+          if (errStr.includes('unique_constraint') || errStr.includes('exclusion constraint') || errStr.includes('23505') || errStr.includes('duplicate key')) {
+            // Retry progressively removing fields that cause duplicates
+            try {
+              await api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [] }] });
+              retrySP++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
+            } catch (e2) {
+              try {
+                await api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [], inventoryPredictedUsages: [] }] });
+                retrySP++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+              } catch (e3) { errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`); }
+            }
+          } else errors.push(`SavePartNumber "${pnInput.name}": ${errStr.substring(0, 120)}`);
         }
       }
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`); showProgressUI(`  -> ${okSP} OK, ${retrySP} retry`);
