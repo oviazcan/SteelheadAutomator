@@ -221,19 +221,102 @@ const BulkUpload = (() => {
   function createOverlay() { const ov = document.createElement('div'); ov.className = 'dl9-overlay'; const md = document.createElement('div'); md.className = 'dl9-modal'; ov.appendChild(md); document.body.appendChild(ov); return { overlay: ov, modal: md }; }
   function removeOverlay(ov) { if (ov?.parentNode) ov.parentNode.removeChild(ov); }
 
-  function showPreview(header, parts, pnStatus, info) {
+  function showPreview(header, parts, pnStatus, info, isSoloPN) {
     return new Promise(resolve => {
       injectStyles(); const { overlay, modal } = createOverlay();
       const nc = pnStatus.filter(s => s.status === 'new').length, ec = pnStatus.filter(s => s.status === 'existing').length, dc = pnStatus.filter(s => s.status === 'forceDup').length;
+
+      // Build detail of what will be modified for each PN
       let pnR = '';
-      for (const s of pnStatus) {
+      for (let i = 0; i < pnStatus.length; i++) {
+        const s = pnStatus[i]; const part = parts[i];
         const cls = s.status === 'new' ? 'dl9-new' : s.status === 'existing' ? 'dl9-exist' : 'dl9-dup';
-        const lbl = s.status === 'new' ? 'NUEVO' : s.status === 'existing' ? `EXISTE (${s.existingId})` : `DUPLICAR (viejo:${s.existingId})`;
-        pnR += `<tr><td>${s.pn}</td><td class="${cls}">${lbl}</td><td>${s.qty}</td><td>${s.precio ?? '-'}</td></tr>`;
+        const lbl = s.status === 'new' ? 'CREAR NUEVO' : s.status === 'existing' ? `MODIFICAR (id:${s.existingId})` : `DUPLICAR (viejo:${s.existingId})`;
+
+        // Summary of what data will be applied
+        const changes = [];
+        if (part.labels.length) changes.push(`${part.labels.length} labels`);
+        if (part.specs.length) changes.push(`${part.specs.length} specs`);
+        if (part.racks.length) changes.push(`${part.racks.length} racks`);
+        if (part.dims.length !== undefined || Object.values(part.dims).some(v => v !== null)) changes.push('dims');
+        if (part.predictiveUsage.length) changes.push('predictive');
+        if (part.unitConv.kgm !== null || part.unitConv.cmk !== null || part.unitConv.lm !== null) changes.push('unitConv');
+        if (part.metalBase || part.pnAlterno || part.codigoSAT) changes.push('CI');
+        if (part.validacion1er) changes.push('optIn');
+        if (!isSoloPN && part.products.length) changes.push(`${part.products.length} products`);
+        if (!isSoloPN) changes.push(`qty:${part.qty}`);
+        const changeSummary = changes.length ? changes.join(', ') : 'solo crear';
+
+        pnR += `<tr>
+          <td><input type="checkbox" checked class="dl9-check" data-idx="${i}"></td>
+          <td>${s.pn}</td>
+          <td class="${cls}">${lbl}</td>
+          <td style="font-size:11px;color:#94a3b8">${changeSummary}</td>
+          ${isSoloPN ? '' : `<td>${s.qty}</td><td>${s.precio ?? '-'}</td>`}
+        </tr>`;
       }
-      modal.innerHTML = `<h2>Steelhead Automator v9 — Preview</h2><p class="dl9-sub">Modo: ${header.modo || 'COTIZACIÓN+NP'}</p><div class="dl9-stats"><div class="dl9-stat"><b>Cotización:</b> ${header.quoteName || '?'}</div><div class="dl9-stat"><b>Cliente:</b> ${info.customerName || '?'}</div><div class="dl9-stat"><b>Asignado:</b> ${info.assigneeName || '(auto)'}</div><div class="dl9-stat"><b>Proceso:</b> ${info.processName || '?'}</div><div class="dl9-stat"><b>Divisa:</b> ${header.divisaLinea || 'USD'}</div><div class="dl9-stat"><b>Empresa:</b> ${header.empresaEmisora || 'ECO'}</div></div><h3>Part Numbers (${parts.length}): ${nc} nuevos, ${ec} existentes, ${dc} forzar dup</h3><div style="max-height:200px;overflow-y:auto"><table><tr><th>PN</th><th>Status</th><th>Qty</th><th>Precio</th></tr>${pnR}</table></div><div class="dl9-btnrow"><button class="dl9-btn dl9-btn-cancel" id="dl9-cancel">CANCELAR</button><button class="dl9-btn dl9-btn-exec" id="dl9-exec">EJECUTAR (${parts.length} PNs)</button></div>`;
+
+      // Mode-specific styling and content
+      const modeColor = isSoloPN ? '#0d9488' : '#2563eb'; // teal for SOLO_PN, blue for COTIZACIÓN
+      const modeBg = isSoloPN ? '#0f2e2c' : '#1e293b';
+      const modeLabel = isSoloPN ? 'SOLO NÚMEROS DE PARTE' : 'COTIZACIÓN + NP';
+
+      const statsHtml = isSoloPN
+        ? `<div class="dl9-stats">
+            <div class="dl9-stat"><b>Cliente:</b> ${info.customerName || '?'}</div>
+            <div class="dl9-stat"><b>Proceso:</b> ${info.processName || '?'}</div>
+           </div>`
+        : `<div class="dl9-stats">
+            <div class="dl9-stat"><b>Cotización:</b> ${header.quoteName || '?'}</div>
+            <div class="dl9-stat"><b>Cliente:</b> ${info.customerName || '?'}</div>
+            <div class="dl9-stat"><b>Asignado:</b> ${info.assigneeName || '(auto)'}</div>
+            <div class="dl9-stat"><b>Proceso:</b> ${info.processName || '?'}</div>
+            <div class="dl9-stat"><b>Divisa:</b> ${header.divisaLinea || 'USD'}</div>
+            <div class="dl9-stat"><b>Empresa:</b> ${header.empresaEmisora || 'ECO'}</div>
+           </div>`;
+
+      const tableHeaders = isSoloPN
+        ? '<th><input type="checkbox" checked id="dl9-select-all"></th><th>PN</th><th>Acción</th><th>Datos a aplicar</th>'
+        : '<th><input type="checkbox" checked id="dl9-select-all"></th><th>PN</th><th>Acción</th><th>Datos</th><th>Qty</th><th>Precio</th>';
+
+      modal.style.background = modeBg;
+      modal.innerHTML = `
+        <h2 style="color:${modeColor}">Steelhead Automator v9 — ${modeLabel}</h2>
+        <p class="dl9-sub">${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup</p>
+        ${statsHtml}
+        <h3>Part Numbers (${parts.length}) — desmarca los que NO quieras procesar:</h3>
+        <div style="max-height:250px;overflow-y:auto">
+          <table><tr>${tableHeaders}</tr>${pnR}</table>
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-cancel">CANCELAR</button>
+          <button class="dl9-btn" id="dl9-exec" style="background:${modeColor};color:white">EJECUTAR (<span id="dl9-count">${parts.length}</span> PNs)</button>
+        </div>`;
+
+      // Select all checkbox
+      document.getElementById('dl9-select-all').onchange = (e) => {
+        modal.querySelectorAll('.dl9-check').forEach(cb => { cb.checked = e.target.checked; });
+        updateCount();
+      };
+
+      // Individual checkboxes update count
+      modal.querySelectorAll('.dl9-check').forEach(cb => { cb.onchange = updateCount; });
+
+      function updateCount() {
+        const checked = modal.querySelectorAll('.dl9-check:checked').length;
+        document.getElementById('dl9-count').textContent = checked;
+      }
+
       document.getElementById('dl9-cancel').onclick = () => { removeOverlay(overlay); resolve(false); };
-      document.getElementById('dl9-exec').onclick = () => { removeOverlay(overlay); resolve(true); };
+      document.getElementById('dl9-exec').onclick = () => {
+        // Build array of selected indices
+        const selected = [];
+        modal.querySelectorAll('.dl9-check:checked').forEach(cb => {
+          selected.push(parseInt(cb.dataset.idx));
+        });
+        removeOverlay(overlay);
+        resolve(selected);
+      };
     });
   }
 
@@ -381,8 +464,20 @@ const BulkUpload = (() => {
       const pnStatus = await checkPNExistence(parts);
 
       // ── Preview ──
-      const proceed = await showPreview(header, parts, pnStatus, { customerName: customer.name, assigneeName, processName: defaultProcessName });
-      if (!proceed) { log('Cancelado por usuario.'); return { cancelled: true }; }
+      const selectedIndices = await showPreview(header, parts, pnStatus, { customerName: customer.name, assigneeName, processName: defaultProcessName }, isSoloPN);
+      if (!selectedIndices) { log('Cancelado por usuario.'); return { cancelled: true }; }
+
+      // Filter parts and pnStatus to only selected indices
+      if (Array.isArray(selectedIndices) && selectedIndices.length < parts.length) {
+        const selSet = new Set(selectedIndices);
+        const filteredParts = []; const filteredStatus = [];
+        for (let i = 0; i < parts.length; i++) {
+          if (selSet.has(i)) { filteredParts.push(parts[i]); filteredStatus.push(pnStatus[i]); }
+        }
+        log(`  ${filteredParts.length}/${parts.length} PNs seleccionados por usuario`);
+        parts.length = 0; parts.push(...filteredParts);
+        pnStatus.length = 0; pnStatus.push(...filteredStatus);
+      }
 
       // ═══════════════════════════════════════
       // EXECUTION
