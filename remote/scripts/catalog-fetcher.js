@@ -15,7 +15,7 @@ const CatalogFetcher = (() => {
 
   async function fetchAll() {
     log('Catálogos dinámicos: consultando API...');
-    const [customers, processes, products, labels, specs, racks] = await Promise.all([
+    const [customers, processes, products, labels, specs, racks, users, groups] = await Promise.all([
       fetchCustomers(),
       fetchProcesses(),
       fetchProducts(),
