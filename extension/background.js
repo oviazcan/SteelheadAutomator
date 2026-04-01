@@ -1,5 +1,5 @@
-// Steelhead Automator — Service Worker (Background)
-// Handles script injection via chrome.scripting API (bypasses page CSP)
+// Steelhead Automator v2 — Service Worker (Background)
+// Multi-app architecture: routes messages, injects per-app scripts
 
 const REMOTE_BASE_URL = 'https://oviazcan.github.io/SteelheadAutomator';
 const CONFIG_URL = `${REMOTE_BASE_URL}/config.json`;
@@ -7,14 +7,10 @@ const CONFIG_URL = `${REMOTE_BASE_URL}/config.json`;
 let cachedConfig = null;
 
 chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    console.log('[SteelheadAutomator] Extensión instalada');
-  } else if (details.reason === 'update') {
-    console.log('[SteelheadAutomator] Extensión actualizada a', chrome.runtime.getManifest().version);
-  }
+  console.log(`[SA] Extension ${details.reason}: v${chrome.runtime.getManifest().version}`);
 });
 
-// Fetch remote config
+// ── Config ──
 async function loadConfig() {
   try {
     const response = await fetch(CONFIG_URL, { cache: 'no-cache' });
@@ -23,14 +19,14 @@ async function loadConfig() {
     await chrome.storage.local.set({ config: cachedConfig });
     return cachedConfig;
   } catch (err) {
-    console.warn('[SteelheadAutomator] Error cargando config:', err.message);
+    console.warn('[SA] Error cargando config:', err.message);
     const stored = await chrome.storage.local.get('config');
     cachedConfig = stored.config || null;
     return cachedConfig;
   }
 }
 
-// Fetch a remote script's code as text
+// ── Script Injection ──
 async function fetchScriptCode(scriptPath) {
   const config = cachedConfig || await loadConfig();
   const url = `${REMOTE_BASE_URL}/${scriptPath}?v=${config?.version || '0'}`;
@@ -39,130 +35,161 @@ async function fetchScriptCode(scriptPath) {
   return await response.text();
 }
 
-// Inject scripts into the MAIN world of a tab (bypasses CSP)
-async function injectScripts(tabId) {
+async function injectAppScripts(tabId, appId) {
   const config = cachedConfig || await loadConfig();
   if (!config) throw new Error('Config no disponible');
 
-  for (const scriptPath of config.scripts) {
+  // Find app's script list, fallback to root scripts
+  const app = config.apps?.find(a => a.id === appId);
+  const scripts = app?.scripts || config.scripts || [];
+
+  for (const scriptPath of scripts) {
     const code = await fetchScriptCode(scriptPath);
     await chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN',
-      func: (scriptCode) => {
-        try { new Function(scriptCode)(); } catch (e) { console.error('[SA] Error ejecutando script:', e); }
-      },
+      target: { tabId }, world: 'MAIN',
+      func: (c) => { try { new Function(c)(); } catch (e) { console.error('[SA]', e); } },
       args: [code]
     });
-    console.log('[SteelheadAutomator] Script inyectado en MAIN world:', scriptPath);
   }
 
-  // Initialize API with config in MAIN world
+  // Init API
   await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (configJson) => {
-      if (window.SteelheadAPI) {
-        window.SteelheadAPI.init(JSON.parse(configJson));
-        console.log('[SA] API inicializada con config');
-      }
-    },
+    target: { tabId }, world: 'MAIN',
+    func: (j) => { if (window.SteelheadAPI) window.SteelheadAPI.init(JSON.parse(j)); },
     args: [JSON.stringify(config)]
   });
 }
 
-// Listen for messages from popup and content script
+// Backward compat
+async function injectScripts(tabId) { return injectAppScripts(tabId, 'carga-masiva'); }
+
+async function getSteelheadTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs[0];
+  if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero (app.gosteelhead.com)');
+  return tab;
+}
+
+// ── Message Router ──
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message, sender).then(sendResponse).catch(err => {
-    console.error('[SteelheadAutomator] Error:', err);
+    console.error('[SA] Error:', err);
     sendResponse({ error: err.message });
   });
   return true;
 });
 
-async function handleMessage(message, sender) {
+async function handleMessage(message) {
   switch (message.action) {
+
+    // ── General ──
     case 'get-status': {
       const config = cachedConfig || await loadConfig();
-      return {
-        version: config?.version || 'sin conexión',
-        lastUpdated: config?.lastUpdated || 'desconocido',
-        connected: !!config
-      };
+      return { version: config?.version || 'sin conexión', lastUpdated: config?.lastUpdated || 'desconocido', connected: !!config };
     }
 
     case 'get-config':
       return cachedConfig || await loadConfig();
 
-    case 'inject-scripts': {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
-      if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero');
-      await injectScripts(tab.id);
-      return { injected: true };
+    // ── Carga Masiva ──
+    case 'run-csv': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'carga-masiva');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (csv) => {
+          if (!window.BulkUpload) return { error: 'BulkUpload no disponible' };
+          window.BulkUpload.execute(csv).then(r => console.log('[SA] Pipeline:', r)).catch(e => console.error('[SA]', e));
+          return { started: true, message: 'Pipeline iniciado. Revisa Steelhead.' };
+        },
+        args: [message.csvText]
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
     case 'update-catalogs': {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
-      if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero (app.gosteelhead.com)');
-
-      // Inject SheetJS + all scripts
+      const tab = await getSteelheadTab();
       const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
       await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
-        func: (code) => { if (!window.XLSX) new Function(code)(); },
-        args: [xlsxCode]
+        func: (c) => { if (!window.XLSX) new Function(c)(); }, args: [xlsxCode]
       });
-      await injectScripts(tab.id);
-
-      // Generate catalogs-only file
+      await injectAppScripts(tab.id, 'carga-masiva');
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
         func: () => {
           if (!window.CatalogFetcher) return { error: 'CatalogFetcher no disponible' };
-          window.CatalogFetcher.generateCatalogsFile().then(counts => {
-            console.log('[SA] Catálogos generados:', counts);
-          }).catch(e => {
-            console.error('[SA] Error:', e);
-            alert('Error actualizando catálogos: ' + e.message);
-          });
+          window.CatalogFetcher.generateCatalogsFile().then(c => console.log('[SA] Catálogos:', c)).catch(e => alert('Error: ' + e.message));
           return { started: true };
         }
       });
-
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
-    case 'run-csv': {
-      // CSV text comes from popup's file picker
-      const csvText = message.csvText;
-      if (!csvText) throw new Error('No se recibió CSV');
-
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
-      if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero (app.gosteelhead.com)');
-
-      // Inject scripts first
-      await injectScripts(tab.id);
-
-      // Execute pipeline in MAIN world with the CSV data
+    // ── Hash Scanner ──
+    case 'toggle-scan': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'hash-scanner');
       const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        world: 'MAIN',
-        func: (csv) => {
-          if (!window.BulkUpload) return { error: 'BulkUpload no disponible' };
-          // Execute async — pipeline shows its own UI (preview modal, progress, results)
-          window.BulkUpload.execute(csv).then(r => {
-            console.log('[SA] Pipeline resultado:', r);
-          }).catch(e => {
-            console.error('[SA] Pipeline error:', e);
-          });
-          return { started: true, message: 'Pipeline iniciado. Revisa la pestaña de Steelhead.' };
-        },
-        args: [csvText]
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.HashScanner) return { error: 'HashScanner no disponible' };
+          if (window.HashScanner.isActive()) {
+            window.HashScanner.stop();
+            return { started: false, message: 'Captura detenida.', stats: window.HashScanner.getStats() };
+          } else {
+            window.HashScanner.start();
+            return { started: true, message: 'Captura iniciada. Navega por Steelhead para capturar operaciones.' };
+          }
+        }
       });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
 
+    case 'view-scan-results': {
+      const tab = await getSteelheadTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.HashScanner) return { error: 'HashScanner no disponible. Inicia captura primero.' };
+          return { operations: window.HashScanner.getResults(), stats: window.HashScanner.getStats() };
+        }
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    case 'export-config': {
+      const tab = await getSteelheadTab();
+      const config = cachedConfig || await loadConfig();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (configJson) => {
+          if (!window.HashScanner) return { error: 'HashScanner no disponible' };
+          const updated = window.HashScanner.exportConfig(JSON.parse(configJson));
+          // Download as file
+          const blob = new Blob([JSON.stringify(updated, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'config_updated_' + new Date().toISOString().slice(0, 10) + '.json';
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return { started: true, message: 'Config exportado.' };
+        },
+        args: [JSON.stringify(config)]
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    case 'show-api-knowledge': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'hash-scanner');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.APIKnowledge) return { error: 'APIKnowledge no disponible' };
+          return { operations: window.APIKnowledge.getKnownOperations(), summary: window.APIKnowledge.getSummary() };
+        }
+      });
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
@@ -171,5 +198,4 @@ async function handleMessage(message, sender) {
   }
 }
 
-// Load config on startup
 loadConfig();

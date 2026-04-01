@@ -16,175 +16,96 @@
 
     .header {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      color: white;
-      padding: 12px 16px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      color: white; padding: 12px 16px; display: flex; align-items: center; gap: 10px;
     }
-
-    .header-logo {
-      width: 32px;
-      height: 32px;
-      object-fit: contain;
-      border-radius: 4px;
-    }
-
-    .header-text {
-      flex: 1;
-      text-align: center;
-    }
-
-    .header-text h1 {
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-
-    .header-text .subtitle {
-      font-size: 10px;
-      opacity: 0.7;
-      margin-top: 2px;
-    }
+    .header-logo { width: 32px; height: 32px; object-fit: contain; border-radius: 4px; }
+    .header-text { flex: 1; text-align: center; }
+    .header-text h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+    .header-text .subtitle { font-size: 10px; opacity: 0.7; margin-top: 2px; }
 
     .status-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 16px;
-      background: #e8f5e9;
-      font-size: 11px;
-      color: #2e7d32;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 16px; background: #e8f5e9; font-size: 11px; color: #2e7d32;
       border-bottom: 1px solid #c8e6c9;
     }
-
-    .status-bar.error {
-      background: #fbe9e7;
-      color: #c62828;
-      border-bottom-color: #ffcdd2;
+    .status-bar.error { background: #fbe9e7; color: #c62828; border-bottom-color: #ffcdd2; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; display: inline-block; margin-right: 6px; }
+    .status-bar.error .status-dot { background: #f44336; }
+    .btn-reload-inline {
+      background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px 4px;
+      opacity: 0.6; transition: opacity 0.2s;
     }
+    .btn-reload-inline:hover { opacity: 1; }
 
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #4caf50;
-      display: inline-block;
-      margin-right: 6px;
-    }
+    .view { display: none; }
+    .view.active { display: block; }
 
-    .status-bar.error .status-dot {
-      background: #f44336;
+    .app-menu { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .app-card {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px; border: 1px solid #ddd; border-radius: 10px;
+      background: white; cursor: pointer; transition: all 0.15s ease;
     }
+    .app-card:hover { border-color: #1a1a2e; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .app-card:active { transform: scale(0.98); }
+    .app-card .app-icon { font-size: 24px; width: 32px; text-align: center; }
+    .app-card .app-info { flex: 1; }
+    .app-card .app-info .app-name { font-size: 14px; font-weight: 600; }
+    .app-card .app-info .app-subtitle { font-size: 11px; color: #666; margin-top: 2px; }
+    .app-card .app-chevron { font-size: 14px; color: #999; }
+    .app-card.disabled { opacity: 0.5; cursor: default; }
+    .app-card.disabled:hover { border-color: #ddd; box-shadow: none; }
 
-    .actions {
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
+    .app-view-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; background: #f0f0f0; border-bottom: 1px solid #ddd;
+      cursor: pointer; font-size: 14px; font-weight: 600;
     }
+    .app-view-header:hover { background: #e8e8e8; }
+    .app-actions { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 
     .btn {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 16px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      background: white;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      color: #1a1a2e;
-      transition: all 0.15s ease;
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 14px; border: 1px solid #ddd; border-radius: 8px;
+      background: white; cursor: pointer; font-size: 13px; font-weight: 500;
+      color: #1a1a2e; transition: all 0.15s ease;
     }
+    .btn:hover { border-color: #1a1a2e; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn .btn-icon { font-size: 18px; width: 24px; text-align: center; }
+    .btn .btn-label { flex: 1; }
+    .btn .btn-label small { display: block; font-size: 10px; color: #666; font-weight: 400; margin-top: 1px; }
+    .btn-primary { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+    .btn-primary:hover { background: #16213e; }
+    .btn-primary .btn-label small { color: rgba(255,255,255,0.6); }
 
-    .btn:hover {
-      border-color: #1a1a2e;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }
+    .results-panel { padding: 12px 16px; max-height: 350px; overflow-y: auto; font-size: 12px; }
+    .results-panel h3 { font-size: 13px; margin-bottom: 8px; }
+    .results-stats { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .results-stat { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .results-stat.new { background: #e8f5e9; color: #2e7d32; }
+    .results-stat.changed { background: #fff3e0; color: #e65100; }
+    .results-stat.known { background: #f3e5f5; color: #7b1fa2; }
+    .results-stat.total { background: #e3f2fd; color: #1565c0; }
+    .op-list { list-style: none; }
+    .op-item { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
+    .op-item .op-name { font-weight: 600; font-size: 12px; }
+    .op-item .op-meta { font-size: 10px; color: #666; margin-top: 2px; }
+    .op-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-left: 4px; }
+    .op-badge.known { background: #f3e5f5; color: #7b1fa2; }
+    .op-badge.new { background: #e8f5e9; color: #2e7d32; }
+    .op-badge.changed { background: #fff3e0; color: #e65100; }
+    .op-badge.mutation { background: #fce4ec; color: #c62828; }
+    .op-badge.query { background: #e3f2fd; color: #1565c0; }
 
-    .btn:active {
-      transform: scale(0.98);
-    }
+    .progress-container { display: none; padding: 0 16px 12px; }
+    .progress-bar { height: 4px; background: #e0e0e0; border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #4caf50; width: 0%; transition: width 0.3s ease; }
+    .progress-text { font-size: 11px; color: #666; margin-top: 4px; text-align: center; }
 
-    .btn .icon {
-      font-size: 20px;
-      width: 28px;
-      text-align: center;
-    }
-
-    .btn .label {
-      flex: 1;
-    }
-
-    .btn .label small {
-      display: block;
-      font-size: 11px;
-      color: #666;
-      font-weight: 400;
-      margin-top: 2px;
-    }
-
-    .btn-primary {
-      background: #1a1a2e;
-      color: white;
-      border-color: #1a1a2e;
-    }
-
-    .btn-primary:hover {
-      background: #16213e;
-    }
-
-    .btn-primary .label small {
-      color: rgba(255,255,255,0.6);
-    }
-
-    .btn-reload {
-      border-style: dashed;
-      opacity: 0.7;
-    }
-
-    .btn-reload:hover {
-      opacity: 1;
-    }
-
-    .footer {
-      padding: 8px 16px 12px;
-      text-align: center;
-      font-size: 10px;
-      color: #999;
-    }
-
-    #file-input {
-      display: none;
-    }
-
-    .progress-container {
-      display: none;
-      padding: 0 16px 16px;
-    }
-
-    .progress-bar {
-      height: 4px;
-      background: #e0e0e0;
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: #4caf50;
-      width: 0%;
-      transition: width 0.3s ease;
-    }
-
-    .progress-text {
-      font-size: 11px;
-      color: #666;
-      margin-top: 4px;
-      text-align: center;
-    }
+    .footer { padding: 6px 16px 10px; text-align: center; font-size: 10px; color: #999; }
+    #file-input { display: none; }
   </style>
 </head>
 <body>
@@ -192,71 +113,40 @@
     <img src="icons/capaz-logo.png" class="header-logo" alt="Capaz">
     <div class="header-text">
       <h1>STEELHEAD AUTOMATOR</h1>
-      <div class="subtitle">Ecoplating — Carga Masiva</div>
+      <div class="subtitle">Ecoplating</div>
     </div>
     <img src="icons/steelhead-logo.png" class="header-logo" alt="Steelhead">
   </div>
 
   <div id="status-bar" class="status-bar">
-    <span><span class="status-dot"></span> <span id="status-text">Conectando...</span></span>
-    <span id="version-text">v--</span>
+    <span style="display:flex;align-items:center"><span class="status-dot"></span><span id="status-text">Conectando...</span></span>
+    <span style="display:flex;align-items:center;gap:8px">
+      <span id="version-text">v--</span>
+      <button class="btn-reload-inline" id="btn-reload" title="Recargar Steelhead">🔃</button>
+    </span>
   </div>
 
-  <div class="actions">
-    <button class="btn btn-primary" id="btn-upload">
-      <span class="icon">📊</span>
-      <span class="label">
-        Cargar Excel
-        <small>Subir cotizaciones y números de parte</small>
-      </span>
-    </button>
+  <div id="view-menu" class="view active">
+    <div class="app-menu" id="app-menu"></div>
+  </div>
 
-    <button class="btn" id="btn-template">
-      <span class="icon">📥</span>
-      <span class="label">
-        Descargar Plantilla
-        <small>Excel base con formato y macros</small>
-      </span>
-    </button>
+  <div id="view-app" class="view">
+    <div class="app-view-header" id="app-back"><span>◀</span><span id="app-title"></span></div>
+    <div class="app-actions" id="app-actions"></div>
+  </div>
 
-    <button class="btn" id="btn-catalogs">
-      <span class="icon">📋</span>
-      <span class="label">
-        Actualizar Catálogos
-        <small>Descarga datos frescos de Steelhead</small>
-      </span>
-    </button>
-
-    <button class="btn" id="btn-status">
-      <span class="icon">🔄</span>
-      <span class="label">
-        Ver Estado
-        <small>Versión, conexión y sincronización</small>
-      </span>
-    </button>
-
-    <button class="btn btn-reload" id="btn-reload">
-      <span class="icon">🔃</span>
-      <span class="label">
-        Recargar Steelhead
-        <small>Recarga la pestaña para aplicar cambios</small>
-      </span>
-    </button>
+  <div id="view-results" class="view">
+    <div class="app-view-header" id="results-back"><span>◀</span><span id="results-title">Resultados</span></div>
+    <div class="results-panel" id="results-content"></div>
   </div>
 
   <div id="progress-container" class="progress-container">
-    <div class="progress-bar">
-      <div id="progress-fill" class="progress-fill"></div>
-    </div>
+    <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
     <div id="progress-text" class="progress-text"></div>
   </div>
 
   <input type="file" id="file-input" accept=".csv">
-
-  <div class="footer">
-    Steelhead Automator v1.0.0 — Ecoplating
-  </div>
-
+  <div class="footer">Steelhead Automator v2 — Ecoplating</div>
   <script src="popup.js"></script>
 </body>
 </html>
