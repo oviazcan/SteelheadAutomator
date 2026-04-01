@@ -18,7 +18,12 @@ const BulkUpload = (() => {
 
   const toBool = (v) => { const s = (v || '').toString().trim().toUpperCase(); return s === 'SI' || s === 'SÍ' || s === 'YES' || s === '1' || s === 'TRUE'; };
   const isoDate = (d) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString(); };
-  const g = (row, i) => (row[i] || '').trim().replace(/\s+/g, ' '); // trim + collapse internal spaces
+  const g = (row, i) => {
+    let v = (row[i] || '').trim().replace(/\s+/g, ' ');
+    // Strip placeholder values from dropdowns
+    if (v.startsWith('(') && v.endsWith(')')) return '';
+    return v;
+  };
   const gn = (row, i) => { const v = parseFloat(g(row, i)); return isNaN(v) ? null : v; };
 
   const PRICE_UNIT_MAP = { PZA: null, KGM: 3969, CMK: 4907, FTK: 4797, LM: 5150, LBR: 3972, LO: 5348 };
@@ -710,12 +715,15 @@ const BulkUpload = (() => {
         const pn = entry.pn;
         setProgressBar(55 + Math.round((i / parts.length) * 20));
 
-        const labelIds = part.labels.map(n => labelByName.get(n)).filter(Boolean);
+        // Guión comodín: "-" en primer label = borrar todos los labels
+        const labelsAreDash = part.labels.length === 1 && isDash(part.labels[0]);
+        const labelIds = labelsAreDash ? [] : part.labels.map(n => labelByName.get(n)).filter(Boolean);
         if (labelIds.length) stats.labelsSet += labelIds.length;
 
-        // Specs
+        // Specs — "-" en primer spec = borrar todas las specs
+        const specsAreDash = part.specs.length === 1 && isDash(part.specs[0].name);
         const specsToApply = [];
-        for (const cs of part.specs) {
+        if (!specsAreDash) for (const cs of part.specs) {
           const si = specByName.get(cs.name); if (!si) { errors.push(`Spec "${cs.name}" no encontrada.`); continue; }
           const sd = sfCache.get(si.id); if (!sd) continue;
           const dS = [], gS = [];
@@ -746,10 +754,15 @@ const BulkUpload = (() => {
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
 
-        const dims = buildDimensions(part.dims, DOMAIN);
+        // Dims — "-" en longitud = borrar dimensiones
+        const dimsAreDash = typeof part.dims.length === 'string' && isDash(part.dims.length);
+        const dims = dimsAreDash ? [] : buildDimensions(part.dims, DOMAIN);
         const hasDims = dims.length > 0; if (hasDims) stats.dimsSet++;
 
-        if (part.predictiveUsage.length) stats.predictiveSet++;
+        // Predictive — "-" en primer material = borrar predictive usage
+        const predAreDash = part.predictiveUsage.length === 1 && isDash(part.predictiveUsage[0]?.usagePerPart);
+        const finalPredictive = predAreDash ? [] : part.predictiveUsage;
+        if (finalPredictive.length) stats.predictiveSet++;
 
         const optInOuts = [];
         if (part.validacion1er) {
@@ -761,8 +774,10 @@ const BulkUpload = (() => {
           log(`  -> ${pn.name}: OptIn validación processNodeIds:${JSON.stringify(nodeIds)}`);
         }
 
-        const pnGroupId = part.pnGroup ? (await resolveGroupId(part.pnGroup)) : pn.partNumberGroupId || null;
-        const pnProcessId = part.processIdOverride || pn.defaultProcessNodeId || defaultProcessId;
+        // Grupo — "-" = quitar grupo
+        const pnGroupId = isDash(part.pnGroup) ? null : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : pn.partNumberGroupId || null);
+        // Proceso — "-" = quitar proceso override
+        const pnProcessId = isDash(part.procesoOverride) ? defaultProcessId : (part.procesoOverride ? (part.processIdOverride || defaultProcessId) : (pn.defaultProcessNodeId || defaultProcessId));
 
         const pnInput = {
           id: pn.id, name: pn.name, customerId: pn.customerId || customerId, defaultProcessNodeId: pnProcessId,
@@ -771,7 +786,7 @@ const BulkUpload = (() => {
           partNumberGroupId: pnGroupId,
           geometryTypeId: hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null),
           inventoryItemInput: ucs.length ? { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] } : null,
-          inventoryPredictedUsages: part.predictiveUsage.map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
+          inventoryPredictedUsages: finalPredictive.map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
           specsToApply, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [], dimensionCustomValueIds: [],
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
           partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],

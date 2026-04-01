@@ -1,6 +1,6 @@
 Attribute VB_Name = "ModuleLimpiar"
 ' === MACRO: LimpiarDatos ===
-' Borra todos los datos de la zona de datos (filas 22+)
+' Borra todos los datos de la zona de datos (filas 18+)
 ' Preserva fórmulas. Deja la plantilla lista para nueva carga.
 
 Sub LimpiarDatos()
@@ -15,7 +15,7 @@ Sub LimpiarDatos()
     End If
 
     Dim resp As VbMsgBoxResult
-    resp = MsgBox("Borrar todos los datos de filas 22 a " & lastRow & "?" & vbCrLf & vbCrLf & _
+    resp = MsgBox("Borrar todos los datos de filas 18 a " & lastRow & "?" & vbCrLf & vbCrLf & _
         "Se borran valores y checkboxes." & vbCrLf & _
         "Las fórmulas se preservan.", vbYesNo + vbExclamation, "LimpiarDatos")
     If resp <> vbYes Then Exit Sub
