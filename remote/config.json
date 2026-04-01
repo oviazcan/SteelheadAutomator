@@ -44,7 +44,8 @@
         "PNGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c",
         "PNCreatableSelect": "723dbb599905cf895d306707fc01ed232486ad8190b1cf2649166f57b137d83f",
         "Customer": "875fcfec140fa7e4a756d367cfe8c6868ff2eca8f396a97540638493649d317f",
-        "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5"
+        "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5",
+        "AllPartNumbers": "7e3e96166d1ee3ac25323ee9c83bce1a228ee64f14f78c79f05ba25a9102f18e"
       }
     },
     "domain": {
@@ -121,6 +122,16 @@
         { "id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results" },
         { "id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config" },
         { "id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge" }
+      ]
+    },
+    {
+      "id": "archiver",
+      "name": "Archivador de PNs",
+      "subtitle": "Por fecha de inactividad",
+      "icon": "📦",
+      "scripts": ["scripts/steelhead-api.js", "scripts/archiver.js"],
+      "actions": [
+        { "id": "run-archiver", "label": "Archivar PNs", "sublabel": "Configurar fecha y criterios", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver" }
       ]
     }
   ],
