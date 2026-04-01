@@ -33,7 +33,8 @@ const CatalogFetcher = (() => {
 
   async function fetchCustomers() {
     // 1. Get customer list
-    const data = await api().query('CustomerSearchByName', { nameLike: '%%', orderBy: ['NAME_ASC'] });
+    // first:500 to get all customers (default may be ~50)
+    const data = await api().query('CustomerSearchByName', { nameLike: '%%', orderBy: ['NAME_ASC'], first: 500 });
     const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
     const uniqueCustomers = [];
     const seen = new Set();
