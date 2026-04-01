@@ -1162,6 +1162,36 @@ const BulkUpload = (() => {
       log(`PNs: ${stats.pnsCreated} nuevos, ${stats.pnsExisting} existentes, ${stats.pnsDuplicated} dup`);
       if (errors.length) log(`ERRORES: ${errors.length}\n${errors.join('\n')}`);
       await new Promise(r => setTimeout(r, 500));
+
+      // Save load log to localStorage for history
+      try {
+        const loadLog = {
+          id: Date.now(),
+          timestamp: new Date().toISOString(),
+          mode: isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP',
+          quoteName: stats.quoteName,
+          quoteIdInDomain: stats.quoteIdInDomain,
+          customerName: customer?.name || '',
+          stats: { ...stats },
+          errors: [...errors],
+          log: api().getLog(),
+          partsCount: parts.length,
+          parts: parts.map(p => ({
+            pn: p.pn, qty: p.qty, precio: p.precio, descripcion: p.descripcion,
+            labels: p.labels, metalBase: p.metalBase, procesoOverride: p.procesoOverride,
+            pnGroup: p.pnGroup, unidadPrecio: p.unidadPrecio,
+            specs: p.specs.map(s => s.name), racks: p.racks.map(r => r.name),
+            archivado: p.archivado, validacion1er: p.validacion1er,
+            precioDefault: p.precioDefault, forzarDuplicado: p.forzarDuplicado
+          }))
+        };
+        const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
+        history.unshift(loadLog);
+        if (history.length > 50) history.length = 50; // keep last 50
+        localStorage.setItem('sa_load_history', JSON.stringify(history));
+        log('  Log guardado en historial');
+      } catch (e) { warn('Error guardando log: ' + e.message); }
+
       showResult(stats, quoteUrl, errors);
       return { success: true, stats, errors };
 
