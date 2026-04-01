@@ -18,6 +18,7 @@
         "SetPNPricesDefault": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293",
         "UpdatePartNumber": "af584fa8ebb7487fc84de18fa3a5e360e99699a3280185fe98b840c157bbf2c7",
         "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202",
+        "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419",
         "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797"
       },
       "queries": {

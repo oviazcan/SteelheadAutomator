@@ -524,6 +524,35 @@ const BulkUpload = (() => {
       // ── PN existence check ──
       const pnStatus = await checkPNExistence(parts);
 
+      // ── Metal Base validation ──
+      const metalBaseEnum = ['Cobre', 'Aluminio', 'Fierro', 'Latón', 'Acero Inoxidable', 'Bronce', 'Bimetálica', 'Acero al Carbón', 'Zamak', 'Varios'];
+      const normalize = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const newMetals = new Set();
+      for (const part of parts) {
+        if (!part.metalBase || isDash(part.metalBase)) continue;
+        const exact = metalBaseEnum.find(m => m === part.metalBase);
+        if (exact) continue;
+        const fuzzy = metalBaseEnum.find(m => normalize(m) === normalize(part.metalBase));
+        if (fuzzy) {
+          log(`  Metal Base "${part.metalBase}" → corregido a "${fuzzy}" (fuzzy match)`);
+          part.metalBase = fuzzy;
+        } else {
+          newMetals.add(part.metalBase);
+        }
+      }
+      let createMetals = false;
+      if (newMetals.size > 0) {
+        createMetals = confirm(
+          `Metal Base: los siguientes valores NO existen en el catálogo de Steelhead:\n\n` +
+          [...newMetals].join('\n') + '\n\n' +
+          `Valores actuales: ${metalBaseEnum.join(', ')}\n\n` +
+          `¿Agregar al catálogo? (Aceptar = Sí, Cancelar = No, se cargan como texto libre)`
+        );
+        if (createMetals) {
+          log(`  Creando nuevos Metal Base: ${[...newMetals].join(', ')}`);
+        }
+      }
+
       // ── Preview ──
       const selectedIndices = await showPreview(header, parts, pnStatus, { customerName: customer.name, assigneeName, processName: defaultProcessName }, isSoloPN);
       if (!selectedIndices) { log('Cancelado por usuario.'); return { cancelled: true }; }
@@ -538,6 +567,60 @@ const BulkUpload = (() => {
         log(`  ${filteredParts.length}/${parts.length} PNs seleccionados por usuario`);
         parts.length = 0; parts.push(...filteredParts);
         pnStatus.length = 0; pnStatus.push(...filteredStatus);
+      }
+
+      // ── Create new Metal Base values if confirmed ──
+      if (createMetals && newMetals.size > 0) {
+        showProgressUI('Actualizando catálogo de Metal Base...');
+        try {
+          const updatedEnum = [...metalBaseEnum, ...newMetals];
+          const fullSchema = {
+            inputSchema: {
+              type: "object", title: "", required: [], description: "", dependencies: {},
+              properties: {
+                DatosAdicionalesNP: {
+                  type: "object", title: "Datos Adicionales de Número de Parte", required: [], description: "", dependencies: {},
+                  properties: {
+                    BaseMetal: { enum: updatedEnum, type: "string", title: "Metal Base" },
+                    NumeroParteAlterno: { type: "array", items: { type: "string", title: "Número de Parte Alterno", description: "Número de Parte Alterno" }, title: "Número de Parte Alterno" },
+                    QuoteIBMS: { type: "string", title: "Quote en IBMS" },
+                    EstacionIBMS: { type: "string", title: "Número de Estación en IBMS (Est.)" },
+                    Plano: { type: "string", title: "Número de Plano" }
+                  }
+                },
+                DatosFacturacion: {
+                  type: "object", title: "Datos de Facturación", required: [], dependencies: {},
+                  properties: {
+                    CodigoSAT: { enum: ["73181106 - Servicios de enchapado", "73181109 - Servicios de niquelado", "73181119 - Servicio de recubrimiento con pintura en polvo", "73151500 - Servicios de ensamble", "73151506 - Servicio de subensamble o ensamble definitivo", "11191500 - Cuerpos sólidos de metal", "30262200 - Barras de cobre", "31281500 - Componentes estampados", "31281813 - Componentes de cobre perforados", "39121400 - Lengüetas de conexión, conectadores y terminales"], type: "string", title: "Código SAT" }
+                  }
+                },
+                DatosPlanificacion: {
+                  type: "object", title: "Datos de Planificación", required: [], dependencies: {},
+                  properties: {
+                    CargasHora: { type: "string", title: "Cargas por Hora (IBMS)" },
+                    PiezasCarga: { type: "number", title: "Piezas por Carga (IBMS)" },
+                    montoMinimo: { type: "number", title: "Monto Mínimo en USD" },
+                    TiempoEntrega: { type: "number", title: "Tiempo de Entrega en Días (Lead Time)" }
+                  }
+                },
+                NotasAdicionales: { type: "string", title: "Notas Adicionales" }
+              }
+            },
+            uiSchema: {
+              DatosAdicionalesNP: { NumeroParteAlterno: { items: {} }, "ui:order": ["BaseMetal", "NumeroParteAlterno", "QuoteIBMS", "EstacionIBMS", "Plano"] },
+              DatosFacturacion: { "ui:order": ["CodigoSAT"] },
+              DatosPlanificacion: { "ui:order": ["PiezasCarga", "CargasHora", "montoMinimo", "TiempoEntrega"] },
+              NotasAdicionales: { "ui:widget": "textarea" },
+              "ui:order": ["DatosAdicionalesNP", "DatosFacturacion", "DatosPlanificacion", "NotasAdicionales"]
+            }
+          };
+          await api().query('CreatePartNumberInputSchema', fullSchema, 'CreatePartNumberInputSchema');
+          log(`  Metal Base actualizado: +${[...newMetals].join(', ')}`);
+          showProgressUI(`  Metal Base: ${[...newMetals].join(', ')} agregados al catálogo`);
+        } catch (e) {
+          errors.push(`Actualizar Metal Base: ${String(e).substring(0, 120)}`);
+          warn(`Metal Base schema update falló: ${e.message}`);
+        }
       }
 
       // ═══════════════════════════════════════
