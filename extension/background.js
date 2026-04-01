@@ -191,12 +191,26 @@ async function handleMessage(message) {
         func: (configJson) => {
           if (!window.HashScanner) return { error: 'HashScanner no disponible' };
           const updated = window.HashScanner.exportConfig(JSON.parse(configJson));
-          // Download as file
-          const blob = new Blob([JSON.stringify(updated, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = 'config_updated_' + new Date().toISOString().slice(0, 10) + '.json';
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          const dateStr = new Date().toISOString().slice(0, 10);
+
+          // 1. Download updated config
+          const blob1 = new Blob([JSON.stringify(updated, null, 2)], { type: 'application/json' });
+          const url1 = URL.createObjectURL(blob1);
+          const a1 = document.createElement('a');
+          a1.href = url1; a1.download = 'config_updated_' + dateStr + '.json';
+          document.body.appendChild(a1); a1.click(); document.body.removeChild(a1);
+          URL.revokeObjectURL(url1);
+
+          // 2. Download full scan results (hashes + schemas + variables)
+          const scanData = window.HashScanner.getResults();
+          const apiKnowledge = window.APIKnowledge ? window.APIKnowledge.getKnownOperations() : [];
+          const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanData, apiKnowledge: apiKnowledge };
+          const blob2 = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
+          const url2 = URL.createObjectURL(blob2);
+          const a2 = document.createElement('a');
+          a2.href = url2; a2.download = 'scan_results_' + dateStr + '.json';
+          document.body.appendChild(a2); a2.click(); document.body.removeChild(a2);
+          URL.revokeObjectURL(url2);
           URL.revokeObjectURL(url);
           return { started: true, message: 'Config exportado.' };
         },
