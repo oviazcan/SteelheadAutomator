@@ -45,17 +45,31 @@ async function injectAppScripts(tabId, appId) {
 
   for (const scriptPath of scripts) {
     const code = await fetchScriptCode(scriptPath);
+    // Only inject if not already loaded (prevents resetting state like HashScanner results)
     await chrome.scripting.executeScript({
       target: { tabId }, world: 'MAIN',
-      func: (c) => { try { new Function(c)(); } catch (e) { console.error('[SA]', e); } },
-      args: [code]
+      func: (c, path) => {
+        // Check if script already loaded by looking for its global
+        const globals = { 'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
+          'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
+          'scripts/api-knowledge.js': 'APIKnowledge' };
+        const globalName = globals[path];
+        if (globalName && window[globalName]) return; // already loaded
+        try { new Function(c)(); } catch (e) { console.error('[SA]', e); }
+      },
+      args: [code, scriptPath]
     });
   }
 
-  // Init API
+  // Always init API + APIKnowledge with latest config
   await chrome.scripting.executeScript({
     target: { tabId }, world: 'MAIN',
-    func: (j) => { if (window.SteelheadAPI) window.SteelheadAPI.init(JSON.parse(j)); },
+    func: (j) => {
+      const cfg = JSON.parse(j);
+      if (window.SteelheadAPI) window.SteelheadAPI.init(cfg);
+      if (window.HashScanner) window.HashScanner.init(cfg);
+      if (window.APIKnowledge) window.APIKnowledge.init(cfg);
+    },
     args: [JSON.stringify(config)]
   });
 }
