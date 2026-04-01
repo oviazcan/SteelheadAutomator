@@ -132,6 +132,61 @@ async function handleMessage(message) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    case 'view-load-history': {
+      const tab = await getSteelheadTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
+          return { operations: history };
+        }
+      });
+      return results?.[0]?.result || { operations: [] };
+    }
+
+    case 'download-load-csv': {
+      // Download a specific load's data as CSV for correction
+      const tab = await getSteelheadTab();
+      const loadId = message.loadId;
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (id) => {
+          const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
+          const load = history.find(h => h.id === id);
+          if (!load) return { error: 'Carga no encontrada' };
+
+          // Generate CSV from load data
+          const parts = load.parts || [];
+          if (!parts.length) return { error: 'Sin datos de PNs' };
+
+          // Build CSV header
+          const headers = ['Número de parte', 'Cantidad', 'Precio', 'Unidad', 'Descripción', 'Metal Base', 'Etiqueta 1', 'Etiqueta 2', 'Etiqueta 3', 'Etiqueta 4', 'Proceso', 'Grupo', 'Archivado', 'Validación', 'Forzar Dup', 'Precio Default'];
+          const rows = [headers.join(',')];
+          for (const p of parts) {
+            rows.push([
+              p.pn, p.qty || '', p.precio || '', p.unidadPrecio || '', p.descripcion || '',
+              p.metalBase || '', ...(p.labels || []).concat(['', '', '', '']).slice(0, 4),
+              p.procesoOverride || '', p.pnGroup || '',
+              p.archivado ? 'SI' : 'NO', p.validacion1er ? 'SI' : 'NO',
+              p.forzarDuplicado ? 'SI' : 'NO', p.precioDefault ? 'SI' : 'NO'
+            ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+          }
+
+          const csv = rows.join('\n');
+          const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `correccion_${load.mode}_${new Date(load.timestamp).toISOString().slice(0, 10)}_${load.id}.csv`;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return { started: true, message: 'CSV descargado' };
+        },
+        args: [loadId]
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     case 'update-catalogs': {
       const tab = await getSteelheadTab();
       const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');

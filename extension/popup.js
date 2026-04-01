@@ -195,12 +195,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('results-content');
     document.getElementById('results-title').textContent =
       type === 'view-scan-results' ? 'Operaciones Capturadas' :
-      type === 'show-api-knowledge' ? 'APIs Conocidas' : 'Resultados';
+      type === 'show-api-knowledge' ? 'APIs Conocidas' :
+      type === 'view-load-history' ? 'Historial de Cargas' : 'Resultados';
 
     if (type === 'view-scan-results') {
       renderScanResults(container, data);
     } else if (type === 'show-api-knowledge') {
       renderAPIKnowledge(container, data);
+    } else if (type === 'view-load-history') {
+      renderLoadHistory(container, data);
     } else {
       container.innerHTML = `<pre style="font-size:10px;white-space:pre-wrap">${JSON.stringify(data, null, 2)}</pre>`;
     }
@@ -312,5 +315,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function hideProgress() {
     document.getElementById('progress-container').style.display = 'none';
+  }
+
+  function renderLoadHistory(container, data) {
+    const history = data.operations || [];
+    if (!history.length) {
+      container.innerHTML = '<p style="color:#666;text-align:center;padding:20px">Sin cargas registradas.</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="results-stats">
+        <span class="results-stat total">${history.length} cargas</span>
+      </div>
+      <ul class="op-list">
+        ${history.map(h => {
+          const date = new Date(h.timestamp);
+          const dateStr = date.toLocaleDateString('es-MX') + ' ' + date.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+          const hasErrors = h.errors?.length > 0;
+          const statusBadge = hasErrors ? '<span class="op-badge" style="background:#fbe9e7;color:#c62828">con errores</span>' : '<span class="op-badge new">OK</span>';
+          return `
+            <li class="op-item" style="cursor:pointer" data-load-id="${h.id}">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="op-name">${h.mode} — ${h.quoteName || ''}</span>
+                ${statusBadge}
+              </div>
+              <div class="op-meta">${dateStr} | ${h.partsCount || h.parts?.length || '?'} PNs | ${h.customerName || ''}</div>
+              <div class="op-meta">Creados: ${h.stats?.pnsCreated || 0} | Existentes: ${h.stats?.pnsExisting || 0} | Errores: ${h.errors?.length || 0}</div>
+              <button class="btn" style="margin-top:6px;padding:6px 10px;font-size:11px" data-download-id="${h.id}">
+                📥 Descargar CSV de corrección
+              </button>
+            </li>`;
+        }).join('')}
+      </ul>`;
+
+    // Bind download buttons
+    container.querySelectorAll('[data-download-id]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const loadId = parseInt(btn.dataset.downloadId);
+        btn.disabled = true;
+        btn.textContent = 'Descargando...';
+        try {
+          await sendToBackground('download-load-csv', { loadId });
+        } catch (err) { alert('Error: ' + err.message); }
+        btn.disabled = false;
+        btn.textContent = '📥 Descargar CSV de corrección';
+      });
+    });
   }
 });
