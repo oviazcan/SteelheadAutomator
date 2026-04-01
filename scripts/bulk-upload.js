@@ -18,7 +18,7 @@ const BulkUpload = (() => {
 
   const toBool = (v) => { const s = (v || '').toString().trim().toUpperCase(); return s === 'SI' || s === 'SÍ' || s === 'YES' || s === '1' || s === 'TRUE'; };
   const isoDate = (d) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString(); };
-  const g = (row, i) => (row[i] || '').trim();
+  const g = (row, i) => (row[i] || '').trim().replace(/\s+/g, ' '); // trim + collapse internal spaces
   const gn = (row, i) => { const v = parseFloat(g(row, i)); return isNaN(v) ? null : v; };
 
   const PRICE_UNIT_MAP = { PZA: null, KGM: 3969, CMK: 4907, FTK: 4797, LM: 5150, LBR: 3972, LO: 5348 };
@@ -145,6 +145,18 @@ const BulkUpload = (() => {
         unidadPrecio: g(row, 9).toUpperCase(),
         predictiveUsage,
         validacion1er: toBool(g(row, 1)),
+        // Línea y Departamento (asignación contable)
+        linea: g(row, 48),
+        departamento: g(row, 49),
+        // Custom Inputs adicionales (col S reutilizada + columnas después de BI)
+        // Estos índices se ajustarán cuando el usuario reestructure la plantilla
+        quoteIBMS: g(row, 18),       // col S (antes era ID Proceso)
+        estacionIBMS: g(row, 60),     // nueva columna (después de predictive)
+        plano: g(row, 61),
+        piezasCarga: gn(row, 62),
+        cargasHora: g(row, 63),
+        tiempoEntrega: gn(row, 64),
+        notasAdicionalesPN: g(row, 65),
       });
     }
     return { header, parts };
@@ -175,14 +187,54 @@ const BulkUpload = (() => {
     return out;
   }
 
+  // Guión (-) comodín: vacío = no tocar, valor = sobrescribir, "-" = borrar
+  const isDash = (v) => v === '-';
+  const resolveStr = (raw, existing) => {
+    if (raw === '' || raw === undefined) return existing; // no tocar
+    if (isDash(raw)) return ''; // borrar
+    return raw; // sobrescribir
+  };
+  const resolveNum = (raw, existing) => {
+    if (raw === null || raw === undefined) return existing;
+    if (typeof raw === 'string' && isDash(raw)) return null;
+    return raw;
+  };
+
   function mergeCustomInputs(existing, part) {
     const ci = existing ? JSON.parse(JSON.stringify(existing)) : {};
-    if (part.codigoSAT) { if (!ci.DatosFacturacion) ci.DatosFacturacion = {}; ci.DatosFacturacion.CodigoSAT = part.codigoSAT; }
-    if (part.metalBase || part.pnAlterno) {
-      if (!ci.DatosAdicionalesNP) ci.DatosAdicionalesNP = {};
-      if (part.metalBase) ci.DatosAdicionalesNP.BaseMetal = part.metalBase;
-      if (part.pnAlterno) ci.DatosAdicionalesNP.NumeroParteAlterno = part.pnAlterno.split(',').map(s => s.trim()).filter(Boolean);
+
+    // DatosFacturacion
+    if (part.codigoSAT) {
+      if (!ci.DatosFacturacion) ci.DatosFacturacion = {};
+      ci.DatosFacturacion.CodigoSAT = isDash(part.codigoSAT) ? '' : part.codigoSAT;
     }
+
+    // DatosAdicionalesNP
+    if (part.metalBase || part.pnAlterno || part.quoteIBMS || part.estacionIBMS || part.plano) {
+      if (!ci.DatosAdicionalesNP) ci.DatosAdicionalesNP = {};
+      if (part.metalBase) ci.DatosAdicionalesNP.BaseMetal = isDash(part.metalBase) ? '' : part.metalBase;
+      if (part.pnAlterno) {
+        ci.DatosAdicionalesNP.NumeroParteAlterno = isDash(part.pnAlterno)
+          ? [] : part.pnAlterno.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      if (part.quoteIBMS) ci.DatosAdicionalesNP.QuoteIBMS = isDash(part.quoteIBMS) ? '' : part.quoteIBMS;
+      if (part.estacionIBMS) ci.DatosAdicionalesNP.EstacionIBMS = isDash(part.estacionIBMS) ? '' : part.estacionIBMS;
+      if (part.plano) ci.DatosAdicionalesNP.Plano = isDash(part.plano) ? '' : part.plano;
+    }
+
+    // DatosPlanificacion
+    if (part.piezasCarga !== null || part.cargasHora || part.tiempoEntrega !== null) {
+      if (!ci.DatosPlanificacion) ci.DatosPlanificacion = {};
+      if (part.piezasCarga !== null) ci.DatosPlanificacion.PiezasCarga = isDash(String(part.piezasCarga)) ? null : part.piezasCarga;
+      if (part.cargasHora) ci.DatosPlanificacion.CargasHora = isDash(part.cargasHora) ? '' : part.cargasHora;
+      if (part.tiempoEntrega !== null) ci.DatosPlanificacion.TiempoEntrega = isDash(String(part.tiempoEntrega)) ? null : part.tiempoEntrega;
+    }
+
+    // NotasAdicionales (top level in customInputs)
+    if (part.notasAdicionalesPN) {
+      ci.NotasAdicionales = isDash(part.notasAdicionalesPN) ? '' : part.notasAdicionalesPN;
+    }
+
     return Object.keys(ci).length > 0 ? ci : null;
   }
 
@@ -714,7 +766,7 @@ const BulkUpload = (() => {
 
         const pnInput = {
           id: pn.id, name: pn.name, customerId: pn.customerId || customerId, defaultProcessNodeId: pnProcessId,
-          descriptionMarkdown: part.descripcion || pn.descriptionMarkdown || '', customerFacingNotes: pn.customerFacingNotes || '',
+          descriptionMarkdown: resolveStr(part.descripcion, pn.descriptionMarkdown || ''), customerFacingNotes: pn.customerFacingNotes || '',
           customInputs: mergedCI || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds,
           partNumberGroupId: pnGroupId,
           geometryTypeId: hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null),
