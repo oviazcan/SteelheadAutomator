@@ -553,6 +553,38 @@ const BulkUpload = (() => {
         }
       }
 
+      // ── Grupo PN validation (fuzzy + crear si no existe) ──
+      const existingGroups = [...groupByName.keys()];
+      const newGroups = new Set();
+      for (const part of parts) {
+        if (!part.pnGroup || isDash(part.pnGroup)) continue;
+        const exact = existingGroups.find(g => g === part.pnGroup);
+        if (exact) continue;
+        const fuzzy = existingGroups.find(g => normalize(g) === normalize(part.pnGroup));
+        if (fuzzy) {
+          log(`  Grupo "${part.pnGroup}" → corregido a "${fuzzy}" (fuzzy match)`);
+          part.pnGroup = fuzzy;
+        } else {
+          newGroups.add(part.pnGroup);
+        }
+      }
+      if (newGroups.size > 0) {
+        const createGroups = confirm(
+          `Grupos de PN: los siguientes NO existen en Steelhead:\n\n` +
+          [...newGroups].join('\n') + '\n\n' +
+          `Se crearán automáticamente al ejecutar. ¿Continuar?`
+        );
+        if (!createGroups) {
+          // Remove unknown groups from parts
+          for (const part of parts) {
+            if (newGroups.has(part.pnGroup)) part.pnGroup = '';
+          }
+          log('  Grupos nuevos cancelados por usuario');
+        } else {
+          log(`  Grupos nuevos a crear: ${[...newGroups].join(', ')}`);
+        }
+      }
+
       // ── Preview ──
       const selectedIndices = await showPreview(header, parts, pnStatus, { customerName: customer.name, assigneeName, processName: defaultProcessName }, isSoloPN);
       if (!selectedIndices) { log('Cancelado por usuario.'); return { cancelled: true }; }

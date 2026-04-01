@@ -80,7 +80,11 @@ NextCell:
 
     Dim phCols As Variant
     ' Columnas dropdown puro → "(seleccione)"
-    phCols = Array(10, 13, 14, 15, 16, 17, 18, 19, 23, 27, 31, 33, 39, 41, 48, 49)
+    phCols = Array(10, 14, 15, 16, 17, 18, 19, 23, 27, 31, 33, 39, 41, 48, 49)
+    ' Columnas híbridas → "(seleccione o escriba)"
+    Dim phHybridCols As Variant
+    phHybridCols = Array(7, 13) ' G=Grupo, M=Metal Base
+
     Dim phc As Variant
     For r = 18 To lastRow
         For Each phc In phCols
@@ -89,9 +93,12 @@ NextCell:
                 cell.Value = phSelect
             End If
         Next phc
-        ' Columna híbrida → "(seleccione o escriba)"
-        Set cell = wsUp.Cells(r, 7) ' G = Grupo
-        If IsEmpty(cell.Value) Or cell.Value = "" Then cell.Value = phHybrid
+        For Each phc In phHybridCols
+            Set cell = wsUp.Cells(r, CLng(phc))
+            If IsEmpty(cell.Value) Or cell.Value = "" Then
+                cell.Value = phHybrid
+            End If
+        Next phc
     Next r
 
     Application.Calculation = xlCalculationAutomatic

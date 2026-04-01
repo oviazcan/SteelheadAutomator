@@ -1,8 +1,6 @@
 Sub SombrearModoSoloPN()
-    ' Sombrea en gris las columnas que NO aplican en modo SOLO_PN
-    ' Ejecutar cuando el modo en C3 sea "SOLO_PN"
-    ' Las columnas sombreadas: H (Cantidad), I (Precio), J (Unidad Precio),
-    ' K (Precio Default), T-AE (Productos x3)
+    ' Sombrea en gris las columnas que NO aplican según el modo
+    ' Se ejecuta automáticamente al cambiar C3
 
     Dim wsUp As Worksheet
     Set wsUp = ThisWorkbook.Sheets("Upload")
@@ -11,34 +9,35 @@ Sub SombrearModoSoloPN()
     modo = UCase(Trim(wsUp.Range("C3").Value))
 
     Dim grisClaro As Long
-    grisClaro = RGB(224, 224, 224)  ' Gris claro para "no aplica"
+    grisClaro = RGB(224, 224, 224)
 
     Dim verdeClaro As Long
-    verdeClaro = RGB(232, 245, 233) ' Verde claro para "editable"
+    verdeClaro = RGB(232, 245, 233)
+
+    ' Primero restaurar TODO a verde (reset completo)
+    ' Header filas 4-12
+    wsUp.Range("A4:D12").Interior.Color = verdeClaro
+    ' Datos: Precio/Cantidad (H-K) y Productos (S-AD)
+    wsUp.Range("H16:K300").Interior.Color = verdeClaro
+    wsUp.Range("S16:AD300").Interior.Color = verdeClaro
 
     If InStr(modo, "SOLO") > 0 Then
-        ' Modo SOLO_PN: sombrear solo columnas que no aplican
-        ' Header: Nombre Cotización, Notas, Válida hasta
+        ' Modo SOLO_PN: sombrear lo que NO aplica
+        ' Header: Nombre Cotización (4), Notas (9-10), Válida hasta (12)
         wsUp.Range("A4:D4").Interior.Color = grisClaro
         wsUp.Range("A9:D10").Interior.Color = grisClaro
         wsUp.Range("A12:D12").Interior.Color = grisClaro
 
-        ' Data columns: Productos x3 (S-AD) — no aplican sin cotización
-        wsUp.Range("S18:AD300").Interior.Color = grisClaro
-        wsUp.Range("S16:AD17").Interior.Color = grisClaro
+        ' Productos x3 (S-AD) — no aplican sin cotización
+        wsUp.Range("S16:AD300").Interior.Color = grisClaro
 
-        ' Precio, Cantidad, Unidad, PrecioDefault (H-K) quedan HABILITADOS para precios standalone
+        ' Precio (H-K) queda HABILITADO para precios standalone
 
-        MsgBox "Modo SOLO_PN: Productos sombreados en gris (no aplican)." & vbCrLf & _
-               "Precio y Cantidad habilitados para precios standalone.", vbInformation
+        MsgBox "Modo SOLO_PN:" & vbCrLf & _
+               "- Productos sombreados (no aplican)" & vbCrLf & _
+               "- Precio y Cantidad habilitados (precios standalone)", vbInformation
     Else
-        ' Modo COTIZACION+NP: restaurar colores editables
-        wsUp.Range("A4:D4").Interior.Color = verdeClaro
-        wsUp.Range("A9:D10").Interior.Color = verdeClaro
-        wsUp.Range("A12:D12").Interior.Color = verdeClaro
-        wsUp.Range("S18:AD300").Interior.Color = verdeClaro
-        wsUp.Range("S16:AD17").Interior.Color = verdeClaro
-
-        MsgBox "Modo COTIZACION+NP: todos los campos habilitados.", vbInformation
+        ' Modo COTIZACIÓN+NP: todo verde (ya se restauró arriba)
+        MsgBox "Modo COTIZACIÓN+NP: todos los campos habilitados.", vbInformation
     End If
 End Sub
