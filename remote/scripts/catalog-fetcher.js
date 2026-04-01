@@ -32,25 +32,57 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchCustomers() {
+    // 1. Get customer list
     const data = await api().query('CustomerSearchByName', { nameLike: '%%', orderBy: ['NAME_ASC'] });
     const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
+    const uniqueCustomers = [];
     const seen = new Set();
-    const result = [];
     for (const c of nodes) {
-      if (!c.name) continue;
-      const name = c.name;
-      if (seen.has(name.toUpperCase())) continue;
-      seen.add(name.toUpperCase());
-
-      const id = c.idInDomain || c.id || '';
-      const labelNodes = c.customerLabelsByCustomerId?.nodes || c.labelsByCustomerId?.nodes || [];
-      const labelNames = labelNodes.map(l => l.labelByLabelId?.name || l.name || '').filter(Boolean).join(', ');
-
-      // CustomerSearchByName no incluye direcciones — solo nombre + ID
-      // La dirección se resuelve en el pipeline vía GetQuoteRelatedData
-      result.push({ display: name, id: String(id), labels: labelNames });
+      if (!c.name || seen.has(c.name.toUpperCase())) continue;
+      seen.add(c.name.toUpperCase());
+      uniqueCustomers.push(c);
     }
+    log(`  Clientes: ${uniqueCustomers.length} únicos, obteniendo direcciones...`);
+
+    // 2. For each customer, get addresses via Customer query (by idInDomain)
+    // Process in batches of 5 to avoid overloading
+    const result = [];
+    for (let i = 0; i < uniqueCustomers.length; i += 5) {
+      const batch = uniqueCustomers.slice(i, i + 5);
+      const details = await Promise.all(batch.map(async (c) => {
+        try {
+          const d = await api().query('Customer', { idInDomain: c.idInDomain }, 'Customer');
+          return { customer: c, detail: d?.customerByIdInDomain };
+        } catch (_) {
+          return { customer: c, detail: null };
+        }
+      }));
+
+      for (const { customer, detail } of details) {
+        const name = customer.name;
+        const id = customer.idInDomain || customer.id || '';
+
+        // Labels
+        const labelNodes = detail?.customerLabelsByCustomerId?.nodes || customer.customerLabelsByCustomerId?.nodes || [];
+        const labelNames = labelNodes.map(l => l.labelByLabelId?.name || l.name || '').filter(Boolean).join(', ');
+
+        // Addresses
+        const addrs = detail?.customerAddressesByCustomerId?.nodes || [];
+        if (addrs.length > 0) {
+          for (const addr of addrs) {
+            let addrText = (addr.address || addr.street || '').replace(/[\r\n]+/g, ' ');
+            if (addrText.length > 40) addrText = addrText.substring(0, 40);
+            const display = addrText ? `${name} \u2014 ${addrText}` : name;
+            result.push({ display, id: String(id), labels: labelNames, addressId: addr.id });
+          }
+        } else {
+          result.push({ display: name, id: String(id), labels: labelNames, addressId: null });
+        }
+      }
+    }
+
     result.sort((a, b) => a.display.localeCompare(b.display));
+    log(`  Clientes con direcciones: ${result.length} entradas`);
     return result;
   }
 
