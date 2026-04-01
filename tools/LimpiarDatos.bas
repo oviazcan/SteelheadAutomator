@@ -9,10 +9,7 @@ Sub LimpiarDatos()
 
     Dim lastRow As Long
     lastRow = wsUp.Cells(wsUp.Rows.Count, 5).End(xlUp).Row
-    If lastRow < 18 Then
-        MsgBox "No hay datos para limpiar.", vbInformation
-        Exit Sub
-    End If
+    If lastRow < 300 Then lastRow = 300 ' cubrir todas las filas con placeholders
 
     Dim resp As VbMsgBoxResult
     resp = MsgBox("Borrar todos los datos de filas 18 a " & lastRow & "?" & vbCrLf & vbCrLf & _
@@ -73,11 +70,36 @@ NextCell:
         Next c
     Next r
 
+    ' Restaurar placeholders en columnas de dropdown
+    ' Col: G=7, J=10, M=13, N=14, O=15, P=16, Q=17, R=18
+    '      S=19, W=23, AA=27, AE=31, AG=33, AM=39, AO=41
+    '      AV=48, AW=49
+    Dim phSelect As String, phHybrid As String
+    phSelect = "(seleccione)"
+    phHybrid = "(seleccione o escriba)"
+
+    Dim phCols As Variant
+    ' Columnas dropdown puro → "(seleccione)"
+    phCols = Array(10, 13, 14, 15, 16, 17, 18, 19, 23, 27, 31, 33, 39, 41, 48, 49)
+    Dim phc As Variant
+    For r = 18 To lastRow
+        For Each phc In phCols
+            Set cell = wsUp.Cells(r, CLng(phc))
+            If IsEmpty(cell.Value) Or cell.Value = "" Then
+                cell.Value = phSelect
+            End If
+        Next phc
+        ' Columna híbrida → "(seleccione o escriba)"
+        Set cell = wsUp.Cells(r, 7) ' G = Grupo
+        If IsEmpty(cell.Value) Or cell.Value = "" Then cell.Value = phHybrid
+    Next r
+
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
 
     MsgBox cleaned & " celdas procesadas." & vbCrLf & _
         "Checkboxes: Validación y Precio Default = SI, resto = NO." & vbCrLf & _
+        "Placeholders restaurados en dropdowns." & vbCrLf & _
         "Plantilla lista para nueva carga.", vbInformation, "LimpiarDatos"
 End Sub
 
