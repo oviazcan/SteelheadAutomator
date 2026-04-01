@@ -51,9 +51,10 @@ const CatalogFetcher = (() => {
       const batch = uniqueCustomers.slice(i, i + 5);
       const details = await Promise.all(batch.map(async (c) => {
         try {
-          const d = await api().query('Customer', { idInDomain: c.idInDomain }, 'Customer');
+          const d = await api().query('Customer', { idInDomain: c.idInDomain, includeAccountingFields: true }, 'Customer');
           return { customer: c, detail: d?.customerByIdInDomain };
-        } catch (_) {
+        } catch (e) {
+          warn(`Cliente ${c.name}: ${String(e).substring(0, 80)}`);
           return { customer: c, detail: null };
         }
       }));
