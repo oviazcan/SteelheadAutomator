@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0",
-  "lastUpdated": "2026-03-27",
+  "version": "0.2.0",
+  "lastUpdated": "2026-03-31",
   "steelhead": {
     "baseUrl": "https://app.gosteelhead.com",
     "graphqlEndpoint": "/graphql",
@@ -86,6 +86,59 @@
         "Epoxica_MT_Red": 55121
       }
     }
+  },
+  "apps": [
+    {
+      "id": "carga-masiva",
+      "name": "Carga Masiva",
+      "subtitle": "Cotizaciones y NP",
+      "icon": "📊",
+      "scripts": ["scripts/steelhead-api.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"],
+      "actions": [
+        { "id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker" },
+        { "id": "download-template", "label": "Descargar Plantilla", "sublabel": "Excel base con formato y macros", "icon": "📥", "handler": "open-url", "url": "templateUrl" },
+        { "id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs" }
+      ]
+    },
+    {
+      "id": "hash-scanner",
+      "name": "Explorador Steelhead",
+      "subtitle": "Captura de APIs",
+      "icon": "🔍",
+      "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"],
+      "actions": [
+        { "id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan" },
+        { "id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results" },
+        { "id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config" },
+        { "id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge" }
+      ]
+    }
+  ],
+  "knownOperations": {
+    "CreateQuote": { "type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva" },
+    "UpdateQuote": { "type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva" },
+    "SaveQuoteLines": { "type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva" },
+    "SaveManyPartNumberPrices": { "type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva" },
+    "SavePartNumber": { "type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva" },
+    "SavePartNumberRackTypes": { "type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva" },
+    "SetPartNumberPricesAsDefaultPrice": { "type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva" },
+    "UpdatePartNumber": { "type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva" },
+    "CreatePartNumberGroup": { "type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva" },
+    "CustomerSearchByName": { "type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva" },
+    "CustomerFinancialByCustomerId": { "type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva" },
+    "GetQuote": { "type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva" },
+    "GetQuoteRelatedData": { "type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva" },
+    "SearchInvoiceTerms": { "type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva" },
+    "SearchUsers": { "type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva" },
+    "AllProcesses": { "type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva" },
+    "AllLabels": { "type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva" },
+    "SearchSpecsForSelect": { "type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva" },
+    "TempSpecFieldsAndOptions": { "type": "query", "description": "Obtener campos y opciones de una especificación (espesor, etc.)", "usedBy": "carga-masiva" },
+    "AllRackTypes": { "type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva" },
+    "SearchUnits": { "type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva" },
+    "SearchProducts": { "type": "query", "description": "Buscar productos para líneas de cotización", "usedBy": "carga-masiva" },
+    "SearchPartNumbers": { "type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva" },
+    "PartNumberGroupSelect": { "type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
