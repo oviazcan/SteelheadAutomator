@@ -73,7 +73,9 @@
       },
       "empresas": {
         "ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Calle Francisco I Madero No. 205, Barrio de Tlapaltitlán, Toluca, México, 50120",
-        "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Calle Francisco I Madero No. 205, Barrio de Tlapaltitlán, Toluca, México, 50120"
+        "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Calle Francisco I Madero No. 205, Barrio de Tlapaltitlán, Toluca, México, 50120",
+        "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Calle Francisco I Madero No. 205, Barrio de Tlapaltitlán, Toluca, México, 50120",
+        "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Calle Francisco I Madero No. 205, Barrio de Tlapaltitlán, Toluca, México, 50120"
       },
       "predictiveMaterials": {
         "PlataFina": 55113,
