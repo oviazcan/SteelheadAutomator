@@ -704,6 +704,46 @@ const BulkUpload = (() => {
           });
         }
         log(`  ${pnLookup.size} PNs mapeados (SOLO_PN)`);
+
+        // SOLO_PN: Create standalone prices if precio is provided
+        const pnpWithPrice = [];
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (part.precio === null && !part.qty) continue; // no price data
+          const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+          pnpWithPrice.push({
+            partNumberId: entry.pn.id,
+            processId: part.procesoOverride ? (defaultProcessId) : (entry.pn.defaultProcessNodeId || defaultProcessId),
+            customInputs: { DatosPrecio: { Divisa: divisaLinea } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
+            partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
+            usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
+            unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
+            partNumberCustomInputs: null,
+            quotePartNumberPrice: null // no quote
+          });
+        }
+        if (pnpWithPrice.length) {
+          showProgressUI('Modo SOLO_PN: Creando precios standalone...'); setProgressBar(40);
+          for (let i = 0; i < pnpWithPrice.length; i += 20) {
+            const batch = pnpWithPrice.slice(i, i + 20);
+            try {
+              await api().query('SaveManyPartNumberPrices', {
+                input: { quoteId: null, autoGenerateQuoteLines: false, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] }
+              }, 'SaveManyPNP_PN');
+              showProgressUI(`  -> Precios batch ${Math.floor(i / 20) + 1}: ${batch.length} PNs`);
+            } catch (e) {
+              errors.push(`Precios standalone: ${String(e).substring(0, 120)}`);
+            }
+          }
+          log(`  Precios standalone: ${pnpWithPrice.length}`);
+
+          // Set as default if marked
+          const defaultPriceIds = [];
+          // We'd need the price IDs from the response — for now log it
+          if (parts.some(p => p.precioDefault)) {
+            log('  NOTA: SetDefaultPrice en SOLO_PN requiere re-leer PNs para obtener IDs de precio');
+          }
+        }
         setProgressBar(50);
       }
 

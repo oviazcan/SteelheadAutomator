@@ -1,0 +1,162 @@
+STEELHEAD AUTOMATOR v9 — GUÍA DE USO
+=====================================
+
+EXTENSIÓN CHROME
+   Instalar desde Chrome Web Store (link proporcionado por admin).
+   Funciona en Chrome y Microsoft Edge.
+   La extensión debe estar activa mientras se usa app.gosteelhead.com.
+
+MENÚ PRINCIPAL
+   📊 Carga Masiva — Cotizaciones y Números de Parte
+   🔍 Explorador Steelhead — Captura de APIs y hashes
+
+CARGA MASIVA — FLUJO
+   1. Descargar Plantilla (botón en extensión)
+   2. Actualizar Catálogos (botón en extensión, estando en Steelhead)
+   3. En Excel: ejecutar macro RefrescarListas (seleccionar archivo de catálogos)
+   4. Llenar datos en hoja Upload
+   5. Exportar CSV (macro ExportarCSV)
+   6. En Steelhead: clic en extensión → Carga Masiva → Cargar CSV
+
+MODOS
+   COTIZACIÓN+NP — Crea cotización con números de parte, precios y productos
+   SOLO_PN — Solo crea/modifica números de parte sin cotización
+
+HEADER (filas 3-12)
+   Modo          COTIZACIÓN+NP o SOLO_PN
+   Nombre Cot.   Requerido en modo COTIZACIÓN+NP
+   Cliente       Seleccionar del dropdown (nombre — dirección)
+   Proceso       Seleccionar del dropdown (default para todos los PNs)
+   Divisa        USD o MXN
+   Empresa       ECO, ECOPLATING, PRO o PROQUIPA
+   Notas Ext.    Visible al cliente (solo COTIZACIÓN)
+   Notas Int.    Solo equipo (solo COTIZACIÓN)
+   Asignado      Seleccionar del dropdown de usuarios
+   Válida hasta  Días desde hoy (solo COTIZACIÓN)
+
+CÓDIGO DE COLORES
+   Verde claro    Editable — el usuario llena
+   Azul claro     Fórmula — no tocar
+   Amarillo       Híbrida — se calcula auto pero se puede sobreescribir
+
+PLACEHOLDERS EN DROPDOWNS
+   (seleccione)              Campo con dropdown — elegir del listado
+   (seleccione o escriba)    Campo híbrido — elegir o escribir valor nuevo
+
+CONVENCIONES
+   Vacío    No tocar (mantiene valor existente en Steelhead)
+   Guión (-)    Borrar dato (envía valor vacío a Steelhead)
+   Checkbox ✓   TRUE = activar, □ = desactivar
+
+COLUMNAS DE DATOS (fila 18+)
+   PARÁMETROS (A-D)
+      A  Archivado — archivar el PN después de crear
+      B  Validación 1er recibo — activar opt-in de validación
+      C  Forzar duplicar — crear PN nuevo aunque ya exista uno con el mismo nombre
+      D  Archivar anterior — archivar el PN viejo al forzar duplicado
+
+   IDENTIFICACIÓN (E-L)
+      E  Número de parte — REQUERIDO
+      F  PN alterno — números alternos separados por coma
+      G  Grupo — familia/grupo del PN (se crea si no existe)
+      H  Cantidad — requerido en COTIZACIÓN+NP
+      I  Precio — precio unitario
+      J  Unidad precio — PZA, KGM, CMK, FTK, LM, LBR, LO
+      K  Precio default — marcar como precio predeterminado
+      L  Descripción — texto libre
+
+   ACABADOS / LABELS (M-Q)
+      M  Metal base — material base del PN
+      N-Q  Etiquetas 1-4 — seleccionar del catálogo
+
+   PROCESO (R)
+      R  Proceso override — sobreescribe el proceso default del header
+
+   PRODUCTOS ×3 (S-AD) — Solo COTIZACIÓN+NP
+      S/W/AA  Producto — seleccionar del catálogo
+      T/X/AB  Precio producto
+      U/Y/AC  Cantidad producto
+      V/Z/AD  Unidad producto
+
+   SPECS ×2 (AE-AH)
+      AE  Spec 1 — seleccionar del catálogo (formato: "Nombre | rango µm")
+      AF  Espesor 1 — se calcula auto del rango, se puede sobreescribir
+      AG  Spec 2
+      AH  Espesor 2
+
+   CONVERSIONES DE UNIDADES (AI-AL)
+      AI  KGM — kg por pieza
+      AJ  CMK — cm² por pieza
+      AK  LM — metros lineales por pieza
+      AL  Mín Pzas Lote — mínimo de piezas por lote
+
+   RACKS ×2 (AM-AP)
+      AM  Rack Línea — tipo FL/BA/Barril
+      AN  Pzas/Rack Línea
+      AO  Rack Secundario
+      AP  Pzas/Rack Sec.
+
+   DIMENSIONES ×5 (AQ-AU) — en metros
+      AQ  Longitud
+      AR  Ancho
+      AS  Alto
+      AT  Diámetro Exterior
+      AU  Diámetro Interior
+
+   ASIGNACIÓN CONTABLE (AV-AX)
+      AV  Línea — dimensión contable
+      AW  Departamento — dimensión contable
+      AX  Código SAT — clasificación fiscal (trae default)
+
+   PREDICTIVE USAGE (AY-BG) — consumo por pieza
+      AY  Plata (kg)
+      AZ  Estaño (kg)
+      BA  Níquel (kg)
+      BB  Zinc (kg)
+      BC  Cobre (kg)
+      BD  Antitarnish (L)
+      BE  Epóx. MT (lb)
+      BF  Epóx. BT (lb)
+      BG  Epóx. MTR (lb)
+
+   REFERENCIA IBMS (BH-BN)
+      BH  Quote IBMS — referencia del sistema anterior
+      BI  Estación IBMS
+      BJ  Plano — número de plano
+      BK  Piezas por Carga
+      BL  Cargas por Hora
+      BM  Tiempo de Entrega — días
+      BN  Notas adicionales
+
+   CHECK (BO)
+      BO  Total línea — fórmula de verificación
+
+MACROS DISPONIBLES
+   ExportarCSV         Exporta hoja Upload como CSV UTF-8
+   RefrescarListas     Lee catálogos del archivo descargado por la extensión
+   LimpiarDatos        Borra datos y restaura defaults/placeholders
+   LimpiarEspacios     Limpia espacios sin borrar datos
+   SombrearModoSoloPN  Sombrea/restaura columnas según modo (automático al cambiar C3)
+
+CATÁLOGOS (se actualizan desde la extensión)
+   Clientes        Nombre + dirección de entrega
+   Procesos        Workflows activos
+   Productos       Productos activos
+   Etiquetas       Tags para números de parte
+   Especificaciones  Specs con parámetros de espesor
+   Racks           Línea (FL/BA/Barril) y todos
+   Líneas          Dimensiones contables
+   Departamentos   Dimensiones contables
+   Usuarios        Vendedores/asignados
+   Grupos PN       Familias de números de parte
+
+NOTAS TÉCNICAS
+   • Los hashes de la API se actualizan automáticamente vía GitHub Pages
+   • La extensión funciona en app.gosteelhead.com solamente
+   • El CSV debe ser UTF-8 (la macro ExportarCSV lo genera correctamente)
+   • Los predictive usage se calculan en la hoja Cálculo MP
+   • Los catálogos se descargan como archivo .xlsx separado
+
+SOPORTE
+   Contacto: oviazcan@gmail.com
+   Repo: github.com/oviazcan/SteelheadAutomator

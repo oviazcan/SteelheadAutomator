@@ -17,33 +17,27 @@ Sub SombrearModoSoloPN()
     verdeClaro = RGB(232, 245, 233) ' Verde claro para "editable"
 
     If InStr(modo, "SOLO") > 0 Then
-        ' Modo SOLO_PN: sombrear columnas que no aplican
-        ' Header rows 4 (Nombre Cotizacion), 10-11 (Divisa, Empresa), 13-14 (Notas), 16 (Valida hasta)
+        ' Modo SOLO_PN: sombrear solo columnas que no aplican
+        ' Header: Nombre Cotización, Notas, Válida hasta
         wsUp.Range("A4:D4").Interior.Color = grisClaro
-        wsUp.Range("A10:D11").Interior.Color = grisClaro
-        wsUp.Range("A13:D14").Interior.Color = grisClaro
-        wsUp.Range("A16:D16").Interior.Color = grisClaro
+        wsUp.Range("A9:D10").Interior.Color = grisClaro
+        wsUp.Range("A12:D12").Interior.Color = grisClaro
 
-        ' Data columns: H-K (Cantidad, Precio, Unidad, PrecioDefault)
-        wsUp.Range("H22:K522").Interior.Color = grisClaro
-        wsUp.Range("H20:K21").Interior.Color = grisClaro
+        ' Data columns: Productos x3 (S-AD) — no aplican sin cotización
+        wsUp.Range("S18:AD300").Interior.Color = grisClaro
+        wsUp.Range("S16:AD17").Interior.Color = grisClaro
 
-        ' Data columns: T-AE (Productos x3)
-        wsUp.Range("T22:AE522").Interior.Color = grisClaro
-        wsUp.Range("T20:AE21").Interior.Color = grisClaro
+        ' Precio, Cantidad, Unidad, PrecioDefault (H-K) quedan HABILITADOS para precios standalone
 
-        MsgBox "Modo SOLO_PN: columnas de cotizacion sombreadas en gris." & vbCrLf & _
-               "No llenar: Cantidad, Precio, Unidad Precio, Precio Default, Productos.", vbInformation
+        MsgBox "Modo SOLO_PN: Productos sombreados en gris (no aplican)." & vbCrLf & _
+               "Precio y Cantidad habilitados para precios standalone.", vbInformation
     Else
         ' Modo COTIZACION+NP: restaurar colores editables
         wsUp.Range("A4:D4").Interior.Color = verdeClaro
-        wsUp.Range("A10:D11").Interior.Color = verdeClaro
-        wsUp.Range("A13:D14").Interior.Color = verdeClaro
-        wsUp.Range("A16:D16").Interior.Color = verdeClaro
-        wsUp.Range("H22:K522").Interior.Color = verdeClaro
-        wsUp.Range("H20:K21").Interior.Color = verdeClaro
-        wsUp.Range("T22:AE522").Interior.Color = verdeClaro
-        wsUp.Range("T20:AE21").Interior.Color = verdeClaro
+        wsUp.Range("A9:D10").Interior.Color = verdeClaro
+        wsUp.Range("A12:D12").Interior.Color = verdeClaro
+        wsUp.Range("S18:AD300").Interior.Color = verdeClaro
+        wsUp.Range("S16:AD17").Interior.Color = verdeClaro
 
         MsgBox "Modo COTIZACION+NP: todos los campos habilitados.", vbInformation
     End If
