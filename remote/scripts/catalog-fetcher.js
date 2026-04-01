@@ -34,22 +34,21 @@ const CatalogFetcher = (() => {
   async function fetchCustomers() {
     const data = await api().query('CustomerSearchByName', { nameLike: '%%', orderBy: ['NAME_ASC'] });
     const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
-    // Format: "Nombre — Dirección" (max 40 chars for address), with ID and labels
     const seen = new Set();
     const result = [];
     for (const c of nodes) {
       if (!c.name) continue;
-      // active field may not exist in response — skip only if explicitly false
-      if (c.active === false) continue;
       const name = c.name;
-      if (seen.has(name)) continue;
-      seen.add(name);
-      let addr = (c.customerAddressesByCustomerId?.nodes?.[0]?.address || '').replace(/[\r\n]+/g, ' ');
-      if (addr.length > 40) addr = addr.substring(0, 40);
-      const display = addr ? `${name} \u2014 ${addr}` : name;
+      if (seen.has(name.toUpperCase())) continue;
+      seen.add(name.toUpperCase());
+
       const id = c.idInDomain || c.id || '';
-      const labelNames = (c.labelsByCustomerId?.nodes || c.labels?.nodes || []).map(l => l.name).join(', ');
-      result.push({ display, id: String(id), labels: labelNames });
+      const labelNodes = c.customerLabelsByCustomerId?.nodes || c.labelsByCustomerId?.nodes || [];
+      const labelNames = labelNodes.map(l => l.labelByLabelId?.name || l.name || '').filter(Boolean).join(', ');
+
+      // CustomerSearchByName no incluye direcciones — solo nombre + ID
+      // La dirección se resuelve en el pipeline vía GetQuoteRelatedData
+      result.push({ display: name, id: String(id), labels: labelNames });
     }
     result.sort((a, b) => a.display.localeCompare(b.display));
     return result;
