@@ -45,7 +45,7 @@
     },
     "domain": {
       "id": 344,
-      "dimensionIds": { "linea": 585, "departamento": 586 },
+      "dimensionIds": { "linea": 349, "departamento": 586 },
       "inputSchemaId_PN": 3456,
       "inputSchemaId_Quote": 659,
       "stagesRevisionId": 306,
