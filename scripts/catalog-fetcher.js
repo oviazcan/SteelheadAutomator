@@ -32,19 +32,23 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchCustomers() {
-    // 1. Get customer list with pagination (default limit ~60)
+    // 1. Get all customers by querying each letter A-Z (workaround for ~60 limit)
     const allNodes = [];
-    let offset = 0;
-    const pageSize = 50;
-    while (true) {
-      const data = await api().query('CustomerSearchByName', { nameLike: '%%', orderBy: ['NAME_ASC'], first: pageSize, offset });
-      const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
-      if (nodes.length === 0) break;
-      allNodes.push(...nodes);
-      log(`  Clientes: página ${Math.floor(offset / pageSize) + 1}, ${nodes.length} resultados (total: ${allNodes.length})`);
-      if (nodes.length < pageSize) break; // última página
-      offset += pageSize;
+    const seenIds = new Set();
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+    for (const letter of letters) {
+      try {
+        const data = await api().query('CustomerSearchByName', { nameLike: `${letter}%`, orderBy: ['NAME_ASC'] });
+        const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || [];
+        for (const n of nodes) {
+          if (n.id && !seenIds.has(n.id)) {
+            seenIds.add(n.id);
+            allNodes.push(n);
+          }
+        }
+      } catch (_) {}
     }
+    log(`  Clientes: ${allNodes.length} encontrados (${letters.length} queries)`);
 
     const uniqueCustomers = [];
     const seen = new Set();
