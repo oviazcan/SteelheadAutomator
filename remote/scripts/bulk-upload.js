@@ -1102,19 +1102,43 @@ const BulkUpload = (() => {
         }
         if (status.status === 'forceDup' && part.archivarAnterior && status.existingId) oldPnsToArchive.push({ id: status.existingId, name: part.pn + ' (ant)' });
       }
-      // Default price only in quote mode
+      // Default price: set or unset
+      const priceIdsForDefault = [];
+      const priceIdsToUnsetDefault = [];
       if (!isSoloPN) {
-        const priceIdsForDefault = [];
+        // In quote mode, use qpnp price IDs
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
           const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
-          if (part.precioDefault) { const pnpId = entry.pnp?.id; if (pnpId) priceIdsForDefault.push(pnpId); }
+          const pnpId = entry.pnp?.id;
+          if (!pnpId) continue;
+          if (part.precioDefault) priceIdsForDefault.push(pnpId);
+          else priceIdsToUnsetDefault.push(pnpId);
         }
-        if (priceIdsForDefault.length) {
-          try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPNPricesDefault'); stats.defaultPriceSet = priceIdsForDefault.length; }
-          catch (e) { errors.push(`SetDefaultPrice: ${String(e).substring(0, 120)}`); }
+      } else {
+        // In SOLO_PN mode, need to get price IDs from GetPartNumber for existing PNs
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i]; const status = pnStatus[i];
+          if (!part.precioDefault && status.status === 'existing') {
+            // FALSE on existing = unset default
+            try {
+              const pnData = await api().query('GetPartNumber', { partNumberId: pnLookup.get(part.pn.toUpperCase())?.pn?.id });
+              const prices = pnData?.partNumberById?.partNumberPricesByPartNumberId?.nodes || [];
+              const defaultPrice = prices.find(p => p.isDefault);
+              if (defaultPrice) priceIdsToUnsetDefault.push(defaultPrice.id);
+            } catch (_) {}
+          }
         }
       }
+      if (priceIdsForDefault.length) {
+        try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPNPricesDefault'); stats.defaultPriceSet = priceIdsForDefault.length; }
+        catch (e) { errors.push(`SetDefaultPrice: ${String(e).substring(0, 120)}`); }
+      }
+      for (const priceId of priceIdsToUnsetDefault) {
+        try { await api().query('UnsetPartNumberPriceAsDefaultPrice', { id: priceId }); stats.defaultPriceUnset = (stats.defaultPriceUnset || 0) + 1; }
+        catch (e) { /* silencioso — puede que no fuera default */ }
+      }
+      if (priceIdsToUnsetDefault.length) log(`  Default price unset: ${stats.defaultPriceUnset || 0}`);
       for (const p of pnsToArchive) {
         try { await api().query('UpdatePartNumber', { id: p.id, archivedAt: new Date().toISOString() }); stats.archived++; }
         catch (e) { errors.push(`Archivar "${p.name}": ${String(e).substring(0, 100)}`); }
