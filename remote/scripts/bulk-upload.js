@@ -23,16 +23,17 @@ const BulkUpload = (() => {
 
   const PRICE_UNIT_MAP = { PZA: null, KGM: 3969, CMK: 4907, FTK: 4797, LM: 5150, LBR: 3972, LO: 5348 };
 
+  // Predictive columns: AY=50 to BG=58 (shifted -1 from original)
   const PREDICTIVE_MATERIALS = [
-    { col: 51, inventoryItemId: 364506, name: 'Plata Fina' },
-    { col: 52, inventoryItemId: 397490, name: 'Estaño Puro' },
-    { col: 53, inventoryItemId: 412305, name: 'Níquel Metálico' },
-    { col: 54, inventoryItemId: 412805, name: 'Zinc Metálico' },
-    { col: 55, inventoryItemId: 412479, name: 'Placa de Cobre Electrolítico' },
-    { col: 56, inventoryItemId: 412723, name: 'Sterlingshield S (Antitarnish)' },
-    { col: 57, inventoryItemId: 702767, name: 'Epoxy MT' },
-    { col: 58, inventoryItemId: 702769, name: 'Epoxica BT' },
-    { col: 59, inventoryItemId: 702768, name: 'Epoxica MT Red' },
+    { col: 50, inventoryItemId: 364506, name: 'Plata Fina' },
+    { col: 51, inventoryItemId: 397490, name: 'Estaño Puro' },
+    { col: 52, inventoryItemId: 412305, name: 'Níquel Metálico' },
+    { col: 53, inventoryItemId: 412805, name: 'Zinc Metálico' },
+    { col: 54, inventoryItemId: 412479, name: 'Placa de Cobre Electrolítico' },
+    { col: 55, inventoryItemId: 412723, name: 'Sterlingshield S (Antitarnish)' },
+    { col: 56, inventoryItemId: 702767, name: 'Epoxy MT' },
+    { col: 57, inventoryItemId: 702769, name: 'Epoxica BT' },
+    { col: 58, inventoryItemId: 702768, name: 'Epoxica MT Red' },
   ];
 
   const DIVISA_SCHEMA = { type: "object", title: "", required: ["DatosPrecio"], properties: { DatosPrecio: { type: "object", title: "Datos del Precio", required: ["Divisa"], properties: { Divisa: { enum: ["USD", "MXN"], type: "string", title: "Divisa", enumNames: ["USD - Dolar americano", "MXN - Peso mexicano"] } }, dependencies: {} } }, dependencies: {} };
@@ -100,13 +101,15 @@ const BulkUpload = (() => {
       if (!pn) continue; // PN is required; qty can be null in SOLO_PN mode
 
       const products = [];
-      for (const b of [19, 23, 27]) {
+      // S=18(P1), W=22(P2), AA=26(P3)
+      for (const b of [18, 22, 26]) {
         const nm = g(row, b);
         if (nm) products.push({ name: nm, price: gn(row, b + 1) || 0, qty: gn(row, b + 2) || 1, unit: g(row, b + 3) });
       }
 
       const specs = [];
-      for (const [specIdx, espIdx] of [[31, 32], [33, 34]]) {
+      // AE=30(Spec1), AF=31(Esp1), AG=32(Spec2), AH=33(Esp2)
+      for (const [specIdx, espIdx] of [[30, 31], [32, 33]]) {
         const raw = g(row, specIdx);
         if (!raw) continue;
         if (raw.includes(' | ')) { const s = raw.indexOf(' | '); specs.push({ name: raw.substring(0, s).trim(), param: raw.substring(s + 3).trim() }); }
@@ -114,8 +117,9 @@ const BulkUpload = (() => {
       }
 
       const racks = [];
-      if (g(row, 39)) racks.push({ name: g(row, 39), ppr: gn(row, 40) });
-      if (g(row, 41)) racks.push({ name: g(row, 41), ppr: gn(row, 42) });
+      // AM=38(Rack Línea), AN=39(Pzas), AO=40(Rack Sec), AP=41(Pzas)
+      if (g(row, 38)) racks.push({ name: g(row, 38), ppr: gn(row, 39) });
+      if (g(row, 40)) racks.push({ name: g(row, 40), ppr: gn(row, 41) });
 
       const predictiveUsage = [];
       for (const mat of PREDICTIVE_MATERIALS) {
@@ -125,38 +129,34 @@ const BulkUpload = (() => {
 
       parts.push({
         pn, qty,
-        precio: gn(row, 8),
-        descripcion: g(row, 11),
-        procesoOverride: g(row, 17),
-        processIdOverride: gn(row, 18),
-        labels: [g(row, 13), g(row, 14), g(row, 15), g(row, 16)].filter(Boolean),
+        precio: gn(row, 8),           // I=8
+        descripcion: g(row, 11),       // L=11
+        procesoOverride: g(row, 17),   // R=17
+        labels: [g(row, 13), g(row, 14), g(row, 15), g(row, 16)].filter(Boolean), // N-Q
         products, specs,
-        unitConv: { kgm: gn(row, 35), cmk: gn(row, 36), lm: gn(row, 37), minPzasLote: gn(row, 38) },
+        unitConv: { kgm: gn(row, 34), cmk: gn(row, 35), lm: gn(row, 36), minPzasLote: gn(row, 37) }, // AI-AL
         racks,
-        dims: { length: gn(row, 43), width: gn(row, 44), height: gn(row, 45), outerDiam: gn(row, 46), innerDiam: gn(row, 47) },
-        metalBase: g(row, 12),
-        pnAlterno: g(row, 5),
-        codigoSAT: g(row, 50),
-        pnGroup: g(row, 6),
-        archivado: toBool(g(row, 0)),
-        precioDefault: toBool(g(row, 10)),
-        forzarDuplicado: toBool(g(row, 2)),
-        archivarAnterior: toBool(g(row, 3)),
-        unidadPrecio: g(row, 9).toUpperCase(),
+        dims: { length: gn(row, 42), width: gn(row, 43), height: gn(row, 44), outerDiam: gn(row, 45), innerDiam: gn(row, 46) }, // AQ-AU
+        metalBase: g(row, 12),         // M=12
+        pnAlterno: g(row, 5),         // F=5
+        codigoSAT: g(row, 49),        // AX=49
+        pnGroup: g(row, 6),           // G=6
+        archivado: toBool(g(row, 0)),  // A=0
+        precioDefault: toBool(g(row, 10)), // K=10
+        forzarDuplicado: toBool(g(row, 2)), // C=2
+        archivarAnterior: toBool(g(row, 3)), // D=3
+        unidadPrecio: g(row, 9).toUpperCase(), // J=9
         predictiveUsage,
-        validacion1er: toBool(g(row, 1)),
-        // Línea y Departamento (asignación contable)
-        linea: g(row, 48),
-        departamento: g(row, 49),
-        // Custom Inputs adicionales (col S reutilizada + columnas después de BI)
-        // Estos índices se ajustarán cuando el usuario reestructure la plantilla
-        quoteIBMS: g(row, 18),       // col S (antes era ID Proceso)
-        estacionIBMS: g(row, 60),     // nueva columna (después de predictive)
-        plano: g(row, 61),
-        piezasCarga: gn(row, 62),
-        cargasHora: g(row, 63),
-        tiempoEntrega: gn(row, 64),
-        notasAdicionalesPN: g(row, 65),
+        validacion1er: toBool(g(row, 1)), // B=1
+        linea: g(row, 47),            // AV=47
+        departamento: g(row, 48),      // AW=48
+        quoteIBMS: g(row, 59),        // BH=59
+        estacionIBMS: g(row, 60),     // BI=60
+        plano: g(row, 61),            // BJ=61
+        piezasCarga: gn(row, 62),     // BK=62
+        cargasHora: g(row, 63),       // BL=63
+        tiempoEntrega: gn(row, 64),   // BM=64
+        notasAdicionalesPN: g(row, 65), // BN=65
       });
     }
     return { header, parts };
