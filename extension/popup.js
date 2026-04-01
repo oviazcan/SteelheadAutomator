@@ -24,6 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('app-back').addEventListener('click', goToMenu);
+    document.getElementById('btn-stop-scan').addEventListener('click', async () => {
+      await sendToBackground('toggle-scan');
+      updateScanIndicator(false);
+      checkStatus();
+    });
     document.getElementById('results-back').addEventListener('click', () => {
       if (currentApp) showView('app'); else goToMenu();
     });
@@ -88,19 +93,39 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── App View ──
-  function selectApp(app) {
+  async function selectApp(app) {
     currentApp = app;
     document.getElementById('app-title').textContent = app.name;
     const container = document.getElementById('app-actions');
     container.innerHTML = '';
 
+    // Check scanner state to set correct button label
+    let scanActive = false;
+    if (app.id === 'hash-scanner') {
+      try {
+        const s = await sendToBackground('check-scan-status');
+        scanActive = s?.scanning;
+      } catch (_) {}
+    }
+
     for (const action of (app.actions || [])) {
       const btn = document.createElement('button');
       btn.className = action.type === 'primary' ? 'btn btn-primary' : 'btn';
       btn.dataset.actionId = action.id;
+
+      let label = action.label;
+      let sublabel = action.sublabel;
+      let icon = action.icon || '▸';
+      // Dynamic label for toggle-scan
+      if (action.id === 'toggle-scan' && scanActive) {
+        label = 'Detener Captura';
+        sublabel = 'Pausar interceptación';
+        icon = '⏹️';
+      }
+
       btn.innerHTML = `
-        <span class="btn-icon">${action.icon || '▸'}</span>
-        <span class="btn-label">${action.label}<small>${action.sublabel || ''}</small></span>`;
+        <span class="btn-icon">${icon}</span>
+        <span class="btn-label">${label}<small>${sublabel || ''}</small></span>`;
       btn.addEventListener('click', () => handleAction(action));
       container.appendChild(btn);
     }
