@@ -975,41 +975,78 @@ const BulkUpload = (() => {
       // STEP 7: RackTypes — runs in BOTH modes
       showProgressUI(`${isSoloPN ? 'Paso 4' : 'Paso 7'}: Racks...`); setProgressBar(78);
       const rackIn = [];
+      const racksToDelete = []; // PNs where racks should be deleted (guión)
       for (const part of parts) {
         if (!part.racks.length) continue;
         const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+        // Guión (-) in first rack = delete all racks
+        if (part.racks.length === 1 && isDash(part.racks[0].name)) {
+          racksToDelete.push(entry.pn.id);
+          continue;
+        }
         for (const rk of part.racks) {
+          if (isDash(rk.name)) continue;
           const rt = rackTypeByName.get(rk.name); if (!rt) { errors.push(`RackType "${rk.name}" no encontrado.`); continue; }
           if (rk.ppr === null) continue;
           rackIn.push({ rackTypeId: rt.id, partNumberId: entry.pn.id, partsPerRack: rk.ppr });
         }
       }
+      // Delete racks for PNs with guión
+      for (const pnId of racksToDelete) {
+        try {
+          const pnData = await api().query('GetPartNumber', { partNumberId: pnId });
+          const existingRacks = pnData?.partNumberById?.partNumberRackTypesByPartNumberId?.nodes || [];
+          for (const rk of existingRacks) {
+            await api().query('DeletePartNumberRackType', { id: rk.id });
+            log(`  Rack ${rk.id} eliminado de PN ${pnId}`);
+          }
+          if (existingRacks.length) stats.racksSet += existingRacks.length;
+        } catch (e) { errors.push(`Borrar racks PN ${pnId}: ${String(e).substring(0, 100)}`); }
+      }
+      // Add new racks
       if (rackIn.length) {
         for (let i = 0; i < rackIn.length; i += 50) {
           try {
             await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: rackIn.slice(i, i + 50), partNumberRackTypeIdsToDelete: [] } });
           } catch (e) {
             if (String(e).includes('duplicate key') || String(e).includes('23505')) {
-              // Racks already exist — try one by one, skip duplicates
-              log(`  Racks batch ${Math.floor(i / 50) + 1}: duplicados detectados, insertando uno por uno...`);
+              log(`  Racks batch ${Math.floor(i / 50) + 1}: duplicados, insertando uno por uno...`);
               for (const rk of rackIn.slice(i, i + 50)) {
                 try {
                   await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
                 } catch (e2) {
                   if (String(e2).includes('duplicate key') || String(e2).includes('23505')) {
                     log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: ya existe, omitido`);
-                  } else {
-                    errors.push(`Rack PN ${rk.partNumberId}: ${String(e2).substring(0, 100)}`);
-                  }
+                  } else { errors.push(`Rack PN ${rk.partNumberId}: ${String(e2).substring(0, 100)}`); }
                 }
               }
-            } else {
-              errors.push(`SavePartNumberRackTypes: ${String(e).substring(0, 120)}`);
-            }
+            } else { errors.push(`SavePartNumberRackTypes: ${String(e).substring(0, 120)}`); }
           }
         }
       }
-      stats.racksSet = rackIn.length; log(`  Racks: ${rackIn.length}`);
+      stats.racksSet = rackIn.length + racksToDelete.length; log(`  Racks: ${rackIn.length} agregados, ${racksToDelete.length} PNs con racks eliminados`);
+
+      // STEP 7b: Delete prices (guión in precio column)
+      const pricesToDelete = [];
+      for (const part of parts) {
+        if (!isDash(String(part.precio))) continue;
+        const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+        pricesToDelete.push({ pnId: entry.pn.id, pnName: part.pn });
+      }
+      if (pricesToDelete.length) {
+        showProgressUI(`Borrando precios de ${pricesToDelete.length} PNs...`);
+        for (const { pnId, pnName } of pricesToDelete) {
+          try {
+            const pnData = await api().query('GetPartNumber', { partNumberId: pnId });
+            const existingPrices = pnData?.partNumberById?.partNumberPricesByPartNumberId?.nodes || [];
+            for (const price of existingPrices) {
+              await api().query('DeletePartNumberPrice', { id: price.id });
+              log(`  Precio ${price.id} eliminado de PN "${pnName}"`);
+            }
+          } catch (e) { errors.push(`Borrar precios "${pnName}": ${String(e).substring(0, 100)}`); }
+        }
+        log(`  Precios eliminados de ${pricesToDelete.length} PNs`);
+      }
 
       // STEP 8: Default Price + Archive
       showProgressUI(`${isSoloPN ? 'Paso 5' : 'Paso 8'}: Archivado...`); setProgressBar(85);
