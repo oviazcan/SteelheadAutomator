@@ -32,13 +32,23 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchCustomers() {
-    // 1. Get customer list
-    // first:500 to get all customers (default may be ~50)
-    const data = await api().query('CustomerSearchByName', { nameLike: '%%', orderBy: ['NAME_ASC'], first: 500 });
-    const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
+    // 1. Get customer list with pagination (default limit ~60)
+    const allNodes = [];
+    let offset = 0;
+    const pageSize = 50;
+    while (true) {
+      const data = await api().query('CustomerSearchByName', { nameLike: '%%', orderBy: ['NAME_ASC'], first: pageSize, offset });
+      const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
+      if (nodes.length === 0) break;
+      allNodes.push(...nodes);
+      log(`  Clientes: página ${Math.floor(offset / pageSize) + 1}, ${nodes.length} resultados (total: ${allNodes.length})`);
+      if (nodes.length < pageSize) break; // última página
+      offset += pageSize;
+    }
+
     const uniqueCustomers = [];
     const seen = new Set();
-    for (const c of nodes) {
+    for (const c of allNodes) {
       if (!c.name || seen.has(c.name.toUpperCase())) continue;
       seen.add(c.name.toUpperCase());
       uniqueCustomers.push(c);
