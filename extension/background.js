@@ -161,7 +161,18 @@ async function handleMessage(message) {
           if (!window.HashScanner) return { error: 'HashScanner no disponible' };
           if (window.HashScanner.isActive()) {
             window.HashScanner.stop();
-            return { started: false, message: 'Captura detenida.', stats: window.HashScanner.getStats() };
+            // Auto-export scan results on stop
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const scanData = window.HashScanner.getResults();
+            const apiKnowledge = window.APIKnowledge ? window.APIKnowledge.getKnownOperations() : [];
+            const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanData, apiKnowledge: apiKnowledge };
+            const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'scan_results_' + dateStr + '.json';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            return { started: false, message: 'Captura detenida. Resultados exportados.', stats: window.HashScanner.getStats() };
           } else {
             window.HashScanner.start();
             return { started: true, message: 'Captura iniciada. Navega por Steelhead para capturar operaciones.' };
