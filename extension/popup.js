@@ -212,18 +212,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const ops = data.operations || data;
     const summary = data.summary || {};
 
+    const sourceColors = {
+      'documentada': '#7b1fa2', 'documentada + escaneada': '#2e7d32',
+      'config': '#1565c0', 'config + escaneada': '#0d9488',
+      'escaneada': '#e65100'
+    };
+
     container.innerHTML = `
       <div class="results-stats">
         <span class="results-stat total">${summary.total || ops.length} operaciones</span>
         <span class="results-stat" style="background:#fce4ec;color:#c62828">${summary.mutations || 0} mutations</span>
         <span class="results-stat" style="background:#e3f2fd;color:#1565c0">${summary.queries || 0} queries</span>
+        ${summary.scanned ? `<span class="results-stat new">${summary.scanned} escaneadas</span>` : ''}
       </div>
       <ul class="op-list">
-        ${(Array.isArray(ops) ? ops : Object.entries(ops).map(([k, v]) => ({ operationName: k, ...v }))).map(op => `
+        ${(Array.isArray(ops) ? ops : []).map(op => `
           <li class="op-item">
             <span class="op-name">${op.operationName}</span>
             <span class="op-badge ${op.type}">${op.type}</span>
-            <div class="op-meta">${op.description || '(sin descripción)'}${op.usedBy ? ' — ' + op.usedBy : ''}</div>
+            <span class="op-badge" style="background:${sourceColors[op.source] || '#999'}22;color:${sourceColors[op.source] || '#999'}">${op.source}</span>
+            <div class="op-meta">${op.description || '(sin descripción)'}${op.scanCount ? ' | x' + op.scanCount : ''}</div>
+            ${op.responseFields ? `<div class="op-meta" style="color:#0d9488">Campos: ${op.responseFields.slice(0, 5).join(', ')}${op.responseFields.length > 5 ? '...' : ''}</div>` : ''}
           </li>`).join('')}
       </ul>`;
   }
