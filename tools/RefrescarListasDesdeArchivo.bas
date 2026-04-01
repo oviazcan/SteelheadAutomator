@@ -20,10 +20,9 @@ Sub RefrescarListas()
     Dim wsL As Worksheet
     Set wsL = ThisWorkbook.Sheets("Listas")
 
-    ' Limpiar datos existentes (cols A-I, preservar J-K)
+    ' Limpiar datos existentes (cols A-I, preservar J-K, limpiar L-O)
     wsL.Range("A2:I" & Application.Max(wsL.UsedRange.Rows.Count, 2)).ClearContents
-    ' También limpiar cols L-M (Líneas, Departamentos)
-    wsL.Range("L2:M" & Application.Max(wsL.UsedRange.Rows.Count, 2)).ClearContents
+    wsL.Range("L2:O" & Application.Max(wsL.UsedRange.Rows.Count, 2)).ClearContents
 
     ' Cargar cada catálogo desde el archivo externo
     CargarClientesDesde wbCat, wsL
@@ -34,6 +33,8 @@ Sub RefrescarListas()
     CargarRacksDesde wbCat, wsL
     CargarLineasDesde wbCat, wsL
     CargarDepartamentosDesde wbCat, wsL
+    CargarUsuariosDesde wbCat, wsL
+    CargarGruposDesde wbCat, wsL
 
     ' Cerrar archivo de catálogos sin guardar
     wbCat.Close SaveChanges:=False
@@ -50,7 +51,9 @@ Sub RefrescarListas()
         NContar(wsL, 6) & " racks línea" & vbCrLf & _
         NContar(wsL, 7) & " racks todos" & vbCrLf & _
         NContar(wsL, 12) & " líneas" & vbCrLf & _
-        NContar(wsL, 13) & " departamentos", vbInformation, "RefrescarListas"
+        NContar(wsL, 13) & " departamentos" & vbCrLf & _
+        NContar(wsL, 14) & " usuarios" & vbCrLf & _
+        NContar(wsL, 15) & " grupos PN", vbInformation, "RefrescarListas"
     Exit Sub
 
 ErrorHandler:
@@ -355,6 +358,40 @@ Private Sub CargarDepartamentosDesde(wbCat As Workbook, wsL As Worksheet)
         End If
     Next r
     EscribirOrdenado wsL, 13, items
+End Sub
+
+' === USUARIOS (col N en Listas) ===
+Private Sub CargarUsuariosDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    On Error Resume Next
+    Set ws = wbCat.Sheets("Usuarios")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 14, items
+End Sub
+
+' === GRUPOS PN (col O en Listas) ===
+Private Sub CargarGruposDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    On Error Resume Next
+    Set ws = wbCat.Sheets("Grupos")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 15, items
 End Sub
 
 ' === HELPERS ===

@@ -21,11 +21,14 @@ const CatalogFetcher = (() => {
       fetchProducts(),
       fetchLabels(),
       fetchSpecs(),
-      fetchRacks()
+      fetchRacks(),
+      fetchUsers(),
+      fetchGroups()
     ]);
     log(`  ${customers.length} clientes, ${processes.length} procesos, ${products.length} productos`);
     log(`  ${labels.length} etiquetas, ${specs.length} specs, ${racks.linea.length}/${racks.all.length} racks`);
-    return { customers, processes, products, labels, specs, racks };
+    log(`  ${users.length} usuarios, ${groups.length} grupos`);
+    return { customers, processes, products, labels, specs, racks, users, groups };
   }
 
   async function fetchCustomers() {
@@ -167,6 +170,37 @@ const CatalogFetcher = (() => {
     return { all: allRacks, linea: lineaRacks };
   }
 
+  async function fetchUsers() {
+    const data = await api().query('SearchUsers', { searchQuery: '', first: 500 });
+    const nodes = data?.searchUsers?.nodes || data?.pagedData?.nodes || [];
+    const seen = new Set();
+    const result = [];
+    for (const u of nodes) {
+      const name = u.name || u.fullName;
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      result.push(name);
+    }
+    result.sort((a, b) => a.localeCompare(b));
+    return result;
+  }
+
+  async function fetchGroups() {
+    const data = await api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%' }, 'PNGroupSelect').catch(() => null);
+    if (!data) return [];
+    const nodes = data?.allPartNumberGroups?.nodes || data?.pagedData?.nodes || data?.partNumberGroups?.nodes || [];
+    const seen = new Set();
+    const result = [];
+    for (const g of nodes) {
+      const name = g.name;
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      result.push(name);
+    }
+    result.sort((a, b) => a.localeCompare(b));
+    return result;
+  }
+
   // ═══════════════════════════════════════════
   // GENERATE CATALOGS-ONLY FILE (preserves template formatting)
   // ═══════════════════════════════════════════
@@ -249,6 +283,16 @@ const CatalogFetcher = (() => {
     for (const d of departamentos) deptoRows.push([d]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(deptoRows), 'Departamentos');
 
+    // Usuarios sheet
+    const userRows = [['Nombre']];
+    for (const u of catalogs.users) userRows.push([u]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(userRows), 'Usuarios');
+
+    // Grupos sheet
+    const groupRows = [['Nombre']];
+    for (const g of catalogs.groups) groupRows.push([g]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(groupRows), 'Grupos');
+
     // Resumen sheet
     const counts = {
       clientes: catalogs.customers.length,
@@ -259,7 +303,9 @@ const CatalogFetcher = (() => {
       racksLinea: catalogs.racks.linea.length,
       racksTodos: catalogs.racks.all.length,
       lineas: lineas.length,
-      departamentos: departamentos.length
+      departamentos: departamentos.length,
+      usuarios: catalogs.users.length,
+      grupos: catalogs.groups.length
     };
     const resumenRows = [
       ['Catálogos Steelhead — ' + new Date().toLocaleDateString('es-MX')],
@@ -274,6 +320,8 @@ const CatalogFetcher = (() => {
       ['Racks (Todos)', counts.racksTodos],
       ['Líneas', counts.lineas],
       ['Departamentos', counts.departamentos],
+      ['Usuarios', counts.usuarios],
+      ['Grupos PN', counts.grupos],
       [],
       ['Instrucciones:'],
       ['1. Abre tu Plantilla de Cotizaciones (.xlsm)'],
@@ -310,7 +358,9 @@ const CatalogFetcher = (() => {
       `${counts.specs} especificaciones\n` +
       `${counts.racksLinea} racks línea / ${counts.racksTodos} racks total\n` +
       `${counts.lineas} líneas\n` +
-      `${counts.departamentos} departamentos\n\n` +
+      `${counts.departamentos} departamentos\n` +
+      `${counts.usuarios} usuarios\n` +
+      `${counts.grupos} grupos PN\n\n` +
       `Archivo descargado: Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx\n\n` +
       `Siguiente paso: Abre tu plantilla y ejecuta "RefrescarListas".\n` +
       `La macro detectará el archivo automáticamente.`);
