@@ -105,6 +105,17 @@ async function handleMessage(message) {
     case 'get-config':
       return cachedConfig || await loadConfig();
 
+    case 'check-scan-status': {
+      try {
+        const tab = await getSteelheadTab();
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: () => window.HashScanner ? { scanning: window.HashScanner.isActive(), stats: window.HashScanner.getStats() } : { scanning: false }
+        });
+        return results?.[0]?.result || { scanning: false };
+      } catch (_) { return { scanning: false }; }
+    }
+
     // ── Carga Masiva ──
     case 'run-csv': {
       const tab = await getSteelheadTab();

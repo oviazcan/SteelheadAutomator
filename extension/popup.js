@@ -12,8 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Init ──
   async function init() {
-    checkStatus();
     config = await sendToBackground('get-config');
+    await checkStatus();
     renderAppMenu();
 
     document.getElementById('btn-reload').addEventListener('click', () => {
@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const action of (app.actions || [])) {
       const btn = document.createElement('button');
       btn.className = action.type === 'primary' ? 'btn btn-primary' : 'btn';
+      btn.dataset.actionId = action.id;
       btn.innerHTML = `
         <span class="btn-icon">${action.icon || '▸'}</span>
         <span class="btn-label">${action.label}<small>${action.sublabel || ''}</small></span>`;
@@ -133,10 +134,21 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Error: ' + result.error);
             hideProgress();
           } else if (result?.results || result?.operations) {
-            // Show results panel
             renderResults(action.message, result);
             showView('results');
             hideProgress();
+          } else if (action.message === 'toggle-scan') {
+            // Update scan indicator + toggle button label
+            const scanning = result?.started === true;
+            updateScanIndicator(scanning);
+            showProgress(result.message || (scanning ? 'Capturando...' : 'Detenido.'), scanning ? 50 : 100);
+            // Update the button text
+            const toggleBtn = document.querySelector(`[data-action-id="toggle-scan"]`);
+            if (toggleBtn) {
+              toggleBtn.querySelector('.btn-label').innerHTML = scanning
+                ? '⏹️ Detener Captura<small>Pausar interceptación</small>'
+                : '🔍 Iniciar Captura<small>Interceptar requests GraphQL</small>';
+            }
           } else if (result?.started) {
             showProgress(result.message || 'Ejecutando...', 50);
           } else {
@@ -232,10 +244,20 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('status-bar').classList.toggle('error', !status.connected);
       document.getElementById('status-text').textContent = status.connected ? 'Conectado' : 'Sin conexión';
       document.getElementById('version-text').textContent = `v${status.version}`;
+
+      // Check if scanner is active
+      try {
+        const scanStatus = await sendToBackground('check-scan-status');
+        updateScanIndicator(scanStatus?.scanning);
+      } catch (_) { updateScanIndicator(false); }
     } catch (err) {
       document.getElementById('status-bar').classList.add('error');
       document.getElementById('status-text').textContent = err.message;
     }
+  }
+
+  function updateScanIndicator(active) {
+    document.getElementById('scan-indicator').classList.toggle('active', !!active);
   }
 
   function readFileAsText(file) {
