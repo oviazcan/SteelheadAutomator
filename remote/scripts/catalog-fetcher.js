@@ -299,25 +299,29 @@ const CatalogFetcher = (() => {
     for (const r of catalogs.racks.all) rackRows.push(['', '', '', '', r]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rackRows), 'Racks');
 
-    // Dimensiones Contables (Líneas y Departamentos) — datos estáticos de config
+    // Dimensiones Contables — datos del catálogo oficial
+    // TODO: migrar a query dinámico cuando se tenga hash de AcctDimension API
     const domain = api().getDomain();
     const lineas = (domain.lineas || [
       'T101-LI Pre Limpieza (4 - 5)', 'T102-LI Estaño e Iridizado (12)', 'T103-LI Cromo Duro (11)',
-      'T104-LI Zinc y Estaño Manual (6)', 'T105-LI Zinc Semiautomático (7)', 'T106-LI Zinc Automático (8)',
-      'T107-LI Plata (9)', 'T108-LI Electroless Níquel (14)', 'T109-LI Varios Manual (10)',
-      'T110-LI Rack Automático (13)', 'T111-LI Ensamble (13.1)', 'T112-LI Barril Automático (15)',
-      'T113-LI Rack Automático (16)', 'T114-LI Barril Automático (16.1)', 'T115-LI Anodizado (17)',
-      'T116-LI Rack Automático (18)', 'T117-LI Rack Automático (19)',
-      'T200-LI CuSO4 Automático (1)', 'T201-LI Níquel Automático (2)', 'T202-LI Cromo Decorativo (3)',
-      'T203-LI Zinc (7.1)', 'T204-LI Varios Manual (10.1)', 'T205-LI Plata (9.1)',
-      'T206-LI Electroless Níquel (14.1)', 'T207-LI Enjuague Rack Auto (2.1)', 'T208-LI Pre Limpieza (4.1)'
+      'T104-LI Zinc y Estaño Manual (6)', 'T105-LI Zinc Semiautomático (7)', 'T106-LI Zinc Barril (10)',
+      'T107-LI Plata Colgado Cx (60)', 'T108-LI Níquel Electroless (13)', 'T109-LI Níquel Barril (15)',
+      'T110-LI Plata Colgado (26)', 'T111-LI Estaño s/Aluminio y s/Cobre - Anodizado (14)',
+      'T112-LI Níquel Electroless (13.2)', 'T113-LI Zinc Barril Manual (17)',
+      'T114-LI Fosfato de Manganeso (7.1)', 'T115-LI Cromo Decorativo (23)',
+      'T116-LI Fosfato de Zinc y Pavón (7.2)', 'T117-LI Zinc Níquel Bonete',
+      'T201-LI Níquel y Estaño Colgado (25)', 'T202-LI Plata Selectiva (16.2)',
+      'T203-LI Plata Barril (16)', 'T204-LI Plata y Estaño s/Cobre Colgado (16.1)',
+      'T205-LI Plata y Estaño (16.3)', 'T206-LI Estaño y Lavado Barril (18)',
+      'T207-LI Anodizado y Electropulido (16.4)', 'T301-LI Estaño s/Cobre Barril (24)',
+      'T401-LI Epóxico BT y MT (30)'
     ]).sort();
     const departamentos = (domain.departamentos || [
       'Administración', 'Almacén', 'Almacén de Materia Prima', 'Calidad', 'Compras',
-      'Contabilidad', 'Dirección', 'Ingeniería de Procesos', 'Laboratorio', 'Logística',
-      'Mantenimiento', 'Planta 1', 'Planta 2', 'Producción', 'Recursos Humanos',
-      'Seguridad e Higiene', 'Sistemas', 'Taller Mecánico', 'Tratamiento de Aguas',
-      'Ventas', 'Ventas Internacionales'
+      'Contabilidad', 'Dirección', 'Ingeniería de Procesos', 'Ingeniería de Producto',
+      'Laboratorio', 'Mantenimiento', 'Mejora Continua', 'Metrología', 'Planificación',
+      'Producción', 'Recursos Humanos', 'Seguridad Industrial y Patrimonial',
+      'Seguridad Patrimonial', 'Servicio al Cliente', 'Servicios Generales', 'Sistemas'
     ]).sort();
 
     // Líneas sheet
