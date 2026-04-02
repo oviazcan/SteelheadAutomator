@@ -382,6 +382,115 @@ async function handleMessage(message) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    // ── Auditor ──
+    case 'run-auditor': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'auditor');
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.PNAuditor) return { error: 'PNAuditor no disponible' };
+          const criteria = window.PNAuditor.getCriteria();
+
+          return new Promise(resolve => {
+            // Build criteria form
+            if (!document.getElementById('dl9-styles')) {
+              const s = document.createElement('style'); s.id = 'dl9-styles';
+              s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:600px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 12px}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.dl9-btn-cancel{background:#475569;color:#e2e8f0}`;
+              document.head.appendChild(s);
+            }
+
+            const ov = document.createElement('div');
+            ov.className = 'dl9-overlay';
+            const md = document.createElement('div');
+            md.className = 'dl9-modal';
+            md.style.background = '#1a1a2e';
+
+            // Group criteria
+            const groups = {};
+            for (const c of criteria) {
+              if (!groups[c.group]) groups[c.group] = [];
+              groups[c.group].push(c);
+            }
+
+            let criteriaHTML = '';
+            for (const [group, items] of Object.entries(groups)) {
+              criteriaHTML += `<div style="margin-bottom:10px"><div style="font-size:12px;color:#38bdf8;font-weight:600;margin-bottom:4px">${group}</div>`;
+              for (const c of items) {
+                criteriaHTML += `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#e2e8f0;padding:2px 0;cursor:pointer"><input type="checkbox" class="sa-aud-crit" value="${c.id}">${c.label}</label>`;
+              }
+              criteriaHTML += '</div>';
+            }
+
+            md.innerHTML = `
+              <h2 style="color:#38bdf8">🔎 Auditor de Números de Parte</h2>
+              <div style="margin-bottom:12px;display:flex;gap:8px">
+                <div style="flex:1">
+                  <label style="font-size:11px;color:#94a3b8">Filtrar por cliente (opcional):</label>
+                  <input type="text" id="sa-aud-customer" placeholder="Nombre del cliente..." style="width:100%;padding:6px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px">
+                </div>
+                <div style="flex:1">
+                  <label style="font-size:11px;color:#94a3b8">Buscar PN (opcional):</label>
+                  <input type="text" id="sa-aud-search" placeholder="Nombre o parte del PN..." style="width:100%;padding:6px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px">
+                </div>
+              </div>
+              <p style="font-size:11px;color:#f97316;margin-bottom:8px">⚠️ Sin filtros puede tomar ~10 minutos. Se puede detener para resultados parciales.</p>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button id="sa-aud-all" style="font-size:10px;padding:3px 8px;border:1px solid #475569;border-radius:4px;background:none;color:#94a3b8;cursor:pointer">Seleccionar todos</button>
+                <button id="sa-aud-none" style="font-size:10px;padding:3px 8px;border:1px solid #475569;border-radius:4px;background:none;color:#94a3b8;cursor:pointer">Deseleccionar todos</button>
+              </div>
+              ${criteriaHTML}
+              <div class="dl9-btnrow">
+                <button class="dl9-btn dl9-btn-cancel" id="sa-aud-cancel">CANCELAR</button>
+                <button class="dl9-btn" id="sa-aud-exec" style="background:#38bdf8;color:#0f172a">AUDITAR</button>
+              </div>`;
+
+            ov.appendChild(md);
+            document.body.appendChild(ov);
+
+            document.getElementById('sa-aud-all').onclick = () => md.querySelectorAll('.sa-aud-crit').forEach(c => c.checked = true);
+            document.getElementById('sa-aud-none').onclick = () => md.querySelectorAll('.sa-aud-crit').forEach(c => c.checked = false);
+
+            document.getElementById('sa-aud-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve({ cancelled: true }); };
+            document.getElementById('sa-aud-exec').onclick = async () => {
+              const selected = [...md.querySelectorAll('.sa-aud-crit:checked')].map(c => c.value);
+              const customerFilter = document.getElementById('sa-aud-customer').value.trim();
+              const searchQuery = document.getElementById('sa-aud-search').value.trim();
+              ov.parentNode.removeChild(ov);
+
+              if (!selected.length) { resolve({ error: 'Selecciona al menos un criterio' }); return; }
+
+              try {
+                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter });
+                window.PNAuditor.removeAuditorUI();
+
+                // Show summary
+                let summary = 'Auditoría completada:\\n\\n';
+                for (const [id, data] of Object.entries(results.criteria)) {
+                  if (data.count > 0) summary += `${data.count} — ${data.label}\\n`;
+                }
+                summary += `\\nTotal auditados: ${results.totalAudited}\\nTotal problemas: ${results.totalIssues}`;
+                summary += results.stopped ? '\\n\\n(Resultados parciales — auditoría detenida)' : '';
+                summary += '\\n\\n¿Descargar CSV de corrección?';
+
+                if (confirm(summary)) {
+                  const exported = window.PNAuditor.exportCSV(results);
+                  alert('CSV descargado con ' + exported + ' PNs únicos.');
+                }
+                resolve(results);
+              } catch (e) {
+                window.PNAuditor.removeAuditorUI();
+                resolve({ error: e.message });
+              }
+            };
+          });
+        }
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     default:
       throw new Error(`Acción desconocida: ${message.action}`);
   }

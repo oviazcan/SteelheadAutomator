@@ -135,6 +135,16 @@
       "actions": [
         { "id": "run-archiver", "label": "Archivar PNs", "sublabel": "Configurar fecha y criterios", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver" }
       ]
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor de PNs",
+      "subtitle": "Verificar calidad de datos",
+      "icon": "🔎",
+      "scripts": ["scripts/steelhead-api.js", "scripts/auditor.js"],
+      "actions": [
+        { "id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor" }
+      ]
     }
   ],
   "knownOperations": {
