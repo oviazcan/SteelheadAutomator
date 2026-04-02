@@ -328,13 +328,22 @@ async function handleMessage(message) {
                 <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Fecha de corte:</label>
                 <input type="date" id="sa-arch-date" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px" value="${new Date().toISOString().slice(0, 10)}">
               </div>
-              <div style="margin-bottom:16px">
-                <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Tipo de fecha:</label>
-                <select id="sa-arch-type" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
-                  <option value="utilizacion" selected>Última utilización (sin OT, recibos, facturas)</option>
-                  <option value="creacion">Fecha de creación</option>
-                  <option value="modificacion">Fecha de modificación</option>
-                </select>
+              <div style="margin-bottom:16px;display:flex;gap:8px">
+                <div style="flex:1">
+                  <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Dirección:</label>
+                  <select id="sa-arch-direction" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
+                    <option value="before" selected>Antes de la fecha</option>
+                    <option value="after">Después de la fecha</option>
+                  </select>
+                </div>
+                <div style="flex:1">
+                  <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Tipo de fecha:</label>
+                  <select id="sa-arch-type" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
+                    <option value="utilizacion" selected>Última utilización</option>
+                    <option value="creacion">Fecha de creación</option>
+                    <option value="modificacion">Fecha de modificación</option>
+                  </select>
+                </div>
               </div>
               <div style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
                 <input type="checkbox" id="sa-arch-validation" checked>
@@ -355,11 +364,12 @@ async function handleMessage(message) {
             document.getElementById('sa-arch-form-exec').onclick = async () => {
               const cutoffDate = document.getElementById('sa-arch-date').value;
               const dateType = document.getElementById('sa-arch-type').value;
+              const direction = document.getElementById('sa-arch-direction').value;
               const enableValidation = document.getElementById('sa-arch-validation').checked;
               ov.parentNode.removeChild(ov);
 
               try {
-                const result = await window.PNArchiver.run({ cutoffDate, dateType, enableValidation });
+                const result = await window.PNArchiver.run({ cutoffDate, dateType, direction, enableValidation });
                 resolve(result);
               } catch (e) {
                 resolve({ error: e.message });

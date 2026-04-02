@@ -51,12 +51,15 @@ const PNArchiver = (() => {
 
   // Main archive flow
   async function run(options) {
-    const { cutoffDate, dateType, enableValidation } = options;
+    const { cutoffDate, dateType, direction = 'before', enableValidation } = options;
     const DOMAIN = api().getDomain();
     const cutoff = new Date(cutoffDate);
+    const isBefore = direction === 'before';
+    const compareDate = (d) => isBefore ? new Date(d) < cutoff : new Date(d) > cutoff;
+    const dirLabel = isBefore ? 'antes de' : 'después de';
     const results = { found: 0, archived: 0, validated: 0, errors: [] };
 
-    log(`Archivador: fecha corte ${cutoffDate}, tipo: ${dateType}, validación: ${enableValidation}`);
+    log(`Archivador: ${dirLabel} ${cutoffDate}, tipo: ${dateType}, validación: ${enableValidation}`);
 
     // Show progress UI
     showArchiverUI('Buscando números de parte activos...');
@@ -69,7 +72,7 @@ const PNArchiver = (() => {
     // Step 1: Pre-filter by creation date
     const candidates = [];
     for (const pn of allPNs) {
-      if (pn.createdAt && new Date(pn.createdAt) < cutoff) {
+      if (pn.createdAt && compareDate(pn.createdAt)) {
         candidates.push(pn);
       }
     }
@@ -173,7 +176,7 @@ const PNArchiver = (() => {
     } else {
       for (const pn of candidates) {
         toArchive.push({ id: pn.id, name: pn.name, createdAt: pn.createdAt, customer: pn.customerByCustomerId?.name || '',
-          reason: dateType === 'creacion' ? `Creado antes de ${cutoffDate}` : `Sin actividad antes de ${cutoffDate}`, selected: true });
+          reason: dateType === 'creacion' ? `Creado ${dirLabel} ${cutoffDate}` : `${dirLabel} ${cutoffDate}`, selected: true });
       }
     }
 
@@ -186,7 +189,7 @@ const PNArchiver = (() => {
     }
 
     // Show preview with checkboxes
-    const selectedPNs = await showArchiverPreview(toArchive, cutoffDate, dateType, enableValidation);
+    const selectedPNs = await showArchiverPreview(toArchive, cutoffDate, dateType, direction, enableValidation);
     if (!selectedPNs) { log('Cancelado.'); return { cancelled: true }; }
 
     updateArchiverUI(`Archivando ${selectedPNs.length} PNs...`);
@@ -259,7 +262,8 @@ const PNArchiver = (() => {
     if (ov) ov.parentNode.removeChild(ov);
   }
 
-  function showArchiverPreview(pns, cutoffDate, dateType, enableValidation) {
+  function showArchiverPreview(pns, cutoffDate, dateType, direction, enableValidation) {
+    const isBefore = direction === 'before';
     return new Promise(resolve => {
       removeArchiverUI();
       if (!document.getElementById('dl9-styles')) {
@@ -279,7 +283,7 @@ const PNArchiver = (() => {
       md.innerHTML = `
         <h2 style="color:#4ade80">Archivador Masivo — Preview</h2>
         <p style="color:#94a3b8;font-size:13px;margin-bottom:12px">
-          ${pns.length} PNs con fecha de ${dateLabel} anterior a ${cutoffDate}
+          ${pns.length} PNs con fecha de ${dateLabel} ${isBefore ? 'anterior' : 'posterior'} a ${cutoffDate}
           ${enableValidation ? ' + activar validación de ingeniería' : ''}
         </p>
         <div style="display:flex;gap:8px;margin-bottom:12px">
