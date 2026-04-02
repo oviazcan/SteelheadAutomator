@@ -22,7 +22,9 @@
         "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394",
         "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4",
         "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8",
-        "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797"
+        "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797",
+        "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9",
+        "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953"
       },
       "queries": {
         "GetQuote_v8": "15db7a9b0325c45c181d7be61e223d1dbede8179433a25db36ebc9699097acb6",
@@ -144,6 +146,16 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/auditor.js"],
       "actions": [
         { "id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor" }
+      ]
+    },
+    {
+      "id": "file-uploader",
+      "name": "Cargador de Archivos",
+      "subtitle": "Fotos y planos por PN",
+      "icon": "📎",
+      "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader.js"],
+      "actions": [
+        { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
       ]
     }
   ],
