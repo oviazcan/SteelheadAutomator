@@ -382,6 +382,36 @@ async function handleMessage(message) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    // ── File Uploader ──
+    case 'upload-pn-files': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'file-uploader');
+
+      // Open file picker in page context (supports multiple files)
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.FileUploader) return { error: 'FileUploader no disponible' };
+          return new Promise(resolve => {
+            const inp = document.createElement('input');
+            inp.type = 'file';
+            inp.multiple = true;
+            inp.accept = '.pdf,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.doc,.docx,.xls,.xlsx';
+            inp.onchange = async () => {
+              if (!inp.files?.length) { resolve({ cancelled: true }); return; }
+              try {
+                const result = await window.FileUploader.run(inp.files);
+                resolve(result);
+              } catch (e) { resolve({ error: e.message }); }
+            };
+            inp.click();
+          });
+        }
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     // ── Auditor ──
     case 'run-auditor': {
       const tab = await getSteelheadTab();
