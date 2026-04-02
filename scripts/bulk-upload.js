@@ -456,7 +456,7 @@ const BulkUpload = (() => {
       // ── Assignee ──
       let assigneeId = null, assigneeName = '';
       if (header.asignado) {
-        const ud = await api().query('SearchUsers', { searchQuery: header.asignado, first: 50 });
+        const ud = await api().query('SearchUsers', { searchQuery: header.asignado, first: 500 });
         const un = ud?.searchUsers?.nodes || ud?.pagedData?.nodes || [];
         const u = un.find(u => (u.name || u.fullName || '').toUpperCase().includes(header.asignado.toUpperCase()));
         if (u) { assigneeId = u.id; assigneeName = u.name || u.fullName || ''; }
@@ -468,7 +468,7 @@ const BulkUpload = (() => {
       let defaultProcessId = null, defaultProcessName = '';
       if (header.processId) { defaultProcessId = parseInt(header.processId); defaultProcessName = `id:${defaultProcessId}`; }
       else if (header.processName) {
-        const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${header.processName}%`, first: 50 });
+        const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${header.processName}%`, first: 500 });
         const pn2 = pd?.allProcessNodes?.nodes || pd?.pagedData?.nodes || [];
         const pr = pn2.find(p => p.name?.toUpperCase().includes(header.processName.toUpperCase()));
         if (pr) { defaultProcessId = pr.id; defaultProcessName = pr.name; }
@@ -482,8 +482,8 @@ const BulkUpload = (() => {
         api().query('SearchSpecsForSelect', { like: '%%', locationIds: [], alreadySelectedSpecs: [], orderBy: ['NAME_ASC'] }),
         api().query('AllRackTypes', {}),
         api().query('SearchUnits', {}),
-        api().query('SearchProducts', { searchQuery: '%%', first: 200 }),
-        api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%' }, 'PNGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PNGroupSelect')).catch(() => null),
+        api().query('SearchProducts', { searchQuery: '%%', first: 500 }),
+        api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PNGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PNGroupSelect')).catch(() => null),
       ]);
 
       const labelByName = new Map(); for (const l of (labelsD?.allLabels?.nodes || [])) labelByName.set(l.name, l.id);

@@ -38,7 +38,7 @@ const CatalogFetcher = (() => {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
     for (const letter of letters) {
       try {
-        const data = await api().query('CustomerSearchByName', { nameLike: `${letter}%`, orderBy: ['NAME_ASC'] });
+        const data = await api().query('CustomerSearchByName', { nameLike: `${letter}%`, orderBy: ['NAME_ASC'], first: 500 });
         const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || [];
         for (const n of nodes) {
           if (n.id && !seenIds.has(n.id)) {
@@ -233,7 +233,7 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchGroups() {
-    const data = await api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%' }, 'PNGroupSelect').catch(() => null);
+    const data = await api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PNGroupSelect').catch(() => null);
     if (!data) return [];
     const nodes = data?.allPartNumberGroups?.nodes || data?.pagedData?.nodes || data?.partNumberGroups?.nodes || [];
     const seen = new Set();
