@@ -10,10 +10,9 @@ const PNArchiver = (() => {
   const warn = (m) => api().warn(m);
 
   // Fetch all active (non-archived) PNs with pagination
-  async function fetchAllActivePNs(onProgress) {
+  async function fetchAllActivePNs(onProgress, pageSize = 500) {
     const allPNs = [];
     let offset = 0;
-    const pageSize = 50;
     while (true) {
       const data = await api().query('AllPartNumbers', {
         orderBy: ['ID_ASC'], offset, first: pageSize, searchQuery: ''
@@ -63,7 +62,7 @@ const PNArchiver = (() => {
     showArchiverUI('Buscando números de parte activos...');
 
     // Fetch all active PNs
-    const allPNs = await fetchAllActivePNs((msg) => updateArchiverUI(msg));
+    const allPNs = await fetchAllActivePNs((msg) => updateArchiverUI(msg), 500);
     log(`  ${allPNs.length} PNs activos encontrados`);
     updateArchiverUI(`${allPNs.length} PNs activos. Analizando actividad...`);
 
@@ -80,6 +79,8 @@ const PNArchiver = (() => {
 
     if (dateType === 'utilizacion') {
       // Step 2a: Get all WO PN IDs (batch approach)
+      // Use createdAtAfter to only get WOs since a reasonable date (avoid loading ALL history)
+      // We want WOs that prove a PN is "in use" — any WO ever means the PN was used
       updateArchiverUI(`Cargando órdenes de trabajo...`);
       const woPNIds = new Set();
       let woOffset = 0;
@@ -87,7 +88,7 @@ const PNArchiver = (() => {
         try {
           const woData = await api().query('AllWorkOrders', {
             status: null, includeArchived: 'YES', couponWorkOrders: null, computeMargins: false,
-            orderBy: ['ID_DESC'], offset: woOffset, first: 50, searchQuery: ''
+            orderBy: ['ID_DESC'], offset: woOffset, first: 500, searchQuery: ''
           }, 'AllWorkOrders');
           const woNodes = woData?.pagedData?.nodes || [];
           if (!woNodes.length) break;
@@ -101,9 +102,9 @@ const PNArchiver = (() => {
             }
           }
 
-          updateArchiverUI(`OTs: página ${Math.floor(woOffset / 50) + 1}, ${woPNIds.size} PNs con OT encontrados`);
-          if (woNodes.length < 50) break;
-          woOffset += 50;
+          updateArchiverUI(`OTs: página ${Math.floor(woOffset / 500) + 1}, ${woPNIds.size} PNs con OT encontrados`);
+          if (woNodes.length < 500) break;
+          woOffset += 500;
         } catch (e) {
           warn(`AllWorkOrders offset ${woOffset}: ${String(e).substring(0, 60)}`);
           break;
@@ -118,7 +119,7 @@ const PNArchiver = (() => {
       while (true) {
         try {
           const recData = await api().query('AllReceivers', {
-            orderBy: ['CREATED_AT_DESC'], offset: recOffset, first: 50, searchQuery: ''
+            orderBy: ['CREATED_AT_DESC'], offset: recOffset, first: 500, searchQuery: ''
           }, 'AllReceivers');
           const recNodes = recData?.pagedData?.nodes || [];
           if (!recNodes.length) break;
@@ -131,9 +132,9 @@ const PNArchiver = (() => {
             }
           }
 
-          updateArchiverUI(`Recibos: página ${Math.floor(recOffset / 50) + 1}, ${recPNIds.size} PNs con recibos`);
-          if (recNodes.length < 50) break;
-          recOffset += 50;
+          updateArchiverUI(`Recibos: página ${Math.floor(recOffset / 500) + 1}, ${recPNIds.size} PNs con recibos`);
+          if (recNodes.length < 500) break;
+          recOffset += 500;
         } catch (e) {
           warn(`AllReceivers offset ${recOffset}: ${String(e).substring(0, 60)}`);
           break;
