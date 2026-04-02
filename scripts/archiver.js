@@ -67,7 +67,7 @@ const PNArchiver = (() => {
     log(`  ${allPNs.length} PNs activos encontrados`);
     updateArchiverUI(`${allPNs.length} PNs activos. Analizando actividad...`);
 
-    // Step 1: Pre-filter by creation date (fast, from AllPartNumbers)
+    // Step 1: Pre-filter by creation date
     const candidates = [];
     for (const pn of allPNs) {
       if (pn.createdAt && new Date(pn.createdAt) < cutoff) {
@@ -75,51 +75,104 @@ const PNArchiver = (() => {
       }
     }
     log(`  ${candidates.length} PNs creados antes de ${cutoffDate}`);
-    updateArchiverUI(`${candidates.length} PNs candidatos. ${dateType === 'utilizacion' ? 'Verificando actividad (OTs y recibos)...' : 'Preparando preview...'}`);
 
-    // Step 2: For "utilización", check each candidate for WO/receiver activity
     const toArchive = [];
+
     if (dateType === 'utilizacion') {
-      // Process in batches of 10
-      for (let i = 0; i < candidates.length; i++) {
-        const pn = candidates[i];
-        if (i % 5 === 0) {
-          const pct = Math.round((i / candidates.length) * 100);
-          updateArchiverUI(`Verificando actividad: ${i + 1}/${candidates.length} (${pct}%) — ${toArchive.length} sin uso encontrados`);
-        }
-
+      // Step 2a: Get all WO PN IDs (batch approach)
+      updateArchiverUI(`Cargando órdenes de trabajo...`);
+      const woPNIds = new Set();
+      let woOffset = 0;
+      while (true) {
         try {
-          const detail = await api().query('GetPartNumber', { partNumberId: pn.id, usagesLimit: 1, usagesOffset: 0 });
-          const pnData = detail?.partNumberById;
-          if (!pnData) continue;
+          const woData = await api().query('AllWorkOrders', {
+            status: null, includeArchived: 'YES', couponWorkOrders: null, computeMargins: false,
+            orderBy: ['ID_DESC'], offset: woOffset, first: 50, searchQuery: ''
+          }, 'AllWorkOrders');
+          const woNodes = woData?.pagedData?.nodes || [];
+          if (!woNodes.length) break;
 
-          // Check for work order activity
-          const hasWO = (pnData.workOrderPartNumberTreatmentStationsByPartNumberId?.nodes?.length || 0) > 0;
-          // Check for receiver/receiving activity (allWorkOrderPartNumberTreatmentStations covers this)
-          const hasActivity = hasWO;
-
-          if (!hasActivity) {
-            toArchive.push({
-              id: pn.id, name: pn.name, createdAt: pn.createdAt,
-              customer: pn.customerByCustomerId?.name || '',
-              reason: 'Sin OTs ni recibos',
-              selected: true
-            });
+          for (const wo of woNodes) {
+            // Extract PN IDs from work order
+            const pnWOs = wo.partNumberWorkOrdersByWorkOrderId?.nodes || [];
+            for (const pnWO of pnWOs) {
+              const pnId = pnWO.partNumberId || pnWO.partNumberByPartNumberId?.id;
+              if (pnId) woPNIds.add(pnId);
+            }
           }
+
+          updateArchiverUI(`OTs: página ${Math.floor(woOffset / 50) + 1}, ${woPNIds.size} PNs con OT encontrados`);
+          if (woNodes.length < 50) break;
+          woOffset += 50;
         } catch (e) {
-          // If query fails, skip this PN
-          warn(`Verificar ${pn.name}: ${String(e).substring(0, 60)}`);
+          warn(`AllWorkOrders offset ${woOffset}: ${String(e).substring(0, 60)}`);
+          break;
+        }
+      }
+      log(`  ${woPNIds.size} PNs con órdenes de trabajo`);
+
+      // Step 2b: Get receiver PN IDs
+      updateArchiverUI(`Cargando recibos...`);
+      const recPNIds = new Set();
+      let recOffset = 0;
+      while (true) {
+        try {
+          const recData = await api().query('AllReceivers', {
+            orderBy: ['CREATED_AT_DESC'], offset: recOffset, first: 50, searchQuery: ''
+          }, 'AllReceivers');
+          const recNodes = recData?.pagedData?.nodes || [];
+          if (!recNodes.length) break;
+
+          for (const rec of recNodes) {
+            const bomItems = rec.receiverBomItemsByReceiverId?.nodes || [];
+            for (const item of bomItems) {
+              const pnId = item.partNumberId || item.partNumberByPartNumberId?.id;
+              if (pnId) recPNIds.add(pnId);
+            }
+          }
+
+          updateArchiverUI(`Recibos: página ${Math.floor(recOffset / 50) + 1}, ${recPNIds.size} PNs con recibos`);
+          if (recNodes.length < 50) break;
+          recOffset += 50;
+        } catch (e) {
+          warn(`AllReceivers offset ${recOffset}: ${String(e).substring(0, 60)}`);
+          break;
+        }
+      }
+      log(`  ${recPNIds.size} PNs con recibos`);
+
+      // Step 2c: If batch approach found 0 PNs (nodes might be collapsed), fallback to individual
+      const usedPNIds = new Set([...woPNIds, ...recPNIds]);
+
+      if (usedPNIds.size === 0 && candidates.length > 0) {
+        log('  WARN: Batch approach returned 0 PNs used — fallback to individual check');
+        updateArchiverUI(`Verificación individual (batch no disponible)...`);
+        for (let i = 0; i < candidates.length; i++) {
+          const pn = candidates[i];
+          if (i % 5 === 0) updateArchiverUI(`Verificando ${i + 1}/${candidates.length} (${Math.round(i/candidates.length*100)}%) — ${toArchive.length} sin uso`);
+          try {
+            const detail = await api().query('GetPartNumber', { partNumberId: pn.id, usagesLimit: 1, usagesOffset: 0 });
+            const pnData = detail?.partNumberById;
+            if (!pnData) continue;
+            const hasWO = (pnData.workOrderPartNumberTreatmentStationsByPartNumberId?.nodes?.length || 0) > 0;
+            if (!hasWO) {
+              toArchive.push({ id: pn.id, name: pn.name, createdAt: pn.createdAt, customer: pn.customerByCustomerId?.name || '', reason: 'Sin OTs ni recibos', selected: true });
+            }
+          } catch (_) {}
+        }
+      } else {
+        // Cross-reference: candidates not in usedPNIds
+        updateArchiverUI(`Cruzando datos: ${candidates.length} candidatos vs ${usedPNIds.size} PNs con actividad...`);
+        for (const pn of candidates) {
+          if (!usedPNIds.has(pn.id)) {
+            toArchive.push({ id: pn.id, name: pn.name, createdAt: pn.createdAt, customer: pn.customerByCustomerId?.name || '', reason: 'Sin OTs ni recibos', selected: true });
+          }
         }
       }
     } else {
-      // creación o modificación — all candidates match
       for (const pn of candidates) {
-        toArchive.push({
-          id: pn.id, name: pn.name, createdAt: pn.createdAt,
-          customer: pn.customerByCustomerId?.name || '',
-          reason: dateType === 'creacion' ? `Creado antes de ${cutoffDate}` : `Modificado antes de ${cutoffDate}`,
-          selected: true
-        });
+        toArchive.push({ id: pn.id, name: pn.name, createdAt: pn.createdAt, customer: pn.customerByCustomerId?.name || '',
+          reason: dateType === 'creacion' ? `Creado antes de ${cutoffDate}` : `Sin actividad antes de ${cutoffDate}`, selected: true });
       }
     }
 
