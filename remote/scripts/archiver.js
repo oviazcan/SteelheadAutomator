@@ -67,38 +67,63 @@ const PNArchiver = (() => {
     log(`  ${allPNs.length} PNs activos encontrados`);
     updateArchiverUI(`${allPNs.length} PNs activos. Analizando actividad...`);
 
-    // Filter based on date criteria
-    const toArchive = [];
-    for (let i = 0; i < allPNs.length; i++) {
-      const pn = allPNs[i];
-      if (i % 20 === 0) updateArchiverUI(`Analizando ${i + 1}/${allPNs.length}...`);
-
-      let matchesDate = false;
-      if (dateType === 'creacion') {
-        matchesDate = pn.createdAt && new Date(pn.createdAt) < cutoff;
-      } else if (dateType === 'modificacion') {
-        // updatedAt not available in AllPartNumbers, use createdAt as fallback
-        const dateToCheck = pn.updatedAt || pn.createdAt;
-        matchesDate = dateToCheck && new Date(dateToCheck) < cutoff;
-      } else {
-        // utilización — default: createdAt < cutoff AND no recent activity
-        // Since AllPartNumbers doesn't include usage dates,
-        // we use createdAt as pre-filter, then check usage for those
-        matchesDate = pn.createdAt && new Date(pn.createdAt) < cutoff;
+    // Step 1: Pre-filter by creation date (fast, from AllPartNumbers)
+    const candidates = [];
+    for (const pn of allPNs) {
+      if (pn.createdAt && new Date(pn.createdAt) < cutoff) {
+        candidates.push(pn);
       }
+    }
+    log(`  ${candidates.length} PNs creados antes de ${cutoffDate}`);
+    updateArchiverUI(`${candidates.length} PNs candidatos. ${dateType === 'utilizacion' ? 'Verificando actividad (OTs y recibos)...' : 'Preparando preview...'}`);
 
-      if (matchesDate) {
+    // Step 2: For "utilización", check each candidate for WO/receiver activity
+    const toArchive = [];
+    if (dateType === 'utilizacion') {
+      // Process in batches of 10
+      for (let i = 0; i < candidates.length; i++) {
+        const pn = candidates[i];
+        if (i % 5 === 0) {
+          const pct = Math.round((i / candidates.length) * 100);
+          updateArchiverUI(`Verificando actividad: ${i + 1}/${candidates.length} (${pct}%) — ${toArchive.length} sin uso encontrados`);
+        }
+
+        try {
+          const detail = await api().query('GetPartNumber', { partNumberId: pn.id, usagesLimit: 1, usagesOffset: 0 });
+          const pnData = detail?.partNumberById;
+          if (!pnData) continue;
+
+          // Check for work order activity
+          const hasWO = (pnData.workOrderPartNumberTreatmentStationsByPartNumberId?.nodes?.length || 0) > 0;
+          // Check for receiver/receiving activity (allWorkOrderPartNumberTreatmentStations covers this)
+          const hasActivity = hasWO;
+
+          if (!hasActivity) {
+            toArchive.push({
+              id: pn.id, name: pn.name, createdAt: pn.createdAt,
+              customer: pn.customerByCustomerId?.name || '',
+              reason: 'Sin OTs ni recibos',
+              selected: true
+            });
+          }
+        } catch (e) {
+          // If query fails, skip this PN
+          warn(`Verificar ${pn.name}: ${String(e).substring(0, 60)}`);
+        }
+      }
+    } else {
+      // creación o modificación — all candidates match
+      for (const pn of candidates) {
         toArchive.push({
-          id: pn.id,
-          name: pn.name,
-          createdAt: pn.createdAt,
+          id: pn.id, name: pn.name, createdAt: pn.createdAt,
           customer: pn.customerByCustomerId?.name || '',
+          reason: dateType === 'creacion' ? `Creado antes de ${cutoffDate}` : `Modificado antes de ${cutoffDate}`,
           selected: true
         });
       }
     }
 
-    log(`  ${toArchive.length} PNs cumplen criterio de fecha`);
+    log(`  ${toArchive.length} PNs para archivar (de ${candidates.length} candidatos)`);
     results.found = toArchive.length;
 
     if (!toArchive.length) {
@@ -210,12 +235,13 @@ const PNArchiver = (() => {
         </div>
         <div style="max-height:300px;overflow-y:auto">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <tr style="color:#94a3b8;border-bottom:1px solid #334155"><th style="text-align:left;padding:4px"><input type="checkbox" checked id="sa-arch-th-check"></th><th style="text-align:left;padding:4px">PN</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Creado</th></tr>
+            <tr style="color:#94a3b8;border-bottom:1px solid #334155"><th style="text-align:left;padding:4px"><input type="checkbox" checked id="sa-arch-th-check"></th><th style="text-align:left;padding:4px">PN</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Creado</th><th style="text-align:left;padding:4px">Razón</th></tr>
             ${pns.map((p, i) => `<tr style="border-bottom:1px solid #1e293b">
               <td style="padding:3px"><input type="checkbox" checked class="sa-arch-check" data-idx="${i}"></td>
               <td style="padding:3px">${p.name}</td>
               <td style="padding:3px;color:#94a3b8;font-size:11px">${p.customer}</td>
               <td style="padding:3px;color:#94a3b8;font-size:11px">${p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-MX') : '?'}</td>
+              <td style="padding:3px;color:#4ade80;font-size:11px">${p.reason || ''}</td>
             </tr>`).join('')}
           </table>
         </div>
