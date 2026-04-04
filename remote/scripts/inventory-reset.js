@@ -314,17 +314,23 @@ const InventoryReset = (() => {
         const file = fileInput.files[0];
         const reader = new FileReader();
         reader.onload = () => {
+          const buf = reader.result;
+          // Try UTF-8 first, fallback to Latin-1 if replacement chars found
+          let text = new TextDecoder('utf-8').decode(buf);
+          if (text.includes('\uFFFD')) {
+            text = new TextDecoder('iso-8859-1').decode(buf);
+          }
           ov.parentNode.removeChild(ov);
           resolve({
             selectedTypes,
-            csvText: reader.result,
+            csvText: text,
             csvFilename: file.name
           });
         };
         reader.onerror = () => {
           alert('Error leyendo archivo.');
         };
-        reader.readAsText(file, 'UTF-8');
+        reader.readAsArrayBuffer(file);
       };
     });
   }
