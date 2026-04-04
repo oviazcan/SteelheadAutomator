@@ -494,26 +494,67 @@ const InventoryReset = (() => {
     log(`Errores creación: ${results.created.errors.length}`);
 
     removeUI();
-
-    // Show summary alert
-    let summary = `Reinicio de Inventario completado:\n\n`;
-    summary += `Lotes archivados: ${results.archived.total}\n`;
-    summary += `Lotes creados: ${results.created.total}/${matched.length}\n`;
-    if (results.created.noMatch.length > 0) {
-      summary += `\nSin match en inventario (${results.created.noMatch.length}):\n`;
-      summary += results.created.noMatch.slice(0, 15).join('\n');
-      if (results.created.noMatch.length > 15) summary += `\n... y ${results.created.noMatch.length - 15} más`;
-    }
-    if (results.archived.errors.length > 0) {
-      summary += `\n\nErrores de archivado: ${results.archived.errors.length}`;
-    }
-    if (results.created.errors.length > 0) {
-      summary += `\n\nErrores de creación:\n`;
-      summary += results.created.errors.slice(0, 10).join('\n');
-    }
-    alert(summary);
-
+    showSummary(results, matched.length);
     return results;
+  }
+
+  // ── Summary modal with copy log ──
+  function showSummary(results, matchedCount) {
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-invr-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-invr-modal';
+    md.style.background = '#1a1e2e';
+
+    const hasErrors = results.archived.errors.length > 0 || results.created.errors.length > 0;
+    const iconColor = hasErrors ? '#ef4444' : '#4ade80';
+    const icon = hasErrors ? '⚠️' : '✅';
+
+    let noMatchHTML = '';
+    if (results.created.noMatch.length > 0) {
+      const items = results.created.noMatch.slice(0, 20).map(n => `<div style="font-size:11px;color:#94a3b8;padding:1px 0">${n}</div>`).join('');
+      const more = results.created.noMatch.length > 20 ? `<div style="font-size:11px;color:#64748b">... y ${results.created.noMatch.length - 20} más</div>` : '';
+      noMatchHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#f59e0b;font-weight:600;margin-bottom:4px">Sin match (${results.created.noMatch.length}):</div>${items}${more}</div>`;
+    }
+
+    let errorsHTML = '';
+    if (results.created.errors.length > 0) {
+      const items = results.created.errors.slice(0, 10).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores de creación (${results.created.errors.length}):</div>${items}</div>`;
+    }
+
+    md.innerHTML = `
+      <h2 style="color:${iconColor}">${icon} Reinicio de Inventario</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0">
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#4ade80">${results.archived.total}</div>
+          <div style="font-size:11px;color:#94a3b8">Lotes archivados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#38bdf8">${results.created.total}/${matchedCount}</div>
+          <div style="font-size:11px;color:#94a3b8">Lotes creados</div>
+        </div>
+      </div>
+      ${noMatchHTML}
+      ${errorsHTML}
+      <div class="sa-invr-btnrow" style="margin-top:16px">
+        <button class="sa-invr-btn" id="sa-invr-copylog" style="background:#334155;color:#e2e8f0">📋 Copiar Log</button>
+        <button class="sa-invr-btn sa-invr-btn-exec" id="sa-invr-close">CERRAR</button>
+      </div>`;
+
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+
+    document.getElementById('sa-invr-close').onclick = () => ov.parentNode.removeChild(ov);
+    document.getElementById('sa-invr-copylog').onclick = () => {
+      const logText = api().getLog().join('\n');
+      navigator.clipboard.writeText(logText).then(() => {
+        const btn = document.getElementById('sa-invr-copylog');
+        btn.textContent = '✅ Copiado';
+        setTimeout(() => { btn.textContent = '📋 Copiar Log'; }, 2000);
+      });
+    };
   }
 
   return { run };
