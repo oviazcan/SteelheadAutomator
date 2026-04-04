@@ -104,7 +104,7 @@ const InventoryReset = (() => {
         }, 'UpdateInventoryBatchesChecked');
         archived += chunk.length;
       } catch (e) {
-        errors.push(...chunk.map(id => ({ id, error: String(e).substring(0, 100) })));
+        errors.push(...chunk.map(id => ({ id, error: String(e).substring(0, 300) })));
       }
       if (onProgress) onProgress(`Archivando lotes: ${archived}/${batchIds.length}`);
     }
@@ -153,6 +153,7 @@ const InventoryReset = (() => {
           debitAccounts: {
             createInventoryBatch: {
               name: 'Carga Inicial',
+              unitCostMicroDollars: 0,
               inventoryItemId: itemId,
               descriptionMarkdown: `Carga inicial desde: ${csvFilename}`,
               statusId,
@@ -175,12 +176,6 @@ const InventoryReset = (() => {
     try {
       return await api().query('CreateInventoryTransferEventGroups', payload, 'CreateInventoryTransferEventGroups');
     } catch (e) {
-      // Retry with unitCostMicroDollars: 0 if API rejected the payload
-      if (String(e).includes('unitCost') || String(e).includes('cost')) {
-        payload.inventoryTransferEventGroups[0].inventoryTransferEvents[0]
-          .debitAccounts.createInventoryBatch.unitCostMicroDollars = 0;
-        return await api().query('CreateInventoryTransferEventGroups', payload, 'CreateInventoryTransferEventGroups');
-      }
       throw e;
     }
   }
@@ -480,8 +475,8 @@ const InventoryReset = (() => {
         await createBatch(item.itemId, microQty, locationId, statusId, inputSchemaId, csvFilename);
         results.created.total++;
       } catch (e) {
-        results.created.errors.push(`"${item.name}": ${String(e).substring(0, 100)}`);
-        warn(`Error creando lote "${item.name}": ${String(e).substring(0, 100)}`);
+        results.created.errors.push(`"${item.name}": ${String(e).substring(0, 300)}`);
+        warn(`Error creando lote "${item.name}": ${String(e).substring(0, 300)}`);
       }
     }
 
