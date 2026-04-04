@@ -272,7 +272,9 @@ const InventoryReset = (() => {
 
         <div style="margin-bottom:16px">
           <label style="font-size:13px;color:#cbd5e1;display:block;margin-bottom:6px;font-weight:600">Tipos de inventario:</label>
-          ${typesHTML}
+          <div style="max-height:200px;overflow-y:auto;padding-right:8px">
+            ${typesHTML}
+          </div>
         </div>
 
         <div style="margin-bottom:16px">
