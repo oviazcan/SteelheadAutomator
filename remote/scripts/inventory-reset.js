@@ -9,6 +9,11 @@ const InventoryReset = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // Normalize for matching: strip accents, collapse spaces, lowercase
+  function normalizeKey(s) {
+    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
   // ── CSV Parser ──
   function parseCSV(csvText, filename) {
     const lines = csvText.trim().split(/\r?\n/);
@@ -399,16 +404,16 @@ const InventoryReset = (() => {
     // ── Phase 3: Create new batches from CSV ──
     updateProgress('Preparando carga inicial...', 60);
 
-    // Build name→item lookup from all loaded items (case-insensitive)
+    // Build name→item lookup from all loaded items (accent-normalized)
     const itemLookup = {};
     for (const item of allItemsFlat) {
-      itemLookup[item.name.trim().toLowerCase()] = item;
+      itemLookup[normalizeKey(item.name)] = item;
     }
 
     // Match CSV items
     const matched = [];
     for (const csvItem of csvItems) {
-      const key = csvItem.name.trim().toLowerCase();
+      const key = normalizeKey(csvItem.name);
       const item = itemLookup[key];
       if (item) {
         matched.push({ ...csvItem, itemId: item.id, typeId: item.typeId });
