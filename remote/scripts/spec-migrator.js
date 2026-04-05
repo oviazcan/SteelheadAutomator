@@ -251,17 +251,38 @@ const SpecMigrator = (() => {
           const specDetail = await getSpecFields(specId);
           const fields = specDetail?.specFieldSpecsBySpecId?.nodes || [];
 
+          // Log raw structure for debugging
+          log(`SpecFields for ${specName}: ${fields.length} fields`);
+          for (const f of fields) {
+            log(`  Field: ${f.specFieldBySpecFieldId?.name || '?'} | isGeneric: ${f.isGeneric} | defaultValues type: ${typeof f.defaultValues} | value: ${JSON.stringify(f.defaultValues).substring(0, 200)}`);
+          }
+
           // Extract all params from defaultValues
+          // defaultValues can be: array of objects, single object, or null
           const allParams = [];
           for (const field of fields) {
-            const defaults = field.defaultValues || [];
+            let defaults = field.defaultValues;
+            if (!defaults) continue;
+            if (!Array.isArray(defaults)) defaults = [defaults];
             for (const dv of defaults) {
+              if (typeof dv !== 'object' || dv === null) continue;
+              // Try nested specFieldParamBySpecFieldParamId structure
               if (dv.specFieldParamBySpecFieldParamId) {
                 const param = dv.specFieldParamBySpecFieldParamId;
                 allParams.push({
                   id: dv.id,
                   paramId: param.id,
                   name: param.name || param.value || `Param ${param.id}`,
+                  fieldName: field.specFieldBySpecFieldId?.name || '',
+                  isGeneric: field.isGeneric
+                });
+              }
+              // Try flat structure (id + name directly on defaultValue)
+              else if (dv.id) {
+                allParams.push({
+                  id: dv.id,
+                  paramId: dv.specFieldParamId || dv.id,
+                  name: dv.name || dv.value || `Param ${dv.id}`,
                   fieldName: field.specFieldBySpecFieldId?.name || '',
                   isGeneric: field.isGeneric
                 });
