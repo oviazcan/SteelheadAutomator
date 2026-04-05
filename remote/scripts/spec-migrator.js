@@ -64,14 +64,14 @@ const SpecMigrator = (() => {
   }
 
   // ── Apply new spec to PN ──
-  async function applySpecToPN(partNumberId, specId, paramId) {
-    const defaultSelections = paramId ? [{
+  async function applySpecToPN(partNumberId, specId, defaultSelections, genericSelections) {
+    const makeSel = (paramId) => ({
       defaultParamId: paramId,
       geometryTypeSpecFieldId: null,
       locationId: null,
       processNodeId: null,
       processNodeOccurrence: null
-    }] : [];
+    });
 
     await api().query('ApplySpecsToPartNumber', {
       input: {
@@ -80,8 +80,8 @@ const SpecMigrator = (() => {
           specId,
           classificationSetId: null,
           classificationIds: [],
-          defaultSelections,
-          genericSelections: []
+          defaultSelections: defaultSelections.map(makeSel),
+          genericSelections: genericSelections.map(makeSel)
         }]
       }
     }, 'ApplySpecsToPartNumber');
@@ -188,8 +188,10 @@ const SpecMigrator = (() => {
       document.body.appendChild(ov);
 
       let selectedSpec = null;
-      let selectedParamId = null;
       let searchTimeout = null;
+      let multiParamFields = [];
+      let autoDefault = [];
+      let autoGeneric = [];
 
       const searchInput = document.getElementById('sa-specm-search');
       const dropdown = document.getElementById('sa-specm-dropdown');
@@ -235,7 +237,9 @@ const SpecMigrator = (() => {
         selectedDiv.title = 'Clic para cambiar';
         selectedDiv.onclick = () => {
           selectedSpec = null;
-          selectedParamId = null;
+          multiParamFields = [];
+          autoDefault = [];
+          autoGeneric = [];
           searchInput.style.display = 'block';
           searchInput.value = '';
           selectedDiv.style.display = 'none';
@@ -251,66 +255,62 @@ const SpecMigrator = (() => {
           const specDetail = await getSpecFields(specId);
           const fields = specDetail?.specFieldSpecsBySpecId?.nodes || [];
 
-          // Log raw structure for debugging
-          log(`SpecFields for ${specName}: ${fields.length} fields`);
-          for (const f of fields) {
-            log(`  Field: ${f.specFieldBySpecFieldId?.name || '?'} | isGeneric: ${f.isGeneric} | defaultValues type: ${typeof f.defaultValues} | value: ${JSON.stringify(f.defaultValues).substring(0, 200)}`);
-          }
+          // Extract params from defaultValues.nodes (SpecFieldParamsConnection)
+          // Fields with 1 param are auto-selected; fields with multiple params need user choice
+          const multiParamFields = []; // fields where user must choose
+          const autoDefault = [];      // auto-selected non-generic param IDs
+          const autoGeneric = [];      // auto-selected generic param IDs
 
-          // Extract all params from defaultValues
-          // defaultValues can be: array of objects, single object, or null
-          const allParams = [];
           for (const field of fields) {
-            let defaults = field.defaultValues;
-            if (!defaults) continue;
-            if (!Array.isArray(defaults)) defaults = [defaults];
-            for (const dv of defaults) {
-              if (typeof dv !== 'object' || dv === null) continue;
-              // Try nested specFieldParamBySpecFieldParamId structure
-              if (dv.specFieldParamBySpecFieldParamId) {
-                const param = dv.specFieldParamBySpecFieldParamId;
-                allParams.push({
-                  id: dv.id,
-                  paramId: param.id,
-                  name: param.name || param.value || `Param ${param.id}`,
-                  fieldName: field.specFieldBySpecFieldId?.name || '',
-                  isGeneric: field.isGeneric
-                });
+            const params = field.defaultValues?.nodes || [];
+            const fieldName = field.specFieldBySpecFieldId?.name || '';
+
+            if (params.length === 0) continue;
+
+            if (params.length === 1) {
+              // Auto-select single param
+              if (field.isGeneric) {
+                autoGeneric.push(params[0].id);
+              } else {
+                autoDefault.push(params[0].id);
               }
-              // Try flat structure (id + name directly on defaultValue)
-              else if (dv.id) {
-                allParams.push({
-                  id: dv.id,
-                  paramId: dv.specFieldParamId || dv.id,
-                  name: dv.name || dv.value || `Param ${dv.id}`,
-                  fieldName: field.specFieldBySpecFieldId?.name || '',
-                  isGeneric: field.isGeneric
-                });
-              }
+              log(`  Auto-select: ${fieldName} → ${params[0].name}`);
+            } else {
+              // Multiple params — user must choose
+              multiParamFields.push({
+                fieldName,
+                isGeneric: field.isGeneric,
+                params: params.map(p => ({ id: p.id, name: p.name }))
+              });
             }
           }
 
-          if (!allParams.length) {
-            paramsDiv.innerHTML = '<div style="font-size:12px;color:#f59e0b">Sin parámetros disponibles — se aplicará spec sin parámetro</div>';
-            selectedParamId = null;
-            execBtn.disabled = false;
-          } else if (allParams.length === 1) {
-            paramsDiv.innerHTML = `<div style="font-size:12px;color:#4ade80">Parámetro único: ${allParams[0].name}</div>`;
-            selectedParamId = allParams[0].id;
+          if (!multiParamFields.length) {
+            paramsDiv.innerHTML = '<div style="font-size:12px;color:#4ade80">Todos los parámetros auto-seleccionados</div>';
             execBtn.disabled = false;
           } else {
-            paramsDiv.innerHTML = allParams.map(p =>
-              `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;cursor:pointer">
-                <input type="radio" name="sa-specm-param" value="${p.id}" data-param-id="${p.paramId}">
-                <span>${p.fieldName ? p.fieldName + ': ' : ''}${p.name}</span>
-              </label>`
-            ).join('');
-            paramsDiv.querySelectorAll('input[name="sa-specm-param"]').forEach(radio => {
-              radio.addEventListener('change', () => {
-                selectedParamId = parseInt(radio.value);
-                execBtn.disabled = false;
-              });
-            });
+            // Show radio buttons for each multi-param field
+            let html = '';
+            for (const mpf of multiParamFields) {
+              html += `<div style="margin-bottom:8px"><div style="font-size:12px;color:#8b5cf6;font-weight:600;margin-bottom:4px">${mpf.fieldName}:</div>`;
+              html += mpf.params.map(p =>
+                `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;cursor:pointer">
+                  <input type="radio" name="sa-specm-field-${mpf.fieldName}" value="${p.id}" data-generic="${mpf.isGeneric}">
+                  <span>${p.name}</span>
+                </label>`
+              ).join('');
+              html += '</div>';
+            }
+            paramsDiv.innerHTML = html;
+
+            // Enable MIGRAR only when all fields have a selection
+            const checkAllSelected = () => {
+              const allSelected = multiParamFields.every(mpf =>
+                paramsDiv.querySelector(`input[name="sa-specm-field-${mpf.fieldName}"]:checked`)
+              );
+              execBtn.disabled = !allSelected;
+            };
+            paramsDiv.querySelectorAll('input[type="radio"]').forEach(r => r.addEventListener('change', checkAllSelected));
           }
         } catch (e) {
           paramsDiv.innerHTML = `<div style="font-size:12px;color:#ef4444">Error: ${e.message}</div>`;
@@ -324,11 +324,25 @@ const SpecMigrator = (() => {
 
       execBtn.addEventListener('click', () => {
         if (!selectedSpec) return;
+
+        // Collect user-selected params
+        const userDefault = [];
+        const userGeneric = [];
+        for (const mpf of multiParamFields) {
+          const checked = paramsDiv.querySelector(`input[name="sa-specm-field-${mpf.fieldName}"]:checked`);
+          if (checked) {
+            const paramId = parseInt(checked.value);
+            if (mpf.isGeneric) userGeneric.push(paramId);
+            else userDefault.push(paramId);
+          }
+        }
+
         ov.parentNode.removeChild(ov);
         resolve({
           targetSpecId: selectedSpec.id,
           targetSpecName: selectedSpec.name,
-          selectedParamId
+          defaultSelections: [...autoDefault, ...userDefault],
+          genericSelections: [...autoGeneric, ...userGeneric]
         });
       });
     });
@@ -425,10 +439,11 @@ const SpecMigrator = (() => {
     const config = await showConfigForm(sourceSpec, pnSpecs.length);
     if (config.cancelled) return { cancelled: true };
 
-    const { targetSpecId, targetSpecName, selectedParamId } = config;
+    const { targetSpecId, targetSpecName, defaultSelections, genericSelections } = config;
 
     log(`Spec destino: ${targetSpecName} (id: ${targetSpecId})`);
-    log(`Parámetro seleccionado: ${selectedParamId || 'ninguno'}`);
+    log(`defaultSelections: [${defaultSelections.join(', ')}]`);
+    log(`genericSelections: [${genericSelections.join(', ')}]`);
 
     const results = {
       migrated: 0,
@@ -472,7 +487,7 @@ const SpecMigrator = (() => {
         }
 
         // Apply new spec
-        await applySpecToPN(pnId, targetSpecId, selectedParamId);
+        await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
         results.migrated++;
         log(`  ${pnName}: spec nueva aplicada ✓`);
 
