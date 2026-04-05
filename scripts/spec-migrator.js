@@ -257,9 +257,9 @@ const SpecMigrator = (() => {
 
           // Extract params from defaultValues.nodes (SpecFieldParamsConnection)
           // Fields with 1 param are auto-selected; fields with multiple params need user choice
-          const multiParamFields = []; // fields where user must choose
-          const autoDefault = [];      // auto-selected non-generic param IDs
-          const autoGeneric = [];      // auto-selected generic param IDs
+          multiParamFields = []; // fields where user must choose
+          autoDefault = [];      // auto-selected non-generic param IDs
+          autoGeneric = [];      // auto-selected generic param IDs
 
           for (const field of fields) {
             const params = field.defaultValues?.nodes || [];
@@ -486,6 +486,16 @@ const SpecMigrator = (() => {
           results.alreadyArchived++;
         }
 
+        // Check if target spec already assigned (avoid duplicate key error)
+        const alreadyHasTarget = pnSpecsList.some(s =>
+          s.specBySpecId?.id === targetSpecId && !s.archivedAt
+        );
+        if (alreadyHasTarget) {
+          log(`  ${pnName}: ya tiene spec destino, skip`);
+          results.skipped = (results.skipped || 0) + 1;
+          continue;
+        }
+
         // Apply new spec
         await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
         results.migrated++;
@@ -501,6 +511,7 @@ const SpecMigrator = (() => {
     log(`\n=== RESULTADO ===`);
     log(`Migrados: ${results.migrated}/${pnSpecs.length}`);
     log(`Ya archivados (spec vieja): ${results.alreadyArchived}`);
+    log(`Skipped (ya tienen destino): ${results.skipped || 0}`);
     log(`Errores: ${results.errors.length}`);
 
     removeUI();
