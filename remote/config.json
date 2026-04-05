@@ -26,7 +26,8 @@
         "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9",
         "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953",
         "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0",
-        "CreateInventoryTransferEventGroups": "21bf4eb2b1b2ba6c95325a9e15ceb0a51c49715df020517b579f20ad634bb8d9"
+        "CreateInventoryTransferEventGroups": "21bf4eb2b1b2ba6c95325a9e15ceb0a51c49715df020517b579f20ad634bb8d9",
+        "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b"
       },
       "queries": {
         "GetQuote_v8": "15db7a9b0325c45c181d7be61e223d1dbede8179433a25db36ebc9699097acb6",
@@ -57,7 +58,10 @@
         "SearchInventoryItemBatches": "d0c8079c928e46305bb3cbd8e10642b195e7bbc7b5417e7f88960912c229f926",
         "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09",
         "CreateEditInventoryBatchDialogQuery": "25c91344eb1e8c12c47da2e65dea36b743a5af2f614fb514b4f12e84894f5b81",
-        "SearchLocationsOnPath": "65e13310e4b971aba5dce7a130c6e9259f9e1f556b79543ca5a1e414f593e29f"
+        "SearchLocationsOnPath": "65e13310e4b971aba5dce7a130c6e9259f9e1f556b79543ca5a1e414f593e29f",
+        "GetSpec": "88dad36300dba70363eb14571de7eef68a1a26685131c87c762b72ccb48eb54e",
+        "SpecFieldsAndOptions": "fc6242c2e83c84eee75b421f3cfc353c65719f2868e7299234bfab38fd5da5ee",
+        "PartNumberSpecsSummary": "7f0434efa3bb397028356ae04c8431646a7c9b2e5cb1114ed7f53b4d81c1084f"
       }
     },
     "domain": {
@@ -164,6 +168,16 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader.js"],
       "actions": [
         { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
+      ]
+    },
+    {
+      "id": "spec-migrator",
+      "name": "Migrador de Specs",
+      "subtitle": "Cambio masivo de especificación",
+      "icon": "🔀",
+      "scripts": ["scripts/steelhead-api.js", "scripts/spec-migrator.js"],
+      "actions": [
+        { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator" }
       ]
     },
     {
