@@ -487,11 +487,17 @@ const SpecMigrator = (() => {
         }
 
         // Check if target spec already assigned (avoid duplicate key error)
-        const alreadyHasTarget = pnSpecsList.some(s =>
+        const existingTargetSpec = pnSpecsList.find(s =>
           s.specBySpecId?.id === targetSpecId && !s.archivedAt
         );
-        if (alreadyHasTarget) {
-          log(`  ${pnName}: ya tiene spec destino, skip`);
+        if (existingTargetSpec) {
+          // Try to find which params are assigned for this spec
+          const pnParams = pnSummary?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+          const paramNames = pnParams
+            .filter(p => p.specFieldParamBySpecFieldParamId)
+            .map(p => p.specFieldParamBySpecFieldParamId.name || `id:${p.specFieldParamBySpecFieldParamId.id}`)
+            .join(', ');
+          log(`  ${pnName}: ya tiene spec destino${paramNames ? ' [' + paramNames + ']' : ''}, skip`);
           results.skipped = (results.skipped || 0) + 1;
           continue;
         }
