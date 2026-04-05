@@ -486,20 +486,45 @@ const SpecMigrator = (() => {
           results.alreadyArchived++;
         }
 
-        // Check if target spec already assigned (avoid duplicate key error)
+        // Check if target spec already assigned
         const existingTargetSpec = pnSpecsList.find(s =>
           s.specBySpecId?.id === targetSpecId && !s.archivedAt
         );
         if (existingTargetSpec) {
-          // Try to find which params are assigned for this spec
+          // Check if params match what we want to apply
           const pnParams = pnSummary?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+          const existingParamIds = new Set(
+            pnParams
+              .filter(p => p.specFieldParamBySpecFieldParamId)
+              .map(p => p.specFieldParamBySpecFieldParamId.id)
+          );
+          const wantedParamIds = new Set([...defaultSelections, ...genericSelections]);
+          const paramsMatch = wantedParamIds.size > 0
+            && [...wantedParamIds].every(id => existingParamIds.has(id));
+
+          if (paramsMatch) {
+            const paramNames = pnParams
+              .filter(p => p.specFieldParamBySpecFieldParamId)
+              .map(p => p.specFieldParamBySpecFieldParamId.name)
+              .join(', ');
+            log(`  ${pnName}: ya tiene spec destino con params correctos [${paramNames}], skip`);
+            results.skipped = (results.skipped || 0) + 1;
+            continue;
+          }
+
+          // Params missing or different — archive existing and re-apply
           const paramNames = pnParams
             .filter(p => p.specFieldParamBySpecFieldParamId)
-            .map(p => p.specFieldParamBySpecFieldParamId.name || `id:${p.specFieldParamBySpecFieldParamId.id}`)
+            .map(p => p.specFieldParamBySpecFieldParamId.name)
             .join(', ');
-          log(`  ${pnName}: ya tiene spec destino${paramNames ? ' [' + paramNames + ']' : ''}, skip`);
-          results.skipped = (results.skipped || 0) + 1;
-          continue;
+          log(`  ${pnName}: tiene spec destino pero params incorrectos [${paramNames || 'sin params'}], re-aplicando...`);
+          try {
+            await archiveSpecOnPN(pnId, pnName, existingTargetSpec.id);
+          } catch (e) {
+            warn(`  ${pnName}: error archivando spec destino existente: ${String(e).substring(0, 200)}`);
+            results.errors.push(`${pnName}: error archivando spec destino existente`);
+            continue;
+          }
         }
 
         // Apply new spec
