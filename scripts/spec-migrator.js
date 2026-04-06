@@ -58,8 +58,8 @@ const SpecMigrator = (() => {
     }, 'ArchivePartNumberSpecAndParams');
   }
 
-  // ── Apply new spec to PN ──
-  async function applySpecToPN(partNumberId, specId, defaultSelections, genericSelections) {
+  // ── Apply new spec to PN via SavePartNumber (handles upsert) ──
+  async function applySpecToPN(partNumberId, partNumberName, specId, defaultSelections, genericSelections) {
     const makeSel = (paramId) => ({
       defaultParamId: paramId,
       geometryTypeSpecFieldId: null,
@@ -68,18 +68,25 @@ const SpecMigrator = (() => {
       processNodeOccurrence: null
     });
 
-    await api().query('ApplySpecsToPartNumber', {
-      input: {
-        partNumberId,
+    await api().query('SavePartNumber', {
+      input: [{
+        id: partNumberId,
+        name: partNumberName,
         specsToApply: [{
           specId,
           classificationSetId: null,
           classificationIds: [],
           defaultSelections: defaultSelections.map(makeSel),
           genericSelections: genericSelections.map(makeSel)
-        }]
-      }
-    }, 'ApplySpecsToPartNumber');
+        }],
+        paramsToApply: [], partNumberDimensions: [], partNumberLocations: [],
+        dimensionCustomValueIds: [], partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+        partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+        partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [],
+        specFieldParamUpdates: [], labelIds: [], ownerIds: [], defaults: [],
+        inventoryPredictedUsages: [], optInOuts: []
+      }]
+    });
   }
 
   // ══════════════════════════════════════════
@@ -499,42 +506,54 @@ const SpecMigrator = (() => {
           s.specBySpecId?.id === targetSpecId
         );
         if (existingTargetSpec) {
-          // Check if active with correct params — skip
-          if (!existingTargetSpec.archivedAt) {
-            const existingParamIds = new Set(
-              pnAllParams
-                .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-                .map(p => p.specFieldParamBySpecFieldParamId.id)
-            );
-            const wantedParamIds = new Set([...defaultSelections, ...genericSelections]);
-            const paramsMatch = wantedParamIds.size > 0
-              && [...wantedParamIds].every(id => existingParamIds.has(id));
-
-            if (paramsMatch) {
-              const paramNames = pnAllParams
-                .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-                .map(p => p.specFieldParamBySpecFieldParamId.name)
-                .join(', ');
-              log(`  ${pnName}: params correctos [${paramNames}], skip`);
-              results.skipped = (results.skipped || 0) + 1;
+          // If archived, unarchive first (SavePartNumber needs it active)
+          if (existingTargetSpec.archivedAt) {
+            try {
+              // Unarchive spec + any archived params
+              const archivedParamIds = pnAllParams.filter(p => p.archivedAt).map(p => p.id);
+              await api().query('ArchivePartNumberSpecAndParams', {
+                partNumberSpecId: existingTargetSpec.id,
+                partNumberSpecFieldParamIds: archivedParamIds,
+                archivedAt: null
+              }, 'ArchivePartNumberSpecAndParams');
+              log(`  ${pnName}: spec destino desarchivada`);
+            } catch (e) {
+              warn(`  ${pnName}: error desarchivando: ${String(e).substring(0, 200)}`);
+              results.errors.push(`${pnName}: error desarchivando`);
               continue;
             }
           }
 
-          // Archive existing target spec (active or already archived) + all its params
-          try {
-            const activeParamIds = pnAllParams.filter(p => !p.archivedAt).map(p => p.id);
-            await archiveSpecOnPN(existingTargetSpec.id, activeParamIds);
-            log(`  ${pnName}: spec destino archivada para re-aplicar`);
-          } catch (e) {
-            warn(`  ${pnName}: error archivando spec destino: ${String(e).substring(0, 200)}`);
-            results.errors.push(`${pnName}: error archivando spec destino`);
+          // Check if params already correct
+          const existingParamIds = new Set(
+            pnAllParams
+              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
+              .map(p => p.specFieldParamBySpecFieldParamId.id)
+          );
+          const wantedParamIds = new Set([...defaultSelections, ...genericSelections]);
+          const paramsMatch = wantedParamIds.size > 0
+            && [...wantedParamIds].every(id => existingParamIds.has(id));
+
+          if (paramsMatch) {
+            const paramNames = pnAllParams
+              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
+              .map(p => p.specFieldParamBySpecFieldParamId.name)
+              .join(', ');
+            log(`  ${pnName}: params correctos [${paramNames}], skip`);
+            results.skipped = (results.skipped || 0) + 1;
             continue;
           }
+
+          // Spec exists but params wrong — try SavePartNumber with specsToApply
+          const paramNames = pnAllParams
+            .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
+            .map(p => p.specFieldParamBySpecFieldParamId.name)
+            .join(', ');
+          log(`  ${pnName}: params incorrectos [${paramNames || 'sin params'}], re-aplicando via SavePartNumber...`);
         }
 
-        // Apply spec (new or re-apply after archiving)
-        await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
+        // Apply spec via SavePartNumber (handles both new and existing)
+        await applySpecToPN(pnId, pnName, targetSpecId, defaultSelections, genericSelections);
         results.migrated++;
         log(`  ${pnName}: spec aplicada ✓`);
 
