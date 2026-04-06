@@ -41,26 +41,21 @@ const SpecMigrator = (() => {
     return data?.specById || null;
   }
 
-  // ── Get PN spec summary ──
-  async function getPNSpecsSummary(partNumberId) {
-    const data = await api().query('PartNumberSpecsSummary', { partNumberId }, 'PartNumberSpecsSummary');
+  // ── Get PN detail with specs and params ──
+  async function getPNDetail(partNumberId) {
+    const data = await api().query('GetPartNumber', {
+      partNumberId, usagesLimit: 0, usagesOffset: 0
+    });
     return data?.partNumberById || null;
   }
 
-  // ── Archive spec at PN level ──
-  async function archiveSpecOnPN(partNumberId, partNumberName, partNumberSpecId) {
-    await api().query('SavePartNumber', {
-      input: [{
-        id: partNumberId,
-        name: partNumberName,
-        specsToApply: [], paramsToApply: [], partNumberDimensions: [], partNumberLocations: [],
-        dimensionCustomValueIds: [], partNumberSpecsToArchive: [partNumberSpecId], partNumberSpecsToUnarchive: [],
-        partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
-        partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [],
-        specFieldParamUpdates: [], labelIds: [], ownerIds: [], defaults: [],
-        inventoryPredictedUsages: [], optInOuts: []
-      }]
-    });
+  // ── Archive spec at PN level (proper mutation) ──
+  async function archiveSpecOnPN(partNumberSpecId, partNumberSpecFieldParamIds) {
+    await api().query('ArchivePartNumberSpecAndParams', {
+      partNumberSpecId,
+      partNumberSpecFieldParamIds: partNumberSpecFieldParamIds || [],
+      archivedAt: new Date().toISOString()
+    }, 'ArchivePartNumberSpecAndParams');
   }
 
   // ── Apply new spec to PN ──
@@ -465,17 +460,30 @@ const SpecMigrator = (() => {
       updateProgress(`${i + 1}/${pnSpecs.length}: ${pnName}`, pct);
 
       try {
-        // Check if source spec is archived at PN level
-        const pnSummary = await getPNSpecsSummary(pnId);
-        const pnSpecsList = pnSummary?.partNumberSpecsByPartNumberId?.nodes || [];
+        // Get PN detail with specs and params
+        const pnDetail = await getPNDetail(pnId);
+        const pnSpecsList = pnDetail?.partNumberSpecsByPartNumberId?.nodes || [];
+        const pnAllParams = pnDetail?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+
+        // Helper: get param IDs for a given partNumberSpecId
+        const getParamIdsForSpec = (pnSpecId) => {
+          // partNumberSpecFieldParams have specFieldId which links to specFieldSpec
+          // Filter params that belong to this spec by checking their specFieldParamBySpecFieldParamId.specFieldSpecId
+          // matches a specFieldSpec belonging to the target spec
+          return pnAllParams
+            .filter(p => !p.archivedAt)
+            .map(p => p.id);
+        };
+
         const sourceSpecOnPN = pnSpecsList.find(s =>
           s.specBySpecId?.id === sourceSpec.id
         );
 
         if (sourceSpecOnPN && !sourceSpecOnPN.archivedAt) {
-          // Archive the old spec at PN level
+          // Archive the old spec at PN level using proper mutation
           try {
-            await archiveSpecOnPN(pnId, pnName, sourceSpecOnPN.id);
+            const paramIds = getParamIdsForSpec(sourceSpecOnPN.id);
+            await archiveSpecOnPN(sourceSpecOnPN.id, paramIds);
             log(`  ${pnName}: spec vieja archivada a nivel PN`);
           } catch (e) {
             warn(`  ${pnName}: error archivando spec vieja: ${String(e).substring(0, 200)}`);
@@ -492,10 +500,9 @@ const SpecMigrator = (() => {
         );
         if (existingTargetSpec) {
           // Check if params match what we want to apply
-          const pnParams = pnSummary?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
           const existingParamIds = new Set(
-            pnParams
-              .filter(p => p.specFieldParamBySpecFieldParamId)
+            pnAllParams
+              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
               .map(p => p.specFieldParamBySpecFieldParamId.id)
           );
           const wantedParamIds = new Set([...defaultSelections, ...genericSelections]);
@@ -503,8 +510,8 @@ const SpecMigrator = (() => {
             && [...wantedParamIds].every(id => existingParamIds.has(id));
 
           if (paramsMatch) {
-            const paramNames = pnParams
-              .filter(p => p.specFieldParamBySpecFieldParamId)
+            const paramNames = pnAllParams
+              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
               .map(p => p.specFieldParamBySpecFieldParamId.name)
               .join(', ');
             log(`  ${pnName}: ya tiene spec destino con params correctos [${paramNames}], skip`);
@@ -513,13 +520,14 @@ const SpecMigrator = (() => {
           }
 
           // Params missing or different — archive existing and re-apply
-          const paramNames = pnParams
-            .filter(p => p.specFieldParamBySpecFieldParamId)
+          const paramNames = pnAllParams
+            .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
             .map(p => p.specFieldParamBySpecFieldParamId.name)
             .join(', ');
-          log(`  ${pnName}: tiene spec destino pero params incorrectos [${paramNames || 'sin params'}], re-aplicando...`);
+          log(`  ${pnName}: params incorrectos [${paramNames || 'sin params'}], re-aplicando...`);
           try {
-            await archiveSpecOnPN(pnId, pnName, existingTargetSpec.id);
+            const paramIds = pnAllParams.filter(p => !p.archivedAt).map(p => p.id);
+            await archiveSpecOnPN(existingTargetSpec.id, paramIds);
           } catch (e) {
             warn(`  ${pnName}: error archivando spec destino existente: ${String(e).substring(0, 200)}`);
             results.errors.push(`${pnName}: error archivando spec destino existente`);
