@@ -58,8 +58,8 @@ const SpecMigrator = (() => {
     }, 'ArchivePartNumberSpecAndParams');
   }
 
-  // ── Apply new spec to PN via SavePartNumber (handles upsert) ──
-  async function applySpecToPN(partNumberId, partNumberName, specId, defaultSelections, genericSelections) {
+  // ── Apply new spec to PN (for PNs that don't have it yet) ──
+  async function applySpecToPN(partNumberId, specId, defaultSelections, genericSelections) {
     const makeSel = (paramId) => ({
       defaultParamId: paramId,
       geometryTypeSpecFieldId: null,
@@ -68,25 +68,36 @@ const SpecMigrator = (() => {
       processNodeOccurrence: null
     });
 
-    await api().query('SavePartNumber', {
-      input: [{
-        id: partNumberId,
-        name: partNumberName,
+    await api().query('ApplySpecsToPartNumber', {
+      input: {
+        partNumberId,
         specsToApply: [{
           specId,
           classificationSetId: null,
           classificationIds: [],
           defaultSelections: defaultSelections.map(makeSel),
           genericSelections: genericSelections.map(makeSel)
-        }],
-        paramsToApply: [], partNumberDimensions: [], partNumberLocations: [],
-        dimensionCustomValueIds: [], partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
-        partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
-        partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [],
-        specFieldParamUpdates: [], labelIds: [], ownerIds: [], defaults: [],
-        inventoryPredictedUsages: [], optInOuts: []
-      }]
-    });
+        }]
+      }
+    }, 'ApplySpecsToPartNumber');
+  }
+
+  // ── Archive a single param on a PN ──
+  async function archiveParam(paramId) {
+    await api().query('UpdatePartNumberSpecParam', {
+      id: paramId,
+      archivedAt: new Date().toISOString()
+    }, 'UpdatePartNumberSpecParam');
+  }
+
+  // ── Add params to an existing spec on a PN ──
+  async function addParamsToPN(partNumberId, paramsToApply) {
+    await api().query('AddParamsToPartNumber', {
+      input: {
+        partNumberId,
+        paramsToApply
+      }
+    }, 'AddParamsToPartNumber');
   }
 
   // ══════════════════════════════════════════
@@ -260,27 +271,30 @@ const SpecMigrator = (() => {
           // Extract params from defaultValues.nodes (SpecFieldParamsConnection)
           // Fields with 1 param are auto-selected; fields with multiple params need user choice
           multiParamFields = []; // fields where user must choose
-          autoDefault = [];      // auto-selected non-generic param IDs
-          autoGeneric = [];      // auto-selected generic param IDs
+          autoDefault = [];      // auto-selected { paramId, specFieldId, isGeneric }
+          autoGeneric = [];
 
           for (const field of fields) {
             const params = field.defaultValues?.nodes || [];
             const fieldName = field.specFieldBySpecFieldId?.name || '';
+            const specFieldId = field.specFieldBySpecFieldId?.id || field.specFieldId;
 
             if (params.length === 0) continue;
 
             if (params.length === 1) {
               // Auto-select single param
+              const entry = { paramId: params[0].id, specFieldId, isGeneric: field.isGeneric };
               if (field.isGeneric) {
-                autoGeneric.push(params[0].id);
+                autoGeneric.push(entry);
               } else {
-                autoDefault.push(params[0].id);
+                autoDefault.push(entry);
               }
               log(`  Auto-select: ${fieldName} → ${params[0].name}`);
             } else {
               // Multiple params — user must choose
               multiParamFields.push({
                 fieldName,
+                specFieldId,
                 isGeneric: field.isGeneric,
                 params: params.map(p => ({ id: p.id, name: p.name }))
               });
@@ -327,24 +341,29 @@ const SpecMigrator = (() => {
       execBtn.addEventListener('click', () => {
         if (!selectedSpec) return;
 
-        // Collect user-selected params
+        // Collect user-selected params with specFieldId
         const userDefault = [];
         const userGeneric = [];
         for (const mpf of multiParamFields) {
           const checked = paramsDiv.querySelector(`input[name="sa-specm-field-${mpf.fieldName}"]:checked`);
           if (checked) {
-            const paramId = parseInt(checked.value);
-            if (mpf.isGeneric) userGeneric.push(paramId);
-            else userDefault.push(paramId);
+            const entry = { paramId: parseInt(checked.value), specFieldId: mpf.specFieldId, isGeneric: mpf.isGeneric };
+            if (mpf.isGeneric) userGeneric.push(entry);
+            else userDefault.push(entry);
           }
         }
+
+        // allParams: full objects with { paramId, specFieldId, isGeneric }
+        const allParams = [...autoDefault, ...autoGeneric, ...userDefault, ...userGeneric];
 
         ov.parentNode.removeChild(ov);
         resolve({
           targetSpecId: selectedSpec.id,
           targetSpecName: selectedSpec.name,
-          defaultSelections: [...autoDefault, ...userDefault],
-          genericSelections: [...autoGeneric, ...userGeneric]
+          allParams,
+          // For ApplySpecsToPartNumber (new specs): just the IDs
+          defaultSelections: allParams.filter(p => !p.isGeneric).map(p => p.paramId),
+          genericSelections: allParams.filter(p => p.isGeneric).map(p => p.paramId)
         });
       });
     });
@@ -441,7 +460,7 @@ const SpecMigrator = (() => {
     const config = await showConfigForm(sourceSpec, pnSpecs.length);
     if (config.cancelled) return { cancelled: true };
 
-    const { targetSpecId, targetSpecName, defaultSelections, genericSelections } = config;
+    const { targetSpecId, targetSpecName, defaultSelections, genericSelections, allParams } = config;
 
     log(`Spec destino: ${targetSpecName} (id: ${targetSpecId})`);
     log(`defaultSelections: [${defaultSelections.join(', ')}]`);
@@ -506,14 +525,12 @@ const SpecMigrator = (() => {
           s.specBySpecId?.id === targetSpecId
         );
         if (existingTargetSpec) {
-          // If archived, unarchive first (SavePartNumber needs it active)
+          // If archived, unarchive the spec first
           if (existingTargetSpec.archivedAt) {
             try {
-              // Unarchive spec + any archived params
-              const archivedParamIds = pnAllParams.filter(p => p.archivedAt).map(p => p.id);
               await api().query('ArchivePartNumberSpecAndParams', {
                 partNumberSpecId: existingTargetSpec.id,
-                partNumberSpecFieldParamIds: archivedParamIds,
+                partNumberSpecFieldParamIds: [],
                 archivedAt: null
               }, 'ArchivePartNumberSpecAndParams');
               log(`  ${pnName}: spec destino desarchivada`);
@@ -524,36 +541,57 @@ const SpecMigrator = (() => {
             }
           }
 
-          // Check if params already correct
-          const existingParamIds = new Set(
-            pnAllParams
-              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-              .map(p => p.specFieldParamBySpecFieldParamId.id)
-          );
+          // Check existing active params on this PN
+          const activeParams = pnAllParams.filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId);
+          const existingParamIds = new Set(activeParams.map(p => p.specFieldParamBySpecFieldParamId.id));
           const wantedParamIds = new Set([...defaultSelections, ...genericSelections]);
+
+          // Check if all wanted params already present
           const paramsMatch = wantedParamIds.size > 0
             && [...wantedParamIds].every(id => existingParamIds.has(id));
 
           if (paramsMatch) {
-            const paramNames = pnAllParams
-              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-              .map(p => p.specFieldParamBySpecFieldParamId.name)
-              .join(', ');
-            log(`  ${pnName}: params correctos [${paramNames}], skip`);
+            const names = activeParams.map(p => p.specFieldParamBySpecFieldParamId.name).join(', ');
+            log(`  ${pnName}: params correctos [${names}], skip`);
             results.skipped = (results.skipped || 0) + 1;
             continue;
           }
 
-          // Spec exists but params wrong — try SavePartNumber with specsToApply
-          const paramNames = pnAllParams
-            .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-            .map(p => p.specFieldParamBySpecFieldParamId.name)
-            .join(', ');
-          log(`  ${pnName}: params incorrectos [${paramNames || 'sin params'}], re-aplicando via SavePartNumber...`);
+          // Archive wrong/extra active params, then add correct ones
+          const names = activeParams.map(p => p.specFieldParamBySpecFieldParamId.name).join(', ');
+          log(`  ${pnName}: corrigiendo params [${names || 'sin params'}]...`);
+
+          // Step 1: Archive all active params that are NOT in wanted set
+          for (const p of activeParams) {
+            if (!wantedParamIds.has(p.specFieldParamBySpecFieldParamId.id)) {
+              try {
+                await archiveParam(p.id);
+              } catch (_) {}
+            }
+          }
+
+          // Step 2: Add missing params via AddParamsToPartNumber
+          const missingParams = allParams.filter(ap => !existingParamIds.has(ap.paramId));
+          if (missingParams.length > 0) {
+            const paramsToAdd = missingParams.map(p => ({
+              specFieldId: p.specFieldId,
+              specFieldParamId: p.paramId,
+              isGeneric: p.isGeneric,
+              geometryTypeSpecFieldId: null,
+              processNodeId: null,
+              processNodeOccurrence: null,
+              locationId: null
+            }));
+            await addParamsToPN(pnId, paramsToAdd);
+          }
+
+          results.migrated++;
+          log(`  ${pnName}: params corregidos ✓`);
+          continue;
         }
 
-        // Apply spec via SavePartNumber (handles both new and existing)
-        await applySpecToPN(pnId, pnName, targetSpecId, defaultSelections, genericSelections);
+        // Target spec doesn't exist on PN — apply fresh
+        await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
         results.migrated++;
         log(`  ${pnName}: spec aplicada ✓`);
 

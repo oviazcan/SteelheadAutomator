@@ -28,7 +28,9 @@
         "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0",
         "CreateInventoryTransferEventGroups": "21bf4eb2b1b2ba6c95325a9e15ceb0a51c49715df020517b579f20ad634bb8d9",
         "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b",
-        "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261"
+        "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261",
+        "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce",
+        "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4"
       },
       "queries": {
         "GetQuote_v8": "15db7a9b0325c45c181d7be61e223d1dbede8179433a25db36ebc9699097acb6",
