@@ -64,7 +64,8 @@
         "SearchLocationsOnPath": "65e13310e4b971aba5dce7a130c6e9259f9e1f556b79543ca5a1e414f593e29f",
         "GetSpec": "88dad36300dba70363eb14571de7eef68a1a26685131c87c762b72ccb48eb54e",
         "SpecFieldsAndOptions": "fc6242c2e83c84eee75b421f3cfc353c65719f2868e7299234bfab38fd5da5ee",
-        "PartNumberSpecsSummary": "7f0434efa3bb397028356ae04c8431646a7c9b2e5cb1114ed7f53b4d81c1084f"
+        "PartNumberSpecsSummary": "7f0434efa3bb397028356ae04c8431646a7c9b2e5cb1114ed7f53b4d81c1084f",
+        "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de"
       }
     },
     "domain": {
