@@ -494,48 +494,40 @@ const SpecMigrator = (() => {
           results.alreadyArchived++;
         }
 
-        // Check if target spec already assigned
+        // Check if target spec already assigned (active or archived)
         const existingTargetSpec = pnSpecsList.find(s =>
-          s.specBySpecId?.id === targetSpecId && !s.archivedAt
+          s.specBySpecId?.id === targetSpecId
         );
         if (existingTargetSpec) {
-          // Check if params match what we want to apply
-          const existingParamIds = new Set(
-            pnAllParams
-              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-              .map(p => p.specFieldParamBySpecFieldParamId.id)
-          );
-          const wantedParamIds = new Set([...defaultSelections, ...genericSelections]);
-          const paramsMatch = wantedParamIds.size > 0
-            && [...wantedParamIds].every(id => existingParamIds.has(id));
-
-          if (paramsMatch) {
-            const paramNames = pnAllParams
-              .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-              .map(p => p.specFieldParamBySpecFieldParamId.name)
-              .join(', ');
-            log(`  ${pnName}: ya tiene spec destino con params correctos [${paramNames}], skip`);
-            results.skipped = (results.skipped || 0) + 1;
-            continue;
-          }
-
-          // Params missing or different — archive existing and re-apply
+          // Spec already exists on PN — can't re-create (DB constraint)
           const paramNames = pnAllParams
             .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
             .map(p => p.specFieldParamBySpecFieldParamId.name)
             .join(', ');
-          log(`  ${pnName}: params incorrectos [${paramNames || 'sin params'}], re-aplicando...`);
-          try {
-            const paramIds = pnAllParams.filter(p => !p.archivedAt).map(p => p.id);
-            await archiveSpecOnPN(existingTargetSpec.id, paramIds);
-          } catch (e) {
-            warn(`  ${pnName}: error archivando spec destino existente: ${String(e).substring(0, 200)}`);
-            results.errors.push(`${pnName}: error archivando spec destino existente`);
-            continue;
+
+          // If it was archived (from a previous bad run), unarchive it
+          if (existingTargetSpec.archivedAt) {
+            try {
+              const paramIds = pnAllParams.filter(p => p.archivedAt).map(p => p.id);
+              await api().query('ArchivePartNumberSpecAndParams', {
+                partNumberSpecId: existingTargetSpec.id,
+                partNumberSpecFieldParamIds: paramIds,
+                archivedAt: null
+              }, 'ArchivePartNumberSpecAndParams');
+              log(`  ${pnName}: spec destino desarchivada [${paramNames || 'sin params'}]`);
+              results.migrated++;
+            } catch (e) {
+              warn(`  ${pnName}: error desarchivando: ${String(e).substring(0, 200)}`);
+              results.errors.push(`${pnName}: error desarchivando spec destino`);
+            }
+          } else {
+            log(`  ${pnName}: ya tiene spec destino [${paramNames || 'sin params'}], skip`);
+            results.skipped = (results.skipped || 0) + 1;
           }
+          continue;
         }
 
-        // Apply new spec
+        // Apply new spec (only if target spec doesn't exist on PN yet)
         await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
         results.migrated++;
         log(`  ${pnName}: spec nueva aplicada ✓`);
