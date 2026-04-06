@@ -387,24 +387,40 @@ async function handleMessage(message) {
       const tab = await getSteelheadTab();
       await injectAppScripts(tab.id, 'file-uploader');
 
-      // Open file picker in page context (supports multiple files)
+      // Show overlay with file picker button (user click required for file dialog)
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
         func: () => {
           if (!window.FileUploader) return { error: 'FileUploader no disponible' };
           return new Promise(resolve => {
+            const ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:400px;width:90%;text-align:center';
+            box.innerHTML = '<h2 style="font-size:18px;margin:0 0 12px;color:#38bdf8">📎 Cargador de Archivos</h2><p style="font-size:13px;color:#94a3b8;margin-bottom:16px">Selecciona archivos nombrados como el PN</p>';
+
             const inp = document.createElement('input');
-            inp.type = 'file';
-            inp.multiple = true;
+            inp.type = 'file'; inp.multiple = true;
             inp.accept = '.pdf,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.doc,.docx,.xls,.xlsx';
+            inp.style.cssText = 'margin-bottom:16px;font-size:13px;color:#e2e8f0';
             inp.onchange = async () => {
-              if (!inp.files?.length) { resolve({ cancelled: true }); return; }
+              if (!inp.files?.length) return;
+              ov.parentNode.removeChild(ov);
               try {
                 const result = await window.FileUploader.run(inp.files);
                 resolve(result);
               } catch (e) { resolve({ error: e.message }); }
             };
-            inp.click();
+            box.appendChild(inp);
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'CANCELAR';
+            cancelBtn.style.cssText = 'padding:8px 20px;border:none;border-radius:6px;background:#475569;color:#e2e8f0;font-size:13px;cursor:pointer';
+            cancelBtn.onclick = () => { ov.parentNode.removeChild(ov); resolve({ cancelled: true }); };
+            box.appendChild(cancelBtn);
+
+            ov.appendChild(box);
+            document.body.appendChild(ov);
           });
         }
       });
