@@ -9,9 +9,9 @@ const ReportLiberator = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
-  // ── Fetch all reports + folders ──
+  // ── Fetch all reports + folders (including archived) ──
   async function fetchAllReportsAndFolders() {
-    const data = await api().query('AllReports', { includeArchived: 'NO' }, 'AllReports');
+    const data = await api().query('AllReports', { includeArchived: 'YES' }, 'AllReports');
     return {
       reports: data?.allReports?.nodes || [],
       folders: data?.allReportFolders?.nodes || []
@@ -30,9 +30,30 @@ const ReportLiberator = (() => {
     }, 'CreateUpdateReportWithPermissions');
   }
 
-  // ── Delete a folder ──
+  // ── Delete a folder (raw fetch to detect partial errors) ──
   async function deleteFolder(folderId) {
-    await api().query('DeleteFolderById', { id: folderId }, 'DeleteFolderById');
+    const cfg = api();
+    const baseUrl = (cfg.getDomain() && 'https://app.gosteelhead.com') || 'https://app.gosteelhead.com';
+    const url = baseUrl + '/graphql';
+    const body = {
+      operationName: 'DeleteFolderById',
+      variables: { id: folderId },
+      extensions: {
+        clientLibrary: { name: '@apollo/client', version: '4.0.8' },
+        persistedQuery: { version: 1, sha256Hash: cfg.getHash('DeleteFolderById') }
+      }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body)
+    });
+    const json = await r.json();
+    if (json.errors && json.errors.length > 0) {
+      const msg = json.errors.map(e => e.message).join('; ');
+      throw new Error(msg);
+    }
   }
 
   // ══════════════════════════════════════════
