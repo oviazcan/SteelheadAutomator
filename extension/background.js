@@ -52,7 +52,7 @@ async function injectAppScripts(tabId, appId) {
         // Check if script already loaded by looking for its global
         const globals = { 'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
           'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
-          'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator' };
+          'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator' };
         const globalName = globals[path];
         if (globalName && window[globalName]) return; // already loaded
         try { new Function(c)(); } catch (e) { console.error('[SA]', e); }
@@ -531,6 +531,22 @@ async function handleMessage(message) {
               }
             };
           });
+        }
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    // ── Report Liberator ──
+    case 'run-report-liberator': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'report-liberator');
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.ReportLiberator) return { error: 'ReportLiberator no disponible' };
+          return window.ReportLiberator.run();
         }
       });
 

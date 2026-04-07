@@ -30,7 +30,8 @@
         "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b",
         "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261",
         "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce",
-        "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4"
+        "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4",
+        "CreateUpdateReportWithPermissions": "6c7753a4bd5f3181b1fffa536833972a4959343da8461127155dd1dd76342bde"
       },
       "queries": {
         "GetQuote_v8": "15db7a9b0325c45c181d7be61e223d1dbede8179433a25db36ebc9699097acb6",
@@ -65,7 +66,8 @@
         "GetSpec": "88dad36300dba70363eb14571de7eef68a1a26685131c87c762b72ccb48eb54e",
         "SpecFieldsAndOptions": "fc6242c2e83c84eee75b421f3cfc353c65719f2868e7299234bfab38fd5da5ee",
         "PartNumberSpecsSummary": "7f0434efa3bb397028356ae04c8431646a7c9b2e5cb1114ed7f53b4d81c1084f",
-        "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de"
+        "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de",
+        "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7"
       }
     },
     "domain": {
@@ -172,6 +174,16 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader.js"],
       "actions": [
         { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
+      ]
+    },
+    {
+      "id": "report-liberator",
+      "name": "Liberador de Reportes",
+      "subtitle": "Sacar reportes de carpetas",
+      "icon": "📂",
+      "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"],
+      "actions": [
+        { "id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator" }
       ]
     },
     {
