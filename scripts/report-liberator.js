@@ -30,6 +30,11 @@ const ReportLiberator = (() => {
     }, 'CreateUpdateReportWithPermissions');
   }
 
+  // ── Unarchive a report ──
+  async function unarchiveReport(reportId) {
+    await api().query('ArchiveReport', { id: reportId, archivedAt: null }, 'ArchiveReport');
+  }
+
   // ── Delete a folder (raw fetch to detect partial errors) ──
   async function deleteFolder(folderId) {
     const cfg = api();
@@ -192,6 +197,127 @@ const ReportLiberator = (() => {
     });
   }
 
+  // ── Unarchive selection form ──
+  function showUnarchiveForm(reports) {
+    return new Promise((resolve) => {
+      ensureStyles();
+
+      const ov = document.createElement('div');
+      ov.className = 'sa-rlib-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-rlib-modal';
+      md.style.background = '#0f1f1a';
+
+      const sorted = [...reports].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      const renderRows = (filter) => {
+        const f = filter.trim().toLowerCase();
+        return sorted.map((r, i) => {
+          if (f && !(r.name || '').toLowerCase().includes(f) && !String(r.id).includes(f)) return '';
+          const isArchived = r.archivedAt != null;
+          return `<tr>
+            <td><input type="checkbox" class="sa-rlib-ucheck" data-idx="${i}"></td>
+            <td>${r.name || '(sin nombre)'}</td>
+            <td style="color:#64748b">${r.id}</td>
+            <td style="color:${isArchived ? '#f59e0b' : '#64748b'}">${isArchived ? 'archivado' : 'activo'}</td>
+          </tr>`;
+        }).join('');
+      };
+
+      // Pre-filter to archived only if archivedAt is available
+      const hasArchivedField = sorted.some(r => r.archivedAt !== undefined);
+      const archivedOnly = hasArchivedField ? sorted.filter(r => r.archivedAt != null) : sorted;
+      const initialList = hasArchivedField ? archivedOnly : sorted;
+
+      md.innerHTML = `
+        <h2 style="color:#10b981">📤 Desarchivar Reportes</h2>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:8px">${hasArchivedField
+          ? `Mostrando ${archivedOnly.length} reportes archivados.`
+          : `Mostrando los ${sorted.length} reportes (no se puede distinguir archivados desde la API). Usa el buscador para encontrar el que necesitas.`}</p>
+
+        <input type="text" id="sa-rlib-usearch" placeholder="Buscar por nombre o ID..." style="width:100%;padding:8px 12px;margin-bottom:8px;border-radius:6px;border:1px solid #334155;background:#0a1410;color:#e2e8f0;font-size:13px;box-sizing:border-box">
+
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input type="checkbox" id="sa-rlib-uselectall">
+          <label for="sa-rlib-uselectall" style="font-size:12px;color:#94a3b8;cursor:pointer">Seleccionar todos los visibles</label>
+          <span style="font-size:12px;color:#10b981;margin-left:auto" id="sa-rlib-ucount">0 seleccionados</span>
+        </div>
+
+        <div style="max-height:400px;overflow-y:auto" id="sa-rlib-utable-wrap">
+          <table class="sa-rlib-table">
+            <tr><th>☑</th><th>Nombre</th><th>ID</th><th>Estado</th></tr>
+            <tbody id="sa-rlib-ubody"></tbody>
+          </table>
+        </div>
+
+        <div class="sa-rlib-btnrow">
+          <button class="sa-rlib-btn sa-rlib-btn-cancel" id="sa-rlib-uskip">SALTAR</button>
+          <button class="sa-rlib-btn sa-rlib-btn-exec" id="sa-rlib-uexec">DESARCHIVAR (<span id="sa-rlib-uexec-count">0</span>)</button>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const tbody = document.getElementById('sa-rlib-ubody');
+      const searchInput = document.getElementById('sa-rlib-usearch');
+      const selectAllCb = document.getElementById('sa-rlib-uselectall');
+
+      let listData = initialList;
+      const renderList = (list) => {
+        listData = list;
+        tbody.innerHTML = list.map((r, i) => {
+          const isArchived = r.archivedAt != null;
+          return `<tr>
+            <td><input type="checkbox" class="sa-rlib-ucheck" data-idx="${i}"></td>
+            <td>${r.name || '(sin nombre)'}</td>
+            <td style="color:#64748b">${r.id}</td>
+            <td style="color:${isArchived ? '#f59e0b' : '#64748b'}">${hasArchivedField ? (isArchived ? 'archivado' : 'activo') : '?'}</td>
+          </tr>`;
+        }).join('');
+        tbody.querySelectorAll('.sa-rlib-ucheck').forEach(cb => cb.onchange = updateCount);
+        selectAllCb.checked = false;
+        updateCount();
+      };
+
+      const updateCount = () => {
+        const checked = tbody.querySelectorAll('.sa-rlib-ucheck:checked').length;
+        document.getElementById('sa-rlib-ucount').textContent = `${checked} seleccionados`;
+        document.getElementById('sa-rlib-uexec-count').textContent = checked;
+        document.getElementById('sa-rlib-uexec').disabled = checked === 0;
+      };
+
+      renderList(initialList);
+
+      searchInput.addEventListener('input', () => {
+        const f = searchInput.value.trim().toLowerCase();
+        if (!f) { renderList(initialList); return; }
+        const filtered = sorted.filter(r =>
+          (r.name || '').toLowerCase().includes(f) || String(r.id).includes(f)
+        );
+        renderList(filtered);
+      });
+
+      selectAllCb.onchange = (e) => {
+        tbody.querySelectorAll('.sa-rlib-ucheck').forEach(cb => { cb.checked = e.target.checked; });
+        updateCount();
+      };
+
+      document.getElementById('sa-rlib-uskip').onclick = () => {
+        ov.parentNode.removeChild(ov);
+        resolve({ skipped: true });
+      };
+
+      document.getElementById('sa-rlib-uexec').onclick = () => {
+        const selected = [];
+        tbody.querySelectorAll('.sa-rlib-ucheck:checked').forEach(cb => {
+          selected.push(listData[parseInt(cb.dataset.idx)]);
+        });
+        ov.parentNode.removeChild(ov);
+        resolve({ selected });
+      };
+    });
+  }
+
   // ── Folder selection form ──
   function showFolderSelectionForm(folders) {
     return new Promise((resolve) => {
@@ -291,17 +417,21 @@ const ReportLiberator = (() => {
 
     md.innerHTML = `
       <h2 style="color:${iconColor}">${icon} Operación Completada</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:16px 0">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin:16px 0">
         <div style="background:#0a1410;padding:12px;border-radius:8px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#10b981">${results.liberated}</div>
-          <div style="font-size:11px;color:#94a3b8">Reportes liberados</div>
+          <div style="font-size:22px;font-weight:700;color:#10b981">${results.unarchived || 0}</div>
+          <div style="font-size:11px;color:#94a3b8">Desarchivados</div>
         </div>
         <div style="background:#0a1410;padding:12px;border-radius:8px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#10b981">${results.foldersDeleted || 0}</div>
+          <div style="font-size:22px;font-weight:700;color:#10b981">${results.liberated}</div>
+          <div style="font-size:11px;color:#94a3b8">Liberados</div>
+        </div>
+        <div style="background:#0a1410;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#10b981">${results.foldersDeleted || 0}</div>
           <div style="font-size:11px;color:#94a3b8">Carpetas borradas</div>
         </div>
         <div style="background:#0a1410;padding:12px;border-radius:8px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#ef4444">${results.errors.length}</div>
+          <div style="font-size:22px;font-weight:700;color:#ef4444">${results.errors.length}</div>
           <div style="font-size:11px;color:#94a3b8">Errores</div>
         </div>
       </div>
@@ -341,7 +471,30 @@ const ReportLiberator = (() => {
     log(`Reportes totales: ${allReports.length}`);
     log(`Carpetas totales: ${allFolders.length}`);
 
-    const results = { liberated: 0, foldersDeleted: 0, errors: [] };
+    const results = { unarchived: 0, liberated: 0, foldersDeleted: 0, errors: [] };
+
+    // Phase 1.5: Unarchive reports
+    const unarchiveConfig = await showUnarchiveForm(allReports);
+    if (!unarchiveConfig.skipped && unarchiveConfig.selected) {
+      const toUnarchive = unarchiveConfig.selected;
+      log(`Reportes a desarchivar: ${toUnarchive.length}`);
+
+      showProgressUI('Desarchivando Reportes', 'Preparando...');
+      for (let i = 0; i < toUnarchive.length; i++) {
+        const r = toUnarchive[i];
+        const pct = (i / toUnarchive.length) * 100;
+        updateProgress(`${i + 1}/${toUnarchive.length}: ${r.name}`, pct);
+        try {
+          await unarchiveReport(r.id);
+          results.unarchived++;
+          log(`  ${r.name} (id:${r.id}): desarchivado ✓`);
+        } catch (e) {
+          results.errors.push(`Desarchivar ${r.name}: ${String(e).substring(0, 200)}`);
+          warn(`  ${r.name}: error: ${String(e).substring(0, 200)}`);
+        }
+      }
+      removeUI();
+    }
 
     // Phase 2: Liberate reports from folders (if any)
     const inFolders = allReports.filter(r => r.folderId !== null && r.folderId !== undefined);
@@ -408,6 +561,7 @@ const ReportLiberator = (() => {
     }
 
     log(`\n=== RESULTADO ===`);
+    log(`Reportes desarchivados: ${results.unarchived || 0}`);
     log(`Reportes liberados: ${results.liberated}`);
     log(`Carpetas borradas: ${results.foldersDeleted}`);
     log(`Errores: ${results.errors.length}`);
