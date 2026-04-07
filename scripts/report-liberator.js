@@ -9,10 +9,13 @@ const ReportLiberator = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
-  // ── Fetch all reports ──
-  async function fetchAllReports() {
+  // ── Fetch all reports + folders ──
+  async function fetchAllReportsAndFolders() {
     const data = await api().query('AllReports', { includeArchived: 'NO' }, 'AllReports');
-    return data?.allReports?.nodes || [];
+    return {
+      reports: data?.allReports?.nodes || [],
+      folders: data?.allReportFolders?.nodes || []
+    };
   }
 
   // ── Update report to remove from folder ──
@@ -25,6 +28,11 @@ const ReportLiberator = (() => {
       folderId: null,
       managedPermissions: ['EXPORT_CSV']
     }, 'CreateUpdateReportWithPermissions');
+  }
+
+  // ── Delete a folder ──
+  async function deleteFolder(folderId) {
+    await api().query('DeleteFolderById', { id: folderId }, 'DeleteFolderById');
   }
 
   // ══════════════════════════════════════════
@@ -163,6 +171,84 @@ const ReportLiberator = (() => {
     });
   }
 
+  // ── Folder selection form ──
+  function showFolderSelectionForm(folders) {
+    return new Promise((resolve) => {
+      ensureStyles();
+
+      const ov = document.createElement('div');
+      ov.className = 'sa-rlib-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-rlib-modal';
+      md.style.background = '#0f1f1a';
+
+      const rowsHTML = folders.map((f, i) => {
+        const reportCount = f.reportsByFolderId?.nodes?.length || 0;
+        return `<tr>
+          <td><input type="checkbox" class="sa-rlib-fcheck" data-idx="${i}" ${reportCount === 0 ? 'checked' : ''}></td>
+          <td>${f.name || '(sin nombre)'}</td>
+          <td style="color:#64748b">${f.id}</td>
+          <td style="color:${reportCount > 0 ? '#f59e0b' : '#10b981'}">${reportCount}</td>
+        </tr>`;
+      }).join('');
+
+      md.innerHTML = `
+        <h2 style="color:#10b981">🗑️ Borrar Carpetas</h2>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:8px">Selecciona las carpetas que quieres borrar. Las carpetas con reportes adentro están deseleccionadas por defecto (debes liberarlos primero).</p>
+
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input type="checkbox" id="sa-rlib-fselectall">
+          <label for="sa-rlib-fselectall" style="font-size:12px;color:#94a3b8;cursor:pointer">Seleccionar todas</label>
+          <span style="font-size:12px;color:#10b981;margin-left:auto" id="sa-rlib-fcount">0 seleccionadas</span>
+        </div>
+
+        <div style="max-height:400px;overflow-y:auto">
+          <table class="sa-rlib-table">
+            <tr><th>☑</th><th>Nombre</th><th>ID</th><th>Reportes</th></tr>
+            ${rowsHTML}
+          </table>
+        </div>
+
+        <p style="font-size:11px;color:#ef4444;margin-top:8px">⚠️ Borrar es irreversible. Las carpetas con reportes adentro pueden fallar al borrar.</p>
+
+        <div class="sa-rlib-btnrow">
+          <button class="sa-rlib-btn sa-rlib-btn-cancel" id="sa-rlib-fskip">SALTAR</button>
+          <button class="sa-rlib-btn sa-rlib-btn-exec" id="sa-rlib-fexec" style="background:#ef4444">BORRAR (<span id="sa-rlib-fexec-count">0</span>)</button>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const updateCount = () => {
+        const checked = md.querySelectorAll('.sa-rlib-fcheck:checked').length;
+        document.getElementById('sa-rlib-fcount').textContent = `${checked} seleccionadas`;
+        document.getElementById('sa-rlib-fexec-count').textContent = checked;
+        document.getElementById('sa-rlib-fexec').disabled = checked === 0;
+      };
+      updateCount();
+
+      md.querySelector('#sa-rlib-fselectall').onchange = (e) => {
+        md.querySelectorAll('.sa-rlib-fcheck').forEach(cb => { cb.checked = e.target.checked; });
+        updateCount();
+      };
+      md.querySelectorAll('.sa-rlib-fcheck').forEach(cb => { cb.onchange = updateCount; });
+
+      document.getElementById('sa-rlib-fskip').onclick = () => {
+        ov.parentNode.removeChild(ov);
+        resolve({ skipped: true });
+      };
+
+      document.getElementById('sa-rlib-fexec').onclick = () => {
+        const selected = [];
+        md.querySelectorAll('.sa-rlib-fcheck:checked').forEach(cb => {
+          selected.push(folders[parseInt(cb.dataset.idx)]);
+        });
+        ov.parentNode.removeChild(ov);
+        resolve({ selected });
+      };
+    });
+  }
+
   // ── Summary modal ──
   function showSummary(results) {
     ensureStyles();
@@ -183,11 +269,15 @@ const ReportLiberator = (() => {
     }
 
     md.innerHTML = `
-      <h2 style="color:${iconColor}">${icon} Liberación Completada</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0">
+      <h2 style="color:${iconColor}">${icon} Operación Completada</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:16px 0">
         <div style="background:#0a1410;padding:12px;border-radius:8px;text-align:center">
           <div style="font-size:24px;font-weight:700;color:#10b981">${results.liberated}</div>
-          <div style="font-size:11px;color:#94a3b8">Liberados</div>
+          <div style="font-size:11px;color:#94a3b8">Reportes liberados</div>
+        </div>
+        <div style="background:#0a1410;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#10b981">${results.foldersDeleted || 0}</div>
+          <div style="font-size:11px;color:#94a3b8">Carpetas borradas</div>
         </div>
         <div style="background:#0a1410;padding:12px;border-radius:8px;text-align:center">
           <div style="font-size:24px;font-weight:700;color:#ef4444">${results.errors.length}</div>
@@ -218,59 +308,89 @@ const ReportLiberator = (() => {
   async function run() {
     log(`=== LIBERADOR DE REPORTES ===`);
 
-    // Phase 1: Fetch all reports
-    let allReports;
+    // Phase 1: Fetch reports + folders
+    let data;
     try {
-      allReports = await fetchAllReports();
+      data = await fetchAllReportsAndFolders();
     } catch (e) {
       return { error: 'Error cargando reportes: ' + e.message };
     }
 
+    const { reports: allReports, folders: allFolders } = data;
     log(`Reportes totales: ${allReports.length}`);
+    log(`Carpetas totales: ${allFolders.length}`);
 
-    // Filter to only those in folders
+    const results = { liberated: 0, foldersDeleted: 0, errors: [] };
+
+    // Phase 2: Liberate reports from folders (if any)
     const inFolders = allReports.filter(r => r.folderId !== null && r.folderId !== undefined);
     log(`Reportes en carpetas: ${inFolders.length}`);
 
-    if (!inFolders.length) {
-      return { error: 'No hay reportes dentro de carpetas. Todos están libres.' };
+    if (inFolders.length > 0) {
+      inFolders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      const config = await showSelectionForm(inFolders);
+      if (config.cancelled) return { cancelled: true };
+
+      const selected = config.selected;
+      log(`Seleccionados para liberar: ${selected.length}`);
+
+      showProgressUI('Liberando Reportes', 'Preparando...');
+      for (let i = 0; i < selected.length; i++) {
+        const report = selected[i];
+        const pct = (i / selected.length) * 100;
+        updateProgress(`${i + 1}/${selected.length}: ${report.name}`, pct);
+        try {
+          await liberateReport(report);
+          results.liberated++;
+          log(`  ${report.name} (id:${report.id}): liberado ✓`);
+        } catch (e) {
+          results.errors.push(`${report.name}: ${String(e).substring(0, 200)}`);
+          warn(`  ${report.name}: error: ${String(e).substring(0, 200)}`);
+        }
+      }
+      removeUI();
     }
 
-    // Sort by name
-    inFolders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    // Phase 3: Delete folders
+    if (allFolders.length > 0) {
+      // Re-fetch to get updated folder report counts after liberation
+      let updatedFolders = allFolders;
+      if (results.liberated > 0) {
+        try {
+          const fresh = await fetchAllReportsAndFolders();
+          updatedFolders = fresh.folders;
+        } catch (_) {}
+      }
+      updatedFolders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    // Phase 2: Selection form
-    const config = await showSelectionForm(inFolders);
-    if (config.cancelled) return { cancelled: true };
+      const folderConfig = await showFolderSelectionForm(updatedFolders);
+      if (!folderConfig.skipped && folderConfig.selected) {
+        const selectedFolders = folderConfig.selected;
+        log(`Carpetas a borrar: ${selectedFolders.length}`);
 
-    const selected = config.selected;
-    log(`Seleccionados para liberar: ${selected.length}`);
-
-    const results = { liberated: 0, errors: [] };
-
-    showProgressUI('Liberando Reportes', 'Preparando...');
-
-    // Phase 3: Liberate each
-    for (let i = 0; i < selected.length; i++) {
-      const report = selected[i];
-      const pct = (i / selected.length) * 100;
-      updateProgress(`${i + 1}/${selected.length}: ${report.name}`, pct);
-
-      try {
-        await liberateReport(report);
-        results.liberated++;
-        log(`  ${report.name} (id:${report.id}): liberado ✓`);
-      } catch (e) {
-        results.errors.push(`${report.name}: ${String(e).substring(0, 200)}`);
-        warn(`  ${report.name}: error: ${String(e).substring(0, 200)}`);
+        showProgressUI('Borrando Carpetas', 'Preparando...');
+        for (let i = 0; i < selectedFolders.length; i++) {
+          const folder = selectedFolders[i];
+          const pct = (i / selectedFolders.length) * 100;
+          updateProgress(`${i + 1}/${selectedFolders.length}: ${folder.name}`, pct);
+          try {
+            await deleteFolder(folder.id);
+            results.foldersDeleted++;
+            log(`  ${folder.name} (id:${folder.id}): borrada ✓`);
+          } catch (e) {
+            results.errors.push(`Carpeta "${folder.name}": ${String(e).substring(0, 200)}`);
+            warn(`  ${folder.name}: error: ${String(e).substring(0, 200)}`);
+          }
+        }
+        removeUI();
       }
     }
 
     log(`\n=== RESULTADO ===`);
-    log(`Liberados: ${results.liberated}/${selected.length}`);
+    log(`Reportes liberados: ${results.liberated}`);
+    log(`Carpetas borradas: ${results.foldersDeleted}`);
     log(`Errores: ${results.errors.length}`);
 
-    removeUI();
     showSummary(results);
     return results;
   }
