@@ -104,17 +104,36 @@ const BulkUpload = (() => {
     // BN=65 PiezasCarga | BO=66 CargasHora | BP=67 TiempoEntrega | BQ=68 Notas adicionales
     const header = {};
     const parts = [];
-    for (const row of rows) {
-      const colA = (row[0] || '').trim();
-      const keyNorm = colA.replace(/:$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const keyAcc = colA.replace(/:$/, '').trim().toLowerCase();
-      // V10: header values can be at col C (idx 2) or col G (idx 6) depending on layout
-      const hk = HEADER_KEYS[keyAcc] || HEADER_KEYS[keyNorm];
-      if (hk) {
-        const v = (row[2] || '').trim() || (row[6] || '').trim();
-        if (v) header[hk] = v;
-        continue;
+    // V10 special case: Modo se exporta como valor pelado (sin label) en G1 / row 0 col 6
+    // Buscar COTIZACIÓN+NP / SOLO_PN en las primeras 3 filas
+    for (let r = 0; r < Math.min(rows.length, 3); r++) {
+      for (const cell of rows[r]) {
+        const v = (cell || '').trim().toUpperCase();
+        if (v === 'COTIZACIÓN+NP' || v === 'COTIZACION+NP' || v === 'SOLO_PN' || v === 'SOLO PN') {
+          header.modo = v;
+          break;
+        }
       }
+      if (header.modo) break;
+    }
+    for (const row of rows) {
+      // V10: el header tiene MÚLTIPLES pares clave-valor por fila
+      // Escanear TODAS las celdas buscando labels conocidos; el valor está en la siguiente celda no vacía
+      let isHeaderRow = false;
+      for (let c = 0; c < row.length; c++) {
+        const cell = (row[c] || '').trim();
+        if (!cell) continue;
+        const keyAcc = cell.replace(/:$/, '').trim().toLowerCase();
+        const keyNorm = keyAcc.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const hk = HEADER_KEYS[keyAcc] || HEADER_KEYS[keyNorm];
+        if (!hk) continue;
+        // Buscar el valor en las siguientes 1-4 celdas a la derecha
+        for (let d = 1; d <= 4; d++) {
+          const v = (row[c + d] || '').trim();
+          if (v) { header[hk] = v; isHeaderRow = true; break; }
+        }
+      }
+      if (isHeaderRow) continue;
 
       const pn = g(row, 5); // F=5
       const qty = gn(row, 9); // J=9
