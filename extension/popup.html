@@ -37,6 +37,23 @@
     }
     .btn-reload-inline:hover { opacity: 1; }
 
+    .update-banner {
+      display: none; padding: 10px 14px; background: #fff3cd; border-bottom: 1px solid #ffc107;
+      font-size: 11px; color: #664d03; line-height: 1.4;
+    }
+    .update-banner.visible { display: block; }
+    .update-banner-title { font-weight: 700; margin-bottom: 4px; color: #92400e; }
+    .update-banner-row { display: flex; gap: 6px; margin-top: 6px; }
+    .update-banner button {
+      flex: 1; padding: 6px 8px; border: none; border-radius: 4px; font-size: 11px;
+      font-weight: 600; cursor: pointer;
+    }
+    .update-banner .btn-update { background: #f59e0b; color: white; }
+    .update-banner .btn-update:hover { background: #d97706; }
+    .update-banner .btn-update-guide { background: #fde68a; color: #78350f; }
+    .update-banner .btn-update-guide:hover { background: #fcd34d; }
+    .update-banner .btn-update-dismiss { background: transparent; color: #92400e; flex: 0 0 auto; padding: 6px; }
+
     .view { display: none; }
     .view.active { display: block; }
 
@@ -133,6 +150,16 @@
       <div class="subtitle">Ecoplating</div>
     </div>
     <img src="icons/steelhead-logo.png" class="header-logo" alt="Steelhead">
+  </div>
+
+  <div id="update-banner" class="update-banner">
+    <div class="update-banner-title">⬆️ Nueva versión disponible: <span id="update-new-version"></span></div>
+    <div>Tienes la versión <span id="update-current-version"></span>. Descarga la nueva e instálala manualmente.</div>
+    <div class="update-banner-row">
+      <button class="btn-update" id="btn-update-download">📥 Descargar zip</button>
+      <button class="btn-update-guide" id="btn-update-guide">📖 Cómo instalar</button>
+      <button class="btn-update-dismiss" id="btn-update-dismiss" title="Ocultar hasta la próxima sesión">✕</button>
+    </div>
   </div>
 
   <div id="status-bar" class="status-bar">

@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     config = await sendToBackground('get-config');
     await checkStatus();
     renderAppMenu();
+    checkExtensionUpdate();
 
     document.getElementById('btn-reload').addEventListener('click', () => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -372,6 +373,52 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.disabled = false;
         btn.textContent = '📥 Descargar CSV de corrección';
       });
+    });
+  }
+
+  // ── Extension update checker ──
+  function compareVersions(a, b) {
+    const pa = String(a || '0').split('.').map(n => parseInt(n) || 0);
+    const pb = String(b || '0').split('.').map(n => parseInt(n) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const da = pa[i] || 0, db = pb[i] || 0;
+      if (da > db) return 1;
+      if (da < db) return -1;
+    }
+    return 0;
+  }
+
+  function checkExtensionUpdate() {
+    if (!config?.extensionVersion) return;
+    const current = chrome.runtime.getManifest().version;
+    const latest = config.extensionVersion;
+    if (compareVersions(latest, current) <= 0) return; // up to date
+
+    // Check if user dismissed this version
+    const dismissedKey = 'sa_update_dismissed_' + latest;
+    if (sessionStorage.getItem(dismissedKey)) return;
+
+    // Show banner
+    const banner = document.getElementById('update-banner');
+    document.getElementById('update-current-version').textContent = current;
+    document.getElementById('update-new-version').textContent = latest;
+    banner.classList.add('visible');
+
+    document.getElementById('btn-update-download').addEventListener('click', () => {
+      const url = config.extensionZipUrl;
+      if (url) chrome.tabs.create({ url });
+      else alert('URL del zip no configurada.');
+    });
+    document.getElementById('btn-update-guide').addEventListener('click', () => {
+      const url = config.extensionInstallGuideUrl;
+      if (url) chrome.tabs.create({ url });
+      else {
+        alert('Cómo instalar:\n\n1. Descarga el zip\n2. Descomprímelo\n3. Ve a chrome://extensions o edge://extensions\n4. Activa "Modo desarrollador"\n5. Borra la versión vieja\n6. Clic en "Cargar descomprimida" y selecciona la carpeta extension');
+      }
+    });
+    document.getElementById('btn-update-dismiss').addEventListener('click', () => {
+      banner.classList.remove('visible');
+      sessionStorage.setItem(dismissedKey, '1');
     });
   }
 });

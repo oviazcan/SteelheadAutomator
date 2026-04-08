@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Instalar Steelhead Automator — Guía</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 24px; color: #1a1a2e; line-height: 1.55; background: #f8f9fa; }
+  h1 { color: #1a1a2e; border-bottom: 3px solid #38bdf8; padding-bottom: 8px; }
+  h2 { color: #0d4f8b; margin-top: 32px; }
+  ol { padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  code { background: #e8e8e8; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #b91c1c; }
+  .step-img { display: block; margin: 12px 0; max-width: 100%; border: 1px solid #ddd; border-radius: 6px; }
+  .warning { background: #fff3cd; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+  .tip { background: #d1ecf1; border-left: 4px solid #0d9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+  .download-btn { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
+  .download-btn:hover { background: #1d4ed8; }
+</style>
+</head>
+<body>
+
+<h1>📦 Instalar / Actualizar Steelhead Automator</h1>
+
+<p>Esta guía te ayuda a instalar o actualizar la extensión <strong>Steelhead Automator</strong> en Chrome o Edge.</p>
+
+<a href="steelhead-automator.zip" class="download-btn" download>📥 Descargar última versión (zip)</a>
+
+<h2>Pasos de instalación</h2>
+
+<ol>
+  <li><strong>Descargar el zip</strong> usando el botón de arriba.</li>
+  <li><strong>Descomprimir</strong> el archivo descargado. Vas a obtener una carpeta llamada <code>extension</code>.
+    <div class="warning">⚠️ <strong>Importante en Windows con McAfee/Edge</strong>: si al descomprimir ves archivos con extensión <code>.j_</code> en vez de <code>.js</code>, McAfee los está renombrando. Renómbralos manualmente de vuelta a <code>.js</code>.</div>
+  </li>
+  <li>Abre tu navegador y ve a:
+    <ul>
+      <li>Chrome: <code>chrome://extensions</code></li>
+      <li>Edge: <code>edge://extensions</code></li>
+    </ul>
+  </li>
+  <li><strong>Activa el "Modo de desarrollador"</strong> (esquina superior derecha).</li>
+  <li>Si ya tienes una versión vieja instalada, <strong>elimínala primero</strong> haciendo click en el botón "Quitar" o "Eliminar".</li>
+  <li>Click en <strong>"Cargar descomprimida"</strong> (Chrome) o <strong>"Cargar desempaquetado"</strong> (Edge).</li>
+  <li>Selecciona la carpeta <code>extension</code> que descomprimiste en el paso 2.</li>
+  <li>¡Listo! La extensión aparece en tu lista. Pin a la barra de herramientas para acceso rápido.</li>
+</ol>
+
+<h2>Verificar la versión instalada</h2>
+
+<p>Click en el ícono de la extensión. La versión aparece en la barra de estado abajo del logo (ej. <code>v1.1.0</code>).</p>
+
+<h2>Detectar nuevas versiones</h2>
+
+<div class="tip">💡 La extensión te avisará automáticamente cuando haya una versión nueva con una banda amarilla en el popup. Solo da click en "Descargar zip" y vuelve a hacer estos pasos.</div>
+
+<h2>Problemas comunes</h2>
+
+<ul>
+  <li><strong>"No se ha podido cargar JavaScript content.js"</strong>: McAfee renombró los .js a .j_. Renómbralos.</li>
+  <li><strong>"No se ha podido leer el manifiesto"</strong>: Estás cargando el .zip en vez de la carpeta descomprimida. Descomprime primero.</li>
+  <li><strong>La extensión no aparece en Steelhead</strong>: Recarga la página de Steelhead (Ctrl+R o Cmd+R).</li>
+</ul>
+
+<h2>Soporte</h2>
+
+<p>Contacto: <a href="mailto:oviazcan@gmail.com">oviazcan@gmail.com</a></p>
+
+</body>
+</html>

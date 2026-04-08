@@ -16,7 +16,7 @@ const BulkUpload = (() => {
   // UTILITIES
   // ═══════════════════════════════════════════
 
-  const toBool = (v) => { const s = (v || '').toString().trim().toUpperCase(); return s === 'SI' || s === 'SÍ' || s === 'YES' || s === '1' || s === 'TRUE'; };
+  const toBool = (v) => { const s = (v || '').toString().trim().toUpperCase(); return s === 'SI' || s === 'SÍ' || s === 'YES' || s === '1' || s === 'TRUE' || s === 'V' || s === 'VERDADERO'; };
   const isoDate = (d) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString(); };
   const g = (row, i) => {
     let v = (row[i] || '').trim().replace(/\s+/g, ' ');
