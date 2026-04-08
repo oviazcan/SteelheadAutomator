@@ -294,7 +294,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const status = await sendToBackground('get-status');
       document.getElementById('status-bar').classList.toggle('error', !status.connected);
       document.getElementById('status-text').textContent = status.connected ? 'Conectado' : 'Sin conexión';
-      document.getElementById('version-text').textContent = `v${status.version}`;
+      const extVer = chrome.runtime.getManifest().version;
+      const verEl = document.getElementById('version-text');
+      verEl.textContent = `v${extVer}`;
+      verEl.title = `Extensión: v${extVer}\nScripts remotos: v${status.version}\nÚltima actualización catálogos: ${status.lastUpdated}`;
 
       // Check if scanner is active
       try {
