@@ -72,7 +72,8 @@
         "SpecFieldsAndOptions": "fc6242c2e83c84eee75b421f3cfc353c65719f2868e7299234bfab38fd5da5ee",
         "PartNumberSpecsSummary": "7f0434efa3bb397028356ae04c8431646a7c9b2e5cb1114ed7f53b4d81c1084f",
         "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de",
-        "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7"
+        "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7",
+        "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d"
       }
     },
     "domain": {
@@ -261,7 +262,8 @@
     "AllReports": { "type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator" },
     "CreateUpdateReportWithPermissions": { "type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator" },
     "DeleteFolderById": { "type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator" },
-    "ArchiveReport": { "type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator" }
+    "ArchiveReport": { "type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator" },
+    "GetPartNumbersInputSchema": { "type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
