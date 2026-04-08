@@ -1,6 +1,9 @@
 {
   "version": "0.2.0",
-  "lastUpdated": "2026-03-31",
+  "lastUpdated": "2026-04-08",
+  "extensionVersion": "1.1.0",
+  "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
+  "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
     "baseUrl": "https://app.gosteelhead.com",
     "graphqlEndpoint": "/graphql",
