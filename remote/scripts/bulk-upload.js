@@ -580,7 +580,23 @@ const BulkUpload = (() => {
       const pnStatus = await checkPNExistence(parts);
 
       // ── Metal Base validation ──
-      const metalBaseEnum = ['Cobre', 'Aluminio', 'Fierro', 'Latón', 'Acero Inoxidable', 'Bronce', 'Bimetálica', 'Acero al Carbón', 'Zamak', 'Varios'];
+      // V10: fetch enum directly from PartNumber input schema (no más hardcoded)
+      let metalBaseEnum = [];
+      let satEnum = [];
+      try {
+        const schemaData = await api().query('GetPartNumbersInputSchema', {}, 'GetPartNumbersInputSchema');
+        const schemaNodes = schemaData?.allPartNumberInputSchemas?.nodes || [];
+        const latestSchema = schemaNodes.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
+        if (latestSchema) {
+          const schemaProps = latestSchema.inputSchema?.properties || {};
+          metalBaseEnum = schemaProps.DatosAdicionalesNP?.properties?.BaseMetal?.enum || [];
+          satEnum = schemaProps.DatosFacturacion?.properties?.CodigoSAT?.enum || [];
+          log(`  Schema loaded: ${metalBaseEnum.length} metales, ${satEnum.length} SAT`);
+        }
+      } catch (e) {
+        warn(`GetPartNumbersInputSchema falló: ${String(e).substring(0, 100)}. Usando fallback hardcoded.`);
+        metalBaseEnum = ['Cobre', 'Aluminio', 'Fierro', 'Latón', 'Acero Inoxidable', 'Bronce', 'Bimetálica', 'Acero al Carbón', 'Zamak', 'Varios'];
+      }
       const normalize = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const newMetals = new Set();
       for (const part of parts) {

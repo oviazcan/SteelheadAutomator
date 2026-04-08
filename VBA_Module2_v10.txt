@@ -5,7 +5,7 @@
 ' V10 LAYOUT DE LISTAS:
 '   A=Clientes B=Procesos C=Productos D=Etiquetas E=Specs
 '   F=Racks Línea G=Racks Todos
-'   H=CódigoSAT I=MetalBase  (preservadas — no se tocan)
+'   H=CódigoSAT I=MetalBase  (V10: ahora se refrescan desde el input schema de PN)
 '   J=Líneas K=Departamentos L=Usuarios M=Grupos de Partes
 
 Sub RefrescarListas()
@@ -25,13 +25,11 @@ Sub RefrescarListas()
     Dim wsL As Worksheet
     Set wsL = ThisWorkbook.Sheets("Listas")
 
-    ' V10: Limpiar A-G (clientes, procesos, productos, etiquetas, specs, racks)
-    ' Preservar H-I (CódigoSAT, MetalBase) — son fijas en la plantilla
-    ' Limpiar J-M (líneas, departamentos, usuarios, grupos)
+    ' V10: Limpiar A-M (todos los catálogos refrescables)
+    ' H y I (CódigoSAT, MetalBase) ahora vienen del schema, no son fijas
     Dim lastR As Long
     lastR = Application.Max(wsL.UsedRange.Rows.Count, 2)
-    wsL.Range("A2:G" & lastR).ClearContents
-    wsL.Range("J2:M" & lastR).ClearContents
+    wsL.Range("A2:M" & lastR).ClearContents
 
     ' Cargar cada catálogo desde el archivo externo
     CargarClientesDesde wbCat, wsL
@@ -40,6 +38,8 @@ Sub RefrescarListas()
     CargarEtiquetasDesde wbCat, wsL
     CargarSpecsDesde wbCat, wsL
     CargarRacksDesde wbCat, wsL
+    CargarCodigoSATDesde wbCat, wsL
+    CargarMetalBaseDesde wbCat, wsL
     CargarLineasDesde wbCat, wsL
     CargarDepartamentosDesde wbCat, wsL
     CargarUsuariosDesde wbCat, wsL
@@ -59,6 +59,8 @@ Sub RefrescarListas()
         NContar(wsL, 5) & " specs" & vbCrLf & _
         NContar(wsL, 6) & " racks línea" & vbCrLf & _
         NContar(wsL, 7) & " racks todos" & vbCrLf & _
+        NContar(wsL, 8) & " códigos SAT" & vbCrLf & _
+        NContar(wsL, 9) & " metales base" & vbCrLf & _
         NContar(wsL, 10) & " líneas" & vbCrLf & _
         NContar(wsL, 11) & " departamentos" & vbCrLf & _
         NContar(wsL, 12) & " usuarios" & vbCrLf & _
@@ -313,6 +315,42 @@ Private Sub CargarRacksDesde(wbCat As Workbook, wsL As Worksheet)
     Next r
     EscribirOrdenado wsL, 6, linea
     EscribirOrdenado wsL, 7, todos
+End Sub
+
+' === CÓDIGO SAT (col H = 8) ===  V10: viene del input schema de PN
+Private Sub CargarCodigoSATDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String, i As Long
+    On Error Resume Next
+    Set ws = wbCat.Sheets("CodigoSAT")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    i = 0
+    ' Mantener orden original del schema (no sortear) para que coincida con UI de Steelhead
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            i = i + 1
+            wsL.Cells(i + 1, 8).Value = v
+        End If
+    Next r
+End Sub
+
+' === METAL BASE (col I = 9) ===  V10: viene del input schema de PN
+Private Sub CargarMetalBaseDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String, i As Long
+    On Error Resume Next
+    Set ws = wbCat.Sheets("MetalBase")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    i = 0
+    ' Mantener orden original del schema
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            i = i + 1
+            wsL.Cells(i + 1, 9).Value = v
+        End If
+    Next r
 End Sub
 
 ' === LÍNEAS (col J = 10) ===  V10: era col 12 en v9, ahora col 10

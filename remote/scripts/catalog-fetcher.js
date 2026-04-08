@@ -15,7 +15,7 @@ const CatalogFetcher = (() => {
 
   async function fetchAll() {
     log('Catálogos dinámicos: consultando API...');
-    const [customers, processes, products, labels, specs, racks, users, groups] = await Promise.all([
+    const [customers, processes, products, labels, specs, racks, users, groups, pnInputSchema] = await Promise.all([
       fetchCustomers(),
       fetchProcesses(),
       fetchProducts(),
@@ -23,12 +23,32 @@ const CatalogFetcher = (() => {
       fetchSpecs(),
       fetchRacks(),
       fetchUsers(),
-      fetchGroups()
+      fetchGroups(),
+      fetchPNInputSchema()
     ]);
     log(`  ${customers.length} clientes, ${processes.length} procesos, ${products.length} productos`);
     log(`  ${labels.length} etiquetas, ${specs.length} specs, ${racks.linea.length}/${racks.all.length} racks`);
     log(`  ${users.length} usuarios, ${groups.length} grupos`);
-    return { customers, processes, products, labels, specs, racks, users, groups };
+    log(`  Input schema: ${pnInputSchema.metalBase.length} metales, ${pnInputSchema.codigoSAT.length} códigos SAT`);
+    return { customers, processes, products, labels, specs, racks, users, groups, pnInputSchema };
+  }
+
+  // V10: fetch metalBase + codigoSAT enums directly from PartNumber input schema
+  async function fetchPNInputSchema() {
+    try {
+      const data = await api().query('GetPartNumbersInputSchema', {}, 'GetPartNumbersInputSchema');
+      const nodes = data?.allPartNumberInputSchemas?.nodes || [];
+      // Find the latest schema (highest id)
+      const latest = nodes.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
+      if (!latest) return { metalBase: [], codigoSAT: [] };
+      const props = latest.inputSchema?.properties || {};
+      const metalBase = props.DatosAdicionalesNP?.properties?.BaseMetal?.enum || [];
+      const codigoSAT = props.DatosFacturacion?.properties?.CodigoSAT?.enum || [];
+      return { metalBase: [...metalBase], codigoSAT: [...codigoSAT] };
+    } catch (e) {
+      warn(`GetPartNumbersInputSchema: ${String(e).substring(0, 100)}`);
+      return { metalBase: [], codigoSAT: [] };
+    }
   }
 
   async function fetchCustomers() {
@@ -344,6 +364,15 @@ const CatalogFetcher = (() => {
     for (const g of catalogs.groups) groupRows.push([g]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(groupRows), 'Grupos');
 
+    // V10: MetalBase + CodigoSAT desde el input schema (no más hardcoded)
+    const mbRows = [['MetalBase']];
+    for (const m of catalogs.pnInputSchema.metalBase) mbRows.push([m]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mbRows), 'MetalBase');
+
+    const satRows = [['CódigoSAT']];
+    for (const c of catalogs.pnInputSchema.codigoSAT) satRows.push([c]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(satRows), 'CodigoSAT');
+
     // Resumen sheet
     const counts = {
       clientes: catalogs.customers.length,
@@ -356,7 +385,9 @@ const CatalogFetcher = (() => {
       lineas: lineas.length,
       departamentos: departamentos.length,
       usuarios: catalogs.users.length,
-      grupos: catalogs.groups.length
+      grupos: catalogs.groups.length,
+      metalBase: catalogs.pnInputSchema.metalBase.length,
+      codigoSAT: catalogs.pnInputSchema.codigoSAT.length
     };
     const resumenRows = [
       ['Catálogos Steelhead — ' + new Date().toLocaleDateString('es-MX')],
@@ -373,6 +404,8 @@ const CatalogFetcher = (() => {
       ['Departamentos', counts.departamentos],
       ['Usuarios', counts.usuarios],
       ['Grupos PN', counts.grupos],
+      ['Metal Base', counts.metalBase],
+      ['Código SAT', counts.codigoSAT],
       [],
       ['Instrucciones:'],
       ['1. Abre tu Plantilla de Cotizaciones (.xlsm)'],
