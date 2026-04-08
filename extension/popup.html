@@ -40,7 +40,20 @@
     .view { display: none; }
     .view.active { display: block; }
 
-    .app-menu { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .app-menu-wrap { position: relative; }
+    .app-menu { padding: 12px 16px 12px; display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; scroll-behavior: smooth; }
+    .app-menu::-webkit-scrollbar { width: 6px; }
+    .app-menu::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    .app-menu::-webkit-scrollbar-track { background: transparent; }
+    .scroll-fade {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
+      background: linear-gradient(to bottom, rgba(248,249,250,0) 0%, rgba(248,249,250,0.95) 70%, #f8f9fa 100%);
+      pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px;
+      font-size: 14px; color: #1a1a2e; opacity: 0; transition: opacity 0.2s;
+    }
+    .scroll-fade.visible { opacity: 1; }
+    .scroll-fade-arrow { animation: bounce 1.5s ease-in-out infinite; }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
     .app-card {
       display: flex; align-items: center; gap: 12px;
       padding: 14px 16px; border: 1px solid #ddd; border-radius: 10px;
@@ -131,7 +144,10 @@
   </div>
 
   <div id="view-menu" class="view active">
-    <div class="app-menu" id="app-menu"></div>
+    <div class="app-menu-wrap">
+      <div class="app-menu" id="app-menu"></div>
+      <div class="scroll-fade" id="scroll-fade"><span class="scroll-fade-arrow">▼ más apps ▼</span></div>
+    </div>
   </div>
 
   <div id="view-app" class="view">

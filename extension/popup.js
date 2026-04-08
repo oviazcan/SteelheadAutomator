@@ -90,6 +90,16 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="app-subtitle">Próximamente</div>
       </div>`;
     menu.appendChild(placeholder);
+
+    // Wire up scroll indicator
+    const fade = document.getElementById('scroll-fade');
+    const updateFade = () => {
+      const scrollable = menu.scrollHeight > menu.clientHeight;
+      const atBottom = menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 4;
+      fade.classList.toggle('visible', scrollable && !atBottom);
+    };
+    menu.addEventListener('scroll', updateFade);
+    setTimeout(updateFade, 0);
   }
 
   // ── App View ──
