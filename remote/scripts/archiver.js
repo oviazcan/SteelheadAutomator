@@ -337,12 +337,44 @@ const PNArchiver = (() => {
 
   function showArchiverResult(results, msg) {
     removeArchiverUI();
-    alert(msg || `Archivador completado:\n\n` +
-      `PNs encontrados: ${results.found}\n` +
-      `Archivados: ${results.archived}\n` +
-      (results.validated ? `Con validación: ${results.validated}\n` : '') +
-      (results.errors.length ? `Errores: ${results.errors.length}\n${results.errors.slice(0, 5).join('\n')}` : '')
+    if (!document.getElementById('dl9-styles')) {
+      const s = document.createElement('style'); s.id = 'dl9-styles';
+      s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:520px;width:92%;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 12px}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}`;
+      document.head.appendChild(s);
+    }
+    const ov = document.createElement('div');
+    ov.className = 'dl9-overlay';
+    const md = document.createElement('div');
+    md.className = 'dl9-modal';
+    md.style.background = '#1a2e1a';
+
+    const hasErrors = results.errors && results.errors.length > 0;
+    const summary = msg || (
+      `<div style="font-size:13px;color:#cbd5e1;line-height:1.7">` +
+      `<b>PNs encontrados:</b> ${results.found}<br>` +
+      `<b>Archivados:</b> ${results.archived}<br>` +
+      (results.validated ? `<b>Con validación:</b> ${results.validated}<br>` : '') +
+      (hasErrors ? `<b style="color:#fca5a5">Errores:</b> ${results.errors.length}` : '') +
+      `</div>` +
+      (hasErrors ? `<div style="margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;color:#fca5a5;background:#0f172a;padding:8px;border-radius:6px">${results.errors.slice(0, 10).join('<br>')}</div>` : '')
     );
+
+    md.innerHTML = `
+      <h2 style="color:#4ade80">📦 Archivador completado</h2>
+      ${summary}
+      <div class="dl9-btnrow">
+        <button class="dl9-btn" id="sa-arch-close" style="background:#475569;color:#e2e8f0">CERRAR</button>
+        <button class="dl9-btn" id="sa-arch-reload" style="background:#4ade80;color:#0f172a">CERRAR Y RECARGAR</button>
+      </div>`;
+
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+
+    document.getElementById('sa-arch-close').onclick = () => ov.parentNode.removeChild(ov);
+    document.getElementById('sa-arch-reload').onclick = () => {
+      ov.parentNode.removeChild(ov);
+      window.location.reload();
+    };
   }
 
   return { run };
