@@ -12,10 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Init ──
   async function init() {
+    initTheme();
     config = await sendToBackground('get-config');
     await checkStatus();
     renderAppMenu();
     checkExtensionUpdate();
+
+    document.getElementById('btn-theme-toggle').addEventListener('click', toggleTheme);
 
     document.getElementById('btn-reload').addEventListener('click', () => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -420,5 +423,32 @@ document.addEventListener('DOMContentLoaded', () => {
       banner.classList.remove('visible');
       sessionStorage.setItem(dismissedKey, '1');
     });
+  }
+
+  // ── Dark mode ──
+  function initTheme() {
+    chrome.storage.local.get(['sa_theme'], (result) => {
+      const theme = result.sa_theme || 'light';
+      applyTheme(theme);
+    });
+  }
+
+  function applyTheme(theme) {
+    if (theme === 'dark') {
+      document.body.classList.add('dark-mode');
+      const btn = document.getElementById('btn-theme-toggle');
+      if (btn) btn.textContent = '☀️';
+    } else {
+      document.body.classList.remove('dark-mode');
+      const btn = document.getElementById('btn-theme-toggle');
+      if (btn) btn.textContent = '🌙';
+    }
+  }
+
+  function toggleTheme() {
+    const isDark = document.body.classList.contains('dark-mode');
+    const newTheme = isDark ? 'light' : 'dark';
+    applyTheme(newTheme);
+    chrome.storage.local.set({ sa_theme: newTheme });
   }
 });
