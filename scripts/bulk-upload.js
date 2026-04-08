@@ -135,6 +135,16 @@ const BulkUpload = (() => {
       }
       if (isHeaderRow) continue;
 
+      // V10: Skip section/column-header/type-indicator rows
+      // Row 6: section headers ("PARÁMETROS", "IDENTIFICACIÓN", "PRECIO", etc.) — col A is non-empty
+      // Row 7: column headers ("Archivado", "Cliente", "Número de\nparte", etc.) — col A = "Archivado"
+      // Row 8: type indicators ("V/F", "Texto", "#", "$", "Desp.")  — col A = "V/F"
+      const colA = (row[0] || '').trim();
+      const colF = (row[5] || '').trim();
+      if (colA === 'PARÁMETROS' || colA === 'Archivado' || colA === 'V/F') continue;
+      // Also skip if col F is a literal column-header text (e.g. "Número de\nparte" or "Texto")
+      if (colF === 'Texto' || colF.replace(/\s+/g, ' ').toLowerCase() === 'número de parte') continue;
+
       const pn = g(row, 5); // F=5
       const qty = gn(row, 9); // J=9
       if (!pn) continue;
