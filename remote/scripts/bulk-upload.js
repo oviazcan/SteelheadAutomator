@@ -291,6 +291,7 @@ const BulkUpload = (() => {
 
   async function checkPNExistence(parts) {
     // V10: PN existence is per (pn name, customerId) since the same name can exist under multiple customers
+    // Uses AllPartNumbers because SearchPartNumbers (older hash) doesn't return customer info in the response
     const uniq = new Map(); // "PN|custId" → { name, customerId }
     for (const p of parts) {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
@@ -300,11 +301,17 @@ const BulkUpload = (() => {
     log(`Buscando ${uniq.size} PN/cliente combinaciones...`);
     for (const [key, { name, customerId }] of uniq) {
       try {
-        const d = await api().query('SearchPartNumbers', { searchQuery: name, first: 20, offset: 0, orderBy: ['ID_DESC'] });
-        const nodes = d?.searchPartNumbers?.nodes || d?.pagedData?.nodes || [];
-        const match = nodes.find(n => n.name?.toUpperCase() === name.toUpperCase() && !n.archivedAt && n.customerByCustomerId?.id === customerId);
+        const d = await api().query('AllPartNumbers', {
+          orderBy: ['ID_DESC'], offset: 0, first: 50, searchQuery: name
+        });
+        const nodes = d?.pagedData?.nodes || [];
+        const match = nodes.find(n =>
+          n.name?.toUpperCase() === name.toUpperCase() &&
+          !n.archivedAt &&
+          (n.customerByCustomerId?.id === customerId || n.customerId === customerId)
+        );
         if (match) { existMap.set(key, { id: match.id }); log(`  "${name}" (cust:${customerId}) -> EXISTE id:${match.id}`); }
-        else log(`  "${name}" (cust:${customerId}) -> NUEVO`);
+        else log(`  "${name}" (cust:${customerId}) -> NUEVO (${nodes.length} resultados)`);
       } catch (e) { warn(`Búsqueda "${name}": ${String(e).substring(0, 120)}`); }
     }
     return parts.map(p => {
