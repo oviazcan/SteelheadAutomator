@@ -442,6 +442,56 @@ const BulkUpload = (() => {
 
   function setProgressBar(p) { const b = document.getElementById('dl9-bar'); if (b) b.style.width = p + '%'; }
 
+  // V10: search for existing quotes by customer + name
+  async function findExistingQuote(customerId, name) {
+    try {
+      const data = await api().query('AllQuotes', {
+        orderBy: ['ID_DESC'], offset: 0, first: 50,
+        customerIdFilter: [customerId], searchQuery: name
+      });
+      const nodes = data?.pagedData?.nodes || [];
+      // Exact name match (case insensitive), only non-archived
+      const upper = name.toUpperCase();
+      return nodes.find(q => q.name?.toUpperCase() === upper && !q.archivedAt) || null;
+    } catch (e) {
+      warn(`AllQuotes search "${name}" cust ${customerId}: ${String(e).substring(0, 100)}`);
+      return null;
+    }
+  }
+
+  // Modal: ask user what to do when a quote with same name+customer exists
+  function showQuoteConflict(customerName, quoteName, existing) {
+    return new Promise((resolve) => {
+      injectStyles(); const { overlay, modal } = createOverlay();
+      modal.style.background = '#1e293b';
+      modal.innerHTML = `
+        <h2 style="color:#f59e0b">⚠️ Cotización ya existe</h2>
+        <p style="color:#e2e8f0;font-size:13px;margin:12px 0">
+          Ya existe una cotización con el nombre <b>"${quoteName}"</b> para el cliente <b>${customerName}</b>:
+        </p>
+        <div style="background:#0f172a;padding:12px;border-radius:6px;margin-bottom:12px;font-size:12px;color:#94a3b8">
+          <div><b style="color:#e2e8f0">Cotización #${existing.idInDomain}</b></div>
+          <div>Nombre: ${existing.name}</div>
+          <div>Creada: ${new Date(existing.createdAt).toLocaleDateString('es-MX')}</div>
+        </div>
+        <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">¿Qué quieres hacer?</p>
+        <div class="dl9-btnrow" style="flex-direction:column;gap:8px">
+          <button class="dl9-btn" id="dl9-conflict-modify" style="background:#0d9488;color:white;justify-content:flex-start">
+            ✏️ <b>Modificar la existente</b> — re-llena #${existing.idInDomain} con los PNs del CSV
+          </button>
+          <button class="dl9-btn" id="dl9-conflict-create" style="background:#2563eb;color:white;justify-content:flex-start">
+            ➕ <b>Crear una nueva de todas formas</b> — quedarán 2 cotizaciones con el mismo nombre
+          </button>
+          <button class="dl9-btn" id="dl9-conflict-skip" style="background:#dc2626;color:white;justify-content:flex-start">
+            ⏭️ <b>Omitir este cliente</b> — no procesar sus PNs en esta corrida
+          </button>
+        </div>`;
+      document.getElementById('dl9-conflict-modify').onclick = () => { removeOverlay(overlay); resolve('modify'); };
+      document.getElementById('dl9-conflict-create').onclick = () => { removeOverlay(overlay); resolve('create'); };
+      document.getElementById('dl9-conflict-skip').onclick = () => { removeOverlay(overlay); resolve('skip'); };
+    });
+  }
+
   function showResult(stats, quoteUrl, errors, quoteUrlLabel) {
     const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
     injectStyles(); const { overlay, modal } = createOverlay();
@@ -846,24 +896,58 @@ const BulkUpload = (() => {
             Autorizacion: {}, CondicionesComerciales: {},
           };
 
-          showProgressUI(`Quote ${quoteSeq}/${partsByCustomer.size}: "${thisQuoteName}"`);
+          showProgressUI(`Quote ${quoteSeq}/${partsByCustomer.size}: buscando duplicados...`);
           setProgressBar(5 + Math.round((quoteSeq / partsByCustomer.size) * 40));
-          let createResult;
-          try {
-            createResult = await api().query('CreateQuote', {
-              name: thisQuoteName, assigneeId, customerId: cid,
-              validUntil: isoDate(validDays), followUpDate: isoDate(3),
-              customerAddressId: cust.addressId, customerContactId: cust.contactId,
-              stagesRevisionId: DOMAIN.stagesRevisionId,
-              lowCodeEnabled: false, autoGenerateLines: false, lowCodeId: null,
-              customInputs: quoteCI, inputSchemaId: DOMAIN.inputSchemaId_Quote,
-              invoiceTermsId: cust.invoiceTermsId,
-              orderDueAt: null, shipToAddressId: cust.addressId
-            });
-          } catch (e) { errors.push(`CreateQuote "${thisQuoteName}": ${String(e).substring(0, 150)}`); continue; }
-          const thisQuoteId = createResult?.createQuote?.quote?.id;
-          const thisQuoteIdInDomain = createResult?.createQuote?.quote?.idInDomain;
-          if (!thisQuoteId) { errors.push(`CreateQuote no devolvió id para "${thisQuoteName}"`); continue; }
+
+          // V10: detect existing quote with same name+customer
+          let thisQuoteId = null, thisQuoteIdInDomain = null;
+          const existingQuote = await findExistingQuote(cid, thisQuoteName);
+          if (existingQuote) {
+            log(`  Cotización existente encontrada: #${existingQuote.idInDomain} (${cust.name})`);
+            const action = await showQuoteConflict(cust.name, thisQuoteName, existingQuote);
+            if (action === 'skip') {
+              log(`  ${cust.name}: omitido por usuario`);
+              continue;
+            }
+            if (action === 'modify') {
+              thisQuoteId = existingQuote.id;
+              thisQuoteIdInDomain = existingQuote.idInDomain;
+              log(`  Modificando cotización existente #${thisQuoteIdInDomain}`);
+
+              // Clean existing PNPs from the quote so we can re-add fresh
+              try {
+                const existingPnpIds = (existingQuote.quotePartNumberPricesByQuoteId?.nodes || []).map(n => n.partNumberPriceByPartNumberPriceId?.id).filter(Boolean);
+                if (existingPnpIds.length) {
+                  log(`  Limpiando ${existingPnpIds.length} PNPs viejos de la cotización...`);
+                  await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
+                    { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: false, partNumberPrices: [], partNumberPriceIdsToDelete: existingPnpIds, quotePartNumberPriceLineNumberOnlyUpdates: [] } });
+                }
+              } catch (e) { warn(`Limpiar PNPs viejos: ${String(e).substring(0, 100)}`); }
+            }
+            // action === 'create' falls through to the normal CreateQuote
+          }
+
+          if (!thisQuoteId) {
+            // No existing or user chose to create new
+            showProgressUI(`Quote ${quoteSeq}/${partsByCustomer.size}: "${thisQuoteName}"`);
+            let createResult;
+            try {
+              createResult = await api().query('CreateQuote', {
+                name: thisQuoteName, assigneeId, customerId: cid,
+                validUntil: isoDate(validDays), followUpDate: isoDate(3),
+                customerAddressId: cust.addressId, customerContactId: cust.contactId,
+                stagesRevisionId: DOMAIN.stagesRevisionId,
+                lowCodeEnabled: false, autoGenerateLines: false, lowCodeId: null,
+                customInputs: quoteCI, inputSchemaId: DOMAIN.inputSchemaId_Quote,
+                invoiceTermsId: cust.invoiceTermsId,
+                orderDueAt: null, shipToAddressId: cust.addressId
+              });
+            } catch (e) { errors.push(`CreateQuote "${thisQuoteName}": ${String(e).substring(0, 150)}`); continue; }
+            thisQuoteId = createResult?.createQuote?.quote?.id;
+            thisQuoteIdInDomain = createResult?.createQuote?.quote?.idInDomain;
+            if (!thisQuoteId) { errors.push(`CreateQuote no devolvió id para "${thisQuoteName}"`); continue; }
+          }
+
           quotesCreated.push({ id: thisQuoteId, idInDomain: thisQuoteIdInDomain, customerId: cid, name: thisQuoteName });
           if (!primaryQuoteIdInDomain) primaryQuoteIdInDomain = thisQuoteIdInDomain;
           log(`  Quote #${thisQuoteIdInDomain} (id:${thisQuoteId}) — ${cust.name}`);
