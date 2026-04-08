@@ -1,0 +1,42 @@
+' === MACRO 1: ExportarCSV (v10) ===
+' V10: Exporta 69 columnas (A-BQ). Layout name viene de G3 (no C4).
+
+Sub ExportarCSV()
+    Dim ws As Worksheet, csvName As String, savePath As String
+    Set ws = ThisWorkbook.Sheets("Upload")
+
+    ' V10: nombre del layout en G3 (antes C4)
+    csvName = Trim(CStr(ws.Range("G3").Value))
+    If csvName = "" Then csvName = "cotizacion"
+    Dim inv As Variant, ch As Variant
+    inv = Array("/", "\", ":", "*", "?", Chr(34), "<", ">", "|")
+    For Each ch In inv: csvName = Replace(csvName, CStr(ch), "_"): Next
+
+    #If Mac Then
+        savePath = Application.GetSaveAsFilename(csvName & ".csv")
+    #Else
+        savePath = Application.GetSaveAsFilename(csvName & ".csv", "CSV (*.csv), *.csv")
+    #End If
+    If CStr(savePath) = "False" Or savePath = "" Then Exit Sub
+    If Right(savePath, 4) <> ".csv" Then savePath = savePath & ".csv"
+
+    ' Copiar hoja a libro temporal
+    ws.Copy
+    Dim tmpWb As Workbook
+    Set tmpWb = ActiveWorkbook
+
+    ' V10: 69 columnas (A-BQ). Eliminar columnas extra
+    Dim tmpWs As Worksheet
+    Set tmpWs = tmpWb.Sheets(1)
+    If tmpWs.UsedRange.Columns.Count > 69 Then
+        tmpWs.Range(tmpWs.Columns(70), tmpWs.Columns(tmpWs.UsedRange.Columns.Count)).Delete
+    End If
+
+    ' Guardar como CSV UTF-8 (formato 62)
+    Application.DisplayAlerts = False
+    tmpWb.SaveAs fileName:=savePath, FileFormat:=62
+    tmpWb.Close False
+    Application.DisplayAlerts = True
+
+    MsgBox "CSV UTF-8 exportado:" & vbCrLf & savePath, vbInformation, "Listo"
+End Sub

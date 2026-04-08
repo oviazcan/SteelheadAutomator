@@ -1,0 +1,189 @@
+' === MACRO: LimpiarDatos (v10) ===
+' Borra datos de zona de datos (filas 9+) y restaura defaults / placeholders.
+' Preserva fórmulas.
+'
+' V10 LAYOUT (69 columnas, A-BQ):
+'   1=A Archivado (V/F)         2=B Validación (V/F)
+'   3=C Forzar duplicar (V/F)   4=D Archivar anterior (V/F)
+'   5=E Cliente (Hybrid)        6=F PN (texto)
+'   7=G Descripción (texto)     8=H PN alterno (texto)
+'   9=I Grupo (Hybrid)         10=J Cantidad (#)
+'  11=K Precio ($)             12=L Unidad precio (Drop)
+'  13=M Divisa (Drop, USD)     14=N Precio default (V/F)
+'  15=O Metal base (Drop)      16-20=P-T Etiqueta 1-5 (Drop)
+'  21=U Proceso (Drop)         22-25=V-Y Producto 1
+'  26-29=Z-AC Producto 2       30-33=AD-AG Producto 3
+'  34=AH Spec 1 (Drop)         35=AI Esp.1 (calc)
+'  36=AJ Spec 2 (Drop)         37=AK Esp.2 (calc)
+'  38-41=AL-AO KGM,CMK,LM,MinPzas
+'  42=AP Rack Línea (Drop)     43=AQ Pzas R.L.
+'  44=AR Rack Sec (Drop)       45=AS Pzas R.S.
+'  46-50=AT-AX dimensiones
+'  51=AY Línea (Drop)          52=AZ Departamento (Drop)
+'  53=BA Código SAT (preservar)
+'  54-62=BB-BJ predictivos (calc)
+'  63-69=BK-BQ IBMS (texto)
+
+Sub LimpiarDatos()
+    Dim wsUp As Worksheet
+    Set wsUp = ThisWorkbook.Sheets("Upload")
+
+    Dim lastRow As Long
+    lastRow = wsUp.Cells(wsUp.Rows.Count, 6).End(xlUp).Row  ' V10: PN está en col F=6
+    If lastRow < 300 Then lastRow = 300
+
+    Dim resp As VbMsgBoxResult
+    resp = MsgBox("Borrar todos los datos de filas 9 a " & lastRow & "?" & vbCrLf & vbCrLf & _
+        "Se borran valores y checkboxes." & vbCrLf & _
+        "Las fórmulas se preservan.", vbYesNo + vbExclamation, "LimpiarDatos")
+    If resp <> vbYes Then Exit Sub
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    Dim r As Long, c As Long
+    Dim cell As Range
+    Dim cleaned As Long
+    cleaned = 0
+
+    ' V10 boolean columns: A=1 B=2 C=3 D=4 (Params) y N=14 (Precio default)
+    Dim boolCols As Variant
+    boolCols = Array(1, 2, 3, 4, 14)
+    ' V10 columnas que NO se borran (default fijo): BA=53 (Código SAT)
+    Dim preserveCols As Variant
+    preserveCols = Array(53)
+
+    For r = 9 To lastRow
+        For c = 1 To 69
+            Set cell = wsUp.Cells(r, c)
+            If cell.HasFormula Then GoTo NextCell
+
+            Dim isBool As Boolean
+            isBool = False
+            Dim bc As Variant
+            For Each bc In boolCols
+                If c = CLng(bc) Then isBool = True: Exit For
+            Next bc
+
+            Dim isPreserve As Boolean
+            isPreserve = False
+            Dim pc As Variant
+            For Each pc In preserveCols
+                If c = CLng(pc) Then isPreserve = True: Exit For
+            Next pc
+            If isPreserve Then GoTo NextCell
+
+            If isBool Then
+                ' Defaults: Validación(2)=TRUE, PrecioDefault(14)=TRUE, resto=FALSE
+                If c = 2 Or c = 14 Then
+                    cell.Value = True
+                Else
+                    cell.Value = False
+                End If
+                cleaned = cleaned + 1
+            ElseIf Not IsEmpty(cell.Value) Then
+                cell.ClearContents
+                cleaned = cleaned + 1
+            End If
+NextCell:
+        Next c
+    Next r
+
+    ' V10 Restaurar defaults y placeholders
+    Dim phSelect As String, phHybrid As String, dvDivisa As String
+    phSelect = "(seleccione)"
+    phHybrid = "(seleccione o escriba)"
+    dvDivisa = "USD"
+
+    ' V10 Columnas dropdown puro → "(seleccione)"
+    ' L=12 Unid Precio | O=15 Metal | P-T=16-20 Etiq 1-5 | U=21 Proceso
+    ' V=22 P1 | Z=26 P2 | AD=30 P3
+    ' AH=34 Spec1 | AJ=36 Spec2
+    ' AP=42 Rack Línea | AR=44 Rack Sec
+    ' AY=51 Línea | AZ=52 Departamento
+    Dim phCols As Variant
+    phCols = Array(12, 15, 16, 17, 18, 19, 20, 21, 22, 26, 30, 34, 36, 42, 44, 51, 52)
+    ' V10 Columnas híbridas → "(seleccione o escriba)"
+    ' E=5 Cliente | I=9 Grupo
+    Dim phHybridCols As Variant
+    phHybridCols = Array(5, 9)
+
+    Dim phc As Variant
+    For r = 9 To lastRow
+        ' Divisa (col 13) → default "USD"
+        Set cell = wsUp.Cells(r, 13)
+        If Not cell.HasFormula And (IsEmpty(cell.Value) Or cell.Value = "") Then
+            cell.Value = dvDivisa
+        End If
+
+        For Each phc In phCols
+            Set cell = wsUp.Cells(r, CLng(phc))
+            If IsEmpty(cell.Value) Or cell.Value = "" Then
+                cell.Value = phSelect
+            End If
+        Next phc
+        For Each phc In phHybridCols
+            Set cell = wsUp.Cells(r, CLng(phc))
+            If IsEmpty(cell.Value) Or cell.Value = "" Then
+                cell.Value = phHybrid
+            End If
+        Next phc
+    Next r
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+
+    MsgBox cleaned & " celdas procesadas." & vbCrLf & _
+        "Checkboxes: Validación y Precio Default = SI, resto = NO." & vbCrLf & _
+        "Divisa restaurada a USD." & vbCrLf & _
+        "Placeholders restaurados en dropdowns." & vbCrLf & _
+        "Plantilla lista para nueva carga.", vbInformation, "LimpiarDatos"
+End Sub
+
+' === MACRO: LimpiarEspacios (v10) ===
+' Limpia espacios iniciales, finales y dobles en celdas de texto.
+' NO borra datos ni toca fórmulas.
+
+Sub LimpiarEspacios()
+    Dim wsUp As Worksheet
+    Set wsUp = ThisWorkbook.Sheets("Upload")
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    Dim lastRow As Long
+    lastRow = wsUp.Cells(wsUp.Rows.Count, 6).End(xlUp).Row  ' V10: PN en col F=6
+    If lastRow < 9 Then lastRow = 22
+
+    Dim r As Long, c As Long
+    Dim cell As Range
+    Dim cleaned As Long
+    cleaned = 0
+
+    For r = 9 To lastRow
+        For c = 1 To 69
+            Set cell = wsUp.Cells(r, c)
+            If cell.HasFormula Then GoTo NextCell2
+            If IsEmpty(cell.Value) Then GoTo NextCell2
+            If IsNumeric(cell.Value) And Not VarType(cell.Value) = vbString Then GoTo NextCell2
+            If VarType(cell.Value) = vbBoolean Then GoTo NextCell2
+
+            Dim original As String, limpio As String
+            original = CStr(cell.Value)
+            limpio = Trim(original)
+            Do While InStr(limpio, "  ") > 0
+                limpio = Replace(limpio, "  ", " ")
+            Loop
+            If limpio <> original Then
+                cell.Value = limpio
+                cleaned = cleaned + 1
+            End If
+NextCell2:
+        Next c
+    Next r
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+
+    MsgBox cleaned & " celdas limpiadas (espacios).", vbInformation, "LimpiarEspacios"
+End Sub

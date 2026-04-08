@@ -28,33 +28,28 @@ const BulkUpload = (() => {
 
   const PRICE_UNIT_MAP = { PZA: null, KGM: 3969, CMK: 4907, FTK: 4797, LM: 5150, LBR: 3972, LO: 5348 };
 
-  // Predictive columns: AY=50 to BG=58 (shifted -1 from original)
+  // V10 Predictive material columns: BB=53 (Plata) to BJ=61 (Epóx MTR)
   const PREDICTIVE_MATERIALS = [
-    { col: 50, inventoryItemId: 364506, name: 'Plata Fina' },
-    { col: 51, inventoryItemId: 397490, name: 'Estaño Puro' },
-    { col: 52, inventoryItemId: 412305, name: 'Níquel Metálico' },
-    { col: 53, inventoryItemId: 412805, name: 'Zinc Metálico' },
-    { col: 54, inventoryItemId: 412479, name: 'Placa de Cobre Electrolítico' },
-    { col: 55, inventoryItemId: 412723, name: 'Sterlingshield S (Antitarnish)' },
-    { col: 56, inventoryItemId: 702767, name: 'Epoxy MT' },
-    { col: 57, inventoryItemId: 702769, name: 'Epoxica BT' },
-    { col: 58, inventoryItemId: 702768, name: 'Epoxica MT Red' },
+    { col: 53, inventoryItemId: 364506, name: 'Plata Fina' },
+    { col: 54, inventoryItemId: 397490, name: 'Estaño Puro' },
+    { col: 55, inventoryItemId: 412305, name: 'Níquel Metálico' },
+    { col: 56, inventoryItemId: 412805, name: 'Zinc Metálico' },
+    { col: 57, inventoryItemId: 412479, name: 'Placa de Cobre Electrolítico' },
+    { col: 58, inventoryItemId: 412723, name: 'Sterlingshield S (Antitarnish)' },
+    { col: 59, inventoryItemId: 702767, name: 'Epoxy MT' },
+    { col: 60, inventoryItemId: 702769, name: 'Epoxica BT' },
+    { col: 61, inventoryItemId: 702768, name: 'Epoxica MT Red' },
   ];
 
   const DIVISA_SCHEMA = { type: "object", title: "", required: ["DatosPrecio"], properties: { DatosPrecio: { type: "object", title: "Datos del Precio", required: ["Divisa"], properties: { Divisa: { enum: ["USD", "MXN"], type: "string", title: "Divisa", enumNames: ["USD - Dolar americano", "MXN - Peso mexicano"] } }, dependencies: {} } }, dependencies: {} };
   const DIVISA_UI = { "ui:order": ["DatosPrecio"], DatosPrecio: { "ui:order": ["Divisa"], Divisa: { "ui:title": "Divisa" } } };
 
+  // V10: Cliente, Divisa, Proceso (default) ya no van en el header
   const HEADER_KEYS = {
     'modo': 'modo',
     'nombre cotizacion': 'quoteName', 'nombre cotización': 'quoteName',
-    'cliente': 'customer',
-    'etiquetas cliente': 'customerLabels',
-    'customer idindomain': 'customerIdInDomain',
-    'proceso (default)': 'processName',
-    'id proceso (default)': 'processId',
-    'divisa (precios linea)': 'divisaLinea', 'divisa (precios línea)': 'divisaLinea',
+    'nombre cotizacion/layout': 'quoteName', 'nombre cotización/layout': 'quoteName',
     'empresa emisora': 'empresaEmisora',
-    'divisa cotizacion': 'divisaCotizacion', 'divisa cotización': 'divisaCotizacion',
     'notas externas': 'notasExternas',
     'notas internas': 'notasInternas',
     'asignado': 'asignado',
@@ -92,29 +87,49 @@ const BulkUpload = (() => {
   }
 
   function parseRows(rows) {
+    // V10 column indices (0-indexed)
+    // A=0 Archivado | B=1 Validación | C=2 Forzar | D=3 Archivar
+    // E=4 Cliente | F=5 PN | G=6 Descripción | H=7 PN alterno | I=8 Grupo
+    // J=9 Cantidad | K=10 Precio | L=11 Unidad precio | M=12 Divisa | N=13 Precio default
+    // O=14 Metal base | P=15 Etq1 | Q=16 Etq2 | R=17 Etq3 | S=18 Etq4 | T=19 Etq5
+    // U=20 Proceso | V=21 Prod1 | W=22 Pre1 | X=23 Cnt1 | Y=24 Uni1
+    // Z=25 Prod2 | AA=26 Pre2 | AB=27 Cnt2 | AC=28 Uni2
+    // AD=29 Prod3 | AE=30 Pre3 | AF=31 Cnt3 | AG=32 Uni3
+    // AH=33 Spec1 | AI=34 Esp1 µm | AJ=35 Spec2 | AK=36 Esp2 µm
+    // AL=37 KGM | AM=38 CMK | AN=39 LM | AO=40 MinPzasLote
+    // AP=41 Rack Línea | AQ=42 Pzas R.L. | AR=43 Rack Sec | AS=44 Pzas R.S.
+    // AT=45 Long | AU=46 Ancho | AV=47 Alto | AW=48 D.Ext | AX=49 D.Int
+    // AY=50 Línea | AZ=51 Departamento | BA=52 Código SAT
+    // BB-BJ=53-61 Predictivos | BK=62 QuoteIBMS | BL=63 EstacionIBMS | BM=64 Plano
+    // BN=65 PiezasCarga | BO=66 CargasHora | BP=67 TiempoEntrega | BQ=68 Notas adicionales
     const header = {};
     const parts = [];
     for (const row of rows) {
       const colA = (row[0] || '').trim();
       const keyNorm = colA.replace(/:$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const keyAcc = colA.replace(/:$/, '').trim().toLowerCase();
+      // V10: header values can be at col C (idx 2) or col G (idx 6) depending on layout
       const hk = HEADER_KEYS[keyAcc] || HEADER_KEYS[keyNorm];
-      if (hk) { header[hk] = (row[2] || '').trim(); continue; }
+      if (hk) {
+        const v = (row[2] || '').trim() || (row[6] || '').trim();
+        if (v) header[hk] = v;
+        continue;
+      }
 
-      const pn = g(row, 4);
-      const qty = gn(row, 7);
-      if (!pn) continue; // PN is required; qty can be null in SOLO_PN mode
+      const pn = g(row, 5); // F=5
+      const qty = gn(row, 9); // J=9
+      if (!pn) continue;
 
       const products = [];
-      // S=18(P1), W=22(P2), AA=26(P3)
-      for (const b of [18, 22, 26]) {
+      // V=21(P1), Z=25(P2), AD=29(P3); each followed by Price, Qty, Unit
+      for (const b of [21, 25, 29]) {
         const nm = g(row, b);
         if (nm) products.push({ name: nm, price: gn(row, b + 1) || 0, qty: gn(row, b + 2) || 1, unit: g(row, b + 3) });
       }
 
       const specs = [];
-      // AE=30(Spec1), AF=31(Esp1), AG=32(Spec2), AH=33(Esp2)
-      for (const [specIdx, espIdx] of [[30, 31], [32, 33]]) {
+      // AH=33(Spec1) AI=34(Esp1) ; AJ=35(Spec2) AK=36(Esp2)
+      for (const [specIdx /*, espIdx */] of [[33, 34], [35, 36]]) {
         const raw = g(row, specIdx);
         if (!raw) continue;
         if (raw.includes(' | ')) { const s = raw.indexOf(' | '); specs.push({ name: raw.substring(0, s).trim(), param: raw.substring(s + 3).trim() }); }
@@ -122,9 +137,9 @@ const BulkUpload = (() => {
       }
 
       const racks = [];
-      // AM=38(Rack Línea), AN=39(Pzas), AO=40(Rack Sec), AP=41(Pzas)
-      if (g(row, 38)) racks.push({ name: g(row, 38), ppr: gn(row, 39) });
-      if (g(row, 40)) racks.push({ name: g(row, 40), ppr: gn(row, 41) });
+      // AP=41 Rack Línea, AQ=42 Pzas; AR=43 Rack Sec, AS=44 Pzas
+      if (g(row, 41)) racks.push({ name: g(row, 41), ppr: gn(row, 42) });
+      if (g(row, 43)) racks.push({ name: g(row, 43), ppr: gn(row, 44) });
 
       const predictiveUsage = [];
       for (const mat of PREDICTIVE_MATERIALS) {
@@ -134,34 +149,36 @@ const BulkUpload = (() => {
 
       parts.push({
         pn, qty,
-        precio: gn(row, 8),           // I=8
-        descripcion: g(row, 11),       // L=11
-        procesoOverride: g(row, 17),   // R=17
-        labels: [g(row, 13), g(row, 14), g(row, 15), g(row, 16)].filter(Boolean), // N-Q
+        cliente: g(row, 4),                     // E=4 NEW per-line customer
+        precio: gn(row, 10),                    // K=10
+        unidadPrecio: g(row, 11).toUpperCase(), // L=11
+        divisa: (g(row, 12) || 'USD').toUpperCase(), // M=12 NEW per-line currency
+        precioDefault: toBool(g(row, 13)),      // N=13
+        descripcion: g(row, 6),                 // G=6
+        pnAlterno: g(row, 7),                   // H=7
+        pnGroup: g(row, 8),                     // I=8
+        metalBase: g(row, 14),                  // O=14
+        labels: [g(row, 15), g(row, 16), g(row, 17), g(row, 18), g(row, 19)].filter(Boolean), // P-T (5 labels)
+        procesoOverride: g(row, 20),            // U=20 NOW REQUIRED (no header default)
         products, specs,
-        unitConv: { kgm: gn(row, 34), cmk: gn(row, 35), lm: gn(row, 36), minPzasLote: gn(row, 37) }, // AI-AL
+        unitConv: { kgm: gn(row, 37), cmk: gn(row, 38), lm: gn(row, 39), minPzasLote: gn(row, 40) }, // AL-AO
         racks,
-        dims: { length: gn(row, 42), width: gn(row, 43), height: gn(row, 44), outerDiam: gn(row, 45), innerDiam: gn(row, 46) }, // AQ-AU
-        metalBase: g(row, 12),         // M=12
-        pnAlterno: g(row, 5),         // F=5
-        codigoSAT: g(row, 49),        // AX=49
-        pnGroup: g(row, 6),           // G=6
-        archivado: toBool(g(row, 0)),  // A=0
-        precioDefault: toBool(g(row, 10)), // K=10
-        forzarDuplicado: toBool(g(row, 2)), // C=2
-        archivarAnterior: toBool(g(row, 3)), // D=3
-        unidadPrecio: g(row, 9).toUpperCase(), // J=9
+        dims: { length: gn(row, 45), width: gn(row, 46), height: gn(row, 47), outerDiam: gn(row, 48), innerDiam: gn(row, 49) }, // AT-AX
+        linea: g(row, 50),                      // AY=50
+        departamento: g(row, 51),               // AZ=51
+        codigoSAT: g(row, 52),                  // BA=52
+        archivado: toBool(g(row, 0)),
+        forzarDuplicado: toBool(g(row, 2)),
+        archivarAnterior: toBool(g(row, 3)),
+        validacion1er: toBool(g(row, 1)),
         predictiveUsage,
-        validacion1er: toBool(g(row, 1)), // B=1
-        linea: g(row, 47),            // AV=47
-        departamento: g(row, 48),      // AW=48
-        quoteIBMS: g(row, 59),        // BH=59
-        estacionIBMS: g(row, 60),     // BI=60
-        plano: g(row, 61),            // BJ=61
-        piezasCarga: gn(row, 62),     // BK=62
-        cargasHora: g(row, 63),       // BL=63
-        tiempoEntrega: gn(row, 64),   // BM=64
-        notasAdicionalesPN: g(row, 65), // BN=65
+        quoteIBMS: g(row, 62),                  // BK=62
+        estacionIBMS: g(row, 63),               // BL=63
+        plano: g(row, 64),                      // BM=64
+        piezasCarga: gn(row, 65),               // BN=65
+        cargasHora: g(row, 66),                 // BO=66
+        tiempoEntrega: gn(row, 67),             // BP=67
+        notasAdicionalesPN: g(row, 68),         // BQ=68
       });
     }
     return { header, parts };
@@ -244,23 +261,29 @@ const BulkUpload = (() => {
   }
 
   async function checkPNExistence(parts) {
-    const uniq = [...new Set(parts.map(p => p.pn.toUpperCase()))];
-    const existMap = new Map();
-    log(`Buscando ${uniq.length} PNs...`);
-    for (const name of uniq) {
+    // V10: PN existence is per (pn name, customerId) since the same name can exist under multiple customers
+    const uniq = new Map(); // "PN|custId" → { name, customerId }
+    for (const p of parts) {
+      const key = `${p.pn.toUpperCase()}|${p.customerId}`;
+      if (!uniq.has(key)) uniq.set(key, { name: p.pn, customerId: p.customerId });
+    }
+    const existMap = new Map(); // same key → { id }
+    log(`Buscando ${uniq.size} PN/cliente combinaciones...`);
+    for (const [key, { name, customerId }] of uniq) {
       try {
         const d = await api().query('SearchPartNumbers', { searchQuery: name, first: 20, offset: 0, orderBy: ['ID_DESC'] });
         const nodes = d?.searchPartNumbers?.nodes || d?.pagedData?.nodes || [];
-        const match = nodes.find(n => n.name?.toUpperCase() === name && !n.archivedAt);
-        if (match) { existMap.set(name, { id: match.id }); log(`  "${name}" -> EXISTE id:${match.id}`); }
-        else log(`  "${name}" -> NUEVO (${nodes.length} resultados, ninguno coincide exacto+activo)`);
+        const match = nodes.find(n => n.name?.toUpperCase() === name.toUpperCase() && !n.archivedAt && n.customerByCustomerId?.id === customerId);
+        if (match) { existMap.set(key, { id: match.id }); log(`  "${name}" (cust:${customerId}) -> EXISTE id:${match.id}`); }
+        else log(`  "${name}" (cust:${customerId}) -> NUEVO`);
       } catch (e) { warn(`Búsqueda "${name}": ${String(e).substring(0, 120)}`); }
     }
     return parts.map(p => {
-      const key = p.pn.toUpperCase(); const ex = existMap.get(key);
-      if (!ex) return { pn: p.pn, status: 'new', existingId: null, qty: p.qty, precio: p.precio };
-      if (p.forzarDuplicado) return { pn: p.pn, status: 'forceDup', existingId: ex.id, qty: p.qty, precio: p.precio };
-      return { pn: p.pn, status: 'existing', existingId: ex.id, qty: p.qty, precio: p.precio };
+      const key = `${p.pn.toUpperCase()}|${p.customerId}`;
+      const ex = existMap.get(key);
+      if (!ex) return { pn: p.pn, status: 'new', existingId: null, qty: p.qty, precio: p.precio, customerId: p.customerId };
+      if (p.forzarDuplicado) return { pn: p.pn, status: 'forceDup', existingId: ex.id, qty: p.qty, precio: p.precio, customerId: p.customerId };
+      return { pn: p.pn, status: 'existing', existingId: ex.id, qty: p.qty, precio: p.precio, customerId: p.customerId };
     });
   }
 
@@ -320,15 +343,15 @@ const BulkUpload = (() => {
 
       const statsHtml = isSoloPN
         ? `<div class="dl9-stats">
-            <div class="dl9-stat"><b>Cliente:</b> ${info.customerName || '?'}</div>
-            <div class="dl9-stat"><b>Proceso:</b> ${info.processName || '?'}</div>
+            <div class="dl9-stat"><b>Clientes:</b> ${info.customerCount || '?'}</div>
+            <div class="dl9-stat"><b>Procesos:</b> ${info.processCount || '?'}</div>
            </div>`
         : `<div class="dl9-stats">
-            <div class="dl9-stat"><b>Cotización:</b> ${header.quoteName || '?'}</div>
-            <div class="dl9-stat"><b>Cliente:</b> ${info.customerName || '?'}</div>
+            <div class="dl9-stat"><b>Layout:</b> ${header.quoteName || '?'}</div>
+            <div class="dl9-stat"><b>Clientes:</b> ${info.customerCount || '?'} (1 cot c/u)</div>
             <div class="dl9-stat"><b>Asignado:</b> ${info.assigneeName || '(auto)'}</div>
-            <div class="dl9-stat"><b>Proceso:</b> ${info.processName || '?'}</div>
-            <div class="dl9-stat"><b>Divisa:</b> ${header.divisaLinea || 'USD'}</div>
+            <div class="dl9-stat"><b>Procesos:</b> ${info.processCount || '?'}</div>
+            <div class="dl9-stat"><b>Divisa:</b> per-línea</div>
             <div class="dl9-stat"><b>Empresa:</b> ${header.empresaEmisora || 'ECO'}</div>
            </div>`;
 
@@ -421,37 +444,40 @@ const BulkUpload = (() => {
       const isSoloPN = modo.includes('SOLO');
       const quoteName = header.quoteName || '';
       if (!isSoloPN) {
-        if (!quoteName) throw new Error('Falta "Nombre Cotización" en header.');
+        if (!quoteName) throw new Error('Falta "Nombre Cotización/Layout" en header.');
         const sinQty = parts.filter(p => p.qty === null);
         if (sinQty.length) throw new Error(`Modo COTIZACIÓN+NP requiere Cantidad en todas las filas. ${sinQty.length} filas sin cantidad: ${sinQty.slice(0, 3).map(p => p.pn).join(', ')}...`);
       }
       stats.quoteName = isSoloPN ? '(SOLO_PN)' : quoteName;
       log(`Modo: ${isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP'} ${isSoloPN ? '' : '— "' + quoteName + '"'}`);
 
-      // ── Resolve customer ──
-      const customerRaw = header.customer || '';
-      const customerName = customerRaw.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim();
-      if (!customerName) throw new Error('Falta Cliente.');
-      const custData = await api().query('CustomerSearchByName', { nameLike: `%${customerName}%`, orderBy: ['NAME_ASC'] });
-      const custNodes = custData?.searchCustomers?.nodes || custData?.pagedData?.nodes || custData?.allCustomers?.nodes || [];
-      const customer = custNodes.find(c => c.name?.toUpperCase().includes(customerName.toUpperCase()));
-      if (!customer) throw new Error(`Cliente "${customerName}" no encontrado.`);
-      const customerId = customer.id;
-      log(`  Cliente: ${customer.name} (${customerId})`);
+      // ── V10: Validate required per-line fields ──
+      const sinCliente = parts.filter(p => !p.cliente);
+      if (sinCliente.length) throw new Error(`${sinCliente.length} filas sin Cliente: ${sinCliente.slice(0, 3).map(p => p.pn).join(', ')}...`);
+      const sinProceso = parts.filter(p => !p.procesoOverride);
+      if (sinProceso.length) throw new Error(`${sinProceso.length} filas sin Proceso (en v10 es obligatorio por línea): ${sinProceso.slice(0, 3).map(p => p.pn).join(', ')}...`);
 
-      // ── Related data ──
-      const relData = await api().query('GetQuoteRelatedData', { customerId });
-      const custAddr = relData?.customerById?.customerAddressesByCustomerId?.nodes || [];
-      const custCont = relData?.customerById?.customerContactsByCustomerId?.nodes || [];
-      const customerAddressId = custAddr[0]?.id || null;
-      const customerContactId = custCont[0]?.id || null;
-
-      let invoiceTermsId = null;
-      try { const fin = await api().query('CustomerFinancialByCustomerId', { id: customerId }, 'CustomerFinancialById'); invoiceTermsId = fin?.customerById?.invoiceTermsId || null; } catch (e) { warn(`CustomerFinancial: ${String(e).substring(0, 80)}`); }
-      if (!invoiceTermsId) {
-        try { const t = await api().query('SearchInvoiceTerms', { termsLike: '%%' }); const tn = t?.allInvoiceTerms?.nodes || t?.pagedData?.nodes || t?.searchInvoiceTerms?.nodes || []; if (tn.length) invoiceTermsId = tn[0].id; } catch (e) { warn(`SearchInvoiceTerms: ${String(e).substring(0, 80)}`); }
+      // ── Resolve all unique customers (per-line, with cache) ──
+      const customerCache = new Map(); // name → { id, name, addressId, contactId, invoiceTermsId }
+      const uniqueClientNames = [...new Set(parts.map(p => p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim()))];
+      log(`Clientes únicos en layout: ${uniqueClientNames.length}`);
+      for (const cname of uniqueClientNames) {
+        const custData = await api().query('CustomerSearchByName', { nameLike: `%${cname}%`, orderBy: ['NAME_ASC'] });
+        const custNodes = custData?.searchCustomers?.nodes || custData?.pagedData?.nodes || custData?.allCustomers?.nodes || [];
+        const customer = custNodes.find(c => c.name?.toUpperCase().includes(cname.toUpperCase()));
+        if (!customer) throw new Error(`Cliente "${cname}" no encontrado.`);
+        const cid = customer.id;
+        const relData = await api().query('GetQuoteRelatedData', { customerId: cid });
+        const addr = relData?.customerById?.customerAddressesByCustomerId?.nodes || [];
+        const cont = relData?.customerById?.customerContactsByCustomerId?.nodes || [];
+        let invTerms = null;
+        try { const fin = await api().query('CustomerFinancialByCustomerId', { id: cid }, 'CustomerFinancialById'); invTerms = fin?.customerById?.invoiceTermsId || null; } catch (_) {}
+        if (!invTerms) {
+          try { const t = await api().query('SearchInvoiceTerms', { termsLike: '%%' }); const tn = t?.allInvoiceTerms?.nodes || t?.pagedData?.nodes || t?.searchInvoiceTerms?.nodes || []; if (tn.length) invTerms = tn[0].id; } catch (_) {}
+        }
+        customerCache.set(cname, { id: cid, name: customer.name, addressId: addr[0]?.id || null, contactId: cont[0]?.id || null, invoiceTermsId: invTerms });
+        log(`  "${cname}" → ${customer.name} (id:${cid})`);
       }
-      log(`  Addr:${customerAddressId} Cont:${customerContactId} Terms:${invoiceTermsId}`);
 
       // ── Assignee ──
       let assigneeId = null, assigneeName = '';
@@ -464,16 +490,7 @@ const BulkUpload = (() => {
       }
       log(`  Asignado: ${assigneeName || '(ninguno)'}`);
 
-      // ── Process ──
-      let defaultProcessId = null, defaultProcessName = '';
-      if (header.processId) { defaultProcessId = parseInt(header.processId); defaultProcessName = `id:${defaultProcessId}`; }
-      else if (header.processName) {
-        const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${header.processName}%`, first: 500 });
-        const pn2 = pd?.allProcessNodes?.nodes || pd?.pagedData?.nodes || [];
-        const pr = pn2.find(p => p.name?.toUpperCase().includes(header.processName.toUpperCase()));
-        if (pr) { defaultProcessId = pr.id; defaultProcessName = pr.name; }
-      }
-      log(`  Proceso: ${defaultProcessName} (${defaultProcessId})`);
+      // ── V10: NO header default process — process must come from each line ──
 
       // ── Catalogs ──
       log('Cargando catálogos...');
@@ -490,10 +507,36 @@ const BulkUpload = (() => {
       const specByName = new Map(); for (const s of (specsD?.searchSpecs?.nodes || [])) specByName.set(s.name, s);
       const rackTypeByName = new Map(); for (const rt of (racksD?.pagedData?.nodes || racksD?.allRackTypes?.nodes || [])) rackTypeByName.set(rt.name, rt);
       unitNodes = unitsD?.pagedData?.nodes || unitsD?.searchUnits?.nodes || [];
+      // V10: build unitById map for Espesor mils support
+      const unitById = new Map();
+      for (const u of unitNodes) unitById.set(u.id, u);
       const productByName = new Map(); for (const p of (productsD?.searchProducts?.nodes || productsD?.pagedData?.nodes || [])) productByName.set(p.name, p);
       const groupByName = new Map();
       if (groupsD) { const gn2 = groupsD?.allPartNumberGroups?.nodes || groupsD?.pagedData?.nodes || groupsD?.partNumberGroups?.nodes || []; for (const gg of gn2) groupByName.set(gg.name, gg.id); }
       log(`  ${labelByName.size} labels, ${specByName.size} specs, ${rackTypeByName.size} racks, ${unitNodes.length} units, ${productByName.size} products, ${groupByName.size} groups`);
+
+      // V10: Resolve all per-line processes to IDs (with cache)
+      const processCache = new Map(); // name → id
+      const uniqueProcessNames = [...new Set(parts.map(p => p.procesoOverride))];
+      log(`Procesos únicos en layout: ${uniqueProcessNames.length}`);
+      for (const pname of uniqueProcessNames) {
+        const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${pname}%`, first: 50 });
+        const pn2 = pd?.allProcessNodes?.nodes || pd?.pagedData?.nodes || [];
+        const pr = pn2.find(p => p.name?.toUpperCase() === pname.toUpperCase()) || pn2.find(p => p.name?.toUpperCase().includes(pname.toUpperCase()));
+        if (!pr) throw new Error(`Proceso "${pname}" no encontrado en Steelhead.`);
+        processCache.set(pname, pr.id);
+      }
+      // Annotate each part with its resolved processId and customerId
+      for (const p of parts) {
+        p.processId = processCache.get(p.procesoOverride);
+        const cname = p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim();
+        const cust = customerCache.get(cname);
+        p.customerId = cust.id;
+        p.customerName = cust.name;
+        p.customerAddressId = cust.addressId;
+        p.customerContactId = cust.contactId;
+        p.customerInvoiceTermsId = cust.invoiceTermsId;
+      }
 
       // Load dimension value maps (Línea/Departamento → ID)
       const dimValueMap = new Map(); // "valor" → id
@@ -598,7 +641,7 @@ const BulkUpload = (() => {
       }
 
       // ── Preview ──
-      const selectedIndices = await showPreview(header, parts, pnStatus, { customerName: customer.name, assigneeName, processName: defaultProcessName }, isSoloPN);
+      const selectedIndices = await showPreview(header, parts, pnStatus, { customerCount: customerCache.size, processCount: processCache.size, assigneeName }, isSoloPN);
       if (!selectedIndices) { log('Cancelado por usuario.'); return { cancelled: true }; }
 
       // Filter parts and pnStatus to only selected indices
@@ -672,38 +715,21 @@ const BulkUpload = (() => {
       // ═══════════════════════════════════════
       showProgressUI('Iniciando...');
 
-      let quoteId = null, quoteIdInDomain = null;
-      const divisaLinea = (header.divisaLinea || 'USD').toUpperCase();
+      // V10: quote vars now per-customer; we track all of them
+      const quotesCreated = []; // [{ id, idInDomain, customerId, name }]
+      let primaryQuoteIdInDomain = null;
+      const empresaKey = (header.empresaEmisora || 'ECO').toUpperCase();
+      const empresaStr = DOMAIN.empresas[empresaKey] || DOMAIN.empresas.ECO;
+      const validDays = parseInt(header.validaDias) || 30;
 
-      // STEP 1: CreateQuote (skip in SOLO_PN)
       if (!isSoloPN) {
-        showProgressUI('Paso 1: Creando cotización...'); setProgressBar(5);
-        const divisaCot = (header.divisaCotizacion || divisaLinea).toUpperCase();
-        const empresaKey = (header.empresaEmisora || 'ECO').toUpperCase();
-        const empresaStr = DOMAIN.empresas[empresaKey] || DOMAIN.empresas.ECO;
-        const validDays = parseInt(header.validaDias) || 30;
-        const quoteCI = {
-          Comentarios: { CargosFletes: true, CotizacionSujetaPruebas: true, ReferirNumeroCotizacion: true, ModificacionRequiereRecotizar: true },
-          DatosAdicionales: { Divisa: divisaCot, Decimales: '2', EmpresaEmisora: empresaStr, MostrarProceso: false, MostrarTotales: true },
-          Autorizacion: {}, CondicionesComerciales: {},
-        };
-        const createResult = await api().query('CreateQuote', {
-          name: quoteName, assigneeId, customerId, validUntil: isoDate(validDays), followUpDate: isoDate(3),
-          customerAddressId, customerContactId, stagesRevisionId: DOMAIN.stagesRevisionId,
-          lowCodeEnabled: false, autoGenerateLines: false, lowCodeId: null,
-          customInputs: quoteCI, inputSchemaId: DOMAIN.inputSchemaId_Quote, invoiceTermsId,
-          orderDueAt: null, shipToAddressId: customerAddressId
-        });
-        quoteId = createResult?.createQuote?.quote?.id;
-        quoteIdInDomain = createResult?.createQuote?.quote?.idInDomain;
-        if (!quoteId) throw new Error('CreateQuote no devolvió id.');
-        stats.quoteIdInDomain = quoteIdInDomain;
-        log(`  Quote #${quoteIdInDomain} (id:${quoteId})`); showProgressUI(`  -> Quote #${quoteIdInDomain} creada`);
+        showProgressUI('Paso 1: Preparando cotizaciones...'); setProgressBar(5);
       } else {
         showProgressUI('Modo SOLO_PN — omitiendo cotización'); setProgressBar(5);
       }
 
       // STEP 2a: Create new PNs via SavePartNumber (minimal)
+      // V10: newPnIds keyed by "pn|customerId" to support multi-customer
       showProgressUI('Paso 2/9: Creando PNs nuevos...'); setProgressBar(10);
       const newPnIds = new Map();
       const newOrDupParts = [];
@@ -711,10 +737,10 @@ const BulkUpload = (() => {
       for (let j = 0; j < newOrDupParts.length; j++) {
         const { part, status } = newOrDupParts[j];
         setProgressBar(10 + Math.round((j / Math.max(newOrDupParts.length, 1)) * 5));
-        const processId = part.processIdOverride || defaultProcessId;
+        const processId = part.processId; // V10: per-line, no fallback
         const groupId = await resolveGroupId(part.pnGroup);
         const minInput = {
-          id: null, name: part.pn, customerId, defaultProcessNodeId: processId,
+          id: null, name: part.pn, customerId: part.customerId, defaultProcessNodeId: processId,
           inputSchemaId: DOMAIN.inputSchemaId_PN, customInputs: {},
           geometryTypeId: null, userFileName: null, inventoryItemInput: null,
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
@@ -731,101 +757,149 @@ const BulkUpload = (() => {
         try {
           const res = await api().query('SavePartNumber', { input: [minInput] });
           const created = (res?.savePartNumbers || [])[0]; if (!created?.id) throw new Error('No id returned');
-          newPnIds.set(part.pn.toUpperCase(), created.id);
+          // V10: key by pn|customerId so the same PN under different customers stays separate
+          newPnIds.set(`${part.pn.toUpperCase()}|${part.customerId}`, created.id);
           if (status.status === 'forceDup') stats.pnsDuplicated++; else stats.pnsCreated++;
-          log(`  "${part.pn}" -> creado id:${created.id}`);
+          log(`  "${part.pn}" (cust:${part.customerId}) -> creado id:${created.id}`);
         } catch (e) { errors.push(`Crear PN "${part.pn}": ${String(e).substring(0, 150)}`); }
       }
       showProgressUI(`  -> ${newPnIds.size} PNs creados`);
 
-      // STEP 2b-5: Quote-only steps (skip in SOLO_PN)
+      // V10: pnLookup keyed by "pn|customerId" to support multi-customer
       const pnLookup = new Map();
 
       if (!isSoloPN) {
-        // STEP 2b: SaveManyPartNumberPrices
-        showProgressUI('Paso 2b: Vinculando precios...'); setProgressBar(15);
-        const pnpItems = []; let lineNum = 0;
+        // V10: Group parts by customer and create one quote per customer
+        const partsByCustomer = new Map();
         for (let i = 0; i < parts.length; i++) {
-          const part = parts[i]; const status = pnStatus[i]; lineNum++;
-          let partNumberId;
-          if (status.status === 'existing') { partNumberId = status.existingId; stats.pnsExisting++; }
-          else { partNumberId = newPnIds.get(part.pn.toUpperCase()); if (!partNumberId) { errors.push(`PN "${part.pn}" no fue creado, omitido de quote.`); continue; } }
-          pnpItems.push({
-            partNumberId, processId: part.processIdOverride || defaultProcessId,
-            customInputs: { DatosPrecio: { Divisa: divisaLinea } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
-            partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
-            usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
-            unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
-            partNumberCustomInputs: null,
-            quotePartNumberPrice: { savedQuotePartNumberPriceId: null, quoteId, quantityPerParent: part.qty, lineNumber: lineNum }
-          });
+          const cid = parts[i].customerId;
+          if (!partsByCustomer.has(cid)) partsByCustomer.set(cid, []);
+          partsByCustomer.get(cid).push({ part: parts[i], status: pnStatus[i], origIdx: i });
         }
-        for (let i = 0; i < pnpItems.length; i += 20) {
-          const batch = pnpItems.slice(i, i + 20);
-          const { usedHash } = await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
-            { input: { quoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
-          showProgressUI(`  -> Batch ${Math.floor(i / 20) + 1}: ${batch.length} PNs (hash ${usedHash})`);
-        }
-        log(`  SaveManyPNP: ${pnpItems.length}`);
+        log(`Cotizaciones a crear: ${partsByCustomer.size} (una por cliente)`);
 
-        // STEP 3: Re-read quote
-        showProgressUI('Paso 3: Leyendo cotización...'); setProgressBar(30);
-        const { data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: quoteIdInDomain, revisionNumber: 1 });
-        const quote = qData?.quoteByIdInDomainAndRevisionNumber || qData?.quoteByIdInDomain;
-        if (!quote) throw new Error(`No se pudo leer quote #${quoteIdInDomain}.`);
-        const qpnpNodes = quote.quotePartNumberPricesByQuoteId?.nodes || [];
-        const qlNodes = quote.quoteLinesByQuoteId?.nodes || [];
-        const qlByQpnpId = new Map(); for (const ql of qlNodes) if (ql.autoGeneratedFromQuotePartNumberPriceId) qlByQpnpId.set(ql.autoGeneratedFromQuotePartNumberPriceId, ql);
-        for (const qpnp of qpnpNodes) {
-          const pnp = qpnp.partNumberPriceByPartNumberPriceId; if (!pnp) continue;
-          const pn = pnp.partNumberByPartNumberId; if (!pn?.name) continue;
-          pnLookup.set(pn.name.toUpperCase(), { qpnp, pnp, pn, ql: qlByQpnpId.get(qpnp.id) || null });
-        }
-        log(`  ${pnLookup.size} PNs en quote`);
-        const allProdNodes = quote.allProducts?.nodes || qData.allProducts?.nodes || [];
-        if (allProdNodes.length) for (const p of allProdNodes) productByName.set(p.name, p);
+        let quoteSeq = 0;
+        let prodAddedTotal = 0;
+        for (const [cid, custParts] of partsByCustomer) {
+          quoteSeq++;
+          const cust = [...customerCache.values()].find(c => c.id === cid);
+          if (!cust) { errors.push(`Cliente id ${cid} no en cache`); continue; }
+          const thisQuoteName = `${cust.name} ${quoteName}`.substring(0, 80);
+          // Use first part's divisa as quote-level divisa (per-line drives prices later)
+          const quoteDivisa = (custParts[0].part.divisa || 'USD').toUpperCase();
+          const quoteCI = {
+            Comentarios: { CargosFletes: true, CotizacionSujetaPruebas: true, ReferirNumeroCotizacion: true, ModificacionRequiereRecotizar: true },
+            DatosAdicionales: { Divisa: quoteDivisa, Decimales: '2', EmpresaEmisora: empresaStr, MostrarProceso: false, MostrarTotales: true },
+            Autorizacion: {}, CondicionesComerciales: {},
+          };
 
-        // STEP 4: SaveQuoteLines (products)
-        showProgressUI('Paso 4: Products en líneas...'); setProgressBar(40);
-        let prodAdded = 0;
-        for (const part of parts) {
-          if (!part.products.length) continue;
-          const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) { errors.push(`PN "${part.pn}" no en quote.`); continue; }
-          const ql = entry.ql; if (!ql) { errors.push(`QuoteLine no encontrada para "${part.pn}".`); continue; }
-          const existing = ql.quoteLineItemsByQuoteLineId?.nodes || [];
-          const idsToDelete = existing.map(ei => ei.id).filter(Boolean);
-
-          // Guión (-) en primer producto = borrar todos los items de esta línea
-          if (part.products.length === 1 && isDash(part.products[0].name)) {
-            if (idsToDelete.length) {
-              try {
-                await api().query('SaveQuoteLines', { input: { quoteId, quoteLines: [{ savedQuoteLineId: ql.id, lineNumber: ql.lineNumber, title: ql.title, description: '', autoGeneratedFromQuotePartNumberPriceId: ql.autoGeneratedFromQuotePartNumberPriceId, quoteLineItems: [] }], quoteLinesToDelete: [], quoteLineItemsToDelete: idsToDelete, quoteLineNumberUpdates: [] } });
-                log(`  Productos borrados de línea "${part.pn}"`);
-              } catch (e) { errors.push(`Borrar productos "${part.pn}": ${String(e).substring(0, 100)}`); }
-            }
-            continue;
-          }
-
-          const items = [];
-          for (let idx = 0; idx < part.products.length; idx++) {
-            const np = part.products[idx]; const pr = productByName.get(np.name);
-            if (!pr) { errors.push(`Product "${np.name}" no en catálogo.`); continue; }
-            items.push({ savedQuoteLineItemId: null, title: np.name, price: np.price, quantity: np.qty, productId: pr.id, displayOrder: idx, description: '', dimensionCustomValueIds: [], quotePartNumberPriceIds: [entry.qpnp.id], unitId: resolveUnitId(np.unit) });
-            prodAdded++;
-          }
-          if (!items.length) continue;
+          showProgressUI(`Quote ${quoteSeq}/${partsByCustomer.size}: "${thisQuoteName}"`);
+          setProgressBar(5 + Math.round((quoteSeq / partsByCustomer.size) * 40));
+          let createResult;
           try {
-            await api().query('SaveQuoteLines', { input: { quoteId, quoteLines: [{ savedQuoteLineId: ql.id, lineNumber: ql.lineNumber, title: ql.title, description: ql.description || '', autoGeneratedFromQuotePartNumberPriceId: ql.autoGeneratedFromQuotePartNumberPriceId, quoteLineItems: items }], quoteLinesToDelete: [], quoteLineItemsToDelete: idsToDelete, quoteLineNumberUpdates: [] } });
-          } catch (e) { errors.push(`SaveQuoteLines "${part.pn}": ${String(e).substring(0, 100)}`); }
-        }
-        stats.productsSet = prodAdded; showProgressUI(`  -> ${prodAdded} products`);
+            createResult = await api().query('CreateQuote', {
+              name: thisQuoteName, assigneeId, customerId: cid,
+              validUntil: isoDate(validDays), followUpDate: isoDate(3),
+              customerAddressId: cust.addressId, customerContactId: cust.contactId,
+              stagesRevisionId: DOMAIN.stagesRevisionId,
+              lowCodeEnabled: false, autoGenerateLines: false, lowCodeId: null,
+              customInputs: quoteCI, inputSchemaId: DOMAIN.inputSchemaId_Quote,
+              invoiceTermsId: cust.invoiceTermsId,
+              orderDueAt: null, shipToAddressId: cust.addressId
+            });
+          } catch (e) { errors.push(`CreateQuote "${thisQuoteName}": ${String(e).substring(0, 150)}`); continue; }
+          const thisQuoteId = createResult?.createQuote?.quote?.id;
+          const thisQuoteIdInDomain = createResult?.createQuote?.quote?.idInDomain;
+          if (!thisQuoteId) { errors.push(`CreateQuote no devolvió id para "${thisQuoteName}"`); continue; }
+          quotesCreated.push({ id: thisQuoteId, idInDomain: thisQuoteIdInDomain, customerId: cid, name: thisQuoteName });
+          if (!primaryQuoteIdInDomain) primaryQuoteIdInDomain = thisQuoteIdInDomain;
+          log(`  Quote #${thisQuoteIdInDomain} (id:${thisQuoteId}) — ${cust.name}`);
 
-        // STEP 5: UpdateQuote (notes)
-        showProgressUI('Paso 5: Notas...'); setProgressBar(50);
-        try {
-          if (header.notasExternas) await api().query('UpdateQuote', { id: quoteId, notesMarkdown: isDash(header.notasExternas) ? '' : header.notasExternas });
-          if (header.notasInternas) await api().query('UpdateQuote', { id: quoteId, internalNotesMarkdown: isDash(header.notasInternas) ? '' : header.notasInternas });
-        } catch (e) { errors.push(`UpdateQuote: ${String(e).substring(0, 100)}`); }
+          // SaveManyPNP for this customer's parts
+          const pnpItems = []; let lineNum = 0;
+          for (const { part, status } of custParts) {
+            lineNum++;
+            let partNumberId;
+            if (status.status === 'existing') { partNumberId = status.existingId; stats.pnsExisting++; }
+            else { partNumberId = newPnIds.get(`${part.pn.toUpperCase()}|${cid}`); if (!partNumberId) { errors.push(`PN "${part.pn}" no fue creado, omitido de quote.`); continue; } }
+            pnpItems.push({
+              partNumberId, processId: part.processId,
+              customInputs: { DatosPrecio: { Divisa: part.divisa || 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
+              partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
+              usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
+              unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
+              partNumberCustomInputs: null,
+              quotePartNumberPrice: { savedQuotePartNumberPriceId: null, quoteId: thisQuoteId, quantityPerParent: part.qty, lineNumber: lineNum }
+            });
+          }
+          for (let i = 0; i < pnpItems.length; i += 20) {
+            const batch = pnpItems.slice(i, i + 20);
+            try {
+              await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
+                { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
+            } catch (e) { errors.push(`SaveManyPNP quote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); }
+          }
+          log(`  SaveManyPNP: ${pnpItems.length}`);
+
+          // Re-read quote to populate pnLookup
+          let qData;
+          try { ({ data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: thisQuoteIdInDomain, revisionNumber: 1 })); }
+          catch (e) { errors.push(`GetQuote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); continue; }
+          const quote = qData?.quoteByIdInDomainAndRevisionNumber || qData?.quoteByIdInDomain;
+          if (!quote) { errors.push(`No se pudo leer quote #${thisQuoteIdInDomain}.`); continue; }
+          const qpnpNodes = quote.quotePartNumberPricesByQuoteId?.nodes || [];
+          const qlNodes = quote.quoteLinesByQuoteId?.nodes || [];
+          const qlByQpnpId = new Map(); for (const ql of qlNodes) if (ql.autoGeneratedFromQuotePartNumberPriceId) qlByQpnpId.set(ql.autoGeneratedFromQuotePartNumberPriceId, ql);
+          for (const qpnp of qpnpNodes) {
+            const pnp = qpnp.partNumberPriceByPartNumberPriceId; if (!pnp) continue;
+            const pn = pnp.partNumberByPartNumberId; if (!pn?.name) continue;
+            pnLookup.set(`${pn.name.toUpperCase()}|${cid}`, { qpnp, pnp, pn, ql: qlByQpnpId.get(qpnp.id) || null, quoteId: thisQuoteId });
+          }
+          const allProdNodes = quote.allProducts?.nodes || qData.allProducts?.nodes || [];
+          if (allProdNodes.length) for (const p of allProdNodes) productByName.set(p.name, p);
+
+          // SaveQuoteLines (products) for this customer's parts
+          for (const { part } of custParts) {
+            if (!part.products.length) continue;
+            const entry = pnLookup.get(`${part.pn.toUpperCase()}|${cid}`); if (!entry) { errors.push(`PN "${part.pn}" no en quote.`); continue; }
+            const ql = entry.ql; if (!ql) { errors.push(`QuoteLine no encontrada para "${part.pn}".`); continue; }
+            const existing = ql.quoteLineItemsByQuoteLineId?.nodes || [];
+            const idsToDelete = existing.map(ei => ei.id).filter(Boolean);
+
+            if (part.products.length === 1 && isDash(part.products[0].name)) {
+              if (idsToDelete.length) {
+                try {
+                  await api().query('SaveQuoteLines', { input: { quoteId: thisQuoteId, quoteLines: [{ savedQuoteLineId: ql.id, lineNumber: ql.lineNumber, title: ql.title, description: '', autoGeneratedFromQuotePartNumberPriceId: ql.autoGeneratedFromQuotePartNumberPriceId, quoteLineItems: [] }], quoteLinesToDelete: [], quoteLineItemsToDelete: idsToDelete, quoteLineNumberUpdates: [] } });
+                  log(`  Productos borrados de línea "${part.pn}"`);
+                } catch (e) { errors.push(`Borrar productos "${part.pn}": ${String(e).substring(0, 100)}`); }
+              }
+              continue;
+            }
+
+            const items = [];
+            for (let idx = 0; idx < part.products.length; idx++) {
+              const np = part.products[idx]; const pr = productByName.get(np.name);
+              if (!pr) { errors.push(`Product "${np.name}" no en catálogo.`); continue; }
+              items.push({ savedQuoteLineItemId: null, title: np.name, price: np.price, quantity: np.qty, productId: pr.id, displayOrder: idx, description: '', dimensionCustomValueIds: [], quotePartNumberPriceIds: [entry.qpnp.id], unitId: resolveUnitId(np.unit) });
+              prodAddedTotal++;
+            }
+            if (!items.length) continue;
+            try {
+              await api().query('SaveQuoteLines', { input: { quoteId: thisQuoteId, quoteLines: [{ savedQuoteLineId: ql.id, lineNumber: ql.lineNumber, title: ql.title, description: ql.description || '', autoGeneratedFromQuotePartNumberPriceId: ql.autoGeneratedFromQuotePartNumberPriceId, quoteLineItems: items }], quoteLinesToDelete: [], quoteLineItemsToDelete: idsToDelete, quoteLineNumberUpdates: [] } });
+            } catch (e) { errors.push(`SaveQuoteLines "${part.pn}": ${String(e).substring(0, 100)}`); }
+          }
+
+          // UpdateQuote notes
+          try {
+            if (header.notasExternas) await api().query('UpdateQuote', { id: thisQuoteId, notesMarkdown: isDash(header.notasExternas) ? '' : header.notasExternas });
+            if (header.notasInternas) await api().query('UpdateQuote', { id: thisQuoteId, internalNotesMarkdown: isDash(header.notasInternas) ? '' : header.notasInternas });
+          } catch (e) { errors.push(`UpdateQuote ${thisQuoteIdInDomain}: ${String(e).substring(0, 100)}`); }
+        }
+        stats.productsSet = prodAddedTotal;
+        stats.quoteIdInDomain = primaryQuoteIdInDomain;
+        if (quotesCreated.length > 1) stats.quoteName = `${quotesCreated.length} cotizaciones`;
+        else if (quotesCreated.length === 1) stats.quoteName = quotesCreated[0].name;
+        showProgressUI(`  -> ${quotesCreated.length} cotizaciones creadas, ${prodAddedTotal} products`);
       } else {
         // SOLO_PN: build pnLookup from existing/new PN IDs (no quote context)
         showProgressUI('Modo SOLO_PN: construyendo mapa de PNs...'); setProgressBar(30);
@@ -833,12 +907,12 @@ const BulkUpload = (() => {
           const part = parts[i]; const status = pnStatus[i];
           let pnId;
           if (status.status === 'existing') { pnId = status.existingId; stats.pnsExisting++; }
-          else { pnId = newPnIds.get(part.pn.toUpperCase()); }
+          else { pnId = newPnIds.get(`${part.pn.toUpperCase()}|${part.customerId}`); }
           if (!pnId) continue;
-          // Minimal pn object for enrich step
-          pnLookup.set(part.pn.toUpperCase(), {
+          // V10: key by pn|customerId
+          pnLookup.set(`${part.pn.toUpperCase()}|${part.customerId}`, {
             qpnp: null, pnp: null,
-            pn: { id: pnId, name: part.pn, customerId: customerId, defaultProcessNodeId: part.processIdOverride || defaultProcessId, customInputs: {}, descriptionMarkdown: '', customerFacingNotes: '', geometryTypeId: null, partNumberGroupId: null },
+            pn: { id: pnId, name: part.pn, customerId: part.customerId, defaultProcessNodeId: part.processId, customInputs: {}, descriptionMarkdown: '', customerFacingNotes: '', geometryTypeId: null, partNumberGroupId: null },
             ql: null
           });
         }
@@ -849,11 +923,11 @@ const BulkUpload = (() => {
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
           if (part.precio === null && !part.qty) continue; // no price data
-          const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+          const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
           pnpWithPrice.push({
             partNumberId: entry.pn.id,
-            processId: part.procesoOverride ? (defaultProcessId) : (entry.pn.defaultProcessNodeId || defaultProcessId),
-            customInputs: { DatosPrecio: { Divisa: divisaLinea } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
+            processId: part.processId,
+            customInputs: { DatosPrecio: { Divisa: part.divisa || 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
             partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
             usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
             unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
@@ -890,7 +964,7 @@ const BulkUpload = (() => {
       showProgressUI(`${isSoloPN ? 'Paso 3' : 'Paso 6'}: Enriqueciendo PNs...`); setProgressBar(55);
       let okSP = 0, retrySP = 0;
       for (let i = 0; i < parts.length; i++) {
-        const part = parts[i]; const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+        const part = parts[i]; const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
         const pn = entry.pn;
         setProgressBar(55 + Math.round((i / parts.length) * 20));
 
@@ -915,7 +989,7 @@ const BulkUpload = (() => {
             else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : (errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`), params[0].id); }
             else pid = params[0].id;
             if (!pid) continue;
-            const sel = { defaultParamId: pid, processNodeId: pn.defaultProcessNodeId || defaultProcessId || null, processNodeOccurrence: (pn.defaultProcessNodeId || defaultProcessId) ? 1 : null, locationId: null, geometryTypeSpecFieldId: null };
+            const sel = { defaultParamId: pid, processNodeId: part.processId || pn.defaultProcessNodeId || null, processNodeOccurrence: (part.processId || pn.defaultProcessNodeId) ? 1 : null, locationId: null, geometryTypeSpecFieldId: null };
             if (sf.isGeneric) gS.push(sel); else dS.push(sel);
           }
           specsToApply.push({ specId: si.id, classificationSetId: null, classificationIds: [], defaultSelections: dS, genericSelections: gS });
@@ -969,12 +1043,11 @@ const BulkUpload = (() => {
         const dimValueIds = [];
         if (part.linea && !isDash(part.linea)) { const id = dimValueMap.get(part.linea); if (id) dimValueIds.push(id); else warn(`Línea "${part.linea}" no encontrada en dimensiones`); }
         if (part.departamento && !isDash(part.departamento)) { const id = dimValueMap.get(part.departamento); if (id) dimValueIds.push(id); else warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); }
-        // Guión en línea o depto = enviar [] (borrar)
-        // Proceso — "-" = quitar proceso override
-        const pnProcessId = isDash(part.procesoOverride) ? defaultProcessId : (part.procesoOverride ? (part.processIdOverride || defaultProcessId) : (pn.defaultProcessNodeId || defaultProcessId));
+        // V10: Proceso siempre viene de la línea (obligatorio, sin fallback)
+        const pnProcessId = part.processId;
 
         const pnInput = {
-          id: pn.id, name: pn.name, customerId: pn.customerId || customerId, defaultProcessNodeId: pnProcessId,
+          id: pn.id, name: pn.name, customerId: pn.customerId || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, pn.descriptionMarkdown || ''), customerFacingNotes: pn.customerFacingNotes || '',
           customInputs: mergedCI || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds,
           partNumberGroupId: pnGroupId,
@@ -1018,7 +1091,7 @@ const BulkUpload = (() => {
       const racksToDelete = []; // PNs where racks should be deleted (guión)
       for (const part of parts) {
         if (!part.racks.length) continue;
-        const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
         // Guión (-) in first rack = delete all racks
         if (part.racks.length === 1 && isDash(part.racks[0].name)) {
           racksToDelete.push(entry.pn.id);
@@ -1070,7 +1143,7 @@ const BulkUpload = (() => {
       const pricesToDelete = [];
       for (const part of parts) {
         if (!isDash(String(part.precio))) continue;
-        const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
         pricesToDelete.push({ pnId: entry.pn.id, pnName: part.pn });
       }
       if (pricesToDelete.length) {
@@ -1093,7 +1166,7 @@ const BulkUpload = (() => {
       const pnsToArchive = [], oldPnsToArchive = [], pnsToUnarchive = [];
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
-        const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
         if (part.archivado) {
           pnsToArchive.push({ id: entry.pn.id, name: part.pn });
         } else if (pnStatus[i].status === 'existing') {
@@ -1109,7 +1182,7 @@ const BulkUpload = (() => {
         // In quote mode, use qpnp price IDs
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
-          const entry = pnLookup.get(part.pn.toUpperCase()); if (!entry) continue;
+          const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
           const pnpId = entry.pnp?.id;
           if (!pnpId) continue;
           if (part.precioDefault) priceIdsForDefault.push(pnpId);
@@ -1122,7 +1195,7 @@ const BulkUpload = (() => {
           if (!part.precioDefault && status.status === 'existing') {
             // FALSE on existing = unset default
             try {
-              const pnData = await api().query('GetPartNumber', { partNumberId: pnLookup.get(part.pn.toUpperCase())?.pn?.id });
+              const pnData = await api().query('GetPartNumber', { partNumberId: pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`)?.pn?.id });
               const prices = pnData?.partNumberById?.partNumberPricesByPartNumberId?.nodes || [];
               const defaultPrice = prices.find(p => p.isDefault);
               if (defaultPrice) priceIdsToUnsetDefault.push(defaultPrice.id);
@@ -1156,9 +1229,9 @@ const BulkUpload = (() => {
       // STEP 9: Done
       showProgressUI('Completado.'); setProgressBar(100);
       const domainId = window.location.pathname.match(/\/Domains\/(\d+)/)?.[1] || DOMAIN.id;
-      const quoteUrl = isSoloPN ? null : `/Domains/${domainId}/Quotes/${quoteIdInDomain}`;
+      const quoteUrl = isSoloPN || !primaryQuoteIdInDomain ? null : `/Domains/${domainId}/Quotes/${primaryQuoteIdInDomain}`;
       log(`\n=== RESULTADO ===`);
-      log(`${isSoloPN ? 'Modo: SOLO_PN' : `Quote: "${quoteName}" #${quoteIdInDomain}`}`);
+      log(`${isSoloPN ? 'Modo: SOLO_PN' : `Cotizaciones: ${quotesCreated.length} (${quotesCreated.map(q => '#' + q.idInDomain).join(', ')})`}`);
       log(`PNs: ${stats.pnsCreated} nuevos, ${stats.pnsExisting} existentes, ${stats.pnsDuplicated} dup`);
       if (errors.length) log(`ERRORES: ${errors.length}\n${errors.join('\n')}`);
       await new Promise(r => setTimeout(r, 500));
@@ -1171,7 +1244,7 @@ const BulkUpload = (() => {
           mode: isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP',
           quoteName: stats.quoteName,
           quoteIdInDomain: stats.quoteIdInDomain,
-          customerName: customer?.name || '',
+          customerName: [...customerCache.values()].map(c => c.name).join(', '),
           stats: { ...stats },
           errors: [...errors],
           log: api().getLog(),

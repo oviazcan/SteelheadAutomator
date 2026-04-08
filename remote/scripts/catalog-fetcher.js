@@ -301,13 +301,17 @@ const CatalogFetcher = (() => {
 
     // Dimensiones Contables — dinámico vía GetDimension API
     const domain = api().getDomain();
-    const dimIds = domain.dimensionIds || { linea: 585, departamento: 586 }; // IDs de dimensiones en Steelhead
+    // V10: defaults match config.json domain values for Ecoplating
+    const dimIds = domain.dimensionIds || { linea: 349, departamento: 586 };
+    log(`  Dimension IDs: linea=${dimIds.linea}, departamento=${dimIds.departamento}`);
 
     async function fetchDimension(dimId) {
       try {
         const data = await api().query('GetDimension', { id: dimId, includeArchived: 'NO' });
         const nodes = data?.acctDimensionById?.acctDimensionCustomValuesByDimensionId?.nodes || [];
-        return nodes.filter(n => !n.archivedAt).map(n => n.value.trim()).sort();
+        const vals = nodes.filter(n => !n.archivedAt).map(n => n.value.trim()).sort();
+        log(`    GetDimension(${dimId}): ${vals.length} valores activos`);
+        return vals;
       } catch (e) {
         warn(`Dimensión ${dimId}: ${String(e).substring(0, 80)}`);
         return [];

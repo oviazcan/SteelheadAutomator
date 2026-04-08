@@ -265,5 +265,5 @@
     "scripts/bulk-upload.js",
     "scripts/catalog-fetcher.js"
   ],
-  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_Cotizaciones_v9.xlsm"
+  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_Cotizaciones_v10.xlsm"
 }
