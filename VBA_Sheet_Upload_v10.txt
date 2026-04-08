@@ -1,0 +1,9 @@
+' Código de la hoja Upload (v10)
+' Pegar en Alt+F11 → "Hoja(Upload)" (no en un módulo)
+' Dispara SombrearModoSoloPN automáticamente al cambiar G1 (la celda Modo)
+
+Private Sub Worksheet_Change(ByVal Target As Range)
+    If Not Intersect(Target, Me.Range("G1")) Is Nothing Then
+        SombrearModoSoloPN
+    End If
+End Sub
