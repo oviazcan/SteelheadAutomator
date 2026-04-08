@@ -442,11 +442,18 @@ const BulkUpload = (() => {
 
   function setProgressBar(p) { const b = document.getElementById('dl9-bar'); if (b) b.style.width = p + '%'; }
 
-  function showResult(stats, quoteUrl, errors) {
+  function showResult(stats, quoteUrl, errors, quoteUrlLabel) {
     const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
     injectStyles(); const { overlay, modal } = createOverlay();
     const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.join('\n')}</div>` : '';
-    modal.innerHTML = `<h2>${errors.length ? 'Completado con errores' : 'Completado OK'}</h2><div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<a href="${quoteUrl}" class="dl9-btn dl9-btn-exec" style="text-decoration:none" target="_blank">ABRIR COTIZACIÓN</a>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
+    const lbl = quoteUrlLabel || 'ABRIR COTIZACIÓN';
+    modal.innerHTML = `<h2>${errors.length ? 'Completado con errores' : 'Completado OK'}</h2><div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
+    if (quoteUrl) {
+      document.getElementById('dl9-open-quote').addEventListener('click', () => {
+        // V10: navega en la pestaña actual (Steelhead es SPA, evita perder contexto)
+        window.location.href = quoteUrl;
+      });
+    }
     document.getElementById('dl9-close').onclick = () => removeOverlay(overlay);
     document.getElementById('dl9-copy-log').onclick = () => { navigator.clipboard.writeText(api().getLog().join('\n')).then(() => alert('Log copiado.')).catch(() => { const w = window.open('', '_blank'); w.document.write('<pre>' + api().getLog().join('\n') + '</pre>'); }); };
   }
@@ -829,7 +836,8 @@ const BulkUpload = (() => {
           quoteSeq++;
           const cust = [...customerCache.values()].find(c => c.id === cid);
           if (!cust) { errors.push(`Cliente id ${cid} no en cache`); continue; }
-          const thisQuoteName = `${cust.name} ${quoteName}`.substring(0, 80);
+          // V10: same layout name for all quotes — distinguishable by customer column in Steelhead UI
+          const thisQuoteName = quoteName;
           // Use first part's divisa as quote-level divisa (per-line drives prices later)
           const quoteDivisa = (custParts[0].part.divisa || 'USD').toUpperCase();
           const quoteCI = {
@@ -942,7 +950,7 @@ const BulkUpload = (() => {
         }
         stats.productsSet = prodAddedTotal;
         stats.quoteIdInDomain = primaryQuoteIdInDomain;
-        if (quotesCreated.length > 1) stats.quoteName = `${quotesCreated.length} cotizaciones`;
+        if (quotesCreated.length > 1) stats.quoteName = `${quotesCreated.length} cotizaciones "${quoteName}"`;
         else if (quotesCreated.length === 1) stats.quoteName = quotesCreated[0].name;
         showProgressUI(`  -> ${quotesCreated.length} cotizaciones creadas, ${prodAddedTotal} products`);
       } else {
@@ -1274,7 +1282,15 @@ const BulkUpload = (() => {
       // STEP 9: Done
       showProgressUI('Completado.'); setProgressBar(100);
       const domainId = window.location.pathname.match(/\/Domains\/(\d+)/)?.[1] || DOMAIN.id;
-      const quoteUrl = isSoloPN || !primaryQuoteIdInDomain ? null : `/Domains/${domainId}/Quotes/${primaryQuoteIdInDomain}`;
+      // V10: si se creó UNA sola cotización abrir esa; si fueron varias, abrir el listado general
+      let quoteUrl = null;
+      let quoteUrlLabel = 'ABRIR COTIZACIÓN';
+      if (!isSoloPN && quotesCreated.length === 1) {
+        quoteUrl = `/Domains/${domainId}/Quotes/${primaryQuoteIdInDomain}`;
+      } else if (!isSoloPN && quotesCreated.length > 1) {
+        quoteUrl = `/Domains/${domainId}/Quotes`;
+        quoteUrlLabel = 'VER LISTA DE COTIZACIONES';
+      }
       log(`\n=== RESULTADO ===`);
       log(`${isSoloPN ? 'Modo: SOLO_PN' : `Cotizaciones: ${quotesCreated.length} (${quotesCreated.map(q => '#' + q.idInDomain).join(', ')})`}`);
       log(`PNs: ${stats.pnsCreated} nuevos, ${stats.pnsExisting} existentes, ${stats.pnsDuplicated} dup`);
@@ -1310,7 +1326,7 @@ const BulkUpload = (() => {
         log('  Log guardado en historial');
       } catch (e) { warn('Error guardando log: ' + e.message); }
 
-      showResult(stats, quoteUrl, errors);
+      showResult(stats, quoteUrl, errors, quoteUrlLabel);
       return { success: true, stats, errors };
 
     } catch (e) {
