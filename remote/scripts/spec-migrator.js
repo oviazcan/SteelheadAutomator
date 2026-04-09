@@ -1437,9 +1437,45 @@ const SpecMigrator = (() => {
         }
 
         // Target spec doesn't exist on PN — apply fresh
-        await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
-        results.migrated++;
-        log(`  ${pnName}: spec aplicada ✓`);
+        try {
+          await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
+          results.migrated++;
+          log(`  ${pnName}: spec aplicada ✓`);
+        } catch (applyErr) {
+          const msg = String(applyErr);
+          if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('unique_constraint')) {
+            // Shared spec fields between old (archived) and new spec cause constraint violations.
+            // Fallback: apply spec with NO selections, then add params one-by-one (tolerates conflicts).
+            log(`  ${pnName}: constraint en apply, intentando fallback param-by-param...`);
+            try {
+              await applySpecToPN(pnId, targetSpecId, [], []);
+            } catch (applyEmpty) {
+              // Even empty apply may fail if the spec itself conflicts; that's OK — the spec
+              // may already exist archived from a previous attempt. Try to unarchive it.
+              const pnDetail2 = await getPNDetail(pnId);
+              const pnSpecsList2 = pnDetail2?.partNumberSpecsByPartNumberId?.nodes || [];
+              const archived = pnSpecsList2.find(s => s.specBySpecId?.id === targetSpecId && s.archivedAt);
+              if (archived) {
+                await api().query('ArchivePartNumberSpecAndParams', {
+                  partNumberSpecId: archived.id, partNumberSpecFieldParamIds: [], archivedAt: null
+                }, 'ArchivePartNumberSpecAndParams');
+                log(`  ${pnName}: spec destino desarchivada`);
+              } else {
+                throw applyEmpty; // truly unexpected
+              }
+            }
+            // Now add each param individually, skipping conflicts
+            let added = 0;
+            for (const p of allParams) {
+              const ok = await addSingleParamToPN(pnId, p.specFieldId, p.paramId, p.isGeneric);
+              if (ok) added++;
+            }
+            results.migrated++;
+            log(`  ${pnName}: spec aplicada (fallback, ${added}/${allParams.length} params) ✓`);
+          } else {
+            throw applyErr; // non-constraint error, re-throw
+          }
+        }
 
       } catch (e) {
         results.errors.push(`${pnName}: ${String(e).substring(0, 200)}`);
