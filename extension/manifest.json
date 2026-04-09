@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Steelhead Automator",
   "description": "Automatización de carga masiva para Steelhead ERP — Ecoplating",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "permissions": [
     "activeTab",
     "storage",

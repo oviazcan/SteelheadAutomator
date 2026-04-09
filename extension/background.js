@@ -48,19 +48,24 @@ async function injectAppScripts(tabId, appId) {
 
   for (const scriptPath of scripts) {
     const code = await fetchScriptCode(scriptPath);
-    // Only inject if not already loaded (prevents resetting state like HashScanner results)
+    // Re-inyectar si cambió la version del config (sin esto, los updates nunca
+    // llegan a la pestaña — el window.X viejo se queda pegado para siempre).
     await chrome.scripting.executeScript({
       target: { tabId }, world: 'MAIN',
-      func: (c, path) => {
-        // Check if script already loaded by looking for its global
+      func: (c, path, version) => {
         const globals = { 'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
           'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
           'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator' };
         const globalName = globals[path];
-        if (globalName && window[globalName]) return; // already loaded
-        try { new Function(c)(); } catch (e) { console.error('[SA]', e); }
+        // Skip si ya está cargado CON la misma version
+        if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
+        try {
+          new Function(c)();
+          // Tag con la version actual para detectar staleness en próximas cargas
+          if (globalName && window[globalName]) window[globalName].__saVersion = version;
+        } catch (e) { console.error('[SA]', e); }
       },
-      args: [code, scriptPath]
+      args: [code, scriptPath, config?.version || '0']
     });
   }
 
