@@ -145,7 +145,8 @@ async function handleMessage(message) {
     }
 
     case 'download-load-csv': {
-      // Download a specific load's data as CSV for correction
+      // Download a specific load's data as CSV for correction.
+      // V10: emite layout 69-cols compatible con bulk-upload (re-cargable directo).
       const tab = await getSteelheadTab();
       const loadId = message.loadId;
       const results = await chrome.scripting.executeScript({
@@ -154,25 +155,143 @@ async function handleMessage(message) {
           const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
           const load = history.find(h => h.id === id);
           if (!load) return { error: 'Carga no encontrada' };
-
-          // Generate CSV from load data
           const parts = load.parts || [];
           if (!parts.length) return { error: 'Sin datos de PNs' };
 
-          // Build CSV header
-          const headers = ['Número de parte', 'Cantidad', 'Precio', 'Unidad', 'Descripción', 'Metal Base', 'Etiqueta 1', 'Etiqueta 2', 'Etiqueta 3', 'Etiqueta 4', 'Proceso', 'Grupo', 'Archivado', 'Validación', 'Forzar Dup', 'Precio Default'];
-          const rows = [headers.join(',')];
+          // Predictive material columns (BB-BJ = 53-61) — debe matchear bulk-upload PREDICTIVE_MATERIALS
+          const PRED_BY_ITEM = {
+            364506: 53, 397490: 54, 412305: 55, 412805: 56, 412479: 57,
+            412723: 58, 702767: 59, 702769: 60, 702768: 61
+          };
+          const TOTAL_COLS = 69;
+          const COLS_USED_RANGE = 69; // A-BQ
+
+          // CSV escape helper
+          const esc = v => {
+            if (v === null || v === undefined) return '';
+            const s = String(v);
+            if (s.includes(',') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"';
+            return s;
+          };
+          const boolStr = b => (b ? 'V' : 'F');
+          const blankRow = () => Array(TOTAL_COLS).fill('');
+
+          const out = [];
+          // Row 0: Modo en col G (idx 6) — parseRows escanea primeras 3 filas
+          const row0 = blankRow(); row0[6] = load.header?.modo || load.mode || 'SOLO_PN';
+          out.push(row0);
+          // Row 1: title (no afecta parser, solo decoración)
+          const row1 = blankRow(); row1[0] = 'Carga Masiva Steelhead v10 (export historial)';
+          out.push(row1);
+          // Row 2: Empresa, Layout, Notas
+          const row2 = blankRow();
+          row2[0] = 'Empresa Emisora:'; row2[2] = load.header?.empresaEmisora || '';
+          row2[4] = 'Nombre Cotización/Layout:'; row2[6] = load.header?.quoteName || '';
+          row2[8] = 'Notas Externas:'; row2[10] = load.header?.notasExternas || '';
+          row2[14] = 'Notas Internas:'; row2[16] = load.header?.notasInternas || '';
+          out.push(row2);
+          // Row 3: Válida, Asignado
+          const row3 = blankRow();
+          row3[0] = 'Válida Hasta (días):'; row3[2] = load.header?.validaDias || '';
+          row3[4] = 'Asignado:'; row3[6] = load.header?.asignado || '';
+          out.push(row3);
+          // Row 4: empty separator
+          out.push(blankRow());
+          // Row 5: section header — col A = "PARÁMETROS" → parseRows lo skipea
+          const row5 = blankRow(); row5[0] = 'PARÁMETROS';
+          out.push(row5);
+          // Row 6: column header row — col A = "Archivado" → parseRows lo skipea
+          const row6 = blankRow();
+          row6[0] = 'Archivado'; row6[1] = 'Validación 1er recibo'; row6[2] = 'Forzar duplicar'; row6[3] = 'Archivar anterior';
+          row6[4] = 'Cliente'; row6[5] = 'Número de parte'; row6[6] = 'Descripción'; row6[7] = 'PN alterno'; row6[8] = 'Grupo';
+          row6[9] = 'Cantidad'; row6[10] = 'Precio'; row6[11] = 'Unidad precio'; row6[12] = 'Divisa'; row6[13] = 'Precio default';
+          row6[14] = 'Metal base'; row6[15] = 'Etq1'; row6[16] = 'Etq2'; row6[17] = 'Etq3'; row6[18] = 'Etq4'; row6[19] = 'Etq5';
+          row6[20] = 'Proceso'; row6[33] = 'Spec1'; row6[35] = 'Spec2';
+          row6[41] = 'Rack Línea'; row6[43] = 'Rack Sec';
+          row6[50] = 'Línea'; row6[51] = 'Departamento'; row6[52] = 'Código SAT';
+          out.push(row6);
+          // Row 7: type indicators — col A = "V/F" → parseRows lo skipea
+          const row7 = blankRow(); row7[0] = 'V/F'; row7[5] = 'Texto';
+          out.push(row7);
+
+          // Data rows
           for (const p of parts) {
-            rows.push([
-              p.pn, p.qty || '', p.precio || '', p.unidadPrecio || '', p.descripcion || '',
-              p.metalBase || '', ...(p.labels || []).concat(['', '', '', '']).slice(0, 4),
-              p.procesoOverride || '', p.pnGroup || '',
-              p.archivado ? 'SI' : 'NO', p.validacion1er ? 'SI' : 'NO',
-              p.forzarDuplicado ? 'SI' : 'NO', p.precioDefault ? 'SI' : 'NO'
-            ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+            const r = blankRow();
+            // Parámetros
+            r[0] = boolStr(p.archivado); r[1] = boolStr(p.validacion1er);
+            r[2] = boolStr(p.forzarDuplicado); r[3] = boolStr(p.archivarAnterior);
+            // Identificación
+            r[4] = p.cliente || '';
+            r[5] = p.pn || '';
+            r[6] = p.descripcion || '';
+            r[7] = p.pnAlterno || '';
+            r[8] = p.pnGroup || '';
+            // Precio
+            r[9] = p.qty != null ? p.qty : '';
+            r[10] = p.precio != null ? p.precio : '';
+            r[11] = p.unidadPrecio || '';
+            r[12] = p.divisa || '';
+            r[13] = boolStr(p.precioDefault);
+            // Acabados
+            r[14] = p.metalBase || '';
+            const labels = p.labels || [];
+            for (let li = 0; li < 5; li++) r[15 + li] = labels[li] || '';
+            // Proceso
+            r[20] = p.procesoOverride || '';
+            // Productos (hasta 3)
+            const prods = p.products || [];
+            for (let pi = 0; pi < Math.min(prods.length, 3); pi++) {
+              const base = 21 + pi * 4;
+              r[base] = prods[pi].name || '';
+              r[base + 1] = prods[pi].price != null ? prods[pi].price : '';
+              r[base + 2] = prods[pi].qty != null ? prods[pi].qty : '';
+              r[base + 3] = prods[pi].unit || '';
+            }
+            // Specs (hasta 2) — formato "name | param" cuando hay param
+            const specs = p.specs || [];
+            for (let si = 0; si < Math.min(specs.length, 2); si++) {
+              const sCol = 33 + si * 2;
+              const s = specs[si];
+              r[sCol] = s.param ? `${s.name} | ${s.param}` : (s.name || '');
+            }
+            // Conversiones
+            const uc = p.unitConv || {};
+            r[37] = uc.kgm != null ? uc.kgm : '';
+            r[38] = uc.cmk != null ? uc.cmk : '';
+            r[39] = uc.lm != null ? uc.lm : '';
+            r[40] = uc.minPzasLote != null ? uc.minPzasLote : '';
+            // Racks (hasta 2)
+            const racks = p.racks || [];
+            if (racks[0]) { r[41] = racks[0].name || ''; r[42] = racks[0].ppr != null ? racks[0].ppr : ''; }
+            if (racks[1]) { r[43] = racks[1].name || ''; r[44] = racks[1].ppr != null ? racks[1].ppr : ''; }
+            // Dimensiones
+            const d = p.dims || {};
+            r[45] = d.length != null ? d.length : '';
+            r[46] = d.width != null ? d.width : '';
+            r[47] = d.height != null ? d.height : '';
+            r[48] = d.outerDiam != null ? d.outerDiam : '';
+            r[49] = d.innerDiam != null ? d.innerDiam : '';
+            // Asignación contable
+            r[50] = p.linea || '';
+            r[51] = p.departamento || '';
+            r[52] = p.codigoSAT || '';
+            // Predictivos (mapa por inventoryItemId → col)
+            for (const pu of (p.predictiveUsage || [])) {
+              const c = PRED_BY_ITEM[pu.inventoryItemId];
+              if (c != null) r[c] = pu.usagePerPart != null ? pu.usagePerPart : '';
+            }
+            // IBMS
+            r[62] = p.quoteIBMS || '';
+            r[63] = p.estacionIBMS || '';
+            r[64] = p.plano || '';
+            r[65] = p.piezasCarga != null ? p.piezasCarga : '';
+            r[66] = p.cargasHora || '';
+            r[67] = p.tiempoEntrega != null ? p.tiempoEntrega : '';
+            r[68] = p.notasAdicionalesPN || '';
+            out.push(r);
           }
 
-          const csv = rows.join('\n');
+          const csv = out.map(row => row.map(esc).join(',')).join('\r\n');
           const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -180,7 +299,7 @@ async function handleMessage(message) {
           a.download = `correccion_${load.mode}_${new Date(load.timestamp).toISOString().slice(0, 10)}_${load.id}.csv`;
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
           URL.revokeObjectURL(url);
-          return { started: true, message: 'CSV descargado' };
+          return { started: true, message: 'CSV v10 descargado' };
         },
         args: [loadId]
       });

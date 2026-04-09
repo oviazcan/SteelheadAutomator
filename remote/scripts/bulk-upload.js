@@ -1625,21 +1625,57 @@ const BulkUpload = (() => {
         const loadLog = {
           id: Date.now(),
           timestamp: new Date().toISOString(),
+          version: 'v10',
           mode: isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP',
           quoteName: stats.quoteName,
           quoteIdInDomain: stats.quoteIdInDomain,
           customerName: [...customerCache.values()].map(c => c.name).join(', '),
+          // V10: header completo para reconstruir CSV
+          header: {
+            modo: isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP',
+            empresaEmisora: header.empresaEmisora || '',
+            quoteName: header.quoteName || '',
+            asignado: header.asignado || '',
+            validaDias: header.validaDias || '',
+            notasExternas: header.notasExternas || '',
+            notasInternas: header.notasInternas || ''
+          },
           stats: { ...stats },
           errors: [...errors],
           log: api().getLog(),
           partsCount: parts.length,
+          // V10: snapshot completo (todas las cols A-BQ) para round-trip
           parts: parts.map(p => ({
-            pn: p.pn, qty: p.qty, precio: p.precio, descripcion: p.descripcion,
-            labels: p.labels, metalBase: p.metalBase, procesoOverride: p.procesoOverride,
-            pnGroup: p.pnGroup, unidadPrecio: p.unidadPrecio,
-            specs: p.specs.map(s => s.name), racks: p.racks.map(r => r.name),
+            // Identificación
+            pn: p.pn, cliente: p.cliente, descripcion: p.descripcion,
+            pnAlterno: p.pnAlterno, pnGroup: p.pnGroup,
+            // Precio
+            qty: p.qty, precio: p.precio, unidadPrecio: p.unidadPrecio,
+            divisa: p.divisa, precioDefault: p.precioDefault,
+            // Acabados
+            metalBase: p.metalBase, labels: p.labels,
+            // Proceso + productos
+            procesoOverride: p.procesoOverride,
+            products: p.products,
+            // Specs (con param para espesor)
+            specs: p.specs.map(s => ({ name: s.name, param: s.param })),
+            // Conversiones
+            unitConv: p.unitConv,
+            // Racks (con ppr)
+            racks: p.racks.map(r => ({ name: r.name, ppr: r.ppr })),
+            // Dimensiones
+            dims: p.dims,
+            // Asignación contable
+            linea: p.linea, departamento: p.departamento, codigoSAT: p.codigoSAT,
+            // Predictivos
+            predictiveUsage: p.predictiveUsage,
+            // IBMS / referencias
+            quoteIBMS: p.quoteIBMS, estacionIBMS: p.estacionIBMS, plano: p.plano,
+            piezasCarga: p.piezasCarga, cargasHora: p.cargasHora, tiempoEntrega: p.tiempoEntrega,
+            notasAdicionalesPN: p.notasAdicionalesPN,
+            // Parámetros
             archivado: p.archivado, validacion1er: p.validacion1er,
-            precioDefault: p.precioDefault, forzarDuplicado: p.forzarDuplicado
+            forzarDuplicado: p.forzarDuplicado, archivarAnterior: p.archivarAnterior
           }))
         };
         const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
