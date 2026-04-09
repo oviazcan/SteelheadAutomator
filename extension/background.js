@@ -696,6 +696,22 @@ async function handleMessage(message) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    // ── Assign Pending Params ──
+    case 'assign-pending-params': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'spec-migrator');
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.SpecMigrator) return { error: 'SpecMigrator no disponible' };
+          return window.SpecMigrator.assignPendingParams();
+        }
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     // ── Inventory Reset ──
     case 'run-inventory-reset': {
       const tab = await getSteelheadTab();
