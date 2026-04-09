@@ -28,8 +28,11 @@ async function loadConfig() {
 
 // ── Script Injection ──
 async function fetchScriptCode(scriptPath) {
-  const config = cachedConfig || await loadConfig();
-  const url = `${REMOTE_BASE_URL}/${scriptPath}?v=${config?.version || '0'}`;
+  // Siempre re-cargar config para que `version` cache-buster sea fresco.
+  // Sin esto, el service worker mantiene cachedConfig vieja entre acciones y
+  // sigue pidiendo el script con el ?v=X anterior → CDN/browser sirve cached.
+  const config = await loadConfig();
+  const url = `${REMOTE_BASE_URL}/${scriptPath}?v=${config?.version || Date.now()}`;
   const response = await fetch(url, { cache: 'no-cache' });
   if (!response.ok) throw new Error(`HTTP ${response.status} cargando ${scriptPath}`);
   return await response.text();
