@@ -45,6 +45,23 @@ Sub RefrescarListas()
     CargarUsuariosDesde wbCat, wsL
     CargarGruposDesde wbCat, wsL
 
+    ' V10: Prepend "(seleccione)" y "-" a cada lista estricta (no a Metal Base / Grupos que son híbridas)
+    ' Cols estrictas: A=1 Clientes, B=2 Procesos, C=3 Productos, D=4 Etiquetas, E=5 Specs,
+    '                 F=6 Racks Línea, G=7 Racks Todos, H=8 CódigoSAT,
+    '                 J=10 Líneas, K=11 Departamentos, L=12 Usuarios
+    ' Híbridas (NO se prepend): I=9 MetalBase, M=13 Grupos
+    Dim noHybridCols As Variant
+    noHybridCols = Array(1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12)
+    Dim hCol As Variant
+    For Each hCol In noHybridCols
+        Dim cn As Long
+        cn = CLng(hCol)
+        ' Insertar 2 celdas arriba (filas 2-3) en esta columna, shift down
+        wsL.Range(wsL.Cells(2, cn), wsL.Cells(3, cn)).Insert Shift:=xlDown
+        wsL.Cells(2, cn).Value = "(seleccione)"
+        wsL.Cells(3, cn).Value = "-"
+    Next hCol
+
     ' Cerrar archivo de catálogos sin guardar
     wbCat.Close SaveChanges:=False
 
