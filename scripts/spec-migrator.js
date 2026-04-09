@@ -78,51 +78,39 @@ const SpecMigrator = (() => {
     return data?.partNumberById || null;
   }
 
+  // ── Build a minimal SavePartNumber input with all required fields ──
+  function buildSaveInput(partNumberId, overrides = {}) {
+    return {
+      id: partNumberId,
+      customInputs: {},
+      geometryTypeId: null, userFileName: null, inventoryItemInput: null,
+      glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+      isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
+      labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
+      inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
+      partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+      partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+      partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+      partNumberSpecClassificationsToUpdate: [],
+      partNumberSpecFieldParamUpdates: [], specFieldParamUpdates: [],
+      ...overrides
+    };
+  }
+
   // ── Archive spec at PN level via SavePartNumber (same mechanism as Steelhead UI) ──
   async function archiveSpecOnPN(partNumberId, partNumberSpecId, partNumberSpecFieldParamIds) {
-    await api().query('SavePartNumber', {
-      input: [{
-        id: partNumberId,
-        partNumberSpecsToArchive: [partNumberSpecId],
-        partNumberSpecFieldParamsToArchive: partNumberSpecFieldParamIds || [],
-        // Required empty fields for SavePartNumber
-        partNumberSpecsToUnarchive: [],
-        partNumberSpecFieldParamsToUnarchive: [],
-        partNumberSpecClassificationsToUpdate: [],
-        partNumberSpecFieldParamUpdates: [],
-        specFieldParamUpdates: [],
-        defaults: [], ownerIds: [], paramsToApply: [],
-        partNumberLocations: [], partNumberDimensions: [],
-        dimensionCustomValueIds: [],
-        specsToApply: [], optInOuts: [],
-        glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
-        userFileName: null,
-        isOneOff: false, isTemplatePartNumber: false, isCoupon: false
-      }]
-    });
+    await api().query('SavePartNumber', { input: [buildSaveInput(partNumberId, {
+      partNumberSpecsToArchive: [partNumberSpecId],
+      partNumberSpecFieldParamsToArchive: partNumberSpecFieldParamIds || []
+    })] });
   }
 
   // ── Unarchive spec at PN level via SavePartNumber ──
   async function unarchiveSpecOnPN(partNumberId, partNumberSpecId, partNumberSpecFieldParamIds) {
-    await api().query('SavePartNumber', {
-      input: [{
-        id: partNumberId,
-        partNumberSpecsToUnarchive: [partNumberSpecId],
-        partNumberSpecFieldParamsToUnarchive: partNumberSpecFieldParamIds || [],
-        partNumberSpecsToArchive: [],
-        partNumberSpecFieldParamsToArchive: [],
-        partNumberSpecClassificationsToUpdate: [],
-        partNumberSpecFieldParamUpdates: [],
-        specFieldParamUpdates: [],
-        defaults: [], ownerIds: [], paramsToApply: [],
-        partNumberLocations: [], partNumberDimensions: [],
-        dimensionCustomValueIds: [],
-        specsToApply: [], optInOuts: [],
-        glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
-        userFileName: null,
-        isOneOff: false, isTemplatePartNumber: false, isCoupon: false
-      }]
-    });
+    await api().query('SavePartNumber', { input: [buildSaveInput(partNumberId, {
+      partNumberSpecsToUnarchive: [partNumberSpecId],
+      partNumberSpecFieldParamsToUnarchive: partNumberSpecFieldParamIds || []
+    })] });
   }
 
   // ── Apply new spec to PN (for PNs that don't have it yet) ──
