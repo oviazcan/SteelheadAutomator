@@ -1399,22 +1399,36 @@ const BulkUpload = (() => {
             );
             const missing = wantedSelections.filter(s => !existingParamIds.has(s.specFieldParamId));
             if (!missing.length) continue;
+            // El scan de la UI muestra que AddParamsToPartNumber se llama con processNodeId:null
+            // (igual para isGeneric true o false). Pasar el processId real choca con exclusion constraint.
             const paramsToAdd = missing.map(m => ({
               specFieldId: m.specFieldId,
               specFieldParamId: m.specFieldParamId,
               isGeneric: m.isGeneric,
               geometryTypeSpecFieldId: null,
-              processNodeId: part.processId || null,
-              processNodeOccurrence: part.processId ? 1 : null,
+              processNodeId: null,
+              processNodeOccurrence: null,
               locationId: null
             }));
-            try {
-              await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: paramsToAdd } }, 'AddParamsToPartNumber');
-              syncedParamsCount += paramsToAdd.length;
-              log(`  PN "${part.pn}" spec "${cs.name}": ${paramsToAdd.length} params nuevos sincronizados`);
-            } catch (e) {
-              errors.push(`AddParams "${part.pn}" spec "${cs.name}": ${String(e).substring(0, 120)}`);
+            // La UI los manda uno por uno; replicamos el patrón para que un param fallido no
+            // tire el batch, y para tolerar mejor exclusion-constraint en params ya presentes.
+            let added = 0;
+            for (const pa of paramsToAdd) {
+              try {
+                await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
+                added++;
+              } catch (e) {
+                const msg = String(e);
+                if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
+                  // Steelhead dice que ya existe — lo tratamos como skip silencioso
+                  log(`  PN "${part.pn}" spec "${cs.name}": param ${pa.specFieldParamId} ya presente, skip`);
+                } else {
+                  errors.push(`AddParams "${part.pn}" spec "${cs.name}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
+                }
+              }
             }
+            syncedParamsCount += added;
+            if (added) log(`  PN "${part.pn}" spec "${cs.name}": ${added} params nuevos sincronizados`);
           }
         } catch (e) {
           warn(`Sync specs "${part.pn}": ${String(e).substring(0, 100)}`);
