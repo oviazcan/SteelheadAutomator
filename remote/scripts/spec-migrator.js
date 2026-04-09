@@ -79,11 +79,13 @@ const SpecMigrator = (() => {
   }
 
   // ── Archive spec at PN level (same mutation Steelhead UI uses) ──
+  // NOTE: Steelhead's UI sends archivedAt:null to ARCHIVE, timestamp to UNARCHIVE.
+  // This is counterintuitive but confirmed via scan capture of manual archive action.
   async function archiveSpecOnPN(partNumberSpecId, partNumberSpecFieldParamIds) {
     const result = await api().query('ArchivePartNumberSpecAndParams', {
       partNumberSpecId,
       partNumberSpecFieldParamIds: partNumberSpecFieldParamIds || [],
-      archivedAt: new Date().toISOString()
+      archivedAt: null
     }, 'ArchivePartNumberSpecAndParams');
     log(`    archiveSpecOnPN(${partNumberSpecId}): response = ${JSON.stringify(result)}`);
     return result;
@@ -94,7 +96,7 @@ const SpecMigrator = (() => {
     const result = await api().query('ArchivePartNumberSpecAndParams', {
       partNumberSpecId,
       partNumberSpecFieldParamIds: partNumberSpecFieldParamIds || [],
-      archivedAt: null
+      archivedAt: new Date().toISOString()
     }, 'ArchivePartNumberSpecAndParams');
     log(`    unarchiveSpecOnPN(${partNumberSpecId}): response = ${JSON.stringify(result)}`);
     return result;
