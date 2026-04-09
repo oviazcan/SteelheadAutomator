@@ -30,7 +30,7 @@ Sub LimpiarDatos()
 
     Dim lastRow As Long
     lastRow = wsUp.Cells(wsUp.Rows.Count, 6).End(xlUp).Row  ' V10: PN está en col F=6
-    If lastRow < 300 Then lastRow = 300
+    If lastRow < 508 Then lastRow = 508
 
     Dim resp As VbMsgBoxResult
     resp = MsgBox("Borrar todos los datos de filas 9 a " & lastRow & "?" & vbCrLf & vbCrLf & _
@@ -49,9 +49,9 @@ Sub LimpiarDatos()
     ' V10 boolean columns: A=1 B=2 C=3 D=4 (Params) y N=14 (Precio default)
     Dim boolCols As Variant
     boolCols = Array(1, 2, 3, 4, 14)
-    ' V10 columnas que NO se borran (default fijo): BA=53 (Código SAT)
+    ' V10 columnas que NO se borran (default fijo): BA=53 (Código SAT)y AZ=52 Departamento
     Dim preserveCols As Variant
-    preserveCols = Array(53)
+    preserveCols = Array(52, 53)
 
     For r = 9 To lastRow
         For c = 1 To 69
@@ -76,9 +76,9 @@ Sub LimpiarDatos()
             If isBool Then
                 ' Defaults: Validación(2)=TRUE, PrecioDefault(14)=TRUE, resto=FALSE
                 If c = 2 Or c = 14 Then
-                    cell.Value = True
+                    cell.Value = "V"
                 Else
-                    cell.Value = False
+                    cell.Value = "F"
                 End If
                 cleaned = cleaned + 1
             ElseIf Not IsEmpty(cell.Value) Then
@@ -95,22 +95,22 @@ NextCell:
     phHybrid = "(seleccione o escriba)"
     dvDivisa = "USD"
 
-    ' V10 Columnas dropdown puro → "(seleccione)"
+    ' V10 Columnas dropdown puro ? "(seleccione)"
     ' L=12 Unid Precio | O=15 Metal | P-T=16-20 Etiq 1-5 | U=21 Proceso
     ' V=22 P1 | Z=26 P2 | AD=30 P3
     ' AH=34 Spec1 | AJ=36 Spec2
     ' AP=42 Rack Línea | AR=44 Rack Sec
     ' AY=51 Línea | AZ=52 Departamento
     Dim phCols As Variant
-    phCols = Array(12, 15, 16, 17, 18, 19, 20, 21, 22, 26, 30, 34, 36, 42, 44, 51, 52)
-    ' V10 Columnas híbridas → "(seleccione o escriba)"
+    phCols = Array(5, 12, 16, 17, 18, 19, 20, 21, 22, 26, 30, 34, 36, 42, 44, 51)
+    ' V10 Columnas híbridas ? "(seleccione o escriba)"
     ' E=5 Cliente | I=9 Grupo
     Dim phHybridCols As Variant
-    phHybridCols = Array(5, 9)
+    phHybridCols = Array(9, 15)
 
     Dim phc As Variant
     For r = 9 To lastRow
-        ' Divisa (col 13) → default "USD"
+        ' Divisa (col 13) ? default "USD"
         Set cell = wsUp.Cells(r, 13)
         If Not cell.HasFormula And (IsEmpty(cell.Value) Or cell.Value = "") Then
             cell.Value = dvDivisa
@@ -187,3 +187,5 @@ NextCell2:
 
     MsgBox cleaned & " celdas limpiadas (espacios).", vbInformation, "LimpiarEspacios"
 End Sub
+
+

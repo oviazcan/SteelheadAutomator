@@ -1288,14 +1288,12 @@ const BulkUpload = (() => {
           partNumberGroupId: pnGroupId,
           geometryTypeId: hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null),
           inventoryItemInput: ucs.length ? { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] } : null,
-          inventoryPredictedUsages: finalPredictive.map(pu => {
-            const exMap = existingPredictedMap.get(pn.id);
-            const exId = exMap?.get(String(pu.inventoryItemId));
-            // Si existe registro previo, incluir id → SavePartNumber hace UPDATE en vez de INSERT
-            return exId
-              ? { id: exId, inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null }
-              : { inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null };
-          }),
+          // V10: solo enviar predictivos NUEVOS (sin registro existente). Los que ya existen
+          // se actualizan después con UpdateInventoryItemPredictedUsage para evitar el unique
+          // constraint en (pn, inventoryItem) que disparaba el retry y strippeaba el campo.
+          inventoryPredictedUsages: finalPredictive
+            .filter(pu => !existingPredictedMap.get(pn.id)?.has(String(pu.inventoryItemId)))
+            .map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
           specsToApply, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
           dimensionCustomValueIds: dimValueIds,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
@@ -1326,6 +1324,40 @@ const BulkUpload = (() => {
         }
       }
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`); showProgressUI(`  -> ${okSP} OK, ${retrySP} retry`);
+
+      // STEP 6a: Actualizar predictivos existentes vía UpdateInventoryItemPredictedUsage.
+      // Steelhead almacena en microQuantityPerPart (kg/pza × 1e6 redondeado).
+      const predictedUpdates = [];
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]; const status = pnStatus[i];
+        if (status.status !== 'existing') continue;
+        if (!part.predictiveUsage.length) continue;
+        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+        const exMap = entry?.pn?.id ? existingPredictedMap.get(entry.pn.id) : null;
+        if (!exMap || !exMap.size) continue;
+        // Si el primer predictivo es "-" se borra todo (ya manejado por finalPredictive arriba: queda [])
+        const predIsDash = part.predictiveUsage.length === 1 && typeof part.predictiveUsage[0]?.usagePerPart === 'string' && isDash(part.predictiveUsage[0].usagePerPart);
+        if (predIsDash) continue;
+        for (const pu of part.predictiveUsage) {
+          const exId = exMap.get(String(pu.inventoryItemId));
+          if (!exId) continue; // es uno nuevo, ya fue al SavePartNumber
+          const micro = Math.round(parseFloat(pu.usagePerPart) * 1e6);
+          if (!Number.isFinite(micro)) continue;
+          predictedUpdates.push({ id: exId, microQuantityPerPart: micro, inventoryUsageLowCodeId: null });
+        }
+      }
+      if (predictedUpdates.length) {
+        // Batches de 20 para no abusar del payload
+        for (let i = 0; i < predictedUpdates.length; i += 20) {
+          const batch = predictedUpdates.slice(i, i + 20);
+          try {
+            await api().query('UpdateInventoryItemPredictedUsage', { mnPredictedInventoryUsagePatch: batch }, 'UpdateInventoryItemPredictedUsage');
+          } catch (e) {
+            errors.push(`UpdatePredictedUsage batch ${Math.floor(i / 20) + 1}: ${String(e).substring(0, 120)}`);
+          }
+        }
+        log(`  Predictivos actualizados: ${predictedUpdates.length}`);
+      }
 
       // STEP 6b: Sync params on existing PNs whose specs were already linked.
       // SavePartNumber.specsToApply ignora specs ya ligadas — si el usuario agregó un field

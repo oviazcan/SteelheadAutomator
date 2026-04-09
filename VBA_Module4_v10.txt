@@ -11,7 +11,7 @@ Sub SombrearModoSoloPN()
     modo = UCase(Trim(wsUp.Range("G1").Value))
 
     Dim grisClaro As Long
-    grisClaro = RGB(224, 224, 224)
+    grisClaro = RGB(125, 125, 125)
 
     Dim verdeClaro As Long
     verdeClaro = RGB(232, 245, 233)
@@ -19,29 +19,33 @@ Sub SombrearModoSoloPN()
     ' V10 layout: header en filas 3-4, datos desde fila 9
     ' Reset: pintar todo a verde (estado COTIZACIÓN+NP)
     ' Header (header de cotización: nombre, asignado, notas)
-    wsUp.Range("E3:Q4").Interior.Color = verdeClaro
+    wsUp.Range("A3:D3").Interior.Color = verdeClaro
+    wsUp.Range("H3:R3").Interior.Color = verdeClaro
+    wsUp.Range("A4:R4").Interior.Color = verdeClaro
     ' Datos: PRECIO (J-N = 10-14) y PRODUCTOS A COTIZAR (V-AG = 22-33)
-    wsUp.Range("J9:N300").Interior.Color = verdeClaro
-    wsUp.Range("V9:AG300").Interior.Color = verdeClaro
+    wsUp.Range("J9:J508").Interior.Color = verdeClaro
+    wsUp.Range("V9:AG508").Interior.Color = verdeClaro
 
     If InStr(modo, "SOLO") > 0 Then
         ' SOLO_PN: Sombrear lo que NO aplica
         ' Header: Nombre Cotización (E3:G3), Asignado (E4:G4), Notas Externas (I3:N3),
         '         Notas Internas (O3:Q3) — todos solo aplican a cotización
-        wsUp.Range("E3:G4").Interior.Color = grisClaro
-        wsUp.Range("I3:Q3").Interior.Color = grisClaro
+        wsUp.Range("A3:D3").Interior.Color = grisClaro
+        wsUp.Range("H3:R3").Interior.Color = grisClaro
+        wsUp.Range("A4:R4").Interior.Color = grisClaro
 
         ' Productos a cotizar (V-AG = 22-33) — no aplican sin cotización
-        wsUp.Range("V9:AG300").Interior.Color = grisClaro
+        wsUp.Range("J9:J508").Interior.Color = grisClaro
+        wsUp.Range("V9:AG508").Interior.Color = grisClaro
 
         ' Precio (J-N) queda HABILITADO para precios standalone
 
-        MsgBox "Modo SOLO_PN:" & vbCrLf & _
+        MsgBox "Modo Sólo Números de Parte:" & vbCrLf & _
                "- Header de cotización sombreado (no aplica)" & vbCrLf & _
                "- Productos sombreados (no aplican)" & vbCrLf & _
-               "- Precio y Cantidad habilitados (precios standalone)", vbInformation
+               "- Cantidad sombreada (no aplica)", vbInformation
     Else
         ' COTIZACIÓN+NP: todo verde (ya restaurado arriba)
-        MsgBox "Modo COTIZACIÓN+NP: todos los campos habilitados.", vbInformation
+        MsgBox "Modo Cotización + Números de Parte: todos los campos habilitados.", vbInformation
     End If
 End Sub

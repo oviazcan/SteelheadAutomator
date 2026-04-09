@@ -36,7 +36,8 @@
         "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4",
         "CreateUpdateReportWithPermissions": "6c7753a4bd5f3181b1fffa536833972a4959343da8461127155dd1dd76342bde",
         "DeleteFolderById": "282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15",
-        "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0"
+        "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0",
+        "UpdateInventoryItemPredictedUsage": "53b14385e1ce1637d9f3d11eade01ce96db8762a43c55b86021a041bda5841cb"
       },
       "queries": {
         "GetQuote_v8": "15db7a9b0325c45c181d7be61e223d1dbede8179433a25db36ebc9699097acb6",
