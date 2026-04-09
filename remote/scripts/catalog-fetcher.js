@@ -224,39 +224,32 @@ const CatalogFetcher = (() => {
     }
     log(`  Specs externas: ${allSpecs.length}/${total ?? '?'} (tipos: ${JSON.stringify(typeCounts)})`);
 
-    // El embed de AllSpecs trae los nombres de fields, pero NO los params (defaultValues
-    // viene vacío para muchos field types). Para los specs que tienen field "espesor",
-    // llamamos SpecFieldsAndOptions a traer los params reales (en batch paralelo).
+    // El embed de AllSpecs no trae datos confiables de fields/params. La única forma
+    // confiable es llamar SpecFieldsAndOptions para CADA spec externa. Con ~110 specs
+    // y batch de 20 son ~6 rondas paralelas, ~1-2 segundos total.
     const specsSeen = new Set();
     const espesorEntries = [];
     const espesorEntrySet = new Set();
     const specsWithEspesor = new Set();
     const bareSpecs = [];
 
-    // Identificar specs con field espesor (los names sí vienen en el embed)
-    const specsWithEspesorField = [];
     for (const spec of allSpecs) {
-      if (!spec.name) continue;
-      specsSeen.add(spec.name);
-      const fields = spec.specFieldSpecsBySpecId?.nodes || [];
-      const hasEspesor = fields.some(sf => (sf.specFieldBySpecFieldId?.name || '').toLowerCase().includes('espesor'));
-      if (hasEspesor) specsWithEspesorField.push(spec);
+      if (spec.name) specsSeen.add(spec.name);
     }
-    log(`  Specs con field espesor: ${specsWithEspesorField.length}`);
 
-    // Batch paralelo de SpecFieldsAndOptions (20 a la vez)
     const BATCH = 20;
-    for (let i = 0; i < specsWithEspesorField.length; i += BATCH) {
-      const batch = specsWithEspesorField.slice(i, i + BATCH);
+    for (let i = 0; i < allSpecs.length; i += BATCH) {
+      const batch = allSpecs.slice(i, i + BATCH);
       const results = await Promise.all(batch.map(async (spec) => {
+        if (!spec.name) return null;
         try {
           const d = await api().query('SpecFieldsAndOptions', { specId: spec.id }, 'SpecFieldsAndOptions');
           return { spec, sd: d?.specById };
         } catch (e) { warn(`SpecFieldsAndOptions ${spec.name}: ${String(e).substring(0, 80)}`); return { spec, sd: null }; }
       }));
-      for (const { spec, sd } of results) {
-        if (!sd) continue;
-        const fields = sd.specFieldSpecsBySpecId?.nodes || [];
+      for (const r of results) {
+        if (!r || !r.sd) continue;
+        const fields = r.sd.specFieldSpecsBySpecId?.nodes || [];
         for (const sf of fields) {
           const fieldName = sf.specFieldBySpecFieldId?.name || '';
           if (!fieldName.toLowerCase().includes('espesor')) continue;
@@ -264,17 +257,17 @@ const CatalogFetcher = (() => {
           for (const param of params) {
             const pname = param.name;
             if (!pname) continue;
-            const entry = `${spec.name} | ${pname}`;
+            const entry = `${r.spec.name} | ${pname}`;
             if (!espesorEntrySet.has(entry)) {
               espesorEntrySet.add(entry);
               espesorEntries.push(entry);
-              specsWithEspesor.add(spec.name);
+              specsWithEspesor.add(r.spec.name);
             }
           }
         }
       }
-      if ((i + BATCH) % 100 === 0 || i + BATCH >= specsWithEspesorField.length) {
-        log(`  SpecFieldsAndOptions: ${Math.min(i + BATCH, specsWithEspesorField.length)}/${specsWithEspesorField.length}`);
+      if ((i + BATCH) % 100 === 0 || i + BATCH >= allSpecs.length) {
+        log(`  SpecFieldsAndOptions: ${Math.min(i + BATCH, allSpecs.length)}/${allSpecs.length} (${espesorEntries.length} entradas espesor hasta ahora)`);
       }
     }
 
