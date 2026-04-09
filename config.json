@@ -74,7 +74,9 @@
         "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de",
         "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7",
         "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d",
-        "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e"
+        "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e",
+        "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb",
+        "AllCustomers": "66e271f6a8a2ad35955f54abbffc2ad3502deaae53dcd143250bc10e76d57712"
       }
     },
     "domain": {

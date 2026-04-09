@@ -52,23 +52,40 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchCustomers() {
-    // 1. Get all customers by querying each letter A-Z (workaround for ~60 limit)
+    // 1. Get all customers via AllCustomers paginated (1-2 requests reemplazan 36 letras)
     const allNodes = [];
     const seenIds = new Set();
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
-    for (const letter of letters) {
+    const PAGE = 500;
+    let offset = 0;
+    let total = null;
+    while (true) {
+      let data;
       try {
-        const data = await api().query('CustomerSearchByName', { nameLike: `${letter}%`, orderBy: ['NAME_ASC'], first: 500 });
-        const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || [];
-        for (const n of nodes) {
-          if (n.id && !seenIds.has(n.id)) {
-            seenIds.add(n.id);
-            allNodes.push(n);
-          }
+        data = await api().query('AllCustomers', {
+          includeArchived: 'NO',
+          includeAccountingFields: false,
+          orderBy: ['NAME_ASC'],
+          offset,
+          first: PAGE,
+          searchQuery: ''
+        });
+      } catch (e) {
+        warn(`AllCustomers offset ${offset}: ${String(e).substring(0, 120)}`);
+        break;
+      }
+      const nodes = data?.pagedData?.nodes || [];
+      if (total === null) total = data?.pagedData?.totalCount ?? null;
+      for (const n of nodes) {
+        if (n.id && !seenIds.has(n.id) && !n.archivedAt) {
+          seenIds.add(n.id);
+          allNodes.push(n);
         }
-      } catch (_) {}
+      }
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 20000) { warn('AllCustomers: límite de seguridad 20k alcanzado'); break; }
     }
-    log(`  Clientes: ${allNodes.length} encontrados (${letters.length} queries)`);
+    log(`  Clientes: ${allNodes.length}/${total ?? '?'} activos`);
 
     const uniqueCustomers = [];
     const seen = new Set();
@@ -80,10 +97,10 @@ const CatalogFetcher = (() => {
     log(`  Clientes: ${uniqueCustomers.length} únicos, obteniendo direcciones...`);
 
     // 2. For each customer, get addresses via Customer query (by idInDomain)
-    // Process in batches of 5 to avoid overloading
+    // Process in batches of 20 (Steelhead aguanta concurrencia, ya validado con specs)
     const result = [];
-    for (let i = 0; i < uniqueCustomers.length; i += 5) {
-      const batch = uniqueCustomers.slice(i, i + 5);
+    for (let i = 0; i < uniqueCustomers.length; i += 20) {
+      const batch = uniqueCustomers.slice(i, i + 20);
       const details = await Promise.all(batch.map(async (c) => {
         try {
           const d = await api().query('Customer', { idInDomain: c.idInDomain, includeAccountingFields: true }, 'Customer');
@@ -168,30 +185,46 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchSpecs() {
-    // V10: SearchSpecsForSelect tiene un límite oculto en Steelhead (~5000 nodes).
-    // Paginamos por letra inicial igual que con clientes para traer todos.
+    // V10: AllSpecs trae specs CON sus fields embebidos en una sola query (sin N+1).
+    // Paginamos por offset/first y filtramos a EXTERNAL (las únicas que necesita la plantilla).
     const allSpecs = [];
     const seenIds = new Set();
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
-    for (const letter of letters) {
+    const PAGE = 400;
+    let offset = 0;
+    let total = null;
+    const typeCounts = {};
+    while (true) {
+      let data;
       try {
-        const data = await api().query('SearchSpecsForSelect', { like: `${letter}%`, locationIds: [], alreadySelectedSpecs: [], orderBy: ['NAME_ASC'] });
-        const nodes = data?.searchSpecs?.nodes || [];
-        for (const n of nodes) {
-          if (n.id && !seenIds.has(n.id)) {
-            seenIds.add(n.id);
-            allSpecs.push(n);
-          }
-        }
+        data = await api().query('AllSpecs', {
+          includeArchived: 'NO',
+          orderBy: ['ID_IN_DOMAIN_ASC'],
+          offset,
+          first: PAGE,
+          searchQuery: ''
+        });
       } catch (e) {
-        warn(`Specs letra ${letter}: ${String(e).substring(0, 80)}`);
+        warn(`AllSpecs offset ${offset}: ${String(e).substring(0, 120)}`);
+        break;
       }
+      const nodes = data?.pagedData?.nodes || [];
+      if (total === null) total = data?.pagedData?.totalCount ?? null;
+      for (const n of nodes) {
+        const t = n?.type || 'UNKNOWN';
+        typeCounts[t] = (typeCounts[t] || 0) + 1;
+        if (t !== 'EXTERNAL') continue;
+        if (n.id && !seenIds.has(n.id)) {
+          seenIds.add(n.id);
+          allSpecs.push(n);
+        }
+      }
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 50000) { warn('AllSpecs: límite de seguridad 50k alcanzado'); break; }
     }
-    log(`  Specs: ${allSpecs.length} encontrados (${letters.length} queries)`);
+    log(`  Specs externas: ${allSpecs.length}/${total ?? '?'} (tipos: ${JSON.stringify(typeCounts)})`);
 
-    // For each spec, check if it has an "espesor" field with params
-    // Format: "SpecName | paramValue" for specs with espesor, bare name otherwise
-    // V10: parallelize TempSpecFieldsAndOptions queries in batches of 20 for speed
+    // Los fields ya vienen embebidos en specFieldSpecsBySpecId.nodes
     const specsSeen = new Set();
     const espesorEntries = [];
     const espesorEntrySet = new Set();
@@ -199,38 +232,23 @@ const CatalogFetcher = (() => {
     const bareSpecs = [];
 
     for (const spec of allSpecs) {
-      if (spec.name) specsSeen.add(spec.name);
-    }
-
-    const BATCH = 20;
-    for (let i = 0; i < allSpecs.length; i += BATCH) {
-      const batch = allSpecs.slice(i, i + BATCH);
-      const results = await Promise.all(batch.map(async (spec) => {
-        if (!spec.name) return null;
-        try {
-          const sfData = await api().query('TempSpecFieldsAndOptions', { specId: spec.id });
-          return { name: spec.name, fields: sfData?.specById?.specFieldSpecsBySpecId?.nodes || [] };
-        } catch (e) { return { name: spec.name, fields: [] }; }
-      }));
-      for (const r of results) {
-        if (!r) continue;
-        for (const sf of r.fields) {
-          const fieldName = sf.specFieldBySpecFieldId?.name || '';
-          if (fieldName.toLowerCase().includes('espesor')) {
-            const params = sf.defaultValues?.nodes || [];
-            for (const param of params) {
-              const entry = `${r.name} | ${param.name}`;
-              if (!espesorEntrySet.has(entry)) {
-                espesorEntrySet.add(entry);
-                espesorEntries.push(entry);
-                specsWithEspesor.add(r.name);
-              }
-            }
+      if (!spec.name) continue;
+      specsSeen.add(spec.name);
+      const fields = spec.specFieldSpecsBySpecId?.nodes || [];
+      for (const sf of fields) {
+        const fieldName = sf.specFieldBySpecFieldId?.name || '';
+        if (!fieldName.toLowerCase().includes('espesor')) continue;
+        const params = sf.defaultValues?.nodes || sf.specFieldOptionsBySpecFieldSpecId?.nodes || [];
+        for (const param of params) {
+          const pname = param.name || param.value;
+          if (!pname) continue;
+          const entry = `${spec.name} | ${pname}`;
+          if (!espesorEntrySet.has(entry)) {
+            espesorEntrySet.add(entry);
+            espesorEntries.push(entry);
+            specsWithEspesor.add(spec.name);
           }
         }
-      }
-      if ((i + BATCH) % 200 === 0 || i + BATCH >= allSpecs.length) {
-        log(`  Spec fields: ${Math.min(i + BATCH, allSpecs.length)}/${allSpecs.length}`);
       }
     }
 
