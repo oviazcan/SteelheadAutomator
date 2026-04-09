@@ -78,7 +78,8 @@
         "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d",
         "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e",
         "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb",
-        "AllCustomers": "66e271f6a8a2ad35955f54abbffc2ad3502deaae53dcd143250bc10e76d57712"
+        "AllCustomers": "66e271f6a8a2ad35955f54abbffc2ad3502deaae53dcd143250bc10e76d57712",
+        "GetSpecFieldSpec": "4da5a5785f6a397fe3fac3b660cfdcc18cc94ab521823f43da476cc6ed1bd383"
       }
     },
     "domain": {
@@ -199,12 +200,13 @@
     },
     {
       "id": "spec-migrator",
-      "name": "Migrador de Specs",
-      "subtitle": "Cambio masivo de especificación",
+      "name": "Ajuste Masivo de Specs",
+      "subtitle": "Migración y params pendientes",
       "icon": "🔀",
       "scripts": ["scripts/steelhead-api.js", "scripts/spec-migrator.js"],
       "actions": [
-        { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator" }
+        { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator" },
+        { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params" }
       ]
     },
     {
@@ -272,7 +274,8 @@
     "AllSpecs": { "type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva" },
     "AllCustomers": { "type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva" },
     "UpdateInventoryItemPredictedUsage": { "type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva" },
-    "UpdatePartNumberPerPerRackType": { "type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva" }
+    "UpdatePartNumberPerPerRackType": { "type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva" },
+    "GetSpecFieldSpec": { "type": "query", "description": "Obtener detalle de un specFieldSpec con PNs y params. Variables: specFieldSpecId + partNumberUnassignedActive:true para filtrar PNs sin param asignado. Responde: searchPartNumbers.totalCount/.nodes[].id (PNs), specFieldSpecById.defaultValues.nodes[] (params disponibles con id/name/isDefault), specFieldSpecById.isGeneric, specFieldSpecById.specFieldBySpecFieldId.id. Pagina PNs con partNumberFirst/partNumberOffset", "usedBy": "spec-migrator" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
