@@ -1379,25 +1379,15 @@ const SpecMigrator = (() => {
         const pnSpecsList = pnDetail?.partNumberSpecsByPartNumberId?.nodes || [];
         const pnAllParams = pnDetail?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
 
-        // Helper: get param IDs for a given partNumberSpecId
-        const getParamIdsForSpec = (pnSpecId) => {
-          // partNumberSpecFieldParams have specFieldId which links to specFieldSpec
-          // Filter params that belong to this spec by checking their specFieldParamBySpecFieldParamId.specFieldSpecId
-          // matches a specFieldSpec belonging to the target spec
-          return pnAllParams
-            .filter(p => !p.archivedAt)
-            .map(p => p.id);
-        };
-
         const sourceSpecOnPN = pnSpecsList.find(s =>
           s.specBySpecId?.id === sourceSpec.id
         );
 
         if (sourceSpecOnPN && !sourceSpecOnPN.archivedAt) {
-          // Archive the old spec at PN level using proper mutation
+          // Archive the old spec at PN level — pass empty paramIds so the mutation
+          // archives only THIS spec (passing all PN params broke it for multi-spec PNs)
           try {
-            const paramIds = getParamIdsForSpec(sourceSpecOnPN.id);
-            await archiveSpecOnPN(sourceSpecOnPN.id, paramIds);
+            await archiveSpecOnPN(sourceSpecOnPN.id, []);
             log(`  ${pnName}: spec archivada a nivel PN`);
           } catch (e) {
             warn(`  ${pnName}: error archivando spec: ${String(e).substring(0, 200)}`);
