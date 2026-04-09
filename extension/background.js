@@ -696,22 +696,6 @@ async function handleMessage(message) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
-    // ── Assign Pending Params ──
-    case 'assign-pending-params': {
-      const tab = await getSteelheadTab();
-      await injectAppScripts(tab.id, 'spec-migrator');
-
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id }, world: 'MAIN',
-        func: () => {
-          if (!window.SpecMigrator) return { error: 'SpecMigrator no disponible' };
-          return window.SpecMigrator.assignPendingParams();
-        }
-      });
-
-      return results?.[0]?.result || { error: 'Sin resultado' };
-    }
-
     // ── Inventory Reset ──
     case 'run-inventory-reset': {
       const tab = await getSteelheadTab();
@@ -728,8 +712,48 @@ async function handleMessage(message) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
-    default:
-      throw new Error(`Acción desconocida: ${message.action}`);
+    default: {
+      // ── Generic handler: lookup action in config, inject scripts, call fn ──
+      const config = cachedConfig || await loadConfig();
+      if (!config) throw new Error('Config no disponible');
+
+      let actionDef = null;
+      let appDef = null;
+      for (const app of config.apps || []) {
+        for (const act of app.actions || []) {
+          if (act.message === message.action && act.fn) {
+            actionDef = act;
+            appDef = app;
+            break;
+          }
+        }
+        if (actionDef) break;
+      }
+
+      if (!actionDef) throw new Error(`Acción desconocida: ${message.action}`);
+
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, appDef.id);
+
+      const fn = actionDef.fn; // e.g. "SpecMigrator.assignPendingParams"
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        args: [fn],
+        func: (fnPath) => {
+          const parts = fnPath.split('.');
+          let obj = window;
+          for (const p of parts.slice(0, -1)) {
+            obj = obj[p];
+            if (!obj) return { error: `${p} no disponible` };
+          }
+          const method = obj[parts[parts.length - 1]];
+          if (typeof method !== 'function') return { error: `${fnPath} no es una función` };
+          return method.call(obj);
+        }
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
   }
 }
 
