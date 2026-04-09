@@ -191,35 +191,46 @@ const CatalogFetcher = (() => {
 
     // For each spec, check if it has an "espesor" field with params
     // Format: "SpecName | paramValue" for specs with espesor, bare name otherwise
+    // V10: parallelize TempSpecFieldsAndOptions queries in batches of 20 for speed
     const specsSeen = new Set();
     const espesorEntries = [];
+    const espesorEntrySet = new Set();
     const specsWithEspesor = new Set();
     const bareSpecs = [];
 
     for (const spec of allSpecs) {
-      const name = spec.name;
-      if (!name) continue;
-      specsSeen.add(name);
+      if (spec.name) specsSeen.add(spec.name);
+    }
 
-      // Check spec fields for "espesor"
-      try {
-        const sfData = await api().query('TempSpecFieldsAndOptions', { specId: spec.id });
-        const fields = sfData?.specById?.specFieldSpecsBySpecId?.nodes || [];
-        for (const sf of fields) {
+    const BATCH = 20;
+    for (let i = 0; i < allSpecs.length; i += BATCH) {
+      const batch = allSpecs.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async (spec) => {
+        if (!spec.name) return null;
+        try {
+          const sfData = await api().query('TempSpecFieldsAndOptions', { specId: spec.id });
+          return { name: spec.name, fields: sfData?.specById?.specFieldSpecsBySpecId?.nodes || [] };
+        } catch (e) { return { name: spec.name, fields: [] }; }
+      }));
+      for (const r of results) {
+        if (!r) continue;
+        for (const sf of r.fields) {
           const fieldName = sf.specFieldBySpecFieldId?.name || '';
           if (fieldName.toLowerCase().includes('espesor')) {
             const params = sf.defaultValues?.nodes || [];
             for (const param of params) {
-              const entry = `${name} | ${param.name}`;
-              if (!espesorEntries.includes(entry)) {
+              const entry = `${r.name} | ${param.name}`;
+              if (!espesorEntrySet.has(entry)) {
+                espesorEntrySet.add(entry);
                 espesorEntries.push(entry);
-                specsWithEspesor.add(name);
+                specsWithEspesor.add(r.name);
               }
             }
           }
         }
-      } catch (e) {
-        // If spec field query fails, just add bare name
+      }
+      if ((i + BATCH) % 200 === 0 || i + BATCH >= allSpecs.length) {
+        log(`  Spec fields: ${Math.min(i + BATCH, allSpecs.length)}/${allSpecs.length}`);
       }
     }
 
