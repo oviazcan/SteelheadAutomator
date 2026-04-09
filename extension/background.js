@@ -26,18 +26,6 @@ async function loadConfig() {
   }
 }
 
-// ── Date helpers ──
-function localDateTimeStr() {
-  const now = new Date();
-  const date = now.toLocaleDateString('en-CA'); // YYYY-MM-DD local
-  const time = [
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0'),
-    String(now.getSeconds()).padStart(2, '0')
-  ].join('');
-  return { date, time, full: `${date}_${time}` };
-}
-
 // ── Script Injection ──
 async function fetchScriptCode(scriptPath) {
   // Siempre re-cargar config para que `version` cache-buster sea fresco.

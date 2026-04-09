@@ -1349,20 +1349,16 @@ Reglas:
     const templateData = await api().query('GetEmailDefaultByTypeAndSubType', { type: 'SALES_ORDER' });
     const template = templateData?.emailDefault || {};
 
-    // Get customer contacts
-    const customerId = getCustomerIdFromURL() || soData.customerId;
-    let contacts = [];
-    if (customerId) {
-      const contactData = await api().query('EmailCustomerContactsByCustomerIds', { customerIds: [parseInt(customerId, 10)] });
-      contacts = contactData?.emailCustomerContacts || contactData?.customers?.[0]?.contacts || [];
-    }
+    // Get internal recipients (service team handles client-facing errors internally)
+    const recipientData = await api().query('GetUserEmailRecipients', {});
+    const recipients = recipientData?.users?.nodes || recipientData?.users || [];
 
-    if (contacts.length === 0) warn('No se encontraron contactos del cliente');
+    if (recipients.length === 0) warn('No se encontraron destinatarios internos');
 
-    const subject = `Discrepancias en Orden de Compra ${pdfData.poNumber} - OV #${soData.name || soData.idInDomain}`;
+    const subject = `[Error cliente] Discrepancias OC ${pdfData.poNumber} vs OV #${soData.name || soData.idInDomain} — comunicar al cliente`;
     const body = buildDiscrepancyTableHTML(discrepancies, pdfData, soData);
 
-    const toEmails = contacts.slice(0, 10).map(c => c.email).filter(Boolean);
+    const toEmails = recipients.slice(0, 10).map(r => r.email).filter(Boolean);
 
     const sendResult = await api().query('SendEmailChecked', {
       subject,
@@ -1387,7 +1383,7 @@ Reglas:
       }
     }
 
-    log(`Notificacion a cliente enviada a ${toEmails.length} destinatarios`);
+    log(`Notificacion de error de cliente enviada a ${toEmails.length} destinatarios internos`);
   }
 
   // ── Main UI Entry Point ─────────────────────────────────────
