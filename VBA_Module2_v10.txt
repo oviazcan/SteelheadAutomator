@@ -63,12 +63,25 @@ Sub RefrescarListas()
         wsL.Range(wsL.Cells(2, cn), wsL.Cells(3, cn)).Insert Shift:=xlDown
         wsL.Cells(2, cn).Value = "(seleccione)"
         wsL.Cells(3, cn).Value = "-"
+        ' Limpiar formato heredado del header (el Insert copia gris/bold/blanco/centrado de fila 1)
+        With wsL.Range(wsL.Cells(2, cn), wsL.Cells(3, cn))
+            .Interior.Pattern = xlNone
+            .Font.Bold = False
+            .Font.Color = vbBlack
+            .HorizontalAlignment = xlLeft
+        End With
     Next hCol
     For Each hCol In hybridCols
         cn = CLng(hCol)
         wsL.Range(wsL.Cells(2, cn), wsL.Cells(3, cn)).Insert Shift:=xlDown
         wsL.Cells(2, cn).Value = "(seleccione o escriba)"
         wsL.Cells(3, cn).Value = "-"
+        With wsL.Range(wsL.Cells(2, cn), wsL.Cells(3, cn))
+            .Interior.Pattern = xlNone
+            .Font.Bold = False
+            .Font.Color = vbBlack
+            .HorizontalAlignment = xlLeft
+        End With
     Next hCol
 
     ' Cerrar archivo de catálogos sin guardar
