@@ -19,9 +19,9 @@ const BulkUpload = (() => {
   const toBool = (v) => { const s = (v || '').toString().trim().toUpperCase(); return s === 'SI' || s === 'SÍ' || s === 'YES' || s === '1' || s === 'TRUE' || s === 'V' || s === 'VERDADERO'; };
   const isoDate = (d) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString(); };
   const g = (row, i) => {
-    let v = (row[i] || '').trim().replace(/\s+/g, ' ');
-    // Strip placeholder values from dropdowns
-    if (v.startsWith('(') && v.endsWith(')')) return '';
+    const v = (row[i] || '').trim().replace(/\s+/g, ' ');
+    // V10: dropdowns prepend "(seleccione)" / "(seleccione o escriba)" — tratarlos como vacío
+    if (v === '(seleccione)' || v === '(seleccione o escriba)') return '';
     return v;
   };
   const gn = (row, i) => { const v = parseFloat(g(row, i)); return isNaN(v) ? null : v; };
@@ -310,16 +310,19 @@ const BulkUpload = (() => {
           !n.archivedAt &&
           (n.customerByCustomerId?.id === customerId || n.customerId === customerId)
         );
-        if (match) { existMap.set(key, { id: match.id }); log(`  "${name}" (cust:${customerId}) -> EXISTE id:${match.id}`); }
+        if (match) {
+          existMap.set(key, { id: match.id, processId: match.processNodeByDefaultProcessNodeId?.id || match.defaultProcessNodeId || null });
+          log(`  "${name}" (cust:${customerId}) -> EXISTE id:${match.id}`);
+        }
         else log(`  "${name}" (cust:${customerId}) -> NUEVO (${nodes.length} resultados)`);
       } catch (e) { warn(`Búsqueda "${name}": ${String(e).substring(0, 120)}`); }
     }
     return parts.map(p => {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
       const ex = existMap.get(key);
-      if (!ex) return { pn: p.pn, status: 'new', existingId: null, qty: p.qty, precio: p.precio, customerId: p.customerId };
-      if (p.forzarDuplicado) return { pn: p.pn, status: 'forceDup', existingId: ex.id, qty: p.qty, precio: p.precio, customerId: p.customerId };
-      return { pn: p.pn, status: 'existing', existingId: ex.id, qty: p.qty, precio: p.precio, customerId: p.customerId };
+      if (!ex) return { pn: p.pn, status: 'new', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId };
+      if (p.forzarDuplicado) return { pn: p.pn, status: 'forceDup', existingId: ex.id, existingProcessId: ex.processId, qty: p.qty, precio: p.precio, customerId: p.customerId };
+      return { pn: p.pn, status: 'existing', existingId: ex.id, existingProcessId: ex.processId, qty: p.qty, precio: p.precio, customerId: p.customerId };
     });
   }
 
@@ -549,8 +552,9 @@ const BulkUpload = (() => {
       // ── V10: Validate required per-line fields ──
       const sinCliente = parts.filter(p => !p.cliente);
       if (sinCliente.length) throw new Error(`${sinCliente.length} filas sin Cliente: ${sinCliente.slice(0, 3).map(p => p.pn).join(', ')}...`);
-      const sinProceso = parts.filter(p => !p.procesoOverride);
-      if (sinProceso.length) throw new Error(`${sinProceso.length} filas sin Proceso (en v10 es obligatorio por línea): ${sinProceso.slice(0, 3).map(p => p.pn).join(', ')}...`);
+      // Proceso: vacío = copiar del PN existente (resuelto tras existence check).
+      //          "-" = borrar (set null). Nombre = resolver a id.
+      //          Validación per-row contra new/existing en el post-process tardío.
 
       // ── Resolve all unique customers (per-line, with cache) ──
       const customerCache = new Map(); // name → { id, name, addressId, contactId, invoiceTermsId }
@@ -589,9 +593,25 @@ const BulkUpload = (() => {
 
       // ── Catalogs ──
       log('Cargando catálogos...');
-      const [labelsD, specsD, racksD, unitsD, productsD, groupsD] = await Promise.all([
+      // V10: AllSpecs paginado en lugar de SearchSpecsForSelect — sin límite oculto y trae fields embebidos.
+      async function fetchAllSpecsFull() {
+        const all = []; const PAGE = 400; let offset = 0;
+        while (true) {
+          let d;
+          try {
+            d = await api().query('AllSpecs', { includeArchived: 'NO', orderBy: ['ID_IN_DOMAIN_ASC'], offset, first: PAGE, searchQuery: '' });
+          } catch (e) { warn(`AllSpecs offset ${offset}: ${String(e).substring(0, 100)}`); break; }
+          const nodes = d?.pagedData?.nodes || [];
+          all.push(...nodes);
+          if (nodes.length < PAGE) break;
+          offset += PAGE;
+          if (offset > 50000) break;
+        }
+        return all;
+      }
+      const [labelsD, specsAll, racksD, unitsD, productsD, groupsD] = await Promise.all([
         api().query('AllLabels', { condition: { forPartNumber: true } }),
-        api().query('SearchSpecsForSelect', { like: '%%', locationIds: [], alreadySelectedSpecs: [], orderBy: ['NAME_ASC'] }),
+        fetchAllSpecsFull(),
         api().query('AllRackTypes', {}),
         api().query('SearchUnits', {}),
         api().query('SearchProducts', { searchQuery: '%%', first: 500 }),
@@ -599,7 +619,7 @@ const BulkUpload = (() => {
       ]);
 
       const labelByName = new Map(); for (const l of (labelsD?.allLabels?.nodes || [])) labelByName.set(l.name, l.id);
-      const specByName = new Map(); for (const s of (specsD?.searchSpecs?.nodes || [])) specByName.set(s.name, s);
+      const specByName = new Map(); for (const s of specsAll) if (s?.name) specByName.set(s.name, s);
       const rackTypeByName = new Map(); for (const rt of (racksD?.pagedData?.nodes || racksD?.allRackTypes?.nodes || [])) rackTypeByName.set(rt.name, rt);
       unitNodes = unitsD?.pagedData?.nodes || unitsD?.searchUnits?.nodes || [];
       // V10: build unitById map for Espesor mils support
@@ -611,8 +631,9 @@ const BulkUpload = (() => {
       log(`  ${labelByName.size} labels, ${specByName.size} specs, ${rackTypeByName.size} racks, ${unitNodes.length} units, ${productByName.size} products, ${groupByName.size} groups`);
 
       // V10: Resolve all per-line processes to IDs (with cache)
+      // Vacío y "-" se saltan aquí; se resuelven en post-process tras el existence check.
       const processCache = new Map(); // name → id
-      const uniqueProcessNames = [...new Set(parts.map(p => p.procesoOverride))];
+      const uniqueProcessNames = [...new Set(parts.map(p => p.procesoOverride).filter(n => n && !isDash(n)))];
       log(`Procesos únicos en layout: ${uniqueProcessNames.length}`);
       for (const pname of uniqueProcessNames) {
         const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${pname}%`, first: 50 });
@@ -623,7 +644,8 @@ const BulkUpload = (() => {
       }
       // Annotate each part with its resolved processId and customerId
       for (const p of parts) {
-        p.processId = processCache.get(p.procesoOverride);
+        // null marker para vacío y "-" — se resuelven en post-process tras pnStatus
+        p.processId = (!p.procesoOverride || isDash(p.procesoOverride)) ? null : processCache.get(p.procesoOverride);
         const cname = p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim();
         const cust = customerCache.get(cname);
         p.customerId = cust.id;
@@ -660,19 +682,69 @@ const BulkUpload = (() => {
         return null;
       }
 
-      // Spec fields cache
+      // Spec fields cache — V10: AllSpecs ya trajo los fields embebidos, sin más queries
       const uniqueSpecs = new Set(); for (const p of parts) for (const s of p.specs) uniqueSpecs.add(s.name);
       const sfCache = new Map();
       for (const sn of uniqueSpecs) {
+        if (isDash(sn)) continue;
         const si = specByName.get(sn); if (!si) { warn(`Spec "${sn}" no encontrada.`); continue; }
         if (!sfCache.has(si.id)) {
-          const d = await api().query('TempSpecFieldsAndOptions', { specId: si.id });
-          const sd = d?.specById; if (sd) { sfCache.set(si.id, sd); log(`  Spec "${sn}": ${sd.specFieldSpecsBySpecId?.nodes?.length || 0} campos`); }
+          // si ya es un spec node de AllSpecs con specFieldSpecsBySpecId embebido
+          if (si.specFieldSpecsBySpecId?.nodes) {
+            sfCache.set(si.id, si);
+            log(`  Spec "${sn}": ${si.specFieldSpecsBySpecId.nodes.length} campos (embebidos)`);
+          } else {
+            // Fallback (no debería ocurrir con AllSpecs, pero por seguridad)
+            try {
+              const d = await api().query('TempSpecFieldsAndOptions', { specId: si.id });
+              const sd = d?.specById; if (sd) { sfCache.set(si.id, sd); log(`  Spec "${sn}": ${sd.specFieldSpecsBySpecId?.nodes?.length || 0} campos (fallback)`); }
+            } catch (e) { warn(`Spec "${sn}" fields: ${String(e).substring(0, 100)}`); }
+          }
         }
       }
 
       // ── PN existence check ──
       const pnStatus = await checkPNExistence(parts);
+
+      // V10: Resolver proceso vacío / "-" según existence:
+      //   "-"   → set null (borrar default process)
+      //   ""    → copiar del PN existente; si es nuevo → error y skip
+      //   name  → ya está resuelto desde processCache
+      const partsToSkip = new Set();
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        const raw = p.procesoOverride;
+        if (raw && !isDash(raw)) continue; // ya tiene processId resuelto
+
+        if (isDash(raw)) {
+          // "-" = borrar el default process del PN (queda null)
+          p.processId = null;
+          p.clearDefaultProcess = true;
+          log(`  PN "${p.pn}": Proceso "-" → se borrará el default process`);
+          continue;
+        }
+
+        // Vacío
+        const st = pnStatus[i];
+        if (st.status === 'new') {
+          errors.push(`PN "${p.pn}": Proceso vacío en PN NUEVO (no hay de dónde copiar). Ignorado.`);
+          partsToSkip.add(i);
+          continue;
+        }
+        if (!st.existingProcessId) {
+          errors.push(`PN "${p.pn}": Proceso vacío y el PN existente no tiene defaultProcessNodeId. Ignorado.`);
+          partsToSkip.add(i);
+          continue;
+        }
+        p.processId = st.existingProcessId;
+        log(`  PN "${p.pn}": Proceso heredado del PN existente (id:${st.existingProcessId})`);
+      }
+      if (partsToSkip.size) {
+        const filtered = parts.filter((_, i) => !partsToSkip.has(i));
+        const filteredStatus = pnStatus.filter((_, i) => !partsToSkip.has(i));
+        parts.length = 0; parts.push(...filtered);
+        pnStatus.length = 0; pnStatus.push(...filteredStatus);
+      }
 
       // ── Metal Base validation ──
       // V10: fetch enum directly from PartNumber input schema (no más hardcoded)
@@ -1095,19 +1167,36 @@ const BulkUpload = (() => {
             }
           }
           log(`  Precios standalone: ${pnpWithPrice.length}`);
-
-          // Set as default if marked
-          const defaultPriceIds = [];
-          // We'd need the price IDs from the response — for now log it
-          if (parts.some(p => p.precioDefault)) {
-            log('  NOTA: SetDefaultPrice en SOLO_PN requiere re-leer PNs para obtener IDs de precio');
-          }
+          // Default price se aplica en STEP 8 releyendo prices del PN
         }
         setProgressBar(50);
       }
 
       // STEP 6: SavePartNumber (enrich) — runs in BOTH modes
       showProgressUI(`${isSoloPN ? 'Paso 3' : 'Paso 6'}: Enriqueciendo PNs...`); setProgressBar(55);
+
+      // V10 fix: Pre-fetch existing predicted inventory usages para PNs existentes con predictivos.
+      // SavePartNumber inserta sin id → unique constraint en (pn, inventoryItem) → retry strippea
+      // los predictivos y se pierde la actualización. Pasamos el id existente para forzar UPDATE.
+      const existingPredictedMap = new Map(); // pnId → Map(inventoryItemId → existingRecordId)
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i]; const st = pnStatus[i];
+        if (st.status !== 'existing' || !p.predictiveUsage.length) continue;
+        const e = pnLookup.get(`${p.pn.toUpperCase()}|${p.customerId}`); if (!e?.pn?.id) continue;
+        if (existingPredictedMap.has(e.pn.id)) continue; // ya cargado
+        try {
+          const pnData = await api().query('GetPartNumber', { partNumberId: e.pn.id });
+          const exPred = pnData?.partNumberById?.predictedInventoryUsagesByPartNumberId?.nodes || [];
+          const m = new Map();
+          for (const ep of exPred) {
+            const itemId = ep.inventoryItemByInventoryItemId?.id || ep.inventoryItemId;
+            if (itemId && ep.id) m.set(String(itemId), ep.id);
+          }
+          existingPredictedMap.set(e.pn.id, m);
+        } catch (_) {}
+      }
+      if (existingPredictedMap.size) log(`  Pre-fetched predictivos existentes de ${existingPredictedMap.size} PNs`);
+
       let okSP = 0, retrySP = 0;
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
@@ -1199,7 +1288,14 @@ const BulkUpload = (() => {
           partNumberGroupId: pnGroupId,
           geometryTypeId: hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null),
           inventoryItemInput: ucs.length ? { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] } : null,
-          inventoryPredictedUsages: finalPredictive.map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
+          inventoryPredictedUsages: finalPredictive.map(pu => {
+            const exMap = existingPredictedMap.get(pn.id);
+            const exId = exMap?.get(String(pu.inventoryItemId));
+            // Si existe registro previo, incluir id → SavePartNumber hace UPDATE en vez de INSERT
+            return exId
+              ? { id: exId, inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null }
+              : { inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null };
+          }),
           specsToApply, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
           dimensionCustomValueIds: dimValueIds,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
@@ -1230,6 +1326,73 @@ const BulkUpload = (() => {
         }
       }
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`); showProgressUI(`  -> ${okSP} OK, ${retrySP} retry`);
+
+      // STEP 6b: Sync params on existing PNs whose specs were already linked.
+      // SavePartNumber.specsToApply ignora specs ya ligadas — si el usuario agregó un field
+      // nuevo a la spec definición, no se aplica al PN. Aquí lo emparejamos con AddParamsToPartNumber.
+      let syncedParamsCount = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]; const status = pnStatus[i];
+        if (status.status !== 'existing' || !part.specs.length) continue;
+        if (part.specs.length === 1 && isDash(part.specs[0].name)) continue;
+        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+        if (!entry?.pn?.id) continue;
+        try {
+          const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
+          const pnNode = pnData?.partNumberById; if (!pnNode) continue;
+          const linkedSpecs = pnNode.partNumberSpecsByPartNumberId?.nodes || [];
+          const allParams = pnNode.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+          for (const cs of part.specs) {
+            if (isDash(cs.name)) continue;
+            const si = specByName.get(cs.name); if (!si) continue;
+            const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
+            if (!linked) continue; // not linked → SavePartNumber ya lo creó (o lo creará en otro flujo)
+            // wanted params: misma lógica que en STEP 6 spec build
+            const sd = sfCache.get(si.id); if (!sd) continue;
+            const wantedParamIds = new Set();
+            const wantedSelections = []; // {specFieldId, specFieldParamId, isGeneric}
+            for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
+              const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
+              const fn = sf.specFieldBySpecFieldId?.name || '';
+              const isEsp = fn.toLowerCase().includes('espesor');
+              let pid;
+              if (params.length === 1) pid = params[0].id;
+              else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : params[0].id; }
+              else pid = params[0].id;
+              if (!pid) continue;
+              wantedParamIds.add(pid);
+              wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
+            }
+            // existing active params on this PN
+            const existingParamIds = new Set(
+              allParams
+                .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
+                .map(p => p.specFieldParamBySpecFieldParamId.id)
+            );
+            const missing = wantedSelections.filter(s => !existingParamIds.has(s.specFieldParamId));
+            if (!missing.length) continue;
+            const paramsToAdd = missing.map(m => ({
+              specFieldId: m.specFieldId,
+              specFieldParamId: m.specFieldParamId,
+              isGeneric: m.isGeneric,
+              geometryTypeSpecFieldId: null,
+              processNodeId: part.processId || null,
+              processNodeOccurrence: part.processId ? 1 : null,
+              locationId: null
+            }));
+            try {
+              await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: paramsToAdd } }, 'AddParamsToPartNumber');
+              syncedParamsCount += paramsToAdd.length;
+              log(`  PN "${part.pn}" spec "${cs.name}": ${paramsToAdd.length} params nuevos sincronizados`);
+            } catch (e) {
+              errors.push(`AddParams "${part.pn}" spec "${cs.name}": ${String(e).substring(0, 120)}`);
+            }
+          }
+        } catch (e) {
+          warn(`Sync specs "${part.pn}": ${String(e).substring(0, 100)}`);
+        }
+      }
+      if (syncedParamsCount) log(`  Spec params sync: ${syncedParamsCount} params agregados`);
 
       // STEP 7: RackTypes — runs in BOTH modes
       showProgressUI(`${isSoloPN ? 'Paso 4' : 'Paso 7'}: Racks...`); setProgressBar(78);
@@ -1262,23 +1425,43 @@ const BulkUpload = (() => {
           if (existingRacks.length) stats.racksSet += existingRacks.length;
         } catch (e) { errors.push(`Borrar racks PN ${pnId}: ${String(e).substring(0, 100)}`); }
       }
-      // Add new racks
+      // Add new racks. Si ya existe el (rackType, PN) hay duplicate key —
+      // entonces borramos el viejo y reinsertamos con el partsPerRack nuevo.
+      async function upsertRack(rk) {
+        try {
+          await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
+        } catch (e2) {
+          if (String(e2).includes('duplicate key') || String(e2).includes('23505')) {
+            // Buscar el rack existente y borrarlo, luego reinsertar
+            try {
+              const pnData = await api().query('GetPartNumber', { partNumberId: rk.partNumberId });
+              const existing = (pnData?.partNumberById?.partNumberRackTypesByPartNumberId?.nodes || [])
+                .find(r => String(r.rackTypeId) === String(rk.rackTypeId));
+              if (existing) {
+                await api().query('DeletePartNumberRackType', { id: existing.id });
+                await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
+                log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: actualizado a ${rk.partsPerRack}`);
+              } else {
+                errors.push(`Rack PN ${rk.partNumberId}: dup pero no encontrado en GetPartNumber`);
+              }
+            } catch (e3) {
+              errors.push(`Rack PN ${rk.partNumberId} update: ${String(e3).substring(0, 100)}`);
+            }
+          } else {
+            errors.push(`Rack PN ${rk.partNumberId}: ${String(e2).substring(0, 100)}`);
+          }
+        }
+      }
+
       if (rackIn.length) {
         for (let i = 0; i < rackIn.length; i += 50) {
+          const batch = rackIn.slice(i, i + 50);
           try {
-            await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: rackIn.slice(i, i + 50), partNumberRackTypeIdsToDelete: [] } });
+            await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } });
           } catch (e) {
             if (String(e).includes('duplicate key') || String(e).includes('23505')) {
-              log(`  Racks batch ${Math.floor(i / 50) + 1}: duplicados, insertando uno por uno...`);
-              for (const rk of rackIn.slice(i, i + 50)) {
-                try {
-                  await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
-                } catch (e2) {
-                  if (String(e2).includes('duplicate key') || String(e2).includes('23505')) {
-                    log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: ya existe, omitido`);
-                  } else { errors.push(`Rack PN ${rk.partNumberId}: ${String(e2).substring(0, 100)}`); }
-                }
-              }
+              log(`  Racks batch ${Math.floor(i / 50) + 1}: duplicados, upsertando uno por uno...`);
+              for (const rk of batch) await upsertRack(rk);
             } else { errors.push(`SavePartNumberRackTypes: ${String(e).substring(0, 120)}`); }
           }
         }
@@ -1335,18 +1518,33 @@ const BulkUpload = (() => {
           else priceIdsToUnsetDefault.push(pnpId);
         }
       } else {
-        // In SOLO_PN mode, need to get price IDs from GetPartNumber for existing PNs
+        // SOLO_PN: necesitamos releer los precios del PN porque el ID del nuevo precio
+        // no lo tenemos (SaveManyPartNumberPrices no devuelve los IDs en este flujo)
         for (let i = 0; i < parts.length; i++) {
-          const part = parts[i]; const status = pnStatus[i];
-          if (!part.precioDefault && status.status === 'existing') {
-            // FALSE on existing = unset default
-            try {
-              const pnData = await api().query('GetPartNumber', { partNumberId: pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`)?.pn?.id });
-              const prices = pnData?.partNumberById?.partNumberPricesByPartNumberId?.nodes || [];
+          const part = parts[i];
+          const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+          if (!entry?.pn?.id) continue;
+          // Solo releemos si hay algo que hacer con el default
+          const needsRead = part.precioDefault || (!part.precioDefault && pnStatus[i].status === 'existing');
+          if (!needsRead) continue;
+          try {
+            const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
+            const prices = pnData?.partNumberById?.partNumberPricesByPartNumberId?.nodes || [];
+            if (!prices.length) continue;
+            if (part.precioDefault) {
+              // El precio recién creado en esta corrida es el de ID más alto
+              const sorted = [...prices].sort((a, b) => Number(b.id) - Number(a.id));
+              const newest = sorted[0];
+              if (newest) priceIdsForDefault.push(newest.id);
+              // Quita el default del viejo (si era distinto del nuevo)
+              const oldDefault = prices.find(p => p.isDefault && p.id !== newest.id);
+              if (oldDefault) priceIdsToUnsetDefault.push(oldDefault.id);
+            } else {
+              // FALSE explícito en existente = quitar el default actual
               const defaultPrice = prices.find(p => p.isDefault);
               if (defaultPrice) priceIdsToUnsetDefault.push(defaultPrice.id);
-            } catch (_) {}
-          }
+            }
+          } catch (_) {}
         }
       }
       if (priceIdsForDefault.length) {

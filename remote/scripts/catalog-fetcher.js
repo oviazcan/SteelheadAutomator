@@ -327,10 +327,10 @@ const CatalogFetcher = (() => {
     // Create new workbook with catalog sheets matching the template's internal sheets
     const wb = XLSX.utils.book_new();
 
-    // Clientes sheet: col1=id, col2=name, col3-5=other fields, col6=active, col10=address, col12=labels
-    const custRows = [['ID', 'Nombre', '', '', '', 'Activo', '', '', '', 'Dirección', '', 'Etiquetas']];
+    // Clientes sheet: VBA solo lee col2=name, col6=active, col10=address (sin ID ni labels)
+    const custRows = [['', 'Nombre', '', '', '', 'Activo', '', '', '', 'Dirección']];
     for (const c of catalogs.customers) {
-      custRows.push([c.id, c.display.split(' \u2014 ')[0], '', '', '', true, '', '', '', c.display.includes('\u2014') ? c.display.split(' \u2014 ')[1] : '', '', c.labels]);
+      custRows.push(['', c.display.split(' \u2014 ')[0], '', '', '', true, '', '', '', c.display.includes('\u2014') ? c.display.split(' \u2014 ')[1] : '']);
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(custRows), 'Clientes');
 

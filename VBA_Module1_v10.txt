@@ -13,7 +13,9 @@ Sub ExportarCSV()
     For Each ch In inv: csvName = Replace(csvName, CStr(ch), "_"): Next
 
     ' V10: validar que toda línea con PN (col F) tenga Cliente (col E)
-    ' Cliente es necesario incluso en SOLO_PN porque los PNs están scoped por customer
+    ' Cliente: necesario incluso en SOLO_PN porque los PNs están scoped por customer.
+    ' Proceso: NO se valida aquí porque vacío tiene significado (PN existente: copiar el suyo).
+    '          La extensión valida por línea y reporta errores sin matar el batch.
     Dim r As Long, lastR As Long, sinCliente As String, nFaltantes As Long
     Dim pnVal As String, clVal As String
     lastR = ws.Cells(ws.Rows.Count, 6).End(xlUp).Row
@@ -21,7 +23,7 @@ Sub ExportarCSV()
         pnVal = Trim(CStr(ws.Cells(r, 6).Value)) ' col F = PN
         If pnVal <> "" Then
             clVal = Trim(CStr(ws.Cells(r, 5).Value)) ' col E = Cliente
-            If clVal = "" Or clVal = "(seleccione)" Or clVal = "-" Then
+            If clVal = "" Or clVal = "(seleccione)" Then
                 nFaltantes = nFaltantes + 1
                 If nFaltantes <= 10 Then
                     sinCliente = sinCliente & "  Fila " & r & ": " & pnVal & vbCrLf
