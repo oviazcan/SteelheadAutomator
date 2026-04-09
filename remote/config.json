@@ -1,7 +1,7 @@
 {
   "version": "0.2.8",
   "lastUpdated": "2026-04-09",
-  "extensionVersion": "1.2.6",
+  "extensionVersion": "1.2.7",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
@@ -206,8 +206,7 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/spec-migrator.js"],
       "actions": [
         { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run" },
-        { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams" },
-        { "id": "copy-last-log", "label": "Copiar Último Log", "sublabel": "Recuperar log de la última ejecución", "icon": "📝", "handler": "message", "message": "copy-last-log", "fn": "SteelheadAPI.copyLastLog" }
+        { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams" }
       ]
     },
     {

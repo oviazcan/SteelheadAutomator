@@ -20,6 +20,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-theme-toggle').addEventListener('click', toggleTheme);
 
+    document.getElementById('btn-copy-log').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-copy-log');
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tabs[0]?.url?.includes('app.gosteelhead.com')) { alert('No hay pestaña activa de Steelhead.'); return; }
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id }, world: 'MAIN',
+          func: () => {
+            const saved = localStorage.getItem('sa_last_log');
+            if (!saved) return null;
+            return JSON.parse(saved).join('\n');
+          }
+        });
+        const logText = results?.[0]?.result;
+        if (!logText) { alert('No hay log guardado.'); return; }
+        await navigator.clipboard.writeText(logText);
+        btn.textContent = '✅';
+        setTimeout(() => { btn.textContent = '📋'; }, 1500);
+      } catch (e) { alert('Error: ' + e.message); }
+    });
+
     document.getElementById('btn-reload').addEventListener('click', () => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (tabs[0]?.url?.includes('app.gosteelhead.com')) { chrome.tabs.reload(tabs[0].id); window.close(); }
