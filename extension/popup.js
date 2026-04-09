@@ -411,9 +411,13 @@ document.addEventListener('DOMContentLoaded', () => {
     banner.classList.add('visible');
 
     document.getElementById('btn-update-download').addEventListener('click', () => {
-      const url = config.extensionZipUrl;
-      if (url) chrome.tabs.create({ url });
-      else alert('URL del zip no configurada.');
+      const baseUrl = config.extensionZipUrl;
+      if (!baseUrl) { alert('URL del zip no configurada.'); return; }
+      // Cache-buster: el navegador puede servir el zip viejo de disk cache si no cambia el URL.
+      // Usamos la versión nueva para invalidar.
+      const sep = baseUrl.includes('?') ? '&' : '?';
+      const url = `${baseUrl}${sep}v=${encodeURIComponent(latest)}&t=${Date.now()}`;
+      chrome.tabs.create({ url });
     });
     document.getElementById('btn-update-guide').addEventListener('click', () => {
       const url = config.extensionInstallGuideUrl;
