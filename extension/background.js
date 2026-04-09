@@ -26,6 +26,18 @@ async function loadConfig() {
   }
 }
 
+// ── Date helpers ──
+function localDateTimeStr() {
+  const now = new Date();
+  const date = now.toLocaleDateString('en-CA'); // YYYY-MM-DD local
+  const time = [
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0')
+  ].join('');
+  return { date, time, full: `${date}_${time}` };
+}
+
 // ── Script Injection ──
 async function fetchScriptCode(scriptPath) {
   // Siempre re-cargar config para que `version` cache-buster sea fresco.
@@ -304,7 +316,7 @@ async function handleMessage(message) {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `correccion_${load.mode}_${new Date(load.timestamp).toISOString().slice(0, 10)}_${load.id}.csv`;
+          a.download = `correccion_${load.mode}_${new Date(load.timestamp).toLocaleDateString('en-CA')}_${load.id}.csv`;
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
           URL.revokeObjectURL(url);
           return { started: true, message: 'CSV v10 descargado' };
@@ -344,14 +356,17 @@ async function handleMessage(message) {
           if (window.HashScanner.isActive()) {
             window.HashScanner.stop();
             // Auto-export scan results on stop
-            const dateStr = new Date().toISOString().slice(0, 10);
+            const _n1 = new Date();
+            const _d1 = _n1.toLocaleDateString('en-CA');
+            const _t1 = [String(_n1.getHours()).padStart(2,'0'),String(_n1.getMinutes()).padStart(2,'0'),String(_n1.getSeconds()).padStart(2,'0')].join('');
+            const dtFull1 = _d1 + '_' + _t1;
             const scanData = window.HashScanner.getResults();
             const apiKnowledge = window.APIKnowledge ? window.APIKnowledge.getKnownOperations() : [];
             const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanData, apiKnowledge: apiKnowledge };
             const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = 'scan_results_' + dateStr + '.json';
+            a.href = url; a.download = 'scan_results_' + dtFull1 + '.json';
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
             return { started: false, message: 'Captura detenida. Resultados exportados.', stats: window.HashScanner.getStats() };
@@ -384,13 +399,16 @@ async function handleMessage(message) {
         func: (configJson) => {
           if (!window.HashScanner) return { error: 'HashScanner no disponible' };
           const updated = window.HashScanner.exportConfig(JSON.parse(configJson));
-          const dateStr = new Date().toISOString().slice(0, 10);
+          const _n2 = new Date();
+          const _d2 = _n2.toLocaleDateString('en-CA');
+          const _t2 = [String(_n2.getHours()).padStart(2,'0'),String(_n2.getMinutes()).padStart(2,'0'),String(_n2.getSeconds()).padStart(2,'0')].join('');
+          const dtFull2 = _d2 + '_' + _t2;
 
           // 1. Download updated config
           const blob1 = new Blob([JSON.stringify(updated, null, 2)], { type: 'application/json' });
           const url1 = URL.createObjectURL(blob1);
           const a1 = document.createElement('a');
-          a1.href = url1; a1.download = 'config_updated_' + dateStr + '.json';
+          a1.href = url1; a1.download = 'config_updated_' + dtFull2 + '.json';
           document.body.appendChild(a1); a1.click(); document.body.removeChild(a1);
           URL.revokeObjectURL(url1);
 
@@ -401,7 +419,7 @@ async function handleMessage(message) {
           const blob2 = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
           const url2 = URL.createObjectURL(blob2);
           const a2 = document.createElement('a');
-          a2.href = url2; a2.download = 'scan_results_' + dateStr + '.json';
+          a2.href = url2; a2.download = 'scan_results_' + dtFull2 + '.json';
           document.body.appendChild(a2); a2.click(); document.body.removeChild(a2);
           URL.revokeObjectURL(url2);
           URL.revokeObjectURL(url);
@@ -453,7 +471,7 @@ async function handleMessage(message) {
               <h2 style="color:#4ade80">📦 Archivador Masivo de PNs</h2>
               <div style="margin-bottom:16px">
                 <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Fecha de corte:</label>
-                <input type="date" id="sa-arch-date" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px" value="${new Date().toISOString().slice(0, 10)}">
+                <input type="date" id="sa-arch-date" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px" value="${new Date().toLocaleDateString('en-CA')}">
               </div>
               <div style="margin-bottom:16px;display:flex;gap:8px">
                 <div style="flex:1">
