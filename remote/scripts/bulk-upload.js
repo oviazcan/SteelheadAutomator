@@ -1216,7 +1216,9 @@ const BulkUpload = (() => {
           const sd = sfCache.get(si.id); if (!sd) continue;
           const dS = [], gS = [];
           for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
-            const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
+            // V10: AllSpecs trae params en specFieldOptionsBySpecFieldSpecId; el viejo TempSpecFieldsAndOptions usaba defaultValues
+            const params = sf.defaultValues?.nodes || sf.specFieldOptionsBySpecFieldSpecId?.nodes || [];
+            if (!params.length) continue;
             const fn = sf.specFieldBySpecFieldId?.name || '';
             const isEsp = fn.toLowerCase().includes('espesor');
             let pid;
@@ -1384,7 +1386,8 @@ const BulkUpload = (() => {
             const wantedParamIds = new Set();
             const wantedSelections = []; // {specFieldId, specFieldParamId, isGeneric}
             for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
-              const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
+              const params = sf.defaultValues?.nodes || sf.specFieldOptionsBySpecFieldSpecId?.nodes || [];
+              if (!params.length) continue;
               const fn = sf.specFieldBySpecFieldId?.name || '';
               const isEsp = fn.toLowerCase().includes('espesor');
               let pid;
@@ -1464,18 +1467,15 @@ const BulkUpload = (() => {
           await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
         } catch (e2) {
           if (String(e2).includes('duplicate key') || String(e2).includes('23505')) {
-            // Buscar el rack existente y borrarlo, luego reinsertar
+            // V10: usar mutación dedicada UpdatePartNumberPerPerRackType (typo en el API real)
+            // que actualiza por composite key (partNumberId, rackTypeId).
             try {
-              const pnData = await api().query('GetPartNumber', { partNumberId: rk.partNumberId });
-              const existing = (pnData?.partNumberById?.partNumberRackTypesByPartNumberId?.nodes || [])
-                .find(r => String(r.rackTypeId) === String(rk.rackTypeId));
-              if (existing) {
-                await api().query('DeletePartNumberRackType', { id: existing.id });
-                await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
-                log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: actualizado a ${rk.partsPerRack}`);
-              } else {
-                errors.push(`Rack PN ${rk.partNumberId}: dup pero no encontrado en GetPartNumber`);
-              }
+              await api().query('UpdatePartNumberPerPerRackType', {
+                partNumberId: rk.partNumberId,
+                partsPerRack: rk.partsPerRack,
+                rackTypeId: rk.rackTypeId
+              }, 'UpdatePartNumberPerPerRackType');
+              log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: partsPerRack actualizado a ${rk.partsPerRack}`);
             } catch (e3) {
               errors.push(`Rack PN ${rk.partNumberId} update: ${String(e3).substring(0, 100)}`);
             }
