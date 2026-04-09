@@ -78,39 +78,56 @@ const SpecMigrator = (() => {
     return data?.partNumberById || null;
   }
 
-  // ── Build a minimal SavePartNumber input with all required fields ──
-  function buildSaveInput(partNumberId, overrides = {}) {
+  // ── Build a SavePartNumber input from existing PN data ──
+  // Reads the PN first to get all required fields, then applies overrides.
+  async function buildSaveInputFromPN(partNumberId, overrides = {}) {
+    const pn = await getPNDetail(partNumberId);
+    if (!pn) throw new Error(`PN ${partNumberId} no encontrada`);
+    const labelIds = (pn.labelsByPartNumberId?.nodes || []).map(l => l.id);
     return {
-      id: partNumberId,
-      customInputs: {},
-      geometryTypeId: null, userFileName: null, inventoryItemInput: null,
-      glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
-      isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
-      labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
-      inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
-      partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+      id: pn.id,
+      name: pn.name,
+      customerId: pn.customerId,
+      defaultProcessNodeId: pn.defaultProcessNodeId || null,
+      descriptionMarkdown: pn.descriptionMarkdown || '',
+      customerFacingNotes: pn.customerFacingNotes || '',
+      customInputs: pn.customInputs || {},
+      inputSchemaId: api().getDomain().inputSchemaId_PN || 3456,
+      labelIds,
+      partNumberGroupId: pn.partNumberGroupId || null,
+      geometryTypeId: pn.geometryTypeId || null,
+      inventoryItemInput: null,
+      inventoryPredictedUsages: [],
+      specsToApply: [], optInOuts: [], ownerIds: [], defaults: [],
+      paramsToApply: [], partNumberDimensions: [], partNumberLocations: [],
+      dimensionCustomValueIds: [],
       partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
       partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
       partNumberSpecClassificationsToUpdate: [],
       partNumberSpecFieldParamUpdates: [], specFieldParamUpdates: [],
+      glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+      userFileName: null,
+      isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
       ...overrides
     };
   }
 
   // ── Archive spec at PN level via SavePartNumber (same mechanism as Steelhead UI) ──
   async function archiveSpecOnPN(partNumberId, partNumberSpecId, partNumberSpecFieldParamIds) {
-    await api().query('SavePartNumber', { input: [buildSaveInput(partNumberId, {
+    const input = await buildSaveInputFromPN(partNumberId, {
       partNumberSpecsToArchive: [partNumberSpecId],
       partNumberSpecFieldParamsToArchive: partNumberSpecFieldParamIds || []
-    })] });
+    });
+    await api().query('SavePartNumber', { input: [input] });
   }
 
   // ── Unarchive spec at PN level via SavePartNumber ──
   async function unarchiveSpecOnPN(partNumberId, partNumberSpecId, partNumberSpecFieldParamIds) {
-    await api().query('SavePartNumber', { input: [buildSaveInput(partNumberId, {
+    const input = await buildSaveInputFromPN(partNumberId, {
       partNumberSpecsToUnarchive: [partNumberSpecId],
       partNumberSpecFieldParamsToUnarchive: partNumberSpecFieldParamIds || []
-    })] });
+    });
+    await api().query('SavePartNumber', { input: [input] });
   }
 
   // ── Apply new spec to PN (for PNs that don't have it yet) ──
