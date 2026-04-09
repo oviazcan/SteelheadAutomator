@@ -289,7 +289,14 @@ const SpecMigrator = (() => {
           ${sourceSpec.archivedAt ? '<div style="font-size:11px;color:#f59e0b;margin-top:4px">⚠️ Spec archivada</div>' : ''}
         </div>
 
-        <div style="margin-bottom:16px">
+        <div style="margin-bottom:12px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#cbd5e1;cursor:pointer">
+            <input type="checkbox" id="sa-specm-archive-only" style="width:16px;height:16px;accent-color:#f59e0b">
+            Solo archivar (quitar spec sin asignar nueva)
+          </label>
+        </div>
+
+        <div id="sa-specm-target-section" style="margin-bottom:16px">
           <label style="font-size:13px;color:#cbd5e1;display:block;margin-bottom:6px;font-weight:600">Spec destino:</label>
           <input type="text" id="sa-specm-search" class="sa-specm-input" placeholder="Buscar spec..." autocomplete="off">
           <div id="sa-specm-dropdown" class="sa-specm-dropdown" style="display:none"></div>
@@ -321,6 +328,23 @@ const SpecMigrator = (() => {
       const paramsSection = document.getElementById('sa-specm-params-section');
       const paramsDiv = document.getElementById('sa-specm-params');
       const execBtn = document.getElementById('sa-specm-exec');
+      const archiveOnlyCheckbox = document.getElementById('sa-specm-archive-only');
+      const targetSection = document.getElementById('sa-specm-target-section');
+
+      archiveOnlyCheckbox.addEventListener('change', () => {
+        if (archiveOnlyCheckbox.checked) {
+          targetSection.style.display = 'none';
+          paramsSection.style.display = 'none';
+          execBtn.disabled = false;
+          execBtn.textContent = 'ARCHIVAR';
+          execBtn.style.background = '#f59e0b';
+        } else {
+          targetSection.style.display = 'block';
+          execBtn.textContent = 'MIGRAR';
+          execBtn.style.background = '';
+          execBtn.disabled = !selectedSpec;
+        }
+      });
 
       searchInput.addEventListener('input', () => {
         clearTimeout(searchTimeout);
@@ -448,6 +472,19 @@ const SpecMigrator = (() => {
       };
 
       execBtn.addEventListener('click', () => {
+        if (archiveOnlyCheckbox.checked) {
+          ov.parentNode.removeChild(ov);
+          resolve({
+            archiveOnly: true,
+            targetSpecId: null,
+            targetSpecName: '(solo archivar)',
+            allParams: [],
+            defaultSelections: [],
+            genericSelections: []
+          });
+          return;
+        }
+
         if (!selectedSpec) return;
 
         // Collect user-selected params with specFieldId
@@ -467,6 +504,7 @@ const SpecMigrator = (() => {
 
         ov.parentNode.removeChild(ov);
         resolve({
+          archiveOnly: false,
           targetSpecId: selectedSpec.id,
           targetSpecName: selectedSpec.name,
           allParams,
@@ -1306,11 +1344,15 @@ const SpecMigrator = (() => {
     const config = await showConfigForm(sourceSpec, pnSpecs.length);
     if (config.cancelled) return { cancelled: true };
 
-    const { targetSpecId, targetSpecName, defaultSelections, genericSelections, allParams } = config;
+    const { targetSpecId, targetSpecName, defaultSelections, genericSelections, allParams, archiveOnly } = config;
 
-    log(`Spec destino: ${targetSpecName} (id: ${targetSpecId})`);
-    log(`defaultSelections: [${defaultSelections.join(', ')}]`);
-    log(`genericSelections: [${genericSelections.join(', ')}]`);
+    if (archiveOnly) {
+      log(`Modo: solo archivar (sin spec destino)`);
+    } else {
+      log(`Spec destino: ${targetSpecName} (id: ${targetSpecId})`);
+      log(`defaultSelections: [${defaultSelections.join(', ')}]`);
+      log(`genericSelections: [${genericSelections.join(', ')}]`);
+    }
 
     const results = {
       migrated: 0,
@@ -1320,7 +1362,7 @@ const SpecMigrator = (() => {
       targetSpecName
     };
 
-    showProgressUI('Migrando Specs', 'Preparando...');
+    showProgressUI(archiveOnly ? 'Archivando Specs' : 'Migrando Specs', 'Preparando...');
 
     // Phase 3: Migrate each PN
     for (let i = 0; i < pnSpecs.length; i++) {
@@ -1356,14 +1398,19 @@ const SpecMigrator = (() => {
           try {
             const paramIds = getParamIdsForSpec(sourceSpecOnPN.id);
             await archiveSpecOnPN(sourceSpecOnPN.id, paramIds);
-            log(`  ${pnName}: spec vieja archivada a nivel PN`);
+            log(`  ${pnName}: spec archivada a nivel PN`);
           } catch (e) {
-            warn(`  ${pnName}: error archivando spec vieja: ${String(e).substring(0, 200)}`);
-            results.errors.push(`${pnName}: error archivando spec vieja`);
+            warn(`  ${pnName}: error archivando spec: ${String(e).substring(0, 200)}`);
+            results.errors.push(`${pnName}: error archivando spec`);
             continue;
           }
+          if (archiveOnly) { results.migrated++; continue; }
         } else if (sourceSpecOnPN && sourceSpecOnPN.archivedAt) {
           results.alreadyArchived++;
+          if (archiveOnly) continue;
+        } else if (archiveOnly) {
+          log(`  ${pnName}: spec no encontrada en PN, skip`);
+          continue;
         }
 
         // Check if target spec already assigned (active or archived)
