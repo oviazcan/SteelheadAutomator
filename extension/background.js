@@ -68,7 +68,7 @@ async function injectAppScripts(tabId, appId) {
         const globals = { 'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
           'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
           'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator',
-          'scripts/claude-api.js': 'ClaudeAPI' };
+          'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -740,6 +740,21 @@ async function handleMessage(message) {
         }
       });
 
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    // ── PO Comparator ──
+    case 'run-po-comparator': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'po-comparator');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.POComparator) return { error: 'POComparator no disponible' };
+          window.POComparator.runWithUI().then(r => console.log('[SA] PO Comparator:', r)).catch(e => console.error('[SA]', e));
+          return { started: true, message: 'Validador OC vs OV iniciado. Revisa Steelhead.' };
+        }
+      });
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 

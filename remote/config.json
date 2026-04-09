@@ -234,6 +234,16 @@
       "actions": [
         { "id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset" }
       ]
+    },
+    {
+      "id": "po-comparator",
+      "name": "Validador OC vs OV",
+      "subtitle": "Comparar orden de compra vs venta",
+      "icon": "📋",
+      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js"],
+      "actions": [
+        { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
+      ]
     }
   ],
   "knownOperations": {
