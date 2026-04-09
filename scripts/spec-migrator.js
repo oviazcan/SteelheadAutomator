@@ -1483,44 +1483,74 @@ const SpecMigrator = (() => {
           continue;
         }
 
-        // Target spec doesn't exist on PN — apply fresh
-        try {
-          await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
+        // Target spec doesn't exist on PN — but check if it exists archived
+        // (the existingTargetSpec check above only searches current pnSpecsList which
+        //  was fetched BEFORE we archived the source spec — re-check now)
+        const pnDetail2 = await getPNDetail(pnId);
+        const pnSpecsList2 = pnDetail2?.partNumberSpecsByPartNumberId?.nodes || [];
+        const pnAllParams2 = pnDetail2?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+        const archivedTarget = pnSpecsList2.find(s => s.specBySpecId?.id === targetSpecId && s.archivedAt);
+
+        if (archivedTarget) {
+          // Target spec exists but archived — unarchive it and fix its params
+          // Collect its archived param IDs to unarchive along with the spec
+          const archivedParamIds = pnAllParams2
+            .filter(p => p.archivedAt && p.specFieldParamBySpecFieldParamId)
+            .map(p => p.id);
+
+          await api().query('ArchivePartNumberSpecAndParams', {
+            partNumberSpecId: archivedTarget.id,
+            partNumberSpecFieldParamIds: archivedParamIds,
+            archivedAt: null
+          }, 'ArchivePartNumberSpecAndParams');
+          log(`  ${pnName}: spec destino desarchivada (con ${archivedParamIds.length} params)`);
+
+          // Now check which params we have active vs which we want
+          const pnDetail3 = await getPNDetail(pnId);
+          const pnAllParams3 = pnDetail3?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+          const activeParams3 = pnAllParams3.filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId);
+          const activeParamIds = new Set(activeParams3.map(p => p.specFieldParamBySpecFieldParamId.id));
+          const wantedIds = new Set([...defaultSelections, ...genericSelections]);
+
+          // Archive params that are active but not wanted
+          for (const p of activeParams3) {
+            if (!wantedIds.has(p.specFieldParamBySpecFieldParamId.id)) {
+              try { await archiveParam(p.id); } catch (_) {}
+            }
+          }
+
+          // Add params that are wanted but not present
+          const missingParams = allParams.filter(ap => !activeParamIds.has(ap.paramId));
+          if (missingParams.length > 0) {
+            for (const p of missingParams) {
+              await addSingleParamToPN(pnId, p.specFieldId, p.paramId, p.isGeneric);
+            }
+          }
+
           results.migrated++;
-          log(`  ${pnName}: spec aplicada ✓`);
-        } catch (applyErr) {
-          const msg = String(applyErr);
-          if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('unique_constraint')) {
-            // Shared spec fields between old (archived) and new spec cause constraint violations.
-            // Fallback: apply spec with NO selections, then add params one-by-one (tolerates conflicts).
-            log(`  ${pnName}: constraint en apply, intentando fallback param-by-param...`);
-            try {
-              await applySpecToPN(pnId, targetSpecId, [], []);
-            } catch (applyEmpty) {
-              // Even empty apply may fail if the spec itself conflicts; that's OK — the spec
-              // may already exist archived from a previous attempt. Try to unarchive it.
-              const pnDetail2 = await getPNDetail(pnId);
-              const pnSpecsList2 = pnDetail2?.partNumberSpecsByPartNumberId?.nodes || [];
-              const archived = pnSpecsList2.find(s => s.specBySpecId?.id === targetSpecId && s.archivedAt);
-              if (archived) {
-                await api().query('ArchivePartNumberSpecAndParams', {
-                  partNumberSpecId: archived.id, partNumberSpecFieldParamIds: [], archivedAt: null
-                }, 'ArchivePartNumberSpecAndParams');
-                log(`  ${pnName}: spec destino desarchivada`);
-              } else {
-                throw applyEmpty; // truly unexpected
-              }
-            }
-            // Now add each param individually, skipping conflicts
-            let added = 0;
-            for (const p of allParams) {
-              const ok = await addSingleParamToPN(pnId, p.specFieldId, p.paramId, p.isGeneric);
-              if (ok) added++;
-            }
+          log(`  ${pnName}: spec restaurada y params corregidos ✓`);
+        } else {
+          // Truly fresh — apply spec
+          try {
+            await applySpecToPN(pnId, targetSpecId, defaultSelections, genericSelections);
             results.migrated++;
-            log(`  ${pnName}: spec aplicada (fallback, ${added}/${allParams.length} params) ✓`);
-          } else {
-            throw applyErr; // non-constraint error, re-throw
+            log(`  ${pnName}: spec aplicada ✓`);
+          } catch (applyErr) {
+            const msg = String(applyErr);
+            if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('unique_constraint')) {
+              // Shared spec fields with archived source spec — add params one by one
+              log(`  ${pnName}: constraint en apply, intentando param-by-param...`);
+              try { await applySpecToPN(pnId, targetSpecId, [], []); } catch (_) {}
+              let added = 0;
+              for (const p of allParams) {
+                const ok = await addSingleParamToPN(pnId, p.specFieldId, p.paramId, p.isGeneric);
+                if (ok) added++;
+              }
+              results.migrated++;
+              log(`  ${pnName}: spec aplicada (fallback, ${added}/${allParams.length} params) ✓`);
+            } else {
+              throw applyErr;
+            }
           }
         }
 
