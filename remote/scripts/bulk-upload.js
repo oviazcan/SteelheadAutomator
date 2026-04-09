@@ -689,17 +689,13 @@ const BulkUpload = (() => {
         if (isDash(sn)) continue;
         const si = specByName.get(sn); if (!si) { warn(`Spec "${sn}" no encontrada.`); continue; }
         if (!sfCache.has(si.id)) {
-          // si ya es un spec node de AllSpecs con specFieldSpecsBySpecId embebido
-          if (si.specFieldSpecsBySpecId?.nodes) {
-            sfCache.set(si.id, si);
-            log(`  Spec "${sn}": ${si.specFieldSpecsBySpecId.nodes.length} campos (embebidos)`);
-          } else {
-            // Fallback (no debería ocurrir con AllSpecs, pero por seguridad)
-            try {
-              const d = await api().query('TempSpecFieldsAndOptions', { specId: si.id });
-              const sd = d?.specById; if (sd) { sfCache.set(si.id, sd); log(`  Spec "${sn}": ${sd.specFieldSpecsBySpecId?.nodes?.length || 0} campos (fallback)`); }
-            } catch (e) { warn(`Spec "${sn}" fields: ${String(e).substring(0, 100)}`); }
-          }
+          // V10: AllSpecs embed no devuelve params para todos los field types (e.g. DROPDOWN
+          // viene vacío). SpecFieldsAndOptions sí trae el shape completo (mismo que usa
+          // spec-migrator y está validado). Costo: N queries por upload, pero N suele ser < 10.
+          try {
+            const d = await api().query('SpecFieldsAndOptions', { specId: si.id }, 'SpecFieldsAndOptions');
+            const sd = d?.specById; if (sd) { sfCache.set(si.id, sd); log(`  Spec "${sn}": ${sd.specFieldSpecsBySpecId?.nodes?.length || 0} campos`); }
+          } catch (e) { warn(`Spec "${sn}" fields: ${String(e).substring(0, 100)}`); }
         }
       }
 
@@ -1216,9 +1212,7 @@ const BulkUpload = (() => {
           const sd = sfCache.get(si.id); if (!sd) continue;
           const dS = [], gS = [];
           for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
-            // V10: AllSpecs trae params en specFieldOptionsBySpecFieldSpecId; el viejo TempSpecFieldsAndOptions usaba defaultValues
-            const params = sf.defaultValues?.nodes || sf.specFieldOptionsBySpecFieldSpecId?.nodes || [];
-            if (!params.length) continue;
+            const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
             const fn = sf.specFieldBySpecFieldId?.name || '';
             const isEsp = fn.toLowerCase().includes('espesor');
             let pid;
@@ -1386,8 +1380,7 @@ const BulkUpload = (() => {
             const wantedParamIds = new Set();
             const wantedSelections = []; // {specFieldId, specFieldParamId, isGeneric}
             for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
-              const params = sf.defaultValues?.nodes || sf.specFieldOptionsBySpecFieldSpecId?.nodes || [];
-              if (!params.length) continue;
+              const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
               const fn = sf.specFieldBySpecFieldId?.name || '';
               const isEsp = fn.toLowerCase().includes('espesor');
               let pid;
