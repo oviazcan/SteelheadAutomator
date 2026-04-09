@@ -78,13 +78,51 @@ const SpecMigrator = (() => {
     return data?.partNumberById || null;
   }
 
-  // ── Archive spec at PN level (proper mutation) ──
-  async function archiveSpecOnPN(partNumberSpecId, partNumberSpecFieldParamIds) {
-    await api().query('ArchivePartNumberSpecAndParams', {
-      partNumberSpecId,
-      partNumberSpecFieldParamIds: partNumberSpecFieldParamIds || [],
-      archivedAt: new Date().toISOString()
-    }, 'ArchivePartNumberSpecAndParams');
+  // ── Archive spec at PN level via SavePartNumber (same mechanism as Steelhead UI) ──
+  async function archiveSpecOnPN(partNumberId, partNumberSpecId, partNumberSpecFieldParamIds) {
+    await api().query('SavePartNumber', {
+      input: [{
+        id: partNumberId,
+        partNumberSpecsToArchive: [partNumberSpecId],
+        partNumberSpecFieldParamsToArchive: partNumberSpecFieldParamIds || [],
+        // Required empty fields for SavePartNumber
+        partNumberSpecsToUnarchive: [],
+        partNumberSpecFieldParamsToUnarchive: [],
+        partNumberSpecClassificationsToUpdate: [],
+        partNumberSpecFieldParamUpdates: [],
+        specFieldParamUpdates: [],
+        defaults: [], ownerIds: [], paramsToApply: [],
+        partNumberLocations: [], partNumberDimensions: [],
+        dimensionCustomValueIds: [],
+        specsToApply: [], optInOuts: [],
+        glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+        userFileName: null,
+        isOneOff: false, isTemplatePartNumber: false, isCoupon: false
+      }]
+    });
+  }
+
+  // ── Unarchive spec at PN level via SavePartNumber ──
+  async function unarchiveSpecOnPN(partNumberId, partNumberSpecId, partNumberSpecFieldParamIds) {
+    await api().query('SavePartNumber', {
+      input: [{
+        id: partNumberId,
+        partNumberSpecsToUnarchive: [partNumberSpecId],
+        partNumberSpecFieldParamsToUnarchive: partNumberSpecFieldParamIds || [],
+        partNumberSpecsToArchive: [],
+        partNumberSpecFieldParamsToArchive: [],
+        partNumberSpecClassificationsToUpdate: [],
+        partNumberSpecFieldParamUpdates: [],
+        specFieldParamUpdates: [],
+        defaults: [], ownerIds: [], paramsToApply: [],
+        partNumberLocations: [], partNumberDimensions: [],
+        dimensionCustomValueIds: [],
+        specsToApply: [], optInOuts: [],
+        glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+        userFileName: null,
+        isOneOff: false, isTemplatePartNumber: false, isCoupon: false
+      }]
+    });
   }
 
   // ── Apply new spec to PN (for PNs that don't have it yet) ──
@@ -1266,9 +1304,8 @@ const SpecMigrator = (() => {
 
         if (existingTargetSpec) {
           if (existingTargetSpec.archivedAt) {
-            await api().query('ArchivePartNumberSpecAndParams', {
-              partNumberSpecId: existingTargetSpec.id, partNumberSpecFieldParamIds: [], archivedAt: null
-            }, 'ArchivePartNumberSpecAndParams');
+            const archivedParamIds = pnAllParams.filter(p => p.archivedAt).map(p => p.id);
+            await unarchiveSpecOnPN(pnId, existingTargetSpec.id, archivedParamIds);
           }
 
           const activeParams = pnAllParams.filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId);
@@ -1387,7 +1424,11 @@ const SpecMigrator = (() => {
           // Archive the old spec at PN level — pass empty paramIds so the mutation
           // archives only THIS spec (passing all PN params broke it for multi-spec PNs)
           try {
-            await archiveSpecOnPN(sourceSpecOnPN.id, []);
+            // Get param IDs belonging to this source spec
+            const sourceParamIds = pnAllParams
+              .filter(p => !p.archivedAt)
+              .map(p => p.id);
+            await archiveSpecOnPN(pnId, sourceSpecOnPN.id, sourceParamIds);
             log(`  ${pnName}: spec archivada a nivel PN`);
           } catch (e) {
             warn(`  ${pnName}: error archivando spec: ${String(e).substring(0, 200)}`);
@@ -1411,11 +1452,8 @@ const SpecMigrator = (() => {
           // If archived, unarchive the spec first
           if (existingTargetSpec.archivedAt) {
             try {
-              await api().query('ArchivePartNumberSpecAndParams', {
-                partNumberSpecId: existingTargetSpec.id,
-                partNumberSpecFieldParamIds: [],
-                archivedAt: null
-              }, 'ArchivePartNumberSpecAndParams');
+              const archivedParamIds = pnAllParams.filter(p => p.archivedAt).map(p => p.id);
+              await unarchiveSpecOnPN(pnId, existingTargetSpec.id, archivedParamIds);
               log(`  ${pnName}: spec destino desarchivada`);
             } catch (e) {
               warn(`  ${pnName}: error desarchivando: ${String(e).substring(0, 200)}`);
@@ -1488,11 +1526,7 @@ const SpecMigrator = (() => {
             .filter(p => p.archivedAt && p.specFieldParamBySpecFieldParamId)
             .map(p => p.id);
 
-          await api().query('ArchivePartNumberSpecAndParams', {
-            partNumberSpecId: archivedTarget.id,
-            partNumberSpecFieldParamIds: archivedParamIds,
-            archivedAt: null
-          }, 'ArchivePartNumberSpecAndParams');
+          await unarchiveSpecOnPN(pnId, archivedTarget.id, archivedParamIds);
           log(`  ${pnName}: spec destino desarchivada (con ${archivedParamIds.length} params)`);
 
           // Now check which params we have active vs which we want
