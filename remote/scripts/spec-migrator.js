@@ -41,6 +41,20 @@ const SpecMigrator = (() => {
     return data?.specById || null;
   }
 
+  // ── Get spec field spec with unassigned PNs ──
+  async function getSpecFieldSpec(specFieldSpecId, offset = 0) {
+    const data = await api().query('GetSpecFieldSpec', {
+      specFieldSpecId,
+      partNumberUnassignedActive: true,
+      partNumberFirst: 500,
+      partNumberOffset: offset,
+      partNumberOrderBy: ['NAME_ASC'],
+      searchQuery: '',
+      includeArchived: 'NO'
+    }, 'GetSpecFieldSpec');
+    return data || null;
+  }
+
   // ── Get PN detail with specs and params ──
   async function getPNDetail(partNumberId) {
     const data = await api().query('GetPartNumber', {
@@ -122,6 +136,33 @@ const SpecMigrator = (() => {
         paramsToApply
       }
     }, 'AddParamsToPartNumber');
+  }
+
+  // ── Add a single param to a PN, tolerating "already present" constraint ──
+  async function addSingleParamToPN(partNumberId, specFieldId, specFieldParamId, isGeneric) {
+    try {
+      await api().query('AddParamsToPartNumber', {
+        input: {
+          partNumberId,
+          paramsToApply: [{
+            specFieldId,
+            specFieldParamId,
+            isGeneric,
+            geometryTypeSpecFieldId: null,
+            processNodeId: null,
+            processNodeOccurrence: null,
+            locationId: null
+          }]
+        }
+      }, 'AddParamsToPartNumber');
+      return true;
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes('conflicting key') || msg.includes('exclusion constraint') || msg.includes('23P01')) {
+        return false; // already present, skip silently
+      }
+      throw e;
+    }
   }
 
   // ══════════════════════════════════════════
