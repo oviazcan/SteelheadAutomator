@@ -28,6 +28,14 @@ const SteelheadAPI = (() => {
 
   function getLog() { return _log; }
 
+  function copyLastLog() {
+    const saved = localStorage.getItem('sa_last_log');
+    if (!saved) return { error: 'No hay log guardado' };
+    const lines = JSON.parse(saved);
+    navigator.clipboard.writeText(lines.join('\n'));
+    return { message: `Log copiado (${lines.length} líneas)` };
+  }
+
   function log(msg)  { const s = `[SA] ${msg}`; console.log(s); _log.push(s); _persist(); }
   function warn(msg) { const s = `[SA] WARN: ${msg}`; console.warn(s); _log.push(s); _persist(); }
 
@@ -151,7 +159,7 @@ const SteelheadAPI = (() => {
     await fetch(url, { method: 'POST', credentials: 'include' });
   }
 
-  return { init, query, queryWithFallback, keepAlive, getDomain, getHash, getLog, log, warn };
+  return { init, query, queryWithFallback, keepAlive, getDomain, getHash, getLog, copyLastLog, log, warn };
 })();
 
 if (typeof window !== 'undefined') window.SteelheadAPI = SteelheadAPI;

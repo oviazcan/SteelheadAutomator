@@ -1026,21 +1026,27 @@ const SpecMigrator = (() => {
       }
 
       if (field.params.length === 1) {
-        // Auto-assign: single param → apply to all PNs
+        // Auto-assign: single param → apply to all PNs in parallel batches
         showProgressUI('Auto-asignando', `${field.specName} / ${field.fieldName} (${field.pns.length} PNs)`);
         const param = field.params[0];
         log(`  AUTO: ${field.specName}/${field.fieldName} → ${param.name} (${field.pns.length} PNs)`);
 
-        for (let pi = 0; pi < field.pns.length; pi++) {
-          const pn = field.pns[pi];
+        const PBATCH = 10;
+        for (let pi = 0; pi < field.pns.length; pi += PBATCH) {
+          const batch = field.pns.slice(pi, pi + PBATCH);
           const pct = (pi / field.pns.length) * 100;
-          updateProgress(`${field.fieldName}: ${pi + 1}/${field.pns.length} — ${pn.name || pn.id}`, pct);
-          try {
-            const ok = await addSingleParamToPN(pn.id, field.specFieldId, param.id, field.isGeneric);
-            if (ok) results.assigned++;
-            else results.skippedPNs++;
-          } catch (e) {
-            results.errors.push(`${pn.name || pn.id}: ${String(e).substring(0, 150)}`);
+          updateProgress(`${field.fieldName}: ${pi + 1}-${Math.min(pi + PBATCH, field.pns.length)}/${field.pns.length}`, pct);
+          const batchResults = await Promise.allSettled(batch.map(pn =>
+            addSingleParamToPN(pn.id, field.specFieldId, param.id, field.isGeneric)
+              .then(ok => ({ ok, name: pn.name || pn.id }))
+          ));
+          for (const r of batchResults) {
+            if (r.status === 'fulfilled') {
+              if (r.value.ok) results.assigned++;
+              else results.skippedPNs++;
+            } else {
+              results.errors.push(`${String(r.reason).substring(0, 150)}`);
+            }
           }
         }
         results.autoAssigned++;
@@ -1067,16 +1073,22 @@ const SpecMigrator = (() => {
           showProgressUI('Asignando', `${field.fieldName} → ${choice.paramName}`);
           log(`  ASISTIDO: ${field.specName}/${field.fieldName} → ${choice.paramName} (${choice.pnIds.length} PNs)`);
 
-          for (let pi = 0; pi < choice.pnIds.length; pi++) {
-            const pnId = choice.pnIds[pi];
-            const pnName = remainingPNs.find(p => p.id === pnId)?.name || pnId;
-            updateProgress(`${pi + 1}/${choice.pnIds.length} — ${pnName}`, (pi / choice.pnIds.length) * 100);
-            try {
-              const ok = await addSingleParamToPN(pnId, field.specFieldId, choice.paramId, field.isGeneric);
-              if (ok) results.assigned++;
-              else results.skippedPNs++;
-            } catch (e) {
-              results.errors.push(`${pnName}: ${String(e).substring(0, 150)}`);
+          const PBATCH = 10;
+          for (let pi = 0; pi < choice.pnIds.length; pi += PBATCH) {
+            const batch = choice.pnIds.slice(pi, pi + PBATCH);
+            updateProgress(`${pi + 1}-${Math.min(pi + PBATCH, choice.pnIds.length)}/${choice.pnIds.length}`, (pi / choice.pnIds.length) * 100);
+            const batchResults = await Promise.allSettled(batch.map(pnId => {
+              const pnName = remainingPNs.find(p => p.id === pnId)?.name || pnId;
+              return addSingleParamToPN(pnId, field.specFieldId, choice.paramId, field.isGeneric)
+                .then(ok => ({ ok, name: pnName }));
+            }));
+            for (const r of batchResults) {
+              if (r.status === 'fulfilled') {
+                if (r.value.ok) results.assigned++;
+                else results.skippedPNs++;
+              } else {
+                results.errors.push(`${String(r.reason).substring(0, 150)}`);
+              }
             }
           }
           results.assisted++;
@@ -1124,23 +1136,22 @@ const SpecMigrator = (() => {
 
     md.innerHTML = `
       <h2 style="color:${iconColor}">${icon} Asignación Completada</h2>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0">
         <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
           <div style="font-size:24px;font-weight:700;color:#4ade80">${results.assigned}</div>
-          <div style="font-size:11px;color:#94a3b8">Asignados</div>
+          <div style="font-size:11px;color:#94a3b8">PNs asignados</div>
         </div>
         <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#8b5cf6">${results.autoAssigned}</div>
-          <div style="font-size:11px;color:#94a3b8">Auto</div>
-        </div>
-        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#f59e0b">${results.skippedFields}</div>
-          <div style="font-size:11px;color:#94a3b8">Saltados</div>
+          <div style="font-size:24px;font-weight:700;color:#94a3b8">${results.skippedPNs}</div>
+          <div style="font-size:11px;color:#94a3b8">Ya tenían param</div>
         </div>
         <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
           <div style="font-size:24px;font-weight:700;color:#ef4444">${results.errors.length}</div>
           <div style="font-size:11px;color:#94a3b8">Errores</div>
         </div>
+      </div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px">
+        Fields procesados: ${results.autoAssigned} auto · ${results.assisted} asistidos · ${results.skippedFields} saltados
       </div>
       ${errorsHTML}
       <div class="sa-specm-btnrow" style="margin-top:16px">
