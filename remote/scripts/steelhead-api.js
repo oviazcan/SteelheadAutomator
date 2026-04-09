@@ -28,8 +28,12 @@ const SteelheadAPI = (() => {
 
   function getLog() { return _log; }
 
-  function log(msg)  { const s = `[SA] ${msg}`; console.log(s); _log.push(s); }
-  function warn(msg) { const s = `[SA] WARN: ${msg}`; console.warn(s); _log.push(s); }
+  function log(msg)  { const s = `[SA] ${msg}`; console.log(s); _log.push(s); _persist(); }
+  function warn(msg) { const s = `[SA] WARN: ${msg}`; console.warn(s); _log.push(s); _persist(); }
+
+  function _persist() {
+    try { localStorage.setItem('sa_last_log', JSON.stringify(_log)); } catch (_) {}
+  }
 
   // Core GraphQL call using Apollo Persisted Queries
   // hashKey is optional — if provided, uses that key to look up the hash but sends operationName to GraphQL
