@@ -891,6 +891,262 @@ const SpecMigrator = (() => {
     });
   }
 
+  // ══════════════════════════════════════════
+  // ASSIGN PENDING PARAMS — Orchestrator
+  // ══════════════════════════════════════════
+
+  async function assignPendingParams() {
+    // Phase 1: Scope selection
+    const scope = await showPendingParamsScopeForm();
+    if (scope.cancelled) return { cancelled: true };
+
+    log('=== ASIGNAR PARAMS PENDIENTES ===');
+
+    // Phase 2: Fetch specs to process
+    let specs = [];
+    showProgressUI('Params Pendientes', 'Cargando specs...');
+
+    if (scope.scope === 'all') {
+      specs = await fetchAllExternalSpecs((msg) => updateProgress(msg));
+      log(`Specs externas encontradas: ${specs.length}`);
+    } else {
+      specs = [{ id: scope.specId, name: scope.specName }];
+      log(`Spec seleccionada: ${scope.specName}`);
+    }
+
+    if (!specs.length) {
+      removeUI();
+      return { error: 'No se encontraron specs' };
+    }
+
+    // Phase 3: For each spec, fetch fields via SpecFieldsAndOptions
+    const results = { assigned: 0, skippedFields: 0, skippedPNs: 0, errors: [], autoAssigned: 0, assisted: 0 };
+    const BATCH = 20;
+
+    const specFields = [];
+    updateProgress(`Cargando fields de ${specs.length} specs...`, 0);
+
+    for (let i = 0; i < specs.length; i += BATCH) {
+      const batch = specs.slice(i, i + BATCH);
+      const batchResults = await Promise.all(batch.map(async (spec) => {
+        try {
+          const detail = await getSpecFields(spec.id);
+          const fields = detail?.specFieldSpecsBySpecId?.nodes || [];
+          return fields.map(f => ({
+            specId: spec.id,
+            specName: spec.name,
+            specFieldSpecId: f.id,
+            fieldName: f.specFieldBySpecFieldId?.name || '?',
+            isGeneric: f.isGeneric,
+            specFieldId: f.specFieldBySpecFieldId?.id,
+            params: (f.defaultValues?.nodes || []).map(p => ({ id: p.id, name: p.name, isDefault: p.isDefault }))
+          }));
+        } catch (e) {
+          warn(`SpecFieldsAndOptions ${spec.name}: ${String(e).substring(0, 120)}`);
+          return [];
+        }
+      }));
+      specFields.push(...batchResults.flat());
+      const pct = Math.min(((i + BATCH) / specs.length) * 30, 30);
+      updateProgress(`Fields: ${specFields.length} de ${Math.min(i + BATCH, specs.length)}/${specs.length} specs`, pct);
+    }
+
+    log(`Total fields a revisar: ${specFields.length}`);
+
+    // Phase 4: For each field, check for unassigned PNs via GetSpecFieldSpec
+    const fieldsWithPending = [];
+
+    for (let i = 0; i < specFields.length; i += BATCH) {
+      const batch = specFields.slice(i, i + BATCH);
+      const batchResults = await Promise.all(batch.map(async (field) => {
+        try {
+          const data = await getSpecFieldSpec(field.specFieldSpecId);
+          const totalCount = data?.searchPartNumbers?.totalCount || 0;
+          if (totalCount === 0) return null;
+
+          let pns = (data?.searchPartNumbers?.nodes || []).map(n => ({ id: n.id, name: n.name }));
+          let offset = pns.length;
+          while (offset < totalCount) {
+            const more = await getSpecFieldSpec(field.specFieldSpecId, offset);
+            const morePNs = (more?.searchPartNumbers?.nodes || []).map(n => ({ id: n.id, name: n.name }));
+            pns.push(...morePNs);
+            offset += morePNs.length;
+            if (morePNs.length === 0) break;
+          }
+
+          return { ...field, pns };
+        } catch (e) {
+          warn(`GetSpecFieldSpec ${field.specName}/${field.fieldName}: ${String(e).substring(0, 120)}`);
+          return null;
+        }
+      }));
+
+      for (const r of batchResults) {
+        if (r) fieldsWithPending.push(r);
+      }
+
+      const pct = 30 + Math.min(((i + BATCH) / specFields.length) * 40, 40);
+      updateProgress(`Revisando fields: ${Math.min(i + BATCH, specFields.length)}/${specFields.length} — ${fieldsWithPending.length} con pendientes`, pct);
+    }
+
+    log(`Fields con PNs pendientes: ${fieldsWithPending.length}`);
+
+    if (!fieldsWithPending.length) {
+      removeUI();
+      log('¡Sin params pendientes!');
+      showPendingParamsSummary(results);
+      return results;
+    }
+
+    // Phase 5: Process each field
+    removeUI();
+
+    for (let fi = 0; fi < fieldsWithPending.length; fi++) {
+      const field = fieldsWithPending[fi];
+
+      if (field.params.length === 0) {
+        log(`  ${field.specName}/${field.fieldName}: sin params disponibles, skip`);
+        results.skippedFields++;
+        continue;
+      }
+
+      if (field.params.length === 1) {
+        // Auto-assign: single param → apply to all PNs
+        showProgressUI('Auto-asignando', `${field.specName} / ${field.fieldName} (${field.pns.length} PNs)`);
+        const param = field.params[0];
+        log(`  AUTO: ${field.specName}/${field.fieldName} → ${param.name} (${field.pns.length} PNs)`);
+
+        for (let pi = 0; pi < field.pns.length; pi++) {
+          const pn = field.pns[pi];
+          const pct = (pi / field.pns.length) * 100;
+          updateProgress(`${field.fieldName}: ${pi + 1}/${field.pns.length} — ${pn.name || pn.id}`, pct);
+          try {
+            const ok = await addSingleParamToPN(pn.id, field.specFieldId, param.id, field.isGeneric);
+            if (ok) results.assigned++;
+            else results.skippedPNs++;
+          } catch (e) {
+            results.errors.push(`${pn.name || pn.id}: ${String(e).substring(0, 150)}`);
+          }
+        }
+        results.autoAssigned++;
+        removeUI();
+      } else {
+        // Multi-param: show modal for user assistance
+        let remainingPNs = [...field.pns];
+
+        while (remainingPNs.length > 0) {
+          const choice = await showMultiParamModal(
+            `${field.fieldName} (${fi + 1}/${fieldsWithPending.length})`,
+            field.specName,
+            field.params,
+            remainingPNs
+          );
+
+          if (choice.skipped) {
+            log(`  SKIP: ${field.specName}/${field.fieldName} — ${remainingPNs.length} PNs sin asignar`);
+            results.skippedFields++;
+            break;
+          }
+
+          // Assign chosen param to selected PNs
+          showProgressUI('Asignando', `${field.fieldName} → ${choice.paramName}`);
+          log(`  ASISTIDO: ${field.specName}/${field.fieldName} → ${choice.paramName} (${choice.pnIds.length} PNs)`);
+
+          for (let pi = 0; pi < choice.pnIds.length; pi++) {
+            const pnId = choice.pnIds[pi];
+            const pnName = remainingPNs.find(p => p.id === pnId)?.name || pnId;
+            updateProgress(`${pi + 1}/${choice.pnIds.length} — ${pnName}`, (pi / choice.pnIds.length) * 100);
+            try {
+              const ok = await addSingleParamToPN(pnId, field.specFieldId, choice.paramId, field.isGeneric);
+              if (ok) results.assigned++;
+              else results.skippedPNs++;
+            } catch (e) {
+              results.errors.push(`${pnName}: ${String(e).substring(0, 150)}`);
+            }
+          }
+          results.assisted++;
+          removeUI();
+
+          remainingPNs = choice.remainingPNs;
+          if (remainingPNs.length > 0) {
+            log(`  ${field.fieldName}: quedan ${remainingPNs.length} PNs sin asignar, siguiente ronda...`);
+          }
+        }
+      }
+    }
+
+    // Phase 6: Summary
+    log(`\n=== RESULTADO PARAMS PENDIENTES ===`);
+    log(`Asignados: ${results.assigned}`);
+    log(`Auto-assign fields: ${results.autoAssigned}`);
+    log(`Asistidos: ${results.assisted}`);
+    log(`Fields saltados: ${results.skippedFields}`);
+    log(`PNs ya presentes: ${results.skippedPNs}`);
+    log(`Errores: ${results.errors.length}`);
+
+    showPendingParamsSummary(results);
+    return results;
+  }
+
+  // ── Summary for pending params ──
+  function showPendingParamsSummary(results) {
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-specm-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-specm-modal';
+    md.style.background = '#1a1a2e';
+
+    const hasErrors = results.errors.length > 0;
+    const icon = hasErrors ? '⚠️' : '✅';
+    const iconColor = hasErrors ? '#f59e0b' : '#4ade80';
+
+    let errorsHTML = '';
+    if (results.errors.length > 0) {
+      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
+    }
+
+    md.innerHTML = `
+      <h2 style="color:${iconColor}">${icon} Asignación Completada</h2>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0">
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#4ade80">${results.assigned}</div>
+          <div style="font-size:11px;color:#94a3b8">Asignados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#8b5cf6">${results.autoAssigned}</div>
+          <div style="font-size:11px;color:#94a3b8">Auto</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#f59e0b">${results.skippedFields}</div>
+          <div style="font-size:11px;color:#94a3b8">Saltados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#ef4444">${results.errors.length}</div>
+          <div style="font-size:11px;color:#94a3b8">Errores</div>
+        </div>
+      </div>
+      ${errorsHTML}
+      <div class="sa-specm-btnrow" style="margin-top:16px">
+        <button class="sa-specm-btn" id="sa-pp-copylog" style="background:#334155;color:#e2e8f0">📋 Copiar Log</button>
+        <button class="sa-specm-btn sa-specm-btn-exec" id="sa-pp-close">CERRAR</button>
+      </div>`;
+
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+
+    document.getElementById('sa-pp-close').onclick = () => ov.parentNode.removeChild(ov);
+    document.getElementById('sa-pp-copylog').onclick = () => {
+      const logText = api().getLog().join('\n');
+      navigator.clipboard.writeText(logText).then(() => {
+        const btn = document.getElementById('sa-pp-copylog');
+        btn.textContent = '✅ Copiado';
+        setTimeout(() => { btn.textContent = '📋 Copiar Log'; }, 2000);
+      });
+    };
+  }
+
   // ── Main orchestrator ──
   async function run() {
     // Detect mode: spec page or dashboard
@@ -1178,7 +1434,7 @@ const SpecMigrator = (() => {
     return results;
   }
 
-  return { run };
+  return { run, assignPendingParams };
 })();
 
 if (typeof window !== 'undefined') window.SpecMigrator = SpecMigrator;
