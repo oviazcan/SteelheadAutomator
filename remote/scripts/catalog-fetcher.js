@@ -224,31 +224,57 @@ const CatalogFetcher = (() => {
     }
     log(`  Specs externas: ${allSpecs.length}/${total ?? '?'} (tipos: ${JSON.stringify(typeCounts)})`);
 
-    // Los fields ya vienen embebidos en specFieldSpecsBySpecId.nodes
+    // El embed de AllSpecs trae los nombres de fields, pero NO los params (defaultValues
+    // viene vacío para muchos field types). Para los specs que tienen field "espesor",
+    // llamamos SpecFieldsAndOptions a traer los params reales (en batch paralelo).
     const specsSeen = new Set();
     const espesorEntries = [];
     const espesorEntrySet = new Set();
     const specsWithEspesor = new Set();
     const bareSpecs = [];
 
+    // Identificar specs con field espesor (los names sí vienen en el embed)
+    const specsWithEspesorField = [];
     for (const spec of allSpecs) {
       if (!spec.name) continue;
       specsSeen.add(spec.name);
       const fields = spec.specFieldSpecsBySpecId?.nodes || [];
-      for (const sf of fields) {
-        const fieldName = sf.specFieldBySpecFieldId?.name || '';
-        if (!fieldName.toLowerCase().includes('espesor')) continue;
-        const params = sf.defaultValues?.nodes || sf.specFieldOptionsBySpecFieldSpecId?.nodes || [];
-        for (const param of params) {
-          const pname = param.name || param.value;
-          if (!pname) continue;
-          const entry = `${spec.name} | ${pname}`;
-          if (!espesorEntrySet.has(entry)) {
-            espesorEntrySet.add(entry);
-            espesorEntries.push(entry);
-            specsWithEspesor.add(spec.name);
+      const hasEspesor = fields.some(sf => (sf.specFieldBySpecFieldId?.name || '').toLowerCase().includes('espesor'));
+      if (hasEspesor) specsWithEspesorField.push(spec);
+    }
+    log(`  Specs con field espesor: ${specsWithEspesorField.length}`);
+
+    // Batch paralelo de SpecFieldsAndOptions (20 a la vez)
+    const BATCH = 20;
+    for (let i = 0; i < specsWithEspesorField.length; i += BATCH) {
+      const batch = specsWithEspesorField.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async (spec) => {
+        try {
+          const d = await api().query('SpecFieldsAndOptions', { specId: spec.id }, 'SpecFieldsAndOptions');
+          return { spec, sd: d?.specById };
+        } catch (e) { warn(`SpecFieldsAndOptions ${spec.name}: ${String(e).substring(0, 80)}`); return { spec, sd: null }; }
+      }));
+      for (const { spec, sd } of results) {
+        if (!sd) continue;
+        const fields = sd.specFieldSpecsBySpecId?.nodes || [];
+        for (const sf of fields) {
+          const fieldName = sf.specFieldBySpecFieldId?.name || '';
+          if (!fieldName.toLowerCase().includes('espesor')) continue;
+          const params = sf.defaultValues?.nodes || [];
+          for (const param of params) {
+            const pname = param.name;
+            if (!pname) continue;
+            const entry = `${spec.name} | ${pname}`;
+            if (!espesorEntrySet.has(entry)) {
+              espesorEntrySet.add(entry);
+              espesorEntries.push(entry);
+              specsWithEspesor.add(spec.name);
+            }
           }
         }
+      }
+      if ((i + BATCH) % 100 === 0 || i + BATCH >= specsWithEspesorField.length) {
+        log(`  SpecFieldsAndOptions: ${Math.min(i + BATCH, specsWithEspesorField.length)}/${specsWithEspesorField.length}`);
       }
     }
 
