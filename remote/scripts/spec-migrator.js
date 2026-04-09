@@ -45,12 +45,27 @@ const SpecMigrator = (() => {
   async function getSpecFieldSpec(specFieldSpecId, offset = 0) {
     const data = await api().query('GetSpecFieldSpec', {
       specFieldSpecId,
+      // PN filters (what we care about)
       partNumberUnassignedActive: true,
+      partNumberSpecFieldParamActive: false,
+      partNumberSearchQuery: '',
       partNumberFirst: 500,
       partNumberOffset: offset,
       partNumberOrderBy: ['NAME_ASC'],
-      searchQuery: '',
-      includeArchived: 'NO'
+      // Treatment filters (required by query but unused)
+      treatmentUnassignedActive: false,
+      treatmentSpecFieldParamActive: false,
+      treatmentSearchQuery: '',
+      treatmentFirst: 10,
+      treatmentOffset: 0,
+      treatmentOrderBy: ['ID_DESC'],
+      // Work order filters (required by query but unused)
+      partNumberWorkOrderUnassignedActive: false,
+      partNumberWorkOrderSpecFieldParamActive: false,
+      partNumberWorkOrderSearchQuery: '',
+      partNumberWorkOrderFirst: 10,
+      partNumberWorkOrderOffset: 0,
+      partNumberWorkOrderOrderBy: ['ID_DESC']
     }, 'GetSpecFieldSpec');
     return data || null;
   }
