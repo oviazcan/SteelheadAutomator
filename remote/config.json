@@ -268,7 +268,11 @@
     "CreateUpdateReportWithPermissions": { "type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator" },
     "DeleteFolderById": { "type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator" },
     "ArchiveReport": { "type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator" },
-    "GetPartNumbersInputSchema": { "type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva" }
+    "GetPartNumbersInputSchema": { "type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva" },
+    "AllSpecs": { "type": "query", "description": "Listar specs paginado con fields embebidos (specFieldSpecsBySpecId.nodes con params en specFieldOptionsBySpecFieldSpecId). Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (sin límite oculto) y elimina N+1 de TempSpecFieldsAndOptions", "usedBy": "carga-masiva" },
+    "AllCustomers": { "type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva" },
+    "UpdateInventoryItemPredictedUsage": { "type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva" },
+    "UpdatePartNumberPerPerRackType": { "type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
