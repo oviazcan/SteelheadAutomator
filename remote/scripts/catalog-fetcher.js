@@ -168,8 +168,26 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchSpecs() {
-    const data = await api().query('SearchSpecsForSelect', { like: '%%', locationIds: [], alreadySelectedSpecs: [], orderBy: ['NAME_ASC'] });
-    const nodes = data?.searchSpecs?.nodes || [];
+    // V10: SearchSpecsForSelect tiene un límite oculto en Steelhead (~5000 nodes).
+    // Paginamos por letra inicial igual que con clientes para traer todos.
+    const allSpecs = [];
+    const seenIds = new Set();
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+    for (const letter of letters) {
+      try {
+        const data = await api().query('SearchSpecsForSelect', { like: `${letter}%`, locationIds: [], alreadySelectedSpecs: [], orderBy: ['NAME_ASC'] });
+        const nodes = data?.searchSpecs?.nodes || [];
+        for (const n of nodes) {
+          if (n.id && !seenIds.has(n.id)) {
+            seenIds.add(n.id);
+            allSpecs.push(n);
+          }
+        }
+      } catch (e) {
+        warn(`Specs letra ${letter}: ${String(e).substring(0, 80)}`);
+      }
+    }
+    log(`  Specs: ${allSpecs.length} encontrados (${letters.length} queries)`);
 
     // For each spec, check if it has an "espesor" field with params
     // Format: "SpecName | paramValue" for specs with espesor, bare name otherwise
@@ -178,7 +196,7 @@ const CatalogFetcher = (() => {
     const specsWithEspesor = new Set();
     const bareSpecs = [];
 
-    for (const spec of nodes) {
+    for (const spec of allSpecs) {
       const name = spec.name;
       if (!name) continue;
       specsSeen.add(name);
