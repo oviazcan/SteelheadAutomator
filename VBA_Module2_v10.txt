@@ -183,14 +183,37 @@ Private Function BuscarMasReciente(folderPath As String) As String
     BuscarMasReciente = bestFile
 End Function
 
+' === HELPER: obtiene una hoja del catálogo, devuelve Nothing si no existe ===
+Private Function GetCatSheet(wbCat As Workbook, sheetName As String) As Worksheet
+    Dim s As Worksheet
+    On Error Resume Next
+    Set s = wbCat.Sheets(sheetName)
+    On Error GoTo 0
+    If s Is Nothing Then
+        ' Construir lista de hojas disponibles para mejor diagnóstico
+        Dim available As String, i As Long
+        available = ""
+        For i = 1 To wbCat.Sheets.Count
+            If available <> "" Then available = available & ", "
+            available = available & wbCat.Sheets(i).Name
+        Next i
+        MsgBox "ERROR: La hoja '" & sheetName & "' no existe en el archivo de catálogos." & vbCrLf & vbCrLf & _
+               "Archivo abierto: " & wbCat.FullName & vbCrLf & vbCrLf & _
+               "Hojas disponibles: " & available & vbCrLf & vbCrLf & _
+               "Re-descarga el catálogo desde la extensión Chrome (botón 'Actualizar Catálogos').", _
+               vbCritical, "RefrescarListas — Hoja faltante"
+    End If
+    Set GetCatSheet = s
+End Function
+
 ' === CLIENTES (col A) ===
-' V10: ya NO se escriben col 8 (CódigoSAT preservado) ni col 9 (MetalBase preservado)
 Private Sub CargarClientesDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long
     Dim nombre As String, addr As String, combo As String
     Dim combos As New Collection
 
-    Set ws = wbCat.Sheets("Clientes")
+    Set ws = GetCatSheet(wbCat, "Clientes")
+    If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
         If ws.Cells(r, 6).Value = True Then
             nombre = CStr(ws.Cells(r, 2).Value)
@@ -231,7 +254,8 @@ End Sub
 Private Sub CargarProcesosDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim items As New Collection
-    Set ws = wbCat.Sheets("Procesos")
+    Set ws = GetCatSheet(wbCat, "Procesos")
+    If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
         If CStr(ws.Cells(r, 3).Value) = "process" And CStr(ws.Cells(r, 5).Value) = "No" Then
             v = CStr(ws.Cells(r, 2).Value)
@@ -247,7 +271,8 @@ End Sub
 Private Sub CargarProductosDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim items As New Collection
-    Set ws = wbCat.Sheets("Productos")
+    Set ws = GetCatSheet(wbCat, "Productos")
+    If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
         If CStr(ws.Cells(r, 4).Value) = "Activo" Then
             v = CStr(ws.Cells(r, 2).Value)
@@ -263,7 +288,8 @@ End Sub
 Private Sub CargarEtiquetasDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim items As New Collection
-    Set ws = wbCat.Sheets("Etiquetas")
+    Set ws = GetCatSheet(wbCat, "Etiquetas")
+    If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 6).End(xlUp).Row
         If IsEmpty(ws.Cells(r, 4).Value) Or CStr(ws.Cells(r, 4).Value) = "" Then
             v = CStr(ws.Cells(r, 6).Value)
@@ -282,7 +308,8 @@ Private Sub CargarSpecsDesde(wbCat As Workbook, wsL As Worksheet)
     Dim specSeen As New Collection
     Dim espesorEntries As New Collection
     Dim specsWithEspesor As New Collection
-    Set ws = wbCat.Sheets("Especificaciones")
+    Set ws = GetCatSheet(wbCat, "Especificaciones")
+    If ws Is Nothing Then Exit Sub
     Dim lastR As Long
     lastR = ws.Cells(ws.Rows.Count, 3).End(xlUp).Row
     For r = 2 To lastR
@@ -329,7 +356,8 @@ End Sub
 Private Sub CargarRacksDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim linea As New Collection, todos As New Collection
-    Set ws = wbCat.Sheets("Racks")
+    Set ws = GetCatSheet(wbCat, "Racks")
+    If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 5).End(xlUp).Row
         v = CStr(ws.Cells(r, 5).Value)
         If v <> "" Then
@@ -346,9 +374,7 @@ End Sub
 ' === CÓDIGO SAT (col H = 8) ===  V10: viene del input schema de PN
 Private Sub CargarCodigoSATDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String, i As Long
-    On Error Resume Next
-    Set ws = wbCat.Sheets("CodigoSAT")
-    On Error GoTo 0
+    Set ws = GetCatSheet(wbCat, "CodigoSAT")
     If ws Is Nothing Then Exit Sub
     i = 0
     ' Mantener orden original del schema (no sortear) para que coincida con UI de Steelhead
@@ -364,9 +390,7 @@ End Sub
 ' === METAL BASE (col I = 9) ===  V10: viene del input schema de PN
 Private Sub CargarMetalBaseDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String, i As Long
-    On Error Resume Next
-    Set ws = wbCat.Sheets("MetalBase")
-    On Error GoTo 0
+    Set ws = GetCatSheet(wbCat, "MetalBase")
     If ws Is Nothing Then Exit Sub
     i = 0
     ' Mantener orden original del schema
@@ -383,9 +407,7 @@ End Sub
 Private Sub CargarLineasDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim items As New Collection
-    On Error Resume Next
-    Set ws = wbCat.Sheets("Líneas")
-    On Error GoTo 0
+    Set ws = GetCatSheet(wbCat, "Líneas")
     If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         v = Trim(CStr(ws.Cells(r, 1).Value))
@@ -400,9 +422,7 @@ End Sub
 Private Sub CargarDepartamentosDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim items As New Collection
-    On Error Resume Next
-    Set ws = wbCat.Sheets("Departamentos")
-    On Error GoTo 0
+    Set ws = GetCatSheet(wbCat, "Departamentos")
     If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         v = Trim(CStr(ws.Cells(r, 1).Value))
@@ -417,9 +437,7 @@ End Sub
 Private Sub CargarUsuariosDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim items As New Collection
-    On Error Resume Next
-    Set ws = wbCat.Sheets("Usuarios")
-    On Error GoTo 0
+    Set ws = GetCatSheet(wbCat, "Usuarios")
     If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         v = Trim(CStr(ws.Cells(r, 1).Value))
@@ -434,9 +452,7 @@ End Sub
 Private Sub CargarGruposDesde(wbCat As Workbook, wsL As Worksheet)
     Dim ws As Worksheet, r As Long, v As String
     Dim items As New Collection
-    On Error Resume Next
-    Set ws = wbCat.Sheets("Grupos")
-    On Error GoTo 0
+    Set ws = GetCatSheet(wbCat, "Grupos")
     If ws Is Nothing Then Exit Sub
     For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         v = Trim(CStr(ws.Cells(r, 1).Value))
