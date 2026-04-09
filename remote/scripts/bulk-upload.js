@@ -347,7 +347,9 @@ const BulkUpload = (() => {
       for (let i = 0; i < pnStatus.length; i++) {
         const s = pnStatus[i]; const part = parts[i];
         const cls = s.status === 'new' ? 'dl9-new' : s.status === 'existing' ? 'dl9-exist' : 'dl9-dup';
-        const lbl = s.status === 'new' ? 'CREAR NUEVO' : s.status === 'existing' ? `MODIFICAR (id:${s.existingId})` : `DUPLICAR (viejo:${s.existingId})`;
+        const lbl = s.status === 'new' ? 'CREAR NUEVO'
+          : s.status === 'existing' ? `MODIFICAR (id:${s.existingId})`
+          : `DUPLICAR${part.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${s.existingId})`;
 
         // Summary of what data will be applied
         const changes = [];
