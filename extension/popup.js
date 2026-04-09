@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let config = null;
   let currentApp = null;
 
-  const views = { menu: 'view-menu', app: 'view-app', results: 'view-results' };
+  const views = { menu: 'view-menu', app: 'view-app', results: 'view-results', settings: 'view-settings' };
   const fileInput = document.getElementById('file-input');
 
   init();
@@ -19,6 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
     checkExtensionUpdate();
 
     document.getElementById('btn-theme-toggle').addEventListener('click', toggleTheme);
+
+    document.getElementById('btn-settings').addEventListener('click', () => {
+      loadSettingsView();
+      showView('settings');
+    });
+
+    document.getElementById('settings-back').addEventListener('click', goToMenu);
+
+    document.getElementById('btn-save-api-key').addEventListener('click', saveApiKey);
 
     document.getElementById('btn-copy-log').addEventListener('click', async () => {
       const btn = document.getElementById('btn-copy-log');
@@ -298,6 +307,41 @@ document.addEventListener('DOMContentLoaded', () => {
             ${op.responseFields ? `<div class="op-meta" style="color:#0d9488">Campos: ${op.responseFields.slice(0, 5).join(', ')}${op.responseFields.length > 5 ? '...' : ''}</div>` : ''}
           </li>`).join('')}
       </ul>`;
+  }
+
+  // ── Settings ──
+  function loadSettingsView() {
+    chrome.storage.local.get(['sa_claude_api_key'], (result) => {
+      const key = result.sa_claude_api_key || '';
+      const input = document.getElementById('input-api-key');
+      const hint = document.getElementById('settings-key-hint');
+      input.value = '';
+      input.placeholder = key ? `••••••••${key.slice(-8)}` : 'sk-ant-api03-...';
+      hint.textContent = key ? `Clave guardada · últimos 8 dígitos: ${key.slice(-8)}` : 'Sin clave configurada';
+      document.getElementById('settings-save-msg').textContent = '';
+    });
+  }
+
+  function saveApiKey() {
+    const input = document.getElementById('input-api-key');
+    const msg = document.getElementById('settings-save-msg');
+    const key = input.value.trim();
+
+    if (!key) {
+      msg.textContent = 'Ingresa una clave primero.';
+      msg.style.color = '#c62828';
+      return;
+    }
+
+    chrome.storage.local.set({ sa_claude_api_key: key }, () => {
+      input.value = '';
+      const hint = document.getElementById('settings-key-hint');
+      input.placeholder = `••••••••${key.slice(-8)}`;
+      hint.textContent = `Clave guardada · últimos 8 dígitos: ${key.slice(-8)}`;
+      msg.textContent = '¡Guardado!';
+      msg.style.color = '';
+      setTimeout(() => { msg.textContent = ''; }, 2000);
+    });
   }
 
   // ── Helpers ──

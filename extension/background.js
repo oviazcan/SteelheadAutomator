@@ -67,7 +67,8 @@ async function injectAppScripts(tabId, appId) {
       func: (c, path, version) => {
         const globals = { 'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
           'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
-          'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator' };
+          'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator',
+          'scripts/claude-api.js': 'ClaudeAPI' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -92,6 +93,18 @@ async function injectAppScripts(tabId, appId) {
     },
     args: [JSON.stringify(config)]
   });
+
+  // If claude-api.js was injected, pass the stored API key into the MAIN world
+  if (scripts.some(s => s === 'scripts/claude-api.js')) {
+    const { sa_claude_api_key } = await chrome.storage.local.get('sa_claude_api_key');
+    if (sa_claude_api_key) {
+      await chrome.scripting.executeScript({
+        target: { tabId }, world: 'MAIN',
+        func: (key) => { if (window.ClaudeAPI) window.ClaudeAPI.setApiKey(key); },
+        args: [sa_claude_api_key]
+      });
+    }
+  }
 }
 
 // Backward compat

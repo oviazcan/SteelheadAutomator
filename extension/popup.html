@@ -175,6 +175,31 @@
 
     .footer { padding: 6px 16px 10px; text-align: center; font-size: 10px; color: var(--text-soft); }
     #file-input { display: none; }
+
+    /* Settings view */
+    .settings-section { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .settings-section h3 { font-size: 13px; font-weight: 700; color: var(--text-body); }
+    .settings-field { display: flex; flex-direction: column; gap: 4px; }
+    .settings-field label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+    .settings-field input[type="password"],
+    .settings-field input[type="text"] {
+      padding: 8px 10px; border: 1px solid var(--border-card); border-radius: 6px;
+      background: var(--bg-card); color: var(--text-body); font-size: 12px;
+      font-family: monospace; outline: none; transition: border-color 0.2s;
+    }
+    .settings-field input:focus { border-color: #38bdf8; }
+    .settings-field .settings-hint { font-size: 10px; color: var(--text-soft); }
+    .settings-save-row { display: flex; gap: 8px; align-items: center; }
+    .btn-settings-save {
+      padding: 8px 16px; background: #1a1a2e; color: white; border: none;
+      border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }
+    body.dark-mode .btn-settings-save { background: #38bdf8; color: #0f172a; }
+    .btn-settings-save:hover { background: #16213e; }
+    body.dark-mode .btn-settings-save:hover { background: #0ea5e9; }
+    #settings-save-msg { font-size: 11px; color: #2e7d32; }
+    body.dark-mode #settings-save-msg { color: #4ade80; }
   </style>
 </head>
 <body>
@@ -202,6 +227,7 @@
     <span style="display:flex;align-items:center;gap:8px">
       <span id="version-text">v--</span>
       <button class="btn-theme-toggle" id="btn-theme-toggle" title="Modo claro/oscuro">🌙</button>
+      <button class="btn-theme-toggle" id="btn-settings" title="Configuración">⚙️</button>
       <button class="btn-reload-inline" id="btn-copy-log" title="Copiar último log">📋</button>
       <button class="btn-reload-inline" id="btn-reload" title="Recargar Steelhead">🔃</button>
     </span>
@@ -227,6 +253,22 @@
   <div id="progress-container" class="progress-container">
     <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
     <div id="progress-text" class="progress-text"></div>
+  </div>
+
+  <div id="view-settings" class="view">
+    <div class="app-view-header" id="settings-back"><span>◀</span><span>Configuración</span></div>
+    <div class="settings-section">
+      <h3>Claude API</h3>
+      <div class="settings-field">
+        <label for="input-api-key">API Key</label>
+        <input type="password" id="input-api-key" placeholder="sk-ant-api03-..." autocomplete="off">
+        <span class="settings-hint" id="settings-key-hint"></span>
+      </div>
+      <div class="settings-save-row">
+        <button class="btn-settings-save" id="btn-save-api-key">Guardar</button>
+        <span id="settings-save-msg"></span>
+      </div>
+    </div>
   </div>
 
   <input type="file" id="file-input" accept=".csv">
