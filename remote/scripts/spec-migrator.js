@@ -110,6 +110,35 @@ const SpecMigrator = (() => {
     return data?.tableFilterSearch || [];
   }
 
+  // ── Fetch all external specs (paginated) ──
+  async function fetchAllExternalSpecs(onProgress) {
+    const specs = [];
+    const seenIds = new Set();
+    const PAGE = 400;
+    let offset = 0;
+    while (true) {
+      const data = await api().query('AllSpecs', {
+        includeArchived: 'NO',
+        orderBy: ['ID_IN_DOMAIN_ASC'],
+        offset,
+        first: PAGE,
+        searchQuery: ''
+      });
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        if (n.type === 'EXTERNAL' && !seenIds.has(n.id)) {
+          seenIds.add(n.id);
+          specs.push(n);
+        }
+      }
+      if (onProgress) onProgress(`Specs: ${specs.length} externas`);
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 50000) break;
+    }
+    return specs;
+  }
+
   // ── Fetch filtered PNs with pagination ──
   async function fetchFilteredPNs(filters, onProgress) {
     const allPNs = [];
@@ -490,6 +519,247 @@ const SpecMigrator = (() => {
         setTimeout(() => { btn.textContent = '📋 Copiar Log'; }, 2000);
       });
     };
+  }
+
+  // ── Scope form for pending params ──
+  function showPendingParamsScopeForm() {
+    return new Promise((resolve) => {
+      ensureStyles();
+
+      const ov = document.createElement('div');
+      ov.className = 'sa-specm-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-specm-modal';
+      md.style.background = '#1a1a2e';
+
+      md.innerHTML = `
+        <h2 style="color:#8b5cf6">📋 Asignar Params Pendientes</h2>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:16px">Detecta fields con PNs sin parámetro asignado y los asigna automáticamente o con tu ayuda.</p>
+
+        <div style="margin-bottom:16px">
+          <label style="display:flex;align-items:center;gap:10px;font-size:14px;padding:10px 12px;background:#0f172a;border-radius:8px;cursor:pointer;margin-bottom:8px;border:2px solid transparent" id="sa-pp-opt-all">
+            <input type="radio" name="sa-pp-scope" value="all" checked>
+            <div>
+              <div style="font-weight:600;color:#e2e8f0">Todas las specs externas</div>
+              <div style="font-size:11px;color:#94a3b8">Barrer ~110 specs, detectar pendientes en cada una</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:14px;padding:10px 12px;background:#0f172a;border-radius:8px;cursor:pointer;border:2px solid transparent" id="sa-pp-opt-single">
+            <input type="radio" name="sa-pp-scope" value="single">
+            <div>
+              <div style="font-weight:600;color:#e2e8f0">Una spec específica</div>
+              <div style="font-size:11px;color:#94a3b8">Elegir spec desde la URL actual o buscando</div>
+            </div>
+          </label>
+        </div>
+
+        <div id="sa-pp-search-section" style="display:none;margin-bottom:16px">
+          <label style="font-size:13px;color:#cbd5e1;display:block;margin-bottom:6px;font-weight:600">Spec:</label>
+          <input type="text" id="sa-pp-search" class="sa-specm-input" placeholder="Buscar spec..." autocomplete="off">
+          <div id="sa-pp-dropdown" class="sa-specm-dropdown" style="display:none"></div>
+          <div id="sa-pp-selected" style="display:none;margin-top:8px;padding:8px 12px;background:#1e1b4b;border:1px solid #8b5cf6;border-radius:6px;font-size:13px;cursor:pointer" title="Clic para cambiar"></div>
+        </div>
+
+        <div class="sa-specm-btnrow">
+          <button class="sa-specm-btn sa-specm-btn-cancel" id="sa-pp-cancel">CANCELAR</button>
+          <button class="sa-specm-btn sa-specm-btn-exec" id="sa-pp-start">INICIAR</button>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      let selectedSpec = null;
+      let searchTimeout = null;
+
+      // Toggle search section visibility
+      const radios = md.querySelectorAll('input[name="sa-pp-scope"]');
+      const searchSection = document.getElementById('sa-pp-search-section');
+      const startBtn = document.getElementById('sa-pp-start');
+
+      radios.forEach(r => r.addEventListener('change', () => {
+        const isSingle = md.querySelector('input[name="sa-pp-scope"]:checked').value === 'single';
+        searchSection.style.display = isSingle ? 'block' : 'none';
+        startBtn.disabled = isSingle && !selectedSpec;
+      }));
+
+      // Spec search (reuse same pattern)
+      const searchInput = document.getElementById('sa-pp-search');
+      const dropdown = document.getElementById('sa-pp-dropdown');
+      const selectedDiv = document.getElementById('sa-pp-selected');
+
+      searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(async () => {
+          const q = searchInput.value.trim();
+          if (q.length < 2) { dropdown.style.display = 'none'; return; }
+          try {
+            const results = await searchSpecs(q);
+            const active = results.filter(s => !s.archivedAt);
+            if (!active.length) {
+              dropdown.innerHTML = '<div class="sa-specm-dropdown-item" style="color:#64748b">Sin resultados</div>';
+            } else {
+              dropdown.innerHTML = active.map(s =>
+                `<div class="sa-specm-dropdown-item" data-id="${s.id}" data-name="${s.name}">${s.name}${s.revisionName ? ' - Rev. ' + s.revisionName : ''}</div>`
+              ).join('');
+              dropdown.querySelectorAll('.sa-specm-dropdown-item[data-id]').forEach(item => {
+                item.addEventListener('click', () => {
+                  selectedSpec = { id: parseInt(item.dataset.id), name: item.dataset.name };
+                  dropdown.style.display = 'none';
+                  searchInput.style.display = 'none';
+                  selectedDiv.textContent = selectedSpec.name;
+                  selectedDiv.style.display = 'block';
+                  selectedDiv.onclick = () => {
+                    selectedSpec = null;
+                    searchInput.style.display = 'block';
+                    searchInput.value = '';
+                    selectedDiv.style.display = 'none';
+                    startBtn.disabled = true;
+                  };
+                  startBtn.disabled = false;
+                });
+              });
+            }
+            dropdown.style.display = 'block';
+          } catch (e) {
+            dropdown.innerHTML = '<div class="sa-specm-dropdown-item" style="color:#ef4444">Error buscando</div>';
+            dropdown.style.display = 'block';
+          }
+        }, 300);
+      });
+
+      // Auto-detect spec from URL
+      const specRef = parseSpecFromURL();
+      if (specRef) {
+        (async () => {
+          try {
+            const spec = await getSpec(specRef.idInDomain, specRef.revision);
+            if (spec) {
+              // Pre-select "single" and fill in spec
+              md.querySelector('input[value="single"]').checked = true;
+              searchSection.style.display = 'block';
+              selectedSpec = { id: spec.id, name: spec.name };
+              searchInput.style.display = 'none';
+              selectedDiv.textContent = spec.name;
+              selectedDiv.style.display = 'block';
+              selectedDiv.onclick = () => {
+                selectedSpec = null;
+                searchInput.style.display = 'block';
+                searchInput.value = '';
+                selectedDiv.style.display = 'none';
+                startBtn.disabled = true;
+              };
+              startBtn.disabled = false;
+            }
+          } catch (_) {}
+        })();
+      }
+
+      document.getElementById('sa-pp-cancel').onclick = () => {
+        ov.parentNode.removeChild(ov);
+        resolve({ cancelled: true });
+      };
+
+      startBtn.addEventListener('click', () => {
+        const scope = md.querySelector('input[name="sa-pp-scope"]:checked').value;
+        ov.parentNode.removeChild(ov);
+        if (scope === 'all') {
+          resolve({ scope: 'all' });
+        } else {
+          resolve({ scope: 'single', specId: selectedSpec.id, specName: selectedSpec.name });
+        }
+      });
+    });
+  }
+
+  // ── Multi-param modal: user picks a param and selects which PNs get it ──
+  function showMultiParamModal(fieldName, specName, params, pns) {
+    return new Promise((resolve) => {
+      ensureStyles();
+
+      const ov = document.createElement('div');
+      ov.className = 'sa-specm-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-specm-modal';
+      md.style.background = '#1a1a2e';
+      md.style.maxWidth = '700px';
+
+      const pnListHTML = pns.map(pn =>
+        `<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0;cursor:pointer">
+          <input type="checkbox" class="sa-pp-pn-cb" data-id="${pn.id}" checked>
+          <span style="color:#e2e8f0">${pn.name || pn.id}</span>
+        </label>`
+      ).join('');
+
+      const paramRadios = params.map((p, idx) =>
+        `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;cursor:pointer">
+          <input type="radio" name="sa-pp-param" value="${p.id}" data-name="${p.name}" ${idx === 0 ? 'checked' : ''}>
+          <span style="color:#e2e8f0">${p.name}${p.isDefault ? ' <span style="color:#4ade80;font-size:10px">(default)</span>' : ''}</span>
+        </label>`
+      ).join('');
+
+      md.innerHTML = `
+        <h2 style="color:#f59e0b;font-size:16px">🔧 ${fieldName}</h2>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Spec: ${specName} · ${pns.length} PNs sin asignar</div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:13px;color:#cbd5e1;font-weight:600;margin-bottom:6px">Parámetro a asignar:</div>
+          ${paramRadios}
+        </div>
+
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-size:13px;color:#cbd5e1;font-weight:600">PNs a asignar:</div>
+            <label style="font-size:11px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px">
+              <input type="checkbox" id="sa-pp-selectall" checked> Todos
+            </label>
+          </div>
+          <div style="max-height:200px;overflow-y:auto;background:#0f172a;border-radius:6px;padding:8px 12px">
+            ${pnListHTML}
+          </div>
+        </div>
+
+        <div class="sa-specm-btnrow">
+          <button class="sa-specm-btn sa-specm-btn-cancel" id="sa-pp-skip" style="background:#78350f;color:#fbbf24">SALTAR FIELD</button>
+          <button class="sa-specm-btn sa-specm-btn-exec" id="sa-pp-assign">ASIGNAR <span id="sa-pp-count">${pns.length}</span> PNs</button>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      // Select-all toggle
+      const selectAllCb = document.getElementById('sa-pp-selectall');
+      const pnCheckboxes = () => md.querySelectorAll('.sa-pp-pn-cb');
+
+      const updateCount = () => {
+        const checked = md.querySelectorAll('.sa-pp-pn-cb:checked').length;
+        document.getElementById('sa-pp-count').textContent = checked;
+        document.getElementById('sa-pp-assign').disabled = checked === 0;
+      };
+
+      selectAllCb.addEventListener('change', () => {
+        pnCheckboxes().forEach(cb => { cb.checked = selectAllCb.checked; });
+        updateCount();
+      });
+      pnCheckboxes().forEach(cb => cb.addEventListener('change', updateCount));
+
+      document.getElementById('sa-pp-skip').onclick = () => {
+        ov.parentNode.removeChild(ov);
+        resolve({ skipped: true });
+      };
+
+      document.getElementById('sa-pp-assign').onclick = () => {
+        const selectedParam = md.querySelector('input[name="sa-pp-param"]:checked');
+        const selectedPNIds = [...md.querySelectorAll('.sa-pp-pn-cb:checked')].map(cb => parseInt(cb.dataset.id));
+        ov.parentNode.removeChild(ov);
+        resolve({
+          paramId: parseInt(selectedParam.value),
+          paramName: selectedParam.dataset.name,
+          pnIds: selectedPNIds,
+          // PNs NOT selected stay pending for next round
+          remainingPNs: pns.filter(pn => !selectedPNIds.includes(pn.id))
+        });
+      };
+    });
   }
 
   // ── Dashboard filter form ──
