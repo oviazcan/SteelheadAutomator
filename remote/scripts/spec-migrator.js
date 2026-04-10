@@ -232,12 +232,11 @@ const SpecMigrator = (() => {
           }]
         }
       }, 'AddParamsToPartNumber');
-      return true;
+      return 'ok';
     } catch (e) {
       const msg = String(e);
-      if (msg.includes('conflicting key') || msg.includes('exclusion constraint') || msg.includes('23P01')) {
-        return false; // already present, skip silently
-      }
+      if (msg.includes('conflicting')) return 'conflict';
+      if (msg.includes('exclusion constraint') || msg.includes('23P01')) return 'duplicate';
       throw e;
     }
   }
@@ -1021,7 +1020,7 @@ const SpecMigrator = (() => {
     }
 
     // Phase 3: For each spec, fetch fields via SpecFieldsAndOptions
-    const results = { assigned: 0, skippedFields: 0, skippedPNs: 0, errors: [], autoAssigned: 0, assisted: 0 };
+    const results = { assigned: 0, skippedFields: 0, skippedPNs: 0, conflicts: [], errors: [], autoAssigned: 0, assisted: 0 };
     const BATCH = 20;
 
     const specFields = [];
@@ -1118,22 +1117,30 @@ const SpecMigrator = (() => {
         log(`  AUTO: ${field.specName}/${field.fieldName} → ${param.name} (${field.pns.length} PNs)`);
 
         const PBATCH = 10;
+        let fieldConflicts = 0;
         for (let pi = 0; pi < field.pns.length; pi += PBATCH) {
           const batch = field.pns.slice(pi, pi + PBATCH);
           const pct = (pi / field.pns.length) * 100;
           updateProgress(`${field.fieldName}: ${pi + 1}-${Math.min(pi + PBATCH, field.pns.length)}/${field.pns.length}`, pct);
           const batchResults = await Promise.allSettled(batch.map(pn =>
             addSingleParamToPN(pn.id, field.specFieldId, param.id, field.isGeneric)
-              .then(ok => ({ ok, name: pn.name || pn.id }))
+              .then(status => ({ status, name: pn.name || pn.id }))
           ));
           for (const r of batchResults) {
             if (r.status === 'fulfilled') {
-              if (r.value.ok) results.assigned++;
+              if (r.value.status === 'ok') results.assigned++;
+              else if (r.value.status === 'conflict') {
+                fieldConflicts++;
+                results.conflicts.push(r.value.name);
+              }
               else results.skippedPNs++;
             } else {
               results.errors.push(`${String(r.reason).substring(0, 150)}`);
             }
           }
+        }
+        if (fieldConflicts > 0) {
+          log(`    ⚠ ${fieldConflicts} PNs con params conflictivos`);
         }
         results.autoAssigned++;
         removeUI();
@@ -1166,11 +1173,12 @@ const SpecMigrator = (() => {
             const batchResults = await Promise.allSettled(batch.map(pnId => {
               const pnName = remainingPNs.find(p => p.id === pnId)?.name || pnId;
               return addSingleParamToPN(pnId, field.specFieldId, choice.paramId, field.isGeneric)
-                .then(ok => ({ ok, name: pnName }));
+                .then(status => ({ status, name: pnName }));
             }));
             for (const r of batchResults) {
               if (r.status === 'fulfilled') {
-                if (r.value.ok) results.assigned++;
+                if (r.value.status === 'ok') results.assigned++;
+                else if (r.value.status === 'conflict') results.conflicts.push(r.value.name);
                 else results.skippedPNs++;
               } else {
                 results.errors.push(`${String(r.reason).substring(0, 150)}`);
@@ -1195,6 +1203,11 @@ const SpecMigrator = (() => {
     log(`Asistidos: ${results.assisted}`);
     log(`Fields saltados: ${results.skippedFields}`);
     log(`PNs ya presentes: ${results.skippedPNs}`);
+    log(`PNs con conflicto: ${results.conflicts.length}`);
+    if (results.conflicts.length > 0) {
+      const unique = [...new Set(results.conflicts)];
+      log(`  PNs conflictivos (${unique.length} únicos): ${unique.slice(0, 30).join(', ')}${unique.length > 30 ? ` ... y ${unique.length - 30} más` : ''}`);
+    }
     log(`Errores: ${results.errors.length}`);
 
     showPendingParamsSummary(results);
@@ -1211,8 +1224,9 @@ const SpecMigrator = (() => {
     md.style.background = '#1a1a2e';
 
     const hasErrors = results.errors.length > 0;
-    const icon = hasErrors ? '⚠️' : '✅';
-    const iconColor = hasErrors ? '#f59e0b' : '#4ade80';
+    const hasConflicts = results.conflicts.length > 0;
+    const icon = hasErrors ? '⚠️' : hasConflicts ? '⚠️' : '✅';
+    const iconColor = hasErrors ? '#f59e0b' : hasConflicts ? '#f59e0b' : '#4ade80';
 
     let errorsHTML = '';
     if (results.errors.length > 0) {
@@ -1220,9 +1234,16 @@ const SpecMigrator = (() => {
       errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
     }
 
+    const uniqueConflicts = [...new Set(results.conflicts)];
+    let conflictsHTML = '';
+    if (uniqueConflicts.length > 0) {
+      const items = uniqueConflicts.slice(0, 20).map(n => `<div style="font-size:11px;color:#fbbf24;padding:1px 0">${n}</div>`).join('');
+      conflictsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#f59e0b;font-weight:600;margin-bottom:4px">PNs con params conflictivos (${uniqueConflicts.length} únicos):</div><div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Estos PNs tienen el mismo spec field en 2+ specs. Resolver manualmente en Steelhead.</div>${items}${uniqueConflicts.length > 20 ? `<div style="font-size:11px;color:#94a3b8;padding:1px 0">... y ${uniqueConflicts.length - 20} más (ver log)</div>` : ''}</div>`;
+    }
+
     md.innerHTML = `
       <h2 style="color:${iconColor}">${icon} Asignación Completada</h2>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0">
         <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
           <div style="font-size:24px;font-weight:700;color:#4ade80">${results.assigned}</div>
           <div style="font-size:11px;color:#94a3b8">PNs asignados</div>
@@ -1232,6 +1253,10 @@ const SpecMigrator = (() => {
           <div style="font-size:11px;color:#94a3b8">Ya tenían param</div>
         </div>
         <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#f59e0b">${uniqueConflicts.length}</div>
+          <div style="font-size:11px;color:#94a3b8">Conflictos</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
           <div style="font-size:24px;font-weight:700;color:#ef4444">${results.errors.length}</div>
           <div style="font-size:11px;color:#94a3b8">Errores</div>
         </div>
@@ -1239,6 +1264,7 @@ const SpecMigrator = (() => {
       <div style="font-size:12px;color:#64748b;margin-bottom:8px">
         Fields procesados: ${results.autoAssigned} auto · ${results.assisted} asistidos · ${results.skippedFields} saltados
       </div>
+      ${conflictsHTML}
       ${errorsHTML}
       <div class="sa-specm-btnrow" style="margin-top:16px">
         <button class="sa-specm-btn" id="sa-pp-copylog" style="background:#334155;color:#e2e8f0">📋 Copiar Log</button>
@@ -1596,6 +1622,135 @@ const SpecMigrator = (() => {
     showSummary(results);
 
     return results;
+  }
+
+  // ══════════════════════════════════════════
+  // RESOLVE CONFLICTS — Scan
+  // ══════════════════════════════════════════
+
+  async function scanForConflicts() {
+    showProgressUI('Conflictos de Specs', 'Cargando specs externas...');
+    const specs = await fetchAllExternalSpecs((msg) => updateProgress(msg, 5));
+    log(`=== RESOLVER CONFLICTOS DE SPECS ===`);
+    log(`Specs externas: ${specs.length}`);
+
+    // Phase 1: For each spec, get its assigned PNs via GetSpec
+    const pnMap = {}; // pnId → { pnId, pnName, pnSpecs: [{ pnSpecId, specId, specName }] }
+    const BATCH = 10;
+
+    for (let i = 0; i < specs.length; i += BATCH) {
+      const batch = specs.slice(i, i + BATCH);
+      const batchResults = await Promise.all(batch.map(async (spec) => {
+        try {
+          const detail = await getSpec(spec.idInDomain, spec.revisionNumber);
+          if (!detail) return [];
+          const pnSpecs = detail.partNumberSpecsBySpecId?.nodes || [];
+          return pnSpecs
+            .filter(ps => !ps.archivedAt && ps.partNumberByPartNumberId?.isActive !== false)
+            .map(ps => ({
+              pnId: ps.partNumberId,
+              pnName: ps.partNumberByPartNumberId?.name || `PN ${ps.partNumberId}`,
+              pnSpecId: ps.id,
+              specId: spec.id,
+              specName: spec.name
+            }));
+        } catch (e) {
+          warn(`GetSpec ${spec.name}: ${String(e).substring(0, 120)}`);
+          return [];
+        }
+      }));
+
+      for (const entries of batchResults) {
+        for (const entry of entries) {
+          if (!pnMap[entry.pnId]) {
+            pnMap[entry.pnId] = { pnId: entry.pnId, pnName: entry.pnName, pnSpecs: [] };
+          }
+          pnMap[entry.pnId].pnSpecs.push({
+            pnSpecId: entry.pnSpecId,
+            specId: entry.specId,
+            specName: entry.specName
+          });
+        }
+      }
+
+      const pct = 10 + ((i + BATCH) / specs.length) * 30;
+      updateProgress(`Revisando PNs de ${Math.min(i + BATCH, specs.length)}/${specs.length} specs`, Math.min(pct, 40));
+    }
+
+    // Only PNs with 2+ specs are candidates
+    const candidates = Object.values(pnMap).filter(pn => pn.pnSpecs.length >= 2);
+    log(`PNs con 2+ specs externas: ${candidates.length}`);
+
+    if (!candidates.length) {
+      removeUI();
+      log('Sin conflictos detectados.');
+      return [];
+    }
+
+    // Phase 2: For each candidate, get spec fields and detect shared fields
+    const specFieldsCache = {}; // specId → [{ specFieldId, fieldName }]
+    const conflicts = [];
+
+    for (let i = 0; i < candidates.length; i += BATCH) {
+      const batch = candidates.slice(i, i + BATCH);
+      const batchResults = await Promise.all(batch.map(async (pn) => {
+        try {
+          // Get spec fields for each spec (cached)
+          for (const ps of pn.pnSpecs) {
+            if (!specFieldsCache[ps.specId]) {
+              const detail = await getSpecFields(ps.specId);
+              const fields = detail?.specFieldSpecsBySpecId?.nodes || [];
+              specFieldsCache[ps.specId] = fields.map(f => ({
+                specFieldId: f.specFieldBySpecFieldId?.id,
+                fieldName: f.specFieldBySpecFieldId?.name || '?'
+              }));
+            }
+          }
+
+          // Build map: specFieldId → specs that have it
+          const fieldToSpecs = {};
+          for (const ps of pn.pnSpecs) {
+            const fields = specFieldsCache[ps.specId] || [];
+            for (const f of fields) {
+              if (!f.specFieldId) continue;
+              if (!fieldToSpecs[f.specFieldId]) fieldToSpecs[f.specFieldId] = { fieldName: f.fieldName, specs: [] };
+              fieldToSpecs[f.specFieldId].specs.push(ps);
+            }
+          }
+
+          const sharedFields = Object.values(fieldToSpecs).filter(v => v.specs.length >= 2);
+          if (sharedFields.length === 0) return null;
+
+          // Collect unique specs involved in any conflict
+          const involvedSpecIds = new Set();
+          for (const sf of sharedFields) {
+            for (const s of sf.specs) involvedSpecIds.add(s.specId);
+          }
+          const involvedSpecs = pn.pnSpecs.filter(ps => involvedSpecIds.has(ps.specId));
+
+          return {
+            pnId: pn.pnId,
+            pnName: pn.pnName,
+            specs: involvedSpecs,
+            sharedFields: sharedFields.map(sf => sf.fieldName)
+          };
+        } catch (e) {
+          warn(`Conflict check ${pn.pnName}: ${String(e).substring(0, 120)}`);
+          return null;
+        }
+      }));
+
+      for (const r of batchResults) {
+        if (r) conflicts.push(r);
+      }
+
+      const pct = 40 + ((i + BATCH) / candidates.length) * 50;
+      updateProgress(`Detectando conflictos: ${Math.min(i + BATCH, candidates.length)}/${candidates.length} PNs`, Math.min(pct, 90));
+    }
+
+    log(`PNs con conflictos reales: ${conflicts.length}`);
+    removeUI();
+    return conflicts;
   }
 
   return { run, assignPendingParams };
