@@ -1749,6 +1749,32 @@ const SpecMigrator = (() => {
     }
 
     log(`PNs con conflictos reales: ${conflicts.length}`);
+
+    if (conflicts.length === 0) {
+      removeUI();
+      return conflicts;
+    }
+
+    // Phase 3: Enrich conflict PNs with labels and process
+    updateProgress(`Cargando etiquetas y procesos...`, 92);
+    for (let i = 0; i < conflicts.length; i += BATCH) {
+      const batch = conflicts.slice(i, i + BATCH);
+      await Promise.all(batch.map(async (c) => {
+        try {
+          const detail = await getPNDetail(c.pnId);
+          c.labels = (detail?.partNumberLabelsByPartNumberId?.nodes || []).map(n => ({
+            name: n.labelByLabelId?.name || '?',
+            color: n.labelByLabelId?.color || '#475569'
+          }));
+          c.process = detail?.processNodeByDefaultProcessNodeId?.name || null;
+        } catch (e) {
+          c.labels = [];
+          c.process = null;
+        }
+      }));
+      updateProgress(`Etiquetas: ${Math.min(i + BATCH, conflicts.length)}/${conflicts.length}`, 92 + ((i + BATCH) / conflicts.length) * 8);
+    }
+
     removeUI();
     return conflicts;
   }
@@ -1773,17 +1799,26 @@ const SpecMigrator = (() => {
           </label>`
         ).join('');
 
+        const labelsHTML = (c.labels || []).map(l =>
+          `<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${l.color};color:#fff;white-space:nowrap">${l.name}</span>`
+        ).join('');
+        const processHTML = c.process
+          ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Proceso: <span style="color:#cbd5e1">${c.process}</span></div>`
+          : '';
+
         return `<div class="sa-cr-card" data-idx="${idx}" style="background:#0f172a;border-radius:8px;padding:14px 16px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:14px;font-weight:700;color:#e2e8f0">${c.pnName}</span>
-              <a href="https://app.gosteelhead.com/part-number/${c.pnId}/specs" target="_blank" style="color:#60a5fa;font-size:12px;text-decoration:none" title="Abrir en Steelhead">🔗</a>
+              <a href="https://app.gosteelhead.com/PartNumbers/${c.pnId}" target="_blank" style="color:#60a5fa;font-size:12px;text-decoration:none" title="Abrir en Steelhead">🔗</a>
+              ${labelsHTML}
             </div>
             <label style="font-size:11px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px">
               <input type="checkbox" class="sa-cr-ignore" data-pn="${idx}"> Ignorar
             </label>
           </div>
-          <div style="font-size:11px;color:#64748b;margin-bottom:8px">Fields compartidos: ${c.sharedFields.join(', ')}</div>
+          ${processHTML}
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;margin-top:4px">Fields compartidos: ${c.sharedFields.join(', ')}</div>
           <div class="sa-cr-specs-container" data-pn="${idx}">${specsHTML}</div>
           <div class="sa-cr-archive-label" data-pn="${idx}" style="font-size:11px;color:#f59e0b;margin-top:6px"></div>
         </div>`;
@@ -1794,8 +1829,11 @@ const SpecMigrator = (() => {
         <div style="font-size:12px;color:#94a3b8;margin-bottom:12px">
           ${conflicts.length} PNs con specs en conflicto. Desmarca las specs que quieres archivar.
         </div>
-        <div style="margin-bottom:8px">
-          <input type="text" id="sa-cr-search" class="sa-specm-input" placeholder="Buscar PN..." style="margin-bottom:10px">
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+          <input type="text" id="sa-cr-search" class="sa-specm-input" placeholder="Buscar PN..." style="flex:1">
+          <label style="font-size:11px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap">
+            <input type="checkbox" id="sa-cr-ignoreall"> Ignorar todas
+          </label>
         </div>
         <div id="sa-cr-cards" style="max-height:55vh;overflow-y:auto">
           ${cardsHTML}
@@ -1869,6 +1907,12 @@ const SpecMigrator = (() => {
           const card = md.querySelector(`.sa-cr-card[data-idx="${idx}"]`);
           card.style.display = c.pnName.toLowerCase().includes(q) ? '' : 'none';
         });
+      });
+
+      // Ignore all toggle
+      document.getElementById('sa-cr-ignoreall').addEventListener('change', (e) => {
+        md.querySelectorAll('.sa-cr-ignore').forEach(cb => { cb.checked = e.target.checked; });
+        updateUI();
       });
 
       // Checkbox events
