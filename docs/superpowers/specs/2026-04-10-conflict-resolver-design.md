@@ -38,24 +38,24 @@ Modal con la lista de PNs con conflicto. Cada entrada muestra:
 │ Fields compartidos: Espesor, Adherencia, Aspecto Visual,   │
 │                     Primeras Piezas, Instrumento de Medición│
 │                                                             │
-│  ○ RC Ni (Níquel)     ← radio button                       │
-│  ● RC Sn (Estaño)     ← radio button (seleccionado)        │
+│  ☑ RC Ni (Níquel)     ← checkbox (conservar)               │
+│  ☐ RC Sn (Estaño)     ← checkbox (archivar)                │
 │                                                             │
-│ Se archivará: RC Ni (Níquel)                                │
+│ Se archivará: RC Sn (Estaño)                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **Elementos:**
 - **Nombre del PN** como encabezado de la tarjeta.
 - **Link 🔗** abre `https://app.gosteelhead.com/part-number/{pnId}/specs` en nueva pestaña.
-- **Checkbox "Ignorar"** deshabilita los radio buttons y excluye el PN de la ejecución.
+- **Checkbox "Ignorar"** deshabilita los checkboxes de specs y excluye el PN de la ejecución.
 - **Lista de fields compartidos** para contexto.
-- **Radio buttons** por cada spec involucrada en el conflicto. Ninguno pre-seleccionado (obligar al usuario a elegir).
-- **Texto dinámico** "Se archivará: X, Y" mostrando las specs que se van a archivar (las no seleccionadas).
+- **Checkboxes** por cada spec involucrada en el conflicto. Todas inician checked. El usuario desmarca las que quiere archivar. Debe quedar al menos 1 checked (validación). Esto permite conservar 2 de 3 specs si el conflicto real es solo con la tercera.
+- **Texto dinámico** "Se archivará: X, Y" mostrando las specs desmarcadas.
 
 **Controles globales:**
-- Contador: "X de Y PNs configurados" (que tienen radio seleccionado y no están ignorados).
-- Botón **"EJECUTAR"** habilitado solo cuando todos los PNs no-ignorados tienen una spec seleccionada.
+- Contador: "X de Y PNs configurados" (que tienen al menos una spec desmarcada y no están ignorados).
+- Botón **"EJECUTAR"** habilitado solo cuando todos los PNs no-ignorados tienen al menos una spec desmarcada (algo que archivar).
 - Botón **"CANCELAR"**.
 
 **Scroll:** El contenido de PNs es scrollable (max-height ~60vh). Si hay muchos PNs, mostrar campo de búsqueda para filtrar por nombre.
@@ -113,7 +113,7 @@ Todas ya están en `config.json` con sus hashes. No se necesitan queries nuevas.
 
 ## Caso edge: 3+ specs con conflicto
 
-Si un PN tiene specs A, B, C donde A y B comparten "Espesor" y A y C comparten "Adherencia", se muestra como una sola tarjeta con las 3 specs como opciones de radio button. El usuario elige cuál conservar; las demás se archivan. Esto resuelve todos los conflictos de ese PN de una vez.
+Si un PN tiene specs A, B, C donde A y B comparten "Espesor" y A y C comparten "Adherencia", se muestra como una sola tarjeta con las 3 specs como checkboxes. El usuario puede conservar A y B (desmarcando solo C), o conservar solo A (desmarcando B y C), según cuáles realmente generen conflicto.
 
 ## Caso edge: PN sin conflicto real
 
