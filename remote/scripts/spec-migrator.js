@@ -1910,7 +1910,126 @@ const SpecMigrator = (() => {
     });
   }
 
-  return { run, assignPendingParams };
+  // ── Conflict Resolver Summary ──
+  function showConflictResolverSummary(results) {
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-specm-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-specm-modal';
+    md.style.background = '#1a1a2e';
+
+    const hasErrors = results.errors.length > 0;
+    const icon = hasErrors ? '⚠️' : '✅';
+    const iconColor = hasErrors ? '#f59e0b' : '#4ade80';
+
+    let errorsHTML = '';
+    if (results.errors.length > 0) {
+      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
+    }
+
+    md.innerHTML = `
+      <h2 style="color:${iconColor}">${icon} Conflictos Resueltos</h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0">
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#4ade80">${results.archived}</div>
+          <div style="font-size:11px;color:#94a3b8">Specs archivadas</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#94a3b8">${results.ignored}</div>
+          <div style="font-size:11px;color:#94a3b8">PNs ignorados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#ef4444">${results.errors.length}</div>
+          <div style="font-size:11px;color:#94a3b8">Errores</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px">
+        PNs procesados: ${results.processed} · Conflictos detectados: ${results.totalConflicts}
+      </div>
+      ${errorsHTML}
+      <div class="sa-specm-btnrow" style="margin-top:16px">
+        <button class="sa-specm-btn" id="sa-cr-copylog" style="background:#334155;color:#e2e8f0">📋 Copiar Log</button>
+        <button class="sa-specm-btn sa-specm-btn-exec" id="sa-cr-close">CERRAR</button>
+      </div>`;
+
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+
+    document.getElementById('sa-cr-close').onclick = () => ov.parentNode.removeChild(ov);
+    document.getElementById('sa-cr-copylog').onclick = () => {
+      const logText = api().getLog().join('\n');
+      navigator.clipboard.writeText(logText).then(() => {
+        const btn = document.getElementById('sa-cr-copylog');
+        btn.textContent = '✅ Copiado';
+        setTimeout(() => { btn.textContent = '📋 Copiar Log'; }, 2000);
+      });
+    };
+  }
+
+  // ══════════════════════════════════════════
+  // RESOLVE CONFLICTS — Orchestrator
+  // ══════════════════════════════════════════
+
+  async function resolveConflicts() {
+    // Phase 1: Scan
+    const conflicts = await scanForConflicts();
+
+    if (!conflicts.length) {
+      showConflictResolverSummary({ archived: 0, ignored: 0, processed: 0, totalConflicts: 0, errors: [] });
+      return { noConflicts: true };
+    }
+
+    // Phase 2: Show resolver modal
+    const choice = await showConflictResolverModal(conflicts);
+    if (choice.cancelled) return { cancelled: true };
+
+    const { actions } = choice;
+    const ignored = conflicts.length - actions.length;
+
+    log(`\nPNs a procesar: ${actions.length}, ignorados: ${ignored}`);
+
+    // Phase 3: Execute archives
+    const results = { archived: 0, ignored, processed: actions.length, totalConflicts: conflicts.length, errors: [] };
+
+    showProgressUI('Archivando specs', `0/${actions.length} PNs`);
+    const PBATCH = 10;
+
+    for (let i = 0; i < actions.length; i += PBATCH) {
+      const batch = actions.slice(i, i + PBATCH);
+      const pct = (i / actions.length) * 100;
+      updateProgress(`${i + 1}-${Math.min(i + PBATCH, actions.length)}/${actions.length} PNs`, pct);
+
+      await Promise.allSettled(batch.map(async (action) => {
+        for (const spec of action.toArchive) {
+          try {
+            await archiveSpecOnPN(spec.pnSpecId, []);
+            results.archived++;
+            log(`  ✓ ${action.pnName}: archivada ${spec.specName}`);
+          } catch (e) {
+            const errMsg = `${action.pnName}/${spec.specName}: ${String(e).substring(0, 120)}`;
+            results.errors.push(errMsg);
+            warn(`  ✗ ${errMsg}`);
+          }
+        }
+      }));
+    }
+
+    removeUI();
+
+    // Phase 4: Summary
+    log(`\n=== RESULTADO CONFLICTOS ===`);
+    log(`Specs archivadas: ${results.archived}`);
+    log(`PNs procesados: ${results.processed}`);
+    log(`PNs ignorados: ${results.ignored}`);
+    log(`Errores: ${results.errors.length}`);
+
+    showConflictResolverSummary(results);
+    return results;
+  }
+
+  return { run, assignPendingParams, resolveConflicts };
 })();
 
 if (typeof window !== 'undefined') window.SpecMigrator = SpecMigrator;
