@@ -134,6 +134,24 @@ const SpecMigrator = (() => {
     }, 'UpdatePartNumberSpecParam');
   }
 
+  // ── Get classification names for a spec field param ──
+  async function getParamClassifications(specFieldParamId, specFieldId) {
+    try {
+      const data = await api().query('GetSpecFieldParamToEdit', {
+        specFieldParamId, specFieldId
+      }, 'GetSpecFieldParamToEdit');
+      const cs = data?.specFieldParamById?.classificationSetByClassificationSetId;
+      if (!cs) return [];
+      const nodes = cs.classificationSetClassificationsByClassificationSetId?.nodes || [];
+      return nodes.map(n => {
+        const c = n.classificationByClassificationId || n;
+        return c.name || c.id || '';
+      }).filter(Boolean);
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ── Search filter options (customer, label) ──
   async function searchFilter(key, searchQuery) {
     const data = await api().query('FilterSearch', { key, searchQuery }, 'FilterSearch');
@@ -456,16 +474,31 @@ const SpecMigrator = (() => {
             // Show radio buttons for each multi-param field
             let html = '';
             for (const mpf of multiParamFields) {
-              html += `<div style="margin-bottom:8px"><div style="font-size:12px;color:#8b5cf6;font-weight:600;margin-bottom:4px">${mpf.fieldName}:</div>`;
+              html += `<div style="margin-bottom:12px"><div style="font-size:12px;color:#8b5cf6;font-weight:600;margin-bottom:4px">${mpf.fieldName}:</div>`;
               html += mpf.params.map(p =>
-                `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;cursor:pointer">
+                `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;cursor:pointer">
                   <input type="radio" name="sa-specm-field-${mpf.fieldName}" value="${p.id}" data-generic="${mpf.isGeneric}">
                   <span>${p.name}</span>
+                  <span class="sa-specm-classif" data-param-id="${p.id}" data-field-id="${mpf.specFieldId}" style="font-size:10px;color:#64748b;margin-left:auto"></span>
                 </label>`
               ).join('');
               html += '</div>';
             }
             paramsDiv.innerHTML = html;
+
+            // Load classifications for each param (async, fills in as they arrive)
+            paramsDiv.querySelectorAll('.sa-specm-classif').forEach(async (span) => {
+              const paramId = parseInt(span.dataset.paramId);
+              const fieldId = parseInt(span.dataset.fieldId);
+              const names = await getParamClassifications(paramId, fieldId);
+              if (names.length) {
+                span.textContent = names.join(', ');
+                span.style.color = '#38bdf8';
+                span.style.background = 'rgba(56,189,248,0.1)';
+                span.style.padding = '1px 6px';
+                span.style.borderRadius = '4px';
+              }
+            });
 
             // Enable MIGRAR only when all fields have a selection
             const checkAllSelected = () => {
