@@ -1753,6 +1753,163 @@ const SpecMigrator = (() => {
     return conflicts;
   }
 
+  // ── Conflict Resolver Modal ──
+  function showConflictResolverModal(conflicts) {
+    return new Promise((resolve) => {
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-specm-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-specm-modal';
+      md.style.background = '#1a1a2e';
+      md.style.maxWidth = '800px';
+
+      // Build cards HTML
+      const cardsHTML = conflicts.map((c, idx) => {
+        const specsHTML = c.specs.map(s =>
+          `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer">
+            <input type="checkbox" class="sa-cr-spec" data-pn="${idx}" data-pnspecid="${s.pnSpecId}" data-specname="${s.specName}" checked>
+            <span style="color:#e2e8f0">${s.specName}</span>
+          </label>`
+        ).join('');
+
+        return `<div class="sa-cr-card" data-idx="${idx}" style="background:#0f172a;border-radius:8px;padding:14px 16px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:14px;font-weight:700;color:#e2e8f0">${c.pnName}</span>
+              <a href="https://app.gosteelhead.com/part-number/${c.pnId}/specs" target="_blank" style="color:#60a5fa;font-size:12px;text-decoration:none" title="Abrir en Steelhead">🔗</a>
+            </div>
+            <label style="font-size:11px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px">
+              <input type="checkbox" class="sa-cr-ignore" data-pn="${idx}"> Ignorar
+            </label>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px">Fields compartidos: ${c.sharedFields.join(', ')}</div>
+          <div class="sa-cr-specs-container" data-pn="${idx}">${specsHTML}</div>
+          <div class="sa-cr-archive-label" data-pn="${idx}" style="font-size:11px;color:#f59e0b;margin-top:6px"></div>
+        </div>`;
+      }).join('');
+
+      md.innerHTML = `
+        <h2 style="color:#f59e0b;font-size:18px">⚔️ Resolver Conflictos de Specs</h2>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:12px">
+          ${conflicts.length} PNs con specs en conflicto. Desmarca las specs que quieres archivar.
+        </div>
+        <div style="margin-bottom:8px">
+          <input type="text" id="sa-cr-search" class="sa-specm-input" placeholder="Buscar PN..." style="margin-bottom:10px">
+        </div>
+        <div id="sa-cr-cards" style="max-height:55vh;overflow-y:auto">
+          ${cardsHTML}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+          <div id="sa-cr-status" style="font-size:12px;color:#94a3b8"></div>
+          <div class="sa-specm-btnrow" style="margin-top:0">
+            <button class="sa-specm-btn sa-specm-btn-cancel" id="sa-cr-cancel">CANCELAR</button>
+            <button class="sa-specm-btn sa-specm-btn-exec" id="sa-cr-exec" disabled>EJECUTAR</button>
+          </div>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const updateUI = () => {
+        let configured = 0;
+        let total = 0;
+
+        conflicts.forEach((c, idx) => {
+          const card = md.querySelector(`.sa-cr-card[data-idx="${idx}"]`);
+          const ignoreCb = md.querySelector(`.sa-cr-ignore[data-pn="${idx}"]`);
+          const specsContainer = md.querySelector(`.sa-cr-specs-container[data-pn="${idx}"]`);
+          const archiveLabel = md.querySelector(`.sa-cr-archive-label[data-pn="${idx}"]`);
+          const specCbs = md.querySelectorAll(`.sa-cr-spec[data-pn="${idx}"]`);
+
+          if (ignoreCb.checked) {
+            specsContainer.style.opacity = '0.3';
+            specsContainer.style.pointerEvents = 'none';
+            archiveLabel.textContent = '';
+            card.style.borderLeft = '3px solid #475569';
+            return;
+          }
+
+          specsContainer.style.opacity = '1';
+          specsContainer.style.pointerEvents = 'auto';
+          total++;
+
+          const checked = [...specCbs].filter(cb => cb.checked);
+          const unchecked = [...specCbs].filter(cb => !cb.checked);
+
+          // Must keep at least 1
+          if (checked.length <= 1) {
+            checked.forEach(cb => { cb.disabled = true; });
+          } else {
+            specCbs.forEach(cb => { cb.disabled = false; });
+          }
+
+          if (unchecked.length > 0) {
+            const names = unchecked.map(cb => cb.dataset.specname).join(', ');
+            archiveLabel.textContent = `Se archivará: ${names}`;
+            card.style.borderLeft = '3px solid #f59e0b';
+            configured++;
+          } else {
+            archiveLabel.textContent = '';
+            card.style.borderLeft = '3px solid transparent';
+          }
+        });
+
+        const statusEl = document.getElementById('sa-cr-status');
+        statusEl.textContent = `${configured} de ${total} PNs configurados`;
+
+        const execBtn = document.getElementById('sa-cr-exec');
+        execBtn.disabled = configured === 0;
+      };
+
+      // Search filter
+      document.getElementById('sa-cr-search').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        conflicts.forEach((c, idx) => {
+          const card = md.querySelector(`.sa-cr-card[data-idx="${idx}"]`);
+          card.style.display = c.pnName.toLowerCase().includes(q) ? '' : 'none';
+        });
+      });
+
+      // Checkbox events
+      md.addEventListener('change', (e) => {
+        if (e.target.classList.contains('sa-cr-ignore') || e.target.classList.contains('sa-cr-spec')) {
+          updateUI();
+        }
+      });
+
+      updateUI();
+
+      // Cancel
+      document.getElementById('sa-cr-cancel').onclick = () => {
+        ov.parentNode.removeChild(ov);
+        resolve({ cancelled: true });
+      };
+
+      // Execute
+      document.getElementById('sa-cr-exec').onclick = () => {
+        const actions = [];
+        conflicts.forEach((c, idx) => {
+          const ignoreCb = md.querySelector(`.sa-cr-ignore[data-pn="${idx}"]`);
+          if (ignoreCb.checked) return;
+          const unchecked = [...md.querySelectorAll(`.sa-cr-spec[data-pn="${idx}"]`)]
+            .filter(cb => !cb.checked);
+          if (unchecked.length === 0) return;
+          actions.push({
+            pnId: c.pnId,
+            pnName: c.pnName,
+            toArchive: unchecked.map(cb => ({
+              pnSpecId: parseInt(cb.dataset.pnspecid),
+              specName: cb.dataset.specname
+            }))
+          });
+        });
+        ov.parentNode.removeChild(ov);
+        resolve({ actions });
+      };
+    });
+  }
+
   return { run, assignPendingParams };
 })();
 
