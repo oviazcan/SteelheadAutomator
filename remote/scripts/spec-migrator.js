@@ -1468,19 +1468,10 @@ const SpecMigrator = (() => {
             }
           }
 
-          // Step 2: Add missing params via AddParamsToPartNumber
+          // Step 2: Add missing params one-by-one (tolerates constraints from shared spec fields)
           const missingParams = allParams.filter(ap => !existingParamIds.has(ap.paramId));
-          if (missingParams.length > 0) {
-            const paramsToAdd = missingParams.map(p => ({
-              specFieldId: p.specFieldId,
-              specFieldParamId: p.paramId,
-              isGeneric: p.isGeneric,
-              geometryTypeSpecFieldId: null,
-              processNodeId: null,
-              processNodeOccurrence: null,
-              locationId: null
-            }));
-            await addParamsToPN(pnId, paramsToAdd);
+          for (const p of missingParams) {
+            await addSingleParamToPN(pnId, p.specFieldId, p.paramId, p.isGeneric);
           }
 
           results.migrated++;
