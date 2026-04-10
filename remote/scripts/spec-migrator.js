@@ -1435,6 +1435,14 @@ const SpecMigrator = (() => {
       targetSpecName
     };
 
+    // Get source spec field IDs to correctly scope param archival
+    const sourceSpecDetail = await getSpecFields(sourceSpec.id);
+    const sourceFieldIds = new Set(
+      (sourceSpecDetail?.specFieldSpecsBySpecId?.nodes || [])
+        .map(f => f.specFieldBySpecFieldId?.id)
+        .filter(Boolean)
+    );
+
     showProgressUI(archiveOnly ? 'Archivando Specs' : 'Migrando Specs', 'Preparando...');
 
     // Phase 3: Migrate each PN
@@ -1457,12 +1465,11 @@ const SpecMigrator = (() => {
         );
 
         if (sourceSpecOnPN && !sourceSpecOnPN.archivedAt) {
-          // Archive the old spec at PN level — pass empty paramIds so the mutation
-          // archives only THIS spec (passing all PN params broke it for multi-spec PNs)
+          // Archive the old spec at PN level — only pass params that belong to the
+          // source spec's fields, not ALL active params (which would break multi-spec PNs)
           try {
-            // Get param IDs belonging to this source spec
             const sourceParamIds = pnAllParams
-              .filter(p => !p.archivedAt)
+              .filter(p => !p.archivedAt && sourceFieldIds.has(p.specFieldId))
               .map(p => p.id);
             await archiveSpecOnPN(sourceSpecOnPN.id, sourceParamIds);
             log(`  ${pnName}: spec archivada a nivel PN`);
