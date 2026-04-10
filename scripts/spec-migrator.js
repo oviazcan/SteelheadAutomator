@@ -1776,7 +1776,7 @@ const SpecMigrator = (() => {
     }
 
     removeUI();
-    return conflicts;
+    return { conflicts, specFieldsCache };
   }
 
   // ── Conflict Resolver Modal ──
@@ -1794,7 +1794,7 @@ const SpecMigrator = (() => {
       const cardsHTML = conflicts.map((c, idx) => {
         const specsHTML = c.specs.map(s =>
           `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer">
-            <input type="checkbox" class="sa-cr-spec" data-pn="${idx}" data-pnspecid="${s.pnSpecId}" data-specname="${s.specName}" checked>
+            <input type="checkbox" class="sa-cr-spec" data-pn="${idx}" data-pnspecid="${s.pnSpecId}" data-specid="${s.specId}" data-specname="${s.specName}" checked>
             <span style="color:#e2e8f0">${s.specName}</span>
           </label>`
         ).join('');
@@ -1944,6 +1944,7 @@ const SpecMigrator = (() => {
             pnName: c.pnName,
             toArchive: unchecked.map(cb => ({
               pnSpecId: parseInt(cb.dataset.pnspecid),
+              specId: parseInt(cb.dataset.specid),
               specName: cb.dataset.specname
             }))
           });
@@ -2018,7 +2019,9 @@ const SpecMigrator = (() => {
 
   async function resolveConflicts() {
     // Phase 1: Scan
-    const conflicts = await scanForConflicts();
+    const scanResult = await scanForConflicts();
+    const conflicts = scanResult.conflicts;
+    const specFieldsCache = scanResult.specFieldsCache;
 
     if (!conflicts.length) {
       showConflictResolverSummary({ archived: 0, ignored: 0, processed: 0, totalConflicts: 0, errors: [] });
@@ -2046,6 +2049,15 @@ const SpecMigrator = (() => {
       updateProgress(`${i + 1}-${Math.min(i + PBATCH, actions.length)}/${actions.length} PNs`, pct);
 
       await Promise.allSettled(batch.map(async (action) => {
+        // Collect specFieldIds from specs being archived (to clean up orphaned params)
+        const archivedFieldIds = new Set();
+        for (const spec of action.toArchive) {
+          const cached = specFieldsCache[spec.specId];
+          if (cached) {
+            for (const f of cached) if (f.specFieldId) archivedFieldIds.add(f.specFieldId);
+          }
+        }
+
         for (const spec of action.toArchive) {
           try {
             await archiveSpecOnPN(spec.pnSpecId, []);
@@ -2055,6 +2067,23 @@ const SpecMigrator = (() => {
             const errMsg = `${action.pnName}/${spec.specName}: ${String(e).substring(0, 120)}`;
             results.errors.push(errMsg);
             warn(`  ✗ ${errMsg}`);
+          }
+        }
+
+        // Archive orphaned params from the archived spec's fields
+        if (archivedFieldIds.size > 0) {
+          try {
+            const detail = await getPNDetail(action.pnId);
+            const params = detail?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+            const orphaned = params.filter(p => !p.archivedAt && archivedFieldIds.has(p.specFieldId));
+            for (const p of orphaned) {
+              await archiveParam(p.id);
+            }
+            if (orphaned.length > 0) {
+              log(`    🧹 ${action.pnName}: ${orphaned.length} params huérfanos archivados`);
+            }
+          } catch (e) {
+            warn(`    ⚠ ${action.pnName}: error limpiando params: ${String(e).substring(0, 100)}`);
           }
         }
       }));
