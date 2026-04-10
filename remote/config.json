@@ -224,7 +224,8 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/spec-migrator.js"],
       "actions": [
         { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run" },
-        { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams" }
+        { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams" },
+        { "id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts" }
       ]
     },
     {
