@@ -200,41 +200,61 @@ const WODeadlineChanger = (() => {
   }
 
   async function fetchDropdownOptions() {
-    // Fetch ALL customers (paginated)
-    const allCustomers = [];
-    try {
-      let offset = 0;
-      const PAGE = 500;
-      while (true) {
-        const custData = await api().query('AllCustomers', {
-          offset, first: PAGE, searchQuery: '', includeArchived: 'NO', orderBy: ['NAME_ASC']
-        }, 'AllCustomers');
-        const nodes = custData?.pagedData?.nodes || [];
-        allCustomers.push(...nodes);
-        if (nodes.length < PAGE) break;
-        offset += PAGE;
-      }
-    } catch (_) {}
+    // Fetch catalogs + ALL active WOs (for counts) in parallel
+    const [custResult, prodResult, procResult, woCountResult] = await Promise.allSettled([
+      // ALL customers (paginated)
+      (async () => {
+        const all = [];
+        let offset = 0;
+        const PAGE = 500;
+        while (true) {
+          const d = await api().query('AllCustomers', {
+            offset, first: PAGE, searchQuery: '', includeArchived: 'NO', orderBy: ['NAME_ASC']
+          }, 'AllCustomers');
+          const nodes = d?.pagedData?.nodes || [];
+          all.push(...nodes);
+          if (nodes.length < PAGE) break;
+          offset += PAGE;
+        }
+        return all;
+      })(),
+      // ALL products
+      (async () => {
+        const d = await api().query('SearchProducts', {
+          searchQuery: '', first: 500, offset: 0, includeArchived: 'NO'
+        }, 'SearchProducts');
+        return d?.searchProducts?.nodes || d?.pagedData?.nodes || [];
+      })(),
+      // ALL processes
+      (async () => {
+        const d = await api().query('FilterSearch', {
+          key: 'processNodeIdFilter', searchQuery: ''
+        }, 'FilterSearch');
+        return d?.tableFilterSearch || [];
+      })(),
+      // ALL active WOs (lightweight, for counting)
+      fetchAllActiveWOs({}, null)
+    ]);
 
-    // Fetch ALL products
-    let allProducts = [];
-    try {
-      const prodData = await api().query('SearchProducts', {
-        searchQuery: '', first: 500, offset: 0, includeArchived: 'NO'
-      }, 'SearchProducts');
-      allProducts = prodData?.searchProducts?.nodes || prodData?.pagedData?.nodes || [];
-    } catch (_) {}
+    const allCustomers = custResult.status === 'fulfilled' ? custResult.value : [];
+    const allProducts = prodResult.status === 'fulfilled' ? prodResult.value : [];
+    const allProcesses = procResult.status === 'fulfilled' ? procResult.value : [];
+    const allWOsForCounts = woCountResult.status === 'fulfilled' ? woCountResult.value : [];
 
-    // Fetch ALL processes via FilterSearch
-    let allProcesses = [];
-    try {
-      const procData = await api().query('FilterSearch', {
-        key: 'processNodeIdFilter', searchQuery: ''
-      }, 'FilterSearch');
-      allProcesses = procData?.tableFilterSearch || [];
-    } catch (_) {}
+    // Build count maps
+    const countByCustomer = {};
+    const countByProduct = {};
+    const countByProcess = {};
+    for (const wo of allWOsForCounts) {
+      const cId = wo.customerByCustomerId?.id;
+      if (cId) countByCustomer[cId] = (countByCustomer[cId] || 0) + 1;
+      const pId = wo.productByProductId?.id;
+      if (pId) countByProduct[pId] = (countByProduct[pId] || 0) + 1;
+      const rId = wo.recipeNodeByRecipeId?.id;
+      if (rId) countByProcess[rId] = (countByProcess[rId] || 0) + 1;
+    }
 
-    return { allCustomers, allProducts, allProcesses };
+    return { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess };
   }
 
   async function showMainUI(wos, pnCache, uiDefaults, dropdownCache) {
@@ -246,25 +266,28 @@ const WODeadlineChanger = (() => {
       const md = document.createElement('div');
       md.className = 'sa-wod-modal';
 
-      const { allCustomers, allProducts, allProcesses } = dropdownCache;
+      const { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess } = dropdownCache;
 
       const seenCust = new Set();
       const customerOpts = allCustomers
         .filter(c => { if (seenCust.has(c.id)) return false; seenCust.add(c.id); return true; })
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-        .map(c => `<option value="${c.id}">${c.name}</option>`)
+        .filter(c => countByCustomer[c.id])
+        .sort((a, b) => (countByCustomer[b.id] || 0) - (countByCustomer[a.id] || 0))
+        .map(c => `<option value="${c.id}">${c.name} (${countByCustomer[c.id] || 0})</option>`)
         .join('');
 
       const seenProd = new Set();
       const productOpts = allProducts
         .filter(p => { if (seenProd.has(p.id)) return false; seenProd.add(p.id); return true; })
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-        .map(p => `<option value="${p.id}">${p.name}</option>`)
+        .filter(p => countByProduct[p.id])
+        .sort((a, b) => (countByProduct[b.id] || 0) - (countByProduct[a.id] || 0))
+        .map(p => `<option value="${p.id}">${p.name} (${countByProduct[p.id] || 0})</option>`)
         .join('');
 
       const processOpts = allProcesses
-        .sort((a, b) => (a.display || '').localeCompare(b.display || ''))
-        .map(p => `<option value="${p.identifier}">${p.display}</option>`)
+        .filter(p => countByProcess[p.identifier])
+        .sort((a, b) => (countByProcess[b.identifier] || 0) - (countByProcess[a.identifier] || 0))
+        .map(p => `<option value="${p.identifier}">${p.display} (${countByProcess[p.identifier] || 0})</option>`)
         .join('');
 
       const preCustomer = uiDefaults.customerId || '';
