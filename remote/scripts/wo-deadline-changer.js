@@ -122,6 +122,8 @@ const WODeadlineChanger = (() => {
         if (!match) return false;
       }
 
+      if (filters.processId && wo.recipeNodeByRecipeId?.id !== filters.processId) return false;
+
       if (filters.receivedOrder) {
         const q = filters.receivedOrder.toLowerCase();
         const roName = wo.receivedOrderByReceivedOrderId?.name || '';
@@ -205,14 +207,17 @@ const WODeadlineChanger = (() => {
       const md = document.createElement('div');
       md.className = 'sa-wod-modal';
 
-      // Extract unique customers and products for dropdowns
+      // Extract unique customers, products, and processes for dropdowns
       const customers = {};
       const products = {};
+      const processes = {};
       for (const wo of wos) {
         const c = wo.customerByCustomerId;
         if (c) customers[c.id] = c.name;
         const p = wo.productByProductId;
         if (p) products[p.id] = p.name;
+        const r = wo.recipeNodeByRecipeId;
+        if (r && r.name) processes[r.id] = r.name;
       }
 
       const customerOpts = Object.entries(customers)
@@ -221,6 +226,11 @@ const WODeadlineChanger = (() => {
         .join('');
 
       const productOpts = Object.entries(products)
+        .sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([id, name]) => `<option value="${id}">${name}</option>`)
+        .join('');
+
+      const processOpts = Object.entries(processes)
         .sort((a, b) => a[1].localeCompare(b[1]))
         .map(([id, name]) => `<option value="${id}">${name}</option>`)
         .join('');
@@ -239,6 +249,10 @@ const WODeadlineChanger = (() => {
             <option value="">Producto (todos)</option>
             ${productOpts}
           </select>
+          <select id="sa-wod-process">
+            <option value="">Proceso (todos)</option>
+            ${processOpts}
+          </select>
           <input type="text" id="sa-wod-ro" placeholder="Orden de venta...">
           <input type="text" id="sa-wod-name" placeholder="Nombre lote...">
         </div>
@@ -249,7 +263,7 @@ const WODeadlineChanger = (() => {
           </label>
           <div style="display:flex;align-items:center;gap:8px">
             <label style="font-size:12px;color:#94a3b8">Nueva fecha:</label>
-            <input type="date" id="sa-wod-date" style="padding:5px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px">
+            <input type="date" id="sa-wod-date" style="padding:6px 12px;border-radius:6px;border:2px solid #8b5cf6;background:#0f172a;color:#e2e8f0;font-size:14px;cursor:pointer;color-scheme:dark">
           </div>
         </div>
         <div class="sa-wod-grid" id="sa-wod-grid"></div>
@@ -276,12 +290,14 @@ const WODeadlineChanger = (() => {
         const cust = document.getElementById('sa-wod-customer').value;
         const pn = document.getElementById('sa-wod-pn').value.trim();
         const prod = document.getElementById('sa-wod-product').value;
+        const proc = document.getElementById('sa-wod-process').value;
         const ro = document.getElementById('sa-wod-ro').value.trim();
         const name = document.getElementById('sa-wod-name').value.trim();
         return {
           customerId: cust ? parseInt(cust) : null,
           partNumber: pn || null,
           productId: prod ? parseInt(prod) : null,
+          processId: proc ? parseInt(proc) : null,
           receivedOrder: ro || null,
           woName: name || null
         };
@@ -369,6 +385,7 @@ const WODeadlineChanger = (() => {
       };
       document.getElementById('sa-wod-customer').addEventListener('change', renderCards);
       document.getElementById('sa-wod-product').addEventListener('change', renderCards);
+      document.getElementById('sa-wod-process').addEventListener('change', renderCards);
       document.getElementById('sa-wod-pn').addEventListener('input', onFilter);
       document.getElementById('sa-wod-ro').addEventListener('input', onFilter);
       document.getElementById('sa-wod-name').addEventListener('input', onFilter);
