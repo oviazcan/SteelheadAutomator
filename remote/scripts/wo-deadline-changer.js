@@ -13,16 +13,18 @@ const WODeadlineChanger = (() => {
   // DATA
   // ══════════════════════════════════════════
 
-  async function fetchAllActiveWOs(onProgress) {
+  async function fetchAllActiveWOs(serverFilters, onProgress) {
     const all = [];
     const PAGE = 500;
     let offset = 0;
     while (true) {
-      const data = await api().query('AllWorkOrders', {
+      const vars = {
         status: 'ACTIVE', includeArchived: 'NO', couponWorkOrders: null,
         computeMargins: false, orderBy: ['ID_DESC'],
-        offset, first: PAGE, searchQuery: ''
-      }, 'AllWorkOrders');
+        offset, first: PAGE, searchQuery: '',
+        ...serverFilters
+      };
+      const data = await api().query('AllWorkOrders', vars, 'AllWorkOrders');
       const nodes = data?.pagedData?.nodes || [];
       const total = data?.pagedData?.totalCount || 0;
       all.push(...nodes);
@@ -77,14 +79,19 @@ const WODeadlineChanger = (() => {
 
   function parseURLFilters() {
     const params = new URLSearchParams(window.location.search);
-    const filters = {};
+    const serverFilters = {};
+    const uiDefaults = {};
     const customerFilter = params.get('customerIdFilter');
     if (customerFilter) {
-      try { filters.customerIds = JSON.parse(customerFilter); } catch (_) {
-        filters.customerIds = [parseInt(customerFilter)];
+      try {
+        const ids = JSON.parse(customerFilter);
+        serverFilters.customerIdFilter = Array.isArray(ids) ? ids : [ids];
+      } catch (_) {
+        serverFilters.customerIdFilter = [parseInt(customerFilter)];
       }
+      uiDefaults.customerId = serverFilters.customerIdFilter[0];
     }
-    return filters;
+    return { serverFilters, uiDefaults };
   }
 
   // ══════════════════════════════════════════
@@ -181,7 +188,7 @@ const WODeadlineChanger = (() => {
     return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  function showMainUI(wos, pnCache, urlFilters) {
+  function showMainUI(wos, pnCache, uiDefaults) {
     return new Promise((resolve) => {
       ensureStyles();
       const ov = document.createElement('div');
@@ -209,7 +216,7 @@ const WODeadlineChanger = (() => {
         .map(([id, name]) => `<option value="${id}">${name}</option>`)
         .join('');
 
-      const preCustomer = urlFilters.customerIds?.[0] || '';
+      const preCustomer = uiDefaults.customerId || '';
 
       md.innerHTML = `
         <h2 style="color:#8b5cf6">📅 Cambio Masivo de Plazos OT</h2>
@@ -383,10 +390,13 @@ const WODeadlineChanger = (() => {
   async function run() {
     log('=== CAMBIO DE PLAZOS OT ===');
 
-    // Phase 1: Load WOs
+    // Parse URL filters for server-side filtering
+    const { serverFilters, uiDefaults } = parseURLFilters();
+
+    // Phase 1: Load WOs with server filters
     showProgress('Cargando órdenes de trabajo...');
-    const wos = await fetchAllActiveWOs((msg) => showProgress(msg));
-    log(`OTs activas: ${wos.length}`);
+    const wos = await fetchAllActiveWOs(serverFilters, (msg) => showProgress(msg));
+    log(`OTs cargadas: ${wos.length}${Object.keys(serverFilters).length ? ' (filtradas por URL)' : ''}`);
 
     if (!wos.length) {
       hideProgress();
@@ -394,14 +404,13 @@ const WODeadlineChanger = (() => {
       return { error: 'Sin OTs activas' };
     }
 
-    // Phase 2: Enrich with PN data
+    // Phase 2: Enrich with PN data (only for loaded WOs)
     showProgress('Cargando números de parte...');
     const pnCache = await enrichWithPNData(wos, (msg) => showProgress(msg));
     hideProgress();
 
     // Phase 3: Show UI
-    const urlFilters = parseURLFilters();
-    const choice = await showMainUI(wos, pnCache, urlFilters);
+    const choice = await showMainUI(wos, pnCache, uiDefaults);
     if (choice.cancelled) return { cancelled: true };
 
     const { selectedIds, newDeadline } = choice;
