@@ -199,7 +199,34 @@ const WODeadlineChanger = (() => {
     return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  function showMainUI(wos, pnCache, uiDefaults) {
+  async function showMainUI(wos, pnCache, uiDefaults) {
+    // Fetch ALL customers and products for dropdowns (before showing UI)
+    let allCustomers = [];
+    try {
+      const custData = await api().query('AllCustomers', {
+        offset: 0, first: 5000, searchQuery: '', includeArchived: 'NO', orderBy: ['NAME_ASC']
+      }, 'AllCustomers');
+      allCustomers = custData?.pagedData?.nodes || [];
+    } catch (_) {
+      for (const wo of wos) {
+        const c = wo.customerByCustomerId;
+        if (c) allCustomers.push(c);
+      }
+    }
+
+    let allProducts = [];
+    try {
+      const prodData = await api().query('SearchProducts', {
+        searchQuery: '', first: 500, offset: 0, includeArchived: 'NO'
+      }, 'SearchProducts');
+      allProducts = prodData?.searchProducts?.nodes || prodData?.pagedData?.nodes || [];
+    } catch (_) {
+      for (const wo of wos) {
+        const p = wo.productByProductId;
+        if (p) allProducts.push(p);
+      }
+    }
+
     return new Promise((resolve) => {
       ensureStyles();
       const ov = document.createElement('div');
@@ -207,27 +234,25 @@ const WODeadlineChanger = (() => {
       const md = document.createElement('div');
       md.className = 'sa-wod-modal';
 
-      // Extract unique customers, products, and processes for dropdowns
-      const customers = {};
-      const products = {};
+      // Extract processes from loaded WOs
       const processes = {};
       for (const wo of wos) {
-        const c = wo.customerByCustomerId;
-        if (c) customers[c.id] = c.name;
-        const p = wo.productByProductId;
-        if (p) products[p.id] = p.name;
         const r = wo.recipeNodeByRecipeId;
         if (r && r.name) processes[r.id] = r.name;
       }
 
-      const customerOpts = Object.entries(customers)
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .map(([id, name]) => `<option value="${id}">${name}</option>`)
+      const seenCust = new Set();
+      const customerOpts = allCustomers
+        .filter(c => { if (seenCust.has(c.id)) return false; seenCust.add(c.id); return true; })
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(c => `<option value="${c.id}">${c.name}</option>`)
         .join('');
 
-      const productOpts = Object.entries(products)
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .map(([id, name]) => `<option value="${id}">${name}</option>`)
+      const seenProd = new Set();
+      const productOpts = allProducts
+        .filter(p => { if (seenProd.has(p.id)) return false; seenProd.add(p.id); return true; })
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(p => `<option value="${p.id}">${p.name}</option>`)
         .join('');
 
       const processOpts = Object.entries(processes)
@@ -244,6 +269,7 @@ const WODeadlineChanger = (() => {
             <option value="">Cliente (todos)</option>
             ${customerOpts}
           </select>
+          <button id="sa-wod-reload" class="sa-wod-btn" style="padding:4px 12px;font-size:11px;background:#334155;color:#e2e8f0;display:none" title="Recargar datos del servidor con nuevo filtro">🔄 Recargar</button>
           <input type="text" id="sa-wod-pn" placeholder="Número de parte...">
           <select id="sa-wod-product">
             <option value="">Producto (todos)</option>
@@ -282,6 +308,9 @@ const WODeadlineChanger = (() => {
       if (preCustomer) {
         document.getElementById('sa-wod-customer').value = preCustomer;
       }
+
+      // Track which customer was loaded server-side
+      const loadedCustomerId = preCustomer ? String(preCustomer) : '';
 
       const selected = new Set(wos.map(wo => wo.id));
       let filteredWOs = wos;
@@ -383,9 +412,24 @@ const WODeadlineChanger = (() => {
         clearTimeout(filterTimeout);
         filterTimeout = setTimeout(renderCards, 200);
       };
-      document.getElementById('sa-wod-customer').addEventListener('change', renderCards);
+      const checkReload = () => {
+        const custVal = document.getElementById('sa-wod-customer').value;
+        const reloadBtn = document.getElementById('sa-wod-reload');
+        // Show reload if customer changed from what was loaded server-side
+        reloadBtn.style.display = custVal !== loadedCustomerId ? '' : 'none';
+      };
+      document.getElementById('sa-wod-customer').addEventListener('change', () => { checkReload(); renderCards(); });
       document.getElementById('sa-wod-product').addEventListener('change', renderCards);
       document.getElementById('sa-wod-process').addEventListener('change', renderCards);
+
+      // Reload button
+      document.getElementById('sa-wod-reload').onclick = () => {
+        const custVal = document.getElementById('sa-wod-customer').value;
+        const newFilters = {};
+        if (custVal) newFilters.customerIdFilter = [parseInt(custVal)];
+        ov.parentNode.removeChild(ov);
+        resolve({ reload: newFilters });
+      };
       document.getElementById('sa-wod-pn').addEventListener('input', onFilter);
       document.getElementById('sa-wod-ro').addEventListener('input', onFilter);
       document.getElementById('sa-wod-name').addEventListener('input', onFilter);
@@ -414,33 +458,66 @@ const WODeadlineChanger = (() => {
   // ORCHESTRATOR
   // ══════════════════════════════════════════
 
+  async function loadData(serverFilters, existingPnCache) {
+    showProgress('Cargando órdenes de trabajo...');
+    const wos = await fetchAllActiveWOs(serverFilters, (msg) => showProgress(msg));
+    log(`OTs cargadas: ${wos.length}`);
+
+    showProgress('Cargando números de parte...');
+    const pnCache = existingPnCache || {};
+    // Only fetch PNs we don't already have cached
+    const uncached = [];
+    for (const wo of wos) {
+      for (const pnwo of (wo.partNumberWorkOrdersByWorkOrderId?.nodes || [])) {
+        if (pnwo.partNumberId && !pnCache[pnwo.partNumberId]) uncached.push(pnwo.partNumberId);
+      }
+    }
+    if (uncached.length > 0) {
+      const newPns = await enrichWithPNData(
+        wos.filter(wo => (wo.partNumberWorkOrdersByWorkOrderId?.nodes || []).some(p => uncached.includes(p.partNumberId))),
+        (msg) => showProgress(msg)
+      );
+      Object.assign(pnCache, newPns);
+    }
+    hideProgress();
+    return { wos, pnCache };
+  }
+
   async function run() {
     log('=== CAMBIO DE PLAZOS OT ===');
 
-    // Parse URL filters for server-side filtering
     const { serverFilters, uiDefaults } = parseURLFilters();
+    let currentServerFilters = serverFilters;
+    let currentUiDefaults = { ...uiDefaults };
+    let pnCache = {};
+    let finalChoice = null;
 
-    // Phase 1: Load WOs with server filters
-    showProgress('Cargando órdenes de trabajo...');
-    const wos = await fetchAllActiveWOs(serverFilters, (msg) => showProgress(msg));
-    log(`OTs cargadas: ${wos.length}${Object.keys(serverFilters).length ? ' (filtradas por URL)' : ''}`);
+    // Load → show UI → reload loop
+    while (true) {
+      const data = await loadData(currentServerFilters, pnCache);
+      pnCache = data.pnCache;
 
-    if (!wos.length) {
-      hideProgress();
-      log('Sin OTs activas');
-      return { error: 'Sin OTs activas' };
+      if (!data.wos.length) {
+        hideProgress();
+        log('Sin OTs activas con estos filtros');
+        return { error: 'Sin OTs activas' };
+      }
+
+      const choice = await showMainUI(data.wos, pnCache, currentUiDefaults);
+
+      if (choice.cancelled) return { cancelled: true };
+      if (choice.reload) {
+        currentServerFilters = choice.reload;
+        currentUiDefaults = { ...currentUiDefaults, customerId: currentServerFilters.customerIdFilter?.[0] || '' };
+        log(`Recargando con filtro: ${JSON.stringify(currentServerFilters)}`);
+        continue;
+      }
+
+      finalChoice = choice;
+      break;
     }
 
-    // Phase 2: Enrich with PN data (only for loaded WOs)
-    showProgress('Cargando números de parte...');
-    const pnCache = await enrichWithPNData(wos, (msg) => showProgress(msg));
-    hideProgress();
-
-    // Phase 3: Show UI
-    const choice = await showMainUI(wos, pnCache, uiDefaults);
-    if (choice.cancelled) return { cancelled: true };
-
-    const { selectedIds, newDeadline } = choice;
+    const { selectedIds, newDeadline } = finalChoice;
     log(`OTs seleccionadas: ${selectedIds.length}`);
     log(`Nueva fecha: ${newDeadline}`);
 
