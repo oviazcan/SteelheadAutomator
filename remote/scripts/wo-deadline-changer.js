@@ -202,21 +202,12 @@ const WODeadlineChanger = (() => {
   async function fetchDropdownOptions() {
     // Fetch catalogs + ALL active WOs (for counts) in parallel
     const [custResult, prodResult, procResult, woCountResult] = await Promise.allSettled([
-      // ALL customers (paginated)
+      // ALL customers via FilterSearch (fast)
       (async () => {
-        const all = [];
-        let offset = 0;
-        const PAGE = 500;
-        while (true) {
-          const d = await api().query('AllCustomers', {
-            offset, first: PAGE, searchQuery: '', includeArchived: 'NO', orderBy: ['NAME_ASC']
-          }, 'AllCustomers');
-          const nodes = d?.pagedData?.nodes || [];
-          all.push(...nodes);
-          if (nodes.length < PAGE) break;
-          offset += PAGE;
-        }
-        return all;
+        const d = await api().query('FilterSearch', {
+          key: 'customerIdFilter', searchQuery: ''
+        }, 'FilterSearch');
+        return (d?.tableFilterSearch || []).map(r => ({ id: parseInt(r.identifier), name: r.display }));
       })(),
       // ALL products
       (async () => {
@@ -225,21 +216,29 @@ const WODeadlineChanger = (() => {
         }, 'SearchProducts');
         return d?.searchProducts?.nodes || d?.pagedData?.nodes || [];
       })(),
-      // ALL processes
+      // ALL processes via FilterSearch
       (async () => {
         const d = await api().query('FilterSearch', {
-          key: 'processNodeIdFilter', searchQuery: ''
+          key: 'productIdFilter', searchQuery: ''
         }, 'FilterSearch');
-        return d?.tableFilterSearch || [];
+        // productIdFilter actually returns products — for processes we extract from WOs
+        return [];
       })(),
-      // ALL active WOs (lightweight, for counting)
+      // ALL active WOs (lightweight, for counting + process extraction)
       fetchAllActiveWOs({}, null)
     ]);
 
     const allCustomers = custResult.status === 'fulfilled' ? custResult.value : [];
     const allProducts = prodResult.status === 'fulfilled' ? prodResult.value : [];
-    const allProcesses = procResult.status === 'fulfilled' ? procResult.value : [];
     const allWOsForCounts = woCountResult.status === 'fulfilled' ? woCountResult.value : [];
+
+    // Extract processes from ALL active WOs (no separate query needed)
+    const processMap = {};
+    for (const wo of allWOsForCounts) {
+      const r = wo.recipeNodeByRecipeId;
+      if (r && r.id && r.name) processMap[r.id] = r.name;
+    }
+    const allProcesses = Object.entries(processMap).map(([id, name]) => ({ identifier: id, display: name }));
 
     // Build count maps
     const countByCustomer = {};
