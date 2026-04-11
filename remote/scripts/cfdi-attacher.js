@@ -121,7 +121,7 @@ const CfdiAttacher = (() => {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue;
           // Look for the email dialog — has heading "Send Invoice Email"
-          const heading = node.querySelector?.('h6, h5, h4, [class*="heading"]');
+          const heading = node.querySelector?.('h2, h3, h4, h5, h6, [class*="heading"]');
           if (heading && /send\s+invoice\s+email/i.test(heading.textContent)) {
             injectCheckbox(node);
             return;
@@ -129,7 +129,7 @@ const CfdiAttacher = (() => {
           // Also check if the node itself contains the dialog deeper
           const dialog = node.querySelector?.('[class*="dialog"], [class*="modal"], [role="dialog"]');
           if (dialog) {
-            const h = dialog.querySelector('h6, h5, h4, [class*="heading"]');
+            const h = dialog.querySelector('h2, h3, h4, h5, h6, [class*="heading"]');
             if (h && /send\s+(invoice|.*invoices)/i.test(h.textContent)) {
               injectCheckbox(dialog);
               return;
@@ -142,9 +142,9 @@ const CfdiAttacher = (() => {
     observer.observe(document.body, { childList: true, subtree: true });
 
     // One-time check for dialog already present in DOM
-    const existing = document.querySelector('[role="dialog"]');
+    const existing = document.querySelector('[role="dialog"], .MuiDialog-paper');
     if (existing) {
-      const h = existing.querySelector('h6, h5, h4, [class*="heading"]');
+      const h = existing.querySelector('h2, h3, h4, h5, h6, [class*="heading"]');
       if (h && /send\s+(invoice|.*invoices)/i.test(h.textContent)) {
         injectCheckbox(existing);
       }
