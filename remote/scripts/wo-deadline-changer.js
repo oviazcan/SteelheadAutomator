@@ -200,58 +200,46 @@ const WODeadlineChanger = (() => {
   }
 
   async function fetchDropdownOptions() {
-    // Fetch catalogs + ALL active WOs (for counts) in parallel
-    const [custResult, prodResult, procResult, woCountResult] = await Promise.allSettled([
-      // ALL customers via FilterSearch (fast)
-      (async () => {
-        const d = await api().query('FilterSearch', {
-          key: 'customerIdFilter', searchQuery: ''
-        }, 'FilterSearch');
-        return (d?.tableFilterSearch || []).map(r => ({ id: parseInt(r.identifier), name: r.display }));
-      })(),
-      // ALL products
+    // Fetch ALL active WOs (for counts + dropdown extraction) and products in parallel
+    const [prodResult, woCountResult] = await Promise.allSettled([
       (async () => {
         const d = await api().query('SearchProducts', {
           searchQuery: '', first: 500, offset: 0, includeArchived: 'NO'
         }, 'SearchProducts');
         return d?.searchProducts?.nodes || d?.pagedData?.nodes || [];
       })(),
-      // ALL processes via FilterSearch
-      (async () => {
-        const d = await api().query('FilterSearch', {
-          key: 'productIdFilter', searchQuery: ''
-        }, 'FilterSearch');
-        // productIdFilter actually returns products — for processes we extract from WOs
-        return [];
-      })(),
-      // ALL active WOs (lightweight, for counting + process extraction)
       fetchAllActiveWOs({}, null)
     ]);
 
-    const allCustomers = custResult.status === 'fulfilled' ? custResult.value : [];
     const allProducts = prodResult.status === 'fulfilled' ? prodResult.value : [];
-    const allWOsForCounts = woCountResult.status === 'fulfilled' ? woCountResult.value : [];
+    const allWOs = woCountResult.status === 'fulfilled' ? woCountResult.value : [];
 
-    // Extract processes from ALL active WOs (no separate query needed)
+    // Extract customers, processes, and counts from ALL active WOs
+    const customerMap = {};
     const processMap = {};
-    for (const wo of allWOsForCounts) {
-      const r = wo.recipeNodeByRecipeId;
-      if (r && r.id && r.name) processMap[r.id] = r.name;
-    }
-    const allProcesses = Object.entries(processMap).map(([id, name]) => ({ identifier: id, display: name }));
-
-    // Build count maps
     const countByCustomer = {};
     const countByProduct = {};
     const countByProcess = {};
-    for (const wo of allWOsForCounts) {
-      const cId = wo.customerByCustomerId?.id;
-      if (cId) countByCustomer[cId] = (countByCustomer[cId] || 0) + 1;
-      const pId = wo.productByProductId?.id;
-      if (pId) countByProduct[pId] = (countByProduct[pId] || 0) + 1;
-      const rId = wo.recipeNodeByRecipeId?.id;
-      if (rId) countByProcess[rId] = (countByProcess[rId] || 0) + 1;
+
+    for (const wo of allWOs) {
+      const c = wo.customerByCustomerId;
+      if (c && c.id) {
+        customerMap[c.id] = c.name;
+        countByCustomer[c.id] = (countByCustomer[c.id] || 0) + 1;
+      }
+      const p = wo.productByProductId;
+      if (p && p.id) {
+        countByProduct[p.id] = (countByProduct[p.id] || 0) + 1;
+      }
+      const r = wo.recipeNodeByRecipeId;
+      if (r && r.id && r.name) {
+        processMap[r.id] = r.name;
+        countByProcess[r.id] = (countByProcess[r.id] || 0) + 1;
+      }
     }
+
+    const allCustomers = Object.entries(customerMap).map(([id, name]) => ({ id: parseInt(id), name }));
+    const allProcesses = Object.entries(processMap).map(([id, name]) => ({ id: parseInt(id), name }));
 
     return { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess };
   }
@@ -284,9 +272,9 @@ const WODeadlineChanger = (() => {
         .join('');
 
       const processOpts = allProcesses
-        .filter(p => countByProcess[p.identifier])
-        .sort((a, b) => (countByProcess[b.identifier] || 0) - (countByProcess[a.identifier] || 0))
-        .map(p => `<option value="${p.identifier}">${p.display} (${countByProcess[p.identifier] || 0})</option>`)
+        .filter(p => countByProcess[p.id])
+        .sort((a, b) => (countByProcess[b.id] || 0) - (countByProcess[a.id] || 0))
+        .map(p => `<option value="${p.id}">${p.name} (${countByProcess[p.id] || 0})</option>`)
         .join('');
 
       const preCustomer = uiDefaults.customerId || '';
