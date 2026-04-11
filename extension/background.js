@@ -57,7 +57,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
           'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator',
           'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator',
-          'scripts/wo-deadline-changer.js': 'WODeadlineChanger' };
+          'scripts/wo-deadline-changer.js': 'WODeadlineChanger',
+          'scripts/cfdi-attacher.js': 'CfdiAttacher' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -105,6 +106,31 @@ async function getSteelheadTab() {
   if (!tab || !tab.url?.includes('app.gosteelhead.com')) throw new Error('Abre Steelhead primero (app.gosteelhead.com)');
   return tab;
 }
+
+// ── Auto-inject apps with autoInject flag ──
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return;
+  if (!tab.url?.includes('app.gosteelhead.com')) return;
+
+  try {
+    const config = cachedConfig || await loadConfig();
+    if (!config) return;
+
+    const autoApps = (config.apps || []).filter(a => a.autoInject);
+    for (const app of autoApps) {
+      // Check per-app enabled state (default: true)
+      // Storage key convention: camelCase appId + "Enabled" (e.g., cfdiAttacherEnabled)
+      const storageKey = app.id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()) + 'Enabled';
+      const stored = await chrome.storage.local.get(storageKey);
+      if (stored[storageKey] === false) continue;
+
+      await injectAppScripts(tabId, app.id);
+      console.log(`[SA] Auto-inyectado: ${app.id}`);
+    }
+  } catch (err) {
+    console.warn('[SA] Error en auto-inject:', err.message);
+  }
+});
 
 // ── Message Router ──
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -745,6 +771,19 @@ async function handleMessage(message) {
         }
       });
       return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    // ── CFDI Attacher ──
+    case 'toggle-cfdi-attacher': {
+      const { cfdiAttacherEnabled } = await chrome.storage.local.get('cfdiAttacherEnabled');
+      const newState = cfdiAttacherEnabled === false; // toggle (default is true)
+      await chrome.storage.local.set({ cfdiAttacherEnabled: newState });
+      return { enabled: newState, message: newState ? 'CFDI Attacher habilitado' : 'CFDI Attacher deshabilitado' };
+    }
+
+    case 'get-cfdi-attacher-status': {
+      const { cfdiAttacherEnabled } = await chrome.storage.local.get('cfdiAttacherEnabled');
+      return { enabled: cfdiAttacherEnabled !== false };
     }
 
     default: {
