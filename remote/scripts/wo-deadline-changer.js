@@ -9,6 +9,15 @@ const WODeadlineChanger = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  function labelTextColor(hex) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substring(0, 2), 16);
+    const g = parseInt(c.substring(2, 4), 16);
+    const b = parseInt(c.substring(4, 6), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.55 ? '#1e293b' : '#fff';
+  }
+
   // ══════════════════════════════════════════
   // DATA
   // ══════════════════════════════════════════
@@ -151,7 +160,7 @@ const WODeadlineChanger = (() => {
       .sa-wod-card .wo-num{font-size:13px;font-weight:700;color:#e2e8f0}
       .sa-wod-card .wo-ro{color:#60a5fa;font-size:10px}
       .sa-wod-card .wo-pn{color:#cbd5e1;margin-top:3px}
-      .sa-wod-card .wo-label{display:inline-block;padding:0 6px;border-radius:8px;font-size:9px;font-weight:600;color:#fff;margin:1px 2px;white-space:nowrap}
+      .sa-wod-card .wo-label{display:inline-block;padding:0 6px;border-radius:8px;font-size:9px;font-weight:600;margin:1px 2px;white-space:nowrap}
       .sa-wod-card .wo-date{color:#94a3b8;margin-top:3px}
       .sa-wod-bar{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:12px}
       .sa-wod-btn{padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
@@ -288,9 +297,10 @@ const WODeadlineChanger = (() => {
           const pnHTML = pns.map(pnwo => {
             const pn = pnCache[pnwo.partNumberId];
             if (!pn) return '';
-            const labelsHTML = pn.labels.map(l =>
-              `<span class="wo-label" style="background:${l.color}">${l.name}</span>`
-            ).join('');
+            const labelsHTML = pn.labels.map(l => {
+              const fg = labelTextColor(l.color);
+              return `<span class="wo-label" style="background:${l.color};color:${fg}">${l.name}</span>`;
+            }).join('');
             return `<div class="wo-pn">${pn.name} ${labelsHTML}</div>`;
           }).join('');
 
