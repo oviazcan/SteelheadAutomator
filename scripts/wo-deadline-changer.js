@@ -122,7 +122,7 @@ const WODeadlineChanger = (() => {
         if (!match) return false;
       }
 
-      if (filters.processId && String(wo.recipeNodeByRecipeId?.id) !== filters.processId) return false;
+      if (filters.processName && wo.recipeNodeByRecipeId?.name !== filters.processName) return false;
 
       if (filters.receivedOrder) {
         const q = filters.receivedOrder.toLowerCase();
@@ -232,14 +232,14 @@ const WODeadlineChanger = (() => {
         countByProduct[p.id] = (countByProduct[p.id] || 0) + 1;
       }
       const r = wo.recipeNodeByRecipeId;
-      if (r && r.id && r.name) {
-        processMap[r.id] = r.name;
-        countByProcess[r.id] = (countByProcess[r.id] || 0) + 1;
+      if (r && r.name) {
+        processMap[r.name] = r.name;
+        countByProcess[r.name] = (countByProcess[r.name] || 0) + 1;
       }
     }
 
     const allCustomers = Object.entries(customerMap).map(([id, name]) => ({ id: parseInt(id), name }));
-    const allProcesses = Object.entries(processMap).map(([id, name]) => ({ id: parseInt(id), name }));
+    const allProcesses = Object.keys(processMap).map(name => ({ id: name, name }));
 
     return { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess };
   }
@@ -343,7 +343,7 @@ const WODeadlineChanger = (() => {
           customerId: cust ? parseInt(cust) : null,
           partNumber: pn || null,
           productId: prod ? parseInt(prod) : null,
-          processId: proc || null,
+          processName: proc || null,
           receivedOrder: ro || null,
           woName: name || null
         };
