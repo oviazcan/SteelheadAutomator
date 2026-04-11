@@ -56,7 +56,8 @@ async function injectAppScripts(tabId, appId) {
         const globals = { 'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
           'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
           'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator',
-          'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator' };
+          'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator',
+          'scripts/wo-deadline-changer.js': 'WODeadlineChanger' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
