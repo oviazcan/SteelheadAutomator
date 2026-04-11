@@ -1,7 +1,7 @@
 {
-  "version": "0.3.0",
-  "lastUpdated": "2026-04-09",
-  "extensionVersion": "1.3.0",
+  "version": "0.4.0",
+  "lastUpdated": "2026-04-11",
+  "extensionVersion": "1.4.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
@@ -12,6 +12,8 @@
     "hashes": {
       "mutations": {
         "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163",
+        "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49",
+        "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa",
         "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129",
         "UpdateQuote": "765fc26af87241f0f614a51fe3583e10d2f1765dafb1426402f69dcc79e33a8e",
         "SaveQuoteLines": "b227e2f5a5b40021383077e58ab311169da2d5438d566bfe389fd7642e4d1937",
@@ -98,7 +100,8 @@
         "GetSpecFieldSpec": "4da5a5785f6a397fe3fac3b660cfdcc18cc94ab521823f43da476cc6ed1bd383",
         "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888",
         "ReceivingBatchesQuery": "499a8e1578fc09e785ecb7e6f132520bd6b8ac701e2f70e45e2b89484f0d89c9",
-        "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4"
+        "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4",
+        "InvoiceByIdInDomain": "9bfd1fe7ea06bf4b4c497ef0c79b799c5ebd60d6e113d25b5af7f8c0344ae3af"
       }
     },
     "domain": {
@@ -258,6 +261,17 @@
       "actions": [
         { "id": "run-wo-deadline", "label": "Cambiar Plazos", "sublabel": "Seleccionar OTs y aplicar nueva fecha", "icon": "📅", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
       ]
+    },
+    {
+      "id": "cfdi-attacher",
+      "name": "Adjuntar CFDI",
+      "subtitle": "Auto-adjunta XML CFDI al enviar facturas",
+      "icon": "📄",
+      "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"],
+      "autoInject": true,
+      "actions": [
+        { "id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher" }
+      ]
     }
   ],
   "knownOperations": {
@@ -330,8 +344,11 @@
     "GetUserEmailRecipients": { "type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator" },
     "SaveReceivedOrderLinesAndItems": { "type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator" },
     "UpdateReceivedOrder": { "type": "mutation", "description": "Actualizar custom inputs de OV (Divisa, RazonSocial)", "usedBy": "po-comparator" },
-    "SendEmailChecked": { "type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator" },
-    "CreateEmailLogReceivedOrder": { "type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator" }
+    "SendEmailChecked": { "type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher" },
+    "CreateEmailLogReceivedOrder": { "type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator" },
+    "InvoiceByIdInDomain": { "type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher" },
+    "CreateInvoicePdf": { "type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher" },
+    "CreateInvoiceEmailLog": { "type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
