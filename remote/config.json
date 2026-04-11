@@ -72,6 +72,7 @@
         "GetInventoryBatch": "c69e8870f297c6f93b546ec127c037f7c406fdc5f79afa60a30cc3e839ede041",
         "AllPartNumbers": "7e3e96166d1ee3ac25323ee9c83bce1a228ee64f14f78c79f05ba25a9102f18e",
         "AllWorkOrders": "415197b997290b10b5f84d51034eeb11436a91f7536771f8130be5717be1e920",
+        "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449",
         "AllReceivers": "8600e3cb01ca2b4f6a60e9e8951615f7b92886b9dfa101f69e1cc1c9f5162a45",
         "AllInventoryTypes": "c8df929bb155369cf5ee7c7939697cde53a939b644b9bd220bde662522537d4d",
         "SearchInventoryTypeItems": "83964a4ab84b6fae39d781127dd7b08d0a0dd852a3e3f85a812bbeda627a6c9a",
@@ -246,6 +247,16 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js"],
       "actions": [
         { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
+      ]
+    },
+    {
+      "id": "wo-deadline",
+      "name": "Cambio de Plazos OT",
+      "subtitle": "Actualizar fechas de entrega masivamente",
+      "icon": "📅",
+      "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"],
+      "actions": [
+        { "id": "run-wo-deadline", "label": "Cambiar Plazos", "sublabel": "Seleccionar OTs y aplicar nueva fecha", "icon": "📅", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
       ]
     }
   ],
