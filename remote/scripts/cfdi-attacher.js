@@ -158,40 +158,38 @@ const CfdiAttacher = (() => {
     if (dialog.querySelector('#sa-cfdi-toggle')) return;
     if (!enabled) return;
 
-    // Find the toggle area — look for the last toggle row (Visible to Others)
-    // Steelhead uses a consistent structure with label + switch per row
-    const allLabels = dialog.querySelectorAll('label, span, div');
-    let toggleContainer = null;
-
-    for (const el of allLabels) {
-      const text = el.textContent?.trim();
-      if (text === 'Visible to Others' || text === 'Attach PDF' || text === 'Attach PDFs') {
-        // Walk up to find the row container
-        toggleContainer = el.closest('[class*="row"], [class*="flex"], [class*="switch"]')
-          || el.parentElement?.parentElement;
+    // Steelhead email dialog uses a MUI Table with <tr> rows for each toggle
+    // (Logo, Attach PDF, Visible to Others). Find the last toggle row.
+    let lastToggleRow = null;
+    const rows = dialog.querySelectorAll('tr');
+    for (const tr of rows) {
+      const text = tr.textContent?.trim();
+      if (/^(Logo|Attach PDFs?|Visible to Others)$/.test(text.replace(/\s+/g, ' '))) {
+        lastToggleRow = tr;
       }
     }
 
-    if (!toggleContainer) {
+    if (!lastToggleRow) {
       console.warn('[CFDI] No se encontró la zona de toggles del diálogo');
-      // Fallback: insert before the SEND button area
-      const sendBtn = dialog.querySelector('button[class*="send"], button[class*="primary"]');
-      toggleContainer = sendBtn?.parentElement?.parentElement;
-    }
-
-    if (!toggleContainer) {
-      console.warn('[CFDI] No se pudo inyectar checkbox');
       return;
     }
 
-    // Build the checkbox row
-    const row = document.createElement('div');
-    row.id = 'sa-cfdi-toggle';
-    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:8px 16px; margin-top:4px;';
+    // Build a new <tr> matching the MUI table structure
+    const tr = document.createElement('tr');
+    tr.id = 'sa-cfdi-toggle';
+    tr.className = lastToggleRow.className; // inherit MUI row classes
 
-    const label = document.createElement('span');
-    label.textContent = 'Adjuntar XML(s) CFDI';
-    label.style.cssText = 'color:#e0e0e0; font-size:14px; font-weight:500;';
+    const tdLabel = document.createElement('td');
+    tdLabel.className = lastToggleRow.querySelector('td')?.className || '';
+    const labelP = document.createElement('p');
+    labelP.textContent = 'Adjuntar XML(s) CFDI';
+    labelP.className = lastToggleRow.querySelector('p')?.className || '';
+    tdLabel.appendChild(labelP);
+
+    const tdToggle = document.createElement('td');
+    const lastTds = lastToggleRow.querySelectorAll('td');
+    tdToggle.className = lastTds[lastTds.length - 1]?.className || '';
+    tdToggle.style.textAlign = 'right';
 
     const toggle = document.createElement('input');
     toggle.type = 'checkbox';
@@ -199,14 +197,15 @@ const CfdiAttacher = (() => {
     toggle.id = 'sa-cfdi-checkbox';
     toggle.style.cssText = 'width:18px; height:18px; cursor:pointer; accent-color:#c13c26;';
 
-    row.appendChild(label);
-    row.appendChild(toggle);
+    tdToggle.appendChild(toggle);
+    tr.appendChild(tdLabel);
+    tr.appendChild(tdToggle);
 
-    // Insert after the toggle container
-    toggleContainer.parentElement.insertBefore(row, toggleContainer.nextSibling);
+    // Insert after the last toggle row
+    lastToggleRow.parentElement.insertBefore(tr, lastToggleRow.nextSibling);
 
     // Check which invoices are missing XML
-    addWarnings(row);
+    addWarnings(tr);
 
     console.log('[CFDI] Checkbox inyectado en diálogo');
   }
