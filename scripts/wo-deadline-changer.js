@@ -135,6 +135,21 @@ const WODeadlineChanger = (() => {
         if (!(wo.name || '').toLowerCase().includes(q)) return false;
       }
 
+      if (filters.deadlineDate) {
+        const woDate = wo.deadline ? wo.deadline.substring(0, 10) : '';
+        if (woDate !== filters.deadlineDate) return false;
+      }
+
+      if (filters.createdFrom) {
+        const woCreated = wo.createdAt ? wo.createdAt.substring(0, 10) : '';
+        if (woCreated < filters.createdFrom) return false;
+      }
+
+      if (filters.createdTo) {
+        const woCreated = wo.createdAt ? wo.createdAt.substring(0, 10) : '';
+        if (woCreated > filters.createdTo) return false;
+      }
+
       return true;
     });
   }
@@ -299,6 +314,20 @@ const WODeadlineChanger = (() => {
           <input type="text" id="sa-wod-ro" placeholder="Orden de venta...">
           <input type="text" id="sa-wod-name" placeholder="Nombre lote...">
         </div>
+        <div class="sa-wod-filters" style="margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:4px">
+            <label style="font-size:11px;color:#94a3b8;white-space:nowrap">Fecha límite:</label>
+            <input type="date" id="sa-wod-deadline-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;color-scheme:dark">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <label style="font-size:11px;color:#94a3b8;white-space:nowrap">Creada desde:</label>
+            <input type="date" id="sa-wod-created-from" style="padding:4px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;color-scheme:dark">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <label style="font-size:11px;color:#94a3b8;white-space:nowrap">hasta:</label>
+            <input type="date" id="sa-wod-created-to" style="padding:4px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;color-scheme:dark">
+          </div>
+        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <label style="font-size:12px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px">
             <input type="checkbox" id="sa-wod-selall" checked> Seleccionar todo
@@ -339,13 +368,19 @@ const WODeadlineChanger = (() => {
         const proc = document.getElementById('sa-wod-process').value;
         const ro = document.getElementById('sa-wod-ro').value.trim();
         const name = document.getElementById('sa-wod-name').value.trim();
+        const deadlineDate = document.getElementById('sa-wod-deadline-filter').value;
+        const createdFrom = document.getElementById('sa-wod-created-from').value;
+        const createdTo = document.getElementById('sa-wod-created-to').value;
         return {
           customerId: cust ? parseInt(cust) : null,
           partNumber: pn || null,
           productId: prod ? parseInt(prod) : null,
           processName: proc || null,
           receivedOrder: ro || null,
-          woName: name || null
+          woName: name || null,
+          deadlineDate: deadlineDate || null,
+          createdFrom: createdFrom || null,
+          createdTo: createdTo || null
         };
       }
 
@@ -450,6 +485,9 @@ const WODeadlineChanger = (() => {
       document.getElementById('sa-wod-pn').addEventListener('input', onFilter);
       document.getElementById('sa-wod-ro').addEventListener('input', onFilter);
       document.getElementById('sa-wod-name').addEventListener('input', onFilter);
+      document.getElementById('sa-wod-deadline-filter').addEventListener('change', renderCards);
+      document.getElementById('sa-wod-created-from').addEventListener('change', renderCards);
+      document.getElementById('sa-wod-created-to').addEventListener('change', renderCards);
       document.getElementById('sa-wod-date').addEventListener('change', updateCounts);
 
       // Cancel
