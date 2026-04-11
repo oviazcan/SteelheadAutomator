@@ -122,7 +122,7 @@ const WODeadlineChanger = (() => {
         if (!match) return false;
       }
 
-      if (filters.processId && wo.recipeNodeByRecipeId?.id !== filters.processId) return false;
+      if (filters.processId && String(wo.recipeNodeByRecipeId?.id) !== filters.processId) return false;
 
       if (filters.receivedOrder) {
         const q = filters.receivedOrder.toLowerCase();
@@ -199,33 +199,45 @@ const WODeadlineChanger = (() => {
     return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  async function showMainUI(wos, pnCache, uiDefaults) {
-    // Fetch ALL customers and products for dropdowns (before showing UI)
-    let allCustomers = [];
+  async function fetchDropdownOptions() {
+    // Fetch ALL customers (paginated)
+    const allCustomers = [];
     try {
-      const custData = await api().query('AllCustomers', {
-        offset: 0, first: 5000, searchQuery: '', includeArchived: 'NO', orderBy: ['NAME_ASC']
-      }, 'AllCustomers');
-      allCustomers = custData?.pagedData?.nodes || [];
-    } catch (_) {
-      for (const wo of wos) {
-        const c = wo.customerByCustomerId;
-        if (c) allCustomers.push(c);
+      let offset = 0;
+      const PAGE = 500;
+      while (true) {
+        const custData = await api().query('AllCustomers', {
+          offset, first: PAGE, searchQuery: '', includeArchived: 'NO', orderBy: ['NAME_ASC']
+        }, 'AllCustomers');
+        const nodes = custData?.pagedData?.nodes || [];
+        allCustomers.push(...nodes);
+        if (nodes.length < PAGE) break;
+        offset += PAGE;
       }
-    }
+    } catch (_) {}
 
+    // Fetch ALL products
     let allProducts = [];
     try {
       const prodData = await api().query('SearchProducts', {
         searchQuery: '', first: 500, offset: 0, includeArchived: 'NO'
       }, 'SearchProducts');
       allProducts = prodData?.searchProducts?.nodes || prodData?.pagedData?.nodes || [];
-    } catch (_) {
-      for (const wo of wos) {
-        const p = wo.productByProductId;
-        if (p) allProducts.push(p);
-      }
-    }
+    } catch (_) {}
+
+    // Fetch ALL processes via FilterSearch
+    let allProcesses = [];
+    try {
+      const procData = await api().query('FilterSearch', {
+        key: 'processNodeIdFilter', searchQuery: ''
+      }, 'FilterSearch');
+      allProcesses = procData?.tableFilterSearch || [];
+    } catch (_) {}
+
+    return { allCustomers, allProducts, allProcesses };
+  }
+
+  async function showMainUI(wos, pnCache, uiDefaults, dropdownCache) {
 
     return new Promise((resolve) => {
       ensureStyles();
@@ -234,12 +246,7 @@ const WODeadlineChanger = (() => {
       const md = document.createElement('div');
       md.className = 'sa-wod-modal';
 
-      // Extract processes from loaded WOs
-      const processes = {};
-      for (const wo of wos) {
-        const r = wo.recipeNodeByRecipeId;
-        if (r && r.name) processes[r.id] = r.name;
-      }
+      const { allCustomers, allProducts, allProcesses } = dropdownCache;
 
       const seenCust = new Set();
       const customerOpts = allCustomers
@@ -255,9 +262,9 @@ const WODeadlineChanger = (() => {
         .map(p => `<option value="${p.id}">${p.name}</option>`)
         .join('');
 
-      const processOpts = Object.entries(processes)
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .map(([id, name]) => `<option value="${id}">${name}</option>`)
+      const processOpts = allProcesses
+        .sort((a, b) => (a.display || '').localeCompare(b.display || ''))
+        .map(p => `<option value="${p.identifier}">${p.display}</option>`)
         .join('');
 
       const preCustomer = uiDefaults.customerId || '';
@@ -326,7 +333,7 @@ const WODeadlineChanger = (() => {
           customerId: cust ? parseInt(cust) : null,
           partNumber: pn || null,
           productId: prod ? parseInt(prod) : null,
-          processId: proc ? parseInt(proc) : null,
+          processId: proc || null,
           receivedOrder: ro || null,
           woName: name || null
         };
@@ -492,6 +499,10 @@ const WODeadlineChanger = (() => {
     let pnCache = {};
     let finalChoice = null;
 
+    // Fetch dropdown options once (shared across reloads)
+    showProgress('Cargando catálogos...');
+    const dropdownCache = await fetchDropdownOptions();
+
     // Load → show UI → reload loop
     while (true) {
       const data = await loadData(currentServerFilters, pnCache);
@@ -503,7 +514,7 @@ const WODeadlineChanger = (() => {
         return { error: 'Sin OTs activas' };
       }
 
-      const choice = await showMainUI(data.wos, pnCache, currentUiDefaults);
+      const choice = await showMainUI(data.wos, pnCache, currentUiDefaults, dropdownCache);
 
       if (choice.cancelled) return { cancelled: true };
       if (choice.reload) {
