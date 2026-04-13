@@ -2303,12 +2303,17 @@ Reglas:
     runWithUI,
     parsePDF,
     findSalesOrder,
+    findCandidateOVs,
     loadSalesOrder,
     compareOrders,
     getCustomerIdFromURL,
     checkAttachedPDF,
     loadDiscrepancyData,
-    matchLinesByPN
+    matchLinesByPN,
+    uploadAndAttachPDF,
+    createNewOV,
+    adoptExistingOV,
+    fetchCreationData
   };
 })();
 
