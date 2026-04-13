@@ -649,6 +649,117 @@ Reglas:
     });
   }
 
+  async function createNewOV(formData, pdfData, pdfFile) {
+    log('Creando OV nueva...');
+
+    // Step 1: Create the OV
+    const createResult = await api().query('CreateReceivedOrder', formData);
+    const newOV = createResult?.createReceivedOrder?.receivedOrder;
+    if (!newOV) throw new Error('CreateReceivedOrder no devolvió OV');
+
+    const ovId = newOV.idInDomain;
+    const ovInternalId = newOV.id;
+    log(`OV creada: #${ovId} (id: ${ovInternalId})`);
+
+    // Step 2: Add lines from PDF
+    // We need to resolve partNumberIds for each PDF line
+    log('Resolviendo números de parte...');
+    const lineItems = [];
+    for (const pdfLine of pdfData.lines) {
+      if (!pdfLine.partNumber) continue;
+
+      // Search for PN in Steelhead
+      let partNumberId = null;
+      let partNumberPriceId = null;
+      try {
+        const pnData = await api().query('PartNumberCreatableSelectGetPartNumbers', {
+          name: `%${pdfLine.partNumber}%`,
+          searchQuery: '',
+          hideCustomerPartsWhenNoCustomerIdFilter: true,
+          customerId: formData.customerId || null,
+          specIds: [],
+          paramIds: []
+        });
+        const pns = pnData?.searchPartNumbers?.nodes || [];
+        // Exact match first
+        const exactMatch = pns.find(p => normalizePN(p.label) === normalizePN(pdfLine.partNumber));
+        const pnMatch = exactMatch || pns[0];
+        if (pnMatch) {
+          partNumberId = pnMatch.value || pnMatch.id;
+
+          // Get price for this PN + customer
+          if (partNumberId && formData.customerId) {
+            try {
+              const priceData = await api().query('SearchPartNumberPrices', {
+                searchQuery: '%%',
+                partNumberId,
+                customerId: formData.customerId,
+                first: 5
+              });
+              const prices = priceData?.allPartNumberPrices?.nodes || [];
+              if (prices.length > 0) {
+                partNumberPriceId = prices[0].id;
+              }
+            } catch (e) {
+              warn(`No se encontró precio para PN ${pdfLine.partNumber}: ${e.message}`);
+            }
+          }
+        }
+      } catch (e) {
+        warn(`No se encontró PN "${pdfLine.partNumber}" en Steelhead: ${e.message}`);
+      }
+
+      lineItems.push({
+        lineNumber: pdfLine.lineNumber,
+        partNumberId,
+        partNumberPriceId,
+        quantity: pdfLine.quantity,
+        partNumber: pdfLine.partNumber // Keep for logging
+      });
+    }
+
+    // Log resolution results
+    const resolved = lineItems.filter(l => l.partNumberId).length;
+    log(`${resolved}/${lineItems.length} PNs resueltos en Steelhead`);
+
+    // Build receivedOrderLines for SaveReceivedOrderLinesAndItems
+    // Only include lines where we found the PN
+    const receivedOrderLines = lineItems
+      .filter(l => l.partNumberId)
+      .map(l => ({
+        lineNumber: l.lineNumber,
+        partNumberId: l.partNumberId,
+        quantity: l.quantity,
+        partNumberPriceId: l.partNumberPriceId || undefined
+      }));
+
+    if (receivedOrderLines.length > 0) {
+      log(`Agregando ${receivedOrderLines.length} líneas a la OV...`);
+      await api().query('SaveReceivedOrderLinesAndItems', {
+        receivedOrderId: ovInternalId,
+        receivedOrderLines,
+        receivedOrderItems: []
+      });
+      log('Líneas agregadas exitosamente');
+    }
+
+    // Log unresolved lines
+    const unresolved = lineItems.filter(l => !l.partNumberId);
+    if (unresolved.length > 0) {
+      warn(`${unresolved.length} líneas no se pudieron agregar (PN no encontrado): ${unresolved.map(l => l.partNumber).join(', ')}`);
+    }
+
+    // Step 3: Attach PDF
+    try {
+      await uploadAndAttachPDF(pdfFile, ovInternalId);
+    } catch (e) {
+      warn(`No se pudo adjuntar PDF: ${e.message}`);
+    }
+
+    log(`OV #${ovId} creada con ${receivedOrderLines.length} líneas`);
+    return ovId;
+  }
+
   async function loadSalesOrder(receivedOrderId) {
     log(`Cargando OV ${receivedOrderId}...`);
 
