@@ -470,6 +470,185 @@ Reglas:
     };
   }
 
+  function showCreationWizard(pdfData, creationData, customerId) {
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      // Infer divisa from PDF
+      const inferredDivisa = normalizeCurrency(pdfData.currency);
+      // Infer razón social with fuzzy match
+      const inferredRazon = creationData.razonSocialOptions.find(opt =>
+        fuzzyMatch(opt, pdfData.customer || '')
+      ) || '';
+
+      // Calculate default deadline
+      let defaultDeadline = '';
+      if (creationData.defaultLeadTime) {
+        const lead = creationData.defaultLeadTime;
+        const days = (lead.hours || 0) / 24 + (lead.days || 0);
+        const d = new Date();
+        d.setDate(d.getDate() + Math.max(days, 1));
+        defaultDeadline = d.toISOString().split('T')[0];
+      } else {
+        const d = new Date();
+        d.setDate(d.getDate() + 14); // Default 2 weeks
+        defaultDeadline = d.toISOString().split('T')[0];
+      }
+
+      // Build dropdowns
+      const contactOpts = creationData.contacts.map(c =>
+        `<option value="${c.id}" ${c === creationData.defaultContact ? 'selected' : ''}>${escHtml(c.name)}${c.email ? ' (' + escHtml(c.email) + ')' : ''}</option>`
+      ).join('');
+
+      const billToOpts = creationData.addresses.filter(a => a.useForBilling !== false).map(a =>
+        `<option value="${a.id}" ${a === creationData.defaultBillTo ? 'selected' : ''}>${escHtml(a.identifier || a.address || 'ID ' + a.id)}</option>`
+      ).join('');
+
+      const shipToOpts = creationData.addresses.filter(a => a.useForShipping !== false).map(a =>
+        `<option value="${a.id}" ${a === creationData.defaultShipTo ? 'selected' : ''}>${escHtml(a.identifier || a.address || 'ID ' + a.id)}</option>`
+      ).join('');
+
+      const divisaOpts = creationData.divisaOptions.map(d =>
+        `<option value="${d}" ${d === inferredDivisa ? 'selected' : ''}>${escHtml(d)}</option>`
+      ).join('');
+
+      const razonOpts = ['', ...creationData.razonSocialOptions].map(r =>
+        `<option value="${escHtml(r)}" ${r === inferredRazon ? 'selected' : ''}>${r || '(seleccione)'}</option>`
+      ).join('');
+
+      const verificadoOpts = ['', ...creationData.verificadoOptions].map(v =>
+        `<option value="${escHtml(v)}">${v || '(seleccione)'}</option>`
+      ).join('');
+
+      const orderTypeOpts = ['MAKE_TO_ORDER', 'MAKE_TO_STOCK', 'INVENTORY'].map(t =>
+        `<option value="${t}" ${t === creationData.defaultOrderType ? 'selected' : ''}>${t.replace(/_/g, ' ')}</option>`
+      ).join('');
+
+      md.innerHTML = `
+        <h2>Crear Orden de Venta</h2>
+        <p class="dl9-sub">Se creará una nueva OV con los datos extraídos del PDF. Verifica antes de confirmar.</p>
+        <div class="wizard-form">
+
+          <div class="wizard-group">Identificación</div>
+          <div class="wizard-field">
+            <label>Nombre (PO)</label>
+            <input type="text" id="wiz-name" value="${escHtml(pdfData.poNumber || '')}">
+          </div>
+          <div class="wizard-field">
+            <label>Tipo de orden</label>
+            <select id="wiz-type">${orderTypeOpts}</select>
+          </div>
+
+          <div class="wizard-group">Contacto</div>
+          <div class="wizard-field">
+            <label>Contacto del cliente</label>
+            <select id="wiz-contact">${contactOpts || '<option value="">(sin contactos)</option>'}</select>
+          </div>
+          <div class="wizard-field">
+            <label>Plazo de entrega</label>
+            <input type="date" id="wiz-deadline" value="${defaultDeadline}">
+          </div>
+
+          <div class="wizard-group">Direcciones</div>
+          <div class="wizard-field">
+            <label>Dirección de facturación</label>
+            <select id="wiz-billto">${billToOpts || '<option value="">(sin direcciones)</option>'}</select>
+          </div>
+          <div class="wizard-field">
+            <label>Dirección de envío</label>
+            <select id="wiz-shipto">${shipToOpts || '<option value="">(sin direcciones)</option>'}</select>
+          </div>
+
+          <div class="wizard-group">Términos</div>
+          <div class="wizard-field">
+            <label>Invoice terms</label>
+            <input type="text" id="wiz-invoiceterms" value="${escHtml(creationData.invoiceTerms?.terms || '')}" data-id="${creationData.invoiceTerms?.id || ''}" readonly style="opacity:0.7">
+          </div>
+          <div class="wizard-field">
+            <label>Ship via</label>
+            <input type="text" id="wiz-shipvia" value="Flete Propio">
+          </div>
+
+          <div class="wizard-group">Custom inputs</div>
+          <div class="wizard-field">
+            <label>Divisa</label>
+            <select id="wiz-divisa">${divisaOpts}</select>
+          </div>
+          <div class="wizard-field">
+            <label>Razón Social Venta</label>
+            <select id="wiz-razon">${razonOpts}</select>
+          </div>
+          <div class="wizard-field">
+            <label>Verificado por</label>
+            <select id="wiz-verificado">${verificadoOpts}</select>
+          </div>
+
+          <div class="wizard-group">Opciones</div>
+          <div class="wizard-field wizard-check">
+            <input type="checkbox" id="wiz-blockpartial">
+            <label for="wiz-blockpartial" style="text-transform:none;font-size:13px">Bloquear envíos parciales</label>
+          </div>
+          <div class="wizard-field wizard-check">
+            <input type="checkbox" id="wiz-blanket">
+            <label for="wiz-blanket" style="text-transform:none;font-size:13px">Orden abierta (blanket)</label>
+          </div>
+
+        </div>
+        <p style="font-size:11px;color:#64748b;margin-top:8px">${pdfData.lines.length} líneas del PDF se agregarán automáticamente a la OV.</p>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="wiz-cancel">Cancelar</button>
+          <button class="dl9-btn dl9-btn-primary" id="wiz-create">Crear OV</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#wiz-create').addEventListener('click', () => {
+        const deadlineDate = md.querySelector('#wiz-deadline').value;
+        const deadlineISO = deadlineDate
+          ? new Date(deadlineDate + 'T' + creationData.deadlineCutoffTime).toISOString()
+          : new Date(Date.now() + 14 * 86400000).toISOString();
+
+        const formData = {
+          name: md.querySelector('#wiz-name').value.trim(),
+          customerId: parseInt(customerId, 10),
+          deadline: deadlineISO,
+          customerContactId: parseInt(md.querySelector('#wiz-contact').value, 10) || null,
+          billToAddressId: parseInt(md.querySelector('#wiz-billto').value, 10) || null,
+          shipToAddressId: parseInt(md.querySelector('#wiz-shipto').value, 10) || null,
+          invoiceTermsId: parseInt(md.querySelector('#wiz-invoiceterms').dataset.id, 10) || null,
+          shipVia: md.querySelector('#wiz-shipvia').value.trim(),
+          type: md.querySelector('#wiz-type').value,
+          blockPartialShipments: md.querySelector('#wiz-blockpartial').checked,
+          isBlanketOrder: md.querySelector('#wiz-blanket').checked,
+          sectorId: creationData.sector?.id || null,
+          inputSchemaId: creationData.inputSchemaId,
+          customInputs: {
+            Divisa: md.querySelector('#wiz-divisa').value,
+            RazonSocialVenta: md.querySelector('#wiz-razon').value,
+            VerificadaPor: md.querySelector('#wiz-verificado').value
+          }
+        };
+
+        // Remove null fields
+        for (const key of Object.keys(formData)) {
+          if (formData[key] === null || formData[key] === '' || Number.isNaN(formData[key])) {
+            delete formData[key];
+          }
+        }
+
+        removeOverlay();
+        resolve(formData);
+      });
+
+      md.querySelector('#wiz-cancel').addEventListener('click', () => {
+        removeOverlay();
+        resolve(null);
+      });
+    });
+  }
+
   async function loadSalesOrder(receivedOrderId) {
     log(`Cargando OV ${receivedOrderId}...`);
 
@@ -920,6 +1099,15 @@ Reglas:
       .dl9-poc-modal .badge-similar{background:rgba(52,211,153,0.15);color:#34d399}
       .dl9-poc-modal .candidate-create{border-style:dashed;border-color:#475569}
       .dl9-poc-modal .candidate-create:hover{border-color:#f59e0b}
+      .dl9-poc-modal .wizard-form{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin:16px 0}
+      .dl9-poc-modal .wizard-form .full-width{grid-column:1/-1}
+      .dl9-poc-modal .wizard-field{display:flex;flex-direction:column;gap:3px}
+      .dl9-poc-modal .wizard-field label{font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+      .dl9-poc-modal .wizard-field input,.dl9-poc-modal .wizard-field select{padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px}
+      .dl9-poc-modal .wizard-field input:focus,.dl9-poc-modal .wizard-field select:focus{outline:none;border-color:#38bdf8}
+      .dl9-poc-modal .wizard-group{grid-column:1/-1;font-size:12px;color:#38bdf8;font-weight:600;margin-top:8px;padding-bottom:4px;border-bottom:1px solid #1e293b}
+      .dl9-poc-modal .wizard-field input[type=checkbox]{width:16px;height:16px;accent-color:#38bdf8}
+      .dl9-poc-modal .wizard-check{flex-direction:row;align-items:center;gap:8px}
     `;
     document.head.appendChild(s);
   }
