@@ -332,6 +332,40 @@ Reglas:
     });
   }
 
+  // ── PDF Upload & Attach ────────────────────────────────────
+
+  async function uploadAndAttachPDF(file, receivedOrderId) {
+    log(`Subiendo PDF "${file.name}" y adjuntando a OV...`);
+
+    // Step 1: Upload binary
+    const formData = new FormData();
+    formData.append('myfile', file, file.name);
+
+    const uploadResp = await fetch('/api/files', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+
+    if (!uploadResp.ok) throw new Error(`Upload HTTP ${uploadResp.status}`);
+    const uploadResult = await uploadResp.json();
+    log(`Archivo subido: ${uploadResult.name}`);
+
+    // Step 2: Register file in Steelhead
+    await api().query('CreateUserFile', {
+      name: uploadResult.name,
+      originalName: file.name
+    });
+
+    // Step 3: Link to received order
+    await api().query('CreateReceivedOrderUserFile', {
+      receivedOrderId: receivedOrderId,
+      userFileName: uploadResult.name
+    });
+
+    log(`PDF adjuntado a OV exitosamente`);
+  }
+
   async function loadSalesOrder(receivedOrderId) {
     log(`Cargando OV ${receivedOrderId}...`);
 
