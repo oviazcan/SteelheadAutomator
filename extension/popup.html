@@ -249,6 +249,23 @@
     body.dark-mode .btn-settings-save:hover { background: #0ea5e9; }
     #settings-save-msg { font-size: 11px; color: #2e7d32; }
     body.dark-mode #settings-save-msg { color: #4ade80; }
+
+    .user-mgmt { padding: 0 16px 14px; }
+    .user-mgmt h3 { font-size: 13px; font-weight: 700; color: var(--text-body); margin-bottom: 8px; }
+    .user-mgmt-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .user-mgmt-list::-webkit-scrollbar { width: 6px; }
+    .user-mgmt-list::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    .user-mgmt-row {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+      border-radius: 6px; background: var(--bg-card); border: 1px solid var(--border-card); font-size: 12px;
+    }
+    .user-mgmt-row .user-avatar {
+      width: 24px; height: 24px; border-radius: 50%; background: var(--border-card); object-fit: cover;
+    }
+    .user-mgmt-row .user-name { flex: 1; font-weight: 500; color: var(--text-body); }
+    .user-mgmt-row .user-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+    .user-mgmt-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    .user-mgmt-loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 12px; }
   </style>
 </head>
 <body>
@@ -319,6 +336,10 @@
         <button class="btn-settings-save" id="btn-save-api-key">Guardar</button>
         <span id="settings-save-msg"></span>
       </div>
+    </div>
+    <div class="user-mgmt" id="user-mgmt" style="display:none">
+      <h3>Acceso a la extensión</h3>
+      <div id="user-mgmt-content" class="user-mgmt-loading">Cargando usuarios...</div>
     </div>
   </div>
 

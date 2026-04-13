@@ -104,7 +104,8 @@
         "ReceivingBatchesQuery": "499a8e1578fc09e785ecb7e6f132520bd6b8ac701e2f70e45e2b89484f0d89c9",
         "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4",
         "InvoiceByIdInDomain": "9bfd1fe7ea06bf4b4c497ef0c79b799c5ebd60d6e113d25b5af7f8c0344ae3af",
-        "CurrentUser": "18c6574c779e24f19b19e303b1b7c176601eb44e4dfd1860d2d925fd976c779e"
+        "CurrentUser": "18c6574c779e24f19b19e303b1b7c176601eb44e4dfd1860d2d925fd976c779e",
+        "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c"
       }
     },
     "domain": {
@@ -373,7 +374,8 @@
     "InvoiceByIdInDomain": { "type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher" },
     "CreateInvoicePdf": { "type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher" },
     "CreateInvoiceEmailLog": { "type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher" },
-    "CurrentUser": { "type": "query", "description": "Usuario actual logueado con permisos y config de dominio", "usedBy": "permissions" }
+    "CurrentUser": { "type": "query", "description": "Usuario actual logueado con permisos y config de dominio", "usedBy": "permissions" },
+    "GlobalUsers": { "type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions" }
   },
   "scripts": [
     "scripts/steelhead-api.js",

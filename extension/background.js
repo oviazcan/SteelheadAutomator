@@ -219,6 +219,36 @@ async function handleMessage(message, sender) {
       }
     }
 
+    case 'get-all-users': {
+      try {
+        const tab = await getSteelheadTab();
+        await injectAppScripts(tab.id, 'carga-masiva');
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: async () => {
+            if (!window.SteelheadAPI) return { error: 'SteelheadAPI not available' };
+            try {
+              const allUsers = [];
+              let cursor = null;
+              while (true) {
+                const vars = cursor ? { after: cursor } : {};
+                const data = await window.SteelheadAPI.query('GlobalUsers', vars, 'GlobalUsers');
+                const nodes = data?.allUsers?.nodes || [];
+                allUsers.push(...nodes);
+                const pageInfo = data?.allUsers?.pageInfo;
+                if (!pageInfo?.hasNextPage) break;
+                cursor = pageInfo.endCursor;
+              }
+              return allUsers
+                .filter(u => !u.archivedAt)
+                .map(u => ({ id: u.id, name: u.name, avatarUrl: u.avatarUrl, isAdmin: u.isAdmin }));
+            } catch (e) { return { error: e.message }; }
+          }
+        });
+        return results?.[0]?.result || { error: 'No result' };
+      } catch (e) { return { error: e.message }; }
+    }
+
     case 'check-scan-status': {
       // Check storage flag first (survives page reloads)
       const { sa_scanning } = await chrome.storage.local.get('sa_scanning');

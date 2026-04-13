@@ -112,18 +112,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── App Menu ──
-  function renderAppMenu() {
+  async function renderAppMenu() {
     const menuWrap = document.querySelector('.app-menu-wrap');
     // Remove existing menu content
     const oldMenu = menuWrap.querySelector('.app-menu, .app-grid, .app-list');
     if (oldMenu) oldMenu.remove();
 
     const apps = config?.apps || [];
-    const roles = config?.permissions?.roles || {};
+    const configRoles = config?.permissions?.roles || {};
     const restrictedApps = config?.permissions?.restrictedApps || {};
     const userId = currentUser?.id;
+    // Merge config roles with local overrides
+    let roleOverrides = {};
+    try {
+      const stored = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
+      roleOverrides = stored;
+    } catch (_) {}
     const userRoles = new Set();
-    for (const [role, ids] of Object.entries(roles)) {
+    for (const [role, ids] of Object.entries(configRoles)) {
+      if (Array.isArray(ids) && ids.includes(userId)) userRoles.add(role);
+    }
+    for (const [role, ids] of Object.entries(roleOverrides)) {
       if (Array.isArray(ids) && ids.includes(userId)) userRoles.add(role);
     }
     const visibleApps = apps.filter(app => {
@@ -382,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Settings ──
-  function loadSettingsView() {
+  async function loadSettingsView() {
     chrome.storage.local.get(['sa_claude_api_key'], (result) => {
       const key = result.sa_claude_api_key || '';
       const input = document.getElementById('input-api-key');
@@ -392,6 +401,89 @@ document.addEventListener('DOMContentLoaded', () => {
       hint.textContent = key ? `Clave guardada · últimos 8 dígitos: ${key.slice(-8)}` : 'Sin clave configurada';
       document.getElementById('settings-save-msg').textContent = '';
     });
+
+    // Show user management for admins
+    const mgmtSection = document.getElementById('user-mgmt');
+    if (mgmtSection) {
+      const roles = config?.permissions?.roles || {};
+      const overrides = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
+      const mergedAdmins = new Set([...(roles.admin || []), ...(overrides.admin || [])]);
+      if (mergedAdmins.has(currentUser?.id)) {
+        mgmtSection.style.display = '';
+        loadUserManagement();
+      } else {
+        mgmtSection.style.display = 'none';
+      }
+    }
+  }
+
+  async function loadUserManagement() {
+    const container = document.getElementById('user-mgmt-content');
+    container.innerHTML = '<div class="user-mgmt-loading">Cargando usuarios...</div>';
+
+    try {
+      const users = await sendToBackground('get-all-users');
+      if (users?.error) { container.innerHTML = `<div class="user-mgmt-loading">Error: ${users.error}</div>`; return; }
+      if (!Array.isArray(users) || users.length === 0) { container.innerHTML = '<div class="user-mgmt-loading">Sin usuarios</div>'; return; }
+
+      // Get current role assignments (config defaults + local overrides)
+      const configRoles = config?.permissions?.roles || {};
+      const overrides = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
+      const adminIds = new Set([...(configRoles.admin || []), ...(overrides.admin || [])]);
+
+      // Sort: admins first, then alphabetical
+      users.sort((a, b) => {
+        const aAdmin = adminIds.has(a.id);
+        const bAdmin = adminIds.has(b.id);
+        if (aAdmin !== bAdmin) return aAdmin ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      container.innerHTML = '<div class="user-mgmt-list" id="user-mgmt-list"></div>';
+      const list = document.getElementById('user-mgmt-list');
+
+      for (const user of users) {
+        const isAdmin = adminIds.has(user.id);
+        const isConfigAdmin = (configRoles.admin || []).includes(user.id);
+        const row = document.createElement('div');
+        row.className = 'user-mgmt-row';
+
+        const avatarHTML = user.avatarUrl
+          ? `<img class="user-avatar" src="${user.avatarUrl}" alt="">`
+          : `<div class="user-avatar"></div>`;
+
+        const badgeHTML = user.isAdmin ? '<span class="user-badge" style="background:#e8f5e9;color:#2e7d32">Admin SH</span>' : '';
+
+        row.innerHTML = `
+          ${avatarHTML}
+          <span class="user-name">${user.name}</span>
+          ${badgeHTML}
+          <input type="checkbox" data-user-id="${user.id}" ${isAdmin ? 'checked' : ''} ${isConfigAdmin ? 'title="Definido en config" disabled' : 'title="Click para cambiar acceso"'}>`;
+        list.appendChild(row);
+      }
+
+      // Handle checkbox changes
+      list.addEventListener('change', async (e) => {
+        const cb = e.target;
+        if (cb.type !== 'checkbox' || !cb.dataset.userId) return;
+        const userId = parseInt(cb.dataset.userId);
+
+        const stored = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
+        const overrideAdmins = new Set(stored.admin || []);
+
+        if (cb.checked) {
+          overrideAdmins.add(userId);
+        } else {
+          overrideAdmins.delete(userId);
+        }
+
+        stored.admin = [...overrideAdmins];
+        await chrome.storage.local.set({ sa_role_overrides: stored });
+      });
+
+    } catch (e) {
+      container.innerHTML = `<div class="user-mgmt-loading">Error: ${e.message}</div>`;
+    }
   }
 
   function saveApiKey() {
