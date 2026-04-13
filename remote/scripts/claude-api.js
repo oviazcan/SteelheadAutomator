@@ -8,9 +8,9 @@ const ClaudeAPI = (() => {
   let apiKey = null;
   let totalUsage = { inputTokens: 0, outputTokens: 0, cost: 0 };
 
-  // Pricing for claude-sonnet-4 (USD per million tokens)
+  // Pricing for claude-3-sonnet (USD per million tokens)
   const PRICING = { inputPerMTok: 3, outputPerMTok: 15 };
-  const MODEL = 'claude-sonnet-4-20250514';
+  const MODEL = 'claude-3-sonnet-20240229';
 
   function setApiKey(key) { apiKey = key; }
 
