@@ -366,6 +366,29 @@ Reglas:
     log(`PDF adjuntado a OV exitosamente`);
   }
 
+  // ── Adopt existing OV ──────────────────────────────────────
+
+  async function adoptExistingOV(candidate, pdfData, pdfFile) {
+    const ovId = candidate.ovId;
+    log(`Adoptando OV #${ovId} — renombrando a "${pdfData.poNumber}"...`);
+
+    // Rename OV with the real PO number
+    await api().query('UpdateReceivedOrder', {
+      id: candidate.order.id || candidate.order.nodeId,
+      name: String(pdfData.poNumber)
+    });
+    log(`OV renombrada: ${candidate.ovName} → ${pdfData.poNumber}`);
+
+    // Attach PDF
+    try {
+      await uploadAndAttachPDF(pdfFile, candidate.order.id);
+    } catch (e) {
+      warn(`No se pudo adjuntar PDF: ${e.message}`);
+    }
+
+    return ovId; // Return idInDomain for loading
+  }
+
   async function loadSalesOrder(receivedOrderId) {
     log(`Cargando OV ${receivedOrderId}...`);
 
