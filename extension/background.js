@@ -128,27 +128,39 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       console.log(`[SA] Auto-inyectado: ${app.id}`);
     }
 
-    // Auto-restart hash scanner if it was active before page reload
-    const { sa_scanning } = await chrome.storage.local.get('sa_scanning');
-    if (sa_scanning) {
-      console.log('[SA] Scanner was active — auto-restarting on tab reload');
-      await injectAppScripts(tabId, 'hash-scanner');
-      const { sa_scan_results } = await chrome.storage.local.get('sa_scan_results');
-      if (sa_scan_results) {
-        await chrome.scripting.executeScript({
-          target: { tabId }, world: 'MAIN',
-          func: (prev) => { if (window.HashScanner?.mergeResults) window.HashScanner.mergeResults(prev); },
-          args: [sa_scan_results]
-        });
-      }
-      await chrome.scripting.executeScript({
-        target: { tabId }, world: 'MAIN',
-        func: () => { if (window.HashScanner && !window.HashScanner.isActive()) window.HashScanner.start(); }
-      });
-      console.log('[SA] Scanner auto-restarted successfully');
-    }
   } catch (err) {
     console.warn('[SA] Error en auto-inject:', err.message);
+  }
+});
+
+// ── Auto-restart scanner on page reload (separate listener) ──
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return;
+  if (!tab.url?.includes('app.gosteelhead.com')) return;
+
+  try {
+    const { sa_scanning } = await chrome.storage.local.get('sa_scanning');
+    if (!sa_scanning) return;
+
+    console.log('[SA] Scanner flag active — restarting on tab', tabId);
+    await injectAppScripts(tabId, 'hash-scanner');
+
+    const { sa_scan_results } = await chrome.storage.local.get('sa_scan_results');
+    if (sa_scan_results) {
+      await chrome.scripting.executeScript({
+        target: { tabId }, world: 'MAIN',
+        func: (prev) => { if (window.HashScanner?.mergeResults) window.HashScanner.mergeResults(prev); },
+        args: [sa_scan_results]
+      });
+    }
+
+    await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN',
+      func: () => { if (window.HashScanner && !window.HashScanner.isActive()) window.HashScanner.start(); }
+    });
+    console.log('[SA] Scanner restarted on tab', tabId);
+  } catch (err) {
+    console.error('[SA] Scanner auto-restart failed:', err.message);
   }
 });
 
