@@ -649,6 +649,67 @@ Reglas:
     });
   }
 
+  function showNoMatchOptions(pdfData) {
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      md.innerHTML = `
+        <h2>OV no encontrada</h2>
+        <p class="dl9-sub">No se encontró OV para PO "${escHtml(pdfData.poNumber || '?')}" y no hay OVs candidatas del cliente.</p>
+        <div class="manual-search">
+          <input type="text" id="dl9-nm-input" placeholder="Buscar OV por número...">
+          <button id="dl9-nm-search">Buscar</button>
+        </div>
+        <p id="dl9-nm-error" style="color:#ef4444;font-size:12px;margin-top:4px;display:none"></p>
+        <div style="text-align:center;margin:16px 0;color:#475569;font-size:12px">— o —</div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-nm-cancel">Cancelar</button>
+          <button class="dl9-btn" id="dl9-nm-create" style="background:#f59e0b;color:#0f172a;font-weight:600">Crear OV nueva</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const doSearch = async () => {
+        const val = md.querySelector('#dl9-nm-input').value.trim();
+        if (!val) return;
+        const errEl = md.querySelector('#dl9-nm-error');
+        errEl.style.display = 'none';
+
+        const asNum = parseInt(val, 10);
+        if (!isNaN(asNum)) {
+          removeOverlay();
+          resolve({ action: 'manual', orderId: asNum });
+          return;
+        }
+
+        try {
+          const customerId = getCustomerIdFromURL();
+          const result = await findSalesOrder(val, customerId);
+          if (result.match === 'exact') {
+            removeOverlay();
+            resolve({ action: 'manual', orderId: parseInt(result.orders[0].idInDomain || result.orders[0].id, 10) });
+          } else if (result.match === 'multiple') {
+            errEl.textContent = 'Múltiples resultados. Ingresa el idInDomain directamente.';
+            errEl.style.display = 'block';
+          } else {
+            errEl.textContent = 'No se encontró OV con ese número.';
+            errEl.style.display = 'block';
+          }
+        } catch (e) {
+          errEl.textContent = 'Error: ' + e.message;
+          errEl.style.display = 'block';
+        }
+      };
+
+      md.querySelector('#dl9-nm-search').addEventListener('click', doSearch);
+      md.querySelector('#dl9-nm-input').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+      md.querySelector('#dl9-nm-create').addEventListener('click', () => { removeOverlay(); resolve({ action: 'create' }); });
+      md.querySelector('#dl9-nm-cancel').addEventListener('click', () => { removeOverlay(); resolve(null); });
+    });
+  }
+
   async function createNewOV(formData, pdfData, pdfFile) {
     log('Creando OV nueva...');
 
@@ -2071,9 +2132,110 @@ Reglas:
     let orderId;
     if (searchResult.match === 'exact') {
       orderId = searchResult.orders[0].idInDomain || searchResult.orders[0].id;
-    } else {
+    } else if (searchResult.match === 'multiple') {
+      // Multiple matches — use original selector
       orderId = await showOVSelector(searchResult, pdfData);
       if (!orderId) { log(`${prefix}Cancelado por el usuario`); return { cancelled: true }; }
+    } else {
+      // No match — run multi-signal detection
+      progress = showProgress(`${prefix}Buscando OVs candidatas...`, 'Analizando OVs activas del cliente...');
+      let candidates;
+      try {
+        progress.update(30, 'Cargando OVs del cliente...');
+        candidates = await findCandidateOVs(pdfData, customerId);
+        progress.update(100, `${candidates.length} candidata(s) encontrada(s)`);
+        progress.close();
+      } catch (e) {
+        progress.close();
+        warn(`Error en detección de candidatas: ${e.message}`);
+        candidates = [];
+      }
+
+      if (candidates.length > 0) {
+        // Show candidate selector
+        const selection = await showCandidateSelector(candidates, pdfData);
+        if (!selection) { log(`${prefix}Cancelado por el usuario`); return { cancelled: true }; }
+
+        if (selection.action === 'adopt') {
+          progress = showProgress(`${prefix}Adoptando OV...`, 'Renombrando y adjuntando PDF...');
+          try {
+            progress.update(50, 'Renombrando OV...');
+            orderId = await adoptExistingOV(selection.candidate, pdfData, file);
+            progress.update(100, 'OV adoptada');
+            progress.close();
+          } catch (e) {
+            progress.close();
+            alert(`${prefix}Error adoptando OV: ` + e.message);
+            return { error: e.message };
+          }
+        } else {
+          // User chose "create new" despite candidates existing
+          progress = showProgress(`${prefix}Preparando wizard...`, 'Cargando datos del cliente...');
+          let creationData;
+          try {
+            progress.update(50, 'Cargando defaults...');
+            creationData = await fetchCreationData(customerId);
+            progress.update(100, 'Datos cargados');
+            progress.close();
+          } catch (e) {
+            progress.close();
+            alert(`${prefix}Error cargando datos: ` + e.message);
+            return { error: e.message };
+          }
+
+          const formData = await showCreationWizard(pdfData, creationData, customerId);
+          if (!formData) { log(`${prefix}Cancelado por el usuario`); return { cancelled: true }; }
+
+          progress = showProgress(`${prefix}Creando OV...`, 'Creando orden de venta...');
+          try {
+            progress.update(20, 'Creando OV...');
+            orderId = await createNewOV(formData, pdfData, file);
+            progress.update(100, 'OV creada');
+            progress.close();
+          } catch (e) {
+            progress.close();
+            alert(`${prefix}Error creando OV: ` + e.message);
+            return { error: e.message };
+          }
+        }
+      } else {
+        // No candidates at all — offer manual search or create
+        const manualChoice = await showNoMatchOptions(pdfData);
+        if (!manualChoice) { log(`${prefix}Cancelado por el usuario`); return { cancelled: true }; }
+
+        if (manualChoice.action === 'manual') {
+          orderId = manualChoice.orderId;
+        } else {
+          // Create new
+          progress = showProgress(`${prefix}Preparando wizard...`, 'Cargando datos del cliente...');
+          let creationData;
+          try {
+            progress.update(50, 'Cargando defaults...');
+            creationData = await fetchCreationData(customerId);
+            progress.update(100, 'Datos cargados');
+            progress.close();
+          } catch (e) {
+            progress.close();
+            alert(`${prefix}Error cargando datos: ` + e.message);
+            return { error: e.message };
+          }
+
+          const formData = await showCreationWizard(pdfData, creationData, customerId);
+          if (!formData) { log(`${prefix}Cancelado por el usuario`); return { cancelled: true }; }
+
+          progress = showProgress(`${prefix}Creando OV...`, 'Creando orden de venta...');
+          try {
+            progress.update(20, 'Creando OV...');
+            orderId = await createNewOV(formData, pdfData, file);
+            progress.update(100, 'OV creada');
+            progress.close();
+          } catch (e) {
+            progress.close();
+            alert(`${prefix}Error creando OV: ` + e.message);
+            return { error: e.message };
+          }
+        }
+      }
     }
 
     // Step 6: Load OV + compare
