@@ -174,14 +174,19 @@ async function handleMessage(message, sender) {
       return cachedConfig || await loadConfig();
 
     case 'check-scan-status': {
+      // Check storage flag first (survives page reloads)
+      const { sa_scanning } = await chrome.storage.local.get('sa_scanning');
       try {
         const tab = await getSteelheadTab();
         const results = await chrome.scripting.executeScript({
           target: { tabId: tab.id }, world: 'MAIN',
-          func: () => window.HashScanner ? { scanning: window.HashScanner.isActive(), stats: window.HashScanner.getStats() } : { scanning: false }
+          func: () => window.HashScanner ? { scanning: window.HashScanner.isActive(), stats: window.HashScanner.getStats() } : null
         });
-        return results?.[0]?.result || { scanning: false };
-      } catch (_) { return { scanning: false }; }
+        const pageResult = results?.[0]?.result;
+        // Trust page state if available, fallback to storage flag
+        if (pageResult) return pageResult;
+        return { scanning: !!sa_scanning };
+      } catch (_) { return { scanning: !!sa_scanning }; }
     }
 
     // ── Carga Masiva ──
