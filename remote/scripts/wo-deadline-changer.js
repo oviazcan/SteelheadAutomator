@@ -86,6 +86,27 @@ const WODeadlineChanger = (() => {
     return pnCache;
   }
 
+  async function fetchWOLabels() {
+    const data = await api().query('AllLabels', { condition: { forWorkOrder: true } }, 'AllLabels');
+    return (data?.allLabels?.nodes || []).map(l => ({
+      id: l.id,
+      name: l.name,
+      color: l.color || '#475569'
+    }));
+  }
+
+  function extractWOLabels(wo, labelCatalog) {
+    const nodes = wo.workOrderLabelsByWorkOrderId?.nodes || [];
+    return nodes.map(n => {
+      if (n.labelByLabelId) {
+        return { id: n.labelByLabelId.id, name: n.labelByLabelId.name, color: n.labelByLabelId.color || '#475569' };
+      }
+      const labelId = n.labelId || n.id;
+      const found = labelCatalog.find(l => l.id === labelId);
+      return found || { id: labelId, name: `Label ${labelId}`, color: '#475569' };
+    });
+  }
+
   function parseURLFilters() {
     const params = new URLSearchParams(window.location.search);
     const serverFilters = {};
@@ -186,6 +207,12 @@ const WODeadlineChanger = (() => {
       .sa-wod-btn-exec:disabled{opacity:0.4;cursor:default}
       .sa-wod-progress{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
       .sa-wod-progress-box{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;text-align:center;min-width:300px}
+      .sa-wod-labels-section{margin-bottom:8px}
+      .sa-wod-labels-section .section-title{font-size:11px;color:#94a3b8;margin-bottom:4px}
+      .sa-wod-label-chip{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;margin:2px 3px;cursor:pointer;border:2px solid transparent;transition:border-color 0.15s,opacity 0.15s;opacity:0.6}
+      .sa-wod-label-chip:hover{opacity:0.85}
+      .sa-wod-label-chip.chip-selected{opacity:1;border-color:#fff}
+      .sa-wod-label-chip.chip-remove.chip-selected{opacity:1;border-color:#ef4444}
     `;
     document.head.appendChild(s);
   }
@@ -259,7 +286,7 @@ const WODeadlineChanger = (() => {
     return { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess };
   }
 
-  async function showMainUI(wos, pnCache, uiDefaults, dropdownCache) {
+  async function showMainUI(wos, pnCache, uiDefaults, dropdownCache, woLabelCatalog) {
 
     return new Promise((resolve) => {
       ensureStyles();
@@ -269,6 +296,11 @@ const WODeadlineChanger = (() => {
       md.className = 'sa-wod-modal';
 
       const { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess } = dropdownCache;
+
+      const addChipsHTML = woLabelCatalog.map(l => {
+        const fg = labelTextColor(l.color);
+        return `<span class="sa-wod-label-chip" data-label-id="${l.id}" data-action="add" style="background:${l.color};color:${fg}">${l.name}</span>`;
+      }).join('');
 
       const seenCust = new Set();
       const customerOpts = allCustomers
@@ -295,7 +327,7 @@ const WODeadlineChanger = (() => {
       const preCustomer = uiDefaults.customerId || '';
 
       md.innerHTML = `
-        <h2 style="color:#8b5cf6">📅 Cambio Masivo de Plazos OT</h2>
+        <h2 style="color:#8b5cf6">⚙️ Gestión Masiva de OT</h2>
         <div class="sa-wod-filters">
           <select id="sa-wod-customer">
             <option value="">Cliente (todos)</option>
@@ -327,6 +359,14 @@ const WODeadlineChanger = (() => {
             <label style="font-size:11px;color:#94a3b8;white-space:nowrap">hasta:</label>
             <input type="date" id="sa-wod-created-to" style="padding:4px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;color-scheme:dark">
           </div>
+        </div>
+        <div class="sa-wod-labels-section">
+          <div class="section-title">Agregar etiquetas:</div>
+          <div id="sa-wod-add-labels">${addChipsHTML}</div>
+        </div>
+        <div class="sa-wod-labels-section">
+          <div class="section-title">Quitar etiquetas:</div>
+          <div id="sa-wod-remove-labels"><span style="font-size:11px;color:#64748b;font-style:italic">Ninguna OT tiene etiquetas</span></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <label style="font-size:12px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px">
@@ -360,6 +400,33 @@ const WODeadlineChanger = (() => {
 
       const selected = new Set(wos.map(wo => wo.id));
       let filteredWOs = wos;
+
+      const labelsToAdd = new Set();
+      const labelsToRemove = new Set();
+
+      function rebuildRemoveChips() {
+        const presentLabels = new Map();
+        for (const wo of filteredWOs) {
+          const woLabels = extractWOLabels(wo, woLabelCatalog);
+          for (const l of woLabels) {
+            if (!presentLabels.has(l.id)) presentLabels.set(l.id, l);
+          }
+        }
+        const container = document.getElementById('sa-wod-remove-labels');
+        if (presentLabels.size === 0) {
+          container.innerHTML = '<span style="font-size:11px;color:#64748b;font-style:italic">Ninguna OT tiene etiquetas</span>';
+          labelsToRemove.clear();
+          return;
+        }
+        container.innerHTML = [...presentLabels.values()].map(l => {
+          const fg = labelTextColor(l.color);
+          const sel = labelsToRemove.has(l.id) ? ' chip-selected' : '';
+          return `<span class="sa-wod-label-chip chip-remove${sel}" data-label-id="${l.id}" data-action="remove" style="background:${l.color};color:${fg}">${l.name}</span>`;
+        }).join('');
+        for (const id of labelsToRemove) {
+          if (!presentLabels.has(id)) labelsToRemove.delete(id);
+        }
+      }
 
       function getFilters() {
         const cust = document.getElementById('sa-wod-customer').value;
@@ -405,6 +472,14 @@ const WODeadlineChanger = (() => {
           const roDisplay = roName ? `<div class="wo-ro">${roName}</div>` : '';
           const isSelected = selected.has(wo.id);
 
+          const woLabels = extractWOLabels(wo, woLabelCatalog);
+          const woLabelsHTML = woLabels.length > 0
+            ? `<div style="margin-top:3px">${woLabels.map(l => {
+                const fg = labelTextColor(l.color);
+                return `<span class="wo-label" style="background:${l.color};color:${fg}">${l.name}</span>`;
+              }).join('')}</div>`
+            : '';
+
           return `<div class="sa-wod-card ${isSelected ? 'selected' : ''}" data-id="${wo.id}">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span class="wo-num">OT-${wo.idInDomain}</span>
@@ -412,10 +487,12 @@ const WODeadlineChanger = (() => {
             </div>
             ${roDisplay}
             ${pnHTML}
+            ${woLabelsHTML}
             <div class="wo-date">📅 ${formatDate(wo.deadline)}</div>
           </div>`;
         }).join('');
 
+        rebuildRemoveChips();
         updateCounts();
       }
 
@@ -424,12 +501,37 @@ const WODeadlineChanger = (() => {
         document.getElementById('sa-wod-count').textContent = `(${visibleSelected} de ${filteredWOs.length})`;
 
         const dateVal = document.getElementById('sa-wod-date').value;
+        const hasLabels = labelsToAdd.size > 0 || labelsToRemove.size > 0;
         const execBtn = document.getElementById('sa-wod-exec');
-        execBtn.disabled = visibleSelected === 0 || !dateVal;
-        execBtn.textContent = `APLICAR FECHA (${visibleSelected})`;
+        execBtn.disabled = visibleSelected === 0 || (!dateVal && !hasLabels);
+
+        let btnText;
+        if (dateVal && hasLabels) btnText = `APLICAR CAMBIOS (${visibleSelected})`;
+        else if (dateVal) btnText = `APLICAR FECHA (${visibleSelected})`;
+        else if (hasLabels) btnText = `APLICAR ETIQUETAS (${visibleSelected})`;
+        else btnText = `APLICAR (${visibleSelected})`;
+        execBtn.textContent = btnText;
 
         document.getElementById('sa-wod-selall').checked = visibleSelected === filteredWOs.length && filteredWOs.length > 0;
       }
+
+      document.getElementById('sa-wod-add-labels').addEventListener('click', (e) => {
+        const chip = e.target.closest('.sa-wod-label-chip');
+        if (!chip) return;
+        const labelId = parseInt(chip.dataset.labelId);
+        if (labelsToAdd.has(labelId)) { labelsToAdd.delete(labelId); chip.classList.remove('chip-selected'); }
+        else { labelsToAdd.add(labelId); chip.classList.add('chip-selected'); }
+        updateCounts();
+      });
+
+      document.getElementById('sa-wod-remove-labels').addEventListener('click', (e) => {
+        const chip = e.target.closest('.sa-wod-label-chip');
+        if (!chip) return;
+        const labelId = parseInt(chip.dataset.labelId);
+        if (labelsToRemove.has(labelId)) { labelsToRemove.delete(labelId); chip.classList.remove('chip-selected'); }
+        else { labelsToRemove.add(labelId); chip.classList.add('chip-selected'); }
+        updateCounts();
+      });
 
       // Event: card click or checkbox
       document.getElementById('sa-wod-grid').addEventListener('click', (e) => {
@@ -499,9 +601,14 @@ const WODeadlineChanger = (() => {
       // Execute
       document.getElementById('sa-wod-exec').onclick = () => {
         const dateVal = document.getElementById('sa-wod-date').value;
-        const selectedIds = filteredWOs.filter(wo => selected.has(wo.id)).map(wo => wo.id);
+        const selectedWOs = filteredWOs.filter(wo => selected.has(wo.id));
         ov.parentNode.removeChild(ov);
-        resolve({ selectedIds, newDeadline: dateVal });
+        resolve({
+          selectedWOs,
+          newDeadline: dateVal || null,
+          labelsToAdd: [...labelsToAdd],
+          labelsToRemove: [...labelsToRemove]
+        });
       };
 
       // Initial render
@@ -538,6 +645,53 @@ const WODeadlineChanger = (() => {
     return { wos, pnCache };
   }
 
+  async function applyLabels(selectedWOs, labelsToAdd, labelsToRemove, woLabelCatalog, onProgress) {
+    let added = 0, removed = 0, errors = [];
+    const BATCH = 10;
+
+    for (let i = 0; i < selectedWOs.length; i += BATCH) {
+      const batch = selectedWOs.slice(i, i + BATCH);
+      await Promise.all(batch.map(async (wo) => {
+        try {
+          const currentLabels = extractWOLabels(wo, woLabelCatalog);
+          const currentIds = new Set(currentLabels.map(l => l.id));
+
+          if (labelsToRemove.length > 0) {
+            const removeSet = new Set(labelsToRemove);
+            const hasAnyToRemove = currentLabels.some(l => removeSet.has(l.id));
+            if (hasAnyToRemove) {
+              await api().query('DeleteWorkOrderLabels', { woId: wo.id }, 'DeleteWorkOrderLabels');
+              removed++;
+              const keepIds = currentLabels.filter(l => !removeSet.has(l.id)).map(l => l.id);
+              const addIds = labelsToAdd.filter(id => !currentIds.has(id) || removeSet.has(id));
+              const allToCreate = [...new Set([...keepIds, ...addIds])];
+              for (const labelId of allToCreate) {
+                await api().query('CreateWorkOrderLabel', { workOrderId: wo.id, labelId }, 'CreateWorkOrderLabel');
+              }
+              added += addIds.length;
+            } else {
+              const newIds = labelsToAdd.filter(id => !currentIds.has(id));
+              for (const labelId of newIds) {
+                await api().query('CreateWorkOrderLabel', { workOrderId: wo.id, labelId }, 'CreateWorkOrderLabel');
+              }
+              added += newIds.length;
+            }
+          } else {
+            const newIds = labelsToAdd.filter(id => !currentIds.has(id));
+            for (const labelId of newIds) {
+              await api().query('CreateWorkOrderLabel', { workOrderId: wo.id, labelId }, 'CreateWorkOrderLabel');
+            }
+            added += newIds.length;
+          }
+        } catch (e) {
+          errors.push(`OT ${wo.idInDomain}: ${String(e).substring(0, 100)}`);
+        }
+      }));
+      if (onProgress) onProgress(`Etiquetas: ${Math.min(i + BATCH, selectedWOs.length)}/${selectedWOs.length}`);
+    }
+    return { added, removed, errors };
+  }
+
   async function run() {
     log('=== CAMBIO DE PLAZOS OT ===');
 
@@ -551,6 +705,9 @@ const WODeadlineChanger = (() => {
     showProgress('Cargando catálogos...');
     const dropdownCache = await fetchDropdownOptions();
 
+    showProgress('Cargando etiquetas...');
+    const woLabelCatalog = await fetchWOLabels();
+
     // Load → show UI → reload loop
     while (true) {
       const data = await loadData(currentServerFilters, pnCache);
@@ -562,7 +719,7 @@ const WODeadlineChanger = (() => {
         return { error: 'Sin OTs activas' };
       }
 
-      const choice = await showMainUI(data.wos, pnCache, currentUiDefaults, dropdownCache);
+      const choice = await showMainUI(data.wos, pnCache, currentUiDefaults, dropdownCache, woLabelCatalog);
 
       if (choice.cancelled) return { cancelled: true };
       if (choice.reload) {
@@ -576,70 +733,104 @@ const WODeadlineChanger = (() => {
       break;
     }
 
-    const { selectedIds, newDeadline } = finalChoice;
+    const { selectedWOs, newDeadline, labelsToAdd, labelsToRemove } = finalChoice;
+    const selectedIds = selectedWOs.map(wo => wo.id);
     log(`OTs seleccionadas: ${selectedIds.length}`);
-    log(`Nueva fecha: ${newDeadline}`);
+    if (newDeadline) log(`Nueva fecha: ${newDeadline}`);
+    if (labelsToAdd.length) log(`Etiquetas a agregar: ${labelsToAdd.length}`);
+    if (labelsToRemove.length) log(`Etiquetas a quitar: ${labelsToRemove.length}`);
 
-    // Phase 4: Apply deadline
-    showProgress(`Actualizando ${selectedIds.length} OTs...`);
+    let deadlineUpdated = 0, deadlineErrors = [];
+    let labelResult = { added: 0, removed: 0, errors: [] };
 
-    const deadline = new Date(newDeadline + 'T12:00:00.000Z').toISOString();
-    const BATCH = 50;
-    let updated = 0;
-    const errors = [];
+    // Apply labels first
+    if (labelsToAdd.length > 0 || labelsToRemove.length > 0) {
+      showProgress(`Aplicando etiquetas a ${selectedWOs.length} OTs...`);
+      labelResult = await applyLabels(selectedWOs, labelsToAdd, labelsToRemove, woLabelCatalog, (msg) => showProgress(msg));
+    }
 
-    for (let i = 0; i < selectedIds.length; i += BATCH) {
-      const batch = selectedIds.slice(i, i + BATCH);
-      const input = batch.map(id => ({ id, deadline }));
-      try {
-        await api().query('CreateUpdateWorkOrdersChecked', { input }, 'CreateUpdateWorkOrdersChecked');
-        updated += batch.length;
-        showProgress(`Actualizadas: ${updated}/${selectedIds.length}`);
-      } catch (e) {
-        const errMsg = `Batch ${i}-${i + batch.length}: ${String(e).substring(0, 150)}`;
-        errors.push(errMsg);
-        warn(errMsg);
+    // Apply deadline
+    if (newDeadline) {
+      showProgress(`Actualizando fecha de ${selectedIds.length} OTs...`);
+      const deadline = new Date(newDeadline + 'T12:00:00.000Z').toISOString();
+      const BATCH = 50;
+      for (let i = 0; i < selectedIds.length; i += BATCH) {
+        const batch = selectedIds.slice(i, i + BATCH);
+        const input = batch.map(id => ({ id, deadline }));
+        try {
+          await api().query('CreateUpdateWorkOrdersChecked', { input }, 'CreateUpdateWorkOrdersChecked');
+          deadlineUpdated += batch.length;
+          showProgress(`Fecha: ${deadlineUpdated}/${selectedIds.length}`);
+        } catch (e) {
+          const errMsg = `Batch ${i}-${i + batch.length}: ${String(e).substring(0, 150)}`;
+          deadlineErrors.push(errMsg);
+          warn(errMsg);
+        }
       }
     }
 
     hideProgress();
 
-    // Phase 5: Summary
     log(`\n=== RESULTADO ===`);
-    log(`Actualizadas: ${updated}`);
-    log(`Errores: ${errors.length}`);
+    if (newDeadline) log(`Fecha actualizada: ${deadlineUpdated}`);
+    if (labelsToAdd.length || labelsToRemove.length) log(`Etiquetas agregadas: ${labelResult.added}, quitadas: ${labelResult.removed}`);
+    const allErrors = [...deadlineErrors, ...labelResult.errors];
+    log(`Errores: ${allErrors.length}`);
 
-    showSummary(updated, errors);
-    return { updated, errors: errors.length };
+    showSummary(deadlineUpdated, labelResult, newDeadline, allErrors);
+    return { deadlineUpdated, labelResult, errors: allErrors.length };
   }
 
-  function showSummary(updated, errors) {
+  function showSummary(deadlineUpdated, labelResult, newDeadline, allErrors) {
     ensureStyles();
     const ov = document.createElement('div');
     ov.className = 'sa-wod-overlay';
     const md = document.createElement('div');
     md.className = 'sa-wod-modal';
-    md.style.maxWidth = '400px';
+    md.style.maxWidth = '450px';
 
-    const icon = errors.length > 0 ? '⚠️' : '✅';
-    const color = errors.length > 0 ? '#f59e0b' : '#4ade80';
+    const icon = allErrors.length > 0 ? '⚠️' : '✅';
+    const color = allErrors.length > 0 ? '#f59e0b' : '#4ade80';
+
+    let statsHTML = '';
+    if (newDeadline) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#4ade80">${deadlineUpdated}</div>
+          <div style="font-size:11px;color:#94a3b8">Fecha actualizada</div>
+        </div>`;
+    }
+    if (labelResult.added > 0) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#60a5fa">${labelResult.added}</div>
+          <div style="font-size:11px;color:#94a3b8">Etiquetas agregadas</div>
+        </div>`;
+    }
+    if (labelResult.removed > 0) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#f59e0b">${labelResult.removed}</div>
+          <div style="font-size:11px;color:#94a3b8">OTs con etiquetas quitadas</div>
+        </div>`;
+    }
+    if (allErrors.length > 0) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#ef4444">${allErrors.length}</div>
+          <div style="font-size:11px;color:#94a3b8">Errores</div>
+        </div>`;
+    }
 
     let errHTML = '';
-    if (errors.length > 0) {
-      errHTML = `<div style="margin-top:12px;font-size:11px;color:#fca5a5">${errors.slice(0, 10).join('<br>')}</div>`;
+    if (allErrors.length > 0) {
+      errHTML = `<div style="margin-top:12px;font-size:11px;color:#fca5a5">${allErrors.slice(0, 10).join('<br>')}</div>`;
     }
 
     md.innerHTML = `
-      <h2 style="color:${color}">${icon} Plazos Actualizados</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0">
-        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#4ade80">${updated}</div>
-          <div style="font-size:11px;color:#94a3b8">OTs actualizadas</div>
-        </div>
-        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#ef4444">${errors.length}</div>
-          <div style="font-size:11px;color:#94a3b8">Errores</div>
-        </div>
+      <h2 style="color:${color}">${icon} Cambios Aplicados</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:16px 0">
+        ${statsHTML}
       </div>
       ${errHTML}
       <div style="display:flex;justify-content:flex-end;margin-top:16px">
