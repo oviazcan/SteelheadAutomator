@@ -289,8 +289,11 @@
     }
   ],
   "permissions": {
+    "roles": {
+      "admin": [11973]
+    },
     "restrictedApps": {
-      "hash-scanner": { "requireAdmin": true }
+      "hash-scanner": { "requireRole": "admin" }
     }
   },
   "knownOperations": {

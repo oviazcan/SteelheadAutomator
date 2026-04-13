@@ -119,11 +119,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (oldMenu) oldMenu.remove();
 
     const apps = config?.apps || [];
-    const permissions = config?.permissions?.restrictedApps || {};
+    const roles = config?.permissions?.roles || {};
+    const restrictedApps = config?.permissions?.restrictedApps || {};
+    const userId = currentUser?.id;
+    const userRoles = new Set();
+    for (const [role, ids] of Object.entries(roles)) {
+      if (Array.isArray(ids) && ids.includes(userId)) userRoles.add(role);
+    }
     const visibleApps = apps.filter(app => {
-      const perm = permissions[app.id];
-      if (!perm) return true; // no restriction
-      if (perm.requireAdmin && !currentUser?.isAdmin && !currentUser?.isSuperUser) return false;
+      const perm = restrictedApps[app.id];
+      if (!perm) return true;
+      if (perm.requireRole && !userRoles.has(perm.requireRole)) return false;
       return true;
     });
 
