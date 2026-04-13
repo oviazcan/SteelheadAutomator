@@ -44,7 +44,9 @@
         "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0",
         "UpdateInventoryItemPredictedUsage": "53b14385e1ce1637d9f3d11eade01ce96db8762a43c55b86021a041bda5841cb",
         "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3",
-        "UpdateReceivedOrder": "50bfb5884c167407ad9a8417962da0a56708d8fde031fd0da31893c6eddafe8b"
+        "UpdateReceivedOrder": "50bfb5884c167407ad9a8417962da0a56708d8fde031fd0da31893c6eddafe8b",
+        "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59",
+        "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -254,12 +256,12 @@
     },
     {
       "id": "wo-deadline",
-      "name": "Cambio de Plazos OT",
-      "subtitle": "Actualizar fechas de entrega masivamente",
-      "icon": "📅",
+      "name": "Gestión Masiva de OT",
+      "subtitle": "Cambiar plazos y etiquetas masivamente",
+      "icon": "⚙️",
       "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"],
       "actions": [
-        { "id": "run-wo-deadline", "label": "Cambiar Plazos", "sublabel": "Seleccionar OTs y aplicar nueva fecha", "icon": "📅", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
+        { "id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
       ]
     },
     {
@@ -292,6 +294,8 @@
     "SearchUsers": { "type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva" },
     "AllProcesses": { "type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva" },
     "AllLabels": { "type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva" },
+    "DeleteWorkOrderLabels": { "type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline" },
+    "CreateWorkOrderLabel": { "type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline" },
     "SearchSpecsForSelect": { "type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva" },
     "TempSpecFieldsAndOptions": { "type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva" },
     "AllRackTypes": { "type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva" },
