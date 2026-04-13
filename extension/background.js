@@ -374,21 +374,75 @@ async function handleMessage(message) {
     }
 
     // ── Hash Scanner ──
+    case 'persist-scan-results': {
+      const tab = await getSteelheadTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => window.HashScanner?.getResults() || null
+      });
+      const scanData = results?.[0]?.result;
+      if (scanData && Object.keys(scanData).length > 0) {
+        await chrome.storage.local.set({ sa_scan_results: scanData });
+      }
+      return { saved: true };
+    }
+
+    case 'auto-restart-scan': {
+      try {
+        const tab = await getSteelheadTab();
+        await injectAppScripts(tab.id, 'hash-scanner');
+
+        // Restore accumulated results
+        const { sa_scan_results } = await chrome.storage.local.get('sa_scan_results');
+        if (sa_scan_results) {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id }, world: 'MAIN',
+            func: (prev) => { if (window.HashScanner?.mergeResults) window.HashScanner.mergeResults(prev); },
+            args: [sa_scan_results]
+          });
+        }
+
+        // Start scanning
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: () => { if (window.HashScanner && !window.HashScanner.isActive()) window.HashScanner.start(); }
+        });
+
+        console.log('[SA] Scanner auto-restarted after page reload');
+        return { restarted: true };
+      } catch (e) {
+        console.warn('[SA] Auto-restart scan failed:', e.message);
+        return { error: e.message };
+      }
+    }
+
     case 'toggle-scan': {
       const tab = await getSteelheadTab();
       await injectAppScripts(tab.id, 'hash-scanner');
+
+      // Restore any previously accumulated results before toggling
+      const { sa_scan_results } = await chrome.storage.local.get('sa_scan_results');
+      if (sa_scan_results) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: (prev) => { if (window.HashScanner?.mergeResults) window.HashScanner.mergeResults(prev); },
+          args: [sa_scan_results]
+        });
+      }
+
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
         func: () => {
           if (!window.HashScanner) return { error: 'HashScanner no disponible' };
           if (window.HashScanner.isActive()) {
+            // Save final results before stopping
+            const scanData = window.HashScanner.getResults();
             window.HashScanner.stop();
             // Auto-export scan results on stop
             const _n1 = new Date();
             const _d1 = _n1.toLocaleDateString('en-CA');
             const _t1 = [String(_n1.getHours()).padStart(2,'0'),String(_n1.getMinutes()).padStart(2,'0'),String(_n1.getSeconds()).padStart(2,'0')].join('');
             const dtFull1 = _d1 + '_' + _t1;
-            const scanData = window.HashScanner.getResults();
             const apiKnowledge = window.APIKnowledge ? window.APIKnowledge.getKnownOperations() : [];
             const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanData, apiKnowledge: apiKnowledge };
             const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
@@ -397,14 +451,24 @@ async function handleMessage(message) {
             a.href = url; a.download = 'scan_results_' + dtFull1 + '.json';
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            return { started: false, message: 'Captura detenida. Resultados exportados.', stats: window.HashScanner.getStats() };
+            return { started: false, finalResults: scanData, message: 'Captura detenida. Resultados exportados.', stats: window.HashScanner.getStats() };
           } else {
             window.HashScanner.start();
             return { started: true, message: 'Captura iniciada. Navega por Steelhead para capturar operaciones.' };
           }
         }
       });
-      return results?.[0]?.result || { error: 'Sin resultado' };
+      const result = results?.[0]?.result || { error: 'Sin resultado' };
+
+      // Persist scanning state
+      if (result.started === true) {
+        await chrome.storage.local.set({ sa_scanning: true });
+      } else if (result.started === false) {
+        // Clear scanning state and accumulated results
+        await chrome.storage.local.remove(['sa_scanning', 'sa_scan_results']);
+      }
+
+      return result;
     }
 
     case 'view-scan-results': {

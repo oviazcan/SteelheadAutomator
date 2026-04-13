@@ -58,12 +58,24 @@ const HashScanner = (() => {
     };
 
     console.log('[HashScanner] Captura iniciada — navega por Steelhead para capturar operaciones');
+
+    // Periodically persist results to survive page reloads
+    if (window.__saScanPersistInterval) clearInterval(window.__saScanPersistInterval);
+    window.__saScanPersistInterval = setInterval(() => {
+      if (!isScanning) return;
+      // Signal content script to persist results via custom event
+      document.dispatchEvent(new CustomEvent('sa-persist-scan'));
+    }, 15000); // Every 15 seconds
   }
 
   function stop() {
     if (!isScanning) return;
     if (originalFetch) window.fetch = originalFetch;
     isScanning = false;
+    if (window.__saScanPersistInterval) {
+      clearInterval(window.__saScanPersistInterval);
+      window.__saScanPersistInterval = null;
+    }
     console.log('[HashScanner] Captura detenida');
   }
 
@@ -181,7 +193,40 @@ const HashScanner = (() => {
     Object.keys(discovered).forEach(k => delete discovered[k]);
   }
 
-  return { init, start, stop, getResults, getStats, isActive, exportConfig, clear, analyzeSchema };
+  function mergeResults(data) {
+    if (!data || typeof data !== 'object') return;
+    for (const [opName, entry] of Object.entries(data)) {
+      if (!discovered[opName]) {
+        discovered[opName] = entry;
+      } else {
+        // Merge: keep higher count, earlier firstSeen, later lastSeen, union samples
+        const existing = discovered[opName];
+        existing.count += entry.count || 0;
+        if (entry.firstSeen && (!existing.firstSeen || entry.firstSeen < existing.firstSeen)) {
+          existing.firstSeen = entry.firstSeen;
+        }
+        if (entry.lastSeen && (!existing.lastSeen || entry.lastSeen > existing.lastSeen)) {
+          existing.lastSeen = entry.lastSeen;
+        }
+        // Merge variable samples (keep up to 3 unique)
+        for (const sample of (entry.variablesSamples || [])) {
+          if (existing.variablesSamples.length < 3) {
+            const sStr = JSON.stringify(sample);
+            if (!existing.variablesSamples.some(v => JSON.stringify(v) === sStr)) {
+              existing.variablesSamples.push(sample);
+            }
+          }
+        }
+        // Keep responseSchema if we didn't have one
+        if (!existing.responseSchema && entry.responseSchema) {
+          existing.responseSchema = entry.responseSchema;
+          existing.responseFields = entry.responseFields || [];
+        }
+      }
+    }
+  }
+
+  return { init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults, analyzeSchema };
 })();
 
 if (typeof window !== 'undefined') window.HashScanner = HashScanner;
