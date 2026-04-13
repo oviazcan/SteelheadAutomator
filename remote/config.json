@@ -161,6 +161,7 @@
       "name": "Carga Masiva",
       "subtitle": "Cotizaciones y NP",
       "icon": "📊",
+      "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"],
       "actions": [
         { "id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker" },
@@ -174,6 +175,7 @@
       "name": "Explorador Steelhead",
       "subtitle": "Captura de APIs",
       "icon": "🔍",
+      "category": "Herramientas",
       "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"],
       "actions": [
         { "id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan" },
@@ -187,6 +189,7 @@
       "name": "Archivador de PNs",
       "subtitle": "Por fecha de inactividad",
       "icon": "📦",
+      "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/archiver.js"],
       "actions": [
         { "id": "run-archiver", "label": "Archivar PNs", "sublabel": "Configurar fecha y criterios", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver" }
@@ -197,6 +200,7 @@
       "name": "Auditor de PNs",
       "subtitle": "Verificar calidad de datos",
       "icon": "🔎",
+      "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/auditor.js"],
       "actions": [
         { "id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor" }
@@ -207,6 +211,7 @@
       "name": "Cargador de Archivos",
       "subtitle": "Fotos y planos por PN",
       "icon": "📎",
+      "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader.js"],
       "actions": [
         { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
@@ -217,6 +222,7 @@
       "name": "Liberador de Reportes",
       "subtitle": "Sacar reportes de carpetas",
       "icon": "📂",
+      "category": "Herramientas",
       "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"],
       "actions": [
         { "id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator" }
@@ -227,6 +233,7 @@
       "name": "Ajuste Masivo de Specs",
       "subtitle": "Migración y params pendientes",
       "icon": "🔀",
+      "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/spec-migrator.js"],
       "actions": [
         { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run" },
@@ -239,6 +246,7 @@
       "name": "Reinicio de Inventario",
       "subtitle": "Archivar lotes y carga inicial",
       "icon": "🔄",
+      "category": "Inventario & Facturación",
       "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"],
       "actions": [
         { "id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset" }
@@ -249,6 +257,7 @@
       "name": "Validador OC vs OV",
       "subtitle": "Comparar orden de compra vs venta",
       "icon": "📋",
+      "category": "Inventario & Facturación",
       "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js"],
       "actions": [
         { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
@@ -259,6 +268,7 @@
       "name": "Gestión Masiva de OT",
       "subtitle": "Cambiar plazos y etiquetas masivamente",
       "icon": "⚙️",
+      "category": "Órdenes de Trabajo",
       "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"],
       "actions": [
         { "id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
@@ -269,6 +279,7 @@
       "name": "Adjuntar CFDI",
       "subtitle": "Auto-adjunta XML CFDI al enviar facturas",
       "icon": "📄",
+      "category": "Inventario & Facturación",
       "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"],
       "autoInject": true,
       "actions": [
