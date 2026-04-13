@@ -389,6 +389,87 @@ Reglas:
     return ovId; // Return idInDomain for loading
   }
 
+  // ── OV Creation Wizard ─────────────────────────────────────
+
+  async function fetchCreationData(customerId) {
+    log('Cargando datos para creación de OV...');
+    const domainId = api().getDomain().id || 344;
+
+    // Fetch in parallel: dialog defaults + customer info
+    const [dialogData, customerData] = await Promise.all([
+      api().query('CreateEditReceivedOrderDialogQuery', {
+        domainId,
+        quoteId: -1,
+        processIds: [],
+        withinLocationIds: null,
+        receivedOrderId: -1,
+        includeReceivedOrder: false
+      }),
+      customerId
+        ? api().query('GetCustomerInfoForReceivedOrder', { customerId: parseInt(customerId, 10) })
+        : Promise.resolve(null)
+    ]);
+
+    // Extract input schema
+    const schemas = dialogData?.allReceivedOrderInputSchemas?.nodes || [];
+    const inputSchema = schemas[0] || {};
+    const inputSchemaId = inputSchema.id || 559;
+    const schemaProperties = inputSchema.inputSchema?.properties || {};
+
+    // Extract customer defaults
+    const customer = customerData?.customerById || {};
+    const contacts = customer.customerContactsByCustomerId?.nodes || [];
+    const addresses = customer.customerAddressesByCustomerId?.nodes || [];
+    const defaultContact = contacts.find(c => c.isReceivedOrderContact) || contacts[0] || null;
+    const defaultBillTo = customer.customerAddressByDefaultBillToAddressId || addresses.find(a => a.useForBilling) || addresses[0] || null;
+    const defaultShipTo = customer.customerAddressByDefaultShipToAddressId || addresses.find(a => a.useForShipping) || addresses[0] || null;
+    const invoiceTerms = customer.invoiceTermByDefaultInvoiceTermsId || null;
+    const sector = customer.sectorBySectorId || null;
+    const defaultOrderType = customer.defaultOrderType || 'MAKE_TO_ORDER';
+    const defaultLeadTime = customer.defaultLeadTime || null;
+    const defaultShipViaId = customer.defaultShipViaId || null;
+
+    // Extract razón social options from schema
+    const razonSocialSchema = schemaProperties.RazonSocialVenta || {};
+    const razonSocialOptions = razonSocialSchema.enum || razonSocialSchema.oneOf?.map(o => o.const || o.title) || [];
+
+    // Extract divisa options
+    const divisaSchema = schemaProperties.Divisa || {};
+    const divisaOptions = divisaSchema.enum || divisaSchema.oneOf?.map(o => o.const || o.title) || ['USD', 'MXN'];
+
+    // Extract verificado por options
+    const verificadoSchema = schemaProperties.VerificadaPor || schemaProperties.VerificadoPor || {};
+    const verificadoOptions = verificadoSchema.enum || verificadoSchema.oneOf?.map(o => o.const || o.title) || [];
+
+    // Domain defaults
+    const domain = dialogData?.domainById || {};
+    const deadlineCutoffTime = domain.deadlineCutoffTime || '17:00:00';
+    const timezoneName = domain.timezoneName || 'America/Mexico_City';
+
+    log('Datos de creación cargados');
+
+    return {
+      inputSchemaId,
+      schemaProperties,
+      contacts,
+      addresses,
+      defaultContact,
+      defaultBillTo,
+      defaultShipTo,
+      invoiceTerms,
+      sector,
+      defaultOrderType,
+      defaultLeadTime,
+      defaultShipViaId,
+      razonSocialOptions,
+      divisaOptions,
+      verificadoOptions,
+      deadlineCutoffTime,
+      timezoneName,
+      customer
+    };
+  }
+
   async function loadSalesOrder(receivedOrderId) {
     log(`Cargando OV ${receivedOrderId}...`);
 
