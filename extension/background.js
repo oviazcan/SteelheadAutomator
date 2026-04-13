@@ -141,7 +141,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-async function handleMessage(message) {
+async function handleMessage(message, sender) {
   switch (message.action) {
 
     // ── General ──
@@ -375,9 +375,10 @@ async function handleMessage(message) {
 
     // ── Hash Scanner ──
     case 'persist-scan-results': {
-      const tab = await getSteelheadTab();
+      const tabId = sender?.tab?.id;
+      if (!tabId) return { error: 'No tab context' };
       const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id }, world: 'MAIN',
+        target: { tabId }, world: 'MAIN',
         func: () => window.HashScanner?.getResults() || null
       });
       const scanData = results?.[0]?.result;
@@ -389,14 +390,15 @@ async function handleMessage(message) {
 
     case 'auto-restart-scan': {
       try {
-        const tab = await getSteelheadTab();
-        await injectAppScripts(tab.id, 'hash-scanner');
+        const tabId = sender?.tab?.id;
+        if (!tabId) return { error: 'No tab context' };
+        await injectAppScripts(tabId, 'hash-scanner');
 
         // Restore accumulated results
         const { sa_scan_results } = await chrome.storage.local.get('sa_scan_results');
         if (sa_scan_results) {
           await chrome.scripting.executeScript({
-            target: { tabId: tab.id }, world: 'MAIN',
+            target: { tabId }, world: 'MAIN',
             func: (prev) => { if (window.HashScanner?.mergeResults) window.HashScanner.mergeResults(prev); },
             args: [sa_scan_results]
           });
@@ -404,7 +406,7 @@ async function handleMessage(message) {
 
         // Start scanning
         await chrome.scripting.executeScript({
-          target: { tabId: tab.id }, world: 'MAIN',
+          target: { tabId }, world: 'MAIN',
           func: () => { if (window.HashScanner && !window.HashScanner.isActive()) window.HashScanner.start(); }
         });
 
