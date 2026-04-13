@@ -1496,3 +1496,5 @@ Reglas:
     matchLinesByPN
   };
 })();
+
+if (typeof window !== 'undefined') window.POComparator = POComparator;
