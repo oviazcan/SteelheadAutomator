@@ -185,6 +185,40 @@ async function handleMessage(message, sender) {
     case 'get-config':
       return cachedConfig || await loadConfig();
 
+    case 'get-current-user': {
+      try {
+        const tab = await getSteelheadTab();
+        const config = cachedConfig || await loadConfig();
+        await injectAppScripts(tab.id, 'carga-masiva'); // ensures SteelheadAPI is loaded
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: async () => {
+            if (!window.SteelheadAPI) return { error: 'SteelheadAPI not available' };
+            try {
+              const data = await window.SteelheadAPI.query('CurrentUser', { deviceLocationIds: [] }, 'CurrentUser');
+              const user = data?.currentSession?.userByUserId;
+              if (!user) return { error: 'No user session' };
+              return {
+                id: user.id,
+                name: user.name,
+                isAdmin: user.isAdmin,
+                isSuperUser: user.isSuperUser,
+                employeeId: user.employeeId,
+                userType: user.currentUserEmploymentRecord?.userType || null,
+                domainId: user.domainByDomainId?.id,
+                domainName: user.domainByDomainId?.name
+              };
+            } catch (e) {
+              return { error: e.message };
+            }
+          }
+        });
+        return results?.[0]?.result || { error: 'No result' };
+      } catch (e) {
+        return { error: e.message };
+      }
+    }
+
     case 'check-scan-status': {
       // Check storage flag first (survives page reloads)
       const { sa_scanning } = await chrome.storage.local.get('sa_scanning');

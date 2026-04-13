@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let config = null;
   let currentApp = null;
   let viewMode = 'grid'; // 'grid' | 'list'
+  let currentUser = null; // { id, name, isAdmin, isSuperUser, ... }
 
   const views = { menu: 'view-menu', app: 'view-app', results: 'view-results', settings: 'view-settings' };
   const fileInput = document.getElementById('file-input');
@@ -16,6 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     initViewMode();
     config = await sendToBackground('get-config');
+    try {
+      currentUser = await sendToBackground('get-current-user');
+      if (currentUser?.error) { console.warn('[SA] User fetch failed:', currentUser.error); currentUser = null; }
+    } catch (_) { currentUser = null; }
     await checkStatus();
     renderAppMenu();
     checkExtensionUpdate();
@@ -114,11 +119,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (oldMenu) oldMenu.remove();
 
     const apps = config?.apps || [];
+    const permissions = config?.permissions?.restrictedApps || {};
+    const visibleApps = apps.filter(app => {
+      const perm = permissions[app.id];
+      if (!perm) return true; // no restriction
+      if (perm.requireAdmin && !currentUser?.isAdmin && !currentUser?.isSuperUser) return false;
+      return true;
+    });
 
     if (viewMode === 'grid') {
-      renderGridMenu(menuWrap, apps);
+      renderGridMenu(menuWrap, visibleApps);
     } else {
-      renderListMenu(menuWrap, apps);
+      renderListMenu(menuWrap, visibleApps);
     }
 
     // Update scroll fade
