@@ -4,6 +4,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   let config = null;
   let currentApp = null;
+  let viewMode = 'grid'; // 'grid' | 'list'
 
   const views = { menu: 'view-menu', app: 'view-app', results: 'view-results', settings: 'view-settings' };
   const fileInput = document.getElementById('file-input');
@@ -13,12 +14,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Init ──
   async function init() {
     initTheme();
+    initViewMode();
     config = await sendToBackground('get-config');
     await checkStatus();
     renderAppMenu();
     checkExtensionUpdate();
 
     document.getElementById('btn-theme-toggle').addEventListener('click', toggleTheme);
+    document.getElementById('btn-view-toggle').addEventListener('click', toggleViewMode);
+
+    document.getElementById('btn-rec').addEventListener('click', async () => {
+      try {
+        const result = await sendToBackground('toggle-scan');
+        const scanning = result?.started === true;
+        updateScanIndicator(scanning);
+        updateRecButton(scanning);
+      } catch (e) { /* ignore */ }
+    });
 
     document.getElementById('btn-settings').addEventListener('click', () => {
       loadSettingsView();
@@ -96,44 +108,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── App Menu ──
   function renderAppMenu() {
-    const menu = document.getElementById('app-menu');
-    menu.innerHTML = '';
+    const menuWrap = document.querySelector('.app-menu-wrap');
+    // Remove existing menu content
+    const oldMenu = menuWrap.querySelector('.app-menu, .app-grid, .app-list');
+    if (oldMenu) oldMenu.remove();
 
     const apps = config?.apps || [];
-    for (const app of apps) {
-      const card = document.createElement('div');
-      card.className = 'app-card';
-      card.innerHTML = `
-        <span class="app-icon">${app.icon || '📦'}</span>
-        <div class="app-info">
-          <div class="app-name">${app.name}</div>
-          <div class="app-subtitle">${app.subtitle || ''}</div>
-        </div>
-        <span class="app-chevron">▶</span>`;
-      card.addEventListener('click', () => selectApp(app));
-      menu.appendChild(card);
+
+    if (viewMode === 'grid') {
+      renderGridMenu(menuWrap, apps);
+    } else {
+      renderListMenu(menuWrap, apps);
     }
 
-    // Placeholder for future apps
-    const placeholder = document.createElement('div');
-    placeholder.className = 'app-card disabled';
-    placeholder.innerHTML = `
-      <span class="app-icon">⚙️</span>
-      <div class="app-info">
-        <div class="app-name">Más apps</div>
-        <div class="app-subtitle">Próximamente</div>
-      </div>`;
-    menu.appendChild(placeholder);
-
-    // Wire up scroll indicator
+    // Update scroll fade
     const fade = document.getElementById('scroll-fade');
-    const updateFade = () => {
-      const scrollable = menu.scrollHeight > menu.clientHeight;
-      const atBottom = menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 4;
-      fade.classList.toggle('visible', scrollable && !atBottom);
-    };
-    menu.addEventListener('scroll', updateFade);
-    setTimeout(updateFade, 0);
+    const scrollEl = menuWrap.querySelector('.app-grid, .app-list');
+    if (scrollEl && fade) {
+      const updateFade = () => {
+        const scrollable = scrollEl.scrollHeight > scrollEl.clientHeight;
+        const atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 4;
+        fade.classList.toggle('visible', scrollable && !atBottom);
+      };
+      scrollEl.addEventListener('scroll', updateFade);
+      setTimeout(updateFade, 0);
+    }
+  }
+
+  function renderGridMenu(container, apps) {
+    const grid = document.createElement('div');
+    grid.className = 'app-grid';
+
+    for (const app of apps) {
+      const tile = document.createElement('div');
+      tile.className = 'app-tile';
+      tile.innerHTML = `
+        <div class="tile-icon">${app.icon || '📦'}</div>
+        <div class="tile-name">${app.name}</div>`;
+      tile.addEventListener('click', () => selectApp(app));
+      grid.appendChild(tile);
+    }
+
+    container.insertBefore(grid, document.getElementById('scroll-fade'));
+  }
+
+  function renderListMenu(container, apps) {
+    const list = document.createElement('div');
+    list.className = 'app-list';
+
+    // Group by category, preserving order of first appearance
+    const categories = [];
+    const catMap = new Map();
+    for (const app of apps) {
+      const cat = app.category || 'Otros';
+      if (!catMap.has(cat)) {
+        catMap.set(cat, []);
+        categories.push(cat);
+      }
+      catMap.get(cat).push(app);
+    }
+
+    for (const cat of categories) {
+      const header = document.createElement('div');
+      header.className = 'app-list-cat';
+      header.textContent = cat;
+      list.appendChild(header);
+
+      for (const app of catMap.get(cat)) {
+        const row = document.createElement('div');
+        row.className = 'app-list-row';
+        row.innerHTML = `
+          <span class="row-icon">${app.icon || '📦'}</span>
+          <span class="row-name">${app.name}</span>
+          <span class="row-chevron">›</span>`;
+        row.addEventListener('click', () => selectApp(app));
+        list.appendChild(row);
+      }
+    }
+
+    container.insertBefore(list, document.getElementById('scroll-fade'));
   }
 
   // ── App View ──
@@ -210,6 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update scan indicator + toggle button label
             const scanning = result?.started === true;
             updateScanIndicator(scanning);
+            updateRecButton(scanning);
             showProgress(result.message || (scanning ? 'Capturando...' : 'Detenido.'), scanning ? 50 : 100);
             // Update the button text
             const toggleBtn = document.querySelector(`[data-action-id="toggle-scan"]`);
@@ -368,7 +422,8 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const scanStatus = await sendToBackground('check-scan-status');
         updateScanIndicator(scanStatus?.scanning);
-      } catch (_) { updateScanIndicator(false); }
+        updateRecButton(scanStatus?.scanning);
+      } catch (_) { updateScanIndicator(false); updateRecButton(false); }
     } catch (err) {
       document.getElementById('status-bar').classList.add('error');
       document.getElementById('status-text').textContent = err.message;
@@ -377,6 +432,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateScanIndicator(active) {
     document.getElementById('scan-indicator').classList.toggle('active', !!active);
+  }
+
+  function updateRecButton(active) {
+    const btn = document.getElementById('btn-rec');
+    if (!btn) return;
+    btn.classList.toggle('recording', !!active);
+    btn.textContent = active ? '⏹' : '🔴';
+    btn.title = active ? 'Detener captura' : 'Iniciar captura';
   }
 
   function readFileAsText(file) {
@@ -522,5 +585,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const newTheme = isDark ? 'light' : 'dark';
     applyTheme(newTheme);
     chrome.storage.local.set({ sa_theme: newTheme });
+  }
+
+  // ── View mode ──
+  function initViewMode() {
+    chrome.storage.local.get(['sa_view_mode'], (result) => {
+      viewMode = result.sa_view_mode || 'grid';
+      applyViewMode(viewMode);
+    });
+  }
+
+  function applyViewMode(mode) {
+    viewMode = mode;
+    const btn = document.getElementById('btn-view-toggle');
+    if (btn) {
+      btn.textContent = mode === 'grid' ? '≡' : '▦';
+      btn.title = mode === 'grid' ? 'Cambiar a vista de lista' : 'Cambiar a vista de grid';
+    }
+    renderAppMenu();
+  }
+
+  function toggleViewMode() {
+    const newMode = viewMode === 'grid' ? 'list' : 'grid';
+    applyViewMode(newMode);
+    chrome.storage.local.set({ sa_view_mode: newMode });
   }
 });

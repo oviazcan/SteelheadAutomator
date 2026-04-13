@@ -113,6 +113,55 @@
     .app-card.disabled { opacity: 0.5; cursor: default; }
     .app-card.disabled:hover { border-color: var(--border-card); box-shadow: none; }
 
+    /* Grid view (3 columns) */
+    .app-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 10px; max-height: 480px; overflow-y: auto; }
+    .app-grid::-webkit-scrollbar { width: 6px; }
+    .app-grid::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    .app-grid::-webkit-scrollbar-track { background: transparent; }
+    .app-tile {
+      background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px;
+      padding: 10px 4px; text-align: center; cursor: pointer; transition: all 0.15s ease;
+    }
+    .app-tile:hover { border-color: #38bdf8; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .app-tile:active { transform: scale(0.96); }
+    .app-tile .tile-icon { font-size: 26px; }
+    .app-tile .tile-name { font-size: 9px; font-weight: 600; color: var(--text-body); margin-top: 3px; line-height: 1.2; }
+
+    /* List view (categorized) */
+    .app-list { padding: 8px 12px; max-height: 480px; overflow-y: auto; }
+    .app-list::-webkit-scrollbar { width: 6px; }
+    .app-list::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    .app-list::-webkit-scrollbar-track { background: transparent; }
+    .app-list-cat {
+      font-size: 9px; font-weight: 700; color: var(--text-soft); text-transform: uppercase;
+      letter-spacing: 1px; padding: 8px 4px 4px; border-bottom: 1px solid var(--border-card);
+    }
+    .app-list-cat:first-child { padding-top: 4px; }
+    .app-list-row {
+      display: flex; align-items: center; gap: 8px; padding: 8px 4px;
+      border-bottom: 1px solid var(--border-card); cursor: pointer; transition: background 0.1s;
+    }
+    .app-list-row:hover { background: var(--bg-app-header-hover); }
+    .app-list-row:active { background: var(--bg-app-header); }
+    .app-list-row .row-icon { font-size: 16px; width: 20px; text-align: center; }
+    .app-list-row .row-name { flex: 1; font-size: 11px; font-weight: 600; color: var(--text-body); }
+    .app-list-row .row-chevron { font-size: 11px; color: var(--text-soft); }
+
+    /* View mode toggle button */
+    .btn-view-toggle {
+      background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px;
+      opacity: 0.6; transition: opacity 0.2s; color: inherit;
+    }
+    .btn-view-toggle:hover { opacity: 1; }
+
+    /* Rec button */
+    .btn-rec {
+      background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px;
+      opacity: 0.6; transition: opacity 0.2s;
+    }
+    .btn-rec:hover { opacity: 1; }
+    .btn-rec.recording { opacity: 1; animation: blink 1s infinite; }
+
     .app-view-header {
       display: flex; align-items: center; gap: 8px;
       padding: 10px 16px; background: var(--bg-app-header); border-bottom: 1px solid var(--border-card);
@@ -227,7 +276,9 @@
     <span style="display:flex;align-items:center;gap:8px">
       <span id="version-text">v--</span>
       <button class="btn-theme-toggle" id="btn-theme-toggle" title="Modo claro/oscuro">🌙</button>
+      <button class="btn-view-toggle" id="btn-view-toggle" title="Cambiar vista">▦</button>
       <button class="btn-theme-toggle" id="btn-settings" title="Configuración">⚙️</button>
+      <button class="btn-rec" id="btn-rec" title="Iniciar captura">🔴</button>
       <button class="btn-reload-inline" id="btn-copy-log" title="Copiar último log">📋</button>
       <button class="btn-reload-inline" id="btn-reload" title="Recargar Steelhead">🔃</button>
     </span>
