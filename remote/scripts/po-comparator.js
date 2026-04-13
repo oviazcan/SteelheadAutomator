@@ -239,6 +239,99 @@ Reglas:
     return candidates;
   }
 
+  function showCandidateSelector(candidates, pdfData) {
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      let listHTML = '';
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        const deadline = c.deadline ? new Date(c.deadline).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+        let badges = '';
+        if (c.signals.includes('pn_match')) {
+          badges += `<span class="badge badge-pn">${c.pnMatchCount} de ${pdfData.lines.length} PNs coinciden</span>`;
+        }
+        if (c.signals.includes('provisional')) {
+          badges += `<span class="badge badge-provisional">Nombre provisional</span>`;
+        }
+        if (c.signals.includes('name_similar')) {
+          badges += `<span class="badge badge-similar">Nombre similar</span>`;
+        }
+
+        listHTML += `
+          <label class="candidate-item" data-idx="${i}">
+            <input type="radio" name="dl9-candidate" value="${i}">
+            <div class="candidate-info">
+              <div class="candidate-name">#${c.ovId} — ${escHtml(c.ovName)}</div>
+              <div class="candidate-detail">${c.lineCount} líneas · Plazo: ${deadline}</div>
+              <div class="candidate-badges">${badges}</div>
+            </div>
+          </label>`;
+      }
+
+      // "Create new" option
+      listHTML += `
+        <label class="candidate-item candidate-create" data-idx="create">
+          <input type="radio" name="dl9-candidate" value="create">
+          <div class="candidate-info">
+            <div class="candidate-name">Ninguna — Crear OV nueva</div>
+            <div class="candidate-detail">Crear orden de venta con los datos del PDF</div>
+          </div>
+        </label>`;
+
+      md.innerHTML = `
+        <h2>OV no encontrada por nombre</h2>
+        <p class="dl9-sub">Se encontraron ${candidates.length} OV(s) del mismo cliente que podrían ser la correcta. PO del PDF: <strong>${escHtml(pdfData.poNumber || '?')}</strong></p>
+        <div class="candidate-list">${listHTML}</div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-cand-cancel">Cancelar</button>
+          <button class="dl9-btn dl9-btn-primary" id="dl9-cand-confirm" disabled>Confirmar</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      let selected = null;
+
+      // Radio selection
+      md.querySelectorAll('input[name="dl9-candidate"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+          selected = radio.value;
+          md.querySelector('#dl9-cand-confirm').disabled = false;
+        });
+      });
+
+      // Click on label row also selects
+      md.querySelectorAll('.candidate-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          if (e.target.tagName === 'INPUT') return;
+          const radio = item.querySelector('input[type=radio]');
+          radio.checked = true;
+          radio.dispatchEvent(new Event('change'));
+        });
+      });
+
+      // Confirm
+      md.querySelector('#dl9-cand-confirm').addEventListener('click', () => {
+        removeOverlay();
+        if (selected === 'create') {
+          resolve({ action: 'create' });
+        } else {
+          const idx = parseInt(selected, 10);
+          resolve({ action: 'adopt', candidate: candidates[idx] });
+        }
+      });
+
+      // Cancel
+      md.querySelector('#dl9-cand-cancel').addEventListener('click', () => {
+        removeOverlay();
+        resolve(null);
+      });
+    });
+  }
+
   async function loadSalesOrder(receivedOrderId) {
     log(`Cargando OV ${receivedOrderId}...`);
 
@@ -675,6 +768,20 @@ Reglas:
       .dl9-poc-modal .manual-search input{flex:1;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px}
       .dl9-poc-modal .manual-search button{padding:8px 16px;border:none;border-radius:6px;background:#38bdf8;color:#0f172a;font-weight:600;font-size:13px;cursor:pointer}
       .dl9-poc-modal .footer-usage{margin-top:12px;padding-top:10px;border-top:1px solid #334155;font-size:11px;color:#64748b;text-align:right}
+      .dl9-poc-modal .candidate-list{display:flex;flex-direction:column;gap:6px;margin:12px 0;max-height:320px;overflow-y:auto}
+      .dl9-poc-modal .candidate-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:#0f172a;border:1px solid #334155;cursor:pointer;transition:border-color 0.15s}
+      .dl9-poc-modal .candidate-item:hover{border-color:#38bdf8}
+      .dl9-poc-modal .candidate-item input[type=radio]{accent-color:#38bdf8;width:16px;height:16px;flex-shrink:0}
+      .dl9-poc-modal .candidate-info{flex:1;min-width:0}
+      .dl9-poc-modal .candidate-name{font-weight:600;font-size:13px;color:#e2e8f0}
+      .dl9-poc-modal .candidate-detail{font-size:11px;color:#64748b;margin-top:2px}
+      .dl9-poc-modal .candidate-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+      .dl9-poc-modal .badge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600}
+      .dl9-poc-modal .badge-pn{background:rgba(239,68,68,0.15);color:#f87171}
+      .dl9-poc-modal .badge-provisional{background:rgba(250,204,21,0.15);color:#facc15}
+      .dl9-poc-modal .badge-similar{background:rgba(52,211,153,0.15);color:#34d399}
+      .dl9-poc-modal .candidate-create{border-style:dashed;border-color:#475569}
+      .dl9-poc-modal .candidate-create:hover{border-color:#f59e0b}
     `;
     document.head.appendChild(s);
   }
