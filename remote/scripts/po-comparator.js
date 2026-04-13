@@ -142,6 +142,103 @@ Reglas:
     }
   }
 
+  // ── Multi-signal OV detection ──────────────────────────────────
+
+  const PROVISIONAL_NAME_RE = /^(test|prueba|pendiente|temp|tmp)/i;
+
+  async function findCandidateOVs(pdfData, customerId) {
+    if (!customerId) return [];
+
+    log('Buscando OVs candidatas del cliente...');
+
+    // Fetch all active OVs for this customer
+    const data = await api().query('ActiveReceivedOrders', {
+      domainId: api().getDomain().id || 344,
+      customerId: parseInt(customerId, 10),
+      first: 100,
+      offset: 0,
+      orderBy: ['ID_IN_DOMAIN_DESC']
+    });
+
+    const orders = data?.receivedOrders?.nodes ||
+                   data?.allReceivedOrders?.nodes ||
+                   data?.activeReceivedOrders?.nodes || [];
+
+    if (orders.length === 0) {
+      log('No hay OVs activas para este cliente');
+      return [];
+    }
+
+    log(`${orders.length} OVs activas del cliente, analizando...`);
+
+    // Extract PDF part numbers for matching
+    const pdfPNs = new Set(
+      pdfData.lines
+        .map(l => normalizePN(l.partNumber))
+        .filter(Boolean)
+    );
+
+    // Score each OV
+    const candidates = [];
+    for (const order of orders) {
+      const ovId = order.idInDomain || order.id;
+      const ovName = order.name || '';
+      const score = { ovId, ovName, order, signals: [], pnMatchCount: 0, pnMatchList: [] };
+
+      // Signal: provisional name
+      if (PROVISIONAL_NAME_RE.test(ovName)) {
+        score.signals.push('provisional');
+      }
+
+      // Signal: name similar to PO number
+      if (pdfData.poNumber && ovName.toLowerCase().includes(pdfData.poNumber.toLowerCase())) {
+        score.signals.push('name_similar');
+      }
+
+      // Load lines for PN cross-reference
+      try {
+        const ovData = await api().query('GetReceivedOrder', {
+          idInDomain: parseInt(ovId, 10),
+          revisionNumber: 1
+        });
+        const ovOrder = ovData?.receivedOrder;
+        const roLines = ovOrder?.receivedOrderLines?.nodes || ovOrder?.receivedOrderLines || [];
+        score.lineCount = roLines.length;
+        score.deadline = ovOrder?.deadline;
+
+        // Cross-reference PNs
+        for (const line of roLines) {
+          const pn = normalizePN(line.partNumber?.name || line.partNumberName);
+          if (pn && pdfPNs.has(pn)) {
+            score.pnMatchCount++;
+            score.pnMatchList.push(pn);
+          }
+        }
+
+        if (score.pnMatchCount > 0) {
+          score.signals.push('pn_match');
+        }
+      } catch (e) {
+        warn(`No se pudieron cargar líneas de OV ${ovId}: ${e.message}`);
+        score.lineCount = '?';
+      }
+
+      // Only include if there's at least one signal
+      if (score.signals.length > 0) {
+        candidates.push(score);
+      }
+    }
+
+    // Sort: PN matches first (desc), then date (desc)
+    candidates.sort((a, b) => {
+      if (b.pnMatchCount !== a.pnMatchCount) return b.pnMatchCount - a.pnMatchCount;
+      return (b.ovId || 0) - (a.ovId || 0);
+    });
+
+    log(`${candidates.length} candidata(s) encontrada(s)`);
+    return candidates;
+  }
+
   async function loadSalesOrder(receivedOrderId) {
     log(`Cargando OV ${receivedOrderId}...`);
 
