@@ -652,9 +652,9 @@ Reglas:
         <h2>Validador OC vs OV</h2>
         <p class="dl9-sub">Sube el PDF de la orden de compra para comparar contra Steelhead</p>
         <div class="dl9-file-zone" id="dl9-poc-dropzone">
-          <input type="file" accept=".pdf" id="dl9-poc-file">
-          <p style="font-size:14px;color:#94a3b8;margin-bottom:4px">Seleccionar PDF de Orden de Compra</p>
-          <p style="font-size:11px;color:#64748b">Clic aqui o arrastra el archivo</p>
+          <input type="file" accept=".pdf" id="dl9-poc-file" multiple>
+          <p style="font-size:14px;color:#94a3b8;margin-bottom:4px">Seleccionar PDF(s) de Orden de Compra</p>
+          <p style="font-size:11px;color:#64748b">Clic aqui o arrastra uno o varios archivos</p>
         </div>
         <div class="dl9-btnrow">
           <button class="dl9-btn dl9-btn-cancel" id="dl9-poc-cancel">Cancelar</button>
@@ -672,12 +672,12 @@ Reglas:
       dropzone.addEventListener('drop', e => {
         e.preventDefault();
         dropzone.style.borderColor = '#475569';
-        const file = e.dataTransfer?.files?.[0];
-        if (file && file.type === 'application/pdf') { removeOverlay(); resolve(file); }
+        const pdfs = [...(e.dataTransfer?.files || [])].filter(f => f.type === 'application/pdf');
+        if (pdfs.length > 0) { removeOverlay(); resolve(pdfs); }
       });
       fileInput.addEventListener('change', () => {
-        const file = fileInput.files?.[0];
-        if (file) { removeOverlay(); resolve(file); }
+        const pdfs = [...(fileInput.files || [])].filter(f => f.type === 'application/pdf');
+        if (pdfs.length > 0) { removeOverlay(); resolve(pdfs); }
       });
       md.querySelector('#dl9-poc-cancel').addEventListener('click', () => { removeOverlay(); resolve(null); });
     });
@@ -1388,16 +1388,12 @@ Reglas:
 
   // ── Main UI Entry Point ─────────────────────────────────────
 
-  async function runWithUI() {
-    log('=== PO Comparator UI iniciando ===');
-    claude().resetUsage();
-
-    // Step 1: File picker
-    const file = await showFilePicker();
-    if (!file) { log('Cancelado por el usuario'); return { cancelled: true }; }
+  async function processOneFile(file, fileIndex, totalFiles) {
+    const prefix = totalFiles > 1 ? `[${fileIndex + 1}/${totalFiles}] ` : '';
+    log(`${prefix}Procesando: ${file.name}`);
 
     // Step 2: Parse PDF with progress
-    let progress = showProgress('Analizando PDF con Claude...', 'Extrayendo datos de la orden de compra...');
+    let progress = showProgress(`${prefix}Analizando PDF con Claude...`, 'Extrayendo datos de la orden de compra...');
     let pdfData;
     try {
       progress.update(20, 'Enviando PDF a Claude...');
@@ -1407,16 +1403,16 @@ Reglas:
       progress.close();
     } catch (e) {
       progress.close();
-      alert('Error analizando PDF: ' + e.message);
+      alert(`${prefix}Error analizando PDF: ` + e.message);
       return { error: e.message };
     }
 
     // Step 3: Preview and confirm
     const confirmed = await showPDFPreview(pdfData);
-    if (!confirmed) return runWithUI(); // Retry
+    if (!confirmed) return processOneFile(file, fileIndex, totalFiles); // Retry
 
     // Step 4: Search for OV
-    progress = showProgress('Buscando OV en Steelhead...', 'Buscando orden de venta con PO "' + (pdfData.poNumber || '') + '"...');
+    progress = showProgress(`${prefix}Buscando OV en Steelhead...`, 'Buscando orden de venta con PO "' + (pdfData.poNumber || '') + '"...');
     const customerId = getCustomerIdFromURL();
     let searchResult;
     try {
@@ -1426,7 +1422,7 @@ Reglas:
       progress.close();
     } catch (e) {
       progress.close();
-      alert('Error buscando OV: ' + e.message);
+      alert(`${prefix}Error buscando OV: ` + e.message);
       return { error: e.message };
     }
 
@@ -1435,13 +1431,12 @@ Reglas:
     if (searchResult.match === 'exact') {
       orderId = searchResult.orders[0].idInDomain || searchResult.orders[0].id;
     } else {
-      // Show selector for no-match or multiple
       orderId = await showOVSelector(searchResult, pdfData);
-      if (!orderId) { log('Cancelado por el usuario'); return { cancelled: true }; }
+      if (!orderId) { log(`${prefix}Cancelado por el usuario`); return { cancelled: true }; }
     }
 
     // Step 6: Load OV + compare
-    progress = showProgress('Cargando y comparando...', 'Obteniendo datos de la OV...');
+    progress = showProgress(`${prefix}Cargando y comparando...`, 'Obteniendo datos de la OV...');
     let soData, comparison;
     try {
       progress.update(30, 'Cargando OV...');
@@ -1470,15 +1465,32 @@ Reglas:
       progress.close();
     } catch (e) {
       progress.close();
-      alert('Error cargando OV: ' + e.message);
+      alert(`${prefix}Error cargando OV: ` + e.message);
       return { error: e.message };
     }
 
     // Step 7: Show comparison report
     const result = await showComparisonReport(pdfData, soData, comparison);
+    return { pdfData, soData, comparison, result };
+  }
+
+  async function runWithUI() {
+    log('=== PO Comparator UI iniciando ===');
+    claude().resetUsage();
+
+    // Step 1: File picker (supports multiple)
+    const files = await showFilePicker();
+    if (!files) { log('Cancelado por el usuario'); return { cancelled: true }; }
+
+    const results = [];
+    for (let i = 0; i < files.length; i++) {
+      const r = await processOneFile(files[i], i, files.length);
+      results.push(r);
+      if (r?.cancelled) break;
+    }
 
     log('=== PO Comparator UI completado ===');
-    return { pdfData, soData, comparison, result };
+    return results.length === 1 ? results[0] : { batch: true, results };
   }
 
   // ── Public API ───────────────────────────────────────────────
