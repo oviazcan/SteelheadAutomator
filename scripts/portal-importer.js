@@ -421,7 +421,7 @@ Reglas:
       md.innerHTML = `
         <h2>Elegir PO a validar</h2>
         <p class="dl9-sub">Archivo: <strong>${ops().escHtml(file.name)}</strong> — ${pos.length} PO(s) detectados</p>
-        <div style="margin:8px 0">Filtrar por status: ${statusSelect}</div>
+        <div style="margin:8px 0">Filtrar status del portal: ${statusSelect}</div>
         <div id="pi-po-list" style="max-height:400px;overflow-y:auto;margin:12px 0;display:flex;flex-direction:column;gap:6px"></div>
         <div class="dl9-btnrow">
           <button class="dl9-btn dl9-btn-cancel" id="pi-po-cancel">Cancelar</button>
@@ -448,7 +448,7 @@ Reglas:
             <div class="candidate-item" data-po="${ops().escHtml(p.poNumber)}">
               <div class="candidate-info">
                 <div class="candidate-name">PO ${ops().escHtml(p.poNumber)}</div>
-                <div class="candidate-detail">${p.lines.length} líneas · ${ops().escHtml(p.currency || '')} ${total.toFixed(2)} · Cliente: ${ops().escHtml(p.customer || '?')}</div>
+                <div class="candidate-detail">${p.lines.length} líneas · ${ops().escHtml(p.currency || '')} ${ops().fmtNumber(total, 2)} · Cliente: ${ops().escHtml(p.customer || '?')}</div>
               </div>
               <div class="badge badge-provisional">${ops().escHtml(p.status || '')}</div>
             </div>`;
@@ -607,8 +607,8 @@ Reglas:
 
       md.innerHTML = `
         <h2>Auditoría en batch</h2>
-        <p class="dl9-sub">${auditRows.length} POs — revisa la acción sugerida por fila y procesa en lote.</p>
-        <div style="margin:8px 0">Filtrar status: ${statusSelect}</div>
+        <p class="dl9-sub">${auditRows.length} POs — revisa la acción sugerida por fila y procesa en lote. El filtro usa el status del <strong>portal</strong> (Hubbell), la columna "Estado Steelhead" indica si la OV ya existe en Steelhead.</p>
+        <div style="margin:8px 0">Filtrar status del portal: ${statusSelect}</div>
         <div style="max-height:420px;overflow-y:auto">
           <table class="dl9-audit-table">
             <thead><tr><th>PO</th><th>Líneas</th><th>Total</th><th>Estado Steelhead</th><th>Acción</th></tr></thead>
@@ -651,7 +651,7 @@ Reglas:
           return `<tr>
             <td>${ops().escHtml(r.po.poNumber)}</td>
             <td>${r.po.lines.length}</td>
-            <td>${ops().escHtml(r.po.currency || '')} ${total.toFixed(2)}</td>
+            <td>${ops().escHtml(r.po.currency || '')} ${ops().fmtNumber(total, 2)}</td>
             <td>${statusLabel(r)}</td>
             <td>${actionSelect(r, idx)}</td>
           </tr>`;
