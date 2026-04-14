@@ -399,6 +399,147 @@ Reglas:
     };
   }
 
+  // ── Single Mode UI ─────────────────────────────────────────
+
+  function showPOSelector(pos, layout, file, parsedData) {
+    ops().ensureStyles();
+    return new Promise(resolve => {
+      const ov = ops().createOverlay();
+      const md = ops().createModal();
+
+      const statusValues = layout.statusFilter?.activeValues || [];
+      const defaultFilter = statusValues.length > 0 ? statusValues[0] : '__all__';
+
+      const allStatuses = [...new Set(pos.map(p => p.status).filter(Boolean))];
+
+      const statusSelect = `
+        <select id="pi-po-status-filter" style="padding:6px 10px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px">
+          <option value="__all__">Todos (${pos.length})</option>
+          ${allStatuses.map(s => `<option value="${ops().escHtml(s)}" ${s === defaultFilter ? 'selected' : ''}>${ops().escHtml(s)} (${pos.filter(p => p.status === s).length})</option>`).join('')}
+        </select>`;
+
+      md.innerHTML = `
+        <h2>Elegir PO a validar</h2>
+        <p class="dl9-sub">Archivo: <strong>${ops().escHtml(file.name)}</strong> — ${pos.length} PO(s) detectados</p>
+        <div style="margin:8px 0">Filtrar por status: ${statusSelect}</div>
+        <div id="pi-po-list" style="max-height:400px;overflow-y:auto;margin:12px 0;display:flex;flex-direction:column;gap:6px"></div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="pi-po-cancel">Cancelar</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      ops().addSourceFileButton(md, file, parsedData);
+
+      function renderList() {
+        const filter = md.querySelector('#pi-po-status-filter').value;
+        const filtered = filter === '__all__' ? pos : pos.filter(p => p.status === filter);
+        const listEl = md.querySelector('#pi-po-list');
+
+        if (filtered.length === 0) {
+          listEl.innerHTML = '<p style="color:#64748b;font-size:13px;text-align:center;padding:16px">Sin POs para este filtro.</p>';
+          return;
+        }
+
+        listEl.innerHTML = filtered.map(p => {
+          const total = p.lines.reduce((sum, l) => sum + (l.quantity || 0) * (l.unitPrice || 0), 0);
+          return `
+            <div class="candidate-item" data-po="${ops().escHtml(p.poNumber)}">
+              <div class="candidate-info">
+                <div class="candidate-name">PO ${ops().escHtml(p.poNumber)}</div>
+                <div class="candidate-detail">${p.lines.length} líneas · ${ops().escHtml(p.currency || '')} ${total.toFixed(2)} · Cliente: ${ops().escHtml(p.customer || '?')}</div>
+              </div>
+              <div class="badge badge-provisional">${ops().escHtml(p.status || '')}</div>
+            </div>`;
+        }).join('');
+
+        listEl.querySelectorAll('.candidate-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const poNumber = el.dataset.po;
+            const po = pos.find(p => p.poNumber === poNumber);
+            ops().removeOverlay();
+            resolve(po);
+          });
+        });
+      }
+
+      md.querySelector('#pi-po-status-filter').addEventListener('change', renderList);
+      md.querySelector('#pi-po-cancel').addEventListener('click', () => { ops().removeOverlay(); resolve(null); });
+
+      renderList();
+    });
+  }
+
+  // ── Single mode orchestration ─────────────────────────────
+
+  async function processSingleMode(pos, layout, layoutId, file, parsedData, customerId) {
+    const po = await showPOSelector(pos, layout, file, parsedData);
+    if (!po) return { cancelled: true };
+
+    // Enrich po with fileName for downstream compatibility
+    po.fileName = file.name;
+
+    // Build sourceData shape expected by OVOperations UIs
+    const sourceData = {
+      poNumber: po.poNumber,
+      customer: po.customer,
+      currency: po.currency,
+      lines: po.lines,
+      sourceType: 'xls',
+      fileName: file.name
+    };
+
+    // Search by PO name via existing POComparator.findSalesOrder
+    const searchResult = await window.POComparator.findSalesOrder(po.poNumber, customerId);
+
+    if (searchResult.match === 'exact') {
+      const orderId = searchResult.orders[0].idInDomain || searchResult.orders[0].id;
+      log(`OV existente: #${orderId} — abrir para validar manualmente en Steelhead.`);
+      alert(`La OV ya existe (#${orderId}). Puedes abrirla para validar en Steelhead.`);
+      return { existed: true, orderId };
+    }
+
+    if (searchResult.match === 'multiple') {
+      alert(`${searchResult.orders.length} OVs matchean el nombre. Se requiere selección manual en Steelhead por ahora.`);
+      return { multiple: true };
+    }
+
+    // No exact match — candidates detection
+    const candidates = await ops().findCandidateOVs(sourceData, customerId);
+
+    if (candidates.length > 0) {
+      const selection = await ops().showCandidateSelector(candidates, sourceData);
+      if (!selection) return { cancelled: true };
+
+      if (selection.action === 'adopt') {
+        const orderId = await ops().adoptExistingOV(selection.candidate, sourceData, file);
+        alert(`OV adoptada: #${orderId}`);
+        return { adopted: true, orderId };
+      }
+
+      // selection.action === 'create'
+      const creationData = await ops().fetchCreationData(customerId);
+      const formData = await ops().showCreationWizard(sourceData, creationData, customerId);
+      if (!formData) return { cancelled: true };
+      const orderId = await ops().createNewOV(formData, sourceData, file);
+      alert(`OV creada: #${orderId}`);
+      return { created: true, orderId };
+    }
+
+    // No candidates — offer manual search or create
+    const noMatch = await ops().showNoMatchOptions(sourceData);
+    if (!noMatch) return { cancelled: true };
+    if (noMatch.action === 'manual') return { manualId: noMatch.orderId };
+
+    const creationData = await ops().fetchCreationData(customerId);
+    const formData = await ops().showCreationWizard(sourceData, creationData, customerId);
+    if (!formData) return { cancelled: true };
+    const orderId = await ops().createNewOV(formData, sourceData, file);
+    alert(`OV creada: #${orderId}`);
+    return { created: true, orderId };
+  }
+
   // ── Main Orchestrator ─────────────────────────────────────
 
   async function runWithUI() {
@@ -453,9 +594,10 @@ Reglas:
     const poColumnIndex = parsed.headers.indexOf(layout.mapping.poNumber);
     const parsedData = { headers: parsed.headers, rows: parsed.rows, poColumnIndex };
 
+    const customerId = window.POComparator?.getCustomerIdFromURL() || null;
+
     if (mode === 'single') {
-      alert('Modo single — implementado en Task 13.');
-      return { todo: 'single mode' };
+      return await processSingleMode(pos, layout, layoutId, file, parsedData, customerId);
     } else {
       alert('Modo bulk — implementado en Task 14.');
       return { todo: 'bulk mode' };
@@ -474,7 +616,9 @@ Reglas:
     getMappedPN,
     enrichLinesWithMapping,
     recordSuccessfulMapping,
-    inferLayoutWithClaude
+    inferLayoutWithClaude,
+    showPOSelector,
+    processSingleMode
   };
 })();
 
