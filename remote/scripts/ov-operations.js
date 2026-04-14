@@ -676,9 +676,220 @@ const OVOperations = (() => {
     });
   }
 
-  // Placeholder — ensureStyles defined in Task 7, but referenced here.
-  // Use a no-op until that task lands.
-  function ensureStyles() { /* populated in Task 7 */ }
+  // ── Styles ────────────────────────────────────────────────
+
+  function ensureStyles() {
+    if (document.getElementById('dl9-ovop-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'dl9-ovop-styles';
+    s.textContent = `
+      .dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+      .dl9-poc-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:1080px;width:97%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5);position:relative}
+      .dl9-poc-modal h2{color:#38bdf8;font-size:18px;margin-bottom:4px}
+      .dl9-poc-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:12px}
+      .dl9-poc-modal .dl9-btnrow{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+      .dl9-poc-modal .dl9-btn{padding:9px 18px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer}
+      .dl9-poc-modal .dl9-btn-primary{background:#38bdf8;color:#0f172a}
+      .dl9-poc-modal .dl9-btn-cancel{background:#475569;color:#e2e8f0}
+      .dl9-poc-modal .manual-search{display:flex;gap:6px;margin:8px 0}
+      .dl9-poc-modal .manual-search input{flex:1;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px}
+      .dl9-poc-modal .manual-search button{padding:8px 16px;border:none;border-radius:6px;background:#38bdf8;color:#0f172a;font-weight:600;font-size:13px;cursor:pointer}
+      .dl9-poc-modal .candidate-list{display:flex;flex-direction:column;gap:6px;margin:12px 0;max-height:320px;overflow-y:auto}
+      .dl9-poc-modal .candidate-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:#0f172a;border:1px solid #334155;cursor:pointer;transition:border-color 0.15s}
+      .dl9-poc-modal .candidate-item:hover{border-color:#38bdf8}
+      .dl9-poc-modal .candidate-item input[type=radio]{accent-color:#38bdf8;width:16px;height:16px;flex-shrink:0}
+      .dl9-poc-modal .candidate-info{flex:1;min-width:0}
+      .dl9-poc-modal .candidate-name{font-weight:600;font-size:13px;color:#e2e8f0}
+      .dl9-poc-modal .candidate-detail{font-size:11px;color:#64748b;margin-top:2px}
+      .dl9-poc-modal .candidate-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+      .dl9-poc-modal .badge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600}
+      .dl9-poc-modal .badge-pn{background:rgba(239,68,68,0.15);color:#f87171}
+      .dl9-poc-modal .badge-provisional{background:rgba(250,204,21,0.15);color:#facc15}
+      .dl9-poc-modal .badge-similar{background:rgba(52,211,153,0.15);color:#34d399}
+      .dl9-poc-modal .candidate-create{border-style:dashed;border-color:#475569}
+      .dl9-poc-modal .candidate-create:hover{border-color:#f59e0b}
+      .dl9-poc-modal .wizard-form{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin:16px 0}
+      .dl9-poc-modal .wizard-form .full-width{grid-column:1/-1}
+      .dl9-poc-modal .wizard-field{display:flex;flex-direction:column;gap:3px}
+      .dl9-poc-modal .wizard-field label{font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+      .dl9-poc-modal .wizard-field input,.dl9-poc-modal .wizard-field select{padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px}
+      .dl9-poc-modal .wizard-field input:focus,.dl9-poc-modal .wizard-field select:focus{outline:none;border-color:#38bdf8}
+      .dl9-poc-modal .wizard-group{grid-column:1/-1;font-size:12px;color:#38bdf8;font-weight:600;margin-top:8px;padding-bottom:4px;border-bottom:1px solid #1e293b}
+      .dl9-poc-modal .wizard-field input[type=checkbox]{width:16px;height:16px;accent-color:#38bdf8}
+      .dl9-poc-modal .wizard-check{flex-direction:row;align-items:center;gap:8px}
+      .dl9-source-btn{position:absolute;top:12px;right:16px;background:#0f172a;color:#38bdf8;border:1px solid #38bdf8;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;z-index:10}
+      .dl9-source-btn:hover{background:#38bdf8;color:#0f172a}
+      .dl9-suggestion-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:#0f172a;border:1px solid #334155;margin-bottom:6px}
+      .dl9-suggestion-item input[type=checkbox]{accent-color:#38bdf8;width:16px;height:16px}
+      .dl9-suggestion-text{flex:1;font-size:12px}
+      .dl9-suggestion-text .code{background:#1e293b;padding:2px 6px;border-radius:3px;color:#fbbf24;font-family:monospace}
+      .dl9-audit-table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
+      .dl9-audit-table th,.dl9-audit-table td{padding:8px;text-align:left;border-bottom:1px solid #334155}
+      .dl9-audit-table th{color:#94a3b8;text-transform:uppercase;font-size:10px;letter-spacing:0.5px}
+      .dl9-audit-table tbody tr:hover{background:rgba(56,189,248,0.05)}
+      .dl9-audit-table select{padding:4px 6px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px}
+    `;
+    document.head.appendChild(s);
+  }
+
+  // ── Source File Viewer ────────────────────────────────────
+
+  let sourceFileWindow = null;
+  let sourceFileBlobUrl = null;
+
+  function addSourceFileButton(modal, file, parsedData) {
+    if (!file) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'dl9-source-btn';
+    btn.textContent = '📎 Ver archivo fuente';
+    btn.addEventListener('click', () => openSourceFile(file, parsedData));
+    modal.appendChild(btn);
+  }
+
+  function openSourceFile(file, parsedData) {
+    if (sourceFileWindow && !sourceFileWindow.closed) {
+      sourceFileWindow.focus();
+      return;
+    }
+
+    const isPDF = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+
+    if (isPDF) {
+      if (sourceFileBlobUrl) URL.revokeObjectURL(sourceFileBlobUrl);
+      sourceFileBlobUrl = URL.createObjectURL(file);
+      const left = Math.max(0, window.screen.availWidth - 860);
+      sourceFileWindow = window.open(sourceFileBlobUrl, 'sa-source-file', `width=840,height=${window.screen.availHeight - 40},left=${left},top=20`);
+    } else {
+      const html = buildXLSViewerHTML(file, parsedData);
+      const left = Math.max(0, window.screen.availWidth - 1000);
+      sourceFileWindow = window.open('', 'sa-source-file', `width=980,height=${window.screen.availHeight - 40},left=${left},top=20`);
+      if (sourceFileWindow) {
+        sourceFileWindow.document.write(html);
+        sourceFileWindow.document.close();
+      }
+    }
+  }
+
+  function buildXLSViewerHTML(file, parsedData) {
+    if (!parsedData || !Array.isArray(parsedData.rows) || !Array.isArray(parsedData.headers)) {
+      return `<html><body style="font-family:sans-serif;padding:20px">Sin datos parseados para mostrar.<br>Archivo: ${escHtml(file.name)}</body></html>`;
+    }
+
+    const poColors = {};
+    const palette = ['#fef3c7', '#dbeafe', '#fce7f3', '#dcfce7', '#ede9fe', '#fee2e2', '#e0f2fe', '#fef9c3'];
+    let colorIdx = 0;
+
+    const headerHTML = parsedData.headers.map(h => `<th>${escHtml(h)}</th>`).join('');
+
+    const rowsHTML = parsedData.rows.map(row => {
+      const poCol = parsedData.poColumnIndex != null ? parsedData.poColumnIndex : 0;
+      const po = row[poCol];
+      if (!(po in poColors)) {
+        poColors[po] = palette[colorIdx % palette.length];
+        colorIdx++;
+      }
+      const bg = poColors[po];
+      const cells = row.map(c => `<td>${escHtml(String(c == null ? '' : c).substring(0, 100))}</td>`).join('');
+      return `<tr style="background:${bg}">${cells}</tr>`;
+    }).join('');
+
+    return `<!DOCTYPE html>
+<html><head><title>${escHtml(file.name)}</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:0;padding:0;background:#fafafa}
+  .hdr{position:sticky;top:0;background:#1e293b;color:#fff;padding:10px 16px;z-index:2;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+  .hdr h1{margin:0;font-size:14px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th,td{padding:6px 10px;border:1px solid #e5e7eb;text-align:left;white-space:nowrap;overflow:hidden;max-width:280px;text-overflow:ellipsis}
+  thead{position:sticky;top:36px;background:#f3f4f6;z-index:1}
+  th{font-weight:700;color:#374151}
+  tr:hover td{background:rgba(56,189,248,0.1)!important}
+</style>
+</head><body>
+<div class="hdr"><h1>${escHtml(file.name)} — ${parsedData.rows.length} filas</h1></div>
+<table><thead><tr>${headerHTML}</tr></thead><tbody>${rowsHTML}</tbody></table>
+</body></html>`;
+  }
+
+  // ── PN Rename Suggestions ──────────────────────────────────
+
+  function showSuggestionsModal(suggestions) {
+    ensureStyles();
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      if (!suggestions || suggestions.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      let itemsHTML = '';
+      for (let i = 0; i < suggestions.length; i++) {
+        const s = suggestions[i];
+        itemsHTML += `
+          <div class="dl9-suggestion-item">
+            <input type="checkbox" id="sug-${i}" data-idx="${i}">
+            <div class="dl9-suggestion-text">
+              Cliente dice: <span class="code">${escHtml(s.suggestedName)}</span><br>
+              Steelhead tiene: <span class="code">${escHtml(s.currentName)}</span> (PN #${s.partNumberId})<br>
+              <label for="sug-${i}" style="color:#94a3b8">Renombrar en Steelhead a "${escHtml(s.suggestedName)}"</label>
+            </div>
+          </div>`;
+      }
+
+      md.innerHTML = `
+        <h2>Sugerencias de corrección de PN</h2>
+        <p class="dl9-sub">Se encontraron ${suggestions.length} PN(s) con variaciones menores. Corregirlos en Steelhead evita futuras discrepancias.</p>
+        <div style="max-height:400px;overflow-y:auto;margin:12px 0">${itemsHTML}</div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="sug-skip">Saltar todas</button>
+          <button class="dl9-btn dl9-btn-primary" id="sug-apply">Aplicar seleccionadas</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#sug-skip').addEventListener('click', () => {
+        removeOverlay();
+        resolve([]);
+      });
+
+      md.querySelector('#sug-apply').addEventListener('click', async () => {
+        const selected = [];
+        md.querySelectorAll('input[type=checkbox]:checked').forEach(cb => {
+          selected.push(suggestions[parseInt(cb.dataset.idx, 10)]);
+        });
+
+        if (selected.length === 0) {
+          removeOverlay();
+          resolve([]);
+          return;
+        }
+
+        md.querySelector('#sug-apply').disabled = true;
+        md.querySelector('#sug-apply').textContent = 'Aplicando...';
+
+        const applied = [];
+        for (const s of selected) {
+          try {
+            await api().query('UpdatePartNumber', {
+              id: s.partNumberId,
+              name: s.suggestedName
+            });
+            applied.push(s);
+            log(`PN renombrado: "${s.currentName}" → "${s.suggestedName}"`);
+          } catch (e) {
+            warn(`Error renombrando PN ${s.partNumberId}: ${e.message}`);
+          }
+        }
+
+        removeOverlay();
+        resolve(applied);
+      });
+    });
+  }
 
   return {
     normalizePN,
@@ -698,7 +909,10 @@ const OVOperations = (() => {
     createNewOV,
     showCandidateSelector,
     showNoMatchOptions,
-    showCreationWizard
+    showCreationWizard,
+    addSourceFileButton,
+    ensureStyles,
+    showSuggestionsModal
   };
 })();
 
