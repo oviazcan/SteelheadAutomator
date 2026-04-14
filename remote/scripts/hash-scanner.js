@@ -11,6 +11,50 @@ const HashScanner = (() => {
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
 
+  // Redact variable samples that may contain live Steelhead tokens or payloads.
+  // Tokens leak via operations that pass email bodies / signed URLs as GraphQL inputs.
+  const SENSITIVE_OP_PATTERN = /email|invoice|send|preview|attach|cfdi/i;
+  const SENSITIVE_KEY_PATTERN = /^(body|rawBody|html|htmlBody|token|accessToken|authToken|emailData)$/i;
+  const TOKEN_URL_PATTERN = /([?&])token=[^&"'\s]+/gi;
+  const MAX_STRING_LENGTH = 500;
+
+  function sanitizeValue(value, counter) {
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'string') {
+      let out = value.replace(TOKEN_URL_PATTERN, (_, sep) => { counter.n++; return `${sep}token=[REDACTED]`; });
+      if (out.length > MAX_STRING_LENGTH) {
+        counter.n++;
+        return `[TRUNCATED: ${out.length} chars]`;
+      }
+      return out;
+    }
+    if (typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(v => sanitizeValue(v, counter));
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (SENSITIVE_KEY_PATTERN.test(k)) {
+        out[k] = '[REDACTED]';
+        counter.n++;
+      } else {
+        out[k] = sanitizeValue(v, counter);
+      }
+    }
+    return out;
+  }
+
+  function sanitizeVariables(operationName, variables) {
+    if (variables === null || variables === undefined) return variables;
+    if (SENSITIVE_OP_PATTERN.test(operationName || '')) {
+      return { __redacted: `variables omitted (${operationName} matches sensitive op pattern)` };
+    }
+    const counter = { n: 0 };
+    const sanitized = sanitizeValue(variables, counter);
+    if (counter.n > 0) {
+      console.log(`[HashScanner] Redacted ${counter.n} sensitive value(s) in ${operationName}`);
+    }
+    return sanitized;
+  }
+
   function init(config) {
     const mutations = config?.steelhead?.hashes?.mutations || {};
     const queries = config?.steelhead?.hashes?.queries || {};
@@ -93,11 +137,12 @@ const HashScanner = (() => {
     entry.lastSeen = new Date().toISOString();
     entry.hash = hash;
 
-    // Keep up to 3 variable samples (deduplicated by JSON string)
+    // Keep up to 3 variable samples (deduplicated by JSON string), sanitized
     if (variables && entry.variablesSamples.length < 3) {
-      const vStr = JSON.stringify(variables);
+      const sanitized = sanitizeVariables(operationName, variables);
+      const vStr = JSON.stringify(sanitized);
       if (!entry.variablesSamples.some(v => JSON.stringify(v) === vStr)) {
-        entry.variablesSamples.push(variables);
+        entry.variablesSamples.push(sanitized);
       }
     }
 
@@ -208,12 +253,14 @@ const HashScanner = (() => {
         if (entry.lastSeen && (!existing.lastSeen || entry.lastSeen > existing.lastSeen)) {
           existing.lastSeen = entry.lastSeen;
         }
-        // Merge variable samples (keep up to 3 unique)
+        // Merge variable samples (keep up to 3 unique); re-sanitize defensively
+        // in case incoming data was captured before redaction was in place.
         for (const sample of (entry.variablesSamples || [])) {
           if (existing.variablesSamples.length < 3) {
-            const sStr = JSON.stringify(sample);
+            const clean = sanitizeVariables(opName, sample);
+            const sStr = JSON.stringify(clean);
             if (!existing.variablesSamples.some(v => JSON.stringify(v) === sStr)) {
-              existing.variablesSamples.push(sample);
+              existing.variablesSamples.push(clean);
             }
           }
         }

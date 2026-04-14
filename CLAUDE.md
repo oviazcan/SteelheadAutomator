@@ -25,3 +25,9 @@ Extensión de Chrome MV3 que automatiza carga masiva de cotizaciones y números 
 - Los hashes de persisted queries cambian cuando Steelhead actualiza — usar siempre los de config.json
 - Constantes de dominio (IDs, schemas) van en config.json, no hardcodeadas
 - Batching de PNs en grupos de 20 para SaveManyPNP
+
+## Archivos scan_results
+- Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`)
+- **NUNCA** copiarlos al repo — están en `.gitignore` pero además su contenido puede incluir payloads sensibles redactados
+- Cuando necesites analizarlos con Claude, léelos directamente desde `~/Downloads/scan_results_*.json`
+- El hash-scanner sanitiza variables desde `remote/scripts/hash-scanner.js` (redacta tokens URL, keys sensibles y trunca strings largas), pero la defensa en profundidad manda: no los muevas al repo
