@@ -212,10 +212,177 @@ const PortalImporter = (() => {
     }
   }
 
-  // Public API — populated in later tasks
+  // ── UI: File Picker ────────────────────────────────────────
+
+  function showFilePicker() {
+    ops().ensureStyles();
+    return new Promise(resolve => {
+      const ov = ops().createOverlay();
+      const md = ops().createModal();
+
+      md.innerHTML = `
+        <h2>Importar archivo de portal</h2>
+        <p class="dl9-sub">Sube un XLS o XLSX exportado del portal del cliente (Hubbell, etc.).</p>
+        <div id="pi-dropzone" style="border:2px dashed #475569;border-radius:10px;padding:40px;text-align:center;cursor:pointer;color:#94a3b8">
+          <p style="margin:0 0 8px 0;font-size:14px">📥 Arrastra el archivo aquí o haz clic</p>
+          <p style="margin:0;font-size:11px;color:#64748b">Formatos soportados: .xls, .xlsx</p>
+          <input type="file" id="pi-file" accept=".xls,.xlsx" style="display:none">
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="pi-cancel">Cancelar</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const dz = md.querySelector('#pi-dropzone');
+      const fi = md.querySelector('#pi-file');
+
+      dz.addEventListener('click', () => fi.click());
+      dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.style.borderColor = '#38bdf8'; });
+      dz.addEventListener('dragleave', () => { dz.style.borderColor = '#475569'; });
+      dz.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const f = e.dataTransfer?.files?.[0];
+        if (f) { ops().removeOverlay(); resolve(f); }
+      });
+      fi.addEventListener('change', () => {
+        const f = fi.files?.[0];
+        if (f) { ops().removeOverlay(); resolve(f); }
+      });
+      md.querySelector('#pi-cancel').addEventListener('click', () => { ops().removeOverlay(); resolve(null); });
+    });
+  }
+
+  // ── UI: Layout Confirmation ────────────────────────────────
+
+  function showLayoutConfirmation(detection, headers) {
+    ops().ensureStyles();
+    return new Promise(resolve => {
+      const ov = ops().createOverlay();
+      const md = ops().createModal();
+
+      const isDetected = detection != null;
+      const title = isDetected
+        ? `Layout detectado: <span style="color:#34d399">${ops().escHtml(detection.layout.name)}</span>`
+        : 'Layout no reconocido';
+      const body = isDetected
+        ? `<p class="dl9-sub">Coincidencia: ${(detection.ratio * 100).toFixed(0)}%. ¿Procesar con este layout?</p>`
+        : `<p class="dl9-sub">No se encontró un layout conocido para las ${headers.length} columnas del archivo. ¿Usar Claude para inferir el mapeo?</p>`;
+
+      md.innerHTML = `
+        <h2>${title}</h2>
+        ${body}
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="pi-lc-cancel">Cancelar</button>
+          ${isDetected ? `<button class="dl9-btn" id="pi-lc-claude" style="background:#475569;color:#e2e8f0">Usar Claude en su lugar</button>` : ''}
+          <button class="dl9-btn dl9-btn-primary" id="pi-lc-confirm">${isDetected ? 'Sí, procesar' : 'Usar Claude'}</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#pi-lc-confirm').addEventListener('click', () => {
+        ops().removeOverlay();
+        resolve(isDetected ? 'detected' : 'claude');
+      });
+      if (isDetected) {
+        md.querySelector('#pi-lc-claude').addEventListener('click', () => { ops().removeOverlay(); resolve('claude'); });
+      }
+      md.querySelector('#pi-lc-cancel').addEventListener('click', () => { ops().removeOverlay(); resolve(null); });
+    });
+  }
+
+  // ── UI: Mode Selector ──────────────────────────────────────
+
+  function showModeSelector(pos) {
+    ops().ensureStyles();
+    return new Promise(resolve => {
+      const ov = ops().createOverlay();
+      const md = ops().createModal();
+
+      md.innerHTML = `
+        <h2>${pos.length} PO(s) detectados</h2>
+        <p class="dl9-sub">Elige cómo procesarlos.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin:16px 0">
+          <button class="dl9-btn dl9-btn-primary" id="pi-mode-single" style="padding:16px;text-align:left">
+            <div style="font-weight:700">Validar una OV específica</div>
+            <div style="font-size:11px;opacity:0.85;margin-top:2px">Elige un PO del archivo y ejecuta el flujo completo de validación (igual que con PDF).</div>
+          </button>
+          <button class="dl9-btn" id="pi-mode-bulk" style="padding:16px;text-align:left;background:#475569;color:#e2e8f0">
+            <div style="font-weight:700">Auditoría en batch</div>
+            <div style="font-size:11px;opacity:0.85;margin-top:2px">Ver todos los POs en una tabla y procesar varios de una vez.</div>
+          </button>
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="pi-mode-cancel">Cancelar</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#pi-mode-single').addEventListener('click', () => { ops().removeOverlay(); resolve('single'); });
+      md.querySelector('#pi-mode-bulk').addEventListener('click', () => { ops().removeOverlay(); resolve('bulk'); });
+      md.querySelector('#pi-mode-cancel').addEventListener('click', () => { ops().removeOverlay(); resolve(null); });
+    });
+  }
+
+  // ── Main Orchestrator ─────────────────────────────────────
+
   async function runWithUI() {
     log('=== Portal Importer iniciando ===');
-    alert('Portal Importer — implementación en progreso.');
+    claude().resetUsage();
+
+    const file = await showFilePicker();
+    if (!file) { log('Cancelado en file picker'); return { cancelled: true }; }
+
+    let parsed;
+    try {
+      parsed = await parseXLS(file);
+    } catch (e) {
+      alert('Error leyendo XLS: ' + e.message);
+      return { error: e.message };
+    }
+
+    const detection = detectLayout(parsed.headers);
+    const choice = await showLayoutConfirmation(detection, parsed.headers);
+    if (!choice) return { cancelled: true };
+
+    let layout;
+    let layoutId;
+    if (choice === 'detected' && detection) {
+      layout = detection.layout;
+      layoutId = detection.id;
+    } else {
+      // Claude inference fallback — for now, abort with message; implemented in Task 12
+      alert('Inferencia con Claude no implementada aún. Por favor usa un layout conocido.');
+      return { error: 'claude fallback not implemented' };
+    }
+
+    const pos = groupByPO(parsed.rows, parsed.headers, layout);
+    if (pos.length === 0) {
+      alert('No se detectaron POs en el archivo.');
+      return { error: 'no POs' };
+    }
+
+    // Enrich lines with stored mapping table entries (buyerCode → known PN)
+    const customerIdForMapping = window.POComparator?.getCustomerIdFromURL() || null;
+    await enrichLinesWithMapping(pos, customerIdForMapping, layoutId);
+
+    const mode = await showModeSelector(pos);
+    if (!mode) return { cancelled: true };
+
+    // Store parsedData for source viewer (with PO column index)
+    const poColumnIndex = parsed.headers.indexOf(layout.mapping.poNumber);
+    const parsedData = { headers: parsed.headers, rows: parsed.rows, poColumnIndex };
+
+    if (mode === 'single') {
+      alert('Modo single — implementado en Task 13.');
+      return { todo: 'single mode' };
+    } else {
+      alert('Modo bulk — implementado en Task 14.');
+      return { todo: 'bulk mode' };
+    }
   }
 
   return {
