@@ -540,6 +540,306 @@ Reglas:
     return { created: true, orderId };
   }
 
+  // ── Bulk Mode ──────────────────────────────────────────────
+
+  async function buildAuditRows(pos, customerId, layoutId) {
+    log('Analizando estado de cada PO...');
+    const rows = [];
+
+    for (const po of pos) {
+      const row = { po, action: 'skip', candidate: null, existingOrderId: null };
+
+      try {
+        const searchResult = await window.POComparator.findSalesOrder(po.poNumber, customerId);
+        if (searchResult.match === 'exact') {
+          row.existingOrderId = searchResult.orders[0].idInDomain || searchResult.orders[0].id;
+          row.status = 'exists';
+          row.action = 'skip';
+          rows.push(row);
+          continue;
+        }
+      } catch (e) {
+        warn(`Error buscando PO ${po.poNumber}: ${e.message}`);
+      }
+
+      const sourceData = {
+        poNumber: po.poNumber, customer: po.customer, currency: po.currency,
+        lines: po.lines, sourceType: 'xls'
+      };
+
+      try {
+        const candidates = await ops().findCandidateOVs(sourceData, customerId);
+        if (candidates.length > 0) {
+          row.candidate = candidates[0];
+          row.status = 'candidate';
+          row.action = 'adopt';
+          rows.push(row);
+          continue;
+        }
+      } catch (e) {
+        warn(`Error buscando candidatas para ${po.poNumber}: ${e.message}`);
+      }
+
+      row.status = 'missing';
+      row.action = 'create';
+      rows.push(row);
+    }
+
+    log(`Auditoría completada: ${rows.length} POs analizados`);
+    return rows;
+  }
+
+  function showAuditTable(auditRows, layout, file, parsedData) {
+    ops().ensureStyles();
+    return new Promise(resolve => {
+      const ov = ops().createOverlay();
+      const md = ops().createModal();
+
+      const statusValues = layout.statusFilter?.activeValues || [];
+      const defaultFilter = statusValues.length > 0 ? statusValues[0] : '__all__';
+      const allStatuses = [...new Set(auditRows.map(r => r.po.status).filter(Boolean))];
+
+      const statusSelect = `
+        <select id="pi-audit-status" style="padding:6px 10px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px">
+          <option value="__all__">Todos (${auditRows.length})</option>
+          ${allStatuses.map(s => `<option value="${ops().escHtml(s)}" ${s === defaultFilter ? 'selected' : ''}>${ops().escHtml(s)} (${auditRows.filter(r => r.po.status === s).length})</option>`).join('')}
+        </select>`;
+
+      md.innerHTML = `
+        <h2>Auditoría en batch</h2>
+        <p class="dl9-sub">${auditRows.length} POs — revisa la acción sugerida por fila y procesa en lote.</p>
+        <div style="margin:8px 0">Filtrar status: ${statusSelect}</div>
+        <div style="max-height:420px;overflow-y:auto">
+          <table class="dl9-audit-table">
+            <thead><tr><th>PO</th><th>Líneas</th><th>Total</th><th>Estado Steelhead</th><th>Acción</th></tr></thead>
+            <tbody id="pi-audit-tbody"></tbody>
+          </table>
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="pi-audit-cancel">Cancelar</button>
+          <button class="dl9-btn dl9-btn-primary" id="pi-audit-run">Procesar POs</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      ops().addSourceFileButton(md, file, parsedData);
+
+      function statusLabel(r) {
+        if (r.status === 'exists') return `<span style="color:#34d399">Existe (OV #${r.existingOrderId})</span>`;
+        if (r.status === 'candidate') return `<span style="color:#facc15">Candidata: ${ops().escHtml(r.candidate.ovName)}</span>`;
+        return `<span style="color:#f87171">No existe</span>`;
+      }
+
+      function actionSelect(r, idx) {
+        const opts = [
+          ['skip', 'Skip'],
+          ['create', 'Crear'],
+          ['validate', 'Validar manualmente']
+        ];
+        if (r.status === 'candidate') opts.splice(1, 0, ['adopt', 'Adoptar candidata']);
+        return `<select data-idx="${idx}" class="pi-action-select">${opts.map(([v, lbl]) => `<option value="${v}" ${r.action === v ? 'selected' : ''}>${lbl}</option>`).join('')}</select>`;
+      }
+
+      function renderTable() {
+        const filter = md.querySelector('#pi-audit-status').value;
+        const tbody = md.querySelector('#pi-audit-tbody');
+        const visible = auditRows.map((r, idx) => ({ r, idx })).filter(x => filter === '__all__' || x.r.po.status === filter);
+
+        tbody.innerHTML = visible.map(({ r, idx }) => {
+          const total = r.po.lines.reduce((sum, l) => sum + (l.quantity || 0) * (l.unitPrice || 0), 0);
+          return `<tr>
+            <td>${ops().escHtml(r.po.poNumber)}</td>
+            <td>${r.po.lines.length}</td>
+            <td>${ops().escHtml(r.po.currency || '')} ${total.toFixed(2)}</td>
+            <td>${statusLabel(r)}</td>
+            <td>${actionSelect(r, idx)}</td>
+          </tr>`;
+        }).join('');
+
+        tbody.querySelectorAll('.pi-action-select').forEach(sel => {
+          sel.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.idx, 10);
+            auditRows[idx].action = e.target.value;
+          });
+        });
+      }
+
+      md.querySelector('#pi-audit-status').addEventListener('change', renderTable);
+      md.querySelector('#pi-audit-cancel').addEventListener('click', () => { ops().removeOverlay(); resolve(null); });
+      md.querySelector('#pi-audit-run').addEventListener('click', () => {
+        ops().removeOverlay();
+        resolve(auditRows.filter(r => r.action !== 'skip'));
+      });
+
+      renderTable();
+    });
+  }
+
+  async function executeBulk(selectedRows, layout, layoutId, file, customerId) {
+    if (selectedRows.length === 0) {
+      alert('No hay POs para procesar.');
+      return { processed: 0 };
+    }
+
+    log(`Procesando ${selectedRows.length} POs...`);
+
+    // Pre-check: resolve all PNs, collect suggestions, record successful mappings
+    const suggestions = [];
+    for (const r of selectedRows) {
+      if (r.action !== 'create' && r.action !== 'adopt') continue;
+      for (const line of r.po.lines) {
+        if (!line.partNumber) continue;
+        const resolved = await ops().resolvePartNumber(line.partNumber, customerId);
+        if (resolved?.suggestion) {
+          if (!suggestions.find(s => s.partNumberId === resolved.suggestion.partNumberId)) {
+            suggestions.push(resolved.suggestion);
+          }
+        } else if (resolved?.partNumberId && resolved.exact) {
+          await recordSuccessfulMapping(line, customerId, layoutId);
+        }
+      }
+    }
+
+    if (suggestions.length > 0) {
+      await ops().showSuggestionsModal(suggestions);
+    }
+
+    // Fetch creation data once for all creates
+    const creationData = await ops().fetchCreationData(customerId);
+
+    const results = [];
+    for (let i = 0; i < selectedRows.length; i++) {
+      const r = selectedRows[i];
+      log(`[${i + 1}/${selectedRows.length}] Procesando PO ${r.po.poNumber} (${r.action})...`);
+
+      const sourceData = {
+        poNumber: r.po.poNumber, customer: r.po.customer, currency: r.po.currency,
+        lines: r.po.lines, sourceType: 'xls', fileName: file.name
+      };
+
+      const csvFile = buildCSVForPO(r.po, file.name);
+
+      try {
+        if (r.action === 'adopt') {
+          const orderId = await ops().adoptExistingOV(r.candidate, sourceData, csvFile);
+          results.push({ po: r.po.poNumber, action: 'adopted', orderId });
+        } else if (r.action === 'create') {
+          const formData = buildDefaultFormData(sourceData, creationData, customerId);
+          const orderId = await ops().createNewOV(formData, sourceData, csvFile);
+          results.push({ po: r.po.poNumber, action: 'created', orderId });
+        } else if (r.action === 'validate') {
+          alert(`Pausando bulk para validar PO ${r.po.poNumber} manualmente.`);
+          const single = await processSingleMode([r.po], layout, layoutId, file, null, customerId);
+          results.push({ po: r.po.poNumber, action: 'validated', result: single });
+        }
+      } catch (e) {
+        warn(`Error procesando ${r.po.poNumber}: ${e.message}`);
+        results.push({ po: r.po.poNumber, action: r.action, error: e.message });
+      }
+    }
+
+    showBulkResults(results);
+    return { processed: results.length, results };
+  }
+
+  function buildDefaultFormData(sourceData, creationData, customerId) {
+    const inferredDivisa = ops().normalizeCurrency(sourceData.currency) || 'MXN';
+    const inferredRazon = creationData.razonSocialOptions.find(opt =>
+      ops().fuzzyMatchStr(opt, sourceData.customer || '')
+    ) || (creationData.razonSocialOptions[0] || '');
+
+    let defaultDeadline;
+    if (creationData.defaultLeadTime) {
+      const lead = creationData.defaultLeadTime;
+      const days = (lead.hours || 0) / 24 + (lead.days || 0);
+      const d = new Date();
+      d.setDate(d.getDate() + Math.max(days, 1));
+      defaultDeadline = d.toISOString();
+    } else {
+      defaultDeadline = new Date(Date.now() + 14 * 86400000).toISOString();
+    }
+
+    const formData = {
+      name: sourceData.poNumber,
+      customerId: parseInt(customerId, 10),
+      deadline: defaultDeadline,
+      customerContactId: creationData.defaultContact?.id || null,
+      billToAddressId: creationData.defaultBillTo?.id || null,
+      shipToAddressId: creationData.defaultShipTo?.id || null,
+      invoiceTermsId: creationData.invoiceTerms?.id || null,
+      shipVia: 'Flete Propio',
+      type: creationData.defaultOrderType || 'MAKE_TO_ORDER',
+      blockPartialShipments: false,
+      isBlanketOrder: false,
+      sectorId: creationData.sector?.id || null,
+      inputSchemaId: creationData.inputSchemaId,
+      customInputs: {
+        Divisa: inferredDivisa,
+        RazonSocialVenta: inferredRazon,
+        VerificadaPor: ''
+      }
+    };
+
+    for (const key of Object.keys(formData)) {
+      if (formData[key] === null || formData[key] === '' || Number.isNaN(formData[key])) {
+        delete formData[key];
+      }
+    }
+
+    return formData;
+  }
+
+  function buildCSVForPO(po, originalFilename) {
+    const headers = ['lineNumber', 'partNumber', 'buyerCode', 'description', 'quantity', 'unitPrice', 'deliveryDate'];
+    const rows = po.lines.map(l =>
+      headers.map(h => {
+        const v = l[h] == null ? '' : String(l[h]).replace(/"/g, '""');
+        return v.includes(',') || v.includes('"') || v.includes('\n') ? `"${v}"` : v;
+      }).join(',')
+    );
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const base = originalFilename.replace(/\.[^.]+$/, '');
+    return new File([blob], `${po.poNumber}-${base}.csv`, { type: 'text/csv' });
+  }
+
+  function showBulkResults(results) {
+    ops().ensureStyles();
+    const ov = ops().createOverlay();
+    const md = ops().createModal();
+
+    const rowsHTML = results.map(r => {
+      const color = r.error ? '#f87171' : (r.action === 'created' || r.action === 'adopted' ? '#34d399' : '#94a3b8');
+      const label = r.error ? `Error: ${r.error}` : (r.orderId ? `#${r.orderId}` : (r.result ? 'Validado' : '—'));
+      return `<tr><td>${ops().escHtml(r.po)}</td><td style="color:${color}">${r.action}</td><td>${ops().escHtml(label)}</td></tr>`;
+    }).join('');
+
+    md.innerHTML = `
+      <h2>Resultados del batch</h2>
+      <p class="dl9-sub">${results.length} POs procesados.</p>
+      <table class="dl9-audit-table">
+        <thead><tr><th>PO</th><th>Acción</th><th>Resultado</th></tr></thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
+      <div class="dl9-btnrow">
+        <button class="dl9-btn dl9-btn-primary" id="pi-br-close">Cerrar</button>
+      </div>
+    `;
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+
+    md.querySelector('#pi-br-close').addEventListener('click', () => ops().removeOverlay());
+  }
+
+  async function processBulkMode(pos, layout, layoutId, file, parsedData, customerId) {
+    const auditRows = await buildAuditRows(pos, customerId, layoutId);
+    const selected = await showAuditTable(auditRows, layout, file, parsedData);
+    if (!selected) return { cancelled: true };
+
+    return await executeBulk(selected, layout, layoutId, file, customerId);
+  }
+
   // ── Main Orchestrator ─────────────────────────────────────
 
   async function runWithUI() {
@@ -599,8 +899,7 @@ Reglas:
     if (mode === 'single') {
       return await processSingleMode(pos, layout, layoutId, file, parsedData, customerId);
     } else {
-      alert('Modo bulk — implementado en Task 14.');
-      return { todo: 'bulk mode' };
+      return await processBulkMode(pos, layout, layoutId, file, parsedData, customerId);
     }
   }
 
@@ -618,7 +917,10 @@ Reglas:
     recordSuccessfulMapping,
     inferLayoutWithClaude,
     showPOSelector,
-    processSingleMode
+    processSingleMode,
+    processBulkMode,
+    buildAuditRows,
+    executeBulk
   };
 })();
 
