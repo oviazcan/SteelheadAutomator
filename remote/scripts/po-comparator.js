@@ -743,7 +743,7 @@ Reglas:
 
   // ── UI Step: PDF Preview & Confirm ──────────────────────────
 
-  function showPDFPreview(pdfData) {
+  function showPDFPreview(pdfData, file) {
     return new Promise(resolve => {
       const ov = createOverlay();
       const md = createModal();
@@ -776,6 +776,7 @@ Reglas:
       `;
       ov.appendChild(md);
       document.body.appendChild(ov);
+      if (window.OVOperations) window.OVOperations.addSourceFileButton(md, file, null);
 
       md.querySelector('#dl9-poc-retry').addEventListener('click', () => { removeOverlay(); resolve(false); });
       md.querySelector('#dl9-poc-confirm').addEventListener('click', () => { removeOverlay(); resolve(true); });
@@ -867,7 +868,7 @@ Reglas:
 
   // ── UI Step: Comparison Report ──────────────────────────────
 
-  function showComparisonReport(pdfData, soData, comparison) {
+  function showComparisonReport(pdfData, soData, comparison, file) {
     return new Promise(resolve => {
       const ov = createOverlay();
       const md = createModal();
@@ -1088,6 +1089,7 @@ Reglas:
       `;
       ov.appendChild(md);
       document.body.appendChild(ov);
+      if (window.OVOperations) window.OVOperations.addSourceFileButton(md, file, null);
 
       // Wire filter chips
       md.querySelectorAll('#dl9-poc-filters .disc-chip').forEach(chip => {
@@ -1433,7 +1435,7 @@ Reglas:
     }
 
     // Step 3: Preview and confirm
-    const confirmed = await showPDFPreview(pdfData);
+    const confirmed = await showPDFPreview(pdfData, file);
     if (!confirmed) return processOneFile(file, fileIndex, totalFiles); // Retry
 
     // Step 4: Search for OV
@@ -1596,7 +1598,7 @@ Reglas:
     }
 
     // Step 7: Show comparison report
-    const result = await showComparisonReport(pdfData, soData, comparison);
+    const result = await showComparisonReport(pdfData, soData, comparison, file);
     return { pdfData, soData, comparison, result };
   }
 
