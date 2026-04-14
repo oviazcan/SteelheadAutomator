@@ -940,6 +940,21 @@ async function handleMessage(message, sender) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    // ── Portal Importer ──
+    case 'run-portal-importer': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'portal-importer');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.PortalImporter) return { error: 'PortalImporter no disponible' };
+          window.PortalImporter.runWithUI().then(r => console.log('[SA] Portal Importer:', r)).catch(e => console.error('[SA]', e));
+          return { started: true, message: 'Importador de Portales iniciado. Revisa Steelhead.' };
+        }
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     // ── CFDI Attacher ──
     case 'toggle-cfdi-attacher': {
       const { cfdiAttacherEnabled } = await chrome.storage.local.get('cfdiAttacherEnabled');
