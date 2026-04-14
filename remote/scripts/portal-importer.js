@@ -327,6 +327,78 @@ const PortalImporter = (() => {
     });
   }
 
+  // ── Claude Fallback for Unknown Layouts ───────────────────
+
+  const LAYOUT_INFERENCE_PROMPT = `Analiza los headers y filas de muestra de un XLS de un portal de cliente que contiene órdenes de compra.
+
+Responde SOLAMENTE con un JSON válido (sin markdown) con esta estructura:
+{
+  "mapping": {
+    "poNumber": "nombre de columna con el número de PO",
+    "status": "nombre de columna con status (o null)",
+    "customer": "nombre de columna con razón social del cliente (o null)",
+    "currency": "nombre de columna con divisa (o null)",
+    "date": "nombre de columna con fecha del PO (o null)",
+    "lineNumber": "nombre de columna con número de línea",
+    "buyerCode": "nombre de columna con código interno del cliente (o null)",
+    "description": "nombre de columna con descripción del material",
+    "netPrice": "nombre de columna con precio neto",
+    "priceUnit": "nombre de columna con la unidad de precio (ej. por 1000)",
+    "quantity": "nombre de columna con cantidad",
+    "deliveryDate": "nombre de columna con fecha de entrega (o null)",
+    "unit": "nombre de columna con unidad (EA, KG, etc.) (o null)"
+  },
+  "pnExtractor": {
+    "type": "regex",
+    "source": "description",
+    "patterns": ["regex1 con grupo de captura para extraer el número de parte del campo description"]
+  }
+}
+
+Reglas:
+- Los valores del mapping deben ser nombres EXACTOS de headers, o null si no existe
+- Para pnExtractor.patterns, infiere el regex observando las descripciones; si el PN ya está limpio en buyerCode, devuelve patterns: []
+- No incluyas explicaciones, solo el JSON`;
+
+  async function inferLayoutWithClaude(headers, sampleRows) {
+    log('Enviando headers a Claude para inferir layout...');
+
+    const sample = {
+      headers,
+      rows: sampleRows.slice(0, 5).map(r =>
+        Object.fromEntries(headers.map((h, i) => [h, String(r[i] == null ? '' : r[i]).substring(0, 120)]))
+      )
+    };
+
+    const prompt = LAYOUT_INFERENCE_PROMPT + '\n\nHeaders y filas de muestra:\n' + JSON.stringify(sample, null, 2);
+
+    const result = await claude().send(prompt);
+    log(`Claude respondió (${result.usage.inputTokens} in / ${result.usage.outputTokens} out, $${result.usage.cost.toFixed(4)})`);
+
+    let text = result.content.trim();
+    if (text.startsWith('```')) {
+      text = text.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`Claude devolvió JSON inválido: ${e.message}\nRespuesta: ${text.substring(0, 200)}`);
+    }
+
+    if (!parsed.mapping?.poNumber || !parsed.mapping?.lineNumber) {
+      throw new Error('Claude no identificó columnas críticas (poNumber, lineNumber)');
+    }
+
+    return {
+      name: 'Inferido con Claude',
+      mapping: parsed.mapping,
+      pnExtractor: parsed.pnExtractor || { type: 'regex', source: 'description', patterns: [] },
+      statusFilter: null
+    };
+  }
+
   // ── Main Orchestrator ─────────────────────────────────────
 
   async function runWithUI() {
@@ -354,9 +426,14 @@ const PortalImporter = (() => {
       layout = detection.layout;
       layoutId = detection.id;
     } else {
-      // Claude inference fallback — for now, abort with message; implemented in Task 12
-      alert('Inferencia con Claude no implementada aún. Por favor usa un layout conocido.');
-      return { error: 'claude fallback not implemented' };
+      try {
+        layout = await inferLayoutWithClaude(parsed.headers, parsed.rows);
+        layoutId = 'claude-inferred';
+        log(`Layout inferido por Claude`);
+      } catch (e) {
+        alert('Error infiriendo layout con Claude: ' + e.message);
+        return { error: e.message };
+      }
     }
 
     const pos = groupByPO(parsed.rows, parsed.headers, layout);
@@ -396,7 +473,8 @@ const PortalImporter = (() => {
     saveMappingEntry,
     getMappedPN,
     enrichLinesWithMapping,
-    recordSuccessfulMapping
+    recordSuccessfulMapping,
+    inferLayoutWithClaude
   };
 })();
 
