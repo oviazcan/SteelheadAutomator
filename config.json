@@ -164,6 +164,45 @@
       }
     }
   },
+  "portalLayouts": {
+    "hubbell": {
+      "name": "Hubbell Portal",
+      "detection": {
+        "requiredColumns": [
+          "number", "status", "lineItem.itemNumber",
+          "lineItem.materialCodeBuyer", "lineItem.materialDescription",
+          "lineItem.netPrice", "lineItem.priceUnit",
+          "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"
+        ],
+        "minMatchRatio": 0.9
+      },
+      "mapping": {
+        "poNumber": "number",
+        "status": "status",
+        "customer": "customerAddressName",
+        "currency": "currency",
+        "date": "date",
+        "lineNumber": "lineItem.itemNumber",
+        "buyerCode": "lineItem.materialCodeBuyer",
+        "description": "lineItem.materialDescription",
+        "netPrice": "lineItem.netPrice",
+        "priceUnit": "lineItem.priceUnit",
+        "quantity": "lineItem.targetQuantity",
+        "deliveryDate": "lineItem.schedule.deliveryDate",
+        "unit": "lineItem.unit"
+      },
+      "pnExtractor": {
+        "type": "regex",
+        "source": "description",
+        "patterns": [
+          "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)",
+          "(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)"
+        ]
+      },
+      "statusFilter": { "activeValues": ["Nuevo"] },
+      "unitPriceFormula": "netPrice / priceUnit"
+    }
+  },
   "apps": [
     {
       "id": "carga-masiva",
@@ -255,7 +294,7 @@
       "name": "Reinicio de Inventario",
       "subtitle": "Archivar lotes y carga inicial",
       "icon": "🔄",
-      "category": "Inventario & Facturación",
+      "category": "Inventario",
       "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"],
       "actions": [
         { "id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset" }
@@ -266,8 +305,8 @@
       "name": "Validador OC vs OV",
       "subtitle": "Comparar orden de compra vs venta",
       "icon": "📋",
-      "category": "Inventario & Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js"],
+      "category": "Facturación",
+      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"],
       "actions": [
         { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
       ]
@@ -288,11 +327,22 @@
       "name": "Adjuntar CFDI",
       "subtitle": "Auto-adjunta XML CFDI al enviar facturas",
       "icon": "📄",
-      "category": "Inventario & Facturación",
+      "category": "Facturación",
       "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"],
       "autoInject": true,
       "actions": [
         { "id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher" }
+      ]
+    },
+    {
+      "id": "portal-importer",
+      "name": "Importador de Portales",
+      "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)",
+      "icon": "📥",
+      "category": "Facturación",
+      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/portal-importer.js"],
+      "actions": [
+        { "id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer" }
       ]
     }
   ],
