@@ -14,3 +14,10 @@ node_modules/
 
 # Secrets
 .env
+
+# Scan results (contain Steelhead invoice tokens)
+scan_results_*.json
+
+# Excel temp lock files
+~$*.xlsm
+~$*.xlsx
