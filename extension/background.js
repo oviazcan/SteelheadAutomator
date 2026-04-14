@@ -77,6 +77,7 @@ async function injectAppScripts(tabId, appId) {
     target: { tabId }, world: 'MAIN',
     func: (j) => {
       const cfg = JSON.parse(j);
+      window.REMOTE_CONFIG = cfg;
       if (window.SteelheadAPI) window.SteelheadAPI.init(cfg);
       if (window.HashScanner) window.HashScanner.init(cfg);
       if (window.APIKnowledge) window.APIKnowledge.init(cfg);
