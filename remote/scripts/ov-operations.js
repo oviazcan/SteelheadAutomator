@@ -47,6 +47,17 @@ const OVOperations = (() => {
     return isNaN(n) ? null : n;
   }
 
+  // Shared number formatter — thousands with comma, decimals with period.
+  // Usage: fmtNumber(12473.49, 2) → "12,473.49"; fmtNumber(1500) → "1,500"
+  function fmtNumber(n, decimals) {
+    if (n == null || isNaN(n)) return '—';
+    const d = decimals == null ? 0 : decimals;
+    return Number(n).toLocaleString('en-US', {
+      minimumFractionDigits: d,
+      maximumFractionDigits: d
+    });
+  }
+
   // ── UI helpers (overlay/modal — duplicated from po-comparator styles) ─
 
   function createOverlay() {
@@ -898,6 +909,7 @@ const OVOperations = (() => {
     fuzzyMatchStr,
     escHtml,
     toNumber,
+    fmtNumber,
     createOverlay,
     createModal,
     removeOverlay,
