@@ -92,7 +92,9 @@ const OVOperations = (() => {
       customerId: parseInt(customerId, 10),
       first: 100,
       offset: 0,
-      orderBy: ['ID_IN_DOMAIN_DESC']
+      orderBy: ['ID_IN_DOMAIN_DESC'],
+      computeMargins: false,
+      showInvoicedSubtotal: false
     });
 
     const orders = data?.receivedOrders?.nodes ||

@@ -844,24 +844,61 @@ Reglas:
 
   // ── Customer Resolution ───────────────────────────────────
 
+  // Strips Mexican/international legal entity suffixes from the end of a razón social.
+  // Iterates a set of patterns to handle both spaced ("SA DE CV") and dotted
+  // ("S.A. de C.V.") variants, plus international (INC, LLC, GMBH, ...).
+  function stripLegalSuffix(name) {
+    if (!name) return '';
+    const patterns = [
+      /[,\.\s]+S\.?\s*A\.?\s*P\.?\s*I\.?\s+DE\s+C\.?\s*V\.?\s*$/i,
+      /[,\.\s]+S\.?\s*DE\s+R\.?\s*L\.?\s+DE\s+C\.?\s*V\.?\s*$/i,
+      /[,\.\s]+S\.?\s*A\.?\s+DE\s+C\.?\s*V\.?\s*$/i,
+      /[,\.\s]+S\.?\s*DE\s+R\.?\s*L\.?\s*$/i,
+      /[,\.\s]+S\.?\s*A\.?\s*S\.?\s*$/i,
+      /[,\.\s]+S\.?\s*A\.?\s*B\.?\s*$/i,
+      /[,\.\s]+S\.?\s*A\.?\s*$/i,
+      /[,\.\s]+S\.?\s*C\.?\s*$/i,
+      /[,\.\s]+(?:LLC|LTD|LTDA|INC|CORP|CO|GMBH|AG|KG|BV|NV|OY|PLC|SPA|SRL)\.?\s*$/i
+    ];
+    let out = String(name).trim();
+    for (let i = 0; i < 3; i++) {
+      let changed = false;
+      for (const p of patterns) {
+        const next = out.replace(p, '').trim().replace(/[,\.]+$/, '').trim();
+        if (next !== out) { out = next; changed = true; }
+      }
+      if (!changed) break;
+    }
+    return out;
+  }
+
   // Tries to match XLS customer names against Steelhead customers via CustomerSearchByName.
-  // Returns { id, name } or null. Prefers exact case-insensitive name matches; falls back
-  // to a single-result search as a last resort.
+  // Returns { id, name } or null. Strips legal entity suffixes before searching so names
+  // like "HUBBELL PRODUCTS MEXICO S. DE R.L. DE CV" match "HUBBELL PRODUCTS MEXICO".
   async function resolveCustomerFromXLS(pos) {
     const names = [...new Set(pos.map(p => p.customer).filter(Boolean))];
     if (names.length === 0) return null;
 
-    for (const name of names) {
-      try {
-        const data = await api().query('CustomerSearchByName', {
-          nameLike: `%${name}%`, orderBy: ['NAME_ASC']
-        });
-        const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
-        const exact = nodes.find(c => (c.name || '').toUpperCase() === name.toUpperCase());
-        if (exact) return { id: String(exact.id), name: exact.name };
-        if (nodes.length === 1) return { id: String(nodes[0].id), name: nodes[0].name };
-      } catch (e) {
-        warn(`CustomerSearchByName falló para "${name}": ${e.message}`);
+    for (const raw of names) {
+      const queries = [raw];
+      const stripped = stripLegalSuffix(raw);
+      if (stripped && stripped !== raw) queries.push(stripped);
+
+      for (const q of queries) {
+        try {
+          const data = await api().query('CustomerSearchByName', {
+            nameLike: `%${q}%`, orderBy: ['NAME_ASC']
+          });
+          const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
+          const qUp = q.toUpperCase();
+          const exact = nodes.find(c => (c.name || '').toUpperCase() === qUp);
+          if (exact) return { id: String(exact.id), name: exact.name };
+          const startsWith = nodes.find(c => (c.name || '').toUpperCase().startsWith(qUp));
+          if (startsWith) return { id: String(startsWith.id), name: startsWith.name };
+          if (nodes.length === 1) return { id: String(nodes[0].id), name: nodes[0].name };
+        } catch (e) {
+          warn(`CustomerSearchByName falló para "${q}": ${e.message}`);
+        }
       }
     }
     return null;
