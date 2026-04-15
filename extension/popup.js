@@ -525,7 +525,8 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('status-text').textContent = status.connected ? 'Conectado' : 'Sin conexión';
       const extVer = chrome.runtime.getManifest().version;
       const verEl = document.getElementById('version-text');
-      verEl.textContent = `v${extVer}`;
+      const remoteVer = status.connected && status.version ? ` · r${status.version}` : '';
+      verEl.textContent = `v${extVer}${remoteVer}`;
       verEl.title = `Extensión: v${extVer}\nScripts remotos: v${status.version}\nÚltima actualización catálogos: ${status.lastUpdated}`;
 
       // Check if scanner is active
