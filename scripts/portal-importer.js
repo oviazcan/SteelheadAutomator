@@ -867,6 +867,117 @@ Reglas:
     return null;
   }
 
+  // Fetches all non-archived customers via AllCustomers paginated.
+  async function fetchActiveCustomers() {
+    const all = [];
+    const seen = new Set();
+    const PAGE = 500;
+    let offset = 0;
+    while (true) {
+      let data;
+      try {
+        data = await api().query('AllCustomers', {
+          includeArchived: 'NO',
+          includeAccountingFields: false,
+          orderBy: ['NAME_ASC'],
+          offset, first: PAGE, searchQuery: ''
+        });
+      } catch (e) {
+        warn(`AllCustomers offset ${offset}: ${e.message}`);
+        break;
+      }
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        if (n.id && !seen.has(n.id) && !n.archivedAt) {
+          seen.add(n.id);
+          all.push({ id: String(n.id), name: n.name || '' });
+        }
+      }
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 20000) break;
+    }
+    return all;
+  }
+
+  // Modal with searchable list of non-archived customers.
+  // Resolves to { id, name } or null (if cancelled).
+  function showCustomerPicker(prefillQuery) {
+    ops().ensureStyles();
+    return new Promise((resolve) => {
+      const ov = ops().createOverlay();
+      const md = ops().createModal();
+
+      md.innerHTML = `
+        <h2>Selecciona el cliente</h2>
+        <p class="dl9-sub">La URL no trae cliente y no se pudo inferir del XLS. Elige uno de la lista.</p>
+        <input id="pi-cust-search" type="text" placeholder="Buscar cliente..." value="${ops().escHtml(prefillQuery || '')}"
+          style="width:100%;padding:8px 10px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px;margin-bottom:8px">
+        <div id="pi-cust-list" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
+          <p style="color:#94a3b8;text-align:center;padding:16px;font-size:13px">Cargando clientes activos...</p>
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="pi-cust-cancel">Cancelar</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const searchEl = md.querySelector('#pi-cust-search');
+      const listEl = md.querySelector('#pi-cust-list');
+      let customers = [];
+
+      function render() {
+        const q = (searchEl.value || '').trim().toUpperCase();
+        const filtered = q ? customers.filter(c => (c.name || '').toUpperCase().includes(q)) : customers;
+        const MAX = 200;
+        const shown = filtered.slice(0, MAX);
+
+        if (filtered.length === 0) {
+          listEl.innerHTML = '<p style="color:#64748b;text-align:center;padding:16px;font-size:13px">Sin coincidencias.</p>';
+          return;
+        }
+
+        let html = shown.map(c => `
+          <div class="candidate-item" data-id="${ops().escHtml(c.id)}">
+            <div class="candidate-info">
+              <div class="candidate-name">${ops().escHtml(c.name)}</div>
+              <div class="candidate-detail">id ${ops().escHtml(c.id)}</div>
+            </div>
+          </div>`).join('');
+        if (filtered.length > MAX) {
+          html += `<p style="color:#64748b;text-align:center;padding:8px;font-size:12px">+${filtered.length - MAX} más — refina la búsqueda</p>`;
+        }
+        listEl.innerHTML = html;
+
+        listEl.querySelectorAll('.candidate-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const id = el.dataset.id;
+            const c = customers.find(x => x.id === id);
+            ops().removeOverlay();
+            resolve(c ? { id: c.id, name: c.name } : null);
+          });
+        });
+      }
+
+      md.querySelector('#pi-cust-cancel').addEventListener('click', () => {
+        ops().removeOverlay();
+        resolve(null);
+      });
+      searchEl.addEventListener('input', render);
+
+      fetchActiveCustomers().then(list => {
+        customers = list;
+        log(`Picker de clientes: ${customers.length} activos cargados`);
+        render();
+        searchEl.focus();
+        searchEl.select();
+      }).catch(e => {
+        listEl.innerHTML = `<p style="color:#f87171;text-align:center;padding:16px;font-size:13px">Error cargando clientes: ${ops().escHtml(e.message)}</p>`;
+      });
+    });
+  }
+
   // ── Main Orchestrator ─────────────────────────────────────
 
   async function runWithUI() {
@@ -920,9 +1031,14 @@ Reglas:
         customerId = resolved.id;
         log(`Cliente resuelto desde XLS: ${resolved.name} (#${customerId})`);
       } else {
-        alert('No se pudo determinar el cliente.\n\nAbre al cliente en Steelhead (URL con /Customers/{id} o ?customerId=…) y vuelve a lanzar el applet.');
-        log('Abortado: sin customerId');
-        return { error: 'no customerId' };
+        const xlsName = pos.map(p => p.customer).find(Boolean) || '';
+        const picked = await showCustomerPicker(xlsName);
+        if (!picked) {
+          log('Abortado: usuario canceló el picker de clientes');
+          return { cancelled: true };
+        }
+        customerId = picked.id;
+        log(`Cliente seleccionado manualmente: ${picked.name} (#${customerId})`);
       }
     }
 
