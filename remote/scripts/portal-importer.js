@@ -842,18 +842,36 @@ Reglas:
     return await executeBulk(selected, layout, layoutId, file, customerId);
   }
 
+  // ── Customer Resolution ───────────────────────────────────
+
+  // Tries to match XLS customer names against Steelhead customers via CustomerSearchByName.
+  // Returns { id, name } or null. Prefers exact case-insensitive name matches; falls back
+  // to a single-result search as a last resort.
+  async function resolveCustomerFromXLS(pos) {
+    const names = [...new Set(pos.map(p => p.customer).filter(Boolean))];
+    if (names.length === 0) return null;
+
+    for (const name of names) {
+      try {
+        const data = await api().query('CustomerSearchByName', {
+          nameLike: `%${name}%`, orderBy: ['NAME_ASC']
+        });
+        const nodes = data?.searchCustomers?.nodes || data?.pagedData?.nodes || data?.allCustomers?.nodes || [];
+        const exact = nodes.find(c => (c.name || '').toUpperCase() === name.toUpperCase());
+        if (exact) return { id: String(exact.id), name: exact.name };
+        if (nodes.length === 1) return { id: String(nodes[0].id), name: nodes[0].name };
+      } catch (e) {
+        warn(`CustomerSearchByName falló para "${name}": ${e.message}`);
+      }
+    }
+    return null;
+  }
+
   // ── Main Orchestrator ─────────────────────────────────────
 
   async function runWithUI() {
     log('=== Portal Importer iniciando ===');
     claude().resetUsage();
-
-    const customerId = window.POComparator?.getCustomerIdFromURL() || null;
-    if (!customerId) {
-      alert('Portal Importer requiere estar en la página de un cliente.\n\nAbre el cliente correspondiente en Steelhead (URL con ?customerId=…) y vuelve a lanzar el applet.');
-      log('Abortado: sin customerId en URL');
-      return { error: 'no customerId' };
-    }
 
     const file = await showFilePicker();
     if (!file) { log('Cancelado en file picker'); return { cancelled: true }; }
@@ -890,6 +908,22 @@ Reglas:
     if (pos.length === 0) {
       alert('No se detectaron POs en el archivo.');
       return { error: 'no POs' };
+    }
+
+    let customerId = window.POComparator?.getCustomerIdFromURL() || null;
+    if (customerId) {
+      log(`Cliente detectado desde URL: #${customerId}`);
+    } else {
+      log('URL sin customerId — buscando cliente en Steelhead por el nombre del XLS...');
+      const resolved = await resolveCustomerFromXLS(pos);
+      if (resolved && confirm(`La URL no trae customerId. Cliente inferido del XLS:\n\n  ${resolved.name} (id ${resolved.id})\n\n¿Usar éste?`)) {
+        customerId = resolved.id;
+        log(`Cliente resuelto desde XLS: ${resolved.name} (#${customerId})`);
+      } else {
+        alert('No se pudo determinar el cliente.\n\nAbre al cliente en Steelhead (URL con /Customers/{id} o ?customerId=…) y vuelve a lanzar el applet.');
+        log('Abortado: sin customerId');
+        return { error: 'no customerId' };
+      }
     }
 
     // Enrich lines with stored mapping table entries (buyerCode → known PN)
