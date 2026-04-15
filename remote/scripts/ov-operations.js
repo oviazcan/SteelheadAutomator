@@ -398,27 +398,30 @@ const OVOperations = (() => {
     log(`${resolvedCount}/${total} PNs resueltos en Steelhead`);
 
     if (lineItems.length > 0) {
-      // Paso 1: crear los ReceivedOrderPartTransforms (uno por línea)
+      // Paso 1: crear los ReceivedOrderPartTransforms de forma secuencial
+      // (el batch viola la unique constraint cuando hay PNs repetidos)
       log(`Creando ${lineItems.length} part transforms...`);
-      const transformInput = lineItems.map(l => ({
-        isBillable: true,
-        receivedOrderId: ovInternalId,
-        shipToId: formData.shipToAddressId || null,
-        partNumberPriceId: l.partNumberPriceId || null,
-        maxPartTransformCount: Number(l.quantity),
-        count: Number(l.quantity),
-        partNumberId: l.partNumberId,
-        orderType: formData.type || 'MAKE_TO_ORDER',
-        description: '',
-        deadline: formData.deadline,
-        children: []
-      }));
-      const transformResult = await api().query('SaveReceivedOrderPartTransforms', {
-        input: transformInput
-      });
-      const transforms = transformResult?.saveReceivedOrderPartTransforms || [];
-      if (transforms.length !== lineItems.length) {
-        warn(`Transforms devueltos (${transforms.length}) ≠ líneas (${lineItems.length})`);
+      const transforms = [];
+      for (let i = 0; i < lineItems.length; i++) {
+        const l = lineItems[i];
+        const tr = await api().query('SaveReceivedOrderPartTransforms', {
+          input: [{
+            isBillable: true,
+            receivedOrderId: ovInternalId,
+            shipToId: formData.shipToAddressId || null,
+            partNumberPriceId: l.partNumberPriceId || null,
+            maxPartTransformCount: Number(l.quantity),
+            count: Number(l.quantity),
+            partNumberId: l.partNumberId,
+            orderType: formData.type || 'MAKE_TO_ORDER',
+            description: '',
+            deadline: formData.deadline,
+            children: []
+          }]
+        });
+        const t = tr?.saveReceivedOrderPartTransforms?.[0];
+        if (!t?.id) throw new Error(`Transform #${i + 1} (${l.partNumber}) no devolvió id`);
+        transforms.push(t);
       }
 
       // Paso 2: crear las líneas referenciando los transforms
