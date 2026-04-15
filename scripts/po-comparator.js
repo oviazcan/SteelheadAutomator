@@ -105,7 +105,10 @@ Reglas:
   function getCustomerIdFromURL() {
     try {
       const url = new URL(window.location.href);
-      return url.searchParams.get('customerId') || null;
+      const qp = url.searchParams.get('customerId');
+      if (qp) return qp;
+      const m = url.pathname.match(/\/Customers\/(\d+)/);
+      return m ? m[1] : null;
     } catch {
       return null;
     }
