@@ -384,19 +384,21 @@ const OVOperations = (() => {
     const total = sourceData.lines.filter(l => l.partNumber).length;
     log(`${resolved}/${total} PNs resueltos en Steelhead`);
 
-    const receivedOrderLines = lineItems.map(l => ({
-      lineNumber: l.lineNumber,
-      partNumberId: l.partNumberId,
-      quantity: l.quantity,
-      partNumberPriceId: l.partNumberPriceId || undefined
+    const newLines = lineItems.map(l => ({
+      lineNumber: parseInt(l.lineNumber, 10),
+      lineItems: [{
+        partNumberId: l.partNumberId,
+        quantity: Number(l.quantity),
+        partNumberPriceId: l.partNumberPriceId || undefined
+      }]
     }));
 
-    if (receivedOrderLines.length > 0) {
-      log(`Agregando ${receivedOrderLines.length} líneas a la OV...`);
+    if (newLines.length > 0) {
+      log(`Agregando ${newLines.length} líneas a la OV...`);
       await api().query('SaveReceivedOrderLinesAndItems', {
         input: {
           receivedOrderId: ovInternalId,
-          newLines: receivedOrderLines
+          newLines
         }
       });
       log('Líneas agregadas exitosamente');
