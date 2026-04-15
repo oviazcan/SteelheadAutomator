@@ -127,7 +127,11 @@ const CatalogFetcher = (() => {
           for (const addr of addrs) {
             let addrText = (addr.address || addr.street || '').replace(/[\r\n]+/g, ' ');
             if (addrText.length > 40) addrText = addrText.substring(0, 40);
-            const display = addrText ? `${name} \u2014 ${addrText}` : name;
+            const plant = (addr.identifier || addr.description || '').toString().replace(/[\r\n]+/g, ' ').trim();
+            const parts = [name];
+            if (plant) parts.push(plant);
+            if (addrText) parts.push(addrText);
+            const display = parts.join(' \u2014 ');
             result.push({ display, id: String(id), labels: labelNames, addressId: addr.id });
           }
         } else {
