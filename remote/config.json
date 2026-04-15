@@ -1,5 +1,5 @@
 {
-  "version": "0.4.9",
+  "version": "0.4.10",
   "lastUpdated": "2026-04-14",
   "extensionVersion": "1.4.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -195,8 +195,8 @@
         "type": "regex",
         "source": "description",
         "patterns": [
-          "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)",
-          "(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)"
+          "(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)",
+          "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"
         ]
       },
       "statusFilter": { "activeValues": ["Nuevo"] },
