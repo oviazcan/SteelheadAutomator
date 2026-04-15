@@ -319,7 +319,7 @@ const OVOperations = (() => {
             warn(`No se encontró precio para ${pnName}: ${e.message}`);
           }
         }
-        return { partNumberId, partNumberPriceId, exact: true };
+        return { partNumberId, partNumberPriceId, exact: true, label: exactMatch.label };
       }
 
       // Fuzzy match: aggressive normalization
