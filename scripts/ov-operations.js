@@ -396,8 +396,7 @@ const OVOperations = (() => {
       await api().query('SaveReceivedOrderLinesAndItems', {
         input: {
           receivedOrderId: ovInternalId,
-          receivedOrderLines,
-          receivedOrderItems: []
+          newLines: receivedOrderLines
         }
       });
       log('Líneas agregadas exitosamente');
