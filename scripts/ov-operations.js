@@ -350,6 +350,18 @@ const OVOperations = (() => {
 
   // ── Create New OV ──────────────────────────────────────────
 
+  let _cachedDefaultProductId = null;
+  async function getDefaultProductId() {
+    if (_cachedDefaultProductId != null) return _cachedDefaultProductId;
+    const data = await api().query('SearchProducts', {
+      searchQuery: '', first: 1, orderBy: ['NAME_ASC']
+    });
+    const first = data?.searchProducts?.nodes?.[0];
+    if (!first?.id) throw new Error('SearchProducts no devolvió ningún producto');
+    _cachedDefaultProductId = first.id;
+    return _cachedDefaultProductId;
+  }
+
   async function createNewOV(formData, sourceData, file) {
     log('Creando OV nueva...');
 
@@ -373,6 +385,7 @@ const OVOperations = (() => {
           partNumberId: resolved.partNumberId,
           partNumberPriceId: resolved.partNumberPriceId,
           quantity: line.quantity,
+          unitPrice: line.unitPrice,
           partNumber: line.partNumber
         });
       } else {
@@ -380,21 +393,64 @@ const OVOperations = (() => {
       }
     }
 
-    const resolved = lineItems.length;
+    const resolvedCount = lineItems.length;
     const total = sourceData.lines.filter(l => l.partNumber).length;
-    log(`${resolved}/${total} PNs resueltos en Steelhead`);
+    log(`${resolvedCount}/${total} PNs resueltos en Steelhead`);
 
-    const newLines = lineItems.map(l => ({
-      lineNumber: parseInt(l.lineNumber, 10),
-      lineItems: [{
+    if (lineItems.length > 0) {
+      // Paso 1: crear los ReceivedOrderPartTransforms (uno por línea)
+      log(`Creando ${lineItems.length} part transforms...`);
+      const transformInput = lineItems.map(l => ({
+        isBillable: true,
+        receivedOrderId: ovInternalId,
+        shipToId: formData.shipToAddressId || null,
+        partNumberPriceId: l.partNumberPriceId || null,
+        maxPartTransformCount: Number(l.quantity),
+        count: Number(l.quantity),
         partNumberId: l.partNumberId,
-        quantity: Number(l.quantity),
-        partNumberPriceId: l.partNumberPriceId || undefined
-      }]
-    }));
+        orderType: formData.type || 'MAKE_TO_ORDER',
+        description: '',
+        deadline: formData.deadline,
+        children: []
+      }));
+      const transformResult = await api().query('SaveReceivedOrderPartTransforms', {
+        input: transformInput
+      });
+      const transforms = transformResult?.saveReceivedOrderPartTransforms || [];
+      if (transforms.length !== lineItems.length) {
+        warn(`Transforms devueltos (${transforms.length}) ≠ líneas (${lineItems.length})`);
+      }
 
-    if (newLines.length > 0) {
-      log(`Agregando ${newLines.length} líneas a la OV...`);
+      // Paso 2: crear las líneas referenciando los transforms
+      const productId = await getDefaultProductId();
+      log(`Agregando ${lineItems.length} líneas a la OV...`);
+      const newLines = lineItems.map((l, i) => {
+        const t = transforms[i] || {};
+        return {
+          id: null,
+          name: String(l.partNumber),
+          description: '',
+          lineItems: [{
+            archive: false,
+            description: String(l.partNumber),
+            quantity: String(l.quantity),
+            price: String(l.unitPrice || '0'),
+            productId,
+            unitId: null,
+            quoteLineItemId: null,
+            receivedOrderLineItemPartTransforms: [{
+              receivedOrderPartTransform: {
+                id: t.id ?? null,
+                partNumberId: l.partNumberId,
+                partNumberPriceId: l.partNumberPriceId || null,
+                count: Number(l.quantity),
+                description: ''
+              }
+            }]
+          }]
+        };
+      });
+
       await api().query('SaveReceivedOrderLinesAndItems', {
         input: {
           receivedOrderId: ovInternalId,
@@ -412,7 +468,7 @@ const OVOperations = (() => {
       }
     }
 
-    log(`OV #${ovId} creada con ${receivedOrderLines.length} líneas`);
+    log(`OV #${ovId} creada con ${lineItems.length} líneas`);
     return ovId;
   }
 

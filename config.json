@@ -1,5 +1,5 @@
 {
-  "version": "0.4.16",
+  "version": "0.4.17",
   "lastUpdated": "2026-04-14",
   "extensionVersion": "1.4.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -18,6 +18,7 @@
         "UpdateQuote": "765fc26af87241f0f614a51fe3583e10d2f1765dafb1426402f69dcc79e33a8e",
         "SaveQuoteLines": "b227e2f5a5b40021383077e58ab311169da2d5438d566bfe389fd7642e4d1937",
         "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6",
+        "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154",
         "SaveManyPNP_Quote": "af7b81567691854da4b9bbdf473b2732d89e3e6224ba52cbfb3d13dbfa93841b",
         "SaveManyPNP_PN": "bd2db06e8e0b0a66cb65ada5b5433d9c5abe981b4aee4b39b86be4bba077cd05",
         "SavePartNumber": "31a6c7d99c525979acea562cc892fa0968b439f10c79341f4de8748cc4a6cce9",
@@ -425,6 +426,7 @@
     "GetEmailDefaultByTypeAndSubType": { "type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator" },
     "GetUserEmailRecipients": { "type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator" },
     "SaveReceivedOrderLinesAndItems": { "type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator" },
+    "SaveReceivedOrderPartTransforms": { "type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer" },
     "UpdateReceivedOrder": { "type": "mutation", "description": "Actualizar custom inputs de OV (Divisa, RazonSocial)", "usedBy": "po-comparator" },
     "SendEmailChecked": { "type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher" },
     "CreateEmailLogReceivedOrder": { "type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator" },
