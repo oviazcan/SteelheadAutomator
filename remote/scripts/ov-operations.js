@@ -394,9 +394,11 @@ const OVOperations = (() => {
     if (receivedOrderLines.length > 0) {
       log(`Agregando ${receivedOrderLines.length} líneas a la OV...`);
       await api().query('SaveReceivedOrderLinesAndItems', {
-        receivedOrderId: ovInternalId,
-        receivedOrderLines,
-        receivedOrderItems: []
+        input: {
+          receivedOrderId: ovInternalId,
+          receivedOrderLines,
+          receivedOrderItems: []
+        }
       });
       log('Líneas agregadas exitosamente');
     }

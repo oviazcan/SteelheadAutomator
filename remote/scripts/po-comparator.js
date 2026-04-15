@@ -1246,12 +1246,14 @@ Reglas:
     log(`Reordenando ${lineUpdates.length} lineas...`);
 
     await api().query('SaveReceivedOrderLinesAndItems', {
-      receivedOrderId: soData.id,
-      receivedOrderLines: lineUpdates.map(lu => ({
-        id: lu.id,
-        lineNumber: lu.lineNumber
-      })),
-      receivedOrderItems: []
+      input: {
+        receivedOrderId: soData.id,
+        receivedOrderLines: lineUpdates.map(lu => ({
+          id: lu.id,
+          lineNumber: lu.lineNumber
+        })),
+        receivedOrderItems: []
+      }
     });
 
     log('Lineas reordenadas exitosamente');
