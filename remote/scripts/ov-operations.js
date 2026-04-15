@@ -398,57 +398,58 @@ const OVOperations = (() => {
     log(`${resolvedCount}/${total} PNs resueltos en Steelhead`);
 
     if (lineItems.length > 0) {
-      // Diagnóstico: revisar si la OV recién creada ya tiene transforms
-      try {
-        const chk = await api().query('GetReceivedOrder', {
-          idInDomain: parseInt(ovId, 10), revisionNumber: 1
-        });
-        const existing = chk?.receivedOrder?.receivedOrderPartTransformsByReceivedOrderId?.nodes
-          || chk?.receivedOrderByIdInDomain?.receivedOrderPartTransformsByReceivedOrderId?.nodes
-          || [];
-        log(`OV recién creada tiene ${existing.length} transforms pre-existentes`);
-        if (existing.length > 0) {
-          log(`  Pre-existentes: ${JSON.stringify(existing.slice(0, 3)).substring(0, 400)}`);
+      // Paso 1: crear un ReceivedOrderPartTransform por cada PN único.
+      // La unique constraint de Postgres prohibe (receivedOrderId, partNumberId, ...)
+      // duplicados, así que sumamos cantidades de líneas con el mismo PN.
+      const groups = new Map();
+      for (const l of lineItems) {
+        const key = l.partNumberId;
+        if (!groups.has(key)) {
+          groups.set(key, {
+            partNumberId: l.partNumberId,
+            partNumberPriceId: l.partNumberPriceId || null,
+            totalCount: 0,
+            partNumber: l.partNumber
+          });
         }
-      } catch (e) {
-        warn(`No se pudo verificar transforms pre-existentes: ${e.message}`);
+        groups.get(key).totalCount += Number(l.quantity) || 0;
       }
 
-      // Paso 1: crear los ReceivedOrderPartTransforms de forma secuencial
-      // (el batch viola la unique constraint cuando hay PNs repetidos)
-      log(`Creando ${lineItems.length} part transforms...`);
-      const transforms = [];
-      for (let i = 0; i < lineItems.length; i++) {
-        const l = lineItems[i];
-        const input = {
-          isBillable: true,
-          receivedOrderId: ovInternalId,
-          shipToId: formData.shipToAddressId || null,
-          partNumberPriceId: l.partNumberPriceId || null,
-          maxPartTransformCount: Number(l.quantity),
-          count: Number(l.quantity),
-          partNumberId: l.partNumberId,
-          orderType: formData.type || 'MAKE_TO_ORDER',
-          description: '',
-          deadline: formData.deadline,
-          children: []
-        };
-        if (i === 0) log(`  Input transform[0]: ${JSON.stringify(input)}`);
+      log(`Creando ${groups.size} part transforms (para ${lineItems.length} líneas)...`);
+      const transformsByPN = new Map();
+      let idx = 0;
+      for (const [pnId, g] of groups) {
+        idx++;
         try {
-          const tr = await api().query('SaveReceivedOrderPartTransforms', { input: [input] });
+          const tr = await api().query('SaveReceivedOrderPartTransforms', {
+            input: [{
+              isBillable: true,
+              receivedOrderId: ovInternalId,
+              shipToId: formData.shipToAddressId || null,
+              partNumberPriceId: g.partNumberPriceId,
+              maxPartTransformCount: g.totalCount,
+              count: g.totalCount,
+              partNumberId: pnId,
+              orderType: formData.type || 'MAKE_TO_ORDER',
+              description: '',
+              deadline: formData.deadline,
+              children: []
+            }]
+          });
           const t = tr?.saveReceivedOrderPartTransforms?.[0];
-          if (!t?.id) throw new Error(`Transform #${i + 1} (${l.partNumber}) no devolvió id`);
-          transforms.push(t);
+          if (!t?.id) throw new Error('no devolvió id');
+          transformsByPN.set(pnId, t);
         } catch (e) {
-          throw new Error(`Falló transform #${i + 1} (PN=${l.partNumber}, partNumberId=${l.partNumberId}): ${e.message}`);
+          throw new Error(`Falló transform ${idx}/${groups.size} (PN=${g.partNumber}, partNumberId=${pnId}): ${e.message}`);
         }
       }
 
-      // Paso 2: crear las líneas referenciando los transforms
+      // Paso 2: crear una línea por cada entrada original del PO, todas las que
+      // compartan PN apuntan al mismo transform id
       const productId = await getDefaultProductId();
       log(`Agregando ${lineItems.length} líneas a la OV...`);
-      const newLines = lineItems.map((l, i) => {
-        const t = transforms[i] || {};
+      const newLines = lineItems.map(l => {
+        const t = transformsByPN.get(l.partNumberId) || {};
         return {
           id: null,
           name: String(l.partNumber),
