@@ -353,9 +353,15 @@ const CatalogFetcher = (() => {
     const wb = XLSX.utils.book_new();
 
     // Clientes sheet: VBA solo lee col2=name, col6=active, col10=address (sin ID ni labels)
+    // El display tiene formato "Cliente — [Identifier —] Direccion"; tomamos todo lo posterior
+    // al primer guion como columna Direccion para no perder ningun segmento.
     const custRows = [['', 'Nombre', '', '', '', 'Activo', '', '', '', 'Dirección']];
     for (const c of catalogs.customers) {
-      custRows.push(['', c.display.split(' \u2014 ')[0], '', '', '', true, '', '', '', c.display.includes('\u2014') ? c.display.split(' \u2014 ')[1] : '']);
+      const sep = ' \u2014 ';
+      const i = c.display.indexOf(sep);
+      const namePart = i === -1 ? c.display : c.display.substring(0, i);
+      const addrPart = i === -1 ? '' : c.display.substring(i + sep.length);
+      custRows.push(['', namePart, '', '', '', true, '', '', '', addrPart]);
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(custRows), 'Clientes');
 
