@@ -522,7 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const status = await sendToBackground('get-status');
       document.getElementById('status-bar').classList.toggle('error', !status.connected);
-      document.getElementById('status-text').textContent = status.connected ? 'Conectado' : 'Sin conexión';
+      document.getElementById('status-text').textContent = status.connected ? '' : 'Sin conexión';
       const extVer = chrome.runtime.getManifest().version;
       const verEl = document.getElementById('version-text');
       const remoteVer = status.connected && status.version ? ` · r${status.version}` : '';
