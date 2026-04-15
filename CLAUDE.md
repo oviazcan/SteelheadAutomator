@@ -10,6 +10,27 @@ Extensión de Chrome MV3 que automatiza carga masiva de cotizaciones y números 
 - `skills/` — Skills reutilizables para Claude sobre la API de Steelhead
 - `docs/` — Specs de diseño
 
+## Deploy a producción
+La extensión es un cascarón: en runtime fetchea scripts y `config.json` desde GitHub Pages (rama `gh-pages`). **Editar `remote/` en `main` no afecta a usuarios** hasta hacer el deploy a `gh-pages`.
+
+### Layout
+- `main` rama de desarrollo. Scripts viven en `remote/scripts/*.js`, config en `remote/config.json`
+- `gh-pages` rama publicada. **Estructura aplanada**: `remote/scripts/foo.js` (main) → `scripts/foo.js` (gh-pages); `remote/config.json` (main) → `config.json` (gh-pages)
+- `gh-pages` debe quedar en sync byte-a-byte con el contenido de `remote/` de `main` (verificable con `git diff HEAD:remote/scripts/foo.js gh-pages:scripts/foo.js`)
+
+### Procedimiento (cada vez que cambia algo en `remote/`)
+1. **Bump `remote/config.json` `version`** (ej. `0.4.2` → `0.4.3`) y `lastUpdated` a la fecha. Ese version es el cache-bust para que la extensión recargue scripts
+2. **Commit en `main`** con prefijo apropiado (`fix(...)`, `feat(...)`, `chore(config)`)
+3. **Sync a `gh-pages`**: en commits previos el patrón es `git checkout gh-pages && cp ../main-checkout/remote/scripts/foo.js scripts/foo.js && cp ../main-checkout/remote/config.json config.json && git add ... && git commit -m "deploy: <descripción> + bump <version>"`. Sin worktree formal — el usuario hace switch de rama y copia manualmente
+4. **Push ambas ramas**: `git push origin main && git push origin gh-pages`
+5. **GitHub Pages publica en ~30-60s**. Después: recarga la extensión (chrome://extensions → reload) o reinicia Chrome si cachea
+
+### Notas
+- Los commits de `gh-pages` siguen formato `deploy: <qué cambió> + bump <version>` (ver `git log gh-pages --oneline`)
+- No hay tags ni rollback automatizado todavía (item pendiente del audit)
+- Si solo cambia `extension/`, no hace falta tocar `gh-pages` (la extensión empaquetada vive en Chrome Web Store o se distribuye como `.zip`)
+- `extensionVersion` en `config.json` solo se bumpea cuando cambia el código de `extension/` y se republica el `.zip` en gh-pages
+
 ## API de Steelhead
 - Endpoint: `POST https://app.gosteelhead.com/graphql`
 - Usa Apollo Persisted Queries (solo hashes SHA256, no queries en texto)

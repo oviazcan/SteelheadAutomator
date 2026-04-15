@@ -668,8 +668,10 @@ Reglas:
       md.querySelector('#pi-audit-status').addEventListener('change', renderTable);
       md.querySelector('#pi-audit-cancel').addEventListener('click', () => { ops().removeOverlay(); resolve(null); });
       md.querySelector('#pi-audit-run').addEventListener('click', () => {
+        const filter = md.querySelector('#pi-audit-status').value;
+        const inFilter = (r) => filter === '__all__' || r.po.status === filter;
         ops().removeOverlay();
-        resolve(auditRows.filter(r => r.action !== 'skip'));
+        resolve(auditRows.filter(r => inFilter(r) && r.action !== 'skip'));
       });
 
       renderTable();
@@ -846,6 +848,13 @@ Reglas:
     log('=== Portal Importer iniciando ===');
     claude().resetUsage();
 
+    const customerId = window.POComparator?.getCustomerIdFromURL() || null;
+    if (!customerId) {
+      alert('Portal Importer requiere estar en la página de un cliente.\n\nAbre el cliente correspondiente en Steelhead (URL con ?customerId=…) y vuelve a lanzar el applet.');
+      log('Abortado: sin customerId en URL');
+      return { error: 'no customerId' };
+    }
+
     const file = await showFilePicker();
     if (!file) { log('Cancelado en file picker'); return { cancelled: true }; }
 
@@ -884,8 +893,7 @@ Reglas:
     }
 
     // Enrich lines with stored mapping table entries (buyerCode → known PN)
-    const customerIdForMapping = window.POComparator?.getCustomerIdFromURL() || null;
-    await enrichLinesWithMapping(pos, customerIdForMapping, layoutId);
+    await enrichLinesWithMapping(pos, customerId, layoutId);
 
     const mode = await showModeSelector(pos);
     if (!mode) return { cancelled: true };
@@ -893,8 +901,6 @@ Reglas:
     // Store parsedData for source viewer (with PO column index)
     const poColumnIndex = parsed.headers.indexOf(layout.mapping.poNumber);
     const parsedData = { headers: parsed.headers, rows: parsed.rows, poColumnIndex };
-
-    const customerId = window.POComparator?.getCustomerIdFromURL() || null;
 
     if (mode === 'single') {
       return await processSingleMode(pos, layout, layoutId, file, parsedData, customerId);
