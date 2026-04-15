@@ -83,7 +83,7 @@ const PortalImporter = (() => {
     const patterns = pnExtractor.patterns || [];
     for (const patternStr of patterns) {
       try {
-        const re = new RegExp(patternStr);
+        const re = new RegExp(patternStr, 'i');
         const match = String(description).match(re);
         if (match && match[1]) {
           return match[1].trim().replace(/[.,;:]+$/, '');
