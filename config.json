@@ -1,5 +1,5 @@
 {
-  "version": "0.4.6",
+  "version": "0.4.7",
   "lastUpdated": "2026-04-14",
   "extensionVersion": "1.4.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -340,7 +340,7 @@
       "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)",
       "icon": "📥",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/portal-importer.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"],
       "actions": [
         { "id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer" }
       ]

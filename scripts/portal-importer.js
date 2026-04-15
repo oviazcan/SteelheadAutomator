@@ -85,7 +85,9 @@ const PortalImporter = (() => {
       try {
         const re = new RegExp(patternStr);
         const match = String(description).match(re);
-        if (match && match[1]) return match[1].trim();
+        if (match && match[1]) {
+          return match[1].trim().replace(/[.,;:]+$/, '');
+        }
       } catch (e) {
         warn(`Regex inválido: ${patternStr}`);
       }
@@ -522,9 +524,12 @@ Reglas:
       const creationData = await ops().fetchCreationData(customerId);
       const formData = await ops().showCreationWizard(sourceData, creationData, customerId);
       if (!formData) return { cancelled: true };
+      await resolveLinesForSingle(sourceData, customerId, layoutId);
       const orderId = await ops().createNewOV(formData, sourceData, file);
-      alert(`OV creada: #${orderId}`);
-      return { created: true, orderId };
+      const check = await verifyOVLines(orderId, sourceData.lines.filter(l => l.partNumber && !l._skipped).length);
+      const msg = check ? `OV creada: #${orderId}\nLíneas: ${check.actual}/${check.expected}${check.missing ? ` (faltan ${check.missing})` : ''}` : `OV creada: #${orderId}`;
+      alert(msg);
+      return { created: true, orderId, check };
     }
 
     // No candidates — offer manual search or create
@@ -535,9 +540,36 @@ Reglas:
     const creationData = await ops().fetchCreationData(customerId);
     const formData = await ops().showCreationWizard(sourceData, creationData, customerId);
     if (!formData) return { cancelled: true };
+    await resolveLinesForSingle(sourceData, customerId, layoutId);
     const orderId = await ops().createNewOV(formData, sourceData, file);
-    alert(`OV creada: #${orderId}`);
-    return { created: true, orderId };
+    const check = await verifyOVLines(orderId, sourceData.lines.filter(l => l.partNumber && !l._skipped).length);
+    const msg = check ? `OV creada: #${orderId}\nLíneas: ${check.actual}/${check.expected}${check.missing ? ` (faltan ${check.missing})` : ''}` : `OV creada: #${orderId}`;
+    alert(msg);
+    return { created: true, orderId, check };
+  }
+
+  // Pre-resolve PNs for a single PO with alternate fallback and manual picker.
+  async function resolveLinesForSingle(sourceData, customerId, layoutId) {
+    const unresolved = [];
+    const suggestions = [];
+    const fakePO = { poNumber: sourceData.poNumber };
+    for (const line of sourceData.lines) {
+      if (!line.partNumber && !line.buyerCode) continue;
+      const res = await resolveLinePN(line, customerId);
+      if (res.status === 'exact') {
+        await recordSuccessfulMapping(line, customerId, layoutId);
+      } else if (res.status === 'suggestion') {
+        const s = res.resolved.suggestion;
+        if (!suggestions.find(x => x.partNumberId === s.partNumberId)) suggestions.push(s);
+      } else {
+        unresolved.push({ line, po: fakePO, tried: res.tried });
+      }
+    }
+    if (suggestions.length > 0) await ops().showSuggestionsModal(suggestions);
+    if (unresolved.length > 0) {
+      const picked = await showUnresolvedPNPicker(unresolved, customerId, layoutId);
+      if (!picked) throw new Error('Cancelado en picker de PNs');
+    }
   }
 
   // ── Bulk Mode ──────────────────────────────────────────────
@@ -678,6 +710,154 @@ Reglas:
     });
   }
 
+  // Resolve a line's PN trying primary first, then the customer's buyerCode as alternate.
+  // If resolved exact, mutates line.partNumber to the matched Steelhead label so downstream
+  // resolvePartNumber calls (in createNewOV) find it too.
+  async function resolveLinePN(line, customerId) {
+    const tried = [];
+    if (line.partNumber) {
+      tried.push(line.partNumber);
+      const r = await ops().resolvePartNumber(line.partNumber, customerId);
+      if (r?.partNumberId && r.exact) {
+        if (r.label) line.partNumber = r.label;
+        return { status: 'exact', resolved: r, via: 'primary', tried };
+      }
+      if (r?.suggestion) return { status: 'suggestion', resolved: r, via: 'primary', tried };
+    }
+    if (line.buyerCode) {
+      tried.push(line.buyerCode);
+      const r = await ops().resolvePartNumber(line.buyerCode, customerId);
+      if (r?.partNumberId && r.exact) {
+        if (r.label) line.partNumber = r.label;
+        line._resolvedVia = 'buyerCode';
+        return { status: 'exact', resolved: r, via: 'buyerCode', tried };
+      }
+      if (r?.suggestion) return { status: 'suggestion', resolved: r, via: 'buyerCode', tried };
+    }
+    return { status: 'unresolved', tried };
+  }
+
+  // Shows a modal listing unresolved lines and lets the user search Steelhead's PN catalog
+  // to pick the correct match for each one. Saved picks mutate line.partNumber and record
+  // the mapping for future XLS imports.
+  function showUnresolvedPNPicker(unresolved, customerId, layoutId) {
+    ops().ensureStyles();
+    return new Promise((resolve) => {
+      const ov = ops().createOverlay();
+      const md = ops().createModal();
+
+      const items = unresolved.map((u, idx) => ({ ...u, idx, pickedId: null, pickedLabel: null }));
+
+      md.innerHTML = `
+        <h2>Números de parte no encontrados</h2>
+        <p class="dl9-sub">${items.length} línea(s) sin PN resuelto en Steelhead. Busca el PN correcto por cada una — se guardará el mapeo para futuras importaciones. Las que dejes en "Omitir" no se crearán.</p>
+        <div id="pi-upn-list" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;margin:12px 0"></div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="pi-upn-cancel">Cancelar batch</button>
+          <button class="dl9-btn dl9-btn-primary" id="pi-upn-continue">Continuar</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const listEl = md.querySelector('#pi-upn-list');
+
+      listEl.innerHTML = items.map(it => {
+        const tried = (it.tried || []).filter(Boolean).map(s => ops().escHtml(s)).join(' · ');
+        const desc = it.line.description ? ops().escHtml(String(it.line.description).substring(0, 120)) : '';
+        return `
+          <div class="candidate-item" style="flex-direction:column;align-items:stretch;gap:6px" data-idx="${it.idx}">
+            <div class="candidate-info">
+              <div class="candidate-name">PO ${ops().escHtml(it.po.poNumber)} · línea ${ops().escHtml(String(it.line.lineNumber || ''))}</div>
+              <div class="candidate-detail">Intentado: ${tried || '—'}${desc ? ` · ${desc}` : ''}</div>
+            </div>
+            <input type="text" class="pi-upn-search" placeholder="Buscar en catálogo de Steelhead..."
+              style="padding:6px 8px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px">
+            <div class="pi-upn-results" style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:2px"></div>
+            <div class="pi-upn-picked" style="font-size:12px;color:#94a3b8">Acción: <strong>Omitir</strong></div>
+          </div>`;
+      }).join('');
+
+      async function runSearch(rowEl, idx, q) {
+        const resultsEl = rowEl.querySelector('.pi-upn-results');
+        if (!q || q.length < 2) { resultsEl.innerHTML = ''; return; }
+        try {
+          const data = await api().query('PartNumberCreatableSelectGetPartNumbers', {
+            name: `%${q}%`,
+            searchQuery: '',
+            hideCustomerPartsWhenNoCustomerIdFilter: true,
+            customerId: customerId ? parseInt(customerId, 10) : null,
+            specIds: [],
+            paramIds: []
+          });
+          const pns = (data?.searchPartNumbers?.nodes || []).slice(0, 15);
+          if (pns.length === 0) { resultsEl.innerHTML = '<p style="color:#64748b;font-size:11px;padding:4px">Sin coincidencias.</p>'; return; }
+          resultsEl.innerHTML = pns.map(p => `
+            <div class="pi-upn-opt" data-id="${ops().escHtml(p.value || p.id)}" data-label="${ops().escHtml(p.label)}"
+              style="padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px;color:#e2e8f0;background:#1e293b">
+              ${ops().escHtml(p.label)}
+            </div>`).join('');
+          resultsEl.querySelectorAll('.pi-upn-opt').forEach(opt => {
+            opt.addEventListener('click', () => {
+              items[idx].pickedId = opt.dataset.id;
+              items[idx].pickedLabel = opt.dataset.label;
+              rowEl.querySelector('.pi-upn-picked').innerHTML = `Asignado: <strong style="color:#34d399">${ops().escHtml(opt.dataset.label)}</strong>`;
+            });
+          });
+        } catch (e) {
+          resultsEl.innerHTML = `<p style="color:#f87171;font-size:11px;padding:4px">Error: ${ops().escHtml(e.message)}</p>`;
+        }
+      }
+
+      listEl.querySelectorAll('.candidate-item').forEach(rowEl => {
+        const idx = parseInt(rowEl.dataset.idx, 10);
+        const input = rowEl.querySelector('.pi-upn-search');
+        const prefill = (items[idx].line.partNumber || items[idx].line.buyerCode || '').trim();
+        if (prefill) { input.value = prefill; runSearch(rowEl, idx, prefill); }
+        let timer = null;
+        input.addEventListener('input', () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => runSearch(rowEl, idx, input.value.trim()), 300);
+        });
+      });
+
+      md.querySelector('#pi-upn-cancel').addEventListener('click', () => { ops().removeOverlay(); resolve(null); });
+      md.querySelector('#pi-upn-continue').addEventListener('click', async () => {
+        for (const it of items) {
+          if (it.pickedId && it.pickedLabel) {
+            it.line.partNumber = it.pickedLabel;
+            it.line._resolvedVia = 'manual';
+            if (customerId && layoutId && it.line.buyerCode) {
+              try { await saveMappingEntry(customerId, layoutId, it.line.buyerCode, it.pickedLabel); } catch (_) {}
+            }
+          } else {
+            it.line.partNumber = null;
+            it.line._skipped = true;
+          }
+        }
+        ops().removeOverlay();
+        resolve(items);
+      });
+    });
+  }
+
+  // Query Steelhead for the actual line count after create/adopt so we can verify
+  // the expected lines were persisted. Returns { actual, missing } or null on error.
+  async function verifyOVLines(ovId, expected) {
+    try {
+      const data = await api().query('GetReceivedOrder', {
+        idInDomain: parseInt(ovId, 10),
+        revisionNumber: 1
+      });
+      const order = data?.receivedOrder;
+      const lines = order?.receivedOrderLines?.nodes || order?.receivedOrderLines || [];
+      return { actual: lines.length, expected, missing: Math.max(expected - lines.length, 0) };
+    } catch (e) {
+      warn(`No se pudo verificar líneas de OV #${ovId}: ${e.message}`);
+      return null;
+    }
+  }
+
   async function executeBulk(selectedRows, layout, layoutId, file, customerId) {
     if (selectedRows.length === 0) {
       alert('No hay POs para procesar.');
@@ -686,25 +866,33 @@ Reglas:
 
     log(`Procesando ${selectedRows.length} POs...`);
 
-    // Pre-check: resolve all PNs, collect suggestions, record successful mappings
+    // Pre-check: resolve PNs with alternate fallback; collect suggestions and unresolved lines.
     const suggestions = [];
+    const unresolved = [];
     for (const r of selectedRows) {
       if (r.action !== 'create' && r.action !== 'adopt') continue;
       for (const line of r.po.lines) {
-        if (!line.partNumber) continue;
-        const resolved = await ops().resolvePartNumber(line.partNumber, customerId);
-        if (resolved?.suggestion) {
-          if (!suggestions.find(s => s.partNumberId === resolved.suggestion.partNumberId)) {
-            suggestions.push(resolved.suggestion);
-          }
-        } else if (resolved?.partNumberId && resolved.exact) {
+        if (!line.partNumber && !line.buyerCode) continue;
+        const res = await resolveLinePN(line, customerId);
+        if (res.status === 'exact') {
           await recordSuccessfulMapping(line, customerId, layoutId);
+        } else if (res.status === 'suggestion') {
+          const s = res.resolved.suggestion;
+          if (!suggestions.find(x => x.partNumberId === s.partNumberId)) suggestions.push(s);
+        } else {
+          unresolved.push({ line, po: r.po, tried: res.tried });
         }
       }
     }
 
     if (suggestions.length > 0) {
       await ops().showSuggestionsModal(suggestions);
+    }
+
+    if (unresolved.length > 0) {
+      log(`${unresolved.length} línea(s) sin PN resuelto — mostrando picker manual...`);
+      const picked = await showUnresolvedPNPicker(unresolved, customerId, layoutId);
+      if (!picked) { log('Batch cancelado en picker de PNs'); return { cancelled: true }; }
     }
 
     // Fetch creation data once for all creates
@@ -714,6 +902,9 @@ Reglas:
     for (let i = 0; i < selectedRows.length; i++) {
       const r = selectedRows[i];
       log(`[${i + 1}/${selectedRows.length}] Procesando PO ${r.po.poNumber} (${r.action})...`);
+
+      const linesWithPN = r.po.lines.filter(l => l.partNumber && !l._skipped);
+      const expectedLines = linesWithPN.length;
 
       const sourceData = {
         poNumber: r.po.poNumber, customer: r.po.customer, currency: r.po.currency,
@@ -725,11 +916,13 @@ Reglas:
       try {
         if (r.action === 'adopt') {
           const orderId = await ops().adoptExistingOV(r.candidate, sourceData, csvFile);
-          results.push({ po: r.po.poNumber, action: 'adopted', orderId });
+          const check = await verifyOVLines(orderId, expectedLines);
+          results.push({ po: r.po.poNumber, action: 'adopted', orderId, expectedLines, check });
         } else if (r.action === 'create') {
           const formData = buildDefaultFormData(sourceData, creationData, customerId);
           const orderId = await ops().createNewOV(formData, sourceData, csvFile);
-          results.push({ po: r.po.poNumber, action: 'created', orderId });
+          const check = await verifyOVLines(orderId, expectedLines);
+          results.push({ po: r.po.poNumber, action: 'created', orderId, expectedLines, check });
         } else if (r.action === 'validate') {
           alert(`Pausando bulk para validar PO ${r.po.poNumber} manualmente.`);
           const single = await processSingleMode([r.po], layout, layoutId, file, null, customerId);
@@ -814,23 +1007,50 @@ Reglas:
     const rowsHTML = results.map(r => {
       const color = r.error ? '#f87171' : (r.action === 'created' || r.action === 'adopted' ? '#34d399' : '#94a3b8');
       const label = r.error ? `Error: ${r.error}` : (r.orderId ? `#${r.orderId}` : (r.result ? 'Validado' : '—'));
-      return `<tr><td>${ops().escHtml(r.po)}</td><td style="color:${color}">${r.action}</td><td>${ops().escHtml(label)}</td></tr>`;
+      let linesCell = '—';
+      if (r.check) {
+        const { actual, expected, missing } = r.check;
+        const lineColor = missing > 0 ? '#f87171' : '#34d399';
+        linesCell = `<span style="color:${lineColor}">${actual}/${expected}${missing > 0 ? ` (faltan ${missing})` : ''}</span>`;
+      } else if (r.expectedLines != null) {
+        linesCell = `<span style="color:#94a3b8">?/${r.expectedLines}</span>`;
+      }
+      return `<tr><td>${ops().escHtml(r.po)}</td><td style="color:${color}">${r.action}</td><td>${ops().escHtml(label)}</td><td>${linesCell}</td></tr>`;
     }).join('');
+
+    const mismatches = results.filter(r => r.check && r.check.missing > 0).length;
+    const warnBanner = mismatches > 0
+      ? `<p class="dl9-sub" style="color:#f87171"><strong>${mismatches}</strong> OV(s) con menos líneas de las esperadas. Revisa el log.</p>`
+      : '';
 
     md.innerHTML = `
       <h2>Resultados del batch</h2>
       <p class="dl9-sub">${results.length} POs procesados.</p>
+      ${warnBanner}
       <table class="dl9-audit-table">
-        <thead><tr><th>PO</th><th>Acción</th><th>Resultado</th></tr></thead>
+        <thead><tr><th>PO</th><th>Acción</th><th>Resultado</th><th>Líneas</th></tr></thead>
         <tbody>${rowsHTML}</tbody>
       </table>
       <div class="dl9-btnrow">
+        <button class="dl9-btn" id="pi-br-copylog" style="background:#475569;color:#e2e8f0">Copiar log</button>
         <button class="dl9-btn dl9-btn-primary" id="pi-br-close">Cerrar</button>
       </div>
     `;
     ov.appendChild(md);
     document.body.appendChild(ov);
 
+    md.querySelector('#pi-br-copylog').addEventListener('click', async () => {
+      try {
+        const lines = api().getLog().join('\n');
+        await navigator.clipboard.writeText(lines);
+        const btn = md.querySelector('#pi-br-copylog');
+        const orig = btn.textContent;
+        btn.textContent = `Copiado (${api().getLog().length} líneas)`;
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+      } catch (e) {
+        alert('No se pudo copiar: ' + e.message);
+      }
+    });
     md.querySelector('#pi-br-close').addEventListener('click', () => ops().removeOverlay());
   }
 
@@ -1089,10 +1309,20 @@ Reglas:
     const poColumnIndex = parsed.headers.indexOf(layout.mapping.poNumber);
     const parsedData = { headers: parsed.headers, rows: parsed.rows, poColumnIndex };
 
-    if (mode === 'single') {
-      return await processSingleMode(pos, layout, layoutId, file, parsedData, customerId);
-    } else {
-      return await processBulkMode(pos, layout, layoutId, file, parsedData, customerId);
+    try {
+      if (mode === 'single') {
+        return await processSingleMode(pos, layout, layoutId, file, parsedData, customerId);
+      } else {
+        return await processBulkMode(pos, layout, layoutId, file, parsedData, customerId);
+      }
+    } catch (e) {
+      warn(`Flujo interrumpido: ${e.message}`);
+      try { ops().removeOverlay(); } catch (_) {}
+      const copy = confirm(`Error en el flujo: ${e.message}\n\n¿Copiar log al portapapeles?`);
+      if (copy) {
+        try { await navigator.clipboard.writeText(api().getLog().join('\n')); } catch (_) {}
+      }
+      return { error: e.message };
     }
   }
 
