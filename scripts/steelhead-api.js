@@ -68,12 +68,20 @@ const SteelheadAPI = (() => {
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new Error(`HTTP ${response.status} en ${operationName}: ${text.substring(0, 800)}`);
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed.errors)) {
+          const msgs = parsed.errors.map((e, i) => `[${i + 1}] ${e.message}`).join(' | ');
+          throw new Error(`HTTP ${response.status} en ${operationName}: ${msgs.substring(0, 2000)}`);
+        }
+      } catch (_) { /* fall through */ }
+      throw new Error(`HTTP ${response.status} en ${operationName}: ${text.substring(0, 2000)}`);
     }
 
     const result = await response.json();
     if (result.errors && !result.data) {
-      throw new Error(`GraphQL errors (${operationName}): ${JSON.stringify(result.errors).substring(0, 800)}`);
+      const msgs = result.errors.map((e, i) => `[${i + 1}] ${e.message}`).join(' | ');
+      throw new Error(`GraphQL errors (${operationName}): ${msgs.substring(0, 2000)}`);
     }
     if (result.errors) {
       warn(`GraphQL warnings (${operationName}): ${result.errors.map(e => e.message).join('; ')}`);
