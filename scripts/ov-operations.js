@@ -398,30 +398,50 @@ const OVOperations = (() => {
     log(`${resolvedCount}/${total} PNs resueltos en Steelhead`);
 
     if (lineItems.length > 0) {
+      // Diagnóstico: revisar si la OV recién creada ya tiene transforms
+      try {
+        const chk = await api().query('GetReceivedOrder', {
+          idInDomain: parseInt(ovId, 10), revisionNumber: 1
+        });
+        const existing = chk?.receivedOrder?.receivedOrderPartTransformsByReceivedOrderId?.nodes
+          || chk?.receivedOrderByIdInDomain?.receivedOrderPartTransformsByReceivedOrderId?.nodes
+          || [];
+        log(`OV recién creada tiene ${existing.length} transforms pre-existentes`);
+        if (existing.length > 0) {
+          log(`  Pre-existentes: ${JSON.stringify(existing.slice(0, 3)).substring(0, 400)}`);
+        }
+      } catch (e) {
+        warn(`No se pudo verificar transforms pre-existentes: ${e.message}`);
+      }
+
       // Paso 1: crear los ReceivedOrderPartTransforms de forma secuencial
       // (el batch viola la unique constraint cuando hay PNs repetidos)
       log(`Creando ${lineItems.length} part transforms...`);
       const transforms = [];
       for (let i = 0; i < lineItems.length; i++) {
         const l = lineItems[i];
-        const tr = await api().query('SaveReceivedOrderPartTransforms', {
-          input: [{
-            isBillable: true,
-            receivedOrderId: ovInternalId,
-            shipToId: formData.shipToAddressId || null,
-            partNumberPriceId: l.partNumberPriceId || null,
-            maxPartTransformCount: Number(l.quantity),
-            count: Number(l.quantity),
-            partNumberId: l.partNumberId,
-            orderType: formData.type || 'MAKE_TO_ORDER',
-            description: '',
-            deadline: formData.deadline,
-            children: []
-          }]
-        });
-        const t = tr?.saveReceivedOrderPartTransforms?.[0];
-        if (!t?.id) throw new Error(`Transform #${i + 1} (${l.partNumber}) no devolvió id`);
-        transforms.push(t);
+        const input = {
+          isBillable: true,
+          receivedOrderId: ovInternalId,
+          shipToId: formData.shipToAddressId || null,
+          partNumberPriceId: l.partNumberPriceId || null,
+          maxPartTransformCount: Number(l.quantity),
+          count: Number(l.quantity),
+          partNumberId: l.partNumberId,
+          orderType: formData.type || 'MAKE_TO_ORDER',
+          description: '',
+          deadline: formData.deadline,
+          children: []
+        };
+        if (i === 0) log(`  Input transform[0]: ${JSON.stringify(input)}`);
+        try {
+          const tr = await api().query('SaveReceivedOrderPartTransforms', { input: [input] });
+          const t = tr?.saveReceivedOrderPartTransforms?.[0];
+          if (!t?.id) throw new Error(`Transform #${i + 1} (${l.partNumber}) no devolvió id`);
+          transforms.push(t);
+        } catch (e) {
+          throw new Error(`Falló transform #${i + 1} (PN=${l.partNumber}, partNumberId=${l.partNumberId}): ${e.message}`);
+        }
       }
 
       // Paso 2: crear las líneas referenciando los transforms
