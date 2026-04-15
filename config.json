@@ -1,5 +1,5 @@
 {
-  "version": "0.4.5",
+  "version": "0.4.6",
   "lastUpdated": "2026-04-14",
   "extensionVersion": "1.4.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -184,7 +184,7 @@
         "date": "date",
         "lineNumber": "lineItem.itemNumber",
         "buyerCode": "lineItem.materialCodeBuyer",
-        "description": "lineItem.materialDescription",
+        "description": "lineItem.note",
         "netPrice": "lineItem.netPrice",
         "priceUnit": "lineItem.priceUnit",
         "quantity": "lineItem.targetQuantity",
