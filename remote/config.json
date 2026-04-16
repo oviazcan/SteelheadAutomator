@@ -1,5 +1,5 @@
 {
-  "version": "0.4.30",
+  "version": "0.4.31",
   "lastUpdated": "2026-04-16",
   "extensionVersion": "1.5.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -123,7 +123,8 @@
         "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac",
         "OperatorMaintenanceNodeDialogQuery": "2a2a6230dca0bf6c613d769617180a4070600859ec08ba715fbded176a795e46",
         "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63",
-        "WorkboardById": "371c1a807444663bdcc7ed3a11fc97ff58f6ed3c8423c99ad8b68fff945a3bcc"
+        "WorkboardById": "371c1a807444663bdcc7ed3a11fc97ff58f6ed3c8423c99ad8b68fff945a3bcc",
+        "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f"
       }
     },
     "domain": {
@@ -476,7 +477,8 @@
     "CreateMaintenanceEventDialogQuery": { "type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea" },
     "OperatorMaintenanceNodeDialogQuery": { "type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea" },
     "SearchEquipments": { "type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea" },
-    "WorkboardById": { "type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea" }
+    "WorkboardById": { "type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea" },
+    "AllEquipments": { "type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
