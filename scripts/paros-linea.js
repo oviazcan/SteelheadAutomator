@@ -222,7 +222,11 @@ const ParosLinea = (() => {
       '.pl-dl dt{color:#94a3b8}',
       '.pl-dl dd{margin:0;color:#f1f5f9}',
       '.pl-error{color:#fecaca;background:#7f1d1d;padding:12px 14px;border-radius:9px;margin-bottom:14px;font-size:15px}',
-      '.pl-loading{text-align:center;padding:22px;color:#94a3b8;font-size:15px}'
+      '.pl-loading{text-align:center;padding:22px;color:#94a3b8;font-size:15px}',
+      '.pl-striped-frame{padding:26px;border-radius:28px;background:repeating-linear-gradient(45deg,#dc2626 0 22px,#facc15 22px 44px);background-size:200% 200%;box-shadow:0 25px 70px rgba(0,0,0,0.7);max-width:96vw;max-height:96vh;box-sizing:border-box;display:flex;animation:plStripeScroll 1.4s linear infinite}',
+      '.pl-striped-frame > .pl-modal.running{box-shadow:none;max-width:100%;max-height:calc(96vh - 52px)}',
+      '@keyframes plStripeScroll{0%{background-position:0 0}100%{background-position:62.23px 0}}',
+      '@media (prefers-reduced-motion:reduce){.pl-striped-frame{animation:none}}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -265,7 +269,14 @@ const ParosLinea = (() => {
     const modal = document.createElement('div');
     modal.className = 'pl-modal' + (wide ? ' running' : '');
     modal.innerHTML = innerHTML;
-    ov.appendChild(modal);
+    if (wide) {
+      const frame = document.createElement('div');
+      frame.className = 'pl-striped-frame';
+      frame.appendChild(modal);
+      ov.appendChild(frame);
+    } else {
+      ov.appendChild(modal);
+    }
     document.body.appendChild(ov);
     return ov;
   }
