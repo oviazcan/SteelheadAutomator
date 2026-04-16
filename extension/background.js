@@ -58,7 +58,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator',
           'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator',
           'scripts/wo-deadline-changer.js': 'WODeadlineChanger',
-          'scripts/cfdi-attacher.js': 'CfdiAttacher' };
+          'scripts/cfdi-attacher.js': 'CfdiAttacher',
+          'scripts/paros-linea.js': 'ParosLinea' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -72,6 +73,18 @@ async function injectAppScripts(tabId, appId) {
     });
   }
 
+  // Merge local role overrides into config so MAIN-world scripts honor popup-assigned roles
+  const { sa_role_overrides } = await chrome.storage.local.get('sa_role_overrides');
+  const mergedConfig = JSON.parse(JSON.stringify(config));
+  mergedConfig.permissions = mergedConfig.permissions || {};
+  mergedConfig.permissions.roles = mergedConfig.permissions.roles || {};
+  if (sa_role_overrides && typeof sa_role_overrides === 'object') {
+    for (const [role, ids] of Object.entries(sa_role_overrides)) {
+      const base = mergedConfig.permissions.roles[role] || [];
+      mergedConfig.permissions.roles[role] = Array.from(new Set([...base, ...(Array.isArray(ids) ? ids : [])]));
+    }
+  }
+
   // Always init API + APIKnowledge with latest config
   await chrome.scripting.executeScript({
     target: { tabId }, world: 'MAIN',
@@ -82,7 +95,7 @@ async function injectAppScripts(tabId, appId) {
       if (window.HashScanner) window.HashScanner.init(cfg);
       if (window.APIKnowledge) window.APIKnowledge.init(cfg);
     },
-    args: [JSON.stringify(config)]
+    args: [JSON.stringify(mergedConfig)]
   });
 
   // If claude-api.js was injected, pass the stored API key into the MAIN world
@@ -967,6 +980,28 @@ async function handleMessage(message, sender) {
     case 'get-cfdi-attacher-status': {
       const { cfdiAttacherEnabled } = await chrome.storage.local.get('cfdiAttacherEnabled');
       return { enabled: cfdiAttacherEnabled !== false };
+    }
+
+    // ── Paros de Línea ──
+    case 'open-paros-linea': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'paros-linea');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.ParosLinea) return { error: 'ParosLinea no disponible' };
+          window.ParosLinea.openStopDialog().catch(e => console.error('[SA]', e));
+          return { started: true, message: 'Modal de paro abierto.' };
+        }
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    case 'toggle-paros-linea-enabled': {
+      const { parosLineaEnabled } = await chrome.storage.local.get('parosLineaEnabled');
+      const newState = parosLineaEnabled === false; // default true
+      await chrome.storage.local.set({ parosLineaEnabled: newState });
+      return { enabled: newState, message: newState ? 'Botón flotante activado' : 'Botón flotante desactivado' };
     }
 
     default: {

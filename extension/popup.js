@@ -135,12 +135,17 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const [role, ids] of Object.entries(roleOverrides)) {
       if (Array.isArray(ids) && ids.includes(userId)) userRoles.add(role);
     }
-    const visibleApps = apps.filter(app => {
-      const perm = restrictedApps[app.id];
-      if (!perm) return true;
-      if (perm.requireRole && !userRoles.has(perm.requireRole)) return false;
-      return true;
-    });
+    let visibleApps;
+    if (userRoles.has('operador') && !userRoles.has('admin')) {
+      visibleApps = apps.filter(a => a.operatorVisible === true);
+    } else {
+      visibleApps = apps.filter(app => {
+        const perm = restrictedApps[app.id];
+        if (!perm) return true;
+        if (perm.requireRole && !userRoles.has(perm.requireRole)) return false;
+        return true;
+      });
+    }
 
     if (viewMode === 'grid') {
       renderGridMenu(menuWrap, visibleApps);
@@ -430,12 +435,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const configRoles = config?.permissions?.roles || {};
       const overrides = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
       const adminIds = new Set([...(configRoles.admin || []), ...(overrides.admin || [])]);
+      const operatorIds = new Set([...(configRoles.operador || []), ...(overrides.operador || [])]);
 
-      // Sort: admins first, then alphabetical
+      // Sort: admins first, then operators, then alphabetical
       users.sort((a, b) => {
         const aAdmin = adminIds.has(a.id);
         const bAdmin = adminIds.has(b.id);
         if (aAdmin !== bAdmin) return aAdmin ? -1 : 1;
+        const aOp = operatorIds.has(a.id);
+        const bOp = operatorIds.has(b.id);
+        if (aOp !== bOp) return aOp ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
 
@@ -445,6 +454,8 @@ document.addEventListener('DOMContentLoaded', () => {
       for (const user of users) {
         const isAdmin = adminIds.has(user.id);
         const isConfigAdmin = (configRoles.admin || []).includes(user.id);
+        const isOperator = operatorIds.has(user.id);
+        const isConfigOperator = (configRoles.operador || []).includes(user.id);
         const row = document.createElement('div');
         row.className = 'user-mgmt-row';
 
@@ -458,7 +469,8 @@ document.addEventListener('DOMContentLoaded', () => {
           ${avatarHTML}
           <span class="user-name">${user.name}</span>
           ${badgeHTML}
-          <input type="checkbox" data-user-id="${user.id}" ${isAdmin ? 'checked' : ''} ${isConfigAdmin ? 'title="Definido en config" disabled' : 'title="Click para cambiar acceso"'}>`;
+          <label class="user-role-label" title="Admin"><input type="checkbox" data-user-id="${user.id}" data-role="admin" ${isAdmin ? 'checked' : ''} ${isConfigAdmin ? 'title="Definido en config" disabled' : ''}> A</label>
+          <label class="user-role-label" title="Operador"><input type="checkbox" data-user-id="${user.id}" data-role="operador" ${isOperator ? 'checked' : ''} ${isConfigOperator ? 'title="Definido en config" disabled' : ''}> O</label>`;
         list.appendChild(row);
       }
 
@@ -467,17 +479,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const cb = e.target;
         if (cb.type !== 'checkbox' || !cb.dataset.userId) return;
         const userId = parseInt(cb.dataset.userId);
+        const role = cb.dataset.role || 'admin';
 
         const stored = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
-        const overrideAdmins = new Set(stored.admin || []);
+        const overrideIds = new Set(stored[role] || []);
 
         if (cb.checked) {
-          overrideAdmins.add(userId);
+          overrideIds.add(userId);
         } else {
-          overrideAdmins.delete(userId);
+          overrideIds.delete(userId);
         }
 
-        stored.admin = [...overrideAdmins];
+        stored[role] = [...overrideIds];
         await chrome.storage.local.set({ sa_role_overrides: stored });
       });
 
