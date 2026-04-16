@@ -235,9 +235,47 @@ const ParosLinea = (() => {
     return items;
   }
 
-  function labelMatchesLine(label) {
-    const name = label?.labelByLabelId?.name || label?.name;
-    return typeof name === 'string' && LINE_LABEL_RE.test(name.trim());
+  function extractLabelMeta(rawLabel) {
+    if (!rawLabel || typeof rawLabel !== 'object') return { ids: [], names: [] };
+    const ids = [];
+    const names = [];
+    const candidates = [rawLabel, rawLabel.labelByLabelId, rawLabel.label];
+    for (const c of candidates) {
+      if (!c || typeof c !== 'object') continue;
+      if (typeof c.id === 'number' || typeof c.id === 'string') ids.push(c.id);
+      if (typeof c.name === 'string') names.push(c.name);
+    }
+    if (rawLabel.labelId != null) ids.push(rawLabel.labelId);
+    if (typeof rawLabel.labelName === 'string') names.push(rawLabel.labelName);
+    return { ids, names };
+  }
+
+  async function fetchLineLabelIds() {
+    const conditions = [{ forEquipment: true }, {}];
+    for (const condition of conditions) {
+      try {
+        const data = await api().query('AllLabels', { condition }, 'AllLabels');
+        const nodes = data?.allLabels?.nodes || [];
+        const matched = nodes.filter(l =>
+          typeof l?.name === 'string' && LINE_LABEL_RE.test(l.name.trim())
+        );
+        const ids = matched.map(l => l.id).filter(id => id != null);
+        if (nodes.length > 0) {
+          if (matched.length === 0) {
+            console.warn('[SA] ParosLinea: AllLabels devolvió ' + nodes.length +
+              ' etiquetas pero ninguna coincide con Líneas/Células — ejemplos:',
+              nodes.slice(0, 12).map(l => l?.name).join(' | '));
+          } else {
+            console.log('[SA] ParosLinea: etiquetas objetivo encontradas:',
+              matched.map(l => l.name + '(' + l.id + ')').join(', '));
+          }
+          return new Set(ids);
+        }
+      } catch (e) {
+        console.warn('[SA] ParosLinea AllLabels (' + JSON.stringify(condition) + '):', e.message);
+      }
+    }
+    return new Set();
   }
 
   async function loadCatalogs(force = false) {
@@ -253,6 +291,8 @@ const ParosLinea = (() => {
     state.allNodes = paroNodes;
     state.responsableOptions = buildResponsableOptions(paroNodes);
 
+    const targetLabelIds = await fetchLineLabelIds();
+
     const eq = await api().query('AllEquipments', {
       fetchEquipmentType: false,
       fetchStation: false,
@@ -266,21 +306,30 @@ const ParosLinea = (() => {
     }, 'AllEquipments');
     const all = eq?.pagedData?.nodes || [];
 
-    if (all[0]?.equipmentLabelsByEquipmentId?.nodes?.length) {
-      console.log('[SA] ParosLinea sample equipment labels:',
-        JSON.stringify(all[0].equipmentLabelsByEquipmentId.nodes));
+    const sampleWithLabels = all.find(e => (e?.equipmentLabelsByEquipmentId?.nodes || []).length > 0);
+    if (sampleWithLabels) {
+      console.log('[SA] ParosLinea ejemplo etiquetas en "' + sampleWithLabels.name + '":',
+        JSON.stringify(sampleWithLabels.equipmentLabelsByEquipmentId.nodes));
+    } else {
+      console.warn('[SA] ParosLinea: AllEquipments no trae etiquetas en sus nodos (¿persisted query no expone labels?). Total equipos:', all.length);
     }
 
-    const filtered = all.filter(e => {
+    const matchByLine = (e) => {
       const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
-      return labels.some(labelMatchesLine);
-    });
+      for (const l of labels) {
+        const meta = extractLabelMeta(l);
+        if (targetLabelIds.size && meta.ids.some(id => targetLabelIds.has(id))) return true;
+        if (meta.names.some(n => LINE_LABEL_RE.test(String(n).trim()))) return true;
+      }
+      return false;
+    };
+    const filtered = all.filter(matchByLine);
 
     if (filtered.length > 0) {
       state.allEquipments = filtered;
       console.log('[SA] ParosLinea: ' + filtered.length + ' equipos con etiqueta Líneas/Células (de ' + all.length + ')');
     } else {
-      console.warn('[SA] ParosLinea: ningún equipo con etiqueta Líneas/Células — mostrando todos como fallback');
+      console.warn('[SA] ParosLinea: ningún equipo con etiqueta Líneas/Células — mostrando todos como fallback. Revisa logs anteriores para diagnosticar.');
       state.allEquipments = all;
     }
 
