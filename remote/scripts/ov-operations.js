@@ -408,6 +408,8 @@ const OVOperations = (() => {
       let idx = 0;
       for (const [pnId, g] of groups) {
         idx++;
+        const t0 = Date.now();
+        log(`  [${idx}/${groups.size}] transform PN=${g.partNumber} (${g.totalCount} pz)...`);
         try {
           const tr = await api().query('SaveReceivedOrderPartTransforms', {
             input: [{
@@ -427,6 +429,7 @@ const OVOperations = (() => {
           const t = tr?.saveReceivedOrderPartTransforms?.[0];
           if (!t?.id) throw new Error('no devolvió id');
           transformsByPN.set(pnId, t);
+          log(`  [${idx}/${groups.size}] OK (id=${t.id}, ${Date.now() - t0}ms)`);
         } catch (e) {
           throw new Error(`Falló transform ${idx}/${groups.size} (PN=${g.partNumber}, partNumberId=${pnId}): ${e.message}`);
         }
