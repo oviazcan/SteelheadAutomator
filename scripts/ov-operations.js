@@ -350,18 +350,6 @@ const OVOperations = (() => {
 
   // ── Create New OV ──────────────────────────────────────────
 
-  let _cachedDefaultProductId = null;
-  async function getDefaultProductId() {
-    if (_cachedDefaultProductId != null) return _cachedDefaultProductId;
-    const data = await api().query('SearchProducts', {
-      searchQuery: '', first: 1, orderBy: ['NAME_ASC']
-    });
-    const first = data?.searchProducts?.nodes?.[0];
-    if (!first?.id) throw new Error('SearchProducts no devolvió ningún producto');
-    _cachedDefaultProductId = first.id;
-    return _cachedDefaultProductId;
-  }
-
   async function createNewOV(formData, sourceData, file) {
     log('Creando OV nueva...');
 
@@ -428,7 +416,7 @@ const OVOperations = (() => {
               shipToId: formData.shipToAddressId || null,
               partNumberPriceId: g.partNumberPriceId,
               maxPartTransformCount: g.totalCount,
-              count: g.totalCount,
+              count: 0,
               partNumberId: pnId,
               orderType: formData.type || 'MAKE_TO_ORDER',
               description: '',
@@ -446,7 +434,6 @@ const OVOperations = (() => {
 
       // Paso 2: crear una línea por cada entrada original del PO, todas las que
       // compartan PN apuntan al mismo transform id
-      const productId = await getDefaultProductId();
       log(`Agregando ${lineItems.length} líneas a la OV...`);
       const newLines = lineItems.map(l => {
         const t = transformsByPN.get(l.partNumberId) || {};
@@ -459,7 +446,7 @@ const OVOperations = (() => {
             description: String(l.partNumber),
             quantity: String(l.quantity),
             price: String(l.unitPrice || '0'),
-            productId,
+            productId: null,
             unitId: null,
             quoteLineItemId: null,
             receivedOrderLineItemPartTransforms: [{
@@ -467,7 +454,7 @@ const OVOperations = (() => {
                 id: t.id ?? null,
                 partNumberId: l.partNumberId,
                 partNumberPriceId: l.partNumberPriceId || null,
-                count: Number(l.quantity),
+                count: 0,
                 description: ''
               }
             }]
