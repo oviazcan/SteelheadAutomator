@@ -457,6 +457,7 @@ const OVOperations = (() => {
                 id: t.id ?? null,
                 partNumberId: l.partNumberId,
                 partNumberPriceId: l.partNumberPriceId || null,
+                maxPartTransformCount: groups.get(l.partNumberId)?.totalCount ?? null,
                 count: 0,
                 description: ''
               }
