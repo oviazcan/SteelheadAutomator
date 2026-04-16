@@ -206,11 +206,11 @@ const ParosLinea = (() => {
     }
 
     const lineaRe = /l[ií]nea/i;
-    const liTokenRe = /(?:^|[\s\-_])LI(?:[\s\-_]|$)/i;
+    const lineTokenRe = /(?:^|[\s\-_])(?:LI|CE\d+)(?:[\s\-_]|$)/i;
     const isLineEquipment = (e) => {
       const name = e?.name || '';
       if (lineaRe.test(name)) return true;
-      if (liTokenRe.test(name)) return true;
+      if (lineTokenRe.test(name)) return true;
       const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
       return labels.some(l => lineaRe.test(JSON.stringify(l)));
     };
