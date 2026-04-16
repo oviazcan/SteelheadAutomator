@@ -849,8 +849,14 @@ Reglas:
         idInDomain: parseInt(ovId, 10),
         revisionNumber: 1
       });
-      const order = data?.receivedOrder;
-      const lines = order?.receivedOrderLines?.nodes || order?.receivedOrderLines || [];
+      const order = data?.receivedOrder || data?.receivedOrderByIdInDomain;
+      const lines = order?.receivedOrderLines?.nodes
+        || order?.receivedOrderLinesByReceivedOrderId?.nodes
+        || order?.receivedOrderLines
+        || [];
+      if (!order) {
+        warn(`verifyOVLines: respuesta sin 'order' — claves: ${Object.keys(data || {}).join(', ')}`);
+      }
       return { actual: lines.length, expected, missing: Math.max(expected - lines.length, 0) };
     } catch (e) {
       warn(`No se pudo verificar líneas de OV #${ovId}: ${e.message}`);
