@@ -206,17 +206,21 @@ const ParosLinea = (() => {
     }
 
     const lineaRe = /l[ií]nea/i;
-    const hasLineaLabel = (e) => {
+    const liTokenRe = /(?:^|[\s\-_])LI(?:[\s\-_]|$)/i;
+    const isLineEquipment = (e) => {
+      const name = e?.name || '';
+      if (lineaRe.test(name)) return true;
+      if (liTokenRe.test(name)) return true;
       const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
       return labels.some(l => lineaRe.test(JSON.stringify(l)));
     };
-    const filtered = all.filter(hasLineaLabel);
+    const filtered = all.filter(isLineEquipment);
 
     if (filtered.length > 0) {
       state.allEquipments = filtered;
-      console.log('[SA] ParosLinea: ' + filtered.length + ' equipos con etiqueta de línea (de ' + all.length + ')');
+      console.log('[SA] ParosLinea: ' + filtered.length + ' líneas detectadas (de ' + all.length + ' equipos)');
     } else {
-      console.warn('[SA] ParosLinea: ningún equipo con etiqueta "línea" — mostrando todos como fallback');
+      console.warn('[SA] ParosLinea: ningún equipo identificado como línea — mostrando todos como fallback');
       state.allEquipments = all;
     }
 
