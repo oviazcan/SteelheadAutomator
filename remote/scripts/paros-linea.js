@@ -298,20 +298,26 @@ const ParosLinea = (() => {
       fetchStation: false,
       fetchLabel: true,
       fetchLocation: false,
-      endOfService: false,
+      endOfService: true,
       orderBy: ['NAME_ASC'],
       offset: 0,
       first: 500,
       searchQuery: ''
     }, 'AllEquipments');
     const all = eq?.pagedData?.nodes || [];
+    const totalCount = eq?.pagedData?.totalCount;
+    console.log('[SA] ParosLinea AllEquipments:', all.length, 'nodos / totalCount=', totalCount);
 
+    if (all[0]) {
+      console.log('[SA] ParosLinea: primer equipo (raw, 1200 chars):',
+        JSON.stringify(all[0]).substring(0, 1200));
+    }
     const sampleWithLabels = all.find(e => (e?.equipmentLabelsByEquipmentId?.nodes || []).length > 0);
     if (sampleWithLabels) {
       console.log('[SA] ParosLinea ejemplo etiquetas en "' + sampleWithLabels.name + '":',
         JSON.stringify(sampleWithLabels.equipmentLabelsByEquipmentId.nodes));
     } else {
-      console.warn('[SA] ParosLinea: AllEquipments no trae etiquetas en sus nodos (¿persisted query no expone labels?). Total equipos:', all.length);
+      console.warn('[SA] ParosLinea: AllEquipments no trae etiquetas en sus nodos para ningún equipo de los ' + all.length + ' devueltos.');
     }
 
     const matchByLine = (e) => {
