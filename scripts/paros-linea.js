@@ -13,6 +13,8 @@ const ParosLinea = (() => {
 
   const STATE_KEY = 'sa_paros_active_event';
   const LAST_LINE_KEY = 'sa_paros_last_line';
+  const EQUIP_CACHE_KEY = 'sa_paros_line_equipments_v1';
+  const EQUIP_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 
   const RESPONSABLE_AREAS = {
     PLM: { label: 'Mantenimiento',     icon: '🔧' },
@@ -20,7 +22,8 @@ const ParosLinea = (() => {
     PLO: { label: 'Operaciones',       icon: '⚙️' },
     PLR: { label: 'Recursos Humanos',  icon: '👥' },
     PLC: { label: 'Calidad',           icon: '✅' },
-    PLS: { label: 'Seguridad',         icon: '🛡️' }
+    PLS: { label: 'Seguridad',         icon: '🛡️' },
+    PLA: { label: 'Almacén',           icon: '📦' }
   };
   const DEFAULT_AREA_ICON = '📌';
 
@@ -225,8 +228,9 @@ const ParosLinea = (() => {
     const items = paroNodes.map(n => {
       const area = areaForNode(n);
       const suffix = (n.name || '')
-        .replace(/^paro\s+de\s+l[ií]nea\s+/i, '')
-        .replace(/^PL[A-Z]\s*[\-:]?\s*/i, '')
+        .replace(/paro\s+de\s+l[ií]nea\s*/gi, '')
+        .replace(/PL[A-Z]\s*[\-:]?\s*/g, '')
+        .replace(/\s{2,}/g, ' ')
         .trim();
       const label = suffix ? area.label + ' — ' + suffix : area.label;
       return { id: n.id, name: n.name, area, display: area.icon + ' ' + label, sortKey: area.label + ' ' + suffix };
@@ -278,6 +282,70 @@ const ParosLinea = (() => {
     return new Set();
   }
 
+  function readCachedLineEquipments() {
+    try {
+      const raw = localStorage.getItem(EQUIP_CACHE_KEY);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || !Array.isArray(obj.equipments)) return null;
+      if (Date.now() - (obj.savedAt || 0) > EQUIP_CACHE_TTL_MS) return null;
+      return obj.equipments;
+    } catch { return null; }
+  }
+  function writeCachedLineEquipments(equipments) {
+    try {
+      localStorage.setItem(EQUIP_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(), equipments
+      }));
+    } catch (_) {}
+  }
+  function clearCachedLineEquipments() {
+    try { localStorage.removeItem(EQUIP_CACHE_KEY); } catch (_) {}
+  }
+
+  async function fetchAllLineEquipments(targetLabelIds, onProgress) {
+    const PAGE = 500;
+    const matchByLine = (e) => {
+      const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
+      for (const l of labels) {
+        const meta = extractLabelMeta(l);
+        if (targetLabelIds.size && meta.ids.some(id => targetLabelIds.has(id))) return true;
+        if (meta.names.some(n => LINE_LABEL_RE.test(String(n).trim()))) return true;
+      }
+      return false;
+    };
+
+    const matched = [];
+    let offset = 0;
+    let total = null;
+    let scanned = 0;
+    let safety = 0;
+    while (safety++ < 20) {
+      const data = await api().query('AllEquipments', {
+        fetchEquipmentType: false,
+        fetchStation: false,
+        fetchLabel: true,
+        fetchLocation: false,
+        endOfService: true,
+        orderBy: ['NAME_ASC'],
+        offset,
+        first: PAGE,
+        searchQuery: ''
+      }, 'AllEquipments');
+      const nodes = data?.pagedData?.nodes || [];
+      if (total == null) total = data?.pagedData?.totalCount ?? null;
+      scanned += nodes.length;
+      for (const n of nodes) {
+        if (matchByLine(n)) matched.push({ id: n.id, name: n.name, idInDomain: n.idInDomain });
+      }
+      if (typeof onProgress === 'function') onProgress(scanned, total, matched.length);
+      if (nodes.length < PAGE) break;
+      if (total != null && scanned >= total) break;
+      offset += PAGE;
+    }
+    return { matched, scanned, total };
+  }
+
   async function loadCatalogs(force = false) {
     if (state.catalogsLoaded && !force) return;
 
@@ -291,54 +359,32 @@ const ParosLinea = (() => {
     state.allNodes = paroNodes;
     state.responsableOptions = buildResponsableOptions(paroNodes);
 
-    const targetLabelIds = await fetchLineLabelIds();
-
-    const eq = await api().query('AllEquipments', {
-      fetchEquipmentType: false,
-      fetchStation: false,
-      fetchLabel: true,
-      fetchLocation: false,
-      endOfService: true,
-      orderBy: ['NAME_ASC'],
-      offset: 0,
-      first: 500,
-      searchQuery: ''
-    }, 'AllEquipments');
-    const all = eq?.pagedData?.nodes || [];
-    const totalCount = eq?.pagedData?.totalCount;
-    console.log('[SA] ParosLinea AllEquipments:', all.length, 'nodos / totalCount=', totalCount);
-
-    if (all[0]) {
-      console.log('[SA] ParosLinea: primer equipo (raw, 1200 chars):',
-        JSON.stringify(all[0]).substring(0, 1200));
-    }
-    const sampleWithLabels = all.find(e => (e?.equipmentLabelsByEquipmentId?.nodes || []).length > 0);
-    if (sampleWithLabels) {
-      console.log('[SA] ParosLinea ejemplo etiquetas en "' + sampleWithLabels.name + '":',
-        JSON.stringify(sampleWithLabels.equipmentLabelsByEquipmentId.nodes));
-    } else {
-      console.warn('[SA] ParosLinea: AllEquipments no trae etiquetas en sus nodos para ningún equipo de los ' + all.length + ' devueltos.');
-    }
-
-    const matchByLine = (e) => {
-      const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
-      for (const l of labels) {
-        const meta = extractLabelMeta(l);
-        if (targetLabelIds.size && meta.ids.some(id => targetLabelIds.has(id))) return true;
-        if (meta.names.some(n => LINE_LABEL_RE.test(String(n).trim()))) return true;
+    if (!force) {
+      const cached = readCachedLineEquipments();
+      if (cached && cached.length > 0) {
+        state.allEquipments = cached;
+        console.log('[SA] ParosLinea: ' + cached.length + ' líneas/células desde caché');
+        state.catalogsLoaded = true;
+        return;
       }
-      return false;
-    };
-    const filtered = all.filter(matchByLine);
-
-    if (filtered.length > 0) {
-      state.allEquipments = filtered;
-      console.log('[SA] ParosLinea: ' + filtered.length + ' equipos con etiqueta Líneas/Células (de ' + all.length + ')');
-    } else {
-      console.warn('[SA] ParosLinea: ningún equipo con etiqueta Líneas/Células — mostrando todos como fallback. Revisa logs anteriores para diagnosticar.');
-      state.allEquipments = all;
     }
 
+    const targetLabelIds = await fetchLineLabelIds();
+    const onProgress = (scanned, total, found) => {
+      const el = document.getElementById('pl-pre-content');
+      if (el && el.classList.contains('pl-loading')) {
+        el.textContent = 'Cargando catálogo de equipos… ' + scanned +
+          (total ? '/' + total : '') + ' (líneas/células: ' + found + ')';
+      }
+    };
+    const { matched, scanned, total } = await fetchAllLineEquipments(targetLabelIds, onProgress);
+    console.log('[SA] ParosLinea: ' + matched.length + ' equipos con etiqueta Líneas/Células (de ' + scanned + (total ? '/' + total : '') + ')');
+
+    if (matched.length === 0) {
+      throw new Error('No se encontraron equipos con etiqueta "Línea" o "Célula". Revisa que estén etiquetados en Steelhead.');
+    }
+    state.allEquipments = matched;
+    writeCachedLineEquipments(matched);
     state.catalogsLoaded = true;
   }
 
