@@ -197,8 +197,28 @@ const ParosLinea = (() => {
     state.responsableGroups = groups;
 
     const eq = await api().query('SearchEquipments',
-      { searchQuery: '', first: 50 }, 'SearchEquipments');
-    state.allEquipments = eq?.searchEquipments?.nodes || [];
+      { searchQuery: '', first: 200 }, 'SearchEquipments');
+    const all = eq?.searchEquipments?.nodes || [];
+
+    if (all[0]?.equipmentLabelsByEquipmentId?.nodes?.length) {
+      console.log('[SA] ParosLinea sample equipment labels:',
+        JSON.stringify(all[0].equipmentLabelsByEquipmentId.nodes));
+    }
+
+    const lineaRe = /l[ií]nea/i;
+    const hasLineaLabel = (e) => {
+      const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
+      return labels.some(l => lineaRe.test(JSON.stringify(l)));
+    };
+    const filtered = all.filter(hasLineaLabel);
+
+    if (filtered.length > 0) {
+      state.allEquipments = filtered;
+      console.log('[SA] ParosLinea: ' + filtered.length + ' equipos con etiqueta de línea (de ' + all.length + ')');
+    } else {
+      console.warn('[SA] ParosLinea: ningún equipo con etiqueta "línea" — mostrando todos como fallback');
+      state.allEquipments = all;
+    }
 
     state.catalogsLoaded = true;
   }
