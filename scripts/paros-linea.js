@@ -92,7 +92,7 @@ const ParosLinea = (() => {
     const s = document.createElement('style');
     s.id = 'dl9-paros-styles';
     s.textContent = [
-      '.pl-fab{position:fixed;bottom:24px;right:24px;z-index:99998;width:72px;height:72px;border-radius:50%;background:#dc2626;color:#fff;border:none;box-shadow:0 6px 20px rgba(220,38,38,0.55);font-size:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease, box-shadow .15s ease}',
+      '.pl-fab{position:fixed;bottom:24px;left:24px;z-index:99998;width:72px;height:72px;border-radius:50%;background:#dc2626;color:#fff;border:none;box-shadow:0 6px 20px rgba(220,38,38,0.55);font-size:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease, box-shadow .15s ease}',
       '.pl-fab:hover{transform:scale(1.08);box-shadow:0 8px 26px rgba(220,38,38,0.75)}',
       '.pl-fab.running{background:#b91c1c;animation:plPulse 1.6s ease-in-out infinite}',
       '@keyframes plPulse{0%,100%{box-shadow:0 6px 20px rgba(220,38,38,0.55)}50%{box-shadow:0 6px 28px rgba(220,38,38,0.95)}}',
