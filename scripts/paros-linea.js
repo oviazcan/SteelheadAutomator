@@ -17,15 +17,25 @@ const ParosLinea = (() => {
   const EQUIP_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 
   const RESPONSABLE_AREAS = {
-    PLM: { label: 'Mantenimiento',     icon: '🔧' },
-    PLP: { label: 'Producción',        icon: '🏭' },
-    PLO: { label: 'Operaciones',       icon: '⚙️' },
-    PLR: { label: 'Recursos Humanos',  icon: '👥' },
-    PLC: { label: 'Calidad',           icon: '✅' },
-    PLS: { label: 'Seguridad',         icon: '🛡️' },
-    PLA: { label: 'Almacén',           icon: '📦' }
+    PLM: { label: 'Mantenimiento',          icon: '🔧' },
+    PLP: { label: 'Producción',             icon: '🏭' },
+    PLO: { label: 'Operaciones',            icon: '⚙️' },
+    PLR: { label: 'Recursos Humanos',       icon: '👥' },
+    PLC: { label: 'Calidad',                icon: '✅' },
+    PLS: { label: 'Seguridad',              icon: '🛡️' },
+    PLA: { label: 'Almacén',                icon: '📦' },
+    PLI: { label: 'Ingeniería',             icon: '🛠️' },
+    PLL: { label: 'Laboratorio y Procesos', icon: '🧪' },
+    PLN: { label: 'Planeación',             icon: '📅' },
+    PLT: { label: 'TI (Sistemas)',          icon: '💻' }
   };
   const DEFAULT_AREA_ICON = '📌';
+
+  function normalizeEs(s) {
+    return String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().trim();
+  }
 
   const LINE_LABEL_RE = /^(?:l[ií]neas?|c[eé]lulas?)$/i;
   const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders)(?:\/|$)/;
@@ -130,47 +140,89 @@ const ParosLinea = (() => {
     } catch (_) {}
   }
 
+  function pushComment(ev, { text, author, auto = false, at }) {
+    if (!ev) return;
+    if (!Array.isArray(ev.comments)) ev.comments = [];
+    ev.comments.push({
+      at: at || Date.now(),
+      text: String(text || '').trim(),
+      author: author || (state.currentUser?.name || 'Operador'),
+      auto: !!auto
+    });
+    writeActiveEvent(ev);
+    renderCommentsList();
+  }
+
+  function renderCommentsList() {
+    const host = document.getElementById('pl-comments-list');
+    if (!host) return;
+    const comments = (state.activeEvent?.comments || []).slice().reverse();
+    if (!comments.length) {
+      host.innerHTML = '<div class="pl-comments-empty">Aún no hay comentarios en este paro.</div>';
+      return;
+    }
+    host.innerHTML = comments.map(c => {
+      const t = new Date(c.at);
+      const hh = String(t.getHours()).padStart(2, '0');
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      const ss = String(t.getSeconds()).padStart(2, '0');
+      const meta = escapeHtml(c.author || 'Operador') + ' · ' + hh + ':' + mm + ':' + ss +
+        (c.auto ? ' · automático' : '');
+      return '<div class="pl-comment' + (c.auto ? ' auto' : '') + '">' +
+        '<div class="pl-comment-meta">' + meta + '</div>' +
+        '<div class="pl-comment-text">' + escapeHtml(c.text) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
   function injectStyles() {
     if (document.getElementById('dl9-paros-styles')) return;
     const s = document.createElement('style');
     s.id = 'dl9-paros-styles';
     s.textContent = [
-      '.pl-fab{position:fixed;bottom:24px;left:24px;z-index:99998;width:72px;height:72px;border-radius:50%;background:#dc2626;color:#fff;border:none;box-shadow:0 6px 20px rgba(220,38,38,0.55);font-size:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease, box-shadow .15s ease}',
+      '.pl-fab{position:fixed;bottom:24px;left:24px;z-index:99998;width:80px;height:80px;border-radius:50%;background:#dc2626;color:#fff;border:none;box-shadow:0 6px 20px rgba(220,38,38,0.55);font-size:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease, box-shadow .15s ease}',
       '.pl-fab:hover{transform:scale(1.08);box-shadow:0 8px 26px rgba(220,38,38,0.75)}',
       '.pl-fab.running{background:#b91c1c;animation:plPulse 1.6s ease-in-out infinite}',
       '@keyframes plPulse{0%,100%{box-shadow:0 6px 20px rgba(220,38,38,0.55)}50%{box-shadow:0 6px 28px rgba(220,38,38,0.95)}}',
       '.pl-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.88);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
-      '.pl-modal{background:#1e293b;color:#f1f5f9;border-radius:16px;padding:28px 32px;width:560px;max-width:94vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);box-sizing:border-box}',
-      '.pl-modal.running{width:760px;text-align:center}',
-      '.pl-modal h2{margin:0 0 16px;font-size:22px;color:#fecaca}',
-      '.pl-row{margin-bottom:14px}',
-      '.pl-label{font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}',
-      '.pl-select,.pl-input,.pl-textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f1f5f9;font-size:14px;box-sizing:border-box}',
+      '.pl-modal{background:#1e293b;color:#f1f5f9;border-radius:18px;padding:32px 36px;width:620px;max-width:94vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);box-sizing:border-box}',
+      '.pl-modal.running{width:840px;text-align:center}',
+      '.pl-modal h2{margin:0 0 18px;font-size:26px;color:#fecaca}',
+      '.pl-row{margin-bottom:16px}',
+      '.pl-label{font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}',
+      '.pl-select,.pl-input,.pl-textarea{width:100%;padding:12px 14px;border-radius:9px;border:1px solid #475569;background:#0f172a;color:#f1f5f9;font-size:16px;box-sizing:border-box}',
       '.pl-select:disabled{opacity:.6}',
-      '.pl-textarea{min-height:60px;resize:vertical;font-family:inherit}',
-      '.pl-btnrow{display:flex;gap:12px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}',
-      '.pl-btn{padding:12px 22px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.3px}',
+      '.pl-textarea{min-height:68px;resize:vertical;font-family:inherit}',
+      '.pl-btnrow{display:flex;gap:12px;justify-content:flex-end;margin-top:24px;flex-wrap:wrap}',
+      '.pl-btn{padding:14px 26px;border:none;border-radius:9px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:.3px}',
       '.pl-btn:disabled{opacity:.5;cursor:not-allowed}',
       '.pl-btn-cancel{background:#475569;color:#f1f5f9}',
       '.pl-btn-primary{background:#dc2626;color:#fff}',
       '.pl-btn-ghost{background:transparent;color:#cbd5e1;border:1px solid #475569}',
-      '.pl-btn-stop{background:#dc2626;color:#fff;font-size:20px;padding:18px 0;width:100%;margin-top:18px}',
+      '.pl-btn-stop{background:#dc2626;color:#fff;font-size:24px;padding:22px 0;width:100%;margin-top:20px}',
       '.pl-btn-stop:hover{background:#b91c1c}',
-      '.pl-cone{font-size:96px;line-height:1;margin-bottom:4px}',
-      '.pl-title{font-size:26px;font-weight:800;color:#fecaca;letter-spacing:1.5px;margin:6px 0}',
-      '.pl-timer{font-size:72px;font-family:"SF Mono","Menlo","Consolas",monospace;font-variant-numeric:tabular-nums;color:#fef3c7;margin:8px 0 18px}',
-      '.pl-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left;margin-top:12px}',
-      '.pl-static{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 12px;font-size:14px}',
-      '.pl-static strong{display:block;font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px;font-weight:700}',
-      '.pl-comment-row{display:flex;gap:8px;margin-top:14px;align-items:flex-start}',
-      '.pl-comment-row .pl-textarea{flex:1;min-height:48px}',
-      '.pl-summary{text-align:center;background:#0f172a;border-radius:12px;padding:22px;margin:10px 0}',
-      '.pl-summary .pl-big{font-size:42px;font-family:"SF Mono","Menlo","Consolas",monospace;color:#86efac;margin:6px 0}',
-      '.pl-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;text-align:left;margin-top:12px;font-size:13px}',
+      '.pl-cone{font-size:112px;line-height:1;margin-bottom:6px}',
+      '.pl-title{font-size:32px;font-weight:800;color:#fecaca;letter-spacing:1.5px;margin:8px 0}',
+      '.pl-timer{font-size:88px;font-family:"SF Mono","Menlo","Consolas",monospace;font-variant-numeric:tabular-nums;color:#fef3c7;margin:10px 0 22px}',
+      '.pl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;text-align:left;margin-top:14px}',
+      '.pl-static{background:#0f172a;border:1px solid #334155;border-radius:9px;padding:12px 14px;font-size:16px}',
+      '.pl-static strong{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;font-weight:700}',
+      '.pl-comment-row{display:flex;gap:10px;margin-top:16px;align-items:flex-start}',
+      '.pl-comment-row .pl-textarea{flex:1;min-height:56px}',
+      '.pl-comments{margin-top:14px;text-align:left;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:10px 12px;max-height:220px;overflow-y:auto}',
+      '.pl-comments-title{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:8px}',
+      '.pl-comments-empty{font-size:13px;color:#64748b;font-style:italic;padding:4px 0}',
+      '.pl-comment{padding:8px 10px;background:#1e293b;border-left:3px solid #60a5fa;border-radius:6px;margin-bottom:6px;font-size:14px;line-height:1.35}',
+      '.pl-comment.auto{border-left-color:#a78bfa;opacity:.9}',
+      '.pl-comment .pl-comment-meta{font-size:11px;color:#94a3b8;margin-bottom:3px}',
+      '.pl-comment .pl-comment-text{color:#f1f5f9;white-space:pre-wrap;word-break:break-word}',
+      '.pl-summary{text-align:center;background:#0f172a;border-radius:14px;padding:26px;margin:10px 0}',
+      '.pl-summary .pl-big{font-size:50px;font-family:"SF Mono","Menlo","Consolas",monospace;color:#86efac;margin:8px 0}',
+      '.pl-dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;text-align:left;margin-top:14px;font-size:15px}',
       '.pl-dl dt{color:#94a3b8}',
       '.pl-dl dd{margin:0;color:#f1f5f9}',
-      '.pl-error{color:#fecaca;background:#7f1d1d;padding:10px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}',
-      '.pl-loading{text-align:center;padding:20px;color:#94a3b8}'
+      '.pl-error{color:#fecaca;background:#7f1d1d;padding:12px 14px;border-radius:9px;margin-bottom:14px;font-size:15px}',
+      '.pl-loading{text-align:center;padding:22px;color:#94a3b8;font-size:15px}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -232,7 +284,8 @@ const ParosLinea = (() => {
         .replace(/PL[A-Z]\s*[\-:]?\s*/g, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
-      const label = suffix ? area.label + ' — ' + suffix : area.label;
+      const sameAsArea = suffix && normalizeEs(suffix) === normalizeEs(area.label);
+      const label = (suffix && !sameAsArea) ? area.label + ' — ' + suffix : area.label;
       return { id: n.id, name: n.name, area, display: area.icon + ' ' + label, sortKey: area.label + ' ' + suffix };
     });
     items.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'es'));
@@ -557,7 +610,8 @@ const ParosLinea = (() => {
           equipmentName: eq?.name || '',
           responsable: responsableLabelFromNodeName(node?.name),
           createdAt: Date.now(),
-          selectedSensorId: sensorId
+          selectedSensorId: sensorId,
+          comments: []
         };
         state.selectedSensorId = sensorId;
         writeActiveEvent(state.activeEvent);
@@ -566,6 +620,7 @@ const ParosLinea = (() => {
           try {
             await api().query('CreateMaintenanceEventComment',
               { comment, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+            pushComment(state.activeEvent, { text: comment });
           } catch (e) { console.warn('[SA] comentario inicial falló:', e.message); }
         }
 
@@ -628,6 +683,10 @@ const ParosLinea = (() => {
         '<textarea class="pl-textarea" id="pl-run-comment" placeholder="Agregar comentario…"></textarea>' +
         '<button class="pl-btn pl-btn-ghost" id="pl-run-addcomment">Añadir</button>' +
       '</div>' +
+      '<div class="pl-comments">' +
+        '<div class="pl-comments-title">Historial de comentarios</div>' +
+        '<div id="pl-comments-list"></div>' +
+      '</div>' +
       '<button class="pl-btn pl-btn-stop" id="pl-run-stop">DETENER PARO</button>' +
       '<div class="pl-btnrow" style="margin-top:10px">' +
         '<button class="pl-btn pl-btn-ghost" id="pl-run-hide">OCULTAR (continuar)</button>' +
@@ -639,6 +698,8 @@ const ParosLinea = (() => {
     const tick = () => { timerEl.textContent = formatElapsed(Date.now() - ev.createdAt); };
     tick();
     state.timerInterval = setInterval(tick, 1000);
+
+    renderCommentsList();
 
     document.getElementById('pl-run-hide').onclick = removeOverlay;
 
@@ -655,11 +716,12 @@ const ParosLinea = (() => {
         ev.equipmentId = newEqId;
         ev.equipmentName = newEq?.name || '';
         writeActiveEvent(ev);
+        const autoText = 'Línea cambiada de "' + prevEqName + '" a "' + (newEq?.name || newEqId) + '" por el operador.';
         try {
           await api().query('CreateMaintenanceEventComment', {
-            comment: 'Línea cambiada de "' + prevEqName + '" a "' + (newEq?.name || newEqId) + '" por el operador.',
-            maintenanceEventId: ev.id
+            comment: autoText, maintenanceEventId: ev.id
           }, 'CreateMaintenanceEventComment');
+          pushComment(ev, { text: autoText, auto: true });
         } catch (_) {}
       } catch (e) {
         alert('No se pudo cambiar el equipo: ' + e.message + '\nSe mantiene la línea anterior.');
@@ -687,6 +749,7 @@ const ParosLinea = (() => {
       try {
         await api().query('CreateMaintenanceEventComment',
           { comment: txt, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+        pushComment(ev, { text: txt });
         ta.value = '';
         btn.textContent = '✓';
         setTimeout(() => { btn.textContent = 'Añadir'; btn.disabled = false; }, 900);
@@ -746,6 +809,7 @@ const ParosLinea = (() => {
       try {
         await api().query('CreateMaintenanceEventComment',
           { comment: finalComment, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+        pushComment(ev, { text: finalComment });
       } catch (e) { console.warn('[SA] comentario final falló:', e.message); }
     }
 
