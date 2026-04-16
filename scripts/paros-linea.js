@@ -14,19 +14,23 @@ const ParosLinea = (() => {
   const STATE_KEY = 'sa_paros_active_event';
   const LAST_LINE_KEY = 'sa_paros_last_line';
 
-  const RESPONSABLE_PREFIXES = {
-    PLM: 'Mantenimiento',
-    PLP: 'Producción',
-    PLO: 'Operaciones',
-    PLR: 'Recursos Humanos',
-    PLC: 'Calidad',
-    PLS: 'Seguridad'
+  const RESPONSABLE_AREAS = {
+    PLM: { label: 'Mantenimiento',     icon: '🔧' },
+    PLP: { label: 'Producción',        icon: '🏭' },
+    PLO: { label: 'Operaciones',       icon: '⚙️' },
+    PLR: { label: 'Recursos Humanos',  icon: '👥' },
+    PLC: { label: 'Calidad',           icon: '✅' },
+    PLS: { label: 'Seguridad',         icon: '🛡️' }
   };
+  const DEFAULT_AREA_ICON = '📌';
+
+  const LINE_LABEL_RE = /^(?:l[ií]neas?|c[eé]lulas?)$/i;
+  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders)(?:\/|$)/;
 
   let state = {
     currentUser: null,
     allNodes: [],
-    responsableGroups: {},
+    responsableOptions: [],
     allEquipments: [],
     selectedSensorId: null,
     activeEvent: null,
@@ -52,15 +56,51 @@ const ParosLinea = (() => {
     }
 
     injectStyles();
-    renderFloatingButton();
 
     const saved = readActiveEvent();
     if (saved) {
       state.activeEvent = saved;
       state.selectedSensorId = saved.selectedSensorId || null;
+    }
+
+    installUrlChangeListener();
+    syncFabVisibility();
+
+    if (saved) {
       loadCatalogs().catch(e => console.warn('[SA] ParosLinea catálogos:', e.message));
       renderRunningView().catch(e => console.warn('[SA] ParosLinea reanudar:', e.message));
     }
+  }
+
+  function isAllowedPath() {
+    return ALLOWED_PATH_RE.test(location.pathname);
+  }
+
+  function syncFabVisibility() {
+    const should = isAllowedPath() || !!state.activeEvent;
+    const existing = document.getElementById('sa-pl-fab');
+    if (should && !existing) renderFloatingButton();
+    else if (!should && existing) { existing.remove(); state.floatingBtn = null; }
+  }
+
+  function installUrlChangeListener() {
+    if (window.__saParosUrlListenerInstalled) {
+      window.addEventListener('sa-urlchange', syncFabVisibility);
+      return;
+    }
+    window.__saParosUrlListenerInstalled = true;
+    const fire = () => window.dispatchEvent(new Event('sa-urlchange'));
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () {
+        const r = orig.apply(this, arguments);
+        fire();
+        return r;
+      };
+    });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('hashchange', fire);
+    window.addEventListener('sa-urlchange', syncFabVisibility);
   }
 
   async function fetchCurrentUser() {
@@ -150,6 +190,7 @@ const ParosLinea = (() => {
   }
 
   function updateFabStyle() {
+    syncFabVisibility();
     const btn = document.getElementById('sa-pl-fab');
     if (!btn) return;
     btn.classList.toggle('running', !!state.activeEvent);
@@ -174,6 +215,31 @@ const ParosLinea = (() => {
     return ov;
   }
 
+  function areaForNode(node) {
+    const m = (node?.name || '').match(/\bPL([A-Z])\b/);
+    const code = m ? 'PL' + m[1] : '';
+    return RESPONSABLE_AREAS[code] || { label: code || 'Otros', icon: DEFAULT_AREA_ICON };
+  }
+
+  function buildResponsableOptions(paroNodes) {
+    const items = paroNodes.map(n => {
+      const area = areaForNode(n);
+      const suffix = (n.name || '')
+        .replace(/^paro\s+de\s+l[ií]nea\s+/i, '')
+        .replace(/^PL[A-Z]\s*[\-:]?\s*/i, '')
+        .trim();
+      const label = suffix ? area.label + ' — ' + suffix : area.label;
+      return { id: n.id, name: n.name, area, display: area.icon + ' ' + label, sortKey: area.label + ' ' + suffix };
+    });
+    items.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'es'));
+    return items;
+  }
+
+  function labelMatchesLine(label) {
+    const name = label?.labelByLabelId?.name || label?.name;
+    return typeof name === 'string' && LINE_LABEL_RE.test(name.trim());
+  }
+
   async function loadCatalogs(force = false) {
     if (state.catalogsLoaded && !force) return;
 
@@ -185,42 +251,36 @@ const ParosLinea = (() => {
       throw new Error('No hay nodos de mantenimiento con "Paro de Línea" configurados. Contacta al administrador.');
     }
     state.allNodes = paroNodes;
+    state.responsableOptions = buildResponsableOptions(paroNodes);
 
-    const groups = {};
-    for (const n of paroNodes) {
-      const m = (n.name || '').match(/\bPL([A-Z])\b/);
-      const code = m ? 'PL' + m[1] : 'PL?';
-      const label = RESPONSABLE_PREFIXES[code] || code;
-      if (!groups[label]) groups[label] = [];
-      groups[label].push(n);
-    }
-    state.responsableGroups = groups;
-
-    const eq = await api().query('SearchEquipments',
-      { searchQuery: '', first: 200 }, 'SearchEquipments');
-    const all = eq?.searchEquipments?.nodes || [];
+    const eq = await api().query('AllEquipments', {
+      fetchEquipmentType: false,
+      fetchStation: false,
+      fetchLabel: true,
+      fetchLocation: false,
+      endOfService: false,
+      orderBy: ['NAME_ASC'],
+      offset: 0,
+      first: 500,
+      searchQuery: ''
+    }, 'AllEquipments');
+    const all = eq?.pagedData?.nodes || [];
 
     if (all[0]?.equipmentLabelsByEquipmentId?.nodes?.length) {
       console.log('[SA] ParosLinea sample equipment labels:',
         JSON.stringify(all[0].equipmentLabelsByEquipmentId.nodes));
     }
 
-    const lineaRe = /l[ií]nea/i;
-    const lineTokenRe = /(?:^|[\s\-_])(?:LI|CE\d+)(?:[\s\-_]|$)/i;
-    const isLineEquipment = (e) => {
-      const name = e?.name || '';
-      if (lineaRe.test(name)) return true;
-      if (lineTokenRe.test(name)) return true;
+    const filtered = all.filter(e => {
       const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
-      return labels.some(l => lineaRe.test(JSON.stringify(l)));
-    };
-    const filtered = all.filter(isLineEquipment);
+      return labels.some(labelMatchesLine);
+    });
 
     if (filtered.length > 0) {
       state.allEquipments = filtered;
-      console.log('[SA] ParosLinea: ' + filtered.length + ' líneas detectadas (de ' + all.length + ' equipos)');
+      console.log('[SA] ParosLinea: ' + filtered.length + ' equipos con etiqueta Líneas/Células (de ' + all.length + ')');
     } else {
-      console.warn('[SA] ParosLinea: ningún equipo identificado como línea — mostrando todos como fallback');
+      console.warn('[SA] ParosLinea: ningún equipo con etiqueta Líneas/Células — mostrando todos como fallback');
       state.allEquipments = all;
     }
 
@@ -268,10 +328,8 @@ const ParosLinea = (() => {
   }
 
   function responsableLabelFromNodeName(name) {
-    if (!name) return 'Otros';
-    const m = name.match(/\bPL([A-Z])\b/);
-    const code = m ? 'PL' + m[1] : '';
-    return RESPONSABLE_PREFIXES[code] || code || 'Otros';
+    const area = areaForNode({ name });
+    return area.icon + ' ' + area.label;
   }
 
   async function loadSensorsForNode(nodeId) {
@@ -303,11 +361,9 @@ const ParosLinea = (() => {
       return;
     }
 
-    const groupOptions = Object.entries(state.responsableGroups)
-      .map(([label, nodes]) => {
-        const opts = nodes.map(n => '<option value="' + n.id + '">' + escapeHtml(n.name) + '</option>').join('');
-        return '<optgroup label="' + escapeHtml(label) + '">' + opts + '</optgroup>';
-      }).join('');
+    const responsableOptionsHtml = (state.responsableOptions || [])
+      .map(o => '<option value="' + o.id + '">' + escapeHtml(o.display) + '</option>')
+      .join('');
 
     const linePrefix = await inferLinePrefix();
     const defaultEq = matchEquipmentByPrefix(linePrefix);
@@ -318,7 +374,7 @@ const ParosLinea = (() => {
     document.getElementById('pl-pre-content').innerHTML =
       '<div class="pl-row">' +
         '<label class="pl-label">Responsable (categoría)</label>' +
-        '<select class="pl-select" id="pl-node-select"><option value="">— Selecciona —</option>' + groupOptions + '</select>' +
+        '<select class="pl-select" id="pl-node-select"><option value="">— Selecciona —</option>' + responsableOptionsHtml + '</select>' +
       '</div>' +
       '<div class="pl-row">' +
         '<label class="pl-label">Motivo</label>' +
