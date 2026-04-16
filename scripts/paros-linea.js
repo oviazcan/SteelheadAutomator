@@ -223,11 +223,26 @@ const ParosLinea = (() => {
     state.catalogsLoaded = true;
   }
 
-  function inferLinePrefix() {
+  async function inferLinePrefix() {
+    const wbMatch = location.pathname.match(/\/Workboards\/(\d+)/);
+    if (wbMatch) {
+      try {
+        const data = await api().query('WorkboardById',
+          { id: parseInt(wbMatch[1], 10) }, 'WorkboardById');
+        const name = data?.workboardById?.name;
+        if (name) {
+          try { localStorage.setItem(LAST_LINE_KEY, name); } catch (_) {}
+          console.log('[SA] ParosLinea: workboard activo =', name);
+          return name;
+        }
+      } catch (e) {
+        console.warn('[SA] ParosLinea: WorkboardById falló:', e.message);
+      }
+    }
     const headings = document.querySelectorAll('h1, h2, h3, [class*="breadcrumb"], [class*="Breadcrumb"], [class*="page-title"], [class*="PageTitle"]');
     for (const h of headings) {
       const txt = h.textContent || '';
-      const m = txt.match(/\b(T\d{2,3})\b/);
+      const m = txt.match(/\b(T\d{2,3}[A-Z\-]*)\b/);
       if (m) return m[1];
     }
     try { return localStorage.getItem(LAST_LINE_KEY); } catch { return null; }
@@ -236,9 +251,16 @@ const ParosLinea = (() => {
   function matchEquipmentByPrefix(prefix) {
     if (!prefix || !state.allEquipments.length) return null;
     const p = prefix.toUpperCase();
-    return state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(p))
-      || state.allEquipments.find(e => (e.name || '').toUpperCase().includes(p))
-      || null;
+    let match = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(p));
+    if (match) return match;
+    const tokenMatch = p.match(/^(T\d{2,3})/);
+    if (tokenMatch) {
+      const token = tokenMatch[1];
+      match = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(token))
+        || state.allEquipments.find(e => (e.name || '').toUpperCase().includes(token));
+      if (match) return match;
+    }
+    return state.allEquipments.find(e => (e.name || '').toUpperCase().includes(p)) || null;
   }
 
   function responsableLabelFromNodeName(name) {
@@ -283,7 +305,7 @@ const ParosLinea = (() => {
         return '<optgroup label="' + escapeHtml(label) + '">' + opts + '</optgroup>';
       }).join('');
 
-    const linePrefix = inferLinePrefix();
+    const linePrefix = await inferLinePrefix();
     const defaultEq = matchEquipmentByPrefix(linePrefix);
     const equipmentOptions = state.allEquipments
       .map(e => '<option value="' + e.id + '"' + (defaultEq && defaultEq.id === e.id ? ' selected' : '') + '>' + escapeHtml(e.name) + '</option>')

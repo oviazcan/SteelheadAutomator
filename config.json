@@ -1,5 +1,5 @@
 {
-  "version": "0.4.26",
+  "version": "0.4.27",
   "lastUpdated": "2026-04-16",
   "extensionVersion": "1.5.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -122,7 +122,8 @@
         "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c",
         "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac",
         "OperatorMaintenanceNodeDialogQuery": "2a2a6230dca0bf6c613d769617180a4070600859ec08ba715fbded176a795e46",
-        "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63"
+        "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63",
+        "WorkboardById": "371c1a807444663bdcc7ed3a11fc97ff58f6ed3c8423c99ad8b68fff945a3bcc"
       }
     },
     "domain": {
@@ -474,7 +475,8 @@
     "CreateMaintenanceEventUserFile": { "type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea" },
     "CreateMaintenanceEventDialogQuery": { "type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea" },
     "OperatorMaintenanceNodeDialogQuery": { "type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea" },
-    "SearchEquipments": { "type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea" }
+    "SearchEquipments": { "type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea" },
+    "WorkboardById": { "type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
