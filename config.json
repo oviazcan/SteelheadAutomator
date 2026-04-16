@@ -1,5 +1,5 @@
 {
-  "version": "0.4.23",
+  "version": "0.4.24",
   "lastUpdated": "2026-04-16",
   "extensionVersion": "1.4.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -50,7 +50,13 @@
         "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3",
         "UpdateReceivedOrder": "50bfb5884c167407ad9a8417962da0a56708d8fde031fd0da31893c6eddafe8b",
         "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59",
-        "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60"
+        "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60",
+        "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3",
+        "CreateMaintenanceNodeEvent": "6aaef93e43b2f8d4d2eb62879b070b83975a6c48698ee293fdf16031532860c6",
+        "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a",
+        "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54",
+        "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84",
+        "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -113,7 +119,10 @@
         "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4",
         "InvoiceByIdInDomain": "9bfd1fe7ea06bf4b4c497ef0c79b799c5ebd60d6e113d25b5af7f8c0344ae3af",
         "CurrentUser": "18c6574c779e24f19b19e303b1b7c176601eb44e4dfd1860d2d925fd976c779e",
-        "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c"
+        "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c",
+        "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac",
+        "OperatorMaintenanceNodeDialogQuery": "2a2a6230dca0bf6c613d769617180a4070600859ec08ba715fbded176a795e46",
+        "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63"
       }
     },
     "domain": {
@@ -345,11 +354,26 @@
       "actions": [
         { "id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer" }
       ]
+    },
+    {
+      "id": "paros-linea",
+      "name": "Paro de Línea",
+      "subtitle": "Registrar paros con cronómetro",
+      "icon": "⚠️",
+      "category": "Producción",
+      "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"],
+      "autoInject": true,
+      "operatorVisible": true,
+      "actions": [
+        { "id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea" },
+        { "id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled" }
+      ]
     }
   ],
   "permissions": {
     "roles": {
-      "admin": [11973]
+      "admin": [11973],
+      "operador": []
     },
     "restrictedApps": {
       "hash-scanner": { "requireRole": "admin" }
@@ -441,7 +465,16 @@
     "CreateEditReceivedOrderDialogQuery": { "type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator" },
     "GetCustomerInfoForReceivedOrder": { "type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator" },
     "PartNumberCreatableSelectGetPartNumbers": { "type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator" },
-    "SearchPartNumberPrices": { "type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator" }
+    "SearchPartNumberPrices": { "type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator" },
+    "CreateMaintenanceEvent": { "type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea" },
+    "CreateMaintenanceNodeEvent": { "type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea" },
+    "CreateManySensorMeasurements": { "type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea" },
+    "UpdateMaintenanceEvent": { "type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea" },
+    "CreateMaintenanceEventComment": { "type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea" },
+    "CreateMaintenanceEventUserFile": { "type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea" },
+    "CreateMaintenanceEventDialogQuery": { "type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea" },
+    "OperatorMaintenanceNodeDialogQuery": { "type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea" },
+    "SearchEquipments": { "type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
