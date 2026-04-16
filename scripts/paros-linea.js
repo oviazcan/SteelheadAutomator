@@ -48,6 +48,7 @@ const ParosLinea = (() => {
     selectedSensorId: null,
     activeEvent: null,
     timerInterval: null,
+    fabTimerInterval: null,
     floatingBtn: null,
     catalogsLoaded: false
   };
@@ -91,9 +92,13 @@ const ParosLinea = (() => {
 
   function syncFabVisibility() {
     const should = isAllowedPath() || !!state.activeEvent;
-    const existing = document.getElementById('sa-pl-fab');
+    const existing = document.getElementById('sa-pl-fab-dock');
     if (should && !existing) renderFloatingButton();
-    else if (!should && existing) { existing.remove(); state.floatingBtn = null; }
+    else if (!should && existing) {
+      existing.remove();
+      stopFabTimer();
+      state.floatingBtn = null;
+    }
   }
 
   function installUrlChangeListener() {
@@ -180,10 +185,14 @@ const ParosLinea = (() => {
     const s = document.createElement('style');
     s.id = 'dl9-paros-styles';
     s.textContent = [
-      '.pl-fab{position:fixed;bottom:24px;left:24px;z-index:99998;width:80px;height:80px;border-radius:50%;background:#dc2626;color:#fff;border:none;box-shadow:0 6px 20px rgba(220,38,38,0.55);font-size:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease, box-shadow .15s ease}',
-      '.pl-fab:hover{transform:scale(1.08);box-shadow:0 8px 26px rgba(220,38,38,0.75)}',
-      '.pl-fab.running{background:#b91c1c;animation:plPulse 1.6s ease-in-out infinite}',
-      '@keyframes plPulse{0%,100%{box-shadow:0 6px 20px rgba(220,38,38,0.55)}50%{box-shadow:0 6px 28px rgba(220,38,38,0.95)}}',
+      '.pl-fab-dock{position:fixed;bottom:24px;left:24px;z-index:99998;display:flex;flex-direction:column;align-items:center;gap:6px}',
+      '.pl-fab{width:80px;height:80px;border-radius:50%;background:#dc2626;color:#fff;border:none;box-shadow:0 6px 20px rgba(220,38,38,0.55);font-size:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease, box-shadow .15s ease;padding:0}',
+      '.pl-fab:not(.running):hover{transform:scale(1.08);box-shadow:0 8px 26px rgba(220,38,38,0.75)}',
+      '.pl-fab.running{animation:plFabBlink 1.1s ease-in-out infinite}',
+      '@keyframes plFabBlink{0%,100%{background:#dc2626;color:#fff;box-shadow:0 6px 20px rgba(220,38,38,0.55);transform:scale(1)}50%{background:#facc15;color:#7f1d1d;box-shadow:0 8px 28px rgba(250,204,21,0.9);transform:scale(1.08)}}',
+      '.pl-fab-timer{font-family:"SF Mono","Menlo","Consolas",monospace;font-variant-numeric:tabular-nums;font-size:15px;font-weight:800;color:#fef3c7;background:rgba(15,23,42,0.92);border:1px solid #facc15;border-radius:10px;padding:5px 10px;letter-spacing:.5px;box-shadow:0 4px 14px rgba(0,0,0,0.5);white-space:nowrap;animation:plTimerBlink 1.1s ease-in-out infinite}',
+      '@keyframes plTimerBlink{0%,100%{border-color:#facc15;color:#fef3c7}50%{border-color:#dc2626;color:#fecaca}}',
+      '@media (prefers-reduced-motion:reduce){.pl-fab.running,.pl-fab-timer{animation:none}}',
       '.pl-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.88);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
       '.pl-modal{background:#1e293b;color:#f1f5f9;border-radius:18px;padding:32px 36px;width:620px;max-width:94vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);box-sizing:border-box}',
       '.pl-modal.running{width:840px;text-align:center}',
@@ -232,7 +241,11 @@ const ParosLinea = (() => {
   }
 
   function renderFloatingButton() {
-    if (document.getElementById('sa-pl-fab')) return;
+    if (document.getElementById('sa-pl-fab-dock')) return;
+    const dock = document.createElement('div');
+    dock.className = 'pl-fab-dock';
+    dock.id = 'sa-pl-fab-dock';
+
     const btn = document.createElement('button');
     btn.className = 'pl-fab';
     btn.id = 'sa-pl-fab';
@@ -244,15 +257,46 @@ const ParosLinea = (() => {
       if (state.activeEvent) renderRunningView();
       else openStopDialog();
     });
-    document.body.appendChild(btn);
+    dock.appendChild(btn);
+
+    const chip = document.createElement('div');
+    chip.className = 'pl-fab-timer';
+    chip.id = 'sa-pl-fab-timer';
+    chip.textContent = '00:00:00';
+    if (!state.activeEvent) chip.style.display = 'none';
+    dock.appendChild(chip);
+
+    document.body.appendChild(dock);
     state.floatingBtn = btn;
+
+    if (state.activeEvent) startFabTimer();
   }
 
   function updateFabStyle() {
     syncFabVisibility();
     const btn = document.getElementById('sa-pl-fab');
-    if (!btn) return;
-    btn.classList.toggle('running', !!state.activeEvent);
+    const chip = document.getElementById('sa-pl-fab-timer');
+    if (btn) btn.classList.toggle('running', !!state.activeEvent);
+    if (chip) chip.style.display = state.activeEvent ? '' : 'none';
+    if (state.activeEvent) startFabTimer(); else stopFabTimer();
+  }
+
+  function startFabTimer() {
+    stopFabTimer();
+    const tick = () => {
+      const chip = document.getElementById('sa-pl-fab-timer');
+      if (!chip || !state.activeEvent) { stopFabTimer(); return; }
+      chip.textContent = formatElapsed(Date.now() - state.activeEvent.createdAt);
+    };
+    tick();
+    state.fabTimerInterval = setInterval(tick, 1000);
+  }
+
+  function stopFabTimer() {
+    if (state.fabTimerInterval) {
+      clearInterval(state.fabTimerInterval);
+      state.fabTimerInterval = null;
+    }
   }
 
   function removeOverlay() {
