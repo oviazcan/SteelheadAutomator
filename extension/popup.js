@@ -522,7 +522,12 @@ document.addEventListener('DOMContentLoaded', () => {
           function renderList(filter) {
             listEl.innerHTML = '';
             const f = (filter || '').toUpperCase();
-            const filtered = f ? available.filter(p => p.permission.includes(f) || (p.description || '').toUpperCase().includes(f)) : available.slice(0, 50);
+            let filtered = f ? available.filter(p => p.permission.includes(f) || (p.description || '').toUpperCase().includes(f)) : available.slice(0, 50);
+            if (f) filtered.sort((a, b) => {
+              const aExact = a.permission === f ? 0 : a.permission.startsWith(f) ? 1 : 2;
+              const bExact = b.permission === f ? 0 : b.permission.startsWith(f) ? 1 : 2;
+              return aExact - bExact || a.permission.localeCompare(b.permission);
+            });
             for (const p of filtered.slice(0, 50)) {
               const opt = document.createElement('div');
               opt.className = 'perm-dropdown-item';
