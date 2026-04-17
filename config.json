@@ -1,7 +1,7 @@
 {
-  "version": "0.4.38",
+  "version": "0.4.39",
   "lastUpdated": "2026-04-16",
-  "extensionVersion": "1.5.0",
+  "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
@@ -124,7 +124,8 @@
         "OperatorMaintenanceNodeDialogQuery": "2a2a6230dca0bf6c613d769617180a4070600859ec08ba715fbded176a795e46",
         "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63",
         "WorkboardById": "371c1a807444663bdcc7ed3a11fc97ff58f6ed3c8423c99ad8b68fff945a3bcc",
-        "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f"
+        "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f",
+        "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de"
       }
     },
     "domain": {
@@ -223,6 +224,7 @@
       "icon": "📊",
       "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"],
+      "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"],
       "actions": [
         { "id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker" },
         { "id": "download-template", "label": "Descargar Plantilla", "sublabel": "Excel base con formato y macros", "icon": "📥", "handler": "open-url", "url": "templateUrl" },
@@ -237,6 +239,7 @@
       "icon": "🔍",
       "category": "Herramientas",
       "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"],
+      "requiredPermissions": ["WRITE_USER_PERMISSIONS"],
       "actions": [
         { "id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan" },
         { "id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results" },
@@ -251,6 +254,7 @@
       "icon": "📦",
       "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/archiver.js"],
+      "requiredPermissions": ["READ_PART_NUMBERS"],
       "actions": [
         { "id": "run-archiver", "label": "Archivar PNs", "sublabel": "Configurar fecha y criterios", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver" }
       ]
@@ -262,6 +266,7 @@
       "icon": "🔎",
       "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/auditor.js"],
+      "requiredPermissions": ["READ_PART_NUMBERS"],
       "actions": [
         { "id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor" }
       ]
@@ -273,6 +278,7 @@
       "icon": "📎",
       "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader.js"],
+      "requiredPermissions": ["READ_ALL_UPLOADED_FILES"],
       "actions": [
         { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
       ]
@@ -284,6 +290,7 @@
       "icon": "📂",
       "category": "Herramientas",
       "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"],
+      "requiredPermissions": ["MANAGE_REPORTING"],
       "actions": [
         { "id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator" }
       ]
@@ -295,6 +302,7 @@
       "icon": "🔀",
       "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/spec-migrator.js"],
+      "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"],
       "actions": [
         { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run" },
         { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams" },
@@ -308,6 +316,7 @@
       "icon": "🔄",
       "category": "Inventario",
       "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"],
+      "requiredPermissions": ["READ_INVENTORY"],
       "actions": [
         { "id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset" }
       ]
@@ -319,6 +328,7 @@
       "icon": "📋",
       "category": "Facturación",
       "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"],
+      "requiredPermissions": ["READ_RECEIVED_ORDERS"],
       "actions": [
         { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
       ]
@@ -330,6 +340,7 @@
       "icon": "⚙️",
       "category": "Órdenes de Trabajo",
       "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"],
+      "requiredPermissions": ["READ_WORK_ORDER"],
       "actions": [
         { "id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
       ]
@@ -342,6 +353,7 @@
       "category": "Facturación",
       "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"],
       "autoInject": true,
+      "requiredPermissions": ["READ_INVOICING"],
       "actions": [
         { "id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher" }
       ]
@@ -353,6 +365,7 @@
       "icon": "📥",
       "category": "Facturación",
       "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"],
+      "requiredPermissions": ["READ_RECEIVED_ORDERS"],
       "actions": [
         { "id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer" }
       ]
@@ -365,22 +378,13 @@
       "category": "Producción",
       "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"],
       "autoInject": true,
-      "operatorVisible": true,
+      "requiredPermissions": ["READ_MAINTENANCE"],
       "actions": [
         { "id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea" },
         { "id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled" }
       ]
     }
   ],
-  "permissions": {
-    "roles": {
-      "admin": [11973],
-      "operador": []
-    },
-    "restrictedApps": {
-      "hash-scanner": { "requireRole": "admin" }
-    }
-  },
   "knownOperations": {
     "CreateQuote": { "type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva" },
     "UpdateQuote": { "type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva" },
@@ -478,7 +482,8 @@
     "OperatorMaintenanceNodeDialogQuery": { "type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea" },
     "SearchEquipments": { "type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea" },
     "WorkboardById": { "type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea" },
-    "AllEquipments": { "type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea" }
+    "AllEquipments": { "type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea" },
+    "AllPermissionsEditManyPermissions": { "type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings" }
   },
   "scripts": [
     "scripts/steelhead-api.js",

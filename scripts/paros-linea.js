@@ -125,14 +125,18 @@ const ParosLinea = (() => {
     const data = await api().query('CurrentUser', { deviceLocationIds: [] }, 'CurrentUser');
     const u = data?.currentSession?.userByUserId;
     if (!u) return null;
-    return { id: u.id, name: u.name, isAdmin: u.isAdmin === true };
+    return {
+      id: u.id, name: u.name, isAdmin: u.isAdmin === true,
+      managedPermissions: Array.isArray(u.currentManagedPermissions) ? u.currentManagedPermissions : []
+    };
   }
 
   function isAuthorized(user) {
-    const roles = cfg()?.permissions?.roles || {};
-    const inAdmin = Array.isArray(roles.admin) && roles.admin.includes(user.id);
-    const inOperador = Array.isArray(roles.operador) && roles.operador.includes(user.id);
-    return inAdmin || inOperador || user.isAdmin;
+    if (user.isAdmin) return true;
+    const req = cfg()?.apps?.find(a => a.id === 'paros-linea')?.requiredPermissions || [];
+    if (req.length === 0) return true;
+    if (!Array.isArray(user.managedPermissions)) return true;
+    return req.every(p => user.managedPermissions.includes(p));
   }
 
   function readActiveEvent() {
