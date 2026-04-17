@@ -397,10 +397,12 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('settings-save-msg').textContent = '';
     });
 
-    // Show app permissions editor for Steelhead admins
+    // Show app permissions editor for users with WRITE_USER_PERMISSIONS
     const mgmtSection = document.getElementById('user-mgmt');
     if (mgmtSection) {
-      if (currentUser?.isAdmin) {
+      const perms = currentUser?.managedPermissions || [];
+      const canAdmin = currentUser?.isAdmin || perms.includes('WRITE_USER_PERMISSIONS');
+      if (canAdmin) {
         mgmtSection.style.display = '';
         loadAppPermissionsEditor();
       } else {
