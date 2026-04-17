@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const views = { menu: 'view-menu', app: 'view-app', results: 'view-results', settings: 'view-settings' };
   const fileInput = document.getElementById('file-input');
+  function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
   init();
 
@@ -119,33 +120,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (oldMenu) oldMenu.remove();
 
     const apps = config?.apps || [];
-    const configRoles = config?.permissions?.roles || {};
-    const restrictedApps = config?.permissions?.restrictedApps || {};
-    const userId = currentUser?.id;
-    // Merge config roles with local overrides
-    let roleOverrides = {};
-    try {
-      const stored = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
-      roleOverrides = stored;
-    } catch (_) {}
-    const userRoles = new Set();
-    for (const [role, ids] of Object.entries(configRoles)) {
-      if (Array.isArray(ids) && ids.includes(userId)) userRoles.add(role);
+    // Permission-based filtering using Steelhead managed permissions
+    let userPermissions = currentUser?.managedPermissions || null;
+    if (!userPermissions) {
+      try {
+        const cached = await new Promise(r => chrome.storage.local.get('sa_user_permissions', d => r(d.sa_user_permissions || null)));
+        userPermissions = cached;
+      } catch (_) {}
     }
-    for (const [role, ids] of Object.entries(roleOverrides)) {
-      if (Array.isArray(ids) && ids.includes(userId)) userRoles.add(role);
-    }
-    let visibleApps;
-    if (userRoles.has('operador') && !userRoles.has('admin')) {
-      visibleApps = apps.filter(a => a.operatorVisible === true);
-    } else {
-      visibleApps = apps.filter(app => {
-        const perm = restrictedApps[app.id];
-        if (!perm) return true;
-        if (perm.requireRole && !userRoles.has(perm.requireRole)) return false;
-        return true;
-      });
-    }
+    const { sa_app_permissions_overrides: permOverrides } = await new Promise(r =>
+      chrome.storage.local.get('sa_app_permissions_overrides', d => r(d)));
+    const visibleApps = apps.filter(app => {
+      const req = permOverrides?.[app.id] ?? app.requiredPermissions;
+      if (!req || req.length === 0) return true;
+      if (!userPermissions) return true;
+      return req.every(p => userPermissions.includes(p));
+    });
 
     if (viewMode === 'grid') {
       renderGridMenu(menuWrap, visibleApps);
@@ -407,95 +397,180 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('settings-save-msg').textContent = '';
     });
 
-    // Show user management for admins
+    // Show app permissions editor for Steelhead admins
     const mgmtSection = document.getElementById('user-mgmt');
     if (mgmtSection) {
-      const roles = config?.permissions?.roles || {};
-      const overrides = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
-      const mergedAdmins = new Set([...(roles.admin || []), ...(overrides.admin || [])]);
-      if (mergedAdmins.has(currentUser?.id)) {
+      if (currentUser?.isAdmin) {
         mgmtSection.style.display = '';
-        loadUserManagement();
+        loadAppPermissionsEditor();
       } else {
         mgmtSection.style.display = 'none';
       }
     }
+
+    // One-time cleanup of deprecated role overrides
+    chrome.storage.local.remove('sa_role_overrides');
   }
 
-  async function loadUserManagement() {
+  async function loadAppPermissionsEditor() {
     const container = document.getElementById('user-mgmt-content');
-    container.innerHTML = '<div class="user-mgmt-loading">Cargando usuarios...</div>';
+    container.innerHTML = '<div class="user-mgmt-loading">Cargando permisos...</div>';
 
     try {
-      const users = await sendToBackground('get-all-users');
-      if (users?.error) { container.innerHTML = `<div class="user-mgmt-loading">Error: ${users.error}</div>`; return; }
-      if (!Array.isArray(users) || users.length === 0) { container.innerHTML = '<div class="user-mgmt-loading">Sin usuarios</div>'; return; }
+      const apps = config?.apps || [];
+      const overrides = await new Promise(r =>
+        chrome.storage.local.get('sa_app_permissions_overrides', d => r(d.sa_app_permissions_overrides || {})));
 
-      // Get current role assignments (config defaults + local overrides)
-      const configRoles = config?.permissions?.roles || {};
-      const overrides = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
-      const adminIds = new Set([...(configRoles.admin || []), ...(overrides.admin || [])]);
-      const operatorIds = new Set([...(configRoles.operador || []), ...(overrides.operador || [])]);
-
-      // Sort: admins first, then operators, then alphabetical
-      users.sort((a, b) => {
-        const aAdmin = adminIds.has(a.id);
-        const bAdmin = adminIds.has(b.id);
-        if (aAdmin !== bAdmin) return aAdmin ? -1 : 1;
-        const aOp = operatorIds.has(a.id);
-        const bOp = operatorIds.has(b.id);
-        if (aOp !== bOp) return aOp ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      container.innerHTML = '<div class="user-mgmt-list" id="user-mgmt-list"></div>';
-      const list = document.getElementById('user-mgmt-list');
-
-      for (const user of users) {
-        const isAdmin = adminIds.has(user.id);
-        const isConfigAdmin = (configRoles.admin || []).includes(user.id);
-        const isOperator = operatorIds.has(user.id);
-        const isConfigOperator = (configRoles.operador || []).includes(user.id);
-        const row = document.createElement('div');
-        row.className = 'user-mgmt-row';
-
-        const avatarHTML = user.avatarUrl
-          ? `<img class="user-avatar" src="${user.avatarUrl}" alt="">`
-          : `<div class="user-avatar"></div>`;
-
-        const badgeHTML = user.isAdmin ? '<span class="user-badge" style="background:#e8f5e9;color:#2e7d32">Admin SH</span>' : '';
-
-        row.innerHTML = `
-          ${avatarHTML}
-          <span class="user-name">${user.name}</span>
-          ${badgeHTML}
-          <label class="user-role-label" title="Admin"><input type="checkbox" data-user-id="${user.id}" data-role="admin" ${isAdmin ? 'checked' : ''} ${isConfigAdmin ? 'title="Definido en config" disabled' : ''}> A</label>
-          <label class="user-role-label" title="Operador"><input type="checkbox" data-user-id="${user.id}" data-role="operador" ${isOperator ? 'checked' : ''} ${isConfigOperator ? 'title="Definido en config" disabled' : ''}> O</label>`;
-        list.appendChild(row);
+      // Fetch permission catalog from Steelhead (or cached)
+      let allPerms = [];
+      try {
+        const live = await sendToBackground('get-all-permissions');
+        if (Array.isArray(live) && live.length > 0) allPerms = live;
+      } catch (_) {}
+      if (allPerms.length === 0) {
+        const cached = await new Promise(r =>
+          chrome.storage.local.get('sa_all_permissions', d => r(d.sa_all_permissions || [])));
+        allPerms = cached;
       }
 
-      // Handle checkbox changes
-      list.addEventListener('change', async (e) => {
-        const cb = e.target;
-        if (cb.type !== 'checkbox' || !cb.dataset.userId) return;
-        const userId = parseInt(cb.dataset.userId);
-        const role = cb.dataset.role || 'admin';
+      const hasOverrides = Object.keys(overrides).length > 0;
 
-        const stored = await new Promise(r => chrome.storage.local.get('sa_role_overrides', d => r(d.sa_role_overrides || {})));
-        const overrideIds = new Set(stored[role] || []);
+      container.innerHTML = '';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'app-perms-editor';
 
-        if (cb.checked) {
-          overrideIds.add(userId);
-        } else {
-          overrideIds.delete(userId);
+      for (const app of apps) {
+        const currentPerms = overrides[app.id] ?? app.requiredPermissions ?? [];
+        const isOverridden = !!overrides[app.id];
+
+        const row = document.createElement('div');
+        row.className = 'app-perm-row';
+        row.dataset.appId = app.id;
+
+        const header = document.createElement('div');
+        header.className = 'app-perm-header';
+        header.innerHTML = '<span class="app-perm-icon">' + escapeHtml(app.icon) + '</span>' +
+          '<span class="app-perm-name">' + escapeHtml(app.name) + '</span>' +
+          (isOverridden ? '<span class="app-perm-badge">modificado</span>' : '');
+
+        const chipsWrap = document.createElement('div');
+        chipsWrap.className = 'app-perm-chips';
+
+        function renderChips() {
+          const perms = overrides[app.id] ?? app.requiredPermissions ?? [];
+          chipsWrap.innerHTML = '';
+          for (const p of perms) {
+            const chip = document.createElement('span');
+            chip.className = 'perm-chip';
+            chip.textContent = p;
+            const x = document.createElement('button');
+            x.className = 'perm-chip-x';
+            x.textContent = '\u00d7';
+            x.title = 'Quitar ' + p;
+            x.addEventListener('click', async () => {
+              const cur = overrides[app.id] ?? [...(app.requiredPermissions || [])];
+              const updated = cur.filter(pp => pp !== p);
+              overrides[app.id] = updated;
+              await chrome.storage.local.set({ sa_app_permissions_overrides: overrides });
+              renderChips();
+              updateBadge();
+            });
+            chip.appendChild(x);
+            chipsWrap.appendChild(chip);
+          }
+          // Add button
+          const addBtn = document.createElement('button');
+          addBtn.className = 'perm-add-btn';
+          addBtn.textContent = '+ Agregar';
+          addBtn.addEventListener('click', () => showPermDropdown(app, chipsWrap, addBtn));
+          chipsWrap.appendChild(addBtn);
         }
 
-        stored[role] = [...overrideIds];
-        await chrome.storage.local.set({ sa_role_overrides: stored });
-      });
+        function updateBadge() {
+          const badge = row.querySelector('.app-perm-badge');
+          if (overrides[app.id]) {
+            if (!badge) {
+              const b = document.createElement('span');
+              b.className = 'app-perm-badge';
+              b.textContent = 'modificado';
+              header.appendChild(b);
+            }
+          } else if (badge) {
+            badge.remove();
+          }
+        }
 
+        function showPermDropdown(app, chipsWrap, addBtn) {
+          const existing = chipsWrap.querySelector('.perm-dropdown');
+          if (existing) { existing.remove(); return; }
+          const currentPerms = new Set(overrides[app.id] ?? app.requiredPermissions ?? []);
+          const available = allPerms.filter(p => !currentPerms.has(p.permission));
+          if (available.length === 0) return;
+
+          const dd = document.createElement('div');
+          dd.className = 'perm-dropdown';
+          const search = document.createElement('input');
+          search.className = 'perm-dropdown-search';
+          search.placeholder = 'Buscar permiso...';
+          dd.appendChild(search);
+
+          const listEl = document.createElement('div');
+          listEl.className = 'perm-dropdown-list';
+
+          function renderList(filter) {
+            listEl.innerHTML = '';
+            const f = (filter || '').toUpperCase();
+            const filtered = f ? available.filter(p => p.permission.includes(f) || (p.description || '').toUpperCase().includes(f)) : available.slice(0, 50);
+            for (const p of filtered.slice(0, 50)) {
+              const opt = document.createElement('div');
+              opt.className = 'perm-dropdown-item';
+              opt.innerHTML = '<strong>' + escapeHtml(p.permission) + '</strong>' +
+                (p.description ? '<br><small>' + escapeHtml(p.description) + '</small>' : '');
+              opt.addEventListener('click', async () => {
+                const cur = overrides[app.id] ?? [...(app.requiredPermissions || [])];
+                cur.push(p.permission);
+                overrides[app.id] = cur;
+                await chrome.storage.local.set({ sa_app_permissions_overrides: overrides });
+                dd.remove();
+                renderChips();
+                updateBadge();
+              });
+              listEl.appendChild(opt);
+            }
+            if (filtered.length === 0) listEl.innerHTML = '<div class="perm-dropdown-empty">Sin resultados</div>';
+          }
+
+          search.addEventListener('input', () => renderList(search.value));
+          renderList('');
+          dd.appendChild(listEl);
+          chipsWrap.insertBefore(dd, addBtn.nextSibling);
+          search.focus();
+
+          const closeOnOutside = (e) => { if (!dd.contains(e.target) && e.target !== addBtn) { dd.remove(); document.removeEventListener('click', closeOnOutside); } };
+          setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+        }
+
+        renderChips();
+        row.appendChild(header);
+        row.appendChild(chipsWrap);
+        wrapper.appendChild(row);
+      }
+
+      // Restore defaults button
+      if (hasOverrides) {
+        const restoreBtn = document.createElement('button');
+        restoreBtn.className = 'perm-restore-btn';
+        restoreBtn.textContent = 'Restaurar defaults';
+        restoreBtn.addEventListener('click', async () => {
+          await chrome.storage.local.remove('sa_app_permissions_overrides');
+          loadAppPermissionsEditor();
+        });
+        wrapper.appendChild(restoreBtn);
+      }
+
+      container.appendChild(wrapper);
     } catch (e) {
-      container.innerHTML = `<div class="user-mgmt-loading">Error: ${e.message}</div>`;
+      container.innerHTML = '<div class="user-mgmt-loading">Error: ' + escapeHtml(e.message) + '</div>';
     }
   }
 

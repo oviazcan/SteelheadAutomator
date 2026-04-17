@@ -252,20 +252,57 @@
 
     .user-mgmt { padding: 0 16px 14px; }
     .user-mgmt h3 { font-size: 13px; font-weight: 700; color: var(--text-body); margin-bottom: 8px; }
-    .user-mgmt-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-    .user-mgmt-list::-webkit-scrollbar { width: 6px; }
-    .user-mgmt-list::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
-    .user-mgmt-row {
-      display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-      border-radius: 6px; background: var(--bg-card); border: 1px solid var(--border-card); font-size: 12px;
-    }
-    .user-mgmt-row .user-avatar {
-      width: 24px; height: 24px; border-radius: 50%; background: var(--border-card); object-fit: cover;
-    }
-    .user-mgmt-row .user-name { flex: 1; font-weight: 500; color: var(--text-body); }
-    .user-mgmt-row .user-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
-    .user-mgmt-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
     .user-mgmt-loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 12px; }
+
+    .app-perms-editor { display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; }
+    .app-perms-editor::-webkit-scrollbar { width: 6px; }
+    .app-perms-editor::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    .app-perm-row { padding: 8px 10px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border-card); }
+    .app-perm-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .app-perm-icon { font-size: 14px; }
+    .app-perm-name { font-size: 12px; font-weight: 600; color: var(--text-body); flex: 1; }
+    .app-perm-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: #fef3c7; color: #92400e; font-weight: 600; }
+    body.dark-mode .app-perm-badge { background: #422006; color: #fbbf24; }
+    .app-perm-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; position: relative; }
+    .perm-chip {
+      display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px;
+      font-size: 10px; font-family: monospace; font-weight: 500; background: #e0f2fe; color: #0369a1;
+      border: 1px solid #bae6fd; white-space: nowrap;
+    }
+    body.dark-mode .perm-chip { background: #0c4a6e; color: #7dd3fc; border-color: #075985; }
+    .perm-chip-x {
+      background: none; border: none; cursor: pointer; font-size: 13px; line-height: 1;
+      color: #0369a1; padding: 0 1px; font-weight: 700;
+    }
+    .perm-chip-x:hover { color: #dc2626; }
+    body.dark-mode .perm-chip-x { color: #7dd3fc; }
+    body.dark-mode .perm-chip-x:hover { color: #f87171; }
+    .perm-add-btn {
+      font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 1px dashed var(--border-card);
+      background: transparent; color: var(--text-muted); cursor: pointer; white-space: nowrap;
+    }
+    .perm-add-btn:hover { background: var(--bg-card); border-color: var(--text-muted); }
+    .perm-dropdown {
+      position: absolute; top: 100%; left: 0; z-index: 100; width: 300px; max-height: 200px;
+      background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column;
+    }
+    .perm-dropdown-search {
+      border: none; border-bottom: 1px solid var(--border-card); padding: 8px 10px; font-size: 11px;
+      background: transparent; color: var(--text-body); outline: none;
+    }
+    .perm-dropdown-list { overflow-y: auto; flex: 1; }
+    .perm-dropdown-item { padding: 6px 10px; cursor: pointer; font-size: 10px; color: var(--text-body); }
+    .perm-dropdown-item:hover { background: #e0f2fe; }
+    body.dark-mode .perm-dropdown-item:hover { background: #0c4a6e; }
+    .perm-dropdown-item strong { font-family: monospace; font-size: 10px; }
+    .perm-dropdown-item small { color: var(--text-muted); }
+    .perm-dropdown-empty { padding: 12px; text-align: center; color: var(--text-muted); font-size: 11px; }
+    .perm-restore-btn {
+      margin-top: 8px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-card);
+      background: transparent; color: var(--text-muted); cursor: pointer; font-size: 11px; align-self: flex-start;
+    }
+    .perm-restore-btn:hover { background: var(--bg-card); color: var(--text-body); }
   </style>
 </head>
 <body>
@@ -338,8 +375,8 @@
       </div>
     </div>
     <div class="user-mgmt" id="user-mgmt" style="display:none">
-      <h3>Acceso a la extensión</h3>
-      <div id="user-mgmt-content" class="user-mgmt-loading">Cargando usuarios...</div>
+      <h3>Permisos por Applet</h3>
+      <div id="user-mgmt-content" class="user-mgmt-loading">Cargando permisos...</div>
     </div>
   </div>
 

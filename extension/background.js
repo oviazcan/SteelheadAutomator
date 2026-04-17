@@ -73,15 +73,12 @@ async function injectAppScripts(tabId, appId) {
     });
   }
 
-  // Merge local role overrides into config so MAIN-world scripts honor popup-assigned roles
-  const { sa_role_overrides } = await chrome.storage.local.get('sa_role_overrides');
-  const mergedConfig = JSON.parse(JSON.stringify(config));
-  mergedConfig.permissions = mergedConfig.permissions || {};
-  mergedConfig.permissions.roles = mergedConfig.permissions.roles || {};
-  if (sa_role_overrides && typeof sa_role_overrides === 'object') {
-    for (const [role, ids] of Object.entries(sa_role_overrides)) {
-      const base = mergedConfig.permissions.roles[role] || [];
-      mergedConfig.permissions.roles[role] = Array.from(new Set([...base, ...(Array.isArray(ids) ? ids : [])]));
+  // Merge permission overrides into config so MAIN-world scripts see adjusted requiredPermissions
+  const { sa_app_permissions_overrides: permOverrides } = await chrome.storage.local.get('sa_app_permissions_overrides');
+  const mergedConfig = permOverrides ? JSON.parse(JSON.stringify(config)) : config;
+  if (permOverrides) {
+    for (const app of (mergedConfig.apps || [])) {
+      if (permOverrides[app.id]) app.requiredPermissions = permOverrides[app.id];
     }
   }
 
@@ -220,14 +217,46 @@ async function handleMessage(message, sender) {
                 employeeId: user.employeeId,
                 userType: user.currentUserEmploymentRecord?.userType || null,
                 domainId: user.domainByDomainId?.id,
-                domainName: user.domainByDomainId?.name
+                domainName: user.domainByDomainId?.name,
+                managedPermissions: Array.isArray(user.currentManagedPermissions) ? user.currentManagedPermissions : []
               };
             } catch (e) {
               return { error: e.message };
             }
           }
         });
-        return results?.[0]?.result || { error: 'No result' };
+        const result = results?.[0]?.result || { error: 'No result' };
+        if (result && !result.error && Array.isArray(result.managedPermissions)) {
+          await chrome.storage.local.set({ sa_user_permissions: result.managedPermissions });
+        }
+        return result;
+      } catch (e) {
+        return { error: e.message };
+      }
+    }
+
+    case 'get-all-permissions': {
+      try {
+        const tab = await getSteelheadTab();
+        await injectAppScripts(tab.id, 'carga-masiva');
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: async () => {
+            if (!window.SteelheadAPI) return { error: 'SteelheadAPI not available' };
+            try {
+              const data = await window.SteelheadAPI.query('AllPermissionsEditManyPermissions', {}, 'AllPermissionsEditManyPermissions');
+              return (data?.allManagedPermissionDetails?.nodes || [])
+                .map(n => ({ permission: n.managedPermission, description: n.description }));
+            } catch (e) {
+              return { error: e.message };
+            }
+          }
+        });
+        const perms = results?.[0]?.result || [];
+        if (Array.isArray(perms) && perms.length > 0) {
+          await chrome.storage.local.set({ sa_all_permissions: perms });
+        }
+        return perms;
       } catch (e) {
         return { error: e.message };
       }
