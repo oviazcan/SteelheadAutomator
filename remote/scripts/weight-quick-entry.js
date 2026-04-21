@@ -84,16 +84,18 @@ const WeightQuickEntry = (() => {
     if (existing) checkForReceiveModal(existing);
   }
 
+  const MODAL_REGEX = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
+
   function checkForReceiveModal(node) {
     const heading = node.querySelector?.('h2, h3, h4, h5, h6');
-    if (heading && /receive\s+parts\s+from\s+customer/i.test(heading.textContent)) {
+    if (heading && MODAL_REGEX.test(heading.textContent)) {
       onModalFound(node);
       return;
     }
     const dialog = node.querySelector?.('[role="dialog"], .MuiDialog-paper');
     if (dialog) {
       const h = dialog.querySelector('h2, h3, h4, h5, h6');
-      if (h && /receive\s+parts\s+from\s+customer/i.test(h.textContent)) {
+      if (h && MODAL_REGEX.test(h.textContent)) {
         onModalFound(dialog);
       }
     }
@@ -260,7 +262,8 @@ const WeightQuickEntry = (() => {
     const results = [];
     const labels = container.querySelectorAll('label, span, p, div');
     for (const label of labels) {
-      if (label.textContent.trim() !== 'Count:') continue;
+      const labelText = label.textContent.trim();
+      if (labelText !== 'Count:' && labelText !== 'Conteo:') continue;
       const parent = label.closest('div') || label.parentElement;
       const input = parent?.querySelector('input[type="text"], input[type="number"], input:not([type])');
       if (input && !input.closest('.sa-wqe-container')) {
@@ -282,7 +285,8 @@ const WeightQuickEntry = (() => {
     if (!lineContainer) return '';
     const unitLabels = lineContainer.querySelectorAll('label, span, p, div');
     for (const ul of unitLabels) {
-      if (ul.textContent.trim() !== 'Unit:') continue;
+      const ulText = ul.textContent.trim();
+      if (ulText !== 'Unit:' && ulText !== 'Unidad:') continue;
       const unitParent = ul.closest('div') || ul.parentElement;
       const unitInput = unitParent?.querySelector('input');
       return unitInput?.value?.trim() || '';
@@ -307,7 +311,7 @@ const WeightQuickEntry = (() => {
     if (section.countParent.querySelector('.sa-wqe-container')) return;
 
     const unitVal = getUnitValue(section);
-    if (unitVal && unitVal !== 'Count') return;
+    if (unitVal && unitVal !== 'Count' && unitVal !== 'Conteo') return;
 
     const container = document.createElement('div');
     container.className = 'sa-wqe-container';
@@ -456,7 +460,7 @@ const WeightQuickEntry = (() => {
 
     const unitObserver = new MutationObserver(() => {
       const unitVal = getUnitValue(section);
-      if (unitVal && unitVal !== 'Count') {
+      if (unitVal && unitVal !== 'Count' && unitVal !== 'Conteo') {
         container.style.display = 'none';
       } else {
         container.style.display = '';
@@ -581,7 +585,8 @@ const WeightQuickEntry = (() => {
       const buttons = modal.querySelectorAll('button');
       for (const btn of buttons) {
         const text = btn.textContent?.trim().toUpperCase() || '';
-        const isSaveBtn = text === 'SAVE' || text.startsWith('SAVE +') || text.startsWith('SAVE &');
+        const isSaveBtn = text === 'SAVE' || text.startsWith('SAVE +') || text.startsWith('SAVE &')
+          || text === 'GUARDAR' || text.startsWith('GUARDAR +') || text.startsWith('GUARDAR Y');
         if (isSaveBtn && !btn.dataset.saWqeIntercepted) {
           btn.dataset.saWqeIntercepted = 'true';
           btn.addEventListener('click', handleSaveClick, true);
