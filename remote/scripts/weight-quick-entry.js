@@ -41,11 +41,9 @@ const WeightQuickEntry = (() => {
       let bodyObj;
       try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
 
-      // Capture customerId from any GraphQL request
       const reqCid = bodyObj?.variables?.customerId;
       if (reqCid && reqCid !== lastCustomerId) {
         lastCustomerId = reqCid;
-        resolveCustomerLbsPreference(reqCid);
       }
 
       const response = await origFetch.apply(this, args);
@@ -77,35 +75,57 @@ const WeightQuickEntry = (() => {
 
   // ── Customer LBS Preference ──
 
-  async function resolveCustomerLbsPreference(customerId) {
-    const cid = parseInt(customerId, 10);
+  let customerLbsResolved = false;
 
-    // Try GetCustomerInfoForReceivedOrder first
-    try {
-      const data = await api().query('GetCustomerInfoForReceivedOrder', { customerId: cid }, 'GetCustomerInfoForReceivedOrder');
-      const customer = data?.customerById;
-      if (customer?.customInputs) {
-        customerUseLbs = checkLbsPreference(customer.customInputs);
-        console.log(LOG_PREFIX, `Cliente ${cid} (${customer.name || ''}): usarLBS=${customerUseLbs}`);
-        return;
-      }
-      console.log(LOG_PREFIX, `GetCustomerInfoForReceivedOrder sin customInputs, keys:`, customer ? Object.keys(customer) : 'null');
-    } catch (err) {
-      console.warn(LOG_PREFIX, 'GetCustomerInfoForReceivedOrder fallido:', err.message || err);
+  async function resolveCustomerPreference(modal) {
+    if (customerLbsResolved) return;
+    customerLbsResolved = true;
+
+    const name = extractCustomerName(modal);
+    if (!name || name.length < 2) {
+      console.log(LOG_PREFIX, 'No se encontro nombre de cliente en modal');
+      return;
     }
 
-    // Fallback: Customer query (needs idInDomain + includeAccountingFields)
     try {
-      const data2 = await api().query('Customer', { idInDomain: cid, includeAccountingFields: false }, 'Customer');
-      const cust2 = data2?.customerByIdInDomain || data2?.customerById || data2?.customer;
-      if (cust2?.customInputs) {
-        customerUseLbs = checkLbsPreference(cust2.customInputs);
-        console.log(LOG_PREFIX, `Cliente ${cid}: usarLBS=${customerUseLbs} (via Customer)`);
+      const data = await api().query('CustomerSearchByName',
+        { nameLike: `%${name}%`, orderBy: ['NAME_ASC'] }, 'CustomerSearchByName');
+      const nodes = data?.searchCustomers?.nodes || data?.allCustomers?.nodes || [];
+      const found = nodes.find(c => c.name?.toUpperCase().includes(name.toUpperCase()));
+
+      if (!found) {
+        console.log(LOG_PREFIX, `Cliente "${name}" no encontrado en busqueda`);
+        return;
+      }
+
+      console.log(LOG_PREFIX, `Cliente encontrado: ${found.name}, keys:`, Object.keys(found));
+
+      if (found.customInputs) {
+        customerUseLbs = checkLbsPreference(found.customInputs);
+        console.log(LOG_PREFIX, `usarLBS=${customerUseLbs} (via SearchByName)`);
+        return;
+      }
+
+      const displayId = found.idInDomain ?? found.displayId;
+      if (displayId != null) {
+        try {
+          const data2 = await api().query('Customer',
+            { idInDomain: parseInt(displayId, 10), includeAccountingFields: false }, 'Customer');
+          const cust = data2?.customerByIdInDomain || data2?.customerById;
+          if (cust?.customInputs) {
+            customerUseLbs = checkLbsPreference(cust.customInputs);
+            console.log(LOG_PREFIX, `usarLBS=${customerUseLbs} (via Customer idInDomain=${displayId})`);
+            return;
+          }
+          console.log(LOG_PREFIX, `Customer(${displayId}) sin customInputs, keys:`, cust ? Object.keys(cust) : 'null');
+        } catch (err) {
+          console.warn(LOG_PREFIX, 'Customer query fallida:', err.message || err);
+        }
       } else {
-        console.log(LOG_PREFIX, `Cliente ${cid}: sin customInputs en ambas queries, keys:`, cust2 ? Object.keys(cust2) : 'null');
+        console.log(LOG_PREFIX, 'CustomerSearchByName no devolvio idInDomain');
       }
     } catch (err) {
-      console.warn(LOG_PREFIX, 'Customer query fallida:', err.message || err);
+      console.warn(LOG_PREFIX, 'Error en resolveCustomerPreference:', err.message || err);
     }
   }
 
@@ -133,23 +153,6 @@ const WeightQuickEntry = (() => {
       }
     }
     return false;
-  }
-
-  async function resolveCustomerFromModal(modal) {
-    const name = extractCustomerName(modal);
-    if (!name || name.length < 2) return;
-    try {
-      const data = await api().query('CustomerSearchByName',
-        { nameLike: `%${name}%`, orderBy: ['NAME_ASC'] }, 'CustomerSearchByName');
-      const nodes = data?.searchCustomers?.nodes || data?.allCustomers?.nodes || [];
-      const customer = nodes.find(c => c.name?.toUpperCase().includes(name.toUpperCase()));
-      if (customer?.id) {
-        lastCustomerId = customer.id;
-        await resolveCustomerLbsPreference(customer.id);
-      }
-    } catch (err) {
-      console.warn(LOG_PREFIX, 'Error buscando cliente en modal:', err);
-    }
   }
 
   function extractCustomerName(modal) {
@@ -205,9 +208,7 @@ const WeightQuickEntry = (() => {
     interceptSaveButtons(modal);
     watchModalRemoval(modal);
 
-    const ready = lastCustomerId !== null
-      ? Promise.resolve()
-      : resolveCustomerFromModal(modal);
+    const ready = resolveCustomerPreference(modal);
 
     ready.then(() => {
       console.log(LOG_PREFIX, `Inyectando campos (unidad: ${customerUseLbs ? 'LB' : 'KG'})`);
@@ -236,6 +237,8 @@ const WeightQuickEntry = (() => {
     for (const [container] of lineStates) {
       if (modal.contains(container)) lineStates.delete(container);
     }
+    customerLbsResolved = false;
+    customerUseLbs = false;
     console.log(LOG_PREFIX, 'Modal cleanup completado');
   }
 
