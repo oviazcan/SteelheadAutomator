@@ -177,13 +177,14 @@ const WeightQuickEntry = (() => {
 
   const PLACEHOLDER_RE = /^(buscar|search|select|seleccionar|todo|all|elegir|choose)/i;
   const STRIP_PREFIX = /^[-–—\s]+/;
+  const STRIP_ID_SUFFIX = /\s*\(#\d+\).*/;
 
   function isPlaceholder(text) {
     return !text || text.length < 3 || PLACEHOLDER_RE.test(text);
   }
 
   function cleanName(text) {
-    return text?.trim().replace(STRIP_PREFIX, '').trim() || '';
+    return text?.trim().replace(STRIP_PREFIX, '').replace(STRIP_ID_SUFFIX, '').trim() || '';
   }
 
   function extractCustomerName(modal) {
