@@ -242,31 +242,53 @@ const WeightQuickEntry = (() => {
 
   function observeNewLines(modal) {
     if (modalObserver) modalObserver.disconnect();
-    modalObserver = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType !== 1) continue;
-          const sections = findQuantitySections(node);
-          for (const section of sections) {
-            injectWeightFields(section, modal);
-          }
+    let debounceTimeout = null;
+    modalObserver = new MutationObserver(() => {
+      if (debounceTimeout) clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(() => {
+        const sections = findQuantitySections(modal);
+        for (const section of sections) {
+          injectWeightFields(section, modal);
         }
-      }
+      }, 200);
     });
     modalObserver.observe(modal, { childList: true, subtree: true });
   }
 
   function findQuantitySections(container) {
     const results = [];
-    const labels = container.querySelectorAll('label, span, p, div');
-    for (const label of labels) {
-      const labelText = label.textContent.trim();
-      if (labelText !== 'Count:' && labelText !== 'Conteo:') continue;
-      const parent = label.closest('div') || label.parentElement;
-      const input = parent?.querySelector('input[type="text"], input[type="number"], input:not([type])');
-      if (input && !input.closest('.sa-wqe-container')) {
-        results.push({ countLabel: label, countInput: input, countParent: parent });
+    const table = container.querySelector('table.MuiTable-root') || container.querySelector('table');
+    if (!table) {
+      const ancestor = container.closest?.('table.MuiTable-root') || container.closest?.('table');
+      if (ancestor) return findQuantitySectionsInTable(ancestor);
+      return results;
+    }
+    return findQuantitySectionsInTable(table);
+  }
+
+  function findQuantitySectionsInTable(table) {
+    const results = [];
+    const headers = table.querySelectorAll('thead th');
+    let colIdx = -1;
+    for (let i = 0; i < headers.length; i++) {
+      if (/cantidad|quantity/i.test(headers[i].textContent.trim())) {
+        colIdx = i;
+        break;
       }
+    }
+    if (colIdx < 0) return results;
+
+    const rows = table.querySelectorAll('tbody > tr');
+    for (const row of rows) {
+      const cells = row.querySelectorAll(':scope > td');
+      const cell = cells[colIdx];
+      if (!cell || cell.querySelector('.sa-wqe-container')) continue;
+
+      const inputs = cell.querySelectorAll('input');
+      if (inputs.length === 0) continue;
+
+      const countInput = inputs[inputs.length - 1];
+      results.push({ countInput, countParent: cell, row, cell });
     }
     return results;
   }
@@ -277,27 +299,18 @@ const WeightQuickEntry = (() => {
   }
 
   function getUnitValue(section) {
-    const lineContainer = section.countLabel.closest('[class*="Part"]')
-      || section.countLabel.closest('tr')
-      || section.countLabel.parentElement?.parentElement?.parentElement;
-    if (!lineContainer) return '';
-    const unitLabels = lineContainer.querySelectorAll('label, span, p, div');
-    for (const ul of unitLabels) {
-      const ulText = ul.textContent.trim();
-      if (ulText !== 'Unit:' && ulText !== 'Unidad:') continue;
-      const unitParent = ul.closest('div') || ul.parentElement;
-      const unitInput = unitParent?.querySelector('input');
-      return unitInput?.value?.trim() || '';
+    const cell = section.cell || section.countParent;
+    const inputs = cell.querySelectorAll('input');
+    if (inputs.length > 1) {
+      return inputs[0].value?.trim() || '';
     }
     return '';
   }
 
   function getPartNumberId(section) {
-    const lineContainer = section.countLabel.closest('[class*="Part"]')
-      || section.countLabel.closest('tr')
-      || section.countLabel.parentElement?.parentElement?.parentElement?.parentElement;
-    if (!lineContainer) return null;
-    const viewLink = lineContainer.querySelector('a[href*="part-numbers/"]');
+    const row = section.row || section.countParent?.closest('tr');
+    if (!row) return null;
+    const viewLink = row.querySelector('a[href*="part-numbers/"]');
     if (viewLink) {
       const match = viewLink.href.match(/part-numbers\/(\d+)/);
       if (match) return parseInt(match[1], 10);
@@ -348,7 +361,7 @@ const WeightQuickEntry = (() => {
     hint.textContent = 'Tab para registrar \u00b7 Factor: peso \u00f7 count';
     container.appendChild(hint);
 
-    section.countParent.insertAdjacentElement('afterend', container);
+    section.countParent.appendChild(container);
 
     const KGM_TO_LBR = api()?.getDomain?.()?.conversions?.KGM_TO_LBR || 2.20462;
 
@@ -451,10 +464,8 @@ const WeightQuickEntry = (() => {
   }
 
   function watchUnitChanges(section, container) {
-    const lineContainer = section.countLabel.closest('[class*="Part"]')
-      || section.countLabel.closest('tr')
-      || section.countLabel.parentElement?.parentElement?.parentElement;
-    if (!lineContainer) return;
+    const cell = section.cell || section.countParent;
+    if (!cell) return;
 
     const unitObserver = new MutationObserver(() => {
       const unitVal = getUnitValue(section);
@@ -464,7 +475,7 @@ const WeightQuickEntry = (() => {
         container.style.display = '';
       }
     });
-    unitObserver.observe(lineContainer, { childList: true, subtree: true, characterData: true });
+    unitObserver.observe(cell, { childList: true, subtree: true, characterData: true, attributes: true });
     unitObservers.push(unitObserver);
   }
 
