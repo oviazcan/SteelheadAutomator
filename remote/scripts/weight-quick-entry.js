@@ -78,8 +78,10 @@ const WeightQuickEntry = (() => {
   // ── Customer LBS Preference ──
 
   async function resolveCustomerLbsPreference(customerId) {
+    const cid = parseInt(customerId, 10);
+
+    // Try GetCustomerInfoForReceivedOrder first
     try {
-      const cid = parseInt(customerId, 10);
       const data = await api().query('GetCustomerInfoForReceivedOrder', { customerId: cid }, 'GetCustomerInfoForReceivedOrder');
       const customer = data?.customerById;
       if (customer?.customInputs) {
@@ -87,16 +89,23 @@ const WeightQuickEntry = (() => {
         console.log(LOG_PREFIX, `Cliente ${cid} (${customer.name || ''}): usarLBS=${customerUseLbs}`);
         return;
       }
-      const data2 = await api().query('Customer', { id: cid }, 'Customer');
-      const cust2 = data2?.customerById || data2?.customer;
+      console.log(LOG_PREFIX, `GetCustomerInfoForReceivedOrder sin customInputs, keys:`, customer ? Object.keys(customer) : 'null');
+    } catch (err) {
+      console.warn(LOG_PREFIX, 'GetCustomerInfoForReceivedOrder fallido:', err.message || err);
+    }
+
+    // Fallback: Customer query (needs idInDomain + includeAccountingFields)
+    try {
+      const data2 = await api().query('Customer', { idInDomain: cid, includeAccountingFields: false }, 'Customer');
+      const cust2 = data2?.customerByIdInDomain || data2?.customerById || data2?.customer;
       if (cust2?.customInputs) {
         customerUseLbs = checkLbsPreference(cust2.customInputs);
         console.log(LOG_PREFIX, `Cliente ${cid}: usarLBS=${customerUseLbs} (via Customer)`);
       } else {
-        console.log(LOG_PREFIX, `Cliente ${cid}: sin customInputs, usando KG por defecto`);
+        console.log(LOG_PREFIX, `Cliente ${cid}: sin customInputs en ambas queries, keys:`, cust2 ? Object.keys(cust2) : 'null');
       }
     } catch (err) {
-      console.warn(LOG_PREFIX, 'Error consultando preferencia LBS:', err);
+      console.warn(LOG_PREFIX, 'Customer query fallida:', err.message || err);
     }
   }
 
