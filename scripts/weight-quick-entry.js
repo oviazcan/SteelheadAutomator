@@ -49,6 +49,8 @@ const WeightQuickEntry = (() => {
             const invItem = pn.inventoryItemByPartNumberId;
             if (pn.id && invItem?.id) {
               inventoryItemCache.set(pn.id, invItem.id);
+              const pnStr = pn.stringValue || pn.name || pn.partNumber || '';
+              if (pnStr) inventoryItemCache.set('str:' + pnStr.trim().toUpperCase(), invItem.id);
             }
           }
           if (nodes.length > 0) {
@@ -310,10 +312,74 @@ const WeightQuickEntry = (() => {
   function getPartNumberId(section) {
     const row = section.row || section.countParent?.closest('tr');
     if (!row) return null;
-    const viewLink = row.querySelector('a[href*="part-numbers/"]');
+    const viewLink = row.querySelector('a[href*="part-numbers/"], a[href*="PartNumbers/"]');
     if (viewLink) {
-      const match = viewLink.href.match(/part-numbers\/(\d+)/);
+      const match = viewLink.href.match(/(?:part-numbers|PartNumbers)\/(\d+)/i);
       if (match) return parseInt(match[1], 10);
+    }
+    return null;
+  }
+
+  function resolveInventoryItemId(section) {
+    const row = section.row || section.countParent?.closest('tr');
+
+    // Strategy 1: link href → pnId → cache lookup
+    const pnId = getPartNumberId(section);
+    if (pnId) {
+      const invId = inventoryItemCache.get(pnId);
+      if (invId) return { pnId, inventoryItemId: invId };
+      return { pnId, inventoryItemId: null };
+    }
+
+    // Strategy 2: extract PN text from row → match against string cache
+    if (row) {
+      const firstCell = row.querySelector('td');
+      if (firstCell) {
+        const pnText = extractPnText(firstCell);
+        if (pnText) {
+          const invId = inventoryItemCache.get('str:' + pnText.toUpperCase());
+          if (invId) {
+            console.log(LOG_PREFIX, `Resuelto por texto PN: "${pnText}" → inventoryItemId=${invId}`);
+            return { pnId: null, inventoryItemId: invId };
+          }
+        }
+      }
+    }
+
+    // Strategy 3: single PN in cache → use it directly
+    const numericEntries = [];
+    for (const [k, v] of inventoryItemCache) {
+      if (typeof k === 'number') numericEntries.push([k, v]);
+    }
+    if (numericEntries.length === 1) {
+      console.log(LOG_PREFIX, 'Usando único inventoryItemId cacheado:', numericEntries[0][1]);
+      return { pnId: numericEntries[0][0], inventoryItemId: numericEntries[0][1] };
+    }
+
+    return { pnId: null, inventoryItemId: null };
+  }
+
+  function extractPnText(cell) {
+    // Try link text first (e.g., "Ver 'FAKE PART OMAR'" → "FAKE PART OMAR")
+    const links = cell.querySelectorAll('a');
+    for (const link of links) {
+      const text = link.textContent?.trim();
+      if (text) {
+        const match = text.match(/ver\s+'([^']+)'/i) || text.match(/view\s+'([^']+)'/i);
+        if (match) return match[1].trim();
+      }
+    }
+    // Try react-select single value
+    const singleValue = cell.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+    if (singleValue) {
+      const text = singleValue.textContent?.trim();
+      if (text) return text;
+    }
+    // Try any input with value in the PN area (first input before the count input)
+    const inputs = cell.querySelectorAll('input');
+    for (const inp of inputs) {
+      const val = inp.value?.trim();
+      if (val && val.length > 1) return val;
     }
     return null;
   }
@@ -506,8 +572,9 @@ const WeightQuickEntry = (() => {
       return;
     }
 
-    const pnId = getPartNumberId(state.section);
-    let inventoryItemId = pnId ? inventoryItemCache.get(pnId) : null;
+    const resolved = resolveInventoryItemId(state.section);
+    let inventoryItemId = resolved.inventoryItemId;
+    const pnId = resolved.pnId;
 
     if (!inventoryItemId && pnId) {
       try {
@@ -518,7 +585,7 @@ const WeightQuickEntry = (() => {
         if (invId) {
           inventoryItemCache.set(pnId, invId);
           inventoryItemId = invId;
-          console.log(LOG_PREFIX, `Fallback: inventoryItemId=${invId} para pnId=${pnId}`);
+          console.log(LOG_PREFIX, `Fallback API: inventoryItemId=${invId} para pnId=${pnId}`);
         }
       } catch (err) {
         console.warn(LOG_PREFIX, 'Fallback GetPartNumber fallido:', err);
@@ -526,6 +593,7 @@ const WeightQuickEntry = (() => {
     }
 
     if (!inventoryItemId) {
+      console.warn(LOG_PREFIX, 'No se pudo resolver inventoryItemId. Cache:', [...inventoryItemCache.entries()]);
       setStatus(state, 'error', 'PN no resuelto');
       return;
     }
