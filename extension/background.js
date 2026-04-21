@@ -999,6 +999,19 @@ async function handleMessage(message, sender) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    // ── Weight Quick Entry ──
+    case 'toggle-weight-quick-entry': {
+      const { weightQuickEntryEnabled } = await chrome.storage.local.get('weightQuickEntryEnabled');
+      const newState = weightQuickEntryEnabled === false;
+      await chrome.storage.local.set({ weightQuickEntryEnabled: newState });
+      return { enabled: newState, message: newState ? 'Peso R\u00e1pido habilitado' : 'Peso R\u00e1pido deshabilitado' };
+    }
+
+    case 'get-weight-quick-entry-status': {
+      const { weightQuickEntryEnabled } = await chrome.storage.local.get('weightQuickEntryEnabled');
+      return { enabled: weightQuickEntryEnabled !== false };
+    }
+
     // ── CFDI Attacher ──
     case 'toggle-cfdi-attacher': {
       const { cfdiAttacherEnabled } = await chrome.storage.local.get('cfdiAttacherEnabled');

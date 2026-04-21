@@ -12,11 +12,21 @@
     document.documentElement.dataset.saCfdiEnabled = enabled;
   });
 
+  // Communicate Weight Quick Entry enabled state to MAIN world
+  chrome.storage.local.get('weightQuickEntryEnabled', (data) => {
+    const enabled = data.weightQuickEntryEnabled !== false;
+    document.documentElement.dataset.saWeightQuickEntryEnabled = enabled;
+  });
+
   // Listen for storage changes to update in real-time (e.g., when toggled from popup)
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.cfdiAttacherEnabled) {
       const enabled = changes.cfdiAttacherEnabled.newValue !== false;
       document.documentElement.dataset.saCfdiEnabled = enabled;
+    }
+    if (changes.weightQuickEntryEnabled) {
+      const enabled = changes.weightQuickEntryEnabled.newValue !== false;
+      document.documentElement.dataset.saWeightQuickEntryEnabled = enabled;
     }
   });
 

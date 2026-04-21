@@ -13,6 +13,7 @@ const WeightQuickEntry = (() => {
 
   const inventoryItemCache = new Map();
   const lineStates = new Map();
+  const unitObservers = [];
 
   function init() {
     const disabled = document.documentElement.dataset.saWeightQuickEntryEnabled === 'false';
@@ -106,6 +107,30 @@ const WeightQuickEntry = (() => {
     processExistingLines(modal);
     observeNewLines(modal);
     interceptSaveButtons(modal);
+    watchModalRemoval(modal);
+  }
+
+  // ── Modal Cleanup ──
+
+  function watchModalRemoval(modal) {
+    const removalObserver = new MutationObserver(() => {
+      if (!document.body.contains(modal)) {
+        removalObserver.disconnect();
+        cleanupModal(modal);
+      }
+    });
+    removalObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function cleanupModal(modal) {
+    if (modalObserver) { modalObserver.disconnect(); modalObserver = null; }
+    if (modal._saWqeSaveObserver) { modal._saWqeSaveObserver.disconnect(); }
+    for (const obs of unitObservers) obs.disconnect();
+    unitObservers.length = 0;
+    for (const [container] of lineStates) {
+      if (modal.contains(container)) lineStates.delete(container);
+    }
+    console.log(LOG_PREFIX, 'Modal cleanup completado');
   }
 
   // ── Styles ──
@@ -324,33 +349,40 @@ const WeightQuickEntry = (() => {
     section.countParent.insertAdjacentElement('afterend', container);
 
     const KGM_TO_LBR = api()?.getDomain?.()?.conversions?.KGM_TO_LBR || 2.20462;
+
     kgField.input.addEventListener('input', () => {
       const kgVal = parseFloat(kgField.input.value);
-      if (!isNaN(kgVal) && kgVal > 0) {
+      const st = lineStates.get(container);
+      if (kgField.input.value !== '' && !isNaN(kgVal) && kgVal >= 0) {
         lbField.input.value = (kgVal * KGM_TO_LBR).toFixed(2);
         lbField.input.classList.add('sa-wqe-preview');
         lbField.input.disabled = true;
         container.dataset.state = 'pending';
+        if (st) st.status = 'pending';
       } else {
         lbField.input.value = '';
         lbField.input.classList.remove('sa-wqe-preview');
         lbField.input.disabled = false;
-        if (!kgField.input.value && !lbField.input.value) container.dataset.state = 'empty';
+        container.dataset.state = 'empty';
+        if (st) st.status = 'empty';
       }
     });
 
     lbField.input.addEventListener('input', () => {
       const lbVal = parseFloat(lbField.input.value);
-      if (!isNaN(lbVal) && lbVal > 0) {
+      const st = lineStates.get(container);
+      if (lbField.input.value !== '' && !isNaN(lbVal) && lbVal >= 0) {
         kgField.input.value = (lbVal / KGM_TO_LBR).toFixed(3);
         kgField.input.classList.add('sa-wqe-preview');
         kgField.input.disabled = true;
         container.dataset.state = 'pending';
+        if (st) st.status = 'pending';
       } else {
         kgField.input.value = '';
         kgField.input.classList.remove('sa-wqe-preview');
         kgField.input.disabled = false;
-        if (!kgField.input.value && !lbField.input.value) container.dataset.state = 'empty';
+        container.dataset.state = 'empty';
+        if (st) st.status = 'empty';
       }
     });
 
@@ -431,6 +463,7 @@ const WeightQuickEntry = (() => {
       }
     });
     unitObserver.observe(lineContainer, { childList: true, subtree: true, characterData: true });
+    unitObservers.push(unitObserver);
   }
 
   // ── Measurement Execution ──
@@ -451,9 +484,9 @@ const WeightQuickEntry = (() => {
     const kgIsPrimary = !state.kgInput.classList.contains('sa-wqe-preview');
 
     let weightKG;
-    if (kgIsPrimary && !isNaN(kgVal) && kgVal > 0) {
+    if (kgIsPrimary && state.kgInput.value !== '' && !isNaN(kgVal) && kgVal >= 0) {
       weightKG = kgVal;
-    } else if (!isNaN(lbVal) && lbVal > 0) {
+    } else if (state.lbInput.value !== '' && !isNaN(lbVal) && lbVal >= 0) {
       const KGM_TO_LBR = api()?.getDomain?.()?.conversions?.KGM_TO_LBR || 2.20462;
       weightKG = lbVal / KGM_TO_LBR;
     } else {
@@ -471,7 +504,7 @@ const WeightQuickEntry = (() => {
     setStatus(state, 'executing', 'Registrando...');
 
     try {
-      const domain = api().getDomain();
+      const domain = api()?.getDomain?.();
       const KGM_TO_LBR = domain?.conversions?.KGM_TO_LBR || 2.20462;
       const unitIdKGM = domain?.unitIds?.KGM || 3969;
       const unitIdLBR = domain?.unitIds?.LBR || 3972;
@@ -505,8 +538,7 @@ const WeightQuickEntry = (() => {
 
   async function upsertConversion(existingConversions, unitId, inventoryItemId, factor) {
     const existing = existingConversions.find(c => {
-      const cUnitId = c.unitByUnitId?.id;
-      return cUnitId === unitId;
+      return Number(c.unitByUnitId?.id) === Number(unitId);
     });
 
     if (existing) {
@@ -545,31 +577,29 @@ const WeightQuickEntry = (() => {
   // ── SAVE Button Interception ──
 
   function interceptSaveButtons(modal) {
-    const observer = new MutationObserver(() => {
+    const attachToSaveButtons = () => {
       const buttons = modal.querySelectorAll('button');
       for (const btn of buttons) {
         const text = btn.textContent?.trim().toUpperCase() || '';
-        const isSaveBtn = text.includes('SAVE') && !text.includes('CANCEL');
+        const isSaveBtn = text === 'SAVE' || text.startsWith('SAVE +') || text.startsWith('SAVE &');
         if (isSaveBtn && !btn.dataset.saWqeIntercepted) {
           btn.dataset.saWqeIntercepted = 'true';
           btn.addEventListener('click', handleSaveClick, true);
         }
       }
-    });
-    observer.observe(modal, { childList: true, subtree: true });
+    };
 
-    const buttons = modal.querySelectorAll('button');
-    for (const btn of buttons) {
-      const text = btn.textContent?.trim().toUpperCase() || '';
-      const isSaveBtn = text.includes('SAVE') && !text.includes('CANCEL');
-      if (isSaveBtn && !btn.dataset.saWqeIntercepted) {
-        btn.dataset.saWqeIntercepted = 'true';
-        btn.addEventListener('click', handleSaveClick, true);
-      }
-    }
+    const observer = new MutationObserver(attachToSaveButtons);
+    observer.observe(modal, { childList: true, subtree: true });
+    modal._saWqeSaveObserver = observer;
+
+    attachToSaveButtons();
   }
 
-  async function handleSaveClick(e) {
+  function handleSaveClick(e) {
+    const btn = e.currentTarget;
+    if (btn.dataset.saWqeBypass) return;
+
     const pending = [];
     for (const [container, state] of lineStates) {
       if (state.status === 'pending') {
@@ -583,16 +613,20 @@ const WeightQuickEntry = (() => {
 
     if (pending.length === 0) return;
 
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
     console.log(LOG_PREFIX, `Procesando ${pending.length} mediciones pendientes antes de SAVE`);
 
-    const results = await Promise.allSettled(
-      pending.map(container => executeMeasurement(container))
-    );
-
-    const failed = results.filter(r => r.status === 'rejected').length;
-    if (failed > 0) {
-      console.warn(LOG_PREFIX, `${failed}/${pending.length} mediciones fallaron, SAVE contin\u00faa`);
-    }
+    Promise.allSettled(pending.map(c => executeMeasurement(c))).then(results => {
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        console.warn(LOG_PREFIX, `${failed}/${pending.length} mediciones fallaron, SAVE contin\u00faa`);
+      }
+      btn.dataset.saWqeBypass = 'true';
+      btn.click();
+      delete btn.dataset.saWqeBypass;
+    });
   }
 
   return { init };
