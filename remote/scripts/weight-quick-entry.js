@@ -63,40 +63,38 @@ const WeightQuickEntry = (() => {
     };
   }
 
-  // ── MutationObserver: detect Receive Parts modal ──
+  // ── MutationObserver: detect Receive Parts view ──
+
+  const HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]';
+  const VIEW_REGEX = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
 
   function setupObserver() {
     if (observerActive) return;
     observerActive = true;
 
-    const observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType !== 1) continue;
-          checkForReceiveModal(node);
-        }
-      }
+    let scanTimeout = null;
+    const observer = new MutationObserver(() => {
+      if (scanTimeout) clearTimeout(scanTimeout);
+      scanTimeout = setTimeout(scanForReceiveView, 300);
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
-
-    const existing = document.querySelector('[role="dialog"], .MuiDialog-paper');
-    if (existing) checkForReceiveModal(existing);
+    scanForReceiveView();
   }
 
-  const MODAL_REGEX = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
-
-  function checkForReceiveModal(node) {
-    const heading = node.querySelector?.('h2, h3, h4, h5, h6');
-    if (heading && MODAL_REGEX.test(heading.textContent)) {
-      onModalFound(node);
-      return;
-    }
-    const dialog = node.querySelector?.('[role="dialog"], .MuiDialog-paper');
-    if (dialog) {
-      const h = dialog.querySelector('h2, h3, h4, h5, h6');
-      if (h && MODAL_REGEX.test(h.textContent)) {
-        onModalFound(dialog);
+  function scanForReceiveView() {
+    const candidates = document.querySelectorAll(HEADING_SELECTOR);
+    for (const el of candidates) {
+      if (!VIEW_REGEX.test(el.textContent?.trim())) continue;
+      const container = el.closest('[role="dialog"]')
+        || el.closest('.MuiDialog-paper')
+        || el.closest('[class*="MuiPaper"]')
+        || el.closest('main')
+        || el.closest('form')
+        || el.parentElement?.parentElement;
+      if (container) {
+        onModalFound(container);
+        return;
       }
     }
   }
