@@ -509,6 +509,22 @@ const WeightQuickEntry = (() => {
     const pnId = getPartNumberId(state.section);
     let inventoryItemId = pnId ? inventoryItemCache.get(pnId) : null;
 
+    if (!inventoryItemId && pnId) {
+      try {
+        setStatus(state, 'executing', 'Buscando PN...');
+        const pnData = await api().query('GetPartNumber', { id: pnId }, 'GetPartNumber');
+        const invId = pnData?.partNumberById?.inventoryItemByPartNumberId?.id
+          || pnData?.partNumber?.inventoryItemByPartNumberId?.id;
+        if (invId) {
+          inventoryItemCache.set(pnId, invId);
+          inventoryItemId = invId;
+          console.log(LOG_PREFIX, `Fallback: inventoryItemId=${invId} para pnId=${pnId}`);
+        }
+      } catch (err) {
+        console.warn(LOG_PREFIX, 'Fallback GetPartNumber fallido:', err);
+      }
+    }
+
     if (!inventoryItemId) {
       setStatus(state, 'error', 'PN no resuelto');
       return;
