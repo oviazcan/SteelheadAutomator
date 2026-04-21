@@ -156,11 +156,50 @@ const WeightQuickEntry = (() => {
   }
 
   function extractCustomerName(modal) {
-    const singleValues = modal.querySelectorAll('[class*="singleValue"]');
-    for (const sv of singleValues) {
-      const text = sv.textContent?.trim();
-      if (text && text.length > 2) return text;
+    const STRIP_PREFIX = /^[-–—\s]+/;
+
+    // Strategy 1: react-select singleValue (modal then page)
+    for (const scope of [modal, document]) {
+      const svs = scope.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+      for (const sv of svs) {
+        const text = sv.textContent?.trim().replace(STRIP_PREFIX, '').trim();
+        if (text && text.length > 2) return text;
+      }
     }
+
+    // Strategy 2: MUI Autocomplete / Select rendered value
+    for (const scope of [modal, document]) {
+      const candidates = scope.querySelectorAll(
+        '[class*="MuiAutocomplete-input"], [class*="MuiSelect-select"], [class*="MuiChip-label"]'
+      );
+      for (const el of candidates) {
+        const text = (el.value || el.textContent)?.trim().replace(STRIP_PREFIX, '').trim();
+        if (text && text.length > 3) return text;
+      }
+    }
+
+    // Strategy 3: find "Cliente" label and look for adjacent value
+    const allElements = modal.querySelectorAll('label, span, div, p');
+    for (const el of allElements) {
+      const txt = el.textContent?.trim();
+      if (txt && /^cliente:?$/i.test(txt)) {
+        const parent = el.closest('div')?.parentElement || el.parentElement;
+        if (!parent) continue;
+        const inputs = parent.querySelectorAll('input');
+        for (const inp of inputs) {
+          const v = inp.value?.trim().replace(STRIP_PREFIX, '').trim();
+          if (v && v.length > 2) return v;
+        }
+        const spans = parent.querySelectorAll('span, div');
+        for (const s of spans) {
+          if (s === el || s.contains(el) || el.contains(s)) continue;
+          const v = s.textContent?.trim().replace(STRIP_PREFIX, '').trim();
+          if (v && v.length > 3 && !/^cliente/i.test(v) && !/^buscar|select/i.test(v)) return v;
+        }
+      }
+    }
+
+    console.log(LOG_PREFIX, 'extractCustomerName: no encontrado. Primer td textContent:', modal.querySelector('td')?.textContent?.substring(0, 80));
     return null;
   }
 
