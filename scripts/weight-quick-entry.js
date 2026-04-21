@@ -44,13 +44,12 @@ const WeightQuickEntry = (() => {
       const reqCid = bodyObj?.variables?.customerId;
       if (reqCid && reqCid !== lastCustomerId) {
         lastCustomerId = reqCid;
-        if (!customerLbsResolved) {
-          const modal = document.querySelector('[data-sa-wqe-attached="true"]');
-          if (modal) {
-            resolveCustomerPreference(modal).then(() => {
-              if (customerUseLbs) updateFieldUnits(modal);
-            });
-          }
+        customerLbsResolved = false;
+        const modal = document.querySelector('[data-sa-wqe-attached="true"]');
+        if (modal) {
+          resolveCustomerPreference(modal).then(() => {
+            updateFieldUnits(modal);
+          });
         }
       }
 
@@ -75,6 +74,15 @@ const WeightQuickEntry = (() => {
         } catch (err) {
           console.warn(LOG_PREFIX, 'Error cacheando inventoryItemIds:', err);
         }
+
+        if (!customerLbsResolved) {
+          const modal = document.querySelector('[data-sa-wqe-attached="true"]');
+          if (modal) {
+            resolveCustomerPreference(modal).then(() => {
+              updateFieldUnits(modal);
+            });
+          }
+        }
       }
 
       return response;
@@ -87,11 +95,10 @@ const WeightQuickEntry = (() => {
 
   async function resolveCustomerPreference(modal) {
     if (customerLbsResolved) return;
-    customerLbsResolved = true;
 
     const name = extractCustomerName(modal);
     if (!name || name.length < 2) {
-      console.log(LOG_PREFIX, 'No se encontro nombre de cliente en modal');
+      console.log(LOG_PREFIX, 'No se encontro nombre de cliente en modal (se reintentara)');
       return;
     }
 
@@ -110,6 +117,7 @@ const WeightQuickEntry = (() => {
 
       if (found.customInputs) {
         customerUseLbs = checkLbsPreference(found.customInputs);
+        customerLbsResolved = true;
         console.log(LOG_PREFIX, `usarLBS=${customerUseLbs} (via SearchByName)`);
         return;
       }
@@ -122,6 +130,7 @@ const WeightQuickEntry = (() => {
           const cust = data2?.customerByIdInDomain || data2?.customerById;
           if (cust?.customInputs) {
             customerUseLbs = checkLbsPreference(cust.customInputs);
+            customerLbsResolved = true;
             console.log(LOG_PREFIX, `usarLBS=${customerUseLbs} (via Customer idInDomain=${displayId})`);
             return;
           }
@@ -132,6 +141,9 @@ const WeightQuickEntry = (() => {
       } else {
         console.log(LOG_PREFIX, 'CustomerSearchByName no devolvio idInDomain');
       }
+
+      customerLbsResolved = true;
+      console.log(LOG_PREFIX, `Cliente resuelto sin customInputs, usando KG por defecto`);
     } catch (err) {
       console.warn(LOG_PREFIX, 'Error en resolveCustomerPreference:', err.message || err);
     }
@@ -175,24 +187,24 @@ const WeightQuickEntry = (() => {
   }
 
   function extractCustomerName(modal) {
-    // Strategy 1: react-select singleValue (modal then page)
-    for (const scope of [modal, document]) {
-      const svs = scope.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
-      for (const sv of svs) {
-        const text = cleanName(sv.textContent);
-        if (!isPlaceholder(text)) return text;
-      }
+    // Only search ABOVE the table (header area where "Cliente:" dropdown lives)
+    const table = modal.querySelector('table');
+    const headerArea = table ? table.previousElementSibling?.parentElement || modal : modal;
+
+    // Strategy 1: react-select singleValue in header area
+    const svs = headerArea.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of svs) {
+      const text = cleanName(sv.textContent);
+      if (!isPlaceholder(text)) return text;
     }
 
-    // Strategy 2: MUI Autocomplete / Select / Chip
-    for (const scope of [modal, document]) {
-      const candidates = scope.querySelectorAll(
-        '[class*="MuiAutocomplete-input"], [class*="MuiSelect-select"], [class*="MuiChip-label"]'
-      );
-      for (const el of candidates) {
-        const text = cleanName(el.value || el.textContent);
-        if (!isPlaceholder(text)) return text;
-      }
+    // Strategy 2: MUI Autocomplete / Select / Chip in header area
+    const candidates = headerArea.querySelectorAll(
+      '[class*="MuiAutocomplete-input"], [class*="MuiSelect-select"], [class*="MuiChip-label"]'
+    );
+    for (const el of candidates) {
+      const text = cleanName(el.value || el.textContent);
+      if (!isPlaceholder(text)) return text;
     }
 
     // Strategy 3: find "Cliente" label → adjacent value
