@@ -129,7 +129,7 @@ const WeightQuickEntry = (() => {
             { idInDomain: parseInt(displayId, 10), includeAccountingFields: false }, 'Customer');
           const cust = data2?.customerByIdInDomain || data2?.customerById;
           if (cust?.customInputs) {
-            console.log(LOG_PREFIX, 'customInputs raw:', JSON.stringify(cust.customInputs).slice(0, 500));
+            console.log(LOG_PREFIX, 'customInputs raw:', JSON.stringify(cust.customInputs, null, 2));
             customerUseLbs = checkLbsPreference(cust.customInputs);
             customerLbsResolved = true;
             console.log(LOG_PREFIX, `usarLBS=${customerUseLbs} (via Customer idInDomain=${displayId})`);
