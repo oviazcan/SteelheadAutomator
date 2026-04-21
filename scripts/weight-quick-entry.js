@@ -44,6 +44,14 @@ const WeightQuickEntry = (() => {
       const reqCid = bodyObj?.variables?.customerId;
       if (reqCid && reqCid !== lastCustomerId) {
         lastCustomerId = reqCid;
+        if (!customerLbsResolved) {
+          const modal = document.querySelector('[data-sa-wqe-attached="true"]');
+          if (modal) {
+            resolveCustomerPreference(modal).then(() => {
+              if (customerUseLbs) updateFieldUnits(modal);
+            });
+          }
+        }
       }
 
       const response = await origFetch.apply(this, args);
@@ -155,30 +163,39 @@ const WeightQuickEntry = (() => {
     return false;
   }
 
-  function extractCustomerName(modal) {
-    const STRIP_PREFIX = /^[-–—\s]+/;
+  const PLACEHOLDER_RE = /^(buscar|search|select|seleccionar|todo|all|elegir|choose)/i;
+  const STRIP_PREFIX = /^[-–—\s]+/;
 
+  function isPlaceholder(text) {
+    return !text || text.length < 3 || PLACEHOLDER_RE.test(text);
+  }
+
+  function cleanName(text) {
+    return text?.trim().replace(STRIP_PREFIX, '').trim() || '';
+  }
+
+  function extractCustomerName(modal) {
     // Strategy 1: react-select singleValue (modal then page)
     for (const scope of [modal, document]) {
       const svs = scope.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
       for (const sv of svs) {
-        const text = sv.textContent?.trim().replace(STRIP_PREFIX, '').trim();
-        if (text && text.length > 2) return text;
+        const text = cleanName(sv.textContent);
+        if (!isPlaceholder(text)) return text;
       }
     }
 
-    // Strategy 2: MUI Autocomplete / Select rendered value
+    // Strategy 2: MUI Autocomplete / Select / Chip
     for (const scope of [modal, document]) {
       const candidates = scope.querySelectorAll(
         '[class*="MuiAutocomplete-input"], [class*="MuiSelect-select"], [class*="MuiChip-label"]'
       );
       for (const el of candidates) {
-        const text = (el.value || el.textContent)?.trim().replace(STRIP_PREFIX, '').trim();
-        if (text && text.length > 3) return text;
+        const text = cleanName(el.value || el.textContent);
+        if (!isPlaceholder(text)) return text;
       }
     }
 
-    // Strategy 3: find "Cliente" label and look for adjacent value
+    // Strategy 3: find "Cliente" label → adjacent value
     const allElements = modal.querySelectorAll('label, span, div, p');
     for (const el of allElements) {
       const txt = el.textContent?.trim();
@@ -187,20 +204,40 @@ const WeightQuickEntry = (() => {
         if (!parent) continue;
         const inputs = parent.querySelectorAll('input');
         for (const inp of inputs) {
-          const v = inp.value?.trim().replace(STRIP_PREFIX, '').trim();
-          if (v && v.length > 2) return v;
+          const v = cleanName(inp.value);
+          if (!isPlaceholder(v)) return v;
         }
         const spans = parent.querySelectorAll('span, div');
         for (const s of spans) {
           if (s === el || s.contains(el) || el.contains(s)) continue;
-          const v = s.textContent?.trim().replace(STRIP_PREFIX, '').trim();
-          if (v && v.length > 3 && !/^cliente/i.test(v) && !/^buscar|select/i.test(v)) return v;
+          const v = cleanName(s.textContent);
+          if (!isPlaceholder(v) && !/^cliente/i.test(v)) return v;
         }
       }
     }
 
-    console.log(LOG_PREFIX, 'extractCustomerName: no encontrado. Primer td textContent:', modal.querySelector('td')?.textContent?.substring(0, 80));
     return null;
+  }
+
+  function updateFieldUnits(modal) {
+    const newUnit = customerUseLbs ? 'LB' : 'KG';
+    for (const [container, state] of lineStates) {
+      if (!modal.contains(container)) continue;
+      if (state.weightUnit === newUnit) continue;
+      state.weightUnit = newUnit;
+      const label = container.querySelector('.sa-wqe-field label');
+      if (label) label.textContent = `Peso cliente ${newUnit}:`;
+      const input = state.weightInput;
+      if (input) {
+        input.placeholder = newUnit === 'KG' ? 'ej: 25' : 'ej: 55';
+        if (!input.value) input.value = '';
+      }
+      const headerSpan = container.querySelector('.sa-wqe-header span');
+      if (headerSpan && headerSpan.textContent.includes('Peso')) {
+        headerSpan.textContent = `\u26A1 Peso r\u00e1pido (${newUnit})`;
+      }
+    }
+    console.log(LOG_PREFIX, `Campos actualizados a ${newUnit}`);
   }
 
   // ── MutationObserver: detect Receive Parts view ──
