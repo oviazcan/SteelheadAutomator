@@ -347,15 +347,17 @@ const WeightQuickEntry = (() => {
     }
 
     // Strategy 3: single PN in cache → use it directly
-    const numericEntries = [];
+    const pnEntries = [];
     for (const [k, v] of inventoryItemCache) {
-      if (typeof k === 'number') numericEntries.push([k, v]);
+      if (typeof k === 'string' && k.startsWith('str:')) continue;
+      pnEntries.push([k, v]);
     }
-    if (numericEntries.length === 1) {
-      console.log(LOG_PREFIX, 'Usando único inventoryItemId cacheado:', numericEntries[0][1]);
-      return { pnId: numericEntries[0][0], inventoryItemId: numericEntries[0][1] };
+    if (pnEntries.length === 1) {
+      console.log(LOG_PREFIX, 'Usando único inventoryItemId cacheado:', pnEntries[0][1]);
+      return { pnId: pnEntries[0][0], inventoryItemId: pnEntries[0][1] };
     }
 
+    console.warn(LOG_PREFIX, 'resolveInventoryItemId falló. Strategies: link=no, text=no, single=no(' + pnEntries.length + '). Cache keys:', [...inventoryItemCache.keys()]);
     return { pnId: null, inventoryItemId: null };
   }
 
