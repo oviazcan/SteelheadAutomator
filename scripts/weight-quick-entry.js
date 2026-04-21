@@ -1,5 +1,5 @@
 // Weight Quick Entry
-// Inyecta campos de peso KG/LB en el modal de Receive Parts
+// Inyecta campo de peso (KG o LB segun preferencia del cliente) en el modal de Receive Parts
 // Ejecuta mediciones via CreateInventoryItemUnitConversion / UpdateInventoryItemUnitConversion
 // Depends on: SteelheadAPI
 
@@ -14,6 +14,9 @@ const WeightQuickEntry = (() => {
   const inventoryItemCache = new Map();
   const lineStates = new Map();
   const unitObservers = [];
+
+  let customerUseLbs = false;
+  let lastCustomerId = null;
 
   function init() {
     const disabled = document.documentElement.dataset.saWeightQuickEntryEnabled === 'false';
@@ -37,6 +40,13 @@ const WeightQuickEntry = (() => {
 
       let bodyObj;
       try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
+
+      // Capture customerId from any GraphQL request
+      const reqCid = bodyObj?.variables?.customerId;
+      if (reqCid && reqCid !== lastCustomerId) {
+        lastCustomerId = reqCid;
+        resolveCustomerLbsPreference(reqCid);
+      }
 
       const response = await origFetch.apply(this, args);
 
@@ -63,6 +73,83 @@ const WeightQuickEntry = (() => {
 
       return response;
     };
+  }
+
+  // ── Customer LBS Preference ──
+
+  async function resolveCustomerLbsPreference(customerId) {
+    try {
+      const cid = parseInt(customerId, 10);
+      const data = await api().query('GetCustomerInfoForReceivedOrder', { customerId: cid }, 'GetCustomerInfoForReceivedOrder');
+      const customer = data?.customerById;
+      if (customer?.customInputs) {
+        customerUseLbs = checkLbsPreference(customer.customInputs);
+        console.log(LOG_PREFIX, `Cliente ${cid} (${customer.name || ''}): usarLBS=${customerUseLbs}`);
+        return;
+      }
+      const data2 = await api().query('Customer', { id: cid }, 'Customer');
+      const cust2 = data2?.customerById || data2?.customer;
+      if (cust2?.customInputs) {
+        customerUseLbs = checkLbsPreference(cust2.customInputs);
+        console.log(LOG_PREFIX, `Cliente ${cid}: usarLBS=${customerUseLbs} (via Customer)`);
+      } else {
+        console.log(LOG_PREFIX, `Cliente ${cid}: sin customInputs, usando KG por defecto`);
+      }
+    } catch (err) {
+      console.warn(LOG_PREFIX, 'Error consultando preferencia LBS:', err);
+    }
+  }
+
+  function checkLbsPreference(customInputs) {
+    if (Array.isArray(customInputs)) {
+      return customInputs.some(ci => {
+        const name = (ci.name || ci.fieldName || ci.label || '').toLowerCase();
+        return name.includes('lbs') && (ci.value === true || ci.value === 'true' || ci.textValue === 'true');
+      });
+    }
+    if (typeof customInputs === 'object' && customInputs !== null) {
+      return searchObjForLbs(customInputs);
+    }
+    return false;
+  }
+
+  function searchObjForLbs(obj) {
+    for (const [key, val] of Object.entries(obj)) {
+      const k = key.toLowerCase();
+      if (k.includes('lbs') || (k.includes('usar') && k.includes('lb'))) {
+        if (val === true || val === 'true') return true;
+      }
+      if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        if (searchObjForLbs(val)) return true;
+      }
+    }
+    return false;
+  }
+
+  async function resolveCustomerFromModal(modal) {
+    const name = extractCustomerName(modal);
+    if (!name || name.length < 2) return;
+    try {
+      const data = await api().query('CustomerSearchByName',
+        { nameLike: `%${name}%`, orderBy: ['NAME_ASC'] }, 'CustomerSearchByName');
+      const nodes = data?.searchCustomers?.nodes || data?.allCustomers?.nodes || [];
+      const customer = nodes.find(c => c.name?.toUpperCase().includes(name.toUpperCase()));
+      if (customer?.id) {
+        lastCustomerId = customer.id;
+        await resolveCustomerLbsPreference(customer.id);
+      }
+    } catch (err) {
+      console.warn(LOG_PREFIX, 'Error buscando cliente en modal:', err);
+    }
+  }
+
+  function extractCustomerName(modal) {
+    const singleValues = modal.querySelectorAll('[class*="singleValue"]');
+    for (const sv of singleValues) {
+      const text = sv.textContent?.trim();
+      if (text && text.length > 2) return text;
+    }
+    return null;
   }
 
   // ── MutationObserver: detect Receive Parts view ──
@@ -106,10 +193,18 @@ const WeightQuickEntry = (() => {
     modal.dataset.saWqeAttached = 'true';
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
-    processExistingLines(modal);
-    observeNewLines(modal);
     interceptSaveButtons(modal);
     watchModalRemoval(modal);
+
+    const ready = lastCustomerId !== null
+      ? Promise.resolve()
+      : resolveCustomerFromModal(modal);
+
+    ready.then(() => {
+      console.log(LOG_PREFIX, `Inyectando campos (unidad: ${customerUseLbs ? 'LB' : 'KG'})`);
+      processExistingLines(modal);
+      observeNewLines(modal);
+    });
   }
 
   // ── Modal Cleanup ──
@@ -196,30 +291,14 @@ const WeightQuickEntry = (() => {
         border: 1px solid #ccc;
         border-radius: 4px;
         padding: 6px 8px;
-        width: 80px;
+        width: 100px;
         font-size: 14px;
         font-family: inherit;
       }
-      .sa-wqe-field input:disabled {
+      .sa-wqe-field input:read-only {
         background: #f5f5f5;
-        color: #999;
+        color: #666;
       }
-      .sa-wqe-field input.sa-wqe-preview {
-        color: #999;
-        background: #f9f9f9;
-      }
-      .sa-wqe-btn {
-        background: none;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 4px 6px;
-        cursor: pointer;
-        font-size: 12px;
-        color: #e74c3c;
-        line-height: 1;
-      }
-      .sa-wqe-btn:hover { background: #fef0f0; }
-      .sa-wqe-btn:disabled { opacity: 0.4; cursor: not-allowed; }
       .sa-wqe-hint {
         margin-top: 5px;
         font-size: 10px;
@@ -323,7 +402,6 @@ const WeightQuickEntry = (() => {
   function resolveInventoryItemId(section) {
     const row = section.row || section.countParent?.closest('tr');
 
-    // Strategy 1: link href → pnId → cache lookup
     const pnId = getPartNumberId(section);
     if (pnId) {
       const invId = inventoryItemCache.get(pnId);
@@ -331,7 +409,6 @@ const WeightQuickEntry = (() => {
       return { pnId, inventoryItemId: null };
     }
 
-    // Strategy 2: extract PN text from row → match against string cache
     if (row) {
       const firstCell = row.querySelector('td');
       if (firstCell) {
@@ -339,30 +416,28 @@ const WeightQuickEntry = (() => {
         if (pnText) {
           const invId = inventoryItemCache.get('str:' + pnText.toUpperCase());
           if (invId) {
-            console.log(LOG_PREFIX, `Resuelto por texto PN: "${pnText}" → inventoryItemId=${invId}`);
+            console.log(LOG_PREFIX, `Resuelto por texto PN: "${pnText}"`);
             return { pnId: null, inventoryItemId: invId };
           }
         }
       }
     }
 
-    // Strategy 3: single PN in cache → use it directly
     const pnEntries = [];
     for (const [k, v] of inventoryItemCache) {
       if (typeof k === 'string' && k.startsWith('str:')) continue;
       pnEntries.push([k, v]);
     }
     if (pnEntries.length === 1) {
-      console.log(LOG_PREFIX, 'Usando único inventoryItemId cacheado:', pnEntries[0][1]);
+      console.log(LOG_PREFIX, 'Usando unico inventoryItemId cacheado:', pnEntries[0][1]);
       return { pnId: pnEntries[0][0], inventoryItemId: pnEntries[0][1] };
     }
 
-    console.warn(LOG_PREFIX, 'resolveInventoryItemId falló. Strategies: link=no, text=no, single=no(' + pnEntries.length + '). Cache keys:', [...inventoryItemCache.keys()]);
+    console.warn(LOG_PREFIX, 'resolveInventoryItemId fallo. Cache keys:', [...inventoryItemCache.keys()]);
     return { pnId: null, inventoryItemId: null };
   }
 
   function extractPnText(cell) {
-    // Try link text first (e.g., "Ver 'FAKE PART OMAR'" → "FAKE PART OMAR")
     const links = cell.querySelectorAll('a');
     for (const link of links) {
       const text = link.textContent?.trim();
@@ -371,13 +446,11 @@ const WeightQuickEntry = (() => {
         if (match) return match[1].trim();
       }
     }
-    // Try react-select single value
     const singleValue = cell.querySelector('[class*="singleValue"], [class*="SingleValue"]');
     if (singleValue) {
       const text = singleValue.textContent?.trim();
       if (text) return text;
     }
-    // Try any input with value in the PN area (first input before the count input)
     const inputs = cell.querySelectorAll('input');
     for (const inp of inputs) {
       const val = inp.value?.trim();
@@ -386,11 +459,15 @@ const WeightQuickEntry = (() => {
     return null;
   }
 
+  // ── Weight Field Injection ──
+
   function injectWeightFields(section, modal) {
     if (section.countParent.querySelector('.sa-wqe-container')) return;
 
     const unitVal = getUnitValue(section);
     if (unitVal && unitVal !== 'Count' && unitVal !== 'Conteo') return;
+
+    const weightUnit = customerUseLbs ? 'LB' : 'KG';
 
     const container = document.createElement('div');
     container.className = 'sa-wqe-container';
@@ -400,7 +477,7 @@ const WeightQuickEntry = (() => {
     header.className = 'sa-wqe-header';
     const headerLabel = document.createElement('span');
     headerLabel.style.color = '#e74c3c';
-    headerLabel.textContent = '\u26A1 Peso r\u00e1pido';
+    headerLabel.textContent = '\u26A1 Peso r\u00e1pido (' + weightUnit + ')';
     const headerSub = document.createElement('span');
     headerSub.style.cssText = 'font-weight:400; color:#999; font-size:10px;';
     headerSub.textContent = '(SteelheadAutomator)';
@@ -410,60 +487,43 @@ const WeightQuickEntry = (() => {
     const statusSpan = document.createElement('span');
     statusSpan.className = 'sa-wqe-status';
     header.appendChild(statusSpan);
-
     container.appendChild(header);
 
     const fieldsRow = document.createElement('div');
     fieldsRow.className = 'sa-wqe-fields';
 
-    const kgField = createWeightField('KG', section, container, statusSpan, modal);
-    fieldsRow.appendChild(kgField.wrapper);
-
-    const lbField = createWeightField('LB', section, container, statusSpan, modal);
-    fieldsRow.appendChild(lbField.wrapper);
-
+    const weightInput = document.createElement('div');
+    weightInput.className = 'sa-wqe-field';
+    const label = document.createElement('label');
+    label.textContent = `Peso cliente ${weightUnit}:`;
+    weightInput.appendChild(label);
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = weightUnit === 'KG' ? 'ej: 25' : 'ej: 55';
+    input.addEventListener('blur', () => {
+      const val = parseFloat(input.value);
+      if (input.value && !isNaN(val) && val >= 0) {
+        executeMeasurement(container);
+      }
+    });
+    weightInput.appendChild(input);
+    fieldsRow.appendChild(weightInput);
     container.appendChild(fieldsRow);
 
     const hint = document.createElement('div');
     hint.className = 'sa-wqe-hint';
-    hint.textContent = 'Tab para registrar \u00b7 Factor: peso \u00f7 count';
+    hint.textContent = 'Tab para registrar \u00b7 Registra KG + LB autom\u00e1ticamente';
     container.appendChild(hint);
 
     section.countParent.appendChild(container);
 
-    const KGM_TO_LBR = api()?.getDomain?.()?.conversions?.KGM_TO_LBR || 2.20462;
-
-    kgField.input.addEventListener('input', () => {
-      const kgVal = parseFloat(kgField.input.value);
+    input.addEventListener('input', () => {
+      const val = parseFloat(input.value);
       const st = lineStates.get(container);
-      if (kgField.input.value !== '' && !isNaN(kgVal) && kgVal >= 0) {
-        lbField.input.value = (kgVal * KGM_TO_LBR).toFixed(2);
-        lbField.input.classList.add('sa-wqe-preview');
-        lbField.input.disabled = true;
+      if (input.value !== '' && !isNaN(val) && val >= 0) {
         container.dataset.state = 'pending';
         if (st) st.status = 'pending';
       } else {
-        lbField.input.value = '';
-        lbField.input.classList.remove('sa-wqe-preview');
-        lbField.input.disabled = false;
-        container.dataset.state = 'empty';
-        if (st) st.status = 'empty';
-      }
-    });
-
-    lbField.input.addEventListener('input', () => {
-      const lbVal = parseFloat(lbField.input.value);
-      const st = lineStates.get(container);
-      if (lbField.input.value !== '' && !isNaN(lbVal) && lbVal >= 0) {
-        kgField.input.value = (lbVal / KGM_TO_LBR).toFixed(3);
-        kgField.input.classList.add('sa-wqe-preview');
-        kgField.input.disabled = true;
-        container.dataset.state = 'pending';
-        if (st) st.status = 'pending';
-      } else {
-        kgField.input.value = '';
-        kgField.input.classList.remove('sa-wqe-preview');
-        kgField.input.disabled = false;
         container.dataset.state = 'empty';
         if (st) st.status = 'empty';
       }
@@ -471,8 +531,8 @@ const WeightQuickEntry = (() => {
 
     const state = {
       container,
-      kgInput: kgField.input,
-      lbInput: lbField.input,
+      weightInput: input,
+      weightUnit,
       statusSpan,
       section,
       status: 'empty'
@@ -487,48 +547,9 @@ const WeightQuickEntry = (() => {
         container.dataset.state = 'pending';
         statusSpan.textContent = '\u23F3 Recalcular';
         statusSpan.style.color = '#ff9800';
-        kgField.input.readOnly = false;
-        lbField.input.readOnly = false;
+        input.readOnly = false;
       }
     });
-  }
-
-  function createWeightField(unit, section, container, statusSpan, modal) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'sa-wqe-field';
-
-    const label = document.createElement('label');
-    label.textContent = `Peso cliente ${unit}:`;
-    wrapper.appendChild(label);
-
-    const inputRow = document.createElement('div');
-    inputRow.style.cssText = 'display:flex; align-items:center; gap:4px;';
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = unit === 'KG' ? 'ej: 25' : 'ej: 55';
-    input.setAttribute('data-unit', unit);
-
-    input.addEventListener('blur', () => {
-      if (input.value && !input.classList.contains('sa-wqe-preview')) {
-        executeMeasurement(container);
-      }
-    });
-
-    inputRow.appendChild(input);
-
-    const btn = document.createElement('button');
-    btn.className = 'sa-wqe-btn';
-    btn.textContent = '\u26A1';
-    btn.title = 'Registrar ahora';
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      executeMeasurement(container);
-    });
-    inputRow.appendChild(btn);
-
-    wrapper.appendChild(inputRow);
-    return { wrapper, input, btn };
   }
 
   function watchUnitChanges(section, container) {
@@ -560,19 +581,11 @@ const WeightQuickEntry = (() => {
       return;
     }
 
-    const kgVal = parseFloat(state.kgInput.value);
-    const lbVal = parseFloat(state.lbInput.value);
-    const kgIsPrimary = !state.kgInput.classList.contains('sa-wqe-preview');
+    const inputVal = parseFloat(state.weightInput.value);
+    if (state.weightInput.value === '' || isNaN(inputVal) || inputVal < 0) return;
 
-    let weightKG;
-    if (kgIsPrimary && state.kgInput.value !== '' && !isNaN(kgVal) && kgVal >= 0) {
-      weightKG = kgVal;
-    } else if (state.lbInput.value !== '' && !isNaN(lbVal) && lbVal >= 0) {
-      const KGM_TO_LBR = api()?.getDomain?.()?.conversions?.KGM_TO_LBR || 2.20462;
-      weightKG = lbVal / KGM_TO_LBR;
-    } else {
-      return;
-    }
+    const KGM_TO_LBR = api()?.getDomain?.()?.conversions?.KGM_TO_LBR || 2.20462;
+    const weightKG = state.weightUnit === 'KG' ? inputVal : inputVal / KGM_TO_LBR;
 
     const resolved = resolveInventoryItemId(state.section);
     let inventoryItemId = resolved.inventoryItemId;
@@ -587,7 +600,6 @@ const WeightQuickEntry = (() => {
         if (invId) {
           inventoryItemCache.set(pnId, invId);
           inventoryItemId = invId;
-          console.log(LOG_PREFIX, `Fallback API: inventoryItemId=${invId} para pnId=${pnId}`);
         }
       } catch (err) {
         console.warn(LOG_PREFIX, 'Fallback GetPartNumber fallido:', err);
@@ -604,7 +616,6 @@ const WeightQuickEntry = (() => {
 
     try {
       const domain = api()?.getDomain?.();
-      const KGM_TO_LBR = domain?.conversions?.KGM_TO_LBR || 2.20462;
       const unitIdKGM = domain?.unitIds?.KGM || 3969;
       const unitIdLBR = domain?.unitIds?.LBR || 3972;
 
@@ -618,19 +629,13 @@ const WeightQuickEntry = (() => {
       await upsertConversion(existingConversions, unitIdKGM, inventoryItemId, factorKGM);
       await upsertConversion(existingConversions, unitIdLBR, inventoryItemId, factorLBR);
 
-      state.kgInput.value = weightKG.toFixed(3);
-      state.kgInput.readOnly = true;
-      const lbEquiv = weightKG * KGM_TO_LBR;
-      state.lbInput.value = lbEquiv.toFixed(2);
-      state.lbInput.readOnly = true;
-      state.lbInput.classList.add('sa-wqe-preview');
-
+      state.weightInput.readOnly = true;
       const factorText = `${factorKGM.toFixed(4)} kg/pz \u00b7 ${factorLBR.toFixed(4)} lb/pz`;
       setStatus(state, 'done', factorText);
-      console.log(LOG_PREFIX, `Medici\u00f3n registrada: inventoryItem=${inventoryItemId} ${factorText}`);
+      console.log(LOG_PREFIX, `Medicion registrada: inventoryItem=${inventoryItemId} ${factorText}`);
 
     } catch (err) {
-      console.error(LOG_PREFIX, 'Error registrando medici\u00f3n:', err);
+      console.error(LOG_PREFIX, 'Error registrando medicion:', err);
       setStatus(state, 'error', err.message || 'Error de red');
     }
   }
@@ -702,12 +707,8 @@ const WeightQuickEntry = (() => {
 
     const pending = [];
     for (const [container, state] of lineStates) {
-      if (state.status === 'pending') {
-        const hasKg = state.kgInput.value && !state.kgInput.classList.contains('sa-wqe-preview');
-        const hasLb = state.lbInput.value && !state.lbInput.classList.contains('sa-wqe-preview');
-        if (hasKg || hasLb) {
-          pending.push(container);
-        }
+      if (state.status === 'pending' && state.weightInput.value) {
+        pending.push(container);
       }
     }
 
@@ -721,7 +722,7 @@ const WeightQuickEntry = (() => {
     Promise.allSettled(pending.map(c => executeMeasurement(c))).then(results => {
       const failed = results.filter(r => r.status === 'rejected').length;
       if (failed > 0) {
-        console.warn(LOG_PREFIX, `${failed}/${pending.length} mediciones fallaron, SAVE contin\u00faa`);
+        console.warn(LOG_PREFIX, `${failed}/${pending.length} mediciones fallaron, SAVE continua`);
       }
       btn.dataset.saWqeBypass = 'true';
       btn.click();
