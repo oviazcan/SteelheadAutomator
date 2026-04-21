@@ -59,7 +59,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator',
           'scripts/wo-deadline-changer.js': 'WODeadlineChanger',
           'scripts/cfdi-attacher.js': 'CfdiAttacher',
-          'scripts/paros-linea.js': 'ParosLinea' };
+          'scripts/paros-linea.js': 'ParosLinea',
+          'scripts/weight-quick-entry.js': 'WeightQuickEntry' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
