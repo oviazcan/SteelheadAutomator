@@ -234,8 +234,13 @@ const WeightQuickEntry = (() => {
 
   function updateFieldUnits(modal) {
     const newUnit = customerUseLbs ? 'LB' : 'KG';
+    let updated = 0;
     for (const [container, state] of lineStates) {
-      if (!modal.contains(container)) continue;
+      if (!modal.contains(container)) {
+        lineStates.delete(container);
+        continue;
+      }
+      updated++;
       if (state.weightUnit === newUnit) continue;
       state.weightUnit = newUnit;
       const label = container.querySelector('.sa-wqe-field label');
@@ -250,7 +255,10 @@ const WeightQuickEntry = (() => {
         headerSpan.textContent = `\u26A1 Peso r\u00e1pido (${newUnit})`;
       }
     }
-    console.log(LOG_PREFIX, `Campos actualizados a ${newUnit}`);
+    if (updated === 0) {
+      processExistingLines(modal);
+    }
+    console.log(LOG_PREFIX, `Campos actualizados a ${newUnit} (${updated} existentes)`);
   }
 
   // ── MutationObserver: detect Receive Parts view ──
