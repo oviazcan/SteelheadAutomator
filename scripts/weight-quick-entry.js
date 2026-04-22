@@ -98,7 +98,14 @@ const WeightQuickEntry = (() => {
 
     const name = extractCustomerName(modal);
     if (!name || name.length < 2) {
-      console.log(LOG_PREFIX, 'No se encontro nombre de cliente en modal (se reintentara)');
+      if (lastCustomerId && !modal._saWqeRetryPending) {
+        modal._saWqeRetryPending = true;
+        console.log(LOG_PREFIX, 'Nombre no visible aun, reintentando en 800ms');
+        setTimeout(() => {
+          modal._saWqeRetryPending = false;
+          resolveCustomerPreference(modal).then(() => updateFieldUnits(modal));
+        }, 800);
+      }
       return;
     }
 
