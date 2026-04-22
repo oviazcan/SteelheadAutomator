@@ -195,44 +195,28 @@ const WeightQuickEntry = (() => {
   }
 
   function extractCustomerName(modal) {
-    // Only search ABOVE the table (header area where "Cliente:" dropdown lives)
-    const table = modal.querySelector('table');
-    const headerArea = table ? table.previousElementSibling?.parentElement || modal : modal;
-
-    // Strategy 1: react-select singleValue in header area
-    const svs = headerArea.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
-    for (const sv of svs) {
-      const text = cleanName(sv.textContent);
-      if (!isPlaceholder(text)) return text;
-    }
-
-    // Strategy 2: MUI Autocomplete / Select / Chip in header area
-    const candidates = headerArea.querySelectorAll(
-      '[class*="MuiAutocomplete-input"], [class*="MuiSelect-select"], [class*="MuiChip-label"]'
-    );
-    for (const el of candidates) {
-      const text = cleanName(el.value || el.textContent);
-      if (!isPlaceholder(text)) return text;
-    }
-
-    // Strategy 3: find "Cliente" label → adjacent value
-    const allElements = modal.querySelectorAll('label, span, div, p');
-    for (const el of allElements) {
+    const labels = modal.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
       const txt = el.textContent?.trim();
-      if (txt && /^cliente:?$/i.test(txt)) {
-        const parent = el.closest('div')?.parentElement || el.parentElement;
-        if (!parent) continue;
-        const inputs = parent.querySelectorAll('input');
-        for (const inp of inputs) {
-          const v = cleanName(inp.value);
-          if (!isPlaceholder(v)) return v;
-        }
-        const spans = parent.querySelectorAll('span, div');
-        for (const s of spans) {
-          if (s === el || s.contains(el) || el.contains(s)) continue;
-          const v = cleanName(s.textContent);
-          if (!isPlaceholder(v) && !/^cliente/i.test(v)) return v;
-        }
+      if (!txt || !/^(customer|cliente):?$/i.test(txt)) continue;
+
+      const container = el.closest('div[class*="field"]')
+        || el.closest('div')?.parentElement
+        || el.parentElement;
+      if (!container) continue;
+
+      const sv = container.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+      if (sv) {
+        const clone = sv.cloneNode(true);
+        clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+        const text = cleanName(clone.textContent);
+        if (!isPlaceholder(text)) return text;
+      }
+
+      const inputs = container.querySelectorAll('input');
+      for (const inp of inputs) {
+        const v = cleanName(inp.value);
+        if (!isPlaceholder(v)) return v;
       }
     }
 
