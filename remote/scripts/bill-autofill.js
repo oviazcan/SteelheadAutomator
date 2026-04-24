@@ -597,7 +597,6 @@ const BillAutofill = (() => {
 
   async function tryFillCombobox(labelText, searchText, targetAccountName) {
     const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
-    let container = null;
     let labelEl = null;
 
     const labels = document.querySelectorAll('label, span, div, p');
@@ -612,28 +611,32 @@ const BillAutofill = (() => {
 
     if (!labelEl) return { success: false, method: 'fallback', reason: 'label no encontrado' };
 
-    // Walk up from label until we find a parent containing a React Select control
+    // Check for native <select> FIRST — "form-control" class on <select> would
+    // false-match the React Select [class*="control"] selector
     let parent = labelEl;
-    for (let d = 0; d < 8 && parent; d++) {
-      const ctrl = parent.querySelector('[class*="control"], [class*="Control"]');
-      if (ctrl) { container = parent; break; }
+    for (let d = 0; d < 6 && parent; d++) {
+      const sel = parent.querySelector('select');
+      if (sel) {
+        return tryFillNativeSelect(sel, searchText, targetAccountName);
+      }
       parent = parent.parentElement;
     }
 
-    // Try native <select> first (near the label)
-    if (!container) {
-      let parent = labelEl;
-      for (let d = 0; d < 6 && parent; d++) {
-        const sel = parent.querySelector('select');
-        if (sel) {
-          return tryFillNativeSelect(sel, searchText, targetAccountName);
-        }
-        parent = parent.parentElement;
+    // Then look for React Select control (input[role="combobox"] inside css-*-control)
+    let container = null;
+    parent = labelEl;
+    for (let d = 0; d < 8 && parent; d++) {
+      const comboInput = parent.querySelector('input[role="combobox"]');
+      if (comboInput) {
+        const ctrl = comboInput.closest('[class*="-control"]');
+        if (ctrl) { container = parent; break; }
       }
-      return { success: false, method: 'fallback', reason: 'control no encontrado' };
+      parent = parent.parentElement;
     }
 
-    const control = container.querySelector('[class*="control"], [class*="Control"]');
+    if (!container) return { success: false, method: 'fallback', reason: 'control no encontrado' };
+
+    const control = container.querySelector('input[role="combobox"]').closest('[class*="-control"]');
     return await clickAndSelectOption(control, container, searchText, targetAccountName);
   }
 
@@ -772,52 +775,69 @@ const BillAutofill = (() => {
   }
 
   async function tryFillExpenseInLine(lineName, searchText, targetAccountName) {
-    const lineNorm = lineName.toLowerCase().trim();
+    const lineNorm = lineName.toLowerCase().trim().replace(/\s+/g, ' ');
+
+    // Strategy: MUI Table has header row (<tr> with <td> labels) and data rows.
+    // "Expense Account" header is in a different <tr> than the React Select.
+    // 1. Find the Name input matching this line
+    // 2. From that input, walk up to the <tr> (data row)
+    // 3. Find the parent <table>
+    // 4. In the header row, find which column index has "Expense Account"
+    // 5. In the data row, get the <td> at that column index
+    // 6. Find input[role="combobox"] inside that <td>
+
     const nameInputs = document.querySelectorAll('input');
-    let lineContainer = null;
+    let nameInput = null;
 
     for (const inp of nameInputs) {
       if (inp.closest('#sa-bill-autofill-panel')) continue;
-      const val = (inp.value || '').trim().replace(/\s+/g, ' ');
+      const val = (inp.value || '').trim().replace(/\s+/g, ' ').toLowerCase();
       if (!val) continue;
-      // Fuzzy match: normalize whitespace + case insensitive
-      if (val.toLowerCase() !== lineNorm.replace(/\s+/g, ' ') &&
-          !val.toLowerCase().includes(lineNorm.replace(/\s+/g, ' ')) &&
-          !lineNorm.replace(/\s+/g, ' ').includes(val.toLowerCase())) continue;
-      let p = inp.parentElement;
-      for (let d = 0; d < 12 && p; d++) {
-        const hasExpenseLabel = [...p.querySelectorAll('label, span, div, th, td')].some(el => {
-          const t = el.textContent?.trim() || '';
-          return /expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30;
-        });
-        if (hasExpenseLabel) { lineContainer = p; break; }
-        p = p.parentElement;
+      if (val === lineNorm || val.includes(lineNorm) || lineNorm.includes(val)) {
+        nameInput = inp;
+        break;
       }
-      if (lineContainer) break;
     }
 
-    if (!lineContainer) return { success: false, method: 'fallback', reason: `container no encontrado para "${lineName}"` };
+    if (!nameInput) return { success: false, method: 'fallback', reason: `input Name no encontrado para "${lineName}"` };
 
-    const expenseLabels = [...lineContainer.querySelectorAll('label, span, div, th, td')].filter(el => {
-      const t = el.textContent?.trim() || '';
-      return /expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30;
-    });
+    // Walk up to the <tr> containing this input
+    const dataRow = nameInput.closest('tr');
+    if (!dataRow) return { success: false, method: 'fallback', reason: `tr no encontrado para "${lineName}"` };
 
-    if (expenseLabels.length === 0) return { success: false, method: 'fallback', reason: 'expense label no encontrado en container' };
+    const table = dataRow.closest('table');
+    if (!table) return { success: false, method: 'fallback', reason: `table no encontrado para "${lineName}"` };
 
-    const labelEl = expenseLabels[0];
-    let container = null;
-    let parent = labelEl;
-    for (let d = 0; d < 8 && parent; d++) {
-      const ctrl = parent.querySelector('[class*="control"], [class*="Control"]');
-      if (ctrl) { container = parent; break; }
-      parent = parent.parentElement;
+    // Find header row: first <tr> that contains "Expense Account" text
+    let expenseColIdx = -1;
+    const rows = table.querySelectorAll('tr');
+    for (const row of rows) {
+      if (row === dataRow) continue;
+      const cells = row.querySelectorAll('td, th');
+      for (let i = 0; i < cells.length; i++) {
+        const t = cells[i].textContent?.trim() || '';
+        if (/expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30) {
+          expenseColIdx = i;
+          break;
+        }
+      }
+      if (expenseColIdx >= 0) break;
     }
 
-    if (!container) return { success: false, method: 'fallback', reason: 'control no encontrado en container' };
+    if (expenseColIdx < 0) return { success: false, method: 'fallback', reason: 'columna Expense Account no encontrada en header' };
 
-    const control = container.querySelector('[class*="control"], [class*="Control"]');
-    return await clickAndSelectOption(control, container, searchText, targetAccountName);
+    // Get the cell in the data row at that column index
+    const dataCells = dataRow.querySelectorAll('td, th');
+    if (expenseColIdx >= dataCells.length) return { success: false, method: 'fallback', reason: `columna ${expenseColIdx} fuera de rango (${dataCells.length} celdas)` };
+
+    const expenseCell = dataCells[expenseColIdx];
+    const comboInput = expenseCell.querySelector('input[role="combobox"]');
+    if (!comboInput) return { success: false, method: 'fallback', reason: 'input combobox no encontrado en celda Expense' };
+
+    const control = comboInput.closest('[class*="-control"]');
+    if (!control) return { success: false, method: 'fallback', reason: 'control React Select no encontrado en celda Expense' };
+
+    return await clickAndSelectOption(control, expenseCell, searchText, targetAccountName);
   }
 
   // ── Orchestrator ──
