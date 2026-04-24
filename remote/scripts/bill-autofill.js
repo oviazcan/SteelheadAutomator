@@ -458,12 +458,29 @@ const BillAutofill = (() => {
     return scored[0].account;
   }
 
-  function inferCurrency(vendorName) {
-    const norm = normalizeForMatch(vendorName);
-    for (const hint of ['inc', 'corp', 'llc', 'ltd', 'international', 'usa', 'america']) {
-      if (norm.includes(hint)) return 'USD';
+  async function fetchVendorDivisas(vendorName) {
+    try {
+      const searchData = await api().query('SearchVendors', { searchString: vendorName, first: 5 }, 'SearchVendors');
+      const vendors = searchData?.searchVendors?.nodes || [];
+      if (vendors.length === 0) return null;
+      const match = vendors.find(v => normalizeForMatch(v.name) === normalizeForMatch(vendorName)) || vendors[0];
+      const vendorData = await api().query('GetVendor', { idInDomain: match.idInDomain }, 'GetVendor');
+      const vendor = vendorData?.vendorByIdInDomain;
+      if (!vendor) return null;
+      const datos = vendor.customInputs?.DatosContablesProv;
+      if (!datos) return null;
+      return { mxn: !!datos.DivisaMXN, usd: !!datos.DivisaUSD };
+    } catch (err) {
+      warn('fetchVendorDivisas error: ' + err.message);
+      return null;
     }
-    return 'MXN';
+  }
+
+  function inferCurrencyFromVendorDivisas(divisas) {
+    if (!divisas) return null;
+    if (divisas.usd) return 'USD';
+    if (divisas.mxn) return 'MXN';
+    return null;
   }
 
   // ── DOM Extraction ──
@@ -867,23 +884,25 @@ const BillAutofill = (() => {
       return;
     }
 
-    let exchangeData, accountsData, expenseMapping;
+    let exchangeData, accountsData, expenseMapping, vendorDivisas;
     try {
-      [exchangeData, accountsData, expenseMapping] = await Promise.all([
+      [exchangeData, accountsData, expenseMapping, vendorDivisas] = await Promise.all([
         fetchExchangeRate().catch(err => { warn('fetchExchangeRate catch: ' + err.message); return null; }),
         fetchAccounts().catch(err => { warn('fetchAccounts catch: ' + err.message); return []; }),
-        loadExpenseMapping()
+        loadExpenseMapping(),
+        fetchVendorDivisas(vendorName).catch(err => { warn('fetchVendorDivisas catch: ' + err.message); return null; })
       ]);
     } catch (err) {
       updatePanelStatus('error', 'Error fetching datos: ' + err.message);
       return;
     }
 
-    // Divisa priority: DOM (user-selected) > PO > inferred
+    // Divisa priority: DOM (user-selected) > PO > vendor customInputs (USD preferred if both)
     const divisaFromDOM = extractDivisaFromDOM();
     const currencyFromPO = state.poDivisa;
-    const currency = divisaFromDOM || currencyFromPO || inferCurrency(vendorName);
-    const currencySource = divisaFromDOM ? 'form' : currencyFromPO ? 'po' : 'inferred';
+    const currencyFromVendor = inferCurrencyFromVendorDivisas(vendorDivisas);
+    const currency = divisaFromDOM || currencyFromPO || currencyFromVendor || 'MXN';
+    const currencySource = divisaFromDOM ? 'form' : currencyFromPO ? 'po' : currencyFromVendor ? 'vendor' : 'default';
     lastDetectedDivisa = currency;
 
     // TC: MXN=1, otherwise from TipoCambio array (never carry over stale value)
@@ -971,8 +990,9 @@ const BillAutofill = (() => {
     if (!collapsed) {
       html += `<div style="padding:12px 14px;">`;
 
-      const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'inferred' ? 'warn' : 'done';
-      const divisaSuffix = state.currencySource === 'inferred' ? ' (inferida)' : state.currencySource === 'form' ? ' (del form)' : state.currencySource === 'po' ? ' (de PO)' : '';
+      const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'default' ? 'warn' : 'done';
+      const divisaSources = { form: ' (del form)', po: ' (de PO)', vendor: ' (del vendor)', default: ' (default)' };
+      const divisaSuffix = divisaSources[state.currencySource] || '';
       const divisaLabel = state.currency ? `${state.currency}${divisaSuffix}` : '—';
       html += renderRow('Divisa', divisaLabel, divisaStatus);
       html += renderRow('Tipo de Cambio',
