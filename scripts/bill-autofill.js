@@ -620,26 +620,54 @@ const BillAutofill = (() => {
       parent = parent.parentElement;
     }
 
-    if (!container) return { success: false, method: 'fallback', reason: 'control no encontrado' };
+    // Try native <select> first (near the label)
+    if (!container) {
+      let parent = labelEl;
+      for (let d = 0; d < 6 && parent; d++) {
+        const sel = parent.querySelector('select');
+        if (sel) {
+          return tryFillNativeSelect(sel, searchText, targetAccountName);
+        }
+        parent = parent.parentElement;
+      }
+      return { success: false, method: 'fallback', reason: 'control no encontrado' };
+    }
 
     const control = container.querySelector('[class*="control"], [class*="Control"]');
+    return await clickAndSelectOption(control, container, searchText, targetAccountName);
+  }
 
+  function tryFillNativeSelect(sel, searchText, targetName) {
+    const searchNorm = normalizeForMatch(searchText);
+    for (const opt of sel.options) {
+      const norm = normalizeForMatch(opt.text || opt.value || '');
+      if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+        if (nativeSetter) nativeSetter.call(sel, opt.value);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return { success: true, filled: opt.text, method: 'native-select' };
+      }
+    }
+    return { success: false, method: 'fallback', reason: 'opcion no encontrada en select nativo' };
+  }
+
+  async function clickAndSelectOption(control, container, searchText, targetAccountName) {
     control.click();
-    await sleep(200);
+    await sleep(300);
 
     const inputEl = control.querySelector('input');
-    if (!inputEl) return { success: false, method: 'fallback', reason: 'input no encontrado' };
+    if (inputEl) {
+      const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (nativeInputSetter) nativeInputSetter.call(inputEl, searchText);
+      inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 
-    const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-    if (nativeInputSetter) nativeInputSetter.call(inputEl, searchText);
-    inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
-    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-
-    // Wait up to 2s for options
     let options = [];
     for (let i = 0; i < 10; i++) {
       await sleep(200);
-      const menu = container.querySelector('[class*="menu"], [class*="Menu"]')
+      const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]')
+        || container.querySelector('[class*="menu"], [class*="Menu"]')
         || document.querySelector('[class*="menu"], [class*="Menu"]');
       if (menu) {
         options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')];
@@ -647,8 +675,12 @@ const BillAutofill = (() => {
       }
     }
 
-    if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones' };
+    if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones tras click' };
 
+    return pickBestOption(options, targetAccountName);
+  }
+
+  function pickBestOption(options, targetAccountName) {
     const targetNorm = normalizeForMatch(targetAccountName);
     let best = null;
     let bestScore = -1;
@@ -746,12 +778,14 @@ const BillAutofill = (() => {
 
     for (const inp of nameInputs) {
       if (inp.closest('#sa-bill-autofill-panel')) continue;
-      const val = (inp.value || '').trim();
-      if (!val || val.toLowerCase() !== lineNorm) continue;
-      // Walk up to find a line-level container (usually a card/section with the line's data)
+      const val = (inp.value || '').trim().replace(/\s+/g, ' ');
+      if (!val) continue;
+      // Fuzzy match: normalize whitespace + case insensitive
+      if (val.toLowerCase() !== lineNorm.replace(/\s+/g, ' ') &&
+          !val.toLowerCase().includes(lineNorm.replace(/\s+/g, ' ')) &&
+          !lineNorm.replace(/\s+/g, ' ').includes(val.toLowerCase())) continue;
       let p = inp.parentElement;
       for (let d = 0; d < 12 && p; d++) {
-        // Look for a container that has "Expense Account" text inside
         const hasExpenseLabel = [...p.querySelectorAll('label, span, div, th, td')].some(el => {
           const t = el.textContent?.trim() || '';
           return /expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30;
@@ -764,7 +798,6 @@ const BillAutofill = (() => {
 
     if (!lineContainer) return { success: false, method: 'fallback', reason: `container no encontrado para "${lineName}"` };
 
-    // Find the Expense Account combobox within this line's container
     const expenseLabels = [...lineContainer.querySelectorAll('label, span, div, th, td')].filter(el => {
       const t = el.textContent?.trim() || '';
       return /expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30;
@@ -784,49 +817,7 @@ const BillAutofill = (() => {
     if (!container) return { success: false, method: 'fallback', reason: 'control no encontrado en container' };
 
     const control = container.querySelector('[class*="control"], [class*="Control"]');
-    control.click();
-    await sleep(200);
-
-    const inputEl = control.querySelector('input');
-    if (!inputEl) return { success: false, method: 'fallback', reason: 'input no encontrado' };
-
-    const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-    if (nativeInputSetter) nativeInputSetter.call(inputEl, searchText);
-    inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
-    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-
-    let options = [];
-    for (let i = 0; i < 10; i++) {
-      await sleep(200);
-      const menu = container.querySelector('[class*="menu"], [class*="Menu"]')
-        || document.querySelector('[class*="menu"], [class*="Menu"]');
-      if (menu) {
-        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')];
-        if (options.length > 0) break;
-      }
-    }
-
-    if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones' };
-
-    const targetNorm = normalizeForMatch(targetAccountName);
-    let best = null;
-    let bestScore = -1;
-    for (const opt of options) {
-      const text = opt.textContent?.trim() || '';
-      const norm = normalizeForMatch(text);
-      let score = 0;
-      if (norm === targetNorm) score = 100;
-      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 50;
-      else {
-        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
-        for (const t of tokens) { if (norm.includes(t)) score += 10; }
-      }
-      if (score > bestScore) { bestScore = score; best = opt; }
-    }
-
-    if (!best || bestScore < 10) return { success: false, method: 'fallback', reason: 'opcion no encontrada' };
-    best.click();
-    return { success: true, filled: targetAccountName, method: 'visual' };
+    return await clickAndSelectOption(control, container, searchText, targetAccountName);
   }
 
   // ── Orchestrator ──
