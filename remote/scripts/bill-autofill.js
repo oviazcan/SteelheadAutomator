@@ -525,16 +525,6 @@ const BillAutofill = (() => {
       }
     }
 
-    // Strategy 3: text pattern — container with "Divisa" + currency in same small block
-    for (const el of document.querySelectorAll('div, span, p, td')) {
-      if (el.closest('#sa-bill-autofill-panel')) continue;
-      if (el.children.length > 10) continue;
-      const txt = el.textContent?.trim() || '';
-      if (txt.length > 200 || txt.length < 10) continue;
-      const m = txt.match(/divisa[^]*?(mxn|peso\s*mexic|usd|d[oó]lar\s*americ)/i);
-      if (m) return /mxn|peso/i.test(m[1]) ? 'MXN' : 'USD';
-    }
-
     return null;
   }
 
@@ -720,32 +710,123 @@ const BillAutofill = (() => {
     const results = {};
 
     if (state.currency) {
-      results.currency = await tryFillCombobox('divisa|currency', state.currency, state.currency);
+      results.currency = await tryFillCombobox('divisa.*factura|divisa|currency', state.currency, state.currency);
+      log(`Fill divisa: ${JSON.stringify(results.currency)}`);
     }
 
     if (state.exchangeRate != null) {
       results.exchangeRate = await tryFillTextInput('tipo de cambio|exchange rate', state.exchangeRate);
+      log(`Fill TC: ${JSON.stringify(results.exchangeRate)}`);
     }
 
     if (state.apAccount?.account) {
       const acc = state.apAccount.account;
       const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
       results.apAccount = await tryFillCombobox('cuenta.*pagar|accounts?\\s*payable|a/?p\\s*account|vendor\\s*account', search, acc.name);
+      log(`Fill AP: ${JSON.stringify(results.apAccount)}`);
     }
 
+    // Expense accounts: find each line's container and fill its Expense Account combobox
     for (let i = 0; i < state.lineAccounts.length; i++) {
       const line = state.lineAccounts[i];
       if (!line.account) continue;
       const acc = line.account;
       const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
-      results[`line_${i}`] = await tryFillCombobox(
-        new RegExp(`gasto|expense|account.*line.*${i + 1}|line.*${i + 1}.*account`, 'i'),
-        search,
-        acc.name
-      );
+      results[`line_${i}`] = await tryFillExpenseInLine(line.name, search, acc.name);
+      log(`Fill expense line ${i} "${line.name}": ${JSON.stringify(results[`line_${i}`])}`);
     }
 
     return results;
+  }
+
+  async function tryFillExpenseInLine(lineName, searchText, targetAccountName) {
+    const lineNorm = lineName.toLowerCase().trim();
+    const nameInputs = document.querySelectorAll('input');
+    let lineContainer = null;
+
+    for (const inp of nameInputs) {
+      if (inp.closest('#sa-bill-autofill-panel')) continue;
+      const val = (inp.value || '').trim();
+      if (!val || val.toLowerCase() !== lineNorm) continue;
+      // Walk up to find a line-level container (usually a card/section with the line's data)
+      let p = inp.parentElement;
+      for (let d = 0; d < 12 && p; d++) {
+        // Look for a container that has "Expense Account" text inside
+        const hasExpenseLabel = [...p.querySelectorAll('label, span, div, th, td')].some(el => {
+          const t = el.textContent?.trim() || '';
+          return /expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30;
+        });
+        if (hasExpenseLabel) { lineContainer = p; break; }
+        p = p.parentElement;
+      }
+      if (lineContainer) break;
+    }
+
+    if (!lineContainer) return { success: false, method: 'fallback', reason: `container no encontrado para "${lineName}"` };
+
+    // Find the Expense Account combobox within this line's container
+    const expenseLabels = [...lineContainer.querySelectorAll('label, span, div, th, td')].filter(el => {
+      const t = el.textContent?.trim() || '';
+      return /expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30;
+    });
+
+    if (expenseLabels.length === 0) return { success: false, method: 'fallback', reason: 'expense label no encontrado en container' };
+
+    const labelEl = expenseLabels[0];
+    let container = null;
+    let parent = labelEl;
+    for (let d = 0; d < 8 && parent; d++) {
+      const ctrl = parent.querySelector('[class*="control"], [class*="Control"]');
+      if (ctrl) { container = parent; break; }
+      parent = parent.parentElement;
+    }
+
+    if (!container) return { success: false, method: 'fallback', reason: 'control no encontrado en container' };
+
+    const control = container.querySelector('[class*="control"], [class*="Control"]');
+    control.click();
+    await sleep(200);
+
+    const inputEl = control.querySelector('input');
+    if (!inputEl) return { success: false, method: 'fallback', reason: 'input no encontrado' };
+
+    const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeInputSetter) nativeInputSetter.call(inputEl, searchText);
+    inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+    let options = [];
+    for (let i = 0; i < 10; i++) {
+      await sleep(200);
+      const menu = container.querySelector('[class*="menu"], [class*="Menu"]')
+        || document.querySelector('[class*="menu"], [class*="Menu"]');
+      if (menu) {
+        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')];
+        if (options.length > 0) break;
+      }
+    }
+
+    if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones' };
+
+    const targetNorm = normalizeForMatch(targetAccountName);
+    let best = null;
+    let bestScore = -1;
+    for (const opt of options) {
+      const text = opt.textContent?.trim() || '';
+      const norm = normalizeForMatch(text);
+      let score = 0;
+      if (norm === targetNorm) score = 100;
+      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 50;
+      else {
+        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
+        for (const t of tokens) { if (norm.includes(t)) score += 10; }
+      }
+      if (score > bestScore) { bestScore = score; best = opt; }
+    }
+
+    if (!best || bestScore < 10) return { success: false, method: 'fallback', reason: 'opcion no encontrada' };
+    best.click();
+    return { success: true, filled: targetAccountName, method: 'visual' };
   }
 
   // ── Orchestrator ──
@@ -786,8 +867,8 @@ const BillAutofill = (() => {
     const divisaFromDOM = extractDivisaFromDOM();
     const currencyFromPO = state.poDivisa;
     const currency = divisaFromDOM || currencyFromPO || inferCurrency(vendorName);
-    const currencySource = divisaFromDOM ? 'dom' : currencyFromPO ? 'po' : 'inferred';
-    lastDetectedDivisa = divisaFromDOM;
+    const currencySource = divisaFromDOM ? 'form' : currencyFromPO ? 'po' : 'inferred';
+    lastDetectedDivisa = currency;
 
     // TC: MXN=1, otherwise from TipoCambio array (never carry over stale value)
     let exchangeRate;
@@ -875,7 +956,7 @@ const BillAutofill = (() => {
       html += `<div style="padding:12px 14px;">`;
 
       const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'inferred' ? 'warn' : 'done';
-      const divisaSuffix = state.currencySource === 'inferred' ? ' (inferida)' : state.currencySource === 'dom' ? ' (del form)' : '';
+      const divisaSuffix = state.currencySource === 'inferred' ? ' (inferida)' : state.currencySource === 'form' ? ' (del form)' : state.currencySource === 'po' ? ' (de PO)' : '';
       const divisaLabel = state.currency ? `${state.currency}${divisaSuffix}` : '—';
       html += renderRow('Divisa', divisaLabel, divisaStatus);
       html += renderRow('Tipo de Cambio',
