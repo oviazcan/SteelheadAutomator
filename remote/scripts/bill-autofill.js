@@ -60,6 +60,12 @@ const BillAutofill = (() => {
   function checkUrl() {
     if (!BILL_URL_RE.test(location.pathname)) {
       removePanel();
+      billFormVisible = false;
+      lastDetectedVendor = null;
+      lastDetectedDivisa = null;
+      lastLineCount = -1;
+      scriptSetDivisa = null;
+      state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
       return;
     }
     setupPageObserver();
@@ -85,7 +91,6 @@ const BillAutofill = (() => {
   let lastDetectedDivisa = null;
   let lastLineCount = -1;
   let autofillRunning = false;
-  let userChangedDivisa = false;
   let scriptSetDivisa = null;
 
   function scanForBillPage() {
@@ -101,24 +106,19 @@ const BillAutofill = (() => {
     if (!found) {
       if (billFormVisible) {
         billFormVisible = false;
-        lastDetectedVendor = null;
-        lastDetectedDivisa = null;
-        lastLineCount = -1;
-        removePanel();
+        // Don't reset vendor/divisa state — React re-renders can briefly
+        // remove the heading. Full reset happens in checkUrl() on navigation.
       }
       return;
     }
 
     if (!billFormVisible) {
       billFormVisible = true;
-      lastDetectedVendor = null;
-      lastDetectedDivisa = null;
-      lastLineCount = -1;
-      userChangedDivisa = false;
-      scriptSetDivisa = null;
-      log('Pantalla Bill detectada');
-      state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
-      renderPanel();
+      if (!lastDetectedVendor) {
+        log('Pantalla Bill detectada');
+        state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
+        renderPanel();
+      }
     }
 
     const currentVendor = extractVendorFromDOM();
@@ -126,7 +126,6 @@ const BillAutofill = (() => {
       lastDetectedVendor = currentVendor;
       lastDetectedDivisa = null;
       lastLineCount = -1;
-      userChangedDivisa = false;
       scriptSetDivisa = null;
       log(`Vendor detectado/cambiado: ${currentVendor}`);
       state.ready = false;
@@ -137,12 +136,11 @@ const BillAutofill = (() => {
       return;
     }
 
-    // Monitor divisa changes — user-changed if DOM differs from what our script set
+    // Monitor divisa changes
     const currentDivisa = extractDivisaFromDOM();
     if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
-      if (scriptSetDivisa && currentDivisa !== scriptSetDivisa) userChangedDivisa = true;
       lastDetectedDivisa = currentDivisa;
-      log(`Divisa cambiada en form: ${currentDivisa}${userChangedDivisa ? ' (por usuario)' : ''}`);
+      log(`Divisa cambiada en form: ${currentDivisa}`);
       state.ready = false;
       runAutofill();
       return;
@@ -905,8 +903,9 @@ const BillAutofill = (() => {
       return;
     }
 
-    // Divisa priority: DOM only if user explicitly changed it > PO > vendor customInputs > default USD
-    const divisaFromDOM = userChangedDivisa ? extractDivisaFromDOM() : null;
+    // Divisa: after first fill trust the DOM (preserves user changes).
+    // Before first fill (scriptSetDivisa null), infer from PO/vendor.
+    const divisaFromDOM = scriptSetDivisa ? extractDivisaFromDOM() : null;
     const currencyFromPO = state.poDivisa;
     const currencyFromVendor = inferCurrencyFromVendorDivisas(vendorDivisas);
     const currency = divisaFromDOM || currencyFromPO || currencyFromVendor || 'USD';
