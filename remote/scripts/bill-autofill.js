@@ -80,23 +80,45 @@ const BillAutofill = (() => {
     scanForBillPage();
   }
 
+  let billFormVisible = false;
+  let lastDetectedVendor = null;
+
   function scanForBillPage() {
     const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
+    let found = false;
     for (const h of headings) {
       if (/create\s+bill|edit\s+bill/i.test(h.textContent?.trim())) {
-        onBillPageFound();
-        return;
+        found = true;
+        break;
       }
     }
-    removePanel();
-  }
 
-  function onBillPageFound() {
-    if (document.getElementById('sa-bill-autofill-panel')) return;
-    log('Pantalla Bill detectada');
-    state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: state.poDivisa, poLineItems: state.poLineItems, existingInputs: null };
-    renderPanel();
-    runAutofill();
+    if (!found) {
+      if (billFormVisible) {
+        billFormVisible = false;
+        lastDetectedVendor = null;
+        removePanel();
+      }
+      return;
+    }
+
+    if (!billFormVisible) {
+      billFormVisible = true;
+      lastDetectedVendor = null;
+      log('Pantalla Bill detectada');
+      state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
+      renderPanel();
+    }
+
+    const currentVendor = extractVendorFromDOM();
+    if (currentVendor && currentVendor !== lastDetectedVendor) {
+      lastDetectedVendor = currentVendor;
+      log(`Vendor detectado/cambiado: ${currentVendor}`);
+      state.ready = false;
+      runAutofill();
+    } else if (!currentVendor && !lastDetectedVendor) {
+      updatePanelStatus('pending', 'Esperando selección de proveedor…');
+    }
   }
 
   // ── Fetch Interceptor ──
@@ -577,9 +599,9 @@ const BillAutofill = (() => {
   async function runAutofill() {
     updatePanelStatus('pending', 'Analizando...');
 
-    const vendorName = extractVendorFromDOM();
+    const vendorName = lastDetectedVendor || extractVendorFromDOM();
     if (!vendorName) {
-      updatePanelStatus('error', 'No se detectó proveedor');
+      updatePanelStatus('pending', 'Esperando selección de proveedor…');
       return;
     }
 
