@@ -161,6 +161,108 @@ const InvoiceAutoRegen = (() => {
     }
   }
 
+  // ── Row UI ──
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const ICONS = {
+    pending: '<path d="M8 4v4l2.5 2.5" stroke-linecap="round"/><circle cx="8" cy="8" r="6.5"/>',
+    running: '<circle cx="8" cy="8" r="6" stroke-dasharray="20" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="1s" repeatCount="indefinite"/></circle>',
+    done:    '<path d="M3 8.5l3.5 3.5L13 5" stroke-linecap="round" stroke-linejoin="round"/>',
+    error:   '<path d="M8 4v5M8 11.5v.5" stroke-linecap="round"/><circle cx="8" cy="8" r="6.5"/>'
+  };
+  const COLORS = { pending: '#6b7280', running: '#2563eb', done: '#16a34a', error: '#dc2626' };
+  const TIPS = {
+    pending: 'En cola para regenerar',
+    running: 'Regenerando factura…',
+    done:    'Regenerada',
+    error:   'Error al regenerar (click reintenta)'
+  };
+
+  function buildBadge(state) {
+    const wrap = document.createElement('span');
+    wrap.className = 'sa-auto-regen-badge';
+    wrap.dataset.saRegenState = state;
+    wrap.title = TIPS[state] || '';
+    wrap.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:4px;vertical-align:middle;cursor:default;';
+
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', COLORS[state]);
+    svg.setAttribute('stroke-width', '1.6');
+    // Rellenar SVG con el path correcto via temporary container (parser-safe)
+    const tmp = document.createElementNS(SVG_NS, 'g');
+    tmp.innerHTML = ICONS[state];
+    while (tmp.firstChild) svg.appendChild(tmp.firstChild);
+    wrap.appendChild(svg);
+    return wrap;
+  }
+
+  // Encuentra la fila del dashboard correspondiente al idInDomain
+  // Steelhead pinta cada fila con texto "#<idInDomain>" visible.
+  // Buscamos el span/link con ese texto y subimos al row contenedor.
+  function findDashboardRow(idInDomain) {
+    const tag = `#${idInDomain}`;
+    // Match exacto del texto del nodo
+    const all = document.querySelectorAll('a, span, div');
+    for (const el of all) {
+      if (el.children.length === 0 && el.textContent && el.textContent.trim() === tag) {
+        // Subir hasta el contenedor de la fila (heurística: buscar ancestro con varios hijos)
+        let cur = el.parentElement;
+        for (let i = 0; cur && i < 8; i++, cur = cur.parentElement) {
+          if (cur.children.length >= 4) return cur;  // fila tiene varios elementos
+        }
+        return el.parentElement;
+      }
+    }
+    return null;
+  }
+
+  // Inyecta o actualiza el badge en la fila. Si no existe la fila, no-op.
+  function paintRow(idInDomain, state) {
+    const row = findDashboardRow(idInDomain);
+    if (!row) return;
+    let badge = row.querySelector('.sa-auto-regen-badge');
+    const newBadge = buildBadge(state);
+    if (badge) {
+      badge.replaceWith(newBadge);
+    } else {
+      // Insertar al inicio de la fila
+      row.insertBefore(newBadge, row.firstChild);
+    }
+    if (state === 'done') {
+      // Fade-out a 40% opacidad después de 5s
+      setTimeout(() => {
+        if (newBadge.isConnected) newBadge.style.opacity = '0.4';
+      }, 5000);
+    }
+  }
+
+  // Re-pinta los badges activos cuando Steelhead re-renderiza la tabla.
+  let observer = null;
+  function setupRowObserver() {
+    if (observer) return;
+    observer = new MutationObserver(() => {
+      for (const [invoiceId, st] of state.entries()) {
+        if (st === 'done' && completedSet.has(invoiceId)) continue;  // ya pintada
+        // Buscar item por invoiceId no es directo; usamos el set inverso
+        const item = _itemByInvoiceId.get(invoiceId);
+        if (!item) continue;
+        const row = findDashboardRow(item.idInDomain);
+        if (row && !row.querySelector('.sa-auto-regen-badge')) {
+          paintRow(item.idInDomain, st);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Cache para encontrar idInDomain rápidamente al re-pintar
+  const _itemByInvoiceId = new Map();
+  function rememberItem(item) { _itemByInvoiceId.set(item.invoiceId, item); }
+
   return { init };
 })();
 
