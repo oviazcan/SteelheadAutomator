@@ -611,44 +611,34 @@ const BillAutofill = (() => {
 
     if (!labelEl) return { success: false, method: 'fallback', reason: 'label no encontrado' };
 
-    // Check for native <select> FIRST — "form-control" class on <select> would
-    // false-match the React Select [class*="control"] selector
+    // Walk up looking for the CLOSEST control — whichever appears first wins.
+    // React Select has input[role="combobox"]; RJSF has native <select>.
     let parent = labelEl;
-    for (let d = 0; d < 6 && parent; d++) {
-      const sel = parent.querySelector('select');
-      if (sel) {
-        return tryFillNativeSelect(sel, searchText, targetAccountName);
-      }
-      parent = parent.parentElement;
-    }
-
-    // Then look for React Select control (input[role="combobox"] inside css-*-control)
-    let container = null;
-    parent = labelEl;
     for (let d = 0; d < 8 && parent; d++) {
       const comboInput = parent.querySelector('input[role="combobox"]');
       if (comboInput) {
         const ctrl = comboInput.closest('[class*="-control"]');
-        if (ctrl) { container = parent; break; }
+        if (ctrl) return await clickAndSelectOption(ctrl, parent, searchText, targetAccountName);
       }
+      const sel = parent.querySelector('select');
+      if (sel) return tryFillNativeSelect(sel, searchText, targetAccountName);
       parent = parent.parentElement;
     }
 
-    if (!container) return { success: false, method: 'fallback', reason: 'control no encontrado' };
-
-    const control = container.querySelector('input[role="combobox"]').closest('[class*="-control"]');
-    return await clickAndSelectOption(control, container, searchText, targetAccountName);
+    return { success: false, method: 'fallback', reason: 'control no encontrado' };
   }
 
   function tryFillNativeSelect(sel, searchText, targetName) {
     const searchNorm = normalizeForMatch(searchText);
     for (const opt of sel.options) {
-      const norm = normalizeForMatch(opt.text || opt.value || '');
+      const optText = (opt.text || '').trim();
+      const norm = normalizeForMatch(optText || opt.value || '');
+      if (!norm) continue;
       if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
         const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
         if (nativeSetter) nativeSetter.call(sel, opt.value);
         sel.dispatchEvent(new Event('change', { bubbles: true }));
-        return { success: true, filled: opt.text, method: 'native-select' };
+        return { success: true, filled: optText, method: 'native-select' };
       }
     }
     return { success: false, method: 'fallback', reason: 'opcion no encontrada en select nativo' };
@@ -777,20 +767,17 @@ const BillAutofill = (() => {
   async function tryFillExpenseInLine(lineName, searchText, targetAccountName) {
     const lineNorm = lineName.toLowerCase().trim().replace(/\s+/g, ' ');
 
-    // Strategy: MUI Table has header row (<tr> with <td> labels) and data rows.
-    // "Expense Account" header is in a different <tr> than the React Select.
-    // 1. Find the Name input matching this line
-    // 2. From that input, walk up to the <tr> (data row)
-    // 3. Find the parent <table>
-    // 4. In the header row, find which column index has "Expense Account"
-    // 5. In the data row, get the <td> at that column index
-    // 6. Find input[role="combobox"] inside that <td>
+    // The Name input is outside the MUI sub-table that has "Expense Account".
+    // Strategy: find Name input → walk up to the line item container (ancestor
+    // that contains a sub-table with "Expense Account") → find the column index
+    // → find the combobox in the corresponding data cell.
 
     const nameInputs = document.querySelectorAll('input');
     let nameInput = null;
 
     for (const inp of nameInputs) {
       if (inp.closest('#sa-bill-autofill-panel')) continue;
+      if (inp.getAttribute('role') === 'combobox') continue;
       const val = (inp.value || '').trim().replace(/\s+/g, ' ').toLowerCase();
       if (!val) continue;
       if (val === lineNorm || val.includes(lineNorm) || lineNorm.includes(val)) {
@@ -801,18 +788,35 @@ const BillAutofill = (() => {
 
     if (!nameInput) return { success: false, method: 'fallback', reason: `input Name no encontrado para "${lineName}"` };
 
-    // Walk up to the <tr> containing this input
-    const dataRow = nameInput.closest('tr');
-    if (!dataRow) return { success: false, method: 'fallback', reason: `tr no encontrado para "${lineName}"` };
-
-    const table = dataRow.closest('table');
-    if (!table) return { success: false, method: 'fallback', reason: `table no encontrado para "${lineName}"` };
-
-    // Find header row: first <tr> that contains "Expense Account" text
+    // Walk up to find the line item container — the ancestor that contains
+    // a sub-table with "Expense Account" header
+    let lineContainer = null;
+    let targetTable = null;
     let expenseColIdx = -1;
-    const rows = table.querySelectorAll('tr');
+    let parent = nameInput.parentElement;
+
+    for (let d = 0; d < 12 && parent; d++) {
+      const tables = parent.querySelectorAll('table');
+      for (const table of tables) {
+        const allCells = table.querySelectorAll('td, th');
+        for (let i = 0; i < allCells.length; i++) {
+          const t = allCells[i].textContent?.trim() || '';
+          if (/expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30) {
+            targetTable = table;
+            break;
+          }
+        }
+        if (targetTable) break;
+      }
+      if (targetTable) { lineContainer = parent; break; }
+      parent = parent.parentElement;
+    }
+
+    if (!targetTable) return { success: false, method: 'fallback', reason: `sub-tabla con Expense Account no encontrada para "${lineName}"` };
+
+    // Find the "Expense Account" column index in the header row
+    const rows = targetTable.querySelectorAll('tr');
     for (const row of rows) {
-      if (row === dataRow) continue;
       const cells = row.querySelectorAll('td, th');
       for (let i = 0; i < cells.length; i++) {
         const t = cells[i].textContent?.trim() || '';
@@ -826,18 +830,19 @@ const BillAutofill = (() => {
 
     if (expenseColIdx < 0) return { success: false, method: 'fallback', reason: 'columna Expense Account no encontrada en header' };
 
-    // Get the cell in the data row at that column index
-    const dataCells = dataRow.querySelectorAll('td, th');
-    if (expenseColIdx >= dataCells.length) return { success: false, method: 'fallback', reason: `columna ${expenseColIdx} fuera de rango (${dataCells.length} celdas)` };
+    // Find the data row that has a combobox in the expense column
+    for (const row of rows) {
+      const cells = row.querySelectorAll('td, th');
+      if (expenseColIdx >= cells.length) continue;
+      const cell = cells[expenseColIdx];
+      const comboInput = cell.querySelector('input[role="combobox"]');
+      if (!comboInput) continue;
+      const control = comboInput.closest('[class*="-control"]');
+      if (!control) continue;
+      return await clickAndSelectOption(control, cell, searchText, targetAccountName);
+    }
 
-    const expenseCell = dataCells[expenseColIdx];
-    const comboInput = expenseCell.querySelector('input[role="combobox"]');
-    if (!comboInput) return { success: false, method: 'fallback', reason: 'input combobox no encontrado en celda Expense' };
-
-    const control = comboInput.closest('[class*="-control"]');
-    if (!control) return { success: false, method: 'fallback', reason: 'control React Select no encontrado en celda Expense' };
-
-    return await clickAndSelectOption(control, expenseCell, searchText, targetAccountName);
+    return { success: false, method: 'fallback', reason: 'combobox no encontrado en columna Expense' };
   }
 
   // ── Orchestrator ──
