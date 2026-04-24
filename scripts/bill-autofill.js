@@ -303,22 +303,29 @@ const BillAutofill = (() => {
   // ── Data Fetching ──
 
   async function fetchExchangeRate() {
-    const data = await api().query('GetDomain', {}, 'GetDomain');
-    const tipoCambio = data?.currentSession?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
-      || data?.domain?.customInputs?.TipoCambio
-      || [];
-    if (!Array.isArray(tipoCambio) || tipoCambio.length === 0) {
-      warn('TipoCambio no encontrado en dominio');
+    try {
+      const data = await api().query('GetDomain', {}, 'GetDomain');
+      log('GetDomain keys: ' + JSON.stringify(Object.keys(data || {})));
+      const tipoCambio = data?.currentSession?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || data?.domain?.customInputs?.TipoCambio
+        || data?.domainByDomainId?.customInputs?.TipoCambio
+        || [];
+      if (!Array.isArray(tipoCambio) || tipoCambio.length === 0) {
+        warn('TipoCambio no encontrado — paths revisados: currentSession..., domain..., domainByDomainId...');
+        return null;
+      }
+      log(`TipoCambio: ${tipoCambio.length} entradas, última: ${JSON.stringify(tipoCambio[tipoCambio.length - 1])}`);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const todayEntry = tipoCambio.find(e => e.fecha === today);
+      if (todayEntry) return todayEntry.valor;
+
+      const sorted = [...tipoCambio].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+      return sorted[0]?.valor ?? null;
+    } catch (err) {
+      warn('fetchExchangeRate error: ' + err.message);
       return null;
     }
-
-    const today = new Date().toISOString().slice(0, 10);
-    const todayEntry = tipoCambio.find(e => e.fecha === today);
-    if (todayEntry) return todayEntry.valor;
-
-    // Most recent entry
-    const sorted = [...tipoCambio].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
-    return sorted[0]?.valor ?? null;
   }
 
   async function fetchAccounts() {
@@ -542,27 +549,40 @@ const BillAutofill = (() => {
     }
     if (lines.length > 0) return lines;
 
-    // Strategy 2: "Name" label + nearby input/singleValue
+    // Strategy 2: "Name:" label — find adjacent input (sibling or parent's child)
     for (const el of lineSection.querySelectorAll('label, span, div, td, th')) {
+      if (el.closest('#sa-bill-autofill-panel')) continue;
       const txt = el.textContent?.trim() || '';
-      if (!/^name:?$/i.test(txt) || txt.length > 10) continue;
-      let parent = el.parentElement;
-      for (let d = 0; d < 4 && parent; d++) {
-        const inp = parent.querySelector('input, [class*="singleValue"]');
-        if (inp && inp !== el && !el.contains(inp)) {
-          const val = inp.value || inp.textContent?.trim();
-          if (val && val.length > 1) { lines.push({ name: val.trim(), element: inp }); break; }
-        }
-        parent = parent.parentElement;
-      }
-    }
-    if (lines.length > 0) return lines;
+      if (!/^name:?\s*$/i.test(txt) || txt.length > 10) continue;
 
-    // Strategy 3: all text inputs with values inside line section (broad fallback)
-    const allInputs = lineSection.querySelectorAll('input[type="text"], input:not([type])');
-    for (const inp of allInputs) {
-      if (inp.value?.trim() && inp.value.length > 2 && !inp.closest('#sa-bill-autofill-panel')) {
-        lines.push({ name: inp.value.trim(), element: inp });
+      let found = false;
+      // Check next siblings first (label and input are typically siblings)
+      let sib = el.nextElementSibling;
+      for (let i = 0; i < 3 && sib && !found; i++, sib = sib.nextElementSibling) {
+        if (sib.tagName === 'INPUT' && sib.value?.trim()) {
+          lines.push({ name: sib.value.trim(), element: sib });
+          found = true;
+        } else {
+          const inp = sib.querySelector('input');
+          if (inp?.value?.trim()) {
+            lines.push({ name: inp.value.trim(), element: inp });
+            found = true;
+          }
+        }
+      }
+      if (found) continue;
+
+      // Check parent's children (label is child, input is another child)
+      const parent = el.parentElement;
+      if (parent) {
+        for (const child of parent.children) {
+          if (child === el || child.contains(el)) continue;
+          const inp = child.tagName === 'INPUT' ? child : child.querySelector('input');
+          if (inp?.value?.trim()) {
+            lines.push({ name: inp.value.trim(), element: inp });
+            break;
+          }
+        }
       }
     }
 
@@ -749,8 +769,8 @@ const BillAutofill = (() => {
     let exchangeData, accountsData, expenseMapping;
     try {
       [exchangeData, accountsData, expenseMapping] = await Promise.all([
-        fetchExchangeRate().catch(() => null),
-        fetchAccounts().catch(() => []),
+        fetchExchangeRate().catch(err => { warn('fetchExchangeRate catch: ' + err.message); return null; }),
+        fetchAccounts().catch(err => { warn('fetchAccounts catch: ' + err.message); return []; }),
         loadExpenseMapping()
       ]);
     } catch (err) {
@@ -765,12 +785,13 @@ const BillAutofill = (() => {
     const currencySource = divisaFromDOM ? 'dom' : currencyFromPO ? 'po' : 'inferred';
     lastDetectedDivisa = divisaFromDOM;
 
-    // TC: MXN=1, otherwise from TipoCambio array
+    // TC: MXN=1, otherwise from TipoCambio array (never carry over stale value)
     let exchangeRate;
     if (currency === 'MXN') {
       exchangeRate = 1;
     } else {
-      exchangeRate = exchangeData ?? state.exchangeRate ?? null;
+      exchangeRate = exchangeData;
+      if (exchangeRate == null) warn('TC no disponible para ' + currency + ' — verificar hash GetDomain');
     }
     log(`Divisa: ${currency} (${currencySource}), TC: ${exchangeRate}, exchangeData: ${exchangeData}`);
     const apResult = findBestAPAccount(vendorName, currency, accountsData);
@@ -783,7 +804,12 @@ const BillAutofill = (() => {
           || item.partNumberByPartNumberId?.name
           || item.partNumber?.name || '';
         return { name: name.trim(), element: null };
-      }).filter(l => l.name);
+      }).filter(l => {
+        if (!l.name || l.name.length < 3) return false;
+        if (/^\d[\d.,]*$/.test(l.name)) return false;
+        if (/^[A-Z_]{2,10}$/.test(l.name)) return false;
+        return true;
+      });
       if (lines.length > 0) log(`Usando ${lines.length} líneas de PO interceptada`);
     }
 
