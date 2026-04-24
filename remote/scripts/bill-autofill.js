@@ -138,11 +138,28 @@ const BillAutofill = (() => {
       return;
     }
 
-    // Monitor divisa changes
+    // Monitor divisa changes → update TC and AP inline
     const currentDivisa = extractDivisaFromDOM();
     if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
       lastDetectedDivisa = currentDivisa;
       log(`Divisa cambiada en form: ${currentDivisa}`);
+      if (state.ready) {
+        state.currency = currentDivisa;
+        state.currencySource = 'form';
+        if (currentDivisa === 'MXN') {
+          state.exchangeRate = 1;
+          state.exchangeRateDate = null;
+        } else {
+          const invoiceDate = extractInvoiceDateFromDOM();
+          const result = findRateForDate(invoiceDate);
+          state.exchangeRate = result?.rate ?? null;
+          state.exchangeRateDate = result?.date ?? null;
+        }
+        tryFillTextInput('tipo de cambio|exchange rate', state.exchangeRate);
+        renderPanel();
+        log(`TC actualizado: ${state.exchangeRate} (divisa → ${currentDivisa})`);
+        return;
+      }
       state.ready = false;
       runAutofill();
       return;
@@ -166,11 +183,12 @@ const BillAutofill = (() => {
       const invoiceDate = extractInvoiceDateFromDOM();
       if (invoiceDate && invoiceDate !== lastDetectedInvoiceDate) {
         lastDetectedInvoiceDate = invoiceDate;
-        const rate = findRateForDate(invoiceDate);
-        if (rate != null && rate !== state.exchangeRate) {
-          log(`Invoice Date: ${invoiceDate} → TC: ${rate}`);
-          state.exchangeRate = rate;
-          tryFillTextInput('tipo de cambio|exchange rate', rate);
+        const result = findRateForDate(invoiceDate);
+        if (result && result.rate !== state.exchangeRate) {
+          log(`Invoice Date: ${invoiceDate} → TC: ${result.rate} (del ${result.date})`);
+          state.exchangeRate = result.rate;
+          state.exchangeRateDate = result.date;
+          tryFillTextInput('tipo de cambio|exchange rate', result.rate);
           renderPanel();
         }
       }
@@ -342,7 +360,8 @@ const BillAutofill = (() => {
       if (userId) state._userId = userId;
 
       state._tipoCambioArray = tipoCambio;
-      return findRateForDate(null);
+      const result = findRateForDate(null);
+      return result?.rate ?? null;
     } catch (err) {
       warn('fetchExchangeRate error: ' + err.message);
       return null;
@@ -354,10 +373,11 @@ const BillAutofill = (() => {
     if (!Array.isArray(arr) || arr.length === 0) return null;
     const target = dateStr || new Date().toISOString().slice(0, 10);
     const exact = arr.find(e => e.FechaTipoCambio === target);
-    if (exact) return exact.TipoCambio;
+    if (exact) return { rate: exact.TipoCambio, date: exact.FechaTipoCambio };
     const sorted = [...arr].sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''));
     const closest = sorted.find(e => (e.FechaTipoCambio || '') <= target);
-    return (closest || sorted[0])?.TipoCambio ?? null;
+    const entry = closest || sorted[0];
+    return entry ? { rate: entry.TipoCambio, date: entry.FechaTipoCambio } : null;
   }
 
   async function fetchAccounts() {
@@ -960,12 +980,23 @@ const BillAutofill = (() => {
     const currencySource = divisaFromDOM ? 'form' : currencyFromPO ? 'po' : currencyFromVendor ? 'vendor' : 'default';
     lastDetectedDivisa = currency;
 
-    // TC: MXN=1, otherwise from TipoCambio array (never carry over stale value)
+    // TC: MXN=1, otherwise from TipoCambio array. Use Invoice Date if available.
     let exchangeRate;
+    let exchangeRateDate = null;
     if (currency === 'MXN') {
       exchangeRate = 1;
     } else {
-      exchangeRate = exchangeData;
+      const invoiceDate = extractInvoiceDateFromDOM();
+      if (invoiceDate) {
+        const result = findRateForDate(invoiceDate);
+        exchangeRate = result?.rate ?? exchangeData;
+        exchangeRateDate = result?.date ?? null;
+      } else {
+        exchangeRate = exchangeData;
+        const today = new Date().toISOString().slice(0, 10);
+        const result = findRateForDate(today);
+        exchangeRateDate = result?.date ?? null;
+      }
       if (exchangeRate == null) warn('TC no disponible para ' + currency + ' — verificar hash GetDomain');
     }
     log(`Divisa: ${currency} (${currencySource}), TC: ${exchangeRate}, exchangeData: ${exchangeData}`);
@@ -1004,6 +1035,7 @@ const BillAutofill = (() => {
       currency,
       currencySource,
       exchangeRate,
+      exchangeRateDate,
       apAccount: apResult,
       lineAccounts,
       ready: true
@@ -1050,9 +1082,10 @@ const BillAutofill = (() => {
       const divisaSuffix = divisaSources[state.currencySource] || '';
       const divisaLabel = state.currency ? `${state.currency}${divisaSuffix}` : '—';
       html += renderRow('Divisa', divisaLabel, divisaStatus);
-      html += renderRow('Tipo de Cambio',
-        state.exchangeRate != null ? `$${Number(state.exchangeRate).toFixed(4)}` : '—',
-        state.exchangeRate != null ? 'done' : 'pending');
+      const tcLabel = state.exchangeRate != null
+        ? `$${Number(state.exchangeRate).toFixed(4)}${state.exchangeRateDate ? ` (${state.exchangeRateDate})` : ''}`
+        : '—';
+      html += renderRow('Tipo de Cambio', tcLabel, state.exchangeRate != null ? 'done' : 'pending');
 
       const ap = state.apAccount;
       const apStatus = !ap?.account ? 'error' : ap.ambiguous ? 'warn' : 'done';
