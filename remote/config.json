@@ -1,6 +1,6 @@
 {
-  "version": "0.4.45",
-  "lastUpdated": "2026-04-21",
+  "version": "0.4.63",
+  "lastUpdated": "2026-04-23",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -58,7 +58,8 @@
         "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84",
         "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856",
         "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334",
-        "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c"
+        "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c",
+        "CreateUpdateBill": "c6c2545a187f37bbbfb9764ba7449affc1c0b16bcffaaec69c5ae6c6fca3f9c8"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -128,7 +129,14 @@
         "WorkboardById": "371c1a807444663bdcc7ed3a11fc97ff58f6ed3c8423c99ad8b68fff945a3bcc",
         "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f",
         "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de",
-        "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0"
+        "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0",
+        "GetPurchaseOrder": "6d8626794b0b81e885f621fac214f825c3078931ad030ddd2299d227e530bcf6",
+        "GetDomain": "3362d61859940bb317ad278153229afc60d637320f3a5d595f9a5cb5245e6706",
+        "SearchAccounts": "90022de3792ff91b9eda329b310aaf27d3945d2c501152a5c7e713933a49b1a8",
+        "GetAccountDataForBill": "62fbb91b31a603c8d61f3f362d8550dd986c5fd82c39ee95cd60582eb40304e9",
+        "GetBillByIdInDomain": "70a29e6593f240964218669349704b7f1cd1dbf88498c9bc50e3f471bcfdae04",
+        "SearchPurchaseOrdersForBill": "c9fb4e0a9f549f61c588cb6fdd533c07f863e849025ee04db244f7cc8b6e56d8",
+        "GetPurchaseOrdersDataForBill": "8096f97c085a3c8e757d7e4ef4592f1f7d21cce6d93a5d7196affb9f38c58a2d"
       }
     },
     "domain": {
@@ -136,6 +144,7 @@
       "dimensionIds": { "linea": 349, "departamento": 586 },
       "inputSchemaId_PN": 3456,
       "inputSchemaId_Quote": 659,
+      "inputSchemaId_Bill": 27,
       "stagesRevisionId": 306,
       "geometryGenericaId": 831,
       "validacionProcessNodeIds": [231176, 231174],
@@ -399,6 +408,19 @@
       "actions": [
         { "id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry" }
       ]
+    },
+    {
+      "id": "bill-autofill",
+      "name": "Bill Autofill",
+      "subtitle": "Llenado automático de cuentas contables en Bills",
+      "icon": "🧾",
+      "category": "Facturación",
+      "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"],
+      "autoInject": true,
+      "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"],
+      "actions": [
+        { "id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill" }
+      ]
     }
   ],
   "knownOperations": {
@@ -453,6 +475,12 @@
     "CreateUpdateReportWithPermissions": { "type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator" },
     "DeleteFolderById": { "type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator" },
     "ArchiveReport": { "type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator" },
+    "CreateUpdateBill": { "type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill" },
+    "GetPurchaseOrder": { "type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain", "usedBy": "bill-autofill" },
+    "GetDomain": { "type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill" },
+    "SearchAccounts": { "type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill" },
+    "GetAccountDataForBill": { "type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill" },
+    "GetBillByIdInDomain": { "type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill" },
     "GetPartNumbersInputSchema": { "type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva" },
     "AllSpecs": { "type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva" },
     "AllCustomers": { "type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva" },
