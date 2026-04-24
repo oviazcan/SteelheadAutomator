@@ -263,6 +263,33 @@ const InvoiceAutoRegen = (() => {
   const _itemByInvoiceId = new Map();
   function rememberItem(item) { _itemByInvoiceId.set(item.invoiceId, item); }
 
+  // ── Modal Badge ──
+
+  // Encuentra el header "Invoice History" en el modal abierto
+  function findInvoiceHistoryHeader() {
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"]');
+    for (const h of headings) {
+      if (h.textContent && /invoice\s+history/i.test(h.textContent.trim())) return h;
+    }
+    return null;
+  }
+
+  function paintModal(state) {
+    const header = findInvoiceHistoryHeader();
+    if (!header) return;
+    let badge = header.querySelector('.sa-auto-regen-badge');
+    const newBadge = buildBadge(state);
+    newBadge.style.marginLeft = '8px';
+    if (badge) {
+      badge.replaceWith(newBadge);
+    } else {
+      header.appendChild(newBadge);
+    }
+    if (state === 'done') {
+      setTimeout(() => { if (newBadge.isConnected) newBadge.style.opacity = '0.4'; }, 5000);
+    }
+  }
+
   return { init };
 })();
 
