@@ -85,6 +85,7 @@ const BillAutofill = (() => {
   let lastDetectedDivisa = null;
   let lastLineCount = -1;
   let autofillRunning = false;
+  let userChangedDivisa = false;
 
   function scanForBillPage() {
     const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
@@ -112,6 +113,7 @@ const BillAutofill = (() => {
       lastDetectedVendor = null;
       lastDetectedDivisa = null;
       lastLineCount = -1;
+      userChangedDivisa = false;
       log('Pantalla Bill detectada');
       state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
       renderPanel();
@@ -122,6 +124,7 @@ const BillAutofill = (() => {
       lastDetectedVendor = currentVendor;
       lastDetectedDivisa = null;
       lastLineCount = -1;
+      userChangedDivisa = false;
       log(`Vendor detectado/cambiado: ${currentVendor}`);
       state.ready = false;
       runAutofill();
@@ -131,11 +134,12 @@ const BillAutofill = (() => {
       return;
     }
 
-    // Monitor divisa changes
+    // Monitor divisa changes — only flag as user-changed if we already filled once
     const currentDivisa = extractDivisaFromDOM();
     if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
+      if (state.ready) userChangedDivisa = true;
       lastDetectedDivisa = currentDivisa;
-      log(`Divisa cambiada en form: ${currentDivisa}`);
+      log(`Divisa cambiada en form: ${currentDivisa}${userChangedDivisa ? ' (por usuario)' : ''}`);
       state.ready = false;
       runAutofill();
       return;
@@ -897,8 +901,8 @@ const BillAutofill = (() => {
       return;
     }
 
-    // Divisa priority: DOM (user-selected) > PO > vendor customInputs (USD preferred if both)
-    const divisaFromDOM = extractDivisaFromDOM();
+    // Divisa priority: DOM only if user explicitly changed it > PO > vendor customInputs > default USD
+    const divisaFromDOM = userChangedDivisa ? extractDivisaFromDOM() : null;
     const currencyFromPO = state.poDivisa;
     const currencyFromVendor = inferCurrencyFromVendorDivisas(vendorDivisas);
     const currency = divisaFromDOM || currencyFromPO || currencyFromVendor || 'USD';
