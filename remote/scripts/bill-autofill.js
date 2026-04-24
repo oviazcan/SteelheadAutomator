@@ -61,12 +61,7 @@ const BillAutofill = (() => {
     if (!BILL_URL_RE.test(location.pathname)) {
       removePanel();
       billFormVisible = false;
-      lastDetectedVendor = null;
-      lastDetectedDivisa = null;
-      lastDetectedInvoiceDate = null;
-      lastLineCount = -1;
-      scriptSetDivisa = null;
-      state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
+      resetBillState();
       return;
     }
     setupPageObserver();
@@ -94,6 +89,71 @@ const BillAutofill = (() => {
   let lastLineCount = -1;
   let autofillRunning = false;
   let scriptSetDivisa = null;
+  let headingLostAt = 0;
+
+  const RJSF_DIVISA_ID = 'root_DatosContables_Divisa';
+  const RJSF_TC_ID = 'root_DatosContables_exchangeRate';
+
+  function resetBillState() {
+    lastDetectedVendor = null;
+    lastDetectedDivisa = null;
+    lastDetectedInvoiceDate = null;
+    lastLineCount = -1;
+    scriptSetDivisa = null;
+    state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
+  }
+
+  function fillTCById(rate) {
+    const inp = document.getElementById(RJSF_TC_ID);
+    if (!inp) return false;
+    if (inp.value === String(rate)) return true;
+    const tracker = inp._valueTracker;
+    if (tracker) tracker.setValue('');
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(inp, String(rate));
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function installDivisaListener() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel || sel.dataset.saDivisaListener) return;
+    sel.dataset.saDivisaListener = 'true';
+    sel.addEventListener('change', onDivisaChange);
+    log('Divisa listener instalado');
+  }
+
+  function onDivisaChange() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel) return;
+    const val = sel.options[sel.selectedIndex]?.text || sel.value || '';
+    const divisa = /mxn|peso/i.test(val) ? 'MXN' : /usd|d[oó]l/i.test(val) ? 'USD' : null;
+    if (!divisa || divisa === state.currency) return;
+
+    log(`Divisa change event: ${divisa}`);
+    lastDetectedDivisa = divisa;
+    state.currency = divisa;
+    state.currencySource = 'form';
+
+    if (divisa === 'MXN') {
+      state.exchangeRate = 1;
+      state.exchangeRateDate = null;
+    } else {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      const result = findRateForDate(invoiceDate);
+      state.exchangeRate = result?.rate ?? null;
+      state.exchangeRateDate = result?.date ?? null;
+    }
+
+    renderPanel();
+
+    const rate = state.exchangeRate;
+    fillTCById(rate);
+    setTimeout(() => fillTCById(rate), 300);
+    setTimeout(() => fillTCById(rate), 800);
+    setTimeout(() => fillTCById(rate), 1500);
+  }
 
   function scanForBillPage() {
     const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
@@ -108,6 +168,7 @@ const BillAutofill = (() => {
     if (!found) {
       if (billFormVisible) {
         billFormVisible = false;
+        headingLostAt = Date.now();
         removePanel();
       }
       return;
@@ -115,12 +176,15 @@ const BillAutofill = (() => {
 
     if (!billFormVisible) {
       billFormVisible = true;
-      if (!lastDetectedVendor) {
+      const elapsed = Date.now() - headingLostAt;
+      if (!lastDetectedVendor || elapsed > 3000) {
+        resetBillState();
         log('Pantalla Bill detectada');
-        state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
       }
       renderPanel();
     }
+
+    installDivisaListener();
 
     const currentVendor = extractVendorFromDOM();
     if (currentVendor && currentVendor !== lastDetectedVendor) {
@@ -137,12 +201,12 @@ const BillAutofill = (() => {
       return;
     }
 
-    // Monitor divisa changes → update TC and AP inline
+    // Fallback divisa monitor (in case listener wasn't installed yet)
     const currentDivisa = extractDivisaFromDOM();
     if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
       lastDetectedDivisa = currentDivisa;
-      log(`Divisa cambiada en form: ${currentDivisa}`);
-      if (state.ready) {
+      if (state.ready && currentDivisa !== state.currency) {
+        log(`Divisa scan fallback: ${currentDivisa}`);
         state.currency = currentDivisa;
         state.currencySource = 'form';
         if (currentDivisa === 'MXN') {
@@ -155,19 +219,13 @@ const BillAutofill = (() => {
           state.exchangeRateDate = result?.date ?? null;
         }
         renderPanel();
-        // Divisa lives inside RJSF — changing it re-renders ALL custom inputs
-        // (including TC), overwriting our value. Retry after RJSF settles.
         const rate = state.exchangeRate;
-        const fillTC = () => tryFillTextInput('tipo de cambio|exchange rate', rate);
-        fillTC();
-        setTimeout(fillTC, 600);
-        setTimeout(fillTC, 1500);
-        log(`TC actualizado: ${state.exchangeRate} (divisa → ${currentDivisa})`);
+        fillTCById(rate);
+        setTimeout(() => fillTCById(rate), 300);
+        setTimeout(() => fillTCById(rate), 800);
+        setTimeout(() => fillTCById(rate), 1500);
         return;
       }
-      state.ready = false;
-      runAutofill();
-      return;
     }
 
     // Monitor line item changes
@@ -193,7 +251,7 @@ const BillAutofill = (() => {
           log(`Invoice Date: ${invoiceDate} → TC: ${result.rate} (del ${result.date})`);
           state.exchangeRate = result.rate;
           state.exchangeRateDate = result.date;
-          tryFillTextInput('tipo de cambio|exchange rate', result.rate);
+          fillTCById(result.rate);
           renderPanel();
         }
       }
