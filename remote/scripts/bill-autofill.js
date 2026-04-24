@@ -154,8 +154,14 @@ const BillAutofill = (() => {
           state.exchangeRate = result?.rate ?? null;
           state.exchangeRateDate = result?.date ?? null;
         }
-        tryFillTextInput('tipo de cambio|exchange rate', state.exchangeRate);
         renderPanel();
+        // Divisa lives inside RJSF — changing it re-renders ALL custom inputs
+        // (including TC), overwriting our value. Retry after RJSF settles.
+        const rate = state.exchangeRate;
+        const fillTC = () => tryFillTextInput('tipo de cambio|exchange rate', rate);
+        fillTC();
+        setTimeout(fillTC, 600);
+        setTimeout(fillTC, 1500);
         log(`TC actualizado: ${state.exchangeRate} (divisa → ${currentDivisa})`);
         return;
       }
