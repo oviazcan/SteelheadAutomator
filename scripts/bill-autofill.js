@@ -108,8 +108,7 @@ const BillAutofill = (() => {
     if (!found) {
       if (billFormVisible) {
         billFormVisible = false;
-        // Don't reset vendor/divisa state — React re-renders can briefly
-        // remove the heading. Full reset happens in checkUrl() on navigation.
+        removePanel();
       }
       return;
     }
@@ -978,7 +977,6 @@ const BillAutofill = (() => {
     const currencyFromVendor = inferCurrencyFromVendorDivisas(vendorDivisas);
     const currency = divisaFromDOM || currencyFromPO || currencyFromVendor || 'USD';
     const currencySource = divisaFromDOM ? 'form' : currencyFromPO ? 'po' : currencyFromVendor ? 'vendor' : 'default';
-    lastDetectedDivisa = currency;
 
     // TC: MXN=1, otherwise from TipoCambio array. Use Invoice Date if available.
     let exchangeRate;
@@ -1042,8 +1040,14 @@ const BillAutofill = (() => {
     };
 
     await fillAllFields();
+
+    // Sync lastDetectedDivisa with what the DOM actually shows after fill,
+    // so the scan loop divisa monitor detects future user changes correctly.
+    const domDivisaAfterFill = extractDivisaFromDOM();
+    if (domDivisaAfterFill) lastDetectedDivisa = domDivisaAfterFill;
+
     renderPanel();
-    log(`BillAutofill listo: vendor="${vendorName}" currency=${currency} rate=${exchangeRate} ap="${apResult.account?.name}"`);
+    log(`BillAutofill listo: vendor="${vendorName}" currency=${currency} rate=${exchangeRate} ap="${apResult.account?.name}" domDivisa=${domDivisaAfterFill}`);
   }
 
   // ── Panel UI ──
