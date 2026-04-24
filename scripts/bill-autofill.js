@@ -216,15 +216,24 @@ const BillAutofill = (() => {
         || [];
       if (pos.length > 0) {
         const lines = pos.flatMap(po => po?.purchaseOrderLinesByPurchaseOrderId?.nodes || []);
-        if (lines.length > 0) state.poLineItems = lines;
-        // These queries don't expose customInputs — extract idInDomain and fetch PO detail
+        if (lines.length > 0) {
+          state.poLineItems = lines;
+          log(`PO líneas interceptadas: ${lines.length}`);
+          if (state.vendorName) {
+            state.ready = false;
+            setTimeout(() => runAutofill(), 1500);
+          }
+        }
         const firstPo = pos[0];
         if (firstPo?.idInDomain && !state.poDivisa) {
           fetchPODivisa(firstPo.idInDomain).then(divisa => {
             if (divisa) {
               state.poDivisa = divisa;
               log(`PO Divisa obtenida: ${divisa}`);
-              if (state.ready) { state.currency = divisa; renderPanel(); }
+              if (state.vendorName) {
+                state.ready = false;
+                runAutofill();
+              }
             }
           });
         }
@@ -471,44 +480,50 @@ const BillAutofill = (() => {
   }
 
   function extractDivisaFromDOM() {
-    for (const el of document.querySelectorAll('label, span, div, p')) {
-      if (el.closest('#sa-bill-autofill-panel')) continue;
-      const txt = el.textContent?.trim() || '';
-      if (!/^divisa/i.test(txt) || txt.length > 30) continue;
-
-      // Strategy 1: next siblings (value is typically right after the label)
-      let sib = el.nextElementSibling;
-      for (let i = 0; i < 2 && sib; i++, sib = sib.nextElementSibling) {
-        const val = sib.textContent?.trim() || '';
-        if (!val || val.length > 60) continue;
-        if (/mxn|peso/i.test(val)) return 'MXN';
-        if (/usd|d[oó]lar/i.test(val)) return 'USD';
-      }
-
-      // Strategy 2: parent's children after the label
-      const parent = el.parentElement;
-      if (!parent) continue;
-      let afterLabel = false;
-      for (const child of parent.children) {
-        if (child === el) { afterLabel = true; continue; }
-        if (!afterLabel) continue;
-        const val = child.textContent?.trim() || '';
-        if (!val || val.length > 60) continue;
-        if (/mxn|peso/i.test(val)) return 'MXN';
-        if (/usd|d[oó]lar/i.test(val)) return 'USD';
-        break;
-      }
-
-      // Strategy 3: singleValue inside nearby container
-      for (let p = el.parentElement, d = 0; d < 3 && p; d++, p = p.parentElement) {
-        const sv = p.querySelector('[class*="singleValue"], [class*="SingleValue"]');
-        if (sv && !sv.closest('#sa-bill-autofill-panel')) {
-          const val = sv.textContent?.trim() || '';
-          if (/mxn|peso/i.test(val)) return 'MXN';
-          if (/usd|d[oó]lar/i.test(val)) return 'USD';
+    // Strategy 1: reverse pattern — find singleValue with currency text, verify "Divisa" label nearby
+    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of singleValues) {
+      if (sv.closest('#sa-bill-autofill-panel')) continue;
+      const val = sv.textContent?.trim() || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = sv.parentElement;
+      for (let depth = 0; depth < 8 && parent; depth++) {
+        for (const child of parent.children) {
+          if (child.contains(sv)) continue;
+          const labelText = child.textContent?.trim() || '';
+          if (/divisa/i.test(labelText) && labelText.length < 50) {
+            return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+          }
         }
+        parent = parent.parentElement;
       }
     }
+
+    // Strategy 2: <select> elements near "Divisa"
+    for (const select of document.querySelectorAll('select')) {
+      if (select.closest('#sa-bill-autofill-panel')) continue;
+      const opt = select.options?.[select.selectedIndex];
+      const val = opt?.text || select.value || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = select.parentElement;
+      for (let d = 0; d < 6 && parent; d++) {
+        if (/divisa/i.test(parent.textContent || '') && parent.textContent.length < 300) {
+          return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    // Strategy 3: text pattern — container with "Divisa" + currency in same small block
+    for (const el of document.querySelectorAll('div, span, p, td')) {
+      if (el.closest('#sa-bill-autofill-panel')) continue;
+      if (el.children.length > 10) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 200 || txt.length < 10) continue;
+      const m = txt.match(/divisa[^]*?(mxn|peso\s*mexic|usd|d[oó]lar\s*americ)/i);
+      if (m) return /mxn|peso/i.test(m[1]) ? 'MXN' : 'USD';
+    }
+
     return null;
   }
 
@@ -517,19 +532,37 @@ const BillAutofill = (() => {
     const lineSection = findLineItemsSection();
     if (!lineSection) return lines;
 
-    const nameFields = lineSection.querySelectorAll('input[name*="name"], input[placeholder*="name"], input[placeholder*="nombre"]');
-    for (const input of nameFields) {
-      if (input.value?.trim()) lines.push({ name: input.value.trim(), element: input });
+    // Strategy 1: inputs with name-related attributes
+    for (const input of lineSection.querySelectorAll('input')) {
+      const n = (input.name || '').toLowerCase();
+      const p = (input.placeholder || '').toLowerCase();
+      if ((n.includes('name') || p.includes('name') || p.includes('nombre')) && input.value?.trim()) {
+        lines.push({ name: input.value.trim(), element: input });
+      }
     }
+    if (lines.length > 0) return lines;
 
-    if (lines.length === 0) {
-      for (const el of lineSection.querySelectorAll('label, span, div')) {
-        if (!/^name:?$/i.test(el.textContent?.trim())) continue;
-        const inp = el.closest('div')?.parentElement?.querySelector('input, [class*="singleValue"]');
-        if (inp) {
+    // Strategy 2: "Name" label + nearby input/singleValue
+    for (const el of lineSection.querySelectorAll('label, span, div, td, th')) {
+      const txt = el.textContent?.trim() || '';
+      if (!/^name:?$/i.test(txt) || txt.length > 10) continue;
+      let parent = el.parentElement;
+      for (let d = 0; d < 4 && parent; d++) {
+        const inp = parent.querySelector('input, [class*="singleValue"]');
+        if (inp && inp !== el && !el.contains(inp)) {
           const val = inp.value || inp.textContent?.trim();
-          if (val) lines.push({ name: val.trim(), element: inp });
+          if (val && val.length > 1) { lines.push({ name: val.trim(), element: inp }); break; }
         }
+        parent = parent.parentElement;
+      }
+    }
+    if (lines.length > 0) return lines;
+
+    // Strategy 3: all text inputs with values inside line section (broad fallback)
+    const allInputs = lineSection.querySelectorAll('input[type="text"], input:not([type])');
+    for (const inp of allInputs) {
+      if (inp.value?.trim() && inp.value.length > 2 && !inp.closest('#sa-bill-autofill-panel')) {
+        lines.push({ name: inp.value.trim(), element: inp });
       }
     }
 
@@ -739,8 +772,20 @@ const BillAutofill = (() => {
     } else {
       exchangeRate = exchangeData ?? state.exchangeRate ?? null;
     }
+    log(`Divisa: ${currency} (${currencySource}), TC: ${exchangeRate}, exchangeData: ${exchangeData}`);
     const apResult = findBestAPAccount(vendorName, currency, accountsData);
-    const lines = extractLinesFromDOM();
+
+    // Lines: DOM first, fallback to intercepted PO data
+    let lines = extractLinesFromDOM();
+    if (lines.length === 0 && state.poLineItems.length > 0) {
+      lines = state.poLineItems.map(item => {
+        const name = item.name || item.description
+          || item.partNumberByPartNumberId?.name
+          || item.partNumber?.name || '';
+        return { name: name.trim(), element: null };
+      }).filter(l => l.name);
+      if (lines.length > 0) log(`Usando ${lines.length} líneas de PO interceptada`);
+    }
 
     const lineAccounts = lines.map(line => {
       const learned = expenseMapping[normalizeForMatch(line.name)];
@@ -820,7 +865,7 @@ const BillAutofill = (() => {
         }
       }
 
-      html += `<button id="sa-baf-refresh" style="margin-top:10px;width:100%;padding:7px;background:#334155;color:#e2e8f0;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Actualizar</button>`;
+      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-baf-refresh" style="cursor:pointer;color:#64748b;font-size:11px;letter-spacing:.3px;">↻ actualizar</span></div>`;
       html += `</div>`;
     }
 
