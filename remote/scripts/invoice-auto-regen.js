@@ -22,6 +22,14 @@ const InvoiceAutoRegen = (() => {
     enabled = document.documentElement.dataset.saAutoRegenEnabled !== 'false';
     if (!enabled) { console.log('[AutoRegen] Deshabilitado'); return; }
     patchFetch();
+
+    // Cablear UI
+    on('enqueued', item => { paintRow(item.idInDomain, 'pending'); paintModal('pending'); });
+    on('started',  item => { paintRow(item.idInDomain, 'running'); paintModal('running'); });
+    on('done',     item => { paintRow(item.idInDomain, 'done');    paintModal('done'); });
+    on('error',    item => { paintRow(item.idInDomain, 'error');   paintModal('error'); });
+
+    setupRowObserver();
     console.log('[AutoRegen] Inicializado');
   }
 
@@ -31,7 +39,33 @@ const InvoiceAutoRegen = (() => {
     if (window.__saAutoRegenPatched) return;
     window.__saAutoRegenPatched = true;
     _origFetch = window.fetch;
-    // Cableado real en Task 7 (controller)
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body) return _origFetch.apply(this, args);
+
+      let opName;
+      try { opName = JSON.parse(opts.body)?.operationName; } catch { return _origFetch.apply(this, args); }
+
+      const response = await _origFetch.apply(this, args);
+
+      if (opName === 'ActiveInvoicesPaged' || opName === 'InvoiceByIdInDomain') {
+        // Clonar y procesar en el siguiente tick para no bloquear el caller
+        try {
+          const clone = response.clone();
+          const json = await clone.json();
+          const items = (opName === 'ActiveInvoicesPaged') ? scanList(json) : scanSingle(json);
+          if (items.length > 0) {
+            for (const it of items) rememberItem(it);
+            enqueue(items);
+          }
+        } catch (err) {
+          console.warn('[AutoRegen] Error procesando', opName, err);
+        }
+      }
+      return response;
+    };
   }
 
   // ── Detector ──
