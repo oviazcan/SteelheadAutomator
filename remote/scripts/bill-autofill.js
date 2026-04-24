@@ -118,8 +118,8 @@ const BillAutofill = (() => {
       if (!lastDetectedVendor) {
         log('Pantalla Bill detectada');
         state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
-        renderPanel();
       }
+      renderPanel();
     }
 
     const currentVendor = extractVendorFromDOM();
@@ -724,6 +724,8 @@ const BillAutofill = (() => {
       const norm = normalizeForMatch(optText || opt.value || '');
       if (!norm) continue;
       if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
+        const tracker = sel._valueTracker;
+        if (tracker) tracker.setValue('');
         const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
         if (nativeSetter) nativeSetter.call(sel, opt.value);
         sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -801,6 +803,8 @@ const BillAutofill = (() => {
       for (let d = 0; d < 5 && parent; d++) {
         const inp = parent.querySelector('input[type="text"], input[type="number"], input:not([type])');
         if (inp) {
+          const tracker = inp._valueTracker;
+          if (tracker) tracker.setValue('');
           const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
           if (nativeSetter) nativeSetter.call(inp, String(value));
           inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
