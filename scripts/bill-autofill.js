@@ -86,6 +86,7 @@ const BillAutofill = (() => {
   let lastLineCount = -1;
   let autofillRunning = false;
   let userChangedDivisa = false;
+  let scriptSetDivisa = null;
 
   function scanForBillPage() {
     const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
@@ -114,6 +115,7 @@ const BillAutofill = (() => {
       lastDetectedDivisa = null;
       lastLineCount = -1;
       userChangedDivisa = false;
+      scriptSetDivisa = null;
       log('Pantalla Bill detectada');
       state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
       renderPanel();
@@ -125,6 +127,7 @@ const BillAutofill = (() => {
       lastDetectedDivisa = null;
       lastLineCount = -1;
       userChangedDivisa = false;
+      scriptSetDivisa = null;
       log(`Vendor detectado/cambiado: ${currentVendor}`);
       state.ready = false;
       runAutofill();
@@ -134,10 +137,10 @@ const BillAutofill = (() => {
       return;
     }
 
-    // Monitor divisa changes — only flag as user-changed if we already filled once
+    // Monitor divisa changes — user-changed if DOM differs from what our script set
     const currentDivisa = extractDivisaFromDOM();
     if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
-      if (state.ready) userChangedDivisa = true;
+      if (scriptSetDivisa && currentDivisa !== scriptSetDivisa) userChangedDivisa = true;
       lastDetectedDivisa = currentDivisa;
       log(`Divisa cambiada en form: ${currentDivisa}${userChangedDivisa ? ' (por usuario)' : ''}`);
       state.ready = false;
@@ -757,6 +760,7 @@ const BillAutofill = (() => {
 
     if (state.currency) {
       results.currency = await tryFillCombobox('divisa.*factura|divisa|currency', state.currency, state.currency);
+      if (results.currency?.success) scriptSetDivisa = state.currency;
       log(`Fill divisa: ${JSON.stringify(results.currency)}`);
     }
 
