@@ -138,9 +138,27 @@ const InvoiceAutoRegen = (() => {
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // Stub: implementación real en Task 4
+  // ── Regenerator ──
+
   async function runRegenerate(item) {
-    throw new Error('runRegenerate not implemented yet');
+    if (!api()) throw new Error('SteelheadAPI no disponible');
+
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15000);
+    try {
+      const data = await Promise.race([
+        api().query('CreateInvoicePdf', { invoiceId: item.invoiceId }, 'CreateInvoicePdf'),
+        new Promise((_, reject) => {
+          ac.signal.addEventListener('abort', () => reject(new Error('Timeout 15s en CreateInvoicePdf')));
+        })
+      ]);
+      const pdfId = data?.createInvoicePdf?.invoicePdf?.id;
+      if (!pdfId) throw new Error('Respuesta sin invoicePdf.id');
+      console.log(`[AutoRegen] Factura #${item.idInDomain} regenerada → invoicePdf.id=${pdfId}`);
+      return pdfId;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   return { init };
