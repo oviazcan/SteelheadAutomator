@@ -58,7 +58,10 @@ const BillAutofill = (() => {
   }
 
   function checkUrl() {
-    if (!BILL_URL_RE.test(location.pathname)) return;
+    if (!BILL_URL_RE.test(location.pathname)) {
+      removePanel();
+      return;
+    }
     setupPageObserver();
   }
 
@@ -85,6 +88,7 @@ const BillAutofill = (() => {
         return;
       }
     }
+    removePanel();
   }
 
   function onBillPageFound() {
@@ -389,21 +393,22 @@ const BillAutofill = (() => {
   // ── DOM Extraction ──
 
   function extractVendorFromDOM() {
-    const labels = document.querySelectorAll('label, span, div, p');
-    for (const el of labels) {
-      if (!/^vendor:?$/i.test(el.textContent?.trim())) continue;
-
-      const container = el.closest('div[class*="field"]')
-        || el.closest('div')?.parentElement
-        || el.parentElement;
-      if (!container) continue;
-
-      const sv = container.querySelector('[class*="singleValue"], [class*="SingleValue"]');
-      if (sv) {
-        const clone = sv.cloneNode(true);
-        clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
-        const text = clone.textContent?.trim();
-        if (text && text.length > 1) return text;
+    // Walk from each singleValue upward looking for a "Vendor" label sibling
+    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of singleValues) {
+      let parent = sv.parentElement;
+      for (let depth = 0; depth < 8 && parent; depth++) {
+        for (const child of parent.children) {
+          if (child.contains(sv)) continue;
+          const txt = child.textContent?.trim() || '';
+          if (/^vendor:?$/i.test(txt)) {
+            const clone = sv.cloneNode(true);
+            clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+            const val = clone.textContent?.trim();
+            if (val && val.length > 1) return val;
+          }
+        }
+        parent = parent.parentElement;
       }
     }
     return null;
@@ -635,8 +640,8 @@ const BillAutofill = (() => {
       panel = document.createElement('div');
       panel.id = 'sa-bill-autofill-panel';
       panel.style.cssText = [
-        'position:fixed', 'bottom:20px', 'right:20px', 'z-index:99999',
-        'background:#1e293b', 'color:#e2e8f0', 'border-radius:10px',
+        'position:fixed', 'bottom:20px', 'left:50%', 'transform:translateX(-50%)',
+        'z-index:99999', 'background:#1e293b', 'color:#e2e8f0', 'border-radius:10px',
         'box-shadow:0 4px 20px rgba(0,0,0,0.4)', 'font-family:system-ui,sans-serif',
         'font-size:13px', 'min-width:260px', 'max-width:340px'
       ].join(';');
@@ -711,12 +716,17 @@ const BillAutofill = (() => {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  function removePanel() {
+    const panel = document.getElementById('sa-bill-autofill-panel');
+    if (panel) panel.remove();
+  }
+
   function updatePanelStatus(status, message) {
     let panel = document.getElementById('sa-bill-autofill-panel');
     if (!panel) {
       panel = document.createElement('div');
       panel.id = 'sa-bill-autofill-panel';
-      panel.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;background:#1e293b;color:#e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);font-family:system-ui,sans-serif;font-size:13px;padding:12px 14px;min-width:220px;';
+      panel.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;background:#1e293b;color:#e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);font-family:system-ui,sans-serif;font-size:13px;padding:12px 14px;min-width:220px;';
       document.body.appendChild(panel);
     }
     const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
