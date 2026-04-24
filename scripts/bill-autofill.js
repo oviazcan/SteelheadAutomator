@@ -316,12 +316,16 @@ const BillAutofill = (() => {
       }
       log(`TipoCambio: ${tipoCambio.length} entradas, última: ${JSON.stringify(tipoCambio[tipoCambio.length - 1])}`);
 
-      const today = new Date().toISOString().slice(0, 10);
-      const todayEntry = tipoCambio.find(e => e.fecha === today);
-      if (todayEntry) return todayEntry.valor;
+      // Save userId for later use in fetchPODivisa
+      const userId = data?.currentSession?.userByUserId?.id;
+      if (userId) state._userId = userId;
 
-      const sorted = [...tipoCambio].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
-      return sorted[0]?.valor ?? null;
+      const today = new Date().toISOString().slice(0, 10);
+      const todayEntry = tipoCambio.find(e => e.FechaTipoCambio === today);
+      if (todayEntry) return todayEntry.TipoCambio;
+
+      const sorted = [...tipoCambio].sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''));
+      return sorted[0]?.TipoCambio ?? null;
     } catch (err) {
       warn('fetchExchangeRate error: ' + err.message);
       return null;
@@ -335,7 +339,7 @@ const BillAutofill = (() => {
 
   async function fetchPODivisa(idInDomain) {
     try {
-      const data = await api().query('GetPurchaseOrder', { idInDomain, userIdFilter: null }, 'GetPurchaseOrder');
+      const data = await api().query('GetPurchaseOrder', { idInDomain, userIdFilter: state._userId || 0 }, 'GetPurchaseOrder');
       const po = data?.purchaseOrderByIdInDomain;
       const divisa = po?.customInputs?.DatosReferencia?.Divisa || po?.customInputs?.Divisa || null;
 
@@ -344,8 +348,8 @@ const BillAutofill = (() => {
         const tipoCambio = po?.domainByDomainId?.customInputs?.TipoCambio;
         if (Array.isArray(tipoCambio) && tipoCambio.length > 0) {
           const today = new Date().toISOString().slice(0, 10);
-          const entry = tipoCambio.find(e => e.fecha === today) || tipoCambio.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
-          if (entry?.valor) state.exchangeRate = entry.valor;
+          const entry = tipoCambio.find(e => e.FechaTipoCambio === today) || tipoCambio.sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''))[0];
+          if (entry?.TipoCambio) state.exchangeRate = entry.TipoCambio;
         }
       }
 
@@ -433,7 +437,7 @@ const BillAutofill = (() => {
   function findBestExpenseAccount(lineName, accounts) {
     const expAccounts = accounts.filter(a => {
       const cat = (a.acctAccountTypeByTypeId?.category || '').toLowerCase();
-      return cat.includes('expense') || (!cat.includes('payable') && !cat.includes('receivable') && !cat.includes('asset'));
+      return cat.includes('expense') || cat.includes('asset') || (!cat.includes('payable') && !cat.includes('receivable'));
     });
 
     if (expAccounts.length === 0) return null;
