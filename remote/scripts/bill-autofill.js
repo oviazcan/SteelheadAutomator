@@ -83,6 +83,7 @@ const BillAutofill = (() => {
   let billFormVisible = false;
   let lastDetectedVendor = null;
   let lastDetectedDivisa = null;
+  let lastLineCount = -1;
   let autofillRunning = false;
 
   function scanForBillPage() {
@@ -100,6 +101,7 @@ const BillAutofill = (() => {
         billFormVisible = false;
         lastDetectedVendor = null;
         lastDetectedDivisa = null;
+        lastLineCount = -1;
         removePanel();
       }
       return;
@@ -109,6 +111,7 @@ const BillAutofill = (() => {
       billFormVisible = true;
       lastDetectedVendor = null;
       lastDetectedDivisa = null;
+      lastLineCount = -1;
       log('Pantalla Bill detectada');
       state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
       renderPanel();
@@ -117,6 +120,8 @@ const BillAutofill = (() => {
     const currentVendor = extractVendorFromDOM();
     if (currentVendor && currentVendor !== lastDetectedVendor) {
       lastDetectedVendor = currentVendor;
+      lastDetectedDivisa = null;
+      lastLineCount = -1;
       log(`Vendor detectado/cambiado: ${currentVendor}`);
       state.ready = false;
       runAutofill();
@@ -126,12 +131,27 @@ const BillAutofill = (() => {
       return;
     }
 
+    // Monitor divisa changes
     const currentDivisa = extractDivisaFromDOM();
     if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
       lastDetectedDivisa = currentDivisa;
       log(`Divisa cambiada en form: ${currentDivisa}`);
       state.ready = false;
       runAutofill();
+      return;
+    }
+
+    // Monitor line item changes
+    if (lastDetectedVendor && state.ready) {
+      const lines = extractLinesFromDOM();
+      if (lines.length !== lastLineCount) {
+        lastLineCount = lines.length;
+        if (lines.length > 0) {
+          log(`Líneas cambiaron: ${lines.length}`);
+          state.ready = false;
+          runAutofill();
+        }
+      }
     }
   }
 
@@ -455,12 +475,38 @@ const BillAutofill = (() => {
       if (el.closest('#sa-bill-autofill-panel')) continue;
       const txt = el.textContent?.trim() || '';
       if (!/^divisa/i.test(txt) || txt.length > 30) continue;
-      let parent = el.parentElement;
-      for (let d = 0; d < 3 && parent; d++) {
-        const pText = parent.textContent || '';
-        if (/usd/i.test(pText) && !/usd/i.test(txt)) return 'USD';
-        if (/mxn|peso/i.test(pText) && !/mxn|peso/i.test(txt)) return 'MXN';
-        parent = parent.parentElement;
+
+      // Strategy 1: next siblings (value is typically right after the label)
+      let sib = el.nextElementSibling;
+      for (let i = 0; i < 2 && sib; i++, sib = sib.nextElementSibling) {
+        const val = sib.textContent?.trim() || '';
+        if (!val || val.length > 60) continue;
+        if (/mxn|peso/i.test(val)) return 'MXN';
+        if (/usd|d[oó]lar/i.test(val)) return 'USD';
+      }
+
+      // Strategy 2: parent's children after the label
+      const parent = el.parentElement;
+      if (!parent) continue;
+      let afterLabel = false;
+      for (const child of parent.children) {
+        if (child === el) { afterLabel = true; continue; }
+        if (!afterLabel) continue;
+        const val = child.textContent?.trim() || '';
+        if (!val || val.length > 60) continue;
+        if (/mxn|peso/i.test(val)) return 'MXN';
+        if (/usd|d[oó]lar/i.test(val)) return 'USD';
+        break;
+      }
+
+      // Strategy 3: singleValue inside nearby container
+      for (let p = el.parentElement, d = 0; d < 3 && p; d++, p = p.parentElement) {
+        const sv = p.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+        if (sv && !sv.closest('#sa-bill-autofill-panel')) {
+          const val = sv.textContent?.trim() || '';
+          if (/mxn|peso/i.test(val)) return 'MXN';
+          if (/usd|d[oó]lar/i.test(val)) return 'USD';
+        }
       }
     }
     return null;
