@@ -60,7 +60,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/wo-deadline-changer.js': 'WODeadlineChanger',
           'scripts/cfdi-attacher.js': 'CfdiAttacher',
           'scripts/paros-linea.js': 'ParosLinea',
-          'scripts/weight-quick-entry.js': 'WeightQuickEntry' };
+          'scripts/weight-quick-entry.js': 'WeightQuickEntry',
+          'scripts/bill-autofill.js': 'BillAutofill' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -1023,6 +1024,19 @@ async function handleMessage(message, sender) {
     case 'get-cfdi-attacher-status': {
       const { cfdiAttacherEnabled } = await chrome.storage.local.get('cfdiAttacherEnabled');
       return { enabled: cfdiAttacherEnabled !== false };
+    }
+
+    // ── Bill Autofill ──
+    case 'toggle-bill-autofill': {
+      const { billAutofillEnabled } = await chrome.storage.local.get('billAutofillEnabled');
+      const newState = billAutofillEnabled === false;
+      await chrome.storage.local.set({ billAutofillEnabled: newState });
+      return { enabled: newState, message: newState ? 'Bill Autofill habilitado' : 'Bill Autofill deshabilitado' };
+    }
+
+    case 'get-bill-autofill-status': {
+      const { billAutofillEnabled } = await chrome.storage.local.get('billAutofillEnabled');
+      return { enabled: billAutofillEnabled !== false };
     }
 
     // ── Paros de Línea ──
