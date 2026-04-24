@@ -82,6 +82,8 @@ const BillAutofill = (() => {
 
   let billFormVisible = false;
   let lastDetectedVendor = null;
+  let lastDetectedDivisa = null;
+  let autofillRunning = false;
 
   function scanForBillPage() {
     const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
@@ -97,6 +99,7 @@ const BillAutofill = (() => {
       if (billFormVisible) {
         billFormVisible = false;
         lastDetectedVendor = null;
+        lastDetectedDivisa = null;
         removePanel();
       }
       return;
@@ -105,6 +108,7 @@ const BillAutofill = (() => {
     if (!billFormVisible) {
       billFormVisible = true;
       lastDetectedVendor = null;
+      lastDetectedDivisa = null;
       log('Pantalla Bill detectada');
       state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
       renderPanel();
@@ -116,8 +120,18 @@ const BillAutofill = (() => {
       log(`Vendor detectado/cambiado: ${currentVendor}`);
       state.ready = false;
       runAutofill();
+      return;
     } else if (!currentVendor && !lastDetectedVendor) {
       updatePanelStatus('pending', 'Esperando selección de proveedor…');
+      return;
+    }
+
+    const currentDivisa = extractDivisaFromDOM();
+    if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
+      lastDetectedDivisa = currentDivisa;
+      log(`Divisa cambiada en form: ${currentDivisa}`);
+      state.ready = false;
+      runAutofill();
     }
   }
 
@@ -436,6 +450,22 @@ const BillAutofill = (() => {
     return null;
   }
 
+  function extractDivisaFromDOM() {
+    for (const el of document.querySelectorAll('label, span, div, p')) {
+      if (el.closest('#sa-bill-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (!/^divisa/i.test(txt) || txt.length > 30) continue;
+      let parent = el.parentElement;
+      for (let d = 0; d < 3 && parent; d++) {
+        const pText = parent.textContent || '';
+        if (/usd/i.test(pText) && !/usd/i.test(txt)) return 'USD';
+        if (/mxn|peso/i.test(pText) && !/mxn|peso/i.test(txt)) return 'MXN';
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
   function extractLinesFromDOM() {
     const lines = [];
     const lineSection = findLineItemsSection();
@@ -475,18 +505,31 @@ const BillAutofill = (() => {
   async function tryFillCombobox(labelText, searchText, targetAccountName) {
     const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
     let container = null;
+    let labelEl = null;
 
     const labels = document.querySelectorAll('label, span, div, p');
     for (const el of labels) {
-      if (!labelRe.test(el.textContent?.trim())) continue;
-      const parent = el.closest('div[class*="field"]') || el.closest('div')?.parentElement || el.parentElement;
-      if (parent) { container = parent; break; }
+      if (el.closest('#sa-bill-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 40) continue;
+      if (!labelRe.test(txt)) continue;
+      labelEl = el;
+      break;
     }
 
-    if (!container) return { success: false, method: 'fallback', reason: 'label no encontrado' };
+    if (!labelEl) return { success: false, method: 'fallback', reason: 'label no encontrado' };
+
+    // Walk up from label until we find a parent containing a React Select control
+    let parent = labelEl;
+    for (let d = 0; d < 8 && parent; d++) {
+      const ctrl = parent.querySelector('[class*="control"], [class*="Control"]');
+      if (ctrl) { container = parent; break; }
+      parent = parent.parentElement;
+    }
+
+    if (!container) return { success: false, method: 'fallback', reason: 'control no encontrado' };
 
     const control = container.querySelector('[class*="control"], [class*="Control"]');
-    if (!control) return { success: false, method: 'fallback', reason: 'control no encontrado' };
 
     control.click();
     await sleep(200);
@@ -541,16 +584,24 @@ const BillAutofill = (() => {
     const labels = document.querySelectorAll('label, span, div, p');
 
     for (const el of labels) {
-      if (!labelRe.test(el.textContent?.trim())) continue;
-      const container = el.closest('div[class*="field"]') || el.closest('div')?.parentElement || el.parentElement;
-      const inp = container?.querySelector('input');
-      if (!inp) continue;
+      if (el.closest('#sa-bill-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 30) continue;
+      if (!labelRe.test(txt)) continue;
 
-      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      if (nativeSetter) nativeSetter.call(inp, String(value));
-      inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
-      inp.dispatchEvent(new Event('change', { bubbles: true }));
-      return { success: true };
+      // Walk up to find a parent with an input
+      let parent = el;
+      for (let d = 0; d < 5 && parent; d++) {
+        const inp = parent.querySelector('input[type="text"], input[type="number"], input:not([type])');
+        if (inp) {
+          const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+          if (nativeSetter) nativeSetter.call(inp, String(value));
+          inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          return { success: true };
+        }
+        parent = parent.parentElement;
+      }
     }
 
     return { success: false };
@@ -576,7 +627,7 @@ const BillAutofill = (() => {
     if (state.apAccount?.account) {
       const acc = state.apAccount.account;
       const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
-      results.apAccount = await tryFillCombobox('cuenta.*pagar|accounts? payable|ap account|vendor account', search, acc.name);
+      results.apAccount = await tryFillCombobox('cuenta.*pagar|accounts?\\s*payable|a/?p\\s*account|vendor\\s*account', search, acc.name);
     }
 
     for (let i = 0; i < state.lineAccounts.length; i++) {
@@ -597,6 +648,17 @@ const BillAutofill = (() => {
   // ── Orchestrator ──
 
   async function runAutofill() {
+    if (autofillRunning) return;
+    autofillRunning = true;
+
+    try {
+      await _runAutofillInner();
+    } finally {
+      autofillRunning = false;
+    }
+  }
+
+  async function _runAutofillInner() {
     updatePanelStatus('pending', 'Analizando...');
 
     const vendorName = lastDetectedVendor || extractVendorFromDOM();
@@ -617,10 +679,20 @@ const BillAutofill = (() => {
       return;
     }
 
+    // Divisa priority: DOM (user-selected) > PO > inferred
+    const divisaFromDOM = extractDivisaFromDOM();
     const currencyFromPO = state.poDivisa;
-    const currency = currencyFromPO || inferCurrency(vendorName);
-    const currencySource = currencyFromPO ? 'po' : 'inferred';
-    const exchangeRate = exchangeData ?? state.exchangeRate ?? null;
+    const currency = divisaFromDOM || currencyFromPO || inferCurrency(vendorName);
+    const currencySource = divisaFromDOM ? 'dom' : currencyFromPO ? 'po' : 'inferred';
+    lastDetectedDivisa = divisaFromDOM;
+
+    // TC: MXN=1, otherwise from TipoCambio array
+    let exchangeRate;
+    if (currency === 'MXN') {
+      exchangeRate = 1;
+    } else {
+      exchangeRate = exchangeData ?? state.exchangeRate ?? null;
+    }
     const apResult = findBestAPAccount(vendorName, currency, accountsData);
     const lines = extractLinesFromDOM();
 
@@ -681,8 +753,9 @@ const BillAutofill = (() => {
     if (!collapsed) {
       html += `<div style="padding:12px 14px;">`;
 
-      const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'po' ? 'done' : 'warn';
-      const divisaLabel = state.currency ? `${state.currency}${state.currencySource === 'inferred' ? ' (inferida)' : ''}` : '—';
+      const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'inferred' ? 'warn' : 'done';
+      const divisaSuffix = state.currencySource === 'inferred' ? ' (inferida)' : state.currencySource === 'dom' ? ' (del form)' : '';
+      const divisaLabel = state.currency ? `${state.currency}${divisaSuffix}` : '—';
       html += renderRow('Divisa', divisaLabel, divisaStatus);
       html += renderRow('Tipo de Cambio',
         state.exchangeRate != null ? `$${Number(state.exchangeRate).toFixed(4)}` : '—',
