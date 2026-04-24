@@ -63,6 +63,7 @@ const BillAutofill = (() => {
       billFormVisible = false;
       lastDetectedVendor = null;
       lastDetectedDivisa = null;
+      lastDetectedInvoiceDate = null;
       lastLineCount = -1;
       scriptSetDivisa = null;
       state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
@@ -89,6 +90,7 @@ const BillAutofill = (() => {
   let billFormVisible = false;
   let lastDetectedVendor = null;
   let lastDetectedDivisa = null;
+  let lastDetectedInvoiceDate = null;
   let lastLineCount = -1;
   let autofillRunning = false;
   let scriptSetDivisa = null;
@@ -155,6 +157,21 @@ const BillAutofill = (() => {
           log(`Líneas cambiaron: ${lines.length}`);
           state.ready = false;
           runAutofill();
+        }
+      }
+    }
+
+    // Monitor Invoice Date changes → update TC to match that date
+    if (lastDetectedVendor && state.ready && state.currency !== 'MXN') {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      if (invoiceDate && invoiceDate !== lastDetectedInvoiceDate) {
+        lastDetectedInvoiceDate = invoiceDate;
+        const rate = findRateForDate(invoiceDate);
+        if (rate != null && rate !== state.exchangeRate) {
+          log(`Invoice Date: ${invoiceDate} → TC: ${rate}`);
+          state.exchangeRate = rate;
+          tryFillTextInput('tipo de cambio|exchange rate', rate);
+          renderPanel();
         }
       }
     }
@@ -321,20 +338,26 @@ const BillAutofill = (() => {
       }
       log(`TipoCambio: ${tipoCambio.length} entradas, última: ${JSON.stringify(tipoCambio[tipoCambio.length - 1])}`);
 
-      // Save userId for later use in fetchPODivisa
       const userId = data?.currentSession?.userByUserId?.id;
       if (userId) state._userId = userId;
 
-      const today = new Date().toISOString().slice(0, 10);
-      const todayEntry = tipoCambio.find(e => e.FechaTipoCambio === today);
-      if (todayEntry) return todayEntry.TipoCambio;
-
-      const sorted = [...tipoCambio].sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''));
-      return sorted[0]?.TipoCambio ?? null;
+      state._tipoCambioArray = tipoCambio;
+      return findRateForDate(null);
     } catch (err) {
       warn('fetchExchangeRate error: ' + err.message);
       return null;
     }
+  }
+
+  function findRateForDate(dateStr) {
+    const arr = state._tipoCambioArray;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const target = dateStr || new Date().toISOString().slice(0, 10);
+    const exact = arr.find(e => e.FechaTipoCambio === target);
+    if (exact) return exact.TipoCambio;
+    const sorted = [...arr].sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''));
+    const closest = sorted.find(e => (e.FechaTipoCambio || '') <= target);
+    return (closest || sorted[0])?.TipoCambio ?? null;
   }
 
   async function fetchAccounts() {
@@ -547,6 +570,31 @@ const BillAutofill = (() => {
       }
     }
 
+    return null;
+  }
+
+  function extractInvoiceDateFromDOM() {
+    const inputs = document.querySelectorAll('input[type="date"], input[type="text"], input');
+    for (const inp of inputs) {
+      if (inp.closest('#sa-bill-autofill-panel')) continue;
+      let parent = inp.parentElement;
+      for (let d = 0; d < 5 && parent; d++) {
+        for (const child of parent.children) {
+          if (child.contains(inp)) continue;
+          const txt = child.textContent?.trim() || '';
+          if (/^invoice\s*date:?$/i.test(txt) || /^fecha.*factura:?$/i.test(txt)) {
+            const val = inp.value?.trim();
+            if (!val) return null;
+            const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return m[0];
+            const m2 = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+            return null;
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
     return null;
   }
 
