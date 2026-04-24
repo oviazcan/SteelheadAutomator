@@ -61,7 +61,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/cfdi-attacher.js': 'CfdiAttacher',
           'scripts/paros-linea.js': 'ParosLinea',
           'scripts/weight-quick-entry.js': 'WeightQuickEntry',
-          'scripts/bill-autofill.js': 'BillAutofill' };
+          'scripts/bill-autofill.js': 'BillAutofill',
+          'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -1037,6 +1038,19 @@ async function handleMessage(message, sender) {
     case 'get-bill-autofill-status': {
       const { billAutofillEnabled } = await chrome.storage.local.get('billAutofillEnabled');
       return { enabled: billAutofillEnabled !== false };
+    }
+
+    // ── Invoice Auto-Regen ──
+    case 'toggle-invoice-auto-regen': {
+      const { invoiceAutoRegenEnabled } = await chrome.storage.local.get('invoiceAutoRegenEnabled');
+      const newState = invoiceAutoRegenEnabled === false;
+      await chrome.storage.local.set({ invoiceAutoRegenEnabled: newState });
+      return { enabled: newState, message: newState ? 'Auto-regen de facturas habilitado' : 'Auto-regen de facturas deshabilitado' };
+    }
+
+    case 'get-invoice-auto-regen-status': {
+      const { invoiceAutoRegenEnabled } = await chrome.storage.local.get('invoiceAutoRegenEnabled');
+      return { enabled: invoiceAutoRegenEnabled !== false };
     }
 
     // ── Paros de Línea ──

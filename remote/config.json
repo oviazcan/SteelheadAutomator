@@ -1,5 +1,5 @@
 {
-  "version": "0.4.83",
+  "version": "0.4.84",
   "lastUpdated": "2026-04-24",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -373,6 +373,32 @@
       ]
     },
     {
+      "id": "invoice-auto-regen",
+      "name": "Auto-regenerar Facturas",
+      "subtitle": "Regenera PDF al detectar timbrado exitoso",
+      "icon": "🔄",
+      "category": "Facturación",
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/invoice-auto-regen.js"
+      ],
+      "autoInject": true,
+      "requiredPermissions": [
+        "READ_INVOICING"
+      ],
+      "actions": [
+        {
+          "id": "toggle-invoice-auto-regen",
+          "label": "Auto-regenerar Facturas",
+          "sublabel": "Regenera PDF tras timbrado exitoso",
+          "icon": "🔄",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-invoice-auto-regen"
+        }
+      ]
+    },
+    {
       "id": "portal-importer",
       "name": "Importador de Portales",
       "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)",
@@ -508,6 +534,7 @@
     "CreateEmailLogReceivedOrder": { "type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator" },
     "InvoiceByIdInDomain": { "type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher" },
     "CreateInvoicePdf": { "type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher" },
+    "ActiveInvoicesPaged": { "type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen" },
     "CreateInvoiceEmailLog": { "type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher" },
     "CurrentUser": { "type": "query", "description": "Usuario actual logueado con permisos y config de dominio", "usedBy": "permissions" },
     "GlobalUsers": { "type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions" },
