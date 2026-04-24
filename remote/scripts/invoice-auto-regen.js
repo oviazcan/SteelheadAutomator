@@ -89,6 +89,60 @@ const InvoiceAutoRegen = (() => {
     return [{ invoiceId: inv.id, idInDomain: inv.idInDomain }];
   }
 
+  // ── Queue ──
+
+  // Eventos: 'enqueued' | 'started' | 'done' | 'error'
+  const listeners = { enqueued: [], started: [], done: [], error: [] };
+  function on(event, fn) { listeners[event]?.push(fn); }
+  function emit(event, payload) {
+    for (const fn of (listeners[event] || [])) {
+      try { fn(payload); } catch (e) { console.warn('[AutoRegen] listener error:', e); }
+    }
+  }
+
+  function enqueue(items) {
+    for (const item of items) {
+      const id = item.invoiceId;
+      if (completedSet.has(id)) continue;          // ya regenerada esta sesión
+      if (state.has(id)) continue;                  // ya en flight (pending/running/error)
+      state.set(id, 'pending');
+      queueArr.push(item);
+      emit('enqueued', item);
+    }
+    if (!processing) processNext();
+  }
+
+  async function processNext() {
+    if (processing) return;
+    processing = true;
+    try {
+      while (queueArr.length > 0) {
+        const item = queueArr.shift();
+        state.set(item.invoiceId, 'running');
+        emit('started', item);
+        try {
+          await runRegenerate(item);                // definida en Task 4
+          state.set(item.invoiceId, 'done');
+          completedSet.add(item.invoiceId);
+          emit('done', item);
+        } catch (err) {
+          state.set(item.invoiceId, 'error');
+          emit('error', { ...item, error: err });
+        }
+        await sleep(200);                            // espaciado serial
+      }
+    } finally {
+      processing = false;
+    }
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Stub: implementación real en Task 4
+  async function runRegenerate(item) {
+    throw new Error('runRegenerate not implemented yet');
+  }
+
   return { init };
 })();
 
