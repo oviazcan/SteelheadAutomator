@@ -901,7 +901,7 @@ const BillAutofill = (() => {
     const divisaFromDOM = extractDivisaFromDOM();
     const currencyFromPO = state.poDivisa;
     const currencyFromVendor = inferCurrencyFromVendorDivisas(vendorDivisas);
-    const currency = divisaFromDOM || currencyFromPO || currencyFromVendor || 'MXN';
+    const currency = divisaFromDOM || currencyFromPO || currencyFromVendor || 'USD';
     const currencySource = divisaFromDOM ? 'form' : currencyFromPO ? 'po' : currencyFromVendor ? 'vendor' : 'default';
     lastDetectedDivisa = currency;
 
