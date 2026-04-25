@@ -55,7 +55,38 @@ const InvoiceAutoRegen = (() => {
         try {
           const clone = response.clone();
           const json = await clone.json();
+
+          // DEBUG: shape relevante para diagnóstico
+          if (opName === 'InvoiceByIdInDomain') {
+            const inv = json?.data?.invoiceByIdInDomain;
+            console.log('[AutoRegen DEBUG] InvoiceByIdInDomain', {
+              idInDomain: inv?.idInDomain,
+              hasSteelheadObject: !!inv?.steelheadObjectByInvoiceId,
+              writtenAt: inv?.steelheadObjectByInvoiceId?.writtenAt,
+              voidedAt: inv?.voidedAt,
+              voidSuccessfulAt: inv?.steelheadObjectByInvoiceId?.voidSuccessfulAt,
+              pdfsCount: inv?.invoicePdfsByInvoiceId?.nodes?.length,
+              pdfDates: inv?.invoicePdfsByInvoiceId?.nodes?.map(n => n.createdAt),
+              uuid: inv?.createWriteResult?.data?.result?.writeResult?.uuid,
+              keysAtRoot: inv ? Object.keys(inv) : null
+            });
+          } else {
+            const nodes = json?.data?.allInvoices?.nodes || [];
+            console.log('[AutoRegen DEBUG] ActiveInvoicesPaged total=', nodes.length);
+            if (nodes.length > 0) {
+              const sample = nodes[0];
+              console.log('[AutoRegen DEBUG] sample[0]', {
+                idInDomain: sample.idInDomain,
+                hasSteelheadObject: !!sample.steelheadObjectByInvoiceId,
+                writtenAt: sample.steelheadObjectByInvoiceId?.writtenAt,
+                pdfsCount: sample.invoicePdfsByInvoiceId?.nodes?.length,
+                keysAtRoot: Object.keys(sample)
+              });
+            }
+          }
+
           const items = (opName === 'ActiveInvoicesPaged') ? scanList(json) : scanSingle(json);
+          console.log(`[AutoRegen DEBUG] ${opName} items detectados:`, items.length);
           if (items.length > 0) {
             for (const it of items) rememberItem(it);
             enqueue(items);
