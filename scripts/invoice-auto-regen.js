@@ -212,14 +212,25 @@ const InvoiceAutoRegen = (() => {
 
   // ── Regenerator ──
 
+  // Genera un filename con el mismo shape que usa Steelhead (`<timestamp>-<random>.pdf`)
+  function generatePdfFilename() {
+    return `${Date.now()}-${Math.floor(Math.random() * 1e9)}.pdf`;
+  }
+
   async function runRegenerate(item) {
     if (!api()) throw new Error('SteelheadAPI no disponible');
+
+    const variables = {
+      filename: generatePdfFilename(),
+      invoiceId: item.invoiceId,
+      isRevision: true
+    };
 
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 15000);
     try {
       const data = await Promise.race([
-        api().query('CreateInvoicePdf', { invoiceId: item.invoiceId }, 'CreateInvoicePdf'),
+        api().query('CreateInvoicePdf', variables, 'CreateInvoicePdf'),
         new Promise((_, reject) => {
           ac.signal.addEventListener('abort', () => reject(new Error('Timeout 15s en CreateInvoicePdf')));
         })
