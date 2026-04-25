@@ -78,6 +78,22 @@ const InvoiceAutoRegen = (() => {
         try { window.__autoRegenHashRegistry = Object.fromEntries(hashRegistry); } catch {}
       }
 
+      // Captura payload completo de GetPdfTemplateOutputToUserFile (renderer del PDF)
+      // para reverse-engineer la transformación invoice raw → data del template.
+      // Sin esto el PDF sale vacío (Subtotal 0, IVA NaN, lineItems sin renderizar).
+      if (opName === 'GetPdfTemplateOutputToUserFile') {
+        try {
+          const doc0 = bodyObj?.variables?.docs?.[0];
+          if (doc0?.data) {
+            const idInDomain = doc0.data.idInDomain;
+            window.__lastManualPdfData = window.__lastManualPdfData || {};
+            window.__lastManualPdfData[idInDomain] = doc0.data;
+            window.__lastManualPdfDataLatest = doc0.data;
+            console.log(`%c[AutoRegen] Capturado payload PDF de #${idInDomain} → para copiar al clipboard: dumpManualPdfPayload(${idInDomain})`, 'color:#0891b2;font-weight:bold');
+          }
+        } catch (e) { /* no fatal */ }
+      }
+
       // DEBUG: capturar TODAS las ops relacionadas con PDF/Invoice/File para diagnóstico
       const _isInteresting = opName && /Pdf|Invoice|Render|Revision|File|Upload|Sign|S3|Payment/i.test(opName);
       if (_isInteresting) {
@@ -524,5 +540,25 @@ if (typeof window !== 'undefined') {
   window.InvoiceAutoRegen = InvoiceAutoRegen;
   // Atajo en consola: regenerateInvoice(invoiceId, idInDomain)
   window.regenerateInvoice = (invoiceId, idInDomain) => InvoiceAutoRegen.regenerateOne(invoiceId, idInDomain);
+
+  // Helper de diagnóstico: copia al clipboard el payload completo del último
+  // GetPdfTemplateOutputToUserFile manual capturado (o de un idInDomain específico).
+  // Usar después de hacer un click manual de regenerar en el UI.
+  window.dumpManualPdfPayload = function (idInDomain) {
+    const all = window.__lastManualPdfData || {};
+    const data = idInDomain ? all[idInDomain] : window.__lastManualPdfDataLatest;
+    if (!data) {
+      console.warn(`[AutoRegen] No hay payload capturado${idInDomain ? ` para #${idInDomain}` : ''}. Haz click manual de regenerar primero.`);
+      return null;
+    }
+    const json = JSON.stringify(data, null, 2);
+    try {
+      navigator.clipboard.writeText(json).then(() => {
+        console.log(`%c[AutoRegen] Payload de #${data.idInDomain} copiado al clipboard (${json.length} chars)`, 'color:#16a34a;font-weight:bold');
+      });
+    } catch (e) { console.warn('Clipboard falló:', e); }
+    return data;
+  };
+
   InvoiceAutoRegen.init();
 }
