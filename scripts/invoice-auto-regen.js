@@ -65,14 +65,16 @@ const InvoiceAutoRegen = (() => {
           // DEBUG: shape relevante para diagnóstico
           if (opName === 'InvoiceByIdInDomain') {
             const inv = json?.data?.invoiceByIdInDomain;
+            const pdfNodes = inv?.invoicePdfsByInvoiceId?.nodes;
             console.log('[AutoRegen DEBUG] InvoiceByIdInDomain', {
               idInDomain: inv?.idInDomain,
               hasSteelheadObject: !!inv?.steelheadObjectByInvoiceId,
               writtenAt: inv?.steelheadObjectByInvoiceId?.writtenAt,
               voidedAt: inv?.voidedAt,
               voidSuccessfulAt: inv?.steelheadObjectByInvoiceId?.voidSuccessfulAt,
-              pdfsCount: inv?.invoicePdfsByInvoiceId?.nodes?.length,
-              pdfDates: inv?.invoicePdfsByInvoiceId?.nodes?.map(n => n.createdAt),
+              pdfsCount: pdfNodes?.length,
+              pdfNodesRaw: pdfNodes,
+              pdfNodeKeys: pdfNodes && pdfNodes[0] ? Object.keys(pdfNodes[0]) : null,
               uuid: inv?.createWriteResult?.data?.result?.writeResult?.uuid,
               keysAtRoot: inv ? Object.keys(inv) : null
             });
@@ -81,11 +83,14 @@ const InvoiceAutoRegen = (() => {
             console.log('[AutoRegen DEBUG] ActiveInvoicesPaged total=', nodes.length);
             if (nodes.length > 0) {
               const sample = nodes[0];
+              const pdfNodes = sample.invoicePdfsByInvoiceId?.nodes;
               console.log('[AutoRegen DEBUG] sample[0]', {
                 idInDomain: sample.idInDomain,
                 hasSteelheadObject: !!sample.steelheadObjectByInvoiceId,
                 writtenAt: sample.steelheadObjectByInvoiceId?.writtenAt,
-                pdfsCount: sample.invoicePdfsByInvoiceId?.nodes?.length,
+                pdfsCount: pdfNodes?.length,
+                pdfNodesRaw: pdfNodes,
+                pdfNodeKeys: pdfNodes && pdfNodes[0] ? Object.keys(pdfNodes[0]) : null,
                 keysAtRoot: Object.keys(sample)
               });
             }
@@ -237,7 +242,7 @@ const InvoiceAutoRegen = (() => {
       ]);
       const pdfId = data?.createInvoicePdf?.invoicePdf?.id;
       if (!pdfId) throw new Error('Respuesta sin invoicePdf.id');
-      console.log(`[AutoRegen] Factura #${item.idInDomain} regenerada → invoicePdf.id=${pdfId}`);
+      console.log(`%c[AutoRegen] ✓ Factura #${item.idInDomain} regenerada → invoicePdf.id=${pdfId}`, 'color:#16a34a;font-weight:bold');
       return pdfId;
     } finally {
       clearTimeout(timer);
