@@ -89,7 +89,11 @@ const InvoiceAutoRegen = (() => {
             window.__lastManualPdfData = window.__lastManualPdfData || {};
             window.__lastManualPdfData[idInDomain] = doc0.data;
             window.__lastManualPdfDataLatest = doc0.data;
-            console.log(`%c[AutoRegen] Capturado payload PDF de #${idInDomain} → para copiar al clipboard: dumpManualPdfPayload(${idInDomain})`, 'color:#0891b2;font-weight:bold');
+            // Empareja con el último raw de InvoiceByIdInDomain capturado para ese idInDomain
+            const rawForId = (window.__lastRawInvoice || {})[idInDomain];
+            window.__lastManualPdfPair = window.__lastManualPdfPair || {};
+            window.__lastManualPdfPair[idInDomain] = { raw: rawForId || null, pdfData: doc0.data };
+            console.log(`%c[AutoRegen] Capturado pair PDF de #${idInDomain} (raw=${rawForId ? 'OK' : 'FALTA — abre modal primero'}) → dumpManualPair(${idInDomain}) o dumpManualPdfPayload(${idInDomain})`, 'color:#0891b2;font-weight:bold');
           }
         } catch (e) { /* no fatal */ }
       }
@@ -125,6 +129,17 @@ const InvoiceAutoRegen = (() => {
         try {
           const clone = response.clone();
           const json = await clone.json();
+
+          // Cachear el raw InvoiceByIdInDomain por idInDomain para emparejar con
+          // el siguiente GetPdfTemplateOutputToUserFile (necesario para derivar
+          // el transform raw → data del template).
+          if (opName === 'InvoiceByIdInDomain') {
+            const inv = json?.data?.invoiceByIdInDomain;
+            if (inv?.idInDomain != null) {
+              window.__lastRawInvoice = window.__lastRawInvoice || {};
+              window.__lastRawInvoice[inv.idInDomain] = inv;
+            }
+          }
 
           // DEBUG: shape relevante para diagnóstico
           if (opName === 'InvoiceByIdInDomain') {
@@ -558,6 +573,29 @@ if (typeof window !== 'undefined') {
       });
     } catch (e) { console.warn('Clipboard falló:', e); }
     return data;
+  };
+
+  // Copia al clipboard {raw, pdfData} emparejados — necesario para derivar
+  // el transform raw InvoiceByIdInDomain → data del template del PDF.
+  // Flujo: abrir el modal de la factura (dispara InvoiceByIdInDomain) → click
+  // en regenerar (dispara GetPdfTemplateOutputToUserFile) → dumpManualPair(<id>).
+  window.dumpManualPair = function (idInDomain) {
+    const all = window.__lastManualPdfPair || {};
+    const pair = all[idInDomain];
+    if (!pair) {
+      console.warn(`[AutoRegen] No hay pair capturado para #${idInDomain}. Abre el modal primero, luego haz click en regenerar.`);
+      return null;
+    }
+    if (!pair.raw) {
+      console.warn(`[AutoRegen] Pair sin raw para #${idInDomain} (clickeaste regenerar sin abrir modal antes). Cierra el modal y vuelve a abrirlo, luego regenera.`);
+    }
+    const json = JSON.stringify(pair, null, 2);
+    try {
+      navigator.clipboard.writeText(json).then(() => {
+        console.log(`%c[AutoRegen] Pair de #${idInDomain} copiado al clipboard (${json.length} chars). Pégalo a Claude para que derive el transform.`, 'color:#16a34a;font-weight:bold');
+      });
+    } catch (e) { console.warn('Clipboard falló:', e); }
+    return pair;
   };
 
   InvoiceAutoRegen.init();
