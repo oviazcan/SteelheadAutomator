@@ -45,8 +45,14 @@ const InvoiceAutoRegen = (() => {
       const isGraphql = typeof url === 'string' && url.includes('/graphql');
       if (!isGraphql || !opts?.body) return _origFetch.apply(this, args);
 
-      let opName;
-      try { opName = JSON.parse(opts.body)?.operationName; } catch { return _origFetch.apply(this, args); }
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return _origFetch.apply(this, args); }
+      const opName = bodyObj?.operationName;
+
+      // DEBUG: capturar body real de CreateInvoicePdf cuando Steelhead lo dispara (click manual)
+      if (opName === 'CreateInvoicePdf') {
+        console.log('[AutoRegen DEBUG] outgoing CreateInvoicePdf body:', JSON.stringify(bodyObj, null, 2));
+      }
 
       const response = await _origFetch.apply(this, args);
 
@@ -191,6 +197,7 @@ const InvoiceAutoRegen = (() => {
           completedSet.add(item.invoiceId);
           emit('done', item);
         } catch (err) {
+          console.warn(`[AutoRegen] Error regenerando factura #${item.idInDomain} (id=${item.invoiceId}):`, err?.message || err);
           state.set(item.invoiceId, 'error');
           emit('error', { ...item, error: err });
         }
