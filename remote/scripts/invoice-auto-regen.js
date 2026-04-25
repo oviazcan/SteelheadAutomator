@@ -10,11 +10,17 @@ const InvoiceAutoRegen = (() => {
   let enabled = true;
   let _origFetch = null;
 
-  // KILL SWITCH: pausa el disparo de CreateInvoicePdf mientras diagnosticamos
-  // por qué el PDF generado no se sube a S3 (AccessDenied). Mientras está en true,
-  // el detector y los logs siguen activos para capturar las mutations del click manual,
-  // pero no se ejecuta CreateInvoicePdf.
+  // KILL SWITCH del flujo automático. Mientras esté en true, el detector + logs
+  // funcionan, pero ninguna factura se regenera automáticamente al refrescar.
+  // La función manual window.regenerateInvoice(invoiceId, idInDomain) sigue siendo
+  // invocable desde la consola para verificar que la nueva secuencia funciona.
   const REGEN_DISABLED = true;
+
+  // Registry de sha256Hash por operationName, llenado en tiempo real desde el
+  // interceptor. Permite usar hashes que aún no están en config.json (necesario
+  // mientras no agreguemos GetPdfTemplateOutputToUserFile, GetPdfConfigsByType,
+  // AddCreatedPaymentOnInvoice).
+  const hashRegistry = new Map();
 
   // Estado en memoria (vida = pestaña)
   const completedSet = new Set(); // invoiceIds ya regenerados con éxito
@@ -54,6 +60,14 @@ const InvoiceAutoRegen = (() => {
       let bodyObj;
       try { bodyObj = JSON.parse(opts.body); } catch { return _origFetch.apply(this, args); }
       const opName = bodyObj?.operationName;
+
+      // Captura sha256Hash de toda op que pasa para tener registry siempre fresco.
+      // Permite invocar mutations cuyos hashes no estén aún en config.json.
+      const _h = bodyObj?.extensions?.persistedQuery?.sha256Hash;
+      if (opName && _h) {
+        hashRegistry.set(opName, _h);
+        try { window.__autoRegenHashRegistry = Object.fromEntries(hashRegistry); } catch {}
+      }
 
       // DEBUG: capturar TODAS las ops relacionadas con PDF/Invoice/File para diagnóstico
       const _isInteresting = opName && /Pdf|Invoice|Render|Revision|File|Upload|Sign|S3|Payment/i.test(opName);
@@ -412,10 +426,94 @@ const InvoiceAutoRegen = (() => {
     }
   }
 
-  return { init };
+  // ── Regen v2: secuencia completa replicando el click manual ──
+  //
+  // Click manual hace 4 pasos (capturados en logs 0.4.90):
+  //   1. InvoiceByIdInDomain          → invoice completo (con createWriteResult del SAT)
+  //   2. GetPdfConfigsByType          → pdfTemplateId activo
+  //   3. GetPdfTemplateOutputToUserFile{docs:[{template,data:invoice}]}
+  //                                   → renderiza PDF y SUBE binario a S3, devuelve filename
+  //   4. CreateInvoicePdf{filename,invoiceId,isRevision:true}
+  //                                   → crea record en BD apuntando al S3 ya subido
+  //   5. AddCreatedPaymentOnInvoice   → post-step (no fatal)
+
+  async function _callOp(opName, variables) {
+    const fromRegistry = hashRegistry.get(opName);
+    const fromConfig = api()?.getHash?.(opName);
+    const hash = fromRegistry || fromConfig;
+    if (!hash) {
+      throw new Error(`No hash para ${opName}. Haz un click manual de regenerar primero para que el applet aprenda los hashes.`);
+    }
+    const body = {
+      operationName: opName,
+      variables,
+      extensions: {
+        clientLibrary: { name: '@apollo/client', version: '4.0.8' },
+        persistedQuery: { version: 1, sha256Hash: hash }
+      }
+    };
+    const r = await fetch('https://app.gosteelhead.com/graphql', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      throw new Error(`HTTP ${r.status} en ${opName}: ${text.substring(0, 300)}`);
+    }
+    const j = await r.json();
+    if (j.errors && !j.data) {
+      const msgs = (j.errors || []).map(e => e.message).join('; ');
+      throw new Error(`GraphQL ${opName}: ${msgs.substring(0, 300)}`);
+    }
+    return j.data;
+  }
+
+  async function regenerateOne(invoiceId, idInDomain) {
+    console.log(`%c[AutoRegen TEST] Iniciando regen factura #${idInDomain} (id=${invoiceId})`, 'color:#0891b2;font-weight:bold');
+
+    const invData = await _callOp('InvoiceByIdInDomain', { idInDomain });
+    const invoice = invData?.invoiceByIdInDomain;
+    if (!invoice) throw new Error('InvoiceByIdInDomain devolvió null');
+    console.log(`[AutoRegen TEST] 1/5 ✓ Invoice cargado (uuid SAT: ${invoice?.createWriteResult?.data?.result?.writeResult?.uuid || 'NO UUID'})`);
+
+    const cfgData = await _callOp('GetPdfConfigsByType', { pdfType: 'INVOICE_TEMPLATE' });
+    const pdfCfg = (cfgData?.allPdfConfigs?.nodes || []).find(n => n.isActive);
+    if (!pdfCfg) throw new Error('No hay PdfConfig activo para INVOICE_TEMPLATE');
+    console.log(`[AutoRegen TEST] 2/5 ✓ pdfTemplateId=${pdfCfg.pdfTemplateId}`);
+
+    const renderData = await _callOp('GetPdfTemplateOutputToUserFile', {
+      docs: [{ template: pdfCfg.pdfTemplateId, data: invoice }]
+    });
+    const filename = renderData?.pdfTemplateOutputToUserFile;
+    if (!filename) throw new Error('Render no devolvió filename');
+    console.log(`[AutoRegen TEST] 3/5 ✓ PDF renderizado y subido a S3 → ${filename}`);
+
+    const createData = await _callOp('CreateInvoicePdf', {
+      filename, invoiceId, isRevision: true
+    });
+    const pdfId = createData?.createInvoicePdf?.invoicePdf?.id;
+    if (!pdfId) throw new Error('CreateInvoicePdf no devolvió id');
+    console.log(`[AutoRegen TEST] 4/5 ✓ Record invoicePdf creado → id=${pdfId}`);
+
+    try {
+      await _callOp('AddCreatedPaymentOnInvoice', { invoiceIdInDomain: idInDomain });
+      console.log(`[AutoRegen TEST] 5/5 ✓ AddCreatedPaymentOnInvoice OK`);
+    } catch (e) {
+      console.warn(`[AutoRegen TEST] 5/5 ⚠ AddCreatedPaymentOnInvoice falló (no fatal): ${e.message}`);
+    }
+
+    console.log(`%c[AutoRegen TEST] ✓ COMPLETADO factura #${idInDomain} — abre el modal y verifica que el PDF se vea con sello SAT`, 'color:#16a34a;font-weight:bold');
+    return { pdfId, filename };
+  }
+
+  return { init, regenerateOne, _callOp, _hashRegistry: hashRegistry };
 })();
 
 if (typeof window !== 'undefined') {
   window.InvoiceAutoRegen = InvoiceAutoRegen;
+  // Atajo en consola: regenerateInvoice(invoiceId, idInDomain)
+  window.regenerateInvoice = (invoiceId, idInDomain) => InvoiceAutoRegen.regenerateOne(invoiceId, idInDomain);
   InvoiceAutoRegen.init();
 }
