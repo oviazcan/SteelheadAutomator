@@ -20,7 +20,11 @@ const InvoiceAutoRegen = (() => {
   // interceptor. Permite usar hashes que aún no están en config.json (necesario
   // mientras no agreguemos GetPdfTemplateOutputToUserFile, GetPdfConfigsByType,
   // AddCreatedPaymentOnInvoice).
-  const hashRegistry = new Map();
+  //
+  // IMPORTANTE: vive en window para sobrevivir doble-load del script. El sentinel
+  // __saAutoRegenPatched evita que se reinstale el fetch interceptor, pero la IIFE
+  // sí corre dos veces y cada cierre tendría su propio Map vacío si fuera local.
+  const hashRegistry = window.__autoRegenHashRegistryMap || (window.__autoRegenHashRegistryMap = new Map());
 
   // Estado en memoria (vida = pestaña)
   const completedSet = new Set(); // invoiceIds ya regenerados con éxito
@@ -33,6 +37,11 @@ const InvoiceAutoRegen = (() => {
   function init() {
     enabled = document.documentElement.dataset.saAutoRegenEnabled !== 'false';
     if (!enabled) { console.log('[AutoRegen] Deshabilitado'); return; }
+    if (window.__saAutoRegenInitDone) {
+      console.log('[AutoRegen] Ya estaba inicializado en esta página — skip (registry compartido)');
+      return;
+    }
+    window.__saAutoRegenInitDone = true;
     patchFetch();
 
     // Cablear UI
