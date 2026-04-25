@@ -10,6 +10,12 @@ const InvoiceAutoRegen = (() => {
   let enabled = true;
   let _origFetch = null;
 
+  // KILL SWITCH: pausa el disparo de CreateInvoicePdf mientras diagnosticamos
+  // por qué el PDF generado no se sube a S3 (AccessDenied). Mientras está en true,
+  // el detector y los logs siguen activos para capturar las mutations del click manual,
+  // pero no se ejecuta CreateInvoicePdf.
+  const REGEN_DISABLED = true;
+
   // Estado en memoria (vida = pestaña)
   const completedSet = new Set(); // invoiceIds ya regenerados con éxito
   const state = new Map();        // invoiceId → 'pending' | 'running' | 'done' | 'error'
@@ -49,9 +55,9 @@ const InvoiceAutoRegen = (() => {
       try { bodyObj = JSON.parse(opts.body); } catch { return _origFetch.apply(this, args); }
       const opName = bodyObj?.operationName;
 
-      // DEBUG: capturar body real de CreateInvoicePdf cuando Steelhead lo dispara (click manual)
-      if (opName === 'CreateInvoicePdf') {
-        console.log('[AutoRegen DEBUG] outgoing CreateInvoicePdf body:', JSON.stringify(bodyObj, null, 2));
+      // DEBUG: capturar TODAS las ops relacionadas con PDF/Invoice/File para diagnóstico
+      if (opName && /Pdf|Invoice|Render|Revision|File|Upload|Sign|S3/i.test(opName)) {
+        console.log(`%c[AutoRegen DEBUG] → ${opName}`, 'color:#0891b2', 'vars:', bodyObj.variables);
       }
 
       const response = await _origFetch.apply(this, args);
@@ -177,6 +183,15 @@ const InvoiceAutoRegen = (() => {
   }
 
   function enqueue(items) {
+    if (REGEN_DISABLED) {
+      for (const item of items) {
+        if (completedSet.has(item.invoiceId)) continue;
+        if (state.has(item.invoiceId)) continue;
+        completedSet.add(item.invoiceId);  // marca para no spamear logs
+        console.log(`%c[AutoRegen KILL-SWITCH] Habría regenerado factura #${item.idInDomain} (id=${item.invoiceId}) — disparo deshabilitado para diagnóstico`, 'color:#a16207');
+      }
+      return;
+    }
     for (const item of items) {
       const id = item.invoiceId;
       if (completedSet.has(id)) continue;          // ya regenerada esta sesión
