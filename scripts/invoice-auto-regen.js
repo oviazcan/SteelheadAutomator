@@ -56,11 +56,30 @@ const InvoiceAutoRegen = (() => {
       const opName = bodyObj?.operationName;
 
       // DEBUG: capturar TODAS las ops relacionadas con PDF/Invoice/File para diagnóstico
-      if (opName && /Pdf|Invoice|Render|Revision|File|Upload|Sign|S3/i.test(opName)) {
-        console.log(`%c[AutoRegen DEBUG] → ${opName}`, 'color:#0891b2', 'vars:', bodyObj.variables);
+      const _isInteresting = opName && /Pdf|Invoice|Render|Revision|File|Upload|Sign|S3|Payment/i.test(opName);
+      if (_isInteresting) {
+        try {
+          console.log(`%c[AutoRegen DEBUG] → ${opName}`, 'color:#0891b2', 'vars:', JSON.stringify(bodyObj.variables));
+        } catch {
+          console.log(`%c[AutoRegen DEBUG] → ${opName}`, 'color:#0891b2', 'vars:', bodyObj.variables);
+        }
       }
 
       const response = await _origFetch.apply(this, args);
+
+      // Loguear respuesta de las ops de interés (clonada, no consume el body original)
+      if (_isInteresting) {
+        try {
+          const respClone = response.clone();
+          respClone.json().then(j => {
+            try {
+              console.log(`%c[AutoRegen DEBUG] ← ${opName}`, 'color:#7c3aed', 'data:', JSON.stringify(j?.data));
+            } catch {
+              console.log(`%c[AutoRegen DEBUG] ← ${opName}`, 'color:#7c3aed', 'data:', j?.data);
+            }
+          }).catch(() => {});
+        } catch {}
+      }
 
       if (opName === 'ActiveInvoicesPaged' || opName === 'InvoiceByIdInDomain') {
         // Clonar y procesar en el siguiente tick para no bloquear el caller
