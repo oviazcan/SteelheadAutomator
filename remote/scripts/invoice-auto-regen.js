@@ -23,8 +23,12 @@ const InvoiceAutoRegen = (() => {
   const hashRegistry = window.__autoRegenHashRegistryMap || (window.__autoRegenHashRegistryMap = new Map());
 
   // ── Estado (vida = pestaña) ──
-  // pendientes pendientes que el detector ha visto en esta sesión y no han sido regeneradas
+  // pendientes que el detector ha visto en esta sesión y no han sido regeneradas
   const pendingByInvoiceId = new Map(); // invoiceId → {invoiceId, idInDomain}
+  // facturas regeneradas exitosamente en esta sesión — el detector ignora estas
+  // aunque ActiveInvoicesPaged siga reportándolas como pendientes por eventual
+  // consistency del backend (la query trae el PDF viejo todavía durante un rato).
+  const recentlyRegeneratedSet = new Set();
 
   // Estado del run en curso (batch del banner)
   const runState = {
@@ -193,20 +197,20 @@ const InvoiceAutoRegen = (() => {
   }
 
   function recordPending(items) {
-    let added = 0;
+    let added = 0, suppressed = 0;
     for (const it of items) {
+      // Ignorar las que ya regeneramos en esta sesión: la query trae el PDF
+      // viejo todavía por eventual consistency, pero ya hicimos el trabajo.
+      if (recentlyRegeneratedSet.has(it.invoiceId)) { suppressed++; continue; }
       if (!pendingByInvoiceId.has(it.invoiceId)) {
         pendingByInvoiceId.set(it.invoiceId, it);
         added++;
       }
     }
     if (added > 0) {
-      console.log(`[AutoRegen] +${added} pendientes (total ${pendingByInvoiceId.size})`);
-      updateBanner();
-    } else {
-      // Re-pintar igual: el dashboard puede haberse re-renderizado
-      updateBanner();
+      console.log(`[AutoRegen] +${added} pendientes (total ${pendingByInvoiceId.size})${suppressed ? ` — ignoradas ${suppressed} ya regeneradas` : ''}`);
     }
+    updateBanner();
   }
 
   // ── Auto-regen cuando el usuario abre el modal de una pendiente ──
@@ -225,6 +229,7 @@ const InvoiceAutoRegen = (() => {
       if (!svg) throw new Error('Icono regenerar no apareció');
       await sleep(1500);
       await testRegenInOpenModal(30000);
+      recentlyRegeneratedSet.add(item.invoiceId);
       pendingByInvoiceId.delete(item.invoiceId);
       console.log(`%c[AutoRegen] ✓ #${item.idInDomain} regenerada (modal abierto)`, 'color:#16a34a;font-weight:bold');
     } catch (e) {
@@ -270,6 +275,7 @@ const InvoiceAutoRegen = (() => {
         updateBanner();
         try {
           await regenViaModal(items[i].idInDomain);
+          recentlyRegeneratedSet.add(items[i].invoiceId);
           pendingByInvoiceId.delete(items[i].invoiceId);
           ok++;
         } catch (e) {
@@ -368,14 +374,14 @@ const InvoiceAutoRegen = (() => {
       text.textContent = runState.stopRequested
         ? `Deteniendo… (${runState.index}/${runState.total})`
         : `↻ Regenerando #${idText} (${runState.index}/${runState.total})`;
-      text.style.cssText = 'color:#2563eb;';
+      text.style.cssText = 'color:#a02020;';
       banner.appendChild(text);
 
       const stop = document.createElement('button');
       stop.dataset.saRegenStop = '1';
       stop.textContent = runState.stopRequested ? 'Deteniendo…' : 'Detener';
       stop.disabled = runState.stopRequested;
-      stop.style.cssText = 'background:#dc2626;color:#fff;border:0;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
+      stop.style.cssText = 'background:#374151;color:#fff;border:0;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
       if (runState.stopRequested) stop.style.opacity = '0.6';
       stop.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); requestStop(); });
       banner.appendChild(stop);
@@ -388,7 +394,7 @@ const InvoiceAutoRegen = (() => {
       btn.dataset.saRegenStart = '1';
       const n = pendingByInvoiceId.size;
       btn.textContent = `↻ ${n} timbrada${n === 1 ? '' : 's'} pendiente${n === 1 ? '' : 's'} — Regenerar PDFs`;
-      btn.style.cssText = 'background:#2563eb;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
+      btn.style.cssText = 'background:#a02020;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
       btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); startRun(); });
       banner.appendChild(btn);
       banner.style.display = 'inline-flex';
