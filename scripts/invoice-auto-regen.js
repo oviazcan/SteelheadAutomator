@@ -313,15 +313,24 @@ const InvoiceAutoRegen = (() => {
         runState.index = i + 1;
         runState.current = items[i];
         updateBanner();
-        try {
-          await regenViaModal(items[i].idInDomain);
-          markRegenerated(items[i].invoiceId);
-          pendingByInvoiceId.delete(items[i].invoiceId);
-          ok++;
-        } catch (e) {
-          console.warn(`[AutoRegen] #${items[i].idInDomain} falló: ${e.message}`);
-          failed++;
+        let success = false, lastErr = null;
+        for (let attempt = 1; attempt <= 2 && !success; attempt++) {
+          if (runState.stopRequested) break;
+          try {
+            if (attempt > 1) {
+              console.log(`[AutoRegen] reintento ${attempt} para #${items[i].idInDomain}`);
+              await sleep(2000);
+            }
+            await regenViaModal(items[i].idInDomain);
+            markRegenerated(items[i].invoiceId);
+            pendingByInvoiceId.delete(items[i].invoiceId);
+            success = true;
+          } catch (e) {
+            lastErr = e;
+          }
         }
+        if (success) ok++;
+        else { console.warn(`[AutoRegen] #${items[i].idInDomain} falló tras 2 intentos: ${lastErr?.message}`); failed++; }
         if (i < items.length - 1) await sleep(1000);
       }
     } finally {
@@ -382,10 +391,16 @@ const InvoiceAutoRegen = (() => {
   }
 
   let _bannerWarned = false;
+  let _headingRef = null;
   function injectBanner() {
     let banner = document.getElementById(BANNER_ID);
     if (banner) return banner;
-    const heading = findInvoicesHeading();
+    // Cache del heading: si sigue en el DOM, no recorremos otra vez.
+    let heading = _headingRef && _headingRef.isConnected ? _headingRef : null;
+    if (!heading) {
+      heading = findInvoicesHeading();
+      _headingRef = heading;
+    }
     if (!heading) {
       if (!_bannerWarned) {
         console.warn('[AutoRegen] No encontré el título "Invoices" para anclar el banner — reintento con MutationObserver');
@@ -394,7 +409,6 @@ const InvoiceAutoRegen = (() => {
       return null;
     }
     _bannerWarned = false;
-    console.log('[AutoRegen] Banner anclado a:', heading.tagName, heading);
     banner = document.createElement('span');
     banner.id = BANNER_ID;
     banner.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:16px;vertical-align:middle;font-size:14px;font-weight:500;';
@@ -446,14 +460,20 @@ const InvoiceAutoRegen = (() => {
   }
 
   let bannerObserver = null;
+  let bannerCheckScheduled = false;
+  function _scheduleBannerCheck() {
+    if (bannerCheckScheduled) return;
+    bannerCheckScheduled = true;
+    setTimeout(() => {
+      bannerCheckScheduled = false;
+      const needsBanner = pendingByInvoiceId.size > 0 || runState.active;
+      if (needsBanner && !document.getElementById(BANNER_ID)) updateBanner();
+    }, 500);
+  }
   function setupBannerObserver() {
     if (bannerObserver) return;
-    bannerObserver = new MutationObserver(() => {
-      const needsBanner = pendingByInvoiceId.size > 0 || runState.active;
-      if (needsBanner && !document.getElementById(BANNER_ID)) {
-        updateBanner();
-      }
-    });
+    // Throttle a 500ms para no pegarle al CPU en cada microtask de React.
+    bannerObserver = new MutationObserver(_scheduleBannerCheck);
     bannerObserver.observe(document.body, { childList: true, subtree: true });
   }
 
@@ -496,7 +516,9 @@ const InvoiceAutoRegen = (() => {
   function installLock() {
     if (lockInstalled) return;
     lockInstalled = true;
-    ['click', 'mousedown', 'mouseup', 'dblclick', 'keydown', 'keypress', 'keyup', 'submit'].forEach(ev => {
+    // Sólo los eventos críticos para bloquear interacción real. mousedown/keydown
+    // capturan la mayoría de interacciones humanas; submit cubre forms.
+    ['click', 'mousedown', 'keydown', 'submit'].forEach(ev => {
       document.addEventListener(ev, lockHandler, true);
     });
   }
