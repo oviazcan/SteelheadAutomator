@@ -624,9 +624,13 @@ const InvoiceAutoRegen = (() => {
   }
 
   function _findCloseButton() {
-    const btns = document.querySelectorAll('button');
+    // En el UI actual la "factura" es una página dedicada (/Invoices/<id>),
+    // no un modal. El botón de regreso visible es "BACK TO INVOICES".
+    // Mantenemos compat con "Close" por si el UI cambia.
+    const btns = document.querySelectorAll('button, a');
     for (const b of btns) {
-      if (b.textContent && b.textContent.trim() === 'Close') return b;
+      const t = (b.textContent || '').trim();
+      if (t === 'Close' || /^back to invoices$/i.test(t)) return b;
     }
     return null;
   }
