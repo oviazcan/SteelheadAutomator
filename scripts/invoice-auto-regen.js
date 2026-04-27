@@ -45,9 +45,11 @@ const InvoiceAutoRegen = (() => {
       const obj = JSON.parse(raw);
       const now = Date.now();
       let kept = 0, expired = 0;
+      // Object.keys() siempre da strings; normalizamos todo el ciclo a string
+      // para no desalinear con inv.id (string en GraphQL ID!).
       for (const k of Object.keys(obj)) {
         const ts = Number(obj[k]) || 0;
-        if (now - ts < RECENT_TTL_MS) { recentlyRegenerated.set(Number(k) || k, ts); kept++; }
+        if (now - ts < RECENT_TTL_MS) { recentlyRegenerated.set(k, ts); kept++; }
         else { expired++; }
       }
       if (kept || expired) console.log(`[AutoRegen] Set persistido cargado: ${kept} vigentes, ${expired} expiradas`);
@@ -55,14 +57,15 @@ const InvoiceAutoRegen = (() => {
     } catch (_) { /* corrupto — ignorar */ }
   }
   function markRegenerated(invoiceId) {
-    recentlyRegenerated.set(invoiceId, Date.now());
+    recentlyRegenerated.set(String(invoiceId), Date.now());
     _persistRecent();
   }
   function isRecentlyRegenerated(invoiceId) {
-    const ts = recentlyRegenerated.get(invoiceId);
+    const key = String(invoiceId);
+    const ts = recentlyRegenerated.get(key);
     if (!ts) return false;
     if (Date.now() - ts >= RECENT_TTL_MS) {
-      recentlyRegenerated.delete(invoiceId);
+      recentlyRegenerated.delete(key);
       _persistRecent();
       return false;
     }
