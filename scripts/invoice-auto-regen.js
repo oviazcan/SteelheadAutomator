@@ -466,16 +466,20 @@ const InvoiceAutoRegen = (() => {
     }
   }
 
-  // ── Regen v2: secuencia completa replicando el click manual ──
+  // ── Regen v3: secuencia completa replicando el click manual ──
   //
-  // Click manual hace 4 pasos (capturados en logs 0.4.90):
-  //   1. InvoiceByIdInDomain          → invoice completo (con createWriteResult del SAT)
-  //   2. GetPdfConfigsByType          → pdfTemplateId activo
-  //   3. GetPdfTemplateOutputToUserFile{docs:[{template,data:invoice}]}
-  //                                   → renderiza PDF y SUBE binario a S3, devuelve filename
-  //   4. CreateInvoicePdf{filename,invoiceId,isRevision:true}
-  //                                   → crea record en BD apuntando al S3 ya subido
-  //   5. AddCreatedPaymentOnInvoice   → post-step (no fatal)
+  // Click manual usa UIGetInvoice (no InvoiceByIdInDomain) como fuente de datos
+  // del PDF. UIGetInvoice devuelve {result: {...}} con shape plano que el template
+  // consume directamente; InvoiceByIdInDomain devuelve un shape diferente que
+  // produce PDFs con totales en cero y líneas vacías.
+  //
+  //   1. UIGetInvoice{id}              → {result: invoice plano para el PDF}
+  //   2. GetPdfConfigsByType           → pdfTemplateId activo
+  //   3. GetPdfTemplateOutputToUserFile{docs:[{template, data: result}]}
+  //                                    → renderiza PDF y sube binario a S3, devuelve filename
+  //   4. CreateInvoicePdf{filename, invoiceId, isRevision:true}
+  //                                    → crea record en BD apuntando al S3
+  //   5. AddCreatedPaymentOnInvoice    → post-step (no fatal)
 
   async function _callOp(opName, variables) {
     const fromRegistry = hashRegistry.get(opName);
@@ -513,10 +517,11 @@ const InvoiceAutoRegen = (() => {
   async function regenerateOne(invoiceId, idInDomain) {
     console.log(`%c[AutoRegen TEST] Iniciando regen factura #${idInDomain} (id=${invoiceId})`, 'color:#0891b2;font-weight:bold');
 
-    const invData = await _callOp('InvoiceByIdInDomain', { idInDomain });
-    const invoice = invData?.invoiceByIdInDomain;
-    if (!invoice) throw new Error('InvoiceByIdInDomain devolvió null');
-    console.log(`[AutoRegen TEST] 1/5 ✓ Invoice cargado (uuid SAT: ${invoice?.createWriteResult?.data?.result?.writeResult?.uuid || 'NO UUID'})`);
+    const uiData = await _callOp('UIGetInvoice', { id: invoiceId });
+    const invoice = uiData?.result;
+    if (!invoice) throw new Error('UIGetInvoice devolvió result null');
+    const uuid = invoice?.uuid || invoice?.createWriteResult?.data?.result?.writeResult?.uuid || 'NO UUID';
+    console.log(`[AutoRegen TEST] 1/5 ✓ UIGetInvoice cargado (uuid SAT: ${uuid}, líneas: ${invoice?.invoiceLinesByInvoiceId?.nodes?.length ?? '?'})`);
 
     const cfgData = await _callOp('GetPdfConfigsByType', { pdfType: 'INVOICE_TEMPLATE' });
     const pdfCfg = (cfgData?.allPdfConfigs?.nodes || []).find(n => n.isActive);
@@ -590,11 +595,15 @@ if (typeof window !== 'undefined') {
       console.warn(`[AutoRegen] Pair sin raw para #${idInDomain} (clickeaste regenerar sin abrir modal antes). Cierra el modal y vuelve a abrirlo, luego regenera.`);
     }
     const json = JSON.stringify(pair, null, 2);
-    try {
-      navigator.clipboard.writeText(json).then(() => {
-        console.log(`%c[AutoRegen] Pair de #${idInDomain} copiado al clipboard (${json.length} chars). Pégalo a Claude para que derive el transform.`, 'color:#16a34a;font-weight:bold');
-      });
-    } catch (e) { console.warn('Clipboard falló:', e); }
+    window.__lastDumpJson = json;
+    console.log(`%c[AutoRegen] Pair de #${idInDomain} listo (${json.length} chars). Opciones para copiarlo:`, 'color:#16a34a;font-weight:bold');
+    console.log('%c  1) copy(window.__lastDumpJson)   ← más rápido', 'color:#2563eb');
+    console.log('%c  2) Click en este object y "Copy object":', 'color:#2563eb');
+    console.log({ json });
+    navigator.clipboard.writeText(json).then(
+      () => console.log('%c[AutoRegen] (También copiado al clipboard automáticamente)', 'color:#16a34a'),
+      (e) => console.log(`%c[AutoRegen] (Clipboard automático falló: ${e.message} — usa copy(window.__lastDumpJson))`, 'color:#6b7280')
+    );
     return pair;
   };
 
