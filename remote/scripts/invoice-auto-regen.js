@@ -22,13 +22,52 @@ const InvoiceAutoRegen = (() => {
   // interceptor. Vive en window para sobrevivir doble-load del script.
   const hashRegistry = window.__autoRegenHashRegistryMap || (window.__autoRegenHashRegistryMap = new Map());
 
-  // ── Estado (vida = pestaña) ──
+  // ── Estado ──
   // pendientes que el detector ha visto en esta sesión y no han sido regeneradas
   const pendingByInvoiceId = new Map(); // invoiceId → {invoiceId, idInDomain}
-  // facturas regeneradas exitosamente en esta sesión — el detector ignora estas
-  // aunque ActiveInvoicesPaged siga reportándolas como pendientes por eventual
-  // consistency del backend (la query trae el PDF viejo todavía durante un rato).
-  const recentlyRegeneratedSet = new Set();
+  // facturas regeneradas exitosamente — el detector ignora estas aunque
+  // ActiveInvoicesPaged siga reportándolas como pendientes (eventual consistency).
+  // Persistido en localStorage con TTL para sobrevivir reloads. Map: invoiceId → timestamp(ms).
+  const RECENT_KEY = 'sa_autoregen_recently_regenerated';
+  const RECENT_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+  const recentlyRegenerated = new Map();
+  function _persistRecent() {
+    try {
+      const obj = {};
+      for (const [k, v] of recentlyRegenerated.entries()) obj[k] = v;
+      localStorage.setItem(RECENT_KEY, JSON.stringify(obj));
+    } catch (_) { /* quota/disabled — silencioso */ }
+  }
+  function _hydrateRecent() {
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      const now = Date.now();
+      let kept = 0, expired = 0;
+      for (const k of Object.keys(obj)) {
+        const ts = Number(obj[k]) || 0;
+        if (now - ts < RECENT_TTL_MS) { recentlyRegenerated.set(Number(k) || k, ts); kept++; }
+        else { expired++; }
+      }
+      if (kept || expired) console.log(`[AutoRegen] Set persistido cargado: ${kept} vigentes, ${expired} expiradas`);
+      if (expired) _persistRecent();
+    } catch (_) { /* corrupto — ignorar */ }
+  }
+  function markRegenerated(invoiceId) {
+    recentlyRegenerated.set(invoiceId, Date.now());
+    _persistRecent();
+  }
+  function isRecentlyRegenerated(invoiceId) {
+    const ts = recentlyRegenerated.get(invoiceId);
+    if (!ts) return false;
+    if (Date.now() - ts >= RECENT_TTL_MS) {
+      recentlyRegenerated.delete(invoiceId);
+      _persistRecent();
+      return false;
+    }
+    return true;
+  }
 
   // Estado del run en curso (batch del banner)
   const runState = {
@@ -52,6 +91,7 @@ const InvoiceAutoRegen = (() => {
       return;
     }
     window.__saAutoRegenInitDone = true;
+    _hydrateRecent();
     patchFetch();
     installLock();
     setupBannerObserver();
@@ -199,9 +239,9 @@ const InvoiceAutoRegen = (() => {
   function recordPending(items) {
     let added = 0, suppressed = 0;
     for (const it of items) {
-      // Ignorar las que ya regeneramos en esta sesión: la query trae el PDF
-      // viejo todavía por eventual consistency, pero ya hicimos el trabajo.
-      if (recentlyRegeneratedSet.has(it.invoiceId)) { suppressed++; continue; }
+      // Ignorar las que ya regeneramos: la query trae el PDF viejo todavía por
+      // eventual consistency. El set persiste en localStorage con TTL de 24h.
+      if (isRecentlyRegenerated(it.invoiceId)) { suppressed++; continue; }
       if (!pendingByInvoiceId.has(it.invoiceId)) {
         pendingByInvoiceId.set(it.invoiceId, it);
         added++;
@@ -229,7 +269,7 @@ const InvoiceAutoRegen = (() => {
       if (!svg) throw new Error('Icono regenerar no apareció');
       await sleep(1500);
       await testRegenInOpenModal(30000);
-      recentlyRegeneratedSet.add(item.invoiceId);
+      markRegenerated(item.invoiceId);
       pendingByInvoiceId.delete(item.invoiceId);
       console.log(`%c[AutoRegen] ✓ #${item.idInDomain} regenerada (modal abierto)`, 'color:#16a34a;font-weight:bold');
     } catch (e) {
@@ -275,7 +315,7 @@ const InvoiceAutoRegen = (() => {
         updateBanner();
         try {
           await regenViaModal(items[i].idInDomain);
-          recentlyRegeneratedSet.add(items[i].invoiceId);
+          markRegenerated(items[i].invoiceId);
           pendingByInvoiceId.delete(items[i].invoiceId);
           ok++;
         } catch (e) {
