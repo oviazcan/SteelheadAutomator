@@ -624,13 +624,11 @@ const InvoiceAutoRegen = (() => {
   }
 
   function _findCloseButton() {
-    // En el UI actual la "factura" es una página dedicada (/Invoices/<id>),
-    // no un modal. El botón de regreso visible es "BACK TO INVOICES".
-    // Mantenemos compat con "Close" por si el UI cambia.
-    const btns = document.querySelectorAll('button, a');
+    // Solo aplica cuando la factura abre como modal popup (la URL no cambia).
+    // En page-mode (URL cambia a /Invoices/<id>) usamos navegación, no este botón.
+    const btns = document.querySelectorAll('button');
     for (const b of btns) {
-      const t = (b.textContent || '').trim();
-      if (t === 'Close' || /^back to invoices$/i.test(t)) return b;
+      if (b.textContent && b.textContent.trim() === 'Close') return b;
     }
     return null;
   }
@@ -701,31 +699,47 @@ const InvoiceAutoRegen = (() => {
     const openTimeoutMs = opts.openTimeoutMs ?? 8000;
     const regenTimeoutMs = opts.regenTimeoutMs ?? 30000;
 
-    console.log(`%c[AutoRegen DOM] regenViaModal(#${idInDomain}) — abriendo modal…`, 'color:#0891b2;font-weight:bold');
+    console.log(`%c[AutoRegen DOM] regenViaModal(#${idInDomain}) — abriendo factura…`, 'color:#0891b2;font-weight:bold');
 
-    // 1. Abrir modal: click en la fila
+    // Capturar URL del dashboard original para restaurarla después
+    const urlBefore = location.href;
+
+    // 1. Click en la fila — puede abrir modal popup (URL igual) o navegar a /Invoices/<id>
     const target = _findRowOpenTarget(idInDomain);
     if (!target) throw new Error(`No se encontró fila con texto "#${idInDomain}" en el dashboard`);
     target.click();
 
-    // 2. Esperar a que el modal renderice el icono regenerar
+    // 2. Esperar a que renderice el icono regenerar
     const svg = await _waitForElement(REGEN_ICON_SELECTOR, openTimeoutMs);
-    if (!svg) throw new Error(`Modal no abrió en ${openTimeoutMs}ms (icono regenerar no apareció)`);
+    if (!svg) throw new Error(`Vista de factura no abrió en ${openTimeoutMs}ms (icono regenerar no apareció)`);
 
-    // 3. Dar tiempo a que React resuelva UIGetInvoice + queries dependientes
+    // 3. Dar tiempo a React para resolver UIGetInvoice + queries dependientes
     await sleep(settleMs);
 
-    // 4. Click regenerar + esperar CreateInvoicePdf
+    // 4. Click regenerar + CONFIRMAR + esperar CreateInvoicePdf
     const result = await testRegenInOpenModal(regenTimeoutMs);
 
-    // 5. Cerrar modal
-    const closeBtn = _findCloseButton();
-    if (closeBtn) {
-      closeBtn.click();
-      await _waitForElementGone(REGEN_ICON_SELECTOR, 3000);
-      console.log(`[AutoRegen DOM] Modal cerrado`);
+    // 5. Cerrar: page-mode (URL cambió) → history.back() para no recargar el script;
+    //    modal-mode → botón Close
+    if (location.href !== urlBefore) {
+      console.log(`[AutoRegen DOM] page-mode detectado — history.back() al dashboard`);
+      history.back();
+      await _waitForElementGone(REGEN_ICON_SELECTOR, 5000);
+      // Verificar que volvimos al dashboard original; si no, log warning sin reload
+      if (location.href !== urlBefore) {
+        console.warn(`[AutoRegen DOM] history.back() no restauró URL exacta. Esperada: ${urlBefore} — actual: ${location.href}`);
+      } else {
+        console.log(`[AutoRegen DOM] Dashboard restaurado`);
+      }
     } else {
-      console.warn('[AutoRegen DOM] No se encontró botón Close — modal pudo quedar abierto');
+      const closeBtn = _findCloseButton();
+      if (closeBtn) {
+        closeBtn.click();
+        await _waitForElementGone(REGEN_ICON_SELECTOR, 3000);
+        console.log(`[AutoRegen DOM] Modal cerrado`);
+      } else {
+        console.warn('[AutoRegen DOM] No se encontró botón Close ni hubo cambio de URL — vista pudo quedar abierta');
+      }
     }
 
     return result;
