@@ -291,20 +291,64 @@ const InvoiceAutoRegen = (() => {
 
   const BANNER_ID = 'sa-regen-banner';
 
+  function _isHeadingLike(el) {
+    if (!el || !el.isConnected) return false;
+    if (el.closest('a, nav, [role="tab"], [role="tablist"], [role="link"], [aria-label*="breadcrumb" i]')) return false;
+    if (el.tagName === 'BUTTON' || el.closest('button, [role="button"]')) return false;
+    const style = window.getComputedStyle(el);
+    const fontSize = parseFloat(style.fontSize) || 0;
+    const fontWeight = parseInt(style.fontWeight) || 0;
+    return fontSize >= 18 || fontWeight >= 600;
+  }
+  function _findExactInvoicesNode(root) {
+    if (!root) return null;
+    const all = root.querySelectorAll('h1, h2, h3, h4, h5, h6, div, span, p');
+    let best = null, bestSize = 0;
+    for (const el of all) {
+      if (el.children.length > 0) continue;
+      if (el.textContent.trim() !== 'Invoices') continue;
+      if (!_isHeadingLike(el)) continue;
+      const size = parseFloat(window.getComputedStyle(el).fontSize) || 0;
+      if (size > bestSize) { best = el; bestSize = size; }
+    }
+    return best;
+  }
   function findInvoicesHeading() {
-    // Busca un heading con texto exacto "Invoices" en la página del dashboard.
-    const headings = document.querySelectorAll('h1, h2, h3, h4, h5');
+    // 1. Heading semántico exacto "Invoices"
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
     for (const h of headings) {
       if (h.textContent && h.textContent.trim() === 'Invoices') return h;
     }
-    return null;
+    // 2. Anclado al botón "CREAR FACTURA" del panel derecho
+    const buttons = document.querySelectorAll('button, a, [role="button"]');
+    for (const btn of buttons) {
+      const t = (btn.textContent || '').trim().toUpperCase();
+      if (t !== 'CREAR FACTURA') continue;
+      let node = btn;
+      for (let i = 0; i < 8 && node; i++) {
+        const found = _findExactInvoicesNode(node);
+        if (found) return found;
+        node = node.parentElement;
+      }
+    }
+    // 3. Heurística global: cualquier nodo "Invoices" con apariencia de heading
+    return _findExactInvoicesNode(document.body);
   }
 
+  let _bannerWarned = false;
   function injectBanner() {
     let banner = document.getElementById(BANNER_ID);
     if (banner) return banner;
     const heading = findInvoicesHeading();
-    if (!heading) return null;
+    if (!heading) {
+      if (!_bannerWarned) {
+        console.warn('[AutoRegen] No encontré el título "Invoices" para anclar el banner — reintento con MutationObserver');
+        _bannerWarned = true;
+      }
+      return null;
+    }
+    _bannerWarned = false;
+    console.log('[AutoRegen] Banner anclado a:', heading.tagName, heading);
     banner = document.createElement('span');
     banner.id = BANNER_ID;
     banner.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:16px;vertical-align:middle;font-size:14px;font-weight:500;';
