@@ -124,6 +124,26 @@ const InvoiceAutoRegen = (() => {
         } catch {}
       }
 
+      // Hook para regenViaModal: resolver Promise pendiente al ver CreateInvoicePdf
+      if (opName === 'CreateInvoicePdf' && window.__autoRegenPdfWaiter) {
+        try {
+          const respClone = response.clone();
+          respClone.json().then(j => {
+            const pdfId = j?.data?.createInvoicePdf?.invoicePdf?.id;
+            const w = window.__autoRegenPdfWaiter;
+            window.__autoRegenPdfWaiter = null;
+            if (!w) return;
+            clearTimeout(w.timer);
+            if (pdfId) w.resolve({ pdfId, filename: bodyObj?.variables?.filename });
+            else w.reject(new Error('CreateInvoicePdf sin invoicePdf.id'));
+          }).catch(e => {
+            const w = window.__autoRegenPdfWaiter;
+            window.__autoRegenPdfWaiter = null;
+            if (w) { clearTimeout(w.timer); w.reject(e); }
+          });
+        } catch (e) { /* no fatal */ }
+      }
+
       if (opName === 'ActiveInvoicesPaged' || opName === 'InvoiceByIdInDomain') {
         // Clonar y procesar en el siguiente tick para no bloquear el caller
         try {
@@ -553,13 +573,158 @@ const InvoiceAutoRegen = (() => {
     return { pdfId, filename };
   }
 
-  return { init, regenerateOne, _callOp, _hashRegistry: hashRegistry };
+  // ── Regen v4: DOM-driven (replicates manual click on the curved arrow icon) ──
+  //
+  // El pdfData que GetPdfTemplateOutputToUserFile consume es una composición
+  // client-side de 8+ queries + denormalización heavy. En vez de replicarla,
+  // disparamos el flujo manual programáticamente: abrir modal de la factura,
+  // esperar a que React cargue, click en el icono RestorePageOutlinedIcon,
+  // esperar el éxito de CreateInvoicePdf, cerrar modal.
+
+  const REGEN_ICON_SELECTOR = 'svg[data-testid="RestorePageOutlinedIcon"]';
+
+  function _waitForElement(selector, timeoutMs = 8000) {
+    return new Promise(resolve => {
+      const found = document.querySelector(selector);
+      if (found) return resolve(found);
+      const obs = new MutationObserver(() => {
+        const el = document.querySelector(selector);
+        if (el) { obs.disconnect(); resolve(el); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => { obs.disconnect(); resolve(null); }, timeoutMs);
+    });
+  }
+
+  function _waitForElementGone(selector, timeoutMs = 5000) {
+    return new Promise(resolve => {
+      if (!document.querySelector(selector)) return resolve(true);
+      const obs = new MutationObserver(() => {
+        if (!document.querySelector(selector)) { obs.disconnect(); resolve(true); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => { obs.disconnect(); resolve(false); }, timeoutMs);
+    });
+  }
+
+  function _findRowOpenTarget(idInDomain) {
+    const tag = '#' + idInDomain;
+    const all = document.querySelectorAll('a, span, div, td');
+    for (const el of all) {
+      if (el.children.length === 0 && el.textContent && el.textContent.trim() === tag) {
+        let cur = el;
+        for (let i = 0; i < 8 && cur; i++) {
+          if (cur.tagName === 'A' || cur.onclick || cur.getAttribute?.('role') === 'button') return cur;
+          cur = cur.parentElement;
+        }
+        return el;
+      }
+    }
+    return null;
+  }
+
+  function _findCloseButton() {
+    const btns = document.querySelectorAll('button');
+    for (const b of btns) {
+      if (b.textContent && b.textContent.trim() === 'Close') return b;
+    }
+    return null;
+  }
+
+  function _waitForCreateInvoicePdf(timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+      if (window.__autoRegenPdfWaiter) {
+        return reject(new Error('Otro waiter ya está activo'));
+      }
+      const timer = setTimeout(() => {
+        window.__autoRegenPdfWaiter = null;
+        reject(new Error(`Timeout ${timeoutMs}ms esperando CreateInvoicePdf`));
+      }, timeoutMs);
+      window.__autoRegenPdfWaiter = { resolve, reject, timer };
+    });
+  }
+
+  // Asume modal abierto. Click al icono regenerar y espera respuesta de
+  // CreateInvoicePdf. Útil para testear sin tocar la apertura del modal.
+  async function testRegenInOpenModal(timeoutMs = 30000) {
+    const svg = document.querySelector(REGEN_ICON_SELECTOR);
+    if (!svg) throw new Error('No se encontró el icono RestorePageOutlinedIcon — modal cerrado o no es invoice modal');
+    const waitPromise = _waitForCreateInvoicePdf(timeoutMs);
+    svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    console.log('[AutoRegen DOM] Click disparado al icono regenerar — esperando CreateInvoicePdf…');
+    const result = await waitPromise;
+    console.log(`%c[AutoRegen DOM] ✓ CreateInvoicePdf OK → invoicePdf.id=${result.pdfId}`, 'color:#16a34a;font-weight:bold');
+    return result;
+  }
+
+  // Flujo completo: abre modal, espera, regenera, cierra.
+  async function regenViaModal(idInDomain, opts = {}) {
+    const settleMs = opts.settleMs ?? 1500;     // dar tiempo a UIGetInvoice + queries
+    const openTimeoutMs = opts.openTimeoutMs ?? 8000;
+    const regenTimeoutMs = opts.regenTimeoutMs ?? 30000;
+
+    console.log(`%c[AutoRegen DOM] regenViaModal(#${idInDomain}) — abriendo modal…`, 'color:#0891b2;font-weight:bold');
+
+    // 1. Abrir modal: click en la fila
+    const target = _findRowOpenTarget(idInDomain);
+    if (!target) throw new Error(`No se encontró fila con texto "#${idInDomain}" en el dashboard`);
+    target.click();
+
+    // 2. Esperar a que el modal renderice el icono regenerar
+    const svg = await _waitForElement(REGEN_ICON_SELECTOR, openTimeoutMs);
+    if (!svg) throw new Error(`Modal no abrió en ${openTimeoutMs}ms (icono regenerar no apareció)`);
+
+    // 3. Dar tiempo a que React resuelva UIGetInvoice + queries dependientes
+    await sleep(settleMs);
+
+    // 4. Click regenerar + esperar CreateInvoicePdf
+    const result = await testRegenInOpenModal(regenTimeoutMs);
+
+    // 5. Cerrar modal
+    const closeBtn = _findCloseButton();
+    if (closeBtn) {
+      closeBtn.click();
+      await _waitForElementGone(REGEN_ICON_SELECTOR, 3000);
+      console.log(`[AutoRegen DOM] Modal cerrado`);
+    } else {
+      console.warn('[AutoRegen DOM] No se encontró botón Close — modal pudo quedar abierto');
+    }
+
+    return result;
+  }
+
+  // Procesa una lista de idInDomain en serie, con espaciado entre cada uno.
+  async function regenViaModalBatch(idInDomains, opts = {}) {
+    const gapMs = opts.gapMs ?? 1000;
+    const results = [];
+    for (let i = 0; i < idInDomains.length; i++) {
+      const id = idInDomains[i];
+      console.log(`%c[AutoRegen DOM] [${i+1}/${idInDomains.length}] #${id}`, 'color:#0891b2;font-weight:bold');
+      try {
+        const r = await regenViaModal(id, opts);
+        results.push({ idInDomain: id, ok: true, ...r });
+      } catch (e) {
+        console.warn(`[AutoRegen DOM] #${id} falló:`, e.message);
+        results.push({ idInDomain: id, ok: false, error: e.message });
+      }
+      if (i < idInDomains.length - 1) await sleep(gapMs);
+    }
+    console.log(`%c[AutoRegen DOM] Batch completo: ${results.filter(r=>r.ok).length}/${results.length} OK`, 'color:#16a34a;font-weight:bold');
+    return results;
+  }
+
+  return { init, regenerateOne, regenViaModal, regenViaModalBatch, testRegenInOpenModal, _callOp, _hashRegistry: hashRegistry };
 })();
 
 if (typeof window !== 'undefined') {
   window.InvoiceAutoRegen = InvoiceAutoRegen;
-  // Atajo en consola: regenerateInvoice(invoiceId, idInDomain)
+  // Atajo en consola: regenerateInvoice(invoiceId, idInDomain) — flujo viejo (UIGetInvoice, no funciona)
   window.regenerateInvoice = (invoiceId, idInDomain) => InvoiceAutoRegen.regenerateOne(invoiceId, idInDomain);
+
+  // DOM-driven (recomendado): replica el click manual del icono RestorePageOutlinedIcon
+  window.regenViaModal = (idInDomain, opts) => InvoiceAutoRegen.regenViaModal(idInDomain, opts);
+  window.regenViaModalBatch = (ids, opts) => InvoiceAutoRegen.regenViaModalBatch(ids, opts);
+  window.testRegenInOpenModal = (timeoutMs) => InvoiceAutoRegen.testRegenInOpenModal(timeoutMs);
 
   // Helper de diagnóstico: copia al clipboard el payload completo del último
   // GetPdfTemplateOutputToUserFile manual capturado (o de un idInDomain específico).
