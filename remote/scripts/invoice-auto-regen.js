@@ -631,6 +631,28 @@ const InvoiceAutoRegen = (() => {
     return null;
   }
 
+  function _findButtonByText(textRegex) {
+    const btns = document.querySelectorAll('button');
+    for (const b of btns) {
+      const t = (b.textContent || '').trim();
+      if (textRegex.test(t)) return b;
+    }
+    return null;
+  }
+
+  function _waitForButton(textRegex, timeoutMs = 5000) {
+    return new Promise(resolve => {
+      const found = _findButtonByText(textRegex);
+      if (found) return resolve(found);
+      const obs = new MutationObserver(() => {
+        const b = _findButtonByText(textRegex);
+        if (b) { obs.disconnect(); resolve(b); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => { obs.disconnect(); resolve(null); }, timeoutMs);
+    });
+  }
+
   function _waitForCreateInvoicePdf(timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
       if (window.__autoRegenPdfWaiter) {
@@ -651,7 +673,19 @@ const InvoiceAutoRegen = (() => {
     if (!svg) throw new Error('No se encontró el icono RestorePageOutlinedIcon — modal cerrado o no es invoice modal');
     const waitPromise = _waitForCreateInvoicePdf(timeoutMs);
     svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-    console.log('[AutoRegen DOM] Click disparado al icono regenerar — esperando CreateInvoicePdf…');
+    console.log('[AutoRegen DOM] Click disparado al icono regenerar — esperando submodal de confirmación…');
+
+    // Steelhead muestra un submodal "Are you sure...?" con botones CANCELAR / CONFIRMAR
+    const confirmBtn = await _waitForButton(/^confirmar$/i, 5000);
+    if (!confirmBtn) {
+      // Cleanup del waiter para no dejarlo colgado
+      const w = window.__autoRegenPdfWaiter;
+      if (w) { clearTimeout(w.timer); window.__autoRegenPdfWaiter = null; }
+      throw new Error('Botón CONFIRMAR no apareció en 5s tras click al icono regenerar');
+    }
+    confirmBtn.click();
+    console.log('[AutoRegen DOM] CONFIRMAR clickeado — esperando CreateInvoicePdf…');
+
     const result = await waitPromise;
     console.log(`%c[AutoRegen DOM] ✓ CreateInvoicePdf OK → invoicePdf.id=${result.pdfId}`, 'color:#16a34a;font-weight:bold');
     return result;
