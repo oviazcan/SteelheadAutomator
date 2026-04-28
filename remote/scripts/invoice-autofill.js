@@ -398,12 +398,21 @@ const InvoiceAutofill = (() => {
           log(`SO Divisa: ${state.receivedOrderDivisa}`);
         }
       }
-      // Esta query también trae customer/accounts/configs (mismo shape que InvoiceLowCodeData)
+      // Esta query trae customer con salesTaxable + idInDomain (InvoiceLowCodeData NO los trae).
+      // Mergeamos siempre — incluso si state.customer ya estaba poblado, queremos sumar salesTaxable.
       const customer = json.data?.customerById;
-      if (customer && !state.customer) {
-        state.customer = customer;
-        state.customerId = customer.id || null;
-        state.customerName = customer.name || customer.shortName || null;
+      if (customer) {
+        if (!state.customer) {
+          state.customer = customer;
+          state.customerId = customer.id || null;
+          state.customerName = customer.name || customer.shortName || null;
+        } else {
+          if (typeof customer.salesTaxable === 'boolean') state.customer.salesTaxable = customer.salesTaxable;
+          if (customer.idInDomain != null && state.customer.idInDomain == null) state.customer.idInDomain = customer.idInDomain;
+          if (customer.id != null && state.customer.id == null) state.customer.id = customer.id;
+          if (customer.name && !state.customerName) state.customerName = customer.name;
+        }
+        log(`GetReceivedOrders: customer.salesTaxable=${customer.salesTaxable} customer.idInDomain=${customer.idInDomain}`);
       }
       const accounts = json.data?.allAcctAccounts?.nodes;
       if (Array.isArray(accounts) && state.allAccounts.length === 0) state.allAccounts = accounts;
@@ -685,6 +694,35 @@ const InvoiceAutofill = (() => {
       }
     }
     return null;
+  }
+
+  // Extrae el customer.idInDomain de un link "View Customer" / "Customer Custom Inputs"
+  // cercano al heading. La URL canon es /Domains/{N}/Customers/{idInDomain}/...
+  function extractCustomerIdInDomainFromDOM() {
+    const anchors = document.querySelectorAll('a[href*="/Customers/"]');
+    for (const a of anchors) {
+      const m = a.getAttribute('href')?.match(/\/Domains\/\d+\/Customers\/(\d+)/);
+      if (m) return parseInt(m[1], 10);
+    }
+    return null;
+  }
+
+  // Fetch del customer vía persisted query "Customer" para obtener salesTaxable.
+  // Cacheado por idInDomain para evitar refetch en cada runAutofill.
+  const _customerCache = new Map();
+  async function fetchCustomerSalesTaxable(idInDomain) {
+    if (idInDomain == null) return null;
+    if (_customerCache.has(idInDomain)) return _customerCache.get(idInDomain);
+    try {
+      const data = await SteelheadAPI.query('Customer', { idInDomain, includeAccountingFields: true });
+      const c = data?.customerByIdInDomain || null;
+      _customerCache.set(idInDomain, c);
+      return c;
+    } catch (err) {
+      warn(`Customer query falló (idInDomain=${idInDomain}): ${err.message}`);
+      _customerCache.set(idInDomain, null);
+      return null;
+    }
   }
 
   function extractDivisaFromDOM() {
@@ -1100,6 +1138,32 @@ const InvoiceAutofill = (() => {
     if (!customerName) {
       updatePanelStatus('pending', 'Esperando selección de cliente…');
       return;
+    }
+
+    // salesTaxable no viene en InvoiceLowCodeData. Si tampoco vino por GetReceivedOrders
+    // (factura manual sin OV), disparamos la persisted query "Customer" con idInDomain.
+    if (resolveSalesTaxable(state.customer) === null) {
+      const idInDomain = state.customer?.idInDomain || extractCustomerIdInDomainFromDOM();
+      if (idInDomain != null) {
+        log(`Fetching Customer(idInDomain=${idInDomain}) para resolver salesTaxable`);
+        const fetched = await fetchCustomerSalesTaxable(idInDomain);
+        if (fetched) {
+          if (!state.customer) state.customer = fetched;
+          else {
+            if (typeof fetched.salesTaxable === 'boolean') state.customer.salesTaxable = fetched.salesTaxable;
+            if (state.customer.idInDomain == null) state.customer.idInDomain = fetched.idInDomain;
+            // CuentasContables del Customer query es más completo si InvoiceLowCodeData no las trajo
+            if (!state.customer.customInputs?.DatosContables?.CuentasContables
+                && fetched.customInputs?.DatosContables?.CuentasContables) {
+              state.customer.customInputs = state.customer.customInputs || {};
+              state.customer.customInputs.DatosContables = fetched.customInputs.DatosContables;
+            }
+          }
+          log(`Customer query resuelto: salesTaxable=${fetched.salesTaxable}`);
+        }
+      } else {
+        log('No se pudo determinar customer.idInDomain — salesTaxable queda pendiente');
+      }
     }
 
     // Asegurar TC y accounts (preferir intercepted, fallback a fetch)

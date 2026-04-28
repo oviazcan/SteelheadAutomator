@@ -1,5 +1,5 @@
 {
-  "version": "0.5.13",
+  "version": "0.5.14",
   "lastUpdated": "2026-04-27",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -143,7 +143,8 @@
         "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8",
         "GetVendor": "326a130b68bfefc937c25df00d33543e0dcc28da340cc1a46ec59fa470c882a8",
         "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e",
-        "GetReceivedOrdersWithReceivedOrderLineItems": "cff4549f79c1e64843cf1541ea27555ab0d8be7d53c3fd47c4b458ffd53535e7"
+        "GetReceivedOrdersWithReceivedOrderLineItems": "cff4549f79c1e64843cf1541ea27555ab0d8be7d53c3fd47c4b458ffd53535e7",
+        "Customer": "875fcfec140fa7e4a756d367cfe8c6868ff2eca8f396a97540638493649d317f"
       }
     },
     "domain": {
@@ -580,9 +581,10 @@
     "GetAvailableUnits": { "type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry" },
     "CreateInventoryItemUnitConversion": { "type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry" },
     "UpdateInventoryItemUnitConversion": { "type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry" },
-    "InvoiceLowCodeData": { "type": "query", "description": "Carga única de creación/edición de invoice — trae customer (con DatosContables.CuentasContables y salesTaxable), allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill" },
-    "GetReceivedOrdersWithReceivedOrderLineItems": { "type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customer completo con cuentas contables. Marca linkage de invoice a OV", "usedBy": "invoice-autofill" },
-    "CreateInvoiceAndUpdatePartTransferAccounts": { "type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill" }
+    "InvoiceLowCodeData": { "type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill" },
+    "GetReceivedOrdersWithReceivedOrderLineItems": { "type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill" },
+    "CreateInvoiceAndUpdatePartTransferAccounts": { "type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill" },
+    "Customer": { "type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
