@@ -759,8 +759,8 @@ const InvoiceAutofill = (() => {
         if (name.length > 1 && name.length < 200) return name;
       }
     }
-    // 2. Fallback: Select con label "Customer:"/"Cliente:" (raro en invoice; suele venir
-    //    pre-cargado del SO, no editable)
+    // 2. Fallback: Select con label "Customer:"/"Cliente:" (modal manual y casos donde
+    //    el heading no incluye el nombre).
     const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
     for (const sv of singleValues) {
       let parent = sv.parentElement;
@@ -771,7 +771,7 @@ const InvoiceAutofill = (() => {
           if (/^customer:?$|^cliente:?$/i.test(txt)) {
             const clone = sv.cloneNode(true);
             clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
-            const val = clone.textContent?.trim();
+            const val = cleanCustomerName(clone.textContent?.trim());
             if (val && val.length > 1) return val;
           }
         }
@@ -779,6 +779,18 @@ const InvoiceAutofill = (() => {
       }
     }
     return null;
+  }
+
+  // El singleValue del react-select de Customer absorbe badges/tags adyacentes
+  // sin whitespace ("FISHER CONTROLES (#7)ActivoIndustrial(Quote Assignee: ...)").
+  // Cortar tras "(#N)" si lo hay; si no, antes del primer "(Quote" / CamelCase boundary.
+  function cleanCustomerName(raw) {
+    if (!raw) return raw;
+    const idMatch = raw.match(/^(.+?\(#\d+\))/);
+    if (idMatch) return idMatch[1].trim();
+    const quoteIdx = raw.search(/\(Quote\s+Assignee/i);
+    if (quoteIdx > 0) return raw.slice(0, quoteIdx).trim();
+    return raw.trim();
   }
 
   // Extrae el customer.idInDomain de un link "View Customer" / "Customer Custom Inputs"
@@ -1102,6 +1114,8 @@ const InvoiceAutofill = (() => {
 
   // Variante de tryFillTextInput para inputs de fecha: detecta type="date"
   // (formato HTML5 YYYY-MM-DD) vs text con máscara MM/DD/YYYY.
+  // MUI DatePicker (masked input) ignora el native value setter — usa multi-estrategia
+  // y verifica que el valor persista, no sólo que se haya despachado el evento.
   async function tryFillDateInput(labelText, date) {
     const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
     const labels = document.querySelectorAll('label, span, div, p');
@@ -1116,19 +1130,72 @@ const InvoiceAutofill = (() => {
         const inp = parent.querySelector('input[type="date"], input[type="text"], input:not([type])');
         if (inp) {
           const value = inp.type === 'date' ? formatDateISO(date) : formatDateMMDDYYYY(date);
-          const tracker = inp._valueTracker;
-          if (tracker) tracker.setValue('');
-          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-          if (setter) setter.call(inp, value);
-          inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
-          inp.dispatchEvent(new Event('change', { bubbles: true }));
-          inp.dispatchEvent(new Event('blur', { bubbles: true }));
-          return { success: true, filled: value, type: inp.type || 'text' };
+          const ok = await writeToInput(inp, value);
+          if (ok) return { success: true, filled: value, type: inp.type || 'text' };
+          return { success: false, reason: `valor no persistió (DOM=${JSON.stringify(inp.value || '')})` };
         }
         parent = parent.parentElement;
       }
     }
     return { success: false };
+  }
+
+  // Comparación por dígitos: "04/28/2026" === "04282026" === "2026-04-28" tras strip.
+  function digitsOnly(s) { return String(s || '').replace(/\D/g, ''); }
+
+  // Multi-estrategia para forzar valor en input. Devuelve true si el DOM tiene
+  // el valor esperado tras los eventos.
+  async function writeToInput(inp, value) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    const target = digitsOnly(value);
+
+    // Estrategia 1: native value setter (funciona en inputs planos / type="date")
+    inp.focus();
+    if (inp._valueTracker) inp._valueTracker.setValue('');
+    if (setter) setter.call(inp, value);
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, inputType: 'insertText' }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleep(60);
+    if (digitsOnly(inp.value) === target) {
+      inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    }
+
+    // Estrategia 2: select all + execCommand insertText (varios masked inputs lo aceptan)
+    inp.focus();
+    try { inp.setSelectionRange(0, (inp.value || '').length); } catch (_) {}
+    try {
+      document.execCommand('selectAll', false, null);
+      const inserted = document.execCommand('insertText', false, value);
+      await sleep(60);
+      if (inserted && digitsOnly(inp.value) === target) {
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+        inp.dispatchEvent(new Event('blur', { bubbles: true }));
+        return true;
+      }
+    } catch (_) { /* fall through */ }
+
+    // Estrategia 3: keystroke por carácter (MUI DatePicker masked input)
+    inp.focus();
+    try { inp.setSelectionRange(0, (inp.value || '').length); } catch (_) {}
+    if (inp.value) {
+      if (setter) setter.call(inp, '');
+      inp.dispatchEvent(new InputEvent('input', { inputType: 'deleteContentBackward', bubbles: true }));
+    }
+    let cumulative = '';
+    for (const ch of value) {
+      inp.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true, cancelable: true }));
+      inp.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: ch, bubbles: true, cancelable: true }));
+      cumulative += ch;
+      if (setter) setter.call(inp, cumulative);
+      inp.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: ch, bubbles: true }));
+      inp.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+      await sleep(15);
+    }
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    inp.dispatchEvent(new Event('blur', { bubbles: true }));
+    await sleep(80);
+    return digitsOnly(inp.value) === target;
   }
 
   function handleManualModal() {
@@ -1181,6 +1248,8 @@ const InvoiceAutofill = (() => {
   }
 
   // Lee el value actual de un input de fecha por label, sin escribirlo.
+  // Sólo retorna si el value tiene formato de fecha (MM/DD/YYYY o YYYY-MM-DD)
+  // — así evitamos confundir un input vecino que no sea el target.
   function readDateInputValue(labelText) {
     const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
     const labels = document.querySelectorAll('label, span, div, p');
@@ -1192,7 +1261,12 @@ const InvoiceAutofill = (() => {
       let parent = el;
       for (let d = 0; d < 6 && parent; d++) {
         const inp = parent.querySelector('input[type="date"], input[type="text"], input:not([type])');
-        if (inp) return inp.value?.trim() || null;
+        if (inp) {
+          const v = (inp.value || '').trim();
+          if (!v) return null;
+          if (/^\d{2}\/\d{2}\/\d{4}$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+          return null;
+        }
         parent = parent.parentElement;
       }
     }
