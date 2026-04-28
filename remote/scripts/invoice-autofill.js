@@ -1,0 +1,1226 @@
+// Invoice Autofill
+// Auto-rellena Cuenta CXC, Divisa, Tipo de Cambio y Cuentas de Ingreso/Descuento en Create/Edit Invoice
+// Reglas:
+//   - AR (CXC): customer.customInputs.DatosContables.CuentasContables filtrado por DivisaContable, mayor numeración
+//   - Ingreso/Descuento por línea: salesTaxable × signo × prefijo (0401-0001 / 0401-0004 / 0402-0001 / 0402-0002)
+//   - Divisa+TC: solo si la factura es manual (sin packing slip ni OV)
+// Depends on: SteelheadAPI
+
+const InvoiceAutofill = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api().log(m);
+  const warn = (m) => api().warn(m);
+
+  const INVOICE_URL_RE = /\/Domains\/\d+\/Invoices(?:\/|$)/;
+
+  // Matriz de prefijos contables
+  // [salesTaxable=true (Tasa General)] × [credit-note=false] → 0401-0001 (Ventas Tasa General)
+  // [salesTaxable=true (Tasa General)] × [credit-note=true]  → 0402-0001 (Devoluciones/Descuentos Tasa General)
+  // [salesTaxable=false (Tasa 0%)]     × [credit-note=false] → 0401-0004 (Ventas Tasa 0%)
+  // [salesTaxable=false (Tasa 0%)]     × [credit-note=true]  → 0402-0002 (Devoluciones/Descuentos Tasa 0%)
+  const PREFIX_VENTAS_GENERAL = '0401-0001';
+  const PREFIX_VENTAS_CERO    = '0401-0004';
+  const PREFIX_DESC_GENERAL   = '0402-0001';
+  const PREFIX_DESC_CERO      = '0402-0002';
+
+  let debounceTimer = null;
+  let state = {
+    customerId: null,
+    customerName: null,
+    customer: null,                  // objeto crudo de InvoiceLowCodeData / GetReceivedOrders…
+    currency: null,
+    currencySource: null,            // 'so' | 'invoice' | 'customer' | 'form' | 'default'
+    exchangeRate: null,
+    exchangeRateDate: null,
+    arAccount: null,                 // { account, ambiguous, candidates, reason }
+    lineAccounts: [],                // [{name, expected, productSuggested, source, mismatch, isCredit, account}]
+    ready: false,
+    receivedOrderDivisa: null,
+    hasOrderLinkage: false,          // true si la factura está atada a packing slip / OV
+    isInvoiceCreditNote: false,      // bandera global por DatosNotaCredito
+    invoiceDate: null,
+    allAccounts: [],
+    productAccountConfigs: []
+  };
+
+  // ── Init ──
+
+  function init() {
+    if (window.__saInvoiceAutofillVersion) return;
+    window.__saInvoiceAutofillVersion = true;
+    if (document.documentElement.dataset.saInvoiceAutofillEnabled === 'false') {
+      log('InvoiceAutofill deshabilitado');
+      return;
+    }
+    patchFetch();
+    setupUrlListener();
+    checkUrl();
+    log('InvoiceAutofill inicializado');
+  }
+
+  // ── URL Listener ──
+
+  function setupUrlListener() {
+    if (window.__saInvoiceAutofillHistoryPatched) return;
+    window.__saInvoiceAutofillHistoryPatched = true;
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () {
+        const r = orig.apply(this, arguments);
+        checkUrl();
+        return r;
+      };
+    });
+    window.addEventListener('popstate', checkUrl);
+  }
+
+  function checkUrl() {
+    if (!INVOICE_URL_RE.test(location.pathname)) {
+      removePanel();
+      invoiceFormVisible = false;
+      resetInvoiceState();
+      return;
+    }
+    setupPageObserver();
+  }
+
+  // ── Page Observer ──
+
+  function setupPageObserver() {
+    if (window.__saInvoiceAutofillObserverActive) return;
+    window.__saInvoiceAutofillObserverActive = true;
+
+    const observer = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(scanForInvoicePage, 500);
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    scanForInvoicePage();
+  }
+
+  let invoiceFormVisible = false;
+  let lastDetectedCustomer = null;
+  let lastDetectedDivisa = null;
+  let lastDetectedInvoiceDate = null;
+  let lastLineCount = -1;
+  let autofillRunning = false;
+  let scriptSetDivisa = null;
+  let headingLostAt = 0;
+
+  const RJSF_DIVISA_ID = 'root_DatosContables_Divisa';
+  const RJSF_TC_ID = 'root_DatosContables_exchangeRate';
+
+  function resetInvoiceState() {
+    lastDetectedCustomer = null;
+    lastDetectedDivisa = null;
+    lastDetectedInvoiceDate = null;
+    lastLineCount = -1;
+    scriptSetDivisa = null;
+    state = {
+      customerId: null, customerName: null, customer: null,
+      currency: null, currencySource: null,
+      exchangeRate: null, exchangeRateDate: null,
+      arAccount: null, lineAccounts: [],
+      ready: false, receivedOrderDivisa: null,
+      hasOrderLinkage: false, isInvoiceCreditNote: false,
+      invoiceDate: null, allAccounts: [], productAccountConfigs: []
+    };
+  }
+
+  function fillTCById(rate) {
+    const inp = document.getElementById(RJSF_TC_ID);
+    if (!inp) return false;
+    if (inp.value === String(rate)) return true;
+    const tracker = inp._valueTracker;
+    if (tracker) tracker.setValue('');
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(inp, String(rate));
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function installDivisaListener() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel || sel.dataset.saInvDivisaListener) return;
+    sel.dataset.saInvDivisaListener = 'true';
+    sel.addEventListener('change', onDivisaChange);
+    log('Divisa listener instalado (invoice)');
+  }
+
+  function onDivisaChange() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel) return;
+    const val = sel.options[sel.selectedIndex]?.text || sel.value || '';
+    const divisa = /mxn|peso/i.test(val) ? 'MXN' : /usd|d[oó]l/i.test(val) ? 'USD' : null;
+    if (!divisa || divisa === state.currency) return;
+
+    log(`Divisa change event (invoice): ${divisa}`);
+    lastDetectedDivisa = divisa;
+    state.currency = divisa;
+    state.currencySource = 'form';
+
+    if (divisa === 'MXN') {
+      state.exchangeRate = 1;
+      state.exchangeRateDate = null;
+    } else {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      const result = findRateForDate(invoiceDate);
+      state.exchangeRate = result?.rate ?? null;
+      state.exchangeRateDate = result?.date ?? null;
+    }
+
+    // Re-resolver AR (depende de divisa)
+    if (state.customer && state.allAccounts.length > 0) {
+      state.arAccount = findBestARAccount(state.customer, divisa, state.allAccounts);
+    }
+
+    renderPanel();
+
+    if (!state.hasOrderLinkage) {
+      const rate = state.exchangeRate;
+      fillTCById(rate);
+      setTimeout(() => fillTCById(rate), 300);
+      setTimeout(() => fillTCById(rate), 800);
+      setTimeout(() => fillTCById(rate), 1500);
+    }
+  }
+
+  function scanForInvoicePage() {
+    const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
+    let found = false;
+    for (const h of headings) {
+      if (/create\s+invoice|edit\s+invoice|nueva\s+factura|editar\s+factura/i.test(h.textContent?.trim())) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      if (invoiceFormVisible) {
+        invoiceFormVisible = false;
+        headingLostAt = Date.now();
+        removePanel();
+      }
+      return;
+    }
+
+    if (!invoiceFormVisible) {
+      invoiceFormVisible = true;
+      const elapsed = Date.now() - headingLostAt;
+      if (!lastDetectedCustomer || elapsed > 3000) {
+        resetInvoiceState();
+        log('Pantalla Invoice detectada');
+      }
+      renderPanel();
+    }
+
+    installDivisaListener();
+
+    const currentCustomer = extractCustomerFromDOM();
+    if (currentCustomer && currentCustomer !== lastDetectedCustomer) {
+      lastDetectedCustomer = currentCustomer;
+      lastDetectedDivisa = null;
+      lastLineCount = -1;
+      scriptSetDivisa = null;
+      log(`Customer detectado/cambiado: ${currentCustomer}`);
+      state.ready = false;
+      runAutofill();
+      return;
+    } else if (!currentCustomer && !lastDetectedCustomer) {
+      updatePanelStatus('pending', 'Esperando selección de cliente…');
+      return;
+    }
+
+    // Fallback divisa monitor
+    const currentDivisa = extractDivisaFromDOM();
+    if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedCustomer) {
+      lastDetectedDivisa = currentDivisa;
+      if (state.ready && currentDivisa !== state.currency) {
+        log(`Divisa scan fallback (invoice): ${currentDivisa}`);
+        state.currency = currentDivisa;
+        state.currencySource = 'form';
+        if (currentDivisa === 'MXN') {
+          state.exchangeRate = 1;
+          state.exchangeRateDate = null;
+        } else {
+          const invoiceDate = extractInvoiceDateFromDOM();
+          const result = findRateForDate(invoiceDate);
+          state.exchangeRate = result?.rate ?? null;
+          state.exchangeRateDate = result?.date ?? null;
+        }
+        if (state.customer && state.allAccounts.length > 0) {
+          state.arAccount = findBestARAccount(state.customer, currentDivisa, state.allAccounts);
+        }
+        renderPanel();
+        if (!state.hasOrderLinkage) {
+          const rate = state.exchangeRate;
+          fillTCById(rate);
+          setTimeout(() => fillTCById(rate), 300);
+          setTimeout(() => fillTCById(rate), 800);
+          setTimeout(() => fillTCById(rate), 1500);
+        }
+        return;
+      }
+    }
+
+    // Monitor line item changes
+    if (lastDetectedCustomer && state.ready) {
+      const lines = extractLinesFromDOM();
+      if (lines.length !== lastLineCount) {
+        lastLineCount = lines.length;
+        if (lines.length > 0) {
+          log(`Líneas cambiaron (invoice): ${lines.length}`);
+          state.ready = false;
+          runAutofill();
+        }
+      }
+    }
+
+    // Monitor Invoice Date changes — solo si la factura es manual
+    if (lastDetectedCustomer && state.ready && !state.hasOrderLinkage && state.currency !== 'MXN') {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      if (invoiceDate && invoiceDate !== lastDetectedInvoiceDate) {
+        lastDetectedInvoiceDate = invoiceDate;
+        const result = findRateForDate(invoiceDate);
+        if (result && result.rate !== state.exchangeRate) {
+          log(`Invoice Date: ${invoiceDate} → TC: ${result.rate} (del ${result.date})`);
+          state.exchangeRate = result.rate;
+          state.exchangeRateDate = result.date;
+          fillTCById(result.rate);
+          renderPanel();
+        }
+      }
+    }
+  }
+
+  // ── Fetch Interceptor ──
+  // v1: solo captura inbound, no inyecta outbound
+
+  function patchFetch() {
+    if (window.__saInvoiceAutofillFetchPatched) return;
+    window.__saInvoiceAutofillFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body) return origFetch.apply(this, args);
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
+
+      const opName = bodyObj?.operationName;
+      const response = await origFetch.apply(this, args);
+
+      try {
+        const clone = response.clone();
+        const json = await clone.json();
+        handleIncomingResponse(opName, json);
+      } catch (_) {}
+
+      return response;
+    };
+  }
+
+  function handleIncomingResponse(opName, json) {
+    if (!json?.data) return;
+
+    if (opName === 'InvoiceLowCodeData') {
+      // Carga única que trae customer + accounts + product configs + TipoCambio
+      const customer = json.data?.customerById;
+      if (customer) {
+        state.customer = customer;
+        state.customerId = customer.id || null;
+        state.customerName = customer.name || customer.shortName || null;
+        log(`InvoiceLowCodeData: customer ${customer.idInDomain || customer.id} salesTaxable=${customer.salesTaxable}`);
+      }
+      const accounts = json.data?.allAcctAccounts?.nodes;
+      if (Array.isArray(accounts)) state.allAccounts = accounts;
+      const productConfigs = json.data?.allAcctProductAccountConfigs?.nodes;
+      if (Array.isArray(productConfigs)) state.productAccountConfigs = productConfigs;
+      // TipoCambio puede venir bajo varios paths
+      const tipoCambio = json.data?.domainCustomInputs?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || json.data?.currentSession?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || [];
+      if (Array.isArray(tipoCambio) && tipoCambio.length > 0) {
+        state._tipoCambioArray = tipoCambio;
+      }
+      if (lastDetectedCustomer) {
+        state.ready = false;
+        setTimeout(() => runAutofill(), 800);
+      }
+    }
+
+    if (opName === 'GetReceivedOrdersWithReceivedOrderLineItems') {
+      const orders = json.data?.searchReceivedOrders?.nodes || [];
+      if (orders.length > 0) {
+        state.hasOrderLinkage = true;
+        // Divisa canónica de la primera OV
+        const firstDivisa = orders[0]?.customInputs?.divisa
+          || orders[0]?.customInputs?.Divisa
+          || null;
+        if (firstDivisa) {
+          state.receivedOrderDivisa = firstDivisa.toUpperCase();
+          log(`SO Divisa: ${state.receivedOrderDivisa}`);
+        }
+      }
+      // Esta query también trae customer/accounts/configs (mismo shape que InvoiceLowCodeData)
+      const customer = json.data?.customerById;
+      if (customer && !state.customer) {
+        state.customer = customer;
+        state.customerId = customer.id || null;
+        state.customerName = customer.name || customer.shortName || null;
+      }
+      const accounts = json.data?.allAcctAccounts?.nodes;
+      if (Array.isArray(accounts) && state.allAccounts.length === 0) state.allAccounts = accounts;
+      const productConfigs = json.data?.allAcctProductAccountConfigs?.nodes;
+      if (Array.isArray(productConfigs) && state.productAccountConfigs.length === 0) state.productAccountConfigs = productConfigs;
+      if (lastDetectedCustomer) {
+        state.ready = false;
+        setTimeout(() => runAutofill(), 800);
+      }
+    }
+
+    if (opName === 'PackingSlipsForInvoicing') {
+      // Tener packing slips listados implica linkage; la divisa real sale de la OV vinculada
+      const ps = json.data?.allPackingSlips?.nodes || [];
+      if (ps.length > 0) state.hasOrderLinkage = true;
+    }
+
+    if (opName === 'InvoiceByIdInDomain') {
+      const inv = json.data?.invoiceByIdInDomain;
+      if (inv) {
+        // Linkage: si tiene partsTransferEvent o relatedWorkOrders, está atada a OV/PS
+        if (inv.partsTransferEventByInvoiceId
+            || (inv.relatedWorkOrders?.nodes?.length > 0)) {
+          state.hasOrderLinkage = true;
+        }
+        // Credit note: si trae DatosNotaCredito poblado, marca global
+        const dnc = inv.customInputs?.DatosNotaCredito;
+        if (dnc && Object.keys(dnc).length > 0) {
+          state.isInvoiceCreditNote = true;
+        }
+        // Customer en InvoiceByIdInDomain (shape distinto: anidado bajo customerAddress)
+        const cust = inv.customerAddressByCustomerAddressShipToId?.customerByCustomerId
+          || inv.customerAddressByCustomerAddressBillToId?.customerByCustomerId
+          || null;
+        if (cust && !state.customer) {
+          state.customer = cust;
+          state.customerId = cust.id || null;
+          state.customerName = cust.name || cust.shortName || null;
+        }
+        // exchangeRate ya guardado en customInputs
+        const er = inv.customInputs?.exchangeRate;
+        if (er && state.exchangeRate == null) state.exchangeRate = parseFloat(er);
+        const dateStr = inv.invoicedAtAsDate;
+        if (dateStr && !state.invoiceDate) state.invoiceDate = dateStr;
+        // TipoCambio del dominio
+        const tc = inv.domainByDomainId?.customInputs?.TipoCambio;
+        if (Array.isArray(tc) && tc.length > 0 && !state._tipoCambioArray) {
+          state._tipoCambioArray = tc;
+        }
+      }
+    }
+  }
+
+  // ── Data Fetching (fallbacks si no se interceptó) ──
+
+  async function fetchExchangeRate() {
+    if (state._tipoCambioArray && state._tipoCambioArray.length > 0) {
+      const r = findRateForDate(null);
+      return r?.rate ?? null;
+    }
+    try {
+      const data = await api().query('GetDomain', {}, 'GetDomain');
+      const tipoCambio = data?.currentSession?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || data?.domain?.customInputs?.TipoCambio
+        || data?.domainByDomainId?.customInputs?.TipoCambio
+        || [];
+      if (!Array.isArray(tipoCambio) || tipoCambio.length === 0) {
+        warn('TipoCambio no encontrado (invoice)');
+        return null;
+      }
+      state._tipoCambioArray = tipoCambio;
+      const r = findRateForDate(null);
+      return r?.rate ?? null;
+    } catch (err) {
+      warn('fetchExchangeRate (invoice) error: ' + err.message);
+      return null;
+    }
+  }
+
+  function findRateForDate(dateStr) {
+    const arr = state._tipoCambioArray;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const target = dateStr || new Date().toISOString().slice(0, 10);
+    const exact = arr.find(e => e.FechaTipoCambio === target);
+    if (exact) return { rate: exact.TipoCambio, date: exact.FechaTipoCambio };
+    const sorted = [...arr].sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''));
+    const closest = sorted.find(e => (e.FechaTipoCambio || '') <= target);
+    const entry = closest || sorted[0];
+    return entry ? { rate: entry.TipoCambio, date: entry.FechaTipoCambio } : null;
+  }
+
+  async function fetchAllAccounts() {
+    if (state.allAccounts.length > 0) return state.allAccounts;
+    try {
+      const data = await api().query('SearchAccounts', { searchQuery: '%%' }, 'SearchAccounts');
+      const accounts = data?.searchAcctAccounts?.nodes || [];
+      state.allAccounts = accounts;
+      return accounts;
+    } catch (err) {
+      warn('fetchAllAccounts error: ' + err.message);
+      return [];
+    }
+  }
+
+  // ── Account Resolution ──
+
+  function normalizeForMatch(str) {
+    return String(str || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Resolución determinística de cuenta CXC:
+  //   1. cuentas[] del customer.DatosContables filtradas por DivisaContable === currency
+  //   2. orden descendente por CuentaContable (numeración más alta = más reciente)
+  //   3. resolver id numérico vía allAccounts.accountNumber
+  // TODO: filtro por EmpresaEmisora cuando aparezca un caso real con dos emisoras
+  function findBestARAccount(customer, currency, allAccounts) {
+    if (!customer || !currency) return { account: null, ambiguous: false, candidates: [], reason: 'sin_customer_o_divisa' };
+    const cuentas = customer?.customInputs?.DatosContables?.CuentasContables || [];
+    if (!Array.isArray(cuentas) || cuentas.length === 0) {
+      return { account: null, ambiguous: false, candidates: [], reason: 'customer_sin_CuentasContables' };
+    }
+    const cur = currency.toUpperCase();
+    const matches = cuentas.filter(c => (c.DivisaContable || '').toUpperCase() === cur);
+    if (matches.length === 0) {
+      return { account: null, ambiguous: false, candidates: [], reason: `sin_match_divisa_${cur}` };
+    }
+    matches.sort((a, b) => String(b.CuentaContable || '').localeCompare(String(a.CuentaContable || '')));
+    const winner = matches[0];
+    const account = allAccounts.find(a =>
+      a.accountNumber === winner.CuentaContable
+      && /receivable/i.test(a.acctAccountTypeByTypeId?.category || '')
+    );
+    return {
+      account: account || { id: null, accountNumber: winner.CuentaContable, name: winner.CuentaContable },
+      ambiguous: matches.length > 1,
+      candidates: matches.map(m => m.CuentaContable),
+      reason: account ? null : 'cuenta_no_existe_en_allAcctAccounts'
+    };
+  }
+
+  // Cuenta de ingreso/descuento por línea
+  function resolveLineAccount({ lineAmount, customer, productId, allAccounts, productConfigs, isCreditNoteGlobal }) {
+    const isGeneral = customer?.salesTaxable === true;
+    const isCredit = isCreditNoteGlobal || (typeof lineAmount === 'number' && lineAmount < 0);
+
+    let targetPrefix;
+    if (isCredit) {
+      targetPrefix = isGeneral ? PREFIX_DESC_GENERAL : PREFIX_DESC_CERO;
+    } else {
+      targetPrefix = isGeneral ? PREFIX_VENTAS_GENERAL : PREFIX_VENTAS_CERO;
+    }
+
+    const expected = allAccounts.find(a => String(a.accountNumber || '').startsWith(targetPrefix));
+
+    let productSuggested = null;
+    if (productId != null) {
+      const pc = (productConfigs || []).find(c =>
+        c.productId === productId
+        && (isCredit ? c.context === 'INVOICE_DISCOUNT' : c.context === 'INVOICE_INCOME')
+      );
+      if (pc) {
+        productSuggested = allAccounts.find(a => a.id === pc.acctAccountId) || null;
+      }
+    }
+
+    const mismatch = !!(productSuggested && expected && productSuggested.id !== expected.id);
+
+    return {
+      account: expected || productSuggested || null,
+      expected,
+      productSuggested,
+      mismatch,
+      isCredit,
+      targetPrefix,
+      source: !expected ? 'unresolved' : (mismatch ? 'override' : (productSuggested ? 'product-default' : 'rule'))
+    };
+  }
+
+  // ── DOM Extraction ──
+
+  function extractCustomerFromDOM() {
+    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of singleValues) {
+      let parent = sv.parentElement;
+      for (let depth = 0; depth < 8 && parent; depth++) {
+        for (const child of parent.children) {
+          if (child.contains(sv)) continue;
+          const txt = child.textContent?.trim() || '';
+          if (/^customer:?$|^cliente:?$/i.test(txt)) {
+            const clone = sv.cloneNode(true);
+            clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+            const val = clone.textContent?.trim();
+            if (val && val.length > 1) return val;
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function extractDivisaFromDOM() {
+    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of singleValues) {
+      if (sv.closest('#sa-invoice-autofill-panel')) continue;
+      const val = sv.textContent?.trim() || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = sv.parentElement;
+      for (let depth = 0; depth < 8 && parent; depth++) {
+        for (const child of parent.children) {
+          if (child.contains(sv)) continue;
+          const labelText = child.textContent?.trim() || '';
+          if (/divisa/i.test(labelText) && labelText.length < 50) {
+            return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    for (const select of document.querySelectorAll('select')) {
+      if (select.closest('#sa-invoice-autofill-panel')) continue;
+      const opt = select.options?.[select.selectedIndex];
+      const val = opt?.text || select.value || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = select.parentElement;
+      for (let d = 0; d < 6 && parent; d++) {
+        if (/divisa/i.test(parent.textContent || '') && parent.textContent.length < 300) {
+          return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function extractInvoiceDateFromDOM() {
+    const inputs = document.querySelectorAll('input[type="date"], input[type="text"], input');
+    for (const inp of inputs) {
+      if (inp.closest('#sa-invoice-autofill-panel')) continue;
+      let parent = inp.parentElement;
+      for (let d = 0; d < 5 && parent; d++) {
+        for (const child of parent.children) {
+          if (child.contains(inp)) continue;
+          const txt = child.textContent?.trim() || '';
+          if (/^invoice\s*date:?$/i.test(txt) || /^fecha.*factura:?$/i.test(txt) || /^invoiced\s*at:?$/i.test(txt)) {
+            const val = inp.value?.trim();
+            if (!val) return null;
+            const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return m[0];
+            const m2 = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+            return null;
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function findLineItemsSection() {
+    const headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div,p');
+    for (const h of headings) {
+      if (/line\s*items?|invoice\s*lines|l[ií]neas/i.test(h.textContent?.trim())) {
+        return h.closest('section') || h.parentElement?.parentElement || h.parentElement;
+      }
+    }
+    return document.querySelector('main') || document.querySelector('[class*="content"]');
+  }
+
+  function extractLinesFromDOM() {
+    const lines = [];
+    const lineSection = findLineItemsSection();
+    if (!lineSection) return lines;
+
+    // Strategy 1: inputs cuyo name/placeholder sugiere "name"
+    for (const input of lineSection.querySelectorAll('input')) {
+      const n = (input.name || '').toLowerCase();
+      const p = (input.placeholder || '').toLowerCase();
+      if ((n.includes('name') || p.includes('name') || p.includes('nombre')) && input.value?.trim()) {
+        lines.push({ name: input.value.trim(), element: input, amount: extractLineAmount(input) });
+      }
+    }
+    if (lines.length > 0) return lines;
+
+    // Strategy 2: label "Name:" → input adyacente
+    for (const el of lineSection.querySelectorAll('label, span, div, td, th')) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (!/^name:?\s*$/i.test(txt) || txt.length > 10) continue;
+
+      let found = false;
+      let sib = el.nextElementSibling;
+      for (let i = 0; i < 3 && sib && !found; i++, sib = sib.nextElementSibling) {
+        if (sib.tagName === 'INPUT' && sib.value?.trim()) {
+          lines.push({ name: sib.value.trim(), element: sib, amount: extractLineAmount(sib) });
+          found = true;
+        } else {
+          const inp = sib.querySelector('input');
+          if (inp?.value?.trim()) {
+            lines.push({ name: inp.value.trim(), element: inp, amount: extractLineAmount(inp) });
+            found = true;
+          }
+        }
+      }
+      if (found) continue;
+
+      const parent = el.parentElement;
+      if (parent) {
+        for (const child of parent.children) {
+          if (child === el || child.contains(el)) continue;
+          const inp = child.tagName === 'INPUT' ? child : child.querySelector('input');
+          if (inp?.value?.trim()) {
+            lines.push({ name: inp.value.trim(), element: inp, amount: extractLineAmount(inp) });
+            break;
+          }
+        }
+      }
+    }
+
+    return lines;
+  }
+
+  // Intenta inferir el monto de la línea a partir de quantity × price del row más cercano
+  function extractLineAmount(nameInput) {
+    let row = nameInput.closest('tr') || nameInput.closest('[role="row"]');
+    if (!row) {
+      let p = nameInput.parentElement;
+      for (let d = 0; d < 8 && p; d++) {
+        if (p.querySelectorAll('input[type="number"]').length >= 2) { row = p; break; }
+        p = p.parentElement;
+      }
+    }
+    if (!row) return null;
+    const numInputs = [...row.querySelectorAll('input[type="number"], input')]
+      .filter(i => i !== nameInput && i.value?.trim() && /^-?\d+([.,]\d+)?$/.test(i.value.trim()));
+    if (numInputs.length < 2) return null;
+    const nums = numInputs.map(i => parseFloat(i.value.replace(',', '.')));
+    // Heurística simple: producto de los dos primeros valores numéricos válidos
+    if (nums.length >= 2 && Number.isFinite(nums[0]) && Number.isFinite(nums[1])) {
+      return nums[0] * nums[1];
+    }
+    return null;
+  }
+
+  // ── Combobox Interaction (idéntico a bill-autofill) ──
+
+  async function tryFillCombobox(labelText, searchText, targetAccountName) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    let labelEl = null;
+
+    const labels = document.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 40) continue;
+      if (!labelRe.test(txt)) continue;
+      labelEl = el;
+      break;
+    }
+
+    if (!labelEl) return { success: false, method: 'fallback', reason: 'label no encontrado' };
+
+    let parent = labelEl;
+    for (let d = 0; d < 8 && parent; d++) {
+      const comboInput = parent.querySelector('input[role="combobox"]');
+      if (comboInput) {
+        const ctrl = comboInput.closest('[class*="-control"]');
+        if (ctrl) return await clickAndSelectOption(ctrl, parent, searchText, targetAccountName);
+      }
+      const sel = parent.querySelector('select');
+      if (sel) return tryFillNativeSelect(sel, searchText, targetAccountName);
+      parent = parent.parentElement;
+    }
+
+    return { success: false, method: 'fallback', reason: 'control no encontrado' };
+  }
+
+  function tryFillNativeSelect(sel, searchText, targetName) {
+    const searchNorm = normalizeForMatch(searchText);
+    for (const opt of sel.options) {
+      const optText = (opt.text || '').trim();
+      const norm = normalizeForMatch(optText || opt.value || '');
+      if (!norm) continue;
+      if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
+        const tracker = sel._valueTracker;
+        if (tracker) tracker.setValue('');
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+        if (nativeSetter) nativeSetter.call(sel, opt.value);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return { success: true, filled: optText, method: 'native-select' };
+      }
+    }
+    return { success: false, method: 'fallback', reason: 'opcion no encontrada en select nativo' };
+  }
+
+  async function clickAndSelectOption(control, container, searchText, targetAccountName) {
+    control.click();
+    await sleep(300);
+
+    const inputEl = control.querySelector('input');
+    if (inputEl) {
+      const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (nativeInputSetter) nativeInputSetter.call(inputEl, searchText);
+      inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    let options = [];
+    for (let i = 0; i < 10; i++) {
+      await sleep(200);
+      const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]')
+        || container.querySelector('[class*="menu"], [class*="Menu"]')
+        || document.querySelector('[class*="menu"], [class*="Menu"]');
+      if (menu) {
+        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')];
+        if (options.length > 0) break;
+      }
+    }
+
+    if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones tras click' };
+
+    return pickBestOption(options, targetAccountName);
+  }
+
+  function pickBestOption(options, targetAccountName) {
+    const targetNorm = normalizeForMatch(targetAccountName);
+    let best = null;
+    let bestScore = -1;
+
+    for (const opt of options) {
+      const text = opt.textContent?.trim() || '';
+      const norm = normalizeForMatch(text);
+      let score = 0;
+      if (norm === targetNorm) score = 100;
+      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 50;
+      else {
+        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
+        for (const t of tokens) { if (norm.includes(t)) score += 10; }
+      }
+      if (score > bestScore) { bestScore = score; best = opt; }
+    }
+
+    if (!best || bestScore < 10) return { success: false, method: 'fallback', reason: 'opcion no encontrada' };
+
+    best.click();
+    return { success: true, filled: targetAccountName, method: 'visual' };
+  }
+
+  async function tryFillTextInput(labelText, value) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    const labels = document.querySelectorAll('label, span, div, p');
+
+    for (const el of labels) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 30) continue;
+      if (!labelRe.test(txt)) continue;
+
+      let parent = el;
+      for (let d = 0; d < 5 && parent; d++) {
+        const inp = parent.querySelector('input[type="text"], input[type="number"], input:not([type])');
+        if (inp) {
+          const tracker = inp._valueTracker;
+          if (tracker) tracker.setValue('');
+          const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+          if (nativeSetter) nativeSetter.call(inp, String(value));
+          inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          return { success: true };
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    return { success: false };
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Fill: cuenta de ingreso/descuento por línea ──
+
+  async function tryFillIncomeInLine(lineName, searchText, targetAccountName) {
+    const lineNorm = lineName.toLowerCase().trim().replace(/\s+/g, ' ');
+
+    const nameInputs = document.querySelectorAll('input');
+    let nameInput = null;
+    for (const inp of nameInputs) {
+      if (inp.closest('#sa-invoice-autofill-panel')) continue;
+      if (inp.getAttribute('role') === 'combobox') continue;
+      const val = (inp.value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!val) continue;
+      if (val === lineNorm || val.includes(lineNorm) || lineNorm.includes(val)) {
+        nameInput = inp;
+        break;
+      }
+    }
+    if (!nameInput) return { success: false, method: 'fallback', reason: `input Name no encontrado para "${lineName}"` };
+
+    let targetTable = null;
+    let lineContainer = null;
+    let parent = nameInput.parentElement;
+
+    for (let d = 0; d < 12 && parent; d++) {
+      const tables = parent.querySelectorAll('table');
+      for (const table of tables) {
+        const allCells = table.querySelectorAll('td, th');
+        for (const c of allCells) {
+          const t = c.textContent?.trim() || '';
+          if (/income\s*account|cuenta.*ingreso|cuenta.*ingresos|cuenta.*ventas|cuenta.*contable/i.test(t) && t.length < 30) {
+            targetTable = table;
+            break;
+          }
+        }
+        if (targetTable) break;
+      }
+      if (targetTable) { lineContainer = parent; break; }
+      parent = parent.parentElement;
+    }
+
+    if (!targetTable) return { success: false, method: 'fallback', reason: `sub-tabla con Income Account no encontrada para "${lineName}"` };
+
+    let incomeColIdx = -1;
+    const rows = targetTable.querySelectorAll('tr');
+    for (const row of rows) {
+      const cells = row.querySelectorAll('td, th');
+      for (let i = 0; i < cells.length; i++) {
+        const t = cells[i].textContent?.trim() || '';
+        if (/income\s*account|cuenta.*ingreso|cuenta.*ingresos|cuenta.*ventas|cuenta.*contable/i.test(t) && t.length < 30) {
+          incomeColIdx = i;
+          break;
+        }
+      }
+      if (incomeColIdx >= 0) break;
+    }
+    if (incomeColIdx < 0) return { success: false, method: 'fallback', reason: 'columna Income Account no encontrada en header' };
+
+    for (const row of rows) {
+      const cells = row.querySelectorAll('td, th');
+      if (incomeColIdx >= cells.length) continue;
+      const cell = cells[incomeColIdx];
+      const comboInput = cell.querySelector('input[role="combobox"]');
+      if (!comboInput) continue;
+      const control = comboInput.closest('[class*="-control"]');
+      if (!control) continue;
+      return await clickAndSelectOption(control, cell, searchText, targetAccountName);
+    }
+
+    return { success: false, method: 'fallback', reason: 'combobox no encontrado en columna Income' };
+  }
+
+  // ── Fill All Fields ──
+
+  async function fillAllFields() {
+    const results = {};
+
+    // Divisa+TC: solo si la factura es manual (sin OV/packing slip)
+    if (!state.hasOrderLinkage) {
+      if (state.currency) {
+        results.currency = await tryFillCombobox('divisa.*factura|divisa|currency', state.currency, state.currency);
+        if (results.currency?.success) scriptSetDivisa = state.currency;
+        log(`Fill divisa (invoice): ${JSON.stringify(results.currency)}`);
+      }
+      if (state.exchangeRate != null) {
+        results.exchangeRate = await tryFillTextInput('tipo de cambio|exchange rate', state.exchangeRate);
+        log(`Fill TC (invoice): ${JSON.stringify(results.exchangeRate)}`);
+      }
+    } else {
+      log('Factura con linkage a OV/PS — divisa y TC respetados, no se tocan');
+    }
+
+    // Cuenta CXC (siempre que se pueda resolver)
+    if (state.arAccount?.account?.id) {
+      const acc = state.arAccount.account;
+      const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
+      results.arAccount = await tryFillCombobox(
+        'cuenta.*cobrar|accounts?\\s*receivable|a\\/?r\\s*account|cuenta.*recibir',
+        search, acc.name || acc.accountNumber
+      );
+      log(`Fill AR: ${JSON.stringify(results.arAccount)}`);
+    }
+
+    // Cuentas de ingreso/descuento por línea
+    for (let i = 0; i < state.lineAccounts.length; i++) {
+      const line = state.lineAccounts[i];
+      if (!line.account) continue;
+      const acc = line.account;
+      const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
+      results[`line_${i}`] = await tryFillIncomeInLine(line.name, search, acc.name || acc.accountNumber);
+      log(`Fill income line ${i} "${line.name}": ${JSON.stringify(results[`line_${i}`])}`);
+    }
+
+    return results;
+  }
+
+  // ── Orchestrator ──
+
+  async function runAutofill() {
+    if (autofillRunning) return;
+    autofillRunning = true;
+    try {
+      await _runAutofillInner();
+    } finally {
+      autofillRunning = false;
+    }
+  }
+
+  async function _runAutofillInner() {
+    updatePanelStatus('pending', 'Analizando…');
+
+    const customerName = lastDetectedCustomer || extractCustomerFromDOM();
+    if (!customerName) {
+      updatePanelStatus('pending', 'Esperando selección de cliente…');
+      return;
+    }
+
+    // Asegurar TC y accounts (preferir intercepted, fallback a fetch)
+    let exchangeData;
+    let accountsData = state.allAccounts;
+    try {
+      [exchangeData, accountsData] = await Promise.all([
+        fetchExchangeRate().catch(err => { warn('fetchExchangeRate (invoice) catch: ' + err.message); return null; }),
+        accountsData.length > 0 ? Promise.resolve(accountsData) : fetchAllAccounts()
+      ]);
+    } catch (err) {
+      updatePanelStatus('error', 'Error fetching datos: ' + err.message);
+      return;
+    }
+    state.allAccounts = accountsData;
+
+    // Divisa: prioridad post-fill DOM → SO → DOM (pre-fill) → customer flags → default
+    const divisaPostFill = scriptSetDivisa ? extractDivisaFromDOM() : null;
+    const currencyFromSO = state.receivedOrderDivisa;
+    const divisaPreFill = !divisaPostFill && !currencyFromSO ? extractDivisaFromDOM() : null;
+    const currencyFromCustomer = inferCurrencyFromCustomer(state.customer);
+    const currency = divisaPostFill || currencyFromSO || divisaPreFill || currencyFromCustomer || 'USD';
+    const currencySource = divisaPostFill ? 'form'
+      : currencyFromSO ? 'so'
+      : divisaPreFill ? 'form'
+      : currencyFromCustomer ? 'customer'
+      : 'default';
+
+    // TC
+    let exchangeRate;
+    let exchangeRateDate = null;
+    if (currency === 'MXN') {
+      exchangeRate = 1;
+    } else {
+      const invoiceDate = state.invoiceDate || extractInvoiceDateFromDOM();
+      if (invoiceDate) {
+        const result = findRateForDate(invoiceDate);
+        exchangeRate = result?.rate ?? exchangeData;
+        exchangeRateDate = result?.date ?? null;
+      } else {
+        exchangeRate = exchangeData;
+        const today = new Date().toISOString().slice(0, 10);
+        const r = findRateForDate(today);
+        exchangeRateDate = r?.date ?? null;
+      }
+    }
+    log(`Divisa (invoice): ${currency} (${currencySource}), TC: ${exchangeRate}`);
+
+    // AR account
+    const arResult = findBestARAccount(state.customer, currency, accountsData);
+
+    // Lines + cuenta de ingreso/descuento por línea
+    const lines = extractLinesFromDOM();
+    const lineAccounts = lines.map(line => {
+      const resolved = resolveLineAccount({
+        lineAmount: line.amount,
+        customer: state.customer,
+        productId: null,           // v1: no enlazamos a productId del DOM (la regla por prefijo gana igual)
+        allAccounts: accountsData,
+        productConfigs: state.productAccountConfigs,
+        isCreditNoteGlobal: state.isInvoiceCreditNote
+      });
+      return { ...line, ...resolved };
+    });
+
+    state = {
+      ...state,
+      customerName,
+      currency,
+      currencySource,
+      exchangeRate,
+      exchangeRateDate,
+      arAccount: arResult,
+      lineAccounts,
+      ready: true
+    };
+
+    await fillAllFields();
+
+    const domDivisaAfterFill = extractDivisaFromDOM();
+    if (domDivisaAfterFill) lastDetectedDivisa = domDivisaAfterFill;
+
+    renderPanel();
+    log(`InvoiceAutofill listo: customer="${customerName}" currency=${currency} rate=${exchangeRate} ar="${arResult.account?.accountNumber}" lines=${lineAccounts.length}`);
+  }
+
+  function inferCurrencyFromCustomer(customer) {
+    if (!customer) return null;
+    const dc = customer.customInputs?.DatosContables;
+    if (!dc) return null;
+    if (dc.DivisaUSD && !dc.DivisaMXN) return 'USD';
+    if (dc.DivisaMXN && !dc.DivisaUSD) return 'MXN';
+    return null;
+  }
+
+  // ── Panel UI ──
+
+  const STATUS_COLORS = { done: '#4CAF50', warn: '#ff9800', error: '#f44336', learned: '#2196F3', pending: '#999' };
+  const STATUS_ICONS  = { done: '✓', warn: '~', error: '✗', learned: '★', pending: '…' };
+
+  function renderPanel() {
+    let panel = document.getElementById('sa-invoice-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-invoice-autofill-panel';
+      panel.style.cssText = [
+        'position:fixed', 'bottom:20px', 'left:50%', 'transform:translateX(-50%)',
+        'z-index:99999', 'background:#1e293b', 'color:#e2e8f0', 'border-radius:10px',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.4)', 'font-family:system-ui,sans-serif',
+        'font-size:13px', 'min-width:260px', 'max-width:360px'
+      ].join(';');
+      document.body.appendChild(panel);
+    }
+
+    const collapsed = panel.dataset.collapsed === 'true';
+
+    let html = `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #334155;cursor:pointer;" id="sa-iaf-header">
+        <span style="font-weight:700;font-size:14px;letter-spacing:.3px;">Invoice Autofill</span>
+        <span style="font-size:16px;color:#94a3b8;">${collapsed ? '▲' : '▼'}</span>
+      </div>`;
+
+    if (!collapsed) {
+      html += `<div style="padding:12px 14px;">`;
+
+      const customerStatus = state.customerName ? 'done' : 'pending';
+      html += renderRow('Cliente', state.customerName || '—', customerStatus);
+
+      const linkageLabel = state.hasOrderLinkage ? 'OV/Packing Slip' : 'Manual / Nota de Crédito';
+      html += renderRow('Tipo de factura', linkageLabel, 'done');
+
+      const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'default' ? 'warn' : 'done';
+      const divisaSources = { form: ' (del form)', so: ' (de OV)', customer: ' (del cliente)', default: ' (default)' };
+      const divisaSuffix = divisaSources[state.currencySource] || '';
+      const divisaLabel = state.currency ? `${state.currency}${divisaSuffix}` : '—';
+      html += renderRow('Divisa', divisaLabel, divisaStatus);
+
+      const tcLabel = state.exchangeRate != null
+        ? `$${Number(state.exchangeRate).toFixed(4)}${state.exchangeRateDate ? ` (${state.exchangeRateDate})` : ''}`
+        : '—';
+      html += renderRow('Tipo de Cambio', tcLabel, state.exchangeRate != null ? 'done' : 'pending');
+
+      const ar = state.arAccount;
+      const arStatus = !ar?.account?.id ? 'error' : ar.ambiguous ? 'warn' : 'done';
+      let arLabel = '—';
+      if (ar?.account?.id) {
+        arLabel = ar.account.name || ar.account.accountNumber;
+        if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas, elegida más alta)`;
+      } else if (ar?.account?.accountNumber) {
+        arLabel = `${ar.account.accountNumber} (no resuelta en allAcctAccounts)`;
+      } else if (ar?.reason) {
+        arLabel = `No resuelto: ${ar.reason}`;
+      }
+      html += renderRow('Cuenta CXC', arLabel, arStatus);
+
+      if (state.lineAccounts.length > 0) {
+        html += `<div style="border-top:1px solid #334155;margin:8px 0 6px;padding-top:6px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">Cuenta por línea</div>`;
+        for (const line of state.lineAccounts) {
+          const status = !line.account ? 'error' : 'done';
+          let lbl = line.account?.name || line.account?.accountNumber || `No resuelto (${line.targetPrefix})`;
+          if (line.mismatch && line.productSuggested) {
+            const from = line.productSuggested.accountNumber || line.productSuggested.name;
+            const to = line.expected?.accountNumber || line.expected?.name;
+            lbl += ` (corregido: ${from} → ${to})`;
+          }
+          if (line.isCredit && line.account) lbl += ' [NC]';
+          html += renderRow(line.name || '(sin nombre)', lbl, status);
+        }
+      }
+
+      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refresh" style="cursor:pointer;color:#64748b;font-size:11px;letter-spacing:.3px;">↻ actualizar</span></div>`;
+      html += `</div>`;
+    }
+
+    panel.innerHTML = html;
+
+    panel.querySelector('#sa-iaf-header').addEventListener('click', () => {
+      panel.dataset.collapsed = collapsed ? 'false' : 'true';
+      renderPanel();
+    });
+
+    const refreshBtn = panel.querySelector('#sa-iaf-refresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        state.ready = false;
+        runAutofill();
+      });
+    }
+  }
+
+  function renderRow(label, value, status) {
+    const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
+    const icon = STATUS_ICONS[status] || '·';
+    return `
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
+        <span style="color:${color};font-weight:700;min-width:14px;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;">${escHtml(label)}</div>
+          <div style="color:#e2e8f0;font-size:12px;word-break:break-word;">${escHtml(value)}</div>
+        </div>
+      </div>`;
+  }
+
+  function escHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function removePanel() {
+    const panel = document.getElementById('sa-invoice-autofill-panel');
+    if (panel) panel.remove();
+  }
+
+  function updatePanelStatus(status, message) {
+    let panel = document.getElementById('sa-invoice-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-invoice-autofill-panel';
+      panel.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;background:#1e293b;color:#e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);font-family:system-ui,sans-serif;font-size:13px;padding:12px 14px;min-width:220px;';
+      document.body.appendChild(panel);
+    }
+    const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
+    panel.innerHTML = `<span style="font-weight:700;">Invoice Autofill</span> <span style="color:${color};margin-left:8px;">${escHtml(message)}</span>`;
+  }
+
+  return { init, runAutofill };
+})();
+
+if (typeof window !== 'undefined') {
+  window.InvoiceAutofill = InvoiceAutofill;
+  InvoiceAutofill.init();
+}
