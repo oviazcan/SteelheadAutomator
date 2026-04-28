@@ -813,7 +813,9 @@ const InvoiceAutofill = (() => {
       const txt = el.textContent?.trim() || '';
       // Filtrar elementos demasiado grandes (descendientes envueltos)
       if (txt.length > 400) continue;
-      const m = txt.match(/Line\s*#(\d+)\s*-\s*([A-Za-z0-9._\-/]+)/);
+      // PNs son alfanuméricos en mayúsculas; el regex permisivo capturaba el header
+      // "Description:" pegado al PN (sin whitespace en textContent). Restringir a [A-Z0-9].
+      const m = txt.match(/Line\s*#(\d+)\s*-\s*([A-Z0-9._\-/]+)/);
       if (!m) continue;
       const lineNum = parseInt(m[1], 10);
       const pn = m[2];
@@ -1029,6 +1031,37 @@ const InvoiceAutofill = (() => {
     return await clickAndSelectOption(control, host, searchText, targetAccountName);
   }
 
+  // ── Fill: cuenta AR por subtítulo italic <p>ACCOUNTS_RECEIVABLE</p> ──
+
+  // El label visible "AR Account:" agarra el primer combobox del DOM (Terms/BillTo)
+  // cuando se sube por el árbol. Steelhead renderiza un subtítulo italic
+  // <p>ACCOUNTS_RECEIVABLE</p> debajo del react-select específico de AR — usamos eso
+  // como ancla precisa, igual que <p>INCOME</p> para líneas.
+  async function tryFillARBySubtitle(searchText, targetAccountName) {
+    const subtitle = [...document.querySelectorAll('p,span,div,label')].find(p => {
+      if (p.closest('#sa-invoice-autofill-panel')) return false;
+      const t = p.textContent?.trim() || '';
+      return /^accounts?_?receivable$/i.test(t);
+    });
+    if (!subtitle) {
+      return { success: false, method: 'fallback', reason: 'subtítulo ACCOUNTS_RECEIVABLE no encontrado' };
+    }
+    let host = subtitle.parentElement;
+    let control = null;
+    for (let d = 0; d < 8 && host; d++) {
+      const combo = host.querySelector('input[role="combobox"]');
+      if (combo) {
+        control = combo.closest('[class*="-control"]') || combo.parentElement;
+        break;
+      }
+      host = host.parentElement;
+    }
+    if (!control) {
+      return { success: false, method: 'fallback', reason: 'combobox AR no encontrado bajo subtítulo' };
+    }
+    return await clickAndSelectOption(control, host, searchText, targetAccountName);
+  }
+
   // ── Fill All Fields ──
 
   async function fillAllFields() {
@@ -1050,13 +1083,19 @@ const InvoiceAutofill = (() => {
     }
 
     // Cuenta CXC (siempre que se pueda resolver)
-    if (state.arAccount?.account?.id) {
+    // accountNumber siempre presente (synthetic fallback). id puede faltar si la
+    // cuenta no está aún en allAcctAccounts — el DOM-fill no lo necesita.
+    if (state.arAccount?.account?.accountNumber) {
       const acc = state.arAccount.account;
       const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
-      results.arAccount = await tryFillCombobox(
-        'cuenta.*cobrar|accounts?\\s*receivable|a\\/?r\\s*account|cuenta.*recibir',
-        search, acc.name || acc.accountNumber
-      );
+      results.arAccount = await tryFillARBySubtitle(search, acc.name || acc.accountNumber);
+      if (!results.arAccount?.success) {
+        log(`Fill AR (subtitle path): ${JSON.stringify(results.arAccount)} — fallback a label`);
+        results.arAccount = await tryFillCombobox(
+          'cuenta.*cobrar|accounts?\\s*receivable|a\\/?r\\s*account|cuenta.*recibir',
+          search, acc.name || acc.accountNumber
+        );
+      }
       log(`Fill AR: ${JSON.stringify(results.arAccount)}`);
     }
 
