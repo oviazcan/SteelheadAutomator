@@ -119,20 +119,26 @@ const InvoiceAutofill = (() => {
   const RJSF_TC_ID = 'root_DatosContables_exchangeRate';
 
   function resetInvoiceState() {
+    // Reset conservador: NO borra los datos capturados por queries
+    // (customer, allAccounts, productAccountConfigs, receivedOrderDivisa,
+    // hasOrderLinkage, _tipoCambioArray) porque las queries pasan antes
+    // de que el form RJSF se monte y el reset las perdería.
+    // Solo resetea los flags de UI y los derivados (currency, exchangeRate,
+    // arAccount, lineAccounts) que se recalculan en runAutofill.
     lastDetectedCustomer = null;
     lastDetectedDivisa = null;
     lastDetectedInvoiceDate = null;
     lastLineCount = -1;
     scriptSetDivisa = null;
-    state = {
-      customerId: null, customerName: null, customer: null,
-      currency: null, currencySource: null,
-      exchangeRate: null, exchangeRateDate: null,
-      arAccount: null, lineAccounts: [],
-      ready: false, receivedOrderDivisa: null,
-      hasOrderLinkage: false, isInvoiceCreditNote: false,
-      invoiceDate: null, allAccounts: [], productAccountConfigs: []
-    };
+    state.currency = null;
+    state.currencySource = null;
+    state.exchangeRate = null;
+    state.exchangeRateDate = null;
+    state.arAccount = null;
+    state.lineAccounts = [];
+    state.ready = false;
+    state.invoiceDate = null;
+    state.isInvoiceCreditNote = false;
   }
 
   function fillTCById(rate) {
@@ -344,19 +350,19 @@ const InvoiceAutofill = (() => {
 
     if (opName === 'InvoiceLowCodeData') {
       // Carga única que trae customer + accounts + product configs + TipoCambio
-      // Probar varios paths posibles del customer (shape varía)
       const customer = json.data?.customerById
         || json.data?.customer
         || json.data?.invoiceLowCodeData?.customer
         || json.data?.invoiceLowCodeData?.customerById
         || null;
-      if (customer && (customer.id || customer.idInDomain || customer.name)) {
+      if (customer && typeof customer === 'object') {
         state.customer = customer;
-        state.customerId = customer.id || null;
-        state.customerName = customer.name || customer.shortName || null;
-        log(`InvoiceLowCodeData: customer ${customer.idInDomain || customer.id || customer.name} salesTaxable=${customer.salesTaxable}`);
+        state.customerId = customer.id || customer.customerId || null;
+        state.customerName = customer.name || customer.shortName || customer.customerName || null;
+        const keys = Object.keys(customer).slice(0, 25).join(',');
+        const hasCuentas = !!customer.customInputs?.DatosContables?.CuentasContables;
+        log(`InvoiceLowCodeData: customer name="${state.customerName}" salesTaxable=${customer.salesTaxable} hasCuentasContables=${hasCuentas} keys=[${keys}]`);
       } else {
-        // Diagnóstico: dump las keys raíz para identificar el path real
         const rootKeys = Object.keys(json.data || {}).slice(0, 20).join(', ');
         log(`InvoiceLowCodeData: customer no encontrado. data keys=[${rootKeys}]`);
       }
@@ -583,13 +589,35 @@ const InvoiceAutofill = (() => {
 
   function extractCustomerFromDOM() {
     // 1. Heading principal: "Creating Invoice for X" / "Editing Invoice for X"
-    //    (Steelhead muestra el customer aquí, no como Select editable)
+    //    El h1/h2 puede contener botones anexos ("View Customer Custom Inputs",
+    //    "Edit Power Tools", "Total: $X"). Usamos el primer text node directo
+    //    del heading (pre-children) para obtener solo "Creating Invoice for X".
     const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"], [class*="heading"]');
     for (const h of headings) {
-      const txt = h.textContent?.trim() || '';
+      let txt = '';
+      // Concatenar solo text nodes directos (no descender en buttons/spans inline)
+      for (const node of h.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          txt += node.textContent;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          // Aceptar spans inline que parezcan parte del título (no buttons/links)
+          const tag = node.tagName?.toLowerCase();
+          if (tag === 'span' || tag === 'em' || tag === 'strong' || tag === 'b') {
+            txt += ' ' + (node.textContent || '');
+          } else {
+            break;
+          }
+        }
+      }
+      txt = txt.trim();
+      // Fallback: si no hubo text nodes directos, usa textContent y luego corta
+      // en separadores conocidos
+      if (!txt) txt = h.textContent?.trim() || '';
       const m = txt.match(/^(?:creating|editing|create|edit|new)\s+invoice\s+for\s+(.+?)$/i);
       if (m && m[1]) {
-        const name = m[1].trim();
+        let name = m[1].trim();
+        // Cortar en separadores conocidos (botones inline)
+        name = name.split(/\bView\s+Customer|\bView\s+Address|\bEdit\s+Power|\bTotal\s*:|\n/i)[0].trim();
         if (name.length > 1 && name.length < 200) return name;
       }
     }
