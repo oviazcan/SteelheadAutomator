@@ -1048,3 +1048,54 @@ Expected: el flujo end-to-end sigue funcionando idéntico a la validación local
 **2. Inline Execution** — Ejecuto las tasks en esta sesión usando `superpowers:executing-plans`, con checkpoints batch para revisión.
 
 **¿Cuál approach?**
+
+---
+
+## Post-deploy log
+
+Cronología de versiones publicadas y bugs corregidos tras el rollout inicial. La feature se shipeó por iteraciones rápidas en producción ya que requiere DOM real de Steelhead para validar (no hay tests automatizados).
+
+### 0.5.0 (118ce93) — feat: banner on-demand + overlay+stop + auto-regen en modal abierto
+Pivote desde el diseño original (auto-regen agresivo en background) a un flujo on-demand: banner con botón al lado del título "Invoices", overlay+lock durante el batch, y auto-regen pasivo cuando el usuario abre manualmente el modal de una factura pendiente.
+
+### 0.5.1 (b79d215) — fix: anclar banner al título "Invoices"
+El heading "Invoices" en el panel derecho no es semánticamente un `<h1>`/`<h2>` sino un `<div>` estilizado. `findInvoicesHeading` cae a una heurística: busca el botón "CREAR FACTURA", sube por padres hasta 8 niveles, y dentro busca cualquier nodo con texto exacto "Invoices" y apariencia de heading (font-size ≥ 18 o font-weight ≥ 600).
+
+### 0.5.2 (dcc8d72) — fix: set de regeneradas para no re-detectar tras eventual consistency
+Tras un regen exitoso, `ActiveInvoicesPaged` sigue devolviendo el PDF viejo unos segundos (eventual consistency en el backend de Steelhead). Sin filtro, el banner re-detectaba todas las facturas que acababan de regenerarse. Fix: `recentlyRegenerated` Map en memoria, suprime ítems que ya pasaron por `markRegenerated`. Vida = pestaña.
+
+### 0.5.3 (7a4113e) — feat: persistir set de regeneradas en localStorage con TTL 24h
+El set en memoria del 0.5.2 se perdía al recargar la página, y el banner re-detectaba todo. Fix: persistir en `localStorage['sa_autoregen_recently_regenerated']` con TTL de 24h, hidratar en `init()`.
+
+### 0.5.4 (4ec9a1a) — perf+fix: throttle observer + cache heading + retry batch
+Tres mejoras:
+1. `MutationObserver` del banner throttled a 500ms (antes corría en cada microtask de React → CPU spike).
+2. Cache de `_headingRef` para no recorrer el DOM en cada `injectBanner`.
+3. Retry de 2 intentos en `startRun` para sobrevivir flakiness puntual de `regenViaModal` (timing del click programático, modal de confirmación que tarda).
+
+### 0.5.5 (f977361) — fix: normalizar key del set persistido a string
+**Bug reportado:** tras la 0.5.4, el banner volvía a re-detectar las 16 facturas regeneradas el día anterior aunque ya estuvieran marcadas.
+
+**Causa raíz:** asimetría de tipos en el ciclo persist→hydrate.
+- `markRegenerated(invoiceId)` guardaba con el tipo nativo de `inv.id` (string, convención GraphQL `ID!`).
+- `_persistRecent()` serializa con `JSON.stringify` → keys siempre strings en JSON.
+- `_hydrateRecent()` leía con `recentlyRegenerated.set(Number(k) || k, ts)` — coerce a number cuando es numeric-string.
+- Tras hydrate, el Map tenía keys numéricas. Al chequear `.get(stringId)` → `undefined` → no suprimido → re-detectado.
+
+**Fix:** normalizar a `String(invoiceId)` en set/get/delete y dejar `Object.keys` tal cual en hydrate (sin `Number()`). El próximo regen reescribe el set con keys string-correctas; el set viejo con keys numéricas queda huérfano pero expira solo a las 24h por el TTL.
+
+**Hiccup de deploy:** el push de `1daba95` llegó a `origin/gh-pages` pero el webhook interno de GitHub Pages no encoló el workflow `pages build and deployment` para ese SHA (glitch puntual de GitHub). El último build seguía siendo el de 0.5.4. Resolución: commit vacío en `gh-pages` (`e20c973 deploy: re-trigger Pages build for 0.5.5`) → eso sí encoló el build → 0.5.5 publicado.
+
+**Lección operacional:** después de cada deploy a `gh-pages`, además de verificar `git diff HEAD:remote/... gh-pages:...` (sync byte-a-byte), conviene confirmar que GitHub Pages efectivamente buildeó. Verificación rápida sin auth:
+```bash
+curl -s "https://oviazcan.github.io/SteelheadAutomator/config.json?bust=$(date +%s)" | head -3
+# y/o
+curl -s "https://api.github.com/repos/oviazcan/SteelheadAutomator/actions/runs?per_page=1&branch=gh-pages" \
+  | python3 -c "import json,sys;r=json.load(sys.stdin)['workflow_runs'][0];print(r['head_sha'][:7],r['status'],r['conclusion'])"
+```
+Si el último workflow run no apunta al SHA recién pusheado, forzar con commit vacío.
+
+### Estado al cierre (2026-04-27)
+- Feature 0.5.5 desplegada y validada en prod (lote de 16 facturas regeneradas, 1 fallback OK al segundo click).
+- Sin pendientes funcionales. Posible follow-up menor: si en algún futuro Steelhead empieza a devolver `inv.id` como número crudo en lugar de string, el set persistido podría llenarse con keys huérfanas que solo se limpian por TTL — ahora no es problema. Si lo es, agregar un sweep que normalize keys legacy en `_hydrateRecent`.
+- No hay CHANGELOG ni git tags asociados al bump de `config.version`. Pendiente del audit pre-prod (item 3 de `CLAUDE.md`).
