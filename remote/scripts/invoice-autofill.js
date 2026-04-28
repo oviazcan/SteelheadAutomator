@@ -17,7 +17,7 @@ const InvoiceAutofill = (() => {
   // Modal "Create Invoice Manually" — overlay sobre la lista de invoices, sin
   // form RJSF. Se usa para Notas de Crédito y cargos manuales (tarifas, etc).
   const MANUAL_HEADING_RE = /create\s+invoice\s+manually|crear\s+factura\s+manual/i;
-  let manualModalState = null;  // { active, customer, datesFilled }
+  let manualModalState = null;  // { active, customer, filled, filling, results }
 
   // Matriz de prefijos contables
   // [salesTaxBySalesTaxId.name=general] × [credit-note=false] → 0401-0001 (Ventas Tasa General)
@@ -1064,33 +1064,67 @@ const InvoiceAutofill = (() => {
     return { success: true, filled: targetAccountName, method: 'visual' };
   }
 
-  async function tryFillTextInput(labelText, value) {
-    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
-    const labels = document.querySelectorAll('label, span, div, p');
+  // Localiza un <input> a partir de un label/heading que matchea labelRe.
+  // Estrategia A (preferida): <label for="...">  → document.getElementById(forId).
+  //   MUI v5 emite label.htmlFor === input.id (incluso con IDs tipo ":r8h:").
+  // Estrategia B (fallback): subir hasta wrapper que contenga un <input> simple.
+  // En ambas, salta inputs role="combobox" / aria-autocomplete (esos son react-select
+  // y matar su value rompe el componente).
+  function findInputByLabel(labelRe, opts = {}) {
+    const skipCombobox = opts.skipCombobox !== false;
+    const isUsable = (inp) => {
+      if (!inp) return false;
+      if (skipCombobox && inp.getAttribute('role') === 'combobox') return false;
+      if (skipCombobox && inp.getAttribute('aria-autocomplete')) return false;
+      const t = (inp.getAttribute('type') || 'text').toLowerCase();
+      if (['hidden', 'checkbox', 'radio', 'file', 'button', 'submit'].includes(t)) return false;
+      return true;
+    };
 
-    for (const el of labels) {
+    // A: match estricto en <label> con for/htmlFor
+    const directLabels = document.querySelectorAll('label');
+    for (const lbl of directLabels) {
+      if (lbl.closest('#sa-invoice-autofill-panel')) continue;
+      const t = lbl.textContent?.trim() || '';
+      if (t.length === 0 || t.length > 60) continue;
+      if (!labelRe.test(t)) continue;
+      const forId = lbl.getAttribute('for') || lbl.getAttribute('htmlFor');
+      if (forId) {
+        const inp = document.getElementById(forId);
+        if (isUsable(inp)) return inp;
+      }
+    }
+
+    // B: cualquier nodo con texto match → buscar input ascendiendo por wrapper
+    const candidates = document.querySelectorAll('label, span, div, p');
+    for (const el of candidates) {
       if (el.closest('#sa-invoice-autofill-panel')) continue;
-      const txt = el.textContent?.trim() || '';
-      if (txt.length > 30) continue;
-      if (!labelRe.test(txt)) continue;
-
+      const t = el.textContent?.trim() || '';
+      if (t.length === 0 || t.length > 60) continue;
+      if (!labelRe.test(t)) continue;
       let parent = el;
-      for (let d = 0; d < 5 && parent; d++) {
-        const inp = parent.querySelector('input[type="text"], input[type="number"], input:not([type])');
-        if (inp) {
-          const tracker = inp._valueTracker;
-          if (tracker) tracker.setValue('');
-          const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-          if (nativeSetter) nativeSetter.call(inp, String(value));
-          inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
-          inp.dispatchEvent(new Event('change', { bubbles: true }));
-          return { success: true };
+      for (let d = 0; d < 6 && parent; d++) {
+        const inputs = parent.querySelectorAll('input');
+        for (const inp of inputs) {
+          if (isUsable(inp)) return inp;
         }
         parent = parent.parentElement;
       }
     }
+    return null;
+  }
 
-    return { success: false };
+  async function tryFillTextInput(labelText, value) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    const inp = findInputByLabel(labelRe);
+    if (!inp) return { success: false };
+    const tracker = inp._valueTracker;
+    if (tracker) tracker.setValue('');
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(inp, String(value));
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    return { success: true };
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -1118,26 +1152,12 @@ const InvoiceAutofill = (() => {
   // y verifica que el valor persista, no sólo que se haya despachado el evento.
   async function tryFillDateInput(labelText, date) {
     const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
-    const labels = document.querySelectorAll('label, span, div, p');
-    for (const el of labels) {
-      if (el.closest('#sa-invoice-autofill-panel')) continue;
-      const txt = el.textContent?.trim() || '';
-      if (txt.length > 30) continue;
-      if (!labelRe.test(txt)) continue;
-
-      let parent = el;
-      for (let d = 0; d < 6 && parent; d++) {
-        const inp = parent.querySelector('input[type="date"], input[type="text"], input:not([type])');
-        if (inp) {
-          const value = inp.type === 'date' ? formatDateISO(date) : formatDateMMDDYYYY(date);
-          const ok = await writeToInput(inp, value);
-          if (ok) return { success: true, filled: value, type: inp.type || 'text' };
-          return { success: false, reason: `valor no persistió (DOM=${JSON.stringify(inp.value || '')})` };
-        }
-        parent = parent.parentElement;
-      }
-    }
-    return { success: false };
+    const inp = findInputByLabel(labelRe);
+    if (!inp) return { success: false };
+    const value = inp.type === 'date' ? formatDateISO(date) : formatDateMMDDYYYY(date);
+    const ok = await writeToInput(inp, value);
+    if (ok) return { success: true, filled: value, type: inp.type || 'text' };
+    return { success: false, reason: `valor no persistió (DOM=${JSON.stringify(inp.value || '')})` };
   }
 
   // Comparación por dígitos: "04/28/2026" === "04282026" === "2026-04-28" tras strip.
@@ -1200,7 +1220,7 @@ const InvoiceAutofill = (() => {
 
   function handleManualModal() {
     if (!manualModalState?.active) {
-      manualModalState = { active: true, customer: null, datesFilled: false };
+      manualModalState = { active: true, customer: null, filled: false };
       log('Modal "Create Invoice Manually" detectado');
       renderManualPanel();
     }
@@ -1208,42 +1228,179 @@ const InvoiceAutofill = (() => {
     if (customer && customer !== manualModalState.customer) {
       manualModalState.customer = customer;
       log(`Modal manual: customer seleccionado = ${customer}`);
-      if (!manualModalState.datesFilled) fillManualModalDates();
+      if (!manualModalState.filled) fillManualModalAll();
       renderManualPanel();
     } else if (!customer && !manualModalState.customer) {
       renderManualPanel('pending');
     }
   }
 
-  async function fillManualModalDates() {
+  // Localiza el control de un react-select a partir de un label.
+  // Retorna { combo, control, container } o null.
+  function findReactSelectControlByLabel(labelRe) {
+    const candidates = document.querySelectorAll('label, span, div, p');
+    for (const el of candidates) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const t = el.textContent?.trim() || '';
+      if (t.length === 0 || t.length > 60) continue;
+      if (!labelRe.test(t)) continue;
+      let parent = el;
+      for (let d = 0; d < 6 && parent; d++) {
+        const combo = parent.querySelector('input[role="combobox"], input[aria-autocomplete]');
+        if (combo) {
+          const control = combo.closest('[class*="-control"]') || combo.parentElement;
+          return { combo, control, container: parent };
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  // Lee el singleValue actual de un react-select por label (lo que ya está seleccionado).
+  function readReactSelectByLabel(labelRe) {
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return null;
+    const sv = ctrl.container.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+    const txt = sv?.textContent?.trim() || '';
+    return txt || null;
+  }
+
+  // Click + select sobre un react-select localizado por label.
+  async function tryFillReactSelectByLabel(labelRe, searchText, targetText) {
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return { success: false, reason: 'control no encontrado' };
+    return await clickAndSelectOption(ctrl.control, ctrl.container, searchText, targetText);
+  }
+
+  // Extrae el idInDomain (#N) del singleValue del Customer combobox en modal manual.
+  // El raw viene de extractCustomerFromDOM() ya pasado por cleanCustomerName (queda
+  // "Nombre (#N)").
+  function extractIdInDomainFromCustomerName(raw) {
+    if (!raw) return null;
+    const m = String(raw).match(/\(#(\d+)\)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  // Walker simple: busca en customer un campo *Terms*/*Payment* con shape {name}.
+  // El customer query del config trae varios sub-objects con .name; no sabemos el
+  // path exacto del Terms, así que recorremos top-level keys.
+  function findTermsNameInCustomer(c) {
+    if (!c || typeof c !== 'object') return null;
+    for (const [k, v] of Object.entries(c)) {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+      if (!/term|payment/i.test(k)) continue;
+      if (typeof v.name === 'string' && v.name.trim()) return v.name.trim();
+    }
+    return null;
+  }
+
+  // Click en el combobox → si tiene exactamente una opción, la selecciona.
+  // Si tiene varias, falla con reason='ambiguous' para no elegir basura.
+  async function selectFirstOption(labelRe) {
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return { success: false, reason: 'control no encontrado' };
+    ctrl.control.click();
+    await sleep(300);
+    let options = [];
+    for (let i = 0; i < 8; i++) {
+      await sleep(150);
+      const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]')
+        || ctrl.container.querySelector('[class*="menu"], [class*="Menu"]')
+        || document.querySelector('[class*="menu"], [class*="Menu"]');
+      if (menu) {
+        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')]
+          .filter(o => !/^\s*(create|crear|nuev[oa])\b/i.test(o.textContent?.trim() || ''));
+        if (options.length > 0) break;
+      }
+    }
+    if (options.length === 0) return { success: false, reason: 'sin opciones' };
+    if (options.length > 1) {
+      // Cerrar el menú clickeando fuera
+      document.body.click();
+      return { success: false, reason: `ambiguous (${options.length} opciones)` };
+    }
+    const text = options[0].textContent?.trim() || '';
+    options[0].click();
+    return { success: true, filled: text, method: 'first-option' };
+  }
+
+  async function fillManualModalAll() {
+    manualModalState.filling = true;
     const today = new Date();
-    const r1 = await tryFillDateInput('invoiced\\s*at|fecha\\s*de\\s*factura(?:cion)?', today);
-    log(`Modal manual: invoicedAt=${JSON.stringify(r1)}`);
-    manualModalState.dateResults = { invoicedAt: r1, dueDate: null };
+    const results = manualModalState.results = {
+      invoicedAt: null, shipDate: null, shipVia: null,
+      salesTax: null, terms: null, dueDate: null
+    };
+
+    // 1. Invoiced At = hoy
+    results.invoicedAt = await tryFillDateInput('^\\s*invoiced\\s*at\\s*$|fecha\\s*de\\s*factura(?:cion)?', today);
+    log(`Modal manual: invoicedAt=${JSON.stringify(results.invoicedAt)}`);
     renderManualPanel();
 
-    // Steelhead recalcula Due Date = Invoiced At + Terms al fijar Invoiced At.
-    // Esperamos ese recálculo; si no ocurre (Terms ausente/parseo distinto),
-    // fallback: nosotros calculamos hoy + Terms.
-    await sleep(1500);
-    const dueExisting = readDateInputValue('due\\s*date|fecha\\s*de\\s*vencimiento|vence');
+    // 2. Ship Date = hoy
+    results.shipDate = await tryFillDateInput('^\\s*ship\\s*date\\s*$|fecha\\s*de\\s*env[ií]o', today);
+    log(`Modal manual: shipDate=${JSON.stringify(results.shipDate)}`);
+    renderManualPanel();
+
+    // 3. Ship via = "Flete propio"
+    results.shipVia = await tryFillReactSelectByLabel(/^\s*ship\s*via\s*$|env[ií]o\s*por/i, 'flete propio', 'Flete propio');
+    log(`Modal manual: shipVia=${JSON.stringify(results.shipVia)}`);
+    renderManualPanel();
+
+    // 4. Sales Tax + Terms — el modal manual NO los prellena al elegir cliente.
+    //    Estrategia: fetchCustomer con el #N del customer name, llenar por nombre.
+    //    Fallback: si solo hay una opción → selectFirstOption.
+    const idInDomain = extractIdInDomainFromCustomerName(manualModalState.customer);
+    let fetched = null;
+    if (idInDomain != null) {
+      log(`Modal manual: fetching Customer(idInDomain=${idInDomain})…`);
+      fetched = await fetchCustomerSalesTaxable(idInDomain);
+    } else {
+      log('Modal manual: idInDomain no extraíble del customer name');
+    }
+
+    const salesTaxName = fetched?.salesTaxBySalesTaxId?.name;
+    if (salesTaxName) {
+      results.salesTax = await tryFillReactSelectByLabel(/^\s*sales\s*tax\s*$|impuesto/i, salesTaxName, salesTaxName);
+      log(`Modal manual: salesTax (cliente="${salesTaxName}") = ${JSON.stringify(results.salesTax)}`);
+    } else {
+      results.salesTax = await selectFirstOption(/^\s*sales\s*tax\s*$|impuesto/i);
+      log(`Modal manual: salesTax (fallback firstOption) = ${JSON.stringify(results.salesTax)}`);
+    }
+    renderManualPanel();
+
+    const termsName = findTermsNameInCustomer(fetched);
+    if (termsName) {
+      results.terms = await tryFillReactSelectByLabel(/^\s*terms?\s*$|t[eé]rminos|plazo/i, termsName, termsName);
+      log(`Modal manual: terms (cliente="${termsName}") = ${JSON.stringify(results.terms)}`);
+    } else {
+      results.terms = await selectFirstOption(/^\s*terms?\s*$|t[eé]rminos|plazo/i);
+      log(`Modal manual: terms (fallback firstOption) = ${JSON.stringify(results.terms)}`);
+    }
+    renderManualPanel();
+
+    // 5. Due Date: tras setear Terms, Steelhead suele recalcular = Invoiced At + Terms.
+    await sleep(1200);
+    const dueExisting = readDateInputValue('^\\s*due\\s*date\\s*$|fecha\\s*de\\s*vencimiento|vence');
     if (dueExisting) {
       log(`Due Date auto (Steelhead): ${dueExisting}`);
-      manualModalState.dateResults.dueDate = { success: true, filled: dueExisting, type: 'auto' };
+      results.dueDate = { success: true, filled: dueExisting, type: 'auto' };
     } else {
       const termsDays = readTermsDays();
       if (termsDays != null) {
         const due = new Date(today);
         due.setDate(due.getDate() + termsDays);
-        const r2 = await tryFillDateInput('due\\s*date|fecha\\s*de\\s*vencimiento|vence', due);
-        log(`Due Date fallback (hoy + ${termsDays}d): ${JSON.stringify(r2)}`);
-        manualModalState.dateResults.dueDate = r2;
+        results.dueDate = await tryFillDateInput('^\\s*due\\s*date\\s*$|fecha\\s*de\\s*vencimiento|vence', due);
+        log(`Due Date fallback (hoy + ${termsDays}d): ${JSON.stringify(results.dueDate)}`);
       } else {
         log('Due Date sin resolver: Steelhead no la calculó y Terms no detectado');
-        manualModalState.dateResults.dueDate = { success: false, reason: 'sin_terms' };
+        results.dueDate = { success: false, reason: 'sin_terms' };
       }
     }
-    manualModalState.datesFilled = !!(r1?.success && manualModalState.dateResults.dueDate?.success);
+
+    manualModalState.filled = !!(results.invoicedAt?.success && results.dueDate?.success);
+    manualModalState.filling = false;
     renderManualPanel();
   }
 
@@ -1252,24 +1409,11 @@ const InvoiceAutofill = (() => {
   // — así evitamos confundir un input vecino que no sea el target.
   function readDateInputValue(labelText) {
     const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
-    const labels = document.querySelectorAll('label, span, div, p');
-    for (const el of labels) {
-      if (el.closest('#sa-invoice-autofill-panel')) continue;
-      const txt = el.textContent?.trim() || '';
-      if (txt.length > 30) continue;
-      if (!labelRe.test(txt)) continue;
-      let parent = el;
-      for (let d = 0; d < 6 && parent; d++) {
-        const inp = parent.querySelector('input[type="date"], input[type="text"], input:not([type])');
-        if (inp) {
-          const v = (inp.value || '').trim();
-          if (!v) return null;
-          if (/^\d{2}\/\d{2}\/\d{4}$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-          return null;
-        }
-        parent = parent.parentElement;
-      }
-    }
+    const inp = findInputByLabel(labelRe);
+    if (!inp) return null;
+    const v = (inp.value || '').trim();
+    if (!v) return null;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
     return null;
   }
 
@@ -1308,35 +1452,43 @@ const InvoiceAutofill = (() => {
       document.body.appendChild(panel);
     }
     const m = manualModalState || {};
-    const today = formatDateMMDDYYYY(new Date());
-    const status = forceStatus || (m.datesFilled ? 'done' : (m.customer ? 'pending' : 'pending'));
+    const r = m.results || {};
     const customerLabel = m.customer ? escHtml(m.customer) : 'Esperando…';
-    const i = m.dateResults?.invoicedAt;
-    const d = m.dateResults?.dueDate;
-    const invLabel = i?.success ? `${escHtml(i.filled)} ✓` : (m.customer ? 'Pendiente' : '—');
-    let dueLabel;
-    if (d?.success) {
-      dueLabel = `${escHtml(d.filled)}${d.type === 'auto' ? ' (auto)' : ' ✓'}`;
-    } else if (d?.reason === 'sin_terms') {
-      dueLabel = 'Pendiente (Terms no detectado)';
-    } else {
-      dueLabel = m.customer ? 'Calculando…' : '—';
-    }
+
+    const fmtField = (res, pendingLabel = 'Pendiente') => {
+      if (!res) return { label: m.customer ? (m.filling ? 'Llenando…' : pendingLabel) : '—', status: 'pending' };
+      if (res.success) {
+        const auto = res.type === 'auto' ? ' (auto)' : '';
+        return { label: `${escHtml(res.filled || '')}${auto} ✓`, status: 'done' };
+      }
+      const reason = res.reason ? ` (${escHtml(res.reason)})` : '';
+      return { label: `Pendiente${reason}`, status: 'pending' };
+    };
+
+    const inv = fmtField(r.invoicedAt);
+    const ship = fmtField(r.shipDate);
+    const via = fmtField(r.shipVia);
+    const tax = fmtField(r.salesTax);
+    const terms = fmtField(r.terms);
+    const due = fmtField(r.dueDate, 'Calculando…');
 
     let html = `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:8px;margin-bottom:8px;">
       <strong>Invoice Manual</strong>
-      <span style="font-size:11px;color:#94a3b8;">Modo: NC / cargos</span>
+      <span style="font-size:11px;color:#94a3b8;">NC / cargos · guarda + reabre</span>
     </div>`;
     html += renderRow('Cliente', customerLabel, m.customer ? 'done' : 'pending');
-    html += renderRow('Hoy', escHtml(today), 'done');
-    html += renderRow('Invoiced At', invLabel, i?.success ? 'done' : 'pending');
-    html += renderRow('Due Date', dueLabel, d?.success ? 'done' : 'pending');
-    if (m.customer && !m.datesFilled) {
-      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refill" style="cursor:pointer;color:#64748b;font-size:11px;">↻ reintentar fechas</span></div>`;
+    html += renderRow('Invoiced At', inv.label, inv.status);
+    html += renderRow('Ship Date', ship.label, ship.status);
+    html += renderRow('Ship via', via.label, via.status);
+    html += renderRow('Sales Tax', tax.label, tax.status);
+    html += renderRow('Terms', terms.label, terms.status);
+    html += renderRow('Due Date', due.label, due.status);
+    if (m.customer && !m.filled && !m.filling) {
+      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refill" style="cursor:pointer;color:#64748b;font-size:11px;">↻ reintentar campos</span></div>`;
     }
     panel.innerHTML = html;
     const refill = panel.querySelector('#sa-iaf-refill');
-    if (refill) refill.addEventListener('click', () => fillManualModalDates());
+    if (refill) refill.addEventListener('click', () => fillManualModalAll());
   }
 
   // ── Fill: cuenta de ingreso/descuento por línea ──
