@@ -344,12 +344,21 @@ const InvoiceAutofill = (() => {
 
     if (opName === 'InvoiceLowCodeData') {
       // Carga única que trae customer + accounts + product configs + TipoCambio
-      const customer = json.data?.customerById;
-      if (customer) {
+      // Probar varios paths posibles del customer (shape varía)
+      const customer = json.data?.customerById
+        || json.data?.customer
+        || json.data?.invoiceLowCodeData?.customer
+        || json.data?.invoiceLowCodeData?.customerById
+        || null;
+      if (customer && (customer.id || customer.idInDomain || customer.name)) {
         state.customer = customer;
         state.customerId = customer.id || null;
         state.customerName = customer.name || customer.shortName || null;
-        log(`InvoiceLowCodeData: customer ${customer.idInDomain || customer.id} salesTaxable=${customer.salesTaxable}`);
+        log(`InvoiceLowCodeData: customer ${customer.idInDomain || customer.id || customer.name} salesTaxable=${customer.salesTaxable}`);
+      } else {
+        // Diagnóstico: dump las keys raíz para identificar el path real
+        const rootKeys = Object.keys(json.data || {}).slice(0, 20).join(', ');
+        log(`InvoiceLowCodeData: customer no encontrado. data keys=[${rootKeys}]`);
       }
       const accounts = json.data?.allAcctAccounts?.nodes;
       if (Array.isArray(accounts)) state.allAccounts = accounts;
@@ -573,6 +582,19 @@ const InvoiceAutofill = (() => {
   // ── DOM Extraction ──
 
   function extractCustomerFromDOM() {
+    // 1. Heading principal: "Creating Invoice for X" / "Editing Invoice for X"
+    //    (Steelhead muestra el customer aquí, no como Select editable)
+    const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"], [class*="heading"]');
+    for (const h of headings) {
+      const txt = h.textContent?.trim() || '';
+      const m = txt.match(/^(?:creating|editing|create|edit|new)\s+invoice\s+for\s+(.+?)$/i);
+      if (m && m[1]) {
+        const name = m[1].trim();
+        if (name.length > 1 && name.length < 200) return name;
+      }
+    }
+    // 2. Fallback: Select con label "Customer:"/"Cliente:" (raro en invoice; suele venir
+    //    pre-cargado del SO, no editable)
     const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
     for (const sv of singleValues) {
       let parent = sv.parentElement;
