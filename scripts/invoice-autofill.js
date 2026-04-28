@@ -359,9 +359,11 @@ const InvoiceAutofill = (() => {
         state.customer = customer;
         state.customerId = customer.id || customer.customerId || null;
         state.customerName = customer.name || customer.shortName || customer.customerName || null;
-        const keys = Object.keys(customer).slice(0, 25).join(',');
+        const customInputsKeys = Object.keys(customer.customInputs || {}).slice(0, 30).join(',');
         const hasCuentas = !!customer.customInputs?.DatosContables?.CuentasContables;
-        log(`InvoiceLowCodeData: customer name="${state.customerName}" salesTaxable=${customer.salesTaxable} hasCuentasContables=${hasCuentas} keys=[${keys}]`);
+        const cuentasCount = customer.customInputs?.DatosContables?.CuentasContables?.length || 0;
+        const salesTaxableResolved = resolveSalesTaxable(customer);
+        log(`InvoiceLowCodeData: customer hasCuentasContables=${hasCuentas} (n=${cuentasCount}) salesTaxable=${salesTaxableResolved} customInputs.keys=[${customInputsKeys}]`);
       } else {
         const rootKeys = Object.keys(json.data || {}).slice(0, 20).join(', ');
         log(`InvoiceLowCodeData: customer no encontrado. data keys=[${rootKeys}]`);
@@ -535,22 +537,58 @@ const InvoiceAutofill = (() => {
     }
     matches.sort((a, b) => String(b.CuentaContable || '').localeCompare(String(a.CuentaContable || '')));
     const winner = matches[0];
-    const account = allAccounts.find(a =>
+    // El número de cuenta del CuentasContables ya es la fuente canónica.
+    // allAccounts solo da el id numérico (útil para outbound, no para DOM-fill por accountNumber).
+    const fullAccount = (Array.isArray(allAccounts) ? allAccounts : []).find(a =>
       a.accountNumber === winner.CuentaContable
       && /receivable/i.test(a.acctAccountTypeByTypeId?.category || '')
     );
     return {
-      account: account || { id: null, accountNumber: winner.CuentaContable, name: winner.CuentaContable },
+      account: {
+        id: fullAccount?.id || null,
+        accountNumber: winner.CuentaContable,
+        name: fullAccount?.name || winner.CuentaContable
+      },
       ambiguous: matches.length > 1,
       candidates: matches.map(m => m.CuentaContable),
-      reason: account ? null : 'cuenta_no_existe_en_allAcctAccounts'
+      reason: null
     };
+  }
+
+  // salesTaxable vive en la columna nativa `customer.sales_taxable` (Postgres),
+  // expuesta en GraphQL como `salesTaxable` boolean al top-level del customer.
+  // NO está en customInputs. Si la persisted query usada (InvoiceLowCodeData)
+  // no incluye ese campo en su selection set, no podremos resolverlo y la regla
+  // queda en null (FAB lo marca como pendiente).
+  // Convención: true = Tasa General (ventas nacionales gravadas IVA, prefijo 0401-0001 / 0402-0001),
+  //             false = Tasa 0% / Exento (exportación, prefijo 0401-0004 / 0402-0002).
+  function resolveSalesTaxable(customer) {
+    if (!customer) return null;
+    if (typeof customer.salesTaxable === 'boolean') return customer.salesTaxable;
+    if (typeof customer.sales_taxable === 'boolean') return customer.sales_taxable;
+    return null;
   }
 
   // Cuenta de ingreso/descuento por línea
   function resolveLineAccount({ lineAmount, customer, productId, allAccounts, productConfigs, isCreditNoteGlobal }) {
-    const isGeneral = customer?.salesTaxable === true;
+    const taxable = resolveSalesTaxable(customer);
     const isCredit = isCreditNoteGlobal || (typeof lineAmount === 'number' && lineAmount < 0);
+
+    if (taxable === null) {
+      // Sin salesTaxable resuelto no hay regla. No proponemos cuenta para evitar
+      // sobreescribir con la tasa equivocada.
+      return {
+        account: null,
+        expected: null,
+        productSuggested: null,
+        mismatch: false,
+        isCredit,
+        targetPrefix: null,
+        source: 'unresolved',
+        reason: 'sin_salesTaxable_en_query'
+      };
+    }
+    const isGeneral = taxable === true;
 
     let targetPrefix;
     if (isCredit) {
@@ -616,8 +654,14 @@ const InvoiceAutofill = (() => {
       const m = txt.match(/^(?:creating|editing|create|edit|new)\s+invoice\s+for\s+(.+?)$/i);
       if (m && m[1]) {
         let name = m[1].trim();
-        // Cortar en separadores conocidos (botones inline)
-        name = name.split(/\bView\s+Customer|\bView\s+Address|\bEdit\s+Power|\bTotal\s*:|\n/i)[0].trim();
+        // Si vemos botones contaminando ("MOGULView Customer..."), insertar espacios
+        // en boundaries CamelCase y luego split por keywords de botones
+        if (/View\s*Customer|Edit\s*Power|Power\s*Tools|Total\s*:|\$\d/i.test(name)) {
+          name = name
+            .replace(/([a-z])([A-Z])/g, '$1 $2')          // mogULView → mogUL View
+            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');    // MOGULView → MOGUL View
+          name = name.split(/\bView\b|\bEdit\b|\bPower\s+Tools|\bTotal\s*:|\$\d/i)[0].trim();
+        }
         if (name.length > 1 && name.length < 200) return name;
       }
     }
@@ -1199,13 +1243,11 @@ const InvoiceAutofill = (() => {
       html += renderRow('Tipo de Cambio', tcLabel, state.exchangeRate != null ? 'done' : 'pending');
 
       const ar = state.arAccount;
-      const arStatus = !ar?.account?.id ? 'error' : ar.ambiguous ? 'warn' : 'done';
+      const arStatus = !ar?.account?.accountNumber ? 'error' : ar.ambiguous ? 'warn' : 'done';
       let arLabel = '—';
-      if (ar?.account?.id) {
+      if (ar?.account?.accountNumber) {
         arLabel = ar.account.name || ar.account.accountNumber;
         if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas, elegida más alta)`;
-      } else if (ar?.account?.accountNumber) {
-        arLabel = `${ar.account.accountNumber} (no resuelta en allAcctAccounts)`;
       } else if (ar?.reason) {
         arLabel = `No resuelto: ${ar.reason}`;
       }
@@ -1214,8 +1256,17 @@ const InvoiceAutofill = (() => {
       if (state.lineAccounts.length > 0) {
         html += `<div style="border-top:1px solid #334155;margin:8px 0 6px;padding-top:6px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">Cuenta por línea</div>`;
         for (const line of state.lineAccounts) {
-          const status = !line.account ? 'error' : 'done';
-          let lbl = line.account?.name || line.account?.accountNumber || `No resuelto (${line.targetPrefix})`;
+          const status = !line.account ? 'warn' : 'done';
+          let lbl;
+          if (line.account) {
+            lbl = line.account.name || line.account.accountNumber;
+          } else if (line.reason === 'sin_salesTaxable_en_query') {
+            lbl = 'Pendiente: salesTaxable no viene en la query';
+          } else if (line.targetPrefix) {
+            lbl = `No resuelto (${line.targetPrefix})`;
+          } else {
+            lbl = 'No resuelto';
+          }
           if (line.mismatch && line.productSuggested) {
             const from = line.productSuggested.accountNumber || line.productSuggested.name;
             const to = line.expected?.accountNumber || line.expected?.name;
