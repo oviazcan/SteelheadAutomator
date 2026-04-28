@@ -1064,54 +1064,67 @@ const InvoiceAutofill = (() => {
     return { success: true, filled: targetAccountName, method: 'visual' };
   }
 
-  // Localiza un <input> a partir de un label/heading que matchea labelRe.
-  // Estrategia A (preferida): <label for="...">  → document.getElementById(forId).
-  //   MUI v5 emite label.htmlFor === input.id (incluso con IDs tipo ":r8h:").
-  // Estrategia B (fallback): subir hasta wrapper que contenga un <input> simple.
-  // En ambas, salta inputs role="combobox" / aria-autocomplete (esos son react-select
-  // y matar su value rompe el componente).
-  function findInputByLabel(labelRe, opts = {}) {
-    const skipCombobox = opts.skipCombobox !== false;
-    const isUsable = (inp) => {
-      if (!inp) return false;
-      if (skipCombobox && inp.getAttribute('role') === 'combobox') return false;
-      if (skipCombobox && inp.getAttribute('aria-autocomplete')) return false;
-      const t = (inp.getAttribute('type') || 'text').toLowerCase();
-      if (['hidden', 'checkbox', 'radio', 'file', 'button', 'submit'].includes(t)) return false;
-      return true;
-    };
+  // Localiza el container del field que sigue al <p>label</p>.
+  // El modal manual usa este patrón:
+  //   <p class="MuiTypography...">Ship Date:</p>
+  //   <div class="react-datepicker-wrapper">…input…</div>
+  // o con wrapper-de-un-solo-hijo:
+  //   <div><p>Ship Date:</p></div>
+  //   <div>…input…</div>
+  // El input/combobox vive en un SIBLING (o sibling del wrapper que sólo contiene
+  // al <p>), NO en un ancestro. Subir por ancestros confundía con el primer input
+  // del grid (Customer combobox).
+  function findFieldContainerByPLabel(labelRe) {
+    const isLabelP = (el) => el && el.tagName === 'P'
+      && /:\s*$/.test((el.textContent?.trim() || ''))
+      && !el.querySelector('input, textarea, button');
 
-    // A: match estricto en <label> con for/htmlFor
-    const directLabels = document.querySelectorAll('label');
-    for (const lbl of directLabels) {
-      if (lbl.closest('#sa-invoice-autofill-panel')) continue;
-      const t = lbl.textContent?.trim() || '';
-      if (t.length === 0 || t.length > 60) continue;
-      if (!labelRe.test(t)) continue;
-      const forId = lbl.getAttribute('for') || lbl.getAttribute('htmlFor');
-      if (forId) {
-        const inp = document.getElementById(forId);
-        if (isUsable(inp)) return inp;
-      }
-    }
-
-    // B: cualquier nodo con texto match → buscar input ascendiendo por wrapper
-    const candidates = document.querySelectorAll('label, span, div, p');
+    const candidates = document.querySelectorAll('p, label, span');
     for (const el of candidates) {
       if (el.closest('#sa-invoice-autofill-panel')) continue;
-      const t = el.textContent?.trim() || '';
-      if (t.length === 0 || t.length > 60) continue;
-      if (!labelRe.test(t)) continue;
-      let parent = el;
-      for (let d = 0; d < 6 && parent; d++) {
-        const inputs = parent.querySelectorAll('input');
-        for (const inp of inputs) {
-          if (isUsable(inp)) return inp;
+      const raw = el.textContent?.trim() || '';
+      if (raw.length === 0 || raw.length > 60) continue;
+      const cleaned = raw.replace(/[\s:*]+$/, '').trim();
+      if (!labelRe.test(cleaned) && !labelRe.test(raw)) continue;
+      if (el.querySelector('input, textarea, button')) continue;
+
+      // Ascender al "labelRoot": ancestro cuyo padre es el grid container y
+      // que es sibling del field. Subimos sólo mientras sea hijo único.
+      let labelRoot = el;
+      while (labelRoot.parentElement
+        && labelRoot.parentElement.children.length === 1
+        && labelRoot.parentElement.firstElementChild === labelRoot
+        && !['BODY', 'HTML'].includes(labelRoot.parentElement.tagName)) {
+        labelRoot = labelRoot.parentElement;
+      }
+
+      // Caminar siblings hacia adelante hasta 8 hops; primer container con
+      // input/textarea wins. Paramos si encontramos otro label-<p> (siguiente field).
+      let cursor = labelRoot.nextElementSibling;
+      let hops = 0;
+      while (cursor && hops < 8) {
+        if (isLabelP(cursor)) break;
+        if (cursor.children.length === 1 && isLabelP(cursor.firstElementChild)) break;
+        const inp = cursor.querySelector('input:not([aria-hidden]):not([type="hidden"]), textarea:not([aria-hidden])');
+        if (inp) {
+          const hasCombobox = !!cursor.querySelector('input[role="combobox"], input[aria-autocomplete]');
+          return { container: cursor, input: inp, hasCombobox };
         }
-        parent = parent.parentElement;
+        cursor = cursor.nextElementSibling;
+        hops++;
       }
     }
     return null;
+  }
+
+  // Devuelve un <input> NO combobox y no disabled (para fills tipo fecha/texto).
+  function findInputByLabel(labelRe) {
+    const f = findFieldContainerByPLabel(labelRe);
+    if (!f) return null;
+    return f.container.querySelector(
+      'input:not([role="combobox"]):not([aria-autocomplete]):not([aria-hidden]):not([disabled]):not([type="hidden"])'
+    ) || f.container.querySelector('textarea:not([aria-hidden]):not([disabled])')
+       || null;
   }
 
   async function tryFillTextInput(labelText, value) {
@@ -1235,26 +1248,16 @@ const InvoiceAutofill = (() => {
     }
   }
 
-  // Localiza el control de un react-select a partir de un label.
-  // Retorna { combo, control, container } o null.
+  // Localiza el control de un react-select a partir de un label-<p>.
+  // Reusa findFieldContainerByPLabel — el sibling tras el label contiene el
+  // wrapper de react-select.
   function findReactSelectControlByLabel(labelRe) {
-    const candidates = document.querySelectorAll('label, span, div, p');
-    for (const el of candidates) {
-      if (el.closest('#sa-invoice-autofill-panel')) continue;
-      const t = el.textContent?.trim() || '';
-      if (t.length === 0 || t.length > 60) continue;
-      if (!labelRe.test(t)) continue;
-      let parent = el;
-      for (let d = 0; d < 6 && parent; d++) {
-        const combo = parent.querySelector('input[role="combobox"], input[aria-autocomplete]');
-        if (combo) {
-          const control = combo.closest('[class*="-control"]') || combo.parentElement;
-          return { combo, control, container: parent };
-        }
-        parent = parent.parentElement;
-      }
-    }
-    return null;
+    const f = findFieldContainerByPLabel(labelRe);
+    if (!f) return null;
+    const combo = f.container.querySelector('input[role="combobox"], input[aria-autocomplete]');
+    if (!combo) return null;
+    const control = combo.closest('[class*="-control"]') || combo.parentElement;
+    return { combo, control, container: f.container };
   }
 
   // Lee el singleValue actual de un react-select por label (lo que ya está seleccionado).
@@ -1327,6 +1330,17 @@ const InvoiceAutofill = (() => {
 
   async function fillManualModalAll() {
     manualModalState.filling = true;
+    try {
+      await fillManualModalAllImpl();
+    } catch (err) {
+      warn(`Modal manual falló: ${err.message}`);
+    } finally {
+      manualModalState.filling = false;
+      renderManualPanel();
+    }
+  }
+
+  async function fillManualModalAllImpl() {
     const today = new Date();
     const results = manualModalState.results = {
       invoicedAt: null, shipDate: null, shipVia: null,
@@ -1380,28 +1394,20 @@ const InvoiceAutofill = (() => {
     }
     renderManualPanel();
 
-    // 5. Due Date: tras setear Terms, Steelhead suele recalcular = Invoiced At + Terms.
-    await sleep(1200);
+    // 5. Due Date está disabled en el DOM — Steelhead la recalcula auto al
+    //    setear Invoiced At + Terms. Sólo la leemos para reportar.
+    await sleep(1500);
     const dueExisting = readDateInputValue('^\\s*due\\s*date\\s*$|fecha\\s*de\\s*vencimiento|vence');
     if (dueExisting) {
       log(`Due Date auto (Steelhead): ${dueExisting}`);
       results.dueDate = { success: true, filled: dueExisting, type: 'auto' };
     } else {
-      const termsDays = readTermsDays();
-      if (termsDays != null) {
-        const due = new Date(today);
-        due.setDate(due.getDate() + termsDays);
-        results.dueDate = await tryFillDateInput('^\\s*due\\s*date\\s*$|fecha\\s*de\\s*vencimiento|vence', due);
-        log(`Due Date fallback (hoy + ${termsDays}d): ${JSON.stringify(results.dueDate)}`);
-      } else {
-        log('Due Date sin resolver: Steelhead no la calculó y Terms no detectado');
-        results.dueDate = { success: false, reason: 'sin_terms' };
-      }
+      log('Due Date sin valor: Steelhead aún no la calculó (verificar Invoiced At + Terms)');
+      results.dueDate = { success: false, reason: 'sin valor en DOM' };
     }
 
-    manualModalState.filled = !!(results.invoicedAt?.success && results.dueDate?.success);
-    manualModalState.filling = false;
-    renderManualPanel();
+    manualModalState.filled = !!(results.invoicedAt?.success && results.shipDate?.success
+      && results.shipVia?.success && results.salesTax?.success && results.terms?.success);
   }
 
   // Lee el value actual de un input de fecha por label, sin escribirlo.
