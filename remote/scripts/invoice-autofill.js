@@ -1384,12 +1384,23 @@ const InvoiceAutofill = (() => {
 
   // Click en el combobox + selecciona la primera opción.
   // Por default acepta ambigüedad (elige el primero); con strict=true sólo si hay una.
+  // Steelhead carga Bill To/Ship To/Customer Contact async al elegir cliente,
+  // así que reintentamos hasta `retries+1` veces con `retryDelayMs` entre cierres.
   async function selectFirstOption(labelRe, opts = {}) {
-    const { strict = false } = opts;
+    const { strict = false, retries = 4, retryDelayMs = 600 } = opts;
     const ctrl = findReactSelectControlByLabel(labelRe);
     if (!ctrl) return { success: false, reason: 'control no encontrado' };
-    const options = await openSelectAndGetOptions(ctrl);
-    if (options.length === 0) return { success: false, reason: 'sin opciones' };
+    let options = [];
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      options = await openSelectAndGetOptions(ctrl);
+      if (options.length > 0) break;
+      // Cerrar el menú antes del siguiente intento para forzar re-fetch.
+      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+      }));
+      await sleep(retryDelayMs);
+    }
+    if (options.length === 0) return { success: false, reason: 'sin opciones tras retries' };
     if (strict && options.length > 1) {
       document.body.click();
       return { success: false, reason: `ambiguous (${options.length} opciones)` };
@@ -1397,6 +1408,34 @@ const InvoiceAutofill = (() => {
     const text = options[0].textContent?.trim() || '';
     options[0].click();
     return { success: true, filled: text, method: options.length === 1 ? 'only-option' : 'first-of-many' };
+  }
+
+  // Abre el dropdown SIN tipear y elige la primera opción cuyo texto matchee
+  // `optionRe`. Útil cuando tipear filtra incorrectamente (Ship Via: tipear
+  // "flete propio" hacía que react-select sólo ofreciera "Create flete propio"
+  // porque su filtro no matcheaba "Flete Propio").
+  async function selectOptionMatching(labelRe, optionRe, opts = {}) {
+    const { retries = 2, retryDelayMs = 500 } = opts;
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return { success: false, reason: 'control no encontrado' };
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const options = await openSelectAndGetOptions(ctrl);
+      if (options.length > 0) {
+        const match = options.find(o => optionRe.test((o.textContent || '').trim()));
+        if (match) {
+          const text = match.textContent.trim();
+          match.click();
+          return { success: true, filled: text };
+        }
+        document.body.click();
+        return { success: false, reason: `no matchea ${optionRe}` };
+      }
+      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+      }));
+      await sleep(retryDelayMs);
+    }
+    return { success: false, reason: 'sin opciones tras retries' };
   }
 
   // Localiza y clickea el botón "New Line" / "Nueva Línea" para activar
@@ -1432,6 +1471,11 @@ const InvoiceAutofill = (() => {
       billTo: null, shipTo: null, customerContact: null, newLine: null
     };
 
+    // 0. Steelhead carga direcciones / sales tax / terms async tras elegir cliente.
+    //    Damos margen para que carguen antes del primer fill.
+    log('Modal manual: esperando 1500ms para que Steelhead cargue opciones del cliente…');
+    await sleep(1500);
+
     // 1. Invoiced At = hoy
     results.invoicedAt = await tryFillDateInput('^\\s*invoiced\\s*at\\s*$|fecha\\s*de\\s*factura(?:cion)?', today);
     log(`Modal manual: invoicedAt=${JSON.stringify(results.invoicedAt)}`);
@@ -1442,8 +1486,9 @@ const InvoiceAutofill = (() => {
     log(`Modal manual: shipDate=${JSON.stringify(results.shipDate)}`);
     renderManualPanel();
 
-    // 3. Ship via = "Flete propio"
-    results.shipVia = await tryFillReactSelectByLabel(/^\s*ship\s*via\s*$|env[ií]o\s*por/i, 'flete propio', 'Flete propio');
+    // 3. Ship via = "Flete Propio" — sin tipear (el filtro de react-select rechaza
+    //    "flete propio" lowercase y muestra sólo la opción "Create…").
+    results.shipVia = await selectOptionMatching(/^\s*ship\s*via\s*$|env[ií]o\s*por/i, /^\s*flete\s*propio\s*$/i);
     log(`Modal manual: shipVia=${JSON.stringify(results.shipVia)}`);
     renderManualPanel();
 
