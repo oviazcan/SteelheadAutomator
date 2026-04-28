@@ -122,27 +122,19 @@ const ParosLinea = (() => {
   }
 
   async function fetchCurrentUser() {
-    // Race con el Apollo Client del UI: en cold start nuestra request puede llegar
-    // antes de que el server tenga el hash de APQ registrado, y devuelve HTTP 400
-    // "Must provide a query string." Reintentamos con backoff hasta que el UI lo caliente.
-    const delays = [0, 600, 1200, 1800];
-    let lastErr;
-    for (const wait of delays) {
-      if (wait) await new Promise(r => setTimeout(r, wait));
-      try {
-        const data = await api().query('CurrentUser', { deviceLocationIds: [] }, 'CurrentUser');
-        const u = data?.currentSession?.userByUserId;
-        if (!u) return null;
-        return {
-          id: u.id, name: u.name, isAdmin: u.isAdmin === true,
-          managedPermissions: Array.isArray(u.currentManagedPermissions) ? u.currentManagedPermissions : []
-        };
-      } catch (e) {
-        lastErr = e;
-        if (!/Must provide a query string|PersistedQueryNotFound/i.test(e.message || '')) throw e;
-      }
-    }
-    throw lastErr;
+    // CurrentUser fue deprecada server-side 2026-04-27 (HTTP 400 "Must provide a query string.").
+    // CurrentUserDetails sigue activa pero solo trae id/isAdmin (sin currentManagedPermissions).
+    // isAuthorized cae al branch "no hay info de permisos finos → permitido", así que el
+    // gating queda solo por isAdmin (y por requiredPermissions del config si están presentes).
+    const data = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
+    const u = data?.currentSession?.userByUserId;
+    if (!u) return null;
+    return {
+      id: u.id,
+      name: u.name || null,
+      isAdmin: u.isAdmin === true,
+      managedPermissions: undefined
+    };
   }
 
   function isAuthorized(user) {
