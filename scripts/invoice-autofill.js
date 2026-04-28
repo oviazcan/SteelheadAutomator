@@ -14,6 +14,10 @@ const InvoiceAutofill = (() => {
   const warn = (m) => api().warn(m);
 
   const INVOICE_URL_RE = /\/Domains\/\d+\/Invoices(?:\/|$)/;
+  // Modal "Create Invoice Manually" — overlay sobre la lista de invoices, sin
+  // form RJSF. Se usa para Notas de Crédito y cargos manuales (tarifas, etc).
+  const MANUAL_HEADING_RE = /create\s+invoice\s+manually|crear\s+factura\s+manual/i;
+  let manualModalState = null;  // { active, customer, datesFilled }
 
   // Matriz de prefijos contables
   // [salesTaxBySalesTaxId.name=general] × [credit-note=false] → 0401-0001 (Ventas Tasa General)
@@ -211,6 +215,16 @@ const InvoiceAutofill = (() => {
     const found = !!(divisaInput || tcInput || datosContablesAny || rjsfInputs.length >= 5);
 
     if (!found) {
+      // Modal "Create Invoice Manually" — overlay sin RJSF. Maneja su propio flow.
+      if (isManualInvoiceModal()) {
+        handleManualModal();
+        return;
+      }
+      // Salimos de modal manual sin haber pasado al editor: limpiar estado.
+      if (manualModalState?.active) {
+        manualModalState = null;
+        removePanel();
+      }
       if (diagLoggedForUrl !== location.pathname) {
         diagLoggedForUrl = location.pathname;
         log(`InvoiceAutofill: form RJSF no detectado en ${location.pathname} (root_* inputs=${rjsfInputs.length}). Esperando que abras Create/Edit Invoice.`);
@@ -222,6 +236,8 @@ const InvoiceAutofill = (() => {
       }
       return;
     }
+    // Si pasamos al editor RJSF, ya no estamos en modal manual.
+    if (manualModalState?.active) manualModalState = null;
     if (diagLoggedForUrl !== null) {
       log(`InvoiceAutofill: form RJSF detectado (root_* inputs=${rjsfInputs.length}, divisaInput=${!!divisaInput}, tcInput=${!!tcInput})`);
     }
@@ -1066,6 +1082,114 @@ const InvoiceAutofill = (() => {
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Modal "Create Invoice Manually" ──
+
+  function isManualInvoiceModal() {
+    const heads = document.querySelectorAll('h1,h2,h3,h4,[class*="MuiTypography-h"]');
+    for (const h of heads) {
+      if (MANUAL_HEADING_RE.test(h.textContent?.trim() || '')) return true;
+    }
+    return false;
+  }
+
+  function formatDateMMDDYYYY(d) {
+    return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+  }
+  function formatDateISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // Variante de tryFillTextInput para inputs de fecha: detecta type="date"
+  // (formato HTML5 YYYY-MM-DD) vs text con máscara MM/DD/YYYY.
+  async function tryFillDateInput(labelText, date) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    const labels = document.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 30) continue;
+      if (!labelRe.test(txt)) continue;
+
+      let parent = el;
+      for (let d = 0; d < 6 && parent; d++) {
+        const inp = parent.querySelector('input[type="date"], input[type="text"], input:not([type])');
+        if (inp) {
+          const value = inp.type === 'date' ? formatDateISO(date) : formatDateMMDDYYYY(date);
+          const tracker = inp._valueTracker;
+          if (tracker) tracker.setValue('');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+          if (setter) setter.call(inp, value);
+          inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          inp.dispatchEvent(new Event('blur', { bubbles: true }));
+          return { success: true, filled: value, type: inp.type || 'text' };
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return { success: false };
+  }
+
+  function handleManualModal() {
+    if (!manualModalState?.active) {
+      manualModalState = { active: true, customer: null, datesFilled: false };
+      log('Modal "Create Invoice Manually" detectado');
+      renderManualPanel();
+    }
+    const customer = extractCustomerFromDOM();
+    if (customer && customer !== manualModalState.customer) {
+      manualModalState.customer = customer;
+      log(`Modal manual: customer seleccionado = ${customer}`);
+      if (!manualModalState.datesFilled) fillManualModalDates();
+      renderManualPanel();
+    } else if (!customer && !manualModalState.customer) {
+      renderManualPanel('pending');
+    }
+  }
+
+  async function fillManualModalDates() {
+    const today = new Date();
+    const r1 = await tryFillDateInput('invoiced\\s*at|fecha\\s*de\\s*factura(?:cion)?', today);
+    const r2 = await tryFillDateInput('due\\s*date|fecha\\s*de\\s*vencimiento|vence', today);
+    log(`Modal manual fechas: invoicedAt=${JSON.stringify(r1)} dueDate=${JSON.stringify(r2)}`);
+    manualModalState.datesFilled = !!(r1?.success && r2?.success);
+    manualModalState.dateResults = { invoicedAt: r1, dueDate: r2 };
+    renderManualPanel();
+  }
+
+  function renderManualPanel(forceStatus) {
+    let panel = document.getElementById('sa-invoice-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-invoice-autofill-panel';
+      panel.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e293b;color:#e2e8f0;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:99999;font:13px/1.4 system-ui,-apple-system,sans-serif;min-width:340px;max-width:420px;';
+      document.body.appendChild(panel);
+    }
+    const m = manualModalState || {};
+    const today = formatDateMMDDYYYY(new Date());
+    const status = forceStatus || (m.datesFilled ? 'done' : (m.customer ? 'pending' : 'pending'));
+    const customerLabel = m.customer ? escHtml(m.customer) : 'Esperando…';
+    const i = m.dateResults?.invoicedAt;
+    const d = m.dateResults?.dueDate;
+    const invLabel = i?.success ? `${escHtml(i.filled)} ✓` : (m.customer ? 'Pendiente' : '—');
+    const dueLabel = d?.success ? `${escHtml(d.filled)} ✓` : (m.customer ? 'Pendiente' : '—');
+
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:8px;margin-bottom:8px;">
+      <strong>Invoice Manual</strong>
+      <span style="font-size:11px;color:#94a3b8;">Modo: NC / cargos</span>
+    </div>`;
+    html += renderRow('Cliente', customerLabel, m.customer ? 'done' : 'pending');
+    html += renderRow('Hoy', escHtml(today), 'done');
+    html += renderRow('Invoiced At', invLabel, i?.success ? 'done' : 'pending');
+    html += renderRow('Due Date', dueLabel, d?.success ? 'done' : 'pending');
+    if (m.customer && !m.datesFilled) {
+      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refill" style="cursor:pointer;color:#64748b;font-size:11px;">↻ reintentar fechas</span></div>`;
+    }
+    panel.innerHTML = html;
+    const refill = panel.querySelector('#sa-iaf-refill');
+    if (refill) refill.addEventListener('click', () => fillManualModalDates());
+  }
 
   // ── Fill: cuenta de ingreso/descuento por línea ──
 
