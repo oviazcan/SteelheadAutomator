@@ -18,6 +18,7 @@ const InvoiceAutofill = (() => {
   // form RJSF. Se usa para Notas de Crédito y cargos manuales (tarifas, etc).
   const MANUAL_HEADING_RE = /create\s+invoice\s+manually|crear\s+factura\s+manual/i;
   let manualModalState = null;  // { active, customer, filled, filling, results }
+  let panelCollapsed = false;   // true = sólo header con botón [+] para expandir
 
   // Matriz de prefijos contables
   // [salesTaxBySalesTaxId.name=general] × [credit-note=false] → 0401-0001 (Ventas Tasa General)
@@ -1518,9 +1519,14 @@ const InvoiceAutofill = (() => {
   // — así evitamos confundir un input vecino que no sea el target.
   function readDateInputValue(labelText) {
     const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
-    const inp = findInputByLabel(labelRe);
+    // Due Date está :disabled en el modal manual (Steelhead lo calcula).
+    // findInputByLabel filtra disabled, así que buscamos directo en el container.
+    const f = findFieldContainerByPLabel(labelRe);
+    if (!f) return null;
+    const inp = f.container.querySelector('input:not([aria-hidden]):not([type="hidden"])')
+      || f.container.querySelector('textarea:not([aria-hidden])');
     if (!inp) return null;
-    const v = (inp.value || '').trim();
+    const v = (inp.value || inp.getAttribute('value') || inp.placeholder || '').trim();
     if (!v) return null;
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
     return null;
@@ -1590,25 +1596,33 @@ const InvoiceAutofill = (() => {
         ? { label: 'Activado ✓', status: 'done' }
         : { label: `Pendiente (${escHtml(newLineRes.reason || '')})`, status: 'pending' };
 
-    let html = `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:8px;margin-bottom:8px;">
+    const toggleIcon = panelCollapsed ? '+' : '–';
+    const headerSuffix = panelCollapsed && m.customer
+      ? `<span style="font-size:11px;color:#94a3b8;margin-right:8px;">${escHtml(m.customer)}</span>`
+      : `<span style="font-size:11px;color:#94a3b8;margin-right:8px;">NC / cargos · guarda + reabre</span>`;
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;${panelCollapsed ? '' : 'border-bottom:1px solid #334155;padding-bottom:8px;margin-bottom:8px;'}">
       <strong>Invoice Manual</strong>
-      <span style="font-size:11px;color:#94a3b8;">NC / cargos · guarda + reabre</span>
+      <span style="display:flex;align-items:center;">${headerSuffix}<button id="sa-iaf-toggle" title="${panelCollapsed ? 'Expandir' : 'Minimizar'}" style="background:#334155;color:#e2e8f0;border:none;border-radius:4px;width:22px;height:22px;cursor:pointer;font:bold 14px/1 system-ui;padding:0;">${toggleIcon}</button></span>
     </div>`;
-    html += renderRow('Cliente', customerLabel, m.customer ? 'done' : 'pending');
-    html += renderRow('Invoiced At', inv.label, inv.status);
-    html += renderRow('Ship Date', ship.label, ship.status);
-    html += renderRow('Ship via', via.label, via.status);
-    html += renderRow('Sales Tax', tax.label, tax.status);
-    html += renderRow('Terms', terms.label, terms.status);
-    html += renderRow('Bill To', billTo.label, billTo.status);
-    html += renderRow('Ship To', shipTo.label, shipTo.status);
-    html += renderRow('Contact', contact.label, contact.status);
-    html += renderRow('Due Date', due.label, due.status);
-    html += renderRow('New Line', newLine.label, newLine.status);
-    if (m.customer && !m.filled && !m.filling) {
-      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refill" style="cursor:pointer;color:#64748b;font-size:11px;">↻ reintentar campos</span></div>`;
+    if (!panelCollapsed) {
+      html += renderRow('Cliente', customerLabel, m.customer ? 'done' : 'pending');
+      html += renderRow('Invoiced At', inv.label, inv.status);
+      html += renderRow('Ship Date', ship.label, ship.status);
+      html += renderRow('Ship via', via.label, via.status);
+      html += renderRow('Sales Tax', tax.label, tax.status);
+      html += renderRow('Terms', terms.label, terms.status);
+      html += renderRow('Bill To', billTo.label, billTo.status);
+      html += renderRow('Ship To', shipTo.label, shipTo.status);
+      html += renderRow('Contact', contact.label, contact.status);
+      html += renderRow('Due Date', due.label, due.status);
+      html += renderRow('New Line', newLine.label, newLine.status);
+      if (m.customer && !m.filled && !m.filling) {
+        html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refill" style="cursor:pointer;color:#64748b;font-size:11px;">↻ reintentar campos</span></div>`;
+      }
     }
     panel.innerHTML = html;
+    const toggle = panel.querySelector('#sa-iaf-toggle');
+    if (toggle) toggle.addEventListener('click', () => { panelCollapsed = !panelCollapsed; renderManualPanel(); });
     const refill = panel.querySelector('#sa-iaf-refill');
     if (refill) refill.addEventListener('click', () => fillManualModalAll());
   }
