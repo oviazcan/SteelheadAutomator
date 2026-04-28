@@ -535,34 +535,40 @@ const InvoiceAutofill = (() => {
   //   2. orden descendente por CuentaContable (numeración más alta = más reciente)
   //   3. resolver id numérico vía allAccounts.accountNumber
   // TODO: filtro por EmpresaEmisora cuando aparezca un caso real con dos emisoras
-  function findBestARAccount(customer, currency, allAccounts) {
-    if (!customer || !currency) return { account: null, ambiguous: false, candidates: [], reason: 'sin_customer_o_divisa' };
-    const cuentas = customer?.customInputs?.DatosContables?.CuentasContables || [];
-    if (!Array.isArray(cuentas) || cuentas.length === 0) {
-      return { account: null, ambiguous: false, candidates: [], reason: 'customer_sin_CuentasContables' };
+  // Resolver de cuenta CXC contra el catálogo consolidado `allAcctAccounts`.
+  //
+  // Las cuentas de `customer.customInputs.DatosContables.CuentasContables` son LEGACY
+  // (referencia del sistema anterior, antes de consolidar las 3 razones sociales en
+  // un único catálogo en Steelhead). NO se usan como fuente de verdad — escribirlas
+  // en el react-select dispara el modal "Create Account" porque no existen en el
+  // catálogo activo.
+  //
+  // v0.5.18: aún sin regla determinista para mapear `divisa → cuenta AR` en el
+  // catálogo consolidado. Reportamos candidatos (cuentas con prefijo 0103-) y
+  // dejamos que el usuario las elija a mano. Cuando el usuario defina la regla
+  // (probable: campo `currency` en la cuenta, o naming convention en `name`),
+  // se enciende el auto-fill.
+  function findBestARAccount(_customer, currency, allAccounts) {
+    const all = Array.isArray(allAccounts) ? allAccounts : [];
+    const arAccounts = all.filter(a => {
+      const num = String(a?.accountNumber || '');
+      const cat = String(a?.acctAccountTypeByTypeId?.category || '');
+      return num.startsWith('0103-') || /receivable/i.test(cat);
+    });
+    if (arAccounts.length === 0) {
+      return { account: null, ambiguous: false, candidates: [], reason: 'sin_cuentas_AR_en_catalogo' };
     }
-    const cur = currency.toUpperCase();
-    const matches = cuentas.filter(c => (c.DivisaContable || '').toUpperCase() === cur);
-    if (matches.length === 0) {
-      return { account: null, ambiguous: false, candidates: [], reason: `sin_match_divisa_${cur}` };
-    }
-    matches.sort((a, b) => String(b.CuentaContable || '').localeCompare(String(a.CuentaContable || '')));
-    const winner = matches[0];
-    // El número de cuenta del CuentasContables ya es la fuente canónica.
-    // allAccounts solo da el id numérico (útil para outbound, no para DOM-fill por accountNumber).
-    const fullAccount = (Array.isArray(allAccounts) ? allAccounts : []).find(a =>
-      a.accountNumber === winner.CuentaContable
-      && /receivable/i.test(a.acctAccountTypeByTypeId?.category || '')
-    );
     return {
-      account: {
-        id: fullAccount?.id || null,
-        accountNumber: winner.CuentaContable,
-        name: fullAccount?.name || winner.CuentaContable
-      },
-      ambiguous: matches.length > 1,
-      candidates: matches.map(m => m.CuentaContable),
-      reason: null
+      account: null,
+      ambiguous: false,
+      candidates: arAccounts.map(a => ({
+        id: a.id,
+        accountNumber: a.accountNumber,
+        name: a.name,
+        currency: a.currency || a.currencyCode || null
+      })),
+      reason: 'pendiente_regla_AR',
+      currencyHint: currency || null
     };
   }
 
@@ -953,6 +959,9 @@ const InvoiceAutofill = (() => {
 
     for (const opt of options) {
       const text = opt.textContent?.trim() || '';
+      // CRITICAL: Steelhead muestra "Create…" como opción cuando no hay match.
+      // Clickearla abre el modal "Create Account" y registra basura. Nunca elegirla.
+      if (/^\s*(create|crear|nuev[oa])\b/i.test(text) || /create\s+new/i.test(text)) continue;
       const norm = normalizeForMatch(text);
       let score = 0;
       if (norm === targetNorm) score = 100;
@@ -1301,13 +1310,18 @@ const InvoiceAutofill = (() => {
       html += renderRow('Tipo de Cambio', tcLabel, state.exchangeRate != null ? 'done' : 'pending');
 
       const ar = state.arAccount;
-      const arStatus = !ar?.account?.accountNumber ? 'error' : ar.ambiguous ? 'warn' : 'done';
       let arLabel = '—';
+      let arStatus = 'pending';
       if (ar?.account?.accountNumber) {
         arLabel = ar.account.name || ar.account.accountNumber;
-        if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas, elegida más alta)`;
+        if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas)`;
+        arStatus = ar.ambiguous ? 'warn' : 'done';
+      } else if (ar?.reason === 'pendiente_regla_AR') {
+        arLabel = `Manual (${ar.candidates?.length || 0} cuentas 0103- en catálogo)`;
+        arStatus = 'warn';
       } else if (ar?.reason) {
         arLabel = `No resuelto: ${ar.reason}`;
+        arStatus = 'error';
       }
       html += renderRow('Cuenta CXC', arLabel, arStatus);
 
