@@ -1285,47 +1285,105 @@ const InvoiceAutofill = (() => {
     return m ? parseInt(m[1], 10) : null;
   }
 
-  // Walker simple: busca en customer un campo *Terms*/*Payment* con shape {name}.
-  // El customer query del config trae varios sub-objects con .name; no sabemos el
-  // path exacto del Terms, así que recorremos top-level keys.
+  // Walker BFS recursivo: busca en customer un sub-objeto cuya key contenga
+  // "term"/"payment" y tenga {name: string}. Cubre paths anidados como
+  // customerTermsByCustomerTermId, customerPaymentTermsByPaymentTermsId,
+  // termByDefaultTermsId, etc.
   function findTermsNameInCustomer(c) {
     if (!c || typeof c !== 'object') return null;
-    for (const [k, v] of Object.entries(c)) {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
-      if (!/term|payment/i.test(k)) continue;
-      if (typeof v.name === 'string' && v.name.trim()) return v.name.trim();
+    const queue = [{ obj: c, depth: 0 }];
+    const seen = new Set();
+    while (queue.length) {
+      const { obj, depth } = queue.shift();
+      if (depth > 4) continue;
+      if (seen.has(obj)) continue;
+      seen.add(obj);
+      for (const [k, v] of Object.entries(obj)) {
+        if (!v) continue;
+        if (typeof v === 'object' && !Array.isArray(v)) {
+          if (/term|payment/i.test(k) && typeof v.name === 'string' && v.name.trim()) {
+            return v.name.trim();
+          }
+          queue.push({ obj: v, depth: depth + 1 });
+        } else if (typeof v === 'string' && /term/i.test(k) && v.trim() && v.length < 60) {
+          // Caso `customer.terms = "Net 30"` directo (sin sub-objeto).
+          return v.trim();
+        }
+      }
     }
     return null;
   }
 
-  // Click en el combobox → si tiene exactamente una opción, la selecciona.
-  // Si tiene varias, falla con reason='ambiguous' para no elegir basura.
-  async function selectFirstOption(labelRe) {
+  // Imprime top-level keys del customer fetched para diagnosticar paths.
+  function logCustomerShape(c) {
+    if (!c || typeof c !== 'object') { log('Customer shape: null/undef'); return; }
+    const keys = Object.keys(c).slice(0, 40).join(', ');
+    log(`Customer shape: keys=[${keys}]`);
+  }
+
+  // Abre un react-select y devuelve sus opciones visibles (sin "Create...").
+  async function openSelectAndGetOptions(ctrl) {
+    // Intentar 3 vías para abrir: click → focus+ArrowDown → mousedown.
+    ctrl.control.click();
+    await sleep(150);
+    if (!document.querySelector('[class*="menu"], [class*="Menu"]')) {
+      ctrl.combo?.focus();
+      await sleep(80);
+      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true, cancelable: true }));
+      await sleep(150);
+    }
+    if (!document.querySelector('[class*="menu"], [class*="Menu"]')) {
+      ctrl.control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+      await sleep(80);
+      ctrl.control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+      await sleep(150);
+    }
+
+    let options = [];
+    for (let i = 0; i < 12; i++) {
+      await sleep(150);
+      // react-select renderiza el menu como sibling del control o en portal.
+      // Probamos varias clases (CSS-in-JS genera nombres distintos).
+      const menus = document.querySelectorAll('[class*="menuList"], [class*="MenuList"], [class*="menu-list"], [class*="-menu"]');
+      for (const menu of menus) {
+        const opts = [...menu.querySelectorAll('[class*="option"], [class*="Option"], [role="option"]')]
+          .filter(o => !/^\s*(create|crear|nuev[oa])\b/i.test(o.textContent?.trim() || ''))
+          .filter(o => (o.textContent?.trim() || '').length > 0);
+        if (opts.length > 0) { options = opts; break; }
+      }
+      if (options.length > 0) break;
+    }
+    return options;
+  }
+
+  // Click en el combobox + selecciona la primera opción.
+  // Por default acepta ambigüedad (elige el primero); con strict=true sólo si hay una.
+  async function selectFirstOption(labelRe, opts = {}) {
+    const { strict = false } = opts;
     const ctrl = findReactSelectControlByLabel(labelRe);
     if (!ctrl) return { success: false, reason: 'control no encontrado' };
-    ctrl.control.click();
-    await sleep(300);
-    let options = [];
-    for (let i = 0; i < 8; i++) {
-      await sleep(150);
-      const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]')
-        || ctrl.container.querySelector('[class*="menu"], [class*="Menu"]')
-        || document.querySelector('[class*="menu"], [class*="Menu"]');
-      if (menu) {
-        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')]
-          .filter(o => !/^\s*(create|crear|nuev[oa])\b/i.test(o.textContent?.trim() || ''));
-        if (options.length > 0) break;
-      }
-    }
+    const options = await openSelectAndGetOptions(ctrl);
     if (options.length === 0) return { success: false, reason: 'sin opciones' };
-    if (options.length > 1) {
-      // Cerrar el menú clickeando fuera
+    if (strict && options.length > 1) {
       document.body.click();
       return { success: false, reason: `ambiguous (${options.length} opciones)` };
     }
     const text = options[0].textContent?.trim() || '';
     options[0].click();
-    return { success: true, filled: text, method: 'first-option' };
+    return { success: true, filled: text, method: options.length === 1 ? 'only-option' : 'first-of-many' };
+  }
+
+  // Localiza y clickea el botón "New Line" / "Nueva Línea" para activar
+  // el primer renglón de captura tras llenar los campos.
+  function clickNewLine() {
+    const btn = [...document.querySelectorAll('button')].find(b => {
+      if (b.disabled) return false;
+      const t = b.textContent?.trim() || '';
+      return /^new\s*line$/i.test(t) || /^nueva\s*l[ií]nea$/i.test(t);
+    });
+    if (!btn) return { success: false, reason: 'botón New Line no encontrado' };
+    btn.click();
+    return { success: true };
   }
 
   async function fillManualModalAll() {
@@ -1344,7 +1402,8 @@ const InvoiceAutofill = (() => {
     const today = new Date();
     const results = manualModalState.results = {
       invoicedAt: null, shipDate: null, shipVia: null,
-      salesTax: null, terms: null, dueDate: null
+      salesTax: null, terms: null, dueDate: null,
+      billTo: null, shipTo: null, customerContact: null, newLine: null
     };
 
     // 1. Invoiced At = hoy
@@ -1370,6 +1429,7 @@ const InvoiceAutofill = (() => {
     if (idInDomain != null) {
       log(`Modal manual: fetching Customer(idInDomain=${idInDomain})…`);
       fetched = await fetchCustomerSalesTaxable(idInDomain);
+      logCustomerShape(fetched);
     } else {
       log('Modal manual: idInDomain no extraíble del customer name');
     }
@@ -1394,7 +1454,20 @@ const InvoiceAutofill = (() => {
     }
     renderManualPanel();
 
-    // 5. Due Date está disabled en el DOM — Steelhead la recalcula auto al
+    // 5. Bill To / Ship To / Customer Contact — primer opción del desplegable.
+    results.billTo = await selectFirstOption(/^\s*bill\s*to\s*$|facturar\s*a/i);
+    log(`Modal manual: billTo=${JSON.stringify(results.billTo)}`);
+    renderManualPanel();
+
+    results.shipTo = await selectFirstOption(/^\s*ship\s*to\s*$|enviar\s*a/i);
+    log(`Modal manual: shipTo=${JSON.stringify(results.shipTo)}`);
+    renderManualPanel();
+
+    results.customerContact = await selectFirstOption(/^\s*customer\s*contact\s*$|contacto/i);
+    log(`Modal manual: customerContact=${JSON.stringify(results.customerContact)}`);
+    renderManualPanel();
+
+    // 6. Due Date está disabled en el DOM — Steelhead la recalcula auto al
     //    setear Invoiced At + Terms. Sólo la leemos para reportar.
     await sleep(1500);
     const dueExisting = readDateInputValue('^\\s*due\\s*date\\s*$|fecha\\s*de\\s*vencimiento|vence');
@@ -1406,8 +1479,13 @@ const InvoiceAutofill = (() => {
       results.dueDate = { success: false, reason: 'sin valor en DOM' };
     }
 
+    // 7. Click "New Line" para activar la primera línea de captura.
+    results.newLine = clickNewLine();
+    log(`Modal manual: newLine=${JSON.stringify(results.newLine)}`);
+
     manualModalState.filled = !!(results.invoicedAt?.success && results.shipDate?.success
-      && results.shipVia?.success && results.salesTax?.success && results.terms?.success);
+      && results.shipVia?.success && results.salesTax?.success && results.terms?.success
+      && results.billTo?.success && results.shipTo?.success && results.customerContact?.success);
   }
 
   // Lee el value actual de un input de fecha por label, sin escribirlo.
@@ -1477,6 +1555,15 @@ const InvoiceAutofill = (() => {
     const tax = fmtField(r.salesTax);
     const terms = fmtField(r.terms);
     const due = fmtField(r.dueDate, 'Calculando…');
+    const billTo = fmtField(r.billTo);
+    const shipTo = fmtField(r.shipTo);
+    const contact = fmtField(r.customerContact);
+    const newLineRes = r.newLine;
+    const newLine = !newLineRes
+      ? { label: m.customer ? (m.filling ? 'Llenando…' : 'Pendiente') : '—', status: 'pending' }
+      : newLineRes.success
+        ? { label: 'Activado ✓', status: 'done' }
+        : { label: `Pendiente (${escHtml(newLineRes.reason || '')})`, status: 'pending' };
 
     let html = `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:8px;margin-bottom:8px;">
       <strong>Invoice Manual</strong>
@@ -1488,7 +1575,11 @@ const InvoiceAutofill = (() => {
     html += renderRow('Ship via', via.label, via.status);
     html += renderRow('Sales Tax', tax.label, tax.status);
     html += renderRow('Terms', terms.label, terms.status);
+    html += renderRow('Bill To', billTo.label, billTo.status);
+    html += renderRow('Ship To', shipTo.label, shipTo.status);
+    html += renderRow('Contact', contact.label, contact.status);
     html += renderRow('Due Date', due.label, due.status);
+    html += renderRow('New Line', newLine.label, newLine.status);
     if (m.customer && !m.filled && !m.filling) {
       html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refill" style="cursor:pointer;color:#64748b;font-size:11px;">↻ reintentar campos</span></div>`;
     }
