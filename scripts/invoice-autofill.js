@@ -800,56 +800,45 @@ const InvoiceAutofill = (() => {
     return document.querySelector('main') || document.querySelector('[class*="content"]');
   }
 
+  // Cada línea de invoice se renderiza como un bloque cuyo encabezado dice
+  // "Line #N - PN  Description: …  Total: $X". Encontramos esos encabezados,
+  // de cada uno subimos al contenedor de la línea (el ancestor más bajo que
+  // contenga el React Select "INCOME"), y dentro extraemos PN y total.
   function extractLinesFromDOM() {
     const lines = [];
-    const lineSection = findLineItemsSection();
-    if (!lineSection) return lines;
-
-    // Strategy 1: inputs cuyo name/placeholder sugiere "name"
-    for (const input of lineSection.querySelectorAll('input')) {
-      const n = (input.name || '').toLowerCase();
-      const p = (input.placeholder || '').toLowerCase();
-      if ((n.includes('name') || p.includes('name') || p.includes('nombre')) && input.value?.trim()) {
-        lines.push({ name: input.value.trim(), element: input, amount: extractLineAmount(input) });
-      }
-    }
-    if (lines.length > 0) return lines;
-
-    // Strategy 2: label "Name:" → input adyacente
-    for (const el of lineSection.querySelectorAll('label, span, div, td, th')) {
+    const seen = new Set();
+    const candidates = document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,div');
+    for (const el of candidates) {
       if (el.closest('#sa-invoice-autofill-panel')) continue;
       const txt = el.textContent?.trim() || '';
-      if (!/^name:?\s*$/i.test(txt) || txt.length > 10) continue;
-
-      let found = false;
-      let sib = el.nextElementSibling;
-      for (let i = 0; i < 3 && sib && !found; i++, sib = sib.nextElementSibling) {
-        if (sib.tagName === 'INPUT' && sib.value?.trim()) {
-          lines.push({ name: sib.value.trim(), element: sib, amount: extractLineAmount(sib) });
-          found = true;
-        } else {
-          const inp = sib.querySelector('input');
-          if (inp?.value?.trim()) {
-            lines.push({ name: inp.value.trim(), element: inp, amount: extractLineAmount(inp) });
-            found = true;
-          }
-        }
+      // Filtrar elementos demasiado grandes (descendientes envueltos)
+      if (txt.length > 400) continue;
+      const m = txt.match(/Line\s*#(\d+)\s*-\s*([A-Za-z0-9._\-/]+)/);
+      if (!m) continue;
+      const lineNum = parseInt(m[1], 10);
+      const pn = m[2];
+      // Container de la línea: ancestor más bajo que contenga la subtítulo "INCOME"
+      // (cada línea tiene su propio Income Account select).
+      let container = el.parentElement;
+      let incomeLabel = null;
+      for (let d = 0; d < 12 && container; d++) {
+        incomeLabel = [...container.querySelectorAll('p,span,div,label')].find(p => {
+          if (p.closest('#sa-invoice-autofill-panel')) return false;
+          const t = p.textContent?.trim() || '';
+          return /^income$/i.test(t);
+        });
+        if (incomeLabel) break;
+        container = container.parentElement;
       }
-      if (found) continue;
-
-      const parent = el.parentElement;
-      if (parent) {
-        for (const child of parent.children) {
-          if (child === el || child.contains(el)) continue;
-          const inp = child.tagName === 'INPUT' ? child : child.querySelector('input');
-          if (inp?.value?.trim()) {
-            lines.push({ name: inp.value.trim(), element: inp, amount: extractLineAmount(inp) });
-            break;
-          }
-        }
-      }
+      if (!container || !incomeLabel) continue;
+      const key = `${lineNum}-${pn}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Total: monto en el heading o cercano, formato "$1,234.56"
+      const totalMatch = container.textContent.match(/Total:\s*\$?\s*(-?[\d,]+(?:\.\d+)?)/i);
+      const amount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : null;
+      lines.push({ name: pn, lineNumber: lineNum, container, incomeLabel, amount });
     }
-
     return lines;
   }
 
@@ -1012,73 +1001,32 @@ const InvoiceAutofill = (() => {
 
   // ── Fill: cuenta de ingreso/descuento por línea ──
 
-  async function tryFillIncomeInLine(lineName, searchText, targetAccountName) {
-    const lineNorm = lineName.toLowerCase().trim().replace(/\s+/g, ' ');
-
-    const nameInputs = document.querySelectorAll('input');
-    let nameInput = null;
-    for (const inp of nameInputs) {
-      if (inp.closest('#sa-invoice-autofill-panel')) continue;
-      if (inp.getAttribute('role') === 'combobox') continue;
-      const val = (inp.value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-      if (!val) continue;
-      if (val === lineNorm || val.includes(lineNorm) || lineNorm.includes(val)) {
-        nameInput = inp;
+  // El layout no es <table>: cada línea tiene un sub-grid donde el Income Account
+  // se identifica por una <p>INCOME</p> italic adyacente al React Select.
+  // Localizamos el control subiendo del label "INCOME" hasta encontrar un control
+  // de react-select.
+  async function tryFillIncomeInLine(line, searchText, targetAccountName) {
+    const incomeLabel = line.incomeLabel;
+    const container = line.container;
+    if (!incomeLabel || !container) {
+      return { success: false, method: 'fallback', reason: `container/incomeLabel ausente para "${line.name}"` };
+    }
+    // El subtítulo INCOME suele estar dentro o debajo del campo. Subimos hasta
+    // encontrar un ancestor que tenga input[role="combobox"] (el control del select).
+    let host = incomeLabel.parentElement;
+    let control = null;
+    for (let d = 0; d < 8 && host; d++) {
+      const combo = host.querySelector('input[role="combobox"]');
+      if (combo) {
+        control = combo.closest('[class*="-control"]') || combo.parentElement;
         break;
       }
+      host = host.parentElement;
     }
-    if (!nameInput) return { success: false, method: 'fallback', reason: `input Name no encontrado para "${lineName}"` };
-
-    let targetTable = null;
-    let lineContainer = null;
-    let parent = nameInput.parentElement;
-
-    for (let d = 0; d < 12 && parent; d++) {
-      const tables = parent.querySelectorAll('table');
-      for (const table of tables) {
-        const allCells = table.querySelectorAll('td, th');
-        for (const c of allCells) {
-          const t = c.textContent?.trim() || '';
-          if (/income\s*account|cuenta.*ingreso|cuenta.*ingresos|cuenta.*ventas|cuenta.*contable/i.test(t) && t.length < 30) {
-            targetTable = table;
-            break;
-          }
-        }
-        if (targetTable) break;
-      }
-      if (targetTable) { lineContainer = parent; break; }
-      parent = parent.parentElement;
+    if (!control) {
+      return { success: false, method: 'fallback', reason: `combobox de Income no encontrado para "${line.name}"` };
     }
-
-    if (!targetTable) return { success: false, method: 'fallback', reason: `sub-tabla con Income Account no encontrada para "${lineName}"` };
-
-    let incomeColIdx = -1;
-    const rows = targetTable.querySelectorAll('tr');
-    for (const row of rows) {
-      const cells = row.querySelectorAll('td, th');
-      for (let i = 0; i < cells.length; i++) {
-        const t = cells[i].textContent?.trim() || '';
-        if (/income\s*account|cuenta.*ingreso|cuenta.*ingresos|cuenta.*ventas|cuenta.*contable/i.test(t) && t.length < 30) {
-          incomeColIdx = i;
-          break;
-        }
-      }
-      if (incomeColIdx >= 0) break;
-    }
-    if (incomeColIdx < 0) return { success: false, method: 'fallback', reason: 'columna Income Account no encontrada en header' };
-
-    for (const row of rows) {
-      const cells = row.querySelectorAll('td, th');
-      if (incomeColIdx >= cells.length) continue;
-      const cell = cells[incomeColIdx];
-      const comboInput = cell.querySelector('input[role="combobox"]');
-      if (!comboInput) continue;
-      const control = comboInput.closest('[class*="-control"]');
-      if (!control) continue;
-      return await clickAndSelectOption(control, cell, searchText, targetAccountName);
-    }
-
-    return { success: false, method: 'fallback', reason: 'combobox no encontrado en columna Income' };
+    return await clickAndSelectOption(control, host, searchText, targetAccountName);
   }
 
   // ── Fill All Fields ──
@@ -1118,7 +1066,7 @@ const InvoiceAutofill = (() => {
       if (!line.account) continue;
       const acc = line.account;
       const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
-      results[`line_${i}`] = await tryFillIncomeInLine(line.name, search, acc.name || acc.accountNumber);
+      results[`line_${i}`] = await tryFillIncomeInLine(line, search, acc.name || acc.accountNumber);
       log(`Fill income line ${i} "${line.name}": ${JSON.stringify(results[`line_${i}`])}`);
     }
 
