@@ -537,50 +537,95 @@ const InvoiceAutofill = (() => {
   // TODO: filtro por EmpresaEmisora cuando aparezca un caso real con dos emisoras
   // Resolver de cuenta CXC contra el catálogo consolidado `allAcctAccounts`.
   //
-  // `customer.customInputs.DatosContables.CuentasContables` es LEGACY del sistema
-  // anterior (antes de consolidar las 3 razones sociales en un solo catálogo).
-  // No se usa: escribir esos números en el react-select dispara "Create Account".
+  // `customer.customInputs.DatosContables.CuentasContables` es LEGACY (sistema
+  // anterior, antes de consolidar las 3 razones sociales). No se usa.
   //
-  // Convención del catálogo consolidado (homologado entre razones sociales):
-  // las cuentas AR terminan su `name` con la divisa, ej. "Clientes Generales USD",
-  // "Clientes Generales MXN". Filtramos por categoría receivable y match por
-  // sufijo `\bDIVISA\s*$` en el name. Los prefijos numéricos varían (0103-, 0105-)
-  // por carga histórica — no se usan para filtrar.
-  function findBestARAccount(_customer, currency, allAccounts) {
+  // Convención del catálogo consolidado: cada cliente tiene SU(S) cuenta(s) AR
+  // nombrada(s) "<Razón social del cliente> [SIN IVA] <DIVISA>". Ejemplos para
+  // FEDERAL MOGUL en USD: "Federal Mogul de Mexico S de R.L de C.V. 1140 USD",
+  // "Federal Mogul S. de R.L. de C.V. SIN IVA 1188 USD",
+  // "Federal Mogul S. de R.L. de C.V. USD".
+  //
+  // Filtros:
+  //   1. Categoría receivable (cuando la trae el shape)
+  //   2. `name` termina con la divisa: `\b<CUR>\s*$`
+  //   3. `name` contiene TODOS los tokens "fuertes" del nombre del cliente
+  //      (palabras alfanuméricas >2 chars, normalizadas, excluyendo formas
+  //      legales tipo "sa", "sade", "rl", "cv", "de"…)
+  //   4. Tie-break por salesTax rule:
+  //      - exenta → preferir cuenta con "SIN IVA" en name
+  //      - general → preferir cuenta SIN "SIN IVA" en name
+  //   5. Tie-break final: accountNumber más alto.
+  function findBestARAccount(customer, currency, allAccounts) {
     const cur = String(currency || '').toUpperCase().trim();
     if (!cur) return { account: null, ambiguous: false, candidates: [], reason: 'sin_divisa' };
 
     const all = Array.isArray(allAccounts) ? allAccounts : [];
     const arPool = all.filter(a => /receivable/i.test(String(a?.acctAccountTypeByTypeId?.category || '')));
-    // Si el shape no expone category (parser sin esa relación), usar todo el pool —
-    // el match por sufijo de divisa es suficientemente específico.
     const pool = arPool.length > 0 ? arPool : all;
     if (pool.length === 0) {
       return { account: null, ambiguous: false, candidates: [], reason: 'allAcctAccounts_vacio' };
     }
 
-    const re = new RegExp(`\\b${cur}\\s*$`, 'i');
-    const matches = pool.filter(a => re.test(String(a?.name || '')));
-
-    if (matches.length === 0) {
+    const reCur = new RegExp(`\\b${cur}\\s*$`, 'i');
+    const byCurrency = pool.filter(a => reCur.test(String(a?.name || '')));
+    if (byCurrency.length === 0) {
       return {
-        account: null,
-        ambiguous: false,
-        candidates: arPool.map(a => ({ id: a.id, accountNumber: a.accountNumber, name: a.name })),
-        reason: `sin_cuenta_AR_para_${cur}`,
-        currencyHint: cur
+        account: null, ambiguous: false,
+        candidates: pool.map(a => ({ id: a.id, accountNumber: a.accountNumber, name: a.name })),
+        reason: `sin_cuenta_AR_para_${cur}`, currencyHint: cur
       };
     }
 
-    // Tie-break por accountNumber más alto si quedaron duplicados históricos.
-    matches.sort((a, b) => String(b.accountNumber || '').localeCompare(String(a.accountNumber || '')));
-    const winner = matches[0];
+    // Tokens fuertes del nombre del cliente
+    const customerName = customer?.name || customer?.shortName || customer?.customerName || '';
+    const stopWords = new Set([
+      'sa', 'sade', 'sadc', 'sade', 'rl', 'rldecv', 'cv', 'de', 'la', 'las',
+      'el', 'los', 'y', 'sapi', 'srl', 'sab', 'mx', 'usa', 'inc', 'llc', 'ltd',
+      'co', 'sa de cv', 'sa de rl', 'sa de rl de cv'
+    ]);
+    const tokens = normalizeForMatch(customerName).split(' ')
+      .filter(t => t.length > 2 && !stopWords.has(t));
+
+    let byCustomer = byCurrency;
+    if (tokens.length > 0) {
+      byCustomer = byCurrency.filter(a => {
+        const norm = normalizeForMatch(a?.name || '');
+        return tokens.every(t => norm.includes(t));
+      });
+    }
+
+    if (byCustomer.length === 0) {
+      return {
+        account: null, ambiguous: false,
+        candidates: byCurrency.map(a => ({ id: a.id, accountNumber: a.accountNumber, name: a.name })),
+        reason: `sin_cuenta_AR_para_${cur}_y_cliente`, currencyHint: cur,
+        customerTokens: tokens
+      };
+    }
+
+    // Tie-break por salesTax rule: exenta → "SIN IVA", general → sin "SIN IVA"
+    const rule = resolveSalesTaxRule(customer);
+    const hasSinIva = a => /\bsin\s*iva\b/i.test(String(a?.name || ''));
+    let preferred = byCustomer;
+    if (rule === 'exenta') {
+      const w = byCustomer.filter(hasSinIva);
+      if (w.length > 0) preferred = w;
+    } else if (rule === 'general') {
+      const w = byCustomer.filter(a => !hasSinIva(a));
+      if (w.length > 0) preferred = w;
+    }
+
+    preferred.sort((a, b) => String(b.accountNumber || '').localeCompare(String(a.accountNumber || '')));
+    const winner = preferred[0];
     return {
       account: { id: winner.id, accountNumber: winner.accountNumber, name: winner.name },
-      ambiguous: matches.length > 1,
-      candidates: matches.map(m => ({ id: m.id, accountNumber: m.accountNumber, name: m.name })),
+      ambiguous: preferred.length > 1,
+      candidates: preferred.map(m => ({ id: m.id, accountNumber: m.accountNumber, name: m.name })),
       reason: null,
-      currencyHint: cur
+      currencyHint: cur,
+      customerTokens: tokens,
+      ruleApplied: rule
     };
   }
 
