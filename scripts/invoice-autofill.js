@@ -1151,11 +1151,78 @@ const InvoiceAutofill = (() => {
   async function fillManualModalDates() {
     const today = new Date();
     const r1 = await tryFillDateInput('invoiced\\s*at|fecha\\s*de\\s*factura(?:cion)?', today);
-    const r2 = await tryFillDateInput('due\\s*date|fecha\\s*de\\s*vencimiento|vence', today);
-    log(`Modal manual fechas: invoicedAt=${JSON.stringify(r1)} dueDate=${JSON.stringify(r2)}`);
-    manualModalState.datesFilled = !!(r1?.success && r2?.success);
-    manualModalState.dateResults = { invoicedAt: r1, dueDate: r2 };
+    log(`Modal manual: invoicedAt=${JSON.stringify(r1)}`);
+    manualModalState.dateResults = { invoicedAt: r1, dueDate: null };
     renderManualPanel();
+
+    // Steelhead recalcula Due Date = Invoiced At + Terms al fijar Invoiced At.
+    // Esperamos ese recálculo; si no ocurre (Terms ausente/parseo distinto),
+    // fallback: nosotros calculamos hoy + Terms.
+    await sleep(1500);
+    const dueExisting = readDateInputValue('due\\s*date|fecha\\s*de\\s*vencimiento|vence');
+    if (dueExisting) {
+      log(`Due Date auto (Steelhead): ${dueExisting}`);
+      manualModalState.dateResults.dueDate = { success: true, filled: dueExisting, type: 'auto' };
+    } else {
+      const termsDays = readTermsDays();
+      if (termsDays != null) {
+        const due = new Date(today);
+        due.setDate(due.getDate() + termsDays);
+        const r2 = await tryFillDateInput('due\\s*date|fecha\\s*de\\s*vencimiento|vence', due);
+        log(`Due Date fallback (hoy + ${termsDays}d): ${JSON.stringify(r2)}`);
+        manualModalState.dateResults.dueDate = r2;
+      } else {
+        log('Due Date sin resolver: Steelhead no la calculó y Terms no detectado');
+        manualModalState.dateResults.dueDate = { success: false, reason: 'sin_terms' };
+      }
+    }
+    manualModalState.datesFilled = !!(r1?.success && manualModalState.dateResults.dueDate?.success);
+    renderManualPanel();
+  }
+
+  // Lee el value actual de un input de fecha por label, sin escribirlo.
+  function readDateInputValue(labelText) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    const labels = document.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 30) continue;
+      if (!labelRe.test(txt)) continue;
+      let parent = el;
+      for (let d = 0; d < 6 && parent; d++) {
+        const inp = parent.querySelector('input[type="date"], input[type="text"], input:not([type])');
+        if (inp) return inp.value?.trim() || null;
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  // Extrae días de Terms del combobox: "75 Días" → 75, "Net 30" → 30, "30 días" → 30.
+  function readTermsDays() {
+    const labels = document.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 30) continue;
+      if (!/^terms:?$|^t[eé]rminos:?$|^plazo:?$/i.test(txt)) continue;
+      let parent = el;
+      for (let d = 0; d < 6 && parent; d++) {
+        const sv = parent.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+        if (sv) {
+          const m = (sv.textContent || '').match(/(\d+)/);
+          if (m) return parseInt(m[1], 10);
+        }
+        const inp = parent.querySelector('input');
+        if (inp?.value) {
+          const m = inp.value.match(/(\d+)/);
+          if (m) return parseInt(m[1], 10);
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
   }
 
   function renderManualPanel(forceStatus) {
@@ -1173,7 +1240,14 @@ const InvoiceAutofill = (() => {
     const i = m.dateResults?.invoicedAt;
     const d = m.dateResults?.dueDate;
     const invLabel = i?.success ? `${escHtml(i.filled)} ✓` : (m.customer ? 'Pendiente' : '—');
-    const dueLabel = d?.success ? `${escHtml(d.filled)} ✓` : (m.customer ? 'Pendiente' : '—');
+    let dueLabel;
+    if (d?.success) {
+      dueLabel = `${escHtml(d.filled)}${d.type === 'auto' ? ' (auto)' : ' ✓'}`;
+    } else if (d?.reason === 'sin_terms') {
+      dueLabel = 'Pendiente (Terms no detectado)';
+    } else {
+      dueLabel = m.customer ? 'Calculando…' : '—';
+    }
 
     let html = `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:8px;margin-bottom:8px;">
       <strong>Invoice Manual</strong>
