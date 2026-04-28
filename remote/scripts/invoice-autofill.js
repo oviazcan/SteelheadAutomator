@@ -195,30 +195,19 @@ const InvoiceAutofill = (() => {
   }
 
   function scanForInvoicePage() {
-    const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
-    let found = false;
-    for (const h of headings) {
-      const txt = h.textContent?.trim();
-      if (txt && HEADING_RE.test(txt)) {
-        found = true;
-        break;
-      }
-    }
+    // Detección por presencia del form RJSF (Steelhead no muestra heading con "Invoice"/"Factura"
+    // en el editor; el nav lateral lo dice pero no sirve como ancla porque está siempre presente).
+    // Heurística: hay form activo si existen inputs con id="root_DatosContables_*" o varios "root_*".
+    const divisaInput = document.getElementById(RJSF_DIVISA_ID);
+    const tcInput = document.getElementById(RJSF_TC_ID);
+    const datosContablesAny = document.querySelector('[id^="root_DatosContables"]');
+    const rjsfInputs = document.querySelectorAll('[id^="root_"]');
+    const found = !!(divisaInput || tcInput || datosContablesAny || rjsfInputs.length >= 5);
 
     if (!found) {
-      // Diagnóstico: una sola vez por URL, loguear los primeros headings que parecen invoice
-      // para ayudar a calibrar HEADING_RE en producción
       if (diagLoggedForUrl !== location.pathname) {
         diagLoggedForUrl = location.pathname;
-        const candidates = [];
-        for (const h of headings) {
-          const t = h.textContent?.trim();
-          if (t && /invoice|factura/i.test(t) && t.length < 80) {
-            candidates.push(`${h.tagName}: "${t}"`);
-            if (candidates.length >= 5) break;
-          }
-        }
-        log(`InvoiceAutofill: heading no detectado en ${location.pathname}. Candidatos con "invoice/factura": ${candidates.length ? candidates.join(' | ') : '(ninguno)'}`);
+        log(`InvoiceAutofill: form RJSF no detectado en ${location.pathname} (root_* inputs=${rjsfInputs.length}). Esperando que abras Create/Edit Invoice.`);
       }
       if (invoiceFormVisible) {
         invoiceFormVisible = false;
@@ -226,6 +215,9 @@ const InvoiceAutofill = (() => {
         removePanel();
       }
       return;
+    }
+    if (diagLoggedForUrl !== null) {
+      log(`InvoiceAutofill: form RJSF detectado (root_* inputs=${rjsfInputs.length}, divisaInput=${!!divisaInput}, tcInput=${!!tcInput})`);
     }
     diagLoggedForUrl = null;
 
