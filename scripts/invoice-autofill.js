@@ -1323,35 +1323,60 @@ const InvoiceAutofill = (() => {
 
   // Abre un react-select y devuelve sus opciones visibles (sin "Create...").
   async function openSelectAndGetOptions(ctrl) {
-    // Intentar 3 vías para abrir: click → focus+ArrowDown → mousedown.
-    ctrl.control.click();
-    await sleep(150);
-    if (!document.querySelector('[class*="menu"], [class*="Menu"]')) {
+    // react-select v5 listener: mousedown en el control. element.click() no
+    // siempre lo dispara (orden de eventos dependiente del browser). Y
+    // [class*="menu"] matcheaba MuiTypography / MuiMenuItem en el DOM y daba
+    // falso positivo de "ya abierto", saltándose los fallbacks. Ahora usamos
+    // aria-expanded del combo como señal definitiva.
+    const dispatchMouse = (el, type) => {
+      el.dispatchEvent(new MouseEvent(type, {
+        bubbles: true, cancelable: true, button: 0, view: window
+      }));
+    };
+    const isOpen = () => ctrl.combo?.getAttribute('aria-expanded') === 'true';
+
+    // 1. mousedown + mouseup (vía nativa de react-select).
+    dispatchMouse(ctrl.control, 'mousedown');
+    await sleep(120);
+    dispatchMouse(ctrl.control, 'mouseup');
+    for (let i = 0; i < 15 && !isOpen(); i++) await sleep(80);
+
+    // 2. Fallback: focus + ArrowDown.
+    if (!isOpen()) {
       ctrl.combo?.focus();
       await sleep(80);
-      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true, cancelable: true }));
-      await sleep(150);
-    }
-    if (!document.querySelector('[class*="menu"], [class*="Menu"]')) {
-      ctrl.control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
-      await sleep(80);
-      ctrl.control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
-      await sleep(150);
+      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true, cancelable: true
+      }));
+      for (let i = 0; i < 15 && !isOpen(); i++) await sleep(80);
     }
 
+    // 3. Último intento: element.click() plano.
+    if (!isOpen()) {
+      ctrl.control.click();
+      for (let i = 0; i < 10 && !isOpen(); i++) await sleep(80);
+    }
+
+    if (!isOpen()) return [];
+
+    // Localizar el menu: aria-controls del combo (definitivo) → descendiente
+    // del container → sibling cercano. Rechazamos clases ambiguas (MuiTypography).
     let options = [];
-    for (let i = 0; i < 12; i++) {
-      await sleep(150);
-      // react-select renderiza el menu como sibling del control o en portal.
-      // Probamos varias clases (CSS-in-JS genera nombres distintos).
-      const menus = document.querySelectorAll('[class*="menuList"], [class*="MenuList"], [class*="menu-list"], [class*="-menu"]');
-      for (const menu of menus) {
-        const opts = [...menu.querySelectorAll('[class*="option"], [class*="Option"], [role="option"]')]
-          .filter(o => !/^\s*(create|crear|nuev[oa])\b/i.test(o.textContent?.trim() || ''))
-          .filter(o => (o.textContent?.trim() || '').length > 0);
-        if (opts.length > 0) { options = opts; break; }
+    for (let i = 0; i < 12 && options.length === 0; i++) {
+      await sleep(120);
+      const listboxId = ctrl.combo.getAttribute('aria-controls');
+      let menu = listboxId ? document.getElementById(listboxId) : null;
+      if (!menu) menu = ctrl.container.querySelector('[class*="-menu"]:not([class*="MuiTypography"])');
+      if (!menu) {
+        // Portal: react-select-N-listbox por id pattern.
+        const id = ctrl.combo.id || '';
+        const inputN = id.match(/react-select-(\d+)-input/)?.[1];
+        if (inputN) menu = document.getElementById(`react-select-${inputN}-listbox`);
       }
-      if (options.length > 0) break;
+      if (!menu) continue;
+      options = [...menu.querySelectorAll('[role="option"], [class*="-option"]')]
+        .filter(o => !/^\s*(create|crear|nuev[oa])\b/i.test(o.textContent?.trim() || ''))
+        .filter(o => (o.textContent?.trim() || '').length > 0);
     }
     return options;
   }
