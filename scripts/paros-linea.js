@@ -122,13 +122,27 @@ const ParosLinea = (() => {
   }
 
   async function fetchCurrentUser() {
-    const data = await api().query('CurrentUser', { deviceLocationIds: [] }, 'CurrentUser');
-    const u = data?.currentSession?.userByUserId;
-    if (!u) return null;
-    return {
-      id: u.id, name: u.name, isAdmin: u.isAdmin === true,
-      managedPermissions: Array.isArray(u.currentManagedPermissions) ? u.currentManagedPermissions : []
-    };
+    // Race con el Apollo Client del UI: en cold start nuestra request puede llegar
+    // antes de que el server tenga el hash de APQ registrado, y devuelve HTTP 400
+    // "Must provide a query string." Reintentamos con backoff hasta que el UI lo caliente.
+    const delays = [0, 600, 1200, 1800];
+    let lastErr;
+    for (const wait of delays) {
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      try {
+        const data = await api().query('CurrentUser', { deviceLocationIds: [] }, 'CurrentUser');
+        const u = data?.currentSession?.userByUserId;
+        if (!u) return null;
+        return {
+          id: u.id, name: u.name, isAdmin: u.isAdmin === true,
+          managedPermissions: Array.isArray(u.currentManagedPermissions) ? u.currentManagedPermissions : []
+        };
+      } catch (e) {
+        lastErr = e;
+        if (!/Must provide a query string|PersistedQueryNotFound/i.test(e.message || '')) throw e;
+      }
+    }
+    throw lastErr;
   }
 
   function isAuthorized(user) {
