@@ -1,5 +1,5 @@
 {
-  "version": "0.5.7",
+  "version": "0.5.8",
   "lastUpdated": "2026-04-27",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -59,7 +59,8 @@
         "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856",
         "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334",
         "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c",
-        "CreateUpdateBill": "c6c2545a187f37bbbfb9764ba7449affc1c0b16bcffaaec69c5ae6c6fca3f9c8"
+        "CreateUpdateBill": "c6c2545a187f37bbbfb9764ba7449affc1c0b16bcffaaec69c5ae6c6fca3f9c8",
+        "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -120,7 +121,7 @@
         "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888",
         "ReceivingBatchesQuery": "499a8e1578fc09e785ecb7e6f132520bd6b8ac701e2f70e45e2b89484f0d89c9",
         "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4",
-        "InvoiceByIdInDomain": "9bfd1fe7ea06bf4b4c497ef0c79b799c5ebd60d6e113d25b5af7f8c0344ae3af",
+        "InvoiceByIdInDomain": "d27624a6d6de90a64e6cc4d415f4fb192d5b799f69fc84328c4c3d684d3abbcc",
         "UIGetInvoice": "ad44339c9debcffd0412fb36efbc74d593e18a66141a84fd6292312b8bdd9ae8",
         "CurrentUser": "18c6574c779e24f19b19e303b1b7c176601eb44e4dfd1860d2d925fd976c779e",
         "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c",
@@ -140,7 +141,9 @@
         "SearchPurchaseOrdersForBill": "c9fb4e0a9f549f61c588cb6fdd533c07f863e849025ee04db244f7cc8b6e56d8",
         "GetPurchaseOrdersDataForBill": "8096f97c085a3c8e757d7e4ef4592f1f7d21cce6d93a5d7196affb9f38c58a2d",
         "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8",
-        "GetVendor": "326a130b68bfefc937c25df00d33543e0dcc28da340cc1a46ec59fa470c882a8"
+        "GetVendor": "326a130b68bfefc937c25df00d33543e0dcc28da340cc1a46ec59fa470c882a8",
+        "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e",
+        "GetReceivedOrdersWithReceivedOrderLineItems": "cff4549f79c1e64843cf1541ea27555ab0d8be7d53c3fd47c4b458ffd53535e7"
       }
     },
     "domain": {
@@ -451,6 +454,19 @@
       "actions": [
         { "id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill" }
       ]
+    },
+    {
+      "id": "invoice-autofill",
+      "name": "Invoice Autofill",
+      "subtitle": "Llenado automático de cuentas contables en Invoices",
+      "icon": "🧮",
+      "category": "Facturación",
+      "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"],
+      "autoInject": true,
+      "requiredPermissions": ["READ_INVOICING"],
+      "actions": [
+        { "id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill" }
+      ]
     }
   ],
   "knownOperations": {
@@ -563,7 +579,10 @@
     "AllPermissionsEditManyPermissions": { "type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings" },
     "GetAvailableUnits": { "type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry" },
     "CreateInventoryItemUnitConversion": { "type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry" },
-    "UpdateInventoryItemUnitConversion": { "type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry" }
+    "UpdateInventoryItemUnitConversion": { "type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry" },
+    "InvoiceLowCodeData": { "type": "query", "description": "Carga única de creación/edición de invoice — trae customer (con DatosContables.CuentasContables y salesTaxable), allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill" },
+    "GetReceivedOrdersWithReceivedOrderLineItems": { "type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customer completo con cuentas contables. Marca linkage de invoice a OV", "usedBy": "invoice-autofill" },
+    "CreateInvoiceAndUpdatePartTransferAccounts": { "type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
