@@ -56,8 +56,8 @@ const InvoiceAutofill = (() => {
     }
     patchFetch();
     setupUrlListener();
+    log(`InvoiceAutofill inicializado en ${location.pathname} (matches=${INVOICE_URL_RE.test(location.pathname)})`);
     checkUrl();
-    log('InvoiceAutofill inicializado');
   }
 
   // ── URL Listener ──
@@ -109,6 +109,11 @@ const InvoiceAutofill = (() => {
   let autofillRunning = false;
   let scriptSetDivisa = null;
   let headingLostAt = 0;
+  let diagLoggedForUrl = null;
+
+  // Heading detection: matchea variantes Create/Edit/New Invoice, "Invoice #123",
+  // versiones en español ("Nueva/Editar Factura"), o solo "Invoice" como h1
+  const HEADING_RE = /(?:create|edit|new|view)\s+invoice|^\s*invoice(?:\s|$|#|·|\d|-)|nueva\s+factura|editar\s+factura|^\s*factura(?:\s|$|#|·|\d|-)/i;
 
   const RJSF_DIVISA_ID = 'root_DatosContables_Divisa';
   const RJSF_TC_ID = 'root_DatosContables_exchangeRate';
@@ -193,13 +198,28 @@ const InvoiceAutofill = (() => {
     const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
     let found = false;
     for (const h of headings) {
-      if (/create\s+invoice|edit\s+invoice|nueva\s+factura|editar\s+factura/i.test(h.textContent?.trim())) {
+      const txt = h.textContent?.trim();
+      if (txt && HEADING_RE.test(txt)) {
         found = true;
         break;
       }
     }
 
     if (!found) {
+      // Diagnóstico: una sola vez por URL, loguear los primeros headings que parecen invoice
+      // para ayudar a calibrar HEADING_RE en producción
+      if (diagLoggedForUrl !== location.pathname) {
+        diagLoggedForUrl = location.pathname;
+        const candidates = [];
+        for (const h of headings) {
+          const t = h.textContent?.trim();
+          if (t && /invoice|factura/i.test(t) && t.length < 80) {
+            candidates.push(`${h.tagName}: "${t}"`);
+            if (candidates.length >= 5) break;
+          }
+        }
+        log(`InvoiceAutofill: heading no detectado en ${location.pathname}. Candidatos con "invoice/factura": ${candidates.length ? candidates.join(' | ') : '(ninguno)'}`);
+      }
       if (invoiceFormVisible) {
         invoiceFormVisible = false;
         headingLostAt = Date.now();
@@ -207,6 +227,7 @@ const InvoiceAutofill = (() => {
       }
       return;
     }
+    diagLoggedForUrl = null;
 
     if (!invoiceFormVisible) {
       invoiceFormVisible = true;
