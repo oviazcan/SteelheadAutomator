@@ -537,38 +537,50 @@ const InvoiceAutofill = (() => {
   // TODO: filtro por EmpresaEmisora cuando aparezca un caso real con dos emisoras
   // Resolver de cuenta CXC contra el catálogo consolidado `allAcctAccounts`.
   //
-  // Las cuentas de `customer.customInputs.DatosContables.CuentasContables` son LEGACY
-  // (referencia del sistema anterior, antes de consolidar las 3 razones sociales en
-  // un único catálogo en Steelhead). NO se usan como fuente de verdad — escribirlas
-  // en el react-select dispara el modal "Create Account" porque no existen en el
-  // catálogo activo.
+  // `customer.customInputs.DatosContables.CuentasContables` es LEGACY del sistema
+  // anterior (antes de consolidar las 3 razones sociales en un solo catálogo).
+  // No se usa: escribir esos números en el react-select dispara "Create Account".
   //
-  // v0.5.18: aún sin regla determinista para mapear `divisa → cuenta AR` en el
-  // catálogo consolidado. Reportamos candidatos (cuentas con prefijo 0103-) y
-  // dejamos que el usuario las elija a mano. Cuando el usuario defina la regla
-  // (probable: campo `currency` en la cuenta, o naming convention en `name`),
-  // se enciende el auto-fill.
+  // Convención del catálogo consolidado (homologado entre razones sociales):
+  // las cuentas AR terminan su `name` con la divisa, ej. "Clientes Generales USD",
+  // "Clientes Generales MXN". Filtramos por categoría receivable y match por
+  // sufijo `\bDIVISA\s*$` en el name. Los prefijos numéricos varían (0103-, 0105-)
+  // por carga histórica — no se usan para filtrar.
   function findBestARAccount(_customer, currency, allAccounts) {
+    const cur = String(currency || '').toUpperCase().trim();
+    if (!cur) return { account: null, ambiguous: false, candidates: [], reason: 'sin_divisa' };
+
     const all = Array.isArray(allAccounts) ? allAccounts : [];
-    const arAccounts = all.filter(a => {
-      const num = String(a?.accountNumber || '');
-      const cat = String(a?.acctAccountTypeByTypeId?.category || '');
-      return num.startsWith('0103-') || /receivable/i.test(cat);
-    });
-    if (arAccounts.length === 0) {
-      return { account: null, ambiguous: false, candidates: [], reason: 'sin_cuentas_AR_en_catalogo' };
+    const arPool = all.filter(a => /receivable/i.test(String(a?.acctAccountTypeByTypeId?.category || '')));
+    // Si el shape no expone category (parser sin esa relación), usar todo el pool —
+    // el match por sufijo de divisa es suficientemente específico.
+    const pool = arPool.length > 0 ? arPool : all;
+    if (pool.length === 0) {
+      return { account: null, ambiguous: false, candidates: [], reason: 'allAcctAccounts_vacio' };
     }
+
+    const re = new RegExp(`\\b${cur}\\s*$`, 'i');
+    const matches = pool.filter(a => re.test(String(a?.name || '')));
+
+    if (matches.length === 0) {
+      return {
+        account: null,
+        ambiguous: false,
+        candidates: arPool.map(a => ({ id: a.id, accountNumber: a.accountNumber, name: a.name })),
+        reason: `sin_cuenta_AR_para_${cur}`,
+        currencyHint: cur
+      };
+    }
+
+    // Tie-break por accountNumber más alto si quedaron duplicados históricos.
+    matches.sort((a, b) => String(b.accountNumber || '').localeCompare(String(a.accountNumber || '')));
+    const winner = matches[0];
     return {
-      account: null,
-      ambiguous: false,
-      candidates: arAccounts.map(a => ({
-        id: a.id,
-        accountNumber: a.accountNumber,
-        name: a.name,
-        currency: a.currency || a.currencyCode || null
-      })),
-      reason: 'pendiente_regla_AR',
-      currencyHint: currency || null
+      account: { id: winner.id, accountNumber: winner.accountNumber, name: winner.name },
+      ambiguous: matches.length > 1,
+      candidates: matches.map(m => ({ id: m.id, accountNumber: m.accountNumber, name: m.name })),
+      reason: null,
+      currencyHint: cur
     };
   }
 
@@ -1091,12 +1103,12 @@ const InvoiceAutofill = (() => {
       log('Factura con linkage a OV/PS — divisa y TC respetados, no se tocan');
     }
 
-    // Cuenta CXC (siempre que se pueda resolver)
-    // accountNumber siempre presente (synthetic fallback). id puede faltar si la
-    // cuenta no está aún en allAcctAccounts — el DOM-fill no lo necesita.
+    // Cuenta CXC: solo si pudimos resolverla contra `allAcctAccounts` por sufijo
+    // de divisa. El search es el accountNumber (más específico para el filtro
+    // del react-select, que matchea contra el texto "0105-... · Clientes USD").
     if (state.arAccount?.account?.accountNumber) {
       const acc = state.arAccount.account;
-      const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
+      const search = acc.accountNumber || acc.name;
       results.arAccount = await tryFillARBySubtitle(search, acc.name || acc.accountNumber);
       if (!results.arAccount?.success) {
         log(`Fill AR (subtitle path): ${JSON.stringify(results.arAccount)} — fallback a label`);
@@ -1313,12 +1325,9 @@ const InvoiceAutofill = (() => {
       let arLabel = '—';
       let arStatus = 'pending';
       if (ar?.account?.accountNumber) {
-        arLabel = ar.account.name || ar.account.accountNumber;
-        if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas)`;
+        arLabel = `${ar.account.accountNumber} · ${ar.account.name || ''}`.trim();
+        if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas, mayor #)`;
         arStatus = ar.ambiguous ? 'warn' : 'done';
-      } else if (ar?.reason === 'pendiente_regla_AR') {
-        arLabel = `Manual (${ar.candidates?.length || 0} cuentas 0103- en catálogo)`;
-        arStatus = 'warn';
       } else if (ar?.reason) {
         arLabel = `No resuelto: ${ar.reason}`;
         arStatus = 'error';
