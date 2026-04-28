@@ -16,10 +16,10 @@ const InvoiceAutofill = (() => {
   const INVOICE_URL_RE = /\/Domains\/\d+\/Invoices(?:\/|$)/;
 
   // Matriz de prefijos contables
-  // [salesTaxable=true (Tasa General)] × [credit-note=false] → 0401-0001 (Ventas Tasa General)
-  // [salesTaxable=true (Tasa General)] × [credit-note=true]  → 0402-0001 (Devoluciones/Descuentos Tasa General)
-  // [salesTaxable=false (Tasa 0%)]     × [credit-note=false] → 0401-0004 (Ventas Tasa 0%)
-  // [salesTaxable=false (Tasa 0%)]     × [credit-note=true]  → 0402-0002 (Devoluciones/Descuentos Tasa 0%)
+  // [salesTaxBySalesTaxId.name=general] × [credit-note=false] → 0401-0001 (Ventas Tasa General)
+  // [salesTaxBySalesTaxId.name=general] × [credit-note=true]  → 0402-0001 (Devoluciones/Descuentos Tasa General)
+  // [salesTaxBySalesTaxId.name=exenta]  × [credit-note=false] → 0401-0004 (Ventas Tasa 0%)
+  // [salesTaxBySalesTaxId.name=exenta]  × [credit-note=true]  → 0402-0002 (Devoluciones/Descuentos Tasa 0%)
   const PREFIX_VENTAS_GENERAL = '0401-0001';
   const PREFIX_VENTAS_CERO    = '0401-0004';
   const PREFIX_DESC_GENERAL   = '0402-0001';
@@ -362,8 +362,9 @@ const InvoiceAutofill = (() => {
         const customInputsKeys = Object.keys(customer.customInputs || {}).slice(0, 30).join(',');
         const hasCuentas = !!customer.customInputs?.DatosContables?.CuentasContables;
         const cuentasCount = customer.customInputs?.DatosContables?.CuentasContables?.length || 0;
-        const salesTaxableResolved = resolveSalesTaxable(customer);
-        log(`InvoiceLowCodeData: customer hasCuentasContables=${hasCuentas} (n=${cuentasCount}) salesTaxable=${salesTaxableResolved} customInputs.keys=[${customInputsKeys}]`);
+        const taxName = customer?.salesTaxBySalesTaxId?.name || '(no en query)';
+        const ruleResolved = resolveSalesTaxRule(customer);
+        log(`InvoiceLowCodeData: customer hasCuentasContables=${hasCuentas} (n=${cuentasCount}) salesTax="${taxName}" → rule=${ruleResolved} customInputs.keys=[${customInputsKeys}]`);
       } else {
         const rootKeys = Object.keys(json.data || {}).slice(0, 20).join(', ');
         log(`InvoiceLowCodeData: customer no encontrado. data keys=[${rootKeys}]`);
@@ -398,8 +399,8 @@ const InvoiceAutofill = (() => {
           log(`SO Divisa: ${state.receivedOrderDivisa}`);
         }
       }
-      // Esta query trae customer con salesTaxable + idInDomain (InvoiceLowCodeData NO los trae).
-      // Mergeamos siempre — incluso si state.customer ya estaba poblado, queremos sumar salesTaxable.
+      // Esta query trae customer con salesTaxBySalesTaxId.name + idInDomain
+      // (InvoiceLowCodeData NO los trae). Mergeamos siempre.
       const customer = json.data?.customerById;
       if (customer) {
         if (!state.customer) {
@@ -407,12 +408,13 @@ const InvoiceAutofill = (() => {
           state.customerId = customer.id || null;
           state.customerName = customer.name || customer.shortName || null;
         } else {
+          if (customer.salesTaxBySalesTaxId) state.customer.salesTaxBySalesTaxId = customer.salesTaxBySalesTaxId;
           if (typeof customer.salesTaxable === 'boolean') state.customer.salesTaxable = customer.salesTaxable;
           if (customer.idInDomain != null && state.customer.idInDomain == null) state.customer.idInDomain = customer.idInDomain;
           if (customer.id != null && state.customer.id == null) state.customer.id = customer.id;
           if (customer.name && !state.customerName) state.customerName = customer.name;
         }
-        log(`GetReceivedOrders: customer.salesTaxable=${customer.salesTaxable} customer.idInDomain=${customer.idInDomain}`);
+        log(`GetReceivedOrders: customer.salesTax="${customer?.salesTaxBySalesTaxId?.name || '?'}" idInDomain=${customer.idInDomain}`);
       }
       const accounts = json.data?.allAcctAccounts?.nodes;
       if (Array.isArray(accounts) && state.allAccounts.length === 0) state.allAccounts = accounts;
@@ -564,28 +566,32 @@ const InvoiceAutofill = (() => {
     };
   }
 
-  // salesTaxable vive en la columna nativa `customer.sales_taxable` (Postgres),
-  // expuesta en GraphQL como `salesTaxable` boolean al top-level del customer.
-  // NO está en customInputs. Si la persisted query usada (InvoiceLowCodeData)
-  // no incluye ese campo en su selection set, no podremos resolverlo y la regla
-  // queda en null (FAB lo marca como pendiente).
-  // Convención: true = Tasa General (ventas nacionales gravadas IVA, prefijo 0401-0001 / 0402-0001),
-  //             false = Tasa 0% / Exento (exportación, prefijo 0401-0004 / 0402-0002).
-  function resolveSalesTaxable(customer) {
+  // El flag relevante NO es `customer.salesTaxable` (siempre true: indica que el cliente
+  // tiene un impuesto asignado), sino *cuál* impuesto del catálogo está asignado:
+  // `customer.salesTaxBySalesTaxId.name` viene del catálogo de SalesTaxes del dominio.
+  // Convenciones del dominio Ecoplating:
+  //   - "Ventas Nacionales con Impuestos" → general (IVA 16%, prefijo 0401-0001 / 0402-0001)
+  //   - "Ventas Exentas sin impuestos"   → exenta (Tasa 0%, prefijo 0401-0004 / 0402-0002)
+  // Devuelve 'general' | 'exenta' | null (null = no se pudo determinar).
+  function resolveSalesTaxRule(customer) {
     if (!customer) return null;
-    if (typeof customer.salesTaxable === 'boolean') return customer.salesTaxable;
-    if (typeof customer.sales_taxable === 'boolean') return customer.sales_taxable;
+    const taxName = customer?.salesTaxBySalesTaxId?.name
+      || customer?.customerAddressesByCustomerId?.nodes?.[0]?.salesTaxBySalesTaxId?.name
+      || null;
+    if (typeof taxName !== 'string' || !taxName.trim()) return null;
+    const s = taxName.toLowerCase();
+    if (/exent|sin\s*impuest|tasa\s*0|cero|0\s*%|export/.test(s)) return 'exenta';
+    if (/nacional|general|gravad|con\s*impuest|iva|16\s*%/.test(s)) return 'general';
     return null;
   }
 
   // Cuenta de ingreso/descuento por línea
   function resolveLineAccount({ lineAmount, customer, productId, allAccounts, productConfigs, isCreditNoteGlobal }) {
-    const taxable = resolveSalesTaxable(customer);
+    const rule = resolveSalesTaxRule(customer);
     const isCredit = isCreditNoteGlobal || (typeof lineAmount === 'number' && lineAmount < 0);
 
-    if (taxable === null) {
-      // Sin salesTaxable resuelto no hay regla. No proponemos cuenta para evitar
-      // sobreescribir con la tasa equivocada.
+    if (rule === null) {
+      // Sin regla determinada no proponemos cuenta para evitar default silencioso.
       return {
         account: null,
         expected: null,
@@ -594,10 +600,10 @@ const InvoiceAutofill = (() => {
         isCredit,
         targetPrefix: null,
         source: 'unresolved',
-        reason: 'sin_salesTaxable_en_query'
+        reason: 'sin_salesTax_en_query'
       };
     }
-    const isGeneral = taxable === true;
+    const isGeneral = rule === 'general';
 
     let targetPrefix;
     if (isCredit) {
@@ -1140,16 +1146,17 @@ const InvoiceAutofill = (() => {
       return;
     }
 
-    // salesTaxable no viene en InvoiceLowCodeData. Si tampoco vino por GetReceivedOrders
-    // (factura manual sin OV), disparamos la persisted query "Customer" con idInDomain.
-    if (resolveSalesTaxable(state.customer) === null) {
+    // salesTaxBySalesTaxId.name no viene en InvoiceLowCodeData. Si tampoco vino por
+    // GetReceivedOrders (factura manual sin OV), disparamos la persisted query "Customer".
+    if (resolveSalesTaxRule(state.customer) === null) {
       const idInDomain = state.customer?.idInDomain || extractCustomerIdInDomainFromDOM();
       if (idInDomain != null) {
-        log(`Fetching Customer(idInDomain=${idInDomain}) para resolver salesTaxable`);
+        log(`Fetching Customer(idInDomain=${idInDomain}) para resolver salesTax`);
         const fetched = await fetchCustomerSalesTaxable(idInDomain);
         if (fetched) {
           if (!state.customer) state.customer = fetched;
           else {
+            if (fetched.salesTaxBySalesTaxId) state.customer.salesTaxBySalesTaxId = fetched.salesTaxBySalesTaxId;
             if (typeof fetched.salesTaxable === 'boolean') state.customer.salesTaxable = fetched.salesTaxable;
             if (state.customer.idInDomain == null) state.customer.idInDomain = fetched.idInDomain;
             // CuentasContables del Customer query es más completo si InvoiceLowCodeData no las trajo
@@ -1159,10 +1166,10 @@ const InvoiceAutofill = (() => {
               state.customer.customInputs.DatosContables = fetched.customInputs.DatosContables;
             }
           }
-          log(`Customer query resuelto: salesTaxable=${fetched.salesTaxable}`);
+          log(`Customer query resuelto: salesTax="${fetched?.salesTaxBySalesTaxId?.name || '?'}" → rule=${resolveSalesTaxRule(fetched)}`);
         }
       } else {
-        log('No se pudo determinar customer.idInDomain — salesTaxable queda pendiente');
+        log('No se pudo determinar customer.idInDomain — salesTax queda pendiente');
       }
     }
 
@@ -1324,8 +1331,8 @@ const InvoiceAutofill = (() => {
           let lbl;
           if (line.account) {
             lbl = line.account.name || line.account.accountNumber;
-          } else if (line.reason === 'sin_salesTaxable_en_query') {
-            lbl = 'Pendiente: salesTaxable no viene en la query';
+          } else if (line.reason === 'sin_salesTax_en_query') {
+            lbl = 'Pendiente: salesTax del cliente no resuelto';
           } else if (line.targetPrefix) {
             lbl = `No resuelto (${line.targetPrefix})`;
           } else {
