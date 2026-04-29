@@ -23,6 +23,18 @@ const InvoiceAutoRegen = (() => {
   const hashRegistry = window.__autoRegenHashRegistryMap || (window.__autoRegenHashRegistryMap = new Map());
 
   // ── Estado ──
+  // Resultado del último pull activo. Se sobreescribe cada vez — NO se acumula.
+  // El banner y startRun leen de aquí. null = "todavía no hay info" o "degraded".
+  let lastPullResult = null;        // Array<{invoiceId, idInDomain}> | null
+  let lastPullAt = 0;               // ms epoch del último pull exitoso
+  let _pullInFlight = null;         // Promise compartido para evitar pulls concurrentes
+  let _pullDegraded = false;        // true tras 3 fallos consecutivos
+  let _pullConsecFailures = 0;
+  const PULL_THROTTLE_MS = 30 * 1000;
+  const PULL_WINDOW_DAYS = 7;
+  const PULL_PAGE_SIZE = 50;
+  const PULL_MAX_PAGES = 5;
+
   // pendientes que el detector ha visto en esta sesión y no han sido regeneradas
   const pendingByInvoiceId = new Map(); // invoiceId → {invoiceId, idInDomain}
   // facturas regeneradas exitosamente — el detector ignora estas aunque
