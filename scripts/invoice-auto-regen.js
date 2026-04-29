@@ -23,13 +23,23 @@ const InvoiceAutoRegen = (() => {
   const hashRegistry = window.__autoRegenHashRegistryMap || (window.__autoRegenHashRegistryMap = new Map());
 
   // ── Estado ──
-  // pendientes que el detector ha visto en esta sesión y no han sido regeneradas
-  const pendingByInvoiceId = new Map(); // invoiceId → {invoiceId, idInDomain}
+  // Resultado del último pull activo. Se sobreescribe cada vez — NO se acumula.
+  // El banner y startRun leen de aquí. null = "todavía no hay info" o "degraded".
+  let lastPullResult = null;        // Array<{invoiceId, idInDomain}> | null
+  let lastPullAt = 0;               // ms epoch del último pull exitoso
+  let _pullInFlight = null;         // Promise compartido para evitar pulls concurrentes
+  let _pullDegraded = false;        // true tras 3 fallos consecutivos
+  let _pullConsecFailures = 0;
+  const PULL_THROTTLE_MS = 30 * 1000;
+  const PULL_WINDOW_DAYS = 7;
+  const PULL_PAGE_SIZE = 50;
+  const PULL_MAX_PAGES = 5;
+
   // facturas regeneradas exitosamente — el detector ignora estas aunque
   // ActiveInvoicesPaged siga reportándolas como pendientes (eventual consistency).
   // Persistido en localStorage con TTL para sobrevivir reloads. Map: invoiceId → timestamp(ms).
   const RECENT_KEY = 'sa_autoregen_recently_regenerated';
-  const RECENT_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+  const RECENT_TTL_MS = 3 * 60 * 1000; // 3 min — solo cubre eventual consistency post-regen
   const recentlyRegenerated = new Map();
   function _persistRecent() {
     try {
@@ -98,6 +108,19 @@ const InvoiceAutoRegen = (() => {
     patchFetch();
     installLock();
     setupBannerObserver();
+
+    // Trigger (c): re-enfocar el tab dispara pull (con throttle propio en pullPendingCount).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (runState.active) return; // no interferir con batch
+      pullPendingCount(); // throttle a 30s aplica internamente
+    });
+
+    // Trigger (a): primer disparo. Si todavía no hay template aprendido, pullPendingCount
+    // imprime un log informativo y retorna null — el siguiente ActiveInvoicesPaged del UI
+    // (trigger d) lo activa.
+    pullPendingCount();
+
     console.log('[AutoRegen] Inicializado');
   }
 
@@ -122,6 +145,15 @@ const InvoiceAutoRegen = (() => {
       if (opName && _h) {
         hashRegistry.set(opName, _h);
         try { window.__autoRegenHashRegistry = Object.fromEntries(hashRegistry); } catch {}
+      }
+
+      // Snapshot de variables de ActiveInvoicesPaged como template para pullPendingCount.
+      // Se sobreescribe en cada pasada — siempre queremos el template más reciente.
+      if (opName === 'ActiveInvoicesPaged' && bodyObj?.variables) {
+        try {
+          window.__autoRegenLastVars = window.__autoRegenLastVars || {};
+          window.__autoRegenLastVars.ActiveInvoicesPaged = JSON.parse(JSON.stringify(bodyObj.variables));
+        } catch (_) { /* shape rara — ignorar */ }
       }
 
       // Captura payload completo de GetPdfTemplateOutputToUserFile (renderer del PDF).
@@ -177,11 +209,13 @@ const InvoiceAutoRegen = (() => {
             }
           }
 
-          const items = (opName === 'ActiveInvoicesPaged') ? scanList(json) : scanSingle(json);
-          if (items.length > 0) {
-            recordPending(items);
-            // Si vino del modal abierto manualmente → auto-regen sin cerrar
-            if (opName === 'InvoiceByIdInDomain') {
+          if (opName === 'ActiveInvoicesPaged') {
+            // Trigger reactivo (d): aprovechamos que el UI ya consultó el server.
+            // pullPendingCount aplica su propio throttle de 30s y deduplica via _pullInFlight.
+            pullPendingCount();
+          } else if (opName === 'InvoiceByIdInDomain') {
+            const items = scanSingle(json);
+            if (items.length > 0) {
               autoRegenInOpenModal(items[0]);  // no await: corre en background
             }
           }
@@ -239,30 +273,13 @@ const InvoiceAutoRegen = (() => {
     return [{ invoiceId: inv.id, idInDomain: inv.idInDomain }];
   }
 
-  function recordPending(items) {
-    let added = 0, suppressed = 0;
-    for (const it of items) {
-      // Ignorar las que ya regeneramos: la query trae el PDF viejo todavía por
-      // eventual consistency. El set persiste en localStorage con TTL de 24h.
-      if (isRecentlyRegenerated(it.invoiceId)) { suppressed++; continue; }
-      if (!pendingByInvoiceId.has(it.invoiceId)) {
-        pendingByInvoiceId.set(it.invoiceId, it);
-        added++;
-      }
-    }
-    if (added > 0) {
-      console.log(`[AutoRegen] +${added} pendientes (total ${pendingByInvoiceId.size})${suppressed ? ` — ignoradas ${suppressed} ya regeneradas` : ''}`);
-    }
-    updateBanner();
-  }
-
   // ── Auto-regen cuando el usuario abre el modal de una pendiente ──
 
   async function autoRegenInOpenModal(item) {
     if (runState.active) return;                       // no interferir con batch
     if (modalAutoRegenActive) return;                  // ya hay uno corriendo
     if (window.__autoRegenPdfWaiter) return;           // hay otra regen en vuelo
-    if (!pendingByInvoiceId.has(item.invoiceId)) return;
+    if (isRecentlyRegenerated(item.invoiceId)) return; // ya la regeneramos hace < 3 min
 
     modalAutoRegenActive = true;
     console.log(`%c[AutoRegen] Modal abierto en factura pendiente #${item.idInDomain} — auto-regenerando…`, 'color:#0891b2;font-weight:bold');
@@ -273,7 +290,7 @@ const InvoiceAutoRegen = (() => {
       await sleep(1500);
       await testRegenInOpenModal(30000);
       markRegenerated(item.invoiceId);
-      pendingByInvoiceId.delete(item.invoiceId);
+      pullPendingCount({ force: true }); // refresca banner sin bloquear el flujo
       console.log(`%c[AutoRegen] ✓ #${item.idInDomain} regenerada (modal abierto)`, 'color:#16a34a;font-weight:bold');
     } catch (e) {
       console.warn(`[AutoRegen] auto-regen en modal abierto falló para #${item.idInDomain}: ${e.message}`);
@@ -294,7 +311,7 @@ const InvoiceAutoRegen = (() => {
 
   async function startRun() {
     if (runState.active) return;
-    const items = Array.from(pendingByInvoiceId.values());
+    const items = Array.isArray(lastPullResult) ? [...lastPullResult] : [];
     if (items.length === 0) return;
 
     runState.active = true;
@@ -326,7 +343,6 @@ const InvoiceAutoRegen = (() => {
             }
             await regenViaModal(items[i].idInDomain);
             markRegenerated(items[i].invoiceId);
-            pendingByInvoiceId.delete(items[i].invoiceId);
             success = true;
           } catch (e) {
             lastErr = e;
@@ -340,8 +356,12 @@ const InvoiceAutoRegen = (() => {
       runState.active = false;
       runState.current = null;
       hideOverlay();
+      // Trigger (b): post-regen siempre dispara pull fresco para que el banner refleje la realidad.
+      pullPendingCount({ force: true }).then(items => {
+        const remaining = Array.isArray(items) ? items.length : 0;
+        console.log(`%c[AutoRegen] Batch terminado. ✓${ok} ✗${failed}. Pendientes restantes (post-pull): ${remaining}`, 'color:#16a34a;font-weight:bold');
+      });
       updateBanner();
-      console.log(`%c[AutoRegen] Batch terminado. ✓${ok} ✗${failed}. Pendientes restantes: ${pendingByInvoiceId.size}`, 'color:#16a34a;font-weight:bold');
     }
   }
 
@@ -446,10 +466,10 @@ const InvoiceAutoRegen = (() => {
       banner.style.display = 'inline-flex';
       banner.style.position = 'relative';
       banner.style.zIndex = '10000';
-    } else if (pendingByInvoiceId.size > 0) {
+    } else if (Array.isArray(lastPullResult) && lastPullResult.length > 0) {
       const btn = document.createElement('button');
       btn.dataset.saRegenStart = '1';
-      const n = pendingByInvoiceId.size;
+      const n = lastPullResult.length;
       btn.textContent = `↻ ${n} timbrada${n === 1 ? '' : 's'} pendiente${n === 1 ? '' : 's'} — Regenerar PDFs`;
       btn.style.cssText = 'background:#a02020;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
       btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); startRun(); });
@@ -469,7 +489,7 @@ const InvoiceAutoRegen = (() => {
     bannerCheckScheduled = true;
     setTimeout(() => {
       bannerCheckScheduled = false;
-      const needsBanner = pendingByInvoiceId.size > 0 || runState.active;
+      const needsBanner = (Array.isArray(lastPullResult) && lastPullResult.length > 0) || runState.active;
       if (needsBanner && !document.getElementById(BANNER_ID)) updateBanner();
     }, 500);
   }
@@ -561,6 +581,150 @@ const InvoiceAutoRegen = (() => {
       throw new Error(`GraphQL ${opName}: ${msgs.substring(0, 300)}`);
     }
     return j.data;
+  }
+
+  // ── Pull activo de pendientes ──
+
+  // Inspecciona el template para encontrar el nombre del campo de filtro "desde".
+  // Devuelve el path (ej. "writtenAtFrom" o "filter.dateFrom") o null si no existe.
+  function _detectDateFromField(template) {
+    if (!template || typeof template !== 'object') return null;
+    const candidates = ['writtenAtFrom', 'writtenAtStart', 'dateFrom', 'fromDate', 'from', 'startDate'];
+    for (const k of candidates) {
+      if (k in template) return k;
+    }
+    for (const key of Object.keys(template)) {
+      const v = template[key];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const k of candidates) {
+          if (k in v) return `${key}.${k}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  function _setNestedField(obj, path, value) {
+    const parts = path.split('.');
+    let cur = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur[parts[i]] = cur[parts[i]] || {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+  }
+
+  // El template viene del UI con search/customer/etc. seleccionados por el usuario.
+  // Para nuestro pull global queremos esos filtros en blanco. Mutamos sobre una copia.
+  function _sanitizeTemplate(template) {
+    const t = JSON.parse(JSON.stringify(template));
+    const fieldsToClear = ['searchTerm', 'search', 'customerId', 'customer', 'status', 'tags', 'tagIds'];
+    for (const k of fieldsToClear) {
+      if (k in t) {
+        const v = t[k];
+        t[k] = (typeof v === 'string') ? '' : (Array.isArray(v) ? [] : null);
+      }
+    }
+    for (const key of Object.keys(t)) {
+      const v = t[key];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const k of fieldsToClear) {
+          if (k in v) {
+            const vv = v[k];
+            v[k] = (typeof vv === 'string') ? '' : (Array.isArray(vv) ? [] : null);
+          }
+        }
+      }
+    }
+    return t;
+  }
+
+  // Pulls actively from ActiveInvoicesPaged with a 7-day window. Evaluates needsRegen()
+  // per node and filters out recentlyRegenerated. Updates lastPullResult/lastPullAt.
+  // Coalesces concurrent calls via _pullInFlight.
+  async function pullPendingCount({ force = false } = {}) {
+    if (_pullInFlight) return _pullInFlight;
+    if (!force && Date.now() - lastPullAt < PULL_THROTTLE_MS && lastPullResult !== null) {
+      return lastPullResult;
+    }
+
+    const template = window.__autoRegenLastVars?.ActiveInvoicesPaged;
+    if (!template) {
+      console.log('[AutoRegen] pullPendingCount: sin template aprendido todavía — esperando ActiveInvoicesPaged del UI');
+      return null;
+    }
+
+    _pullInFlight = (async () => {
+      const cutoffMs = Date.now() - PULL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      const cutoffISO = new Date(cutoffMs).toISOString();
+      const dateField = _detectDateFromField(template);
+      const baseVars = _sanitizeTemplate(template);
+      if (dateField) {
+        _setNestedField(baseVars, dateField, cutoffISO);
+      }
+
+      const collected = [];
+      let stoppedByCutoff = false;
+
+      for (let page = 1; page <= PULL_MAX_PAGES; page++) {
+        const vars = JSON.parse(JSON.stringify(baseVars));
+        if ('pageNumber' in vars) vars.pageNumber = page;
+        else if ('page' in vars) vars.page = page;
+        if ('pageSize' in vars) vars.pageSize = PULL_PAGE_SIZE;
+        else if ('limit' in vars) vars.limit = PULL_PAGE_SIZE;
+
+        let data;
+        try {
+          data = await _callOp('ActiveInvoicesPaged', vars);
+        } catch (e) {
+          throw new Error(`Page ${page}: ${e.message}`);
+        }
+        const nodes = data?.allInvoices?.nodes || [];
+        if (nodes.length === 0) break;
+
+        for (const inv of nodes) {
+          if (!dateField && inv?.steelheadObjectByInvoiceId?.writtenAt) {
+            const wt = Date.parse(inv.steelheadObjectByInvoiceId.writtenAt);
+            if (wt && wt < cutoffMs) { stoppedByCutoff = true; break; }
+          }
+          if (!needsRegen(inv)) continue;
+          if (isRecentlyRegenerated(inv.id)) continue;
+          collected.push({ invoiceId: inv.id, idInDomain: inv.idInDomain });
+        }
+
+        if (stoppedByCutoff) break;
+        if (nodes.length < PULL_PAGE_SIZE) break;
+      }
+
+      return collected;
+    })();
+
+    try {
+      const items = await _pullInFlight;
+      lastPullResult = items;
+      lastPullAt = Date.now();
+      _pullConsecFailures = 0;
+      if (_pullDegraded) {
+        console.log('[AutoRegen] Recovery: pull volvió a funcionar — banner reactivado');
+        _pullDegraded = false;
+      }
+      console.log(`[AutoRegen] pullPendingCount: ${items.length} pendientes (ventana ${PULL_WINDOW_DAYS}d)`);
+      updateBanner();
+      return items;
+    } catch (e) {
+      _pullConsecFailures++;
+      const isHashDeprecated = /Must provide a query string|400/.test(e.message);
+      console.warn(`[AutoRegen] pullPendingCount falló (${_pullConsecFailures}/3)${isHashDeprecated ? ' — posible deprecación de hash' : ''}:`, e.message);
+      if (_pullConsecFailures >= 3) {
+        _pullDegraded = true;
+        lastPullResult = null;
+        console.warn('[AutoRegen] 3 fallos consecutivos — banner oculto. Pull se reactiva al próximo ActiveInvoicesPaged exitoso del UI.');
+        updateBanner();
+      }
+      return lastPullResult;
+    } finally {
+      _pullInFlight = null;
+    }
   }
 
   // ── Regen DOM-driven ──
@@ -740,8 +904,11 @@ const InvoiceAutoRegen = (() => {
 
   function _state() {
     return {
-      pending: pendingByInvoiceId.size,
-      pendingIds: Array.from(pendingByInvoiceId.values()).map(i => i.idInDomain),
+      pendingCount: Array.isArray(lastPullResult) ? lastPullResult.length : 0,
+      pendingIds: Array.isArray(lastPullResult) ? lastPullResult.map(i => i.idInDomain) : [],
+      lastPullAt: lastPullAt ? new Date(lastPullAt).toISOString() : null,
+      pullDegraded: _pullDegraded,
+      pullInFlight: !!_pullInFlight,
       run: { ...runState },
       modalAutoRegenActive
     };
@@ -754,10 +921,11 @@ const InvoiceAutoRegen = (() => {
     testRegenInOpenModal,
     startRun,
     requestStop,
+    pullPendingCount,
     _callOp,
     _state,
     _hashRegistry: hashRegistry,
-    _pending: pendingByInvoiceId
+    _lastPullResult: () => lastPullResult
   };
 })();
 
