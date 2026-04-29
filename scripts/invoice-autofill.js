@@ -760,23 +760,24 @@ const InvoiceAutofill = (() => {
         if (name.length > 1 && name.length < 200) return name;
       }
     }
-    // 2. Fallback: Select con label "Customer:"/"Cliente:" (modal manual y casos donde
-    //    el heading no incluye el nombre).
-    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
-    for (const sv of singleValues) {
-      let parent = sv.parentElement;
-      for (let depth = 0; depth < 8 && parent; depth++) {
-        for (const child of parent.children) {
-          if (child.contains(sv)) continue;
-          const txt = child.textContent?.trim() || '';
-          if (/^customer:?$|^cliente:?$/i.test(txt)) {
-            const clone = sv.cloneNode(true);
-            clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
-            const val = cleanCustomerName(clone.textContent?.trim());
-            if (val && val.length > 1) return val;
-          }
-        }
-        parent = parent.parentElement;
+    // 2. Fallback (modal manual y forms sin heading): label-driven lookup.
+    //    findReactSelectControlByLabel localiza el wrapper EXACTO del Customer
+    //    a partir del <p>Customer:</p>. Antes caminábamos hacia arriba desde
+    //    cualquier singleValue buscando un sibling con texto "Customer:" — pero
+    //    en el modal todos los labels (<p>Customer:</p>, <p>Terms:</p>, ...)
+    //    son siblings dentro del mismo css-iyrxkt, así que al limpiar Customer
+    //    el walker encontraba el value de Terms/Sales Tax y lo devolvía como
+    //    cliente, disparando ciclos espurios de "cliente cambió".
+    const ctrl = typeof findReactSelectControlByLabel === 'function'
+      ? findReactSelectControlByLabel(/^\s*customer:?\s*$|^\s*cliente:?\s*$/i)
+      : null;
+    if (ctrl?.container) {
+      const sv = ctrl.container.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+      if (sv) {
+        const clone = sv.cloneNode(true);
+        clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+        const val = cleanCustomerName(clone.textContent?.trim());
+        if (val && val.length > 1) return val;
       }
     }
     return null;
