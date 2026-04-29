@@ -147,12 +147,12 @@ const InvoiceAutoRegen = (() => {
         try { window.__autoRegenHashRegistry = Object.fromEntries(hashRegistry); } catch {}
       }
 
-      // Snapshot de variables de ActiveInvoicesPaged como template para pullPendingCount.
+      // Snapshot de variables como template para pullPendingCount/_verifyCandidate.
       // Se sobreescribe en cada pasada — siempre queremos el template más reciente.
-      if (opName === 'ActiveInvoicesPaged' && bodyObj?.variables) {
+      if ((opName === 'ActiveInvoicesPaged' || opName === 'InvoiceByIdInDomain') && bodyObj?.variables) {
         try {
           window.__autoRegenLastVars = window.__autoRegenLastVars || {};
-          window.__autoRegenLastVars.ActiveInvoicesPaged = JSON.parse(JSON.stringify(bodyObj.variables));
+          window.__autoRegenLastVars[opName] = JSON.parse(JSON.stringify(bodyObj.variables));
         } catch (_) { /* shape rara — ignorar */ }
       }
 
@@ -639,8 +639,29 @@ const InvoiceAutoRegen = (() => {
     return t;
   }
 
-  // Pulls actively from ActiveInvoicesPaged with a 7-day window. Evaluates needsRegen()
-  // per node and filters out recentlyRegenerated. Updates lastPullResult/lastPullAt.
+  // Verifica un candidato preliminar consultando InvoiceByIdInDomain — único sitio donde
+  // los nodos PDF traen createdAt (la respuesta de ActiveInvoicesPaged solo expone nodeId,
+  // invoicePdfViewLogsByInvoicePdfId, __typename — sin createdAt — por lo que needsRegen()
+  // ahí siempre devuelve true para invoices con writtenAt). Aplicamos requireUuid:true para
+  // confirmar que efectivamente está timbrada.
+  async function _verifyCandidate(cand) {
+    const tpl = window.__autoRegenLastVars?.InvoiceByIdInDomain;
+    const vars = tpl ? JSON.parse(JSON.stringify(tpl)) : {};
+    vars.idInDomain = cand.idInDomain;
+    const data = await _callOp('InvoiceByIdInDomain', vars);
+    const inv = data?.invoiceByIdInDomain;
+    if (inv && needsRegen(inv, { requireUuid: true })) {
+      return { invoiceId: inv.id, idInDomain: inv.idInDomain };
+    }
+    return null;
+  }
+
+  // Pulls active from ActiveInvoicesPaged with a 7-day window — DOS FASES:
+  //   1. Recolectar candidatos preliminares: writtenAt en ventana, no voided,
+  //      no recentlyRegenerated. (No podemos aplicar needsRegen completo aquí porque
+  //      los PDFs no traen createdAt en este shape.)
+  //   2. Verificar cada candidato con InvoiceByIdInDomain (concurrencia 5) — ahí sí
+  //      hay createdAt en cada PDF, así que needsRegen({requireUuid:true}) es preciso.
   // Coalesces concurrent calls via _pullInFlight.
   async function pullPendingCount({ force = false } = {}) {
     if (_pullInFlight) return _pullInFlight;
@@ -656,47 +677,74 @@ const InvoiceAutoRegen = (() => {
 
     _pullInFlight = (async () => {
       const cutoffMs = Date.now() - PULL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-      const cutoffISO = new Date(cutoffMs).toISOString();
-      const dateField = _detectDateFromField(template);
       const baseVars = _sanitizeTemplate(template);
-      if (dateField) {
-        _setNestedField(baseVars, dateField, cutoffISO);
-      }
 
-      const collected = [];
-      let stoppedByCutoff = false;
+      // ── Fase 1: recolectar candidatos preliminares ──
+      const candidates = [];
 
-      for (let page = 1; page <= PULL_MAX_PAGES; page++) {
+      for (let page = 0; page < PULL_MAX_PAGES; page++) {
         const vars = JSON.parse(JSON.stringify(baseVars));
-        if ('pageNumber' in vars) vars.pageNumber = page;
-        else if ('page' in vars) vars.page = page;
-        if ('pageSize' in vars) vars.pageSize = PULL_PAGE_SIZE;
+        // Paginación. El template real de Steelhead usa offset/first (Relay-style);
+        // dejamos los otros como fallback por si cambia el shape en el futuro.
+        if ('offset' in vars) vars.offset = page * PULL_PAGE_SIZE;
+        else if ('pageNumber' in vars) vars.pageNumber = page + 1;
+        else if ('page' in vars) vars.page = page + 1;
+        if ('first' in vars) vars.first = PULL_PAGE_SIZE;
+        else if ('pageSize' in vars) vars.pageSize = PULL_PAGE_SIZE;
         else if ('limit' in vars) vars.limit = PULL_PAGE_SIZE;
 
         let data;
         try {
           data = await _callOp('ActiveInvoicesPaged', vars);
         } catch (e) {
-          throw new Error(`Page ${page}: ${e.message}`);
+          throw new Error(`Page ${page + 1}: ${e.message}`);
         }
         const nodes = data?.allInvoices?.nodes || [];
         if (nodes.length === 0) break;
 
+        let allBelowCutoff = nodes.length > 0;
         for (const inv of nodes) {
-          if (!dateField && inv?.steelheadObjectByInvoiceId?.writtenAt) {
-            const wt = Date.parse(inv.steelheadObjectByInvoiceId.writtenAt);
-            if (wt && wt < cutoffMs) { stoppedByCutoff = true; break; }
-          }
-          if (!needsRegen(inv)) continue;
+          const sObj = inv?.steelheadObjectByInvoiceId;
+          if (!sObj?.writtenAt) { allBelowCutoff = false; continue; }
+          if (inv.voidedAt) continue;
+          if (sObj.voidSuccessfulAt) continue;
+          const wt = Date.parse(sObj.writtenAt);
+          if (!wt) { allBelowCutoff = false; continue; }
+          if (wt < cutoffMs) continue;
+          allBelowCutoff = false;
           if (isRecentlyRegenerated(inv.id)) continue;
-          collected.push({ invoiceId: inv.id, idInDomain: inv.idInDomain });
+          candidates.push({ invoiceId: inv.id, idInDomain: inv.idInDomain });
         }
 
-        if (stoppedByCutoff) break;
+        // Si toda la página cayó debajo del cutoff, asumimos orden DESC y paramos.
+        if (allBelowCutoff) break;
         if (nodes.length < PULL_PAGE_SIZE) break;
       }
 
-      return collected;
+      console.log(`[AutoRegen] pullPendingCount: fase 1 → ${candidates.length} candidatos preliminares`);
+      if (candidates.length === 0) return [];
+
+      // ── Fase 2: verificación con InvoiceByIdInDomain (concurrencia 5) ──
+      const verified = [];
+      const CONCURRENCY = 5;
+      let cursor = 0;
+      async function worker() {
+        while (cursor < candidates.length) {
+          const i = cursor++;
+          const cand = candidates[i];
+          try {
+            const result = await _verifyCandidate(cand);
+            if (result) verified.push(result);
+          } catch (e) {
+            console.warn(`[AutoRegen] verify #${cand.idInDomain}: ${e.message}`);
+          }
+        }
+      }
+      const workers = [];
+      for (let i = 0; i < CONCURRENCY; i++) workers.push(worker());
+      await Promise.all(workers);
+
+      return verified;
     })();
 
     try {
@@ -708,7 +756,7 @@ const InvoiceAutoRegen = (() => {
         console.log('[AutoRegen] Recovery: pull volvió a funcionar — banner reactivado');
         _pullDegraded = false;
       }
-      console.log(`[AutoRegen] pullPendingCount: ${items.length} pendientes (ventana ${PULL_WINDOW_DAYS}d)`);
+      console.log(`[AutoRegen] pullPendingCount: fase 2 → ${items.length} pendientes verificados (ventana ${PULL_WINDOW_DAYS}d)`);
       updateBanner();
       return items;
     } catch (e) {
