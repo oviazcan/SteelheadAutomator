@@ -584,6 +584,150 @@ const InvoiceAutoRegen = (() => {
     return j.data;
   }
 
+  // ── Pull activo de pendientes ──
+
+  // Inspecciona el template para encontrar el nombre del campo de filtro "desde".
+  // Devuelve el path (ej. "writtenAtFrom" o "filter.dateFrom") o null si no existe.
+  function _detectDateFromField(template) {
+    if (!template || typeof template !== 'object') return null;
+    const candidates = ['writtenAtFrom', 'writtenAtStart', 'dateFrom', 'fromDate', 'from', 'startDate'];
+    for (const k of candidates) {
+      if (k in template) return k;
+    }
+    for (const key of Object.keys(template)) {
+      const v = template[key];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const k of candidates) {
+          if (k in v) return `${key}.${k}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  function _setNestedField(obj, path, value) {
+    const parts = path.split('.');
+    let cur = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur[parts[i]] = cur[parts[i]] || {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+  }
+
+  // El template viene del UI con search/customer/etc. seleccionados por el usuario.
+  // Para nuestro pull global queremos esos filtros en blanco. Mutamos sobre una copia.
+  function _sanitizeTemplate(template) {
+    const t = JSON.parse(JSON.stringify(template));
+    const fieldsToClear = ['searchTerm', 'search', 'customerId', 'customer', 'status', 'tags', 'tagIds'];
+    for (const k of fieldsToClear) {
+      if (k in t) {
+        const v = t[k];
+        t[k] = (typeof v === 'string') ? '' : (Array.isArray(v) ? [] : null);
+      }
+    }
+    for (const key of Object.keys(t)) {
+      const v = t[key];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const k of fieldsToClear) {
+          if (k in v) {
+            const vv = v[k];
+            v[k] = (typeof vv === 'string') ? '' : (Array.isArray(vv) ? [] : null);
+          }
+        }
+      }
+    }
+    return t;
+  }
+
+  // Pulls actively from ActiveInvoicesPaged with a 7-day window. Evaluates needsRegen()
+  // per node and filters out recentlyRegenerated. Updates lastPullResult/lastPullAt.
+  // Coalesces concurrent calls via _pullInFlight.
+  async function pullPendingCount({ force = false } = {}) {
+    if (_pullInFlight) return _pullInFlight;
+    if (!force && Date.now() - lastPullAt < PULL_THROTTLE_MS && lastPullResult !== null) {
+      return lastPullResult;
+    }
+
+    const template = window.__autoRegenLastVars?.ActiveInvoicesPaged;
+    if (!template) {
+      console.log('[AutoRegen] pullPendingCount: sin template aprendido todavía — esperando ActiveInvoicesPaged del UI');
+      return null;
+    }
+
+    _pullInFlight = (async () => {
+      const cutoffMs = Date.now() - PULL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      const cutoffISO = new Date(cutoffMs).toISOString();
+      const dateField = _detectDateFromField(template);
+      const baseVars = _sanitizeTemplate(template);
+      if (dateField) {
+        _setNestedField(baseVars, dateField, cutoffISO);
+      }
+
+      const collected = [];
+      let stoppedByCutoff = false;
+
+      for (let page = 1; page <= PULL_MAX_PAGES; page++) {
+        const vars = JSON.parse(JSON.stringify(baseVars));
+        if ('pageNumber' in vars) vars.pageNumber = page;
+        else if ('page' in vars) vars.page = page;
+        if ('pageSize' in vars) vars.pageSize = PULL_PAGE_SIZE;
+        else if ('limit' in vars) vars.limit = PULL_PAGE_SIZE;
+
+        let data;
+        try {
+          data = await _callOp('ActiveInvoicesPaged', vars);
+        } catch (e) {
+          throw new Error(`Page ${page}: ${e.message}`);
+        }
+        const nodes = data?.allInvoices?.nodes || [];
+        if (nodes.length === 0) break;
+
+        for (const inv of nodes) {
+          if (!dateField && inv?.steelheadObjectByInvoiceId?.writtenAt) {
+            const wt = Date.parse(inv.steelheadObjectByInvoiceId.writtenAt);
+            if (wt && wt < cutoffMs) { stoppedByCutoff = true; break; }
+          }
+          if (!needsRegen(inv)) continue;
+          if (isRecentlyRegenerated(inv.id)) continue;
+          collected.push({ invoiceId: inv.id, idInDomain: inv.idInDomain });
+        }
+
+        if (stoppedByCutoff) break;
+        if (nodes.length < PULL_PAGE_SIZE) break;
+      }
+
+      return collected;
+    })();
+
+    try {
+      const items = await _pullInFlight;
+      lastPullResult = items;
+      lastPullAt = Date.now();
+      _pullConsecFailures = 0;
+      if (_pullDegraded) {
+        console.log('[AutoRegen] Recovery: pull volvió a funcionar — banner reactivado');
+        _pullDegraded = false;
+      }
+      console.log(`[AutoRegen] pullPendingCount: ${items.length} pendientes (ventana ${PULL_WINDOW_DAYS}d)`);
+      updateBanner();
+      return items;
+    } catch (e) {
+      _pullConsecFailures++;
+      const isHashDeprecated = /Must provide a query string|400/.test(e.message);
+      console.warn(`[AutoRegen] pullPendingCount falló (${_pullConsecFailures}/3)${isHashDeprecated ? ' — posible deprecación de hash' : ''}:`, e.message);
+      if (_pullConsecFailures >= 3) {
+        _pullDegraded = true;
+        lastPullResult = null;
+        console.warn('[AutoRegen] 3 fallos consecutivos — banner oculto. Pull se reactiva al próximo ActiveInvoicesPaged exitoso del UI.');
+        updateBanner();
+      }
+      return lastPullResult;
+    } finally {
+      _pullInFlight = null;
+    }
+  }
+
   // ── Regen DOM-driven ──
 
   const REGEN_ICON_SELECTOR = 'svg[data-testid="RestorePageOutlinedIcon"]';
