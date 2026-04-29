@@ -1234,15 +1234,28 @@ const InvoiceAutofill = (() => {
 
   function handleManualModal() {
     if (!manualModalState?.active) {
-      manualModalState = { active: true, customer: null, filled: false };
+      manualModalState = { active: true, customer: null, filled: false, filling: false, runId: 0 };
       log('Modal "Create Invoice Manually" detectado');
       renderManualPanel();
     }
     const customer = extractCustomerFromDOM();
     if (customer && customer !== manualModalState.customer) {
+      const previous = manualModalState.customer;
       manualModalState.customer = customer;
-      log(`Modal manual: customer seleccionado = ${customer}`);
-      if (!manualModalState.filled) fillManualModalAll();
+      manualModalState.filled = false;
+      log(previous
+        ? `Modal manual: customer cambió ${previous} → ${customer}`
+        : `Modal manual: customer seleccionado = ${customer}`);
+      if (manualModalState.filling) {
+        // Cancelar run anterior incrementando runId — los pasos in-flight detectan
+        // stale y abortan. Cerrar dropdowns abiertos para devolver focus al usuario.
+        manualModalState.runId++;
+        log('Modal manual: cancelando run anterior por cambio de cliente');
+        document.body.click();
+        setTimeout(() => fillManualModalAll(), 250);
+      } else {
+        fillManualModalAll();
+      }
       renderManualPanel();
     } else if (!customer && !manualModalState.customer) {
       renderManualPanel('pending');
@@ -1387,11 +1400,17 @@ const InvoiceAutofill = (() => {
   // Steelhead carga Bill To/Ship To/Customer Contact async al elegir cliente,
   // así que reintentamos hasta `retries+1` veces con `retryDelayMs` entre cierres.
   async function selectFirstOption(labelRe, opts = {}) {
-    const { strict = false, retries = 4, retryDelayMs = 600 } = opts;
+    const { strict = false, retries = 4, retryDelayMs = 600, isStale = null } = opts;
     const ctrl = findReactSelectControlByLabel(labelRe);
     if (!ctrl) return { success: false, reason: 'control no encontrado' };
     let options = [];
     for (let attempt = 0; attempt <= retries; attempt++) {
+      if (isStale && isStale()) {
+        ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+        }));
+        return { success: false, reason: 'aborted' };
+      }
       options = await openSelectAndGetOptions(ctrl);
       if (options.length > 0) break;
       // Cerrar el menú antes del siguiente intento para forzar re-fetch.
@@ -1400,6 +1419,7 @@ const InvoiceAutofill = (() => {
       }));
       await sleep(retryDelayMs);
     }
+    if (isStale && isStale()) return { success: false, reason: 'aborted' };
     if (options.length === 0) return { success: false, reason: 'sin opciones tras retries' };
     if (strict && options.length > 1) {
       document.body.click();
@@ -1415,10 +1435,16 @@ const InvoiceAutofill = (() => {
   // "flete propio" hacía que react-select sólo ofreciera "Create flete propio"
   // porque su filtro no matcheaba "Flete Propio").
   async function selectOptionMatching(labelRe, optionRe, opts = {}) {
-    const { retries = 2, retryDelayMs = 500 } = opts;
+    const { retries = 2, retryDelayMs = 500, isStale = null } = opts;
     const ctrl = findReactSelectControlByLabel(labelRe);
     if (!ctrl) return { success: false, reason: 'control no encontrado' };
     for (let attempt = 0; attempt <= retries; attempt++) {
+      if (isStale && isStale()) {
+        ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+        }));
+        return { success: false, reason: 'aborted' };
+      }
       const options = await openSelectAndGetOptions(ctrl);
       if (options.length > 0) {
         const match = options.find(o => optionRe.test((o.textContent || '').trim()));
@@ -1452,18 +1478,29 @@ const InvoiceAutofill = (() => {
   }
 
   async function fillManualModalAll() {
+    if (!manualModalState) return;
     manualModalState.filling = true;
+    const myRunId = ++manualModalState.runId;
     try {
-      await fillManualModalAllImpl();
+      await fillManualModalAllImpl(myRunId);
     } catch (err) {
-      warn(`Modal manual falló: ${err.message}`);
+      if (err && err.message === '__sa_aborted__') {
+        log('Modal manual: run abortado (cliente cambió)');
+      } else {
+        warn(`Modal manual falló: ${err.message}`);
+      }
     } finally {
-      manualModalState.filling = false;
-      renderManualPanel();
+      // Sólo limpiar filling/render si seguimos siendo el run vigente.
+      if (manualModalState && manualModalState.runId === myRunId) {
+        manualModalState.filling = false;
+        renderManualPanel();
+      }
     }
   }
 
-  async function fillManualModalAllImpl() {
+  async function fillManualModalAllImpl(myRunId) {
+    const isStale = () => !manualModalState || manualModalState.runId !== myRunId;
+    const bailIfStale = () => { if (isStale()) throw new Error('__sa_aborted__'); };
     const today = new Date();
     const results = manualModalState.results = {
       invoicedAt: null, shipDate: null, shipVia: null,
@@ -1475,22 +1512,23 @@ const InvoiceAutofill = (() => {
     //    Damos margen para que carguen antes del primer fill.
     log('Modal manual: esperando 1500ms para que Steelhead cargue opciones del cliente…');
     await sleep(1500);
+    bailIfStale();
 
     // 1. Invoiced At = hoy
     results.invoicedAt = await tryFillDateInput('^\\s*invoiced\\s*at\\s*$|fecha\\s*de\\s*factura(?:cion)?', today);
     log(`Modal manual: invoicedAt=${JSON.stringify(results.invoicedAt)}`);
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
     // 2. Ship Date = hoy
     results.shipDate = await tryFillDateInput('^\\s*ship\\s*date\\s*$|fecha\\s*de\\s*env[ií]o', today);
     log(`Modal manual: shipDate=${JSON.stringify(results.shipDate)}`);
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
     // 3. Ship via = "Flete Propio" — sin tipear (el filtro de react-select rechaza
     //    "flete propio" lowercase y muestra sólo la opción "Create…").
-    results.shipVia = await selectOptionMatching(/^\s*ship\s*via\s*$|env[ií]o\s*por/i, /^\s*flete\s*propio\s*$/i);
+    results.shipVia = await selectOptionMatching(/^\s*ship\s*via\s*$|env[ií]o\s*por/i, /^\s*flete\s*propio\s*$/i, { isStale });
     log(`Modal manual: shipVia=${JSON.stringify(results.shipVia)}`);
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
     // 4. Sales Tax + Terms — el modal manual NO los prellena al elegir cliente.
     //    Estrategia: fetchCustomer con el #N del customer name, llenar por nombre.
@@ -1505,42 +1543,44 @@ const InvoiceAutofill = (() => {
       log('Modal manual: idInDomain no extraíble del customer name');
     }
 
+    bailIfStale();
     const salesTaxName = fetched?.salesTaxBySalesTaxId?.name;
     if (salesTaxName) {
       results.salesTax = await tryFillReactSelectByLabel(/^\s*sales\s*tax\s*$|impuesto/i, salesTaxName, salesTaxName);
       log(`Modal manual: salesTax (cliente="${salesTaxName}") = ${JSON.stringify(results.salesTax)}`);
     } else {
-      results.salesTax = await selectFirstOption(/^\s*sales\s*tax\s*$|impuesto/i);
+      results.salesTax = await selectFirstOption(/^\s*sales\s*tax\s*$|impuesto/i, { isStale });
       log(`Modal manual: salesTax (fallback firstOption) = ${JSON.stringify(results.salesTax)}`);
     }
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
     const termsName = findTermsNameInCustomer(fetched);
     if (termsName) {
       results.terms = await tryFillReactSelectByLabel(/^\s*terms?\s*$|t[eé]rminos|plazo/i, termsName, termsName);
       log(`Modal manual: terms (cliente="${termsName}") = ${JSON.stringify(results.terms)}`);
     } else {
-      results.terms = await selectFirstOption(/^\s*terms?\s*$|t[eé]rminos|plazo/i);
+      results.terms = await selectFirstOption(/^\s*terms?\s*$|t[eé]rminos|plazo/i, { isStale });
       log(`Modal manual: terms (fallback firstOption) = ${JSON.stringify(results.terms)}`);
     }
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
     // 5. Bill To / Ship To / Customer Contact — primer opción del desplegable.
-    results.billTo = await selectFirstOption(/^\s*bill\s*to\s*$|facturar\s*a/i);
+    results.billTo = await selectFirstOption(/^\s*bill\s*to\s*$|facturar\s*a/i, { isStale });
     log(`Modal manual: billTo=${JSON.stringify(results.billTo)}`);
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
-    results.shipTo = await selectFirstOption(/^\s*ship\s*to\s*$|enviar\s*a/i);
+    results.shipTo = await selectFirstOption(/^\s*ship\s*to\s*$|enviar\s*a/i, { isStale });
     log(`Modal manual: shipTo=${JSON.stringify(results.shipTo)}`);
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
-    results.customerContact = await selectFirstOption(/^\s*customer\s*contact\s*$|contacto/i);
+    results.customerContact = await selectFirstOption(/^\s*customer\s*contact\s*$|contacto/i, { isStale });
     log(`Modal manual: customerContact=${JSON.stringify(results.customerContact)}`);
-    renderManualPanel();
+    renderManualPanel(); bailIfStale();
 
     // 6. Due Date está disabled en el DOM — Steelhead la recalcula auto al
     //    setear Invoiced At + Terms. Sólo la leemos para reportar.
     await sleep(1500);
+    bailIfStale();
     const dueExisting = readDateInputValue('^\\s*due\\s*date\\s*$|fecha\\s*de\\s*vencimiento|vence');
     if (dueExisting) {
       log(`Due Date auto (Steelhead): ${dueExisting}`);
