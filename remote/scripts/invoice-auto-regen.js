@@ -29,7 +29,7 @@ const InvoiceAutoRegen = (() => {
   // ActiveInvoicesPaged siga reportándolas como pendientes (eventual consistency).
   // Persistido en localStorage con TTL para sobrevivir reloads. Map: invoiceId → timestamp(ms).
   const RECENT_KEY = 'sa_autoregen_recently_regenerated';
-  const RECENT_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+  const RECENT_TTL_MS = 3 * 60 * 1000; // 3 min — solo cubre eventual consistency post-regen
   const recentlyRegenerated = new Map();
   function _persistRecent() {
     try {
