@@ -124,6 +124,15 @@ const InvoiceAutoRegen = (() => {
         try { window.__autoRegenHashRegistry = Object.fromEntries(hashRegistry); } catch {}
       }
 
+      // Snapshot de variables de ActiveInvoicesPaged como template para pullPendingCount.
+      // Se sobreescribe en cada pasada — siempre queremos el template más reciente.
+      if (opName === 'ActiveInvoicesPaged' && bodyObj?.variables) {
+        try {
+          window.__autoRegenLastVars = window.__autoRegenLastVars || {};
+          window.__autoRegenLastVars.ActiveInvoicesPaged = JSON.parse(JSON.stringify(bodyObj.variables));
+        } catch (_) { /* shape rara — ignorar */ }
+      }
+
       // Captura payload completo de GetPdfTemplateOutputToUserFile (renderer del PDF).
       // Útil para diagnóstico/dumpManualPair pero no requerido por el flujo DOM-driven.
       if (opName === 'GetPdfTemplateOutputToUserFile') {
