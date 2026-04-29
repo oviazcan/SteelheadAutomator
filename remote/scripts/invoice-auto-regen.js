@@ -904,8 +904,11 @@ const InvoiceAutoRegen = (() => {
 
   function _state() {
     return {
-      pending: pendingByInvoiceId.size,
-      pendingIds: Array.from(pendingByInvoiceId.values()).map(i => i.idInDomain),
+      pendingCount: Array.isArray(lastPullResult) ? lastPullResult.length : 0,
+      pendingIds: Array.isArray(lastPullResult) ? lastPullResult.map(i => i.idInDomain) : [],
+      lastPullAt: lastPullAt ? new Date(lastPullAt).toISOString() : null,
+      pullDegraded: _pullDegraded,
+      pullInFlight: !!_pullInFlight,
       run: { ...runState },
       modalAutoRegenActive
     };
@@ -918,10 +921,11 @@ const InvoiceAutoRegen = (() => {
     testRegenInOpenModal,
     startRun,
     requestStop,
+    pullPendingCount,
     _callOp,
     _state,
     _hashRegistry: hashRegistry,
-    _pending: pendingByInvoiceId
+    _lastPullResult: () => lastPullResult
   };
 })();
 
