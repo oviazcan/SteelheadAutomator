@@ -127,6 +127,14 @@ Patrones de label en Steelhead vistos hasta ahora:
 - **MUI X DatePicker (masked):** ignora native `value` setter; requiere keystroke-by-keystroke con `beforeinput`/`input` events.
 - **react-datepicker (plain `<input type="text">`):** sí responde a native value setter + InputEvent.
 
+### Auto-fill que reacciona a cambios del usuario (modal manual de Invoice)
+Lecciones del ciclo `invoice-autofill` 0.5.26 → 0.5.32 cuando el applet llena varios campos async tras una elección del usuario (cliente seleccionado) y el usuario puede cambiar esa elección a media carrera:
+
+- **Cancellation token, no flag binario.** No basta con `filling = true` para evitar runs paralelos. Si el usuario cambia cliente mientras un run está corriendo, hay que **cancelar** el anterior para que devuelva focus a la UI. Patrón: `runId` monotónico, captura local `myRunId`, `isStale = () => state.runId !== myRunId`, `bailIfStale()` entre cada paso async. Las helpers de retry largo (selectFirstOption, selectOptionMatching) deben aceptar `{ isStale }` y abortar dentro del loop — si no, esperan 4×600ms y siguen abriendo dropdowns aunque el run ya esté muerto. Al cancelar: `body.click()` cierra dropdowns abiertos. (`invoice-autofill.js:1255-1287, 1480-1610`)
+- **Idempotencia de acciones "create"**. Si un paso del fill agrega filas/líneas/algo nuevo (ej. clickear "New Line"), agrega un guard que detecte si ya existe antes de re-clickear. Sin esto, cada cambio de cliente apila una entrada vacía. Patrón: `clickNewLine` busca `^Line #\d+$` en el DOM antes de clickear el botón. (`invoice-autofill.js:1469-1488`)
+- **Reset `filled=false` al cambiar de input upstream.** Si tienes un guard `if (!state.filled) fill();`, recuerda invalidar `filled` cuando cambia la dependencia (cliente). De lo contrario, después de un fill exitoso, cambiar cliente no re-llena.
+- **Network drops se ven como "sin opciones tras retries".** Si los retries de un combobox react-select fallan masivamente y los logs muestran `ERR_HTTP2_PING_FAILED` o `[Network error <Query>]: Failed to fetch`, no es bug del applet — es que la query GraphQL del propio Steelhead que pobla las opciones no respondió. No subas retries indefinidamente; mejor reportar `success:false` y dejar que el usuario reintente (la cancelación lo permite).
+
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`)
 - **NUNCA** copiarlos al repo — están en `.gitignore` pero además su contenido puede incluir payloads sensibles redactados
