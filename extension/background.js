@@ -62,7 +62,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/paros-linea.js': 'ParosLinea',
           'scripts/weight-quick-entry.js': 'WeightQuickEntry',
           'scripts/bill-autofill.js': 'BillAutofill',
-          'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen' };
+          'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen',
+          'scripts/invoice-default-tab.js': 'InvoiceDefaultTab' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -1051,6 +1052,19 @@ async function handleMessage(message, sender) {
     case 'get-invoice-auto-regen-status': {
       const { invoiceAutoRegenEnabled } = await chrome.storage.local.get('invoiceAutoRegenEnabled');
       return { enabled: invoiceAutoRegenEnabled !== false };
+    }
+
+    // ── Invoice Default Tab ──
+    case 'toggle-invoice-default-tab': {
+      const { invoiceDefaultTabEnabled } = await chrome.storage.local.get('invoiceDefaultTabEnabled');
+      const newState = invoiceDefaultTabEnabled === false;
+      await chrome.storage.local.set({ invoiceDefaultTabEnabled: newState });
+      return { enabled: newState, message: newState ? 'Tab por defecto en Invoices habilitado' : 'Tab por defecto en Invoices deshabilitado' };
+    }
+
+    case 'get-invoice-default-tab-status': {
+      const { invoiceDefaultTabEnabled } = await chrome.storage.local.get('invoiceDefaultTabEnabled');
+      return { enabled: invoiceDefaultTabEnabled !== false };
     }
 
     // ── Paros de Línea ──
