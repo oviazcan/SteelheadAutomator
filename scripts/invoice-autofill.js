@@ -1467,6 +1467,14 @@ const InvoiceAutofill = (() => {
   // Localiza y clickea el botón "New Line" / "Nueva Línea" para activar
   // el primer renglón de captura tras llenar los campos.
   function clickNewLine() {
+    // Idempotencia: si ya existe al menos un "Line #N" en el modal, no
+    // crear otro. El header de cada línea es texto plano "Line #1", "Line #2"…
+    // (se ve en el modal manual). Sin este guard, cada cambio de cliente
+    // apilaba una línea vacía adicional.
+    const existingLines = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,div')]
+      .some(el => /^\s*Line\s*#\d+\s*$/.test(el.textContent || ''));
+    if (existingLines) return { success: true, skipped: 'ya existe Line #N' };
+
     const btn = [...document.querySelectorAll('button')].find(b => {
       if (b.disabled) return false;
       const t = b.textContent?.trim() || '';
