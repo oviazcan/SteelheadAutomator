@@ -1234,9 +1234,10 @@ const InvoiceAutofill = (() => {
 
   function handleManualModal() {
     if (!manualModalState?.active) {
-      manualModalState = { active: true, customer: null, filled: false, filling: false, runId: 0 };
+      manualModalState = { active: true, customer: null, filled: false, filling: false, runId: 0, deferred: false };
       log('Modal "Create Invoice Manually" detectado');
       renderManualPanel();
+      installCustomerFocusGuard();
     }
     const customer = extractCustomerFromDOM();
     if (customer && customer !== manualModalState.customer) {
@@ -1248,18 +1249,50 @@ const InvoiceAutofill = (() => {
         : `Modal manual: customer seleccionado = ${customer}`);
       if (manualModalState.filling) {
         // Cancelar run anterior incrementando runId — los pasos in-flight detectan
-        // stale y abortan. Cerrar dropdowns abiertos para devolver focus al usuario.
+        // stale y abortan.
         manualModalState.runId++;
         log('Modal manual: cancelando run anterior por cambio de cliente');
-        document.body.click();
-        setTimeout(() => fillManualModalAll(), 250);
+      }
+      // Si el combobox Customer sigue activo (usuario abrió de nuevo para cambiar),
+      // no arranquemos otro fill — pelearíamos por el focus. Marcamos deferred
+      // y reintentamos cuando el usuario salga (focusout guard).
+      if (isCustomerComboboxActive()) {
+        manualModalState.deferred = true;
+        log('Modal manual: Customer combobox activo — fill diferido hasta blur');
       } else {
-        fillManualModalAll();
+        manualModalState.deferred = false;
+        setTimeout(() => fillManualModalAll(), 200);
       }
       renderManualPanel();
+    } else if (manualModalState.deferred && !isCustomerComboboxActive() && manualModalState.customer && !manualModalState.filled && !manualModalState.filling) {
+      // El usuario soltó el combobox de Customer sin cambiar de cliente; arranca el
+      // fill que dejamos pendiente.
+      manualModalState.deferred = false;
+      log('Modal manual: Customer ya no está activo — disparando fill diferido');
+      fillManualModalAll();
     } else if (!customer && !manualModalState.customer) {
       renderManualPanel('pending');
     }
+  }
+
+  // Instala una sola vez un focusin listener: si el usuario enfoca el combobox
+  // de Customer mientras un fill está en curso, bumpa runId para abortar y
+  // marca deferred para que no se relance hasta que el foco salga del combobox.
+  function installCustomerFocusGuard() {
+    if (window.__saInvoiceCustomerFocusGuardInstalled) return;
+    window.__saInvoiceCustomerFocusGuardInstalled = true;
+    document.addEventListener('focusin', (e) => {
+      if (!manualModalState?.active) return;
+      const ctrl = findReactSelectControlByLabel(CUSTOMER_LABEL_RE);
+      if (!ctrl) return;
+      const insideCustomer = ctrl.container?.contains(e.target) || ctrl.control?.contains(e.target) || ctrl.combo === e.target;
+      if (!insideCustomer) return;
+      if (manualModalState.filling) {
+        manualModalState.runId++;
+        log('Modal manual: Customer combobox enfocado — abortando fill en curso');
+      }
+      manualModalState.deferred = true;
+    }, true);
   }
 
   // Localiza el control de un react-select a partir de un label-<p>.
@@ -1272,6 +1305,23 @@ const InvoiceAutofill = (() => {
     if (!combo) return null;
     const control = combo.closest('[class*="-control"]') || combo.parentElement;
     return { combo, control, container: f.container };
+  }
+
+  const CUSTOMER_LABEL_RE = /^\s*customer:?\s*$|^\s*cliente:?\s*$/i;
+
+  // Devuelve true si el usuario está interactuando con el combobox de Customer
+  // (focus dentro del control o el combo input es activeElement, o el dropdown
+  // del combobox está abierto — aria-expanded="true"). Mientras esto sea true
+  // no debemos abrir/cerrar otros dropdowns: peleamos por focus con el usuario.
+  function isCustomerComboboxActive() {
+    const ctrl = findReactSelectControlByLabel(CUSTOMER_LABEL_RE);
+    if (!ctrl) return false;
+    const ae = document.activeElement;
+    if (ae && (ae === ctrl.combo || ctrl.container?.contains(ae) || ctrl.control?.contains(ae))) {
+      return true;
+    }
+    if (ctrl.combo?.getAttribute('aria-expanded') === 'true') return true;
+    return false;
   }
 
   // Lee el singleValue actual de un react-select por label (lo que ya está seleccionado).
@@ -1507,7 +1557,12 @@ const InvoiceAutofill = (() => {
   }
 
   async function fillManualModalAllImpl(myRunId) {
-    const isStale = () => !manualModalState || manualModalState.runId !== myRunId;
+    // Stale si: cancelaron el run, o el usuario volvió al combobox Customer
+    // (deferred). En ese caso abortamos para no robarle focus.
+    const isStale = () => !manualModalState
+      || manualModalState.runId !== myRunId
+      || isCustomerComboboxActive()
+      || manualModalState.deferred;
     const bailIfStale = () => { if (isStale()) throw new Error('__sa_aborted__'); };
     const today = new Date();
     const results = manualModalState.results = {
