@@ -35,8 +35,6 @@ const InvoiceAutoRegen = (() => {
   const PULL_PAGE_SIZE = 50;
   const PULL_MAX_PAGES = 5;
 
-  // pendientes que el detector ha visto en esta sesión y no han sido regeneradas
-  const pendingByInvoiceId = new Map(); // invoiceId → {invoiceId, idInDomain}
   // facturas regeneradas exitosamente — el detector ignora estas aunque
   // ActiveInvoicesPaged siga reportándolas como pendientes (eventual consistency).
   // Persistido en localStorage con TTL para sobrevivir reloads. Map: invoiceId → timestamp(ms).
@@ -198,11 +196,13 @@ const InvoiceAutoRegen = (() => {
             }
           }
 
-          const items = (opName === 'ActiveInvoicesPaged') ? scanList(json) : scanSingle(json);
-          if (items.length > 0) {
-            recordPending(items);
-            // Si vino del modal abierto manualmente → auto-regen sin cerrar
-            if (opName === 'InvoiceByIdInDomain') {
+          if (opName === 'ActiveInvoicesPaged') {
+            // Trigger reactivo (d): aprovechamos que el UI ya consultó el server.
+            // pullPendingCount aplica su propio throttle de 30s y deduplica via _pullInFlight.
+            pullPendingCount();
+          } else if (opName === 'InvoiceByIdInDomain') {
+            const items = scanSingle(json);
+            if (items.length > 0) {
               autoRegenInOpenModal(items[0]);  // no await: corre en background
             }
           }
@@ -258,23 +258,6 @@ const InvoiceAutoRegen = (() => {
     if (!inv) return [];
     if (!needsRegen(inv, { requireUuid: true })) return [];
     return [{ invoiceId: inv.id, idInDomain: inv.idInDomain }];
-  }
-
-  function recordPending(items) {
-    let added = 0, suppressed = 0;
-    for (const it of items) {
-      // Ignorar las que ya regeneramos: la query trae el PDF viejo todavía por
-      // eventual consistency. El set persiste en localStorage con TTL de 24h.
-      if (isRecentlyRegenerated(it.invoiceId)) { suppressed++; continue; }
-      if (!pendingByInvoiceId.has(it.invoiceId)) {
-        pendingByInvoiceId.set(it.invoiceId, it);
-        added++;
-      }
-    }
-    if (added > 0) {
-      console.log(`[AutoRegen] +${added} pendientes (total ${pendingByInvoiceId.size})${suppressed ? ` — ignoradas ${suppressed} ya regeneradas` : ''}`);
-    }
-    updateBanner();
   }
 
   // ── Auto-regen cuando el usuario abre el modal de una pendiente ──
