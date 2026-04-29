@@ -1,5 +1,5 @@
 {
-  "version": "0.5.29",
+  "version": "0.5.30",
   "lastUpdated": "2026-04-28",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -401,6 +401,28 @@
           "type": "toggle",
           "handler": "message",
           "message": "toggle-invoice-auto-regen"
+        }
+      ]
+    },
+    {
+      "id": "invoice-default-tab",
+      "name": "Tab por defecto en Invoices",
+      "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=",
+      "icon": "📦",
+      "category": "Facturación",
+      "scripts": [
+        "scripts/invoice-default-tab.js"
+      ],
+      "autoInject": true,
+      "actions": [
+        {
+          "id": "toggle-invoice-default-tab",
+          "label": "Tab por defecto Invoices",
+          "sublabel": "Salta a Packing Slips al entrar a /Invoices",
+          "icon": "📦",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-invoice-default-tab"
         }
       ]
     },
