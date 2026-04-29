@@ -266,7 +266,7 @@ const InvoiceAutoRegen = (() => {
     if (runState.active) return;                       // no interferir con batch
     if (modalAutoRegenActive) return;                  // ya hay uno corriendo
     if (window.__autoRegenPdfWaiter) return;           // hay otra regen en vuelo
-    if (!pendingByInvoiceId.has(item.invoiceId)) return;
+    if (isRecentlyRegenerated(item.invoiceId)) return; // ya la regeneramos hace < 3 min
 
     modalAutoRegenActive = true;
     console.log(`%c[AutoRegen] Modal abierto en factura pendiente #${item.idInDomain} — auto-regenerando…`, 'color:#0891b2;font-weight:bold');
@@ -277,7 +277,7 @@ const InvoiceAutoRegen = (() => {
       await sleep(1500);
       await testRegenInOpenModal(30000);
       markRegenerated(item.invoiceId);
-      pendingByInvoiceId.delete(item.invoiceId);
+      pullPendingCount({ force: true }); // refresca banner sin bloquear el flujo
       console.log(`%c[AutoRegen] ✓ #${item.idInDomain} regenerada (modal abierto)`, 'color:#16a34a;font-weight:bold');
     } catch (e) {
       console.warn(`[AutoRegen] auto-regen en modal abierto falló para #${item.idInDomain}: ${e.message}`);
@@ -298,7 +298,7 @@ const InvoiceAutoRegen = (() => {
 
   async function startRun() {
     if (runState.active) return;
-    const items = Array.from(pendingByInvoiceId.values());
+    const items = Array.isArray(lastPullResult) ? [...lastPullResult] : [];
     if (items.length === 0) return;
 
     runState.active = true;
@@ -330,7 +330,6 @@ const InvoiceAutoRegen = (() => {
             }
             await regenViaModal(items[i].idInDomain);
             markRegenerated(items[i].invoiceId);
-            pendingByInvoiceId.delete(items[i].invoiceId);
             success = true;
           } catch (e) {
             lastErr = e;
@@ -344,8 +343,12 @@ const InvoiceAutoRegen = (() => {
       runState.active = false;
       runState.current = null;
       hideOverlay();
+      // Trigger (b): post-regen siempre dispara pull fresco para que el banner refleje la realidad.
+      pullPendingCount({ force: true }).then(items => {
+        const remaining = Array.isArray(items) ? items.length : 0;
+        console.log(`%c[AutoRegen] Batch terminado. ✓${ok} ✗${failed}. Pendientes restantes (post-pull): ${remaining}`, 'color:#16a34a;font-weight:bold');
+      });
       updateBanner();
-      console.log(`%c[AutoRegen] Batch terminado. ✓${ok} ✗${failed}. Pendientes restantes: ${pendingByInvoiceId.size}`, 'color:#16a34a;font-weight:bold');
     }
   }
 
