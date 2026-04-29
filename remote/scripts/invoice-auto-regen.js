@@ -108,6 +108,19 @@ const InvoiceAutoRegen = (() => {
     patchFetch();
     installLock();
     setupBannerObserver();
+
+    // Trigger (c): re-enfocar el tab dispara pull (con throttle propio en pullPendingCount).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (runState.active) return; // no interferir con batch
+      pullPendingCount(); // throttle a 30s aplica internamente
+    });
+
+    // Trigger (a): primer disparo. Si todavía no hay template aprendido, pullPendingCount
+    // imprime un log informativo y retorna null — el siguiente ActiveInvoicesPaged del UI
+    // (trigger d) lo activa.
+    pullPendingCount();
+
     console.log('[AutoRegen] Inicializado');
   }
 
