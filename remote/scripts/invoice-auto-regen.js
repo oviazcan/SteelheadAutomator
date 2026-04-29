@@ -450,10 +450,10 @@ const InvoiceAutoRegen = (() => {
       banner.style.display = 'inline-flex';
       banner.style.position = 'relative';
       banner.style.zIndex = '10000';
-    } else if (pendingByInvoiceId.size > 0) {
+    } else if (Array.isArray(lastPullResult) && lastPullResult.length > 0) {
       const btn = document.createElement('button');
       btn.dataset.saRegenStart = '1';
-      const n = pendingByInvoiceId.size;
+      const n = lastPullResult.length;
       btn.textContent = `↻ ${n} timbrada${n === 1 ? '' : 's'} pendiente${n === 1 ? '' : 's'} — Regenerar PDFs`;
       btn.style.cssText = 'background:#a02020;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
       btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); startRun(); });
@@ -473,7 +473,7 @@ const InvoiceAutoRegen = (() => {
     bannerCheckScheduled = true;
     setTimeout(() => {
       bannerCheckScheduled = false;
-      const needsBanner = pendingByInvoiceId.size > 0 || runState.active;
+      const needsBanner = (Array.isArray(lastPullResult) && lastPullResult.length > 0) || runState.active;
       if (needsBanner && !document.getElementById(BANNER_ID)) updateBanner();
     }, 500);
   }
