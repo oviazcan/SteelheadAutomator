@@ -1,0 +1,980 @@
+// Process Canon — Auditor + carga masiva de nodos canónicos en procesos
+// Patrón canónico de 9 nodos top-level por proceso:
+//   1) Inspección Recibo (compartido global)
+//   2) Preparación de Surtido (compartido global)
+//   3) T<linea> Enracado (compartido por línea)
+//   4) T<linea> Listo para Procesar (LOCAL, se crea con CreateProcessNode)
+//   5) T<linea> Secado (compartido por línea)
+//   6) T<linea> Inspección y Empaque (compartido por línea)
+//   7) Preparación de Embarque (compartido global)
+//   8) Inspección Embarques (compartido global)
+//   9) Embarque en Almacén (compartido global)
+// Depends on: SteelheadAPI
+
+const ProcessCanon = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api().log(m);
+  const warn = (m) => api().warn(m);
+
+  const CONCURRENCY_AUDIT = 5;
+  const CONCURRENCY_APPLY = 5;
+  const PAGE_SIZE = 500;
+
+  const GLOBALS = [
+    'Inspección Recibo',
+    'Preparación de Surtido',
+    'Preparación de Embarque',
+    'Inspección Embarques',
+    'Embarque en Almacén'
+  ];
+
+  const lineKeywords = (T) => [`${T} Enracado`, `${T} Listo para Procesar`, `${T} Secado`, `${T} Inspección y Empaque`];
+  const enracadoName = (T) => `${T} Enracado`;
+  const listoPPName = (T) => `${T} Listo para Procesar`;
+  const secadoName = (T) => `${T} Secado`;
+  const inspEmpaqueName = (T) => `${T} Inspección y Empaque`;
+
+  // processName → "T<n>" line code (158 entradas, generado de 1._Proceso - Tratamientos Genericos.xlsx)
+  const LINE_MAPPING = {
+    "T100 (LMC)-T104 (EST)-CU/BR-HUBBELL (6.0)": "T104",
+    "T100 (PUL)-T103 (CRD)-T103 (ACE)-T100 (ABR)-FE-FISHER (11.0)": "T103",
+    "T100 (SAB)-T107 (PLA)-CU-C5 (60.0)": "T107",
+    "T101 (BDP)-CU-VARIOS (4.0)": "T101",
+    "T101 (BRI)-CU-VARIOS (4.0)": "T101",
+    "T101 (CRO)-AL-MAT. MECANICO ELECTRICO (4.0)": "T101",
+    "T101 (DEC)-AL-VARIOS (4.0)": "T101",
+    "T101 (DEC)-CU-VARIOS (4.0)": "T101",
+    "T101 (DEC)-FE-VARIOS (4.0)": "T101",
+    "T101 (DEC)-INOX-VARIOS (4.0)": "T101",
+    "T101 (DEC)-LA-VARIOS (4.0)": "T101",
+    "T101 (DEC)-T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
+    "T101 (DEC)-T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
+    "T101 (DES)-INOX/CU-VARIOS (4.0)": "T101",
+    "T101 (IRI)-AL-VARIOS (4.0)": "T101",
+    "T101 (LAV)-AL-VARIOS (4.0)": "T101",
+    "T101 (LAV)-CU-VARIOS (4.0)": "T101",
+    "T101 (LAV)-CU/BR-HUBBELL (4.0)": "T101",
+    "T101 (LAV)-FE-VARIOS (4.0)": "T101",
+    "T101 (LAV)-INOX-VARIOS (4.0)": "T101",
+    "T101 (LAV)-LA-VARIOS (4.0)": "T101",
+    "T101 (NOX)-AL-VARIOS (4.0)": "T101",
+    "T101 (PAS)-CU-VARIOS (4.0)": "T101",
+    "T101 (PAS)-FE-VARIOS (4.0)": "T101",
+    "T101 (PAS)-INOX-VARIOS (4.0)": "T101",
+    "T101 (PRE)-T108 (NSU)-T109 (PAS)-LA-VARIOS (13.0)": "T108",
+    "T101 (PRE)-T108 (NWO)-T108 (NEL)-T109 (PAS)-FE-BUJIA (13.0)": "T108",
+    "T101 (PRE)-T112 (NWO)-T109 (NSU)-CU/LA/FE/INOX-VARIOS (13.2)": "T112",
+    "T101 (PRE)-T112 (NWO)-T109 (NSU)-INOX-RPK (15.0)": "T109",
+    "T101 (PRE)-T112 (NWO)-T112 (NEL)-T109 (PAS)-LA-VARIOS (13.2)": "T112",
+    "T101 (PRE)-T112 (NWO)-T203 (PLA)-LA-VARIOS (16.0)": "T203",
+    "T101 (PRE)-T112 (NWO)-T204 (PLA)-LA-VARIOS (16.1)": "T204",
+    "T101 (PRE)-T203 (PLA)-LA-VARIOS (16.0)": "T203",
+    "T101 (ROD)-T108 (NWO)-T108 (NEL)-T109 (PAS)-INOX/FE-VARIOS (13.0)": "T108",
+    "T101 (ROD)-T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
+    "T101 (ROD)-T109 (NBR)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
+    "T101 (ROD)-T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
+    "T101 (ROD)-T109 (NSU)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
+    "T101 (ROD)-T112 (NEL)-T109 (PAS)-FE-VARIOS (13.2)": "T112",
+    "T101 (ROD)-T112 (NWO)-T112 (NEL)-T112 (ACE)-INOX-MONEDA (13.2)": "T112",
+    "T102 (COB)-AL-VARIOS (12.0)": "T102",
+    "T102 (COB)-T102 (EST)-FE/AC-VARIOS (12.0)": "T102",
+    "T102 (EST)-AL-VARIOS (12.0)": "T102",
+    "T102 (EST)-CU/BR-VARIOS (12.0)": "T102",
+    "T102 (IRI)-AL-FISHER (12.0)": "T102",
+    "T103 (CRD)-FE-VEEBALL (11.0)": "T103",
+    "T104 (EST)-CU/BR-VARIOS (6.0)": "T104",
+    "T104 (ZIN)-T100 (HOR)-T104 (CAZ)-FE-VARIOS (6.0)": "T104",
+    "T104 (ZIN)-T100 (HOR)-T104 (CTR)-FE/AC-VARIOS (6.0)": "T104",
+    "T104 (ZIN)-T100 (HOR)-T104 (CVO)-FE/AC-VARIOS (6.0)": "T104",
+    "T104 (ZIN)-T104 (CAZ)-FE/AC-VARIOS (6.0)": "T104",
+    "T104 (ZIN)-T104 (CTR)-FE/AC-VARIOS (6.0)": "T104",
+    "T104 (ZIN)-T104 (CVO)-FE/AC-VARIOS (6.0)": "T104",
+    "T105 (ZIN)-T100 (HOR)-T105 (CAZ)-FE/AC/LA-VARIOS (7.0)": "T105",
+    "T105 (ZIN)-T105 (CAZ)-FE/AC/LA-VARIOS (7.0)": "T105",
+    "T105 (ZIN)-T105 (CTR)-FE/AC/LA-VARIOS (7.0)": "T105",
+    "T105 (ZIN)-T105 (CVO)-FE/AC/LA-VARIOS (7.0)": "T105",
+    "T106 (ZIN)-T100 (HOR)-T106 (CAM)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T100 (HOR)-T106 (CAZ)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CAM)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CAT)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CAZ)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CNE)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CNT)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CRJ)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CTR)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CTV)-FE/AC-VARIOS (10.0)": "T106",
+    "T106 (ZIN)-T106 (CVO)-FE/AC-VARIOS (10.0)": "T106",
+    "T107 (PLA)-CU-C4 (60.0)": "T107",
+    "T108 (COB)-T108 (NWO)-T108 (NEL)-T108 (NCV)-T109 (PAS)-ZA-CROMVET (13.0)": "T108",
+    "T108 (NEL)-T100 (HOR)-T108 (DEC)-T100 (FIB)-FE-CAGES FISHER (13.0)": "T108",
+    "T108 (NWO)-T108 (COB)-T108 (NWO)-T108 (NEL)-T109 (PAS)-FE/ZA-VARIOS (13.0)": "T108",
+    "T108 (NWO)-T108 (NEL)-T100 (HOR)-T108 (DEC)-T100 (FIB)-FE-CAGES FISHER (13.0)": "T108",
+    "T109 (LAV)-T000 (TRT)-T109 (NBR)-BI-BIMETALES (15.0)": "T109",
+    "T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
+    "T109 (NBR)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
+    "T109 (NSU)-FE-BUJIA (15.0)": "T109",
+    "T109 (NSU)-FE-BUJIA RENAULT (15.0)": "T109",
+    "T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
+    "T109 (NSU)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
+    "T110 (DEC)-CU-VARIOS (26.0)": "T110",
+    "T111 (AND)-AL-VARIOS (14.0)": "T111",
+    "T111 (COB)-T110 (PLA)-AL-VARIOS (26.0)": "T110",
+    "T111 (COB)-T203 (PLA)-AL-HEATER (16.0)": "T203",
+    "T111 (ESM)-AL-VARIOS (14.0)": "T111",
+    "T111 (ESM)-CU-VARIOS (14.0)": "T111",
+    "T111 (EST)-AL-VARIOS (14.0)": "T111",
+    "T111 (EST)-CU-VARIOS (14.0)": "T111",
+    "T112 (NWO)-T203 (PLA)-FE-VARIOS (16.0)": "T203",
+    "T112 (NWO)-T204 (PLA)-FE-VARIOS (16.1)": "T204",
+    "T112 (NWO)-T301 (EST)-CU/FE/LA-VARIOS (24.0)": "T301",
+    "T113 (ZIN)-T100 (HOR)-T113 (CAZ)-FE-VARIOS (17.0)": "T113",
+    "T113 (ZIN)-T113 (CAZ)-FE-VARIOS (17.0)": "T113",
+    "T114 (FMS)-FE-GM (7.1)": "T114",
+    "T114 (FMS)-FE-PISTON (7.1)": "T114",
+    "T114 (FMS)-FE-PIÑON (7.1)": "T114",
+    "T114 (FMS)-T114 (ACE)-FE-PISTON (7.1)": "T114",
+    "T114 (FMS)-T114 (ACE)-FE-PIÑON (7.1)": "T114",
+    "T115 (NCR)-FE/AC-VARIOS (23.0)": "T115",
+    "T116 (FZI)-FE/AC-VARIOS (7.2)": "T116",
+    "T116 (FZI)-T116 (ACE)-FE/AC-VARIOS (7.2)": "T116",
+    "T116 (PAV)-FE/AC-VARIOS (7.2)": "T116",
+    "T116 (PAV)-T116 (ACE)-FE/AC-VARIOS (7.2)": "T116",
+    "T117 (ZNQ)-T117 (CNN)-FE/AC-BONETE (28.0)": "T117",
+    "T200 (REB)-T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
+    "T200 (REB)-T109 (NBR)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
+    "T200 (REB)-T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
+    "T200 (REB)-T109 (NSU)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
+    "T201 (COB)-AL-VARIOS (25.0)": "T201",
+    "T201 (DEC)-T201 (ESM)-CU-VARIOS (25.0)": "T201",
+    "T201 (DEC)-T201 (EST)-CU-VARIOS (25.0)": "T201",
+    "T201 (DEC)-T201 (NSU)-CU-VARIOS (25.0)": "T201",
+    "T201 (ESM)-AL-VARIOS (25.0)": "T201",
+    "T201 (ESM)-CU-VARIOS (25.0)": "T201",
+    "T201 (EST)-AL-VARIOS (25.0)": "T201",
+    "T201 (EST)-CU-VARIOS (25.0)": "T201",
+    "T201 (EST)-T401 (EBT)-CU-VARIOS (25.0)": "T201",
+    "T201 (NSU)-CU-VARIOS (25.0)": "T201",
+    "T202 (DEC)-CU-BARE (16.2)": "T202",
+    "T202 (PLA)-CU-VARIOS (16.2)": "T202",
+    "T203 (LES)-T203 (PLA)-CU-VARIOS (16.0)": "T203",
+    "T204 (DEC)-CU-BARE (16.1)": "T204",
+    "T204 (EST)-T401 (EBT)-CU-VARIOS (16.1)": "T204",
+    "T205 (DEC)-CU-BARE (16.3)": "T205",
+    "T205 (EST)-AL-VARIOS (16.3)": "T205",
+    "T205 (EST)-CU-VARIOS (16.3)": "T205",
+    "T205 (EST)-T401 (EBT)-CU-VARIOS (16.3)": "T205",
+    "T205 (PLA)-T300 (ANT)-CU-SOLERA RG (16.3)": "T205",
+    "T206 (LAV)-T000 (TRT)-T206 (EST)-BI-BIMETALES (18.0)": "T206",
+    "T207 (AND)-AL-VARIOS (16.4)": "T207",
+    "T207 (AND)-T207 (TIN)-AL-VARIOS (16.4)": "T207",
+    "T207 (ELE)-FE/AC-FISHER (16.4)": "T207",
+    "T300 (ANT)-CU-VARIOS (20.0)": "T300",
+    "T300 (FIB)-T205 (PLA)-CU-ZION (16.3)": "T205",
+    "T300 (FIB)-T205 (PLA)-T300 (ANT)-CU-SOLERA WIELAND (16.3)": "T205",
+    "T300 (LES)-T110 (PLA)-CU-VARIOS (26.0)": "T110",
+    "T300 (LES)-T110 (PLA)-T300 (ANT)-CU-VARIOS (26.0)": "T110",
+    "T300 (LES)-T204 (EST)-CU/BR-VARIOS (16.1)": "T204",
+    "T300 (LES)-T204 (NWO)-T204 (PLA)-CU-VARIOS (16.1)": "T204",
+    "T300 (LES)-T204 (PLA)-CU/BR-VARIOS (16.1)": "T204",
+    "T300 (LES)-T204 (PLA)-T300 (ANT)-CU-VARIOS (16.1)": "T204",
+    "T300 (LES)-T205 (PLA)-CU-MAQUILA QRO (16.3)": "T205",
+    "T300 (LES)-T205 (PLA)-T300 (ANT)-CU-MAQUILA RG (16.3)": "T205",
+    "T301 (EST)-CU/BR/FE-VARIOS (24.0)": "T301",
+    "T301 (LES)-T301 (EST)-CU-CELCO (24.0)": "T301",
+    "T400 (ANT)-CU-VARIOS (20.0)": "T400",
+    "T401 (EBT)-CU-VARIOS (30.0)": "T401",
+    "T401 (EBT)-T110 (PLA)-T300 (ANT)-CU-VARIOS (26.0)": "T110",
+    "T401 (EBT)-T204 (PLA)-T300 (ANT)-CU-VARIOS (16.1)": "T204",
+    "T401 (EBT)-T205 (PLA)-T300 (ANT)-CU-VARIOS (16.3)": "T205",
+    "T401 (EMR)-CU-VARIOS (30.0)": "T401",
+    "T401 (EMT)-CU-VARIOS (30.0)": "T401",
+    "T401 (EMT)-T110 (PLA)-T300 (ANT)-CU-VARIOS (26.0)": "T110",
+    "T401 (EMT)-T201 (EST)-CU-VARIOS (25.0)": "T201",
+    "T401 (EMT)-T204 (EST)-CU-VARIOS (16.1)": "T204",
+    "T401 (EMT)-T204 (PLA)-T300 (ANT)-CU-VARIOS (16.1)": "T204",
+    "T401 (EMT)-T205 (EST)-CU-VARIOS (16.3)": "T205",
+    "T401 (EMT)-T205 (PLA)-T300 (ANT)-CU-VARIOS (16.3)": "T205"
+  };
+
+  // Catálogos runtime de nodos compartidos descubiertos vía AllProcesses
+  let _nodesByName = null;   // Map<normName, id>
+  let _namesById = null;     // Map<id, displayName>
+
+  // Normaliza para lookup case-insensitive con espacios colapsados
+  function normName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+
+  function lookupNodeId(name) {
+    if (!_nodesByName) return null;
+    return _nodesByName.get(normName(name)) || null;
+  }
+
+  function lookupNodeName(id) {
+    if (!_namesById) return null;
+    return _namesById.get(id) || null;
+  }
+
+  function getLineCode(processName) {
+    return LINE_MAPPING[processName] || null;
+  }
+
+  // ── Carga del catálogo de nodos compartidos ──
+  // Pagina AllProcesses con los dos types más comunes para construir un Map<name, id>.
+  // Si una línea T<n> no tiene los compartidos creados, simplemente no estarán en el map.
+  async function loadAllNodes(onProgress) {
+    const byName = new Map();
+    const byId = new Map();
+    const types = [['SCANNER_NODE'], ['PROCESS']];
+    for (const t of types) {
+      let offset = 0;
+      while (true) {
+        const data = await api().query('AllProcesses', {
+          includeArchived: 'NO', processNodeTypes: t, searchQuery: '',
+          first: PAGE_SIZE, offset
+        }, 'AllProcesses');
+        const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
+        for (const n of nodes) {
+          if (!n?.name || !n?.id) continue;
+          const k = normName(n.name);
+          if (!byName.has(k)) byName.set(k, n.id);
+          if (!byId.has(n.id)) byId.set(n.id, n.name);
+        }
+        if (onProgress) onProgress(`Cargando nodos (${t[0]})... ${byName.size}`);
+        if (nodes.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+    }
+    _nodesByName = byName;
+    _namesById = byId;
+    return byName;
+  }
+
+  // Verifica que los 5 globales existen en el catálogo
+  function validateGlobals() {
+    const missing = GLOBALS.filter(g => !lookupNodeId(g));
+    if (missing.length) {
+      throw new Error(`Faltan nodos globales en el catálogo: ${missing.join(', ')}. Créalos en Steelhead antes de continuar.`);
+    }
+  }
+
+  // ── Pull de procesos ──
+  async function fetchAllProcesses(onProgress) {
+    const all = [];
+    let offset = 0;
+    while (true) {
+      const data = await api().query('AllProcesses', {
+        includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: '',
+        first: PAGE_SIZE, offset
+      }, 'AllProcesses');
+      const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
+      all.push(...nodes);
+      if (onProgress) onProgress(`Procesos: ${all.length}`);
+      if (nodes.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
+    }
+    return all;
+  }
+
+  async function fetchProcessTree(id) {
+    const data = await api().query('GetProcessNode', {
+      id, processNodeOccurrence: 1, rootId: id
+    }, 'GetProcessNode');
+    return data?.treeRoot || null;
+  }
+
+  // Filtra descendantRelationships a las que viven dentro del proceso (BFS desde rootId).
+  // Un nodo compartido aparece en árboles ajenos, así que solo seguimos por nodos ya visitados.
+  function bfsRelationships(rootId, allRels) {
+    const byParent = new Map(); // fromId → [rel]
+    for (const r of allRels) {
+      if (!byParent.has(r.fromId)) byParent.set(r.fromId, []);
+      byParent.get(r.fromId).push(r);
+    }
+    const kept = [];
+    const visited = new Set([rootId]);
+    const queue = [rootId];
+    while (queue.length) {
+      const pid = queue.shift();
+      const children = (byParent.get(pid) || []).slice().sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
+      for (const r of children) {
+        kept.push(r);
+        if (!visited.has(r.toId)) {
+          visited.add(r.toId);
+          queue.push(r.toId);
+        }
+      }
+    }
+    return kept;
+  }
+
+  // Resuelve el nombre de un node id usando varias fuentes (relación embebida o catálogo reverso)
+  function resolveNodeName(rel, id) {
+    return rel?.processNodeByToId?.name
+        || rel?.toNode?.name
+        || rel?.toProcessNode?.name
+        || lookupNodeName(id)
+        || '';
+  }
+
+  function extractTopLevel(treeRoot) {
+    if (!treeRoot) return [];
+    const rootId = treeRoot.id;
+    const rels = treeRoot.descendantRelationships || [];
+    const top = rels
+      .filter(r => r.fromId === rootId)
+      .sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
+    return top.map(r => ({ id: r.toId, name: resolveNodeName(r, r.toId) }));
+  }
+
+  // ── Detección de canon ──
+  function detectCanonStatus(process, treeRoot) {
+    const topLevel = extractTopLevel(treeRoot);
+    const lineCode = getLineCode(process.name);
+    if (!lineCode) {
+      return {
+        isCanon: false,
+        lineCodeMissing: true,
+        topLevel,
+        expected: [],
+        missingShared: [],
+        extras: topLevel,
+        reason: 'Línea desconocida (no está en el mapping del Excel)'
+      };
+    }
+
+    const expected = [
+      'Inspección Recibo',
+      'Preparación de Surtido',
+      enracadoName(lineCode),
+      listoPPName(lineCode),
+      secadoName(lineCode),
+      inspEmpaqueName(lineCode),
+      'Preparación de Embarque',
+      'Inspección Embarques',
+      'Embarque en Almacén'
+    ];
+
+    const sharedToVerify = [
+      enracadoName(lineCode),
+      secadoName(lineCode),
+      inspEmpaqueName(lineCode)
+    ];
+    const missingShared = sharedToVerify.filter(n => !lookupNodeId(n));
+
+    const topNames = topLevel.map(t => normName(t.name));
+    const expectedNorm = expected.map(normName);
+
+    let isCanon = topLevel.length === expected.length;
+    if (isCanon) {
+      for (let i = 0; i < expected.length; i++) {
+        if (topNames[i] !== expectedNorm[i]) { isCanon = false; break; }
+      }
+    }
+
+    const expectedSet = new Set(expectedNorm);
+    const extras = topLevel.filter(t => !expectedSet.has(normName(t.name)));
+    const presentExpected = topLevel.filter(t => expectedSet.has(normName(t.name)));
+    const hasListoPP = topLevel.some(t => normName(t.name) === normName(listoPPName(lineCode)));
+
+    let reason = '';
+    if (isCanon) reason = 'OK';
+    else if (missingShared.length) reason = `Faltan compartidos: ${missingShared.join(', ')}`;
+    else if (presentExpected.length < expected.length - (hasListoPP ? 0 : 1)) reason = 'Faltan nodos canónicos';
+    else if (extras.length) reason = `Fuera de orden, ${extras.length} extras`;
+    else reason = 'Fuera de orden';
+
+    return {
+      isCanon,
+      lineCodeMissing: false,
+      lineCode,
+      topLevel,
+      expected,
+      missingShared,
+      extras,
+      hasListoPP,
+      reason
+    };
+  }
+
+  // ── Construcción del nuevo árbol ──
+  // Toma allRels (filtrados con BFS) y reconstruye un sub-árbol para cada nodo,
+  // luego devuelve {id: rootId, children: [...canonical, ...extras], specId: null}
+  function buildNewTree(rootId, canonicalIds, extraIds, allRels) {
+    const byParent = new Map();
+    for (const r of allRels) {
+      if (!byParent.has(r.fromId)) byParent.set(r.fromId, []);
+      byParent.get(r.fromId).push(r);
+    }
+
+    const visited = new Set();
+    function buildSubtree(nodeId) {
+      if (visited.has(nodeId)) return { id: nodeId, children: [], specId: null };
+      visited.add(nodeId);
+      const childRels = (byParent.get(nodeId) || []).slice().sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
+      const children = [];
+      for (const r of childRels) {
+        const sub = buildSubtree(r.toId);
+        if (r.specId !== undefined) sub.specId = r.specId ?? null;
+        children.push(sub);
+      }
+      return { id: nodeId, children, specId: null };
+    }
+
+    visited.add(rootId);
+    const childrenAll = [...canonicalIds, ...extraIds].map(id => buildSubtree(id));
+    return { id: rootId, children: childrenAll, specId: null };
+  }
+
+  // ── Mutaciones ──
+  async function createListoParaProcesar(lineCode) {
+    const data = await api().query('CreateProcessNode', {
+      type: 'SCANNER_NODE',
+      name: listoPPName(lineCode),
+      autoComplete: false
+    }, 'CreateProcessNode');
+    const id = data?.createProcessNode?.processNode?.id;
+    if (!id) throw new Error(`CreateProcessNode no devolvió id para ${listoPPName(lineCode)}`);
+    return id;
+  }
+
+  async function applyCanonToProcess(process, status) {
+    const result = { processId: process.id, name: process.name, lineCode: status.lineCode };
+
+    // Refrescar árbol justo antes de aplicar (snapshot fresco)
+    const treeRoot = await fetchProcessTree(process.id);
+    if (!treeRoot) return { ...result, success: false, skipped: true, reason: 'No se pudo obtener el árbol del proceso' };
+    result.snapshot = treeRoot;
+
+    if (status.lineCodeMissing) return { ...result, success: false, skipped: true, reason: 'Línea desconocida' };
+    if (status.missingShared?.length) return { ...result, success: false, skipped: true, reason: `Faltan compartidos: ${status.missingShared.join(', ')}` };
+
+    const lineCode = status.lineCode;
+    const allRels = bfsRelationships(process.id, treeRoot.descendantRelationships || []);
+    const topLevelFresh = extractTopLevel(treeRoot);
+
+    // ID de cada uno de los 9 nodos
+    const idInsRecibo = lookupNodeId('Inspección Recibo');
+    const idPrepSurtido = lookupNodeId('Preparación de Surtido');
+    const idEnracado = lookupNodeId(enracadoName(lineCode));
+    const idSecado = lookupNodeId(secadoName(lineCode));
+    const idInspEmpaque = lookupNodeId(inspEmpaqueName(lineCode));
+    const idPrepEmbarque = lookupNodeId('Preparación de Embarque');
+    const idInspEmbarques = lookupNodeId('Inspección Embarques');
+    const idEmbarqueAlmacen = lookupNodeId('Embarque en Almacén');
+
+    if (!idInsRecibo || !idPrepSurtido || !idEnracado || !idSecado || !idInspEmpaque || !idPrepEmbarque || !idInspEmbarques || !idEmbarqueAlmacen) {
+      return { ...result, success: false, skipped: true, reason: 'No se resolvieron todos los IDs compartidos' };
+    }
+
+    // Listo para Procesar: reusar si ya existe top-level, si no crear
+    const listoNorm = normName(listoPPName(lineCode));
+    const existingListo = topLevelFresh.find(t => normName(t.name) === listoNorm);
+    let idListo;
+    if (existingListo) {
+      idListo = existingListo.id;
+    } else {
+      idListo = await createListoParaProcesar(lineCode);
+      log(`  ${process.name}: creado "${listoPPName(lineCode)}" id:${idListo}`);
+    }
+
+    const canonicalIds = [
+      idInsRecibo, idPrepSurtido, idEnracado, idListo,
+      idSecado, idInspEmpaque, idPrepEmbarque, idInspEmbarques, idEmbarqueAlmacen
+    ];
+
+    // Validaciones de seguridad antes de tocar ProcureTree
+    const distinct = new Set(canonicalIds);
+    if (distinct.size !== canonicalIds.length) {
+      return { ...result, success: false, skipped: true, reason: 'IDs canónicos duplicados (compartidos colisionan)' };
+    }
+    if (canonicalIds.some(id => !id)) {
+      return { ...result, success: false, skipped: true, reason: 'ID canónico nulo detectado' };
+    }
+
+    // extras = top-level que NO están en canonicalIds (preservar como apéndice)
+    const canonicalSet = new Set(canonicalIds);
+    const extraIds = topLevelFresh.filter(t => !canonicalSet.has(t.id)).map(t => t.id);
+
+    const newTree = buildNewTree(process.id, canonicalIds, extraIds, allRels);
+
+    try {
+      const data = await api().query('ProcureTree', { tree: newTree }, 'ProcureTree');
+      const ok = data?.procureProcessTree2?.processTree?.id === process.id;
+      if (!ok) return { ...result, success: false, skipped: false, reason: 'ProcureTree no confirmó éxito' };
+      return { ...result, success: true, createdListoId: existingListo ? null : idListo };
+    } catch (e) {
+      return { ...result, success: false, skipped: false, reason: `ProcureTree falló: ${String(e.message).substring(0, 200)}` };
+    }
+  }
+
+  // ── Worker pool ──
+  async function runPool(items, concurrency, worker, onProgress) {
+    const results = [];
+    let cursor = 0;
+    let done = 0;
+    async function loop() {
+      while (cursor < items.length) {
+        const i = cursor++;
+        try {
+          const r = await worker(items[i], i);
+          results[i] = r;
+        } catch (e) {
+          results[i] = { error: e.message };
+        }
+        done++;
+        if (onProgress) onProgress(done, items.length, items[i], results[i]);
+      }
+    }
+    const ws = [];
+    for (let i = 0; i < concurrency; i++) ws.push(loop());
+    await Promise.all(ws);
+    return results;
+  }
+
+  // ── UI: estilos ──
+  function injectStyles() {
+    if (document.getElementById('pcanon-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'pcanon-styles';
+    s.textContent = `
+      .pc-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+      .pc-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:24px 28px;max-width:1100px;width:94%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}
+      .pc-modal h2{font-size:20px;margin:0 0 6px;color:#38bdf8}
+      .pc-modal h3{font-size:14px;margin:14px 0 6px;color:#94a3b8;font-weight:600}
+      .pc-sub{color:#94a3b8;font-size:12px;margin-bottom:10px}
+      .pc-paste{display:flex;gap:8px;margin-bottom:10px}
+      .pc-paste textarea{flex:1;min-height:60px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical}
+      .pc-input{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-size:12px}
+      .pc-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+      .pc-table-wrap{max-height:46vh;overflow-y:auto;border:1px solid #334155;border-radius:6px}
+      .pc-table{width:100%;border-collapse:collapse;font-size:12px}
+      .pc-table th{position:sticky;top:0;background:#1a2236;color:#94a3b8;text-align:left;padding:6px 8px;font-weight:600;border-bottom:1px solid #334155;z-index:1}
+      .pc-table td{padding:5px 8px;border-bottom:1px solid #1e293b;vertical-align:top}
+      .pc-table tr.pc-ok td{color:#94a3b8}
+      .pc-table tr.pc-bad td{color:#e2e8f0}
+      .pc-table tr.pc-disabled td{color:#475569}
+      .pc-status-ok{color:#4ade80;font-weight:600}
+      .pc-status-bad{color:#f87171;font-weight:600}
+      .pc-status-warn{color:#fbbf24;font-weight:600}
+      .pc-chip{display:inline-block;padding:2px 8px;background:#312e81;color:#c7d2fe;border-radius:10px;font-size:11px;margin:2px 4px 2px 0;cursor:pointer}
+      .pc-chip:hover{background:#1e1b4b}
+      .pc-btnrow{display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap}
+      .pc-btn{padding:9px 18px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer}
+      .pc-btn-cancel{background:#475569;color:#e2e8f0}
+      .pc-btn-go{background:#38bdf8;color:#0f172a}
+      .pc-btn-danger{background:#ef4444;color:#fff}
+      .pc-btn-soft{background:#0f172a;color:#94a3b8;border:1px solid #334155}
+      .pc-bar{height:4px;background:#0f172a;border-radius:3px;overflow:hidden;margin:6px 0}
+      .pc-bar-fill{height:100%;background:#38bdf8;width:0%;transition:width 0.3s}
+      .pc-pre{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;max-height:160px;overflow:auto;color:#cbd5e1;white-space:pre-wrap;word-break:break-all}
+    `;
+    document.head.appendChild(s);
+  }
+
+  function removeOverlay() {
+    const ov = document.getElementById('pcanon-overlay');
+    if (ov) ov.parentNode.removeChild(ov);
+  }
+
+  function setOverlay(html) {
+    injectStyles();
+    let ov = document.getElementById('pcanon-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'pcanon-overlay';
+      ov.className = 'pc-overlay';
+      document.body.appendChild(ov);
+    }
+    ov.innerHTML = `<div class="pc-modal">${html}</div>`;
+    return ov.firstElementChild;
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  // ── Pegado de lista de Excel ──
+  function parsePastedList(text) {
+    const tokens = [];
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+      const cols = line.split(/\t/);
+      for (const c of cols) {
+        const t = c.trim();
+        if (!t) continue;
+        const tu = t.toLowerCase();
+        if (tu === 'proceso' || tu === 'línea' || tu === 'linea' || tu === 'nombre de la línea' || tu === 'nombre de la linea') continue;
+        tokens.push(t);
+      }
+    }
+    return [...new Set(tokens)];
+  }
+
+  // Tries to match a token to a process name
+  function matchToken(token, processes) {
+    const tnorm = normName(token);
+    // 1) Match exacto contra process.name
+    let m = processes.find(p => normName(p.name) === tnorm);
+    if (m) return m;
+    // 2) Match contra Nombre de la Línea (LINE_MAPPING key sin prefijo "T<n>-LI ")
+    //    En el Excel la columna C es "T101-LI Cromo Decorativo (4.0)" donde el sufijo
+    //    después del "-LI " se parece al nombre del proceso. Pero el processName real
+    //    está en col D. Si pegan col C, hacemos best-effort por coincidencia parcial.
+    m = processes.find(p => normName(p.name).includes(tnorm) || tnorm.includes(normName(p.name)));
+    return m || null;
+  }
+
+  // ── Render: selección ──
+  function renderSelection(rows, onConfirm, onCancel) {
+    const visibleRows = rows.filter(r => !r.status.isCanon);
+    let showCanon = false;
+    let textFilter = '';
+    let selected = new Set();
+    let unmatched = [];
+
+    function paintRow(r) {
+      const s = r.status;
+      const lineCol = s.lineCode || '<i style="color:#fbbf24">?</i>';
+      let stEl, stClass;
+      if (s.isCanon) { stEl = 'OK'; stClass = 'pc-status-ok'; }
+      else if (s.lineCodeMissing) { stEl = 'Línea desconocida'; stClass = 'pc-status-warn'; }
+      else if (s.missingShared.length) { stEl = `Falta: ${s.missingShared.join(', ')}`; stClass = 'pc-status-warn'; }
+      else if (!s.hasListoPP) { stEl = 'Falta Listo para Procesar'; stClass = 'pc-status-bad'; }
+      else { stEl = 'Fuera de orden'; stClass = 'pc-status-bad'; }
+      const enabled = !s.isCanon && !s.lineCodeMissing && s.missingShared.length === 0;
+      const cls = s.isCanon ? 'pc-ok' : (enabled ? 'pc-bad' : 'pc-disabled');
+      const checkbox = enabled
+        ? `<input type="checkbox" class="pc-row-check" data-id="${r.process.id}" ${selected.has(r.process.id) ? 'checked' : ''}>`
+        : `<input type="checkbox" disabled title="No se puede normalizar (línea desconocida o compartidos faltantes)">`;
+      const detail = s.extras?.length ? `${s.extras.length} extras: ${s.extras.slice(0,3).map(e => escapeHtml(e.name)).join(', ')}${s.extras.length > 3 ? '…' : ''}` : '';
+      return `<tr class="${cls}">
+        <td>${checkbox}</td>
+        <td>${escapeHtml(r.process.name)}</td>
+        <td>${lineCol}</td>
+        <td><span class="${stClass}">${escapeHtml(stEl)}</span></td>
+        <td style="color:#64748b;font-size:11px">${escapeHtml(detail)}</td>
+      </tr>`;
+    }
+
+    function renderTable() {
+      const filtered = (showCanon ? rows : rows.filter(r => !r.status.isCanon))
+        .filter(r => !textFilter || normName(r.process.name).includes(normName(textFilter)));
+      const tbody = filtered.map(paintRow).join('');
+      const totalNon = rows.filter(r => !r.status.isCanon).length;
+      const totalCanon = rows.length - totalNon;
+      return `
+        <h3>Procesos (${filtered.length} mostrados — ${rows.length} totales — ${totalCanon} OK / ${totalNon} no canónicos)</h3>
+        <div class="pc-table-wrap">
+          <table class="pc-table">
+            <thead><tr>
+              <th><input type="checkbox" id="pc-select-all" title="Seleccionar todos los visibles"></th>
+              <th>Proceso</th>
+              <th>Línea</th>
+              <th>Estado</th>
+              <th>Detalle</th>
+            </tr></thead>
+            <tbody id="pc-tbody">${tbody}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function refresh() {
+      const wrap = document.getElementById('pc-table-wrap');
+      if (wrap) wrap.outerHTML = `<div id="pc-table-wrap">${renderTable()}</div>`;
+      bindRowEvents();
+      updateCount();
+    }
+
+    function bindRowEvents() {
+      document.querySelectorAll('.pc-row-check').forEach(cb => {
+        cb.onchange = () => {
+          const id = parseInt(cb.dataset.id);
+          if (cb.checked) selected.add(id); else selected.delete(id);
+          updateCount();
+        };
+      });
+      const sa = document.getElementById('pc-select-all');
+      if (sa) sa.onchange = () => {
+        document.querySelectorAll('.pc-row-check').forEach(cb => {
+          cb.checked = sa.checked;
+          const id = parseInt(cb.dataset.id);
+          if (sa.checked) selected.add(id); else selected.delete(id);
+        });
+        updateCount();
+      };
+    }
+
+    function updateCount() {
+      const n = selected.size;
+      const goBtn = document.getElementById('pc-go');
+      if (goBtn) {
+        goBtn.textContent = `APLICAR (${n})`;
+        goBtn.disabled = n === 0;
+        goBtn.style.opacity = n === 0 ? '0.5' : '1';
+      }
+    }
+
+    function renderUnmatched() {
+      if (!unmatched.length) return '';
+      return `<div style="margin:6px 0;font-size:12px;color:#fbbf24">No emparejados (${unmatched.length}): ${unmatched.slice(0, 10).map(u => `<span class="pc-chip" title="quitar">${escapeHtml(u)}</span>`).join('')}${unmatched.length > 10 ? '…' : ''}</div>`;
+    }
+
+    function renderRoot() {
+      return `
+        <h2>🏭 Canon de Procesos</h2>
+        <div class="pc-sub">Detecta procesos cuyo orden top-level no coincide con el patrón canónico de 9 nodos. Aplica el patrón a los seleccionados.</div>
+        <h3>Pegar lista (Excel: una columna)</h3>
+        <div class="pc-paste">
+          <textarea id="pc-paste" placeholder="Pega aquí los nombres de proceso (uno por línea o desde una columna de Excel)..."></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="pc-btn pc-btn-go" id="pc-paste-apply">Aplicar selección</button>
+            <button class="pc-btn pc-btn-soft" id="pc-paste-clear">Limpiar</button>
+          </div>
+        </div>
+        <div id="pc-paste-summary" class="pc-sub"></div>
+        <div id="pc-unmatched">${renderUnmatched()}</div>
+        <div class="pc-row" style="margin:6px 0">
+          <input type="text" id="pc-filter" class="pc-input" placeholder="Filtrar por nombre..." style="flex:1">
+          <label style="font-size:12px;color:#94a3b8"><input type="checkbox" id="pc-show-canon"> Mostrar canónicos</label>
+        </div>
+        <div id="pc-table-wrap">${renderTable()}</div>
+        <div class="pc-btnrow">
+          <button class="pc-btn pc-btn-cancel" id="pc-cancel">CANCELAR</button>
+          <button class="pc-btn pc-btn-go" id="pc-go" disabled>APLICAR (0)</button>
+        </div>`;
+    }
+
+    setOverlay(renderRoot());
+    bindRowEvents();
+    updateCount();
+
+    document.getElementById('pc-paste-apply').onclick = () => {
+      const txt = document.getElementById('pc-paste').value;
+      const tokens = parsePastedList(txt);
+      const matched = [];
+      const um = [];
+      for (const tok of tokens) {
+        const p = matchToken(tok, rows.map(r => r.process));
+        if (!p) { um.push(tok); continue; }
+        const r = rows.find(x => x.process.id === p.id);
+        if (!r) { um.push(tok); continue; }
+        const enabled = !r.status.isCanon && !r.status.lineCodeMissing && r.status.missingShared.length === 0;
+        if (!enabled) { um.push(tok); continue; }
+        selected.add(p.id);
+        matched.push(p.name);
+      }
+      unmatched = um;
+      const summary = document.getElementById('pc-paste-summary');
+      if (summary) summary.innerHTML = `<span style="color:#4ade80">✓ ${matched.length} preseleccionados</span>${um.length ? ` <span style="color:#f87171">— ✗ ${um.length} no encontrados</span>` : ''}`;
+      const unEl = document.getElementById('pc-unmatched');
+      if (unEl) unEl.innerHTML = renderUnmatched();
+      refresh();
+    };
+
+    document.getElementById('pc-paste-clear').onclick = () => {
+      document.getElementById('pc-paste').value = '';
+      const summary = document.getElementById('pc-paste-summary');
+      if (summary) summary.innerHTML = '';
+      unmatched = [];
+      const unEl = document.getElementById('pc-unmatched');
+      if (unEl) unEl.innerHTML = '';
+    };
+
+    document.getElementById('pc-filter').oninput = (e) => { textFilter = e.target.value; refresh(); };
+    document.getElementById('pc-show-canon').onchange = (e) => { showCanon = e.target.checked; refresh(); };
+
+    document.getElementById('pc-cancel').onclick = () => { removeOverlay(); onCancel(); };
+    document.getElementById('pc-go').onclick = () => {
+      const chosen = rows.filter(r => selected.has(r.process.id));
+      onConfirm(chosen);
+    };
+  }
+
+  function renderConfirm(chosen, onYes, onNo) {
+    const list = chosen.map(r => `<li>${escapeHtml(r.process.name)} <span style="color:#94a3b8">(${r.status.lineCode})</span></li>`).join('');
+    setOverlay(`
+      <h2 style="color:#fbbf24">⚠️ Confirmación</h2>
+      <p style="color:#cbd5e1;font-size:13px">Esta acción <b>reemplaza el árbol top-level</b> de los siguientes ${chosen.length} procesos. El árbol previo se guarda como snapshot descargable para rollback manual.</p>
+      <div style="max-height:38vh;overflow:auto;border:1px solid #334155;border-radius:6px;padding:8px 12px;background:#0f172a;font-size:12px">
+        <ol style="margin:0;padding-left:20px">${list}</ol>
+      </div>
+      <div class="pc-btnrow">
+        <button class="pc-btn pc-btn-cancel" id="pc-back">VOLVER</button>
+        <button class="pc-btn pc-btn-danger" id="pc-confirm">CONFIRMAR Y APLICAR</button>
+      </div>`);
+    document.getElementById('pc-back').onclick = onNo;
+    document.getElementById('pc-confirm').onclick = onYes;
+  }
+
+  function renderProgress(total) {
+    setOverlay(`
+      <h2>🏭 Aplicando canon...</h2>
+      <div id="pc-prog-text" style="font-size:13px;color:#cbd5e1">0/${total}</div>
+      <div class="pc-bar"><div class="pc-bar-fill" id="pc-prog-bar"></div></div>
+      <div id="pc-prog-current" class="pc-sub">Iniciando...</div>
+      <div id="pc-prog-list" class="pc-pre" style="margin-top:8px"></div>
+    `);
+  }
+
+  function updateProgress(done, total, currentName, lastResult) {
+    const bar = document.getElementById('pc-prog-bar');
+    const txt = document.getElementById('pc-prog-text');
+    const cur = document.getElementById('pc-prog-current');
+    const list = document.getElementById('pc-prog-list');
+    if (bar) bar.style.width = `${Math.round(done / total * 100)}%`;
+    if (txt) txt.textContent = `${done}/${total}`;
+    if (cur) cur.textContent = currentName ? `Última: ${currentName}` : '';
+    if (list && lastResult) {
+      const icon = lastResult.success ? '✓' : (lastResult.skipped ? '↷' : '✗');
+      const color = lastResult.success ? '#4ade80' : (lastResult.skipped ? '#fbbf24' : '#f87171');
+      const reason = lastResult.success ? 'OK' : (lastResult.reason || 'error');
+      const line = document.createElement('div');
+      line.style.color = color;
+      line.textContent = `${icon} ${lastResult.name} — ${reason}`;
+      list.appendChild(line);
+      list.scrollTop = list.scrollHeight;
+    }
+  }
+
+  function renderFinal(results) {
+    const success = results.filter(r => r.success);
+    const skipped = results.filter(r => !r.success && r.skipped);
+    const failed = results.filter(r => !r.success && !r.skipped);
+
+    function rowsFor(arr) {
+      return arr.map(r => `<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.lineCode || '?')}</td><td>${r.success ? '<span class="pc-status-ok">✓ OK</span>' : (r.skipped ? '<span class="pc-status-warn">↷ saltado</span>' : '<span class="pc-status-bad">✗ error</span>')}</td><td style="color:#94a3b8">${escapeHtml(r.reason || '')}</td></tr>`).join('');
+    }
+
+    setOverlay(`
+      <h2 style="color:#4ade80">🏭 Canon aplicado</h2>
+      <div class="pc-sub">Total: ${results.length} — ✓ ${success.length} | ↷ ${skipped.length} | ✗ ${failed.length}</div>
+      <div class="pc-table-wrap" style="max-height:60vh">
+        <table class="pc-table">
+          <thead><tr><th>Proceso</th><th>Línea</th><th>Resultado</th><th>Detalle</th></tr></thead>
+          <tbody>${rowsFor([...success, ...skipped, ...failed])}</tbody>
+        </table>
+      </div>
+      <div class="pc-btnrow">
+        <button class="pc-btn pc-btn-soft" id="pc-download">📥 Descargar snapshots (rollback manual)</button>
+        <button class="pc-btn pc-btn-go" id="pc-close">CERRAR</button>
+      </div>`);
+
+    document.getElementById('pc-download').onclick = () => {
+      const out = {
+        exportedAt: new Date().toISOString(),
+        canonical: GLOBALS,
+        results: results.map(r => ({
+          processId: r.processId, name: r.name, lineCode: r.lineCode,
+          success: r.success, skipped: r.skipped, reason: r.reason,
+          createdListoId: r.createdListoId || null,
+          snapshot: r.snapshot || null
+        }))
+      };
+      const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toLocaleDateString('en-CA') + '_' + Date.now();
+      a.download = `process-canon-snapshots_${stamp}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+    document.getElementById('pc-close').onclick = removeOverlay;
+  }
+
+  // ── Orquestador ──
+  async function run() {
+    if (!api()) { alert('SteelheadAPI no disponible'); return { error: 'SteelheadAPI no disponible' }; }
+    log('=== Process Canon ===');
+
+    // Fase A — Carga
+    setOverlay(`<h2>🏭 Canon de Procesos</h2><div id="pc-load" class="pc-sub">Cargando catálogo de nodos compartidos...</div>`);
+    try {
+      await loadAllNodes(msg => {
+        const el = document.getElementById('pc-load');
+        if (el) el.textContent = msg;
+      });
+      validateGlobals();
+    } catch (e) {
+      setOverlay(`<h2 style="color:#f87171">Error</h2><p style="color:#cbd5e1">${escapeHtml(e.message)}</p><div class="pc-btnrow"><button class="pc-btn pc-btn-cancel" onclick="document.getElementById('pcanon-overlay').remove()">CERRAR</button></div>`);
+      return { error: e.message };
+    }
+
+    const loadEl = document.getElementById('pc-load');
+    if (loadEl) loadEl.textContent = 'Cargando lista de procesos...';
+    let processes;
+    try {
+      processes = await fetchAllProcesses(msg => {
+        const el = document.getElementById('pc-load');
+        if (el) el.textContent = msg;
+      });
+    } catch (e) {
+      setOverlay(`<h2 style="color:#f87171">Error</h2><p>${escapeHtml(e.message)}</p>`);
+      return { error: e.message };
+    }
+    log(`  ${processes.length} procesos descubiertos`);
+
+    // Auditar cada proceso (concurrencia)
+    if (loadEl) loadEl.textContent = `Auditando 0/${processes.length}...`;
+    const rows = [];
+    let auditCursor = 0;
+    let auditDone = 0;
+    let auditNonCanon = 0;
+    const auditWorker = async () => {
+      while (auditCursor < processes.length) {
+        const i = auditCursor++;
+        const p = processes[i];
+        try {
+          const tree = await fetchProcessTree(p.id);
+          const status = detectCanonStatus(p, tree);
+          rows[i] = { process: p, status };
+          if (!status.isCanon) auditNonCanon++;
+        } catch (e) {
+          rows[i] = { process: p, status: { isCanon: false, lineCodeMissing: false, missingShared: [], extras: [], reason: `Error: ${e.message.substring(0,60)}` } };
+        }
+        auditDone++;
+        const el = document.getElementById('pc-load');
+        if (el) el.textContent = `Auditando ${auditDone}/${processes.length} (${auditNonCanon} no canónicos)`;
+      }
+    };
+    const auditWorkers = [];
+    for (let i = 0; i < CONCURRENCY_AUDIT; i++) auditWorkers.push(auditWorker());
+    await Promise.all(auditWorkers);
+    log(`  Auditoría: ${auditNonCanon} no canónicos / ${rows.length} total`);
+
+    // Fase B → C → D → E (loop entre selección y confirmación)
+    return new Promise(resolve => {
+      const cancel = () => { removeOverlay(); resolve({ cancelled: true }); };
+
+      const showSelection = () => {
+        renderSelection(rows, showConfirm, cancel);
+      };
+
+      const showConfirm = (chosen) => {
+        renderConfirm(chosen, () => runApply(chosen), showSelection);
+      };
+
+      const runApply = async (chosen) => {
+        renderProgress(chosen.length);
+        const results = [];
+        await runPool(chosen, CONCURRENCY_APPLY, async (r) => {
+          const res = await applyCanonToProcess(r.process, r.status);
+          results.push(res);
+          return res;
+        }, (done, total, item, last) => {
+          updateProgress(done, total, last?.name || item.process.name, last);
+        });
+        log(`=== Canon: ${results.filter(x=>x.success).length}/${results.length} aplicados ===`);
+        renderFinal(results);
+        resolve({ total: results.length, success: results.filter(x=>x.success).length });
+      };
+
+      showSelection();
+    });
+  }
+
+  return { run };
+})();
+
+if (typeof window !== 'undefined') window.ProcessCanon = ProcessCanon;

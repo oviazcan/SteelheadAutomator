@@ -1,5 +1,5 @@
 {
-  "version": "0.5.37",
+  "version": "0.5.38",
   "lastUpdated": "2026-04-29",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -60,7 +60,9 @@
         "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334",
         "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c",
         "CreateUpdateBill": "c6c2545a187f37bbbfb9764ba7449affc1c0b16bcffaaec69c5ae6c6fca3f9c8",
-        "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03"
+        "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03",
+        "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb",
+        "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -144,7 +146,10 @@
         "GetVendor": "326a130b68bfefc937c25df00d33543e0dcc28da340cc1a46ec59fa470c882a8",
         "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e",
         "GetReceivedOrdersWithReceivedOrderLineItems": "cff4549f79c1e64843cf1541ea27555ab0d8be7d53c3fd47c4b458ffd53535e7",
-        "Customer": "875fcfec140fa7e4a756d367cfe8c6868ff2eca8f396a97540638493649d317f"
+        "Customer": "875fcfec140fa7e4a756d367cfe8c6868ff2eca8f396a97540638493649d317f",
+        "GetProcessNode": "444ff791d8c457ca95a7638f01efc3012c87c1aafcd846faffb302a4d5c97503",
+        "ProcessNode": "72a77473ba27a4854aa25e147d651f864a3fb6cb8893c169a00f8fd90b9d3f4c",
+        "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af"
       }
     },
     "domain": {
@@ -490,6 +495,17 @@
       "actions": [
         { "id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill" }
       ]
+    },
+    {
+      "id": "process-canon",
+      "name": "Canon de Procesos",
+      "subtitle": "Auditar y normalizar nodos canónicos",
+      "icon": "🏭",
+      "category": "Producción",
+      "scripts": ["scripts/steelhead-api.js", "scripts/process-canon.js"],
+      "actions": [
+        { "id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run" }
+      ]
     }
   ],
   "knownOperations": {
@@ -606,7 +622,12 @@
     "InvoiceLowCodeData": { "type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill" },
     "GetReceivedOrdersWithReceivedOrderLineItems": { "type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill" },
     "CreateInvoiceAndUpdatePartTransferAccounts": { "type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill" },
-    "Customer": { "type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill" }
+    "Customer": { "type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill" },
+    "GetProcessNode": { "type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes). Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon" },
+    "ProcessNode": { "type": "query", "description": "Lectura ligera de un process node (fallback de GetProcessNode)", "usedBy": "process-canon" },
+    "AllTagsAndNodes": { "type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos hay que paginar AllProcesses con processNodeTypes:['SCANNER_NODE']", "usedBy": "process-canon" },
+    "CreateProcessNode": { "type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon" },
+    "ProcureTree": { "type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
