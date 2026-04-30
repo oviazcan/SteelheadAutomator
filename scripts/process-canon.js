@@ -202,8 +202,17 @@ const ProcessCanon = (() => {
   let _nodesByName = null;   // Map<normName, id>
   let _namesById = null;     // Map<id, displayName>
 
-  // Normaliza para lookup case-insensitive con espacios colapsados
-  function normName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  // Normaliza para lookup case-insensitive: colapsa espacios, baja a lowercase y
+  // remueve diacríticos (Inspección ≡ Inspeccion). NFD descompone tilde+letra y
+  // \p{Diacritic} matchea el modificador para borrarlo.
+  function normName(s) {
+    return String(s || '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
 
   function lookupNodeId(name) {
     if (!_nodesByName) return null;
@@ -220,41 +229,106 @@ const ProcessCanon = (() => {
   }
 
   // ── Carga del catálogo de nodos compartidos ──
-  // Pagina AllProcesses con los dos types más comunes para construir un Map<name, id>.
-  // Si una línea T<n> no tiene los compartidos creados, simplemente no estarán en el map.
+  // Pagina AllProcesses para construir un Map<normName, id>. Steelhead conoce
+  // varios processNodeType y los nodos compartidos pueden ser de distintos types
+  // según cómo los creó el usuario (PROCESS, SCANNER_NODE, AUTO_NODE, BASIC, etc.).
+  // Probamos todos los types conocidos con tolerancia a errores (algún type
+  // puede no estar permitido en el dominio) y fusionamos los resultados.
+  const NODE_TYPES_TO_LOAD = [
+    ['PROCESS'],
+    ['SCANNER_NODE'],
+    ['AUTO_NODE'],
+    ['BASIC_NODE'],
+    ['BASIC'],
+    ['ALARM_NODE'],
+    ['COUNTING_NODE']
+  ];
+
   async function loadAllNodes(onProgress) {
     const byName = new Map();
     const byId = new Map();
-    const types = [['SCANNER_NODE'], ['PROCESS']];
-    for (const t of types) {
+    const typeSummary = {};
+    for (const t of NODE_TYPES_TO_LOAD) {
       let offset = 0;
-      while (true) {
-        const data = await api().query('AllProcesses', {
-          includeArchived: 'NO', processNodeTypes: t, searchQuery: '',
-          first: PAGE_SIZE, offset
-        }, 'AllProcesses');
-        const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
-        for (const n of nodes) {
-          if (!n?.name || !n?.id) continue;
-          const k = normName(n.name);
-          if (!byName.has(k)) byName.set(k, n.id);
-          if (!byId.has(n.id)) byId.set(n.id, n.name);
+      let typeCount = 0;
+      try {
+        while (true) {
+          const data = await api().query('AllProcesses', {
+            includeArchived: 'NO', processNodeTypes: t, searchQuery: '',
+            first: PAGE_SIZE, offset
+          }, 'AllProcesses');
+          const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
+          for (const n of nodes) {
+            if (!n?.name || !n?.id) continue;
+            const k = normName(n.name);
+            if (!byName.has(k)) byName.set(k, n.id);
+            if (!byId.has(n.id)) byId.set(n.id, n.name);
+          }
+          typeCount += nodes.length;
+          if (onProgress) onProgress(`Cargando nodos (${t[0]})... total ${byName.size}`);
+          if (nodes.length < PAGE_SIZE) break;
+          offset += PAGE_SIZE;
         }
-        if (onProgress) onProgress(`Cargando nodos (${t[0]})... ${byName.size}`);
-        if (nodes.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
+        typeSummary[t[0]] = typeCount;
+      } catch (e) {
+        warn(`AllProcesses con type ${t[0]} falló: ${String(e.message).substring(0, 150)}`);
+        typeSummary[t[0]] = `error: ${String(e.message).substring(0, 60)}`;
       }
     }
     _nodesByName = byName;
     _namesById = byId;
-    return byName;
+    log(`  Catálogo: ${byName.size} nodos por nombre. Por type: ${JSON.stringify(typeSummary)}`);
+    return { byName, typeSummary };
   }
 
-  // Verifica que los 5 globales existen en el catálogo
-  function validateGlobals() {
-    const missing = GLOBALS.filter(g => !lookupNodeId(g));
+  // Búsqueda por nombre exacto vía searchQuery (fallback cuando un global no está
+  // en el catálogo precargado). Steelhead acepta searchQuery con o sin %, prueba
+  // sin types para abarcar todo.
+  async function searchNodeByName(name) {
+    try {
+      const data = await api().query('AllProcesses', {
+        includeArchived: 'NO', processNodeTypes: [], searchQuery: name,
+        first: 50, offset: 0
+      }, 'AllProcesses');
+      const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
+      const target = normName(name);
+      const exact = nodes.find(n => normName(n.name) === target);
+      return exact || null;
+    } catch (_) { return null; }
+  }
+
+  // Verifica que los 5 globales existen. Si alguno falta tras `loadAllNodes`,
+  // intenta `searchNodeByName` como fallback antes de tirar el error.
+  async function validateGlobals() {
+    let missing = GLOBALS.filter(g => !lookupNodeId(g));
     if (missing.length) {
-      throw new Error(`Faltan nodos globales en el catálogo: ${missing.join(', ')}. Créalos en Steelhead antes de continuar.`);
+      // Fallback: search por nombre directo para cada faltante
+      for (const g of missing) {
+        const n = await searchNodeByName(g);
+        if (n) {
+          _nodesByName.set(normName(n.name), n.id);
+          _namesById.set(n.id, n.name);
+        }
+      }
+      missing = GLOBALS.filter(g => !lookupNodeId(g));
+    }
+    if (missing.length) {
+      // Diagnostic: lista los 10 nodos con mayor similitud para cada faltante
+      const allNames = Array.from(_nodesByName.keys());
+      const suggestions = missing.map(g => {
+        const target = normName(g);
+        const tokens = target.split(' ').filter(t => t.length > 3);
+        const scored = allNames
+          .map(n => ({ n, score: tokens.reduce((s, t) => s + (n.includes(t) ? 1 : 0), 0) }))
+          .filter(x => x.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 8);
+        return `<b>${escapeHtml(g)}</b>: ${scored.length ? scored.map(s => `<code>${escapeHtml(_namesById.get(_nodesByName.get(s.n)) || s.n)}</code>`).join(', ') : '<i>sin coincidencias</i>'}`;
+      });
+      const total = _nodesByName.size;
+      const err = new Error(`Faltan nodos globales: ${missing.join(', ')}.`);
+      err.diagnostic = `<p>Catálogo cargado: <b>${total}</b> nodos.</p><p>Para cada faltante, los nombres más cercanos en el catálogo:</p><ul style="font-size:12px;line-height:1.6"><li>${suggestions.join('</li><li>')}</li></ul><p style="font-size:12px;color:#94a3b8">Si los nombres correctos están arriba pero distintos, ajusta la constante <code>GLOBALS</code> en <code>process-canon.js</code>. Si no aparecen, créalos en Steelhead.</p>`;
+      throw err;
     }
   }
 
@@ -895,9 +969,12 @@ const ProcessCanon = (() => {
         const el = document.getElementById('pc-load');
         if (el) el.textContent = msg;
       });
-      validateGlobals();
+      await validateGlobals();
     } catch (e) {
-      setOverlay(`<h2 style="color:#f87171">Error</h2><p style="color:#cbd5e1">${escapeHtml(e.message)}</p><div class="pc-btnrow"><button class="pc-btn pc-btn-cancel" onclick="document.getElementById('pcanon-overlay').remove()">CERRAR</button></div>`);
+      const diag = e.diagnostic ? `<div style="margin-top:14px;padding:12px;background:#0f172a;border-radius:8px;border:1px solid #334155">${e.diagnostic}</div>` : '';
+      setOverlay(`<h2 style="color:#f87171">Error</h2><p style="color:#cbd5e1">${escapeHtml(e.message)}</p>${diag}<div class="pc-btnrow"><button class="pc-btn pc-btn-cancel" id="pc-err-close">CERRAR</button></div>`);
+      const closeBtn = document.getElementById('pc-err-close');
+      if (closeBtn) closeBtn.onclick = removeOverlay;
       return { error: e.message };
     }
 
