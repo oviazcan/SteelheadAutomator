@@ -250,8 +250,12 @@ const InvoiceAutoRegen = (() => {
     if (obj.voidSuccessfulAt) return false;
     if (maxPdfAt(invoice) >= writtenAt) return false;
     if (opts.requireUuid) {
-      const uuid = invoice?.createWriteResult?.data?.result?.writeResult?.uuid;
-      if (!uuid) return false;
+      // El shape real de Steelhead no expone .uuid: el UUID del CFDI (Folio Fiscal)
+      // vive en .TaxFolio. Aceptamos también XmlBase64File o CustomInput.linkxml
+      // como markers válidos de timbre exitoso (cfdi-attacher usa los mismos).
+      const wr = invoice?.createWriteResult?.data?.result?.writeResult;
+      const stamped = !!(wr?.TaxFolio || wr?.XmlBase64File || wr?.CustomInput?.linkxml);
+      if (!stamped) return false;
     }
     return true;
   }
