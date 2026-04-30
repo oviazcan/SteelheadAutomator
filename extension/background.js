@@ -63,7 +63,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/weight-quick-entry.js': 'WeightQuickEntry',
           'scripts/bill-autofill.js': 'BillAutofill',
           'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen',
-          'scripts/invoice-default-tab.js': 'InvoiceDefaultTab' };
+          'scripts/invoice-default-tab.js': 'InvoiceDefaultTab',
+          'scripts/process-canon.js': 'ProcessCanon' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
