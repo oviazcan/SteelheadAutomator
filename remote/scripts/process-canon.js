@@ -1,14 +1,13 @@
 // Process Canon — Auditor + carga masiva de nodos canónicos en procesos
-// Patrón canónico de 9 nodos top-level por proceso:
+// Patrón canónico de 8 nodos top-level por proceso:
 //   1) SP Inspección Recibo (compartido global)
-//   2) SP Preparación de Surtido (compartido global)
+//   2) SP Preparación de Surtido en Almacén (compartido global)
 //   3) SP T<linea> Enracado (compartido por línea)
 //   4) T<linea> Listo para Procesar (LOCAL, se crea con CreateProcessNode)
 //   5) SP T<linea> Secado (compartido por línea)
 //   6) SP T<linea> Inspección y Empaque (compartido por línea)
-//   7) SP Preparación de Embarque (compartido global)
-//   8) Inspección Embarques (compartido global)
-//   9) SP Embarque en Almacén (compartido global)
+//   7) SP Preparación de Embarque en Almacén (compartido global)
+//   8) SP Inspección de Calidad Embarques (compartido global)
 // Los compartidos viven como type SUB_PROCESS y se descubren con
 // ProcessesComponentQuery({ processNodeTypes:['PROCESS','SUB_PROCESS'] }).
 // El "Listo para Procesar" es local-por-proceso (sin prefijo SP).
@@ -25,12 +24,13 @@ const ProcessCanon = (() => {
   const CONCURRENCY_APPLY = 5;
   const PAGE_SIZE = 500;
 
+  // 4 compartidos globales (no 5: el original "Embarque en Almacén" colapsa con
+  // "Preparación de Embarque" en un único SP Preparación de Embarque en Almacén).
   const GLOBALS = [
     'SP Inspección Recibo',
-    'SP Preparación de Surtido',
-    'SP Preparación de Embarque',
-    'SP Inspección Embarques',
-    'SP Embarque en Almacén'
+    'SP Preparación de Surtido en Almacén',
+    'SP Preparación de Embarque en Almacén',
+    'SP Inspección de Calidad Embarques'
   ];
 
   const lineKeywords = (T) => [`SP ${T} Enracado`, `${T} Listo para Procesar`, `SP ${T} Secado`, `SP ${T} Inspección y Empaque`];
@@ -408,15 +408,14 @@ const ProcessCanon = (() => {
     }
 
     const expected = [
-      'Inspección Recibo',
-      'Preparación de Surtido',
+      'SP Inspección Recibo',
+      'SP Preparación de Surtido en Almacén',
       enracadoName(lineCode),
       listoPPName(lineCode),
       secadoName(lineCode),
       inspEmpaqueName(lineCode),
-      'Preparación de Embarque',
-      'Inspección Embarques',
-      'Embarque en Almacén'
+      'SP Preparación de Embarque en Almacén',
+      'SP Inspección de Calidad Embarques'
     ];
 
     const sharedToVerify = [
@@ -517,17 +516,16 @@ const ProcessCanon = (() => {
     const allRels = bfsRelationships(process.id, treeRoot.descendantRelationships || []);
     const topLevelFresh = extractTopLevel(treeRoot);
 
-    // ID de cada uno de los 9 nodos
-    const idInsRecibo = lookupNodeId('Inspección Recibo');
-    const idPrepSurtido = lookupNodeId('Preparación de Surtido');
+    // ID de cada uno de los 7 compartidos canónicos (4 globales + 3 por línea)
+    const idInsRecibo = lookupNodeId('SP Inspección Recibo');
+    const idPrepSurtido = lookupNodeId('SP Preparación de Surtido en Almacén');
     const idEnracado = lookupNodeId(enracadoName(lineCode));
     const idSecado = lookupNodeId(secadoName(lineCode));
     const idInspEmpaque = lookupNodeId(inspEmpaqueName(lineCode));
-    const idPrepEmbarque = lookupNodeId('Preparación de Embarque');
-    const idInspEmbarques = lookupNodeId('Inspección Embarques');
-    const idEmbarqueAlmacen = lookupNodeId('Embarque en Almacén');
+    const idPrepEmbarque = lookupNodeId('SP Preparación de Embarque en Almacén');
+    const idInspEmbarques = lookupNodeId('SP Inspección de Calidad Embarques');
 
-    if (!idInsRecibo || !idPrepSurtido || !idEnracado || !idSecado || !idInspEmpaque || !idPrepEmbarque || !idInspEmbarques || !idEmbarqueAlmacen) {
+    if (!idInsRecibo || !idPrepSurtido || !idEnracado || !idSecado || !idInspEmpaque || !idPrepEmbarque || !idInspEmbarques) {
       return { ...result, success: false, skipped: true, reason: 'No se resolvieron todos los IDs compartidos' };
     }
 
@@ -549,7 +547,7 @@ const ProcessCanon = (() => {
 
     const canonicalIds = [
       idInsRecibo, idPrepSurtido, idEnracado, idListo,
-      idSecado, idInspEmpaque, idPrepEmbarque, idInspEmbarques, idEmbarqueAlmacen
+      idSecado, idInspEmpaque, idPrepEmbarque, idInspEmbarques
     ];
 
     // Validaciones de seguridad antes de tocar ProcureTree
