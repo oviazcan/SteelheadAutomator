@@ -1,5 +1,5 @@
 {
-  "version": "0.5.39",
+  "version": "0.5.40",
   "lastUpdated": "2026-04-30",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -149,7 +149,10 @@
         "Customer": "875fcfec140fa7e4a756d367cfe8c6868ff2eca8f396a97540638493649d317f",
         "GetProcessNode": "444ff791d8c457ca95a7638f01efc3012c87c1aafcd846faffb302a4d5c97503",
         "ProcessNode": "72a77473ba27a4854aa25e147d651f864a3fb6cb8893c169a00f8fd90b9d3f4c",
-        "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af"
+        "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af",
+        "ProcessesComponentQuery": "e04ec51b93017327c1885546a887f994627981dc54653acc90a2aa2f4a5f249c",
+        "ProcessesWithTag": "01c772451a17b4de013e58721bc5c888035cd57b54386a05c41e04aa30d6cb62",
+        "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3"
       }
     },
     "domain": {
@@ -625,7 +628,10 @@
     "Customer": { "type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill" },
     "GetProcessNode": { "type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes). Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon" },
     "ProcessNode": { "type": "query", "description": "Lectura ligera de un process node (fallback de GetProcessNode)", "usedBy": "process-canon" },
-    "AllTagsAndNodes": { "type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos hay que paginar AllProcesses con processNodeTypes:['SCANNER_NODE']", "usedBy": "process-canon" },
+    "AllTagsAndNodes": { "type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon" },
+    "ProcessesComponentQuery": { "type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon" },
+    "ProcessesWithTag": { "type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon" },
+    "GetAllTagsQuery": { "type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon" },
     "CreateProcessNode": { "type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon" },
     "ProcureTree": { "type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon" }
   },
