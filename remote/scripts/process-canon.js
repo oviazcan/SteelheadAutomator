@@ -1,14 +1,17 @@
 // Process Canon — Auditor + carga masiva de nodos canónicos en procesos
 // Patrón canónico de 9 nodos top-level por proceso:
-//   1) Inspección Recibo (compartido global)
-//   2) Preparación de Surtido (compartido global)
-//   3) T<linea> Enracado (compartido por línea)
+//   1) SP Inspección Recibo (compartido global)
+//   2) SP Preparación de Surtido (compartido global)
+//   3) SP T<linea> Enracado (compartido por línea)
 //   4) T<linea> Listo para Procesar (LOCAL, se crea con CreateProcessNode)
-//   5) T<linea> Secado (compartido por línea)
-//   6) T<linea> Inspección y Empaque (compartido por línea)
-//   7) Preparación de Embarque (compartido global)
+//   5) SP T<linea> Secado (compartido por línea)
+//   6) SP T<linea> Inspección y Empaque (compartido por línea)
+//   7) SP Preparación de Embarque (compartido global)
 //   8) Inspección Embarques (compartido global)
-//   9) Embarque en Almacén (compartido global)
+//   9) SP Embarque en Almacén (compartido global)
+// Los compartidos viven como type SUB_PROCESS y se descubren con
+// ProcessesComponentQuery({ processNodeTypes:['PROCESS','SUB_PROCESS'] }).
+// El "Listo para Procesar" es local-por-proceso (sin prefijo SP).
 // Depends on: SteelheadAPI
 
 const ProcessCanon = (() => {
@@ -23,18 +26,18 @@ const ProcessCanon = (() => {
   const PAGE_SIZE = 500;
 
   const GLOBALS = [
-    'Inspección Recibo',
-    'Preparación de Surtido',
-    'Preparación de Embarque',
-    'Inspección Embarques',
-    'Embarque en Almacén'
+    'SP Inspección Recibo',
+    'SP Preparación de Surtido',
+    'SP Preparación de Embarque',
+    'SP Inspección Embarques',
+    'SP Embarque en Almacén'
   ];
 
-  const lineKeywords = (T) => [`${T} Enracado`, `${T} Listo para Procesar`, `${T} Secado`, `${T} Inspección y Empaque`];
-  const enracadoName = (T) => `${T} Enracado`;
+  const lineKeywords = (T) => [`SP ${T} Enracado`, `${T} Listo para Procesar`, `SP ${T} Secado`, `SP ${T} Inspección y Empaque`];
+  const enracadoName = (T) => `SP ${T} Enracado`;
   const listoPPName = (T) => `${T} Listo para Procesar`;
-  const secadoName = (T) => `${T} Secado`;
-  const inspEmpaqueName = (T) => `${T} Inspección y Empaque`;
+  const secadoName = (T) => `SP ${T} Secado`;
+  const inspEmpaqueName = (T) => `SP ${T} Inspección y Empaque`;
 
   // processName → "T<n>" line code (158 entradas, generado de 1._Proceso - Tratamientos Genericos.xlsx)
   const LINE_MAPPING = {
@@ -229,68 +232,55 @@ const ProcessCanon = (() => {
   }
 
   // ── Carga del catálogo de nodos compartidos ──
-  // Pagina AllProcesses para construir un Map<normName, id>. Steelhead conoce
-  // varios processNodeType y los nodos compartidos pueden ser de distintos types
-  // según cómo los creó el usuario (PROCESS, SCANNER_NODE, AUTO_NODE, BASIC, etc.).
-  // Probamos todos los types conocidos con tolerancia a errores (algún type
-  // puede no estar permitido en el dominio) y fusionamos los resultados.
-  const NODE_TYPES_TO_LOAD = [
-    ['PROCESS'],
-    ['SCANNER_NODE'],
-    ['AUTO_NODE'],
-    ['BASIC_NODE'],
-    ['BASIC'],
-    ['ALARM_NODE'],
-    ['COUNTING_NODE']
-  ];
-
+  // Los compartidos viven como type SUB_PROCESS y NO aparecen en AllProcesses
+  // (que solo lista PROCESS). ProcessesComponentQuery sí los incluye cuando se
+  // pide processNodeTypes:['PROCESS','SUB_PROCESS']. Una sola op paginada cubre
+  // todo el catálogo necesario.
   async function loadAllNodes(onProgress) {
     const byName = new Map();
     const byId = new Map();
-    const typeSummary = {};
-    for (const t of NODE_TYPES_TO_LOAD) {
-      let offset = 0;
-      let typeCount = 0;
-      try {
-        while (true) {
-          const data = await api().query('AllProcesses', {
-            includeArchived: 'NO', processNodeTypes: t, searchQuery: '',
-            first: PAGE_SIZE, offset
-          }, 'AllProcesses');
-          const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
-          for (const n of nodes) {
-            if (!n?.name || !n?.id) continue;
-            const k = normName(n.name);
-            if (!byName.has(k)) byName.set(k, n.id);
-            if (!byId.has(n.id)) byId.set(n.id, n.name);
-          }
-          typeCount += nodes.length;
-          if (onProgress) onProgress(`Cargando nodos (${t[0]})... total ${byName.size}`);
-          if (nodes.length < PAGE_SIZE) break;
-          offset += PAGE_SIZE;
-        }
-        typeSummary[t[0]] = typeCount;
-      } catch (e) {
-        warn(`AllProcesses con type ${t[0]} falló: ${String(e.message).substring(0, 150)}`);
-        typeSummary[t[0]] = `error: ${String(e.message).substring(0, 60)}`;
+    let offset = 0;
+    let total = null;
+    while (true) {
+      const data = await api().query('ProcessesComponentQuery', {
+        includeArchived: 'NO',
+        processNodeTypes: ['PROCESS', 'SUB_PROCESS'],
+        orderBy: ['ID_DESC'],
+        offset,
+        first: PAGE_SIZE,
+        searchQuery: ''
+      }, 'ProcessesComponentQuery');
+      const paged = data?.pagedData || {};
+      const nodes = paged.nodes || [];
+      if (total === null && typeof paged.totalCount === 'number') total = paged.totalCount;
+      for (const n of nodes) {
+        if (!n?.name || !n?.id) continue;
+        const k = normName(n.name);
+        if (!byName.has(k)) byName.set(k, n.id);
+        if (!byId.has(n.id)) byId.set(n.id, n.name);
       }
+      if (onProgress) onProgress(`Cargando catálogo... ${byName.size}${total ? '/' + total : ''}`);
+      if (nodes.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
     _nodesByName = byName;
     _namesById = byId;
-    log(`  Catálogo: ${byName.size} nodos por nombre. Por type: ${JSON.stringify(typeSummary)}`);
-    return { byName, typeSummary };
+    log(`  Catálogo: ${byName.size} nodos (PROCESS+SUB_PROCESS, totalCount=${total ?? '?'}).`);
+    return { byName, total };
   }
 
-  // Búsqueda por nombre exacto vía searchQuery (fallback cuando un global no está
-  // en el catálogo precargado). Steelhead acepta searchQuery con o sin %, prueba
-  // sin types para abarcar todo.
+  // Búsqueda por nombre exacto vía searchQuery sobre ProcessesComponentQuery
+  // (fallback cuando un compartido no está en la primera página del catálogo).
   async function searchNodeByName(name) {
     try {
-      const data = await api().query('AllProcesses', {
-        includeArchived: 'NO', processNodeTypes: [], searchQuery: name,
-        first: 50, offset: 0
-      }, 'AllProcesses');
-      const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
+      const data = await api().query('ProcessesComponentQuery', {
+        includeArchived: 'NO',
+        processNodeTypes: ['PROCESS', 'SUB_PROCESS'],
+        orderBy: ['ID_DESC'],
+        offset: 0, first: 50,
+        searchQuery: name
+      }, 'ProcessesComponentQuery');
+      const nodes = data?.pagedData?.nodes || [];
       const target = normName(name);
       const exact = nodes.find(n => normName(n.name) === target);
       return exact || null;
@@ -541,9 +531,14 @@ const ProcessCanon = (() => {
       return { ...result, success: false, skipped: true, reason: 'No se resolvieron todos los IDs compartidos' };
     }
 
-    // Listo para Procesar: reusar si ya existe top-level, si no crear
-    const listoNorm = normName(listoPPName(lineCode));
-    const existingListo = topLevelFresh.find(t => normName(t.name) === listoNorm);
+    // Listo para Procesar: reusar si ya existe top-level, si no crear.
+    // Match flexible para detectar legacy (con o sin prefijo "SP", variantes de
+    // capitalización) y evitar crear duplicados.
+    const lineCodeNorm = normName(lineCode);
+    const existingListo = topLevelFresh.find(t => {
+      const n = normName(t.name);
+      return n.includes(lineCodeNorm) && /listo para procesar/.test(n);
+    });
     let idListo;
     if (existingListo) {
       idListo = existingListo.id;
