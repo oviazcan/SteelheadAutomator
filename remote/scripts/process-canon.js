@@ -260,7 +260,16 @@ const ProcessCanon = (() => {
   }
 
   function getLineCode(processName) {
-    return LINE_MAPPING[processName] || null;
+    if (LINE_MAPPING[processName]) return LINE_MAPPING[processName];
+    // Fallback: derivar el code del nombre cuando no esté en el mapping del Excel
+    // (ej. procesos creados después de la última regeneración del JSON).
+    // Solo aceptamos si todos los matches del nombre coinciden — para procesos
+    // compuestos como "T100 (PUL)-T103 (CRD)..." no podemos adivinar la línea.
+    const codes = Array.from(String(processName || '').matchAll(/\b(T\d{2,4}|M\d{2,4})\b/g))
+      .map(m => m[1].toUpperCase());
+    if (!codes.length) return null;
+    const uniq = new Set(codes);
+    return uniq.size === 1 ? codes[0] : null;
   }
 
   // ── Carga del catálogo de nodos compartidos ──
@@ -317,6 +326,38 @@ const ProcessCanon = (() => {
       const exact = nodes.find(n => normName(n.name) === target);
       return exact || null;
     } catch (_) { return null; }
+  }
+
+  // Carga complementaria de SCANNER_NODE para poblar _namesById. Los
+  // 'T<linea> Listo para Procesar' son LOCALES por proceso (tipo SCANNER_NODE),
+  // no aparecen en el catálogo PROCESS+SUB_PROCESS y por eso extractTopLevel
+  // no resuelve su name. Con esta carga, lookupNodeName(id) los encuentra y
+  // detectCanonStatus puede matchear "Listo para Procesar" en posición 4.
+  async function loadScannerNodes(onProgress) {
+    let offset = 0;
+    let total = 0;
+    while (true) {
+      const data = await api().query('ProcessesComponentQuery', {
+        includeArchived: 'NO',
+        processNodeTypes: ['SCANNER_NODE'],
+        orderBy: ['ID_DESC'],
+        offset, first: PAGE_SIZE, searchQuery: ''
+      }, 'ProcessesComponentQuery');
+      const paged = data?.pagedData || {};
+      const nodes = paged.nodes || [];
+      for (const n of nodes) {
+        if (!n?.name || !n?.id) continue;
+        // Solo poblar id→name. NO tocar _nodesByName: muchos scanner_nodes
+        // comparten nombre ('T102 Listo para Procesar' existe en cada proceso
+        // T102) y no queremos que un local oculte un global homónimo.
+        if (!_namesById.has(n.id)) _namesById.set(n.id, n.name);
+      }
+      total += nodes.length;
+      if (onProgress) onProgress(`Cargando scanner_nodes... ${total}`);
+      if (nodes.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
+    }
+    log(`  Scanner nodes: ${total} cargados en _namesById`);
   }
 
   // ── Discovery de compartidos por línea (tag-based) ──
@@ -1099,6 +1140,10 @@ const ProcessCanon = (() => {
       });
       await validateGlobals();
       await loadSharedByLine(msg => {
+        const el = document.getElementById('pc-load');
+        if (el) el.textContent = msg;
+      });
+      await loadScannerNodes(msg => {
         const el = document.getElementById('pc-load');
         if (el) el.textContent = msg;
       });
