@@ -493,13 +493,23 @@ const ProcessCanon = (() => {
     return data?.treeRoot || null;
   }
 
+  // Convención del schema de Steelhead (verificada empíricamente 2026-05-04):
+  // descendantRelationships modela `child → parent` con la columna toId apuntando
+  // al PADRE y el embed processNodeByFromId conteniendo los datos del HIJO
+  // (id, name, type). Helpers para no acoplarnos al naming postgraphile.
+  const relParentId = (r) => r?.toId;
+  const relChildId  = (r) => r?.processNodeByFromId?.id;
+  const relChildName = (r) => r?.processNodeByFromId?.name;
+
   // Filtra descendantRelationships a las que viven dentro del proceso (BFS desde rootId).
   // Un nodo compartido aparece en árboles ajenos, así que solo seguimos por nodos ya visitados.
   function bfsRelationships(rootId, allRels) {
-    const byParent = new Map(); // fromId → [rel]
+    const byParent = new Map(); // parentId → [rel]
     for (const r of allRels) {
-      if (!byParent.has(r.fromId)) byParent.set(r.fromId, []);
-      byParent.get(r.fromId).push(r);
+      const p = relParentId(r);
+      if (p == null) continue;
+      if (!byParent.has(p)) byParent.set(p, []);
+      byParent.get(p).push(r);
     }
     const kept = [];
     const visited = new Set([rootId]);
@@ -509,22 +519,19 @@ const ProcessCanon = (() => {
       const children = (byParent.get(pid) || []).slice().sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
       for (const r of children) {
         kept.push(r);
-        if (!visited.has(r.toId)) {
-          visited.add(r.toId);
-          queue.push(r.toId);
+        const cid = relChildId(r);
+        if (cid != null && !visited.has(cid)) {
+          visited.add(cid);
+          queue.push(cid);
         }
       }
     }
     return kept;
   }
 
-  // Resuelve el nombre de un node id usando varias fuentes (relación embebida o catálogo reverso)
+  // Resuelve el nombre de un node id desde el embed del rel; fallback a catálogo.
   function resolveNodeName(rel, id) {
-    return rel?.processNodeByToId?.name
-        || rel?.toNode?.name
-        || rel?.toProcessNode?.name
-        || lookupNodeName(id)
-        || '';
+    return relChildName(rel) || lookupNodeName(id) || '';
   }
 
   function extractTopLevel(treeRoot) {
@@ -532,9 +539,9 @@ const ProcessCanon = (() => {
     const rootId = treeRoot.id;
     const rels = treeRoot.descendantRelationships || [];
     const top = rels
-      .filter(r => r.fromId === rootId)
+      .filter(r => relParentId(r) === rootId)
       .sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
-    return top.map(r => ({ id: r.toId, name: resolveNodeName(r, r.toId) }));
+    return top.map(r => ({ id: relChildId(r), name: resolveNodeName(r, relChildId(r)) }));
   }
 
   // ── Detección de canon ──
@@ -641,8 +648,10 @@ const ProcessCanon = (() => {
   function buildNewTree(rootId, canonicalIds, extraIds, allRels) {
     const byParent = new Map();
     for (const r of allRels) {
-      if (!byParent.has(r.fromId)) byParent.set(r.fromId, []);
-      byParent.get(r.fromId).push(r);
+      const p = relParentId(r);
+      if (p == null) continue;
+      if (!byParent.has(p)) byParent.set(p, []);
+      byParent.get(p).push(r);
     }
 
     const visited = new Set();
@@ -652,7 +661,9 @@ const ProcessCanon = (() => {
       const childRels = (byParent.get(nodeId) || []).slice().sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
       const children = [];
       for (const r of childRels) {
-        const sub = buildSubtree(r.toId);
+        const cid = relChildId(r);
+        if (cid == null) continue;
+        const sub = buildSubtree(cid);
         if (r.specId !== undefined) sub.specId = r.specId ?? null;
         children.push(sub);
       }
