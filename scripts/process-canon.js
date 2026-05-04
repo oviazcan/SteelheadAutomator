@@ -1,25 +1,30 @@
 // Process Canon — Auditor + carga masiva de nodos canónicos en procesos
-// Patrón canónico de 8 nodos top-level por proceso:
-//   1) SP Inspección Recibo (compartido global)
-//   2) SP Preparación de Surtido en Almacén (compartido global)
-//   3) Enracado / Carga de Barril por línea (compartido por línea, vía tag)
-//   4) T<linea> Listo para Procesar (LOCAL, se crea con CreateProcessNode)
-//   5) Secado por línea (compartido por línea, vía tag)
-//   6) Inspección y Empaque por línea (compartido por línea, vía tag)
-//   7) SP Preparación de Embarque en Almacén (compartido global)
-//   8) SP Inspección de Calidad Embarques (compartido global)
+// Patrón canónico de 9 nodos top-level por proceso:
+//   1) SP Inspección Recibo                  (compartido global, SUB_PROCESS)
+//   2) SP Preparación de Surtido en Almacén  (compartido global, SUB_PROCESS)
+//   3) Enracado / Carga de Barril por línea  (por línea, vía tag, multi-variante)
+//   4) T<linea> Listo para Procesar          (LOCAL, se crea con CreateProcessNode)
+//   5) Secado por línea                      (por línea, vía tag, multi-variante)
+//   6) Inspección y Empaque por línea        (por línea, vía tag, multi-variante)
+//   7) SP Preparación de Embarque en Almacén (compartido global, SUB_PROCESS)
+//   8) SP Inspección de Calidad Embarques    (compartido global, SUB_PROCESS)
+//   9) SP Embarque en Almacén                (compartido global, STEP_SHIPPING)
 //
 // Modelo de compartición: NO depende del tipo del nodo ni del prefijo en el nombre.
 // Un nodo es "compartido" porque el usuario lo coloca con el MISMO id en otro
 // proceso. Los SP están en TODOS los procesos; los Enracado/Secado/Inspección y
-// Empaque están solo en los procesos de su línea.
+// Empaque están solo en los procesos de su línea, con potencial de varias
+// variantes por línea (ej. T102 tiene tanto 'Secando Manual – Desenracado'
+// como 'Secando Centrífugo' bajo el tag Secado, y cada proceso usa la suya).
 //
 // Discovery:
-//   - Globales SP: ProcessesComponentQuery({ types: PROCESS+SUB_PROCESS }) por nombre.
+//   - Globales SP: ProcessesComponentQuery({ types: PROCESS+SUB_PROCESS+STEP_SHIPPING })
+//     por nombre. STEP_SHIPPING es necesario para resolver 'SP Embarque en Almacén'.
 //   - Por línea: GetAllTagsQuery + ProcessesWithTag por cada uno de los 3 tags
 //     de operación. Los nombres por línea varían (T103 Enracado, T108 Enracado ó
 //     Carga de Barril, T106 Carga de Barril, etc.) así que matcheamos por id de
 //     tag y derivamos el lineCode con regex sobre el prefijo "T<n>" del nombre.
+//     Acumulamos TODAS las variantes por línea (un Set) en _sharedByOp.
 // Depends on: SteelheadAPI
 
 const ProcessCanon = (() => {
@@ -33,13 +38,18 @@ const ProcessCanon = (() => {
   const CONCURRENCY_APPLY = 5;
   const PAGE_SIZE = 500;
 
-  // 4 compartidos globales (no 5: el original "Embarque en Almacén" colapsa con
-  // "Preparación de Embarque" en un único SP Preparación de Embarque en Almacén).
+  // 5 compartidos globales. Los 4 SUB_PROCESS están en el catálogo
+  // PROCESS+SUB_PROCESS; 'SP Embarque en Almacén' es type STEP_SHIPPING y por
+  // eso requiere ampliar el loader. Hasta 0.5.43 el canon asumía 8 nodos
+  // (colapsando Embarque/Preparación), pero el árbol real tiene 9: ambos
+  // existen como nodos distintos y consecutivos (verificado 2026-05-04 en
+  // T102 (EST)-AL-VARIOS donde aparecen pos 6 y pos 8).
   const GLOBALS = [
     'SP Inspección Recibo',
     'SP Preparación de Surtido en Almacén',
     'SP Preparación de Embarque en Almacén',
-    'SP Inspección de Calidad Embarques'
+    'SP Inspección de Calidad Embarques',
+    'SP Embarque en Almacén'
   ];
 
   const listoPPName = (T) => `${T} Listo para Procesar`;
@@ -227,7 +237,10 @@ const ProcessCanon = (() => {
   // Catálogos runtime de nodos compartidos descubiertos vía AllProcesses
   let _nodesByName = null;   // Map<normName, id>
   let _namesById = null;     // Map<id, displayName>
-  // _sharedByOp: { enracado: Map<lineCode, {id,name}>, secado: ..., inspEmpaque: ... }
+  // _sharedByOp: { enracado: Map<lineCode, [{id,name}, ...]>, secado, inspEmpaque }
+  // Una línea puede tener múltiples variantes en un mismo tag (ej. T102 tiene
+  // 'Secando Manual – Desenracado' Y 'Secando Centrífugo' bajo el tag Secado);
+  // cada proceso usa la variante que aplica. Por eso guardamos un array.
   let _sharedByOp = null;
 
   // Normaliza para lookup case-insensitive: colapsa espacios, baja a lowercase y
@@ -252,11 +265,20 @@ const ProcessCanon = (() => {
     return _namesById.get(id) || null;
   }
 
-  function lookupShared(op, lineCode) {
-    if (!_sharedByOp || !lineCode) return null;
+  // Devuelve TODAS las variantes ([{id,name}, ...]) de un tag para una línea.
+  // Vacío si la línea no tiene mapeos. El llamador decide cuál usar (preservar
+  // existente vs. elegir uno).
+  function lookupSharedVariants(op, lineCode) {
+    if (!_sharedByOp || !lineCode) return [];
     const m = _sharedByOp[op];
-    if (!m) return null;
-    return m.get(String(lineCode).toUpperCase()) || null;
+    if (!m) return [];
+    return m.get(String(lineCode).toUpperCase()) || [];
+  }
+
+  // Devuelve true si `id` es una variante canónica de `op` para `lineCode`.
+  function isLineCanonAt(op, lineCode, id) {
+    if (id == null) return false;
+    return lookupSharedVariants(op, lineCode).some(v => v.id === id);
   }
 
   function getLineCode(processName) {
@@ -273,40 +295,47 @@ const ProcessCanon = (() => {
   }
 
   // ── Carga del catálogo de nodos compartidos ──
-  // Los compartidos viven como type SUB_PROCESS y NO aparecen en AllProcesses
-  // (que solo lista PROCESS). ProcessesComponentQuery sí los incluye cuando se
-  // pide processNodeTypes:['PROCESS','SUB_PROCESS']. Una sola op paginada cubre
-  // todo el catálogo necesario.
+  // Los SP SUB_PROCESS viven con types ['PROCESS','SUB_PROCESS']. 'SP Embarque
+  // en Almacén' es STEP_SHIPPING y requiere una pasada extra. Carga todo en
+  // una sola pasada paginada por cada lista de tipos.
   async function loadAllNodes(onProgress) {
     const byName = new Map();
     const byId = new Map();
-    let offset = 0;
-    let total = null;
-    while (true) {
-      const data = await api().query('ProcessesComponentQuery', {
-        includeArchived: 'NO',
-        processNodeTypes: ['PROCESS', 'SUB_PROCESS'],
-        orderBy: ['ID_DESC'],
-        offset,
-        first: PAGE_SIZE,
-        searchQuery: ''
-      }, 'ProcessesComponentQuery');
-      const paged = data?.pagedData || {};
-      const nodes = paged.nodes || [];
-      if (total === null && typeof paged.totalCount === 'number') total = paged.totalCount;
-      for (const n of nodes) {
-        if (!n?.name || !n?.id) continue;
-        const k = normName(n.name);
-        if (!byName.has(k)) byName.set(k, n.id);
-        if (!byId.has(n.id)) byId.set(n.id, n.name);
+    let total = 0;
+    const passes = [
+      { types: ['PROCESS', 'SUB_PROCESS'], label: 'PROCESS+SUB_PROCESS' },
+      { types: ['STEP_SHIPPING'],           label: 'STEP_SHIPPING' }
+    ];
+    for (const pass of passes) {
+      let offset = 0;
+      let passTotal = null;
+      while (true) {
+        const data = await api().query('ProcessesComponentQuery', {
+          includeArchived: 'NO',
+          processNodeTypes: pass.types,
+          orderBy: ['ID_DESC'],
+          offset,
+          first: PAGE_SIZE,
+          searchQuery: ''
+        }, 'ProcessesComponentQuery');
+        const paged = data?.pagedData || {};
+        const nodes = paged.nodes || [];
+        if (passTotal === null && typeof paged.totalCount === 'number') passTotal = paged.totalCount;
+        for (const n of nodes) {
+          if (!n?.name || !n?.id) continue;
+          const k = normName(n.name);
+          if (!byName.has(k)) byName.set(k, n.id);
+          if (!byId.has(n.id)) byId.set(n.id, n.name);
+        }
+        if (onProgress) onProgress(`Cargando catálogo (${pass.label})... ${byName.size}`);
+        if (nodes.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
       }
-      if (onProgress) onProgress(`Cargando catálogo... ${byName.size}${total ? '/' + total : ''}`);
-      if (nodes.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
+      total += (passTotal ?? 0);
     }
     _nodesByName = byName;
     _namesById = byId;
-    log(`  Catálogo: ${byName.size} nodos (PROCESS+SUB_PROCESS, totalCount=${total ?? '?'}).`);
+    log(`  Catálogo: ${byName.size} nodos (PROCESS+SUB_PROCESS+STEP_SHIPPING, totalCount=${total || '?'}).`);
     return { byName, total };
   }
 
@@ -414,11 +443,13 @@ const ProcessCanon = (() => {
           if (nameFilter && !nameFilter.test(n.name)) continue;
           const code = extractLineCodeFromName(n.name);
           if (!code) continue;
-          // ID_DESC: nos quedamos con el primer match por línea (el más reciente).
-          if (!sharedByOp[op].has(code)) {
-            sharedByOp[op].set(code, { id: n.id, name: n.name });
-            // También indexamos por nombre/id en los catálogos generales para
-            // resolución y display posterior.
+          // Multi-variante: una línea puede tener varios nodos en un mismo tag
+          // (ej. T102 → 'Secando Manual – Desenracado' y 'Secando Centrífugo').
+          // Acumulamos todos para que cada proceso pueda usar la suya.
+          let arr = sharedByOp[op].get(code);
+          if (!arr) { arr = []; sharedByOp[op].set(code, arr); }
+          if (!arr.some(v => v.id === n.id)) {
+            arr.push({ id: n.id, name: n.name });
             _nodesByName.set(normName(n.name), n.id);
             _namesById.set(n.id, n.name);
           }
@@ -427,7 +458,8 @@ const ProcessCanon = (() => {
         if (nodes.length < PAGE_SIZE) break;
         offset += PAGE_SIZE;
       }
-      log(`  Tag '${tag.name}': ${sharedByOp[op].size} líneas mapeadas (${collected} nodos crudos)`);
+      const variantCount = Array.from(sharedByOp[op].values()).reduce((s, arr) => s + arr.length, 0);
+      log(`  Tag '${tag.name}': ${sharedByOp[op].size} líneas, ${variantCount} variantes totales (${collected} nodos crudos)`);
     }
     _sharedByOp = sharedByOp;
     return sharedByOp;
@@ -545,9 +577,20 @@ const ProcessCanon = (() => {
   }
 
   // ── Detección de canon ──
-  // Compara top-level por ID (no por nombre) para los compartidos por línea,
-  // porque esos nombres varían por línea. La posición 4 (Listo para Procesar)
-  // se matchea por nombre flexible porque es local-por-proceso.
+  // Canon de 9 nodos top-level (verificado en T102 (EST)-AL-VARIOS, 2026-05-04):
+  //   pos 0: SP Inspección Recibo                       (global)
+  //   pos 1: SP Preparación de Surtido en Almacén       (global)
+  //   pos 2: T<n> Enracado/Carga de Barril              (por línea, multi-variante)
+  //   pos 3: T<n> Listo para Procesar                   (local, match por nombre)
+  //   pos 4: T<n>-SE00-001 Secando ...                  (por línea, multi-variante)
+  //   pos 5: T<n> Inspección y Empaque                  (por línea, multi-variante)
+  //   pos 6: SP Preparación de Embarque en Almacén      (global)
+  //   pos 7: SP Inspección de Calidad Embarques         (global)
+  //   pos 8: SP Embarque en Almacén                     (global, type STEP_SHIPPING)
+  //
+  // Para los compartidos por línea, una misma línea puede tener varias variantes
+  // en el tag (ej. T102 → 'Secando Manual – Desenracado' Y 'Secando Centrífugo'),
+  // y cada proceso usa la suya. La detección acepta CUALQUIER variante del Set.
   function detectCanonStatus(process, treeRoot) {
     const topLevel = extractTopLevel(treeRoot);
     const lineCode = getLineCode(process.name);
@@ -563,30 +606,20 @@ const ProcessCanon = (() => {
       };
     }
 
-    const enracado    = lookupShared('enracado', lineCode);
-    const secado      = lookupShared('secado', lineCode);
-    const inspEmpaque = lookupShared('inspEmpaque', lineCode);
+    const enracadoVariants    = lookupSharedVariants('enracado', lineCode);
+    const secadoVariants      = lookupSharedVariants('secado', lineCode);
+    const inspEmpaqueVariants = lookupSharedVariants('inspEmpaque', lineCode);
 
     const idInsRecibo     = lookupNodeId('SP Inspección Recibo');
     const idPrepSurtido   = lookupNodeId('SP Preparación de Surtido en Almacén');
     const idPrepEmbarque  = lookupNodeId('SP Preparación de Embarque en Almacén');
     const idInspEmbarques = lookupNodeId('SP Inspección de Calidad Embarques');
+    const idEmbarqueAlm   = lookupNodeId('SP Embarque en Almacén');
 
     const missingShared = [];
-    if (!enracado)    missingShared.push(`Enracado ${lineCode}`);
-    if (!secado)      missingShared.push(`Secado ${lineCode}`);
-    if (!inspEmpaque) missingShared.push(`Inspección y Empaque ${lineCode}`);
-
-    const expectedDisplay = [
-      'SP Inspección Recibo',
-      'SP Preparación de Surtido en Almacén',
-      enracado?.name || `(falta) Enracado ${lineCode}`,
-      listoPPName(lineCode),
-      secado?.name || `(falta) Secado ${lineCode}`,
-      inspEmpaque?.name || `(falta) Inspección y Empaque ${lineCode}`,
-      'SP Preparación de Embarque en Almacén',
-      'SP Inspección de Calidad Embarques'
-    ];
+    if (!enracadoVariants.length)    missingShared.push(`Enracado ${lineCode}`);
+    if (!secadoVariants.length)      missingShared.push(`Secado ${lineCode}`);
+    if (!inspEmpaqueVariants.length) missingShared.push(`Inspección y Empaque ${lineCode}`);
 
     const lineCodeNorm = normName(lineCode);
     const isListoMatch = (t) => {
@@ -596,36 +629,75 @@ const ProcessCanon = (() => {
     const existingListo = topLevel.find(isListoMatch) || null;
     const hasListoPP = !!existingListo;
 
-    // Comparación posicional por ID (excepto Listo PP en posición 4 que es por nombre)
-    const expectedIds = [
-      idInsRecibo, idPrepSurtido,
-      enracado?.id, null /* listo: se chequea por nombre */,
-      secado?.id, inspEmpaque?.id,
-      idPrepEmbarque, idInspEmbarques
+    // Para mostrar en el "esperado" preferimos el nombre real que el proceso
+    // tiene en esa posición si es una variante válida; si no, primera variante
+    // del Set; si tampoco hay, placeholder.
+    const pickDisplayForLine = (idx, op, label) => {
+      const t = topLevel[idx];
+      if (t && isLineCanonAt(op, lineCode, t.id)) return t.name;
+      const arr = lookupSharedVariants(op, lineCode);
+      return arr.length ? arr[0].name : `(falta) ${label} ${lineCode}`;
+    };
+
+    const expectedDisplay = [
+      'SP Inspección Recibo',
+      'SP Preparación de Surtido en Almacén',
+      pickDisplayForLine(2, 'enracado',    'Enracado'),
+      listoPPName(lineCode),
+      pickDisplayForLine(4, 'secado',      'Secado'),
+      pickDisplayForLine(5, 'inspEmpaque', 'Inspección y Empaque'),
+      'SP Preparación de Embarque en Almacén',
+      'SP Inspección de Calidad Embarques',
+      'SP Embarque en Almacén'
     ];
-    let isCanon = topLevel.length === 8 && expectedIds.every((id, i) => i === 3 || id);
+
+    // Validador por posición: globales por ID exacto; por-línea por Set de
+    // variantes; Listo PP por nombre flexible.
+    const slotMatches = (i) => {
+      const t = topLevel[i];
+      if (!t) return false;
+      switch (i) {
+        case 0: return idInsRecibo     && t.id === idInsRecibo;
+        case 1: return idPrepSurtido   && t.id === idPrepSurtido;
+        case 2: return isLineCanonAt('enracado', lineCode, t.id);
+        case 3: return isListoMatch(t);
+        case 4: return isLineCanonAt('secado', lineCode, t.id);
+        case 5: return isLineCanonAt('inspEmpaque', lineCode, t.id);
+        case 6: return idPrepEmbarque  && t.id === idPrepEmbarque;
+        case 7: return idInspEmbarques && t.id === idInspEmbarques;
+        case 8: return idEmbarqueAlm   && t.id === idEmbarqueAlm;
+      }
+      return false;
+    };
+
+    let isCanon = topLevel.length === 9;
     if (isCanon) {
-      for (let i = 0; i < 8; i++) {
-        if (i === 3) {
-          if (!isListoMatch(topLevel[i])) { isCanon = false; break; }
-        } else if (topLevel[i].id !== expectedIds[i]) {
-          isCanon = false; break;
-        }
+      for (let i = 0; i < 9; i++) {
+        if (!slotMatches(i)) { isCanon = false; break; }
       }
     }
 
-    const expectedIdSet = new Set([
-      idInsRecibo, idPrepSurtido,
-      enracado?.id, secado?.id, inspEmpaque?.id,
-      idPrepEmbarque, idInspEmbarques
-    ].filter(Boolean));
-    const extras = topLevel.filter(t => !expectedIdSet.has(t.id) && !isListoMatch(t));
-    const presentExpectedCount = topLevel.length - extras.length;
+    // extras: top-levels que no caen en NINGÚN slot canónico (no son ninguno
+    // de los 5 globales, ni Listo PP, ni variante válida de su línea).
+    const isAnyCanonical = (t) => {
+      if (!t) return false;
+      if (idInsRecibo     && t.id === idInsRecibo)     return true;
+      if (idPrepSurtido   && t.id === idPrepSurtido)   return true;
+      if (idPrepEmbarque  && t.id === idPrepEmbarque)  return true;
+      if (idInspEmbarques && t.id === idInspEmbarques) return true;
+      if (idEmbarqueAlm   && t.id === idEmbarqueAlm)   return true;
+      if (isListoMatch(t)) return true;
+      if (isLineCanonAt('enracado',    lineCode, t.id)) return true;
+      if (isLineCanonAt('secado',      lineCode, t.id)) return true;
+      if (isLineCanonAt('inspEmpaque', lineCode, t.id)) return true;
+      return false;
+    };
+    const extras = topLevel.filter(t => !isAnyCanonical(t));
 
     let reason = '';
     if (isCanon) reason = 'OK';
     else if (missingShared.length) reason = `Faltan compartidos: ${missingShared.join(', ')}`;
-    else if (presentExpectedCount < 7) reason = 'Faltan nodos canónicos';
+    else if (topLevel.length < 9 && !extras.length) reason = `Faltan nodos canónicos (${topLevel.length}/9)`;
     else if (extras.length) reason = `Fuera de orden, ${extras.length} extras`;
     else reason = 'Fuera de orden';
 
@@ -702,23 +774,40 @@ const ProcessCanon = (() => {
     const allRels = bfsRelationships(process.id, treeRoot.descendantRelationships || []);
     const topLevelFresh = extractTopLevel(treeRoot);
 
-    // ID de cada uno de los 7 compartidos canónicos (4 globales + 3 por línea).
-    // Los por-línea se resuelven vía tag (lookupShared), no por patrón de nombre.
-    const idInsRecibo = lookupNodeId('SP Inspección Recibo');
-    const idPrepSurtido = lookupNodeId('SP Preparación de Surtido en Almacén');
-    const idEnracado = lookupShared('enracado', lineCode)?.id;
-    const idSecado = lookupShared('secado', lineCode)?.id;
-    const idInspEmpaque = lookupShared('inspEmpaque', lineCode)?.id;
-    const idPrepEmbarque = lookupNodeId('SP Preparación de Embarque en Almacén');
+    // 5 globales + 3 por-línea (multi-variante) + 1 local (Listo PP) = 9 nodos.
+    const idInsRecibo     = lookupNodeId('SP Inspección Recibo');
+    const idPrepSurtido   = lookupNodeId('SP Preparación de Surtido en Almacén');
+    const idPrepEmbarque  = lookupNodeId('SP Preparación de Embarque en Almacén');
     const idInspEmbarques = lookupNodeId('SP Inspección de Calidad Embarques');
+    const idEmbarqueAlm   = lookupNodeId('SP Embarque en Almacén');
 
-    if (!idInsRecibo || !idPrepSurtido || !idEnracado || !idSecado || !idInspEmpaque || !idPrepEmbarque || !idInspEmbarques) {
-      return { ...result, success: false, skipped: true, reason: 'No se resolvieron todos los IDs compartidos' };
+    if (!idInsRecibo || !idPrepSurtido || !idPrepEmbarque || !idInspEmbarques || !idEmbarqueAlm) {
+      return { ...result, success: false, skipped: true, reason: 'No se resolvieron todos los IDs globales' };
+    }
+
+    // Por-línea: si el proceso ya tiene una variante válida (en el Set del tag
+    // para esa línea), preservarla. Si no, escoger la primera variante del Set
+    // como default. Esto evita "T102 (EST) usa Centrífugo" → forzar a "Manual".
+    const pickLineId = (op, posIdx) => {
+      const existing = topLevelFresh[posIdx];
+      if (existing && isLineCanonAt(op, lineCode, existing.id)) return existing.id;
+      // Fallback: cualquier top-level del proceso que sea variante válida
+      const anyExisting = topLevelFresh.find(t => isLineCanonAt(op, lineCode, t.id));
+      if (anyExisting) return anyExisting.id;
+      // Sin existente: default = primera variante del Set
+      const variants = lookupSharedVariants(op, lineCode);
+      return variants[0]?.id || null;
+    };
+    const idEnracado    = pickLineId('enracado',    2);
+    const idSecado      = pickLineId('secado',      4);
+    const idInspEmpaque = pickLineId('inspEmpaque', 5);
+
+    if (!idEnracado || !idSecado || !idInspEmpaque) {
+      return { ...result, success: false, skipped: true, reason: 'No se resolvieron variantes por-línea' };
     }
 
     // Listo para Procesar: reusar si ya existe top-level, si no crear.
-    // Match flexible para detectar legacy (con o sin prefijo "SP", variantes de
-    // capitalización) y evitar crear duplicados.
+    // Match flexible para detectar legacy y evitar crear duplicados.
     const lineCodeNorm = normName(lineCode);
     const existingListo = topLevelFresh.find(t => {
       const n = normName(t.name);
@@ -732,9 +821,10 @@ const ProcessCanon = (() => {
       log(`  ${process.name}: creado "${listoPPName(lineCode)}" id:${idListo}`);
     }
 
+    // Orden canónico de 9 (matchea posiciones esperadas en detectCanonStatus).
     const canonicalIds = [
       idInsRecibo, idPrepSurtido, idEnracado, idListo,
-      idSecado, idInspEmpaque, idPrepEmbarque, idInspEmbarques
+      idSecado, idInspEmpaque, idPrepEmbarque, idInspEmbarques, idEmbarqueAlm
     ];
 
     // Validaciones de seguridad antes de tocar ProcureTree
