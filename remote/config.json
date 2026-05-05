@@ -1,5 +1,5 @@
 {
-  "version": "0.5.58",
+  "version": "0.5.59",
   "lastUpdated": "2026-05-05",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -63,6 +63,7 @@
         "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03",
         "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb",
         "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b",
+        "UpdateProcessNode": "adeb744d67289a790ee80fba102d280b162167f8301bde4d326c54025e46ff32",
         "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928"
       },
       "queries": {
@@ -648,7 +649,8 @@
     "ProcessesWithTag": { "type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon" },
     "GetAllTagsQuery": { "type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon" },
     "CreateProcessNode": { "type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon" },
-    "ProcureTree": { "type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon" }
+    "ProcureTree": { "type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon" },
+    "UpdateProcessNode": { "type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon" }
   },
   "scripts": [
     "scripts/steelhead-api.js",
