@@ -698,6 +698,23 @@ const ProcessCanon = (() => {
     return data?.treeRoot || null;
   }
 
+  // Cache de sub-árboles del catálogo, indexado por id. Se usa cuando el applet
+  // inserta un compartido que el proceso aún no tenía: hay que traer el árbol
+  // del catálogo de ese compartido para incluirlo en el ProcureTree input.
+  const _subtreeRelsCache = new Map(); // id → rels[] del sub-árbol del catálogo
+  async function fetchSubtreeRels(rootId) {
+    if (_subtreeRelsCache.has(rootId)) return _subtreeRelsCache.get(rootId);
+    try {
+      const tree = await fetchProcessTree(rootId);
+      const rels = tree?.descendantRelationships || [];
+      _subtreeRelsCache.set(rootId, rels);
+      return rels;
+    } catch (_) {
+      _subtreeRelsCache.set(rootId, []);
+      return [];
+    }
+  }
+
   // Convención del schema de Steelhead (verificada empíricamente 2026-05-04):
   // descendantRelationships modela `child → parent` con la columna toId apuntando
   // al PADRE y el embed processNodeByFromId conteniendo los datos del HIJO
@@ -938,19 +955,60 @@ const ProcessCanon = (() => {
   }
 
   // ── Construcción del nuevo árbol ──
-  // En Steelhead, los nodos top-level de un proceso SIEMPRE son referencias a
-  // otros nodos del catálogo (PROCESS/SUB_PROCESS/STEP/STEP_SHIPPING/SCANNER_NODE
-  // globales o variantes por-línea). El server resuelve cada sub-árbol desde el
-  // catálogo, así que ProcureTree espera hojas (`children: []`) en el input —
-  // si enviamos children, falla con
-  //   "expected node id=X to have 0 children, but found N".
-  // Por eso aquí construimos un árbol plano: rootId con un nivel de children,
-  // todos hojas. allRels solo se usa fuera de esta función para resolver tipos
-  // y conservar el sourceRels — la jerarquía propia del catálogo no se duplica.
-  function buildNewTree(rootId, canonicalIds, extraIds, _allRels) {
-    const childrenAll = [...canonicalIds, ...extraIds].map(id => ({
-      id, children: [], specId: null
-    }));
+  // ProcureTree espera el árbol COMPLETO: cada referencia a un compartido
+  // (PROCESS/SUB_PROCESS/STEP_SHIPPING) viaja con su sub-árbol del catálogo
+  // expandido hasta hojas reales (STAGING, CONTRACT_REVIEW_NODE, INVOICING…).
+  // Verificado por captura del UI 2026-05-05 sobre proceso TEST: SP Inspección
+  // Recibo (139820) viaja con sus 3 children → uno de ellos a su vez con 2 → etc.
+  // STEPs simples sin sub-árbol viajan como hojas.
+  //
+  // allRels (de fetchProcessTree del proceso) ya inlinea los rels del catálogo
+  // de los compartidos QUE EL PROCESO YA TENÍA. Para compartidos NUEVOS que
+  // este applet inserta hay que fetchar GetProcessNode del shared y agregar
+  // sus rels al pool — eso lo hace ensureSharedRels antes de buildNewTree.
+  async function ensureSharedRels(byParent, allRels, ids) {
+    for (const id of ids) {
+      if (byParent.has(id)) continue;
+      const rels = await fetchSubtreeRels(id);
+      for (const r of rels) {
+        allRels.push(r);
+        const p = relParentId(r);
+        if (p == null) continue;
+        if (!byParent.has(p)) byParent.set(p, []);
+        byParent.get(p).push(r);
+      }
+    }
+  }
+
+  function buildNewTree(rootId, canonicalIds, extraIds, allRels) {
+    const byParent = new Map();
+    for (const r of allRels) {
+      const p = relParentId(r);
+      if (p == null) continue;
+      if (!byParent.has(p)) byParent.set(p, []);
+      byParent.get(p).push(r);
+    }
+
+    const visited = new Set();
+    function buildSubtree(nodeId) {
+      if (visited.has(nodeId)) return { id: nodeId, children: [], specId: null };
+      visited.add(nodeId);
+      const childRels = (byParent.get(nodeId) || [])
+        .slice()
+        .sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
+      const children = [];
+      for (const r of childRels) {
+        const cid = relChildId(r);
+        if (cid == null) continue;
+        const sub = buildSubtree(cid);
+        if (r.specId !== undefined) sub.specId = r.specId ?? null;
+        children.push(sub);
+      }
+      return { id: nodeId, children, specId: null };
+    }
+
+    visited.add(rootId);
+    const childrenAll = [...canonicalIds, ...extraIds].map(id => buildSubtree(id));
     return { id: rootId, children: childrenAll, specId: null };
   }
 
@@ -1068,6 +1126,19 @@ const ProcessCanon = (() => {
     // extras = top-level que NO están en canonicalIds (preservar como apéndice)
     const canonicalSet = new Set(canonicalIds);
     const extraIds = topLevelFresh.filter(t => !canonicalSet.has(t.id)).map(t => t.id);
+
+    // Indexar allRels y traer sub-árboles del catálogo para los compartidos que
+    // estamos insertando pero el proceso aún no tenía. Sin esto, ProcureTree
+    // recibe esos compartidos como hojas y rechaza con "expected to have N
+    // children, but found 0" porque el catálogo dice que tienen sub-árbol.
+    const byParent = new Map();
+    for (const r of allRels) {
+      const p = relParentId(r);
+      if (p == null) continue;
+      if (!byParent.has(p)) byParent.set(p, []);
+      byParent.get(p).push(r);
+    }
+    await ensureSharedRels(byParent, allRels, [...canonicalIds, ...extraIds]);
 
     const newTree = buildNewTree(process.id, canonicalIds, extraIds, allRels);
     try { window.__lastProcureTreeInput = newTree; } catch (_) {}
@@ -1570,6 +1641,6 @@ const ProcessCanon = (() => {
 
 if (typeof window !== 'undefined') {
   window.ProcessCanon = ProcessCanon;
-  window.__pcVersion = '0.5.55';
-  try { console.log('[SA] process-canon cargado · v0.5.55'); } catch (_) {}
+  window.__pcVersion = '0.5.56';
+  try { console.log('[SA] process-canon cargado · v0.5.56'); } catch (_) {}
 }
