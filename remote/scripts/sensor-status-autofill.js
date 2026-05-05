@@ -100,6 +100,58 @@ const SensorStatusAutofill = (() => {
     }));
   }
 
+  // ── Classifier: extrae candidatos y clasifica cada member ──
+  function extractCandidates(member) {
+    const sensor = member?.sensorBySensorId;
+    const specFields = sensor?.sensorTypeBySensorTypeId?.specFieldsBySensorTypeId?.nodes || [];
+    const candidates = [];
+    for (const sf of specFields) {
+      const sfsList = sf?.specFieldSpecsBySpecFieldId?.nodes || [];
+      for (const sfs of sfsList) {
+        const params = sfs?.specFieldParamsBySpecFieldSpecId?.nodes || [];
+        for (const p of params) {
+          candidates.push({
+            id: p.id,
+            name: p.name || `#${p.id}`,
+            min: p.minimumValue ?? null,
+            max: p.maximumValue ?? null,
+            target: p.targetValue ?? null,
+            specName: sfs?.specBySpecId?.name || '',
+            specRevision: sfs?.specBySpecId?.revisionName || '',
+            specFieldName: sfs?.specFieldBySpecFieldId?.name || sf?.specFieldBySpecFieldId?.name || '',
+          });
+        }
+      }
+    }
+    return candidates;
+  }
+
+  function classifyMembers(dashboard) {
+    const members = dashboard?.sensorDashboardMembersBySensorDashboardId?.nodes || [];
+    const classified = members.map(m => {
+      const candidates = extractCandidates(m);
+      const activeId = m?.specFieldParamByActiveSpecFieldParamId?.id ?? null;
+      let stateName;
+      if (activeId != null) stateName = 'already';
+      else if (candidates.length === 0) stateName = 'zero';
+      else if (candidates.length === 1) stateName = 'auto';
+      else stateName = 'multi';
+      return {
+        memberId: m.id,
+        sensorName: m?.sensorBySensorId?.name || `#${m.id}`,
+        state: stateName,
+        candidates,
+        activeId,
+      };
+    });
+    return {
+      already: classified.filter(c => c.state === 'already'),
+      zero:    classified.filter(c => c.state === 'zero'),
+      auto:    classified.filter(c => c.state === 'auto'),
+      multi:   classified.filter(c => c.state === 'multi'),
+    };
+  }
+
   // ── Init + FAB ──
   async function init() {
     if (window.__saSensorStatusInitDone) return;
