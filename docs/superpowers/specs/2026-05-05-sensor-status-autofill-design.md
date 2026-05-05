@@ -14,9 +14,22 @@ En la mayoría de los casos solo existe **un único** `SpecFieldParam` candidato
 
 ### Comportamiento
 
-Aplicado al dashboard que el usuario tiene abierto en la URL actual:
+**Fase 0 — Selección de scope (modal inicial).**
 
-1. **Pull** del dashboard con `SensorDashboardQuery` → trae todos los members (`sensorDashboardMembersBySensorDashboardId.nodes[]`) ya con sus candidatos embebidos.
+Al hacer click en el FAB se abre un modal corto:
+
+- **Default:** "Solo este dashboard" (radio `current`, marcado). Si la URL tiene un dashboard detectable se muestra su nombre debajo del radio. Si no, este radio queda deshabilitado.
+- **Opcional:** un **checkbox** "Procesar TODOS los dashboards del domain (puede tardar varios minutos)" — **off por default**. Al marcarlo, el radio `current` se oculta y se sustituye por el conteo "N dashboards a procesar" (resuelto vía `AllSensorDashboards` antes de iniciar).
+- **Botones:** `CANCELAR` / `INICIAR`. El `INICIAR` queda deshabilitado si no hay dashboard seleccionable y el checkbox está off.
+
+El resto del flujo es el mismo en ambos modos; cambia solo el set de dashboards a iterar:
+
+- Modo `current` → `dashboards = [parseSensorDashboardFromURL()]`
+- Modo `all` → `dashboards = await fetchAllSensorDashboards()`
+
+**Fase 1 — Por cada dashboard del set:**
+
+1. **Pull** con `SensorDashboardQuery` → trae todos los members (`sensorDashboardMembersBySensorDashboardId.nodes[]`) ya con sus candidatos embebidos.
 2. **Por cada member**, recolectar candidatos en:
    ```
    member.sensorBySensorId
@@ -32,11 +45,11 @@ Aplicado al dashboard que el usuario tiene abierto en la URL actual:
    | `active != null` | **Skip** "ya asignado" — no se toca aunque haya cambiado el catálogo. |
    | `count == 0` | **Error** "sin candidatos" — el sensor no tiene specFields configurados o la spec no aplica. Se reporta y sigue. |
    | `count == 1` | **Auto-asignar** vía `UpdateSensorDashboardMember(id, activeSpecFieldParamId)`. |
-   | `count >= 2` | **Encolar** para ronda asistida; al final de la fase auto, abrir modal por cada uno. |
+   | `count >= 2` | **Encolar** para ronda asistida; al final de la fase auto del **dashboard actual**, abrir modal por cada uno. |
 
-4. **Fase asistida (≥2 candidatos):** un modal por member con radios para cada candidato, mostrando `<param.name> · <spec.name> (<revision>)` para distinguirlos. Botón "Saltar este member" disponible. Sin "Saltar todos" — un dashboard típico tiene pocos casos múltiples.
+4. **Fase asistida (≥2 candidatos):** un modal por member con radios para cada candidato, mostrando `<param.name> · <spec.name> (<revision>)` para distinguirlos. Botones disponibles: `ASIGNAR`, `SALTAR ESTE MEMBER`, y solo en modo `all` también `SALTAR RESTO DE ESTE DASHBOARD` (acelera mover al siguiente sin atender más asistidos del actual).
 
-5. **Resumen** al final con conteos: asignados auto, asistidos, saltados, sin candidatos, errores.
+**Fase 2 — Resumen** acumulado del set entero, con conteos: dashboards procesados, asignados auto, asistidos, saltados, sin candidatos, errores.
 
 ### Arquitectura
 
@@ -44,11 +57,19 @@ Aplicado al dashboard que el usuario tiene abierto en la URL actual:
 
 - **FAB** en el dashboard de sensores (mismo patrón que `paros-linea.js`: detección por URL, ancla al heading o esquina inferior derecha).
 - URL pattern del dashboard: detectar `/sensor-dashboards/<idInDomain>` (o el patrón que use Steelhead) y exponer `parseSensorDashboardFromURL()`. La verificación exacta del path se hace en implementación con la URL real abierta en el browser.
-- Sin auto-ejecución: solo aparece el FAB; el usuario decide cuándo correr.
+- Acción del popup `assign-sensor-status` también disponible como entrada alterna (para correr el modo `all` sin estar en la URL de un dashboard específico).
+- Sin auto-ejecución: solo aparece el FAB / la acción del popup; el usuario decide cuándo correr.
 
-#### Scope: un dashboard por corrida
+#### Scope: dashboard actual o todos (toggle off por default)
 
-YAGNI — la primera versión opera **solo sobre el dashboard visible**. La opción "todos los dashboards del domain" se evalúa después si hay demanda real. Esto evita batch ciegos sobre 80+ dashboards y mantiene el feedback loop corto.
+El modal de Fase 0 expone los dos modos. El default sesgado a `current` mantiene el feedback loop corto y evita batch ciegos. El checkbox "todos" queda explícito para los casos de configuración masiva (estación nueva, migración).
+
+**Modo `all` — orden y guardrails:**
+- Listar dashboards via `AllSensorDashboards` (paginado si aplica). Filtrar a los del domain del usuario activo.
+- Procesar uno a la vez en el orden devuelto por la API (presumiblemente por `index` o nombre); sin paralelización.
+- Antes de iniciar, mostrar el conteo total y un botón de cancelación visible durante toda la corrida.
+- El progreso muestra dos niveles: `Dashboard X de N · "<nombre>"` y `Member Y de M · "<sensor>"`.
+- Cancelación termina la corrida después del member en proceso; lo ya mutado queda mutado.
 
 #### Estructuras
 
@@ -75,6 +96,7 @@ YAGNI — la primera versión opera **solo sobre el dashboard visible**. La opci
 | Op | Tipo | Hash | Origen |
 |----|------|------|--------|
 | `SensorDashboardQuery` (o nombre real) | query | TBD — capturar via `hash-scanner` al cargar un dashboard | UI Steelhead |
+| `AllSensorDashboards` (o nombre real) | query | TBD — capturar via `hash-scanner` al cargar la lista de dashboards | UI Steelhead, solo modo `all` |
 | `UpdateSensorDashboardMember` | mutation | `b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928` | confirmado por el usuario |
 
 Variables de la mutation:
@@ -82,9 +104,11 @@ Variables de la mutation:
 { id: <member.id>, activeSpecFieldParamId: <param.id> }
 ```
 
-Variables de la query: `{ idInDomain: <number>, domainId: <number> }` (el shape exacto se confirma en el scan; la respuesta cuelga de `sensorDashboardByIdInDomain`).
+Variables de la query de un dashboard: `{ idInDomain: <number>, domainId: <number> }` (el shape exacto se confirma en el scan; la respuesta cuelga de `sensorDashboardByIdInDomain`).
 
-Ambos hashes deben agregarse a `remote/config.json` bajo `hashes.queries` / `hashes.mutations` con el mismo formato existente y `usedBy: "sensor-status-autofill"`.
+Variables de la query de la lista: por confirmar en el scan; muy probablemente shape Relay con `first` / `offset` / `orderBy` (consistente con `AllSpecs`, `ActiveInvoicesPaged`). El applet aprende el template del primer request del UI y lo reusa, igual que `invoice-auto-regen.js` para `ActiveInvoicesPaged`.
+
+Los tres hashes deben agregarse a `remote/config.json` bajo `hashes.queries` / `hashes.mutations` con el mismo formato existente y `usedBy: "sensor-status-autofill"`.
 
 #### Concurrencia
 
@@ -97,18 +121,24 @@ Ambos hashes deben agregarse a `remote/config.json` bajo `hashes.queries` / `has
 Reusar el lenguaje visual de `spec-migrator.js` y `invoice-auto-regen.js`:
 - Overlay full-screen oscuro con modal centrado (`#1a1a2e`).
 - Progress UI con barra y mensaje "Member X de Y · sensor.name".
-- Modal de candidatos múltiples con radios y CTA "ASIGNAR" / "SALTAR MEMBER".
+- Modal de candidatos múltiples con radios y CTA "ASIGNAR" / "SALTAR MEMBER" (más "SALTAR RESTO DE ESTE DASHBOARD" en modo `all`).
 - Modal final de resumen con contadores en grid (asignados, asistidos, saltados, errores).
 
 ### Data flow
 
 ```
-FAB click → parseSensorDashboardFromURL() → fetchDashboard(idInDomain)
-        → classify(members) → split into [auto[], multi[], zero[], already[]]
-        → showProgressUI("Asignando N auto...")
-        → for each m in auto: UpdateSensorDashboardMember(m.memberId, m.candidates[0].id)
-        → for each m in multi: showCandidatesModal(m) → UpdateSensorDashboardMember(...)
-        → showSummary({assigned, assisted, skipped, zero, errors})
+FAB / popup → showScopeModal({hasCurrent}) → {scope: 'current' | 'all'}
+   ├─ scope === 'current' → dashboards = [parseSensorDashboardFromURL()]
+   └─ scope === 'all'     → dashboards = await fetchAllSensorDashboards()
+
+for each dashboard in dashboards:
+   fetchDashboard(idInDomain) → classify(members)
+       → split into [auto[], multi[], zero[], already[]]
+       → for each m in auto: UpdateSensorDashboardMember(m.memberId, m.candidates[0].id)
+       → for each m in multi: showCandidatesModal(m) → UpdateSensorDashboardMember(...)
+   accumulate counters into globalResults
+
+showSummary(globalResults: {dashboardsProcessed, assigned, assisted, skipped, zero, errors})
 ```
 
 ### Manejo de errores
@@ -122,6 +152,8 @@ FAB click → parseSensorDashboardFromURL() → fetchDashboard(idInDomain)
 | `sensorTypeBySensorTypeId` null o sin `specFieldsBySensorTypeId.nodes` | Cuenta como `count == 0` → error "sin candidatos". |
 | Usuario cierra el tab a media corrida | Lo ya mutado queda mutado. La extensión no persiste estado para reanudar; el usuario corre de nuevo y los members ya asignados quedan en `state: 'already'`. |
 | Dashboard con > 200 members | Sin paginación necesaria: `SensorDashboardQuery` devuelve todos los members en una sola respuesta (confirmado por scan: `totalCount: 120` en una sola página). Si esto cambia en Steelhead se ajusta. |
+| Modo `all` con > N dashboards (donde N es alto) | Sin tope artificial. La cancelación es la salida. Cada dashboard procesado actualiza el progreso, y los errores por dashboard se acumulan sin abortar la corrida global. |
+| `fetchAllSensorDashboards` falla o template no aprendido | Si modo `all` falla en la primera fase, el modal de error sugiere "Abre la lista de dashboards una vez en otra pestaña y reintenta". |
 
 ### Configuración
 
@@ -138,11 +170,13 @@ FAB click → parseSensorDashboardFromURL() → fetchDashboard(idInDomain)
 5. **Cancelación a media corrida** → verificar que lo mutado se mantuvo y los pendientes quedaron sin tocar.
 6. **Hash deprecado** (forzar mutando temporalmente el hash en config) → mensaje claro de error y log con instrucciones.
 7. **Re-corrida** sobre dashboard ya procesado → todos en `already`, sin mutations innecesarias.
+8. **Modo `all` con 3+ dashboards** — verificar progreso de dos niveles, acumulación de contadores y resumen global al final.
+9. **Modo `all` cancelado a media corrida** — verificar que el resumen muestra solo los dashboards efectivamente procesados.
 
 ## Versionado y deploy
 
 - Bump `config.json`: `version` 0.5.56 → 0.5.57, `lastUpdated` 2026-05-05.
-- Agregar entrada de hashes (`SensorDashboardQuery`, `UpdateSensorDashboardMember`) a `config.json`.
+- Agregar entradas de hashes (`SensorDashboardQuery`, `AllSensorDashboards`, `UpdateSensorDashboardMember`) a `config.json`.
 - Agregar `sensor-status-autofill` a la lista de scripts cargables y al action group correspondiente.
 - Commit `main`: `feat(sensor-status-autofill): auto-asigna SpecFieldParam a members de Sensor Dashboards (0.5.57)`.
 - Sync a `gh-pages` siguiendo el procedimiento documentado en CLAUDE.md.
@@ -150,8 +184,10 @@ FAB click → parseSensorDashboardFromURL() → fetchDashboard(idInDomain)
 
 ## Lo que queda fuera del scope
 
-- **"Todos los dashboards del domain"** en una sola corrida — diferido hasta tener evidencia de demanda.
 - **Re-asignar members ya asignados** (override) — el applet siempre los respeta. Si el usuario quiere cambiar, lo hace manualmente o pide un toggle en una versión futura.
+- **Selección manual de un dashboard distinto al de la URL** (buscador "qué dashboard procesar") — los dos modos cubren el grueso de los casos. Si aparece la necesidad se agrega un buscador estilo `spec-migrator`.
+- **Filtrado por estación / ubicación / etiqueta** dentro del modo `all` — primera versión procesa todos los del domain.
+- **Reintentos automáticos** en mutations fallidas — solo se loguean.
 - **Detección de cambios en el catálogo de specs** — si una spec gana una segunda revisión activa, el applet no notifica; sigue tratando members `already` como cerrados.
 - **Persistencia/reanudación** entre corridas — no se guarda estado; cada corrida pull-and-process desde cero.
 - **Telemetría / analytics** — solo log a consola (`Steelhead Automator [sensor-status]`).
