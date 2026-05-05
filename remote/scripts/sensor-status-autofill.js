@@ -269,6 +269,69 @@ const SensorStatusAutofill = (() => {
     if (ov) ov.remove();
   }
 
+  // ── Modal asistido para members con ≥2 candidatos ──
+  function showCandidatesModal({ member, dashboardName, mode }) {
+    return new Promise((resolve) => {
+      injectStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-sst-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-sst-modal';
+      md.style.maxWidth = '720px';
+
+      const radios = member.candidates.map((c, i) => {
+        const range = (c.min != null || c.max != null)
+          ? `${c.min ?? ''} – ${c.max ?? ''}`
+          : (c.target != null ? `target ${c.target}` : '');
+        const specSuffix = [c.specName, c.specRevision].filter(Boolean).join(' · ');
+        return `
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;padding:8px 10px;background:#0f172a;border-radius:6px;margin-bottom:6px;cursor:pointer">
+            <input type="radio" name="sa-sst-cand" value="${c.id}" ${i === 0 ? 'checked' : ''}>
+            <div>
+              <div style="color:#e2e8f0;font-weight:600">${escapeHtml(c.name)}${range ? ` <span style="color:#94a3b8;font-weight:400;font-size:11px">(${escapeHtml(range)})</span>` : ''}</div>
+              ${specSuffix ? `<div style="font-size:11px;color:#94a3b8">${escapeHtml(specSuffix)}</div>` : ''}
+            </div>
+          </label>
+        `;
+      }).join('');
+
+      const skipDashboardBtn = mode === 'all'
+        ? `<button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-skip-dash" style="background:#78350f;color:#fbbf24">SALTAR RESTO DE ESTE DASHBOARD</button>`
+        : '';
+
+      md.innerHTML = `
+        <h2 style="color:#fbbf24">🔧 ${escapeHtml(member.sensorName)}</h2>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Dashboard: ${escapeHtml(dashboardName || '')} · ${member.candidates.length} candidatos</div>
+        <div>${radios}</div>
+        <div class="sa-sst-btnrow" style="justify-content:space-between">
+          <div>${skipDashboardBtn}</div>
+          <div style="display:flex;gap:10px">
+            <button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-skip-member">SALTAR ESTE MEMBER</button>
+            <button class="sa-sst-btn sa-sst-btn-exec" id="sa-sst-assign">ASIGNAR</button>
+          </div>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#sa-sst-skip-member').addEventListener('click', () => {
+        ov.remove();
+        resolve({ action: 'skip-member' });
+      });
+      const skipDash = md.querySelector('#sa-sst-skip-dash');
+      if (skipDash) skipDash.addEventListener('click', () => {
+        ov.remove();
+        resolve({ action: 'skip-dashboard' });
+      });
+      md.querySelector('#sa-sst-assign').addEventListener('click', () => {
+        const sel = md.querySelector('input[name="sa-sst-cand"]:checked');
+        if (!sel) { resolve({ action: 'skip-member' }); ov.remove(); return; }
+        ov.remove();
+        resolve({ action: 'assign', paramId: parseInt(sel.value, 10) });
+      });
+    });
+  }
+
   // ── Init + FAB ──
   async function init() {
     if (window.__saSensorStatusInitDone) return;
