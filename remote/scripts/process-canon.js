@@ -285,13 +285,21 @@ const ProcessCanon = (() => {
     if (LINE_MAPPING[processName]) return LINE_MAPPING[processName];
     // Fallback: derivar el code del nombre cuando no esté en el mapping del Excel
     // (ej. procesos creados después de la última regeneración del JSON).
-    // Solo aceptamos si todos los matches del nombre coinciden — para procesos
-    // compuestos como "T100 (PUL)-T103 (CRD)..." no podemos adivinar la línea.
     const codes = Array.from(String(processName || '').matchAll(/\b(T\d{2,4}|M\d{2,4})\b/g))
       .map(m => m[1].toUpperCase());
     if (!codes.length) return null;
     const uniq = new Set(codes);
-    return uniq.size === 1 ? codes[0] : null;
+    if (uniq.size === 1) return codes[0];
+    // Heurística "ida y vuelta": cuando una línea aparece más veces que las
+    // otras, esa es la línea efectiva. Ej. "T104 (ZIN)-T100 (HOR)-T104 (CAZ)"
+    // pasa por horno T100 y regresa a T104 → la línea es T104. Si hay empate
+    // (ej. "T100 (PUL)-T103 (CRD)") devolvemos null porque es genuinamente
+    // ambiguo.
+    const counts = new Map();
+    for (const c of codes) counts.set(c, (counts.get(c) || 0) + 1);
+    const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    if (sorted.length >= 2 && sorted[0][1] > sorted[1][1]) return sorted[0][0];
+    return null;
   }
 
   // Variante (7.1): los procesos cuyo nombre incluye "(7.1)" tienen Surtido
