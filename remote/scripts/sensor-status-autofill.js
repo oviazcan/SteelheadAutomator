@@ -441,8 +441,118 @@ const SensorStatusAutofill = (() => {
 
   async function run() {
     if (state.running) return { error: 'Ya hay una corrida en curso' };
-    log('run() llamado — orchestrator pendiente');
-    return { error: 'Implementación pendiente (skeleton)' };
+    state.running = true;
+    state.cancelled = false;
+    try {
+      // ─── Fase 0: scope ───
+      const currentRef = parseSensorDashboardFromURL();
+      let currentName = '';
+      if (currentRef) {
+        try {
+          const dash = await fetchDashboard(currentRef.idInDomain);
+          currentName = dash?.name || '';
+        } catch (_) { /* nombre opcional, seguimos */ }
+      }
+
+      const choice = await showScopeModal({ currentRef, currentName });
+      if (choice.cancelled) return { cancelled: true };
+
+      // ─── Resolver dashboards a procesar ───
+      let dashboards = [];
+      if (choice.scope === 'current') {
+        dashboards = [{ idInDomain: choice.idInDomain, name: currentName }];
+      } else {
+        showProgressUI('Listando dashboards', 'Cargando lista del domain…');
+        try {
+          const all = await fetchAllSensorDashboards();
+          dashboards = all.map(d => ({ idInDomain: d.idInDomain, name: d.name }));
+        } catch (e) {
+          removeUI();
+          return { error: String(e?.message || e) };
+        }
+      }
+
+      if (!dashboards.length) {
+        removeUI();
+        return { error: 'No hay dashboards a procesar' };
+      }
+
+      // ─── Fase 1: procesar dashboards ───
+      const results = {
+        dashboardsProcessed: 0, assigned: 0, assisted: 0, already: 0,
+        skipped: 0, zero: 0, errors: []
+      };
+
+      for (let di = 0; di < dashboards.length; di++) {
+        if (state.cancelled) break;
+        const d = dashboards[di];
+        showProgressUI(
+          `Dashboard ${di + 1} de ${dashboards.length}`,
+          `${d.name || `#${d.idInDomain}`} — pull…`
+        );
+
+        let dashboard;
+        try {
+          dashboard = await fetchDashboard(d.idInDomain);
+        } catch (e) {
+          results.errors.push(`Dashboard ${d.name}: ${String(e?.message || e).substring(0, 200)}`);
+          continue;
+        }
+
+        const groups = classifyMembers(dashboard);
+        results.already += groups.already.length;
+        results.zero    += groups.zero.length;
+
+        // Auto-asignación
+        for (let ai = 0; ai < groups.auto.length; ai++) {
+          if (state.cancelled) break;
+          const m = groups.auto[ai];
+          updateProgress({
+            title: `Dashboard ${di + 1} de ${dashboards.length}`,
+            msg: `Auto-asignando ${ai + 1} de ${groups.auto.length}: ${m.sensorName}`,
+            sub: d.name || '',
+            pct: ((ai + 1) / Math.max(groups.auto.length, 1)) * 100
+          });
+          try {
+            await updateMember(m.memberId, m.candidates[0].id);
+            results.assigned++;
+          } catch (e) {
+            results.errors.push(`${m.sensorName}: ${String(e?.message || e).substring(0, 200)}`);
+          }
+        }
+        if (state.cancelled) { removeUI(); break; }
+
+        // Modales asistidos
+        let skipRest = false;
+        for (let mi = 0; mi < groups.multi.length; mi++) {
+          if (state.cancelled || skipRest) break;
+          const m = groups.multi[mi];
+          removeUI();
+          const decision = await showCandidatesModal({
+            member: m, dashboardName: d.name, mode: choice.scope
+          });
+          if (decision.action === 'skip-member') { results.skipped++; continue; }
+          if (decision.action === 'skip-dashboard') { skipRest = true; results.skipped += groups.multi.length - mi; break; }
+          if (decision.action === 'assign') {
+            try {
+              await updateMember(m.memberId, decision.paramId);
+              results.assisted++;
+            } catch (e) {
+              results.errors.push(`${m.sensorName}: ${String(e?.message || e).substring(0, 200)}`);
+            }
+          }
+        }
+
+        results.dashboardsProcessed++;
+      }
+
+      removeUI();
+      log(`run() done: assigned=${results.assigned} assisted=${results.assisted} already=${results.already} zero=${results.zero} skipped=${results.skipped} errors=${results.errors.length}`);
+      showSummary(results);
+      return results;
+    } finally {
+      state.running = false;
+    }
   }
 
   return { init, run };
