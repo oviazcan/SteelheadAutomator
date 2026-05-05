@@ -41,6 +41,7 @@ const relChildType  = (r) => r.processNodeByFromId.type;
 | `GetProcessNode` | Trae el árbol completo de UN nodo: `{treeRoot: {id, descendantRelationships[]}}`. Vars: `{id, processNodeOccurrence: 1, rootId: id}`. Inlinea descendientes embebidos. |
 | `ProcureTree` (alias de `procureProcessTree2`) | Mutación que reemplaza el árbol de un proceso. Toma `{tree: {id, children, specId}}` recursivo. Devuelve `processTree` + `descendantRelationships` resultantes. |
 | `CreateProcessNode` | Crea un nodo nuevo (típicamente `SCANNER_NODE` para `T<n> Listo Para Procesar`). |
+| `UpdateProcessNode` | Actualiza atributos de un nodo existente (ej. `autoComplete`). Vars: `{id, autoComplete}`. Devuelve `updateProcessNodeById.clientMutationId` (puede ser `null` aunque sea exitoso — el éxito se infiere de no haber `errors`). |
 
 ## 3. Canon de 9 nodos top-level (process-canon)
 
@@ -317,6 +318,7 @@ El usuario puede pegar `JSON.stringify(window.__lastProcureTreeInput, null, 2)` 
 | 0.5.51 | Sufijos auxiliares + RT/SP excluidos + estado "no aplica canon" | Sufijos `(EMT/EBT/EMR/LAV/DEC/...)` modifican la jerarquía; RT y SP son retrabajos/subprocesos. |
 | 0.5.52–0.5.55 | Intentos a ciegas de fix ProcureTree (set `_sharedIds`, plano, prefer-existing-id) | **Inutiles**: capturar el request del UI primero. |
 | 0.5.56 | `ensureSharedRels` + `buildNewTree` recursivo con sub-árboles del catálogo | ProcureTree espera árbol completo expandido hasta hojas reales. |
+| 0.5.59 | Marcar el nodo raíz del proceso como `autoComplete: true` vía `UpdateProcessNode` después del `ProcureTree` exitoso | `ProcureTree` no expone `autoComplete` en el shape del árbol (capturado del UI 2026-05-05); es una mutación aparte sobre el nodo raíz. La llamada se trata como **post-step tolerante a fallos**: si 502/red revientan, el run sigue como éxito (el canon ya quedó aplicado) y se reporta `autoCompleteSet: false` en el resultado. Lección meta: **NO adivinar el shape** — antes de agregar la llamada se capturó el cURL del UI para confirmar `operationName`, hash y variables `{id, autoComplete}`. |
 
 ## 10. Pendientes / áreas para extender
 
