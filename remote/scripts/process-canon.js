@@ -283,12 +283,36 @@ const ProcessCanon = (() => {
 
   // Sufijos de epóxico (recubrimientos que no llegan al canon tradicional).
   const EPOXY_SUFFIXES = new Set(['EMT', 'EBT', 'EMR']);
-  // Códigos de "preparación" (Lavado/Decapado): solo son línea efectiva si no
-  // hay otro recubrimiento real en el nombre del proceso.
+  // Sufijos auxiliares: el código existe en el nombre pero NO como recubrimiento
+  // principal (es lavado, decapado, pasivado, antitarnish, horno, pulido, etc.).
+  // Solo gana si no hay un código con sufijo principal en el mismo nombre.
+  const AUX_SUFFIXES = new Set([
+    'LAV', 'DEC',          // Lavado, Decapado
+    'PAS',                 // Pasivado
+    'ANT',                 // Antitarnish
+    'HOR',                 // Horno
+    'PUL',                 // Pulido
+    'REB',                 // Rebajado
+    'FIB',                 // Fibrado
+    'ENM', 'DNM'           // Enmascarado, Desenmascarado
+  ]);
+  // Códigos de "preparación" (Lavado/Decapado sin sufijo): solo son línea
+  // efectiva si no hay otro recubrimiento real en el nombre.
   const PREP_CODES = new Set(['T101']);
-  // Una línea "satélite" es múltiplo de 100 (T100, T200, T300, T400, T500…):
-  // procesos auxiliares como horno, antitarnish, pulido, etc.
+  // Líneas que NO llevan canon tradicional (no tienen Enracado/Secado/InspEmpaque):
+  //  - Satélites: T100, T200, T300, T400, T500 (procesos auxiliares: horno,
+  //    antitarnish, pulido, fibrado, etc.)
+  //  - Epóxicos: T401 (línea de epóxico)
+  // Si la línea efectiva del proceso es alguno de estos, marcamos "no aplica
+  // canon" en lugar de validarlo.
   function isSatelliteCode(code) { return /^[TM]\d+00$/.test(code); }
+  function isExcludedLineCode(code) {
+    return isSatelliteCode(code) || code === 'T401';
+  }
+  // Procesos a ignorar por su nombre (retrabajos y subprocesos no llevan canon).
+  function isExcludedProcessName(name) {
+    return /^(RT|SP)\b/i.test(String(name || '').trim());
+  }
 
   function getLineCode(processName) {
     if (LINE_MAPPING[processName]) return LINE_MAPPING[processName];
@@ -305,26 +329,38 @@ const ProcessCanon = (() => {
       suffix: m[2] ? m[2].toUpperCase() : null
     }));
 
-    // Caso simple: un solo código distinto → esa es la línea.
+    // Caso simple: un solo código distinto → esa es la línea
+    // (puede ser excluida; isProcessApplicable se encarga de filtrar luego).
     const uniq = new Set(codes.map(c => c.code));
     if (uniq.size === 1) return codes[0].code;
 
-    // Tiers:
-    // - 0 (excluido): satélite (múltiplo de 100) o epóxico (sufijo EMT/EBT/EMR)
-    // - 1 (preparación): T101 — gana sólo si no hay nada en tier 2
-    // - 2 (recubrimiento): el resto
-    // Ejemplo: "T401 (EBT)-T204 (PLF)-T300 (ANT)-..." → T401 epóxico (excl),
-    //          T204 recubrimiento (tier 2), T300 satélite (excl) → T204.
-    // Ejemplo: "T101 (LAV)-T101 (DEC)-T204 (PLF)" → T204 (recubrimiento le
-    //          gana a la preparación T101).
-    // Ejemplo: "T101 Lavado-T101 Decapado" → T101 (sólo preparación).
-    // Ejemplo: "T104 (ZIN)-T100 (HOR)-T104 (CAZ)" → T104 (T100 satélite, T104
-    //          es el recubrimiento mayoritario).
+    // Tiers en procesos compuestos:
+    // - Excluido: satélite (T100..T500) o epóxico (sufijo EMT/EBT/EMR), también
+    //   T401 cuando aparece junto a otros códigos.
+    // - Tier 2 recubrimiento principal: código con sufijo NO auxiliar (ej.
+    //   CRD, NEL, PLF, ZIN, CAZ…), o sin sufijo y no T101.
+    // - Tier 1.5 auxiliar: código con sufijo en AUX_SUFFIXES (LAV, DEC, PAS,
+    //   ANT, HOR, PUL, REB, FIB, ENM, DNM). Sólo gana si tier 2 vacío.
+    // - Tier 1 preparación: T101 sin sufijo o con sufijo auxiliar. Gana sólo
+    //   si tier 2 y 1.5 vacíos.
+    //
+    // Ejemplos:
+    //   T401 (EBT)-T204 (PLF)-T300 (ANT)        → T204 (T401/T300 excluidos)
+    //   T101 (LAV)-T101 (DEC)-T204 (PLF)        → T204 (T204 recubrimiento)
+    //   T101 Lavado-T101 Decapado                → T101 (sólo preparación)
+    //   T104 (ZIN)-T100 (HOR)-T104 (CAZ)         → T104 (T100 satélite)
+    //   T103 (LAV)-T401 (ENM)-T103 (CRD)-T100…   → T103 (T103 CRD recubrimiento)
+    //   T100 (REB)-T112 (NEL)-T109 (PAS)-T100…   → T112 (T109 PAS auxiliar)
     const isEpoxy = (s) => !!s && EPOXY_SUFFIXES.has(s);
-    const isPrep = (c) => PREP_CODES.has(c);
+    const isAux   = (s) => !!s && AUX_SUFFIXES.has(s);
+    const isPrep  = (c) => PREP_CODES.has(c);
 
-    const eligible = codes.filter(c => !isSatelliteCode(c.code) && !isEpoxy(c.suffix));
-    const recubrimiento = eligible.filter(c => !isPrep(c.code));
+    const eligible = codes.filter(c =>
+      !isSatelliteCode(c.code) && c.code !== 'T401' && !isEpoxy(c.suffix)
+    );
+
+    const recubrimiento = eligible.filter(c => !isPrep(c.code) && !isAux(c.suffix));
+    const auxiliar      = eligible.filter(c => !isPrep(c.code) &&  isAux(c.suffix));
     const preparation   = eligible.filter(c =>  isPrep(c.code));
 
     function pickMostFrequent(arr) {
@@ -337,13 +373,10 @@ const ProcessCanon = (() => {
       return null;
     }
 
-    const tier2 = pickMostFrequent(recubrimiento);
-    if (tier2) return tier2;
-
-    const tier1 = pickMostFrequent(preparation);
-    if (tier1) return tier1;
-
-    return null;
+    return pickMostFrequent(recubrimiento)
+        || pickMostFrequent(auxiliar)
+        || pickMostFrequent(preparation)
+        || null;
   }
 
   // Variante (7.1): los procesos cuyo nombre incluye "(7.1)" tienen Surtido
@@ -719,7 +752,31 @@ const ProcessCanon = (() => {
   // y cada proceso usa la suya. La detección acepta CUALQUIER variante del Set.
   function detectCanonStatus(process, treeRoot) {
     const topLevel = extractTopLevel(treeRoot);
+
+    // No aplica canon: retrabajos (RT*), subprocesos (SP*).
+    if (isExcludedProcessName(process.name)) {
+      return {
+        isCanon: false,
+        notApplicable: true,
+        topLevel, expected: [], missingShared: [], extras: [],
+        reason: 'Retrabajo o subproceso (no aplica canon)'
+      };
+    }
+
     const lineCode = getLineCode(process.name);
+
+    // No aplica canon: la línea efectiva es satélite (T100..T500) o T401 (epóxico).
+    // Estos procesos no llevan Enracado/Secado/InspEmpaque por diseño.
+    if (lineCode && isExcludedLineCode(lineCode)) {
+      return {
+        isCanon: false,
+        notApplicable: true,
+        lineCode,
+        topLevel, expected: [], missingShared: [], extras: [],
+        reason: `Línea ${lineCode} (satélite/epóxico, no aplica canon)`
+      };
+    }
+
     if (!lineCode) {
       return {
         isCanon: false,
@@ -1134,26 +1191,30 @@ const ProcessCanon = (() => {
 
   // ── Render: selección ──
   function renderSelection(rows, onConfirm, onCancel) {
-    const visibleRows = rows.filter(r => !r.status.isCanon);
-    let showCanon = false;
+    // Por defecto ocultamos canónicos y "no aplica" (RT/SP, satélites,
+    // epóxicos). El toggle "showAll" los revela.
+    let showAll = false;
     let textFilter = '';
     let selected = new Set();
     let unmatched = [];
+
+    const isHidden = (r) => r.status.isCanon || r.status.notApplicable;
 
     function paintRow(r) {
       const s = r.status;
       const lineCol = s.lineCode || '<i style="color:#fbbf24">?</i>';
       let stEl, stClass;
       if (s.isCanon) { stEl = 'OK'; stClass = 'pc-status-ok'; }
+      else if (s.notApplicable) { stEl = s.reason || 'No aplica'; stClass = 'pc-status-warn'; }
       else if (s.lineCodeMissing) { stEl = 'Línea desconocida'; stClass = 'pc-status-warn'; }
       else if (s.missingShared.length) { stEl = `Falta: ${s.missingShared.join(', ')}`; stClass = 'pc-status-warn'; }
       else if (!s.hasListoPP) { stEl = 'Falta Listo para Procesar'; stClass = 'pc-status-bad'; }
       else { stEl = 'Fuera de orden'; stClass = 'pc-status-bad'; }
-      const enabled = !s.isCanon && !s.lineCodeMissing && s.missingShared.length === 0;
+      const enabled = !s.isCanon && !s.notApplicable && !s.lineCodeMissing && s.missingShared.length === 0;
       const cls = s.isCanon ? 'pc-ok' : (enabled ? 'pc-bad' : 'pc-disabled');
       const checkbox = enabled
         ? `<input type="checkbox" class="pc-row-check" data-id="${r.process.id}" ${selected.has(r.process.id) ? 'checked' : ''}>`
-        : `<input type="checkbox" disabled title="No se puede normalizar (línea desconocida o compartidos faltantes)">`;
+        : `<input type="checkbox" disabled title="No se puede normalizar (línea desconocida, no aplica o compartidos faltantes)">`;
       const detail = s.extras?.length ? `${s.extras.length} extras: ${s.extras.slice(0,3).map(e => escapeHtml(e.name)).join(', ')}${s.extras.length > 3 ? '…' : ''}` : '';
       return `<tr class="${cls}">
         <td>${checkbox}</td>
@@ -1165,13 +1226,14 @@ const ProcessCanon = (() => {
     }
 
     function renderTable() {
-      const filtered = (showCanon ? rows : rows.filter(r => !r.status.isCanon))
+      const filtered = (showAll ? rows : rows.filter(r => !isHidden(r)))
         .filter(r => !textFilter || normName(r.process.name).includes(normName(textFilter)));
       const tbody = filtered.map(paintRow).join('');
-      const totalNon = rows.filter(r => !r.status.isCanon).length;
-      const totalCanon = rows.length - totalNon;
+      const totalCanon  = rows.filter(r => r.status.isCanon).length;
+      const totalNoApply = rows.filter(r => r.status.notApplicable).length;
+      const totalIssues = rows.length - totalCanon - totalNoApply;
       return `
-        <h3>Procesos (${filtered.length} mostrados — ${rows.length} totales — ${totalCanon} OK / ${totalNon} no canónicos)</h3>
+        <h3>Procesos (${filtered.length} mostrados — ${rows.length} totales — ${totalCanon} OK / ${totalIssues} no canónicos / ${totalNoApply} no aplica)</h3>
         <div class="pc-table-wrap">
           <table class="pc-table">
             <thead><tr>
@@ -1243,7 +1305,7 @@ const ProcessCanon = (() => {
         <div id="pc-unmatched">${renderUnmatched()}</div>
         <div class="pc-row" style="margin:6px 0">
           <input type="text" id="pc-filter" class="pc-input" placeholder="Filtrar por nombre..." style="flex:1">
-          <label style="font-size:12px;color:#94a3b8"><input type="checkbox" id="pc-show-canon"> Mostrar canónicos</label>
+          <label style="font-size:12px;color:#94a3b8"><input type="checkbox" id="pc-show-canon"> Mostrar canónicos / no aplica</label>
         </div>
         <div id="pc-table-wrap">${renderTable()}</div>
         <div class="pc-btnrow">
@@ -1289,7 +1351,7 @@ const ProcessCanon = (() => {
     };
 
     document.getElementById('pc-filter').oninput = (e) => { textFilter = e.target.value; refresh(); };
-    document.getElementById('pc-show-canon').onchange = (e) => { showCanon = e.target.checked; refresh(); };
+    document.getElementById('pc-show-canon').onchange = (e) => { showAll = e.target.checked; refresh(); };
 
     document.getElementById('pc-cancel').onclick = () => { removeOverlay(); onCancel(); };
     document.getElementById('pc-go').onclick = () => {
