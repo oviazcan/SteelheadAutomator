@@ -237,6 +237,14 @@ const ProcessCanon = (() => {
   // Catálogos runtime de nodos compartidos descubiertos vía AllProcesses
   let _nodesByName = null;   // Map<normName, id>
   let _namesById = null;     // Map<id, displayName>
+  // IDs de nodos COMPARTIDOS (PROCESS, SUB_PROCESS, STEP_SHIPPING globales,
+  // y variantes por-línea de Enracado/Secado/InspEmpaque). Estos nodos tienen
+  // su sub-árbol en el catálogo de Steelhead, así que al armar el ProcureTree
+  // input se envían como hojas (`children: []`); el server resuelve sus hijos.
+  // Los SCANNER_NODE locales (Listo Para Procesar) NO van aquí — son hojas
+  // por naturaleza pero podríamos incluirlos sin diferencia. Lo importante:
+  // todo lo que esté en este set se envía sin children al ProcureTree.
+  let _sharedIds = new Set();
   // _sharedByOp: { enracado: Map<lineCode, [{id,name}, ...]>, secado, inspEmpaque }
   // Una línea puede tener múltiples variantes en un mismo tag (ej. T102 tiene
   // 'Secando Manual – Desenracado' Y 'Secando Centrífugo' bajo el tag Secado);
@@ -435,6 +443,7 @@ const ProcessCanon = (() => {
     const archivedSeen = new Map(); // normName → count (solo para diagnóstico)
     let firstNodeKeysLogged = false;
     let total = 0;
+    _sharedIds = new Set(); // se rellena con todo PROCESS/SUB_PROCESS/STEP_SHIPPING
     const passes = [
       { types: ['PROCESS', 'SUB_PROCESS'], label: 'PROCESS+SUB_PROCESS' },
       { types: ['STEP_SHIPPING'],           label: 'STEP_SHIPPING' }
@@ -469,6 +478,7 @@ const ProcessCanon = (() => {
           if (!byId.has(n.id)) byId.set(n.id, n.name);
           if (!nameDupes.has(k)) nameDupes.set(k, []);
           nameDupes.get(k).push(n.id);
+          _sharedIds.add(n.id);
         }
         if (onProgress) onProgress(`Cargando catálogo (${pass.label})... ${byName.size}`);
         if (nodes.length < PAGE_SIZE) break;
@@ -611,6 +621,7 @@ const ProcessCanon = (() => {
             arr.push({ id: n.id, name: n.name });
             _nodesByName.set(normName(n.name), n.id);
             _namesById.set(n.id, n.name);
+            _sharedIds.add(n.id);
           }
         }
         collected += nodes.length;
@@ -635,6 +646,7 @@ const ProcessCanon = (() => {
         if (n) {
           _nodesByName.set(normName(n.name), n.id);
           _namesById.set(n.id, n.name);
+          _sharedIds.add(n.id);
         }
       }
       missing = GLOBALS.filter(g => !lookupNodeId(g));
@@ -939,6 +951,13 @@ const ProcessCanon = (() => {
     function buildSubtree(nodeId) {
       if (visited.has(nodeId)) return { id: nodeId, children: [], specId: null };
       visited.add(nodeId);
+      // Nodos compartidos (PROCESS/SUB_PROCESS/STEP_SHIPPING globales y variantes
+      // por-línea) se envían como hojas. ProcureTree resuelve su sub-árbol desde
+      // el catálogo del server — si mandamos children, falla con
+      // "expected node id=X to have 0 children, but found N".
+      if (_sharedIds && _sharedIds.has(nodeId)) {
+        return { id: nodeId, children: [], specId: null };
+      }
       const childRels = (byParent.get(nodeId) || []).slice().sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
       const children = [];
       for (const r of childRels) {
