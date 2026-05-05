@@ -1,5 +1,5 @@
 {
-  "version": "0.5.56",
+  "version": "0.5.57",
   "lastUpdated": "2026-05-05",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -62,7 +62,8 @@
         "CreateUpdateBill": "c6c2545a187f37bbbfb9764ba7449affc1c0b16bcffaaec69c5ae6c6fca3f9c8",
         "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03",
         "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb",
-        "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b"
+        "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b",
+        "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -152,7 +153,9 @@
         "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af",
         "ProcessesComponentQuery": "e04ec51b93017327c1885546a887f994627981dc54653acc90a2aa2f4a5f249c",
         "ProcessesWithTag": "01c772451a17b4de013e58721bc5c888035cd57b54386a05c41e04aa30d6cb62",
-        "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3"
+        "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3",
+        "AllSensorDashboards": "432339f25bae0153d88fff64302df0bea1769987af20812c312748eb2babeedf",
+        "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a"
       }
     },
     "domain": {
@@ -508,6 +511,18 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/process-canon.js"],
       "actions": [
         { "id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run" }
+      ]
+    },
+    {
+      "id": "sensor-status-autofill",
+      "name": "Auto-asignar status (Sensor Dashboards)",
+      "subtitle": "Marca 'Use for Status' en members de un dashboard",
+      "icon": "📊",
+      "category": "Producción",
+      "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"],
+      "requiredPermissions": [],
+      "actions": [
+        { "id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status" }
       ]
     }
   ],
