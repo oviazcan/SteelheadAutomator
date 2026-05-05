@@ -66,6 +66,29 @@ const SensorStatusAutofill = (() => {
     })[c]);
   }
 
+  // ── API: fetch a single dashboard ──
+  async function fetchDashboard(idInDomain) {
+    // El persisted query exige 4 vars (after/before/measurementType filtran
+    // mediciones, no el arbol de candidatos). Defaults: ultimos 30 dias, NUMBER.
+    const now = new Date();
+    const before = now.toISOString();
+    const after = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const data = await api().query('SensorDashboardQuery', {
+      idInDomain, after, before, measurementType: 'NUMBER'
+    }, 'SensorDashboardQuery');
+    const dash = data?.sensorDashboardByIdInDomain;
+    if (!dash) throw new Error(`Dashboard ${idInDomain} no encontrado`);
+    return dash;
+  }
+
+  // ── API: update one member (assign activeSpecFieldParamId) ──
+  async function updateMember(memberId, activeSpecFieldParamId) {
+    return await api().query('UpdateSensorDashboardMember', {
+      id: memberId,
+      activeSpecFieldParamId
+    }, 'UpdateSensorDashboardMember');
+  }
+
   // ── Init + FAB ──
   async function init() {
     if (window.__saSensorStatusInitDone) return;
