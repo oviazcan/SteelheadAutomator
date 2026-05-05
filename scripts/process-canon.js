@@ -296,11 +296,19 @@ const ProcessCanon = (() => {
 
   // ── Carga del catálogo de nodos compartidos ──
   // Los SP SUB_PROCESS viven con types ['PROCESS','SUB_PROCESS']. 'SP Embarque
-  // en Almacén' es STEP_SHIPPING y requiere una pasada extra. Carga todo en
-  // una sola pasada paginada por cada lista de tipos.
+  // en Almacén' es STEP_SHIPPING y requiere una pasada extra.
+  //
+  // GOTCHA: Steelhead tiene nombres DUPLICADOS — alguien recreó nodos con el
+  // mismo name a lo largo del tiempo (ej. 'SP Embarque en Almacén' tiene 7
+  // ids: 211827, 205250, 200083, 200037, 191794, 191500, 109804). Los procesos
+  // canónicos referencian al original (id más bajo, el más antiguo). Por eso
+  // ordenamos por ID_ASC y nos quedamos con el primer match → el más viejo.
+  // Si en algún caso futuro el "correcto" no es el más antiguo, hay que
+  // descubrir el global por frecuencia de aparición en árboles, no por id.
   async function loadAllNodes(onProgress) {
     const byName = new Map();
     const byId = new Map();
+    const nameDupes = new Map(); // normName → array de ids para diagnóstico
     let total = 0;
     const passes = [
       { types: ['PROCESS', 'SUB_PROCESS'], label: 'PROCESS+SUB_PROCESS' },
@@ -313,7 +321,7 @@ const ProcessCanon = (() => {
         const data = await api().query('ProcessesComponentQuery', {
           includeArchived: 'NO',
           processNodeTypes: pass.types,
-          orderBy: ['ID_DESC'],
+          orderBy: ['ID_ASC'],
           offset,
           first: PAGE_SIZE,
           searchQuery: ''
@@ -326,6 +334,8 @@ const ProcessCanon = (() => {
           const k = normName(n.name);
           if (!byName.has(k)) byName.set(k, n.id);
           if (!byId.has(n.id)) byId.set(n.id, n.name);
+          if (!nameDupes.has(k)) nameDupes.set(k, []);
+          nameDupes.get(k).push(n.id);
         }
         if (onProgress) onProgress(`Cargando catálogo (${pass.label})... ${byName.size}`);
         if (nodes.length < PAGE_SIZE) break;
@@ -335,7 +345,17 @@ const ProcessCanon = (() => {
     }
     _nodesByName = byName;
     _namesById = byId;
-    log(`  Catálogo: ${byName.size} nodos (PROCESS+SUB_PROCESS+STEP_SHIPPING, totalCount=${total || '?'}).`);
+    log(`  Catálogo: ${byName.size} nodos únicos por nombre (PROCESS+SUB_PROCESS+STEP_SHIPPING, ID_ASC, totalCount=${total || '?'}).`);
+
+    // Diagnóstico: avisar de globales con duplicados (para detectar drift futuro)
+    for (const g of GLOBALS) {
+      const k = normName(g);
+      const ids = nameDupes.get(k);
+      if (ids && ids.length > 1) {
+        const preview = ids.slice(0, 5).join(', ') + (ids.length > 5 ? `, +${ids.length - 5} más` : '');
+        log(`  ⚠ '${g}' tiene ${ids.length} duplicados [${preview}]. Usando id más antiguo: ${byName.get(k)}.`);
+      }
+    }
     return { byName, total };
   }
 
