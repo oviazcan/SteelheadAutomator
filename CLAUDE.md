@@ -146,46 +146,16 @@ El applet detecta facturas timbradas cuyo PDF actual es pre-timbre (necesita reg
 - **Snapshot del template de variables en el interceptor.** Cuando vas a hacer un pull "global" (paginar hasta el final con filtros limpios), interceptá la primera vez que el UI llame esa op y guarda `JSON.parse(JSON.stringify(bodyObj.variables))`. Después clona, sanitiza filtros (search, customer, status), aplica paginación y dispara. Esto evita hardcodear el shape — sobrevive cambios de Steelhead. Patrón en `patchFetch` líneas 152-157.
 - **Diagnóstico: dump del shape antes de filtrar.** Cuando un applet "no detecta" algo que el usuario sabe pendiente, NO asumas que el filtro está bien. Pide al usuario un dump (`console.table` con keys de `writeResult`, primeros niveles de `invoice`, etc.) y compara con tu suposición. Las 3 rondas de fix de este ciclo (0.5.36 paginación, 0.5.36 verify phase, 0.5.37 markers de timbre) se hubieran cerrado en 1 si hubiera dumpeado el shape primero.
 
-### `ProcureTree` espera el árbol completo expandido — no plano (lecciones 0.5.51 → 0.5.56)
-La mutación `procureProcessTree2` (alias `ProcureTree`) reemplaza el árbol de un proceso. Su input `tree` NO es un árbol plano (rootId con un nivel de hojas) ni se resuelven sub-árboles desde el catálogo — el server espera el árbol **completo expandido hasta hojas reales** (STAGING, CONTRACT_REVIEW_NODE, QUALITY_ASSURANCE_NODE, INVOICING, STEP_SHIPPING_READY/PACKED/SHIPPED). Verificado capturando el request del UI 2026-05-05 al agregar manualmente "SP Inspección Recibo" a un proceso TEST.
+### Procesos: construcción, ordenamiento y control
+Toda la documentación del modelo de procesos en Steelhead vive en **[`docs/processes-architecture.md`](docs/processes-architecture.md)**: tipos de nodos, esquema GraphQL relevante, canon de 9 nodos top-level, construcción del árbol para `ProcureTree` (shape esperado, sub-árboles expandidos, manejo de duplicados, `ensureSharedRels`), discovery por tag, diagnóstico, y glosario de versiones del applet `process-canon`.
 
-**Shape esperado por ProcureTree** (capturado del UI):
-```json
-{
-  "id": <processId>,
-  "children": [
-    { "id": 139820, "specId": null, "children": [
-        { "id": 231174, "specId": null, "children": [
-            { "id": 231175, "children": [], "specId": null },
-            { "id": 231176, "children": [], "specId": null }
-        ] },
-        { "id": 166805, "children": [], "specId": null },
-        { "id": 166806, "children": [], "specId": null }
-    ] },
-    { "id": 221574, "children": [], "specId": null },
-    { "id": 221576, "specId": null, "children": [ /* shipping pipeline */ ] }
-  ],
-  "specId": null
-}
-```
-Cada referencia a un compartido (PROCESS/SUB_PROCESS/STEP_SHIPPING) viaja con su sub-árbol del catálogo. STEPs simples sin sub-árbol viajan como hojas. El error que disparas si lo mandas plano: `In checkTrees, expected node id=X to have 0 children, but found N` — significa "tu input dice 0 hijos para X pero el catálogo tiene N, debes reproducir esos N".
+Ese doc es la **fuente de verdad** para cualquier trabajo que toque procesos. Antes de tocar `process-canon.js` o cualquier mutación de árbol, leerlo. Lecciones nuevas se agregan ahí, no aquí.
 
-**De dónde sacar el sub-árbol expandido:**
-- `fetchProcessTree(processId)` (vía `GetProcessNode`) ya inlinea en `descendantRelationships` los rels del catálogo de los compartidos QUE EL PROCESO YA TENÍA. Indexar como `byParent: Map<parentId, rel[]>` y recursar.
-- Para compartidos que el applet va a INSERTAR pero el proceso aún no tenía, hay que fetchar `GetProcessNode(sharedId)` y agregar sus rels al pool antes de recursar. Ver `process-canon.js:ensureSharedRels` y `_subtreeRelsCache`. Cachear por id porque los compartidos se reúsan entre cientos de procesos.
-
-**Convenciones del schema verificadas (no asumir, verificar empíricamente):**
-- `descendantRelationships` modela `child → parent`: `toId` es el PADRE, `processNodeByFromId.{id,name,type}` es el HIJO.
-- `childInd` ordena hijos del mismo padre (sortear ascendente).
-- En el input de ProcureTree cada nodo lleva `specId: null` (el UI lo manda explícito incluso para nodos sin especificación).
-
-**Duplicados activos en el catálogo de Steelhead.** `loadAllNodes` / `ProcessesComponentQuery` revela que un mismo nombre de global puede tener varios ids activos (el log muestra "SP Embarque en Almacén" con 7 duplicados ACTIVOS). Antes de identificar el id del canónico para un proceso, **prefiere el id que el proceso ya tiene en su top-level** (matched por nombre normalizado) sobre el del catálogo. Si usas el id del catálogo cuando el proceso ya tiene uno distinto, el id del proceso queda como "extra" y entra al input doblemente referenciado, rompiendo `checkTrees`. Patrón en `process-canon.js:findByName(name) || lookupNodeId(name)` (0.5.54).
-
-**Tipos del nodo importan en `processNodeTypes` filters.** `loadAllNodes` solo carga `PROCESS+SUB_PROCESS+STEP_SHIPPING`. SP Inspección Recibo es tipo **STEP** puro (verificado por dump del UI), entonces queda fuera del catálogo en memoria. `searchNodeByName` original también filtraba a `PROCESS/SUB_PROCESS` — ampliarlo a `['PROCESS','SUB_PROCESS','STEP','STEP_SHIPPING']` para que `validateGlobals` pueda fallback-buscar globales que sean STEP (0.5.54).
-
-**Diagnóstico: capturar el request real del UI cuando un endpoint no se entiende.** Antes de recorrer 5 versiones adivinando, pídele al usuario que abra DevTools → Network → filtre por `graphql`, ejecute la operación manualmente en el UI (en este caso "agregar nodo a proceso TEST"), y comparta el payload. El shape capturado responde en 1 iteración lo que adivinar tomaría 5+. Lo aprendí tarde aquí: 0.5.52, 0.5.53, 0.5.54, 0.5.55 fueron parches a ciegas, 0.5.56 fue la captura → fix correcto.
-
-**Telemetría barata para deploys del cascarón remoto.** Agregar `window.__pcVersion` + `console.log('[SA] process-canon cargado · vX.Y.Z')` al final del módulo permite confirmar de un vistazo qué versión está cargada (la cache de la extensión no siempre se invalida con el bump de `config.json`). Patrón aplicable a cualquier applet remoto.
+Resumen de lo más crítico (no sustituye al doc):
+- `ProcureTree` espera el árbol **completo expandido** hasta hojas reales (no plano). Síntoma de input plano: `In checkTrees, expected node id=X to have 0 children, but found N`.
+- Duplicados activos en catálogo: preferir id que el proceso ya tiene (`findByName`) sobre id del catálogo.
+- `loadAllNodes` solo carga `PROCESS+SUB_PROCESS+STEP_SHIPPING`. STEPs (como `SP Inspección Recibo`) requieren `searchNodeByName` con tipos ampliados.
+- **Captura el request del UI antes de adivinar shapes**. Cinco rondas de fix a ciegas (0.5.52-55) cerraron en una iteración con la captura (0.5.56).
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`)
