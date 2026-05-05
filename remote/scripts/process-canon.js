@@ -514,7 +514,9 @@ const ProcessCanon = (() => {
     try {
       const data = await api().query('ProcessesComponentQuery', {
         includeArchived: 'NO',
-        processNodeTypes: ['PROCESS', 'SUB_PROCESS'],
+        // Incluye STEP / STEP_SHIPPING porque algunos globales (ej.
+        // 'SP Inspección Recibo') son STEP, no PROCESS/SUB_PROCESS.
+        processNodeTypes: ['PROCESS', 'SUB_PROCESS', 'STEP', 'STEP_SHIPPING'],
         orderBy: ['ID_DESC'],
         offset: 0, first: 50,
         searchQuery: name
@@ -980,11 +982,22 @@ const ProcessCanon = (() => {
     const topLevelFresh = extractTopLevel(treeRoot);
 
     // 5 globales + 3 por-línea (multi-variante) + 1 local (Listo PP) = 9 nodos.
-    const idInsRecibo     = lookupNodeId('SP Inspección Recibo');
-    const idPrepSurtido   = lookupNodeId('SP Preparación de Surtido en Almacén');
-    const idPrepEmbarque  = lookupNodeId('SP Preparación de Embarque en Almacén');
-    const idInspEmbarques = lookupNodeId('SP Inspección de Calidad Embarques');
-    const idEmbarqueAlm   = lookupNodeId('SP Embarque en Almacén');
+    // Para globales: PREFERIR el id que el proceso ya tiene (matched por nombre).
+    // Razón: si el proceso referencia un id histórico (ej. 139820) y el catálogo
+    // tiene un duplicado activo con id distinto, usar el id del catálogo deja
+    // el id viejo como "extra" → ProcureTree lo recibe como nodo desconocido.
+    // Preservando el id existente, ese mismo id va como canónico (hoja) y el
+    // server reconcilia el árbol contra su propio catálogo.
+    const findByName = (canonicalName) => {
+      const norm = normName(canonicalName);
+      const t = topLevelFresh.find(x => normName(x.name) === norm);
+      return t ? t.id : null;
+    };
+    const idInsRecibo     = findByName('SP Inspección Recibo')               || lookupNodeId('SP Inspección Recibo');
+    const idPrepSurtido   = findByName('SP Preparación de Surtido en Almacén') || lookupNodeId('SP Preparación de Surtido en Almacén');
+    const idPrepEmbarque  = findByName('SP Preparación de Embarque en Almacén') || lookupNodeId('SP Preparación de Embarque en Almacén');
+    const idInspEmbarques = findByName('SP Inspección de Calidad Embarques')   || lookupNodeId('SP Inspección de Calidad Embarques');
+    const idEmbarqueAlm   = findByName('SP Embarque en Almacén')               || lookupNodeId('SP Embarque en Almacén');
 
     if (!idInsRecibo || !idPrepSurtido || !idPrepEmbarque || !idInspEmbarques || !idEmbarqueAlm) {
       return { ...result, success: false, skipped: true, reason: 'No se resolvieron todos los IDs globales' };
@@ -1058,6 +1071,7 @@ const ProcessCanon = (() => {
 
     const newTree = buildNewTree(process.id, canonicalIds, extraIds, allRels);
     try { window.__lastProcureTreeInput = newTree; } catch (_) {}
+    log(`  ${process.name}: ProcureTree input → root=${process.id}, canonical=[${canonicalIds.join(',')}], extras=[${extraIds.join(',') || '∅'}]`);
 
     try {
       const data = await api().query('ProcureTree', { tree: newTree }, 'ProcureTree');
@@ -1556,5 +1570,5 @@ const ProcessCanon = (() => {
 
 if (typeof window !== 'undefined') {
   window.ProcessCanon = ProcessCanon;
-  window.__pcVersion = '0.5.53';
+  window.__pcVersion = '0.5.54';
 }
