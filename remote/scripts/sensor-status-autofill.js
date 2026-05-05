@@ -89,6 +89,17 @@ const SensorStatusAutofill = (() => {
     }, 'UpdateSensorDashboardMember');
   }
 
+  // ── API: list all sensor dashboards (single call, no pagination) ──
+  async function fetchAllSensorDashboards() {
+    const data = await api().query('AllSensorDashboards', {}, 'AllSensorDashboards');
+    const nodes = data?.allSensorDashboards?.nodes || [];
+    return nodes.map(n => ({
+      id: n.id,
+      idInDomain: n.idInDomain,
+      name: n.name || `#${n.idInDomain || n.id}`,
+    }));
+  }
+
   // ── Init + FAB ──
   async function init() {
     if (window.__saSensorStatusInitDone) return;
