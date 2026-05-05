@@ -294,6 +294,33 @@ const ProcessCanon = (() => {
     return uniq.size === 1 ? codes[0] : null;
   }
 
+  // Variante (7.1): los procesos cuyo nombre incluye "(7.1)" tienen Surtido
+  // ANTES que Inspección Recibo (slots 0 y 1 del canon estándar invertidos).
+  // El resto del orden se mantiene.
+  function isVariant71(processName) {
+    return /\(7\.1\)/.test(String(processName || ''));
+  }
+
+  // posOrder[k] = slot lógico esperado en posición visual k (0..8).
+  // Slots lógicos: 0=InsRecibo, 1=PrepSurtido, 2=Enracado, 3=ListoPP,
+  // 4=Secado, 5=InspEmpaque, 6=PrepEmbarque, 7=InspEmbarques, 8=EmbarqueAlm.
+  function getPosOrder(processName) {
+    if (isVariant71(processName)) return [1, 0, 2, 3, 4, 5, 6, 7, 8];
+    return [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  }
+
+  const SLOT_LABELS = [
+    'SP Inspección Recibo',
+    'SP Preparación de Surtido en Almacén',
+    'Enracado',
+    'Listo para Procesar',
+    'Secado',
+    'Inspección y Empaque',
+    'SP Preparación de Embarque en Almacén',
+    'SP Inspección de Calidad Embarques',
+    'SP Embarque en Almacén'
+  ];
+
   // ── Carga del catálogo de nodos compartidos ──
   // Los SP SUB_PROCESS viven con types ['PROCESS','SUB_PROCESS']. 'SP Embarque
   // en Almacén' es STEP_SHIPPING y requiere una pasada extra.
@@ -676,34 +703,11 @@ const ProcessCanon = (() => {
     const existingListo = topLevel.find(isListoMatch) || null;
     const hasListoPP = !!existingListo;
 
-    // Para mostrar en el "esperado" preferimos el nombre real que el proceso
-    // tiene en esa posición si es una variante válida; si no, primera variante
-    // del Set; si tampoco hay, placeholder.
-    const pickDisplayForLine = (idx, op, label) => {
-      const t = topLevel[idx];
-      if (t && isLineCanonAt(op, lineCode, t.id)) return t.name;
-      const arr = lookupSharedVariants(op, lineCode);
-      return arr.length ? arr[0].name : `(falta) ${label} ${lineCode}`;
-    };
-
-    const expectedDisplay = [
-      'SP Inspección Recibo',
-      'SP Preparación de Surtido en Almacén',
-      pickDisplayForLine(2, 'enracado',    'Enracado'),
-      listoPPName(lineCode),
-      pickDisplayForLine(4, 'secado',      'Secado'),
-      pickDisplayForLine(5, 'inspEmpaque', 'Inspección y Empaque'),
-      'SP Preparación de Embarque en Almacén',
-      'SP Inspección de Calidad Embarques',
-      'SP Embarque en Almacén'
-    ];
-
-    // Validador por posición: globales por ID exacto; por-línea por Set de
-    // variantes; Listo PP por nombre flexible.
-    const slotMatches = (i) => {
-      const t = topLevel[i];
+    // Matcher por slot lógico (no por posición visual). Permite reusar la
+    // misma lógica con distintos `posOrder` (variante normal vs 7.1).
+    const slotMatchesLogical = (slot, t) => {
       if (!t) return false;
-      switch (i) {
+      switch (slot) {
         case 0: return idInsRecibo     && t.id === idInsRecibo;
         case 1: return idPrepSurtido   && t.id === idPrepSurtido;
         case 2: return isLineCanonAt('enracado', lineCode, t.id);
@@ -717,35 +721,82 @@ const ProcessCanon = (() => {
       return false;
     };
 
-    let isCanon = topLevel.length === 9;
-    if (isCanon) {
-      for (let i = 0; i < 9; i++) {
-        if (!slotMatches(i)) { isCanon = false; break; }
+    const posOrder = getPosOrder(process.name);
+    // canonicalPosOf: dado un node t, devuelve la posición visual esperada
+    // (0..8) si matchea algún slot lógico, o null si es extra.
+    const canonicalPosOf = (t) => {
+      for (let pos = 0; pos < 9; pos++) {
+        if (slotMatchesLogical(posOrder[pos], t)) return pos;
       }
+      return null;
+    };
+
+    // Caminar topLevel y extraer las posiciones canónicas en su orden de
+    // aparición. Cualquier node que no matchee ningún slot es "extra" y se
+    // ignora para la validación de orden (los procesos pueden tener nodos
+    // adicionales como "T103 Limpieza Manual" — no validamos su existencia).
+    const canonicalPositions = [];
+    const extras = [];
+    for (const t of topLevel) {
+      const pos = canonicalPosOf(t);
+      if (pos === null) extras.push(t);
+      else canonicalPositions.push(pos);
     }
 
-    // extras: top-levels que no caen en NINGÚN slot canónico (no son ninguno
-    // de los 5 globales, ni Listo PP, ni variante válida de su línea).
-    const isAnyCanonical = (t) => {
-      if (!t) return false;
-      if (idInsRecibo     && t.id === idInsRecibo)     return true;
-      if (idPrepSurtido   && t.id === idPrepSurtido)   return true;
-      if (idPrepEmbarque  && t.id === idPrepEmbarque)  return true;
-      if (idInspEmbarques && t.id === idInspEmbarques) return true;
-      if (idEmbarqueAlm   && t.id === idEmbarqueAlm)   return true;
-      if (isListoMatch(t)) return true;
-      if (isLineCanonAt('enracado',    lineCode, t.id)) return true;
-      if (isLineCanonAt('secado',      lineCode, t.id)) return true;
-      if (isLineCanonAt('inspEmpaque', lineCode, t.id)) return true;
-      return false;
+    // Validar:
+    // 1. Cada posición 0..8 debe aparecer (los 9 canónicos presentes).
+    // 2. Las posiciones deben aparecer en orden estrictamente creciente
+    //    (subsequence match: extras intercalados están permitidos, pero
+    //    canónicos en posición incorrecta no).
+    // 3. Sin duplicados (el set de posiciones tiene exactamente 9 entradas).
+    const positionsSet = new Set(canonicalPositions);
+    const missingPositions = [];
+    for (let p = 0; p < 9; p++) {
+      if (!positionsSet.has(p)) missingPositions.push(p);
+    }
+    let outOfOrder = false;
+    for (let k = 1; k < canonicalPositions.length; k++) {
+      if (canonicalPositions[k] <= canonicalPositions[k - 1]) { outOfOrder = true; break; }
+    }
+    const hasDupSlot = positionsSet.size !== canonicalPositions.length;
+
+    const isCanon = !outOfOrder
+      && !missingPositions.length
+      && !hasDupSlot
+      && !missingShared.length;
+
+    // expectedDisplay alineado con posOrder: nombres en orden visual esperado.
+    const pickDisplayForLine = (visualIdx, op, label) => {
+      const t = topLevel[visualIdx];
+      if (t && isLineCanonAt(op, lineCode, t.id)) return t.name;
+      const arr = lookupSharedVariants(op, lineCode);
+      return arr.length ? arr[0].name : `(falta) ${label} ${lineCode}`;
     };
-    const extras = topLevel.filter(t => !isAnyCanonical(t));
+    const slotDisplay = (slot, visualIdx) => {
+      switch (slot) {
+        case 0: return 'SP Inspección Recibo';
+        case 1: return 'SP Preparación de Surtido en Almacén';
+        case 2: return pickDisplayForLine(visualIdx, 'enracado',    'Enracado');
+        case 3: return listoPPName(lineCode);
+        case 4: return pickDisplayForLine(visualIdx, 'secado',      'Secado');
+        case 5: return pickDisplayForLine(visualIdx, 'inspEmpaque', 'Inspección y Empaque');
+        case 6: return 'SP Preparación de Embarque en Almacén';
+        case 7: return 'SP Inspección de Calidad Embarques';
+        case 8: return 'SP Embarque en Almacén';
+      }
+      return '?';
+    };
+    const expectedDisplay = posOrder.map((slot, pos) => slotDisplay(slot, pos));
 
     let reason = '';
     if (isCanon) reason = 'OK';
     else if (missingShared.length) reason = `Faltan compartidos: ${missingShared.join(', ')}`;
-    else if (topLevel.length < 9 && !extras.length) reason = `Faltan nodos canónicos (${topLevel.length}/9)`;
-    else if (extras.length) reason = `Fuera de orden, ${extras.length} extras`;
+    else if (missingPositions.length) {
+      const names = missingPositions.map(p => SLOT_LABELS[posOrder[p]]).join(', ');
+      reason = `Faltan canónicos: ${names}`;
+    }
+    else if (hasDupSlot) reason = 'Slots canónicos duplicados';
+    else if (outOfOrder) reason = 'Fuera de orden';
     else reason = 'Fuera de orden';
 
     return {
@@ -755,6 +806,8 @@ const ProcessCanon = (() => {
       topLevel,
       expected: expectedDisplay,
       missingShared,
+      missingPositions,
+      outOfOrder,
       extras,
       hasListoPP,
       reason
@@ -868,11 +921,22 @@ const ProcessCanon = (() => {
       log(`  ${process.name}: creado "${listoPPName(lineCode)}" id:${idListo}`);
     }
 
-    // Orden canónico de 9 (matchea posiciones esperadas en detectCanonStatus).
-    const canonicalIds = [
-      idInsRecibo, idPrepSurtido, idEnracado, idListo,
-      idSecado, idInspEmpaque, idPrepEmbarque, idInspEmbarques, idEmbarqueAlm
+    // Orden canónico de 9 — alineado con posOrder de detectCanonStatus.
+    // Para variantes (7.1) los slots 0 y 1 están intercambiados.
+    // Index = slot lógico → id correspondiente.
+    const idsBySlot = [
+      idInsRecibo,     // 0
+      idPrepSurtido,   // 1
+      idEnracado,      // 2
+      idListo,         // 3
+      idSecado,        // 4
+      idInspEmpaque,   // 5
+      idPrepEmbarque,  // 6
+      idInspEmbarques, // 7
+      idEmbarqueAlm    // 8
     ];
+    const posOrder = getPosOrder(process.name);
+    const canonicalIds = posOrder.map(slot => idsBySlot[slot]);
 
     // Validaciones de seguridad antes de tocar ProcureTree
     const distinct = new Set(canonicalIds);
