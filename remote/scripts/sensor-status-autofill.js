@@ -224,6 +224,51 @@ const SensorStatusAutofill = (() => {
     });
   }
 
+  // ── Progress UI ──
+  function showProgressUI(title, subtitle) {
+    removeUI();
+    injectStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-sst-overlay';
+    ov.id = 'sa-sst-progress-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-sst-modal';
+    md.innerHTML = `
+      <h2 style="color:#a78bfa" id="sa-sst-progress-title">${escapeHtml(title)}</h2>
+      <div class="sa-sst-progress">
+        <div id="sa-sst-progress-msg" style="font-size:13px;color:#cbd5e1">${escapeHtml(subtitle || '')}</div>
+        <div id="sa-sst-progress-sub" style="font-size:11px;color:#94a3b8;margin-top:4px"></div>
+        <div class="sa-sst-bar"><div id="sa-sst-progress-bar" style="width:0%"></div></div>
+      </div>
+      <div class="sa-sst-btnrow">
+        <button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-stop">DETENER</button>
+      </div>
+    `;
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+    md.querySelector('#sa-sst-stop').addEventListener('click', () => {
+      state.cancelled = true;
+      md.querySelector('#sa-sst-stop').disabled = true;
+      md.querySelector('#sa-sst-stop').textContent = 'DETENIENDO…';
+    });
+  }
+
+  function updateProgress({ title, msg, sub, pct }) {
+    const t = document.getElementById('sa-sst-progress-title');
+    const m = document.getElementById('sa-sst-progress-msg');
+    const s = document.getElementById('sa-sst-progress-sub');
+    const b = document.getElementById('sa-sst-progress-bar');
+    if (t && title != null) t.textContent = title;
+    if (m && msg != null) m.textContent = msg;
+    if (s && sub != null) s.textContent = sub;
+    if (b && pct != null) b.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  }
+
+  function removeUI() {
+    const ov = document.getElementById('sa-sst-progress-overlay');
+    if (ov) ov.remove();
+  }
+
   // ── Init + FAB ──
   async function init() {
     if (window.__saSensorStatusInitDone) return;
