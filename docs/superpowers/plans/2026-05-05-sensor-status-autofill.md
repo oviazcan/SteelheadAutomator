@@ -55,8 +55,8 @@ const SensorStatusAutofill = (() => {
 
   const api = () => window.SteelheadAPI;
   const cfg = () => window.REMOTE_CONFIG;
-  const log = (m) => api()?.log?.(`[sensor-status] ${m}`) ?? console.log(`[SA sensor-status] ${m}`);
-  const warn = (m) => api()?.warn?.(`[sensor-status] ${m}`) ?? console.warn(`[SA sensor-status] ${m}`);
+  const log = (m) => api().log(`[sensor-status] ${m}`);
+  const warn = (m) => api().warn(`[sensor-status] ${m}`);
 
   // URL pattern del dashboard: /sensor-dashboards/<idInDomain>
   // Confirmar en implementación con la URL real del browser.
