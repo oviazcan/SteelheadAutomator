@@ -281,24 +281,68 @@ const ProcessCanon = (() => {
     return lookupSharedVariants(op, lineCode).some(v => v.id === id);
   }
 
+  // Sufijos de epóxico (recubrimientos que no llegan al canon tradicional).
+  const EPOXY_SUFFIXES = new Set(['EMT', 'EBT', 'EMR']);
+  // Códigos de "preparación" (Lavado/Decapado): solo son línea efectiva si no
+  // hay otro recubrimiento real en el nombre del proceso.
+  const PREP_CODES = new Set(['T101']);
+  // Una línea "satélite" es múltiplo de 100 (T100, T200, T300, T400, T500…):
+  // procesos auxiliares como horno, antitarnish, pulido, etc.
+  function isSatelliteCode(code) { return /^[TM]\d+00$/.test(code); }
+
   function getLineCode(processName) {
     if (LINE_MAPPING[processName]) return LINE_MAPPING[processName];
     // Fallback: derivar el code del nombre cuando no esté en el mapping del Excel
     // (ej. procesos creados después de la última regeneración del JSON).
-    const codes = Array.from(String(processName || '').matchAll(/\b(T\d{2,4}|M\d{2,4})\b/g))
-      .map(m => m[1].toUpperCase());
-    if (!codes.length) return null;
-    const uniq = new Set(codes);
-    if (uniq.size === 1) return codes[0];
-    // Heurística "ida y vuelta": cuando una línea aparece más veces que las
-    // otras, esa es la línea efectiva. Ej. "T104 (ZIN)-T100 (HOR)-T104 (CAZ)"
-    // pasa por horno T100 y regresa a T104 → la línea es T104. Si hay empate
-    // (ej. "T100 (PUL)-T103 (CRD)") devolvemos null porque es genuinamente
-    // ambiguo.
-    const counts = new Map();
-    for (const c of codes) counts.set(c, (counts.get(c) || 0) + 1);
-    const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-    if (sorted.length >= 2 && sorted[0][1] > sorted[1][1]) return sorted[0][0];
+    // Capturamos cada código con su sufijo opcional en paréntesis (sólo letras
+    // mayúsculas o '/', para no confundir versiones tipo "(7.1)" o "(16.1)").
+    const matches = Array.from(String(processName || '').matchAll(
+      /\b(T\d{2,4}|M\d{2,4})(?:\s*\(([A-Z][A-Z/]*)\))?/g
+    ));
+    if (!matches.length) return null;
+    const codes = matches.map(m => ({
+      code: m[1].toUpperCase(),
+      suffix: m[2] ? m[2].toUpperCase() : null
+    }));
+
+    // Caso simple: un solo código distinto → esa es la línea.
+    const uniq = new Set(codes.map(c => c.code));
+    if (uniq.size === 1) return codes[0].code;
+
+    // Tiers:
+    // - 0 (excluido): satélite (múltiplo de 100) o epóxico (sufijo EMT/EBT/EMR)
+    // - 1 (preparación): T101 — gana sólo si no hay nada en tier 2
+    // - 2 (recubrimiento): el resto
+    // Ejemplo: "T401 (EBT)-T204 (PLF)-T300 (ANT)-..." → T401 epóxico (excl),
+    //          T204 recubrimiento (tier 2), T300 satélite (excl) → T204.
+    // Ejemplo: "T101 (LAV)-T101 (DEC)-T204 (PLF)" → T204 (recubrimiento le
+    //          gana a la preparación T101).
+    // Ejemplo: "T101 Lavado-T101 Decapado" → T101 (sólo preparación).
+    // Ejemplo: "T104 (ZIN)-T100 (HOR)-T104 (CAZ)" → T104 (T100 satélite, T104
+    //          es el recubrimiento mayoritario).
+    const isEpoxy = (s) => !!s && EPOXY_SUFFIXES.has(s);
+    const isPrep = (c) => PREP_CODES.has(c);
+
+    const eligible = codes.filter(c => !isSatelliteCode(c.code) && !isEpoxy(c.suffix));
+    const recubrimiento = eligible.filter(c => !isPrep(c.code));
+    const preparation   = eligible.filter(c =>  isPrep(c.code));
+
+    function pickMostFrequent(arr) {
+      if (!arr.length) return null;
+      const counts = new Map();
+      for (const c of arr) counts.set(c.code, (counts.get(c.code) || 0) + 1);
+      const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+      if (sorted.length === 1) return sorted[0][0];
+      if (sorted[0][1] > sorted[1][1]) return sorted[0][0];
+      return null;
+    }
+
+    const tier2 = pickMostFrequent(recubrimiento);
+    if (tier2) return tier2;
+
+    const tier1 = pickMostFrequent(preparation);
+    if (tier1) return tier1;
+
     return null;
   }
 
