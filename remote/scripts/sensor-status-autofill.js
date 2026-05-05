@@ -11,9 +11,9 @@ const SensorStatusAutofill = (() => {
   const log = (m) => api().log(`[sensor-status] ${m}`);
   const warn = (m) => api().warn(`[sensor-status] ${m}`);
 
-  // URL pattern del dashboard: /sensor-dashboards/<idInDomain>
-  // Confirmar en implementación con la URL real del browser.
-  const DASHBOARD_URL_RE = /\/sensor-dashboards\/(\d+)(?:[/?#]|$)/i;
+  // URL real (Steelhead): /Domains/<id>/Maintenance/SensorDashboards/<idInDomain>
+  // Acepta también el slug con guión por si rota.
+  const DASHBOARD_URL_RE = /\/sensor-?dashboards\/(\d+)(?:[/?#]|$)/i;
 
   let state = {
     running: false,
