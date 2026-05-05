@@ -936,42 +936,19 @@ const ProcessCanon = (() => {
   }
 
   // ── Construcción del nuevo árbol ──
-  // Toma allRels (filtrados con BFS) y reconstruye un sub-árbol para cada nodo,
-  // luego devuelve {id: rootId, children: [...canonical, ...extras], specId: null}
-  function buildNewTree(rootId, canonicalIds, extraIds, allRels) {
-    const byParent = new Map();
-    for (const r of allRels) {
-      const p = relParentId(r);
-      if (p == null) continue;
-      if (!byParent.has(p)) byParent.set(p, []);
-      byParent.get(p).push(r);
-    }
-
-    const visited = new Set();
-    function buildSubtree(nodeId) {
-      if (visited.has(nodeId)) return { id: nodeId, children: [], specId: null };
-      visited.add(nodeId);
-      // Nodos compartidos (PROCESS/SUB_PROCESS/STEP_SHIPPING globales y variantes
-      // por-línea) se envían como hojas. ProcureTree resuelve su sub-árbol desde
-      // el catálogo del server — si mandamos children, falla con
-      // "expected node id=X to have 0 children, but found N".
-      if (_sharedIds && _sharedIds.has(nodeId)) {
-        return { id: nodeId, children: [], specId: null };
-      }
-      const childRels = (byParent.get(nodeId) || []).slice().sort((a, b) => (a.childInd || 0) - (b.childInd || 0));
-      const children = [];
-      for (const r of childRels) {
-        const cid = relChildId(r);
-        if (cid == null) continue;
-        const sub = buildSubtree(cid);
-        if (r.specId !== undefined) sub.specId = r.specId ?? null;
-        children.push(sub);
-      }
-      return { id: nodeId, children, specId: null };
-    }
-
-    visited.add(rootId);
-    const childrenAll = [...canonicalIds, ...extraIds].map(id => buildSubtree(id));
+  // En Steelhead, los nodos top-level de un proceso SIEMPRE son referencias a
+  // otros nodos del catálogo (PROCESS/SUB_PROCESS/STEP/STEP_SHIPPING/SCANNER_NODE
+  // globales o variantes por-línea). El server resuelve cada sub-árbol desde el
+  // catálogo, así que ProcureTree espera hojas (`children: []`) en el input —
+  // si enviamos children, falla con
+  //   "expected node id=X to have 0 children, but found N".
+  // Por eso aquí construimos un árbol plano: rootId con un nivel de children,
+  // todos hojas. allRels solo se usa fuera de esta función para resolver tipos
+  // y conservar el sourceRels — la jerarquía propia del catálogo no se duplica.
+  function buildNewTree(rootId, canonicalIds, extraIds, _allRels) {
+    const childrenAll = [...canonicalIds, ...extraIds].map(id => ({
+      id, children: [], specId: null
+    }));
     return { id: rootId, children: childrenAll, specId: null };
   }
 
@@ -1080,6 +1057,7 @@ const ProcessCanon = (() => {
     const extraIds = topLevelFresh.filter(t => !canonicalSet.has(t.id)).map(t => t.id);
 
     const newTree = buildNewTree(process.id, canonicalIds, extraIds, allRels);
+    try { window.__lastProcureTreeInput = newTree; } catch (_) {}
 
     try {
       const data = await api().query('ProcureTree', { tree: newTree }, 'ProcureTree');
@@ -1576,4 +1554,7 @@ const ProcessCanon = (() => {
   return { run };
 })();
 
-if (typeof window !== 'undefined') window.ProcessCanon = ProcessCanon;
+if (typeof window !== 'undefined') {
+  window.ProcessCanon = ProcessCanon;
+  window.__pcVersion = '0.5.53';
+}
