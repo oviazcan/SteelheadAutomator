@@ -1148,7 +1148,18 @@ const ProcessCanon = (() => {
       const data = await api().query('ProcureTree', { tree: newTree }, 'ProcureTree');
       const ok = data?.procureProcessTree2?.processTree?.id === process.id;
       if (!ok) return { ...result, success: false, skipped: false, reason: 'ProcureTree no confirmó éxito' };
-      return { ...result, success: true, createdListoId: existingListo ? null : idListo };
+
+      // Marcar el nodo raíz como Autocompletar. El canon ya quedó aplicado; si
+      // este toggle falla, no abortamos el run — solo reportamos warning.
+      let autoCompleteSet = true;
+      try {
+        await api().query('UpdateProcessNode', { id: process.id, autoComplete: true }, 'UpdateProcessNode');
+      } catch (e) {
+        autoCompleteSet = false;
+        warn(`  ${process.name}: UpdateProcessNode (autoComplete) falló: ${String(e.message).substring(0, 200)}`);
+      }
+
+      return { ...result, success: true, createdListoId: existingListo ? null : idListo, autoCompleteSet };
     } catch (e) {
       return { ...result, success: false, skipped: false, reason: `ProcureTree falló: ${String(e.message).substring(0, 200)}` };
     }
@@ -1641,6 +1652,6 @@ const ProcessCanon = (() => {
 
 if (typeof window !== 'undefined') {
   window.ProcessCanon = ProcessCanon;
-  window.__pcVersion = '0.5.56';
-  try { console.log('[SA] process-canon cargado · v0.5.56'); } catch (_) {}
+  window.__pcVersion = '0.5.59';
+  try { console.log('[SA] process-canon cargado · v0.5.59'); } catch (_) {}
 }
