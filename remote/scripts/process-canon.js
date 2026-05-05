@@ -1570,5 +1570,6 @@ const ProcessCanon = (() => {
 
 if (typeof window !== 'undefined') {
   window.ProcessCanon = ProcessCanon;
-  window.__pcVersion = '0.5.54';
+  window.__pcVersion = '0.5.55';
+  try { console.log('[SA] process-canon cargado · v0.5.55'); } catch (_) {}
 }
