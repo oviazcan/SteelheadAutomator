@@ -64,7 +64,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/bill-autofill.js': 'BillAutofill',
           'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen',
           'scripts/invoice-default-tab.js': 'InvoiceDefaultTab',
-          'scripts/process-canon.js': 'ProcessCanon' };
+          'scripts/process-canon.js': 'ProcessCanon',
+          'scripts/sensor-status-autofill.js': 'SensorStatusAutofill' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -951,6 +952,23 @@ async function handleMessage(message, sender) {
         func: () => {
           if (!window.SpecMigrator) return { error: 'SpecMigrator no disponible' };
           return window.SpecMigrator.run();
+        }
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    // ── Sensor Status Autofill ──
+    case 'assign-sensor-status': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'sensor-status-autofill');
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.SensorStatusAutofill) return { error: 'SensorStatusAutofill no disponible' };
+          window.SensorStatusAutofill.run().then(r => console.log('[SA] sensor-status:', r)).catch(e => console.error('[SA]', e));
+          return { started: true, message: 'Auto-asignación iniciada. Revisa el modal en Steelhead.' };
         }
       });
 
