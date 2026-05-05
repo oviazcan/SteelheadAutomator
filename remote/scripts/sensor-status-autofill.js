@@ -332,6 +332,68 @@ const SensorStatusAutofill = (() => {
     });
   }
 
+  // ── Resumen final ──
+  function showSummary(results) {
+    injectStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-sst-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-sst-modal';
+
+    const hasErrors = results.errors.length > 0;
+    const icon = hasErrors ? '⚠️' : '✅';
+    const iconColor = hasErrors ? '#f59e0b' : '#4ade80';
+
+    let errorsHTML = '';
+    if (hasErrors) {
+      const items = results.errors.slice(0, 15)
+        .map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escapeHtml(e)}</div>`)
+        .join('');
+      errorsHTML = `
+        <div style="margin-top:12px">
+          <div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>
+          ${items}
+        </div>`;
+    }
+
+    md.innerHTML = `
+      <h2 style="color:${iconColor}">${icon} Resumen</h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0">
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#a78bfa">${results.dashboardsProcessed}</div>
+          <div style="font-size:11px;color:#94a3b8">Dashboards</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#4ade80">${results.assigned}</div>
+          <div style="font-size:11px;color:#94a3b8">Auto-asignados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#8b5cf6">${results.assisted}</div>
+          <div style="font-size:11px;color:#94a3b8">Asistidos</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#64748b">${results.already}</div>
+          <div style="font-size:11px;color:#94a3b8">Ya asignados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#f59e0b">${results.skipped}</div>
+          <div style="font-size:11px;color:#94a3b8">Saltados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#fb7185">${results.zero}</div>
+          <div style="font-size:11px;color:#94a3b8">Sin candidatos</div>
+        </div>
+      </div>
+      ${errorsHTML}
+      <div class="sa-sst-btnrow">
+        <button class="sa-sst-btn sa-sst-btn-exec" id="sa-sst-close">CERRAR</button>
+      </div>
+    `;
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+    md.querySelector('#sa-sst-close').addEventListener('click', () => ov.remove());
+  }
+
   // ── Init + FAB ──
   async function init() {
     if (window.__saSensorStatusInitDone) return;
