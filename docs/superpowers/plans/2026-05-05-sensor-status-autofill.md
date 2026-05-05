@@ -4,7 +4,7 @@
 
 **Goal:** Build new applet `sensor-status-autofill.js` que recorre Sensor Dashboards de Steelhead y auto-asigna `SpecFieldParam` a los members vía `UpdateSensorDashboardMember`. Soporta scope `current` (default) y `all` (toggle off por default).
 
-**Architecture:** IIFE `SensorStatusAutofill` en `remote/scripts/sensor-status-autofill.js`. Auto-inject en URLs `/sensor-dashboards/<id>` igual que `paros-linea`. Action en popup como entrada alterna. Pull único por dashboard via `SensorDashboardQuery` (candidatos embebidos en `sensor.sensorType.specFieldsBySensorTypeId[].specFieldSpecsBySpecFieldId[].specFieldParamsBySpecFieldSpecId[]`). Mutation `UpdateSensorDashboardMember` secuencial. Modo `all` itera lista de `AllSensorDashboards` (template aprendido del UI). Sin tests automatizados — proyecto es vanilla JS sin framework de test; validamos con `node -c` syntax + smoke manual en Steelhead.
+**Architecture:** IIFE `SensorStatusAutofill` en `remote/scripts/sensor-status-autofill.js`. Auto-inject en URLs `/sensor-dashboards/<id>` igual que `paros-linea`. Action en popup como entrada alterna. Pull único por dashboard via `SensorDashboardQuery` (candidatos embebidos en `sensor.sensorType.specFieldsBySensorTypeId[].specFieldSpecsBySpecFieldId[].specFieldParamsBySpecFieldSpecId[]`). Mutation `UpdateSensorDashboardMember` secuencial. Modo `all` itera lista de `AllSensorDashboards` (una sola llamada, sin paginación). Sin tests automatizados — proyecto es vanilla JS sin framework de test; validamos con `node -c` syntax + smoke manual en Steelhead.
 
 **Tech Stack:** Vanilla JS (sin frameworks), Chrome Extension MV3, Steelhead GraphQL (Apollo Persisted Queries SHA256 hash-only).
 
@@ -20,18 +20,18 @@
 
 ---
 
-## Pre-flight: capturar hashes pendientes (manual, una vez)
+## Pre-flight: hashes capturados (resuelto 2026-05-05)
 
-Antes de Task 1, el usuario captura los dos hashes TBD del spec via `hash-scanner`:
+Hashes confirmados desde `~/Downloads/scan_results_2026-05-05_112900.json`:
 
-1. Abre la extensión en Chrome, activa `hash-scanner`.
-2. Navega a un Sensor Dashboard (ej. `/sensor-dashboards/122`) — se loguea operation `SensorDashboardQuery` (o nombre real).
-3. Navega a la lista de Sensor Dashboards (la página índice donde se ven todos) — se loguea operation `AllSensorDashboards` (o nombre real).
-4. El JSON de scan_results en `~/Downloads/scan_results_*.json` trae ambos `operationName` con su hash.
+- `SensorDashboardQuery`: `bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a`
+- `AllSensorDashboards`: `432339f25bae0153d88fff64302df0bea1769987af20812c312748eb2babeedf`
+- `UpdateSensorDashboardMember`: `b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928`
 
-Guarda los dos pares `(operationName, sha256Hash)` en una nota; los usaremos en Task 2.
+Variables observadas en el scan:
 
-Si los nombres reales difieren (ej. `GetSensorDashboard`, `SensorDashboardsList`), úsalos como aparecen en el scan — el plan tolera renombres y cualquier mención de `SensorDashboardQuery` / `AllSensorDashboards` deberá sustituirse por el real.
+- `SensorDashboardQuery`: `{ idInDomain: 122, after: "<ISO>", before: "<ISO>", measurementType: "NUMBER" }` — el persisted query requiere las 4 vars. `after`/`before` filtran mediciones, NO afectan el árbol de candidatos.
+- `AllSensorDashboards`: `{}` — sin variables. Response: `{ allSensorDashboards: { nodes: [...] } }` plano, sin paginación. Esto simplifica el applet (no hace falta template-learning ni paginación).
 
 ---
 
@@ -65,7 +65,7 @@ const SensorStatusAutofill = (() => {
   let state = {
     fabInstalled: false,
     running: false,
-    listTemplate: null,  // template aprendido para AllSensorDashboards
+    cancelled: false,
   };
 
   // ── URL parsing ──
@@ -146,8 +146,8 @@ Cambia `version` a `"0.5.57"` y `lastUpdated` a `"2026-05-05"`.
 Localiza el bloque `"queries": {` dentro de `"hashes": {`. Agrega (orden alfabético si ya está ordenado, o al final del bloque):
 
 ```json
-    "AllSensorDashboards": { "type": "query", "description": "Lista de Sensor Dashboards del domain. Variables esperadas: paginación Relay (first/offset/orderBy). El applet aprende el template del UI antes de paginar.", "usedBy": "sensor-status-autofill", "sha256Hash": "<HASH_CAPTURADO>" },
-    "SensorDashboardQuery": { "type": "query", "description": "Detalle de un Sensor Dashboard con members y candidatos embebidos. Variables: idInDomain, domainId. Respuesta cuelga de sensorDashboardByIdInDomain. Candidatos en sensor.sensorType.specFieldsBySensorTypeId[].specFieldSpecsBySpecFieldId[].specFieldParamsBySpecFieldSpecId[].", "usedBy": "sensor-status-autofill", "sha256Hash": "<HASH_CAPTURADO>" },
+    "AllSensorDashboards": { "type": "query", "description": "Lista plana de Sensor Dashboards del domain. Variables: {} (sin filtros, sin paginación). Response: allSensorDashboards.nodes[].", "usedBy": "sensor-status-autofill", "sha256Hash": "432339f25bae0153d88fff64302df0bea1769987af20812c312748eb2babeedf" },
+    "SensorDashboardQuery": { "type": "query", "description": "Detalle de un Sensor Dashboard con members y candidatos embebidos. Variables required: { idInDomain, after, before, measurementType }. Respuesta cuelga de sensorDashboardByIdInDomain. Candidatos en sensor.sensorType.specFieldsBySensorTypeId[].specFieldSpecsBySpecFieldId[].specFieldParamsBySpecFieldSpecId[]. after/before filtran mediciones, NO el arbol de candidatos.", "usedBy": "sensor-status-autofill", "sha256Hash": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a" },
 ```
 
 **Nota:** el formato exacto (`{ "type": ..., "sha256Hash": ... }` vs string plano) depende del formato vigente en el archivo. Antes de editar, lee 3-4 entradas alrededor para copiar el shape exacto. Si las queries son strings planos (`"AllSpecs": "abc..."`), agrégalas como strings; si son objetos como en el ejemplo, usa el shape objeto.
@@ -157,8 +157,6 @@ Localiza el bloque `"mutations": {` y agrega:
 ```json
     "UpdateSensorDashboardMember": { "type": "mutation", "description": "Asigna activeSpecFieldParamId a un SensorDashboardMember. Variables: { id, activeSpecFieldParamId }.", "usedBy": "sensor-status-autofill", "sha256Hash": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928" },
 ```
-
-Sustituye `<HASH_CAPTURADO>` por los hashes reales obtenidos en Pre-flight.
 
 - [ ] **Step 3: Agregar app entry y action al popup**
 
@@ -401,9 +399,14 @@ Inserta inmediatamente después de `escapeHtml` (antes de `init`):
 ```javascript
   // ── API: fetch a single dashboard ──
   async function fetchDashboard(idInDomain) {
-    // domainId no es necesario en variables si la query usa solo idInDomain;
-    // pasamos ambas si la query las acepta — el backend ignora extras.
-    const data = await api().query('SensorDashboardQuery', { idInDomain }, 'SensorDashboardQuery');
+    // El persisted query exige 4 vars (after/before/measurementType filtran
+    // mediciones, no el arbol de candidatos). Defaults: ultimos 30 dias, NUMBER.
+    const now = new Date();
+    const before = now.toISOString();
+    const after = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const data = await api().query('SensorDashboardQuery', {
+      idInDomain, after, before, measurementType: 'NUMBER'
+    }, 'SensorDashboardQuery');
     const dash = data?.sensorDashboardByIdInDomain;
     if (!dash) throw new Error(`Dashboard ${idInDomain} no encontrado`);
     return dash;
@@ -432,117 +435,40 @@ git commit -m "feat(sensor-status-autofill): API helpers fetchDashboard + update
 
 ---
 
-### Task 6: API helper — fetchAllSensorDashboards con template-learning
+### Task 6: API helper — fetchAllSensorDashboards (una sola llamada)
 
 **Files:**
 - Modify: `remote/scripts/sensor-status-autofill.js`
 
-Patrón inspirado en `invoice-auto-regen.js`: el applet snapshotea `bodyObj.variables` del primer request real del UI a `AllSensorDashboards` para usarlo como template; luego pagina con sanitización de filtros.
+El persisted query `AllSensorDashboards` toma `{}` y devuelve toda la lista del domain plana. **No hay paginación, no hay template-learning, no hay interceptor.** (Confirmado en scan_results 2026-05-05.)
 
-- [ ] **Step 1: Agregar interceptor de fetch para aprender el template**
-
-Inserta justo antes de `injectStyles`:
-
-```javascript
-  // ── Template learning para AllSensorDashboards ──
-  function ensureFetchInterceptor() {
-    if (window.__saSensorStatusFetchPatched) return;
-    window.__saSensorStatusFetchPatched = true;
-    const origFetch = window.fetch.bind(window);
-    window.fetch = async function (...args) {
-      try {
-        const req = args[0];
-        const init = args[1];
-        const url = typeof req === 'string' ? req : (req?.url || '');
-        if (url.includes('/graphql') && init?.body && typeof init.body === 'string') {
-          const body = JSON.parse(init.body);
-          const opName = body?.operationName;
-          if (opName === 'AllSensorDashboards' && body.variables) {
-            state.listTemplate = JSON.parse(JSON.stringify(body.variables));
-            window.__saSensorStatusListTemplate = state.listTemplate;
-          }
-        }
-      } catch (_) { /* ignore */ }
-      return origFetch.apply(this, args);
-    };
-  }
-```
-
-- [ ] **Step 2: Llamar al interceptor desde init**
-
-Localiza el `init()` y agrega `ensureFetchInterceptor();` justo después de `injectStyles();`:
-
-```javascript
-  async function init() {
-    if (window.__saSensorStatusInitDone) return;
-    window.__saSensorStatusInitDone = true;
-    log(`init (v${cfg()?.version || '?'})`);
-
-    injectStyles();
-    ensureFetchInterceptor();
-    installUrlChangeListener();
-    syncFabVisibility();
-  }
-```
-
-- [ ] **Step 3: Agregar `fetchAllSensorDashboards`**
+- [ ] **Step 1: Agregar `fetchAllSensorDashboards`**
 
 Inserta después de `updateMember`:
 
 ```javascript
-  // ── API: list all sensor dashboards (paginated, template-learned) ──
-  async function fetchAllSensorDashboards(onProgress) {
-    if (!state.listTemplate && !window.__saSensorStatusListTemplate) {
-      throw new Error('Template AllSensorDashboards no aprendido. Abre la lista de dashboards de Steelhead en otra pestaña, espera a que cargue, y reintenta.');
-    }
-    const tpl = state.listTemplate || window.__saSensorStatusListTemplate;
-    const dashboards = [];
-    const seen = new Set();
-    const PAGE = tpl.first || tpl.pageSize || 100;
-    let offset = 0;
-
-    while (true) {
-      const vars = JSON.parse(JSON.stringify(tpl));
-      // Sanitizar filtros del UI (search, etc.) — quedarnos con los del template
-      // pero limpiar valores que filtren el conjunto.
-      if ('searchQuery' in vars) vars.searchQuery = '';
-      if ('search' in vars) vars.search = '';
-      // Aplicar paginación.
-      if ('offset' in vars) vars.offset = offset;
-      if ('first' in vars) vars.first = PAGE;
-      if ('pageNumber' in vars) vars.pageNumber = Math.floor(offset / PAGE) + 1;
-      if ('pageSize' in vars) vars.pageSize = PAGE;
-
-      const data = await api().query('AllSensorDashboards', vars, 'AllSensorDashboards');
-      // El shape de respuesta puede ser { pagedData: { nodes, totalCount } } u otro.
-      // Buscamos el primer nivel de array con `nodes`.
-      const root = data?.pagedData || data?.allSensorDashboards || data;
-      const nodes = root?.nodes || [];
-      for (const n of nodes) {
-        if (n.id && !seen.has(n.id)) {
-          seen.add(n.id);
-          dashboards.push({ id: n.id, idInDomain: n.idInDomain, name: n.name || `#${n.idInDomain || n.id}` });
-        }
-      }
-      if (onProgress) onProgress(`Listando dashboards: ${dashboards.length}`);
-      if (nodes.length < PAGE) break;
-      offset += PAGE;
-      if (offset > 50000) break; // guardrail
-    }
-    return dashboards;
+  // ── API: list all sensor dashboards (single call, no pagination) ──
+  async function fetchAllSensorDashboards() {
+    const data = await api().query('AllSensorDashboards', {}, 'AllSensorDashboards');
+    const nodes = data?.allSensorDashboards?.nodes || [];
+    return nodes.map(n => ({
+      id: n.id,
+      idInDomain: n.idInDomain,
+      name: n.name || `#${n.idInDomain || n.id}`,
+    }));
   }
 ```
 
-- [ ] **Step 4: Verificar sintaxis**
+- [ ] **Step 2: Verificar sintaxis**
 
 Run: `node -c remote/scripts/sensor-status-autofill.js && echo OK`
 Expected: `OK`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add remote/scripts/sensor-status-autofill.js
-git commit -m "feat(sensor-status-autofill): fetchAllSensorDashboards con template-learning"
+git commit -m "feat(sensor-status-autofill): fetchAllSensorDashboards (una sola llamada)"
 ```
 
 ---
@@ -1001,7 +927,7 @@ Localiza el `run()` actual (skeleton, devuelve `{ error: 'Implementación pendie
       } else {
         showProgressUI('Listando dashboards', 'Cargando lista del domain…');
         try {
-          const all = await fetchAllSensorDashboards((m) => updateProgress({ msg: m }));
+          const all = await fetchAllSensorDashboards();
           dashboards = all.map(d => ({ idInDomain: d.idInDomain, name: d.name }));
         } catch (e) {
           removeUI();
@@ -1182,11 +1108,10 @@ Si hay errores en el modal de resumen, copia el log de la consola del browser y 
 
 - [ ] **Step 5: Smoke test del modo `all`**
 
-1. En la página de la lista de Sensor Dashboards, espera a que cargue (esto popula `state.listTemplate`).
-2. Vuelve a un dashboard, abre el FAB, marca el checkbox "TODOS" → click `INICIAR`.
-3. Verifica progreso de dos niveles (`Dashboard X de N` + `Member Y de M`).
-4. Prueba `SALTAR RESTO DE ESTE DASHBOARD` en un member multi → confirma que pasa al siguiente dashboard sin atender más asistidos del actual.
-5. Prueba `DETENER` a media corrida → resumen muestra parcial.
+1. Desde un dashboard cualquiera, abre el FAB, marca el checkbox "TODOS" → click `INICIAR`. (No hace falta visitar la lista primero — `AllSensorDashboards` toma `{}`.)
+2. Verifica progreso de dos niveles (`Dashboard X de N` + `Member Y de M`).
+3. Prueba `SALTAR RESTO DE ESTE DASHBOARD` en un member multi → confirma que pasa al siguiente dashboard sin atender más asistidos del actual.
+4. Prueba `DETENER` a media corrida → resumen muestra parcial.
 
 - [ ] **Step 6: Commit final si hay ajustes post-smoke**
 
