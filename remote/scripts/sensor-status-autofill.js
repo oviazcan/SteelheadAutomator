@@ -152,6 +152,78 @@ const SensorStatusAutofill = (() => {
     };
   }
 
+  // ── Modal Fase 0: scope selection ──
+  function showScopeModal({ currentRef, currentName }) {
+    return new Promise((resolve) => {
+      injectStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-sst-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-sst-modal';
+
+      const currentLabel = currentRef
+        ? `Solo este dashboard${currentName ? ` — ${escapeHtml(currentName)}` : ''}`
+        : 'Solo este dashboard (no detectado en la URL)';
+
+      md.innerHTML = `
+        <h2 style="color:#a78bfa">📊 Auto-asignar status</h2>
+        <p style="font-size:12px;color:#94a3b8;margin:0 0 14px 0">Marca "Use for Status" en members con un único candidato. Para members con varios candidatos abrirá un modal para que tú elijas.</p>
+
+        <div style="margin-bottom:14px">
+          <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 12px;background:#0f172a;border-radius:8px;${currentRef ? 'cursor:pointer' : 'opacity:0.5;cursor:not-allowed'}">
+            <input type="radio" name="sa-sst-scope" value="current" ${currentRef ? 'checked' : 'disabled'}>
+            <div>
+              <div style="font-weight:600;color:#e2e8f0">${currentLabel}</div>
+              <div style="font-size:11px;color:#94a3b8">Procesa solo el dashboard abierto.</div>
+            </div>
+          </label>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 12px;background:#0f172a;border-radius:8px;cursor:pointer">
+            <input type="checkbox" id="sa-sst-allcheck">
+            <div>
+              <div style="font-weight:600;color:#fbbf24">Procesar TODOS los dashboards del domain</div>
+              <div style="font-size:11px;color:#94a3b8">Puede tardar varios minutos. Off por default.</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="sa-sst-btnrow">
+          <button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-cancel">CANCELAR</button>
+          <button class="sa-sst-btn sa-sst-btn-exec" id="sa-sst-start">INICIAR</button>
+        </div>
+      `;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const startBtn = md.querySelector('#sa-sst-start');
+      const allCheck = md.querySelector('#sa-sst-allcheck');
+      const radioCurrent = md.querySelector('input[name="sa-sst-scope"]');
+
+      const refresh = () => {
+        const isAll = allCheck.checked;
+        const canStart = isAll || (radioCurrent && radioCurrent.checked && !!currentRef);
+        startBtn.disabled = !canStart;
+      };
+      allCheck.addEventListener('change', refresh);
+      if (radioCurrent) radioCurrent.addEventListener('change', refresh);
+      refresh();
+
+      md.querySelector('#sa-sst-cancel').addEventListener('click', () => {
+        ov.remove();
+        resolve({ cancelled: true });
+      });
+      startBtn.addEventListener('click', () => {
+        const isAll = allCheck.checked;
+        ov.remove();
+        if (isAll) resolve({ scope: 'all' });
+        else resolve({ scope: 'current', idInDomain: currentRef.idInDomain });
+      });
+    });
+  }
+
   // ── Init + FAB ──
   async function init() {
     if (window.__saSensorStatusInitDone) return;
