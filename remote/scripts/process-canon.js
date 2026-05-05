@@ -298,17 +298,30 @@ const ProcessCanon = (() => {
   // Los SP SUB_PROCESS viven con types ['PROCESS','SUB_PROCESS']. 'SP Embarque
   // en Almacén' es STEP_SHIPPING y requiere una pasada extra.
   //
-  // GOTCHA: Steelhead tiene nombres DUPLICADOS — alguien recreó nodos con el
-  // mismo name a lo largo del tiempo (ej. 'SP Embarque en Almacén' tiene 7
-  // ids: 211827, 205250, 200083, 200037, 191794, 191500, 109804). Los procesos
-  // canónicos referencian al original (id más bajo, el más antiguo). Por eso
-  // ordenamos por ID_ASC y nos quedamos con el primer match → el más viejo.
-  // Si en algún caso futuro el "correcto" no es el más antiguo, hay que
-  // descubrir el global por frecuencia de aparición en árboles, no por id.
+  // GOTCHA #1: Steelhead tiene nombres DUPLICADOS — el mismo nombre fue
+  // recreado a lo largo del tiempo. El UI los oculta con `View Archived` off,
+  // pero `includeArchived: 'NO'` no siempre los filtra (se respeta en algunas
+  // pasadas y en otras no). Para no depender del server, filtramos
+  // defensivamente en cliente cualquier nodo con `archive`, `archivedAt`,
+  // `archivedDate` o `isArchived` truthy.
+  //
+  // GOTCHA #2: Tras filtrar archivados queda 1 solo "vivo" en la mayoría de
+  // los casos. Igual ordenamos por ID_ASC para preferir el más antiguo si
+  // hubiera más de uno activo.
+  function isArchivedNode(n) {
+    if (!n) return false;
+    if (n.archive === true || n.isArchived === true) return true;
+    if (n.archivedAt != null && n.archivedAt !== '') return true;
+    if (n.archivedDate != null && n.archivedDate !== '') return true;
+    return false;
+  }
+
   async function loadAllNodes(onProgress) {
     const byName = new Map();
     const byId = new Map();
     const nameDupes = new Map(); // normName → array de ids para diagnóstico
+    const archivedSeen = new Map(); // normName → count (solo para diagnóstico)
+    let firstNodeKeysLogged = false;
     let total = 0;
     const passes = [
       { types: ['PROCESS', 'SUB_PROCESS'], label: 'PROCESS+SUB_PROCESS' },
@@ -329,9 +342,17 @@ const ProcessCanon = (() => {
         const paged = data?.pagedData || {};
         const nodes = paged.nodes || [];
         if (passTotal === null && typeof paged.totalCount === 'number') passTotal = paged.totalCount;
+        if (!firstNodeKeysLogged && nodes.length) {
+          firstNodeKeysLogged = true;
+          log(`  Keys del primer node de catálogo: [${Object.keys(nodes[0]).join(', ')}]`);
+        }
         for (const n of nodes) {
           if (!n?.name || !n?.id) continue;
           const k = normName(n.name);
+          if (isArchivedNode(n)) {
+            archivedSeen.set(k, (archivedSeen.get(k) || 0) + 1);
+            continue;
+          }
           if (!byName.has(k)) byName.set(k, n.id);
           if (!byId.has(n.id)) byId.set(n.id, n.name);
           if (!nameDupes.has(k)) nameDupes.set(k, []);
@@ -347,13 +368,19 @@ const ProcessCanon = (() => {
     _namesById = byId;
     log(`  Catálogo: ${byName.size} nodos únicos por nombre (PROCESS+SUB_PROCESS+STEP_SHIPPING, ID_ASC, totalCount=${total || '?'}).`);
 
-    // Diagnóstico: avisar de globales con duplicados (para detectar drift futuro)
+    // Diagnóstico: avisar de globales con duplicados activos (post-filter).
+    // Si pese al filtro client-side aparecen varios "no archivados" con el
+    // mismo name, es señal de drift y conviene investigar.
     for (const g of GLOBALS) {
       const k = normName(g);
       const ids = nameDupes.get(k);
       if (ids && ids.length > 1) {
         const preview = ids.slice(0, 5).join(', ') + (ids.length > 5 ? `, +${ids.length - 5} más` : '');
-        log(`  ⚠ '${g}' tiene ${ids.length} duplicados [${preview}]. Usando id más antiguo: ${byName.get(k)}.`);
+        log(`  ⚠ '${g}' tiene ${ids.length} duplicados ACTIVOS [${preview}]. Usando id más antiguo: ${byName.get(k)}.`);
+      }
+      const archCount = archivedSeen.get(k);
+      if (archCount) {
+        log(`  · '${g}': ${archCount} archivados filtrados.`);
       }
     }
     return { byName, total };
