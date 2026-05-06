@@ -915,27 +915,98 @@ const InvoiceAutofill = (() => {
     return document.querySelector('main') || document.querySelector('[class*="content"]');
   }
 
-  // Cada línea de invoice se renderiza como un bloque cuyo encabezado dice
-  // "Line #N - PN  Description: …  Total: $X". Encontramos esos encabezados,
-  // de cada uno subimos al contenedor de la línea (el ancestor más bajo que
-  // contenga el React Select "INCOME"), y dentro extraemos PN y total.
+  // Cada línea se renderiza con dos sub-tables dentro de un wrapper:
+  //   1. Header table: <th>Line #N - PN</th> <th>Description:</th> <th>Total: $X</th>
+  //   2. Data table: <thead> con 11 columnas (Include, Product, ..., Income Account);
+  //      <tbody> con un row de datos (cells.length === 11) + sub-row con colspan=11
+  //      que contiene Part Numbers/Locations.
+  // El layout legacy usaba subtítulos italics (<p>INCOME</p>) junto al combobox; lo
+  // mantenemos como fallback.
   function extractLinesFromDOM() {
     const lines = [];
     const seen = new Set();
+
+    // ── Layout A: tabla embebida en flujo Packing Slip ──
+    const allThs = document.querySelectorAll('th');
+    for (const th of allThs) {
+      if (th.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = th.textContent?.trim() || '';
+      const m = txt.match(/^Line\s*#(\d+)\s*-\s*([A-Z0-9._\-/]+)/);
+      if (!m) continue;
+      const lineNum = parseInt(m[1], 10);
+      const pn = m[2];
+
+      // Subir hasta encontrar el wrapper de la línea que contenga la sub-table de
+      // datos (la que tiene "Income Account" como columna).
+      let lineWrapper = th.parentElement;
+      let dataTable = null;
+      let columnHeaders = null;
+      let incomeIdx = -1;
+      for (let d = 0; d < 12 && lineWrapper; d++) {
+        const tables = lineWrapper.querySelectorAll('table');
+        for (const tbl of tables) {
+          const colThs = [...tbl.querySelectorAll(':scope > thead > tr > th')];
+          if (colThs.length < 5) continue;
+          const idx = colThs.findIndex(h => /^\s*income\s+account\s*$/i.test(h.textContent?.trim() || ''));
+          if (idx >= 0) {
+            dataTable = tbl;
+            columnHeaders = colThs;
+            incomeIdx = idx;
+            break;
+          }
+        }
+        if (dataTable) break;
+        lineWrapper = lineWrapper.parentElement;
+      }
+      if (!dataTable || incomeIdx < 0) continue;
+
+      // Data row: primer <tr> del <tbody> con cells.length === número de columnas
+      // (la sub-row de Part Numbers tiene 1 cell con colspan=11, no matchea).
+      let dataRow = null;
+      for (const tr of dataTable.querySelectorAll(':scope > tbody > tr')) {
+        if (tr.cells && tr.cells.length === columnHeaders.length) {
+          dataRow = tr;
+          break;
+        }
+      }
+      if (!dataRow) continue;
+
+      const incomeCell = dataRow.cells[incomeIdx];
+      if (!incomeCell) continue;
+      // Ancla en el primer hijo del <td> de Income Account: tryFillIncomeInLine
+      // hará host = incomeChild.parentElement = <td>, y querySelector queda
+      // scopeado a ese td (no captura comboboxes de otras columnas como Product).
+      const incomeChild = incomeCell.firstElementChild || incomeCell;
+
+      const key = `${lineNum}-${pn}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const headerTr = th.closest('tr');
+      const totalMatch = headerTr?.textContent.match(/Total:\s*\$?\s*(-?[\d,]+(?:\.\d+)?)/i);
+      const amount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : null;
+
+      lines.push({
+        name: pn,
+        lineNumber: lineNum,
+        container: lineWrapper,
+        incomeLabel: incomeChild,
+        amount
+      });
+    }
+
+    if (lines.length > 0) return lines;
+
+    // ── Layout B (fallback): subtítulo italic <p>INCOME</p> junto al combobox ──
     const candidates = document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,div');
     for (const el of candidates) {
       if (el.closest('#sa-invoice-autofill-panel')) continue;
       const txt = el.textContent?.trim() || '';
-      // Filtrar elementos demasiado grandes (descendientes envueltos)
       if (txt.length > 400) continue;
-      // PNs son alfanuméricos en mayúsculas; el regex permisivo capturaba el header
-      // "Description:" pegado al PN (sin whitespace en textContent). Restringir a [A-Z0-9].
       const m = txt.match(/Line\s*#(\d+)\s*-\s*([A-Z0-9._\-/]+)/);
       if (!m) continue;
       const lineNum = parseInt(m[1], 10);
       const pn = m[2];
-      // Container de la línea: ancestor más bajo que contenga la subtítulo "INCOME"
-      // (cada línea tiene su propio Income Account select).
       let container = el.parentElement;
       let incomeLabel = null;
       for (let d = 0; d < 12 && container; d++) {
@@ -951,7 +1022,6 @@ const InvoiceAutofill = (() => {
       const key = `${lineNum}-${pn}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      // Total: monto en el heading o cercano, formato "$1,234.56"
       const totalMatch = container.textContent.match(/Total:\s*\$?\s*(-?[\d,]+(?:\.\d+)?)/i);
       const amount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : null;
       lines.push({ name: pn, lineNumber: lineNum, container, incomeLabel, amount });
