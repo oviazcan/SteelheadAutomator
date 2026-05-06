@@ -52,8 +52,8 @@ const construirDescripcionCFDI = (p: {
     partes.push(bloque)
   }
 
-  // Caso especial: cantidad mínima aplicada — descripción corta.
-  // El integrador SAT identifica la subcadena "Cantidad mínima aplicada"
+  // Caso especial: cargo de lote mínimo aplicado — descripción corta.
+  // El integrador SAT identifica la subcadena "Cargo de lote mínimo aplicado"
   // para reconvertir la unidad a Lote oficial del SAT.
   if (p.loteMinimoCargado) {
     const piezasFmt =
@@ -62,8 +62,8 @@ const construirDescripcionCFDI = (p: {
         : null
     partes.push(
       piezasFmt
-        ? `Cantidad mínima aplicada (${piezasFmt} piezas)`
-        : 'Cantidad mínima aplicada'
+        ? `Cargo de lote mínimo aplicado (${piezasFmt} piezas)`
+        : 'Cargo de lote mínimo aplicado'
     )
     return partes.join('. ').trim()
   }
@@ -255,10 +255,10 @@ const getInvoicePricing = (
     // re-escala a (piezasPorLote × rateUnitario) para que el total represente
     // un lote completo. La unidad de la línea no se toca aquí (no modificable
     // en este contexto); el integrador SAT la reconvierte detectando la
-    // cadena "Cantidad mínima aplicada" en la descripción.
+    // cadena "Cargo de lote mínimo aplicado" en la descripción.
     const LOTE_UNIT_ID = 5348
     const yaTeníaLoteMinimo =
-      /cantidad m[íi]nima aplicada/i.test(uiLine.description ?? '')
+      /cargo de lote m[íi]nimo aplicado/i.test(uiLine.description ?? '')
       || (uiLine.description ?? '').toLowerCase().includes('cargo de lote mínimo')
     let loteMinimoCargado = false
     let piezasLoteMinimo: number | null = null
