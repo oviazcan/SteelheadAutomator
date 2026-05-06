@@ -607,8 +607,12 @@ const InvoiceAutofill = (() => {
       };
     }
 
-    // Tokens fuertes del nombre del cliente
-    const customerName = customer?.name || customer?.shortName || customer?.customerName || '';
+    // Tokens fuertes del nombre del cliente. En el flow PS-embedded, customer.name
+    // del shape de InvoiceLowCodeData/GetReceivedOrders puede venir vacío aunque la UI
+    // sí lo muestre (lo extraemos a state.customerName). Caemos a esa lectura del DOM
+    // como último recurso para que los tokens narroween y no caigamos a "todas las
+    // cuentas en divisa" (66 candidatas → tooMany → ✗).
+    const customerName = customer?.name || customer?.shortName || customer?.customerName || state.customerName || '';
     const stopWords = new Set([
       'sa', 'sade', 'sadc', 'sade', 'rl', 'rldecv', 'cv', 'de', 'la', 'las',
       'el', 'los', 'y', 'sapi', 'srl', 'sab', 'mx', 'usa', 'inc', 'llc', 'ltd',
