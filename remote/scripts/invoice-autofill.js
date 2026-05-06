@@ -565,7 +565,9 @@ const InvoiceAutofill = (() => {
   //
   // Filtros:
   //   1. Categoría receivable (cuando la trae el shape)
-  //   2. `name` termina con la divisa: `\b<CUR>\s*$`
+  //   2. `name` contiene la divisa como token: `\b<CUR>\b` (no exigimos que termine
+  //      en la divisa — algunas cuentas la traen al final, otras la mezclan con el
+  //      número, ej. "... 1128 USD" vs "... USD 1128")
   //   3. `name` contiene TODOS los tokens "fuertes" del nombre del cliente
   //      (palabras alfanuméricas >2 chars, normalizadas, excluyendo formas
   //      legales tipo "sa", "sade", "rl", "cv", "de"…)
@@ -573,6 +575,10 @@ const InvoiceAutofill = (() => {
   //      - exenta → preferir cuenta con "SIN IVA" en name
   //      - general → preferir cuenta SIN "SIN IVA" en name
   //   5. Tie-break final: accountNumber más alto.
+  //   6. Guard defensivo: si después de tokenizar quedan >3 candidatas, NO
+  //      elegimos. Probablemente los tokens del cliente no narrowearon (cliente
+  //      sin name en el shape, etc.) y caímos a "todas las cuentas en divisa".
+  //      Mejor marcar X en el panel y que el usuario llene manualmente.
   function findBestARAccount(customer, currency, allAccounts) {
     const cur = String(currency || '').toUpperCase().trim();
     if (!cur) return { account: null, ambiguous: false, candidates: [], reason: 'sin_divisa' };
@@ -584,7 +590,10 @@ const InvoiceAutofill = (() => {
       return { account: null, ambiguous: false, candidates: [], reason: 'allAcctAccounts_vacio' };
     }
 
-    const reCur = new RegExp(`\\b${cur}\\s*$`, 'i');
+    // No exigimos que el name TERMINE en la divisa — algunas cuentas la traen al final
+    // pero otras la mezclan con el número ("... 1128 USD" vs "... USD 1128"). Basta con
+    // que la divisa aparezca como token (word boundary) en el name.
+    const reCur = new RegExp(`\\b${cur}\\b`, 'i');
     const byCurrency = pool.filter(a => reCur.test(String(a?.name || '')));
     if (byCurrency.length === 0) {
       return {
@@ -635,11 +644,16 @@ const InvoiceAutofill = (() => {
 
     preferred.sort((a, b) => String(b.accountNumber || '').localeCompare(String(a.accountNumber || '')));
     const winner = preferred[0];
+    // >3 candidatas suele indicar falso positivo (tokens del cliente no
+    // narrowearon nada y caímos a "todas las cuentas en divisa"). Mejor no
+    // fillear y avisar al usuario que llene manualmente.
+    const tooMany = preferred.length > 3;
     return {
-      account: { id: winner.id, accountNumber: winner.accountNumber, name: winner.name },
+      account: tooMany ? null : { id: winner.id, accountNumber: winner.accountNumber, name: winner.name },
       ambiguous: preferred.length > 1,
+      tooMany,
       candidates: preferred.map(m => ({ id: m.id, accountNumber: m.accountNumber, name: m.name })),
-      reason: null,
+      reason: tooMany ? `demasiadas_candidatas_${preferred.length}` : null,
       currencyHint: cur,
       customerTokens: tokens,
       ruleApplied: rule
@@ -2016,7 +2030,33 @@ const InvoiceAutofill = (() => {
     if (domDivisaAfterFill) lastDetectedDivisa = domDivisaAfterFill;
 
     renderPanel();
+    scheduleAutoCollapseIfAllDone();
     log(`InvoiceAutofill listo: customer="${customerName}" currency=${currency} rate=${exchangeRate} ar="${arResult.account?.accountNumber}" lines=${lineAccounts.length}`);
+  }
+
+  // Si todos los rows quedaron en 'done' (palomita verde), colapsamos el panel
+  // a su header para que no estorbe sobre el form. El usuario puede re-expandir
+  // clickeando el header.
+  let autoCollapseTimer = null;
+  function isAllDone() {
+    if (!state.customerName) return false;
+    if (!state.currency || state.currencySource === 'default') return false;
+    if (state.exchangeRate == null) return false;
+    const ar = state.arAccount;
+    if (!ar?.account?.accountNumber || ar.ambiguous || ar.tooMany) return false;
+    if (state.lineAccounts.some(l => !l.account)) return false;
+    return true;
+  }
+  function scheduleAutoCollapseIfAllDone() {
+    if (autoCollapseTimer) { clearTimeout(autoCollapseTimer); autoCollapseTimer = null; }
+    if (!isAllDone()) return;
+    autoCollapseTimer = setTimeout(() => {
+      autoCollapseTimer = null;
+      const panel = document.getElementById('sa-invoice-autofill-panel');
+      if (!panel) return;
+      panel.dataset.collapsed = 'true';
+      renderPanel();
+    }, 1800);
   }
 
   function inferCurrencyFromCustomer(customer) {
@@ -2078,7 +2118,10 @@ const InvoiceAutofill = (() => {
       const ar = state.arAccount;
       let arLabel = '—';
       let arStatus = 'pending';
-      if (ar?.account?.accountNumber) {
+      if (ar?.tooMany) {
+        arLabel = `${ar.candidates.length} candidatas — no pude elegir, llénalo manualmente`;
+        arStatus = 'error';
+      } else if (ar?.account?.accountNumber) {
         arLabel = `${ar.account.accountNumber} · ${ar.account.name || ''}`.trim();
         if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas, mayor #)`;
         arStatus = ar.ambiguous ? 'warn' : 'done';
