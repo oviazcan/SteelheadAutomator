@@ -13,7 +13,11 @@ const InvoiceAutofill = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
-  const INVOICE_URL_RE = /\/Domains\/\d+\/Invoices(?:\/|$)/;
+  // El editor RJSF de invoice se abre tanto en /Invoices como en /Shipping/PackingSlips
+  // (cuando se crea factura desde un Packing Slip, Steelhead lo monta in-place sin
+  // cambiar la URL). Aceptamos ambos paths; la detección DOM por `root_DatosContables_*`
+  // dentro de scanForInvoicePage filtra falsos positivos.
+  const INVOICE_URL_RE = /\/Domains\/\d+\/(?:Invoices|Shipping\/PackingSlips)(?:\/|$)/;
   // Modal "Create Invoice Manually" — overlay sobre la lista de invoices, sin
   // form RJSF. Se usa para Notas de Crédito y cargos manuales (tarifas, etc).
   const MANUAL_HEADING_RE = /create\s+invoice\s+manually|crear\s+factura\s+manual/i;
