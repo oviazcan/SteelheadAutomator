@@ -197,7 +197,7 @@ const ReceiverDateOverride = (() => {
     const style = document.createElement('style');
     style.id = 'sa-rdo-styles';
     style.textContent = `
-      .sa-rdo-wrapper {
+      .sa-rdo-row-label, .sa-rdo-row-controls {
         margin-top: 12px;
       }
       .sa-rdo-controls {
@@ -282,34 +282,31 @@ const ReceiverDateOverride = (() => {
   }
 
   function injectField(modal) {
-    // Localizar el wrapper de "Receiver Comments:" via su <p>
+    // Anclar dentro del .css-iyrxkt de "Cliente:" / "Customer:" como rows extra del grid
     const labels = modal.querySelectorAll('p');
-    let receiverCommentsWrapper = null;
+    let customerWrapper = null;
     for (const p of labels) {
-      if (/^(?:receiver\s+comments|comentarios\s+del\s+receptor):?$/i.test(p.textContent.trim())) {
-        receiverCommentsWrapper = p.closest('.css-iyrxkt');
+      if (/^(?:customer|cliente):?$/i.test(p.textContent.trim())) {
+        customerWrapper = p.closest('.css-iyrxkt');
         break;
       }
     }
-    if (!receiverCommentsWrapper) {
-      console.warn(LOG_PREFIX, 'No se localizó el wrapper de Receiver Comments — layout cambió?');
+    if (!customerWrapper) {
+      console.warn(LOG_PREFIX, 'No se localizó el wrapper de Cliente — layout cambió?');
       return;
     }
-
-    // Construir el wrapper nuevo clonando estructura .css-iyrxkt
-    const wrapper = document.createElement('div');
-    wrapper.className = 'css-iyrxkt sa-rdo-wrapper';
-    wrapper.dataset.saRdoField = 'true';
+    if (customerWrapper.querySelector('[data-sa-rdo-field="true"]')) return;
 
     const label = document.createElement('p');
-    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3';
+    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3 sa-rdo-row-label';
     label.style.gridColumn = '1';
     label.textContent = 'Fecha real de recibido:';
-    wrapper.appendChild(label);
+    label.dataset.saRdoField = 'true';
 
     const controls = document.createElement('div');
     controls.style.gridColumn = '2';
-    controls.className = 'sa-rdo-controls';
+    controls.className = 'sa-rdo-controls sa-rdo-row-controls';
+    controls.dataset.saRdoField = 'true';
 
     const input = document.createElement('input');
     input.type = 'date';
@@ -342,15 +339,8 @@ const ReceiverDateOverride = (() => {
     warningEl.hidden = true;
     controls.appendChild(warningEl);
 
-    wrapper.appendChild(controls);
-    // Insertar como sibling del row container (.css-xd9ivb) para que caiga
-    // como bloque debajo del header (Customer + Receiver Comments + Custom Inputs)
-    const rowContainer = receiverCommentsWrapper.parentElement;
-    if (rowContainer) {
-      rowContainer.insertAdjacentElement('afterend', wrapper);
-    } else {
-      receiverCommentsWrapper.insertAdjacentElement('afterend', wrapper);
-    }
+    customerWrapper.appendChild(label);
+    customerWrapper.appendChild(controls);
 
     // Estado por modal
     const state = modalStates.get(modal) || {};
