@@ -61,6 +61,7 @@ const WarehouseLocationPrefill = (() => {
         }
 
         if (totalAccounts === 0) {
+          console.warn(LOG_PREFIX, 'locationId seleccionado pero el payload no tiene accounts mutables — locationId no aplicado');
           return origFetch.apply(this, args);
         }
         opts.body = JSON.stringify(bodyObj);
@@ -138,6 +139,7 @@ const WarehouseLocationPrefill = (() => {
     const state = modalStates.get(modal);
     if (!state) return;
     state.aduanaError = null;
+    if (state.dropdown && !state.dropdown.hidden) renderDropdown(state);
     try {
       const nodes = await fetchAduanaLocations();
       state.aduanaCache = nodes;
