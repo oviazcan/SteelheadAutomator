@@ -196,8 +196,7 @@ const ReceiverDateOverride = (() => {
     style.id = 'sa-rdo-styles';
     style.textContent = `
       .sa-rdo-wrapper {
-        grid-column: 1 / -1;
-        flex-basis: 100%;
+        margin-top: 12px;
       }
       .sa-rdo-controls {
         display: flex;
@@ -336,7 +335,14 @@ const ReceiverDateOverride = (() => {
     controls.appendChild(warningEl);
 
     wrapper.appendChild(controls);
-    receiverCommentsWrapper.insertAdjacentElement('afterend', wrapper);
+    // Insertar como sibling del row container (.css-xd9ivb) para que caiga
+    // como bloque debajo del header (Customer + Receiver Comments + Custom Inputs)
+    const rowContainer = receiverCommentsWrapper.parentElement;
+    if (rowContainer) {
+      rowContainer.insertAdjacentElement('afterend', wrapper);
+    } else {
+      receiverCommentsWrapper.insertAdjacentElement('afterend', wrapper);
+    }
 
     // Estado por modal
     const state = modalStates.get(modal) || {};
