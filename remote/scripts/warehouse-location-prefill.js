@@ -67,6 +67,7 @@ const WarehouseLocationPrefill = (() => {
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
     injectField(modal);
+    wireCombobox(modal);
     watchModalRemoval(modal);
     preloadAduana(modal);
   }
@@ -99,6 +100,7 @@ const WarehouseLocationPrefill = (() => {
     const state = modalStates.get(modal);
     if (state?.removalObserver) state.removalObserver.disconnect();
     if (state?.rowObserver) state.rowObserver.disconnect();
+    if (state?.docClickHandler) document.removeEventListener('mousedown', state.docClickHandler);
     modalStates.delete(modal);
     console.log(LOG_PREFIX, 'Modal cleanup completado');
   }
@@ -280,6 +282,123 @@ const WarehouseLocationPrefill = (() => {
     modalStates.set(modal, state);
 
     console.log(LOG_PREFIX, 'Combobox de ubicación inyectado');
+  }
+
+  function renderDropdown(state) {
+    const dd = state.dropdown;
+    dd.innerHTML = '';
+    const cache = state.aduanaFilterActive ? state.aduanaCache : state.fullCache;
+    const search = (state.input.value || '').trim().toLowerCase();
+
+    if (!cache) {
+      const empty = document.createElement('div');
+      empty.className = 'sa-wlp-option-empty';
+      empty.textContent = 'Cargando ubicaciones…';
+      dd.appendChild(empty);
+      return;
+    }
+
+    const filtered = search
+      ? cache.filter(loc => (loc.path || '').toLowerCase().includes(search)
+                         || (loc.name || '').toLowerCase().includes(search))
+      : cache.slice();
+
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'sa-wlp-option-empty';
+      empty.textContent = state.aduanaFilterActive
+        ? "No se encontraron ubicaciones con 'Aduana'"
+        : 'Sin matches';
+      dd.appendChild(empty);
+    } else {
+      for (const loc of filtered) {
+        const opt = document.createElement('div');
+        opt.className = 'sa-wlp-option';
+        opt.textContent = loc.path || loc.name || `(id ${loc.id})`;
+        opt.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          selectLocation(state, loc);
+        });
+        dd.appendChild(opt);
+      }
+    }
+
+    if (state.aduanaFilterActive) {
+      const sentinel = document.createElement('div');
+      sentinel.className = 'sa-wlp-option-sentinel';
+      sentinel.textContent = '🔄 Mostrar todas las ubicaciones';
+      sentinel.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        state.aduanaFilterActive = false;
+        if (!state.fullCache) {
+          state.input.placeholder = 'Cargando catálogo completo…';
+          try {
+            state.fullCache = await fetchAllLocations();
+          } catch {
+            state.fullCache = [];
+          }
+          state.input.placeholder = 'Buscar ubicación';
+        }
+        renderDropdown(state);
+      });
+      dd.appendChild(sentinel);
+    }
+  }
+
+  function selectLocation(state, loc) {
+    state.selectedLocation = { id: loc.id, path: loc.path || loc.name };
+    state.input.value = state.selectedLocation.path;
+    state.clearBtn.hidden = false;
+    state.dropdown.hidden = true;
+    console.log(LOG_PREFIX, `Ubicación seleccionada: id=${loc.id} path=${loc.path}`);
+    onSelectionChange(state);
+  }
+
+  function clearSelection(state) {
+    state.selectedLocation = null;
+    state.input.value = '';
+    state.clearBtn.hidden = true;
+    state.aduanaFilterActive = true;
+    state.input.placeholder = 'Buscar ubicación (filtro: Aduana)';
+    console.log(LOG_PREFIX, 'Ubicación limpiada');
+    onSelectionChange(state);
+  }
+
+  // Stub — Task 6 implementa el disabling de combos per-line
+  function onSelectionChange(state) {
+    // no-op
+  }
+
+  function wireCombobox(modal) {
+    const state = modalStates.get(modal);
+    if (!state) return;
+    const { input, clearBtn, dropdown, combo } = state;
+
+    input.addEventListener('focus', () => {
+      dropdown.hidden = false;
+      renderDropdown(state);
+    });
+    input.addEventListener('input', () => {
+      if (state.selectedLocation) {
+        // El usuario está editando — invalidar selección
+        state.selectedLocation = null;
+        clearBtn.hidden = true;
+      }
+      dropdown.hidden = false;
+      renderDropdown(state);
+    });
+    input.addEventListener('blur', () => {
+      // Pequeño delay para permitir click en option (mousedown corre antes que blur)
+      setTimeout(() => { dropdown.hidden = true; }, 150);
+    });
+    clearBtn.addEventListener('click', () => clearSelection(state));
+
+    // Cerrar dropdown si click fuera — guardamos el listener para cleanup
+    const docClickHandler = (e) => {
+      if (!combo.contains(e.target)) dropdown.hidden = true;
+    };
+    document.addEventListener('mousedown', docClickHandler);
+    state.docClickHandler = docClickHandler;
   }
 
   return { init };
