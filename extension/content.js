@@ -18,6 +18,12 @@
     document.documentElement.dataset.saWeightQuickEntryEnabled = enabled;
   });
 
+  // Communicate Receiver Date Override enabled state to MAIN world
+  chrome.storage.local.get('receiverDateOverrideEnabled', (data) => {
+    const enabled = data.receiverDateOverrideEnabled !== false;
+    document.documentElement.dataset.saReceiverDateOverrideEnabled = enabled;
+  });
+
   // Listen for storage changes to update in real-time (e.g., when toggled from popup)
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.cfdiAttacherEnabled) {
@@ -27,6 +33,10 @@
     if (changes.weightQuickEntryEnabled) {
       const enabled = changes.weightQuickEntryEnabled.newValue !== false;
       document.documentElement.dataset.saWeightQuickEntryEnabled = enabled;
+    }
+    if (changes.receiverDateOverrideEnabled) {
+      const enabled = changes.receiverDateOverrideEnabled.newValue !== false;
+      document.documentElement.dataset.saReceiverDateOverrideEnabled = enabled;
     }
   });
 
