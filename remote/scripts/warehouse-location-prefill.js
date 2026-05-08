@@ -68,6 +68,19 @@ const WarehouseLocationPrefill = (() => {
     injectStyles();
     injectField(modal);
     watchModalRemoval(modal);
+    preloadAduana(modal);
+  }
+
+  async function preloadAduana(modal) {
+    const state = modalStates.get(modal);
+    if (!state) return;
+    try {
+      const nodes = await fetchAduanaLocations();
+      state.aduanaCache = nodes;
+      console.log(LOG_PREFIX, `Aduana precargada: ${nodes.length} ubicaciones`);
+    } catch {
+      state.aduanaCache = [];
+    }
   }
 
   function watchModalRemoval(modal) {
@@ -88,6 +101,44 @@ const WarehouseLocationPrefill = (() => {
     if (state?.rowObserver) state.rowObserver.disconnect();
     modalStates.delete(modal);
     console.log(LOG_PREFIX, 'Modal cleanup completado');
+  }
+
+  async function fetchAduanaLocations() {
+    if (!api()) {
+      console.warn(LOG_PREFIX, 'SteelheadAPI no disponible');
+      return [];
+    }
+    try {
+      const data = await api().query('SearchLocationsOnPath', {
+        fetchInventoryItem: false, fetchPartNumber: false, isShipping: null,
+        path: '', searchText: '%Aduana%', offset: 0, first: 100,
+        subpathOffset: 0, searchTextLast: '%Aduana%',
+        archivedIsNull: true, isEmpty: false, includeTypes: true
+      }, 'SearchLocationsOnPath');
+      return data?.searchLocationsOnPath?.nodes || [];
+    } catch (err) {
+      console.warn(LOG_PREFIX, 'Error cargando ubicaciones Aduana:', err);
+      throw err;
+    }
+  }
+
+  async function fetchAllLocations(offset = 0, first = 200) {
+    if (!api()) {
+      console.warn(LOG_PREFIX, 'SteelheadAPI no disponible');
+      return [];
+    }
+    try {
+      const data = await api().query('SearchLocationsOnPath', {
+        fetchInventoryItem: false, fetchPartNumber: false, isShipping: null,
+        path: '', searchText: '', offset, first,
+        subpathOffset: 0, searchTextLast: '',
+        archivedIsNull: true, isEmpty: false, includeTypes: true
+      }, 'SearchLocationsOnPath');
+      return data?.searchLocationsOnPath?.nodes || [];
+    } catch (err) {
+      console.warn(LOG_PREFIX, 'Error cargando catálogo completo de ubicaciones:', err);
+      throw err;
+    }
   }
 
   function injectStyles() {
