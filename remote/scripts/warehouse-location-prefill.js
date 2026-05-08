@@ -119,7 +119,10 @@ const WarehouseLocationPrefill = (() => {
       selectedLocation: null,
       aduanaFilterActive: true,
       aduanaCache: null,
+      aduanaError: null,
       fullCache: null,
+      fullCacheOffset: 0,
+      fullCacheExhausted: false,
     });
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
@@ -133,13 +136,18 @@ const WarehouseLocationPrefill = (() => {
   async function preloadAduana(modal) {
     const state = modalStates.get(modal);
     if (!state) return;
+    state.aduanaError = null;
     try {
       const nodes = await fetchAduanaLocations();
       state.aduanaCache = nodes;
       console.log(LOG_PREFIX, `Aduana precargada: ${nodes.length} ubicaciones`);
-    } catch {
+    } catch (err) {
       state.aduanaCache = [];
+      state.aduanaError = err;
+      console.warn(LOG_PREFIX, 'Error precargando Aduana:', err);
     }
+    // Re-render si el dropdown está visible
+    if (state.dropdown && !state.dropdown.hidden) renderDropdown(state);
   }
 
   function watchModalRemoval(modal) {
@@ -358,6 +366,25 @@ const WarehouseLocationPrefill = (() => {
       return;
     }
 
+    // Bloque de error con retry (solo en modo Aduana)
+    if (state.aduanaFilterActive && state.aduanaError) {
+      const errDiv = document.createElement('div');
+      errDiv.className = 'sa-wlp-option-empty';
+      errDiv.textContent = 'Error al cargar ubicaciones Aduana.';
+      dd.appendChild(errDiv);
+
+      const retrySentinel = document.createElement('div');
+      retrySentinel.className = 'sa-wlp-option-sentinel';
+      retrySentinel.textContent = '🔄 Reintentar';
+      retrySentinel.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+        if (modal) preloadAduana(modal);
+      });
+      dd.appendChild(retrySentinel);
+      return;
+    }
+
     const filtered = search
       ? cache.filter(loc => (loc.path || '').toLowerCase().includes(search)
                          || (loc.name || '').toLowerCase().includes(search))
@@ -393,15 +420,39 @@ const WarehouseLocationPrefill = (() => {
         if (!state.fullCache) {
           state.input.placeholder = 'Cargando catálogo completo…';
           try {
-            state.fullCache = await fetchAllLocations();
+            const nodes = await fetchAllLocations(0, 200);
+            state.fullCache = nodes;
+            state.fullCacheOffset = nodes.length;
+            state.fullCacheExhausted = nodes.length < 200;
           } catch {
             state.fullCache = [];
+            state.fullCacheOffset = 0;
+            state.fullCacheExhausted = true;
           }
           state.input.placeholder = 'Buscar ubicación';
         }
         renderDropdown(state);
       });
       dd.appendChild(sentinel);
+    } else if (!state.fullCacheExhausted) {
+      // Paginación lazy: "Cargar más" solo en modo catálogo completo con más páginas disponibles
+      const loadMoreSentinel = document.createElement('div');
+      loadMoreSentinel.className = 'sa-wlp-option-sentinel';
+      loadMoreSentinel.textContent = '⬇️ Cargar más';
+      loadMoreSentinel.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        loadMoreSentinel.textContent = 'Cargando…';
+        try {
+          const next = await fetchAllLocations(state.fullCacheOffset || 0, 200);
+          state.fullCache = state.fullCache.concat(next);
+          state.fullCacheOffset = state.fullCache.length;
+          state.fullCacheExhausted = next.length < 200;
+        } catch {
+          state.fullCacheExhausted = true;
+        }
+        renderDropdown(state);
+      });
+      dd.appendChild(loadMoreSentinel);
     }
   }
 
