@@ -219,7 +219,7 @@ const WarehouseLocationPrefill = (() => {
     const style = document.createElement('style');
     style.id = 'sa-wlp-styles';
     style.textContent = `
-      .sa-wlp-wrapper { margin-top: 12px; }
+      .sa-wlp-row-label, .sa-wlp-row-controls { margin-top: 12px; }
       .sa-wlp-controls {
         display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
       }
@@ -275,7 +275,7 @@ const WarehouseLocationPrefill = (() => {
   function injectField(modal) {
     if (modal.querySelector('[data-sa-wlp-field="true"]')) return;
 
-    // Anclar al wrapper de "Receiver Comments" (el row container .css-xd9ivb del header)
+    // Anclar dentro del .css-iyrxkt de "Receiver Comments" como rows extra del grid
     const labels = modal.querySelectorAll('p');
     let anchorWrapper = null;
     for (const p of labels) {
@@ -289,19 +289,16 @@ const WarehouseLocationPrefill = (() => {
       return;
     }
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'css-iyrxkt sa-wlp-wrapper';
-    wrapper.dataset.saWlpField = 'true';
-
     const label = document.createElement('p');
-    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3';
+    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3 sa-wlp-row-label';
     label.style.gridColumn = '1';
     label.textContent = 'Ubicación inicial:';
-    wrapper.appendChild(label);
+    label.dataset.saWlpField = 'true';
 
     const controls = document.createElement('div');
     controls.style.gridColumn = '2';
-    controls.className = 'sa-wlp-controls';
+    controls.className = 'sa-wlp-controls sa-wlp-row-controls';
+    controls.dataset.saWlpField = 'true';
 
     const combo = document.createElement('div');
     combo.className = 'sa-wlp-combo';
@@ -328,21 +325,9 @@ const WarehouseLocationPrefill = (() => {
     combo.appendChild(dropdown);
 
     controls.appendChild(combo);
-    wrapper.appendChild(controls);
 
-    // Insertar como sibling del row container (.css-xd9ivb) — debajo del date applet si existe
-    const rowContainer = anchorWrapper.parentElement;
-    if (rowContainer) {
-      // Si el date applet ya inyectó su sibling, insertar después de él
-      const dateField = rowContainer.parentElement?.querySelector('[data-sa-rdo-field="true"]');
-      if (dateField) {
-        dateField.insertAdjacentElement('afterend', wrapper);
-      } else {
-        rowContainer.insertAdjacentElement('afterend', wrapper);
-      }
-    } else {
-      anchorWrapper.insertAdjacentElement('afterend', wrapper);
-    }
+    anchorWrapper.appendChild(label);
+    anchorWrapper.appendChild(controls);
 
     // Stash refs en el state
     const state = modalStates.get(modal) || {};
