@@ -14,6 +14,10 @@ const WarehouseLocationPrefill = (() => {
 
   const modalStates = new WeakMap();
 
+  // Estado compartido entre modal y fetch patch (singleton)
+  let pendingLocationId = null;
+  let pendingLocationOwner = null;
+
   const HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]';
   const VIEW_REGEX = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
 
@@ -29,6 +33,9 @@ const WarehouseLocationPrefill = (() => {
         return origFetch.apply(this, args);
       }
 
+      // Bypass rápido si no hay locationId seleccionado
+      if (!pendingLocationId) return origFetch.apply(this, args);
+
       let bodyObj;
       try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
 
@@ -36,26 +43,30 @@ const WarehouseLocationPrefill = (() => {
         return origFetch.apply(this, args);
       }
 
-      // Instrumentación temporal — capturar shape sin mutar
+      // Mutar el payload inyectando locationId en todos los debitAccounts
       try {
-        window.__saWlpLastPayload = JSON.parse(JSON.stringify(bodyObj));
-        const items = bodyObj.variables?.receiverPayload?.receiverBomItems || [];
-        const summary = items.map((it, idx) => {
-          const accs = it?.inventoryTransferEvent?.debitAccounts?.accounts || [];
-          return {
-            idx,
-            accountsCount: accs.length,
-            accountKeys: accs[0] ? Object.keys(accs[0]) : [],
-            hasLocationId: accs.some(a => a && 'locationId' in a),
-          };
-        });
-        console.log(LOG_PREFIX, 'CreateReceiverChecked interceptado — shape:', summary);
-        console.log(LOG_PREFIX, 'Payload completo en window.__saWlpLastPayload');
-      } catch (err) {
-        console.warn(LOG_PREFIX, 'Error inspeccionando payload:', err);
-      }
+        const items = bodyObj.variables?.receiverPayload?.receiverBomItems;
+        if (!Array.isArray(items)) return origFetch.apply(this, args);
 
-      return origFetch.apply(this, args);
+        let totalAccounts = 0;
+        for (const item of items) {
+          const accounts = item?.inventoryTransferEvent?.debitAccounts?.accounts;
+          if (!Array.isArray(accounts)) continue;
+          for (const account of accounts) {
+            if (account && typeof account === 'object') {
+              account.locationId = pendingLocationId;
+              totalAccounts++;
+            }
+          }
+        }
+
+        console.log(LOG_PREFIX, `Inyectando locationId=${pendingLocationId} en ${items.length} bomItems (${totalAccounts} accounts total)`);
+        opts.body = JSON.stringify(bodyObj);
+        return origFetch.apply(this, [url, opts]);
+      } catch (err) {
+        console.warn(LOG_PREFIX, 'Error mutando payload:', err);
+        return origFetch.apply(this, args);
+      }
     };
   }
 
@@ -146,6 +157,10 @@ const WarehouseLocationPrefill = (() => {
     if (state?.rowObserver) state.rowObserver.disconnect();
     if (state?.docClickHandler) document.removeEventListener('mousedown', state.docClickHandler);
     modalStates.delete(modal);
+    if (pendingLocationOwner === modal) {
+      pendingLocationId = null;
+      pendingLocationOwner = null;
+    }
     console.log(LOG_PREFIX, 'Modal cleanup completado');
   }
 
@@ -394,6 +409,9 @@ const WarehouseLocationPrefill = (() => {
     state.input.value = state.selectedLocation.path;
     state.clearBtn.hidden = false;
     state.dropdown.hidden = true;
+    // Actualizar canal modal → fetch patch
+    pendingLocationId = loc.id;
+    pendingLocationOwner = findModalForState(state);
     console.log(LOG_PREFIX, `Ubicación seleccionada: id=${loc.id} path=${loc.path}`);
     onSelectionChange(state);
   }
@@ -404,6 +422,9 @@ const WarehouseLocationPrefill = (() => {
     state.clearBtn.hidden = true;
     state.aduanaFilterActive = true;
     state.input.placeholder = 'Buscar ubicación (filtro: Aduana)';
+    // Limpiar canal modal → fetch patch
+    pendingLocationId = null;
+    pendingLocationOwner = null;
     console.log(LOG_PREFIX, 'Ubicación limpiada');
     onSelectionChange(state);
   }
@@ -459,10 +480,14 @@ const WarehouseLocationPrefill = (() => {
     }
   }
 
-  function onSelectionChange(state) {
-    // Encontrar el modal asociado a este state buscando en el DOM
+  function findModalForState(state) {
     const modal = document.querySelector('[data-sa-wlp-attached="true"]');
-    if (!modal || modalStates.get(modal) !== state) return;
+    return (modal && modalStates.get(modal) === state) ? modal : null;
+  }
+
+  function onSelectionChange(state) {
+    const modal = findModalForState(state);
+    if (!modal) return;
     applyDisableState(modal);
   }
 
@@ -492,9 +517,12 @@ const WarehouseLocationPrefill = (() => {
     });
     input.addEventListener('input', () => {
       if (state.selectedLocation) {
-        // El usuario está editando — invalidar selección
+        // El usuario está editando — invalidar selección y limpiar canal de intercepción
         state.selectedLocation = null;
         clearBtn.hidden = true;
+        pendingLocationId = null;
+        pendingLocationOwner = null;
+        applyDisableState(findModalForState(state) || document.querySelector('[data-sa-wlp-attached="true"]'));
       }
       dropdown.hidden = false;
       renderDropdown(state);
