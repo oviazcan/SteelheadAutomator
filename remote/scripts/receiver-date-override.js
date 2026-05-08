@@ -285,7 +285,7 @@ const ReceiverDateOverride = (() => {
     const labels = modal.querySelectorAll('p');
     let receiverCommentsWrapper = null;
     for (const p of labels) {
-      if (/^receiver\s+comments:?$/i.test(p.textContent.trim())) {
+      if (/^(?:receiver\s+comments|comentarios\s+del\s+receptor):?$/i.test(p.textContent.trim())) {
         receiverCommentsWrapper = p.closest('.css-iyrxkt');
         break;
       }
