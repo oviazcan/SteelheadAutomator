@@ -1,5 +1,5 @@
 {
-  "version": "0.5.64",
+  "version": "0.5.65",
   "lastUpdated": "2026-05-07",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -65,7 +65,8 @@
         "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b",
         "UpdateProcessNode": "adeb744d67289a790ee80fba102d280b162167f8301bde4d326c54025e46ff32",
         "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928",
-        "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec"
+        "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec",
+        "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -665,7 +666,8 @@
     "CreateProcessNode": { "type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon" },
     "ProcureTree": { "type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon" },
     "UpdateProcessNode": { "type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon" },
-    "UpdateReceiver": { "type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId)", "usedBy": "receiver-date-override (intercept-only)" }
+    "UpdateReceiver": { "type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)" },
+    "CreateReceiverChecked": { "type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)" }
   },
   "scripts": [
     "scripts/steelhead-api.js",

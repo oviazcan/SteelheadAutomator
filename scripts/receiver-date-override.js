@@ -1,7 +1,9 @@
 // Receiver Date Override
-// Inyecta un campo "Fecha real de recibido:" en el modal de Receive Parts
-// Intercepta UpdateReceiver para swappear receivedAt cuando el usuario toca el campo
-// No depende de SteelheadAPI (solo intercept de fetch nativo)
+// Inyecta un campo "Fecha real de recibido:" en el modal de Receive Parts.
+// Intercepta CreateReceiverChecked y, cuando el usuario tocó el campo,
+// dispara un follow-up UpdateReceiver con el receivedAt elegido (server
+// no acepta receivedAt en el create — siempre lo setea a NOW).
+// No depende de SteelheadAPI (solo intercept de fetch nativo).
 
 const ReceiverDateOverride = (() => {
   'use strict';
@@ -88,6 +90,8 @@ const ReceiverDateOverride = (() => {
 
   // ── Placeholder functions (implementadas en tareas siguientes) ──
 
+  const UPDATE_RECEIVER_HASH = '005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec';
+
   function patchFetch() {
     if (window.__saRdoFetchPatched) return;
     window.__saRdoFetchPatched = true;
@@ -96,34 +100,94 @@ const ReceiverDateOverride = (() => {
     window.fetch = async function (...args) {
       const [url, opts] = args;
       const isGraphql = typeof url === 'string' && url.includes('/graphql');
-      if (!isGraphql || !opts?.body) return origFetch.apply(this, args);
+      if (!isGraphql || !opts?.body || typeof opts.body !== 'string') {
+        return origFetch.apply(this, args);
+      }
 
       let bodyObj;
       try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
 
-      if (bodyObj?.operationName === 'UpdateReceiver') {
-        try {
-          const modal = document.querySelector('[data-sa-rdo-attached="true"]');
-          const state = modal && modalStates.get(modal);
-          if (state?.userTouched && state.input?.value) {
-            const [y, m, d] = state.input.value.split('-').map(Number);
-            if (y && m && d) {
-              const iso = new Date(y, m - 1, d, 12, 0, 0).toISOString();
-              const prev = bodyObj.variables?.receivedAt;
-              if (bodyObj.variables) {
-                bodyObj.variables.receivedAt = iso;
-                opts.body = JSON.stringify(bodyObj);
-                state.userTouched = false;
-                console.log(LOG_PREFIX, `receivedAt swapped: ${prev} → ${iso}`);
-              }
-            }
-          }
-        } catch (err) {
-          console.warn(LOG_PREFIX, 'Error en interceptor UpdateReceiver — pasando body intacto:', err);
-        }
+      if (bodyObj?.operationName !== 'CreateReceiverChecked') {
+        return origFetch.apply(this, args);
       }
 
-      return origFetch.apply(this, args);
+      // Capturar intent ANTES de enviar (el modal se desmonta tras Save)
+      let pendingISO = null;
+      let pendingPayload = null;
+      try {
+        const modal = document.querySelector('[data-sa-rdo-attached="true"]');
+        const state = modal && modalStates.get(modal);
+        if (state?.userTouched && state.input?.value) {
+          const [y, m, d] = state.input.value.split('-').map(Number);
+          if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+            pendingISO = new Date(y, m - 1, d, 12, 0, 0).toISOString();
+            const rp = bodyObj.variables?.receiverPayload || {};
+            pendingPayload = {
+              notes: rp.notes ?? '',
+              customInputs: rp.customInputs ?? {},
+              inputSchemaId: rp.inputSchemaId ?? null,
+            };
+            state.userTouched = false;
+          }
+        }
+      } catch (err) {
+        console.warn(LOG_PREFIX, 'Error capturando intent del modal — paso through:', err);
+      }
+
+      const response = await origFetch.apply(this, args);
+      if (!pendingISO) return response;
+
+      // Inspeccionar response sin consumirla
+      let receiverId = null;
+      try {
+        const cloned = response.clone();
+        const json = await cloned.json();
+        if (json?.errors?.length) {
+          console.warn(LOG_PREFIX, 'CreateReceiverChecked devolvió errors — sin follow-up:', json.errors);
+          return response;
+        }
+        receiverId = json?.data?.createReceiverChecked?.id ?? null;
+      } catch (err) {
+        console.warn(LOG_PREFIX, 'No se pudo parsear response de CreateReceiverChecked:', err);
+        return response;
+      }
+
+      if (!receiverId) {
+        console.warn(LOG_PREFIX, 'CreateReceiverChecked sin id en response — skip follow-up');
+        return response;
+      }
+
+      // Disparar follow-up UpdateReceiver (no awaiteamos para no bloquear el UI)
+      const updateBody = {
+        operationName: 'UpdateReceiver',
+        variables: {
+          id: receiverId,
+          notes: pendingPayload.notes,
+          receivedAt: pendingISO,
+          customInputs: pendingPayload.customInputs,
+          inputSchemaId: pendingPayload.inputSchemaId,
+        },
+        extensions: {
+          persistedQuery: { version: 1, sha256Hash: UPDATE_RECEIVER_HASH },
+        },
+      };
+
+      origFetch.call(this, url, {
+        method: 'POST',
+        credentials: opts.credentials || 'include',
+        headers: opts.headers || { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody),
+      }).then(r => r.json()).then(j => {
+        if (j?.errors?.length) {
+          console.warn(LOG_PREFIX, `UpdateReceiver follow-up con errors (id=${receiverId}):`, j.errors);
+        } else {
+          console.log(LOG_PREFIX, `UpdateReceiver follow-up OK: id=${receiverId} receivedAt=${pendingISO}`);
+        }
+      }).catch(err => {
+        console.warn(LOG_PREFIX, `UpdateReceiver follow-up falló (id=${receiverId}):`, err);
+      });
+
+      return response;
     };
   }
   function injectStyles() {
@@ -131,6 +195,10 @@ const ReceiverDateOverride = (() => {
     const style = document.createElement('style');
     style.id = 'sa-rdo-styles';
     style.textContent = `
+      .sa-rdo-wrapper {
+        grid-column: 1 / -1;
+        flex-basis: 100%;
+      }
       .sa-rdo-controls {
         display: flex;
         gap: 8px;
