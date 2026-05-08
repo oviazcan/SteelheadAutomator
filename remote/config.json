@@ -1,5 +1,5 @@
 {
-  "version": "0.5.69",
+  "version": "0.5.70",
   "lastUpdated": "2026-05-08",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -495,14 +495,14 @@
     {
       "id": "warehouse-location-prefill",
       "name": "Ubicación de Recibo",
-      "subtitle": "Prefil de ubicación inicial en el modal de Receive Parts",
+      "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts",
       "icon": "📦",
       "category": "Recibo",
       "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"],
       "autoInject": true,
       "requiredPermissions": ["READ_RECEIVING"],
       "actions": [
-        { "id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prefil de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill" }
+        { "id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill" }
       ]
     },
     {
