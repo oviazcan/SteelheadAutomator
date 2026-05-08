@@ -203,8 +203,8 @@ const WarehouseLocationPrefill = (() => {
     try {
       const data = await api().query('SearchLocationsOnPath', {
         fetchInventoryItem: false, fetchPartNumber: false, isShipping: null,
-        path: '', searchText: '', offset, first,
-        subpathOffset: 0, searchTextLast: '',
+        path: '', searchText: '%', offset, first,
+        subpathOffset: 0, searchTextLast: '%',
         archivedIsNull: true, isEmpty: false, includeTypes: true
       }, 'SearchLocationsOnPath');
       return data?.searchLocationsOnPath?.nodes || [];
