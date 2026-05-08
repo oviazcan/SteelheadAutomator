@@ -155,7 +155,7 @@ const ReceiverDateOverride = (() => {
 
   function daysDiff(yyyymmdd) {
     const [y, m, d] = yyyymmdd.split('-').map(Number);
-    if (!y || !m || !d) return null;
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
     const picked = new Date(y, m - 1, d, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -255,6 +255,7 @@ const ReceiverDateOverride = (() => {
       chip.addEventListener('click', () => {
         const offset = parseInt(chip.dataset.offset, 10);
         input.value = todayString(offset);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
         markTouched();
       });
     }
