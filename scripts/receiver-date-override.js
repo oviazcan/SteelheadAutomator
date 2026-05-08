@@ -119,8 +119,10 @@ const ReceiverDateOverride = (() => {
         const state = modal && modalStates.get(modal);
         if (state?.userTouched && state.input?.value) {
           const [y, m, d] = state.input.value.split('-').map(Number);
+          const timeStr = state.timeInput?.value || '12:00';
+          const [hh, mm] = timeStr.split(':').map(Number);
           if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-            pendingISO = new Date(y, m - 1, d, 12, 0, 0).toISOString();
+            pendingISO = new Date(y, m - 1, d, isNaN(hh) ? 12 : hh, isNaN(mm) ? 0 : mm, 0).toISOString();
             const rp = bodyObj.variables?.receiverPayload || {};
             pendingPayload = {
               notes: rp.notes ?? '',
@@ -315,6 +317,12 @@ const ReceiverDateOverride = (() => {
     input.value = todayString(0);
     controls.appendChild(input);
 
+    const timeInput = document.createElement('input');
+    timeInput.type = 'time';
+    timeInput.className = 'sa-rdo-input sa-rdo-time';
+    timeInput.value = '12:00';
+    controls.appendChild(timeInput);
+
     const chipHoy = document.createElement('button');
     chipHoy.type = 'button';
     chipHoy.className = 'sa-rdo-chip';
@@ -347,6 +355,7 @@ const ReceiverDateOverride = (() => {
     // Estado por modal
     const state = modalStates.get(modal) || {};
     state.input = input;
+    state.timeInput = timeInput;
     state.warningEl = warningEl;
     state.userTouched = false;
     modalStates.set(modal, state);
@@ -355,6 +364,8 @@ const ReceiverDateOverride = (() => {
     const markTouched = () => { state.userTouched = true; updateWarning(state); };
     input.addEventListener('input', markTouched);
     input.addEventListener('change', markTouched);
+    timeInput.addEventListener('input', markTouched);
+    timeInput.addEventListener('change', markTouched);
 
     for (const chip of [chipHoy, chipAyer]) {
       chip.addEventListener('click', () => {
