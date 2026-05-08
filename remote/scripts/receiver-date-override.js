@@ -95,7 +95,55 @@ const ReceiverDateOverride = (() => {
     //   - Intercepts UpdateReceiver mutation; swaps `receivedAt` if user touched date in any active modal.
     //   - Reads modalStates to find the active modal's pending date string.
   }
-  function injectStyles() {}
+  function injectStyles() {
+    if (document.getElementById('sa-rdo-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'sa-rdo-styles';
+    style.textContent = `
+      .sa-rdo-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .sa-rdo-input {
+        border: 1px solid #c4c4c4;
+        border-radius: 4px;
+        padding: 8.5px 14px;
+        font: inherit;
+        font-size: 14px;
+        background: #fff;
+        color: rgba(0,0,0,0.87);
+      }
+      .sa-rdo-input:focus {
+        outline: 2px solid #1976d2;
+        outline-offset: -1px;
+        border-color: transparent;
+      }
+      .sa-rdo-chip {
+        border: 1px solid rgba(25,118,210,0.5);
+        color: #1976d2;
+        background: transparent;
+        border-radius: 16px;
+        padding: 4px 12px;
+        font-size: 13px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .sa-rdo-chip:hover {
+        background: rgba(25,118,210,0.08);
+        border-color: #1976d2;
+      }
+      .sa-rdo-warning {
+        flex-basis: 100%;
+        margin-top: 4px;
+        font-size: 12px;
+        color: #ed6c02;
+        font-style: italic;
+      }
+    `;
+    document.head.appendChild(style);
+  }
   function injectField(modal) {}
 
   return { init };
