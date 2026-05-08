@@ -60,8 +60,11 @@ const WarehouseLocationPrefill = (() => {
           }
         }
 
-        console.log(LOG_PREFIX, `Inyectando locationId=${pendingLocationId} en ${items.length} bomItems (${totalAccounts} accounts total)`);
+        if (totalAccounts === 0) {
+          return origFetch.apply(this, args);
+        }
         opts.body = JSON.stringify(bodyObj);
+        console.log(LOG_PREFIX, `locationId=${pendingLocationId} inyectado en ${items.length} bomItems (${totalAccounts} accounts total)`);
         return origFetch.apply(this, [url, opts]);
       } catch (err) {
         console.warn(LOG_PREFIX, 'Error mutando payload:', err);
@@ -157,10 +160,8 @@ const WarehouseLocationPrefill = (() => {
     if (state?.rowObserver) state.rowObserver.disconnect();
     if (state?.docClickHandler) document.removeEventListener('mousedown', state.docClickHandler);
     modalStates.delete(modal);
-    if (pendingLocationOwner === modal) {
-      pendingLocationId = null;
-      pendingLocationOwner = null;
-    }
+    pendingLocationId = null;
+    pendingLocationOwner = null;
     console.log(LOG_PREFIX, 'Modal cleanup completado');
   }
 
@@ -522,7 +523,7 @@ const WarehouseLocationPrefill = (() => {
         clearBtn.hidden = true;
         pendingLocationId = null;
         pendingLocationOwner = null;
-        applyDisableState(findModalForState(state) || document.querySelector('[data-sa-wlp-attached="true"]'));
+        applyDisableState(findModalForState(state));
       }
       dropdown.hidden = false;
       renderDropdown(state);
