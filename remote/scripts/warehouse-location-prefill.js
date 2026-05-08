@@ -17,9 +17,52 @@ const WarehouseLocationPrefill = (() => {
   const HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]';
   const VIEW_REGEX = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
 
+  function patchFetch() {
+    if (window.__saWlpFetchPatched) return;
+    window.__saWlpFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body || typeof opts.body !== 'string') {
+        return origFetch.apply(this, args);
+      }
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
+
+      if (bodyObj?.operationName !== 'CreateReceiverChecked') {
+        return origFetch.apply(this, args);
+      }
+
+      // Instrumentación temporal — capturar shape sin mutar
+      try {
+        window.__saWlpLastPayload = JSON.parse(JSON.stringify(bodyObj));
+        const items = bodyObj.variables?.receiverPayload?.receiverBomItems || [];
+        const summary = items.map((it, idx) => {
+          const accs = it?.inventoryTransferEvent?.debitAccounts?.accounts || [];
+          return {
+            idx,
+            accountsCount: accs.length,
+            accountKeys: accs[0] ? Object.keys(accs[0]) : [],
+            hasLocationId: accs.some(a => a && 'locationId' in a),
+          };
+        });
+        console.log(LOG_PREFIX, 'CreateReceiverChecked interceptado — shape:', summary);
+        console.log(LOG_PREFIX, 'Payload completo en window.__saWlpLastPayload');
+      } catch (err) {
+        console.warn(LOG_PREFIX, 'Error inspeccionando payload:', err);
+      }
+
+      return origFetch.apply(this, args);
+    };
+  }
+
   function init() {
     const disabled = document.documentElement.dataset.saWarehouseLocationPrefillEnabled === 'false';
     if (disabled) { console.log(LOG_PREFIX, 'Deshabilitado'); return; }
+    patchFetch();
     setupObserver();
     console.log(LOG_PREFIX, 'Inicializado');
   }
@@ -433,7 +476,7 @@ const WarehouseLocationPrefill = (() => {
       // Re-aplicar el estado cuando cambian las líneas (add/remove)
       applyDisableState(modal);
     });
-    observer.observe(tbody, { childList: true, subtree: true });
+    observer.observe(tbody, { childList: true, subtree: false });
     const state = modalStates.get(modal);
     if (state) state.rowObserver = observer;
   }
