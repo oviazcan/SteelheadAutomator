@@ -69,6 +69,7 @@ const WarehouseLocationPrefill = (() => {
     injectField(modal);
     wireCombobox(modal);
     watchModalRemoval(modal);
+    watchLineRows(modal);
     preloadAduana(modal);
   }
 
@@ -364,14 +365,82 @@ const WarehouseLocationPrefill = (() => {
     onSelectionChange(state);
   }
 
-  // Stub — Task 6 implementa el disabling de combos per-line
+  function findLocationCombos(modal) {
+    const combos = [];
+    const placeholders = modal.querySelectorAll('[id^="react-select-"][id$="-placeholder"]');
+    for (const p of placeholders) {
+      const txt = p.textContent?.trim() || '';
+      if (/^(?:search\s+locations|buscar\s+ubicaciones)/i.test(txt)) {
+        const control = p.closest('[class*="-control"]');
+        if (control) combos.push(control);
+      }
+    }
+    return combos;
+  }
+
+  function disableCombo(control, locationPath) {
+    if (control.dataset.saWlpDisabled === 'true') {
+      // Ya disabled — actualizar overlay text si la ubicación cambió
+      const existing = control.querySelector('.sa-wlp-row-overlay');
+      if (existing) existing.textContent = locationPath;
+      return;
+    }
+    control.dataset.saWlpDisabled = 'true';
+    control.style.pointerEvents = 'none';
+    control.style.opacity = '0.55';
+    control.style.position = 'relative';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'sa-wlp-row-overlay';
+    overlay.textContent = locationPath;
+    overlay.title = 'Heredada del header. Limpia el campo de arriba para editar este renglón.';
+    control.appendChild(overlay);
+  }
+
+  function enableCombo(control) {
+    if (control.dataset.saWlpDisabled !== 'true') return;
+    control.dataset.saWlpDisabled = 'false';
+    control.style.pointerEvents = '';
+    control.style.opacity = '';
+    control.querySelector('.sa-wlp-row-overlay')?.remove();
+  }
+
+  function applyDisableState(modal) {
+    const state = modalStates.get(modal);
+    if (!state) return;
+    const combos = findLocationCombos(modal);
+    if (state.selectedLocation) {
+      combos.forEach(c => disableCombo(c, state.selectedLocation.path));
+    } else {
+      combos.forEach(enableCombo);
+    }
+  }
+
   function onSelectionChange(state) {
-    // no-op
+    // Encontrar el modal asociado a este state buscando en el DOM
+    const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+    if (!modal || modalStates.get(modal) !== state) return;
+    applyDisableState(modal);
+  }
+
+  function watchLineRows(modal) {
+    const tbody = modal.querySelector('tbody.MuiTableBody-root');
+    if (!tbody) {
+      console.warn(LOG_PREFIX, 'No se encontró tbody.MuiTableBody-root — observer de líneas no instalado');
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      // Re-aplicar el estado cuando cambian las líneas (add/remove)
+      applyDisableState(modal);
+    });
+    observer.observe(tbody, { childList: true, subtree: true });
+    const state = modalStates.get(modal);
+    if (state) state.rowObserver = observer;
   }
 
   function wireCombobox(modal) {
     const state = modalStates.get(modal);
-    if (!state) return;
+    if (!state?.input) return;
     const { input, clearBtn, dropdown, combo } = state;
 
     input.addEventListener('focus', () => {
