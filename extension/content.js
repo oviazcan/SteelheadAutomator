@@ -24,6 +24,12 @@
     document.documentElement.dataset.saReceiverDateOverrideEnabled = enabled;
   });
 
+  // Communicate Warehouse Location Prefill enabled state to MAIN world
+  chrome.storage.local.get('warehouseLocationPrefillEnabled', (data) => {
+    const enabled = data.warehouseLocationPrefillEnabled !== false;
+    document.documentElement.dataset.saWarehouseLocationPrefillEnabled = enabled;
+  });
+
   // Listen for storage changes to update in real-time (e.g., when toggled from popup)
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.cfdiAttacherEnabled) {
@@ -37,6 +43,10 @@
     if (changes.receiverDateOverrideEnabled) {
       const enabled = changes.receiverDateOverrideEnabled.newValue !== false;
       document.documentElement.dataset.saReceiverDateOverrideEnabled = enabled;
+    }
+    if (changes.warehouseLocationPrefillEnabled) {
+      const enabled = changes.warehouseLocationPrefillEnabled.newValue !== false;
+      document.documentElement.dataset.saWarehouseLocationPrefillEnabled = enabled;
     }
   });
 

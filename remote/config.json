@@ -1,6 +1,6 @@
 {
-  "version": "0.5.68",
-  "lastUpdated": "2026-05-07",
+  "version": "0.5.69",
+  "lastUpdated": "2026-05-08",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -493,6 +493,19 @@
       ]
     },
     {
+      "id": "warehouse-location-prefill",
+      "name": "Ubicación de Recibo",
+      "subtitle": "Prefil de ubicación inicial en el modal de Receive Parts",
+      "icon": "📦",
+      "category": "Recibo",
+      "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"],
+      "autoInject": true,
+      "requiredPermissions": ["READ_RECEIVING"],
+      "actions": [
+        { "id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prefil de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill" }
+      ]
+    },
+    {
       "id": "bill-autofill",
       "name": "Bill Autofill",
       "subtitle": "Llenado automático de cuentas contables en Bills",
@@ -579,7 +592,7 @@
     "SearchInventoryItemBatches": { "type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset" },
     "AllInventoryBatchStatuses": { "type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset" },
     "CreateEditInventoryBatchDialogQuery": { "type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset" },
-    "SearchLocationsOnPath": { "type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset" },
+    "SearchLocationsOnPath": { "type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill" },
     "UpdateInventoryBatchesChecked": { "type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset" },
     "CreateInventoryTransferEventGroups": { "type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset" },
     "GetSpec": { "type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator" },

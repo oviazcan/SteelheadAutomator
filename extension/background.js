@@ -66,7 +66,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/invoice-default-tab.js': 'InvoiceDefaultTab',
           'scripts/process-canon.js': 'ProcessCanon',
           'scripts/sensor-status-autofill.js': 'SensorStatusAutofill',
-          'scripts/receiver-date-override.js': 'ReceiverDateOverride' };
+          'scripts/receiver-date-override.js': 'ReceiverDateOverride',
+          'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -1046,6 +1047,19 @@ async function handleMessage(message, sender) {
     case 'get-receiver-date-override-status': {
       const { receiverDateOverrideEnabled } = await chrome.storage.local.get('receiverDateOverrideEnabled');
       return { enabled: receiverDateOverrideEnabled !== false };
+    }
+
+    // ── Warehouse Location Prefill ──
+    case 'toggle-warehouse-location-prefill': {
+      const { warehouseLocationPrefillEnabled } = await chrome.storage.local.get('warehouseLocationPrefillEnabled');
+      const newState = warehouseLocationPrefillEnabled === false;
+      await chrome.storage.local.set({ warehouseLocationPrefillEnabled: newState });
+      return { enabled: newState, message: newState ? 'Ubicación de Recibo habilitada' : 'Ubicación de Recibo deshabilitada' };
+    }
+
+    case 'get-warehouse-location-prefill-status': {
+      const { warehouseLocationPrefillEnabled } = await chrome.storage.local.get('warehouseLocationPrefillEnabled');
+      return { enabled: warehouseLocationPrefillEnabled !== false };
     }
 
     // ── CFDI Attacher ──
