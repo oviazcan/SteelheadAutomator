@@ -65,7 +65,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen',
           'scripts/invoice-default-tab.js': 'InvoiceDefaultTab',
           'scripts/process-canon.js': 'ProcessCanon',
-          'scripts/sensor-status-autofill.js': 'SensorStatusAutofill' };
+          'scripts/sensor-status-autofill.js': 'SensorStatusAutofill',
+          'scripts/receiver-date-override.js': 'ReceiverDateOverride' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -1032,6 +1033,19 @@ async function handleMessage(message, sender) {
     case 'get-weight-quick-entry-status': {
       const { weightQuickEntryEnabled } = await chrome.storage.local.get('weightQuickEntryEnabled');
       return { enabled: weightQuickEntryEnabled !== false };
+    }
+
+    // ── Receiver Date Override ──
+    case 'toggle-receiver-date-override': {
+      const { receiverDateOverrideEnabled } = await chrome.storage.local.get('receiverDateOverrideEnabled');
+      const newState = receiverDateOverrideEnabled === false;
+      await chrome.storage.local.set({ receiverDateOverrideEnabled: newState });
+      return { enabled: newState, message: newState ? 'Fecha de Recibo habilitado' : 'Fecha de Recibo deshabilitado' };
+    }
+
+    case 'get-receiver-date-override-status': {
+      const { receiverDateOverrideEnabled } = await chrome.storage.local.get('receiverDateOverrideEnabled');
+      return { enabled: receiverDateOverrideEnabled !== false };
     }
 
     // ── CFDI Attacher ──
