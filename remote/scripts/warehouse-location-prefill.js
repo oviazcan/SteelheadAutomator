@@ -123,6 +123,7 @@ const WarehouseLocationPrefill = (() => {
       fullCache: null,
       fullCacheOffset: 0,
       fullCacheExhausted: false,
+      fullCacheLoading: false,
     });
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
@@ -378,7 +379,7 @@ const WarehouseLocationPrefill = (() => {
       retrySentinel.textContent = '🔄 Reintentar';
       retrySentinel.addEventListener('mousedown', (e) => {
         e.preventDefault();
-        const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+        const modal = findModalForState(state);
         if (modal) preloadAduana(modal);
       });
       dd.appendChild(retrySentinel);
@@ -441,14 +442,18 @@ const WarehouseLocationPrefill = (() => {
       loadMoreSentinel.textContent = '⬇️ Cargar más';
       loadMoreSentinel.addEventListener('mousedown', async (e) => {
         e.preventDefault();
+        if (state.fullCacheLoading) return;
+        state.fullCacheLoading = true;
         loadMoreSentinel.textContent = 'Cargando…';
         try {
           const next = await fetchAllLocations(state.fullCacheOffset || 0, 200);
-          state.fullCache = state.fullCache.concat(next);
+          state.fullCache = (state.fullCache || []).concat(next);
           state.fullCacheOffset = state.fullCache.length;
           state.fullCacheExhausted = next.length < 200;
         } catch {
           state.fullCacheExhausted = true;
+        } finally {
+          state.fullCacheLoading = false;
         }
         renderDropdown(state);
       });
