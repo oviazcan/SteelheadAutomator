@@ -8,6 +8,7 @@ const ReceiverDateOverride = (() => {
 
   const LOG_PREFIX = '[RDO]';
   let observerActive = false;
+  let modalObserver = null;
 
   // modal element → { input, warningEl, userTouched, removalObserver }
   const modalStates = new WeakMap();
@@ -57,8 +58,9 @@ const ReceiverDateOverride = (() => {
   }
 
   function onModalFound(modal) {
-    if (modal.dataset.saRdoAttached) return;
+    if (modal.dataset.saRdoAttached === 'true') return;
     modal.dataset.saRdoAttached = 'true';
+    modalStates.set(modal, {});  // initialize empty state before any downstream code runs
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
     injectField(modal);
@@ -86,7 +88,13 @@ const ReceiverDateOverride = (() => {
 
   // ── Placeholder functions (implementadas en tareas siguientes) ──
 
-  function patchFetch() {}
+  function patchFetch() {
+    // [PLACEHOLDER — Task 5]
+    // Implementation contract:
+    //   - MUST guard against double-patching: `if (window.__saRdoFetchPatched) return; window.__saRdoFetchPatched = true;`
+    //   - Intercepts UpdateReceiver mutation; swaps `receivedAt` if user touched date in any active modal.
+    //   - Reads modalStates to find the active modal's pending date string.
+  }
   function injectStyles() {}
   function injectField(modal) {}
 
