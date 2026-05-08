@@ -264,9 +264,9 @@ const WarehouseLocationPrefill = (() => {
       .sa-wlp-option-sentinel:hover { background: rgba(25,118,210,0.08); }
       .sa-wlp-row-overlay {
         position: absolute; inset: 0; display: flex; align-items: center;
-        padding: 0 14px; background: rgba(245,245,245,0.85);
+        padding: 0 14px; background: rgba(245,245,245,0.92);
         font-size: 13px; color: rgba(0,0,0,0.65); font-style: italic;
-        pointer-events: auto;
+        pointer-events: auto; cursor: not-allowed; z-index: 10;
       }
     `;
     document.head.appendChild(style);
@@ -517,6 +517,10 @@ const WarehouseLocationPrefill = (() => {
     overlay.className = 'sa-wlp-row-overlay';
     overlay.textContent = locationPath;
     overlay.title = 'Heredada del header. Limpia el campo de arriba para editar este renglón.';
+    const swallow = (e) => { e.stopPropagation(); e.preventDefault(); };
+    overlay.addEventListener('mousedown', swallow, true);
+    overlay.addEventListener('click', swallow, true);
+    overlay.addEventListener('focus', swallow, true);
     control.appendChild(overlay);
   }
 
