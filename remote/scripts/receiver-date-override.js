@@ -89,11 +89,42 @@ const ReceiverDateOverride = (() => {
   // ── Placeholder functions (implementadas en tareas siguientes) ──
 
   function patchFetch() {
-    // [PLACEHOLDER — Task 5]
-    // Implementation contract:
-    //   - MUST guard against double-patching: `if (window.__saRdoFetchPatched) return; window.__saRdoFetchPatched = true;`
-    //   - Intercepts UpdateReceiver mutation; swaps `receivedAt` if user touched date in any active modal.
-    //   - Reads modalStates to find the active modal's pending date string.
+    if (window.__saRdoFetchPatched) return;
+    window.__saRdoFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body) return origFetch.apply(this, args);
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
+
+      if (bodyObj?.operationName === 'UpdateReceiver') {
+        try {
+          const modal = document.querySelector('[data-sa-rdo-attached="true"]');
+          const state = modal && modalStates.get(modal);
+          if (state?.userTouched && state.input?.value) {
+            const [y, m, d] = state.input.value.split('-').map(Number);
+            if (y && m && d) {
+              const iso = new Date(y, m - 1, d, 12, 0, 0).toISOString();
+              const prev = bodyObj.variables?.receivedAt;
+              if (bodyObj.variables) {
+                bodyObj.variables.receivedAt = iso;
+                opts.body = JSON.stringify(bodyObj);
+                state.userTouched = false;
+                console.log(LOG_PREFIX, `receivedAt swapped: ${prev} → ${iso}`);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(LOG_PREFIX, 'Error en interceptor UpdateReceiver — pasando body intacto:', err);
+        }
+      }
+
+      return origFetch.apply(this, args);
+    };
   }
   function injectStyles() {
     if (document.getElementById('sa-rdo-styles')) return;
