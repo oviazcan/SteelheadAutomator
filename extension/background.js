@@ -1040,7 +1040,7 @@ async function handleMessage(message, sender) {
       const { receiverDateOverrideEnabled } = await chrome.storage.local.get('receiverDateOverrideEnabled');
       const newState = receiverDateOverrideEnabled === false;
       await chrome.storage.local.set({ receiverDateOverrideEnabled: newState });
-      return { enabled: newState, message: newState ? 'Fecha de Recibo habilitado' : 'Fecha de Recibo deshabilitado' };
+      return { enabled: newState, message: newState ? 'Fecha de Recibo habilitada' : 'Fecha de Recibo deshabilitada' };
     }
 
     case 'get-receiver-date-override-status': {
