@@ -144,7 +144,123 @@ const ReceiverDateOverride = (() => {
     `;
     document.head.appendChild(style);
   }
-  function injectField(modal) {}
+  function todayString(offsetDays = 0) {
+    const d = new Date();
+    if (offsetDays) d.setDate(d.getDate() + offsetDays);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function daysDiff(yyyymmdd) {
+    const [y, m, d] = yyyymmdd.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const picked = new Date(y, m - 1, d, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((picked.getTime() - today.getTime()) / 86400000);
+  }
+
+  function updateWarning(state) {
+    const el = state.warningEl;
+    if (!el) return;
+    const val = state.input.value;
+    if (!val) { el.hidden = true; el.textContent = ''; return; }
+    const diff = daysDiff(val);
+    if (diff === null) { el.hidden = true; el.textContent = ''; return; }
+    if (diff > 0) {
+      el.textContent = '⚠️ Fecha de recibo en el futuro';
+      el.hidden = false;
+    } else if (diff < -7) {
+      el.textContent = '⚠️ Fecha real de recibo mayor a una semana';
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+      el.textContent = '';
+    }
+  }
+
+  function injectField(modal) {
+    // Localizar el wrapper de "Receiver Comments:" via su <p>
+    const labels = modal.querySelectorAll('p');
+    let receiverCommentsWrapper = null;
+    for (const p of labels) {
+      if (/^receiver\s+comments:?$/i.test(p.textContent.trim())) {
+        receiverCommentsWrapper = p.closest('.css-iyrxkt');
+        break;
+      }
+    }
+    if (!receiverCommentsWrapper) {
+      console.warn(LOG_PREFIX, 'No se localizó el wrapper de Receiver Comments — layout cambió?');
+      return;
+    }
+
+    // Construir el wrapper nuevo clonando estructura .css-iyrxkt
+    const wrapper = document.createElement('div');
+    wrapper.className = 'css-iyrxkt sa-rdo-wrapper';
+    wrapper.dataset.saRdoField = 'true';
+
+    const label = document.createElement('p');
+    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3';
+    label.style.gridColumn = '1';
+    label.textContent = 'Fecha real de recibido:';
+    wrapper.appendChild(label);
+
+    const controls = document.createElement('div');
+    controls.style.gridColumn = '2';
+    controls.className = 'sa-rdo-controls';
+
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.className = 'sa-rdo-input';
+    input.value = todayString(0);
+    controls.appendChild(input);
+
+    const chipHoy = document.createElement('button');
+    chipHoy.type = 'button';
+    chipHoy.className = 'sa-rdo-chip';
+    chipHoy.dataset.offset = '0';
+    chipHoy.textContent = 'Hoy';
+    controls.appendChild(chipHoy);
+
+    const chipAyer = document.createElement('button');
+    chipAyer.type = 'button';
+    chipAyer.className = 'sa-rdo-chip';
+    chipAyer.dataset.offset = '-1';
+    chipAyer.textContent = 'Ayer';
+    controls.appendChild(chipAyer);
+
+    const warningEl = document.createElement('div');
+    warningEl.className = 'sa-rdo-warning';
+    warningEl.hidden = true;
+    controls.appendChild(warningEl);
+
+    wrapper.appendChild(controls);
+    receiverCommentsWrapper.insertAdjacentElement('afterend', wrapper);
+
+    // Estado por modal
+    const state = modalStates.get(modal) || {};
+    state.input = input;
+    state.warningEl = warningEl;
+    state.userTouched = false;
+    modalStates.set(modal, state);
+
+    // Tracking de intención
+    const markTouched = () => { state.userTouched = true; updateWarning(state); };
+    input.addEventListener('input', markTouched);
+    input.addEventListener('change', markTouched);
+
+    for (const chip of [chipHoy, chipAyer]) {
+      chip.addEventListener('click', () => {
+        const offset = parseInt(chip.dataset.offset, 10);
+        input.value = todayString(offset);
+        markTouched();
+      });
+    }
+
+    console.log(LOG_PREFIX, 'Campo de fecha inyectado, default=', input.value);
+  }
 
   return { init };
 })();
