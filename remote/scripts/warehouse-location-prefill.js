@@ -65,6 +65,8 @@ const WarehouseLocationPrefill = (() => {
       fullCache: null,
     });
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
+    injectStyles();
+    injectField(modal);
     watchModalRemoval(modal);
   }
 
@@ -86,6 +88,147 @@ const WarehouseLocationPrefill = (() => {
     if (state?.rowObserver) state.rowObserver.disconnect();
     modalStates.delete(modal);
     console.log(LOG_PREFIX, 'Modal cleanup completado');
+  }
+
+  function injectStyles() {
+    if (document.getElementById('sa-wlp-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'sa-wlp-styles';
+    style.textContent = `
+      .sa-wlp-wrapper { margin-top: 12px; }
+      .sa-wlp-controls {
+        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      }
+      .sa-wlp-combo {
+        position: relative; min-width: 320px;
+        border: 1px solid #c4c4c4; border-radius: 4px; background: #fff;
+      }
+      .sa-wlp-combo-input {
+        width: 100%; border: 0; outline: 0; background: transparent;
+        padding: 8.5px 32px 8.5px 14px; font: inherit; font-size: 14px;
+        color: rgba(0,0,0,0.87);
+      }
+      .sa-wlp-combo:focus-within {
+        outline: 2px solid #1976d2; outline-offset: -1px; border-color: transparent;
+      }
+      .sa-wlp-combo-clear {
+        position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+        cursor: pointer; color: #888; font-size: 16px; line-height: 1;
+        background: transparent; border: 0; padding: 2px 6px;
+      }
+      .sa-wlp-combo-clear:hover { color: #1976d2; }
+      .sa-wlp-dropdown {
+        position: absolute; top: 100%; left: 0; right: 0; z-index: 1500;
+        background: #fff; border: 1px solid #c4c4c4; border-radius: 4px;
+        max-height: 280px; overflow-y: auto; margin-top: 2px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      }
+      .sa-wlp-dropdown[hidden] { display: none; }
+      .sa-wlp-option {
+        padding: 8px 14px; cursor: pointer; font-size: 14px;
+      }
+      .sa-wlp-option:hover, .sa-wlp-option[data-active="true"] {
+        background: rgba(25,118,210,0.08);
+      }
+      .sa-wlp-option-empty {
+        padding: 8px 14px; font-size: 13px; color: #888; font-style: italic;
+      }
+      .sa-wlp-option-sentinel {
+        padding: 8px 14px; font-size: 13px; color: #1976d2; font-style: italic;
+        cursor: pointer; border-top: 1px solid #eee;
+      }
+      .sa-wlp-option-sentinel:hover { background: rgba(25,118,210,0.08); }
+      .sa-wlp-row-overlay {
+        position: absolute; inset: 0; display: flex; align-items: center;
+        padding: 0 14px; background: rgba(245,245,245,0.85);
+        font-size: 13px; color: rgba(0,0,0,0.65); font-style: italic;
+        pointer-events: auto;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function injectField(modal) {
+    if (modal.querySelector('[data-sa-wlp-field="true"]')) return;
+
+    // Anclar al wrapper de "Receiver Comments" (el row container .css-xd9ivb del header)
+    const labels = modal.querySelectorAll('p');
+    let anchorWrapper = null;
+    for (const p of labels) {
+      if (/^(?:receiver\s+comments|comentarios\s+del\s+receptor):?$/i.test(p.textContent.trim())) {
+        anchorWrapper = p.closest('.css-iyrxkt');
+        break;
+      }
+    }
+    if (!anchorWrapper) {
+      console.warn(LOG_PREFIX, 'No se localizó el wrapper de Receiver Comments — layout cambió?');
+      return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'css-iyrxkt sa-wlp-wrapper';
+    wrapper.dataset.saWlpField = 'true';
+
+    const label = document.createElement('p');
+    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3';
+    label.style.gridColumn = '1';
+    label.textContent = 'Ubicación inicial:';
+    wrapper.appendChild(label);
+
+    const controls = document.createElement('div');
+    controls.style.gridColumn = '2';
+    controls.className = 'sa-wlp-controls';
+
+    const combo = document.createElement('div');
+    combo.className = 'sa-wlp-combo';
+    combo.dataset.saWlpCombo = 'true';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'sa-wlp-combo-input';
+    input.placeholder = 'Buscar ubicación (filtro: Aduana)';
+    input.autocomplete = 'off';
+    combo.appendChild(input);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'sa-wlp-combo-clear';
+    clearBtn.textContent = '✕';
+    clearBtn.hidden = true;
+    clearBtn.title = 'Limpiar selección';
+    combo.appendChild(clearBtn);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'sa-wlp-dropdown';
+    dropdown.hidden = true;
+    combo.appendChild(dropdown);
+
+    controls.appendChild(combo);
+    wrapper.appendChild(controls);
+
+    // Insertar como sibling del row container (.css-xd9ivb) — debajo del date applet si existe
+    const rowContainer = anchorWrapper.parentElement;
+    if (rowContainer) {
+      // Si el date applet ya inyectó su sibling, insertar después de él
+      const dateField = rowContainer.parentElement?.querySelector('[data-sa-rdo-field="true"]');
+      if (dateField) {
+        dateField.insertAdjacentElement('afterend', wrapper);
+      } else {
+        rowContainer.insertAdjacentElement('afterend', wrapper);
+      }
+    } else {
+      anchorWrapper.insertAdjacentElement('afterend', wrapper);
+    }
+
+    // Stash refs en el state
+    const state = modalStates.get(modal) || {};
+    state.combo = combo;
+    state.input = input;
+    state.clearBtn = clearBtn;
+    state.dropdown = dropdown;
+    modalStates.set(modal, state);
+
+    console.log(LOG_PREFIX, 'Combobox de ubicación inyectado');
   }
 
   return { init };
