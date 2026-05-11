@@ -481,7 +481,8 @@ const WeightQuickEntry = (() => {
 
   function getUnitValue(section) {
     const cell = section.cell || section.countParent;
-    const inputs = cell.querySelectorAll('input');
+    const inputs = [...cell.querySelectorAll('input')]
+      .filter(inp => !inp.closest('.sa-wqe-container'));
     if (inputs.length > 1) {
       return inputs[0].value?.trim() || '';
     }
