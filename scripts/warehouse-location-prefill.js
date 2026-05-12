@@ -132,7 +132,7 @@ const WarehouseLocationPrefill = (() => {
     wireCombobox(modal);
     watchModalRemoval(modal);
     watchLineRows(modal);
-    disableUnusedHeaderFields(modal);
+    disableUnusedHeaderFieldsWithRetry(modal);
     preloadAduana(modal);
   }
 
@@ -519,29 +519,61 @@ const WarehouseLocationPrefill = (() => {
   ];
 
   function findHeaderComboByLabel(modal, labelRegex) {
-    const controls = modal.querySelectorAll('[class*="-control"]');
-    for (const control of controls) {
-      let p = control.parentElement;
-      let hops = 0;
-      while (p && p !== modal && hops < 8) {
-        for (const node of p.childNodes) {
+    // El text node del label vive dentro de un .css-xd9ivb que suele ser
+    // SIBLING (no ancestor) del control react-select, así que iteramos
+    // wrappers .css-iyrxkt y para cada uno checamos (a) algún .css-xd9ivb
+    // descendiente con text node directo que matchee el label y (b) un
+    // [class*="-control"] descendiente. Preferimos el wrapper más profundo
+    // (más específico, evita matches espurios cuando hay anidación).
+    const wrappers = modal.querySelectorAll('.css-iyrxkt');
+    let best = null;
+    let bestDepth = -1;
+    for (const w of wrappers) {
+      const labelBlocks = w.querySelectorAll('.css-xd9ivb');
+      let hasLabel = false;
+      for (const block of labelBlocks) {
+        for (const node of block.childNodes) {
           if (node.nodeType === 3) {
             const t = node.textContent.trim();
-            if (t && labelRegex.test(t)) return control;
+            if (t && labelRegex.test(t)) { hasLabel = true; break; }
           }
         }
-        p = p.parentElement;
-        hops++;
+        if (hasLabel) break;
       }
+      if (!hasLabel) continue;
+      const control = w.querySelector('[class*="-control"]');
+      if (!control) continue;
+      let depth = 0; let cur = w;
+      while (cur && cur !== modal) { depth++; cur = cur.parentElement; }
+      if (depth > bestDepth) { best = control; bestDepth = depth; }
     }
-    return null;
+    return best;
   }
 
   function disableUnusedHeaderFields(modal) {
+    let pending = 0;
     for (const cfg of UNUSED_FIELDS) {
       const control = findHeaderComboByLabel(modal, cfg.label);
-      if (control) disableCombo(control, UNUSED_FIELD_TEXT, UNUSED_FIELD_TITLE);
+      if (control) {
+        disableCombo(control, UNUSED_FIELD_TEXT, UNUSED_FIELD_TITLE);
+      } else {
+        pending++;
+      }
     }
+    return pending;
+  }
+
+  function disableUnusedHeaderFieldsWithRetry(modal, attempt = 0) {
+    const pending = disableUnusedHeaderFields(modal);
+    if (pending === 0) return;
+    if (attempt >= 8) {
+      console.warn(LOG_PREFIX, 'Campos sin uso no detectados tras retries:', pending);
+      return;
+    }
+    const delay = [100, 200, 400, 800, 1200, 1600, 2000, 2500][attempt] || 2500;
+    setTimeout(() => {
+      if (modal.isConnected) disableUnusedHeaderFieldsWithRetry(modal, attempt + 1);
+    }, delay);
   }
 
   function enableCombo(control) {
