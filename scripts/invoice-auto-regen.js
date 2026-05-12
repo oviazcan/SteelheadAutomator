@@ -127,9 +127,16 @@ const InvoiceAutoRegen = (() => {
   // ── Fetch Interceptor ──
 
   function patchFetch() {
-    if (window.__saAutoRegenPatched) return;
+    if (window.__saAutoRegenPatched) {
+      // Reload del script (SPA nav) — la patch ya está colgada del window pero
+      // _origFetch del nuevo IIFE arrancó null. Recupéralo del stash en window
+      // para que _callOp pueda hacer bypass correcto.
+      _origFetch = window.__saAutoRegenOrigFetch || null;
+      return;
+    }
     window.__saAutoRegenPatched = true;
     _origFetch = window.fetch;
+    window.__saAutoRegenOrigFetch = _origFetch;
 
     window.fetch = async function (...args) {
       const [url, opts] = args;
@@ -569,7 +576,12 @@ const InvoiceAutoRegen = (() => {
         persistedQuery: { version: 1, sha256Hash: hash }
       }
     };
-    const r = await fetch('https://app.gosteelhead.com/graphql', {
+    // Bypass del window.fetch parcheado: si pasamos por él, el interceptor de
+    // patchFetch dispara autoRegenInOpenModal sobre nuestras propias verificaciones
+    // de _verifyCandidate, regenerando el invoice que esté visualmente expuesto
+    // en el visor en lugar del candidato real (loop de regens).
+    const fetchFn = _origFetch || window.fetch;
+    const r = await fetchFn.call(window, 'https://app.gosteelhead.com/graphql', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
@@ -823,6 +835,95 @@ const InvoiceAutoRegen = (() => {
     return null;
   }
 
+  // ── Paginación del DataGrid (footer "X - Y of Z, show <select>") ──
+  // Bilingual desde el inicio: "1 - 50 of 104, show 50" / "1 - 50 de 104, mostrar 50".
+
+  const _PAGINATION_LABELS = {
+    first: /^(?:first|primera|primero)$/i,
+    prev: /^(?:prev|previous|anterior)$/i,
+    next: /^(?:next|siguiente)$/i,
+    last: /^(?:last|última|ultima|último|ultimo)$/i
+  };
+  const _PAGINATION_POSITION_RE = /(\d+)\s*-\s*(\d+)\s+(?:of|de)\s+(\d+)/i;
+
+  function _getPaginationState() {
+    const ps = document.querySelectorAll('p');
+    for (const p of ps) {
+      const txt = (p.textContent || '').trim();
+      const m = txt.match(_PAGINATION_POSITION_RE);
+      if (m) return { from: +m[1], to: +m[2], total: +m[3], element: p };
+    }
+    return null;
+  }
+
+  // Localiza el div clickeable de "First/Prev/Next/Last" en el footer del DataGrid.
+  // Cue estructural: <div> cuyo único children no-text es un <svg> (icono de la flecha)
+  // y cuyo textContent matchee la label. Las classes CSS-in-JS de MUI cambian, no las uso.
+  function _findPaginationBtn(kind) {
+    const re = _PAGINATION_LABELS[kind];
+    if (!re) return null;
+    const divs = document.querySelectorAll('div');
+    for (const d of divs) {
+      const txt = (d.textContent || '').trim();
+      if (!re.test(txt)) continue;
+      const validShape = Array.from(d.children).every(c => c.tagName === 'svg' || c.tagName === 'SVG');
+      if (!validShape) continue;
+      return d;
+    }
+    return null;
+  }
+
+  async function _waitForPaginationChange(prevState, timeoutMs = 4000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      await sleep(120);
+      const cur = _getPaginationState();
+      if (cur && (cur.from !== prevState.from || cur.to !== prevState.to || cur.total !== prevState.total)) {
+        return cur;
+      }
+    }
+    return null;
+  }
+
+  // Busca el row del #idInDomain. Si no está en la página actual, resetea a First
+  // y avanza Next hasta encontrarlo o agotar páginas (to >= total).
+  async function _findRowOpenTargetAcrossPages(idInDomain, opts = {}) {
+    const maxPagesToWalk = opts.maxPagesToWalk ?? 30;
+
+    let target = _findRowOpenTarget(idInDomain);
+    if (target) return target;
+
+    let state = _getPaginationState();
+    if (state && state.from > 1) {
+      const firstBtn = _findPaginationBtn('first');
+      if (firstBtn) {
+        firstBtn.click();
+        const after = await _waitForPaginationChange(state, 4000);
+        if (after) state = after;
+        await sleep(200);
+        target = _findRowOpenTarget(idInDomain);
+        if (target) return target;
+      }
+    }
+
+    for (let i = 0; i < maxPagesToWalk; i++) {
+      state = _getPaginationState();
+      if (!state) break;
+      if (state.to >= state.total) break;
+      const nextBtn = _findPaginationBtn('next');
+      if (!nextBtn) break;
+      const before = state;
+      nextBtn.click();
+      const after = await _waitForPaginationChange(before, 4000);
+      if (!after) break;
+      await sleep(200);
+      target = _findRowOpenTarget(idInDomain);
+      if (target) return target;
+    }
+
+    return null;
+  }
+
   function _findCloseButton() {
     const btns = document.querySelectorAll('button');
     for (const b of btns) {
@@ -898,8 +999,8 @@ const InvoiceAutoRegen = (() => {
     console.log(`%c[AutoRegen DOM] regenViaModal(#${idInDomain}) — abriendo factura…`, 'color:#0891b2;font-weight:bold');
     const urlBefore = location.href;
 
-    const target = _findRowOpenTarget(idInDomain);
-    if (!target) throw new Error(`No se encontró fila con texto "#${idInDomain}" en el dashboard`);
+    const target = await _findRowOpenTargetAcrossPages(idInDomain);
+    if (!target) throw new Error(`No se encontró fila con texto "#${idInDomain}" en el dashboard (incluso tras paginar)`);
     target.click();
 
     const svg = await _waitForElement(REGEN_ICON_SELECTOR, openTimeoutMs);
