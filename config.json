@@ -1,5 +1,5 @@
 {
-  "version": "0.5.84",
+  "version": "0.5.85",
   "lastUpdated": "2026-05-12",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -438,6 +438,18 @@
           "handler": "message",
           "message": "toggle-invoice-default-tab"
         }
+      ]
+    },
+    {
+      "id": "invoice-listing-marker",
+      "name": "Marcadores de Facturas",
+      "subtitle": "Resalta NC, montos cero y borradores en el listado",
+      "icon": "🎯",
+      "category": "Facturación",
+      "scripts": ["scripts/invoice-listing-marker.js"],
+      "autoInject": true,
+      "actions": [
+        { "id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker" }
       ]
     },
     {
