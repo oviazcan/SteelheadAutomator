@@ -132,6 +132,7 @@ const WarehouseLocationPrefill = (() => {
     wireCombobox(modal);
     watchModalRemoval(modal);
     watchLineRows(modal);
+    disableUnusedHeaderFields(modal);
     preloadAduana(modal);
   }
 
@@ -486,11 +487,12 @@ const WarehouseLocationPrefill = (() => {
     return combos;
   }
 
-  function disableCombo(control, locationPath) {
+  function disableCombo(control, text, title) {
+    title = title || 'Heredada del header. Limpia el campo de arriba para editar este renglón.';
     if (control.dataset.saWlpDisabled === 'true') {
-      // Ya disabled — actualizar overlay text si la ubicación cambió
+      // Ya disabled — actualizar overlay text/title si cambió
       const existing = control.querySelector('.sa-wlp-row-overlay');
-      if (existing) existing.textContent = locationPath;
+      if (existing) { existing.textContent = text; existing.title = title; }
       return;
     }
     control.dataset.saWlpDisabled = 'true';
@@ -500,13 +502,46 @@ const WarehouseLocationPrefill = (() => {
 
     const overlay = document.createElement('div');
     overlay.className = 'sa-wlp-row-overlay';
-    overlay.textContent = locationPath;
-    overlay.title = 'Heredada del header. Limpia el campo de arriba para editar este renglón.';
+    overlay.textContent = text;
+    overlay.title = title;
     const swallow = (e) => { e.stopPropagation(); e.preventDefault(); };
     overlay.addEventListener('mousedown', swallow, true);
     overlay.addEventListener('click', swallow, true);
     overlay.addEventListener('focus', swallow, true);
     control.appendChild(overlay);
+  }
+
+  const UNUSED_FIELD_TITLE = 'Campo deshabilitado: no se usa en este flujo.';
+  const UNUSED_FIELD_TEXT = '— No se usa —';
+  const UNUSED_FIELDS = [
+    { label: /^(?:part\s+groups?|grupo\s+de\s+(?:piezas|partes))\s*:?$/i },
+    { label: /^(?:container|contenedor)\s*:?$/i },
+  ];
+
+  function findHeaderComboByLabel(modal, labelRegex) {
+    const controls = modal.querySelectorAll('[class*="-control"]');
+    for (const control of controls) {
+      let p = control.parentElement;
+      let hops = 0;
+      while (p && p !== modal && hops < 8) {
+        for (const node of p.childNodes) {
+          if (node.nodeType === 3) {
+            const t = node.textContent.trim();
+            if (t && labelRegex.test(t)) return control;
+          }
+        }
+        p = p.parentElement;
+        hops++;
+      }
+    }
+    return null;
+  }
+
+  function disableUnusedHeaderFields(modal) {
+    for (const cfg of UNUSED_FIELDS) {
+      const control = findHeaderComboByLabel(modal, cfg.label);
+      if (control) disableCombo(control, UNUSED_FIELD_TEXT, UNUSED_FIELD_TITLE);
+    }
   }
 
   function enableCombo(control) {
@@ -526,6 +561,8 @@ const WarehouseLocationPrefill = (() => {
     } else {
       combos.forEach(enableCombo);
     }
+    // Re-aplicar bloqueo de campos sin uso (sobrevive re-renders del header)
+    disableUnusedHeaderFields(modal);
   }
 
   function findModalForState(state) {
