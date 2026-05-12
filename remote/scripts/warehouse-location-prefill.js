@@ -125,6 +125,7 @@ const WarehouseLocationPrefill = (() => {
       fullCacheOffset: 0,
       fullCacheExhausted: false,
       fullCacheLoading: false,
+      unusedEnabled: { partGroups: false, container: false },
     });
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
@@ -132,7 +133,7 @@ const WarehouseLocationPrefill = (() => {
     wireCombobox(modal);
     watchModalRemoval(modal);
     watchLineRows(modal);
-    disableUnusedHeaderFieldsWithRetry(modal);
+    applyUnusedFieldStatesWithRetry(modal);
     preloadAduana(modal);
   }
 
@@ -330,6 +331,43 @@ const WarehouseLocationPrefill = (() => {
     anchorWrapper.appendChild(label);
     anchorWrapper.appendChild(controls);
 
+    // Fila extra con checkboxes para re-habilitar Grupo de Piezas / Contenedor
+    const toggles = document.createElement('div');
+    toggles.style.gridColumn = '2';
+    toggles.style.display = 'flex';
+    toggles.style.gap = '14px';
+    toggles.style.flexWrap = 'wrap';
+    toggles.style.marginTop = '6px';
+    toggles.style.fontSize = '12px';
+    toggles.style.color = 'rgba(0,0,0,0.75)';
+    toggles.dataset.saWlpField = 'true';
+    toggles.className = 'sa-wlp-unused-toggles';
+
+    for (const cfg of UNUSED_FIELDS) {
+      const lab = document.createElement('label');
+      lab.style.cursor = 'pointer';
+      lab.style.userSelect = 'none';
+      lab.style.display = 'inline-flex';
+      lab.style.alignItems = 'center';
+      lab.style.gap = '4px';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = false;
+      cb.dataset.saWlpToggleKey = cfg.key;
+      cb.style.cursor = 'pointer';
+      cb.style.margin = '0';
+      cb.addEventListener('change', () => {
+        const st = modalStates.get(modal);
+        if (!st || !st.unusedEnabled) return;
+        st.unusedEnabled[cfg.key] = cb.checked;
+        applyUnusedFieldStates(modal);
+      });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' Habilitar ' + cfg.displayLabel));
+      toggles.appendChild(lab);
+    }
+    anchorWrapper.appendChild(toggles);
+
     // Stash refs en el state
     const state = modalStates.get(modal) || {};
     state.combo = combo;
@@ -511,11 +549,11 @@ const WarehouseLocationPrefill = (() => {
     control.appendChild(overlay);
   }
 
-  const UNUSED_FIELD_TITLE = 'Campo deshabilitado: no se usa en este flujo.';
-  const UNUSED_FIELD_TEXT = '— No se usa —';
+  const UNUSED_FIELD_TITLE = 'Campo deshabilitado: marca el check del header para habilitarlo.';
+  const UNUSED_FIELD_TEXT = '— Bloqueado —';
   const UNUSED_FIELDS = [
-    { label: /^(?:part\s+groups?|grupo\s+de\s+(?:piezas|partes))\s*:?$/i },
-    { label: /^(?:container|contenedor)\s*:?$/i },
+    { key: 'partGroups', displayLabel: 'Grupo de Piezas', label: /^(?:part\s+groups?|grupo\s+de\s+(?:piezas|partes))\s*:?$/i },
+    { key: 'container', displayLabel: 'Contenedor', label: /^(?:container|contenedor)\s*:?$/i },
   ];
 
   function findHeaderComboByLabel(modal, labelRegex) {
@@ -550,29 +588,32 @@ const WarehouseLocationPrefill = (() => {
     return best;
   }
 
-  function disableUnusedHeaderFields(modal) {
+  function applyUnusedFieldStates(modal) {
+    const state = modalStates.get(modal);
+    if (!state || !state.unusedEnabled) return 0;
     let pending = 0;
     for (const cfg of UNUSED_FIELDS) {
       const control = findHeaderComboByLabel(modal, cfg.label);
-      if (control) {
-        disableCombo(control, UNUSED_FIELD_TEXT, UNUSED_FIELD_TITLE);
+      if (!control) { pending++; continue; }
+      if (state.unusedEnabled[cfg.key]) {
+        enableCombo(control);
       } else {
-        pending++;
+        disableCombo(control, UNUSED_FIELD_TEXT, UNUSED_FIELD_TITLE);
       }
     }
     return pending;
   }
 
-  function disableUnusedHeaderFieldsWithRetry(modal, attempt = 0) {
-    const pending = disableUnusedHeaderFields(modal);
+  function applyUnusedFieldStatesWithRetry(modal, attempt = 0) {
+    const pending = applyUnusedFieldStates(modal);
     if (pending === 0) return;
     if (attempt >= 8) {
-      console.warn(LOG_PREFIX, 'Campos sin uso no detectados tras retries:', pending);
+      console.warn(LOG_PREFIX, 'Campos del header no detectados tras retries:', pending);
       return;
     }
     const delay = [100, 200, 400, 800, 1200, 1600, 2000, 2500][attempt] || 2500;
     setTimeout(() => {
-      if (modal.isConnected) disableUnusedHeaderFieldsWithRetry(modal, attempt + 1);
+      if (modal.isConnected) applyUnusedFieldStatesWithRetry(modal, attempt + 1);
     }, delay);
   }
 
@@ -593,8 +634,8 @@ const WarehouseLocationPrefill = (() => {
     } else {
       combos.forEach(enableCombo);
     }
-    // Re-aplicar bloqueo de campos sin uso (sobrevive re-renders del header)
-    disableUnusedHeaderFields(modal);
+    // Re-aplicar estado de campos del header (sobrevive re-renders)
+    applyUnusedFieldStates(modal);
   }
 
   function findModalForState(state) {
