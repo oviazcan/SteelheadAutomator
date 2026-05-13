@@ -149,5 +149,35 @@ test('assignTempsToPOs devuelve issue fatal si cardinality mismatch', () => {
   assert.ok(result.issues.some(i => i.severity === 'fatal' && i.type === 'cardinality_mismatch'));
 });
 
+test('computeMovesForPN sin diferencias devuelve []', () => {
+  const moves = E.computeMovesForPN('A', { T1: 10, T2: 5 }, { T1: 10, T2: 5 });
+  assert.deepStrictEqual(moves, []);
+});
+
+test('computeMovesForPN: 1 donor → 1 deficit', () => {
+  // T1 sobra 5, T2 falta 5
+  const moves = E.computeMovesForPN('A', { T1: 15, T2: 0 }, { T1: 10, T2: 5 });
+  assert.deepStrictEqual(moves, [{ pn: 'A', qty: 5, fromOvId: 'T1', toOvId: 'T2' }]);
+});
+
+test('computeMovesForPN: 1 donor → 2 deficits', () => {
+  // T1 sobra 10, T2 falta 3, T3 falta 7
+  const moves = E.computeMovesForPN('A', { T1: 10, T2: 0, T3: 0 }, { T1: 0, T2: 3, T3: 7 });
+  // greedy: dona al mayor déficit primero (T3:7), luego al siguiente (T2:3)
+  assert.strictEqual(moves.length, 2);
+  assert.deepStrictEqual(moves.sort((a,b) => b.qty - a.qty), [
+    { pn: 'A', qty: 7, fromOvId: 'T1', toOvId: 'T3' },
+    { pn: 'A', qty: 3, fromOvId: 'T1', toOvId: 'T2' },
+  ]);
+});
+
+test('computeMovesForPN: 2 donors → 1 deficit', () => {
+  const moves = E.computeMovesForPN('A', { T1: 5, T2: 5, T3: 0 }, { T1: 0, T2: 0, T3: 10 });
+  assert.strictEqual(moves.length, 2);
+  const totalMoved = moves.reduce((s, m) => s + m.qty, 0);
+  assert.strictEqual(totalMoved, 10);
+  assert.ok(moves.every(m => m.toOvId === 'T3'));
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

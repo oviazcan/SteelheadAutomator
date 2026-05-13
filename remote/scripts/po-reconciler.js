@@ -154,6 +154,29 @@ const POReconciler = (() => {
     };
   }
 
+  function computeMovesForPN(pn, currentByOV, targetByOV) {
+    const delta = {}; // positive = donor, negative = deficit
+    for (const ov of new Set([...Object.keys(currentByOV), ...Object.keys(targetByOV)])) {
+      delta[ov] = (currentByOV[ov] || 0) - (targetByOV[ov] || 0);
+    }
+    const donors  = Object.entries(delta).filter(([, d]) => d > 0).map(([ov, d]) => ({ ov, qty: d }));
+    const deficit = Object.entries(delta).filter(([, d]) => d < 0).map(([ov, d]) => ({ ov, qty: -d }));
+    donors.sort((a, b) => b.qty - a.qty);
+    deficit.sort((a, b) => b.qty - a.qty);
+
+    const moves = [];
+    let di = 0, ri = 0;
+    while (di < donors.length && ri < deficit.length) {
+      const move = Math.min(donors[di].qty, deficit[ri].qty);
+      moves.push({ pn, qty: move, fromOvId: donors[di].ov, toOvId: deficit[ri].ov });
+      donors[di].qty -= move;
+      deficit[ri].qty -= move;
+      if (donors[di].qty === 0) di++;
+      if (deficit[ri].qty === 0) ri++;
+    }
+    return moves;
+  }
+
   // ── Public API (also for tests) ─────────────────────────────
   return {
     init,
@@ -163,6 +186,7 @@ const POReconciler = (() => {
       consolidateByPN,
       hungarianMatch,
       assignTempsToPOs,
+      computeMovesForPN,
     },
   };
 })();
