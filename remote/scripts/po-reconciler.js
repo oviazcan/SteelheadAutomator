@@ -542,9 +542,144 @@ const POReconciler = (() => {
     li.innerHTML = `${icon} <strong>${escapeHtml(step.label)}</strong> ${step.detail ? `<small>${escapeHtml(step.detail)}</small>` : ''}`;
   }
 
-  // Stubs — implementadas en Tasks 9.2 y 9.3
-  async function runExecutor() { console.warn('[PR] runExecutor: pendiente Task 9.2'); }
+  async function runExecutor() {
+    const runId = `run-${Date.now()}`;
+    state.runId = runId;
+    state.runStale = false;
+    state.auditLog = [];
+    document.getElementById('sa-pr-run').disabled = true;
+    document.getElementById('sa-pr-cancel').disabled = false;
+
+    const steps = buildExecutionSteps(state.plan);
+    const progress = document.getElementById('sa-pr-progress');
+    let done = 0;
+    const total = steps.length;
+    steps.forEach(s => renderExecStep(s));
+
+    for (const step of steps) {
+      if (state.runStale) { step.status = 'skipped'; renderExecStep(step); audit(step, 'cancelled'); continue; }
+      step.status = 'running';
+      renderExecStep(step);
+      try {
+        await runStepWithRetry(step);
+        step.status = 'done';
+        audit(step, 'ok');
+      } catch (err) {
+        step.status = 'failed';
+        step.detail = err.message;
+        audit(step, 'failed', err.message);
+      }
+      renderExecStep(step);
+      done++;
+      progress.textContent = `${done}/${total}`;
+    }
+    document.getElementById('sa-pr-cancel').disabled = true;
+    document.getElementById('sa-pr-download').disabled = false;
+
+    downloadAuditCsv();
+  }
+
+  function buildExecutionSteps(plan) {
+    const steps = [];
+    for (const c of plan.creates) {
+      steps.push({ id: `create-${c.name}`, type: 'create_restantes_ov', label: `Crear OV "${c.name}"`, payload: c, status: 'pending' });
+    }
+    plan.moves.forEach((m, i) => steps.push({
+      id: `move-${i}`, type: 'move', label: `Mover ${m.qty}× ${m.pn}`,
+      detail: `${state.tempOVs.find(t=>t.id===m.fromOvId)?.name} → ${state.tempOVs.find(t=>t.id===m.toOvId)?.name}`,
+      payload: m, status: 'pending',
+    }));
+    plan.restantes.forEach((r, i) => steps.push({
+      id: `rest-${i}`, type: 'move_to_restantes', label: `Mover ${r.qty}× ${r.pn} → Restantes`,
+      detail: state.tempOVs.find(t=>t.id===r.fromOvId)?.name, payload: r, status: 'pending',
+    }));
+    const touchedOvs = new Set([
+      ...plan.moves.flatMap(m => [m.fromOvId, m.toOvId]),
+      ...plan.restantes.map(r => r.fromOvId),
+    ]);
+    touchedOvs.forEach(ovId => {
+      steps.push({ id: `recon-${ovId}`, type: 'reconcile_lines', label: `Reconciliar líneas (${state.tempOVs.find(t=>t.id===ovId)?.name || ovId})`, payload: { ovId }, status: 'pending' });
+    });
+    plan.renames.forEach((r, i) => steps.push({
+      id: `rename-${i}`, type: 'rename', label: `Renombrar "${r.fromName}" → "${r.toName}"`,
+      payload: r, status: 'pending',
+    }));
+    return steps;
+  }
+
+  async function runStepWithRetry(step) {
+    const maxAttempts = 3;
+    const backoff = [1000, 2000, 4000];
+    let lastErr;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await dispatchStep(step);
+        return;
+      } catch (err) {
+        lastErr = err;
+        const msg = String(err.message || '');
+        const retriable = /502|network|ECONNRESET|Failed to fetch/i.test(msg);
+        if (!retriable || attempt === maxAttempts - 1) throw err;
+        await new Promise(r => setTimeout(r, backoff[attempt]));
+      }
+    }
+    throw lastErr;
+  }
+
+  async function dispatchStep(step) {
+    if (step.type === 'create_restantes_ov') {
+      const seed = state.tempOVs[0]?.snapshot;
+      if (!seed) throw new Error('No hay temp OV seed para crear Restantes');
+      const created = await createRestantesOV(seed);
+      state.restantesOV = { id: created.id, name: created.name };
+      state.plan.restantes.forEach(r => { if (r.toOvId === '__pending_restantes__') r.toOvId = created.id; });
+      step.detail = `id=${created.id} #${created.idInDomain}`;
+    } else if (step.type === 'move' || step.type === 'move_to_restantes') {
+      const m = step.payload;
+      const fromOv = state.tempOVs.find(t => t.id === m.fromOvId);
+      let toOv = state.tempOVs.find(t => t.id === m.toOvId);
+      if (!toOv && step.type === 'move_to_restantes') {
+        toOv = await loadOVDetails(state.restantesOV.id);
+        state.tempOVs.push(toOv);
+      }
+      const fromOt = fromOv.ots.find(o => o.partNumber === m.pn);
+      if (!fromOt) throw new Error(`No hay OT con PN ${m.pn} en ${fromOv.name}`);
+      let toOt = toOv.ots.find(o => o.partNumber === m.pn);
+      if (!toOt) {
+        const created = await createOTInOV({
+          ovId: toOv.id, customerId: toOv.customerId,
+          deadline: toOv.snapshot?.deadline, partNumberId: fromOt.partNumberId, hintFromOt: fromOt,
+        });
+        const fresh = await loadOVDetails(toOv.id);
+        Object.assign(toOv, fresh);
+        toOt = toOv.ots.find(o => o.id === created.id) || toOv.ots.find(o => o.partNumber === m.pn);
+        if (!toOt) throw new Error(`OT creada (${created.id}) no aparece al recargar OV`);
+      }
+      // NOTA: transformDeadline/transformPriceId/lineItemAssocs no se extraen
+      // de loadOVDetails (gap documentado en bitácora sesión 1). Se pasan defaults
+      // (null/[]). Si E2E rechaza, extender loadOVDetails para guardar PT.deadline,
+      // PT.partNumberPriceId y PT.receivedOrderLineItemPartTransforms por OT.
+      await executeMove({
+        qty: m.qty,
+        fromOt, toOt,
+        partNumberId: fromOt.partNumberId,
+        toOvId: toOv.id,
+      });
+    } else if (step.type === 'reconcile_lines') {
+      await reconcileLineQuantities(step.payload.ovId);
+    } else if (step.type === 'rename') {
+      const ov = state.tempOVs.find(t => t.id === step.payload.ovId);
+      if (!ov?.snapshot) throw new Error(`Sin snapshot para OV ${step.payload.ovId}`);
+      if (ov.snapshot.name === step.payload.toName) { step.detail = 'ya renombrada'; return; }
+      await renameOV(ov.snapshot, step.payload.toName);
+    } else {
+      throw new Error(`Tipo de step desconocido: ${step.type}`);
+    }
+  }
+
+  // Stub — implementada en Task 9.3
   function downloadAuditCsv() { console.warn('[PR] downloadAuditCsv: pendiente Task 9.3'); }
+  function audit() {}
 
   async function refreshTempOVs() {
     const el = document.getElementById('sa-pr-temps-list');
