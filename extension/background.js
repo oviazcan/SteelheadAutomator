@@ -1023,6 +1023,21 @@ async function handleMessage(message, sender) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    // ── PO Reconciler (Schneider QRO) ──
+    case 'run-po-reconciler': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'po-reconciler');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.POReconciler) return { error: 'POReconciler no disponible' };
+          window.POReconciler.openWizard();
+          return { started: true, message: 'Reconciliador Schneider QRO abierto. Revisa Steelhead.' };
+        }
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     // ── Weight Quick Entry ──
     case 'toggle-weight-quick-entry': {
       const { weightQuickEntryEnabled } = await chrome.storage.local.get('weightQuickEntryEnabled');
