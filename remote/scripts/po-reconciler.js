@@ -65,7 +65,63 @@ const POReconciler = (() => {
   }
 
   function injectStyles() {
-    // TODO Task 5.2
+    if (document.getElementById('sa-pr-styles')) return;
+    const css = `
+      .sa-pr-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.5);
+        z-index: 999999; display: flex; align-items: center; justify-content: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      .sa-pr-modal {
+        background: #fff; width: min(95vw, 1200px); height: min(90vh, 800px);
+        border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;
+        box-shadow: 0 10px 40px rgba(0,0,0,.3);
+      }
+      .sa-pr-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 16px 24px; border-bottom: 1px solid #e5e7eb;
+      }
+      .sa-pr-header h2 { margin: 0; font-size: 18px; }
+      .sa-pr-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #6b7280; }
+      .sa-pr-steps {
+        display: flex; gap: 24px; padding: 12px 24px; border-bottom: 1px solid #e5e7eb;
+        background: #f9fafb; font-size: 13px;
+      }
+      .sa-pr-steps span { color: #9ca3af; }
+      .sa-pr-steps span.active { color: #1f2937; font-weight: 600; }
+      .sa-pr-body { flex: 1; overflow: auto; padding: 24px; }
+      .sa-pr-footer {
+        display: flex; justify-content: space-between; padding: 16px 24px;
+        border-top: 1px solid #e5e7eb;
+      }
+      .sa-pr-footer button {
+        padding: 8px 16px; border: 1px solid #d1d5db; background: #fff;
+        border-radius: 6px; cursor: pointer; font-size: 14px;
+      }
+      .sa-pr-footer button:disabled { opacity: .5; cursor: not-allowed; }
+      .sa-pr-footer .sa-pr-next { background: #2563eb; color: #fff; border-color: #2563eb; }
+      .sa-pr-footer .sa-pr-next:disabled { background: #93c5fd; border-color: #93c5fd; }
+      .sa-pr-placeholder { color: #6b7280; padding: 40px; text-align: center; }
+      .sa-pr-drop { border: 2px dashed #93c5fd; border-radius: 8px; padding: 40px; text-align: center; color: #2563eb; cursor: pointer; }
+      .sa-pr-drop.hover { background: #eff6ff; }
+      .sa-pr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .sa-pr-table th, .sa-pr-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+      .sa-pr-table th { background: #f9fafb; font-weight: 600; }
+      .sa-pr-issue-fatal { color: #dc2626; font-weight: 600; }
+      .sa-pr-issue-warn  { color: #d97706; }
+      .sa-pr-issue-info  { color: #2563eb; }
+      .sa-pr-fab {
+        position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
+        background: #2563eb; color: #fff; border: none; border-radius: 50%;
+        font-size: 24px; cursor: pointer; z-index: 999998;
+        box-shadow: 0 4px 12px rgba(37,99,235,.4);
+      }
+      .sa-pr-fab:hover { background: #1d4ed8; }
+    `;
+    const style = document.createElement('style');
+    style.id = 'sa-pr-styles';
+    style.textContent = css;
+    document.head.appendChild(style);
   }
 
   // ── UI Wizard ──────────────────────────────────────────────
