@@ -212,5 +212,109 @@ test('detectIssuesForPN: igualdad → sin issues', () => {
   assert.deepStrictEqual(E.detectIssuesForPN('A', 10, 10), []);
 });
 
+test('buildPlan: match perfecto → 0 moves, renames listos', () => {
+  const plan = E.buildPlan({
+    pos: [
+      { poNumber: '1400395001', byPN: { A: 10 } },
+      { poNumber: '1400395002', byPN: { B: 5 } },
+    ],
+    temps: [
+      { ovId: 'T1', name: 'Producción', byPN: { A: 10 } },
+      { ovId: 'T2', name: 'Kitting',    byPN: { B: 5 } },
+    ],
+    restantesOV: null,
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  assert.deepStrictEqual(plan.moves, []);
+  assert.deepStrictEqual(plan.restantes, []);
+  assert.strictEqual(plan.renames.length, 2);
+  assert.deepStrictEqual(plan.renames.map(r => r.toName).sort(), ['1400395001', '1400395002']);
+  assert.deepStrictEqual(plan.creates, []);
+});
+
+test('buildPlan: PN cross-OV requiere 1 move', () => {
+  const plan = E.buildPlan({
+    pos: [
+      { poNumber: 'P1', byPN: { A: 15 } },  // matchea con T1 (A:10) si movemos 5 desde T2
+      { poNumber: 'P2', byPN: { B: 10 } },  // matchea con T2 (B:10)
+    ],
+    temps: [
+      { ovId: 'T1', name: 'Producción', byPN: { A: 10, B: 0 } },
+      { ovId: 'T2', name: 'Kitting',    byPN: { A: 5,  B: 10 } },
+    ],
+    restantesOV: null,
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  assert.strictEqual(plan.moves.length, 1);
+  assert.deepStrictEqual(plan.moves[0], { pn: 'A', qty: 5, fromOvId: 'T2', toOvId: 'T1' });
+  assert.strictEqual(plan.renames.length, 2);
+});
+
+test('buildPlan: sobrante → plan.creates trae OV Restantes si no existe', () => {
+  const plan = E.buildPlan({
+    pos:   [{ poNumber: 'P1', byPN: { A: 5 } }],
+    temps: [{ ovId: 'T1', name: 'Producción', byPN: { A: 10 } }],
+    restantesOV: null,
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  assert.strictEqual(plan.creates.length, 1);
+  assert.strictEqual(plan.creates[0].type, 'restantes-ov');
+  assert.strictEqual(plan.creates[0].name, 'Restantes Schneider QRO');
+  assert.strictEqual(plan.restantes.length, 1);
+  assert.deepStrictEqual(plan.restantes[0], { pn: 'A', qty: 5, fromOvId: 'T1', toOvId: '__pending_restantes__' });
+});
+
+test('buildPlan: sobrante con OV Restantes existente → no se crea', () => {
+  const plan = E.buildPlan({
+    pos:   [{ poNumber: 'P1', byPN: { A: 5 } }],
+    temps: [{ ovId: 'T1', name: 'Producción', byPN: { A: 10 } }],
+    restantesOV: { id: 999, name: 'Restantes Schneider QRO' },
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  assert.deepStrictEqual(plan.creates, []);
+  assert.strictEqual(plan.restantes[0].toOvId, 999);
+});
+
+test('buildPlan: cardinality mismatch → plan vacío + issue fatal', () => {
+  const plan = E.buildPlan({
+    pos:   [{ poNumber: 'P1', byPN: {} }, { poNumber: 'P2', byPN: {} }],
+    temps: [{ ovId: 'T1', name: 'Producción', byPN: {} }],
+    restantesOV: null,
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  assert.deepStrictEqual(plan.moves, []);
+  assert.deepStrictEqual(plan.renames, []);
+  assert.ok(plan.issues.some(i => i.severity === 'fatal'));
+});
+
+test('buildPlan: override de asignación cambia los moves', () => {
+  // Sin override: T1→P_A (5 movido), T2→P_B (0 movido) ó simétrico.
+  // Forzar T1→P_B, T2→P_A invierte.
+  const args = {
+    pos: [
+      { poNumber: 'P_A', byPN: { A: 10 } },
+      { poNumber: 'P_B', byPN: { B: 10 } },
+    ],
+    temps: [
+      { ovId: 'T1', name: 'Producción', byPN: { A: 10, B: 0 } },
+      { ovId: 'T2', name: 'Kitting',    byPN: { A: 0, B: 10 } },
+    ],
+    restantesOV: null,
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+    overrides: {
+      assignment: [
+        { tempOvId: 'T1', poNumber: 'P_B' },
+        { tempOvId: 'T2', poNumber: 'P_A' },
+      ],
+    },
+  };
+  const plan = E.buildPlan(args);
+  // T1 quería A pero ahora le toca P_B → mover A:10 a T2 y traer B:10
+  // Total: A:10 (T1→T2) + B:10 (T2→T1) = 2 moves
+  assert.strictEqual(plan.moves.length, 2);
+  assert.strictEqual(plan.renames.find(r => r.ovId === 'T1').toName, 'P_B');
+  assert.strictEqual(plan.renames.find(r => r.ovId === 'T2').toName, 'P_A');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

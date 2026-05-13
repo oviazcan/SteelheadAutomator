@@ -207,6 +207,105 @@ const POReconciler = (() => {
     }];
   }
 
+  function buildPlan({ pos, temps, restantesOV, config, overrides = {} }) {
+    const issues = [];
+
+    // Asignación
+    let assignmentResult;
+    if (overrides.assignment) {
+      assignmentResult = { assignment: overrides.assignment, totalDelta: null, issues: [] };
+    } else {
+      assignmentResult = assignTempsToPOs(temps, pos);
+    }
+    if (!assignmentResult.assignment) {
+      return { assignment: [], moves: [], restantes: [], renames: [], creates: [], issues: assignmentResult.issues };
+    }
+    const assignment = assignmentResult.assignment;
+
+    // Construir target por OV: por cada PN, suma de qty del PO asignado a esa temp
+    const targetByOV = {}; // { ovId: { pn: qty } }
+    for (const { tempOvId, poNumber } of assignment) {
+      targetByOV[tempOvId] = {};
+      const po = pos.find(p => p.poNumber === poNumber);
+      if (!po) continue;
+      for (const [pn, qty] of Object.entries(po.byPN || {})) {
+        targetByOV[tempOvId][pn] = qty;
+      }
+    }
+    const currentByOV = {}; // { ovId: { pn: qty } }
+    for (const t of temps) currentByOV[t.ovId] = { ...(t.byPN || {}) };
+
+    // PNs a procesar
+    const allPNs = new Set();
+    temps.forEach(t => Object.keys(t.byPN || {}).forEach(pn => allPNs.add(pn)));
+    pos.forEach(p => Object.keys(p.byPN || {}).forEach(pn => allPNs.add(pn)));
+
+    const moves = [];
+    const restantes = [];
+    for (const pn of allPNs) {
+      const tempsTotal = temps.reduce((s, t) => s + (t.byPN?.[pn] || 0), 0);
+      const posTotal   = pos.reduce((s, p) => s + (p.byPN?.[pn] || 0), 0);
+
+      const pnIssues = detectIssuesForPN(pn, tempsTotal, posTotal);
+      issues.push(...pnIssues);
+
+      // Si el PN tiene faltante o solo está en PO → no se puede surtir, skip moves
+      if (pnIssues.some(i => i.type === 'faltante' || i.type === 'pn_solo_en_po')) continue;
+
+      // Target por OV para este PN
+      const tgtByOV = {};
+      for (const ovId of Object.keys(currentByOV)) tgtByOV[ovId] = targetByOV[ovId]?.[pn] || 0;
+
+      // Generar moves intra-temp
+      const cur = {};
+      for (const ovId of Object.keys(currentByOV)) cur[ovId] = currentByOV[ovId][pn] || 0;
+      const pnMoves = computeMovesForPN(pn, cur, tgtByOV);
+
+      // Sobrante: si suma de targets < suma de currents → diferencia va a Restantes
+      const sumCur = Object.values(cur).reduce((a, b) => a + b, 0);
+      const sumTgt = Object.values(tgtByOV).reduce((a, b) => a + b, 0);
+      if (sumCur > sumTgt) {
+        // Crear restante: tomar del primer donor disponible después de aplicar pnMoves
+        // Simplificación: el donor del move-a-restantes es el OV que aún quede con sobrante
+        const totalSobrante = sumCur - sumTgt;
+        // Encontrar de qué OV viene: el que tenga más currentByOV[pn] - tgtByOV[ov][pn]
+        let leftover = totalSobrante;
+        for (const ovId of Object.keys(cur)) {
+          const ovSobrante = cur[ovId] - tgtByOV[ovId];
+          if (ovSobrante > 0) {
+            const take = Math.min(ovSobrante, leftover);
+            restantes.push({ pn, qty: take, fromOvId: ovId });
+            leftover -= take;
+            if (leftover === 0) break;
+          }
+        }
+      }
+
+      moves.push(...pnMoves);
+    }
+
+    // OV Restantes: si hay sobrantes y no existe la OV, crearla
+    const creates = [];
+    let restantesOvId = restantesOV?.id ?? null;
+    if (restantes.length > 0 && !restantesOvId) {
+      creates.push({
+        type: 'restantes-ov',
+        name: config.restantesOvName,
+        metadata: { fromTempOvId: temps[0]?.ovId ?? null },
+      });
+      restantesOvId = '__pending_restantes__';
+    }
+    for (const r of restantes) r.toOvId = restantesOvId;
+
+    // Renames
+    const renames = assignment.map(({ tempOvId, poNumber }) => {
+      const t = temps.find(x => x.ovId === tempOvId);
+      return { ovId: tempOvId, fromName: t?.name ?? '', toName: poNumber };
+    });
+
+    return { assignment, moves, restantes, renames, creates, issues };
+  }
+
   // ── Public API (also for tests) ─────────────────────────────
   return {
     init,
@@ -218,6 +317,7 @@ const POReconciler = (() => {
       assignTempsToPOs,
       computeMovesForPN,
       detectIssuesForPN,
+      buildPlan,
     },
   };
 })();
