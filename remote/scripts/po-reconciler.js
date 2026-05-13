@@ -68,8 +68,64 @@ const POReconciler = (() => {
     // TODO Task 5.2
   }
 
+  // ── UI Wizard ──────────────────────────────────────────────
+
   function openWizard() {
-    // TODO Task 5.1
+    if (state.isOpen) return;
+    state.isOpen = true;
+    state.step = 1;
+    const root = document.createElement('div');
+    root.id = 'sa-pr-root';
+    root.className = 'sa-pr-overlay';
+    root.innerHTML = `
+      <div class="sa-pr-modal">
+        <header class="sa-pr-header">
+          <h2>Reconciliador OV vs PO Schneider QRO</h2>
+          <button class="sa-pr-close" aria-label="Cerrar">✕</button>
+        </header>
+        <nav class="sa-pr-steps">
+          <span data-step="1" class="active">1. Cargar</span>
+          <span data-step="2">2. Parseo</span>
+          <span data-step="3">3. Plan</span>
+          <span data-step="4">4. Ejecutar</span>
+        </nav>
+        <main class="sa-pr-body"></main>
+        <footer class="sa-pr-footer">
+          <button class="sa-pr-back" disabled>← Atrás</button>
+          <button class="sa-pr-next" disabled>Continuar →</button>
+        </footer>
+      </div>
+    `;
+    document.body.appendChild(root);
+    root.querySelector('.sa-pr-close').onclick = closeWizard;
+    root.querySelector('.sa-pr-back').onclick = () => goToStep(state.step - 1);
+    root.querySelector('.sa-pr-next').onclick = () => goToStep(state.step + 1);
+    renderStep();
+  }
+
+  function closeWizard() {
+    document.getElementById('sa-pr-root')?.remove();
+    state = { ...state, isOpen: false, step: 1, pdfs: [], plan: null, overrides: {} };
+  }
+
+  function goToStep(n) {
+    if (n < 1 || n > 4) return;
+    state.step = n;
+    document.querySelectorAll('#sa-pr-root .sa-pr-steps span').forEach(s => {
+      s.classList.toggle('active', Number(s.dataset.step) === n);
+    });
+    renderStep();
+  }
+
+  function renderStep() {
+    const body = document.querySelector('#sa-pr-root .sa-pr-body');
+    if (!body) return;
+    body.innerHTML = `<div class="sa-pr-placeholder">Paso ${state.step} (placeholder)</div>`;
+    const back = document.querySelector('#sa-pr-root .sa-pr-back');
+    const next = document.querySelector('#sa-pr-root .sa-pr-next');
+    back.disabled = state.step === 1;
+    next.disabled = false;
+    next.textContent = state.step === 4 ? 'Cerrar' : 'Continuar →';
   }
 
   // ── Steelhead helpers ──────────────────────────────────────
