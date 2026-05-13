@@ -99,6 +99,60 @@ const POReconciler = (() => {
     return candidates.map(ov => ({ id: ov.id, idInDomain: ov.idInDomain, name: ov.name, raw: ov }));
   }
 
+  async function loadOVDetails(ovId) {
+    const data = await api().query('GetReceivedOrder', { id: ovId });
+    const ov = data?.receivedOrder || data?.receivedOrderByIdInDomain;
+    if (!ov) throw new Error(`GetReceivedOrder(${ovId}) devolvió shape inesperado`);
+
+    // Líneas y OTs
+    const lines = ov.receivedOrderLines?.nodes
+                || ov.receivedOrderLinesByReceivedOrderId?.nodes
+                || [];
+
+    const ots = [];
+    const byPN = {};
+    for (const line of lines) {
+      for (const li of (line.lineItems?.nodes || line.lineItems || [])) {
+        for (const ptAssoc of (li.receivedOrderLineItemPartTransforms?.nodes
+                            || li.receivedOrderLineItemPartTransforms
+                            || [])) {
+          const pt = ptAssoc.receivedOrderPartTransform;
+          if (!pt) continue;
+          for (const wo of (pt.workOrders?.nodes || pt.workOrders || [])) {
+            const pnId = pt.partNumberId;
+            const pnString = pt.partNumber?.partNumberString || pt.partNumber?.string || '';
+            const qty = Number(wo.partCount || wo.count || 0);
+            ots.push({
+              id: wo.id,
+              partCount: qty,
+              partNumberId: pnId,
+              partNumber: pnString,
+              receivedOrderPartTransformId: pt.id,
+              recipeNodeId: wo.recipeNodeId ?? null,
+              locationId: wo.locationId ?? null,
+              accountId: wo.inventoryAccountId ?? wo.accountId ?? null,
+              line: { id: line.id, name: line.name, quantity: Number(li.quantity || 0) },
+              raw: wo,
+            });
+            byPN[pnString] = (byPN[pnString] || 0) + qty;
+          }
+        }
+      }
+    }
+
+    return {
+      id: ov.id,
+      idInDomain: ov.idInDomain,
+      name: ov.name,
+      customerId: ov.customerId,
+      shipToAddressId: ov.shipToAddressId,
+      lines,
+      ots,
+      byPN,
+      snapshot: ov, // full record for rename replay
+    };
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -346,7 +400,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs },
+    _helpers: { loadCandidateTempOVs, loadOVDetails },
   };
 })();
 
