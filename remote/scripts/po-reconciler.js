@@ -409,8 +409,46 @@ const POReconciler = (() => {
     };
   }
 
-  // Stubs — implementadas en Tasks 8.2 y 8.3
-  function renderAssignment() { document.getElementById('sa-pr-asgn').innerHTML = '<em>TODO</em>'; }
+  function renderAssignment() {
+    const el = document.getElementById('sa-pr-asgn');
+    const poNumbers = [...new Set(state.pdfs.filter(p => p.status === 'ok').map(p => p.parsed.poNumber))];
+    el.innerHTML = `
+      <table class="sa-pr-table">
+        <thead><tr><th>Temp OV</th><th>PO asignado</th></tr></thead>
+        <tbody>
+          ${state.plan.assignment.map(a => {
+            const t = state.tempOVs.find(x => x.id === a.tempOvId);
+            return `
+              <tr>
+                <td>${escapeHtml(t?.name || a.tempOvId)}</td>
+                <td>
+                  <select data-temp="${a.tempOvId}">
+                    ${poNumbers.map(pn => `<option value="${escapeHtml(pn)}" ${pn === a.poNumber ? 'selected' : ''}>${escapeHtml(pn)}</option>`).join('')}
+                  </select>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+    el.querySelectorAll('select').forEach(sel => {
+      sel.onchange = () => {
+        const tempId = sel.dataset.temp;
+        const newPo = sel.value;
+        const oldAssgn = state.overrides.assignment || state.plan.assignment.map(a => ({ ...a }));
+        const swap = oldAssgn.find(a => a.poNumber === newPo && a.tempOvId !== tempId);
+        const me   = oldAssgn.find(a => a.tempOvId === tempId);
+        if (!me) return;
+        if (swap) swap.poNumber = me.poNumber;
+        me.poNumber = newPo;
+        state.overrides.assignment = oldAssgn;
+        document.getElementById('sa-pr-recompute').click();
+      };
+    });
+  }
+
+  // Stubs — implementadas en Task 8.3
   function renderMoves()      { document.getElementById('sa-pr-moves').innerHTML = '<em>TODO</em>'; }
   function renderRestantes()  { document.getElementById('sa-pr-rest').innerHTML  = '<em>TODO</em>'; }
   function renderIssues()     { document.getElementById('sa-pr-issues').innerHTML = '<em>TODO</em>'; }
