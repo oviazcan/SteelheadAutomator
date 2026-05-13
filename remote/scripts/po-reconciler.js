@@ -274,10 +274,29 @@ const POReconciler = (() => {
   function renderStep3(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 3 (Phase 8 — pendiente)</div>'; }
   function renderStep4(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 4 (Phase 9 — pendiente)</div>'; }
 
-  // refreshTempOVs implementada en Task 6.2
   async function refreshTempOVs() {
     const el = document.getElementById('sa-pr-temps-list');
-    if (el) el.innerHTML = '<em>Pendiente Task 6.2</em>';
+    if (!el) return;
+    el.innerHTML = '<em>Cargando…</em>';
+    try {
+      const candidates = await loadCandidateTempOVs();
+      const details = await Promise.all(candidates.map(c => loadOVDetails(c.id).catch(e => ({ error: e.message, id: c.id, name: c.name }))));
+      state.tempOVs = details.filter(d => !d.error);
+      const errors = details.filter(d => d.error);
+      el.innerHTML = `
+        ${state.tempOVs.map(t => `
+          <div class="item">
+            <span>${escapeHtml(t.name)}</span>
+            <small>${t.ots.length} OTs · ${Object.keys(t.byPN).length} PNs</small>
+          </div>
+        `).join('')}
+        ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OVs fallaron al cargar (ver consola)</div>` : ''}
+      `;
+      if (errors.length) console.warn('[PR] errores cargando OVs:', errors);
+      updateFooter();
+    } catch (err) {
+      el.innerHTML = `<div class="sa-pr-issue-fatal">Error: ${escapeHtml(err.message)}</div>`;
+    }
   }
 
   // ── Steelhead helpers ──────────────────────────────────────
