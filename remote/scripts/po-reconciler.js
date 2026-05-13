@@ -1306,11 +1306,10 @@ const POReconciler = (() => {
     return results;
   }
 
-  // ── Public API (also for tests) ─────────────────────────────
-  return {
+  // ── Public API ──────────────────────────────────────────────
+  const publicApi = {
     init,
     openWizard,
-    // Internals exposed for test harness (Task 1.3+):
     _engine: {
       consolidateByPN,
       hungarianMatch,
@@ -1319,8 +1318,11 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove, reconcileLineQuantities, mapToUpdateShape, renameOV, parseSinglePdf, parseMultiplePdfs },
   };
+  if (typeof window !== 'undefined' && window.__SA_DEBUG__) {
+    publicApi._helpers = { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove, reconcileLineQuantities, mapToUpdateShape, renameOV, parseSinglePdf, parseMultiplePdfs };
+  }
+  return publicApi;
 })();
 
 if (typeof window !== 'undefined') {
