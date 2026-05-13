@@ -1,5 +1,5 @@
 {
-  "version": "0.6.2",
+  "version": "0.6.3",
   "lastUpdated": "2026-05-12",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -386,6 +386,7 @@
       "category": "Órdenes de Venta",
       "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/po-reconciler.js"],
       "requiredPermissions": ["READ_RECEIVED_ORDERS"],
+      "autoInject": true,
       "actions": [
         { "id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler" }
       ]

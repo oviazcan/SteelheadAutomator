@@ -157,6 +157,47 @@ const POReconciler = (() => {
       .sa-pr-exec-list li { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; }
       .sa-pr-exec-list li small { color: #6b7280; margin-left: 8px; }
       #sa-pr-progress { margin-left: auto; color: #6b7280; font-size: 13px; }
+
+      @media (prefers-color-scheme: dark) {
+        .sa-pr-modal { background: #1f2937; color: #e5e7eb; }
+        .sa-pr-header { border-bottom-color: #374151; }
+        .sa-pr-close { color: #9ca3af; }
+        .sa-pr-close:hover { color: #e5e7eb; }
+        .sa-pr-steps { background: #111827; border-bottom-color: #374151; }
+        .sa-pr-steps span { color: #6b7280; }
+        .sa-pr-steps span.active { color: #f3f4f6; }
+        .sa-pr-footer { border-top-color: #374151; }
+        .sa-pr-footer button { background: #374151; border-color: #4b5563; color: #e5e7eb; }
+        .sa-pr-footer button:hover:not(:disabled) { background: #4b5563; }
+        .sa-pr-footer .sa-pr-next { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .sa-pr-footer .sa-pr-next:disabled { background: #1e40af; border-color: #1e40af; color: #93c5fd; }
+        .sa-pr-placeholder { color: #9ca3af; }
+        .sa-pr-drop { border-color: #3b82f6; color: #93c5fd; background: #0f172a; }
+        .sa-pr-drop.hover { background: #1e3a8a; }
+        .sa-pr-table th { background: #111827; color: #e5e7eb; }
+        .sa-pr-table th, .sa-pr-table td { border-bottom-color: #374151; }
+        .sa-pr-table td { color: #d1d5db; }
+        .sa-pr-table select, .sa-pr-table input { background: #111827; color: #e5e7eb; border: 1px solid #4b5563; border-radius: 4px; padding: 2px 6px; }
+        .sa-pr-issue-fatal { color: #f87171; }
+        .sa-pr-issue-warn  { color: #fbbf24; }
+        .sa-pr-issue-info  { color: #60a5fa; }
+        .sa-pr-files-list li, #sa-pr-temps-list .item { border-bottom-color: #374151; }
+        .sa-pr-rm { color: #9ca3af; }
+        .sa-pr-rm:hover { color: #f87171; }
+        .sa-pr-parse-list li { border-bottom-color: #374151; }
+        .sa-pr-parse-list button { background: #374151; border-color: #4b5563; color: #e5e7eb; }
+        .sa-pr-parse-list button:hover { background: #4b5563; }
+        .sa-pr-drawer-inner { background: #1f2937; color: #e5e7eb; }
+        .sa-pr-drawer-close { color: #9ca3af; }
+        .sa-pr-drawer-close:hover { color: #e5e7eb; }
+        .sa-pr-pills span { background: #374151; color: #e5e7eb; }
+        .sa-pr-btn { background: #374151; border-color: #4b5563; color: #e5e7eb; }
+        .sa-pr-btn:hover { background: #4b5563; }
+        .sa-pr-issues li { border-bottom-color: #374151; }
+        .sa-pr-exec-list li { border-bottom-color: #374151; }
+        .sa-pr-exec-list li small { color: #9ca3af; }
+        #sa-pr-progress { color: #9ca3af; }
+      }
     `;
     const style = document.createElement('style');
     style.id = 'sa-pr-styles';
@@ -761,6 +802,8 @@ const POReconciler = (() => {
     const variables = {
       filters: { customerId: schneider.customerId, archivedAt: null },
       first: 100,
+      computeMargins: false,
+      showInvoicedSubtotal: false,
     };
     const data = await api().query('ActiveReceivedOrders', variables);
     const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
@@ -837,6 +880,8 @@ const POReconciler = (() => {
     const variables = {
       filters: { customerId: sch.customerId, archivedAt: null, searchString: expectedName },
       first: 20,
+      computeMargins: false,
+      showInvoicedSubtotal: false,
     };
     const data = await api().query('ActiveReceivedOrders', variables);
     const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
