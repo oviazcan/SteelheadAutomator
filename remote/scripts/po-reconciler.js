@@ -677,9 +677,39 @@ const POReconciler = (() => {
     }
   }
 
-  // Stub — implementada en Task 9.3
-  function downloadAuditCsv() { console.warn('[PR] downloadAuditCsv: pendiente Task 9.3'); }
-  function audit() {}
+  function audit(step, status, errorMessage) {
+    state.auditLog.push({
+      timestamp: new Date().toISOString(),
+      run_id: state.runId,
+      step_type: step.type,
+      step_id: step.id,
+      status,
+      label: step.label,
+      detail: step.detail || '',
+      payload: JSON.stringify(step.payload || {}).slice(0, 500),
+      error_message: errorMessage || '',
+    });
+  }
+
+  function downloadAuditCsv() {
+    if (state.auditLog.length === 0) return;
+    const headers = Object.keys(state.auditLog[0]);
+    const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [
+      headers.join(','),
+      ...state.auditLog.map(row => headers.map(h => escape(row[h])).join(',')),
+    ].join('\n');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reconciliacion-schneider-qro-${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   async function refreshTempOVs() {
     const el = document.getElementById('sa-pr-temps-list');
