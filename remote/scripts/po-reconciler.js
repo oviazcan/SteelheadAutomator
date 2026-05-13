@@ -370,10 +370,10 @@ const POReconciler = (() => {
           <thead><tr><th>#</th><th>PN</th><th>Desc</th><th>Qty</th></tr></thead>
           <tbody>
             ${p.parsed.lines.map(l => `<tr>
-              <td>${l.lineNumber}</td>
+              <td>${escapeHtml(l.lineNumber)}</td>
               <td>${escapeHtml(l.partNumber)}</td>
               <td>${escapeHtml(l.description || '')}</td>
-              <td>${l.quantity}</td>
+              <td>${escapeHtml(l.quantity)}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -444,7 +444,7 @@ const POReconciler = (() => {
               <tr>
                 <td>${escapeHtml(t?.name || a.tempOvId)}</td>
                 <td>
-                  <select data-temp="${a.tempOvId}">
+                  <select data-temp="${escapeHtml(a.tempOvId)}">
                     ${poNumbers.map(pn => `<option value="${escapeHtml(pn)}" ${pn === a.poNumber ? 'selected' : ''}>${escapeHtml(pn)}</option>`).join('')}
                   </select>
                 </td>
