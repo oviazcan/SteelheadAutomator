@@ -316,5 +316,51 @@ test('buildPlan: override de asignación cambia los moves', () => {
   assert.strictEqual(plan.renames.find(r => r.ovId === 'T2').toName, 'P_A');
 });
 
+test('buildPlan: 3 temps × 3 POs no-trivial converge', () => {
+  // Distribución mezclada del cliente
+  const plan = E.buildPlan({
+    pos: [
+      { poNumber: 'P1', byPN: { X: 5,  Y: 0,  Z: 0  } },
+      { poNumber: 'P2', byPN: { X: 0,  Y: 10, Z: 5  } },
+      { poNumber: 'P3', byPN: { X: 5,  Y: 0,  Z: 15 } },
+    ],
+    temps: [
+      { ovId: 'T1', name: 'Producción',   byPN: { X: 10, Y: 0,  Z: 0  } },  // PO compatible: P1+P3 partial
+      { ovId: 'T2', name: 'Kitting',      byPN: { X: 0,  Y: 10, Z: 5  } },  // PO compatible: P2 exacto
+      { ovId: 'T3', name: 'Lote cerrado', byPN: { X: 0,  Y: 0,  Z: 15 } },  // PO compatible: P3 parcial
+    ],
+    restantesOV: null,
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  // Hay un óptimo donde T2→P2 (0 moves), T1→P1 (qty 5 sobrante de X), T3→P3 (necesita X:5)
+  // → 1 move: X:5 de T1 a T3
+  assert.ok(plan.renames.length === 3);
+  assert.ok(plan.issues.every(i => i.severity !== 'fatal'));
+});
+
+test('buildPlan: solo OV Restantes, no recrear si ya existe con id', () => {
+  const plan = E.buildPlan({
+    pos:   [{ poNumber: 'P1', byPN: { A: 5 } }],
+    temps: [{ ovId: 'T1', name: 'Producción', byPN: { A: 10 } }],
+    restantesOV: { id: 42, name: 'Restantes Schneider QRO' },
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  assert.deepStrictEqual(plan.creates, []);
+  assert.ok(plan.restantes.every(r => r.toOvId === 42));
+});
+
+test('buildPlan: PN solo en HS va completo a Restantes', () => {
+  const plan = E.buildPlan({
+    pos:   [{ poNumber: 'P1', byPN: { A: 5 } }],
+    temps: [{ ovId: 'T1', name: 'Producción', byPN: { A: 5, ORPHAN: 8 } }],
+    restantesOV: null,
+    config: { restantesOvName: 'Restantes Schneider QRO' },
+  });
+  const orphan = plan.restantes.find(r => r.pn === 'ORPHAN');
+  assert.ok(orphan);
+  assert.strictEqual(orphan.qty, 8);
+  assert.ok(plan.issues.some(i => i.type === 'pn_solo_en_hs'));
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
