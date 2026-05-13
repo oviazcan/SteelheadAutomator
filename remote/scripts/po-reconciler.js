@@ -39,7 +39,20 @@ const POReconciler = (() => {
   }
 
   function syncFabVisibility() {
-    // TODO Task 10.1
+    const should = isAllowedPath();
+    const existing = document.getElementById('sa-pr-fab');
+    if (should && !existing) renderFloatingButton();
+    else if (!should && existing) existing.remove();
+  }
+
+  function renderFloatingButton() {
+    const btn = document.createElement('button');
+    btn.id = 'sa-pr-fab';
+    btn.className = 'sa-pr-fab';
+    btn.title = 'Reconciliar OV vs PO Schneider';
+    btn.textContent = '🧮';
+    btn.onclick = openWizard;
+    document.body.appendChild(btn);
   }
 
   function installUrlChangeListener() {
