@@ -85,6 +85,30 @@ const POReconciler = (() => {
     return out;
   }
 
+  function hungarianMatch(costMatrix) {
+    const n = costMatrix.length;
+    if (n === 0) return { assignment: [], totalCost: 0 };
+    if (!costMatrix.every(row => Array.isArray(row) && row.length === n)) {
+      throw new Error('hungarianMatch: matriz debe ser cuadrada');
+    }
+    let best = { assignment: null, totalCost: Infinity };
+    const perm = Array.from({ length: n }, (_, i) => i);
+    function* permutations(arr, k = 0) {
+      if (k === arr.length - 1) { yield arr.slice(); return; }
+      for (let i = k; i < arr.length; i++) {
+        [arr[k], arr[i]] = [arr[i], arr[k]];
+        yield* permutations(arr, k + 1);
+        [arr[k], arr[i]] = [arr[i], arr[k]];
+      }
+    }
+    for (const p of permutations(perm)) {
+      let cost = 0;
+      for (let i = 0; i < n; i++) cost += costMatrix[i][p[i]];
+      if (cost < best.totalCost) best = { assignment: p.slice(), totalCost: cost };
+    }
+    return best;
+  }
+
   // ── Public API (also for tests) ─────────────────────────────
   return {
     init,
@@ -92,6 +116,7 @@ const POReconciler = (() => {
     // Internals exposed for test harness (Task 1.3+):
     _engine: {
       consolidateByPN,
+      hungarianMatch,
     },
   };
 })();
