@@ -279,6 +279,67 @@ const POReconciler = (() => {
     return await api().query('AddPartsToWorkOrders', variables);
   }
 
+  async function reconcileLineQuantities(ovId) {
+    const fresh = await loadOVDetails(ovId);
+    const newLines = [];
+
+    for (const line of fresh.lines) {
+      const lineItemsRaw = line.lineItems?.nodes || line.lineItems || [];
+      const li = lineItemsRaw[0];
+      if (!li) continue;
+
+      // Suma de partCount de todas las OTs asociadas a esta línea
+      let sumOts = 0;
+      const assocs = li.receivedOrderLineItemPartTransforms?.nodes
+                  || li.receivedOrderLineItemPartTransforms
+                  || [];
+      for (const ptAssoc of assocs) {
+        const pt = ptAssoc.receivedOrderPartTransform;
+        for (const wo of (pt?.workOrders?.nodes || pt?.workOrders || [])) {
+          sumOts += Number(wo.partCount || wo.count || 0);
+        }
+      }
+      const currentLineQty = Number(li.quantity || 0);
+      if (currentLineQty === sumOts) continue;
+
+      newLines.push({
+        id: line.id,
+        name: line.name,
+        description: line.description ?? null,
+        lineItems: [{
+          id: li.id,
+          archive: !!li.archive,
+          description: li.description ?? '',
+          quantity: String(sumOts),
+          price: String(li.price ?? '0'),
+          productId: li.productId ?? null,
+          unitId: li.unitId ?? null,
+          quoteLineItemId: li.quoteLineItemId ?? null,
+          receivedOrderLineItemPartTransforms: assocs.map(a => ({
+            id: a.id,
+            receivedOrderPartTransform: {
+              id: a.receivedOrderPartTransform?.id,
+              partNumberId: a.receivedOrderPartTransform?.partNumberId,
+              partNumberPriceId: a.receivedOrderPartTransform?.partNumberPriceId ?? null,
+              count: a.receivedOrderPartTransform?.count ?? 0,
+              description: a.receivedOrderPartTransform?.description ?? '',
+            },
+          })),
+        }],
+      });
+    }
+
+    if (newLines.length === 0) {
+      log(`Reconcile ${ovId}: sin cambios`);
+      return { changed: 0 };
+    }
+
+    const variables = { input: { receivedOrderId: ovId, newLines } };
+    await api().query('SaveReceivedOrderLinesAndItems', variables);
+    log(`Reconcile ${ovId}: ${newLines.length} líneas ajustadas`);
+    return { changed: newLines.length };
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -526,7 +587,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove },
+    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove, reconcileLineQuantities },
   };
 })();
 
