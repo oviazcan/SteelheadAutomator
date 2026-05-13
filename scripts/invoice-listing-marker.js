@@ -17,11 +17,11 @@ const InvoiceListingMarker = (() => {
   const ROW_LINK_RE = /\/Domains\/\d+\/Invoices\/\d+/;
   const TOTAL_RE = /total\s*:\s*(\(\s*)?-?\$?-?\s*([\d,]+(?:\.\d+)?)\s*(\))?/i;
 
-  const COLOR_ZERO_BG = 'rgba(244, 67, 54, 0.10)';
-  const COLOR_NC_BG = 'rgba(255, 193, 7, 0.16)';
+  const COLOR_ZERO_BG = 'rgba(244, 67, 54, 0.20)';
+  const COLOR_NC_BG = 'rgba(255, 193, 7, 0.32)';
 
   const CHIP_STYLE = {
-    base: 'display:inline-block;font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;margin-right:6px;margin-top:4px;letter-spacing:0.3px;text-transform:uppercase;line-height:14px;vertical-align:middle;',
+    base: 'display:inline-block;font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;letter-spacing:0.3px;text-transform:uppercase;line-height:14px;vertical-align:middle;',
     zero: 'background:#f44336;color:#fff;',
     nc: 'background:#ffb300;color:#3a2300;',
     draft: 'background:#607d8b;color:#fff;',
@@ -86,8 +86,10 @@ const InvoiceListingMarker = (() => {
 
   function clearMarks(row, header) {
     row.style.backgroundColor = '';
-    const existing = header.parentElement && header.parentElement.querySelector(':scope > .sa-ilm-chips');
+    const existing = header.querySelector(':scope > .sa-ilm-chips');
     if (existing) existing.remove();
+    const stale = header.parentElement && header.parentElement.querySelector(':scope > .sa-ilm-chips');
+    if (stale) stale.remove();
     delete row.dataset.saIlmState;
   }
 
@@ -102,14 +104,15 @@ const InvoiceListingMarker = (() => {
     else if (isNC) row.style.backgroundColor = COLOR_NC_BG;
     else row.style.backgroundColor = '';
 
-    const parent = header.parentElement;
-    if (!parent) return;
-    let chipsContainer = parent.querySelector(':scope > .sa-ilm-chips');
+    const stale = header.parentElement && header.parentElement.querySelector(':scope > .sa-ilm-chips');
+    if (stale) stale.remove();
+
+    let chipsContainer = header.querySelector(':scope > .sa-ilm-chips');
     if (!chipsContainer) {
       chipsContainer = document.createElement('div');
       chipsContainer.className = 'sa-ilm-chips';
-      chipsContainer.style.cssText = 'margin-top:2px;line-height:1;';
-      header.insertAdjacentElement('afterend', chipsContainer);
+      chipsContainer.style.cssText = 'margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;line-height:1;';
+      header.appendChild(chipsContainer);
     }
     chipsContainer.innerHTML = '';
 
