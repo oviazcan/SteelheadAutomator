@@ -117,6 +117,11 @@ const POReconciler = (() => {
         box-shadow: 0 4px 12px rgba(37,99,235,.4);
       }
       .sa-pr-fab:hover { background: #1d4ed8; }
+      .sa-pr-step1 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; height: 100%; }
+      .sa-pr-step1 h3 { font-size: 14px; margin: 0 0 12px; }
+      .sa-pr-files-list, #sa-pr-temps-list { list-style: none; padding: 0; margin: 12px 0 0; font-size: 13px; }
+      .sa-pr-files-list li, #sa-pr-temps-list .item { display: flex; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid #f3f4f6; }
+      .sa-pr-rm { background: none; border: none; color: #6b7280; cursor: pointer; }
     `;
     const style = document.createElement('style');
     style.id = 'sa-pr-styles';
@@ -176,12 +181,103 @@ const POReconciler = (() => {
   function renderStep() {
     const body = document.querySelector('#sa-pr-root .sa-pr-body');
     if (!body) return;
-    body.innerHTML = `<div class="sa-pr-placeholder">Paso ${state.step} (placeholder)</div>`;
+    body.innerHTML = '';
+    if (state.step === 1) renderStep1(body);
+    else if (state.step === 2) renderStep2(body);
+    else if (state.step === 3) renderStep3(body);
+    else if (state.step === 4) renderStep4(body);
+    updateFooter();
+  }
+
+  function updateFooter() {
     const back = document.querySelector('#sa-pr-root .sa-pr-back');
     const next = document.querySelector('#sa-pr-root .sa-pr-next');
+    if (!back || !next) return;
     back.disabled = state.step === 1;
-    next.disabled = false;
     next.textContent = state.step === 4 ? 'Cerrar' : 'Continuar →';
+    next.disabled = !canAdvanceFromStep(state.step);
+  }
+
+  function canAdvanceFromStep(step) {
+    if (step === 1) return state.pdfs.length > 0 && state.tempOVs.length > 0;
+    if (step === 2) return state.pdfs.every(p => p.status === 'ok' || p.status === 'skipped');
+    if (step === 3) return state.plan && !state.plan.issues.some(i => i.severity === 'fatal');
+    if (step === 4) return true;
+    return false;
+  }
+
+  async function renderStep1(body) {
+    body.innerHTML = `
+      <div class="sa-pr-step1">
+        <div class="sa-pr-step1-left">
+          <h3>1) PDFs de POs Schneider</h3>
+          <div id="sa-pr-drop" class="sa-pr-drop">
+            <p>Arrastra archivos .pdf aquí o haz click para elegir</p>
+            <input type="file" multiple accept="application/pdf" hidden id="sa-pr-files">
+          </div>
+          <ul id="sa-pr-files-list" class="sa-pr-files-list"></ul>
+        </div>
+        <div class="sa-pr-step1-right">
+          <h3>2) OVs temp Schneider QRO detectadas</h3>
+          <div id="sa-pr-temps-list">Cargando…</div>
+        </div>
+      </div>
+    `;
+    const drop = body.querySelector('#sa-pr-drop');
+    const input = body.querySelector('#sa-pr-files');
+    drop.onclick = () => input.click();
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('hover'); };
+    drop.ondragleave = () => drop.classList.remove('hover');
+    drop.ondrop = (e) => {
+      e.preventDefault();
+      drop.classList.remove('hover');
+      addPdfs([...e.dataTransfer.files].filter(f => f.type === 'application/pdf'));
+    };
+    input.onchange = () => addPdfs([...input.files]);
+
+    refreshFilesList();
+    await refreshTempOVs();
+  }
+
+  function addPdfs(files) {
+    for (const f of files) {
+      if (!state.pdfs.some(p => p.file.name === f.name && p.file.size === f.size)) {
+        state.pdfs.push({ status: 'pending', file: f, parsed: null, error: null });
+      }
+    }
+    refreshFilesList();
+    updateFooter();
+  }
+
+  function refreshFilesList() {
+    const ul = document.getElementById('sa-pr-files-list');
+    if (!ul) return;
+    ul.innerHTML = state.pdfs.map((p, i) => `
+      <li>
+        ${escapeHtml(p.file.name)} (${(p.file.size/1024).toFixed(1)} KB)
+        <button data-i="${i}" class="sa-pr-rm">✕</button>
+      </li>
+    `).join('');
+    ul.querySelectorAll('.sa-pr-rm').forEach(btn => btn.onclick = () => {
+      state.pdfs.splice(Number(btn.dataset.i), 1);
+      refreshFilesList();
+      updateFooter();
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+
+  // Stubs — implementadas en Phases 7, 8, 9
+  function renderStep2(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 2 (Phase 7 — pendiente)</div>'; }
+  function renderStep3(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 3 (Phase 8 — pendiente)</div>'; }
+  function renderStep4(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 4 (Phase 9 — pendiente)</div>'; }
+
+  // refreshTempOVs implementada en Task 6.2
+  async function refreshTempOVs() {
+    const el = document.getElementById('sa-pr-temps-list');
+    if (el) el.innerHTML = '<em>Pendiente Task 6.2</em>';
   }
 
   // ── Steelhead helpers ──────────────────────────────────────
