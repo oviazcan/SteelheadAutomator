@@ -130,6 +130,11 @@ const POReconciler = (() => {
       .sa-pr-drawer-inner { background: #fff; width: 600px; height: 100%; padding: 20px; overflow: auto; }
       .sa-pr-drawer-inner header { display: flex; justify-content: space-between; align-items: center; }
       .sa-pr-drawer-close { background: none; border: none; font-size: 20px; cursor: pointer; }
+      .sa-pr-pills { display: flex; gap: 12px; font-size: 13px; flex-wrap: wrap; }
+      .sa-pr-pills span { background: #f3f4f6; padding: 4px 10px; border-radius: 12px; }
+      .sa-pr-plan-section { margin-top: 24px; }
+      .sa-pr-plan-section h3 { font-size: 14px; margin: 0 0 8px; }
+      .sa-pr-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; margin-top: 16px; }
     `;
     const style = document.createElement('style');
     style.id = 'sa-pr-styles';
@@ -356,8 +361,61 @@ const POReconciler = (() => {
     drawer.querySelector('.sa-pr-drawer-close').onclick = () => drawer.remove();
   }
 
-  // Stubs — implementadas en Phases 8, 9
-  function renderStep3(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 3 (Phase 8 — pendiente)</div>'; }
+  async function renderStep3(body) {
+    body.innerHTML = `<div class="sa-pr-placeholder">Calculando plan…</div>`;
+    const pos   = state.pdfs.filter(p => p.status === 'ok').map(p => ({
+      poNumber: p.parsed.poNumber,
+      byPN: consolidateByPN(p.parsed.lines),
+      rawLines: p.parsed.lines,
+    }));
+    const temps = state.tempOVs.map(t => ({ ovId: t.id, name: t.name, byPN: t.byPN, raw: t }));
+    state.restantesOV = await findRestantesOV();
+    const sch = api().getDomain().schneiderQueretaro || {};
+    state.plan = buildPlan({
+      pos, temps, restantesOV: state.restantesOV,
+      config: { restantesOvName: sch.restantesOvName || 'Restantes Schneider QRO' },
+      overrides: state.overrides,
+    });
+    renderStep3Body(body);
+    updateFooter();
+  }
+
+  function renderStep3Body(body) {
+    const p = state.plan;
+    body.innerHTML = `
+      <section class="sa-pr-plan-summary">
+        <h3>Resumen</h3>
+        <div class="sa-pr-pills">
+          <span>${p.assignment.length} asignaciones</span>
+          <span>${p.moves.length} movimientos</span>
+          <span>${p.restantes.length} sobrantes → Restantes</span>
+          <span>${p.creates.length} OVs nuevas</span>
+          <span class="sa-pr-issue-warn">${p.issues.filter(i => i.severity === 'warn').length} warnings</span>
+          <span class="sa-pr-issue-fatal">${p.issues.filter(i => i.severity === 'fatal').length} fatales</span>
+        </div>
+      </section>
+      <section class="sa-pr-plan-section"><h3>Asignación temp ↔ PO</h3><div id="sa-pr-asgn"></div></section>
+      <section class="sa-pr-plan-section"><h3>Movimientos</h3><div id="sa-pr-moves"></div></section>
+      <section class="sa-pr-plan-section"><h3>Sobrantes → OV Restantes</h3><div id="sa-pr-rest"></div></section>
+      <section class="sa-pr-plan-section"><h3>Issues</h3><div id="sa-pr-issues"></div></section>
+      <button id="sa-pr-recompute" class="sa-pr-btn">↻ Recalcular plan</button>
+    `;
+    renderAssignment();
+    renderMoves();
+    renderRestantes();
+    renderIssues();
+    document.getElementById('sa-pr-recompute').onclick = async () => {
+      await renderStep3(body);
+    };
+  }
+
+  // Stubs — implementadas en Tasks 8.2 y 8.3
+  function renderAssignment() { document.getElementById('sa-pr-asgn').innerHTML = '<em>TODO</em>'; }
+  function renderMoves()      { document.getElementById('sa-pr-moves').innerHTML = '<em>TODO</em>'; }
+  function renderRestantes()  { document.getElementById('sa-pr-rest').innerHTML  = '<em>TODO</em>'; }
+  function renderIssues()     { document.getElementById('sa-pr-issues').innerHTML = '<em>TODO</em>'; }
+
+  // Stub — implementada en Phase 9
   function renderStep4(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 4 (Phase 9 — pendiente)</div>'; }
 
   async function refreshTempOVs() {
