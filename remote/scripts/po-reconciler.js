@@ -604,6 +604,31 @@ const POReconciler = (() => {
     return { assignment, moves, restantes, renames, creates, issues };
   }
 
+  // ── PDF parsing ────────────────────────────────────────────
+
+  async function parseSinglePdf(file) {
+    try {
+      const parsed = await window.POComparator.parsePDF(file);
+      return { status: 'ok', file, parsed, error: null };
+    } catch (err) {
+      return { status: 'error', file, parsed: null, error: err.message || String(err) };
+    }
+  }
+
+  async function parseMultiplePdfs(files, onProgress) {
+    const results = files.map(f => ({ status: 'pending', file: f, parsed: null, error: null }));
+    onProgress?.(results);
+    const promises = files.map((file, idx) =>
+      parseSinglePdf(file).then(r => {
+        results[idx] = r;
+        onProgress?.(results);
+        return r;
+      })
+    );
+    await Promise.all(promises);
+    return results;
+  }
+
   // ── Public API (also for tests) ─────────────────────────────
   return {
     init,
@@ -617,7 +642,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove, reconcileLineQuantities, mapToUpdateShape, renameOV },
+    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove, reconcileLineQuantities, mapToUpdateShape, renameOV, parseSinglePdf, parseMultiplePdfs },
   };
 })();
 
