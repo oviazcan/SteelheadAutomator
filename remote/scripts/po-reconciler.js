@@ -109,6 +109,51 @@ const POReconciler = (() => {
     return best;
   }
 
+  function assignTempsToPOs(temps, pos) {
+    const n = temps.length;
+    const m = pos.length;
+    if (n !== m) {
+      return {
+        assignment: null,
+        totalDelta: null,
+        issues: [{
+          severity: 'fatal',
+          type: 'cardinality_mismatch',
+          detail: `#temps=${n} ≠ #POs=${m}. Plan automático no generado.`,
+        }],
+      };
+    }
+    if (n === 0) return { assignment: [], totalDelta: 0, issues: [] };
+
+    const allPNs = new Set();
+    temps.forEach(t => Object.keys(t.byPN || {}).forEach(pn => allPNs.add(pn)));
+    pos.forEach(p => Object.keys(p.byPN || {}).forEach(pn => allPNs.add(pn)));
+
+    const matrix = [];
+    for (let i = 0; i < n; i++) {
+      const row = [];
+      for (let j = 0; j < n; j++) {
+        let cost = 0;
+        for (const pn of allPNs) {
+          const tempQty = (temps[i].byPN || {})[pn] || 0;
+          const poQty   = (pos[j].byPN   || {})[pn] || 0;
+          cost += Math.abs(tempQty - poQty);
+        }
+        row.push(cost);
+      }
+      matrix.push(row);
+    }
+    const { assignment, totalCost } = hungarianMatch(matrix);
+    return {
+      assignment: assignment.map((j, i) => ({
+        tempOvId: temps[i].ovId,
+        poNumber: pos[j].poNumber,
+      })),
+      totalDelta: totalCost,
+      issues: [],
+    };
+  }
+
   // ── Public API (also for tests) ─────────────────────────────
   return {
     init,
@@ -117,6 +162,7 @@ const POReconciler = (() => {
     _engine: {
       consolidateByPN,
       hungarianMatch,
+      assignTempsToPOs,
     },
   };
 })();

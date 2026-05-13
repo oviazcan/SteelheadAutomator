@@ -108,5 +108,46 @@ test('hungarianMatch lanza si la matriz no es cuadrada', () => {
   assert.throws(() => E.hungarianMatch([[1, 2], [3]]), /cuadrada/i);
 });
 
+test('assignTempsToPOs asigna 1:1 minimizando piezas movidas', () => {
+  const temps = [
+    { ovId: 'T1', name: 'Producción',    byPN: { A: 10, B: 5 } },
+    { ovId: 'T2', name: 'Kitting',       byPN: { A: 0,  B: 20 } },
+  ];
+  const pos = [
+    { poNumber: '1400395001', byPN: { A: 10, B: 5 } },   // matchea T1
+    { poNumber: '1400395002', byPN: { A: 0,  B: 20 } },  // matchea T2
+  ];
+  const result = E.assignTempsToPOs(temps, pos);
+  assert.deepStrictEqual(result.assignment, [
+    { tempOvId: 'T1', poNumber: '1400395001' },
+    { tempOvId: 'T2', poNumber: '1400395002' },
+  ]);
+  assert.strictEqual(result.totalDelta, 0);
+});
+
+test('assignTempsToPOs cambia el orden si reduce piezas movidas', () => {
+  const temps = [
+    { ovId: 'T1', byPN: { A: 100 } },
+    { ovId: 'T2', byPN: { B: 100 } },
+  ];
+  const pos = [
+    { poNumber: 'PO_B', byPN: { B: 100 } },  // mejor con T2
+    { poNumber: 'PO_A', byPN: { A: 100 } },  // mejor con T1
+  ];
+  const result = E.assignTempsToPOs(temps, pos);
+  // Asignación óptima: T1 → PO_A, T2 → PO_B
+  const byTemp = Object.fromEntries(result.assignment.map(a => [a.tempOvId, a.poNumber]));
+  assert.strictEqual(byTemp.T1, 'PO_A');
+  assert.strictEqual(byTemp.T2, 'PO_B');
+});
+
+test('assignTempsToPOs devuelve issue fatal si cardinality mismatch', () => {
+  const temps = [{ ovId: 'T1', byPN: {} }, { ovId: 'T2', byPN: {} }];
+  const pos = [{ poNumber: 'P1', byPN: {} }];
+  const result = E.assignTempsToPOs(temps, pos);
+  assert.strictEqual(result.assignment, null);
+  assert.ok(result.issues.some(i => i.severity === 'fatal' && i.type === 'cardinality_mismatch'));
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
