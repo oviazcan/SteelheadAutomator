@@ -166,6 +166,33 @@ const POReconciler = (() => {
     return all.find(ov => String(ov.name).trim() === expectedName) || null;
   }
 
+  async function createRestantesOV(seed) {
+    const domain = api().getDomain();
+    const expectedName = domain.schneiderQueretaro?.restantesOvName || 'Restantes Schneider QRO';
+    const input = {
+      name: expectedName,
+      customerId: seed.customerId,
+      shipToAddressId: seed.shipToAddressId,
+      customerContactId: seed.customerContactId ?? null,
+      billToAddressId: seed.billToAddressId ?? null,
+      invoiceTermsId: seed.invoiceTermsId ?? null,
+      customInputs: seed.customInputs ?? [],
+      inputSchemaId: seed.inputSchemaId ?? null,
+      shipVia: seed.shipVia ?? null,
+      shipMethodId: seed.shipMethodId ?? null,
+      type: seed.type ?? 'STANDARD',
+      blockPartialShipments: seed.blockPartialShipments ?? false,
+      sectorId: seed.sectorId ?? null,
+      isBlanketOrder: false,
+      deadline: seed.deadline ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    const data = await api().query('CreateReceivedOrder', { input });
+    const created = data?.createReceivedOrder?.receivedOrder || data?.createReceivedOrder;
+    if (!created?.id) throw new Error('CreateReceivedOrder: respuesta sin id');
+    log(`OV Restantes creada: ${created.id} (#${created.idInDomain})`);
+    return created;
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -413,7 +440,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV },
+    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV },
   };
 })();
 
