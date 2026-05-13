@@ -72,6 +72,33 @@ const POReconciler = (() => {
     // TODO Task 5.1
   }
 
+  // ── Steelhead helpers ──────────────────────────────────────
+
+  async function loadCandidateTempOVs() {
+    const domain = api().getDomain();
+    const schneider = domain.schneiderQueretaro || {};
+    if (!schneider.customerId || !schneider.shipToAddressId) {
+      throw new Error('Falta config Schneider QRO (customerId / shipToAddressId)');
+    }
+    const sapRe = new RegExp(schneider.poNumberRegex || '^14\\d{8}$');
+    const variables = {
+      filters: { customerId: schneider.customerId, archivedAt: null },
+      first: 100,
+    };
+    const data = await api().query('ActiveReceivedOrders', variables);
+    const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
+    const candidates = all.filter(ov => {
+      if (ov.archivedAt) return false;
+      const ship = (ov.shipToAddress?.id ?? ov.shipToAddressId);
+      if (String(ship) !== String(schneider.shipToAddressId)) return false;
+      const name = String(ov.name || '').trim();
+      if (sapRe.test(name)) return false;
+      return true;
+    });
+    log(`Temp OVs candidatas: ${candidates.length}`);
+    return candidates.map(ov => ({ id: ov.id, idInDomain: ov.idInDomain, name: ov.name, raw: ov }));
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -319,6 +346,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
+    _helpers: { loadCandidateTempOVs },
   };
 })();
 
