@@ -224,6 +224,61 @@ const POReconciler = (() => {
     return wo;
   }
 
+  async function executeMove({
+    qty,
+    fromOt,
+    toOt,
+    partNumberId,
+    toOvId,
+    transformCount,
+    transformDeadline,
+    transformPriceId,
+    lineItemAssocs,
+  }) {
+    if (!fromOt?.accountId) throw new Error('executeMove: falta fromOt.accountId');
+    if (!toOt?.id || !toOt?.recipeNodeId) throw new Error('executeMove: falta toOt.id / recipeNodeId');
+    if (!toOt?.receivedOrderPartTransformId) throw new Error('executeMove: falta toOt.receivedOrderPartTransformId');
+    const variables = {
+      input: {
+        receivedOrderPartTransforms: [{
+          id: toOt.receivedOrderPartTransformId,
+          receivedOrderId: toOvId,
+          description: null,
+          count: transformCount ?? toOt.partCount ?? qty,
+          deadline: transformDeadline ?? null,
+          partNumberId,
+          partNumberPriceId: transformPriceId ?? null,
+          partsTransferEvents: [{
+            createPartsTransferEvent: {},
+            partsTransfers: [{
+              fromAccountId: fromOt.accountId,
+              toAccount: {
+                recipeNodeId: toOt.recipeNodeId,
+                workOrderId: toOt.id,
+                stationId: null,
+                locationId: toOt.locationId ?? null,
+                partNumberId,
+                receivedOrderPartTransformId: toOt.receivedOrderPartTransformId,
+                materialConversionId: null,
+              },
+              partCount: qty,
+              type: 'TRANSFER',
+              comment: null,
+            }],
+          }],
+          inventoryTransferEvents: [],
+          receivedOrderLineItemPartTransforms: lineItemAssocs ?? [],
+        }],
+        partsTransferEventsPayload: [{
+          createPartsTransferEvent: {},
+          partsTransfers: [],
+        }],
+        billedLaborTimeSegments: {},
+      },
+    };
+    return await api().query('AddPartsToWorkOrders', variables);
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -471,7 +526,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV },
+    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove },
   };
 })();
 
