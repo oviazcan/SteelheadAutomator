@@ -153,6 +153,19 @@ const POReconciler = (() => {
     };
   }
 
+  async function findRestantesOV() {
+    const domain = api().getDomain();
+    const sch = domain.schneiderQueretaro || {};
+    const expectedName = sch.restantesOvName || 'Restantes Schneider QRO';
+    const variables = {
+      filters: { customerId: sch.customerId, archivedAt: null, searchString: expectedName },
+      first: 20,
+    };
+    const data = await api().query('ActiveReceivedOrders', variables);
+    const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
+    return all.find(ov => String(ov.name).trim() === expectedName) || null;
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -400,7 +413,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails },
+    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV },
   };
 })();
 
