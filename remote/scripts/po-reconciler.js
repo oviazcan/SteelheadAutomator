@@ -135,6 +135,8 @@ const POReconciler = (() => {
       .sa-pr-plan-section { margin-top: 24px; }
       .sa-pr-plan-section h3 { font-size: 14px; margin: 0 0 8px; }
       .sa-pr-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; margin-top: 16px; }
+      .sa-pr-issues { list-style: none; padding: 0; font-size: 13px; }
+      .sa-pr-issues li { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; }
     `;
     const style = document.createElement('style');
     style.id = 'sa-pr-styles';
@@ -448,10 +450,58 @@ const POReconciler = (() => {
     });
   }
 
-  // Stubs — implementadas en Task 8.3
-  function renderMoves()      { document.getElementById('sa-pr-moves').innerHTML = '<em>TODO</em>'; }
-  function renderRestantes()  { document.getElementById('sa-pr-rest').innerHTML  = '<em>TODO</em>'; }
-  function renderIssues()     { document.getElementById('sa-pr-issues').innerHTML = '<em>TODO</em>'; }
+  function renderMoves() {
+    const el = document.getElementById('sa-pr-moves');
+    const moves = state.plan.moves;
+    if (moves.length === 0) { el.innerHTML = '<em>Sin movimientos necesarios</em>'; return; }
+    const nameOf = (ovId) => state.tempOVs.find(t => t.id === ovId)?.name || ovId;
+    el.innerHTML = `
+      <table class="sa-pr-table">
+        <thead><tr><th>PN</th><th>Qty</th><th>De</th><th>A</th></tr></thead>
+        <tbody>
+          ${moves.map(m => `<tr>
+            <td>${escapeHtml(m.pn)}</td>
+            <td>${m.qty}</td>
+            <td>${escapeHtml(nameOf(m.fromOvId))}</td>
+            <td>${escapeHtml(nameOf(m.toOvId))}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderRestantes() {
+    const el = document.getElementById('sa-pr-rest');
+    const rest = state.plan.restantes;
+    if (rest.length === 0) { el.innerHTML = '<em>Sin sobrantes</em>'; return; }
+    const nameOf = (ovId) => state.tempOVs.find(t => t.id === ovId)?.name || ovId;
+    const restName = state.restantesOV?.name || (api().getDomain().schneiderQueretaro?.restantesOvName || 'Restantes Schneider QRO');
+    const willCreate = state.plan.creates.some(c => c.type === 'restantes-ov');
+    el.innerHTML = `
+      <p>${willCreate ? `<span class="sa-pr-issue-info">↻ Se creará OV "${escapeHtml(restName)}"</span>` : `<span>OV destino: <strong>${escapeHtml(restName)}</strong></span>`}</p>
+      <table class="sa-pr-table">
+        <thead><tr><th>PN</th><th>Qty</th><th>De</th></tr></thead>
+        <tbody>
+          ${rest.map(r => `<tr>
+            <td>${escapeHtml(r.pn)}</td>
+            <td>${r.qty}</td>
+            <td>${escapeHtml(nameOf(r.fromOvId))}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderIssues() {
+    const el = document.getElementById('sa-pr-issues');
+    const issues = state.plan.issues;
+    if (issues.length === 0) { el.innerHTML = '<em>Sin issues</em>'; return; }
+    el.innerHTML = `
+      <ul class="sa-pr-issues">
+        ${issues.map(i => `<li class="sa-pr-issue-${i.severity}">[${i.severity.toUpperCase()}] ${escapeHtml(i.detail)}</li>`).join('')}
+      </ul>
+    `;
+  }
 
   // Stub — implementada en Phase 9
   function renderStep4(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 4 (Phase 9 — pendiente)</div>'; }
