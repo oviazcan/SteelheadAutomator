@@ -1,5 +1,5 @@
 {
-  "version": "0.5.86",
+  "version": "0.6.0",
   "lastUpdated": "2026-05-12",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -48,7 +48,9 @@
         "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0",
         "UpdateInventoryItemPredictedUsage": "53b14385e1ce1637d9f3d11eade01ce96db8762a43c55b86021a041bda5841cb",
         "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3",
-        "UpdateReceivedOrder": "50bfb5884c167407ad9a8417962da0a56708d8fde031fd0da31893c6eddafe8b",
+        "UpdateReceivedOrder": "84f5c4550e9bad52df7e297049b9c42b3e28cb3cd21215bb4fe57f236ce42d08",
+        "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942",
+        "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449",
         "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59",
         "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60",
         "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3",
@@ -96,7 +98,6 @@
         "GetInventoryBatch": "c69e8870f297c6f93b546ec127c037f7c406fdc5f79afa60a30cc3e839ede041",
         "AllPartNumbers": "7e3e96166d1ee3ac25323ee9c83bce1a228ee64f14f78c79f05ba25a9102f18e",
         "AllWorkOrders": "415197b997290b10b5f84d51034eeb11436a91f7536771f8130be5717be1e920",
-        "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449",
         "AllReceivers": "8600e3cb01ca2b4f6a60e9e8951615f7b92886b9dfa101f69e1cc1c9f5162a45",
         "AllInventoryTypes": "c8df929bb155369cf5ee7c7939697cde53a939b644b9bd220bde662522537d4d",
         "SearchInventoryTypeItems": "83964a4ab84b6fae39d781127dd7b08d0a0dd852a3e3f85a812bbeda627a6c9a",
@@ -208,6 +209,16 @@
         "Epoxy_MT": 55119,
         "Epoxica_BT": 55120,
         "Epoxica_MT_Red": 55121
+      },
+      "schneiderQueretaro": {
+        "customerId": 176980,
+        "shipToAddressId": 277022,
+        "inputSchemaId": 559,
+        "invoiceTermsId": 3142,
+        "sectorId": 578,
+        "shipMethodId": 4661,
+        "poNumberRegex": "^14\\d{8}$",
+        "restantesOvName": "Restantes Schneider QRO"
       }
     }
   },
@@ -365,6 +376,18 @@
       "requiredPermissions": ["READ_RECEIVED_ORDERS"],
       "actions": [
         { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
+      ]
+    },
+    {
+      "id": "po-reconciler",
+      "name": "Reconciliador OV vs PO Schneider",
+      "subtitle": "Rebalancear OVs temporales contra POs reales",
+      "icon": "🧮",
+      "category": "Órdenes de Venta",
+      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/po-reconciler.js"],
+      "requiredPermissions": ["READ_RECEIVED_ORDERS"],
+      "actions": [
+        { "id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler" }
       ]
     },
     {
@@ -645,7 +668,9 @@
     "GetUserEmailRecipients": { "type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator" },
     "SaveReceivedOrderLinesAndItems": { "type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator" },
     "SaveReceivedOrderPartTransforms": { "type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer" },
-    "UpdateReceivedOrder": { "type": "mutation", "description": "Actualizar custom inputs de OV (Divisa, RazonSocial)", "usedBy": "po-comparator" },
+    "UpdateReceivedOrder": { "type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler" },
+    "AddPartsToWorkOrders": { "type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler" },
+    "CreateUpdateWorkOrdersChecked": { "type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler" },
     "SendEmailChecked": { "type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher" },
     "CreateEmailLogReceivedOrder": { "type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator" },
     "InvoiceByIdInDomain": { "type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher" },
