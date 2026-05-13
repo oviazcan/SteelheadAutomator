@@ -177,6 +177,36 @@ const POReconciler = (() => {
     return moves;
   }
 
+  function detectIssuesForPN(pn, tempsTotal, posTotal) {
+    if (tempsTotal === posTotal) return [];
+    if (tempsTotal > 0 && posTotal === 0) {
+      return [{
+        severity: 'warn', type: 'pn_solo_en_hs', pn,
+        detail: `PN ${pn} aparece en HS (${tempsTotal} piezas) pero no en ningún PO. Se moverá completo a OV Restantes.`,
+        sobrante: tempsTotal,
+      }];
+    }
+    if (tempsTotal === 0 && posTotal > 0) {
+      return [{
+        severity: 'warn', type: 'pn_solo_en_po', pn,
+        detail: `PN ${pn} aparece en PO (${posTotal} piezas) pero no en HS. No se puede surtir; línea excluida.`,
+        faltante: posTotal,
+      }];
+    }
+    if (tempsTotal > posTotal) {
+      return [{
+        severity: 'info', type: 'sobrante', pn,
+        detail: `HS tiene ${tempsTotal} piezas, Σ POs pide ${posTotal}. Excedente ${tempsTotal - posTotal} → OV Restantes.`,
+        sobrante: tempsTotal - posTotal,
+      }];
+    }
+    return [{
+      severity: 'warn', type: 'faltante', pn,
+      detail: `HS tiene ${tempsTotal} piezas, Σ POs pide ${posTotal}. Faltante ${posTotal - tempsTotal}; línea excluida del plan.`,
+      faltante: posTotal - tempsTotal,
+    }];
+  }
+
   // ── Public API (also for tests) ─────────────────────────────
   return {
     init,
@@ -187,6 +217,7 @@ const POReconciler = (() => {
       hungarianMatch,
       assignTempsToPOs,
       computeMovesForPN,
+      detectIssuesForPN,
     },
   };
 })();

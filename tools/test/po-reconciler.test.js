@@ -179,5 +179,38 @@ test('computeMovesForPN: 2 donors → 1 deficit', () => {
   assert.ok(moves.every(m => m.toOvId === 'T3'));
 });
 
+test('detectIssuesForPN: HS > Σ POs → sobrante', () => {
+  const issues = E.detectIssuesForPN('A', 15, 10);
+  assert.deepStrictEqual(issues, [{
+    severity: 'info', type: 'sobrante', pn: 'A',
+    detail: 'HS tiene 15 piezas, Σ POs pide 10. Excedente 5 → OV Restantes.',
+    sobrante: 5,
+  }]);
+});
+
+test('detectIssuesForPN: HS < Σ POs → faltante (warn)', () => {
+  const issues = E.detectIssuesForPN('A', 5, 10);
+  assert.strictEqual(issues.length, 1);
+  assert.strictEqual(issues[0].severity, 'warn');
+  assert.strictEqual(issues[0].type, 'faltante');
+  assert.strictEqual(issues[0].faltante, 5);
+});
+
+test('detectIssuesForPN: PN solo en HS (POs = 0)', () => {
+  const issues = E.detectIssuesForPN('A', 7, 0);
+  assert.strictEqual(issues[0].type, 'pn_solo_en_hs');
+  assert.strictEqual(issues[0].sobrante, 7);
+});
+
+test('detectIssuesForPN: PN solo en PO (HS = 0)', () => {
+  const issues = E.detectIssuesForPN('A', 0, 8);
+  assert.strictEqual(issues[0].type, 'pn_solo_en_po');
+  assert.strictEqual(issues[0].faltante, 8);
+});
+
+test('detectIssuesForPN: igualdad → sin issues', () => {
+  assert.deepStrictEqual(E.detectIssuesForPN('A', 10, 10), []);
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
