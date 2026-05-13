@@ -72,12 +72,27 @@ const POReconciler = (() => {
     // TODO Task 5.1
   }
 
+  // ── Engine (pure functions) ────────────────────────────────
+
+  function consolidateByPN(lines) {
+    const out = {};
+    for (const line of (lines || [])) {
+      const pn = line && line.partNumber;
+      if (!pn) continue;
+      const qty = Number(line.quantity) || 0;
+      out[pn] = (out[pn] || 0) + qty;
+    }
+    return out;
+  }
+
   // ── Public API (also for tests) ─────────────────────────────
   return {
     init,
     openWizard,
     // Internals exposed for test harness (Task 1.3+):
-    _engine: {},
+    _engine: {
+      consolidateByPN,
+    },
   };
 })();
 
