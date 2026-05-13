@@ -3117,3 +3117,48 @@ git push origin gh-pages
 ```
 
 Los usuarios obtienen la versión anterior tras recargar la extensión.
+
+---
+
+## Bitácora de ejecución
+
+### 2026-05-12 — sesión 1 (Phases 1-3 completas)
+
+**Estado:** Motor puro y helpers GraphQL listos. NO desplegado a `gh-pages` (usuarios siguen en 0.5.86). Mañana retomar en Phase 4.
+
+**Commits (orden cronológico):**
+- `43d73ff` Task 1.1 — config 0.6.0, hashes nuevos, sección `schneiderQueretaro`
+- `2c21f4f` Task 2.7 — hardening del motor (edge cases)
+- `3f34e91` Task 2.6 — buildPlan
+- `e698a50` Task 2.5 — detectIssuesForPN
+- `922d7b1` Task 2.4 — computeMovesForPN
+- (Tasks 1.2, 1.3, 2.1, 2.2, 2.3 en commits previos del día)
+- `e4488a6` Task 3.1 — loadCandidateTempOVs
+- `42ce09a` Task 3.2 — loadOVDetails
+- `d3108b2` Task 3.3 — findRestantesOV
+- `2412827` Task 3.4 — createRestantesOV
+- `62e6854` Task 3.5 — findOTForPN + createOTInOV
+- `3ec8fce` Task 3.6 — executeMove
+- `a5b5c23` Task 3.7 — reconcileLineQuantities
+- `1eb3091` Task 3.8 — renameOV + mapToUpdateShape
+- `4b25bf8` plan commiteado
+
+**Divergencias plan→captura aplicadas (CRÍTICO recordar en Phase 9 / executor):**
+
+1. **Task 3.5 `createOTInOV`** — `CreateUpdateWorkOrdersChecked.variables.input` es **ARRAY** (no objeto único como decía el plan). Campos del array según captura: `{id, name, customerId, deadline, productId, startedAt, receivedOrderId, description, customerFacingNotes, type, blockPartialShipments, labelIds}`. Para crear nueva OT: `id: null`. `partNumberId`/`recipeNodeId` agregados a mayores aunque la captura era de rename (no validados en create).
+
+2. **Task 3.6 `executeMove`** — rewrite completo. El plan tenía `inventoryTransferEventGroupsToCreate`/`creditAccounts`/`debitAccounts`/`type:'ENTRANCE'`/`transferType:'DEPLETE'`. **NO ES ESO.** Shape real: `input.receivedOrderPartTransforms[].partsTransferEvents[].partsTransfers[]` con `fromAccountId` (origen) + `toAccount{recipeNodeId, workOrderId, locationId, partNumberId, receivedOrderPartTransformId, materialConversionId, stationId}`, `type:'TRANSFER'`. La firma ahora incluye parámetros extra que el caller debe enriquecer: `toOvId, transformCount, transformDeadline, transformPriceId, lineItemAssocs`. **Phase 9 (executor) tiene que tomar estos campos del `loadOVDetails(toOvId)` antes de invocar `executeMove`.** Probablemente requiere extender `loadOVDetails` para devolver también `transformCount`, `transformDeadline`, `transformPriceId` y `lineItemAssocs` por OT, o pasar esos campos explícitos.
+
+3. **Task 3.7 `reconcileLineQuantities`** — `lineItems[]` construido explícito (no spread del crudo). Campos exactos: `{id, archive, description, quantity, price, productId, unitId, quoteLineItemId, receivedOrderLineItemPartTransforms}`. El plan usaba `{...li, id, quantity}` que arrastra `__typename`/wrappers Apollo.
+
+4. **Task 3.8 `renameOV`** — `UpdateReceivedOrder` recibe variables al **top level**, NO bajo `input` wrapper. El plan decía `{ input: { ... } }`; lo correcto es `{ id, name, customerId, ... }` directo. 18 campos full-record replay.
+
+**Lo que falta verificar en E2E (Phase 9 y después):**
+- Que `loadOVDetails` extraiga correctamente `accountId` de las OTs en producción (campo `inventoryAccountId` vs `accountId` — el extractor tiene fallback).
+- Confirmar que `createOTInOV` con `id:null` + `partNumberId`/`recipeNodeId` efectivamente crea la OT (la captura era rename).
+- Confirmar que `executeMove` con `transformCount: toOt.partCount` (default) acepta el server. Si no, hay que extender `loadOVDetails` para guardar el `count` del transform destino por separado.
+- `reconcileLineQuantities` asume `lineItemsRaw[0]` — válido cuando una línea tiene un solo lineItem (caso Schneider). Si una línea tiene varios lineItems, hay que iterar.
+
+**Próxima task al retomar:** Phase 4 — `parseMultiplePdfs` (Task 4.1 del plan). Usa `pdf.js` ya cargada en el applet PO Comparator; revisar `remote/scripts/po-comparator.js` para reutilizar el parser de PDF de Schneider.
+
+**Sin pendientes de deploy.** `gh-pages` sigue en 0.5.86. Producción intacta.
