@@ -340,6 +340,36 @@ const POReconciler = (() => {
     return { changed: newLines.length };
   }
 
+  function mapToUpdateShape(ov) {
+    return {
+      id: ov.id,
+      name: ov.name,
+      customerId: ov.customerId,
+      deadline: ov.deadline,
+      customerContactId: ov.customerContactId ?? null,
+      billToAddressId: ov.billToAddressId ?? null,
+      shipToAddressId: ov.shipToAddressId,
+      invoiceTermsId: ov.invoiceTermsId ?? null,
+      customInputs: ov.customInputs ?? null,
+      inputSchemaId: ov.inputSchemaId ?? null,
+      shipVia: ov.shipVia ?? null,
+      shipMethodId: ov.shipMethodId ?? null,
+      type: ov.type,
+      blockPartialShipments: ov.blockPartialShipments ?? false,
+      sectorId: ov.sectorId ?? null,
+      isBlanketOrder: ov.isBlanketOrder ?? false,
+      productionStartDate: ov.productionStartDate ?? null,
+      contractualDeadline: ov.contractualDeadline ?? null,
+      defaultSignOffRecipeId: ov.defaultSignOffRecipeId ?? null,
+    };
+  }
+
+  async function renameOV(snapshot, toName) {
+    const variables = { ...mapToUpdateShape(snapshot), name: toName };
+    const data = await api().query('UpdateReceivedOrder', variables);
+    return data?.updateReceivedOrder?.receivedOrder || data?.updateReceivedOrder || data;
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -587,7 +617,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove, reconcileLineQuantities },
+    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV, executeMove, reconcileLineQuantities, mapToUpdateShape, renameOV },
   };
 })();
 
