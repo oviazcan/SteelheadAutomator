@@ -193,6 +193,37 @@ const POReconciler = (() => {
     return created;
   }
 
+  function findOTForPN(ov, pnId) {
+    return ov.ots.find(ot => String(ot.partNumberId) === String(pnId)) || null;
+  }
+
+  async function createOTInOV({ ovId, customerId, deadline, partNumberId, hintFromOt }) {
+    const variables = {
+      input: [{
+        id: null,
+        name: '',
+        customerId,
+        deadline,
+        productId: hintFromOt?.raw?.productId ?? null,
+        startedAt: new Date().toISOString(),
+        receivedOrderId: ovId,
+        description: '',
+        customerFacingNotes: '',
+        type: 'MAKE_TO_ORDER',
+        blockPartialShipments: false,
+        labelIds: [],
+        partNumberId,
+        recipeNodeId: hintFromOt?.recipeNodeId ?? null,
+      }],
+    };
+    const data = await api().query('CreateUpdateWorkOrdersChecked', variables);
+    const wo = data?.createUpdateWorkOrdersChecked?.workOrders?.[0]
+            || data?.workOrder
+            || data?.workOrders?.[0];
+    if (!wo?.id) throw new Error('CreateUpdateWorkOrdersChecked: no devolvió OT');
+    return wo;
+  }
+
   // ── Engine (pure functions) ────────────────────────────────
 
   function consolidateByPN(lines) {
@@ -440,7 +471,7 @@ const POReconciler = (() => {
       detectIssuesForPN,
       buildPlan,
     },
-    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV },
+    _helpers: { loadCandidateTempOVs, loadOVDetails, findRestantesOV, createRestantesOV, findOTForPN, createOTInOV },
   };
 })();
 
