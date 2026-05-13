@@ -122,6 +122,14 @@ const POReconciler = (() => {
       .sa-pr-files-list, #sa-pr-temps-list { list-style: none; padding: 0; margin: 12px 0 0; font-size: 13px; }
       .sa-pr-files-list li, #sa-pr-temps-list .item { display: flex; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid #f3f4f6; }
       .sa-pr-rm { background: none; border: none; color: #6b7280; cursor: pointer; }
+      .sa-pr-parse-list { list-style: none; padding: 0; }
+      .sa-pr-parse-list li { display: grid; grid-template-columns: 1fr 1fr auto; padding: 8px; border-bottom: 1px solid #f3f4f6; align-items: center; gap: 8px; }
+      .sa-pr-parse-list .actions { display: flex; gap: 4px; }
+      .sa-pr-parse-list button { padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+      .sa-pr-drawer { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 1000000; display: flex; justify-content: flex-end; }
+      .sa-pr-drawer-inner { background: #fff; width: 600px; height: 100%; padding: 20px; overflow: auto; }
+      .sa-pr-drawer-inner header { display: flex; justify-content: space-between; align-items: center; }
+      .sa-pr-drawer-close { background: none; border: none; font-size: 20px; cursor: pointer; }
     `;
     const style = document.createElement('style');
     style.id = 'sa-pr-styles';
@@ -269,8 +277,86 @@ const POReconciler = (() => {
     return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   }
 
-  // Stubs — implementadas en Phases 7, 8, 9
-  function renderStep2(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 2 (Phase 7 — pendiente)</div>'; }
+  async function renderStep2(body) {
+    body.innerHTML = `
+      <h3>Parseando POs…</h3>
+      <ul id="sa-pr-parse-list" class="sa-pr-parse-list"></ul>
+    `;
+    const ul = body.querySelector('#sa-pr-parse-list');
+
+    const renderList = () => {
+      ul.innerHTML = state.pdfs.map((p, i) => {
+        const icon = { pending: '⠋', parsing: '⠋', ok: '✓', error: '✗', skipped: '⊘' }[p.status] || '?';
+        const cls  = { pending: '', parsing: '', ok: 'sa-pr-issue-info', error: 'sa-pr-issue-fatal', skipped: 'sa-pr-issue-warn' }[p.status] || '';
+        const summary = p.parsed
+          ? `PO ${escapeHtml(p.parsed.poNumber || '?')} · ${p.parsed.lines?.length || 0} líneas · ${escapeHtml(p.parsed.currency || '?')}`
+          : (p.error ? escapeHtml(p.error) : '');
+        return `
+          <li class="${cls}">
+            <span>${icon} ${escapeHtml(p.file.name)}</span>
+            <small>${summary}</small>
+            <span class="actions">
+              ${p.status === 'error' ? `<button data-i="${i}" class="sa-pr-retry">↻</button>` : ''}
+              ${p.status === 'error' ? `<button data-i="${i}" class="sa-pr-skip">Omitir</button>` : ''}
+              ${p.status === 'ok'    ? `<button data-i="${i}" class="sa-pr-view">Ver</button>` : ''}
+            </span>
+          </li>
+        `;
+      }).join('');
+      ul.querySelectorAll('.sa-pr-retry').forEach(b => b.onclick = () => retryOne(Number(b.dataset.i), renderList));
+      ul.querySelectorAll('.sa-pr-skip').forEach(b => b.onclick = () => { state.pdfs[Number(b.dataset.i)].status = 'skipped'; renderList(); updateFooter(); });
+      ul.querySelectorAll('.sa-pr-view').forEach(b => b.onclick = () => showPdfDetail(Number(b.dataset.i)));
+    };
+
+    renderList();
+    const pending = state.pdfs.map((p, i) => ({ p, i })).filter(x => x.p.status === 'pending');
+    for (const { p, i } of pending) {
+      p.status = 'parsing';
+      renderList();
+      const r = await parseSinglePdf(p.file);
+      state.pdfs[i] = r;
+      renderList();
+      updateFooter();
+    }
+  }
+
+  async function retryOne(i, renderList) {
+    state.pdfs[i].status = 'parsing';
+    state.pdfs[i].error = null;
+    renderList();
+    const r = await parseSinglePdf(state.pdfs[i].file);
+    state.pdfs[i] = r;
+    renderList();
+    updateFooter();
+  }
+
+  function showPdfDetail(i) {
+    const p = state.pdfs[i];
+    if (!p?.parsed) return;
+    const drawer = document.createElement('div');
+    drawer.className = 'sa-pr-drawer';
+    drawer.innerHTML = `
+      <div class="sa-pr-drawer-inner">
+        <header><h4>${escapeHtml(p.file.name)}</h4><button class="sa-pr-drawer-close">✕</button></header>
+        <p>PO: <strong>${escapeHtml(p.parsed.poNumber)}</strong> · ${p.parsed.lines.length} líneas · ${escapeHtml(p.parsed.currency || '?')}</p>
+        <table class="sa-pr-table">
+          <thead><tr><th>#</th><th>PN</th><th>Desc</th><th>Qty</th></tr></thead>
+          <tbody>
+            ${p.parsed.lines.map(l => `<tr>
+              <td>${l.lineNumber}</td>
+              <td>${escapeHtml(l.partNumber)}</td>
+              <td>${escapeHtml(l.description || '')}</td>
+              <td>${l.quantity}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+    document.body.appendChild(drawer);
+    drawer.querySelector('.sa-pr-drawer-close').onclick = () => drawer.remove();
+  }
+
+  // Stubs — implementadas en Phases 8, 9
   function renderStep3(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 3 (Phase 8 — pendiente)</div>'; }
   function renderStep4(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 4 (Phase 9 — pendiente)</div>'; }
 
