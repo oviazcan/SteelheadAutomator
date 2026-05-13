@@ -137,6 +137,13 @@ const POReconciler = (() => {
       .sa-pr-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; margin-top: 16px; }
       .sa-pr-issues { list-style: none; padding: 0; font-size: 13px; }
       .sa-pr-issues li { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; }
+      .sa-pr-exec-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+      .sa-pr-btn-primary { padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+      .sa-pr-btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+      .sa-pr-exec-list { list-style: none; padding: 0; font-size: 13px; max-height: 400px; overflow: auto; }
+      .sa-pr-exec-list li { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; }
+      .sa-pr-exec-list li small { color: #6b7280; margin-left: 8px; }
+      #sa-pr-progress { margin-left: auto; color: #6b7280; font-size: 13px; }
     `;
     const style = document.createElement('style');
     style.id = 'sa-pr-styles';
@@ -181,7 +188,7 @@ const POReconciler = (() => {
 
   function closeWizard() {
     document.getElementById('sa-pr-root')?.remove();
-    state = { ...state, isOpen: false, step: 1, pdfs: [], plan: null, overrides: {} };
+    state = { ...state, isOpen: false, step: 1, pdfs: [], plan: null, overrides: {}, runId: null, runStale: false, auditLog: [] };
   }
 
   function goToStep(n) {
@@ -503,8 +510,41 @@ const POReconciler = (() => {
     `;
   }
 
-  // Stub — implementada en Phase 9
-  function renderStep4(body) { body.innerHTML = '<div class="sa-pr-placeholder">Paso 4 (Phase 9 — pendiente)</div>'; }
+  function renderStep4(body) {
+    body.innerHTML = `
+      <div class="sa-pr-exec">
+        <div class="sa-pr-exec-controls">
+          <button id="sa-pr-run" class="sa-pr-btn-primary">▶ Ejecutar plan</button>
+          <button id="sa-pr-cancel" class="sa-pr-btn" disabled>⏸ Cancelar</button>
+          <button id="sa-pr-download" class="sa-pr-btn" disabled>⬇ Descargar bitácora (CSV)</button>
+          <div id="sa-pr-progress"></div>
+        </div>
+        <ul id="sa-pr-exec-list" class="sa-pr-exec-list"></ul>
+      </div>
+    `;
+    body.querySelector('#sa-pr-run').onclick = () => runExecutor();
+    body.querySelector('#sa-pr-cancel').onclick = () => { state.runStale = true; };
+    body.querySelector('#sa-pr-download').onclick = () => downloadAuditCsv();
+  }
+
+  function renderExecStep(step) {
+    const ul = document.getElementById('sa-pr-exec-list');
+    if (!ul) return;
+    const icon = { pending: '⋯', running: '⠋', done: '✓', failed: '✗', skipped: '⊘' }[step.status];
+    const cls  = { pending: '', running: '', done: 'sa-pr-issue-info', failed: 'sa-pr-issue-fatal', skipped: 'sa-pr-issue-warn' }[step.status];
+    let li = ul.querySelector(`[data-step-id="${step.id}"]`);
+    if (!li) {
+      li = document.createElement('li');
+      li.dataset.stepId = step.id;
+      ul.appendChild(li);
+    }
+    li.className = cls;
+    li.innerHTML = `${icon} <strong>${escapeHtml(step.label)}</strong> ${step.detail ? `<small>${escapeHtml(step.detail)}</small>` : ''}`;
+  }
+
+  // Stubs — implementadas en Tasks 9.2 y 9.3
+  async function runExecutor() { console.warn('[PR] runExecutor: pendiente Task 9.2'); }
+  function downloadAuditCsv() { console.warn('[PR] downloadAuditCsv: pendiente Task 9.3'); }
 
   async function refreshTempOVs() {
     const el = document.getElementById('sa-pr-temps-list');
