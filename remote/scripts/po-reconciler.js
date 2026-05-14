@@ -770,7 +770,20 @@ const POReconciler = (() => {
     if (!el) return;
     el.innerHTML = '<em>Cargando…</em>';
     try {
-      const candidates = await loadCandidateTempOVs();
+      const { candidates, totalRaw, filteredCount } = await loadCandidateTempOVs();
+      if (!candidates.length) {
+        const domain = api().getDomain();
+        const sch = domain.schneiderQueretaro || {};
+        el.innerHTML = `
+          <div class="sa-pr-issue-warn">
+            <strong>No se detectaron OVs temp Schneider QRO.</strong><br>
+            <small>customerId=${escapeHtml(String(sch.customerId ?? 'n/a'))}, shipToAddressId=${escapeHtml(String(sch.shipToAddressId ?? 'n/a'))}<br>
+            Steelhead devolvió ${totalRaw} OV(s) activas para este cliente; ${filteredCount} fueron descartadas (shipTo distinto o nombre tipo SAP). Verifica config.steelhead.domain.schneiderQueretaro.</small>
+          </div>
+        `;
+        updateFooter();
+        return;
+      }
       const details = await Promise.all(candidates.map(c => loadOVDetails(c.id).catch(e => ({ error: e.message, id: c.id, name: c.name }))));
       state.tempOVs = details.filter(d => !d.error);
       const errors = details.filter(d => d.error);
@@ -781,12 +794,13 @@ const POReconciler = (() => {
             <small>${t.ots.length} OTs · ${Object.keys(t.byPN).length} PNs</small>
           </div>
         `).join('')}
-        ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OVs fallaron al cargar (ver consola)</div>` : ''}
+        ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OV(s) fallaron al cargar detalles. Ver consola.</div>` : ''}
       `;
       if (errors.length) console.warn('[PR] errores cargando OVs:', errors);
       updateFooter();
     } catch (err) {
-      el.innerHTML = `<div class="sa-pr-issue-fatal">Error: ${escapeHtml(err.message)}</div>`;
+      el.innerHTML = `<div class="sa-pr-issue-fatal">Error: ${escapeHtml(err.message || String(err))}</div>`;
+      console.error('[PR] refreshTempOVs falló:', err);
     }
   }
 
@@ -815,8 +829,12 @@ const POReconciler = (() => {
       if (sapRe.test(name)) return false;
       return true;
     });
-    log(`Temp OVs candidatas: ${candidates.length}`);
-    return candidates.map(ov => ({ id: ov.id, idInDomain: ov.idInDomain, name: ov.name, raw: ov }));
+    log(`Temp OVs candidatas: ${candidates.length} (de ${all.length} OV(s) activas para customerId=${schneider.customerId})`);
+    return {
+      candidates: candidates.map(ov => ({ id: ov.id, idInDomain: ov.idInDomain, name: ov.name, raw: ov })),
+      totalRaw: all.length,
+      filteredCount: all.length - candidates.length,
+    };
   }
 
   async function loadOVDetails(ovId) {
@@ -1362,8 +1380,149 @@ const POReconciler = (() => {
 
   // ── PDF parsing ────────────────────────────────────────────
 
+  // Schneider QRO PO layout (2026-05-13): líneas tabulares con shape muy regular.
+  // Se parsean programáticamente via pdf.js (sin Claude API). Si el PDF no es
+  // identificable como Schneider, se cae a Claude (POComparator.parsePDF) como fallback.
+
+  const REMOTE_BASE_URL = 'https://oviazcan.github.io/SteelheadAutomator';
+  const PDF_WORKER_PATH = 'scripts/lib/pdf.worker.min.js';
+
+  async function ensurePdfWorker() {
+    if (!window.pdfjsLib) throw new Error('pdfjsLib no está cargado (revisa config.scripts del applet)');
+    if (window.pdfjsLib.GlobalWorkerOptions.workerSrc) return;
+    // Cargar worker como Blob URL para evitar restricciones CSP de cross-origin Web Workers.
+    const ver = cfg()?.version || Date.now();
+    const url = `${REMOTE_BASE_URL}/${PDF_WORKER_PATH}?v=${ver}`;
+    const code = await fetch(url, { cache: 'force-cache' }).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} cargando pdf.worker.min.js`);
+      return r.text();
+    });
+    const blob = new Blob([code], { type: 'application/javascript' });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+  }
+
+  async function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error('Error leyendo PDF'));
+      r.readAsArrayBuffer(file);
+    });
+  }
+
+  // Extrae texto del PDF agrupando items por línea visual (coord Y).
+  // Devuelve { lines: [string], pageBreaks: [linesIdx] }.
+  async function extractPdfTextLines(file) {
+    await ensurePdfWorker();
+    const buf = await readFileAsArrayBuffer(file);
+    const loadingTask = window.pdfjsLib.getDocument({ data: new Uint8Array(buf) });
+    const pdf = await loadingTask.promise;
+    const lines = [];
+    const pageBreaks = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      pageBreaks.push(lines.length);
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      // Agrupar por Y (transform[5]); permitir epsilon para variaciones internas
+      const rows = new Map(); // yKey -> [{x, str}]
+      for (const it of tc.items) {
+        if (!it.str) continue;
+        const y = it.transform?.[5];
+        const x = it.transform?.[4];
+        if (typeof y !== 'number') continue;
+        const yKey = Math.round(y * 2) / 2; // 0.5 px bins
+        const arr = rows.get(yKey) || [];
+        arr.push({ x: typeof x === 'number' ? x : 0, str: it.str });
+        rows.set(yKey, arr);
+      }
+      // Ordenar yKey desc (Y crece hacia arriba en PDF coord), luego items por X asc
+      const sortedYs = [...rows.keys()].sort((a, b) => b - a);
+      for (const y of sortedYs) {
+        const items = rows.get(y).sort((a, b) => a.x - b.x);
+        const text = items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+        if (text) lines.push(text);
+      }
+    }
+    return { lines, pageBreaks, numPages: pdf.numPages };
+  }
+
+  // Detecta si el texto extraído corresponde al layout de Schneider Electric QRO.
+  function isSchneiderPo(textLines) {
+    const blob = textLines.slice(0, 30).join(' | ');
+    return /Schneider\s+Electric/i.test(blob) && /PO\s*Number\s*:/i.test(blob);
+  }
+
+  // Parser programático del layout Schneider QRO (validado con 1400399143/331/624).
+  function parseSchneiderText({ lines }) {
+    const out = { poNumber: null, customer: 'Schneider Electric', currency: 'USD', lines: [] };
+    // PO Number
+    for (const ln of lines) {
+      const m = ln.match(/PO\s*Number\s*:?\s*(\d{10,})/i);
+      if (m) { out.poNumber = m[1]; break; }
+    }
+    // Currency
+    for (const ln of lines) {
+      const m = ln.match(/Currency\s*:?\s*([A-Z]{3})\b/);
+      if (m) { out.currency = m[1]; break; }
+    }
+    // Líneas tabulares: "<item> <material#> <qty> Piece <DD MMM YYYY>"
+    // Ej: "10 SWB-00443791 20 Piece 30 May 2026"
+    // Después suele venir: "Gross Price 4.08 USD per 1 PCE 81.60 USD"
+    const ITEM_RE = /^\s*(\d{1,4})\s+([A-Z0-9][\w\-./]*)\s+([\d,]+(?:\.\d+)?)\s+(?:Piece|PCS|PZA|Each|EA)\s+(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*$/;
+    const PRICE_RE = /Gross\s*Price\s+([\d,]+(?:\.\d+)?)\s+[A-Z]{3}\s+per\s+([\d,]+(?:\.\d+)?)\s+(?:PCE|PCS|EA|PZA)\s+([\d,]+(?:\.\d+)?)\s+[A-Z]{3}/i;
+
+    let pendingItem = null;
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i];
+      const im = ln.match(ITEM_RE);
+      if (im) {
+        if (pendingItem) out.lines.push(pendingItem); // emitir el previo si no se encontró Gross Price
+        pendingItem = {
+          lineNumber: out.lines.length + 1,
+          itemNumber: Number(im[1]),
+          partNumber: im[2].trim(),
+          description: null,
+          quantity: Number(im[3].replace(/,/g, '')),
+          unitPrice: null,
+          total: null,
+          deliveryDate: im[4],
+        };
+        continue;
+      }
+      if (pendingItem) {
+        const pm = ln.match(PRICE_RE);
+        if (pm) {
+          const unit = Number(pm[1].replace(/,/g, ''));
+          const per = Number(pm[2].replace(/,/g, '')) || 1;
+          const total = Number(pm[3].replace(/,/g, ''));
+          pendingItem.unitPrice = per === 1 ? unit : unit / per;
+          pendingItem.total = total;
+          out.lines.push(pendingItem);
+          pendingItem = null;
+        }
+      }
+    }
+    if (pendingItem) out.lines.push(pendingItem);
+
+    if (!out.poNumber) throw new Error('No se encontró PO Number en el PDF');
+    if (!out.lines.length) throw new Error('No se encontraron líneas de productos');
+
+    out.sourceType = 'pdf';
+    out.parsedBy = 'schneider-local-v1';
+    return out;
+  }
+
   async function parseSinglePdf(file) {
     try {
+      // Intento 1: parser local (sin Claude). Funciona para Schneider QRO.
+      const ext = await extractPdfTextLines(file);
+      if (isSchneiderPo(ext.lines)) {
+        const parsed = parseSchneiderText(ext);
+        log(`PDF "${file.name}" parseado localmente: PO ${parsed.poNumber} · ${parsed.lines.length} líneas`);
+        return { status: 'ok', file, parsed, error: null };
+      }
+      // Fallback: Claude API (otros formatos)
+      log(`PDF "${file.name}" no es Schneider — fallback a Claude`);
       const parsed = await window.POComparator.parsePDF(file);
       return { status: 'ok', file, parsed, error: null };
     } catch (err) {
