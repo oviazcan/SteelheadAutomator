@@ -969,16 +969,88 @@ const POReconciler = (() => {
         `;
       }
       el.innerHTML = `
-        ${state.tempOVs.map(t => `
-          <div class="item">
-            <span>${escapeHtml(t.name)}</span>
+        ${state.tempOVs.map(t => {
+          const empty = !t.ots.length;
+          return `
+          <div class="item" style="${empty ? 'opacity:0.55' : ''}">
+            <span>${escapeHtml(t.name)} <small style="color:#888">#${escapeHtml(String(t.idInDomain))}</small></span>
             <small>${t.ots.length} OTs · ${Object.keys(t.byPN).length} PNs</small>
           </div>
-        `).join('')}
+        `;
+        }).join('')}
         ${extractorDiagHtml}
         ${droppedByShipTo ? `<div style="font-size:11px;color:#666;margin-top:6px">${droppedByShipTo} OV(s) Schneider no-SAP descartadas por shipTo distinto.</div>` : ''}
         ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OV(s) fallaron al cargar detalles. Ver consola.</div>` : ''}
+        <div style="margin-top:10px;padding:8px;background:#f8f8f8;border:1px solid #ddd;border-radius:4px">
+          <div style="font-size:11px;font-weight:bold;margin-bottom:4px">🔍 Diagnosticar OV específica</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="sa-pr-probe-id" type="text" placeholder="idInDomain (ej. 566)" style="flex:1;padding:4px;font-size:12px;border:1px solid #ccc;border-radius:3px" />
+            <button id="sa-pr-probe-btn" style="padding:4px 10px;font-size:12px;background:#0a84ff;color:#fff;border:none;border-radius:3px;cursor:pointer">Probe</button>
+          </div>
+          <div id="sa-pr-probe-out" style="margin-top:6px"></div>
+        </div>
       `;
+      // Wire up probe input
+      const probeBtn = document.getElementById('sa-pr-probe-btn');
+      const probeInput = document.getElementById('sa-pr-probe-id');
+      const probeOut = document.getElementById('sa-pr-probe-out');
+      if (probeBtn && probeInput && probeOut) {
+        const runProbe = async () => {
+          const idStr = probeInput.value.trim();
+          if (!/^\d+$/.test(idStr)) {
+            probeOut.innerHTML = '<div style="color:#a00;font-size:11px">Ingresa un idInDomain numérico.</div>';
+            return;
+          }
+          probeOut.innerHTML = '<div style="font-size:11px;color:#666">Cargando...</div>';
+          try {
+            const det = await loadOVDetails(parseInt(idStr, 10));
+            window.__poReconcilerProbe = det;
+            const snap = det.snapshot;
+            const ap = det.addParts;
+            const linesContainerKey = snap && Object.keys(snap).find(k => /receivedOrderLines/i.test(k));
+            const linesContainer = linesContainerKey ? snap[linesContainerKey] : null;
+            const firstLine = linesContainer?.nodes?.[0] || null;
+            const firstLineKeys = firstLine ? Object.keys(firstLine) : [];
+            const lineItemsKey = firstLineKeys.find(k => /lineItem/i.test(k));
+            const lineItemsContainer = firstLine?.[lineItemsKey];
+            const firstLi = lineItemsContainer?.nodes?.[0] || null;
+            const firstLiKeys = firstLi ? Object.keys(firstLi) : [];
+            const ptAssocKey = firstLiKeys.find(k => /partTransform/i.test(k));
+            const ptAssocContainer = firstLi?.[ptAssocKey];
+            const firstPtAssoc = ptAssocContainer?.nodes?.[0] || null;
+            const firstPtAssocKeys = firstPtAssoc ? Object.keys(firstPtAssoc) : [];
+            const woNodes = ap?.workOrdersByReceivedOrderId?.nodes || [];
+            const firstWo = woNodes[0] || null;
+            const firstWoKeys = firstWo ? Object.keys(firstWo) : [];
+            const ptNodes = ap?.receivedOrderPartTransformsByReceivedOrderId?.nodes || [];
+            const firstPt = ptNodes[0] || null;
+            const firstPtKeys = firstPt ? Object.keys(firstPt) : [];
+            const dump = (obj, max = 3000) => { try { return JSON.stringify(obj, null, 2).slice(0, max); } catch { return '(no serializable)'; } };
+            probeOut.innerHTML = `
+              <details open style="margin-top:6px;padding:6px;background:#fff;border:1px solid #ccc;border-radius:3px">
+                <summary><strong>${escapeHtml(det.name)}</strong> #${escapeHtml(String(det.idInDomain))} · internalId=${escapeHtml(String(det.id))} · ${det.ots.length} OTs · ${Object.keys(det.byPN).length} PNs</summary>
+                <div style="margin-top:6px;font-size:11px"><strong>Customer:</strong> ${escapeHtml(String(det.customerId))} · <strong>ShipTo:</strong> ${escapeHtml(String(det.shipToAddressId))}</div>
+
+                <div style="margin-top:8px;font-weight:bold;border-bottom:1px solid #ccc;padding-bottom:2px">Pass 1 · líneas (${linesContainer?.nodes?.length ?? 0})</div>
+                ${firstLine ? `<details style="margin-top:6px"><summary>Primera línea — keys: <code style="font-size:10px">${escapeHtml(firstLineKeys.join(', '))}</code></summary><pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:3px;overflow:auto;max-height:240px">${escapeHtml(dump(firstLine))}</pre></details>` : '<div style="font-size:11px;color:#a00;margin-top:6px">Sin líneas en Pass 1.</div>'}
+                ${firstLi ? `<details style="margin-top:6px"><summary>Primer lineItem — keys: <code style="font-size:10px">${escapeHtml(firstLiKeys.join(', '))}</code></summary><pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:3px;overflow:auto;max-height:240px">${escapeHtml(dump(firstLi))}</pre></details>` : ''}
+                ${firstPtAssoc ? `<details style="margin-top:6px"><summary>Primer PT-assoc — keys: <code style="font-size:10px">${escapeHtml(firstPtAssocKeys.join(', '))}</code></summary><pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:3px;overflow:auto;max-height:240px">${escapeHtml(dump(firstPtAssoc))}</pre></details>` : ''}
+
+                <div style="margin-top:8px;font-weight:bold;border-bottom:1px solid #ccc;padding-bottom:2px">Pass 2 · WO (${woNodes.length}) · PT (${ptNodes.length})</div>
+                ${det.addPartsErr ? `<div style="color:#a00;margin-top:6px">Pass 2 error: ${escapeHtml(det.addPartsErr)}</div>` : ''}
+                ${firstWo ? `<details style="margin-top:6px"><summary>Primer workOrder — keys: <code style="font-size:10px">${escapeHtml(firstWoKeys.join(', '))}</code></summary><pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:3px;overflow:auto;max-height:300px">${escapeHtml(dump(firstWo, 4000))}</pre></details>` : '<div style="font-size:11px;color:#666;margin-top:6px">Sin workOrders.</div>'}
+                ${firstPt ? `<details style="margin-top:6px"><summary>Primer partTransform — keys: <code style="font-size:10px">${escapeHtml(firstPtKeys.join(', '))}</code></summary><pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:3px;overflow:auto;max-height:300px">${escapeHtml(dump(firstPt, 4000))}</pre></details>` : '<div style="font-size:11px;color:#666;margin-top:6px">Sin partTransforms.</div>'}
+
+                <div style="font-size:10px;color:#666;margin-top:6px">Resultado completo en <code>window.__poReconcilerProbe</code></div>
+              </details>
+            `;
+          } catch (e) {
+            probeOut.innerHTML = `<div style="color:#a00;font-size:11px">Error: ${escapeHtml(e.message || String(e))}</div>`;
+          }
+        };
+        probeBtn.addEventListener('click', runProbe);
+        probeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runProbe(); });
+      }
       if (errors.length) console.warn('[PR] errores cargando OVs:', errors);
       updateFooter();
     } catch (err) {

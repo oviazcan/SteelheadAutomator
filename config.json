@@ -1,5 +1,5 @@
 {
-  "version": "0.6.16",
+  "version": "0.6.17",
   "lastUpdated": "2026-05-14",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -218,7 +218,7 @@
         "invoiceTermsId": 3142,
         "sectorId": 578,
         "shipMethodId": 4661,
-        "poNumberRegex": "^14\\d{8}$",
+        "poNumberRegex": "^1[14]\\d{8}$",
         "restantesOvName": "Restantes Schneider QRO"
       }
     }
