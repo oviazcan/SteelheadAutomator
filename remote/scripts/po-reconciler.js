@@ -906,7 +906,18 @@ const POReconciler = (() => {
       if (allEmpty) {
         const probe = state.tempOVs[0];
         const snap = probe?.snapshot;
+        const addParts = probe?.addParts;
+        const addPartsErr = probe?.addPartsErr;
         window.__poReconcilerLastDetailSnap = snap;
+        window.__poReconcilerLastAddParts = addParts;
+        // Inspeccionar el Pass 2 (GetAddPartsReceivedOrder)
+        const apKeys = addParts ? Object.keys(addParts) : [];
+        const woNodes = addParts?.workOrdersByReceivedOrderId?.nodes || [];
+        const firstWo = woNodes[0] || null;
+        const firstWoKeys = firstWo ? Object.keys(firstWo) : [];
+        const ptNodes = addParts?.receivedOrderPartTransformsByReceivedOrderId?.nodes || [];
+        const firstPt = ptNodes[0] || null;
+        const firstPtKeys = firstPt ? Object.keys(firstPt) : [];
         // Buscar la conexión de líneas — Postgraphile suele usar varios alias
         const linesContainerKey = snap && Object.keys(snap).find(k => /receivedOrderLines/i.test(k));
         const linesContainer = linesContainerKey ? snap[linesContainerKey] : null;
@@ -927,20 +938,33 @@ const POReconciler = (() => {
         extractorDiagHtml = `
           <details class="sa-pr-issue-warn" style="margin-top:10px" open>
             <summary><strong>⚠️ Todas las OVs reportan 0 OTs/0 PNs — diagnóstico del extractor</strong></summary>
-            <div style="font-size:11px;margin-top:6px">Probe: <code>${escapeHtml(probe?.name || '')}</code> idInDomain=${escapeHtml(String(probe?.idInDomain))}</div>
-            <div style="margin-top:6px"><strong>Container de líneas detectado:</strong> <code>${escapeHtml(linesContainerKey || '(ninguno)')}</code> — count=${linesContainer?.nodes?.length ?? (Array.isArray(linesContainer) ? linesContainer.length : 'n/a')}</div>
+            <div style="font-size:11px;margin-top:6px">Probe: <code>${escapeHtml(probe?.name || '')}</code> idInDomain=${escapeHtml(String(probe?.idInDomain))} · internalId=${escapeHtml(String(probe?.id))}</div>
+
+            <div style="margin-top:10px;font-weight:bold;border-bottom:1px solid #ccc;padding-bottom:2px">Pass 1 · GetReceivedOrder</div>
+            <div style="margin-top:6px"><strong>Container de líneas:</strong> <code>${escapeHtml(linesContainerKey || '(ninguno)')}</code> — count=${linesContainer?.nodes?.length ?? (Array.isArray(linesContainer) ? linesContainer.length : 'n/a')}</div>
             <details style="margin-top:6px"><summary><strong>Primera línea</strong> — keys: <code style="font-size:10px">${escapeHtml(firstLineKeys.join(', '))}</code></summary>
               <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:240px">${escapeHtml(dump(firstLine, 3000))}</pre>
             </details>
-            <div style="margin-top:6px"><strong>Container de lineItems detectado:</strong> <code>${escapeHtml(lineItemsKey || '(ninguno)')}</code></div>
+            <div style="margin-top:6px"><strong>Container de lineItems:</strong> <code>${escapeHtml(lineItemsKey || '(ninguno)')}</code></div>
             ${firstLi ? `<details style="margin-top:6px"><summary><strong>Primer lineItem</strong> — keys: <code style="font-size:10px">${escapeHtml(firstLiKeys.join(', '))}</code></summary>
               <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:240px">${escapeHtml(dump(firstLi, 3000))}</pre>
             </details>` : ''}
-            <div style="margin-top:6px"><strong>Container de PT-assoc detectado:</strong> <code>${escapeHtml(ptAssocKey || '(ninguno)')}</code></div>
+            <div style="margin-top:6px"><strong>Container PT-assoc:</strong> <code>${escapeHtml(ptAssocKey || '(ninguno)')}</code></div>
             ${firstPtAssoc ? `<details style="margin-top:6px"><summary><strong>Primer PT-assoc</strong> — keys: <code style="font-size:10px">${escapeHtml(firstPtAssocKeys.join(', '))}</code></summary>
               <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:240px">${escapeHtml(dump(firstPtAssoc, 3000))}</pre>
             </details>` : ''}
-            <div style="font-size:10px;color:#666;margin-top:6px">Snapshot completo expuesto en <code>window.__poReconcilerLastDetailSnap</code></div>
+
+            <div style="margin-top:10px;font-weight:bold;border-bottom:1px solid #ccc;padding-bottom:2px">Pass 2 · GetAddPartsReceivedOrder</div>
+            ${addPartsErr ? `<div style="color:#a00;margin-top:6px">Error: ${escapeHtml(addPartsErr)}</div>` : ''}
+            ${addParts ? `<div style="margin-top:6px"><strong>Root keys:</strong> <code style="font-size:10px">${escapeHtml(apKeys.join(', '))}</code></div>` : ''}
+            <div style="margin-top:6px"><strong>workOrders count:</strong> ${woNodes.length} · <strong>partTransforms count:</strong> ${ptNodes.length}</div>
+            ${firstWo ? `<details style="margin-top:6px"><summary><strong>Primer workOrder</strong> — keys: <code style="font-size:10px">${escapeHtml(firstWoKeys.join(', '))}</code></summary>
+              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:300px">${escapeHtml(dump(firstWo, 4000))}</pre>
+            </details>` : '<div style="font-size:11px;color:#666;margin-top:6px">No hay workOrders en el Pass 2.</div>'}
+            ${firstPt ? `<details style="margin-top:6px"><summary><strong>Primer partTransform</strong> — keys: <code style="font-size:10px">${escapeHtml(firstPtKeys.join(', '))}</code></summary>
+              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:300px">${escapeHtml(dump(firstPt, 4000))}</pre>
+            </details>` : '<div style="font-size:11px;color:#666;margin-top:6px">No hay partTransforms en el Pass 2.</div>'}
+            <div style="font-size:10px;color:#666;margin-top:6px">Snapshots expuestos en <code>window.__poReconcilerLastDetailSnap</code> y <code>window.__poReconcilerLastAddParts</code></div>
           </details>
         `;
       }
@@ -1147,77 +1171,121 @@ const POReconciler = (() => {
   // GetReceivedOrder requiere idInDomain (Int!) — el id interno NO funciona.
   async function loadOVDetails(idInDomain) {
     if (idInDomain == null) throw new Error('loadOVDetails requiere idInDomain');
+    // Pass 1: GetReceivedOrder por idInDomain — trae shipTo, customer, líneas con
+    // name (= PN string), lineItems con productByProductId/quantity/price y
+    // receivedOrderLineItemPartTransforms con PT.id (sin partNumberId).
     const data = await api().query('GetReceivedOrder', { idInDomain: parseInt(idInDomain, 10) });
     const ov = data?.receivedOrderByIdInDomain || data?.receivedOrder;
     if (!ov) throw new Error(`GetReceivedOrder(idInDomain=${idInDomain}) devolvió shape inesperado`);
 
-    // Líneas y OTs
-    const lines = ov.receivedOrderLines?.nodes
-                || ov.receivedOrderLinesByReceivedOrderId?.nodes
+    // Pass 2: GetAddPartsReceivedOrder por internal id — trae workOrders y
+    // receivedOrderPartTransforms con partNumberId/count/maxPartTransformCount.
+    // Variable {id} es el INTERNAL id (no idInDomain), aunque el alias del
+    // root es receivedOrderByIdInDomain (confuso pero así fue scaneado del UI).
+    let addParts = null;
+    let addPartsErr = null;
+    try {
+      const data2 = await api().query('GetAddPartsReceivedOrder', { id: parseInt(ov.id, 10) });
+      addParts = data2?.receivedOrderByIdInDomain || data2?.receivedOrder || null;
+    } catch (e) {
+      addPartsErr = e.message || String(e);
+    }
+
+    // Aliases Postgraphile reales (confirmados en dump 0.6.15):
+    //   line.receivedOrderLineItemsByReceivedOrderLineId.nodes[]
+    //     .receivedOrderLineItemPartTransformsByReceivedOrderLineItemId.nodes[]
+    //       .receivedOrderPartTransformByReceivedOrderPartTransformId  → solo {id, archivedAt}
+    //   line.name = PN string ("80255-148-01")
+    //   lineItem.productByProductId = {id, name}
+    //   lineItem.quantity = {float, __typename}
+    const lines = ov.receivedOrderLinesByReceivedOrderId?.nodes
+                || ov.receivedOrderLines?.nodes
                 || [];
 
-    // Pasada 1: indexar receivedOrderLineItemPartTransforms por PT id.
-    // Cada PT puede aparecer asociado a varios lineItems (en distintas líneas).
-    // executeMove necesita todos los assocs del PT destino para que la mutación
-    // AddPartsToWorkOrders no los null-ee al guardar.
+    // Indexar PTs enriquecidos del Pass 2 por id (trae partNumberId, count, deadline, etc).
+    const ptById = {};
+    const partTransforms = addParts?.receivedOrderPartTransformsByReceivedOrderId?.nodes || [];
+    for (const pt of partTransforms) {
+      if (pt?.id != null) ptById[pt.id] = pt;
+    }
+
+    // Indexar workOrders del Pass 2.
+    const workOrders = addParts?.workOrdersByReceivedOrderId?.nodes || [];
+
+    // Construir ptAssocsByPtId desde Pass 1 (las líneas), enriqueciendo con datos del Pass 2.
     const ptAssocsByPtId = {};
     for (const line of lines) {
-      for (const li of (line.lineItems?.nodes || line.lineItems || [])) {
-        for (const ptAssoc of (li.receivedOrderLineItemPartTransforms?.nodes
-                            || li.receivedOrderLineItemPartTransforms
-                            || [])) {
-          const pt = ptAssoc.receivedOrderPartTransform;
-          if (!pt?.id) continue;
-          const arr = ptAssocsByPtId[pt.id] || (ptAssocsByPtId[pt.id] = []);
+      const lineItems = line.receivedOrderLineItemsByReceivedOrderLineId?.nodes
+                     || line.lineItems?.nodes || line.lineItems || [];
+      for (const li of lineItems) {
+        const ptAssocs = li.receivedOrderLineItemPartTransformsByReceivedOrderLineItemId?.nodes
+                      || li.receivedOrderLineItemPartTransforms?.nodes
+                      || li.receivedOrderLineItemPartTransforms || [];
+        for (const ptAssoc of ptAssocs) {
+          const ptStub = ptAssoc.receivedOrderPartTransformByReceivedOrderPartTransformId
+                      || ptAssoc.receivedOrderPartTransform;
+          if (!ptStub?.id) continue;
+          const ptFull = ptById[ptStub.id] || ptStub;
+          const arr = ptAssocsByPtId[ptStub.id] || (ptAssocsByPtId[ptStub.id] = []);
           arr.push({
             id: ptAssoc.id,
             receivedOrderPartTransform: {
-              id: pt.id,
-              partNumberId: pt.partNumberId,
-              partNumberPriceId: pt.partNumberPriceId ?? null,
-              count: pt.count ?? 0,
-              description: pt.description ?? '',
+              id: ptStub.id,
+              partNumberId: ptFull.partNumberId ?? null,
+              partNumberPriceId: ptFull.partNumberPriceId ?? null,
+              count: ptFull.count ?? 0,
+              description: ptFull.description ?? '',
             },
           });
         }
       }
     }
 
+    // Construir OTs desde workOrders del Pass 2.
+    // El shape de WO (partNumberWorkOrdersByWorkOrderId/recipeNodesByWorkOrderId)
+    // viene SIN expandir en el responseSchema scaneado. Si la conexión PT↔WO no
+    // está en el response real, el fallback agrupa por PT (1 OT por PT).
     const ots = [];
     const byPN = {};
-    const seenWoIds = new Set();
-    for (const line of lines) {
-      for (const li of (line.lineItems?.nodes || line.lineItems || [])) {
-        for (const ptAssoc of (li.receivedOrderLineItemPartTransforms?.nodes
-                            || li.receivedOrderLineItemPartTransforms
-                            || [])) {
-          const pt = ptAssoc.receivedOrderPartTransform;
-          if (!pt) continue;
-          for (const wo of (pt.workOrders?.nodes || pt.workOrders || [])) {
-            if (seenWoIds.has(wo.id)) continue;  // PT compartido entre líneas: no duplicar OT
-            seenWoIds.add(wo.id);
-            const pnId = pt.partNumberId;
-            const pnString = pt.partNumber?.partNumberString || pt.partNumber?.string || '';
-            const qty = Number(wo.partCount || wo.count || 0);
-            ots.push({
-              id: wo.id,
-              partCount: qty,
-              partNumberId: pnId,
-              partNumber: pnString,
-              receivedOrderPartTransformId: pt.id,
-              recipeNodeId: wo.recipeNodeId ?? null,
-              locationId: wo.locationId ?? null,
-              accountId: wo.inventoryAccountId ?? wo.accountId ?? null,
-              transformCount: pt.count ?? null,
-              transformDeadline: pt.deadline ?? null,
-              transformPriceId: pt.partNumberPriceId ?? null,
-              lineItemAssocs: ptAssocsByPtId[pt.id] || [],
-              line: { id: line.id, name: line.name, quantity: Number(li.quantity || 0) },
-              raw: wo,
-            });
-            byPN[pnString] = (byPN[pnString] || 0) + qty;
-          }
-        }
+    if (workOrders.length > 0) {
+      // Heurística: tratar de descubrir el binding WO↔PT en runtime.
+      // Si el WO trae partNumberWorkOrdersByWorkOrderId.nodes[].partTransformId
+      // (o similar), úsalo. De lo contrario, asociar por partNumberId (que viene
+      // tanto en PT como en partNumberWorkOrdersByWorkOrderId).
+      const seenWoIds = new Set();
+      for (const wo of workOrders) {
+        if (seenWoIds.has(wo.id)) continue;
+        seenWoIds.add(wo.id);
+        // Intentar extraer partNumberId del WO (vía partNumberWorkOrdersByWorkOrderId).
+        const pnwoNodes = wo.partNumberWorkOrdersByWorkOrderId?.nodes || [];
+        const pnwo = pnwoNodes[0] || {};
+        const pnId = pnwo.partNumberId ?? wo.partNumberId ?? null;
+        // Buscar el PT correspondiente (mismo partNumberId).
+        const matchingPt = partTransforms.find(pt => pt.partNumberId === pnId) || null;
+        // Buscar línea por PN string (line.name).
+        const pnString = pnwo.partNumber?.name
+                      || pnwo.partNumberByPartNumberId?.name
+                      || (matchingPt ? findPNStringForPT(lines, matchingPt.id) : '')
+                      || '';
+        const qty = Number(pnwo.partCount ?? wo.partCount ?? 0);
+        const recipeNode = (wo.recipeNodesByWorkOrderId?.nodes || [])[0] || {};
+        ots.push({
+          id: wo.id,
+          partCount: qty,
+          partNumberId: pnId,
+          partNumber: pnString,
+          receivedOrderPartTransformId: matchingPt?.id ?? null,
+          recipeNodeId: recipeNode.id ?? wo.recipeNodeId ?? null,
+          locationId: recipeNode.locationId ?? wo.locationId ?? null,
+          accountId: recipeNode.inventoryAccountId ?? wo.inventoryAccountId ?? wo.accountId ?? null,
+          transformCount: matchingPt?.count ?? null,
+          transformDeadline: matchingPt?.deadline ?? null,
+          transformPriceId: matchingPt?.partNumberPriceId ?? null,
+          lineItemAssocs: matchingPt ? (ptAssocsByPtId[matchingPt.id] || []) : [],
+          line: { id: null, name: pnString, quantity: qty },
+          raw: wo,
+        });
+        if (pnString) byPN[pnString] = (byPN[pnString] || 0) + qty;
       }
     }
 
@@ -1230,8 +1298,25 @@ const POReconciler = (() => {
       lines,
       ots,
       byPN,
-      snapshot: ov, // full record for rename replay
+      addParts,         // raw response del Pass 2 (workOrders + partTransforms enriched)
+      addPartsErr,
+      snapshot: ov,     // full record for rename replay
     };
+  }
+
+  // Helper: dado un PT id, busca el PN string en las líneas (line.name).
+  function findPNStringForPT(lines, ptId) {
+    for (const line of lines) {
+      const lineItems = line.receivedOrderLineItemsByReceivedOrderLineId?.nodes || [];
+      for (const li of lineItems) {
+        const ptAssocs = li.receivedOrderLineItemPartTransformsByReceivedOrderLineItemId?.nodes || [];
+        for (const a of ptAssocs) {
+          const stub = a.receivedOrderPartTransformByReceivedOrderPartTransformId || a.receivedOrderPartTransform;
+          if (stub?.id === ptId) return line.name || '';
+        }
+      }
+    }
+    return '';
   }
 
   async function findRestantesOV() {

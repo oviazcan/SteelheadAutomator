@@ -1,5 +1,5 @@
 {
-  "version": "0.6.15",
+  "version": "0.6.16",
   "lastUpdated": "2026-05-14",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -111,6 +111,7 @@
         "CreateEditInventoryBatchDialogQuery": "25c91344eb1e8c12c47da2e65dea36b743a5af2f614fb514b4f12e84894f5b81",
         "SearchLocationsOnPath": "65e13310e4b971aba5dce7a130c6e9259f9e1f556b79543ca5a1e414f593e29f",
         "GetReceivedOrder": "c8b31fbcbc14cec18414fb7b9523c4771432279779ee85693cb0d4c2c151e4f7",
+        "GetAddPartsReceivedOrder": "88063397f0c82149ca2a9371702321d635295865e37de0bc3d8deb5cda765467",
         "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8",
         "GetReceivedOrderDocuments": "c2df1330d49c30a52ac64fd5d7ad345f3f2d2b30411315e3311acd7ddba80cdc",
         "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156",
@@ -658,6 +659,7 @@
     "CheckDuplicatePO": { "type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator" },
     "ActiveReceivedOrders": { "type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator" },
     "GetReceivedOrder": { "type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator" },
+    "GetAddPartsReceivedOrder": { "type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler" },
     "GetReceivedOrderLine": { "type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator" },
     "GetReceivedOrderDocuments": { "type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator" },
     "RouteReceivedOrders": { "type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator" },
