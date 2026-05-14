@@ -770,15 +770,21 @@ const POReconciler = (() => {
     if (!el) return;
     el.innerHTML = '<em>Cargando…</em>';
     try {
-      const { candidates, totalRaw, filteredCount } = await loadCandidateTempOVs();
+      const { candidates, totalRaw, filteredCount, shipTosSeen } = await loadCandidateTempOVs();
       if (!candidates.length) {
         const domain = api().getDomain();
         const sch = domain.schneiderQueretaro || {};
+        const shipTosHtml = (shipTosSeen || [])
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8)
+          .map(s => `<li><code>${escapeHtml(s.id)}</code> · ${s.count} OV(s) · ${escapeHtml(s.blob || '(sin nombre/dirección)')}</li>`)
+          .join('');
         el.innerHTML = `
           <div class="sa-pr-issue-warn">
             <strong>No se detectaron OVs temp Schneider QRO.</strong><br>
-            <small>customerId=${escapeHtml(String(sch.customerId ?? 'n/a'))}, shipToAddressId=${escapeHtml(String(sch.shipToAddressId ?? 'n/a'))}<br>
-            Steelhead devolvió ${totalRaw} OV(s) activas para este cliente; ${filteredCount} fueron descartadas (shipTo distinto o nombre tipo SAP). Verifica config.steelhead.domain.schneiderQueretaro.</small>
+            <small>customerId=${escapeHtml(String(sch.customerId ?? 'n/a'))}, shipToAddressId=${escapeHtml(String(sch.shipToAddressId ?? 'n/a'))}, regex=${escapeHtml(String(sch.shipToAddressNameRegex ?? '(default Vesta|Querétaro|QRO|Colon)'))}<br>
+            Steelhead devolvió ${totalRaw} OV(s) activas para este cliente; ${filteredCount} fueron descartadas.</small>
+            ${shipTosHtml ? `<details style="margin-top:8px"><summary>ShipTos disponibles (${shipTosSeen.length}) — abre y comparte</summary><ul style="font-size:11px;padding-left:18px;margin:6px 0">${shipTosHtml}</ul></details>` : ''}
           </div>
         `;
         updateFooter();
@@ -806,13 +812,32 @@ const POReconciler = (() => {
 
   // ── Steelhead helpers ──────────────────────────────────────
 
+  // Extrae texto descriptivo del shipTo de una OV (combinando los campos más
+  // probables que devuelve ActiveReceivedOrders: name, addressLine1, city, etc.).
+  // Sirve para matchear por regex (ej. /Vesta/i) sin depender del id exacto.
+  function shipToBlob(ov) {
+    const s = ov?.shipToAddress;
+    if (!s) return '';
+    return [s.name, s.addressLine1, s.addressLine2, s.line1, s.line2, s.address, s.city, s.state, s.fullAddress, s.description]
+      .filter(Boolean)
+      .join(' | ');
+  }
+
+  function shipToId(ov) {
+    return ov?.shipToAddress?.id ?? ov?.shipToAddressId ?? null;
+  }
+
   async function loadCandidateTempOVs() {
     const domain = api().getDomain();
     const schneider = domain.schneiderQueretaro || {};
-    if (!schneider.customerId || !schneider.shipToAddressId) {
-      throw new Error('Falta config Schneider QRO (customerId / shipToAddressId)');
+    if (!schneider.customerId) {
+      throw new Error('Falta config Schneider QRO (customerId)');
     }
     const sapRe = new RegExp(schneider.poNumberRegex || '^14\\d{8}$');
+    const wantId = schneider.shipToAddressId ? String(schneider.shipToAddressId) : null;
+    const wantNameRe = schneider.shipToAddressNameRegex
+      ? new RegExp(schneider.shipToAddressNameRegex, 'i')
+      : /vesta|quer[eé]taro|qro|colon\b/i;  // default robusto para Schneider QRO
     const variables = {
       filters: { customerId: schneider.customerId, archivedAt: null },
       first: 100,
@@ -821,19 +846,40 @@ const POReconciler = (() => {
     };
     const data = await api().query('ActiveReceivedOrders', variables);
     const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
+
+    // Diagnóstico: agrupar shipTos vistos para mostrarle al usuario qué hay disponible
+    const shipTosSeen = new Map(); // id -> { id, blob, count, sampleOvName }
+    for (const ov of all) {
+      const id = String(shipToId(ov) ?? 'null');
+      const blob = shipToBlob(ov);
+      const entry = shipTosSeen.get(id) || { id, blob, count: 0, sampleOvName: ov.name };
+      entry.count++;
+      shipTosSeen.set(id, entry);
+    }
+
     const candidates = all.filter(ov => {
       if (ov.archivedAt) return false;
-      const ship = (ov.shipToAddress?.id ?? ov.shipToAddressId);
-      if (String(ship) !== String(schneider.shipToAddressId)) return false;
+      const ship = String(shipToId(ov) ?? '');
+      const blob = shipToBlob(ov);
+      const matchById = wantId ? ship === wantId : false;
+      const matchByName = wantNameRe.test(blob);
+      // Si hay id configurado, exigir match por id; si no, permitir match por nombre
+      if (wantId && !matchById && !matchByName) return false;
+      if (!wantId && !matchByName) return false;
       const name = String(ov.name || '').trim();
       if (sapRe.test(name)) return false;
       return true;
     });
     log(`Temp OVs candidatas: ${candidates.length} (de ${all.length} OV(s) activas para customerId=${schneider.customerId})`);
+    if (!candidates.length && all.length) {
+      console.info('[PR] ShipTos vistos en OVs activas:', [...shipTosSeen.values()]);
+      console.info('[PR] Sample OV completa:', all[0]);
+    }
     return {
       candidates: candidates.map(ov => ({ id: ov.id, idInDomain: ov.idInDomain, name: ov.name, raw: ov })),
       totalRaw: all.length,
       filteredCount: all.length - candidates.length,
+      shipTosSeen: [...shipTosSeen.values()],
     };
   }
 
