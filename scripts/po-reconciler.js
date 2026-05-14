@@ -789,17 +789,21 @@ const POReconciler = (() => {
           const keys = (d.rawKeys || []).join(', ') || '(vacío)';
           const root = d.rootKey || '(ninguno con .nodes)';
           const err = d.error ? `<div style="color:#c00"><strong>ERROR:</strong> ${escapeHtml(d.error)}</div>` : '';
-          let rawJson;
-          try { rawJson = JSON.stringify(d.raw, null, 2).slice(0, 2000); }
-          catch { rawJson = '(no serializable)'; }
+          const sampleKeys = d.sampleNode && typeof d.sampleNode === 'object' ? Object.keys(d.sampleNode).join(', ') : '(sin sample)';
+          let sampleJson;
+          try { sampleJson = JSON.stringify(d.sampleNode, null, 2).slice(0, 6000); }
+          catch { sampleJson = '(no serializable)'; }
           const vars = JSON.stringify(d.variables || {}, null, 2);
+          const fetched = d.totalCountFetched != null ? ` · fetched=${d.totalCountFetched}` : '';
           return `
-            <details style="margin-top:8px"><summary><strong>${escapeHtml(label)}</strong> · domainId=${escapeHtml(String(d.domainId))} · root=${escapeHtml(root)} · keys=${escapeHtml(keys)}</summary>
+            <details style="margin-top:8px" open><summary><strong>${escapeHtml(label)}</strong> · domainId=${escapeHtml(String(d.domainId))} · root=${escapeHtml(root)} · totalCount=${escapeHtml(String(d.totalCount))}${escapeHtml(fetched)} · keys=${escapeHtml(keys)}</summary>
               ${err}
               <div style="margin-top:6px"><strong>Variables enviadas:</strong></div>
               <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:120px">${escapeHtml(vars)}</pre>
-              <div style="margin-top:6px"><strong>Respuesta cruda (primeros 2000 chars):</strong></div>
-              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:200px">${escapeHtml(rawJson)}</pre>
+              <div style="margin-top:6px"><strong>Sample del primer nodo (keys):</strong> <code>${escapeHtml(sampleKeys)}</code></div>
+              <details style="margin-top:6px"><summary>Sample completo (primeros 6000 chars)</summary>
+                <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:300px">${escapeHtml(sampleJson)}</pre>
+              </details>
             </details>
           `;
         };
@@ -842,21 +846,41 @@ const POReconciler = (() => {
   // Extrae texto descriptivo del shipTo de una OV (combinando los campos más
   // probables que devuelve ActiveReceivedOrders: name, addressLine1, city, etc.).
   // Sirve para matchear por regex (ej. /Vesta/i) sin depender del id exacto.
+  // El endpoint usa convención `*By*Id` (Postgraphile-style): shipToAddressByShipToAddressId.
+  function shipToObj(ov) {
+    return ov?.shipToAddressByShipToAddressId
+        ?? ov?.shipToAddress
+        ?? null;
+  }
   function shipToBlob(ov) {
-    const s = ov?.shipToAddress;
+    const s = shipToObj(ov);
     if (!s) return '';
     return [s.name, s.addressLine1, s.addressLine2, s.line1, s.line2, s.address, s.city, s.state, s.fullAddress, s.description]
       .filter(Boolean)
       .join(' | ');
   }
-
   function shipToId(ov) {
-    return ov?.shipToAddress?.id ?? ov?.shipToAddressId ?? null;
+    return shipToObj(ov)?.id
+        ?? ov?.shipToAddressId
+        ?? null;
+  }
+  function customerObj(ov) {
+    return ov?.customerByCustomerId
+        ?? ov?.customer
+        ?? null;
+  }
+  function customerIdOf(ov) {
+    return customerObj(ov)?.id
+        ?? ov?.customerId
+        ?? null;
   }
 
   // Shape validado por ov-operations.js:90 (top-level args, no nested filters).
-  // domainId, customerId, first, offset, orderBy, computeMargins, showInvoicedSubtotal.
-  async function fetchActiveOrders({ customerId, first = 100, offset = 0 } = {}, label) {
+  // OJO: este hash IGNORA `customerId` server-side (visto en producción 2026-05-14:
+  // se pidió customerId=176980 y devolvió OVs de NICRO id=188773 mezcladas).
+  // Usar este fetcher SIEMPRE sin customerId y filtrar client-side.
+  // Root key real: `pagedData` (Postgraphile-style con totalCount + nodes).
+  async function fetchActiveOrdersPage({ first = 200, offset = 0 } = {}, label) {
     const domainId = api().getDomain().id || 344;
     const variables = {
       domainId,
@@ -866,13 +890,11 @@ const POReconciler = (() => {
       computeMargins: false,
       showInvoicedSubtotal: false,
     };
-    if (customerId != null) variables.customerId = parseInt(customerId, 10);
     const diag = { label, variables, domainId, raw: null, rawKeys: [], rootKey: null, sampleNode: null, totalCount: null, error: null };
     try {
       const data = await api().query('ActiveReceivedOrders', variables);
       diag.raw = data;
       diag.rawKeys = data && typeof data === 'object' ? Object.keys(data) : [];
-      // Detecta cualquier root con `nodes`/`totalCount`
       let all = [];
       let rootKey = null;
       for (const k of diag.rawKeys) {
@@ -886,20 +908,36 @@ const POReconciler = (() => {
       }
       diag.rootKey = rootKey;
       diag.sampleNode = all[0] || null;
-      log(`fetchActiveOrders(${label}): ${all.length} OV(s) [domainId=${domainId} root=${rootKey || '(ninguno)'} totalCount=${diag.totalCount}]`);
-      if (!all.length) {
-        console.info(`[PR] fetchActiveOrders RAW (${label}):`, data);
-        console.info(`[PR] variables enviados (${label}):`, variables);
-      }
+      log(`fetchActiveOrdersPage(${label}): ${all.length} OV(s) [domainId=${domainId} root=${rootKey || '(ninguno)'} totalCount=${diag.totalCount} offset=${offset}]`);
       window.__poReconcilerLastFetchDiag = diag;
       return { items: all, diag };
     } catch (e) {
       diag.error = e.message || String(e);
-      log(`fetchActiveOrders(${label}): ERROR ${diag.error}`);
-      console.error(`[PR] fetchActiveOrders ERROR (${label}):`, e, 'variables=', variables);
+      log(`fetchActiveOrdersPage(${label}): ERROR ${diag.error}`);
+      console.error(`[PR] fetchActiveOrdersPage ERROR (${label}):`, e, 'variables=', variables);
       window.__poReconcilerLastFetchDiag = diag;
       return { items: [], diag };
     }
+  }
+
+  // Pagina hasta agotar `totalCount` (con cap defensivo). Devuelve { items, diag }
+  // donde `diag` es la del primer fetch (para preservar shape de la respuesta cruda).
+  async function fetchActiveOrders({ first = 200, capPages = 10 } = {}, label) {
+    const items = [];
+    let firstDiag = null;
+    let total = null;
+    for (let page = 0; page < capPages; page++) {
+      const offset = page * first;
+      const r = await fetchActiveOrdersPage({ first, offset }, `${label} p${page}`);
+      if (!page) firstDiag = r.diag;
+      if (!r.items.length) break;
+      items.push(...r.items);
+      total = r.diag.totalCount;
+      if (total != null && items.length >= total) break;
+    }
+    if (firstDiag) firstDiag.totalCountFetched = items.length;
+    log(`fetchActiveOrders(${label}): traídas ${items.length} OV(s) (totalCount=${total})`);
+    return { items, diag: firstDiag };
   }
 
   async function loadCandidateTempOVs() {
@@ -911,32 +949,19 @@ const POReconciler = (() => {
       ? new RegExp(schneider.shipToAddressNameRegex, 'i')
       : /vesta|quer[eé]taro|qro|colon\b/i;
 
-    // Pasada 1: filtro por customerId si está configurado.
+    // Una sola pasada paginada (el server ignora `customerId` en este hash, así
+    // que filtramos client-side abajo). Cap 10 páginas × 200 = 2000 OVs activas.
     let all = [];
-    let pass1Raw = 0;
-    let pass1Diag = null;
-    if (schneider.customerId) {
-      try {
-        const r = await fetchActiveOrders({ customerId: schneider.customerId, first: 200 }, `customerId=${schneider.customerId}`);
-        all = r.items;
-        pass1Diag = r.diag;
-        pass1Raw = all.length;
-      } catch (e) { warn(`Pasada 1 falló: ${e.message}`); }
-    }
-
-    // Pasada 2: si la pasada 1 no devolvió nada, query sin customerId
-    // (todas las OVs activas del dominio). El filtro por shipTo se hace
-    // client-side abajo. Limita a 200 por petición para no saturar.
-    let pass2Used = false;
-    let pass2Diag = null;
-    if (!all.length) {
-      pass2Used = true;
-      try {
-        const r = await fetchActiveOrders({ first: 200 }, 'sin customerId (todas)');
-        all = r.items;
-        pass2Diag = r.diag;
-      } catch (e) { warn(`Pasada 2 falló: ${e.message}`); }
-    }
+    let mainDiag = null;
+    try {
+      const r = await fetchActiveOrders({ first: 200, capPages: 10 }, 'todas activas (paginado)');
+      all = r.items;
+      mainDiag = r.diag;
+    } catch (e) { warn(`Fetch principal falló: ${e.message}`); }
+    const pass1Raw = all.length;
+    const pass2Used = false;
+    const pass1Diag = mainDiag;
+    const pass2Diag = null;
 
     // Diagnóstico: agrupar shipTos vistos
     const shipTosSeen = new Map();
@@ -947,16 +972,22 @@ const POReconciler = (() => {
       const sEntry = shipTosSeen.get(sId) || { id: sId, blob, count: 0, sampleOvName: ov.name };
       sEntry.count++;
       shipTosSeen.set(sId, sEntry);
-      const cId = String(ov.customerId ?? ov.customer?.id ?? 'null');
-      const cName = ov.customer?.name || ov.customer?.companyName || '(sin nombre)';
-      const cIdInDomain = ov.customer?.idInDomain ?? ov.customerIdInDomain ?? 'n/a';
+      const c = customerObj(ov);
+      const cId = String(customerIdOf(ov) ?? 'null');
+      const cName = c?.name || c?.companyName || '(sin nombre)';
+      const cIdInDomain = c?.idInDomain ?? 'n/a';
       const cEntry = customersSeen.get(cId) || { id: cId, idInDomain: cIdInDomain, name: cName, count: 0 };
       cEntry.count++;
       customersSeen.set(cId, cEntry);
     }
 
+    // El server ignora `customerId` en este hash de ActiveReceivedOrders →
+    // filtramos client-side. Aplica también si pass2 corrió sin customerId
+    // (en ese caso schneider.customerId define el target).
+    const wantCustomerId = schneider.customerId ? String(schneider.customerId) : null;
     const candidates = all.filter(ov => {
       if (ov.archivedAt) return false;
+      if (wantCustomerId && String(customerIdOf(ov) ?? '') !== wantCustomerId) return false;
       const ship = String(shipToId(ov) ?? '');
       const blob = shipToBlob(ov);
       const matchById = wantId ? ship === wantId : false;
@@ -1065,8 +1096,8 @@ const POReconciler = (() => {
       id: ov.id,
       idInDomain: ov.idInDomain,
       name: ov.name,
-      customerId: ov.customerId,
-      shipToAddressId: ov.shipToAddressId,
+      customerId: customerIdOf(ov),
+      shipToAddressId: shipToId(ov),
       lines,
       ots,
       byPN,
@@ -1078,12 +1109,14 @@ const POReconciler = (() => {
     const domain = api().getDomain();
     const sch = domain.schneiderQueretaro || {};
     const expectedName = sch.restantesOvName || 'Restantes Schneider QRO';
-    // Reusa el shape validado de fetchActiveOrders. searchString no existe en
-    // este shape, así que se filtra client-side.
-    const r = sch.customerId
-      ? await fetchActiveOrders({ customerId: sch.customerId, first: 200 }, `findRestantes customerId=${sch.customerId}`)
-      : await fetchActiveOrders({ first: 200 }, 'findRestantes sin customerId');
-    return (r.items || []).find(ov => String(ov.name).trim() === expectedName) || null;
+    // El server ignora customerId en este hash → traemos todo paginado y
+    // filtramos client-side por name + customerId.
+    const r = await fetchActiveOrders({ first: 200, capPages: 10 }, 'findRestantes');
+    return (r.items || []).find(ov => {
+      if (String(ov.name).trim() !== expectedName) return false;
+      if (sch.customerId && String(customerIdOf(ov) ?? '') !== String(sch.customerId)) return false;
+      return true;
+    }) || null;
   }
 
   async function createRestantesOV(seed) {
