@@ -897,6 +897,53 @@ const POReconciler = (() => {
         return;
       }
 
+      // Diagnóstico: si TODAS las OVs reportan 0 OTs/0 PNs, probablemente el
+      // extractor (loadOVDetails) está leyendo claves equivocadas de las
+      // líneas/lineItems/PTs. Mostramos un sample del shape de líneas para
+      // ajustar los selectores.
+      const allEmpty = state.tempOVs.length > 0 && state.tempOVs.every(t => !t.ots.length);
+      let extractorDiagHtml = '';
+      if (allEmpty) {
+        const probe = state.tempOVs[0];
+        const snap = probe?.snapshot;
+        window.__poReconcilerLastDetailSnap = snap;
+        // Buscar la conexión de líneas — Postgraphile suele usar varios alias
+        const linesContainerKey = snap && Object.keys(snap).find(k => /receivedOrderLines/i.test(k));
+        const linesContainer = linesContainerKey ? snap[linesContainerKey] : null;
+        const firstLine = linesContainer?.nodes?.[0] || (Array.isArray(linesContainer) ? linesContainer[0] : null);
+        const firstLineKeys = firstLine ? Object.keys(firstLine) : [];
+        const lineItemsKey = firstLineKeys.find(k => /lineItem/i.test(k));
+        const lineItemsContainer = firstLine?.[lineItemsKey];
+        const firstLi = lineItemsContainer?.nodes?.[0] || (Array.isArray(lineItemsContainer) ? lineItemsContainer[0] : null);
+        const firstLiKeys = firstLi ? Object.keys(firstLi) : [];
+        const ptAssocKey = firstLiKeys.find(k => /partTransform/i.test(k));
+        const ptAssocContainer = firstLi?.[ptAssocKey];
+        const firstPtAssoc = ptAssocContainer?.nodes?.[0] || (Array.isArray(ptAssocContainer) ? ptAssocContainer[0] : null);
+        const firstPtAssocKeys = firstPtAssoc ? Object.keys(firstPtAssoc) : [];
+        const dump = (obj, max = 1500) => {
+          try { return JSON.stringify(obj, null, 2).slice(0, max); }
+          catch { return '(no serializable)'; }
+        };
+        extractorDiagHtml = `
+          <details class="sa-pr-issue-warn" style="margin-top:10px" open>
+            <summary><strong>⚠️ Todas las OVs reportan 0 OTs/0 PNs — diagnóstico del extractor</strong></summary>
+            <div style="font-size:11px;margin-top:6px">Probe: <code>${escapeHtml(probe?.name || '')}</code> idInDomain=${escapeHtml(String(probe?.idInDomain))}</div>
+            <div style="margin-top:6px"><strong>Container de líneas detectado:</strong> <code>${escapeHtml(linesContainerKey || '(ninguno)')}</code> — count=${linesContainer?.nodes?.length ?? (Array.isArray(linesContainer) ? linesContainer.length : 'n/a')}</div>
+            <details style="margin-top:6px"><summary><strong>Primera línea</strong> — keys: <code style="font-size:10px">${escapeHtml(firstLineKeys.join(', '))}</code></summary>
+              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:240px">${escapeHtml(dump(firstLine, 3000))}</pre>
+            </details>
+            <div style="margin-top:6px"><strong>Container de lineItems detectado:</strong> <code>${escapeHtml(lineItemsKey || '(ninguno)')}</code></div>
+            ${firstLi ? `<details style="margin-top:6px"><summary><strong>Primer lineItem</strong> — keys: <code style="font-size:10px">${escapeHtml(firstLiKeys.join(', '))}</code></summary>
+              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:240px">${escapeHtml(dump(firstLi, 3000))}</pre>
+            </details>` : ''}
+            <div style="margin-top:6px"><strong>Container de PT-assoc detectado:</strong> <code>${escapeHtml(ptAssocKey || '(ninguno)')}</code></div>
+            ${firstPtAssoc ? `<details style="margin-top:6px"><summary><strong>Primer PT-assoc</strong> — keys: <code style="font-size:10px">${escapeHtml(firstPtAssocKeys.join(', '))}</code></summary>
+              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:240px">${escapeHtml(dump(firstPtAssoc, 3000))}</pre>
+            </details>` : ''}
+            <div style="font-size:10px;color:#666;margin-top:6px">Snapshot completo expuesto en <code>window.__poReconcilerLastDetailSnap</code></div>
+          </details>
+        `;
+      }
       el.innerHTML = `
         ${state.tempOVs.map(t => `
           <div class="item">
@@ -904,6 +951,7 @@ const POReconciler = (() => {
             <small>${t.ots.length} OTs · ${Object.keys(t.byPN).length} PNs</small>
           </div>
         `).join('')}
+        ${extractorDiagHtml}
         ${droppedByShipTo ? `<div style="font-size:11px;color:#666;margin-top:6px">${droppedByShipTo} OV(s) Schneider no-SAP descartadas por shipTo distinto.</div>` : ''}
         ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OV(s) fallaron al cargar detalles. Ver consola.</div>` : ''}
       `;
