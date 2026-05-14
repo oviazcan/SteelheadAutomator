@@ -833,16 +833,26 @@ const POReconciler = (() => {
     return ov?.shipToAddress?.id ?? ov?.shipToAddressId ?? null;
   }
 
-  async function fetchActiveOrders(filters, label) {
+  // Shape validado por ov-operations.js:90 (top-level args, no nested filters).
+  // domainId, customerId, first, offset, orderBy, computeMargins, showInvoicedSubtotal.
+  async function fetchActiveOrders({ customerId, first = 100, offset = 0 } = {}, label) {
+    const domainId = api().getDomain().id || 344;
     const variables = {
-      filters: { archivedAt: null, ...filters },
-      first: 100,
+      domainId,
+      first,
+      offset,
+      orderBy: ['ID_IN_DOMAIN_DESC'],
       computeMargins: false,
       showInvoicedSubtotal: false,
     };
+    if (customerId != null) variables.customerId = parseInt(customerId, 10);
     const data = await api().query('ActiveReceivedOrders', variables);
-    const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
-    log(`fetchActiveOrders(${label}): ${all.length} OV(s)`);
+    const all = data?.receivedOrders?.nodes
+             || data?.allReceivedOrders?.nodes
+             || data?.activeReceivedOrders?.nodes
+             || [];
+    log(`fetchActiveOrders(${label}): ${all.length} OV(s) (domainId=${domainId})`);
+    if (!all.length) console.info(`[PR] fetchActiveOrders raw response for ${label}:`, data);
     return all;
   }
 
@@ -855,31 +865,25 @@ const POReconciler = (() => {
       ? new RegExp(schneider.shipToAddressNameRegex, 'i')
       : /vesta|quer[eé]taro|qro|colon\b/i;
 
-    // Pasada 1: filtro por customerId si está configurado
+    // Pasada 1: filtro por customerId si está configurado.
     let all = [];
     let pass1Raw = 0;
     if (schneider.customerId) {
       try {
-        all = await fetchActiveOrders({ customerId: schneider.customerId }, `customerId=${schneider.customerId}`);
+        all = await fetchActiveOrders({ customerId: schneider.customerId, first: 200 }, `customerId=${schneider.customerId}`);
         pass1Raw = all.length;
       } catch (e) { warn(`Pasada 1 falló: ${e.message}`); }
     }
 
-    // Pasada 2: si la pasada 1 no devolvió nada, fallback a query sin customerId
-    // (filtra por shipToAddressId server-side si está; si no, todo lo activo).
+    // Pasada 2: si la pasada 1 no devolvió nada, query sin customerId
+    // (todas las OVs activas del dominio). El filtro por shipTo se hace
+    // client-side abajo. Limita a 200 por petición para no saturar.
     let pass2Used = false;
     if (!all.length) {
       pass2Used = true;
-      const filtersFallback = wantId ? { shipToAddressId: schneider.shipToAddressId } : {};
       try {
-        all = await fetchActiveOrders(filtersFallback, wantId ? `shipToAddressId=${wantId}` : 'sin filtro');
-      } catch (e) {
-        // Si el server no acepta shipToAddressId como filtro, intentar sin nada
-        if (wantId) {
-          warn(`Fallback con shipToAddressId falló (${e.message}); intentando sin filtro`);
-          try { all = await fetchActiveOrders({}, 'sin filtro'); } catch (e2) { warn(`Fallback sin filtro también falló: ${e2.message}`); }
-        }
-      }
+        all = await fetchActiveOrders({ first: 200 }, 'sin customerId (todas)');
+      } catch (e) { warn(`Pasada 2 falló: ${e.message}`); }
     }
 
     // Diagnóstico: agrupar shipTos vistos
@@ -1020,14 +1024,11 @@ const POReconciler = (() => {
     const domain = api().getDomain();
     const sch = domain.schneiderQueretaro || {};
     const expectedName = sch.restantesOvName || 'Restantes Schneider QRO';
-    const variables = {
-      filters: { customerId: sch.customerId, archivedAt: null, searchString: expectedName },
-      first: 20,
-      computeMargins: false,
-      showInvoicedSubtotal: false,
-    };
-    const data = await api().query('ActiveReceivedOrders', variables);
-    const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
+    // Reusa el shape validado de fetchActiveOrders. searchString no existe en
+    // este shape, así que se filtra client-side.
+    const all = sch.customerId
+      ? await fetchActiveOrders({ customerId: sch.customerId, first: 200 }, `findRestantes customerId=${sch.customerId}`)
+      : await fetchActiveOrders({ first: 200 }, 'findRestantes sin customerId');
     return all.find(ov => String(ov.name).trim() === expectedName) || null;
   }
 
