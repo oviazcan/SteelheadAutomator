@@ -770,7 +770,7 @@ const POReconciler = (() => {
     if (!el) return;
     el.innerHTML = '<em>Cargando…</em>';
     try {
-      const { candidates, totalRaw, pass1Raw, pass2Used, filteredCount, shipTosSeen, customersSeen } = await loadCandidateTempOVs();
+      const { candidates, totalRaw, pass1Raw, pass2Used, filteredCount, shipTosSeen, customersSeen, pass1Diag, pass2Diag } = await loadCandidateTempOVs();
       if (!candidates.length) {
         const domain = api().getDomain();
         const sch = domain.schneiderQueretaro || {};
@@ -784,12 +784,33 @@ const POReconciler = (() => {
           .slice(0, 10)
           .map(c => `<li><code>id=${escapeHtml(c.id)} idInDomain=${escapeHtml(String(c.idInDomain))}</code> · ${c.count} OV(s) · ${escapeHtml(c.name)}</li>`)
           .join('');
+        const renderDiag = (d, label) => {
+          if (!d) return '';
+          const keys = (d.rawKeys || []).join(', ') || '(vacío)';
+          const root = d.rootKey || '(ninguno con .nodes)';
+          const err = d.error ? `<div style="color:#c00"><strong>ERROR:</strong> ${escapeHtml(d.error)}</div>` : '';
+          let rawJson;
+          try { rawJson = JSON.stringify(d.raw, null, 2).slice(0, 2000); }
+          catch { rawJson = '(no serializable)'; }
+          const vars = JSON.stringify(d.variables || {}, null, 2);
+          return `
+            <details style="margin-top:8px"><summary><strong>${escapeHtml(label)}</strong> · domainId=${escapeHtml(String(d.domainId))} · root=${escapeHtml(root)} · keys=${escapeHtml(keys)}</summary>
+              ${err}
+              <div style="margin-top:6px"><strong>Variables enviadas:</strong></div>
+              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:120px">${escapeHtml(vars)}</pre>
+              <div style="margin-top:6px"><strong>Respuesta cruda (primeros 2000 chars):</strong></div>
+              <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:200px">${escapeHtml(rawJson)}</pre>
+            </details>
+          `;
+        };
         el.innerHTML = `
           <div class="sa-pr-issue-warn">
             <strong>No se detectaron OVs temp Schneider QRO.</strong><br>
             <small>config: customerId=${escapeHtml(String(sch.customerId ?? 'n/a'))}, shipToAddressId=${escapeHtml(String(sch.shipToAddressId ?? 'n/a'))}, regex=${escapeHtml(String(sch.shipToAddressNameRegex ?? '(default Vesta|Querétaro|QRO|Colon)'))}<br>
             Pasada 1 (con customerId): ${pass1Raw} OV(s). ${pass2Used ? `Pasada 2 (fallback sin customerId): ${totalRaw} OV(s).` : ''} Descartadas tras filtros: ${filteredCount}.</small>
-            ${customersHtml ? `<details style="margin-top:8px" open><summary><strong>Customers vistos</strong> (${customersSeen.length}) — comparte el id correcto de SCHNEIDER ELECTRIC USA</summary><ul style="font-size:11px;padding-left:18px;margin:6px 0">${customersHtml}</ul></details>` : ''}
+            ${renderDiag(pass1Diag, 'Diagnóstico Pasada 1')}
+            ${renderDiag(pass2Diag, 'Diagnóstico Pasada 2')}
+            ${customersHtml ? `<details style="margin-top:8px" ${pass2Used ? 'open' : ''}><summary><strong>Customers vistos</strong> (${customersSeen.length}) — comparte el id correcto de SCHNEIDER ELECTRIC USA</summary><ul style="font-size:11px;padding-left:18px;margin:6px 0">${customersHtml}</ul></details>` : ''}
             ${shipTosHtml ? `<details style="margin-top:8px"><summary>ShipTos vistos (${shipTosSeen.length})</summary><ul style="font-size:11px;padding-left:18px;margin:6px 0">${shipTosHtml}</ul></details>` : ''}
           </div>
         `;
@@ -846,14 +867,39 @@ const POReconciler = (() => {
       showInvoicedSubtotal: false,
     };
     if (customerId != null) variables.customerId = parseInt(customerId, 10);
-    const data = await api().query('ActiveReceivedOrders', variables);
-    const all = data?.receivedOrders?.nodes
-             || data?.allReceivedOrders?.nodes
-             || data?.activeReceivedOrders?.nodes
-             || [];
-    log(`fetchActiveOrders(${label}): ${all.length} OV(s) (domainId=${domainId})`);
-    if (!all.length) console.info(`[PR] fetchActiveOrders raw response for ${label}:`, data);
-    return all;
+    const diag = { label, variables, domainId, raw: null, rawKeys: [], rootKey: null, sampleNode: null, totalCount: null, error: null };
+    try {
+      const data = await api().query('ActiveReceivedOrders', variables);
+      diag.raw = data;
+      diag.rawKeys = data && typeof data === 'object' ? Object.keys(data) : [];
+      // Detecta cualquier root con `nodes`/`totalCount`
+      let all = [];
+      let rootKey = null;
+      for (const k of diag.rawKeys) {
+        const v = data[k];
+        if (v && typeof v === 'object' && Array.isArray(v.nodes)) {
+          rootKey = k;
+          all = v.nodes;
+          diag.totalCount = v.totalCount ?? null;
+          break;
+        }
+      }
+      diag.rootKey = rootKey;
+      diag.sampleNode = all[0] || null;
+      log(`fetchActiveOrders(${label}): ${all.length} OV(s) [domainId=${domainId} root=${rootKey || '(ninguno)'} totalCount=${diag.totalCount}]`);
+      if (!all.length) {
+        console.info(`[PR] fetchActiveOrders RAW (${label}):`, data);
+        console.info(`[PR] variables enviados (${label}):`, variables);
+      }
+      window.__poReconcilerLastFetchDiag = diag;
+      return { items: all, diag };
+    } catch (e) {
+      diag.error = e.message || String(e);
+      log(`fetchActiveOrders(${label}): ERROR ${diag.error}`);
+      console.error(`[PR] fetchActiveOrders ERROR (${label}):`, e, 'variables=', variables);
+      window.__poReconcilerLastFetchDiag = diag;
+      return { items: [], diag };
+    }
   }
 
   async function loadCandidateTempOVs() {
@@ -868,9 +914,12 @@ const POReconciler = (() => {
     // Pasada 1: filtro por customerId si está configurado.
     let all = [];
     let pass1Raw = 0;
+    let pass1Diag = null;
     if (schneider.customerId) {
       try {
-        all = await fetchActiveOrders({ customerId: schneider.customerId, first: 200 }, `customerId=${schneider.customerId}`);
+        const r = await fetchActiveOrders({ customerId: schneider.customerId, first: 200 }, `customerId=${schneider.customerId}`);
+        all = r.items;
+        pass1Diag = r.diag;
         pass1Raw = all.length;
       } catch (e) { warn(`Pasada 1 falló: ${e.message}`); }
     }
@@ -879,10 +928,13 @@ const POReconciler = (() => {
     // (todas las OVs activas del dominio). El filtro por shipTo se hace
     // client-side abajo. Limita a 200 por petición para no saturar.
     let pass2Used = false;
+    let pass2Diag = null;
     if (!all.length) {
       pass2Used = true;
       try {
-        all = await fetchActiveOrders({ first: 200 }, 'sin customerId (todas)');
+        const r = await fetchActiveOrders({ first: 200 }, 'sin customerId (todas)');
+        all = r.items;
+        pass2Diag = r.diag;
       } catch (e) { warn(`Pasada 2 falló: ${e.message}`); }
     }
 
@@ -929,6 +981,8 @@ const POReconciler = (() => {
       filteredCount: all.length - candidates.length,
       shipTosSeen: [...shipTosSeen.values()],
       customersSeen: [...customersSeen.values()],
+      pass1Diag,
+      pass2Diag,
     };
   }
 
@@ -1026,10 +1080,10 @@ const POReconciler = (() => {
     const expectedName = sch.restantesOvName || 'Restantes Schneider QRO';
     // Reusa el shape validado de fetchActiveOrders. searchString no existe en
     // este shape, así que se filtra client-side.
-    const all = sch.customerId
+    const r = sch.customerId
       ? await fetchActiveOrders({ customerId: sch.customerId, first: 200 }, `findRestantes customerId=${sch.customerId}`)
       : await fetchActiveOrders({ first: 200 }, 'findRestantes sin customerId');
-    return all.find(ov => String(ov.name).trim() === expectedName) || null;
+    return (r.items || []).find(ov => String(ov.name).trim() === expectedName) || null;
   }
 
   async function createRestantesOV(seed) {
