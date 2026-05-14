@@ -709,15 +709,15 @@ const POReconciler = (() => {
         toOt = toOv.ots.find(o => o.id === created.id) || toOv.ots.find(o => o.partNumber === m.pn);
         if (!toOt) throw new Error(`OT creada (${created.id}) no aparece al recargar OV`);
       }
-      // NOTA: transformDeadline/transformPriceId/lineItemAssocs no se extraen
-      // de loadOVDetails (gap documentado en bitácora sesión 1). Se pasan defaults
-      // (null/[]). Si E2E rechaza, extender loadOVDetails para guardar PT.deadline,
-      // PT.partNumberPriceId y PT.receivedOrderLineItemPartTransforms por OT.
       await executeMove({
         qty: m.qty,
         fromOt, toOt,
         partNumberId: fromOt.partNumberId,
         toOvId: toOv.id,
+        transformCount: toOt.transformCount,
+        transformDeadline: toOt.transformDeadline,
+        transformPriceId: toOt.transformPriceId,
+        lineItemAssocs: toOt.lineItemAssocs,
       });
     } else if (step.type === 'reconcile_lines') {
       await reconcileLineQuantities(step.payload.ovId);
@@ -829,8 +829,36 @@ const POReconciler = (() => {
                 || ov.receivedOrderLinesByReceivedOrderId?.nodes
                 || [];
 
+    // Pasada 1: indexar receivedOrderLineItemPartTransforms por PT id.
+    // Cada PT puede aparecer asociado a varios lineItems (en distintas líneas).
+    // executeMove necesita todos los assocs del PT destino para que la mutación
+    // AddPartsToWorkOrders no los null-ee al guardar.
+    const ptAssocsByPtId = {};
+    for (const line of lines) {
+      for (const li of (line.lineItems?.nodes || line.lineItems || [])) {
+        for (const ptAssoc of (li.receivedOrderLineItemPartTransforms?.nodes
+                            || li.receivedOrderLineItemPartTransforms
+                            || [])) {
+          const pt = ptAssoc.receivedOrderPartTransform;
+          if (!pt?.id) continue;
+          const arr = ptAssocsByPtId[pt.id] || (ptAssocsByPtId[pt.id] = []);
+          arr.push({
+            id: ptAssoc.id,
+            receivedOrderPartTransform: {
+              id: pt.id,
+              partNumberId: pt.partNumberId,
+              partNumberPriceId: pt.partNumberPriceId ?? null,
+              count: pt.count ?? 0,
+              description: pt.description ?? '',
+            },
+          });
+        }
+      }
+    }
+
     const ots = [];
     const byPN = {};
+    const seenWoIds = new Set();
     for (const line of lines) {
       for (const li of (line.lineItems?.nodes || line.lineItems || [])) {
         for (const ptAssoc of (li.receivedOrderLineItemPartTransforms?.nodes
@@ -839,6 +867,8 @@ const POReconciler = (() => {
           const pt = ptAssoc.receivedOrderPartTransform;
           if (!pt) continue;
           for (const wo of (pt.workOrders?.nodes || pt.workOrders || [])) {
+            if (seenWoIds.has(wo.id)) continue;  // PT compartido entre líneas: no duplicar OT
+            seenWoIds.add(wo.id);
             const pnId = pt.partNumberId;
             const pnString = pt.partNumber?.partNumberString || pt.partNumber?.string || '';
             const qty = Number(wo.partCount || wo.count || 0);
@@ -851,6 +881,10 @@ const POReconciler = (() => {
               recipeNodeId: wo.recipeNodeId ?? null,
               locationId: wo.locationId ?? null,
               accountId: wo.inventoryAccountId ?? wo.accountId ?? null,
+              transformCount: pt.count ?? null,
+              transformDeadline: pt.deadline ?? null,
+              transformPriceId: pt.partNumberPriceId ?? null,
+              lineItemAssocs: ptAssocsByPtId[pt.id] || [],
               line: { id: line.id, name: line.name, quantity: Number(li.quantity || 0) },
               raw: wo,
             });
