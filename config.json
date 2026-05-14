@@ -1,5 +1,5 @@
 {
-  "version": "0.6.4",
+  "version": "0.6.5",
   "lastUpdated": "2026-05-13",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -384,7 +384,7 @@
       "subtitle": "Rebalancear OVs temporales contra POs reales",
       "icon": "🧮",
       "category": "Órdenes de Venta",
-      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/po-reconciler.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"],
       "requiredPermissions": ["READ_RECEIVED_ORDERS"],
       "autoInject": true,
       "actions": [
