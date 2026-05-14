@@ -23,6 +23,7 @@ const POReconciler = (() => {
     overrides: {},      // user edits
     runId: null,        // for cancel/idempotency
     auditLog: [],
+    pnCatalog: new Map(),  // upper(name) -> { id, name, descriptionMarkdown } | null (not found)
   };
 
   function init() {
@@ -243,6 +244,7 @@ const POReconciler = (() => {
   function closeWizard() {
     document.getElementById('sa-pr-root')?.remove();
     state = { ...state, isOpen: false, step: 1, pdfs: [], plan: null, overrides: {}, runId: null, runStale: false, auditLog: [] };
+    // pnCatalog se preserva intencionalmente entre sesiones del wizard (cache de catálogo).
   }
 
   function goToStep(n) {
@@ -398,30 +400,120 @@ const POReconciler = (() => {
     updateFooter();
   }
 
+  function fmtMoney(n, cur) {
+    if (n == null || isNaN(n)) return '';
+    const v = Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return cur ? `${v} ${cur}` : v;
+  }
+
+  function renderPdfDetailTable(p) {
+    const cur = p.parsed.currency || '';
+    return `
+      <table class="sa-pr-table">
+        <thead><tr><th>#</th><th>PN</th><th>Descripción</th><th style="text-align:right">Qty</th><th style="text-align:right">P.Unit</th><th style="text-align:right">Total</th></tr></thead>
+        <tbody>
+          ${p.parsed.lines.map(l => {
+            const cached = state.pnCatalog.get(String(l.partNumber).toUpperCase());
+            let descCell;
+            if (cached === undefined) descCell = `<span style="color:#888;font-style:italic">cargando…</span>`;
+            else if (cached === null) descCell = `<span style="color:#c00" title="PN no encontrado en catálogo">⚠ no en catálogo</span>`;
+            else descCell = escapeHtml(cached.descriptionMarkdown || cached.name || '');
+            return `<tr>
+              <td>${escapeHtml(l.lineNumber)}</td>
+              <td>${escapeHtml(l.partNumber)}</td>
+              <td>${descCell}</td>
+              <td style="text-align:right">${escapeHtml(l.quantity)}</td>
+              <td style="text-align:right">${escapeHtml(fmtMoney(l.unitPrice, cur))}</td>
+              <td style="text-align:right">${escapeHtml(fmtMoney(l.total, cur))}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
   function showPdfDetail(i) {
     const p = state.pdfs[i];
     if (!p?.parsed) return;
     const drawer = document.createElement('div');
     drawer.className = 'sa-pr-drawer';
+    drawer.dataset.pdfIdx = String(i);
     drawer.innerHTML = `
       <div class="sa-pr-drawer-inner">
         <header><h4>${escapeHtml(p.file.name)}</h4><button class="sa-pr-drawer-close">✕</button></header>
         <p>PO: <strong>${escapeHtml(p.parsed.poNumber)}</strong> · ${p.parsed.lines.length} líneas · ${escapeHtml(p.parsed.currency || '?')}</p>
-        <table class="sa-pr-table">
-          <thead><tr><th>#</th><th>PN</th><th>Desc</th><th>Qty</th></tr></thead>
-          <tbody>
-            ${p.parsed.lines.map(l => `<tr>
-              <td>${escapeHtml(l.lineNumber)}</td>
-              <td>${escapeHtml(l.partNumber)}</td>
-              <td>${escapeHtml(l.description || '')}</td>
-              <td>${escapeHtml(l.quantity)}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
+        <div class="sa-pr-pdf-table-wrap">${renderPdfDetailTable(p)}</div>
       </div>
     `;
     document.body.appendChild(drawer);
     drawer.querySelector('.sa-pr-drawer-close').onclick = () => drawer.remove();
+    enrichPdfDescriptions(p, drawer);
+  }
+
+  // Hidrata descripción + verifica existencia en catálogo para cada PN único del PDF.
+  // Re-renderiza la tabla del modal cuando hay nuevos resultados (cada batch).
+  async function enrichPdfDescriptions(p, drawer) {
+    const uniques = [...new Set(p.parsed.lines.map(l => String(l.partNumber).toUpperCase()))];
+    const missing = uniques.filter(u => !state.pnCatalog.has(u));
+    if (!missing.length) return;
+    // Pool de concurrencia 4
+    const pool = 4;
+    let idx = 0;
+    let dirty = false;
+    let renderTimer = null;
+    const scheduleRender = () => {
+      if (renderTimer) return;
+      renderTimer = setTimeout(() => {
+        renderTimer = null;
+        if (!dirty) return;
+        dirty = false;
+        const wrap = drawer.querySelector('.sa-pr-pdf-table-wrap');
+        if (wrap && document.body.contains(drawer)) wrap.innerHTML = renderPdfDetailTable(p);
+      }, 200);
+    };
+    async function worker() {
+      while (true) {
+        const myIdx = idx++;
+        if (myIdx >= missing.length) return;
+        if (!document.body.contains(drawer)) return;
+        const name = missing[myIdx];
+        try {
+          const found = await lookupPNInCatalog(name);
+          state.pnCatalog.set(name, found);
+        } catch (e) {
+          warn(`lookupPN(${name}) falló: ${e.message || e}`);
+          state.pnCatalog.set(name, null);
+        }
+        dirty = true;
+        scheduleRender();
+      }
+    }
+    await Promise.all(Array.from({ length: pool }, worker));
+    // Render final (por si quedaron pendientes en el debounce)
+    dirty = true;
+    scheduleRender();
+  }
+
+  // Busca un PN por nombre exacto en el catálogo y devuelve {id, name, descriptionMarkdown} o null.
+  async function lookupPNInCatalog(nameUpper) {
+    const data = await api().query('SearchPartNumbers', {
+      searchQuery: nameUpper, first: 5, offset: 0, orderBy: ['ID_DESC'],
+    });
+    const nodes = data?.searchPartNumbers?.nodes || data?.pagedData?.nodes || [];
+    const match = nodes.find(n => String(n.name || '').toUpperCase().trim() === nameUpper.trim());
+    if (!match) return null;
+    // Si SearchPartNumbers ya trajo descriptionMarkdown, listo.
+    if (typeof match.descriptionMarkdown === 'string') {
+      return { id: match.id, name: match.name, descriptionMarkdown: match.descriptionMarkdown };
+    }
+    // Fallback: GetPartNumber por id para obtener descriptionMarkdown.
+    try {
+      const detail = await api().query('GetPartNumber', { partNumberId: match.id, usagesLimit: 0, usagesOffset: 0 });
+      const pn = detail?.partNumber || detail?.partNumberById || match;
+      return { id: match.id, name: match.name, descriptionMarkdown: pn?.descriptionMarkdown || '' };
+    } catch (_) {
+      return { id: match.id, name: match.name, descriptionMarkdown: '' };
+    }
   }
 
   async function renderStep3(body) {
@@ -1940,12 +2032,14 @@ const POReconciler = (() => {
     const ITEM_RE = /^\s*(\d{1,4})\s+([A-Z0-9][\w\-./]*)\s+([\d,]+(?:\.\d+)?)\s+(?:Piece|PCS|PZA|Each|EA)\s+(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*$/;
     const PRICE_RE = /Gross\s*Price\s+([\d,]+(?:\.\d+)?)\s+[A-Z]{3}\s+per\s+([\d,]+(?:\.\d+)?)\s+(?:PCE|PCS|EA|PZA)\s+([\d,]+(?:\.\d+)?)\s+[A-Z]{3}/i;
 
+    // Schneider PO no incluye descripción del producto en el PDF.
+    // La description se hidrata desde nuestro catálogo (SearchPartNumbers/GetPartNumber)
+    // al abrir el modal de detalle. Ver enrichPdfDescriptions().
     let pendingItem = null;
-    for (let i = 0; i < lines.length; i++) {
-      const ln = lines[i];
+    for (const ln of lines) {
       const im = ln.match(ITEM_RE);
       if (im) {
-        if (pendingItem) out.lines.push(pendingItem); // emitir el previo si no se encontró Gross Price
+        if (pendingItem) out.lines.push(pendingItem);
         pendingItem = {
           lineNumber: out.lines.length + 1,
           itemNumber: Number(im[1]),
