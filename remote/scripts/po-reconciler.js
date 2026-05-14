@@ -856,12 +856,38 @@ const POReconciler = (() => {
           .slice(0, 20)
           .map(s => `<li><code>${escapeHtml(s.id)}</code> · ${s.count} OV(s) · ${escapeHtml(s.blob || '(sin nombre/dirección)')} · ej: ${escapeHtml(s.sampleOvName || '')}</li>`)
           .join('');
+        // Diagnóstico: snapshot del primer OV detail para ver el shape real del shipTo
+        const sampleSnap = detailedOk[0]?.snapshot || null;
+        const sampleKeys = sampleSnap && typeof sampleSnap === 'object' ? Object.keys(sampleSnap).join(', ') : '(sin sample)';
+        // Buscar candidatos a "campo del shipTo" en las claves
+        const shipToCandidates = sampleSnap ? Object.keys(sampleSnap).filter(k => /ship.*to/i.test(k)) : [];
+        const shipToCandHtml = shipToCandidates.length
+          ? shipToCandidates.map(k => {
+              let v;
+              try { v = JSON.stringify(sampleSnap[k], null, 2).slice(0, 600); }
+              catch { v = '(no serializable)'; }
+              return `<details style="margin-top:4px"><summary><code>${escapeHtml(k)}</code></summary><pre style="font-size:10px;background:#f4f4f4;padding:4px;border-radius:4px;overflow:auto;max-height:200px">${escapeHtml(v)}</pre></details>`;
+            }).join('')
+          : '<em>(no se encontraron claves con "ship*to*" en el snapshot)</em>';
+        let fullSnapJson;
+        try { fullSnapJson = JSON.stringify(sampleSnap, null, 2).slice(0, 6000); }
+        catch { fullSnapJson = '(no serializable)'; }
+        window.__poReconcilerLastDetailSnap = sampleSnap;
         el.innerHTML = `
           <div class="sa-pr-issue-warn">
             <strong>Sin OVs temp después del filtro de shipTo.</strong><br>
             <small>${candidates.length} OV(s) Schneider USA no-SAP cargaron sus detalles, pero ninguna matchea shipToAddressId=${escapeHtml(String(wantShipId ?? 'n/a'))} ni regex.</small>
-            <details style="margin-top:8px" open><summary><strong>ShipTos vistos en detalles</strong> (${detailShipTos.size}) — comparte el id de Vesta/Querétaro</summary>
+            <details style="margin-top:8px"><summary><strong>ShipTos detectados (extractor actual)</strong> (${detailShipTos.size})</summary>
               <ul style="font-size:11px;padding-left:18px;margin:6px 0">${shipTosListHtml}</ul>
+            </details>
+            <details style="margin-top:8px" open><summary><strong>Diagnóstico: shape del primer OV detail</strong> — ${escapeHtml(detailedOk[0]?.name || 'n/a')} (idInDomain=${escapeHtml(String(detailedOk[0]?.idInDomain ?? 'n/a'))})</summary>
+              <div style="margin-top:6px"><strong>Top-level keys:</strong> <code style="font-size:10px">${escapeHtml(sampleKeys)}</code></div>
+              <div style="margin-top:6px"><strong>Claves que parecen "ship*to*":</strong></div>
+              ${shipToCandHtml}
+              <details style="margin-top:6px"><summary>Snapshot completo (primeros 6000 chars)</summary>
+                <pre style="font-size:10px;background:#f4f4f4;padding:6px;border-radius:4px;overflow:auto;max-height:300px">${escapeHtml(fullSnapJson)}</pre>
+              </details>
+              <div style="font-size:10px;color:#666;margin-top:6px">Snapshot completo expuesto en <code>window.__poReconcilerLastDetailSnap</code></div>
             </details>
             ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OV(s) fallaron al cargar detalles. Ver consola.</div>` : ''}
           </div>
