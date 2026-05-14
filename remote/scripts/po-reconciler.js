@@ -917,19 +917,21 @@ const POReconciler = (() => {
 
   // ── Steelhead helpers ──────────────────────────────────────
 
-  // Extrae texto descriptivo del shipTo de una OV (combinando los campos más
-  // probables que devuelve ActiveReceivedOrders: name, addressLine1, city, etc.).
-  // Sirve para matchear por regex (ej. /Vesta/i) sin depender del id exacto.
-  // El endpoint usa convención `*By*Id` (Postgraphile-style): shipToAddressByShipToAddressId.
+  // Extrae texto descriptivo del shipTo de una OV.
+  // Convenciones vistas en Steelhead (Postgraphile-style):
+  // - GetReceivedOrder: customerAddressByShipToAddressId.{id, address (single string), customInputs, customerByCustomerId}
+  // - ActiveReceivedOrders: NO incluye shipTo en cada nodo (verificado en producción).
+  // Fallbacks legacy por compat: shipToAddressByShipToAddressId, shipToAddress.
   function shipToObj(ov) {
-    return ov?.shipToAddressByShipToAddressId
+    return ov?.customerAddressByShipToAddressId
+        ?? ov?.shipToAddressByShipToAddressId
         ?? ov?.shipToAddress
         ?? null;
   }
   function shipToBlob(ov) {
     const s = shipToObj(ov);
     if (!s) return '';
-    return [s.name, s.addressLine1, s.addressLine2, s.line1, s.line2, s.address, s.city, s.state, s.fullAddress, s.description]
+    return [s.name, s.address, s.addressLine1, s.addressLine2, s.line1, s.line2, s.city, s.state, s.fullAddress, s.description]
       .filter(Boolean)
       .join(' | ');
   }
