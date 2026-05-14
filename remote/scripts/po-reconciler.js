@@ -685,7 +685,7 @@ const POReconciler = (() => {
       const seed = state.tempOVs[0]?.snapshot;
       if (!seed) throw new Error('No hay temp OV seed para crear Restantes');
       const created = await createRestantesOV(seed);
-      state.restantesOV = { id: created.id, name: created.name };
+      state.restantesOV = { id: created.id, idInDomain: created.idInDomain, name: created.name };
       state.plan.restantes.forEach(r => { if (r.toOvId === '__pending_restantes__') r.toOvId = created.id; });
       step.detail = `id=${created.id} #${created.idInDomain}`;
     } else if (step.type === 'move' || step.type === 'move_to_restantes') {
@@ -693,7 +693,7 @@ const POReconciler = (() => {
       const fromOv = state.tempOVs.find(t => t.id === m.fromOvId);
       let toOv = state.tempOVs.find(t => t.id === m.toOvId);
       if (!toOv && step.type === 'move_to_restantes') {
-        toOv = await loadOVDetails(state.restantesOV.id);
+        toOv = await loadOVDetails(state.restantesOV.idInDomain);
         state.tempOVs.push(toOv);
       }
       const fromOt = fromOv.ots.find(o => o.partNumber === m.pn);
@@ -704,7 +704,7 @@ const POReconciler = (() => {
           ovId: toOv.id, customerId: toOv.customerId,
           deadline: toOv.snapshot?.deadline, partNumberId: fromOt.partNumberId, hintFromOt: fromOt,
         });
-        const fresh = await loadOVDetails(toOv.id);
+        const fresh = await loadOVDetails(toOv.idInDomain);
         Object.assign(toOv, fresh);
         toOt = toOv.ots.find(o => o.id === created.id) || toOv.ots.find(o => o.partNumber === m.pn);
         if (!toOt) throw new Error(`OT creada (${created.id}) no aparece al recargar OV`);
@@ -821,7 +821,7 @@ const POReconciler = (() => {
         updateFooter();
         return;
       }
-      const details = await Promise.all(candidates.map(c => loadOVDetails(c.id).catch(e => ({ error: e.message, id: c.id, name: c.name }))));
+      const details = await Promise.all(candidates.map(c => loadOVDetails(c.idInDomain).catch(e => ({ error: e.message, id: c.id, idInDomain: c.idInDomain, name: c.name }))));
       const errors = details.filter(d => d.error);
       const detailedOk = details.filter(d => !d.error);
 
@@ -1060,10 +1060,20 @@ const POReconciler = (() => {
     };
   }
 
-  async function loadOVDetails(ovId) {
-    const data = await api().query('GetReceivedOrder', { id: ovId });
-    const ov = data?.receivedOrder || data?.receivedOrderByIdInDomain;
-    if (!ov) throw new Error(`GetReceivedOrder(${ovId}) devolvió shape inesperado`);
+  // Helper: resuelve idInDomain a partir de id interno usando state caches.
+  function resolveIdInDomain(id) {
+    const t = state.tempOVs?.find(x => x.id === id);
+    if (t?.idInDomain != null) return t.idInDomain;
+    if (state.restantesOV?.id === id && state.restantesOV?.idInDomain != null) return state.restantesOV.idInDomain;
+    throw new Error(`No puedo resolver idInDomain para id interno=${id}`);
+  }
+
+  // GetReceivedOrder requiere idInDomain (Int!) — el id interno NO funciona.
+  async function loadOVDetails(idInDomain) {
+    if (idInDomain == null) throw new Error('loadOVDetails requiere idInDomain');
+    const data = await api().query('GetReceivedOrder', { idInDomain: parseInt(idInDomain, 10) });
+    const ov = data?.receivedOrderByIdInDomain || data?.receivedOrder;
+    if (!ov) throw new Error(`GetReceivedOrder(idInDomain=${idInDomain}) devolvió shape inesperado`);
 
     // Líneas y OTs
     const lines = ov.receivedOrderLines?.nodes
@@ -1276,7 +1286,7 @@ const POReconciler = (() => {
   }
 
   async function reconcileLineQuantities(ovId) {
-    const fresh = await loadOVDetails(ovId);
+    const fresh = await loadOVDetails(resolveIdInDomain(ovId));
     const newLines = [];
 
     for (const line of fresh.lines) {
