@@ -18,6 +18,7 @@ const POReconciler = (() => {
     step: 1,
     pdfs: [],           // [{ file, status: 'pending'|'parsing'|'ok'|'error', parsed, error }]
     tempOVs: [],        // [{ id, name, ots, byPN, snapshot }]
+    excludedTempOvIds: new Set(),  // ids de OVs temporales excluidas del matching (override manual)
     restantesOV: null,  // { id, name, snapshot } or null
     plan: null,         // see engine
     overrides: {},      // user edits
@@ -243,7 +244,7 @@ const POReconciler = (() => {
 
   function closeWizard() {
     document.getElementById('sa-pr-root')?.remove();
-    state = { ...state, isOpen: false, step: 1, pdfs: [], plan: null, overrides: {}, runId: null, runStale: false, auditLog: [] };
+    state = { ...state, isOpen: false, step: 1, pdfs: [], plan: null, overrides: {}, runId: null, runStale: false, auditLog: [], excludedTempOvIds: new Set() };
     // pnCatalog se preserva intencionalmente entre sesiones del wizard (cache de catálogo).
   }
 
@@ -522,7 +523,8 @@ const POReconciler = (() => {
       byPN: consolidateByPN(p.parsed.lines),
       rawLines: p.parsed.lines,
     }));
-    const temps = state.tempOVs.map(t => ({ ovId: t.id, name: t.name, byPN: t.byPN, raw: t }));
+    const tempsActive = state.tempOVs.filter(t => !state.excludedTempOvIds.has(t.id));
+    const temps = tempsActive.map(t => ({ ovId: t.id, name: t.name, byPN: t.byPN, raw: t }));
     state.restantesOV = await findRestantesOV();
     const sch = api().getDomain().schneiderQueretaro || {};
     state.plan = buildPlan({
@@ -942,6 +944,11 @@ const POReconciler = (() => {
       const withContent = filteredByShipTo.filter(d => d.ots && d.ots.length > 0);
       const droppedEmpty = filteredByShipTo.length - withContent.length;
       state.tempOVs = withContent;
+      // Limpiar excluidos que ya no aplican al refrescar la lista.
+      const validIds = new Set(withContent.map(d => d.id));
+      for (const id of state.excludedTempOvIds) {
+        if (!validIds.has(id)) state.excludedTempOvIds.delete(id);
+      }
       const droppedByShipTo = detailedOk.length - filteredByShipTo.length;
 
       if (!filteredByShipTo.length) {
@@ -1062,13 +1069,22 @@ const POReconciler = (() => {
           </details>
         `;
       }
+      const activeCount = state.tempOVs.filter(t => !state.excludedTempOvIds.has(t.id)).length;
       el.innerHTML = `
+        <div style="font-size:11px;color:#666;margin-bottom:6px">
+          ${activeCount}/${state.tempOVs.length} OV(s) activas. Desmarca las que NO quieras incluir en el matching contra los POs.
+        </div>
         ${state.tempOVs.map(t => {
           const empty = !t.ots.length;
+          const excluded = state.excludedTempOvIds.has(t.id);
+          const dimStyle = (empty || excluded) ? 'opacity:0.55' : '';
           return `
-          <div class="item" style="${empty ? 'opacity:0.55' : ''}">
-            <span>${escapeHtml(t.name)} <small style="color:#888">#${escapeHtml(String(t.idInDomain))}</small></span>
-            <small>${t.ots.length} OTs · ${Object.keys(t.byPN).length} PNs</small>
+          <div class="item" style="${dimStyle}">
+            <label style="display:flex;align-items:center;gap:8px;width:100%;cursor:pointer;margin:0">
+              <input type="checkbox" class="sa-pr-temp-include" data-ov-id="${escapeHtml(String(t.id))}" ${excluded ? '' : 'checked'} title="Incluir en matching contra POs" />
+              <span style="flex:1">${escapeHtml(t.name)} <small style="color:#888">#${escapeHtml(String(t.idInDomain))}</small></span>
+              <small>${t.ots.length} OTs · ${Object.keys(t.byPN).length} PNs</small>
+            </label>
           </div>
         `;
         }).join('')}
@@ -1085,6 +1101,23 @@ const POReconciler = (() => {
           <div id="sa-pr-probe-out" style="margin-top:6px"></div>
         </div>
       `;
+      // Wire up checkboxes de exclusión por OV temporal
+      el.querySelectorAll('.sa-pr-temp-include').forEach(cb => {
+        cb.onchange = () => {
+          const ovId = cb.dataset.ovId;
+          if (cb.checked) state.excludedTempOvIds.delete(ovId);
+          else state.excludedTempOvIds.add(ovId);
+          // Re-render para actualizar contador y opacities; preserva resto del DOM.
+          const wrap = cb.closest('.item');
+          if (wrap) wrap.style.opacity = cb.checked ? '' : '0.55';
+          const counter = el.querySelector('div[style*="OV(s) activas"]');
+          if (counter) {
+            const activeCount = state.tempOVs.filter(t => !state.excludedTempOvIds.has(t.id)).length;
+            counter.textContent = `${activeCount}/${state.tempOVs.length} OV(s) activas. Desmarca las que NO quieras incluir en el matching contra los POs.`;
+          }
+          updateFooter();
+        };
+      });
       // Wire up probe input
       const probeBtn = document.getElementById('sa-pr-probe-btn');
       const probeInput = document.getElementById('sa-pr-probe-id');
@@ -1744,46 +1777,83 @@ const POReconciler = (() => {
   function assignTempsToPOs(temps, pos) {
     const n = temps.length;
     const m = pos.length;
-    if (n !== m) {
+    if (n === 0 && m === 0) return { assignment: [], totalDelta: 0, issues: [], unassignedTemps: [] };
+    if (m === 0) {
+      return {
+        assignment: [],
+        totalDelta: 0,
+        issues: [{
+          severity: 'warn',
+          type: 'no_pos',
+          detail: 'No hay POs cargados; nada que asignar.',
+        }],
+        unassignedTemps: temps.map(t => ({ tempOvId: t.ovId, name: t.name })),
+      };
+    }
+    if (n < m) {
       return {
         assignment: null,
         totalDelta: null,
         issues: [{
           severity: 'fatal',
-          type: 'cardinality_mismatch',
-          detail: `#temps=${n} ≠ #POs=${m}. Plan automático no generado.`,
+          type: 'cardinality_pos_excess',
+          detail: `Hay ${m} PO(s) pero solo ${n} OV(s) temporales activas. Cada PO necesita una OV temporal. Carga más OVs (o desexcluye alguna en el Step 1) o reduce los PDFs.`,
         }],
       };
     }
-    if (n === 0) return { assignment: [], totalDelta: 0, issues: [] };
 
     const allPNs = new Set();
     temps.forEach(t => Object.keys(t.byPN || {}).forEach(pn => allPNs.add(pn)));
     pos.forEach(p => Object.keys(p.byPN || {}).forEach(pn => allPNs.add(pn)));
 
+    // Hungarian requiere matriz cuadrada. Para n>m, agregamos (n-m) columnas dummy
+    // con costo BIG; las temps que terminen asignadas a una columna dummy quedan
+    // como "no asignadas" (subset auto).
+    const BIG = 1e9;
+    const size = n;
     const matrix = [];
     for (let i = 0; i < n; i++) {
       const row = [];
-      for (let j = 0; j < n; j++) {
-        let cost = 0;
-        for (const pn of allPNs) {
-          const tempQty = (temps[i].byPN || {})[pn] || 0;
-          const poQty   = (pos[j].byPN   || {})[pn] || 0;
-          cost += Math.abs(tempQty - poQty);
+      for (let j = 0; j < size; j++) {
+        if (j < m) {
+          let cost = 0;
+          for (const pn of allPNs) {
+            const tempQty = (temps[i].byPN || {})[pn] || 0;
+            const poQty   = (pos[j].byPN   || {})[pn] || 0;
+            cost += Math.abs(tempQty - poQty);
+          }
+          row.push(cost);
+        } else {
+          row.push(BIG);
         }
-        row.push(cost);
       }
       matrix.push(row);
     }
-    const { assignment, totalCost } = hungarianMatch(matrix);
-    return {
-      assignment: assignment.map((j, i) => ({
-        tempOvId: temps[i].ovId,
-        poNumber: pos[j].poNumber,
-      })),
-      totalDelta: totalCost,
-      issues: [],
-    };
+    const { assignment: rawAssign } = hungarianMatch(matrix);
+
+    const assigned = [];
+    const unassignedTemps = [];
+    let realCost = 0;
+    rawAssign.forEach((j, i) => {
+      if (j < m) {
+        assigned.push({ tempOvId: temps[i].ovId, poNumber: pos[j].poNumber });
+        realCost += matrix[i][j];
+      } else {
+        unassignedTemps.push({ tempOvId: temps[i].ovId, name: temps[i].name });
+      }
+    });
+
+    const issues = [];
+    if (unassignedTemps.length) {
+      issues.push({
+        severity: 'warn',
+        type: 'temps_not_assigned',
+        detail: `${unassignedTemps.length} OV temporal(es) sin PO asignado (n=${n}, m=${m}); quedan fuera del plan: ${unassignedTemps.map(t => t.name).join(', ')}`,
+        unassignedTemps,
+      });
+    }
+
+    return { assignment: assigned, totalDelta: realCost, issues, unassignedTemps };
   }
 
   function computeMovesForPN(pn, currentByOV, targetByOV) {
