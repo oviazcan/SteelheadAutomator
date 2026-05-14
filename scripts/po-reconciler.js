@@ -770,21 +770,27 @@ const POReconciler = (() => {
     if (!el) return;
     el.innerHTML = '<em>Cargando…</em>';
     try {
-      const { candidates, totalRaw, filteredCount, shipTosSeen } = await loadCandidateTempOVs();
+      const { candidates, totalRaw, pass1Raw, pass2Used, filteredCount, shipTosSeen, customersSeen } = await loadCandidateTempOVs();
       if (!candidates.length) {
         const domain = api().getDomain();
         const sch = domain.schneiderQueretaro || {};
         const shipTosHtml = (shipTosSeen || [])
           .sort((a, b) => b.count - a.count)
-          .slice(0, 8)
+          .slice(0, 10)
           .map(s => `<li><code>${escapeHtml(s.id)}</code> · ${s.count} OV(s) · ${escapeHtml(s.blob || '(sin nombre/dirección)')}</li>`)
+          .join('');
+        const customersHtml = (customersSeen || [])
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10)
+          .map(c => `<li><code>id=${escapeHtml(c.id)} idInDomain=${escapeHtml(String(c.idInDomain))}</code> · ${c.count} OV(s) · ${escapeHtml(c.name)}</li>`)
           .join('');
         el.innerHTML = `
           <div class="sa-pr-issue-warn">
             <strong>No se detectaron OVs temp Schneider QRO.</strong><br>
-            <small>customerId=${escapeHtml(String(sch.customerId ?? 'n/a'))}, shipToAddressId=${escapeHtml(String(sch.shipToAddressId ?? 'n/a'))}, regex=${escapeHtml(String(sch.shipToAddressNameRegex ?? '(default Vesta|Querétaro|QRO|Colon)'))}<br>
-            Steelhead devolvió ${totalRaw} OV(s) activas para este cliente; ${filteredCount} fueron descartadas.</small>
-            ${shipTosHtml ? `<details style="margin-top:8px"><summary>ShipTos disponibles (${shipTosSeen.length}) — abre y comparte</summary><ul style="font-size:11px;padding-left:18px;margin:6px 0">${shipTosHtml}</ul></details>` : ''}
+            <small>config: customerId=${escapeHtml(String(sch.customerId ?? 'n/a'))}, shipToAddressId=${escapeHtml(String(sch.shipToAddressId ?? 'n/a'))}, regex=${escapeHtml(String(sch.shipToAddressNameRegex ?? '(default Vesta|Querétaro|QRO|Colon)'))}<br>
+            Pasada 1 (con customerId): ${pass1Raw} OV(s). ${pass2Used ? `Pasada 2 (fallback sin customerId): ${totalRaw} OV(s).` : ''} Descartadas tras filtros: ${filteredCount}.</small>
+            ${customersHtml ? `<details style="margin-top:8px" open><summary><strong>Customers vistos</strong> (${customersSeen.length}) — comparte el id correcto de SCHNEIDER ELECTRIC USA</summary><ul style="font-size:11px;padding-left:18px;margin:6px 0">${customersHtml}</ul></details>` : ''}
+            ${shipTosHtml ? `<details style="margin-top:8px"><summary>ShipTos vistos (${shipTosSeen.length})</summary><ul style="font-size:11px;padding-left:18px;margin:6px 0">${shipTosHtml}</ul></details>` : ''}
           </div>
         `;
         updateFooter();
@@ -827,34 +833,70 @@ const POReconciler = (() => {
     return ov?.shipToAddress?.id ?? ov?.shipToAddressId ?? null;
   }
 
-  async function loadCandidateTempOVs() {
-    const domain = api().getDomain();
-    const schneider = domain.schneiderQueretaro || {};
-    if (!schneider.customerId) {
-      throw new Error('Falta config Schneider QRO (customerId)');
-    }
-    const sapRe = new RegExp(schneider.poNumberRegex || '^14\\d{8}$');
-    const wantId = schneider.shipToAddressId ? String(schneider.shipToAddressId) : null;
-    const wantNameRe = schneider.shipToAddressNameRegex
-      ? new RegExp(schneider.shipToAddressNameRegex, 'i')
-      : /vesta|quer[eé]taro|qro|colon\b/i;  // default robusto para Schneider QRO
+  async function fetchActiveOrders(filters, label) {
     const variables = {
-      filters: { customerId: schneider.customerId, archivedAt: null },
+      filters: { archivedAt: null, ...filters },
       first: 100,
       computeMargins: false,
       showInvoicedSubtotal: false,
     };
     const data = await api().query('ActiveReceivedOrders', variables);
     const all = data?.activeReceivedOrders?.nodes || data?.receivedOrders?.nodes || [];
+    log(`fetchActiveOrders(${label}): ${all.length} OV(s)`);
+    return all;
+  }
 
-    // Diagnóstico: agrupar shipTos vistos para mostrarle al usuario qué hay disponible
-    const shipTosSeen = new Map(); // id -> { id, blob, count, sampleOvName }
+  async function loadCandidateTempOVs() {
+    const domain = api().getDomain();
+    const schneider = domain.schneiderQueretaro || {};
+    const sapRe = new RegExp(schneider.poNumberRegex || '^14\\d{8}$');
+    const wantId = schneider.shipToAddressId ? String(schneider.shipToAddressId) : null;
+    const wantNameRe = schneider.shipToAddressNameRegex
+      ? new RegExp(schneider.shipToAddressNameRegex, 'i')
+      : /vesta|quer[eé]taro|qro|colon\b/i;
+
+    // Pasada 1: filtro por customerId si está configurado
+    let all = [];
+    let pass1Raw = 0;
+    if (schneider.customerId) {
+      try {
+        all = await fetchActiveOrders({ customerId: schneider.customerId }, `customerId=${schneider.customerId}`);
+        pass1Raw = all.length;
+      } catch (e) { warn(`Pasada 1 falló: ${e.message}`); }
+    }
+
+    // Pasada 2: si la pasada 1 no devolvió nada, fallback a query sin customerId
+    // (filtra por shipToAddressId server-side si está; si no, todo lo activo).
+    let pass2Used = false;
+    if (!all.length) {
+      pass2Used = true;
+      const filtersFallback = wantId ? { shipToAddressId: schneider.shipToAddressId } : {};
+      try {
+        all = await fetchActiveOrders(filtersFallback, wantId ? `shipToAddressId=${wantId}` : 'sin filtro');
+      } catch (e) {
+        // Si el server no acepta shipToAddressId como filtro, intentar sin nada
+        if (wantId) {
+          warn(`Fallback con shipToAddressId falló (${e.message}); intentando sin filtro`);
+          try { all = await fetchActiveOrders({}, 'sin filtro'); } catch (e2) { warn(`Fallback sin filtro también falló: ${e2.message}`); }
+        }
+      }
+    }
+
+    // Diagnóstico: agrupar shipTos vistos
+    const shipTosSeen = new Map();
+    const customersSeen = new Map();
     for (const ov of all) {
-      const id = String(shipToId(ov) ?? 'null');
+      const sId = String(shipToId(ov) ?? 'null');
       const blob = shipToBlob(ov);
-      const entry = shipTosSeen.get(id) || { id, blob, count: 0, sampleOvName: ov.name };
-      entry.count++;
-      shipTosSeen.set(id, entry);
+      const sEntry = shipTosSeen.get(sId) || { id: sId, blob, count: 0, sampleOvName: ov.name };
+      sEntry.count++;
+      shipTosSeen.set(sId, sEntry);
+      const cId = String(ov.customerId ?? ov.customer?.id ?? 'null');
+      const cName = ov.customer?.name || ov.customer?.companyName || '(sin nombre)';
+      const cIdInDomain = ov.customer?.idInDomain ?? ov.customerIdInDomain ?? 'n/a';
+      const cEntry = customersSeen.get(cId) || { id: cId, idInDomain: cIdInDomain, name: cName, count: 0 };
+      cEntry.count++;
+      customersSeen.set(cId, cEntry);
     }
 
     const candidates = all.filter(ov => {
@@ -863,23 +905,26 @@ const POReconciler = (() => {
       const blob = shipToBlob(ov);
       const matchById = wantId ? ship === wantId : false;
       const matchByName = wantNameRe.test(blob);
-      // Si hay id configurado, exigir match por id; si no, permitir match por nombre
       if (wantId && !matchById && !matchByName) return false;
       if (!wantId && !matchByName) return false;
       const name = String(ov.name || '').trim();
       if (sapRe.test(name)) return false;
       return true;
     });
-    log(`Temp OVs candidatas: ${candidates.length} (de ${all.length} OV(s) activas para customerId=${schneider.customerId})`);
+    log(`Temp OVs candidatas: ${candidates.length} (de ${all.length} OV(s) activas, pass2Used=${pass2Used})`);
     if (!candidates.length && all.length) {
-      console.info('[PR] ShipTos vistos en OVs activas:', [...shipTosSeen.values()]);
-      console.info('[PR] Sample OV completa:', all[0]);
+      console.info('[PR] ShipTos vistos:', [...shipTosSeen.values()]);
+      console.info('[PR] Customers vistos:', [...customersSeen.values()]);
+      console.info('[PR] Sample OV:', all[0]);
     }
     return {
       candidates: candidates.map(ov => ({ id: ov.id, idInDomain: ov.idInDomain, name: ov.name, raw: ov })),
       totalRaw: all.length,
+      pass1Raw,
+      pass2Used,
       filteredCount: all.length - candidates.length,
       shipTosSeen: [...shipTosSeen.values()],
+      customersSeen: [...customersSeen.values()],
     };
   }
 
