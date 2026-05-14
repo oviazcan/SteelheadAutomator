@@ -407,7 +407,6 @@ const POReconciler = (() => {
   }
 
   function renderPdfDetailTable(p) {
-    const cur = p.parsed.currency || '';
     return `
       <table class="sa-pr-table">
         <thead><tr><th>#</th><th>PN</th><th>Descripción</th><th style="text-align:right">Qty</th><th style="text-align:right">P.Unit</th><th style="text-align:right">Total</th></tr></thead>
@@ -423,8 +422,8 @@ const POReconciler = (() => {
               <td>${escapeHtml(l.partNumber)}</td>
               <td>${descCell}</td>
               <td style="text-align:right">${escapeHtml(l.quantity)}</td>
-              <td style="text-align:right">${escapeHtml(fmtMoney(l.unitPrice, cur))}</td>
-              <td style="text-align:right">${escapeHtml(fmtMoney(l.total, cur))}</td>
+              <td style="text-align:right">${escapeHtml(fmtMoney(l.unitPrice))}</td>
+              <td style="text-align:right">${escapeHtml(fmtMoney(l.total))}</td>
             </tr>`;
           }).join('')}
         </tbody>
