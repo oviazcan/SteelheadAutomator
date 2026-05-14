@@ -847,7 +847,10 @@ const POReconciler = (() => {
         if (!wantShipId && !matchByName) continue;
         filteredByShipTo.push(d);
       }
-      state.tempOVs = filteredByShipTo;
+      // Excluir OVs sin OTs ni PNs (vacías) — no son accionables para reconciliación.
+      const withContent = filteredByShipTo.filter(d => d.ots && d.ots.length > 0);
+      const droppedEmpty = filteredByShipTo.length - withContent.length;
+      state.tempOVs = withContent;
       const droppedByShipTo = detailedOk.length - filteredByShipTo.length;
 
       if (!filteredByShipTo.length) {
@@ -980,6 +983,7 @@ const POReconciler = (() => {
         }).join('')}
         ${extractorDiagHtml}
         ${droppedByShipTo ? `<div style="font-size:11px;color:#666;margin-top:6px">${droppedByShipTo} OV(s) Schneider no-SAP descartadas por shipTo distinto.</div>` : ''}
+        ${droppedEmpty ? `<div style="font-size:11px;color:#666;margin-top:2px">${droppedEmpty} OV(s) descartadas por venir vacías (sin OTs/PNs).</div>` : ''}
         ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OV(s) fallaron al cargar detalles. Ver consola.</div>` : ''}
         <div style="margin-top:10px;padding:8px;background:#f8f8f8;border:1px solid #ddd;border-radius:4px">
           <div style="font-size:11px;font-weight:bold;margin-bottom:4px">🔍 Diagnosticar OV específica</div>
