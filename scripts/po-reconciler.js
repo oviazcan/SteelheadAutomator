@@ -822,8 +822,55 @@ const POReconciler = (() => {
         return;
       }
       const details = await Promise.all(candidates.map(c => loadOVDetails(c.id).catch(e => ({ error: e.message, id: c.id, name: c.name }))));
-      state.tempOVs = details.filter(d => !d.error);
       const errors = details.filter(d => d.error);
+      const detailedOk = details.filter(d => !d.error);
+
+      // Filtro por shipTo aplicado AHORA (GetReceivedOrder sí trae el dato).
+      const domain2 = api().getDomain();
+      const sch2 = domain2.schneiderQueretaro || {};
+      const wantShipId = sch2.shipToAddressId ? String(sch2.shipToAddressId) : null;
+      const wantNameRe2 = sch2.shipToAddressNameRegex
+        ? new RegExp(sch2.shipToAddressNameRegex, 'i')
+        : /vesta|quer[eé]taro|qro|colon\b/i;
+      const detailShipTos = new Map();
+      const filteredByShipTo = [];
+      for (const d of detailedOk) {
+        const ovRaw = d.snapshot;
+        const sId = String(shipToId(ovRaw) ?? 'null');
+        const blob = shipToBlob(ovRaw);
+        const e = detailShipTos.get(sId) || { id: sId, blob, count: 0, sampleOvName: d.name };
+        e.count++;
+        detailShipTos.set(sId, e);
+        const matchById = wantShipId ? sId === wantShipId : false;
+        const matchByName = wantNameRe2.test(blob);
+        if (wantShipId && !matchById && !matchByName) continue;
+        if (!wantShipId && !matchByName) continue;
+        filteredByShipTo.push(d);
+      }
+      state.tempOVs = filteredByShipTo;
+      const droppedByShipTo = detailedOk.length - filteredByShipTo.length;
+
+      if (!filteredByShipTo.length) {
+        const shipTosListHtml = [...detailShipTos.values()]
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 20)
+          .map(s => `<li><code>${escapeHtml(s.id)}</code> · ${s.count} OV(s) · ${escapeHtml(s.blob || '(sin nombre/dirección)')} · ej: ${escapeHtml(s.sampleOvName || '')}</li>`)
+          .join('');
+        el.innerHTML = `
+          <div class="sa-pr-issue-warn">
+            <strong>Sin OVs temp después del filtro de shipTo.</strong><br>
+            <small>${candidates.length} OV(s) Schneider USA no-SAP cargaron sus detalles, pero ninguna matchea shipToAddressId=${escapeHtml(String(wantShipId ?? 'n/a'))} ni regex.</small>
+            <details style="margin-top:8px" open><summary><strong>ShipTos vistos en detalles</strong> (${detailShipTos.size}) — comparte el id de Vesta/Querétaro</summary>
+              <ul style="font-size:11px;padding-left:18px;margin:6px 0">${shipTosListHtml}</ul>
+            </details>
+            ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OV(s) fallaron al cargar detalles. Ver consola.</div>` : ''}
+          </div>
+        `;
+        if (errors.length) console.warn('[PR] errores cargando OVs:', errors);
+        updateFooter();
+        return;
+      }
+
       el.innerHTML = `
         ${state.tempOVs.map(t => `
           <div class="item">
@@ -831,6 +878,7 @@ const POReconciler = (() => {
             <small>${t.ots.length} OTs · ${Object.keys(t.byPN).length} PNs</small>
           </div>
         `).join('')}
+        ${droppedByShipTo ? `<div style="font-size:11px;color:#666;margin-top:6px">${droppedByShipTo} OV(s) Schneider no-SAP descartadas por shipTo distinto.</div>` : ''}
         ${errors.length ? `<div class="sa-pr-issue-warn">⚠️ ${errors.length} OV(s) fallaron al cargar detalles. Ver consola.</div>` : ''}
       `;
       if (errors.length) console.warn('[PR] errores cargando OVs:', errors);
@@ -982,20 +1030,15 @@ const POReconciler = (() => {
     }
 
     // El server ignora `customerId` en este hash de ActiveReceivedOrders →
-    // filtramos client-side. Aplica también si pass2 corrió sin customerId
-    // (en ese caso schneider.customerId define el target).
+    // filtramos client-side. OJO: ActiveReceivedOrders NO devuelve shipTo en
+    // cada nodo, así que el filtro por shipTo se aplica abajo, sobre los
+    // detalles de cada candidata (GetReceivedOrder en loadOVDetails).
     const wantCustomerId = schneider.customerId ? String(schneider.customerId) : null;
     const candidates = all.filter(ov => {
       if (ov.archivedAt) return false;
       if (wantCustomerId && String(customerIdOf(ov) ?? '') !== wantCustomerId) return false;
-      const ship = String(shipToId(ov) ?? '');
-      const blob = shipToBlob(ov);
-      const matchById = wantId ? ship === wantId : false;
-      const matchByName = wantNameRe.test(blob);
-      if (wantId && !matchById && !matchByName) return false;
-      if (!wantId && !matchByName) return false;
       const name = String(ov.name || '').trim();
-      if (sapRe.test(name)) return false;
+      if (sapRe.test(name)) return false; // ya tiene PO SAP asignado
       return true;
     });
     log(`Temp OVs candidatas: ${candidates.length} (de ${all.length} OV(s) activas, pass2Used=${pass2Used})`);
