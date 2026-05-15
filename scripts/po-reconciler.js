@@ -538,6 +538,7 @@ const POReconciler = (() => {
 
   function renderStep3Body(body) {
     const p = state.plan;
+    const newOVs = p.newOVsFromPdfs || [];
     body.innerHTML = `
       <section class="sa-pr-plan-summary">
         <h3>Resumen</h3>
@@ -545,7 +546,7 @@ const POReconciler = (() => {
           <span>${p.assignment.length} asignaciones</span>
           <span>${p.moves.length} movimientos</span>
           <span>${p.restantes.length} sobrantes → Restantes</span>
-          <span>${p.creates.length} OVs nuevas</span>
+          <span>${(p.creates?.length || 0) + newOVs.length} OVs nuevas</span>
           <span class="sa-pr-issue-warn">${p.issues.filter(i => i.severity === 'warn').length} warnings</span>
           <span class="sa-pr-issue-fatal">${p.issues.filter(i => i.severity === 'fatal').length} fatales</span>
         </div>
@@ -553,16 +554,54 @@ const POReconciler = (() => {
       <section class="sa-pr-plan-section"><h3>Asignación temp ↔ PO</h3><div id="sa-pr-asgn"></div></section>
       <section class="sa-pr-plan-section"><h3>Movimientos</h3><div id="sa-pr-moves"></div></section>
       <section class="sa-pr-plan-section"><h3>Sobrantes → OV Restantes</h3><div id="sa-pr-rest"></div></section>
+      ${newOVs.length ? `<section class="sa-pr-plan-section"><h3>OVs nuevas a crear desde PDF (${newOVs.length})</h3><div id="sa-pr-newovs"></div></section>` : ''}
       <section class="sa-pr-plan-section"><h3>Issues</h3><div id="sa-pr-issues"></div></section>
       <button id="sa-pr-recompute" class="sa-pr-btn">↻ Recalcular plan</button>
     `;
     renderAssignment();
     renderMoves();
     renderRestantes();
+    if (newOVs.length) renderNewOVsFromPdfs();
     renderIssues();
     document.getElementById('sa-pr-recompute').onclick = async () => {
       await renderStep3(body);
     };
+  }
+
+  function renderNewOVsFromPdfs() {
+    const el = document.getElementById('sa-pr-newovs');
+    if (!el) return;
+    const newOVs = state.plan.newOVsFromPdfs || [];
+    el.innerHTML = newOVs.map(n => {
+      const lines = n.rawLines || [];
+      const totalQty = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+      const uniquePNs = new Set(lines.map(l => l.partNumber)).size;
+      return `
+        <details style="margin-bottom:8px;border:1px solid #e0e0e0;border-radius:4px;padding:6px">
+          <summary style="cursor:pointer">
+            <strong>PO ${escapeHtml(n.poNumber)}</strong>
+            · ${lines.length} líneas · ${uniquePNs} PN únicos · ${totalQty} pzas
+            <small style="color:#888;margin-left:6px">sin temp con PNs en común — crear OV nueva</small>
+          </summary>
+          <table class="sa-pr-table" style="margin-top:6px">
+            <thead><tr><th>#</th><th>PN</th><th style="text-align:right">Qty</th><th style="text-align:right">P.Unit</th><th style="text-align:right">Total</th></tr></thead>
+            <tbody>
+              ${lines.map(l => `<tr>
+                <td>${escapeHtml(l.lineNumber)}</td>
+                <td>${escapeHtml(l.partNumber)}</td>
+                <td style="text-align:right">${escapeHtml(l.quantity)}</td>
+                <td style="text-align:right">${escapeHtml(fmtMoney(l.unitPrice))}</td>
+                <td style="text-align:right">${escapeHtml(fmtMoney(l.total))}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+          <div style="font-size:11px;color:#888;margin-top:6px">
+            ⚠️ Ejecución de creación de OV nueva aún no implementada en este wizard.
+            Por ahora créala manualmente en Steelhead (botón <em>+ Nueva orden</em>) usando este detalle como referencia.
+          </div>
+        </details>
+      `;
+    }).join('');
   }
 
   function renderAssignment() {
@@ -1777,7 +1816,9 @@ const POReconciler = (() => {
   function assignTempsToPOs(temps, pos) {
     const n = temps.length;
     const m = pos.length;
-    if (n === 0 && m === 0) return { assignment: [], totalDelta: 0, issues: [], unassignedTemps: [] };
+    if (n === 0 && m === 0) {
+      return { assignment: [], totalDelta: 0, issues: [], unassignedTemps: [], posWithoutMatch: [] };
+    }
     if (m === 0) {
       return {
         assignment: [],
@@ -1788,25 +1829,59 @@ const POReconciler = (() => {
           detail: 'No hay POs cargados; nada que asignar.',
         }],
         unassignedTemps: temps.map(t => ({ tempOvId: t.ovId, name: t.name })),
+        posWithoutMatch: [],
       };
     }
-    if (n < m) {
+
+    // Pre-filtro: separar POs con al menos 1 PN en común con alguna temp vs POs sin candidato.
+    // Los POs sin candidato no entran al Hungarian — irán a "OV nueva a crear desde PDF".
+    const eligiblePos = [];
+    const posWithoutMatch = [];
+    for (const po of pos) {
+      const poPNs = Object.keys(po.byPN || {});
+      const hasCandidate = poPNs.some(pn => temps.some(t => (t.byPN?.[pn] || 0) > 0));
+      if (hasCandidate) eligiblePos.push(po);
+      else posWithoutMatch.push({ poNumber: po.poNumber, reason: 'no_pn_overlap' });
+    }
+
+    if (n === 0 || eligiblePos.length === 0) {
+      const issues = [];
+      if (posWithoutMatch.length) {
+        issues.push({
+          severity: 'warn',
+          type: 'pos_need_new_ov',
+          detail: `${posWithoutMatch.length} PO(s) sin temp con PNs en común → crear OV nueva: ${posWithoutMatch.map(p => p.poNumber).join(', ')}`,
+          posWithoutMatch,
+        });
+      }
+      return {
+        assignment: [],
+        totalDelta: 0,
+        issues,
+        unassignedTemps: temps.map(t => ({ tempOvId: t.ovId, name: t.name })),
+        posWithoutMatch,
+      };
+    }
+
+    const m2 = eligiblePos.length;
+    if (n < m2) {
       return {
         assignment: null,
         totalDelta: null,
         issues: [{
           severity: 'fatal',
           type: 'cardinality_pos_excess',
-          detail: `Hay ${m} PO(s) pero solo ${n} OV(s) temporales activas. Cada PO necesita una OV temporal. Carga más OVs (o desexcluye alguna en el Step 1) o reduce los PDFs.`,
+          detail: `Hay ${m2} PO(s) elegibles pero solo ${n} OV(s) temporales activas. Cada PO con solape necesita una OV temporal. Desexcluye alguna en Step 1 o reduce los PDFs.`,
         }],
+        posWithoutMatch,
       };
     }
 
     const allPNs = new Set();
     temps.forEach(t => Object.keys(t.byPN || {}).forEach(pn => allPNs.add(pn)));
-    pos.forEach(p => Object.keys(p.byPN || {}).forEach(pn => allPNs.add(pn)));
+    eligiblePos.forEach(p => Object.keys(p.byPN || {}).forEach(pn => allPNs.add(pn)));
 
-    // Hungarian requiere matriz cuadrada. Para n>m, agregamos (n-m) columnas dummy
+    // Hungarian requiere matriz cuadrada. Para n>m2, agregamos (n-m2) columnas dummy
     // con costo BIG; las temps que terminen asignadas a una columna dummy quedan
     // como "no asignadas" (subset auto).
     const BIG = 1e9;
@@ -1815,11 +1890,11 @@ const POReconciler = (() => {
     for (let i = 0; i < n; i++) {
       const row = [];
       for (let j = 0; j < size; j++) {
-        if (j < m) {
+        if (j < m2) {
           let cost = 0;
           for (const pn of allPNs) {
             const tempQty = (temps[i].byPN || {})[pn] || 0;
-            const poQty   = (pos[j].byPN   || {})[pn] || 0;
+            const poQty   = (eligiblePos[j].byPN || {})[pn] || 0;
             cost += Math.abs(tempQty - poQty);
           }
           row.push(cost);
@@ -1835,8 +1910,8 @@ const POReconciler = (() => {
     const unassignedTemps = [];
     let realCost = 0;
     rawAssign.forEach((j, i) => {
-      if (j < m) {
-        assigned.push({ tempOvId: temps[i].ovId, poNumber: pos[j].poNumber });
+      if (j < m2) {
+        assigned.push({ tempOvId: temps[i].ovId, poNumber: eligiblePos[j].poNumber });
         realCost += matrix[i][j];
       } else {
         unassignedTemps.push({ tempOvId: temps[i].ovId, name: temps[i].name });
@@ -1848,12 +1923,20 @@ const POReconciler = (() => {
       issues.push({
         severity: 'warn',
         type: 'temps_not_assigned',
-        detail: `${unassignedTemps.length} OV temporal(es) sin PO asignado (n=${n}, m=${m}); quedan fuera del plan: ${unassignedTemps.map(t => t.name).join(', ')}`,
+        detail: `${unassignedTemps.length} OV temporal(es) sin PO asignado (n=${n}, elegibles=${m2}); quedan fuera del plan: ${unassignedTemps.map(t => t.name).join(', ')}`,
         unassignedTemps,
       });
     }
+    if (posWithoutMatch.length) {
+      issues.push({
+        severity: 'warn',
+        type: 'pos_need_new_ov',
+        detail: `${posWithoutMatch.length} PO(s) sin temp con PNs en común → crear OV nueva: ${posWithoutMatch.map(p => p.poNumber).join(', ')}`,
+        posWithoutMatch,
+      });
+    }
 
-    return { assignment: assigned, totalDelta: realCost, issues, unassignedTemps };
+    return { assignment: assigned, totalDelta: realCost, issues, unassignedTemps, posWithoutMatch };
   }
 
   function computeMovesForPN(pn, currentByOV, targetByOV) {
@@ -1915,12 +1998,24 @@ const POReconciler = (() => {
     // Asignación
     let assignmentResult;
     if (overrides.assignment) {
-      assignmentResult = { assignment: overrides.assignment, totalDelta: null, issues: [] };
+      assignmentResult = { assignment: overrides.assignment, totalDelta: null, issues: [], posWithoutMatch: [] };
     } else {
       assignmentResult = assignTempsToPOs(temps, pos);
     }
+    // POs sin match → OVs nuevas a crear desde PDF.
+    const posByNumber = new Map(pos.map(p => [p.poNumber, p]));
+    const newOVsFromPdfs = (assignmentResult.posWithoutMatch || []).map(p => {
+      const po = posByNumber.get(p.poNumber);
+      return {
+        poNumber: p.poNumber,
+        reason: p.reason || 'no_pn_overlap',
+        rawLines: po?.rawLines || [],
+        byPN: po?.byPN || {},
+      };
+    });
     if (!assignmentResult.assignment) {
-      return { assignment: [], moves: [], restantes: [], renames: [], creates: [], issues: assignmentResult.issues };
+      issues.push(...(assignmentResult.issues || []));
+      return { assignment: [], moves: [], restantes: [], renames: [], creates: [], newOVsFromPdfs, issues };
     }
     const assignment = assignmentResult.assignment;
 
@@ -2005,7 +2100,8 @@ const POReconciler = (() => {
       return { ovId: tempOvId, fromName: t?.name ?? '', toName: poNumber };
     });
 
-    return { assignment, moves, restantes, renames, creates, issues };
+    issues.push(...(assignmentResult.issues || []));
+    return { assignment, moves, restantes, renames, creates, newOVsFromPdfs, issues };
   }
 
   // ── PDF parsing ────────────────────────────────────────────
