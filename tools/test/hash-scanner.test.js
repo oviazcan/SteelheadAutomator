@@ -50,5 +50,46 @@ test('init() keeps _internal.knownHashMap reference live', () => {
   assert.strictEqual(I.knownHashMap['h3'], 'Baz');
 });
 
+test('sanitizeVariables: redacta key body en ops benignas, conserva el resto', () => {
+  const result = I.sanitizeVariables('SaveInvoice', {
+    invoice: { id: 42, total: '100.00', notes: 'visible text' },
+    emailData: { to: 'a@b.com', body: 'SUPER_SECRET_TOKEN_xyz' }
+  });
+  assert.strictEqual(result.invoice.id, 42, 'id visible');
+  assert.strictEqual(result.invoice.total, '100.00', 'total visible');
+  assert.strictEqual(result.invoice.notes, 'visible text', 'notes visible');
+  assert.strictEqual(result.emailData, '[REDACTED]', 'emailData key matches → redacted');
+});
+
+test('sanitizeVariables: ya NO redacta el payload entero por nombre de op', () => {
+  const result = I.sanitizeVariables('GetInvoiceLineItemsForRolis', {
+    invoiceId: 12345,
+    filter: { status: 'ACTIVE' }
+  });
+  assert.strictEqual(result.invoiceId, 12345, 'no op-level redaction');
+  assert.deepStrictEqual(result.filter, { status: 'ACTIVE' });
+});
+
+test('sanitizeVariables: redacta keys sensibles incluso anidadas profundo', () => {
+  const result = I.sanitizeVariables('AnyOp', {
+    payload: { nested: { token: 'abc123', meta: { authToken: 'def456', name: 'ok' } } }
+  });
+  assert.strictEqual(result.payload.nested.token, '[REDACTED]');
+  assert.strictEqual(result.payload.nested.meta.authToken, '[REDACTED]');
+  assert.strictEqual(result.payload.nested.meta.name, 'ok');
+});
+
+test('sanitizeVariables: trunca strings largas (>500 chars)', () => {
+  const longStr = 'x'.repeat(600);
+  const result = I.sanitizeVariables('AnyOp', { data: longStr });
+  assert.ok(String(result.data).startsWith('[TRUNCATED:'), 'long string truncated');
+});
+
+test('sanitizeVariables: redacta ?token=... en URLs', () => {
+  const result = I.sanitizeVariables('AnyOp', { url: 'https://x.com/y?token=SECRET&a=1' });
+  assert.ok(result.url.includes('token=[REDACTED]'));
+  assert.ok(result.url.includes('a=1'));
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

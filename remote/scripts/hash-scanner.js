@@ -12,8 +12,7 @@ const HashScanner = (() => {
   let knownOpMap = {};   // configKey → hash
 
   // Redact variable samples that may contain live Steelhead tokens or payloads.
-  // Tokens leak via operations that pass email bodies / signed URLs as GraphQL inputs.
-  const SENSITIVE_OP_PATTERN = /email|invoice|send|preview|attach|cfdi/i;
+  // Key-level redaction: catches secrets by field name recursively, no op-level blanking.
   const SENSITIVE_KEY_PATTERN = /^(body|rawBody|html|htmlBody|token|accessToken|authToken|emailData)$/i;
   const TOKEN_URL_PATTERN = /([?&])token=[^&"'\s]+/gi;
   const MAX_STRING_LENGTH = 500;
@@ -44,9 +43,6 @@ const HashScanner = (() => {
 
   function sanitizeVariables(operationName, variables) {
     if (variables === null || variables === undefined) return variables;
-    if (SENSITIVE_OP_PATTERN.test(operationName || '')) {
-      return { __redacted: `variables omitted (${operationName} matches sensitive op pattern)` };
-    }
     const counter = { n: 0 };
     const sanitized = sanitizeValue(variables, counter);
     if (counter.n > 0) {
