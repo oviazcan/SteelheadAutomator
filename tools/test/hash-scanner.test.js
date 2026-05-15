@@ -91,5 +91,39 @@ test('sanitizeVariables: redacta ?token=... en URLs', () => {
   assert.ok(result.url.includes('a=1'));
 });
 
+test('analyzeSchema: array vacío devuelve [null] (marker), no string "[]"', () => {
+  const result = I.analyzeSchema({ nodes: [] });
+  assert.deepStrictEqual(result, { nodes: [null] });
+});
+
+test('analyzeSchema: profundidad >4 NO se trunca con "..."', () => {
+  const deep = { l1: { l2: { l3: { l4: { l5: { l6: { id: 1 } } } } } } };
+  const result = I.analyzeSchema(deep);
+  assert.strictEqual(
+    result.l1.l2.l3.l4.l5.l6.id, 'number',
+    'depth 7 still visible'
+  );
+});
+
+test('mergeSchema: enriquece array vacío con shape de array poblado posterior', () => {
+  const empty = I.analyzeSchema({ nodes: [] });
+  const populated = I.analyzeSchema({ nodes: [{ id: 1, name: 'x' }] });
+  const merged = I.mergeSchema(empty, populated);
+  assert.deepStrictEqual(merged.nodes[0], { id: 'number', name: 'string' });
+});
+
+test('mergeSchema: union de campos de dos objetos', () => {
+  const a = { id: 'number', name: 'string' };
+  const b = { id: 'number', email: 'string' };
+  const merged = I.mergeSchema(a, b);
+  assert.deepStrictEqual(merged, { id: 'number', name: 'string', email: 'string' });
+});
+
+test('mergeSchema: campo null se reemplaza por shape posterior', () => {
+  const a = { receivedAt: null };
+  const b = { receivedAt: 'string' };
+  assert.strictEqual(I.mergeSchema(a, b).receivedAt, 'string');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

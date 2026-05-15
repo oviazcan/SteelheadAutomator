@@ -143,10 +143,14 @@ const HashScanner = (() => {
       }
     }
 
-    // Analyze response structure (first time only, or if previous was null)
-    if (responseData?.data && !entry.responseSchema) {
-      entry.responseSchema = analyzeSchema(responseData.data);
-      entry.responseFields = extractFieldPaths(responseData.data);
+    // Merge response schema across calls — enriches sparse first responses
+    if (responseData?.data) {
+      const newSchema = analyzeSchema(responseData.data);
+      entry.responseSchema = entry.responseSchema
+        ? mergeSchema(entry.responseSchema, newSchema)
+        : newSchema;
+      // Rebuild field paths from merged schema
+      entry.responseFields = extractFieldPaths(entry.responseSchema);
     }
 
     // Determine status vs known config
@@ -167,37 +171,57 @@ const HashScanner = (() => {
     }
   }
 
-  // Analyze JSON structure recursively — returns type tree
-  function analyzeSchema(data, depth = 0, maxDepth = 4) {
-    if (depth > maxDepth) return '...';
-    if (data === null || data === undefined) return 'null';
+  // Recursive schema analyzer. No artificial depth limit; circular refs guarded by seen-set.
+  function analyzeSchema(data, seen = new WeakSet()) {
+    if (data === null || data === undefined) return null;
+    if (typeof data !== 'object') return typeof data;
+    if (seen.has(data)) return '[circular]';
+    seen.add(data);
     if (Array.isArray(data)) {
-      if (data.length === 0) return '[]';
-      return [analyzeSchema(data[0], depth + 1, maxDepth)];
+      if (data.length === 0) return [null]; // marker: unknown item shape
+      return [analyzeSchema(data[0], seen)];
     }
-    if (typeof data === 'object') {
-      const schema = {};
-      for (const [key, value] of Object.entries(data)) {
-        if (key === '__typename') { schema.__typename = value; continue; }
-        schema[key] = analyzeSchema(value, depth + 1, maxDepth);
-      }
-      return schema;
+    const schema = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (key === '__typename') { schema.__typename = value; continue; }
+      schema[key] = analyzeSchema(value, seen);
     }
-    return typeof data;
+    return schema;
+  }
+
+  // Merge two schemas. Used to enrich responseSchema across multiple calls.
+  function mergeSchema(a, b) {
+    if (a === null || a === undefined) return b ?? null;
+    if (b === null || b === undefined) return a;
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return [mergeSchema(a[0] ?? null, b[0] ?? null)];
+    }
+    if (a && typeof a === 'object' && !Array.isArray(a) && b && typeof b === 'object' && !Array.isArray(b)) {
+      const out = {};
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      for (const k of keys) out[k] = mergeSchema(a[k] ?? null, b[k] ?? null);
+      return out;
+    }
+    if (typeof a === 'string' && typeof b === 'string') {
+      return a === b ? a : `${a}|${b}`;
+    }
+    return a; // fallback: keep first non-null
   }
 
   // Extract flat list of field paths (e.g., "createQuote.quote.id")
-  function extractFieldPaths(data, prefix = '', depth = 0, maxDepth = 3) {
+  function extractFieldPaths(data, prefix = '', seen = new WeakSet()) {
     const paths = [];
-    if (depth > maxDepth || !data || typeof data !== 'object') return paths;
+    if (!data || typeof data !== 'object') return paths;
+    if (seen.has(data)) return paths;
+    seen.add(data);
     for (const [key, value] of Object.entries(data)) {
       if (key === '__typename') continue;
       const path = prefix ? `${prefix}.${key}` : key;
       paths.push(path);
       if (value && typeof value === 'object' && !Array.isArray(value)) {
-        paths.push(...extractFieldPaths(value, path, depth + 1, maxDepth));
+        paths.push(...extractFieldPaths(value, path, seen));
       } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
-        paths.push(...extractFieldPaths(value[0], `${path}[]`, depth + 1, maxDepth));
+        paths.push(...extractFieldPaths(value[0], `${path}[]`, seen));
       }
     }
     return paths;
@@ -271,8 +295,9 @@ const HashScanner = (() => {
   }
 
   return {
-    init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults, analyzeSchema,
-    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, extractFieldPaths, recordOperation, discovered, knownHashMap, knownOpMap }
+    init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
+    analyzeSchema, mergeSchema,
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, recordOperation, discovered, knownHashMap, knownOpMap }
   };
 })();
 
