@@ -273,7 +273,11 @@ const HashScanner = (() => {
     }
   }
 
-  return { init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults, analyzeSchema };
+  return {
+    init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults, analyzeSchema,
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, extractFieldPaths, recordOperation, discovered, knownHashMap, knownOpMap }
+  };
 })();
 
 if (typeof window !== 'undefined') window.HashScanner = HashScanner;
+if (typeof module !== 'undefined') module.exports = HashScanner;
