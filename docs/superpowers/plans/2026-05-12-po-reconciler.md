@@ -3162,3 +3162,53 @@ Los usuarios obtienen la versión anterior tras recargar la extensión.
 **Próxima task al retomar:** Phase 4 — `parseMultiplePdfs` (Task 4.1 del plan). Usa `pdf.js` ya cargada en el applet PO Comparator; revisar `remote/scripts/po-comparator.js` para reutilizar el parser de PDF de Schneider.
 
 **Sin pendientes de deploy.** `gh-pages` sigue en 0.5.86. Producción intacta.
+
+---
+
+### 2026-05-13 → 14 — sesión 2 (Phases 4-12 + post-deploy fixes 0.6.0 → 0.6.22)
+
+**Estado:** Wizard end-to-end deployado y validado en producción contra Steelhead real para el caso "reconciliar OVs temporales contra POs nuevos del PDF". Pausado el ciclo de validación funcional porque **el usuario no tiene OVs temporales en sistema que coincidan con los POs disponibles** — el flujo no se puede validar end-to-end hasta que llegue un caso real con solape. La iteración seguirá cuando reaparezca el escenario.
+
+**Versiones desplegadas durante la sesión (todas en `gh-pages`):**
+
+| Versión | Cambio principal |
+|---------|---|
+| 0.6.0   | Wizard inicial completo (Phases 4-12 deployadas en bloque). |
+| 0.6.5-0.6.14 | Fixes incrementales del extractor de OVs (shape de `ActiveReceivedOrders`, filtro de shipTo, `idInDomain` vs internal id, `customerAddressByShipToAddressId`). |
+| 0.6.15  | Diagnóstico avanzado del extractor en panel Step 1 (dump de keys, primer line/lineItem/PT-assoc). |
+| 0.6.16  | `loadOVDetails` rehecho con **DOS queries**: `GetReceivedOrder` (lines/lineItems/PT-assoc) + `GetAddPartsReceivedOrder` (workOrders + PTs enriquecidos). Match WO↔PT por `partNumberId`. Hash nuevo agregado a config: `GetAddPartsReceivedOrder`. |
+| 0.6.17  | Probe input "Diagnosticar OV específica por idInDomain" + listado con `#idInDomain` y opacity 0.55 para vacías. |
+| 0.6.18  | Filtro "OVs vacías (sin OTs/PNs) descartadas del listado" — son legítimamente vacías, no son accionables. Regex SAP ampliado: `^14\d{8}$` → `^1[14]\d{8}$` (Schneider POs también empiezan con `11`). |
+| 0.6.19  | Modal PDF detalle: nuevas columnas Descripción, P.Unit, Total. Description hidratada async desde catálogo (`SearchPartNumbers` + `GetPartNumber`) con cache `state.pnCatalog`. Parser quitó acumulador de "líneas intermedias como descripción" (estaba adivinando ruido); deja `description: null` para que la hidrate el catálogo. |
+| 0.6.20  | Modal PDF: omitir `USD` en celdas de precio (ya está en encabezado). |
+| 0.6.21  | **Subset auto + override manual** cuando N temps > M POs: Hungarian sobre matriz NxN con (N-M) columnas dummy de costo BIG. Las temps que caen en dummy quedan como `unassignedTemps[]` (warning, no fatal). Step 1 UI: checkbox "Incluir en matching" por OV temporal con `state.excludedTempOvIds`. N<M sigue siendo fatal. |
+| 0.6.22  | **Detección de POs sin temp adecuada**: pre-filtro antes de Hungarian — POs sin ningún PN en común con cualquier temp → `posWithoutMatch[]` → `plan.newOVsFromPdfs[]`. Step 3 muestra sección "OVs nuevas a crear desde PDF" colapsable por PO con detalle de líneas. Issue tipo `pos_need_new_ov` (warning). **Ejecución de la creación NO implementada** (placeholder UI con instrucciones para crear manual). |
+
+**Lecciones clave de la sesión (que ya van a `CLAUDE.md` cuando se cierre el ciclo):**
+
+1. **Doble query para detalle de OV completo.** `GetReceivedOrder(idInDomain)` solo trae lines/lineItems/PT-assoc; los workOrders y los PTs enriquecidos (`partNumberId`, `count`, `maxPartTransformCount`) viven en `GetAddPartsReceivedOrder(id)` (que toma internal id, no idInDomain, y devuelve raíz `receivedOrderByIdInDomain` o `receivedOrder` según hash). Cualquier extractor que asuma una sola query devuelve `ots: []` y `byPN: {}`.
+
+2. **Postgraphile aliases inconsistentes entre hashes.** Misma operación lógica puede devolver `lines` vs `receivedOrderLines.nodes` vs `receivedOrderLinesByReceivedOrderId.nodes`. Mismo PT puede venir como `receivedOrderLineItemPartTransforms[]` o `receivedOrderLineItemPartTransformsByReceivedOrderLineItemId.nodes`. Estructura defensiva del extractor: probar todos los aliases conocidos con fallback chain.
+
+3. **Match WO↔PT por `partNumberId` cuando no viene la FK explícita.** El response no expone `partTransformId` en el WO. Se asocia por `partNumberId` (que sí viene en ambos). Funciona porque cada PN único = 1 PT en una OV (constraint `steelhead_received_order_part_transform_unique_constraint`).
+
+4. **Filtros del listado de candidatas:** SAP regex (`^1[14]\d{8}$`), shipTo (de domain config), y "no vacías" (OTs.length > 0). Sin estos filtros aparecen muchas OVs basura (cerradas, archivadas, otros clientes).
+
+5. **Modal con datos async.** Para hidratar info del backend (descripción del catálogo) sin bloquear el render: render inmediato con placeholder "cargando…", lookup async con pool de 4, debounce 200ms, re-render parcial solo del wrapper afectado. Cache en `state.pnCatalog` (`Map`) que sobrevive al close del wizard.
+
+6. **Hungarian rectangular via padding NxN.** Para matching subset (N filas, M<N columnas reales), Hungarian estándar requiere matriz cuadrada. Solución: agregar (N-M) columnas dummy con costo grande pero finito (`1e9`); las filas que terminen en columna dummy son "no asignadas". Filtrar después por `j < M`.
+
+7. **Pre-filtrar POs sin candidato antes de Hungarian.** Forzar matching a costo BIG para un PO sin PNs en común genera asignaciones inútiles (la temp gana el PO pero el plan resultante es vacío). Mejor sacar esos POs del Hungarian, dejarlos como "OV nueva a crear desde PDF" y solo correr el algoritmo sobre POs con al menos 1 candidato.
+
+8. **PDF Schneider QRO no incluye descripción de producto.** El parser solo puede extraer `partNumber`, `quantity`, `deliveryDate` del `ITEM_RE` y `unitPrice`/`total` del `Gross Price ... per N PCE` siguiente. La descripción se hidrata del catálogo. **No intentar adivinar descripción de las líneas intermedias** entre `ITEM_RE` y `PRICE_RE` — son metadatos del PO (Plant, Storage Location, etc.) y un acumulador con noise-regex termina capturando basura inconsistente.
+
+**Pendientes documentados (tasks vivas):**
+
+- **#23** (vivo desde sesión 1) — Refactor `createOTInOV` con shape correcto: usar `AddPartsToWorkOrders + generateRecipesChecked` en vez de `CreateUpdateWorkOrdersChecked`. **Bloquea** el path "PO matchea con temp pero falta una OT específica del PN" del executor.
+- **#34** — Step 3: comparar precio PDF vs OV (precio del PT) y marcar discrepancias con badge ⚠ + tooltip mostrando ambos valores. Permitir override manual antes de aplicar.
+- **#35** — Step 3: homologar orden de líneas de la OV al orden de la PO Schneider (itemNumber 10, 20, 30...) usando `SaveReceivedOrderLinesAndItems` con `newLines[]` reordenado.
+- **#38** — Implementar ejecución de `create_ov_from_pdf`: secuencia documentada en `CLAUDE.md` ("Portal Importer: flujo de creación de OV"). Tres mutaciones: `CreateReceivedOrder` → `SaveReceivedOrderPartTransforms` (1 por PN único agrupando qty) → `SaveReceivedOrderLinesAndItems` (1 por línea de PDF).
+
+**Bloqueador para validación end-to-end:** no hay caso real con solape de PNs entre OVs temporales del usuario y los POs disponibles. Cuando aparezca, se valida 0.6.22 y se decide si se necesita 0.6.23 con el executor de `create_ov_from_pdf`.
+
+**Próxima sesión:** **NO seguir con po-reconciler.** Pivotar a **arreglar bugs del hash-scanner** (task #39). Síntoma reportado por el usuario: "retrabajo mucho en consola por no tener los hashes y jsons de payload bien definidos con el scan". Diagnóstico inicial sin tocar código: pedir un caso concreto donde el scan dejó info insuficiente (operación, scan_results_*.json, payload real visto en DevTools) y comparar contra lo que `hash-scanner.js` capturó.
