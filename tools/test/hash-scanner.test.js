@@ -125,5 +125,29 @@ test('mergeSchema: campo null se reemplaza por shape posterior', () => {
   assert.strictEqual(I.mergeSchema(a, b).receivedAt, 'string');
 });
 
+test('shapeSignature: mismo shape con valores distintos → misma firma', () => {
+  const a = { id: 1, name: 'foo', nested: { x: 1 } };
+  const b = { id: 999, name: 'bar', nested: { x: 42 } };
+  assert.strictEqual(I.shapeSignature(a), I.shapeSignature(b));
+});
+
+test('shapeSignature: shape distinto → firma distinta', () => {
+  const a = { id: 1, name: 'foo' };
+  const b = { id: 1, name: 'foo', extra: true };
+  assert.notStrictEqual(I.shapeSignature(a), I.shapeSignature(b));
+});
+
+test('shapeSignature: array de N items con shapes uniformes colapsa a 1 firma de item', () => {
+  const arr1 = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  const arr2 = [{ id: 99 }];
+  assert.strictEqual(I.shapeSignature(arr1), I.shapeSignature(arr2));
+});
+
+test('shapeSignature: orden de keys no afecta firma', () => {
+  const a = { a: 1, b: 2 };
+  const b = { b: 2, a: 1 };
+  assert.strictEqual(I.shapeSignature(a), I.shapeSignature(b));
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

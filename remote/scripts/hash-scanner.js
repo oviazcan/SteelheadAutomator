@@ -11,6 +11,21 @@ const HashScanner = (() => {
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
 
+  const MAX_SAMPLES_PER_OP = 10;
+
+  // Stable signature of an object's structural shape (keys + value types).
+  // Used to dedup variablesSamples by shape, not by exact value equality.
+  function shapeSignature(value) {
+    if (value === null || value === undefined) return 'null';
+    if (Array.isArray(value)) {
+      if (value.length === 0) return '[]';
+      return `[${shapeSignature(value[0])}]`;
+    }
+    if (typeof value !== 'object') return typeof value;
+    const keys = Object.keys(value).sort();
+    return `{${keys.map(k => `${k}:${shapeSignature(value[k])}`).join(',')}}`;
+  }
+
   // Redact variable samples that may contain live Steelhead tokens or payloads.
   // Key-level redaction: catches secrets by field name recursively, no op-level blanking.
   const SENSITIVE_KEY_PATTERN = /^(body|rawBody|html|htmlBody|token|accessToken|authToken|emailData)$/i;
@@ -134,11 +149,14 @@ const HashScanner = (() => {
     entry.lastSeen = new Date().toISOString();
     entry.hash = hash;
 
-    // Keep up to 3 variable samples (deduplicated by JSON string), sanitized
-    if (variables && entry.variablesSamples.length < 3) {
+    // Keep up to MAX_SAMPLES_PER_OP samples, deduped by shape signature.
+    // Diverse shapes are more useful than exact-value duplicates.
+    if (variables && entry.variablesSamples.length < MAX_SAMPLES_PER_OP) {
       const sanitized = sanitizeVariables(operationName, variables);
-      const vStr = JSON.stringify(sanitized);
-      if (!entry.variablesSamples.some(v => JSON.stringify(v) === vStr)) {
+      const sig = shapeSignature(sanitized);
+      entry._sigs = entry._sigs || new Set();
+      if (!entry._sigs.has(sig)) {
+        entry._sigs.add(sig);
         entry.variablesSamples.push(sanitized);
       }
     }
@@ -227,7 +245,14 @@ const HashScanner = (() => {
     return paths;
   }
 
-  function getResults() { return discovered; }
+  function getResults() {
+    const out = {};
+    for (const [k, v] of Object.entries(discovered)) {
+      const { _sigs, ...rest } = v;
+      out[k] = rest;
+    }
+    return out;
+  }
   function isActive() { return isScanning; }
 
   function getStats() {
@@ -274,15 +299,15 @@ const HashScanner = (() => {
         if (entry.lastSeen && (!existing.lastSeen || entry.lastSeen > existing.lastSeen)) {
           existing.lastSeen = entry.lastSeen;
         }
-        // Merge variable samples (keep up to 3 unique); re-sanitize defensively
-        // in case incoming data was captured before redaction was in place.
+        // Merge variable samples deduped by shape signature, up to MAX_SAMPLES_PER_OP
+        existing._sigs = existing._sigs || new Set(existing.variablesSamples.map(shapeSignature));
         for (const sample of (entry.variablesSamples || [])) {
-          if (existing.variablesSamples.length < 3) {
-            const clean = sanitizeVariables(opName, sample);
-            const sStr = JSON.stringify(clean);
-            if (!existing.variablesSamples.some(v => JSON.stringify(v) === sStr)) {
-              existing.variablesSamples.push(clean);
-            }
+          if (existing.variablesSamples.length >= MAX_SAMPLES_PER_OP) break;
+          const clean = sanitizeVariables(opName, sample);
+          const sig = shapeSignature(clean);
+          if (!existing._sigs.has(sig)) {
+            existing._sigs.add(sig);
+            existing.variablesSamples.push(clean);
           }
         }
         // Keep responseSchema if we didn't have one
@@ -297,7 +322,7 @@ const HashScanner = (() => {
   return {
     init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
     analyzeSchema, mergeSchema,
-    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, recordOperation, discovered, knownHashMap, knownOpMap }
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, discovered, knownHashMap, knownOpMap }
   };
 })();
 
