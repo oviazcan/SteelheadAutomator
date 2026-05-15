@@ -203,5 +203,25 @@ test('recordOperation: captura headers relevantes y URL', () => {
   delete I.discovered._testHeadOp;
 });
 
+test('eventLog: registra cada llamada con orden cronológico', () => {
+  I.eventLog.length = 0; // reset
+  I.recordOperation('OpA', 'hashA', { x: 1 }, { data: {} }, 200);
+  I.recordOperation('OpB', 'hashB', { y: 2 }, { data: {} }, 200);
+  I.recordOperation('OpA', 'hashA', { x: 99 }, { data: {} }, 200);
+  assert.strictEqual(I.eventLog.length, 3);
+  assert.strictEqual(I.eventLog[0].op, 'OpA');
+  assert.strictEqual(I.eventLog[1].op, 'OpB');
+  assert.strictEqual(I.eventLog[2].op, 'OpA');
+  assert.ok(I.eventLog[0].ts <= I.eventLog[1].ts);
+});
+
+test('eventLog: cap de 2000 (drop oldest)', () => {
+  I.eventLog.length = 0;
+  for (let i = 0; i < 2100; i++) {
+    I.recordOperation('OpX', 'h', { i }, { data: {} }, 200);
+  }
+  assert.strictEqual(I.eventLog.length, 2000);
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

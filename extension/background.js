@@ -531,7 +531,7 @@ async function handleMessage(message, sender) {
       if (!tabId) return { error: 'No tab context' };
       const results = await chrome.scripting.executeScript({
         target: { tabId }, world: 'MAIN',
-        func: () => window.HashScanner?.getResults() || null
+        func: () => { const r = window.HashScanner?.getResults(); return r ? r.ops : null; }
       });
       const scanData = results?.[0]?.result;
       if (scanData && Object.keys(scanData).length > 0) {
@@ -590,7 +590,7 @@ async function handleMessage(message, sender) {
           if (!window.HashScanner) return { error: 'HashScanner no disponible' };
           if (window.HashScanner.isActive()) {
             // Save final results before stopping
-            const scanData = window.HashScanner.getResults();
+            const { ops: scanOps, eventLog: scanEvents } = window.HashScanner.getResults();
             window.HashScanner.stop();
             // Auto-export scan results on stop
             const _n1 = new Date();
@@ -598,14 +598,14 @@ async function handleMessage(message, sender) {
             const _t1 = [String(_n1.getHours()).padStart(2,'0'),String(_n1.getMinutes()).padStart(2,'0'),String(_n1.getSeconds()).padStart(2,'0')].join('');
             const dtFull1 = _d1 + '_' + _t1;
             const apiKnowledge = window.APIKnowledge ? window.APIKnowledge.getKnownOperations() : [];
-            const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanData, apiKnowledge: apiKnowledge };
+            const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanOps, eventLog: scanEvents, apiKnowledge: apiKnowledge };
             const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url; a.download = 'scan_results_' + dtFull1 + '.json';
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            return { started: false, finalResults: scanData, message: 'Captura detenida. Resultados exportados.', stats: window.HashScanner.getStats() };
+            return { started: false, finalResults: { ops: scanOps, eventLog: scanEvents }, message: 'Captura detenida. Resultados exportados.', stats: window.HashScanner.getStats() };
           } else {
             window.HashScanner.start();
             return { started: true, message: 'Captura iniciada. Navega por Steelhead para capturar operaciones.' };
@@ -631,7 +631,7 @@ async function handleMessage(message, sender) {
         target: { tabId: tab.id }, world: 'MAIN',
         func: () => {
           if (!window.HashScanner) return { error: 'HashScanner no disponible. Inicia captura primero.' };
-          return { operations: window.HashScanner.getResults(), stats: window.HashScanner.getStats() };
+          return { operations: window.HashScanner.getResults().ops, stats: window.HashScanner.getStats() };
         }
       });
       return results?.[0]?.result || { error: 'Sin resultado' };
@@ -659,9 +659,9 @@ async function handleMessage(message, sender) {
           URL.revokeObjectURL(url1);
 
           // 2. Download full scan results (hashes + schemas + variables)
-          const scanData = window.HashScanner.getResults();
+          const { ops: scanOps, eventLog: scanEvents } = window.HashScanner.getResults();
           const apiKnowledge = window.APIKnowledge ? window.APIKnowledge.getKnownOperations() : [];
-          const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanData, apiKnowledge: apiKnowledge };
+          const fullExport = { exportedAt: new Date().toISOString(), scanResults: scanOps, eventLog: scanEvents, apiKnowledge: apiKnowledge };
           const blob2 = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
           const url2 = URL.createObjectURL(blob2);
           const a2 = document.createElement('a');

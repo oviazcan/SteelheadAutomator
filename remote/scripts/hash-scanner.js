@@ -8,6 +8,8 @@ const HashScanner = (() => {
   let isScanning = false;
   let originalFetch = null;
   const discovered = {}; // operationName → { hash, count, firstSeen, lastSeen, variablesSamples, responseSchema, status, configKey }
+  const eventLog = [];
+  const MAX_EVENT_LOG = 2000;
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
 
@@ -219,6 +221,16 @@ const HashScanner = (() => {
 
     if (meta?.url) entry.url = meta.url;
     if (meta?.apolloVersion) entry.apolloVersion = meta.apolloVersion;
+
+    // Append to chronological event log (cap MAX_EVENT_LOG, drop oldest)
+    eventLog.push({
+      ts: entry.lastSeen,
+      op: operationName,
+      varsSig: variables ? shapeSignature(variables) : null,
+      ok: !errs || errs.length === 0,
+      status: httpStatus ?? null
+    });
+    if (eventLog.length > MAX_EVENT_LOG) eventLog.shift();
   }
 
   // Recursive schema analyzer. No artificial depth limit; circular refs guarded by seen-set.
@@ -278,12 +290,12 @@ const HashScanner = (() => {
   }
 
   function getResults() {
-    const out = {};
+    const ops = {};
     for (const [k, v] of Object.entries(discovered)) {
       const { _sigs, ...rest } = v;
-      out[k] = rest;
+      ops[k] = rest;
     }
-    return out;
+    return { ops, eventLog: [...eventLog] };
   }
   function isActive() { return isScanning; }
 
@@ -368,7 +380,7 @@ const HashScanner = (() => {
   return {
     init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
     analyzeSchema, mergeSchema,
-    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, discovered, knownHashMap, knownOpMap }
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, discovered, eventLog, knownHashMap, knownOpMap }
   };
 })();
 

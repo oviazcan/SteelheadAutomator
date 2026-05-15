@@ -58,7 +58,7 @@ const APIKnowledge = (() => {
 
     // 3. From HashScanner discovered (live session)
     if (window.HashScanner) {
-      const discovered = window.HashScanner.getResults();
+      const { ops: discovered } = window.HashScanner.getResults();
       for (const [opName, entry] of Object.entries(discovered)) {
         if (seenOps.has(opName)) {
           // Enrich existing entry with live data
