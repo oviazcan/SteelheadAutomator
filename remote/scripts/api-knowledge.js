@@ -32,7 +32,7 @@ const APIKnowledge = (() => {
         description: info.description,
         usedBy: info.usedBy || 'desconocido',
         hashKey: hashKey,
-        hash: hash ? hash.substring(0, 16) + '...' : 'SIN HASH',
+        hash: hash || null,
         hasHash: !!hash,
         source: 'documentada',
         responseFields: null
@@ -49,7 +49,7 @@ const APIKnowledge = (() => {
         description: '(hash en config — sin documentar)',
         usedBy: 'config',
         hashKey: key,
-        hash: hash.substring(0, 16) + '...',
+        hash: hash,
         hasHash: true,
         source: 'config',
         responseFields: null
@@ -83,7 +83,7 @@ const APIKnowledge = (() => {
             : '(descubierta por scanner — sin documentar)',
           usedBy: 'scanner',
           hashKey: opName,
-          hash: entry.hash ? entry.hash.substring(0, 16) + '...' : '?',
+          hash: entry.hash || null,
           hasHash: !!entry.hash,
           source: 'escaneada',
           responseFields: entry.responseFields,
