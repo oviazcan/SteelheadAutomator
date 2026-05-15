@@ -58,8 +58,9 @@ const HashScanner = (() => {
   function init(config) {
     const mutations = config?.steelhead?.hashes?.mutations || {};
     const queries = config?.steelhead?.hashes?.queries || {};
-    knownHashMap = {};
-    knownOpMap = {};
+    // Mutate in place so _internal references stay valid across init() calls
+    Object.keys(knownHashMap).forEach(k => delete knownHashMap[k]);
+    Object.keys(knownOpMap).forEach(k => delete knownOpMap[k]);
     for (const [key, hash] of Object.entries({ ...mutations, ...queries })) {
       knownHashMap[hash] = key;
       knownOpMap[key] = hash;

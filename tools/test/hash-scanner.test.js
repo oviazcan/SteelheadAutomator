@@ -21,6 +21,10 @@ function test(name, fn) {
   } catch (err) {
     console.log(`  ✗ ${name}`);
     console.log(`    ${err.message}`);
+    if (err.actual !== undefined) {
+      console.log(`    actual:   ${JSON.stringify(err.actual)}`);
+      console.log(`    expected: ${JSON.stringify(err.expected)}`);
+    }
     failed++;
   }
 }
@@ -32,6 +36,18 @@ test('harness boots', () => {
   assert.ok(typeof I === 'object', '_internal exposed');
   assert.ok(typeof I.sanitizeVariables === 'function');
   assert.ok(typeof I.analyzeSchema === 'function');
+});
+
+test('init() keeps _internal.knownHashMap reference live', () => {
+  const before = I.knownHashMap;
+  HashScanner.init({ steelhead: { hashes: { mutations: { Foo: 'h1' }, queries: { Bar: 'h2' } } } });
+  assert.strictEqual(I.knownHashMap, before, '_internal.knownHashMap reference is preserved');
+  assert.strictEqual(I.knownHashMap['h1'], 'Foo');
+  assert.strictEqual(I.knownOpMap['Bar'], 'h2');
+  // Re-init clears prior entries in place
+  HashScanner.init({ steelhead: { hashes: { mutations: { Baz: 'h3' }, queries: {} } } });
+  assert.strictEqual(I.knownHashMap['h1'], undefined);
+  assert.strictEqual(I.knownHashMap['h3'], 'Baz');
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
