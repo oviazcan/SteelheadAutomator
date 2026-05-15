@@ -149,5 +149,26 @@ test('shapeSignature: orden de keys no afecta firma', () => {
   assert.strictEqual(I.shapeSignature(a), I.shapeSignature(b));
 });
 
+test('recordOperation: guarda raw response samples sanitizadas', () => {
+  I.discovered._testRawOp = undefined; // reset
+  delete I.discovered._testRawOp;
+  I.recordOperation('_testRawOp', 'hash_xxx', { id: 42 }, { data: { foo: { id: 42, secret: 'X' }, body: 'should_redact' } });
+  const entry = I.discovered._testRawOp;
+  assert.ok(Array.isArray(entry.responseSamples), 'responseSamples is array');
+  assert.strictEqual(entry.responseSamples.length, 1);
+  assert.strictEqual(entry.responseSamples[0].foo.id, 42, 'IDs visible');
+  assert.strictEqual(entry.responseSamples[0].body, '[REDACTED]', 'sensitive keys redacted in response too');
+  delete I.discovered._testRawOp;
+});
+
+test('recordOperation: cap de 2 raw response samples por op', () => {
+  delete I.discovered._testCapOp;
+  for (let i = 0; i < 5; i++) {
+    I.recordOperation('_testCapOp', 'h', { i }, { data: { id: i } });
+  }
+  assert.ok(I.discovered._testCapOp.responseSamples.length <= 2);
+  delete I.discovered._testCapOp;
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

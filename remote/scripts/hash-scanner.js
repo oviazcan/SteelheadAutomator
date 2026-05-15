@@ -12,6 +12,7 @@ const HashScanner = (() => {
   let knownOpMap = {};   // configKey → hash
 
   const MAX_SAMPLES_PER_OP = 10;
+  const MAX_RESPONSE_SAMPLES_PER_OP = 2;
 
   // Stable signature of an object's structural shape (keys + value types).
   // Used to dedup variablesSamples by shape, not by exact value equality.
@@ -140,6 +141,7 @@ const HashScanner = (() => {
       discovered[operationName] = {
         hash, count: 0, firstSeen: new Date().toISOString(), lastSeen: null,
         variablesSamples: [], responseSchema: null, responseFields: [],
+        responseSamples: [],
         status: 'unknown', configKey: null
       };
     }
@@ -169,6 +171,13 @@ const HashScanner = (() => {
         : newSchema;
       // Rebuild field paths from merged schema
       entry.responseFields = extractFieldPaths(entry.responseSchema);
+    }
+
+    // Keep raw response samples for reproducibility (real IDs to re-run from console)
+    if (responseData?.data && entry.responseSamples.length < MAX_RESPONSE_SAMPLES_PER_OP) {
+      const counter = { n: 0 };
+      const cleaned = sanitizeValue(responseData.data, counter);
+      entry.responseSamples.push(cleaned);
     }
 
     // Determine status vs known config
@@ -314,6 +323,12 @@ const HashScanner = (() => {
         if (!existing.responseSchema && entry.responseSchema) {
           existing.responseSchema = entry.responseSchema;
           existing.responseFields = entry.responseFields || [];
+        }
+        // Merge response samples up to cap (no dedup — raw data variety is useful)
+        existing.responseSamples = existing.responseSamples || [];
+        for (const rs of (entry.responseSamples || [])) {
+          if (existing.responseSamples.length >= MAX_RESPONSE_SAMPLES_PER_OP) break;
+          existing.responseSamples.push(rs);
         }
       }
     }
