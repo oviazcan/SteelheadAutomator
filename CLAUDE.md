@@ -210,6 +210,28 @@ Applet que inyecta cuadro "Peso rápido" (KG o LB según custom input `unidadmed
 ### `process-canon`: lecciones 0.5.52 → 0.5.56 (movidas a `docs/processes-architecture.md`)
 La construcción de árboles de procesos para `ProcureTree` y todas las lecciones del ciclo de fix tienen su propia doc. No duplicar aquí.
 
+### `hash-scanner`: lecciones 0.6.22 → 0.6.23 (autosuficiencia de `scan_results_*.json`)
+Refactor en 9 fixes para que un solo `scan_results_*.json` sirva para construir applets sin pedir nuevos payloads/responses/hashes al usuario en consola. Antes el scanner tenía gaps silenciosos (truncados, depth caps, denylists, no captura de errors/headers/timing) que forzaban round-trips. Driver del refactor: TDD con tests explícitos en `tools/test/hash-scanner.test.js` (23 tests passing). Detalles por bug:
+
+- **#1 `init()` rebuilding maps from scratch.** `knownHashMap = {}` reasignaba la referencia, así que cualquier consumer que hubiera guardado el ref viejo (incluyendo `_internal.knownHashMap` para tests) leía datos stale. Fix: mutar en place con `Object.keys(map).forEach(k => delete map[k])` antes de repoblar. Aplicable a cualquier singleton con maps que se re-inicializan: si exportas el ref vía `_internal`, mantén la identidad del objeto.
+- **#2 Hashes truncados a 12 chars en `api-knowledge.js`.** Líneas 35/52/86 hacían `.slice(0,12) + '…'` "para legibilidad" en consola, lo que rompía cualquier uso programático (re-disparar desde DevTools, copiar a config.json). Fix: devolver el hash completo o `null` cuando no hay. Regla general: si una capa de presentación trunca datos, NUNCA lo haga el data layer — el truncado va en el UI consumer.
+- **#3 Op-level redaction era over-blanking.** El regex `SENSITIVE_OP_PATTERN = /email|invoice|send|preview|attach|cfdi/i` borraba TODAS las variables de cualquier op cuyo nombre matcheara, incluyendo IDs, filtros, paginación — datos que no son secretos y que son cruciales para repro. Lo que sí protege secretos es la key-level redaction (que sigue intacta: `body|rawBody|html|token|...`). Quitar el op-level no degrada seguridad; sí mejora utilidad. Lección: las denylists basadas en nombre son demasiado anchas; la redacción por shape (key name + valor) es más quirúrgica.
+- **#4 `analyzeSchema` con depth cap 4 + truncado `"..."`.** Schemas reales de Steelhead (ej. `ReceivedOrder` con `lines → lineItems → partTransforms → ...`) tienen 6-7 niveles. El cap los mochaba con `"..."` literal y se perdía la firma de los leaves. Fix: sin cap, con cycle guard via `WeakSet`. Añadido `mergeSchema(a, b)` para enriquecer el schema entre llamadas (la primera respuesta puede traer arrays vacíos `[null]`, una respuesta posterior con `[{id:1}]` enriquece a `[{id:'number'}]`). Marker `[null]` para arrays vacíos en lugar de string `"[]"` (distingue "vacío de tipo desconocido" de "string literal `[]`"). Reconstrucción de `responseFields` desde el schema mergeado cada vez (no append crudo).
+- **#5 `variablesSamples` cap 3 + dedup por `JSON.stringify`.** El cap de 3 era miope para ops con paginación o filtros variados. El dedup por stringify trataba `{id:1}` y `{id:2}` como distintos (no útil — misma shape). Fix: cap 10 + dedup por `shapeSignature(value)` (recursive sorted-keys + type signature). `{id:1, name:'foo'}` y `{id:99, name:'bar'}` colapsan a 1 entry; `{id:1, extra:true}` agrega entry distinta. Ahora dedupea por **forma**, que es lo que sirve para "qué shape de variables acepta esta op". El `_sigs` Set se strippea en `getResults()` para no leakear set internals.
+- **#6 Raw response samples para repro.** Antes solo había schema (tipos), nunca data real. Para repro en consola hace falta un ID válido. Fix: `responseSamples: []` cap 2 entries, cada una el `responseData.data` sanitizado vía `sanitizeValue` (mismas reglas de key redaction). 2 es suficiente para tener 2 IDs distintos si los hay sin inflar el JSON.
+- **#7 Sin captura de errors/HTTP status.** Hashes deprecados (ver lección "Persisted queries deprecadas" arriba) responden con HTTP 400 + `{errors:[{message:"Must provide a query string."}]}`. El scanner antes ignoraba ambos, así que no había forma de detectar deprecaciones desde el JSON. Fix: `lastHttpStatus`, `errorSamples[]` (cap 3, cada uno el array `errs` completo sanitizado), `errorCount` acumulado. Detectar deprecación = `lastHttpStatus === 400 && errorCount > 0`.
+- **#8 Sin URL ni Apollo client version.** Algunos debugs requieren confirmar que el header `apollographql-client-version` viaja como `"4.0.8"` y que la URL es el endpoint canónico. Fix: `url` y `apolloVersion` capturados del request. Soporta `Headers` instance (`headers.get(...)`) y plain object (`headers['apollographql-client-version']`).
+- **#9 Sin event log cronológico.** Antes `discovered[op]` colapsaba todas las llamadas a una op en una sola entry sin orden ni timing. Algunas investigaciones requieren saber "qué llamada vino antes" (ej. invalidar caché tras una mutation, race conditions, cold start sequence). Fix: `eventLog[]` append-only con `{ts, op, varsSig, ok, status}`, cap 2000 (drop oldest). Se expone vía `getResults()` que ahora devuelve `{ ops, eventLog }` en vez de solo `ops`. Consumers de `background.js` actualizados en 4 callsites.
+
+**Meta-lección del ciclo:** el scanner era "good enough" hasta que vi 4-5 sesiones consecutivas donde le pedía al usuario re-capturar algo que en teoría el scanner ya debía tener. Cada gap silencioso (truncado, depth cap, denylist, "no, eso no lo capturo") cuesta una iteración futura. Un TDD pass disciplinado con tests que afirman explícitamente "el hash completo está aquí", "el responseSamples[0].id existe", "errorSamples está poblado cuando status=400" surfacea esos gaps de golpe. La inversión en cobertura del scanner reduce iteraciones en TODOS los applets futuros, no solo en uno. Política a futuro: cuando un applet necesite un dato que el scanner no tiene, agregar el campo al scanner antes de hardcodear el dato — capitaliza el trabajo en la herramienta, no en el caso de uso.
+
+**Verificación rápida del JSON (jq):**
+```bash
+JSON=~/Downloads/scan_results_*.json
+jq '.ops | to_entries | map({op: .key, hash_len: (.value.hash|length), samples: (.value.variablesSamples|length), responseSamples: (.value.responseSamples|length // 0), httpStatus: .value.lastHttpStatus, errs: .value.errorCount}) | .[0:5]' $JSON
+jq '.eventLog | length' $JSON  # → 30+ para sesión normal
+```
+
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`)
 - **NUNCA** copiarlos al repo — están en `.gitignore` pero además su contenido puede incluir payloads sensibles redactados
@@ -218,8 +240,9 @@ La construcción de árboles de procesos para `ProcureTree` y todas las leccione
 
 ## Seguridad (estado y pendientes)
 
-### Ya implementado (2026-04-14)
-- `hash-scanner.js` sanitiza `variablesSamples` con denylist de ops (`email|invoice|send|preview|attach|cfdi`), redacción de keys sensibles (`body`, `rawBody`, `html`, `token`, `emailData`, ...), strip de `?token=` en URLs, truncado > 500 chars, y re-saneado en `mergeResults`
+### Ya implementado (2026-04-14, actualizado 2026-05-14)
+- `hash-scanner.js` sanitiza `variablesSamples` con redacción **key-level** (recursiva: `body`, `rawBody`, `html`, `htmlBody`, `token`, `accessToken`, `authToken`, `emailData`, ...), strip de `?token=` en URLs, truncado > 500 chars, y re-saneado en `mergeResults`. (El antiguo op-level denylist `email|invoice|send|...` se quitó en 0.6.23 — era demasiado ancho; la protección real viene de la key-level. Ver bitácora `hash-scanner: lecciones 0.6.22 → 0.6.23`.)
+- `responseSamples` y `errorSamples` aplican el mismo `sanitizeValue` recursivo antes de guardarse.
 - `.gitignore` cubre `scan_results_*.json` y `~$*.xlsm/xlsx`
 - Historial git purgado de `scan_results_*.json` (filter-repo + force-push a main/gh-pages/feat/po-comparator). Ticket abierto a GitHub Support para GC de commits huérfanos (`789375b`, `c37c9e8`).
 
