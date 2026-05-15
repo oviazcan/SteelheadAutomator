@@ -170,5 +170,26 @@ test('recordOperation: cap de 2 raw response samples por op', () => {
   delete I.discovered._testCapOp;
 });
 
+test('recordOperation: captura errors[] de respuestas fallidas', () => {
+  delete I.discovered._testErrOp;
+  I.recordOperation('_testErrOp', 'h', {}, { errors: [{ message: 'Must provide a query string.' }] }, 400);
+  const entry = I.discovered._testErrOp;
+  assert.ok(Array.isArray(entry.errorSamples), 'errorSamples present');
+  assert.strictEqual(entry.errorSamples.length, 1);
+  assert.strictEqual(entry.errorSamples[0][0].message, 'Must provide a query string.');
+  assert.strictEqual(entry.lastHttpStatus, 400);
+  assert.strictEqual(entry.errorCount, 1);
+  delete I.discovered._testErrOp;
+});
+
+test('recordOperation: ok=true cuando responde data sin errors', () => {
+  delete I.discovered._testOkOp;
+  I.recordOperation('_testOkOp', 'h', {}, { data: { foo: 1 } }, 200);
+  const entry = I.discovered._testOkOp;
+  assert.strictEqual(entry.errorCount, 0);
+  assert.strictEqual(entry.lastHttpStatus, 200);
+  delete I.discovered._testOkOp;
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

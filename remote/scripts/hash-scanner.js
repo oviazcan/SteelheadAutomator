@@ -97,12 +97,13 @@ const HashScanner = (() => {
           const variables = body.variables;
 
           const response = await originalFetch.apply(this, args);
+          const httpStatus = response.status;
           const clonedResponse = response.clone();
           let responseData = null;
           try { responseData = await clonedResponse.json(); } catch (_) {}
 
           if (operationName && hash) {
-            recordOperation(operationName, hash, variables, responseData);
+            recordOperation(operationName, hash, variables, responseData, httpStatus);
           }
 
           return response;
@@ -136,12 +137,13 @@ const HashScanner = (() => {
     console.log('[HashScanner] Captura detenida');
   }
 
-  function recordOperation(operationName, hash, variables, responseData) {
+  function recordOperation(operationName, hash, variables, responseData, httpStatus) {
     if (!discovered[operationName]) {
       discovered[operationName] = {
         hash, count: 0, firstSeen: new Date().toISOString(), lastSeen: null,
         variablesSamples: [], responseSchema: null, responseFields: [],
         responseSamples: [],
+        errorSamples: [], errorCount: 0, lastHttpStatus: null,
         status: 'unknown', configKey: null
       };
     }
@@ -178,6 +180,17 @@ const HashScanner = (() => {
       const counter = { n: 0 };
       const cleaned = sanitizeValue(responseData.data, counter);
       entry.responseSamples.push(cleaned);
+    }
+
+    // Capture HTTP status + errors (deprecated hashes return 400, GraphQL errors return 200 with errors[])
+    if (httpStatus !== undefined) entry.lastHttpStatus = httpStatus;
+    const errs = Array.isArray(responseData?.errors) ? responseData.errors : null;
+    if (errs && errs.length > 0) {
+      entry.errorCount = (entry.errorCount || 0) + 1;
+      if (entry.errorSamples.length < 3) {
+        const counter = { n: 0 };
+        entry.errorSamples.push(sanitizeValue(errs, counter));
+      }
     }
 
     // Determine status vs known config
@@ -329,6 +342,14 @@ const HashScanner = (() => {
         for (const rs of (entry.responseSamples || [])) {
           if (existing.responseSamples.length >= MAX_RESPONSE_SAMPLES_PER_OP) break;
           existing.responseSamples.push(rs);
+        }
+        // Merge error samples (cap 3) + accumulate errorCount + keep latest httpStatus
+        existing.errorSamples = existing.errorSamples || [];
+        existing.errorCount = (existing.errorCount || 0) + (entry.errorCount || 0);
+        if (entry.lastHttpStatus) existing.lastHttpStatus = entry.lastHttpStatus;
+        for (const es of (entry.errorSamples || [])) {
+          if (existing.errorSamples.length >= 3) break;
+          existing.errorSamples.push(es);
         }
       }
     }
