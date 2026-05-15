@@ -191,5 +191,17 @@ test('recordOperation: ok=true cuando responde data sin errors', () => {
   delete I.discovered._testOkOp;
 });
 
+test('recordOperation: captura headers relevantes y URL', () => {
+  delete I.discovered._testHeadOp;
+  I.recordOperation('_testHeadOp', 'h', {}, { data: {} }, 200, {
+    url: 'https://app.gosteelhead.com/graphql',
+    apolloVersion: '4.0.8'
+  });
+  const entry = I.discovered._testHeadOp;
+  assert.strictEqual(entry.url, 'https://app.gosteelhead.com/graphql');
+  assert.strictEqual(entry.apolloVersion, '4.0.8');
+  delete I.discovered._testHeadOp;
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

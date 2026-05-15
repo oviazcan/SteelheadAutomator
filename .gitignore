@@ -21,3 +21,4 @@ scan_results_*.json
 # Excel temp lock files
 ~$*.xlsm
 ~$*.xlsx
+Plantilla_Cotizaciones_y_NP_v84_2.xlsm

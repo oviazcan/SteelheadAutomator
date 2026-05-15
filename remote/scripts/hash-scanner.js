@@ -96,6 +96,12 @@ const HashScanner = (() => {
           const hash = body.extensions?.persistedQuery?.sha256Hash;
           const variables = body.variables;
 
+          const headers = options?.headers || {};
+          const apolloVersion = (typeof headers.get === 'function')
+            ? headers.get('apollographql-client-version')
+            : (headers['apollographql-client-version'] || headers['Apollographql-Client-Version']);
+          const meta = { url: urlStr, apolloVersion };
+
           const response = await originalFetch.apply(this, args);
           const httpStatus = response.status;
           const clonedResponse = response.clone();
@@ -103,7 +109,7 @@ const HashScanner = (() => {
           try { responseData = await clonedResponse.json(); } catch (_) {}
 
           if (operationName && hash) {
-            recordOperation(operationName, hash, variables, responseData, httpStatus);
+            recordOperation(operationName, hash, variables, responseData, httpStatus, meta);
           }
 
           return response;
@@ -137,13 +143,14 @@ const HashScanner = (() => {
     console.log('[HashScanner] Captura detenida');
   }
 
-  function recordOperation(operationName, hash, variables, responseData, httpStatus) {
+  function recordOperation(operationName, hash, variables, responseData, httpStatus, meta) {
     if (!discovered[operationName]) {
       discovered[operationName] = {
         hash, count: 0, firstSeen: new Date().toISOString(), lastSeen: null,
         variablesSamples: [], responseSchema: null, responseFields: [],
         responseSamples: [],
         errorSamples: [], errorCount: 0, lastHttpStatus: null,
+        url: null, apolloVersion: null,
         status: 'unknown', configKey: null
       };
     }
@@ -209,6 +216,9 @@ const HashScanner = (() => {
         entry.status = 'new';
       }
     }
+
+    if (meta?.url) entry.url = meta.url;
+    if (meta?.apolloVersion) entry.apolloVersion = meta.apolloVersion;
   }
 
   // Recursive schema analyzer. No artificial depth limit; circular refs guarded by seen-set.
