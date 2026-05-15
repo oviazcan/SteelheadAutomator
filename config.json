@@ -1,6 +1,6 @@
 {
-  "version": "0.6.23",
-  "lastUpdated": "2026-05-14",
+  "version": "0.6.24",
+  "lastUpdated": "2026-05-15",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -135,7 +135,7 @@
         "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c",
         "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c",
         "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac",
-        "OperatorMaintenanceNodeDialogQuery": "2a2a6230dca0bf6c613d769617180a4070600859ec08ba715fbded176a795e46",
+        "OperatorMaintenanceNodeDialogQuery": "b8527dc6f2cb864fc85ee3e1896b8289423a920dcd6e54c05963f2a0e7f1fd58",
         "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63",
         "WorkboardById": "371c1a807444663bdcc7ed3a11fc97ff58f6ed3c8423c99ad8b68fff945a3bcc",
         "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f",
