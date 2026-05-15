@@ -8,12 +8,29 @@ const HashScanner = (() => {
   let isScanning = false;
   let originalFetch = null;
   const discovered = {}; // operationName → { hash, count, firstSeen, lastSeen, variablesSamples, responseSchema, status, configKey }
+  const eventLog = [];
+  const MAX_EVENT_LOG = 2000;
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
 
+  const MAX_SAMPLES_PER_OP = 10;
+  const MAX_RESPONSE_SAMPLES_PER_OP = 2;
+
+  // Stable signature of an object's structural shape (keys + value types).
+  // Used to dedup variablesSamples by shape, not by exact value equality.
+  function shapeSignature(value) {
+    if (value === null || value === undefined) return 'null';
+    if (Array.isArray(value)) {
+      if (value.length === 0) return '[]';
+      return `[${shapeSignature(value[0])}]`;
+    }
+    if (typeof value !== 'object') return typeof value;
+    const keys = Object.keys(value).sort();
+    return `{${keys.map(k => `${k}:${shapeSignature(value[k])}`).join(',')}}`;
+  }
+
   // Redact variable samples that may contain live Steelhead tokens or payloads.
-  // Tokens leak via operations that pass email bodies / signed URLs as GraphQL inputs.
-  const SENSITIVE_OP_PATTERN = /email|invoice|send|preview|attach|cfdi/i;
+  // Key-level redaction: catches secrets by field name recursively, no op-level blanking.
   const SENSITIVE_KEY_PATTERN = /^(body|rawBody|html|htmlBody|token|accessToken|authToken|emailData)$/i;
   const TOKEN_URL_PATTERN = /([?&])token=[^&"'\s]+/gi;
   const MAX_STRING_LENGTH = 500;
@@ -44,9 +61,6 @@ const HashScanner = (() => {
 
   function sanitizeVariables(operationName, variables) {
     if (variables === null || variables === undefined) return variables;
-    if (SENSITIVE_OP_PATTERN.test(operationName || '')) {
-      return { __redacted: `variables omitted (${operationName} matches sensitive op pattern)` };
-    }
     const counter = { n: 0 };
     const sanitized = sanitizeValue(variables, counter);
     if (counter.n > 0) {
@@ -58,8 +72,9 @@ const HashScanner = (() => {
   function init(config) {
     const mutations = config?.steelhead?.hashes?.mutations || {};
     const queries = config?.steelhead?.hashes?.queries || {};
-    knownHashMap = {};
-    knownOpMap = {};
+    // Mutate in place so _internal references stay valid across init() calls
+    Object.keys(knownHashMap).forEach(k => delete knownHashMap[k]);
+    Object.keys(knownOpMap).forEach(k => delete knownOpMap[k]);
     for (const [key, hash] of Object.entries({ ...mutations, ...queries })) {
       knownHashMap[hash] = key;
       knownOpMap[key] = hash;
@@ -83,13 +98,20 @@ const HashScanner = (() => {
           const hash = body.extensions?.persistedQuery?.sha256Hash;
           const variables = body.variables;
 
+          const headers = options?.headers || {};
+          const apolloVersion = (typeof headers.get === 'function')
+            ? headers.get('apollographql-client-version')
+            : (headers['apollographql-client-version'] || headers['Apollographql-Client-Version']);
+          const meta = { url: urlStr, apolloVersion };
+
           const response = await originalFetch.apply(this, args);
+          const httpStatus = response.status;
           const clonedResponse = response.clone();
           let responseData = null;
           try { responseData = await clonedResponse.json(); } catch (_) {}
 
           if (operationName && hash) {
-            recordOperation(operationName, hash, variables, responseData);
+            recordOperation(operationName, hash, variables, responseData, httpStatus, meta);
           }
 
           return response;
@@ -123,11 +145,14 @@ const HashScanner = (() => {
     console.log('[HashScanner] Captura detenida');
   }
 
-  function recordOperation(operationName, hash, variables, responseData) {
+  function recordOperation(operationName, hash, variables, responseData, httpStatus, meta) {
     if (!discovered[operationName]) {
       discovered[operationName] = {
         hash, count: 0, firstSeen: new Date().toISOString(), lastSeen: null,
         variablesSamples: [], responseSchema: null, responseFields: [],
+        responseSamples: [],
+        errorSamples: [], errorCount: 0, lastHttpStatus: null,
+        url: null, apolloVersion: null,
         status: 'unknown', configKey: null
       };
     }
@@ -137,19 +162,44 @@ const HashScanner = (() => {
     entry.lastSeen = new Date().toISOString();
     entry.hash = hash;
 
-    // Keep up to 3 variable samples (deduplicated by JSON string), sanitized
-    if (variables && entry.variablesSamples.length < 3) {
+    // Keep up to MAX_SAMPLES_PER_OP samples, deduped by shape signature.
+    // Diverse shapes are more useful than exact-value duplicates.
+    if (variables && entry.variablesSamples.length < MAX_SAMPLES_PER_OP) {
       const sanitized = sanitizeVariables(operationName, variables);
-      const vStr = JSON.stringify(sanitized);
-      if (!entry.variablesSamples.some(v => JSON.stringify(v) === vStr)) {
+      const sig = shapeSignature(sanitized);
+      entry._sigs = entry._sigs || new Set();
+      if (!entry._sigs.has(sig)) {
+        entry._sigs.add(sig);
         entry.variablesSamples.push(sanitized);
       }
     }
 
-    // Analyze response structure (first time only, or if previous was null)
-    if (responseData?.data && !entry.responseSchema) {
-      entry.responseSchema = analyzeSchema(responseData.data);
-      entry.responseFields = extractFieldPaths(responseData.data);
+    // Merge response schema across calls — enriches sparse first responses
+    if (responseData?.data) {
+      const newSchema = analyzeSchema(responseData.data);
+      entry.responseSchema = entry.responseSchema
+        ? mergeSchema(entry.responseSchema, newSchema)
+        : newSchema;
+      // Rebuild field paths from merged schema
+      entry.responseFields = extractFieldPaths(entry.responseSchema);
+    }
+
+    // Keep raw response samples for reproducibility (real IDs to re-run from console)
+    if (responseData?.data && entry.responseSamples.length < MAX_RESPONSE_SAMPLES_PER_OP) {
+      const counter = { n: 0 };
+      const cleaned = sanitizeValue(responseData.data, counter);
+      entry.responseSamples.push(cleaned);
+    }
+
+    // Capture HTTP status + errors (deprecated hashes return 400, GraphQL errors return 200 with errors[])
+    if (httpStatus !== undefined) entry.lastHttpStatus = httpStatus;
+    const errs = Array.isArray(responseData?.errors) ? responseData.errors : null;
+    if (errs && errs.length > 0) {
+      entry.errorCount = (entry.errorCount || 0) + 1;
+      if (entry.errorSamples.length < 3) {
+        const counter = { n: 0 };
+        entry.errorSamples.push(sanitizeValue(errs, counter));
+      }
     }
 
     // Determine status vs known config
@@ -168,45 +218,85 @@ const HashScanner = (() => {
         entry.status = 'new';
       }
     }
+
+    if (meta?.url) entry.url = meta.url;
+    if (meta?.apolloVersion) entry.apolloVersion = meta.apolloVersion;
+
+    // Append to chronological event log (cap MAX_EVENT_LOG, drop oldest)
+    eventLog.push({
+      ts: entry.lastSeen,
+      op: operationName,
+      varsSig: variables ? shapeSignature(variables) : null,
+      ok: !errs || errs.length === 0,
+      status: httpStatus ?? null
+    });
+    if (eventLog.length > MAX_EVENT_LOG) eventLog.shift();
   }
 
-  // Analyze JSON structure recursively — returns type tree
-  function analyzeSchema(data, depth = 0, maxDepth = 4) {
-    if (depth > maxDepth) return '...';
-    if (data === null || data === undefined) return 'null';
+  // Recursive schema analyzer. No artificial depth limit; circular refs guarded by seen-set.
+  function analyzeSchema(data, seen = new WeakSet()) {
+    if (data === null || data === undefined) return null;
+    if (typeof data !== 'object') return typeof data;
+    if (seen.has(data)) return '[circular]';
+    seen.add(data);
     if (Array.isArray(data)) {
-      if (data.length === 0) return '[]';
-      return [analyzeSchema(data[0], depth + 1, maxDepth)];
+      if (data.length === 0) return [null]; // marker: unknown item shape
+      return [analyzeSchema(data[0], seen)];
     }
-    if (typeof data === 'object') {
-      const schema = {};
-      for (const [key, value] of Object.entries(data)) {
-        if (key === '__typename') { schema.__typename = value; continue; }
-        schema[key] = analyzeSchema(value, depth + 1, maxDepth);
-      }
-      return schema;
+    const schema = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (key === '__typename') { schema.__typename = value; continue; }
+      schema[key] = analyzeSchema(value, seen);
     }
-    return typeof data;
+    return schema;
+  }
+
+  // Merge two schemas. Used to enrich responseSchema across multiple calls.
+  function mergeSchema(a, b) {
+    if (a === null || a === undefined) return b ?? null;
+    if (b === null || b === undefined) return a;
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return [mergeSchema(a[0] ?? null, b[0] ?? null)];
+    }
+    if (a && typeof a === 'object' && !Array.isArray(a) && b && typeof b === 'object' && !Array.isArray(b)) {
+      const out = {};
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      for (const k of keys) out[k] = mergeSchema(a[k] ?? null, b[k] ?? null);
+      return out;
+    }
+    if (typeof a === 'string' && typeof b === 'string') {
+      return a === b ? a : `${a}|${b}`;
+    }
+    return a; // fallback: keep first non-null
   }
 
   // Extract flat list of field paths (e.g., "createQuote.quote.id")
-  function extractFieldPaths(data, prefix = '', depth = 0, maxDepth = 3) {
+  function extractFieldPaths(data, prefix = '', seen = new WeakSet()) {
     const paths = [];
-    if (depth > maxDepth || !data || typeof data !== 'object') return paths;
+    if (!data || typeof data !== 'object') return paths;
+    if (seen.has(data)) return paths;
+    seen.add(data);
     for (const [key, value] of Object.entries(data)) {
       if (key === '__typename') continue;
       const path = prefix ? `${prefix}.${key}` : key;
       paths.push(path);
       if (value && typeof value === 'object' && !Array.isArray(value)) {
-        paths.push(...extractFieldPaths(value, path, depth + 1, maxDepth));
+        paths.push(...extractFieldPaths(value, path, seen));
       } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
-        paths.push(...extractFieldPaths(value[0], `${path}[]`, depth + 1, maxDepth));
+        paths.push(...extractFieldPaths(value[0], `${path}[]`, seen));
       }
     }
     return paths;
   }
 
-  function getResults() { return discovered; }
+  function getResults() {
+    const ops = {};
+    for (const [k, v] of Object.entries(discovered)) {
+      const { _sigs, ...rest } = v;
+      ops[k] = rest;
+    }
+    return { ops, eventLog: [...eventLog] };
+  }
   function isActive() { return isScanning; }
 
   function getStats() {
@@ -253,15 +343,15 @@ const HashScanner = (() => {
         if (entry.lastSeen && (!existing.lastSeen || entry.lastSeen > existing.lastSeen)) {
           existing.lastSeen = entry.lastSeen;
         }
-        // Merge variable samples (keep up to 3 unique); re-sanitize defensively
-        // in case incoming data was captured before redaction was in place.
+        // Merge variable samples deduped by shape signature, up to MAX_SAMPLES_PER_OP
+        existing._sigs = existing._sigs || new Set(existing.variablesSamples.map(shapeSignature));
         for (const sample of (entry.variablesSamples || [])) {
-          if (existing.variablesSamples.length < 3) {
-            const clean = sanitizeVariables(opName, sample);
-            const sStr = JSON.stringify(clean);
-            if (!existing.variablesSamples.some(v => JSON.stringify(v) === sStr)) {
-              existing.variablesSamples.push(clean);
-            }
+          if (existing.variablesSamples.length >= MAX_SAMPLES_PER_OP) break;
+          const clean = sanitizeVariables(opName, sample);
+          const sig = shapeSignature(clean);
+          if (!existing._sigs.has(sig)) {
+            existing._sigs.add(sig);
+            existing.variablesSamples.push(clean);
           }
         }
         // Keep responseSchema if we didn't have one
@@ -269,11 +359,30 @@ const HashScanner = (() => {
           existing.responseSchema = entry.responseSchema;
           existing.responseFields = entry.responseFields || [];
         }
+        // Merge response samples up to cap (no dedup — raw data variety is useful)
+        existing.responseSamples = existing.responseSamples || [];
+        for (const rs of (entry.responseSamples || [])) {
+          if (existing.responseSamples.length >= MAX_RESPONSE_SAMPLES_PER_OP) break;
+          existing.responseSamples.push(rs);
+        }
+        // Merge error samples (cap 3) + accumulate errorCount + keep latest httpStatus
+        existing.errorSamples = existing.errorSamples || [];
+        existing.errorCount = (existing.errorCount || 0) + (entry.errorCount || 0);
+        if (entry.lastHttpStatus) existing.lastHttpStatus = entry.lastHttpStatus;
+        for (const es of (entry.errorSamples || [])) {
+          if (existing.errorSamples.length >= 3) break;
+          existing.errorSamples.push(es);
+        }
       }
     }
   }
 
-  return { init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults, analyzeSchema };
+  return {
+    init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
+    analyzeSchema, mergeSchema,
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, discovered, eventLog, knownHashMap, knownOpMap }
+  };
 })();
 
 if (typeof window !== 'undefined') window.HashScanner = HashScanner;
+if (typeof module !== 'undefined') module.exports = HashScanner;
