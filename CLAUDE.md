@@ -246,6 +246,20 @@ Applet hermano de `process-canon`, **read-only**, que evalúa 4 reglas (R1-R4) s
 - Fase 2: applet hermano que lee el XLSX editado y hace mutaciones bulk de `TreatmentTime` y `UpdateProcessNode` (lead time/producto).
 - Pinear hashes SHA-256 de los nuevos scripts en `config.json` (item 1 del audit pre-producción).
 
+#### Hotfix 0.7.1 (2026-05-15, deploy `7cf027e`): STEP_SHIPPING_READY válido en R1
+Primera ronda de prod test reveló que R1 reportaba como inválidos los nodos "Listo" del flujo de embarques (tipo `STEP_SHIPPING_READY`). **Ese tipo es válido por diseño** — es el especial para sub-procesos de embarque, no debe reportarse como problema. Fix: agregar `STEP_SHIPPING_READY` al `validTypes` Set de `evaluateR1` junto con `SCANNER_NODE` y `STAGING`. Label `TipoEsperado` actualizado a `"SCANNER_NODE / STAGING / STEP_SHIPPING_READY"`. Diff de 3 líneas funcionales + comentario explicativo en la función.
+
+**Lección generalizable:** las whitelists de tipos válidos por dominio (no solo R1 — aplica a cualquier validador) deben construirse desde la observación del catálogo real, no desde la suposición del diseño. Cuando un validador empieza a reportar falsos positivos en su primera corrida, **el fix es ampliar la whitelist** si el tipo flagged es legítimo, no relajar el matcher. Documentar el "por qué válido" inline en el código (no solo en commit) para que el siguiente que lea evaluateR1 entienda el dominio sin tener que ir al historial git.
+
+**Files tocados:**
+- `remote/scripts/process-deep-audit.js` — `validTypes` Set + label `TipoEsperado` + comentario inline + VERSION
+- `remote/config.json` — bump 0.7.0 → 0.7.1
+- `docs/processes-architecture.md` — sección 10.1 R1 actualizada con nota de validez de STEP_SHIPPING_READY
+
+**Estado de deploy:**
+- `main`: commits `8cc4b0f` (bitácora 0.7.0) y `a10efca` (fix 0.7.1) **pendientes de push** (auto-mode bloquea push a default branch sin autorización explícita). El usuario debe correr `git push origin main` manualmente para sincronizar.
+- `gh-pages`: deployed como `7cf027e` y pushed a remote.
+
 ### `hash-scanner`: lecciones 0.6.22 → 0.6.23 (autosuficiencia de `scan_results_*.json`)
 Refactor en 9 fixes para que un solo `scan_results_*.json` sirva para construir applets sin pedir nuevos payloads/responses/hashes al usuario en consola. Antes el scanner tenía gaps silenciosos (truncados, depth caps, denylists, no captura de errors/headers/timing) que forzaban round-trips. Driver del refactor: TDD con tests explícitos en `tools/test/hash-scanner.test.js` (23 tests passing). Detalles por bug:
 
