@@ -1,6 +1,6 @@
-// Process Deep Audit v0.7.0
+// Process Deep Audit v0.7.1
 // Auditoría read-only que aplica 4 reglas a cada PROCESS root:
-//   R1 — nodos "Listo para Procesar" deben ser SCANNER_NODE
+//   R1 — nodos "Listo" deben ser SCANNER_NODE, STAGING o STEP_SHIPPING_READY
 //   R2 — cada sección/línea (T<n>) debe tener treatment con ≥1 estación y cycleTime>0
 //   R3 — procesos satélite (T100,T200,…,(FIB)/(ANT)/(HOR)/(LIM)/(VIB)) con tiempos
 //   R4 — defaultLeadTime > 0 + productByProductId cuyo nombre cubra sufijos del nombre
@@ -15,7 +15,7 @@
 const ProcessDeepAudit = (() => {
   'use strict';
 
-  const VERSION = '0.7.0';
+  const VERSION = '0.7.1';
   const ps = () => window.ProcessShared;
   const api = () => window.SteelheadAPI;
 
@@ -147,12 +147,17 @@ const ProcessDeepAudit = (() => {
     return tokens.some(t => pn.includes(stripAccents(t)));
   }
 
-  // ── R1: nodos Listo (cualquier nivel) cuyo type ∉ {SCANNER_NODE, STAGING} ──
+  // ── R1: nodos Listo (cualquier nivel) cuyo type no está en la whitelist ──
+  // Tipos válidos para nodos "Listo":
+  //   - SCANNER_NODE: caso estándar (línea de producción, escanea entrada).
+  //   - STAGING: variante de almacenamiento intermedio.
+  //   - STEP_SHIPPING_READY: tipo especial para nodos de embarque (válido por
+  //     diseño; no debe reportarse como problema).
   function evaluateR1(treeRoot, processInfo) {
     const findings = [];
     if (!treeRoot) return findings;
     const all = ps().flattenTree(treeRoot);
-    const validTypes = new Set(['SCANNER_NODE', 'STAGING']);
+    const validTypes = new Set(['SCANNER_NODE', 'STAGING', 'STEP_SHIPPING_READY']);
     for (const node of all) {
       if (!node?.name) continue;
       if (!/listo/i.test(node.name)) continue;
@@ -163,7 +168,7 @@ const ProcessDeepAudit = (() => {
         NodoListoID: node.id,
         NodoListoName: node.name,
         TipoActual: node.type || '(desconocido)',
-        TipoEsperado: 'SCANNER_NODE'
+        TipoEsperado: 'SCANNER_NODE / STAGING / STEP_SHIPPING_READY'
       });
     }
     return findings;

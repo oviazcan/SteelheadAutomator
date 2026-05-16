@@ -375,9 +375,11 @@ queries vía `process-shared.js` (cargado antes que `process-canon.js` y
 
 Reglas evaluadas por proceso:
 
-- **R1 — "Listo para Procesar" no-Scanner.** Cualquier nodo del árbol cuyo nombre
-  matchee `/Listo/i` y cuyo `type ∉ {SCANNER_NODE, STAGING}` se reporta como
-  candidato a fix estructural.
+- **R1 — "Listo para Procesar" con tipo inválido.** Cualquier nodo del árbol cuyo
+  nombre matchee `/Listo/i` y cuyo `type ∉ {SCANNER_NODE, STAGING, STEP_SHIPPING_READY}`
+  se reporta como candidato a fix estructural. **`STEP_SHIPPING_READY` es válido
+  por diseño** — es el tipo especial que llevan los nodos "Listo" del flujo de
+  embarques; no debe reportarse como problema (corrección 0.7.1).
 - **R2 — Tiempos por sección (línea principal).** Por cada bloque T<n> detectado en
   top-level (`PS.detectLineSections`):
   1. Localizar el nodo Listo del bloque (en el árbol expandido).
