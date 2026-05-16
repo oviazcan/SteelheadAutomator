@@ -34,205 +34,31 @@ const ProcessCanon = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // Módulo compartido (debe cargarse ANTES de process-canon en manifest.json).
+  // Si falta, abortamos: el applet no puede operar sin las constantes / queries
+  // que viven en process-shared.js.
+  if (typeof window === 'undefined' || !window.ProcessShared) {
+    console.error('[SA] process-canon: ProcessShared no disponible. Verifica orden de carga.');
+    return { run: () => alert('process-shared no cargado; revisa la extensión.') };
+  }
+  const PS = window.ProcessShared;
+
   const CONCURRENCY_AUDIT = 5;
   const CONCURRENCY_APPLY = 5;
   const PAGE_SIZE = 500;
 
-  // 5 compartidos globales. Los 4 SUB_PROCESS están en el catálogo
-  // PROCESS+SUB_PROCESS; 'SP Embarque en Almacén' es type STEP_SHIPPING y por
-  // eso requiere ampliar el loader. Hasta 0.5.43 el canon asumía 8 nodos
-  // (colapsando Embarque/Preparación), pero el árbol real tiene 9: ambos
-  // existen como nodos distintos y consecutivos (verificado 2026-05-04 en
-  // T102 (EST)-AL-VARIOS donde aparecen pos 6 y pos 8).
-  const GLOBALS = [
-    'SP Inspección Recibo',
-    'SP Preparación de Surtido en Almacén',
-    'SP Preparación de Embarque en Almacén',
-    'SP Inspección de Calidad Embarques',
-    'SP Embarque en Almacén'
-  ];
+  // Constantes compartidas. Las definiciones canónicas viven en process-shared.js
+  // (catálogo, regex, mapeos). Aquí solo aliasamos por brevedad. Ver doc en
+  // process-shared.js para el detalle de cada constante.
+  const GLOBALS = PS.GLOBALS;
+  const listoPPName = PS.listoPPName;
+  const TAG_PATTERNS = PS.TAG_PATTERNS;
+  const NAME_FILTERS = PS.NAME_FILTERS;
+  const EPOXY_SUFFIXES = PS.EPOXY_SUFFIXES;
+  const AUX_SUFFIXES = PS.AUX_SUFFIXES;
+  const PREP_CODES = PS.PREP_CODES;
+  const LINE_MAPPING = PS.LINE_MAPPING;
 
-  const listoPPName = (T) => `${T} Listo para Procesar`;
-
-  // Tags por operación canónica. Los nombres de los nodos por línea varían
-  // ('T103 Enracado', 'T108 Enracado ó Carga de Barril', 'T106 Carga de Barril',
-  // 'T103-SE00-001 Secando ...', etc.) así que descubrimos los IDs por tag,
-  // no por patrón de nombre.
-  const TAG_PATTERNS = {
-    enracado:    /enracado\s*\/\s*carga\s+de\s+barril/i,
-    secado:      /^secado\s+manual\s*,/i,
-    inspEmpaque: /^inspecci[oó]n\s+y\s+empaque$/i
-  };
-  // Algunos tags traen nodos que no corresponden a la operación de esa línea
-  // (ej. tag 'Inspección y Empaque' incluye 'T109 Inspección de Horneado').
-  // Filtros adicionales por nombre dentro del tag:
-  const NAME_FILTERS = {
-    enracado: null,
-    secado: null,
-    inspEmpaque: /inspecci[oó]n\s+y\s+empaque/i
-  };
-
-  // processName → "T<n>" line code (158 entradas, generado de 1._Proceso - Tratamientos Genericos.xlsx)
-  const LINE_MAPPING = {
-    "T100 (LMC)-T104 (EST)-CU/BR-HUBBELL (6.0)": "T104",
-    "T100 (PUL)-T103 (CRD)-T103 (ACE)-T100 (ABR)-FE-FISHER (11.0)": "T103",
-    "T100 (SAB)-T107 (PLA)-CU-C5 (60.0)": "T107",
-    "T101 (BDP)-CU-VARIOS (4.0)": "T101",
-    "T101 (BRI)-CU-VARIOS (4.0)": "T101",
-    "T101 (CRO)-AL-MAT. MECANICO ELECTRICO (4.0)": "T101",
-    "T101 (DEC)-AL-VARIOS (4.0)": "T101",
-    "T101 (DEC)-CU-VARIOS (4.0)": "T101",
-    "T101 (DEC)-FE-VARIOS (4.0)": "T101",
-    "T101 (DEC)-INOX-VARIOS (4.0)": "T101",
-    "T101 (DEC)-LA-VARIOS (4.0)": "T101",
-    "T101 (DEC)-T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
-    "T101 (DEC)-T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
-    "T101 (DES)-INOX/CU-VARIOS (4.0)": "T101",
-    "T101 (IRI)-AL-VARIOS (4.0)": "T101",
-    "T101 (LAV)-AL-VARIOS (4.0)": "T101",
-    "T101 (LAV)-CU-VARIOS (4.0)": "T101",
-    "T101 (LAV)-CU/BR-HUBBELL (4.0)": "T101",
-    "T101 (LAV)-FE-VARIOS (4.0)": "T101",
-    "T101 (LAV)-INOX-VARIOS (4.0)": "T101",
-    "T101 (LAV)-LA-VARIOS (4.0)": "T101",
-    "T101 (NOX)-AL-VARIOS (4.0)": "T101",
-    "T101 (PAS)-CU-VARIOS (4.0)": "T101",
-    "T101 (PAS)-FE-VARIOS (4.0)": "T101",
-    "T101 (PAS)-INOX-VARIOS (4.0)": "T101",
-    "T101 (PRE)-T108 (NSU)-T109 (PAS)-LA-VARIOS (13.0)": "T108",
-    "T101 (PRE)-T108 (NWO)-T108 (NEL)-T109 (PAS)-FE-BUJIA (13.0)": "T108",
-    "T101 (PRE)-T112 (NWO)-T109 (NSU)-CU/LA/FE/INOX-VARIOS (13.2)": "T112",
-    "T101 (PRE)-T112 (NWO)-T109 (NSU)-INOX-RPK (15.0)": "T109",
-    "T101 (PRE)-T112 (NWO)-T112 (NEL)-T109 (PAS)-LA-VARIOS (13.2)": "T112",
-    "T101 (PRE)-T112 (NWO)-T203 (PLA)-LA-VARIOS (16.0)": "T203",
-    "T101 (PRE)-T112 (NWO)-T204 (PLA)-LA-VARIOS (16.1)": "T204",
-    "T101 (PRE)-T203 (PLA)-LA-VARIOS (16.0)": "T203",
-    "T101 (ROD)-T108 (NWO)-T108 (NEL)-T109 (PAS)-INOX/FE-VARIOS (13.0)": "T108",
-    "T101 (ROD)-T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
-    "T101 (ROD)-T109 (NBR)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
-    "T101 (ROD)-T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
-    "T101 (ROD)-T109 (NSU)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
-    "T101 (ROD)-T112 (NEL)-T109 (PAS)-FE-VARIOS (13.2)": "T112",
-    "T101 (ROD)-T112 (NWO)-T112 (NEL)-T112 (ACE)-INOX-MONEDA (13.2)": "T112",
-    "T102 (COB)-AL-VARIOS (12.0)": "T102",
-    "T102 (COB)-T102 (EST)-FE/AC-VARIOS (12.0)": "T102",
-    "T102 (EST)-AL-VARIOS (12.0)": "T102",
-    "T102 (EST)-CU/BR-VARIOS (12.0)": "T102",
-    "T102 (IRI)-AL-FISHER (12.0)": "T102",
-    "T103 (CRD)-FE-VEEBALL (11.0)": "T103",
-    "T104 (EST)-CU/BR-VARIOS (6.0)": "T104",
-    "T104 (ZIN)-T100 (HOR)-T104 (CAZ)-FE-VARIOS (6.0)": "T104",
-    "T104 (ZIN)-T100 (HOR)-T104 (CTR)-FE/AC-VARIOS (6.0)": "T104",
-    "T104 (ZIN)-T100 (HOR)-T104 (CVO)-FE/AC-VARIOS (6.0)": "T104",
-    "T104 (ZIN)-T104 (CAZ)-FE/AC-VARIOS (6.0)": "T104",
-    "T104 (ZIN)-T104 (CTR)-FE/AC-VARIOS (6.0)": "T104",
-    "T104 (ZIN)-T104 (CVO)-FE/AC-VARIOS (6.0)": "T104",
-    "T105 (ZIN)-T100 (HOR)-T105 (CAZ)-FE/AC/LA-VARIOS (7.0)": "T105",
-    "T105 (ZIN)-T105 (CAZ)-FE/AC/LA-VARIOS (7.0)": "T105",
-    "T105 (ZIN)-T105 (CTR)-FE/AC/LA-VARIOS (7.0)": "T105",
-    "T105 (ZIN)-T105 (CVO)-FE/AC/LA-VARIOS (7.0)": "T105",
-    "T106 (ZIN)-T100 (HOR)-T106 (CAM)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T100 (HOR)-T106 (CAZ)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CAM)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CAT)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CAZ)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CNE)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CNT)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CRJ)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CTR)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CTV)-FE/AC-VARIOS (10.0)": "T106",
-    "T106 (ZIN)-T106 (CVO)-FE/AC-VARIOS (10.0)": "T106",
-    "T107 (PLA)-CU-C4 (60.0)": "T107",
-    "T108 (COB)-T108 (NWO)-T108 (NEL)-T108 (NCV)-T109 (PAS)-ZA-CROMVET (13.0)": "T108",
-    "T108 (NEL)-T100 (HOR)-T108 (DEC)-T100 (FIB)-FE-CAGES FISHER (13.0)": "T108",
-    "T108 (NWO)-T108 (COB)-T108 (NWO)-T108 (NEL)-T109 (PAS)-FE/ZA-VARIOS (13.0)": "T108",
-    "T108 (NWO)-T108 (NEL)-T100 (HOR)-T108 (DEC)-T100 (FIB)-FE-CAGES FISHER (13.0)": "T108",
-    "T109 (LAV)-T000 (TRT)-T109 (NBR)-BI-BIMETALES (15.0)": "T109",
-    "T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
-    "T109 (NBR)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
-    "T109 (NSU)-FE-BUJIA (15.0)": "T109",
-    "T109 (NSU)-FE-BUJIA RENAULT (15.0)": "T109",
-    "T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
-    "T109 (NSU)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
-    "T110 (DEC)-CU-VARIOS (26.0)": "T110",
-    "T111 (AND)-AL-VARIOS (14.0)": "T111",
-    "T111 (COB)-T110 (PLA)-AL-VARIOS (26.0)": "T110",
-    "T111 (COB)-T203 (PLA)-AL-HEATER (16.0)": "T203",
-    "T111 (ESM)-AL-VARIOS (14.0)": "T111",
-    "T111 (ESM)-CU-VARIOS (14.0)": "T111",
-    "T111 (EST)-AL-VARIOS (14.0)": "T111",
-    "T111 (EST)-CU-VARIOS (14.0)": "T111",
-    "T112 (NWO)-T203 (PLA)-FE-VARIOS (16.0)": "T203",
-    "T112 (NWO)-T204 (PLA)-FE-VARIOS (16.1)": "T204",
-    "T112 (NWO)-T301 (EST)-CU/FE/LA-VARIOS (24.0)": "T301",
-    "T113 (ZIN)-T100 (HOR)-T113 (CAZ)-FE-VARIOS (17.0)": "T113",
-    "T113 (ZIN)-T113 (CAZ)-FE-VARIOS (17.0)": "T113",
-    "T114 (FMS)-FE-GM (7.1)": "T114",
-    "T114 (FMS)-FE-PISTON (7.1)": "T114",
-    "T114 (FMS)-FE-PIÑON (7.1)": "T114",
-    "T114 (FMS)-T114 (ACE)-FE-PISTON (7.1)": "T114",
-    "T114 (FMS)-T114 (ACE)-FE-PIÑON (7.1)": "T114",
-    "T115 (NCR)-FE/AC-VARIOS (23.0)": "T115",
-    "T116 (FZI)-FE/AC-VARIOS (7.2)": "T116",
-    "T116 (FZI)-T116 (ACE)-FE/AC-VARIOS (7.2)": "T116",
-    "T116 (PAV)-FE/AC-VARIOS (7.2)": "T116",
-    "T116 (PAV)-T116 (ACE)-FE/AC-VARIOS (7.2)": "T116",
-    "T117 (ZNQ)-T117 (CNN)-FE/AC-BONETE (28.0)": "T117",
-    "T200 (REB)-T109 (NBR)-FE/AC-GRANEL (15.0)": "T109",
-    "T200 (REB)-T109 (NBR)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
-    "T200 (REB)-T109 (NSU)-FE/AC-GRANEL (15.0)": "T109",
-    "T200 (REB)-T109 (NSU)-T100 (HOR)-FE/AC-GRANEL (15.0)": "T109",
-    "T201 (COB)-AL-VARIOS (25.0)": "T201",
-    "T201 (DEC)-T201 (ESM)-CU-VARIOS (25.0)": "T201",
-    "T201 (DEC)-T201 (EST)-CU-VARIOS (25.0)": "T201",
-    "T201 (DEC)-T201 (NSU)-CU-VARIOS (25.0)": "T201",
-    "T201 (ESM)-AL-VARIOS (25.0)": "T201",
-    "T201 (ESM)-CU-VARIOS (25.0)": "T201",
-    "T201 (EST)-AL-VARIOS (25.0)": "T201",
-    "T201 (EST)-CU-VARIOS (25.0)": "T201",
-    "T201 (EST)-T401 (EBT)-CU-VARIOS (25.0)": "T201",
-    "T201 (NSU)-CU-VARIOS (25.0)": "T201",
-    "T202 (DEC)-CU-BARE (16.2)": "T202",
-    "T202 (PLA)-CU-VARIOS (16.2)": "T202",
-    "T203 (LES)-T203 (PLA)-CU-VARIOS (16.0)": "T203",
-    "T204 (DEC)-CU-BARE (16.1)": "T204",
-    "T204 (EST)-T401 (EBT)-CU-VARIOS (16.1)": "T204",
-    "T205 (DEC)-CU-BARE (16.3)": "T205",
-    "T205 (EST)-AL-VARIOS (16.3)": "T205",
-    "T205 (EST)-CU-VARIOS (16.3)": "T205",
-    "T205 (EST)-T401 (EBT)-CU-VARIOS (16.3)": "T205",
-    "T205 (PLA)-T300 (ANT)-CU-SOLERA RG (16.3)": "T205",
-    "T206 (LAV)-T000 (TRT)-T206 (EST)-BI-BIMETALES (18.0)": "T206",
-    "T207 (AND)-AL-VARIOS (16.4)": "T207",
-    "T207 (AND)-T207 (TIN)-AL-VARIOS (16.4)": "T207",
-    "T207 (ELE)-FE/AC-FISHER (16.4)": "T207",
-    "T300 (ANT)-CU-VARIOS (20.0)": "T300",
-    "T300 (FIB)-T205 (PLA)-CU-ZION (16.3)": "T205",
-    "T300 (FIB)-T205 (PLA)-T300 (ANT)-CU-SOLERA WIELAND (16.3)": "T205",
-    "T300 (LES)-T110 (PLA)-CU-VARIOS (26.0)": "T110",
-    "T300 (LES)-T110 (PLA)-T300 (ANT)-CU-VARIOS (26.0)": "T110",
-    "T300 (LES)-T204 (EST)-CU/BR-VARIOS (16.1)": "T204",
-    "T300 (LES)-T204 (NWO)-T204 (PLA)-CU-VARIOS (16.1)": "T204",
-    "T300 (LES)-T204 (PLA)-CU/BR-VARIOS (16.1)": "T204",
-    "T300 (LES)-T204 (PLA)-T300 (ANT)-CU-VARIOS (16.1)": "T204",
-    "T300 (LES)-T205 (PLA)-CU-MAQUILA QRO (16.3)": "T205",
-    "T300 (LES)-T205 (PLA)-T300 (ANT)-CU-MAQUILA RG (16.3)": "T205",
-    "T301 (EST)-CU/BR/FE-VARIOS (24.0)": "T301",
-    "T301 (LES)-T301 (EST)-CU-CELCO (24.0)": "T301",
-    "T400 (ANT)-CU-VARIOS (20.0)": "T400",
-    "T401 (EBT)-CU-VARIOS (30.0)": "T401",
-    "T401 (EBT)-T110 (PLA)-T300 (ANT)-CU-VARIOS (26.0)": "T110",
-    "T401 (EBT)-T204 (PLA)-T300 (ANT)-CU-VARIOS (16.1)": "T204",
-    "T401 (EBT)-T205 (PLA)-T300 (ANT)-CU-VARIOS (16.3)": "T205",
-    "T401 (EMR)-CU-VARIOS (30.0)": "T401",
-    "T401 (EMT)-CU-VARIOS (30.0)": "T401",
-    "T401 (EMT)-T110 (PLA)-T300 (ANT)-CU-VARIOS (26.0)": "T110",
-    "T401 (EMT)-T201 (EST)-CU-VARIOS (25.0)": "T201",
-    "T401 (EMT)-T204 (EST)-CU-VARIOS (16.1)": "T204",
-    "T401 (EMT)-T204 (PLA)-T300 (ANT)-CU-VARIOS (16.1)": "T204",
-    "T401 (EMT)-T205 (EST)-CU-VARIOS (16.3)": "T205",
-    "T401 (EMT)-T205 (PLA)-T300 (ANT)-CU-VARIOS (16.3)": "T205"
-  };
 
   // Catálogos runtime de nodos compartidos descubiertos vía AllProcesses
   let _nodesByName = null;   // Map<normName, id>
@@ -289,24 +115,6 @@ const ProcessCanon = (() => {
     return lookupSharedVariants(op, lineCode).some(v => v.id === id);
   }
 
-  // Sufijos de epóxico (recubrimientos que no llegan al canon tradicional).
-  const EPOXY_SUFFIXES = new Set(['EMT', 'EBT', 'EMR']);
-  // Sufijos auxiliares: el código existe en el nombre pero NO como recubrimiento
-  // principal (es lavado, decapado, pasivado, antitarnish, horno, pulido, etc.).
-  // Solo gana si no hay un código con sufijo principal en el mismo nombre.
-  const AUX_SUFFIXES = new Set([
-    'LAV', 'DEC',          // Lavado, Decapado
-    'PAS',                 // Pasivado
-    'ANT',                 // Antitarnish
-    'HOR',                 // Horno
-    'PUL',                 // Pulido
-    'REB',                 // Rebajado
-    'FIB',                 // Fibrado
-    'ENM', 'DNM'           // Enmascarado, Desenmascarado
-  ]);
-  // Códigos de "preparación" (Lavado/Decapado sin sufijo): solo son línea
-  // efectiva si no hay otro recubrimiento real en el nombre.
-  const PREP_CODES = new Set(['T101']);
   // Líneas que NO llevan canon tradicional (no tienen Enracado/Secado/InspEmpaque):
   //  - Satélites: T100, T200, T300, T400, T500 (procesos auxiliares: horno,
   //    antitarnish, pulido, fibrado, etc.)
