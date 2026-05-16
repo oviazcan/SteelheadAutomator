@@ -320,7 +320,97 @@ El usuario puede pegar `JSON.stringify(window.__lastProcureTreeInput, null, 2)` 
 | 0.5.56 | `ensureSharedRels` + `buildNewTree` recursivo con sub-árboles del catálogo | ProcureTree espera árbol completo expandido hasta hojas reales. |
 | 0.5.59 | Marcar el nodo raíz del proceso como `autoComplete: true` vía `UpdateProcessNode` después del `ProcureTree` exitoso | `ProcureTree` no expone `autoComplete` en el shape del árbol (capturado del UI 2026-05-05); es una mutación aparte sobre el nodo raíz. La llamada se trata como **post-step tolerante a fallos**: si 502/red revientan, el run sigue como éxito (el canon ya quedó aplicado) y se reporta `autoCompleteSet: false` en el resultado. Lección meta: **NO adivinar el shape** — antes de agregar la llamada se capturó el cURL del UI para confirmar `operationName`, hash y variables `{id, autoComplete}`. |
 
-## 10. Pendientes / áreas para extender
+## 10. Treatments, stations y tiempos (process-deep-audit)
+
+Modelo confirmado al construir `process-deep-audit` (v0.7.0) con `scan_results_2026-05-15_182824.json`:
+
+```
+Treatment
+  ├─ id, name
+  └─ stationTreatmentsByTreatmentId.nodes[]
+       ├─ id (StationTreatment.id, sin relación con Station)
+       ├─ stationId
+       └─ stationByStationId { id, name }
+
+TreatmentTime (consulta por sets de ids)
+  ├─ cycleTime  { hours, minutes, seconds }
+  ├─ totalTime  { hours, minutes, seconds }
+  ├─ timeType   ('FIXED' | 'PER_PART' | …)
+  ├─ stationByStationId       { id, name }
+  ├─ treatmentByTreatmentId   { id, name }
+  └─ processNodeByProcessNodeId { id, name } | null
+```
+
+Diferencia clave: las `TreatmentTime` viven en una tabla separada y se consultan vía
+`CreateEditTreatmentTimesDialogQuery` pasando un set de combinaciones:
+- `searchTreatmentTimesInput`: `[{stationId, treatmentId, processNodeOccurrence}]`
+- `partNumberIds`: `[]` (todos)
+- `treatmentIds`, `stationIds`, `processNodeIds`: pueden venir como arrays de filtro
+- `treatmentGroupIds`: `[]` cuando no usas grouping
+
+La respuesta indexa por `allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[]`. Una
+estación puede tener tiempos genéricos (`processNodeByProcessNodeId === null`) o
+específicos por nodo del proceso, e incluso por ocurrencia (`processNodeOccurrence`).
+Para auditar "¿tiene tiempos cargados?" basta con verificar que **alguna** entrada de
+`relatedTimes` tenga `intervalToSeconds(cycleTime) > 0` para la estación.
+
+Ops nuevas en config (`steelhead.hashes.queries`):
+- `GetTreatment` — detalle de un treatment con estaciones embebidas.
+- `AllTreatments` — listado paginado de treatments con estaciones.
+- `CreateEditTreatmentTimesDialogQuery` — tiempos para sets de ids (la que sí necesitas
+  para auditar tiempos cargados).
+- `StationsByTreatmentId` — estaciones de un treatment dado (fallback ligero).
+- `GetProcessNodeParents` — devuelve `parentProcesses.nodes[]` del nodo. Usado para
+  detectar si un satélite (`T100`, `T200`, …) está **compartido en uso** por varios
+  procesos.
+- `CreateEditProcessDialogQuery` — detalle ligero (sin árbol) del proceso para R4:
+  `defaultLeadTime{hours,minutes,seconds}`, `productByProductId{id,name}`, y conteo de tags.
+
+### 10.1 `process-deep-audit` (v0.7.0) — alcance y reglas
+
+Applet hermano de `process-canon`, **read-only**, que genera un reporte + plantilla
+XLSX con columnas editables para futura carga masiva. Comparte el catálogo y las
+queries vía `process-shared.js` (cargado antes que `process-canon.js` y
+`process-deep-audit.js` en el `apps[].scripts[]` de `config.json`).
+
+Reglas evaluadas por proceso:
+
+- **R1 — "Listo para Procesar" no-Scanner.** Cualquier nodo del árbol cuyo nombre
+  matchee `/Listo/i` y cuyo `type ∉ {SCANNER_NODE, STAGING}` se reporta como
+  candidato a fix estructural.
+- **R2 — Tiempos por sección (línea principal).** Por cada bloque T<n> detectado en
+  top-level (`PS.detectLineSections`):
+  1. Localizar el nodo Listo del bloque (en el árbol expandido).
+  2. `GetProcessNode(listoId).processNodeById.treatmentByTreatmentId` — si null →
+     `R2-a Sin treatment asignado`.
+  3. `GetTreatment(treatmentId)` — si `stationTreatmentsByTreatmentId.totalCount === 0`
+     → `R2-b Sin estaciones`.
+  4. `CreateEditTreatmentTimesDialogQuery({treatmentIds, stationIds, processNodeIds:[listoId]})`
+     — si ninguna entrada tiene `cycleTime > 0` → `R2-c Sin tiempos`. Tiempos parciales
+     (algunas estaciones sí, otras no) → `R2-d Parcial`.
+- **R3 — Satélites con tiempos.** Catálogo híbrido: descubrimiento por regex
+  (`SATELLITE_REGEX`), sufijos auxiliares (`FIB`, `ANT`, `HOR`, `LIM`, `VIB`, etc.) e
+  `include`/`exclude` desde `config.json:steelhead.domain.processAudit.satelliteOverrides`.
+  Cada satélite se trata como un mini-proceso: valida que tenga treatment con estaciones
+  y tiempos > 0. `GetProcessNodeParents` reporta si el satélite está **compartido en
+  uso** (varios procesos lo referencian).
+- **R4 — Lead time + producto.** Por cada `PROCESS` root (incluye satélites):
+  - `defaultLeadTime` con todos los componentes en 0 → `R4-a Sin lead time`.
+  - `productByProductId` null → `R4-b Sin producto`.
+  - Sufijos del nombre (`(EST)`, `(NIQ)`, …) que no estén cubiertos por tokens del
+    `productByProductId.name` según `finishProductMap` → `R4-c Producto no cubre acabado`.
+
+Salida: `process-deep-audit-<YYYY-MM-DD>.xlsx` con 6 hojas (`Resumen`, `R1_Listo_NoScanner`,
+`R2_TiemposLineaPrincipal`, `R3_Satélites`, `R4_LeadTime_Producto`, `Catálogos`),
+incluyendo columnas `*_NUEVO` editables que un applet hermano de Fase 2 leerá para hacer
+las mutaciones de carga masiva. Adicionalmente se ofrece export JSON crudo para diffs
+entre corridas.
+
+Concurrencia: pool de 5 procesos en paralelo (`steelhead.domain.processAudit.concurrency`).
+Retries con backoff `retryDelaysMs: [0, 1000, 2000]` por proceso. Cancelación con patrón
+`runId` + `isStale()` (mismo de `invoice-autofill`).
+
+## 11. Pendientes / áreas para extender
 
 - **Cache persistente de `_subtreeRelsCache`.** Hoy se reinstancia por sesión del applet. Si el procesamiento de cientos de procesos repite lookups, considera mover el cache a `chrome.storage.local` con TTL.
 - **Detección de cambio en el catálogo.** Si Steelhead actualiza un sub-árbol shared (ej. agrega un step nuevo a `SP Inspección Recibo`), el cache lo deja stale. Estrategia: invalidar al inicio de cada sesión del applet, o fingerprint vía hash del árbol.

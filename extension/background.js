@@ -64,7 +64,9 @@ async function injectAppScripts(tabId, appId) {
           'scripts/bill-autofill.js': 'BillAutofill',
           'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen',
           'scripts/invoice-default-tab.js': 'InvoiceDefaultTab',
+          'scripts/process-shared.js': 'ProcessShared',
           'scripts/process-canon.js': 'ProcessCanon',
+          'scripts/process-deep-audit.js': 'ProcessDeepAudit',
           'scripts/sensor-status-autofill.js': 'SensorStatusAutofill',
           'scripts/receiver-date-override.js': 'ReceiverDateOverride',
           'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill' };
@@ -974,6 +976,28 @@ async function handleMessage(message, sender) {
         }
       });
 
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    // ── Process Deep Audit ──
+    case 'run-process-deep-audit': {
+      const tab = await getSteelheadTab();
+      // XLSX library debe inyectarse antes de los scripts del app porque
+      // process-deep-audit usa window.XLSX para construir la plantilla.
+      const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (c) => { if (!window.XLSX) new Function(c)(); }, args: [xlsxCode]
+      });
+      await injectAppScripts(tab.id, 'process-canon');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.ProcessDeepAudit) return { error: 'ProcessDeepAudit no disponible' };
+          window.ProcessDeepAudit.run().then(r => console.log('[SA] Deep Audit:', r)).catch(e => console.error('[SA]', e));
+          return { started: true, message: 'Auditoría profunda iniciada. Revisa el panel en Steelhead.' };
+        }
+      });
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
