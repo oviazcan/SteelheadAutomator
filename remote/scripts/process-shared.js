@@ -822,6 +822,18 @@ const ProcessShared = (() => {
     return getProcessAuditConfig().concurrency || { audit: 5, retryDelaysMs: [0, 1000, 2000] };
   }
 
+  function duplicatesConfig() {
+    const cfg = getProcessAuditConfig().duplicates || {};
+    return {
+      enabled: cfg.enabled !== false,
+      includeSources: cfg.includeSources || ['main','satellite','rt','subprocess','stepshipping'],
+      ignoreNamePatterns: (cfg.ignoreNamePatterns || []).map(p => {
+        try { return new RegExp(p, 'i'); } catch (_) { return null; }
+      }).filter(Boolean),
+      ignoreIds: new Set((cfg.ignoreIds || []).map(Number).filter(Number.isFinite))
+    };
+  }
+
   return {
     // Constantes
     GLOBALS,
@@ -894,7 +906,8 @@ const ProcessShared = (() => {
     // Config accessors
     finishProductMap,
     satelliteOverrides,
-    auditConcurrency
+    auditConcurrency,
+    duplicatesConfig
   };
 })();
 
