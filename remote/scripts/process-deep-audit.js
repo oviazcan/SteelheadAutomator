@@ -925,7 +925,22 @@ const ProcessDeepAudit = (() => {
   // ── Hoja Resumen ──
   function buildResumenRows() {
     state.rows.resumen = [];
+
+    // Indexar duplicados por ProcessID para conteo rápido
+    const dupCountByPid = { d1: new Map(), d2: new Map(), d3: new Map() };
+    const bump = (mapObj, pid) => mapObj.set(pid, (mapObj.get(pid) || 0) + 1);
+    for (const r of state.rows.d1) bump(dupCountByPid.d1, r.ProcessID);
+    for (const r of state.rows.d2) bump(dupCountByPid.d2, r.ProcessID);
+    for (const r of state.rows.d3) bump(dupCountByPid.d3, r.ProcessID);
+
+    const partialNote = state.duplicates && state.duplicates.partial ? 'PARCIAL_POR_CANCELACION' : '';
+
     for (const p of state.processes) {
+      const dup1 = dupCountByPid.d1.get(p.id) || 0;
+      const dup2 = dupCountByPid.d2.get(p.id) || 0;
+      const dup3 = dupCountByPid.d3.get(p.id) || 0;
+      const totalDup = dup1 + dup2 + dup3;
+      const hadIssue = p.estadoGlobal === 'CON HALLAZGOS';
       state.rows.resumen.push({
         ProcessID: p.id, ProcessName: p.name, LineCode: p.lineCode,
         EsSatélite: 'No',
@@ -934,11 +949,20 @@ const ProcessDeepAudit = (() => {
         Hallazgos_R2: p.counts.r2,
         Hallazgos_R3: 0,
         Hallazgos_R4: p.counts.r4,
-        EstadoGlobal: p.estadoGlobal,
+        Duplicados_D1: dup1,
+        Duplicados_D2: dup2,
+        Duplicados_D3: dup3,
+        EstadoGlobal: (hadIssue || totalDup > 0) ? 'CON HALLAZGOS' : 'OK',
+        NotaParcial: partialNote,
         Error: p.error || ''
       });
     }
     for (const s of state.satellites) {
+      const dup1 = dupCountByPid.d1.get(s.id) || 0;
+      const dup2 = dupCountByPid.d2.get(s.id) || 0;
+      const dup3 = dupCountByPid.d3.get(s.id) || 0;
+      const totalDup = dup1 + dup2 + dup3;
+      const hadIssue = s.counts.r3 > 0;
       state.rows.resumen.push({
         ProcessID: s.id, ProcessName: s.name, LineCode: ps().extractLineCodeFromName(s.name) || '',
         EsSatélite: 'Sí',
@@ -947,9 +971,46 @@ const ProcessDeepAudit = (() => {
         Hallazgos_R2: 0,
         Hallazgos_R3: s.counts.r3 || 0,
         Hallazgos_R4: 0,
-        EstadoGlobal: s.counts.r3 > 0 ? 'CON HALLAZGOS' : 'OK',
+        Duplicados_D1: dup1,
+        Duplicados_D2: dup2,
+        Duplicados_D3: dup3,
+        EstadoGlobal: (hadIssue || totalDup > 0) ? 'CON HALLAZGOS' : 'OK',
+        NotaParcial: partialNote,
         Error: ''
       });
+    }
+
+    // Filas extra para nodos del universo D que no están en processes/satellites
+    // (SUB_PROCESS, STEP_SHIPPING, RT) pero SÍ aparecen en algún grupo de duplicados.
+    const allReportedIds = new Set(state.rows.resumen.map(r => r.ProcessID));
+    const extraIdsWithDups = new Set([
+      ...dupCountByPid.d1.keys(),
+      ...dupCountByPid.d2.keys(),
+      ...dupCountByPid.d3.keys()
+    ].filter(id => !allReportedIds.has(id)));
+
+    if (extraIdsWithDups.size) {
+      const allDupRows = [...state.rows.d1, ...state.rows.d2, ...state.rows.d3];
+      const byId = new Map();
+      for (const r of allDupRows) if (!byId.has(r.ProcessID)) byId.set(r.ProcessID, r);
+      for (const id of extraIdsWithDups) {
+        const sample = byId.get(id);
+        if (!sample) continue;
+        state.rows.resumen.push({
+          ProcessID: id,
+          ProcessName: sample.ProcessName,
+          LineCode: ps().extractLineCodeFromName(sample.ProcessName || '') || '',
+          EsSatélite: 'No',
+          Secciones: 0,
+          Hallazgos_R1: 0, Hallazgos_R2: 0, Hallazgos_R3: 0, Hallazgos_R4: 0,
+          Duplicados_D1: dupCountByPid.d1.get(id) || 0,
+          Duplicados_D2: dupCountByPid.d2.get(id) || 0,
+          Duplicados_D3: dupCountByPid.d3.get(id) || 0,
+          EstadoGlobal: 'CON HALLAZGOS',
+          NotaParcial: partialNote,
+          Error: ''
+        });
+      }
     }
   }
 
@@ -1034,7 +1095,8 @@ const ProcessDeepAudit = (() => {
       [
         'ProcessID', 'ProcessName', 'LineCode', 'EsSatélite', 'Secciones',
         'Hallazgos_R1', 'Hallazgos_R2', 'Hallazgos_R3', 'Hallazgos_R4',
-        'EstadoGlobal', 'Error'
+        'Duplicados_D1', 'Duplicados_D2', 'Duplicados_D3',
+        'EstadoGlobal', 'NotaParcial', 'Error'
       ]
     );
 
