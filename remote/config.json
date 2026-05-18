@@ -301,7 +301,7 @@
         },
         "duplicates": {
           "enabled": true,
-          "includeSources": ["main","satellite","rt","subprocess","stepshipping"],
+          "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"],
           "ignoreNamePatterns": [],
           "ignoreIds": []
         }
