@@ -41,7 +41,9 @@ const ProcessDeepAudit = (() => {
       processes: [],
       satellites: [],
       progress: { current: 0, total: 0, phase: 'init' },
-      rows: { resumen: [], r1: [], r2: [], r3: [], r4: [], catalogos: [] },
+      rows: { resumen: [], r1: [], r2: [], r3: [], r4: [], d1: [], d2: [], d3: [], catalogos: [], leyenda: [] },
+      treesById: new Map(),
+      duplicates: { partial: false, groupsD1: 0, groupsD2: 0, groupsD3: 0, membersD1: 0, membersD2: 0, membersD3: 0 },
       errors: []
     };
     return state.runId;
@@ -365,6 +367,7 @@ const ProcessDeepAudit = (() => {
     let tree = null;
     try {
       tree = await withRetry(() => ps().getProcessTree(satellite.id), `R3 sat ${satellite.id}`, myRunId);
+      if (tree) state.treesById.set(satellite.id, tree);
     } catch (err) {
       if (err.message === '__sa_aborted__') throw err;
       findings.push({
@@ -571,6 +574,7 @@ const ProcessDeepAudit = (() => {
     try {
       const tree = await withRetry(() => ps().getProcessTree(processNode.id), `audit ${processNode.id}`, myRunId);
       bailIfStale(myRunId);
+      if (tree) state.treesById.set(processNode.id, tree);
 
       result.r1 = evaluateR1(tree?.treeRoot, processNode);
       result.counts.r1 = result.r1.length;
