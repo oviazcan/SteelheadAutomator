@@ -295,7 +295,15 @@
         },
         "concurrency": {
           "audit": 5,
+          "trees": 5,
+          "parents": 5,
           "retryDelaysMs": [0, 1000, 2000]
+        },
+        "duplicates": {
+          "enabled": true,
+          "includeSources": ["main","satellite","rt","subprocess","stepshipping"],
+          "ignoreNamePatterns": [],
+          "ignoreIds": []
         }
       }
     }
