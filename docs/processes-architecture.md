@@ -319,6 +319,7 @@ El usuario puede pegar `JSON.stringify(window.__lastProcureTreeInput, null, 2)` 
 | 0.5.52–0.5.55 | Intentos a ciegas de fix ProcureTree (set `_sharedIds`, plano, prefer-existing-id) | **Inutiles**: capturar el request del UI primero. |
 | 0.5.56 | `ensureSharedRels` + `buildNewTree` recursivo con sub-árboles del catálogo | ProcureTree espera árbol completo expandido hasta hojas reales. |
 | 0.5.59 | Marcar el nodo raíz del proceso como `autoComplete: true` vía `UpdateProcessNode` después del `ProcureTree` exitoso | `ProcureTree` no expone `autoComplete` en el shape del árbol (capturado del UI 2026-05-05); es una mutación aparte sobre el nodo raíz. La llamada se trata como **post-step tolerante a fallos**: si 502/red revientan, el run sigue como éxito (el canon ya quedó aplicado) y se reporta `autoCompleteSet: false` en el resultado. Lección meta: **NO adivinar el shape** — antes de agregar la llamada se capturó el cURL del UI para confirmar `operationName`, hash y variables `{id, autoComplete}`. |
+| 0.8.0 (deep-audit) | Detección de duplicados D1/D2/D3 sobre PROCESS+SUB_PROCESS+STEP_SHIPPING+satélites+RT con 3 hojas XLSX + Leyenda + título mergeado. Canónico por id+parents; AccionSugerida_NUEVO editable. | `evaluateD` reusa caché `state.treesById` de R1-R4 para minimizar HTTP. Pool separado para árboles faltantes y `getProcessNodeParents`. |
 
 ## 10. Treatments, stations y tiempos (process-deep-audit)
 
@@ -418,3 +419,91 @@ Retries con backoff `retryDelaysMs: [0, 1000, 2000]` por proceso. Cancelación c
 - **Detección de cambio en el catálogo.** Si Steelhead actualiza un sub-árbol shared (ej. agrega un step nuevo a `SP Inspección Recibo`), el cache lo deja stale. Estrategia: invalidar al inicio de cada sesión del applet, o fingerprint vía hash del árbol.
 - **Reducir duplicados activos.** El log "SP Embarque en Almacén tiene 7 duplicados ACTIVOS" sugiere drift en el catálogo. No es responsabilidad del applet limpiarlo, pero documentar el caso ayuda al equipo de operaciones.
 - **`extension/background.js:212` (`get-current-user`).** Sigue invocando `CurrentUser` deprecado (ver lección de v0.5.7 en `CLAUDE.md`). Pivotar a `CurrentUserDetails`.
+
+## 12. Detección de duplicados (process-deep-audit ≥ v0.8.0)
+
+`process-deep-audit` corre tres firmas de duplicado sobre un universo unificado
+(PROCESS principales + satélites + RT + SUB_PROCESS + STEP_SHIPPING) después de
+R1-R4. Read-only: emite tres hojas XLSX (D1, D2, D3) con `AccionSugerida_NUEVO`
+editable para que un applet de Fase 2 procese decisiones de archivado/fusión.
+
+### 12.1 Firmas
+
+- **D1 — `signatureD1(node)` = `normName(name)`.** Detecta drift puro del catálogo
+  (ej. los 7 IDs activos de `SP Embarque en Almacén`).
+- **D2 — `signatureD2(treeRoot)` = `JSON.stringify(extractTopLevel(treeRoot).map(c => c.id))`.**
+  Detecta procesos que reusan exactamente los mismos hijos directos en el mismo orden.
+- **D3 — `signatureD3(treeRoot)` = `JSON.stringify(extractTopLevel(treeRoot).map(c => normName(c.name)))`.**
+  Detecta clones por "Save As..." donde los nombres top-level son idénticos pero los
+  IDs distintos. Caso más común dado los duplicados activos de SUB_PROCESS.
+
+Profundidad: D3 mira solo top-level. Razones documentadas en el spec
+`docs/superpowers/specs/2026-05-18-process-duplicates-design.md`. Si la corrida
+real revela necesidad de full-depth, agregar D4 con datos.
+
+### 12.2 Canónico
+
+```js
+function pickCanonical(members, parentsByIdCache) {
+  return members.slice().sort((a, b) => {
+    const pa = parentsByIdCache.get(a.id);
+    const pb = parentsByIdCache.get(b.id);
+    const fa = (pa == null) ? -1 : pa;
+    const fb = (pb == null) ? -1 : pb;
+    if (fa !== fb) return fb - fa;  // más referencias gana
+    return a.id - b.id;              // empate → id más bajo gana
+  })[0];
+}
+```
+
+`parentsByIdCache` se llena con `getProcessNodeParents(id)` SOLO para miembros de
+grupos con `size ≥ 2`. Para nodos sin dato (502, cancelación), `pickCanonical` los
+trata como `-1` → pierden contra cualquier número.
+
+`AccionSugerida` automática:
+- `EsCanonico=true` → `MANTENER`
+- `EsCanonico=false && refs=0` → `ARCHIVAR`
+- `EsCanonico=false && refs>0` → `FUSIONAR`
+- `refs` desconocido → vacío
+
+### 12.3 Universo y filtros
+
+`buildAuditUniverse(allProcesses, satelliteCatalog)` reúne los 5 buckets:
+
+- `main` — PROCESS sin prefijo RT/SP, no satélite.
+- `satellite` — del catálogo R3.
+- `rt` — PROCESS con `/^RT\b/i`.
+- `subprocess` — SUB_PROCESS del catálogo `loadAllNodes`.
+- `stepshipping` — STEP_SHIPPING del catálogo.
+
+Filtros desde `config.json:steelhead.domain.processAudit.duplicates`:
+- `enabled: false` salta toda la fase.
+- `includeSources: [...]` permite limitar a subconjuntos.
+- `ignoreIds: [int]` excluye IDs específicos.
+- `ignoreNamePatterns: ["regex"]` excluye por nombre (regex case-insensitive).
+
+### 12.4 Cache `state.treesById`
+
+Para evitar `getProcessTree` duplicado, `auditProcess` y `evaluateR3` (R1-R4)
+guardan su árbol fetched en `state.treesById: Map<id, {treeRoot, processNodeById}>`.
+`evaluateD` reusa lo cacheado y solo dispara fetch para los faltantes
+(`auditUniverse \ treesById.keys`), típicamente SUB_PROCESS/STEP_SHIPPING/RT.
+
+Pool separado: `processAudit.concurrency.trees` (default 5) para árboles faltantes,
+`processAudit.concurrency.parents` (default 5) para `getProcessNodeParents`.
+
+### 12.5 Cancelación parcial
+
+Si el usuario cancela durante el fetch de árboles faltantes:
+- D1 (que no depende del árbol) emite completo.
+- D2/D3 se construyen con los árboles que sí se tienen.
+- `state.duplicates.partial = true`.
+- Panel marca `[PARCIAL]`, hoja Resumen muestra `NotaParcial = "PARCIAL_POR_CANCELACION"`.
+
+Sin requests colgados; el pool drena pendientes ya iniciados pero no encola más.
+
+### 12.6 Pendientes
+
+- **Fase 2 — applet hermano.** Lee el XLSX editado con `AccionSugerida_NUEVO ∈ {ARCHIVAR, FUSIONAR, MANTENER}` y aplica las mutaciones. Para `FUSIONAR` requiere re-apuntar referencias entrantes al canon antes de archivar (mutation `ArchiveProcessNode` o equivalente — no investigado aún).
+- **D4 full-depth.** Si D3 top-level resulta insuficiente, recursar firmas. Requiere `flattenTree` enriquecido y costo recursivo controlado.
+- **Detección incremental.** Hoy cada corrida es desde cero. Persistir el último resultado en `chrome.storage.local` permitiría reportar "nuevos grupos vs corrida anterior".
