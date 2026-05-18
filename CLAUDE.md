@@ -260,6 +260,57 @@ Primera ronda de prod test reveló que R1 reportaba como inválidos los nodos "L
 - `main`: commits `8cc4b0f` (bitácora 0.7.0) y `a10efca` (fix 0.7.1) **pendientes de push** (auto-mode bloquea push a default branch sin autorización explícita). El usuario debe correr `git push origin main` manualmente para sincronizar.
 - `gh-pages`: deployed como `7cf027e` y pushed a remote.
 
+### `process-deep-audit` 0.8.0: deploy de Detección de Duplicados (2026-05-18, pushed `7991a7c`/`faecdd3`, validación en prod PENDIENTE)
+Implementación completa del plan `docs/superpowers/plans/2026-05-18-process-duplicates.md` (T1-T12 + T14). Agrega 3 firmas de duplicado (D1: nombre normalizado, D2: tren de IDs top-level, D3: tren de nombres top-level) sobre universo unificado (PROCESS principales + satélites + RT + SUB_PROCESS + STEP_SHIPPING). Read-only: 10 hojas XLSX (Leyenda + Resumen + R1-R4 + D1/D2/D3 + Catálogos) con `AccionSugerida_NUEVO` editable para Fase 2 futura. Ejecutado vía subagent-driven-development; T6-T10 pasaron spec+quality review en primera iteración (sin rework).
+
+**Patrón clave: cache compartida entre fases.** `state.treesById: Map<id, {treeRoot, processNodeById}>` se llena durante R1-R4 (en `auditProcess` y `evaluateR3`) y `evaluateD` la consume primero. Solo fetchea `getProcessTree` para los faltantes (típicamente SUB_PROCESS/STEP_SHIPPING/RT que R1-R4 no tocan). Pool separado `processAudit.concurrency.trees` (5) para árboles faltantes y `processAudit.concurrency.parents` (5) para `getProcessNodeParents`. Cancelación parcial soportada: si se aborta a mitad del fetch, D1 emite completo (no depende del árbol), D2/D3 con los árboles disponibles, `state.duplicates.partial=true` → panel marca `[PARCIAL]`, Resumen pone `NotaParcial = "PARCIAL_POR_CANCELACION"`.
+
+**Canónico por id+parents.** `pickCanonical(members, parentsByIdCache)` ordena: (1) más referencias entrantes gana (`getProcessNodeParents` count); (2) empate → id más bajo gana. `AccionSugerida` automática: canónico → `MANTENER`; no-canónico con `refs=0` → `ARCHIVAR`; no-canónico con `refs>0` → `FUSIONAR` (re-apuntar referencias antes de archivar); refs desconocido (502/cancelación) → vacío. `parentsByIdCache` se llena solo para miembros de grupos con `size ≥ 2` (evita gasto en singletons).
+
+**Output XLSX expandido.** `addSheet(name, title, rows, headers)` añade fila de título en A1 con merge (`ws['!merges']`) cubriendo todas las columnas. Headers compartidos en D1/D2/D3 (15 cols incluyendo `EsCanonico`, `RefsEntrantes`, `AccionSugerida_NUEVO`, `Notas`, `EstadoGlobal`, `NotaParcial`). Resumen ahora indexa duplicados por ProcessID con helper `bump`, suma `Duplicados_D1/D2/D3` y agrega bloque de filas extra para nodos que solo aparecen en grupos D (SUB_PROCESS/STEP_SHIPPING/RT que no son universo R1-R4).
+
+**Filtros vía config.** `steelhead.domain.processAudit.duplicates`:
+- `enabled: false` salta toda la fase D
+- `includeSources: [...]` limita buckets del universo
+- `ignoreIds: [int]` excluye IDs específicos
+- `ignoreNamePatterns: ["regex"]` excluye por nombre (case-insensitive)
+
+**Lección reforzada: cache cross-fase requiere disciplina de identidad.** El primer instinto fue que `evaluateD` re-fetchara todos los árboles. Mala idea: ya R3 los tiene en memoria como árbol completo expandido. La clave es definir el shape del cache (`{treeRoot, processNodeById}`) en `process-shared.js` y que **TODOS los consumidores** (R3 y `auditProcess` en la fase R1-R4 + `evaluateD` en la fase D) usen exactamente el mismo. Sin esto, terminas con dos caches paralelos por accidente. La cache vive en `state` (no module-level) para que la cancelación de la corrida la libere automáticamente.
+
+**Files tocados (deploy pushed 2026-05-18):**
+- MODIFICADO `remote/scripts/process-shared.js` — firmas D1/D2/D3, accessor `duplicatesConfig`, helpers `buildAuditUniverse`, `normName`, `extractTopLevel`
+- MODIFICADO `remote/scripts/process-deep-audit.js` — `state.treesById`, `evaluateD`, `pickCanonical`, panel UI con 7 tabs (R1-R4 + D1/D2/D3), `RULE_LABELS`, `addSheet`, `buildLeyendaRows`, Resumen con `Duplicados_D1/D2/D3` + `NotaParcial`, `VERSION = '0.8.0'`
+- MODIFICADO `remote/config.json` — bump 0.7.1 → 0.8.0, `lastUpdated: 2026-05-18`, bloque `processAudit.duplicates` (enabled/includeSources/ignoreIds/ignoreNamePatterns), `processAudit.concurrency.trees=5` y `parents=5`
+- MODIFICADO `docs/processes-architecture.md` — nueva fila al glosario §9 (0.8.0 deep-audit) + nueva sección 12 "Detección de duplicados (process-deep-audit ≥ v0.8.0)" con 6 subsecciones (12.1 Firmas, 12.2 Canónico con code block de `pickCanonical`, 12.3 Universo y filtros, 12.4 Cache `state.treesById`, 12.5 Cancelación parcial, 12.6 Pendientes)
+- MODIFICADO `extension/background.js` — sin cambios funcionales (XLSX injection y orden de scripts ya existía de 0.7.0)
+
+**Estado de deploy (2026-05-18):**
+- `main`: `7991a7c` (T14 doc) + `9f5a830` (config bump) + commits T1-T10 — **pushed a remote**.
+- `gh-pages`: `faecdd3` (deploy 0.8.0 byte-exact con `remote/`) — **pushed a remote**.
+
+**T13 (validación en prod) PENDIENTE.** El usuario tiene que reanudar en otra sesión: recargar la extensión en Chrome (chrome://extensions → reload) tras esperar ~30-60s del refresh de GitHub Pages, luego correr el applet en producción y validar contra 5 procesos curados:
+1. Un proceso esperado OK en todas las reglas (R1-R4 sin hallazgos, no aparece en D1/D2/D3).
+2. `SP Embarque en Almacén` — el caso conocido de 7 IDs activos duplicados; debe aparecer en D1 con `Duplicados_D1=7` y un canónico marcado.
+3. Un proceso que aparezca en D3 (clones por "Save As..." con mismo tren de nombres top-level pero IDs distintos).
+4. Un satélite (HOR/FIB/etc.) válido — debe aparecer en R3 con tiempos OK y, si tiene clones, también en D1/D2/D3 según corresponda.
+5. Una corrida cancelada a media fase D — verificar que el panel marca `[PARCIAL]`, Resumen muestra `NotaParcial = "PARCIAL_POR_CANCELACION"` y D1 emite completo aunque D2/D3 estén truncados.
+
+Cosas a chequear durante la validación:
+- Que `Duplicados_D1/D2/D3` en Resumen cuadren con las filas de las hojas D.
+- Que `EsCanonico=true` en cada grupo apunte al ID con más referencias entrantes (o id más bajo en empate).
+- Que `AccionSugerida_NUEVO` venga pre-llenada (MANTENER/ARCHIVAR/FUSIONAR) y editable.
+- Que la hoja Leyenda explique R1-R4 + D1-D3 con sigla → descripción → subcaso → estado posible → acción típica.
+- Que el título mergeado (A1) muestre nombre del dominio + fecha de la corrida.
+- 502 individual en `getProcessTree` o `getProcessNodeParents` debe ir a `EstadoGlobal: ERROR` sin abortar la corrida.
+
+Si la corrida revela algún gap (regex mal calibrado, falso positivo, output XLSX mal formado), abrir nueva sesión con el `scan_results_*.json` de la corrida + screenshot del panel y el XLSX descargado para diagnóstico.
+
+**Pendientes derivados (no bloqueantes):**
+- **Fase 2 — applet hermano de write-back.** Leer XLSX editado con `AccionSugerida_NUEVO ∈ {ARCHIVAR, FUSIONAR, MANTENER}` y aplicar mutaciones. Para `FUSIONAR` requiere re-apuntar referencias entrantes al canon antes de archivar (mutation `ArchiveProcessNode` o equivalente — **no investigado aún, requiere capturar el flujo nativo del UI primero**).
+- **D4 full-depth.** Si D3 top-level resulta insuficiente en la práctica, recursar firmas. Requiere `flattenTree` enriquecido y costo recursivo controlado.
+- **Detección incremental.** Persistir resultado en `chrome.storage.local` para reportar "nuevos grupos vs corrida anterior".
+- **Refactor doble-carga del catálogo en `process-canon`.** Ítem ya documentado en bitácora 0.7.0; sigue pendiente.
+
 ### `hash-scanner`: lecciones 0.6.22 → 0.6.23 (autosuficiencia de `scan_results_*.json`)
 Refactor en 9 fixes para que un solo `scan_results_*.json` sirva para construir applets sin pedir nuevos payloads/responses/hashes al usuario en consola. Antes el scanner tenía gaps silenciosos (truncados, depth caps, denylists, no captura de errors/headers/timing) que forzaban round-trips. Driver del refactor: TDD con tests explícitos en `tools/test/hash-scanner.test.js` (23 tests passing). Detalles por bug:
 
