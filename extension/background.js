@@ -69,7 +69,9 @@ async function injectAppScripts(tabId, appId) {
           'scripts/process-deep-audit.js': 'ProcessDeepAudit',
           'scripts/sensor-status-autofill.js': 'SensorStatusAutofill',
           'scripts/receiver-date-override.js': 'ReceiverDateOverride',
-          'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill' };
+          'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill',
+          'scripts/spec-shared.js': 'SpecShared',
+          'scripts/spec-params-bulk.js': 'SpecParamsBulk' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -997,6 +999,32 @@ async function handleMessage(message, sender) {
           window.ProcessDeepAudit.run().then(r => console.log('[SA] Deep Audit:', r)).catch(e => console.error('[SA]', e));
           return { started: true, message: 'Auditoría profunda iniciada. Revisa el panel en Steelhead.' };
         }
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    case 'download-spec-params':
+    case 'upload-spec-params': {
+      const tab = await getSteelheadTab();
+      // XLSX library: ambos flujos (download/upload) la necesitan.
+      const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (c) => { if (!window.XLSX) new Function(c)(); }, args: [xlsxCode]
+      });
+      await injectAppScripts(tab.id, 'spec-params-bulk');
+      const isDownload = message.action === 'download-spec-params';
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (download) => {
+          if (!window.SpecParamsBulk) return { error: 'SpecParamsBulk no disponible' };
+          const fn = download ? window.SpecParamsBulk.runDownload : window.SpecParamsBulk.runUpload;
+          fn().then(r => console.log('[SA] SpecParamsBulk:', r)).catch(e => console.error('[SA]', e));
+          return { started: true, message: download
+            ? 'Selector de specs abierto. Revisa el panel en Steelhead.'
+            : 'Cargador de XLSX abierto. Revisa el panel en Steelhead.' };
+        },
+        args: [isDownload]
       });
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
