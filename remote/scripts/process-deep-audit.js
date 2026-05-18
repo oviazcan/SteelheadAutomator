@@ -610,6 +610,156 @@ const ProcessDeepAudit = (() => {
     return { findings, leadOK, productOK, coherenciaOK };
   }
 
+  // ── pickCanonical (un canon por grupo de duplicados) ──
+  // Ordena por (referencias entrantes DESC, id ASC). El primer elemento gana.
+  function pickCanonical(members, parentsByIdCache) {
+    return members.slice().sort((a, b) => {
+      const pa = parentsByIdCache.get(a.id);
+      const pb = parentsByIdCache.get(b.id);
+      const fa = (pa == null) ? -1 : pa;  // sin dato pierde contra cualquier número
+      const fb = (pb == null) ? -1 : pb;
+      if (fa !== fb) return fb - fa;
+      return a.id - b.id;
+    })[0];
+  }
+
+  // ── evaluateD: D1/D2/D3 sobre el universo. Mutates state.rows.d1/d2/d3
+  // y state.duplicates. ──
+  async function evaluateD(auditUniverse, myRunId) {
+    const concurrency = ps().auditConcurrency();
+    const treesPool = concurrency.trees || 5;
+    const parentsPool = concurrency.parents || 5;
+
+    // 1. Fetch árboles faltantes (para SUB_PROCESS/STEP_SHIPPING/RT no auditados por R1-R4)
+    const missing = auditUniverse.filter(n => !state.treesById.has(n.id));
+    log(`  D-fase: árboles ya cacheados=${auditUniverse.length - missing.length}, por fetchar=${missing.length}`);
+
+    if (missing.length) {
+      state.progress.phase = `D · fetchando árboles faltantes · 0/${missing.length}`;
+      renderPanel();
+      await runPool(missing, async (node) => {
+        if (state.cancelled || isStale(myRunId)) return;
+        try {
+          const tree = await withRetry(() => ps().getProcessTree(node.id), `D tree ${node.id}`, myRunId);
+          if (tree) state.treesById.set(node.id, tree);
+        } catch (err) {
+          if (err?.message === '__sa_aborted__') throw err;
+          // Error individual: el nodo se omite de D2/D3 pero sigue en D1
+        }
+      }, treesPool, (done, total) => {
+        if (!isStale(myRunId)) {
+          state.progress.phase = `D · fetchando árboles faltantes · ${done}/${total}`;
+          renderPanel();
+        }
+      }, myRunId);
+      bailIfStale(myRunId);
+    }
+
+    // Si el run fue cancelado a media fetch, marca parcial pero no aborta — D1 sí puede emitir
+    if (state.cancelled) state.duplicates.partial = true;
+
+    // 2. Calcular firmas + agrupar
+    state.progress.phase = 'D · calculando firmas y agrupando';
+    renderPanel();
+    const sigD1Fn = (n) => ps().signatureD1(n);
+    const sigD2Fn = (n) => {
+      const t = state.treesById.get(n.id);
+      return t ? ps().signatureD2(t.treeRoot) : null;
+    };
+    const sigD3Fn = (n) => {
+      const t = state.treesById.get(n.id);
+      return t ? ps().signatureD3(t.treeRoot) : null;
+    };
+    const groupsD1 = ps().groupBySignature(auditUniverse, sigD1Fn);
+    const groupsD2 = ps().groupBySignature(auditUniverse, sigD2Fn);
+    const groupsD3 = ps().groupBySignature(auditUniverse, sigD3Fn);
+
+    // Filtrar grupos size>=2. D2/D3 además excluyen firma '[]' (top-level vacío)
+    // para no agrupar nodos hoja (STEP_SHIPPING terminales, RT minimal) como duplicados falsos.
+    const dupGroupsD1 = [...groupsD1.entries()].filter(([, members]) => members.length >= 2);
+    const dupGroupsD2 = [...groupsD2.entries()].filter(([sig, members]) => sig !== '[]' && members.length >= 2);
+    const dupGroupsD3 = [...groupsD3.entries()].filter(([sig, members]) => sig !== '[]' && members.length >= 2);
+
+    // Cross-flags: ¿este id aparece como duplicado en otra firma?
+    const inD1 = new Set(), inD2 = new Set(), inD3 = new Set();
+    for (const [, members] of dupGroupsD1) for (const m of members) inD1.add(m.id);
+    for (const [, members] of dupGroupsD2) for (const m of members) inD2.add(m.id);
+    for (const [, members] of dupGroupsD3) for (const m of members) inD3.add(m.id);
+
+    // 3. Fetch parents para todos los miembros únicos de los 3 conjuntos
+    const allDupIds = new Set([...inD1, ...inD2, ...inD3]);
+    const parentsByIdCache = new Map();
+    if (allDupIds.size) {
+      state.progress.phase = `D · fetchando referencias entrantes · 0/${allDupIds.size}`;
+      renderPanel();
+      const idsArr = [...allDupIds];
+      await runPool(idsArr, async (id) => {
+        if (state.cancelled || isStale(myRunId)) return;
+        try {
+          const parents = await withRetry(() => ps().getProcessNodeParents(id), `D parents ${id}`, myRunId);
+          parentsByIdCache.set(id, parents.length);
+        } catch (err) {
+          if (err?.message === '__sa_aborted__') throw err;
+          // sin dato: pickCanonical lo trata como -1 (pierde)
+        }
+      }, parentsPool, (done, total) => {
+        if (!isStale(myRunId)) {
+          state.progress.phase = `D · fetchando referencias entrantes · ${done}/${total}`;
+          renderPanel();
+        }
+      }, myRunId);
+      bailIfStale(myRunId);
+    }
+
+    if (state.cancelled) state.duplicates.partial = true;
+
+    // 4. Emitir filas por grupo
+    function emitRows(targetArr, dupGroups) {
+      for (const [groupId, members] of dupGroups) {
+        const canon = pickCanonical(members, parentsByIdCache);
+        for (const m of members) {
+          const isCanon = (m.id === canon.id);
+          const refs = parentsByIdCache.get(m.id);
+          let accion = '';
+          if (isCanon) accion = 'MANTENER';
+          else if (refs === 0) accion = 'ARCHIVAR';
+          else if (refs != null && refs > 0) accion = 'FUSIONAR';
+          targetArr.push({
+            ProcessID: m.id,
+            ProcessName: m.name,
+            Tipo: m.type || '',
+            Source: m.source,
+            GrupoID: groupId,
+            GrupoTamano: members.length,
+            EsCanonico: isCanon,
+            ReferenciasEntrantes: (refs == null) ? '' : refs,
+            EsArchivado: false,
+            TambienEnD1: inD1.has(m.id),
+            TambienEnD2: inD2.has(m.id),
+            TambienEnD3: inD3.has(m.id),
+            AccionSugerida: accion,
+            AccionSugerida_NUEVO: '',
+            Notas_NUEVO: ''
+          });
+        }
+      }
+    }
+    emitRows(state.rows.d1, dupGroupsD1);
+    emitRows(state.rows.d2, dupGroupsD2);
+    emitRows(state.rows.d3, dupGroupsD3);
+
+    state.duplicates.groupsD1 = dupGroupsD1.length;
+    state.duplicates.groupsD2 = dupGroupsD2.length;
+    state.duplicates.groupsD3 = dupGroupsD3.length;
+    state.duplicates.membersD1 = state.rows.d1.length;
+    state.duplicates.membersD2 = state.rows.d2.length;
+    state.duplicates.membersD3 = state.rows.d3.length;
+
+    log(`  D1: ${state.duplicates.groupsD1} grupos / ${state.duplicates.membersD1} miembros`);
+    log(`  D2: ${state.duplicates.groupsD2} grupos / ${state.duplicates.membersD2} miembros`);
+    log(`  D3: ${state.duplicates.groupsD3} grupos / ${state.duplicates.membersD3} miembros`);
+  }
+
   // ── Auditor por proceso (orquesta R1, R2, R4 sobre una raíz PROCESS) ──
   async function auditProcess(processNode, myRunId) {
     const result = {
