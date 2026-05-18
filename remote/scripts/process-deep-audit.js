@@ -983,60 +983,128 @@ const ProcessDeepAudit = (() => {
     }
   }
 
+  // ── Hoja Leyenda (una sola fuente de verdad para descripciones de R/D) ──
+  function buildLeyendaRows() {
+    state.rows.leyenda = [
+      { Sigla: 'R1', Descripcion: RULE_LABELS.R1, Subcaso: '—', EstadoPosible: 'tipo inválido', AccionTipica: 'Cambiar tipo del nodo a SCANNER_NODE/STAGING/STEP_SHIPPING_READY' },
+      { Sigla: 'R2', Descripcion: RULE_LABELS.R2, Subcaso: 'R2-a/b/c/d', EstadoPosible: 'sin treatment / sin estaciones / sin tiempos / parcial', AccionTipica: 'Asignar treatment + cargar tiempos por estación' },
+      { Sigla: 'R3', Descripcion: RULE_LABELS.R3, Subcaso: 'R3-a/b/c/d', EstadoPosible: 'sin treatment / sin estaciones / sin tiempos / parcial', AccionTipica: 'Mismo que R2 sobre satélites' },
+      { Sigla: 'R4', Descripcion: RULE_LABELS.R4, Subcaso: 'R4-a/b/c', EstadoPosible: 'sin lead / sin producto / producto no cubre sufijos', AccionTipica: 'Setear defaultLeadTime y productByProductId con nombre acorde a sufijos' },
+      { Sigla: 'D1', Descripcion: RULE_LABELS.D1, Subcaso: '—', EstadoPosible: 'grupo size≥2 con mismo nombre normalizado', AccionTipica: 'Mantener canon (id+más refs); FUSIONAR si tiene refs o ARCHIVAR si refs=0' },
+      { Sigla: 'D2', Descripcion: RULE_LABELS.D2, Subcaso: '—', EstadoPosible: 'grupo size≥2 con mismo árbol top-level (IDs)', AccionTipica: 'Validar si la duplicación es intencional (templates) o ARCHIVAR sobrante' },
+      { Sigla: 'D3', Descripcion: RULE_LABELS.D3, Subcaso: '—', EstadoPosible: 'grupo size≥2 con mismo árbol top-level (nombres normalizados)', AccionTipica: 'Caso más común; FUSIONAR para consolidar referencias bajo el canon' }
+    ];
+  }
+
   // ── XLSX export (SheetJS) ──
   function exportXlsx() {
     if (!window.XLSX) { alert('XLSX no cargado. Recarga la extensión.'); return; }
     const wb = window.XLSX.utils.book_new();
 
-    const addSheet = (name, rows, headers) => {
-      if (!rows || !rows.length) {
-        const ws = window.XLSX.utils.aoa_to_sheet([headers || ['(sin datos)']]);
-        window.XLSX.utils.book_append_sheet(wb, ws, name);
-        return;
-      }
-      const hdr = headers || Object.keys(rows[0]);
-      const aoa = [hdr, ...rows.map(r => hdr.map(h => r[h] != null ? r[h] : ''))];
+    // addSheet con título mergeado en fila 1, headers en fila 2, datos desde fila 3.
+    // Si rows está vacío, igual emite título + headers + fila "(sin datos)".
+    const addSheet = (name, title, rows, headers) => {
+      const hdr = headers || (rows && rows[0] ? Object.keys(rows[0]) : ['(sin datos)']);
+      const data = (rows && rows.length)
+        ? rows.map(r => hdr.map(h => r[h] != null ? r[h] : ''))
+        : [hdr.map(() => '')];
+      const aoa = [
+        [title],   // fila 1 — se mergea A1:?1 abajo
+        hdr,       // fila 2 — encabezados
+        ...data    // filas 3+
+      ];
       const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+      // Merge A1 hasta la última columna de los headers
+      ws['!merges'] = (ws['!merges'] || []).concat([{
+        s: { r: 0, c: 0 },
+        e: { r: 0, c: Math.max(0, hdr.length - 1) }
+      }]);
       window.XLSX.utils.book_append_sheet(wb, ws, name);
     };
 
-    addSheet('Resumen', state.rows.resumen, [
-      'ProcessID', 'ProcessName', 'LineCode', 'EsSatélite', 'Secciones',
-      'Hallazgos_R1', 'Hallazgos_R2', 'Hallazgos_R3', 'Hallazgos_R4',
-      'EstadoGlobal', 'Error'
-    ]);
+    addSheet('Leyenda',
+      'Leyenda — qué significa cada regla R/D del reporte',
+      state.rows.leyenda,
+      ['Sigla', 'Descripcion', 'Subcaso', 'EstadoPosible', 'AccionTipica']
+    );
 
-    addSheet('R1_Listo_NoScanner', state.rows.r1, [
-      'ProcessID', 'ProcessName', 'NodoListoID', 'NodoListoName',
-      'TipoActual', 'TipoEsperado'
-    ]);
+    addSheet('Resumen',
+      `Resumen por proceso · ${state.duplicates.partial ? 'PARCIAL_POR_CANCELACION · ' : ''}generado ${new Date().toISOString()}`,
+      state.rows.resumen,
+      [
+        'ProcessID', 'ProcessName', 'LineCode', 'EsSatélite', 'Secciones',
+        'Hallazgos_R1', 'Hallazgos_R2', 'Hallazgos_R3', 'Hallazgos_R4',
+        'EstadoGlobal', 'Error'
+      ]
+    );
 
-    addSheet('R2_TiemposLineaPrincipal', state.rows.r2, [
-      'ProcessID', 'ProcessName', 'LineCode',
-      'NodoListoID', 'NodoListoName',
-      'TreatmentID', 'TreatmentName',
-      'StationID', 'StationName',
-      'CycleTime_min', 'TotalTime_min', 'TimeType',
-      'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO', 'TimeType_NUEVO',
-      'Estado'
-    ]);
+    addSheet('R1_Listo_NoScanner',
+      `R1 — ${RULE_LABELS.R1}. Nodos cuyo nombre matchea /Listo/ pero el type no es SCANNER_NODE, STAGING ni STEP_SHIPPING_READY.`,
+      state.rows.r1,
+      ['ProcessID', 'ProcessName', 'NodoListoID', 'NodoListoName', 'TipoActual', 'TipoEsperado']
+    );
 
-    addSheet('R3_Satélites', state.rows.r3, [
-      'SatelliteID', 'SatelliteName', 'TipoSufijo', 'CompartidoEnUso',
-      'TreatmentID', 'StationID', 'StationName',
-      'CycleTime_min', 'TotalTime_min',
-      'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO',
-      'Estado'
-    ]);
+    addSheet('R2_TiemposLineaPrincipal',
+      `R2 — ${RULE_LABELS.R2}. Por cada bloque T<n> detectado en top-level: treatment con estaciones y cycleTime>0.`,
+      state.rows.r2,
+      [
+        'ProcessID', 'ProcessName', 'LineCode',
+        'NodoListoID', 'NodoListoName',
+        'TreatmentID', 'TreatmentName',
+        'StationID', 'StationName',
+        'CycleTime_min', 'TotalTime_min', 'TimeType',
+        'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO', 'TimeType_NUEVO',
+        'Estado'
+      ]
+    );
 
-    addSheet('R4_LeadTime_Producto', state.rows.r4, [
-      'ProcessID', 'ProcessName',
-      'LeadTime_horas_actual', 'LeadTime_horas_NUEVO',
-      'ProductID_actual', 'ProductName_actual', 'ProductName_NUEVO',
-      'SufijosAcabado', 'SufijosNoCubiertos', 'EstadoCoherencia'
-    ]);
+    addSheet('R3_Satélites',
+      `R3 — ${RULE_LABELS.R3}. Satélites (T100/T200/...) tratados como mini-procesos: treatment + estaciones + tiempos.`,
+      state.rows.r3,
+      [
+        'SatelliteID', 'SatelliteName', 'TipoSufijo', 'CompartidoEnUso',
+        'TreatmentID', 'StationID', 'StationName',
+        'CycleTime_min', 'TotalTime_min',
+        'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO',
+        'Estado'
+      ]
+    );
 
-    addSheet('Catálogos', state.rows.catalogos, ['Categoria', 'Clave', 'Valor']);
+    addSheet('R4_LeadTime_Producto',
+      `R4 — ${RULE_LABELS.R4}. defaultLeadTime > 0 y productByProductId con nombre que cubra los sufijos del nombre del proceso.`,
+      state.rows.r4,
+      [
+        'ProcessID', 'ProcessName',
+        'LeadTime_horas_actual', 'LeadTime_horas_NUEVO',
+        'ProductID_actual', 'ProductName_actual', 'ProductName_NUEVO',
+        'SufijosAcabado', 'SufijosNoCubiertos', 'EstadoCoherencia'
+      ]
+    );
+
+    const dupHeaders = [
+      'ProcessID', 'ProcessName', 'Tipo', 'Source',
+      'GrupoID', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'EsArchivado',
+      'TambienEnD1', 'TambienEnD2', 'TambienEnD3',
+      'AccionSugerida', 'AccionSugerida_NUEVO', 'Notas_NUEVO'
+    ];
+
+    addSheet('D1_DuplicadoNombre',
+      `D1 — ${RULE_LABELS.D1}. Nodos activos distintos con el mismo nombre normalizado. Indica copias accidentales del catálogo.`,
+      state.rows.d1, dupHeaders);
+
+    addSheet('D2_DuplicadoTrenIDs',
+      `D2 — ${RULE_LABELS.D2}. Procesos que reusan exactamente los mismos hijos directos en el mismo orden. Templates compartidos.`,
+      state.rows.d2, dupHeaders);
+
+    addSheet('D3_DuplicadoTrenNombres',
+      `D3 — ${RULE_LABELS.D3}. Clones por "Save As...": mismos hijos top-level por nombre, IDs distintos. Caso más común.`,
+      state.rows.d3, dupHeaders);
+
+    addSheet('Catálogos',
+      'Catálogos — sufijos de acabado, satélites detectados, primeros 200 errores del run.',
+      state.rows.catalogos,
+      ['Categoria', 'Clave', 'Valor']
+    );
 
     const wbOut = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
