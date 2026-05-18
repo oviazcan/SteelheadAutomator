@@ -136,6 +136,57 @@ const ProcessDeepAudit = (() => {
     return [...out.values()];
   }
 
+  // ── Universo a analizar para D1/D2/D3 ──
+  // Reúne los 5 buckets respetando ignoreIds/ignoreNamePatterns/includeSources.
+  // Cada item: {id, name, type, source}. Source es metadata para el reporte,
+  // NO afecta la detección (un PROCESS clon de un SUB_PROCESS sí cuenta).
+  function buildAuditUniverse(allProcesses, satelliteCatalog) {
+    const dupCfg = ps().duplicatesConfig();
+    if (!dupCfg.enabled) return [];
+    const include = new Set(dupCfg.includeSources);
+    const ignoreIds = dupCfg.ignoreIds;
+    const ignoreNamePatterns = dupCfg.ignoreNamePatterns;
+    const isIgnored = (id, name) => {
+      if (ignoreIds.has(Number(id))) return true;
+      return ignoreNamePatterns.some(re => re.test(name || ''));
+    };
+
+    const universe = [];
+    const seen = new Set();
+    const push = (id, name, type, source) => {
+      if (id == null || seen.has(id)) return;
+      if (isIgnored(id, name)) return;
+      if (!include.has(source)) return;
+      seen.add(id);
+      universe.push({ id, name: name || '', type: type || null, source });
+    };
+
+    const satIds = new Set(satelliteCatalog.map(s => s.id));
+
+    // Bucket 1: PROCESS principales (excluye satélites y RT/SP)
+    // Bucket 2: PROCESS satélites
+    // Bucket 4: RT (PROCESS con prefijo RT que isExcludedProcessName filtró antes)
+    for (const p of allProcesses) {
+      if (!p || p.type !== 'PROCESS') continue;
+      if (satIds.has(p.id)) { push(p.id, p.name, p.type, 'satellite'); continue; }
+      if (/^RT\b/i.test(p.name || '')) { push(p.id, p.name, p.type, 'rt'); continue; }
+      if (/^SP\b/i.test(p.name || '')) continue; // SP que sea PROCESS — raro, no se cuenta como main
+      push(p.id, p.name, p.type, 'main');
+    }
+
+    // Bucket 3: SUB_PROCESS y Bucket 5: STEP_SHIPPING — del catálogo cargado por loadAllNodes
+    const cat = ps().getCatalog();
+    if (cat && cat.namesById) {
+      for (const [id, name] of cat.namesById.entries()) {
+        const type = cat.typesById.get(id);
+        if (type === 'SUB_PROCESS') push(id, name, type, 'subprocess');
+        else if (type === 'STEP_SHIPPING') push(id, name, type, 'stepshipping');
+      }
+    }
+
+    return universe;
+  }
+
   // ── Helpers de normalización para R4-c (producto cubre sufijos) ──
   function stripAccents(s) {
     return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
