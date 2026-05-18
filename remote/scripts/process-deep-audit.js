@@ -834,6 +834,8 @@ const ProcessDeepAudit = (() => {
       // Procesos no-satélite a auditar con R1/R2/R4
       const mainProcesses = allProcesses.filter(p => p.type === 'PROCESS' && !satelliteIds.has(p.id));
 
+      // Estimación inicial: R1+R2+R4 + R3 + (universo a fetchar en D). Ajustada
+      // dinámicamente cuando evaluateD descubre los faltantes reales.
       state.progress.total = mainProcesses.length + satelliteCatalog.length;
       state.progress.current = 0;
       state.progress.phase = `auditando ${mainProcesses.length} procesos + ${satelliteCatalog.length} satélites`;
@@ -881,9 +883,20 @@ const ProcessDeepAudit = (() => {
       }, myRunId);
       bailIfStale(myRunId);
 
+      // Detección de duplicados D1/D2/D3 (fase global post R1-R4)
+      const auditUniverse = buildAuditUniverse(allProcesses, satelliteCatalog);
+      log(`Universo D: ${auditUniverse.length} nodos (main+sat+rt+subprocess+stepshipping, descontando ignoreIds/ignoreNamePatterns)`);
+      if (auditUniverse.length && ps().duplicatesConfig().enabled) {
+        await evaluateD(auditUniverse, myRunId);
+        bailIfStale(myRunId);
+      } else {
+        log('  D-fase saltada (duplicates.enabled=false o universo vacío)');
+      }
+
       // Construir Resumen + Catálogos
       buildResumenRows();
       buildCatalogosRows();
+      buildLeyendaRows();
 
       state.progress.phase = 'done';
       renderPanel();
