@@ -15,7 +15,7 @@
 const ProcessDeepAudit = (() => {
   'use strict';
 
-  const VERSION = '0.7.1';
+  const VERSION = '0.8.0';
   const ps = () => window.ProcessShared;
   const api = () => window.SteelheadAPI;
 
@@ -1221,17 +1221,41 @@ const ProcessDeepAudit = (() => {
     }
   }
 
+  // Descripciones canónicas (mismos textos en panel, leyenda XLSX y tooltips)
+  const RULE_LABELS = {
+    R1: '"Listo" con tipo incorrecto',
+    R2: 'Tiempos por sección/línea',
+    R3: 'Satélites con tiempos cargados',
+    R4: 'Lead time + producto coherente',
+    D1: 'Mismo nombre (catálogo drift)',
+    D2: 'Mismo tren de IDs top-level',
+    D3: 'Mismo tren de nombres top-level'
+  };
+
   function renderSummary() {
     const wrap = document.getElementById('pdeep-summary');
     if (!wrap) return;
     wrap.style.display = '';
-    const conIssues = state.rows.resumen.filter(r => r.EstadoGlobal === 'CON HALLAZGOS').length;
+    wrap.style.gridTemplateColumns = '1fr';  // override del CSS (5 cols) — ahora son listas
+    const r1 = state.rows.r1.length;
+    const r2 = state.rows.r2.filter(r => r.Estado && r.Estado !== 'OK').length;
+    const r3 = state.rows.r3.filter(r => r.Estado && r.Estado !== 'OK').length;
+    const r4 = state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length;
+    const d = state.duplicates || {};
+    const partialBadge = d.partial ? ` <span style="color:#c62828; font-size:10px;">[PARCIAL]</span>` : '';
     wrap.innerHTML = `
-      <div><b>${state.processes.length + state.satellites.length}</b><span>procesos</span></div>
-      <div><b>${state.rows.r1.length}</b><span>R1</span></div>
-      <div><b>${state.rows.r2.filter(r => r.Estado && r.Estado !== 'OK').length}</b><span>R2</span></div>
-      <div><b>${state.rows.r3.filter(r => r.Estado && r.Estado !== 'OK').length}</b><span>R3</span></div>
-      <div><b>${state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length}</b><span>R4</span></div>
+      <div style="text-align:left; padding:8px; background:#f5f5f5; border-radius:4px;">
+        <div style="font-weight:600; margin-bottom:4px;">${state.processes.length + state.satellites.length} procesos auditados</div>
+        <div style="font-weight:600; margin-top:8px;">Reglas estructurales</div>
+        <div title="${escapeHtml(RULE_LABELS.R1)}">▸ R1 — ${escapeHtml(RULE_LABELS.R1)} <b style="float:right;">${r1}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.R2)}">▸ R2 — ${escapeHtml(RULE_LABELS.R2)} <b style="float:right;">${r2}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.R3)}">▸ R3 — ${escapeHtml(RULE_LABELS.R3)} <b style="float:right;">${r3}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.R4)}">▸ R4 — ${escapeHtml(RULE_LABELS.R4)} <b style="float:right;">${r4}</b></div>
+        <div style="font-weight:600; margin-top:8px;">Duplicados ★ NUEVO${partialBadge}</div>
+        <div title="${escapeHtml(RULE_LABELS.D1)}">▸ D1 — ${escapeHtml(RULE_LABELS.D1)} <b style="float:right;">${d.groupsD1 || 0} grupos / ${d.membersD1 || 0}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.D2)}">▸ D2 — ${escapeHtml(RULE_LABELS.D2)} <b style="float:right;">${d.groupsD2 || 0} grupos / ${d.membersD2 || 0}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.D3)}">▸ D3 — ${escapeHtml(RULE_LABELS.D3)} <b style="float:right;">${d.groupsD3 || 0} grupos / ${d.membersD3 || 0}</b></div>
+      </div>
     `;
     const tabsWrap = document.getElementById('pdeep-tabs-wrap');
     if (tabsWrap) tabsWrap.style.display = '';
@@ -1240,12 +1264,22 @@ const ProcessDeepAudit = (() => {
   function renderTabs() {
     const wrap = document.getElementById('pdeep-tabs');
     if (!wrap) return;
+    const r1Count = state.rows.r1.length;
+    const r2Count = state.rows.r2.filter(r => r.Estado !== 'OK').length;
+    const r3Count = state.rows.r3.filter(r => r.Estado !== 'OK').length;
+    const r4Count = state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length;
+    const d1Count = state.rows.d1.length;
+    const d2Count = state.rows.d2.length;
+    const d3Count = state.rows.d3.length;
     wrap.innerHTML = `
       <button data-act="tab-resumen" class="${_activeTab === 'resumen' ? 'active' : ''}">Resumen</button>
-      <button data-act="tab-r1" class="${_activeTab === 'r1' ? 'active' : ''}">R1 (${state.rows.r1.length})</button>
-      <button data-act="tab-r2" class="${_activeTab === 'r2' ? 'active' : ''}">R2 (${state.rows.r2.filter(r => r.Estado !== 'OK').length})</button>
-      <button data-act="tab-r3" class="${_activeTab === 'r3' ? 'active' : ''}">R3 (${state.rows.r3.filter(r => r.Estado !== 'OK').length})</button>
-      <button data-act="tab-r4" class="${_activeTab === 'r4' ? 'active' : ''}">R4 (${state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length})</button>
+      <button data-act="tab-r1" title="${escapeHtml(RULE_LABELS.R1)}" class="${_activeTab === 'r1' ? 'active' : ''}">R1 (${r1Count})</button>
+      <button data-act="tab-r2" title="${escapeHtml(RULE_LABELS.R2)}" class="${_activeTab === 'r2' ? 'active' : ''}">R2 (${r2Count})</button>
+      <button data-act="tab-r3" title="${escapeHtml(RULE_LABELS.R3)}" class="${_activeTab === 'r3' ? 'active' : ''}">R3 (${r3Count})</button>
+      <button data-act="tab-r4" title="${escapeHtml(RULE_LABELS.R4)}" class="${_activeTab === 'r4' ? 'active' : ''}">R4 (${r4Count})</button>
+      <button data-act="tab-d1" title="${escapeHtml(RULE_LABELS.D1)}" class="${_activeTab === 'd1' ? 'active' : ''}">D1 (${d1Count})</button>
+      <button data-act="tab-d2" title="${escapeHtml(RULE_LABELS.D2)}" class="${_activeTab === 'd2' ? 'active' : ''}">D2 (${d2Count})</button>
+      <button data-act="tab-d3" title="${escapeHtml(RULE_LABELS.D3)}" class="${_activeTab === 'd3' ? 'active' : ''}">D3 (${d3Count})</button>
     `;
   }
 
@@ -1270,6 +1304,15 @@ const ProcessDeepAudit = (() => {
     } else if (_activeTab === 'r4') {
       headers = ['ProcessName', 'ProductName_actual', 'SufijosNoCubiertos', 'EstadoCoherencia'];
       rows = state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK');
+    } else if (_activeTab === 'd1') {
+      headers = ['ProcessName', 'Tipo', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'AccionSugerida'];
+      rows = state.rows.d1;
+    } else if (_activeTab === 'd2') {
+      headers = ['ProcessName', 'Tipo', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'AccionSugerida'];
+      rows = state.rows.d2;
+    } else if (_activeTab === 'd3') {
+      headers = ['ProcessName', 'Tipo', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'AccionSugerida'];
+      rows = state.rows.d3;
     }
     if (filter) {
       rows = rows.filter(r => Object.values(r).some(v => String(v || '').toLowerCase().includes(filter)));
