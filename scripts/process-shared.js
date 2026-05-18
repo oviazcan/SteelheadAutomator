@@ -774,6 +774,40 @@ const ProcessShared = (() => {
   function intervalToHours(i)   { return intervalToSeconds(i) / 3600; }
   function hasInterval(i) { return intervalToSeconds(i) > 0; }
 
+  // ── Firmas de duplicado (D1/D2/D3) ──
+  // Cada firma reduce un nodo o un árbol a un string canónico. Dos items con la
+  // misma firma se consideran duplicados bajo ese criterio. Las firmas no tienen
+  // estado y son puras: el caller agrupa con groupBySignature.
+
+  function signatureD1(node) {
+    if (!node || !node.name) return null;
+    return normName(node.name);
+  }
+
+  function signatureD2(treeRoot) {
+    if (!treeRoot) return null;
+    const top = extractTopLevel(treeRoot);
+    return JSON.stringify(top.map(c => c.id));
+  }
+
+  function signatureD3(treeRoot) {
+    if (!treeRoot) return null;
+    const top = extractTopLevel(treeRoot);
+    return JSON.stringify(top.map(c => normName(c.name || '')));
+  }
+
+  function groupBySignature(items, sigFn) {
+    const map = new Map();
+    for (const item of items) {
+      const sig = sigFn(item);
+      if (sig == null) continue;
+      let arr = map.get(sig);
+      if (!arr) { arr = []; map.set(sig, arr); }
+      arr.push(item);
+    }
+    return map;
+  }
+
   // ── Acceso a config (lazy, vía SteelheadAPI.getDomain) ──
   function getProcessAuditConfig() {
     try { return api().getDomain()?.processAudit || {}; } catch (_) { return {}; }
@@ -786,6 +820,18 @@ const ProcessShared = (() => {
   }
   function auditConcurrency() {
     return getProcessAuditConfig().concurrency || { audit: 5, retryDelaysMs: [0, 1000, 2000] };
+  }
+
+  function duplicatesConfig() {
+    const cfg = getProcessAuditConfig().duplicates || {};
+    return {
+      enabled: cfg.enabled !== false,
+      includeSources: cfg.includeSources || ['main','satellite','rt','subprocess','stepshipping'],
+      ignoreNamePatterns: (cfg.ignoreNamePatterns || []).map(p => {
+        try { return new RegExp(p, 'i'); } catch (_) { return null; }
+      }).filter(Boolean),
+      ignoreIds: new Set((cfg.ignoreIds || []).map(Number).filter(Number.isFinite))
+    };
   }
 
   return {
@@ -845,6 +891,12 @@ const ProcessShared = (() => {
     extractTopLevel,
     flattenTree,
 
+    // Firmas de duplicado
+    signatureD1,
+    signatureD2,
+    signatureD3,
+    groupBySignature,
+
     // Intervals
     intervalToSeconds,
     intervalToMinutes,
@@ -854,12 +906,13 @@ const ProcessShared = (() => {
     // Config accessors
     finishProductMap,
     satelliteOverrides,
-    auditConcurrency
+    auditConcurrency,
+    duplicatesConfig
   };
 })();
 
 if (typeof window !== 'undefined') {
   window.ProcessShared = ProcessShared;
-  window.__psVersion = '0.7.0';
-  try { console.log('[SA] process-shared cargado · v0.7.0'); } catch (_) {}
+  window.__psVersion = '0.8.0';
+  try { console.log('[SA] process-shared cargado · v0.8.0'); } catch (_) {}
 }

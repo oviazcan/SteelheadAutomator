@@ -15,7 +15,7 @@
 const ProcessDeepAudit = (() => {
   'use strict';
 
-  const VERSION = '0.7.1';
+  const VERSION = '0.8.0';
   const ps = () => window.ProcessShared;
   const api = () => window.SteelheadAPI;
 
@@ -41,7 +41,9 @@ const ProcessDeepAudit = (() => {
       processes: [],
       satellites: [],
       progress: { current: 0, total: 0, phase: 'init' },
-      rows: { resumen: [], r1: [], r2: [], r3: [], r4: [], catalogos: [] },
+      rows: { resumen: [], r1: [], r2: [], r3: [], r4: [], d1: [], d2: [], d3: [], catalogos: [], leyenda: [] },
+      treesById: new Map(),
+      duplicates: { partial: false, groupsD1: 0, groupsD2: 0, groupsD3: 0, membersD1: 0, membersD2: 0, membersD3: 0 },
       errors: []
     };
     return state.runId;
@@ -132,6 +134,57 @@ const ProcessDeepAudit = (() => {
     }
 
     return [...out.values()];
+  }
+
+  // ── Universo a analizar para D1/D2/D3 ──
+  // Reúne los 5 buckets respetando ignoreIds/ignoreNamePatterns/includeSources.
+  // Cada item: {id, name, type, source}. Source es metadata para el reporte,
+  // NO afecta la detección (un PROCESS clon de un SUB_PROCESS sí cuenta).
+  function buildAuditUniverse(allProcesses, satelliteCatalog) {
+    const dupCfg = ps().duplicatesConfig();
+    if (!dupCfg.enabled) return [];
+    const include = new Set(dupCfg.includeSources);
+    const ignoreIds = dupCfg.ignoreIds;
+    const ignoreNamePatterns = dupCfg.ignoreNamePatterns;
+    const isIgnored = (id, name) => {
+      if (ignoreIds.has(Number(id))) return true;
+      return ignoreNamePatterns.some(re => re.test(name || ''));
+    };
+
+    const universe = [];
+    const seen = new Set();
+    const push = (id, name, type, source) => {
+      if (id == null || seen.has(id)) return;
+      if (isIgnored(id, name)) return;
+      if (!include.has(source)) return;
+      seen.add(id);
+      universe.push({ id, name: name || '', type: type || null, source });
+    };
+
+    const satIds = new Set(satelliteCatalog.map(s => s.id));
+
+    // Bucket 1: PROCESS principales (excluye satélites y RT/SP)
+    // Bucket 2: PROCESS satélites
+    // Bucket 4: RT (PROCESS con prefijo RT que isExcludedProcessName filtró antes)
+    for (const p of allProcesses) {
+      if (!p || p.type !== 'PROCESS') continue;
+      if (satIds.has(p.id)) { push(p.id, p.name, p.type, 'satellite'); continue; }
+      if (/^RT\b/i.test(p.name || '')) { push(p.id, p.name, p.type, 'rt'); continue; }
+      if (/^SP\b/i.test(p.name || '')) continue; // SP que sea PROCESS — raro, no se cuenta como main
+      push(p.id, p.name, p.type, 'main');
+    }
+
+    // Bucket 3: SUB_PROCESS y Bucket 5: STEP_SHIPPING — del catálogo cargado por loadAllNodes
+    const cat = ps().getCatalog();
+    if (cat && cat.namesById) {
+      for (const [id, name] of cat.namesById.entries()) {
+        const type = cat.typesById.get(id);
+        if (type === 'SUB_PROCESS') push(id, name, type, 'subprocess');
+        else if (type === 'STEP_SHIPPING') push(id, name, type, 'stepshipping');
+      }
+    }
+
+    return universe;
   }
 
   // ── Helpers de normalización para R4-c (producto cubre sufijos) ──
@@ -365,6 +418,7 @@ const ProcessDeepAudit = (() => {
     let tree = null;
     try {
       tree = await withRetry(() => ps().getProcessTree(satellite.id), `R3 sat ${satellite.id}`, myRunId);
+      if (tree) state.treesById.set(satellite.id, tree);
     } catch (err) {
       if (err.message === '__sa_aborted__') throw err;
       findings.push({
@@ -556,6 +610,156 @@ const ProcessDeepAudit = (() => {
     return { findings, leadOK, productOK, coherenciaOK };
   }
 
+  // ── pickCanonical (un canon por grupo de duplicados) ──
+  // Ordena por (referencias entrantes DESC, id ASC). El primer elemento gana.
+  function pickCanonical(members, parentsByIdCache) {
+    return members.slice().sort((a, b) => {
+      const pa = parentsByIdCache.get(a.id);
+      const pb = parentsByIdCache.get(b.id);
+      const fa = (pa == null) ? -1 : pa;  // sin dato pierde contra cualquier número
+      const fb = (pb == null) ? -1 : pb;
+      if (fa !== fb) return fb - fa;
+      return a.id - b.id;
+    })[0];
+  }
+
+  // ── evaluateD: D1/D2/D3 sobre el universo. Mutates state.rows.d1/d2/d3
+  // y state.duplicates. ──
+  async function evaluateD(auditUniverse, myRunId) {
+    const concurrency = ps().auditConcurrency();
+    const treesPool = concurrency.trees || 5;
+    const parentsPool = concurrency.parents || 5;
+
+    // 1. Fetch árboles faltantes (para SUB_PROCESS/STEP_SHIPPING/RT no auditados por R1-R4)
+    const missing = auditUniverse.filter(n => !state.treesById.has(n.id));
+    log(`  D-fase: árboles ya cacheados=${auditUniverse.length - missing.length}, por fetchar=${missing.length}`);
+
+    if (missing.length) {
+      state.progress.phase = `D · fetchando árboles faltantes · 0/${missing.length}`;
+      renderPanel();
+      await runPool(missing, async (node) => {
+        if (state.cancelled || isStale(myRunId)) return;
+        try {
+          const tree = await withRetry(() => ps().getProcessTree(node.id), `D tree ${node.id}`, myRunId);
+          if (tree) state.treesById.set(node.id, tree);
+        } catch (err) {
+          if (err?.message === '__sa_aborted__') throw err;
+          // Error individual: el nodo se omite de D2/D3 pero sigue en D1
+        }
+      }, treesPool, (done, total) => {
+        if (!isStale(myRunId)) {
+          state.progress.phase = `D · fetchando árboles faltantes · ${done}/${total}`;
+          renderPanel();
+        }
+      }, myRunId);
+      bailIfStale(myRunId);
+    }
+
+    // Si el run fue cancelado a media fetch, marca parcial pero no aborta — D1 sí puede emitir
+    if (state.cancelled) state.duplicates.partial = true;
+
+    // 2. Calcular firmas + agrupar
+    state.progress.phase = 'D · calculando firmas y agrupando';
+    renderPanel();
+    const sigD1Fn = (n) => ps().signatureD1(n);
+    const sigD2Fn = (n) => {
+      const t = state.treesById.get(n.id);
+      return t ? ps().signatureD2(t.treeRoot) : null;
+    };
+    const sigD3Fn = (n) => {
+      const t = state.treesById.get(n.id);
+      return t ? ps().signatureD3(t.treeRoot) : null;
+    };
+    const groupsD1 = ps().groupBySignature(auditUniverse, sigD1Fn);
+    const groupsD2 = ps().groupBySignature(auditUniverse, sigD2Fn);
+    const groupsD3 = ps().groupBySignature(auditUniverse, sigD3Fn);
+
+    // Filtrar grupos size>=2. D2/D3 además excluyen firma '[]' (top-level vacío)
+    // para no agrupar nodos hoja (STEP_SHIPPING terminales, RT minimal) como duplicados falsos.
+    const dupGroupsD1 = [...groupsD1.entries()].filter(([, members]) => members.length >= 2);
+    const dupGroupsD2 = [...groupsD2.entries()].filter(([sig, members]) => sig !== '[]' && members.length >= 2);
+    const dupGroupsD3 = [...groupsD3.entries()].filter(([sig, members]) => sig !== '[]' && members.length >= 2);
+
+    // Cross-flags: ¿este id aparece como duplicado en otra firma?
+    const inD1 = new Set(), inD2 = new Set(), inD3 = new Set();
+    for (const [, members] of dupGroupsD1) for (const m of members) inD1.add(m.id);
+    for (const [, members] of dupGroupsD2) for (const m of members) inD2.add(m.id);
+    for (const [, members] of dupGroupsD3) for (const m of members) inD3.add(m.id);
+
+    // 3. Fetch parents para todos los miembros únicos de los 3 conjuntos
+    const allDupIds = new Set([...inD1, ...inD2, ...inD3]);
+    const parentsByIdCache = new Map();
+    if (allDupIds.size) {
+      state.progress.phase = `D · fetchando referencias entrantes · 0/${allDupIds.size}`;
+      renderPanel();
+      const idsArr = [...allDupIds];
+      await runPool(idsArr, async (id) => {
+        if (state.cancelled || isStale(myRunId)) return;
+        try {
+          const parents = await withRetry(() => ps().getProcessNodeParents(id), `D parents ${id}`, myRunId);
+          parentsByIdCache.set(id, parents.length);
+        } catch (err) {
+          if (err?.message === '__sa_aborted__') throw err;
+          // sin dato: pickCanonical lo trata como -1 (pierde)
+        }
+      }, parentsPool, (done, total) => {
+        if (!isStale(myRunId)) {
+          state.progress.phase = `D · fetchando referencias entrantes · ${done}/${total}`;
+          renderPanel();
+        }
+      }, myRunId);
+      bailIfStale(myRunId);
+    }
+
+    if (state.cancelled) state.duplicates.partial = true;
+
+    // 4. Emitir filas por grupo
+    function emitRows(targetArr, dupGroups) {
+      for (const [groupId, members] of dupGroups) {
+        const canon = pickCanonical(members, parentsByIdCache);
+        for (const m of members) {
+          const isCanon = (m.id === canon.id);
+          const refs = parentsByIdCache.get(m.id);
+          let accion = '';
+          if (isCanon) accion = 'MANTENER';
+          else if (refs === 0) accion = 'ARCHIVAR';
+          else if (refs != null && refs > 0) accion = 'FUSIONAR';
+          targetArr.push({
+            ProcessID: m.id,
+            ProcessName: m.name,
+            Tipo: m.type || '',
+            Source: m.source,
+            GrupoID: groupId,
+            GrupoTamano: members.length,
+            EsCanonico: isCanon,
+            ReferenciasEntrantes: (refs == null) ? '' : refs,
+            EsArchivado: false,
+            TambienEnD1: inD1.has(m.id),
+            TambienEnD2: inD2.has(m.id),
+            TambienEnD3: inD3.has(m.id),
+            AccionSugerida: accion,
+            AccionSugerida_NUEVO: '',
+            Notas_NUEVO: ''
+          });
+        }
+      }
+    }
+    emitRows(state.rows.d1, dupGroupsD1);
+    emitRows(state.rows.d2, dupGroupsD2);
+    emitRows(state.rows.d3, dupGroupsD3);
+
+    state.duplicates.groupsD1 = dupGroupsD1.length;
+    state.duplicates.groupsD2 = dupGroupsD2.length;
+    state.duplicates.groupsD3 = dupGroupsD3.length;
+    state.duplicates.membersD1 = state.rows.d1.length;
+    state.duplicates.membersD2 = state.rows.d2.length;
+    state.duplicates.membersD3 = state.rows.d3.length;
+
+    log(`  D1: ${state.duplicates.groupsD1} grupos / ${state.duplicates.membersD1} miembros`);
+    log(`  D2: ${state.duplicates.groupsD2} grupos / ${state.duplicates.membersD2} miembros`);
+    log(`  D3: ${state.duplicates.groupsD3} grupos / ${state.duplicates.membersD3} miembros`);
+  }
+
   // ── Auditor por proceso (orquesta R1, R2, R4 sobre una raíz PROCESS) ──
   async function auditProcess(processNode, myRunId) {
     const result = {
@@ -571,6 +775,7 @@ const ProcessDeepAudit = (() => {
     try {
       const tree = await withRetry(() => ps().getProcessTree(processNode.id), `audit ${processNode.id}`, myRunId);
       bailIfStale(myRunId);
+      if (tree) state.treesById.set(processNode.id, tree);
 
       result.r1 = evaluateR1(tree?.treeRoot, processNode);
       result.counts.r1 = result.r1.length;
@@ -629,6 +834,8 @@ const ProcessDeepAudit = (() => {
       // Procesos no-satélite a auditar con R1/R2/R4
       const mainProcesses = allProcesses.filter(p => p.type === 'PROCESS' && !satelliteIds.has(p.id));
 
+      // Estimación inicial: R1+R2+R4 + R3 + (universo a fetchar en D). Ajustada
+      // dinámicamente cuando evaluateD descubre los faltantes reales.
       state.progress.total = mainProcesses.length + satelliteCatalog.length;
       state.progress.current = 0;
       state.progress.phase = `auditando ${mainProcesses.length} procesos + ${satelliteCatalog.length} satélites`;
@@ -676,9 +883,20 @@ const ProcessDeepAudit = (() => {
       }, myRunId);
       bailIfStale(myRunId);
 
+      // Detección de duplicados D1/D2/D3 (fase global post R1-R4)
+      const auditUniverse = buildAuditUniverse(allProcesses, satelliteCatalog);
+      log(`Universo D: ${auditUniverse.length} nodos (main+sat+rt+subprocess+stepshipping, descontando ignoreIds/ignoreNamePatterns)`);
+      if (auditUniverse.length && ps().duplicatesConfig().enabled) {
+        await evaluateD(auditUniverse, myRunId);
+        bailIfStale(myRunId);
+      } else {
+        log('  D-fase saltada (duplicates.enabled=false o universo vacío)');
+      }
+
       // Construir Resumen + Catálogos
       buildResumenRows();
       buildCatalogosRows();
+      buildLeyendaRows();
 
       state.progress.phase = 'done';
       renderPanel();
@@ -707,7 +925,22 @@ const ProcessDeepAudit = (() => {
   // ── Hoja Resumen ──
   function buildResumenRows() {
     state.rows.resumen = [];
+
+    // Indexar duplicados por ProcessID para conteo rápido
+    const dupCountByPid = { d1: new Map(), d2: new Map(), d3: new Map() };
+    const bump = (mapObj, pid) => mapObj.set(pid, (mapObj.get(pid) || 0) + 1);
+    for (const r of state.rows.d1) bump(dupCountByPid.d1, r.ProcessID);
+    for (const r of state.rows.d2) bump(dupCountByPid.d2, r.ProcessID);
+    for (const r of state.rows.d3) bump(dupCountByPid.d3, r.ProcessID);
+
+    const partialNote = state.duplicates && state.duplicates.partial ? 'PARCIAL_POR_CANCELACION' : '';
+
     for (const p of state.processes) {
+      const dup1 = dupCountByPid.d1.get(p.id) || 0;
+      const dup2 = dupCountByPid.d2.get(p.id) || 0;
+      const dup3 = dupCountByPid.d3.get(p.id) || 0;
+      const totalDup = dup1 + dup2 + dup3;
+      const hadIssue = p.estadoGlobal === 'CON HALLAZGOS';
       state.rows.resumen.push({
         ProcessID: p.id, ProcessName: p.name, LineCode: p.lineCode,
         EsSatélite: 'No',
@@ -716,11 +949,20 @@ const ProcessDeepAudit = (() => {
         Hallazgos_R2: p.counts.r2,
         Hallazgos_R3: 0,
         Hallazgos_R4: p.counts.r4,
-        EstadoGlobal: p.estadoGlobal,
+        Duplicados_D1: dup1,
+        Duplicados_D2: dup2,
+        Duplicados_D3: dup3,
+        EstadoGlobal: (hadIssue || totalDup > 0) ? 'CON HALLAZGOS' : 'OK',
+        NotaParcial: partialNote,
         Error: p.error || ''
       });
     }
     for (const s of state.satellites) {
+      const dup1 = dupCountByPid.d1.get(s.id) || 0;
+      const dup2 = dupCountByPid.d2.get(s.id) || 0;
+      const dup3 = dupCountByPid.d3.get(s.id) || 0;
+      const totalDup = dup1 + dup2 + dup3;
+      const hadIssue = s.counts.r3 > 0;
       state.rows.resumen.push({
         ProcessID: s.id, ProcessName: s.name, LineCode: ps().extractLineCodeFromName(s.name) || '',
         EsSatélite: 'Sí',
@@ -729,9 +971,46 @@ const ProcessDeepAudit = (() => {
         Hallazgos_R2: 0,
         Hallazgos_R3: s.counts.r3 || 0,
         Hallazgos_R4: 0,
-        EstadoGlobal: s.counts.r3 > 0 ? 'CON HALLAZGOS' : 'OK',
+        Duplicados_D1: dup1,
+        Duplicados_D2: dup2,
+        Duplicados_D3: dup3,
+        EstadoGlobal: (hadIssue || totalDup > 0) ? 'CON HALLAZGOS' : 'OK',
+        NotaParcial: partialNote,
         Error: ''
       });
+    }
+
+    // Filas extra para nodos del universo D que no están en processes/satellites
+    // (SUB_PROCESS, STEP_SHIPPING, RT) pero SÍ aparecen en algún grupo de duplicados.
+    const allReportedIds = new Set(state.rows.resumen.map(r => r.ProcessID));
+    const extraIdsWithDups = new Set([
+      ...dupCountByPid.d1.keys(),
+      ...dupCountByPid.d2.keys(),
+      ...dupCountByPid.d3.keys()
+    ].filter(id => !allReportedIds.has(id)));
+
+    if (extraIdsWithDups.size) {
+      const allDupRows = [...state.rows.d1, ...state.rows.d2, ...state.rows.d3];
+      const byId = new Map();
+      for (const r of allDupRows) if (!byId.has(r.ProcessID)) byId.set(r.ProcessID, r);
+      for (const id of extraIdsWithDups) {
+        const sample = byId.get(id);
+        if (!sample) continue;
+        state.rows.resumen.push({
+          ProcessID: id,
+          ProcessName: sample.ProcessName,
+          LineCode: ps().extractLineCodeFromName(sample.ProcessName || '') || '',
+          EsSatélite: 'No',
+          Secciones: 0,
+          Hallazgos_R1: 0, Hallazgos_R2: 0, Hallazgos_R3: 0, Hallazgos_R4: 0,
+          Duplicados_D1: dupCountByPid.d1.get(id) || 0,
+          Duplicados_D2: dupCountByPid.d2.get(id) || 0,
+          Duplicados_D3: dupCountByPid.d3.get(id) || 0,
+          EstadoGlobal: 'CON HALLAZGOS',
+          NotaParcial: partialNote,
+          Error: ''
+        });
+      }
     }
   }
 
@@ -765,60 +1044,129 @@ const ProcessDeepAudit = (() => {
     }
   }
 
+  // ── Hoja Leyenda (una sola fuente de verdad para descripciones de R/D) ──
+  function buildLeyendaRows() {
+    state.rows.leyenda = [
+      { Sigla: 'R1', Descripcion: RULE_LABELS.R1, Subcaso: '—', EstadoPosible: 'tipo inválido', AccionTipica: 'Cambiar tipo del nodo a SCANNER_NODE/STAGING/STEP_SHIPPING_READY' },
+      { Sigla: 'R2', Descripcion: RULE_LABELS.R2, Subcaso: 'R2-a/b/c/d', EstadoPosible: 'sin treatment / sin estaciones / sin tiempos / parcial', AccionTipica: 'Asignar treatment + cargar tiempos por estación' },
+      { Sigla: 'R3', Descripcion: RULE_LABELS.R3, Subcaso: 'R3-a/b/c/d', EstadoPosible: 'sin treatment / sin estaciones / sin tiempos / parcial', AccionTipica: 'Mismo que R2 sobre satélites' },
+      { Sigla: 'R4', Descripcion: RULE_LABELS.R4, Subcaso: 'R4-a/b/c', EstadoPosible: 'sin lead / sin producto / producto no cubre sufijos', AccionTipica: 'Setear defaultLeadTime y productByProductId con nombre acorde a sufijos' },
+      { Sigla: 'D1', Descripcion: RULE_LABELS.D1, Subcaso: '—', EstadoPosible: 'grupo size≥2 con mismo nombre normalizado', AccionTipica: 'Mantener canon (id+más refs); FUSIONAR si tiene refs o ARCHIVAR si refs=0' },
+      { Sigla: 'D2', Descripcion: RULE_LABELS.D2, Subcaso: '—', EstadoPosible: 'grupo size≥2 con mismo árbol top-level (IDs)', AccionTipica: 'Validar si la duplicación es intencional (templates) o ARCHIVAR sobrante' },
+      { Sigla: 'D3', Descripcion: RULE_LABELS.D3, Subcaso: '—', EstadoPosible: 'grupo size≥2 con mismo árbol top-level (nombres normalizados)', AccionTipica: 'Caso más común; FUSIONAR para consolidar referencias bajo el canon' }
+    ];
+  }
+
   // ── XLSX export (SheetJS) ──
   function exportXlsx() {
     if (!window.XLSX) { alert('XLSX no cargado. Recarga la extensión.'); return; }
     const wb = window.XLSX.utils.book_new();
 
-    const addSheet = (name, rows, headers) => {
-      if (!rows || !rows.length) {
-        const ws = window.XLSX.utils.aoa_to_sheet([headers || ['(sin datos)']]);
-        window.XLSX.utils.book_append_sheet(wb, ws, name);
-        return;
-      }
-      const hdr = headers || Object.keys(rows[0]);
-      const aoa = [hdr, ...rows.map(r => hdr.map(h => r[h] != null ? r[h] : ''))];
+    // addSheet con título mergeado en fila 1, headers en fila 2, datos desde fila 3.
+    // Si rows está vacío, igual emite título + headers + fila "(sin datos)".
+    const addSheet = (name, title, rows, headers) => {
+      const hdr = headers || (rows && rows[0] ? Object.keys(rows[0]) : ['(sin datos)']);
+      const data = (rows && rows.length)
+        ? rows.map(r => hdr.map(h => r[h] != null ? r[h] : ''))
+        : [hdr.map(() => '')];
+      const aoa = [
+        [title],   // fila 1 — se mergea A1:?1 abajo
+        hdr,       // fila 2 — encabezados
+        ...data    // filas 3+
+      ];
       const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+      // Merge A1 hasta la última columna de los headers
+      ws['!merges'] = (ws['!merges'] || []).concat([{
+        s: { r: 0, c: 0 },
+        e: { r: 0, c: Math.max(0, hdr.length - 1) }
+      }]);
       window.XLSX.utils.book_append_sheet(wb, ws, name);
     };
 
-    addSheet('Resumen', state.rows.resumen, [
-      'ProcessID', 'ProcessName', 'LineCode', 'EsSatélite', 'Secciones',
-      'Hallazgos_R1', 'Hallazgos_R2', 'Hallazgos_R3', 'Hallazgos_R4',
-      'EstadoGlobal', 'Error'
-    ]);
+    addSheet('Leyenda',
+      'Leyenda — qué significa cada regla R/D del reporte',
+      state.rows.leyenda,
+      ['Sigla', 'Descripcion', 'Subcaso', 'EstadoPosible', 'AccionTipica']
+    );
 
-    addSheet('R1_Listo_NoScanner', state.rows.r1, [
-      'ProcessID', 'ProcessName', 'NodoListoID', 'NodoListoName',
-      'TipoActual', 'TipoEsperado'
-    ]);
+    addSheet('Resumen',
+      `Resumen por proceso · ${state.duplicates.partial ? 'PARCIAL_POR_CANCELACION · ' : ''}generado ${new Date().toISOString()}`,
+      state.rows.resumen,
+      [
+        'ProcessID', 'ProcessName', 'LineCode', 'EsSatélite', 'Secciones',
+        'Hallazgos_R1', 'Hallazgos_R2', 'Hallazgos_R3', 'Hallazgos_R4',
+        'Duplicados_D1', 'Duplicados_D2', 'Duplicados_D3',
+        'EstadoGlobal', 'NotaParcial', 'Error'
+      ]
+    );
 
-    addSheet('R2_TiemposLineaPrincipal', state.rows.r2, [
-      'ProcessID', 'ProcessName', 'LineCode',
-      'NodoListoID', 'NodoListoName',
-      'TreatmentID', 'TreatmentName',
-      'StationID', 'StationName',
-      'CycleTime_min', 'TotalTime_min', 'TimeType',
-      'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO', 'TimeType_NUEVO',
-      'Estado'
-    ]);
+    addSheet('R1_Listo_NoScanner',
+      `R1 — ${RULE_LABELS.R1}. Nodos cuyo nombre matchea /Listo/ pero el type no es SCANNER_NODE, STAGING ni STEP_SHIPPING_READY.`,
+      state.rows.r1,
+      ['ProcessID', 'ProcessName', 'NodoListoID', 'NodoListoName', 'TipoActual', 'TipoEsperado']
+    );
 
-    addSheet('R3_Satélites', state.rows.r3, [
-      'SatelliteID', 'SatelliteName', 'TipoSufijo', 'CompartidoEnUso',
-      'TreatmentID', 'StationID', 'StationName',
-      'CycleTime_min', 'TotalTime_min',
-      'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO',
-      'Estado'
-    ]);
+    addSheet('R2_TiemposLineaPrincipal',
+      `R2 — ${RULE_LABELS.R2}. Por cada bloque T<n> detectado en top-level: treatment con estaciones y cycleTime>0.`,
+      state.rows.r2,
+      [
+        'ProcessID', 'ProcessName', 'LineCode',
+        'NodoListoID', 'NodoListoName',
+        'TreatmentID', 'TreatmentName',
+        'StationID', 'StationName',
+        'CycleTime_min', 'TotalTime_min', 'TimeType',
+        'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO', 'TimeType_NUEVO',
+        'Estado'
+      ]
+    );
 
-    addSheet('R4_LeadTime_Producto', state.rows.r4, [
-      'ProcessID', 'ProcessName',
-      'LeadTime_horas_actual', 'LeadTime_horas_NUEVO',
-      'ProductID_actual', 'ProductName_actual', 'ProductName_NUEVO',
-      'SufijosAcabado', 'SufijosNoCubiertos', 'EstadoCoherencia'
-    ]);
+    addSheet('R3_Satélites',
+      `R3 — ${RULE_LABELS.R3}. Satélites (T100/T200/...) tratados como mini-procesos: treatment + estaciones + tiempos.`,
+      state.rows.r3,
+      [
+        'SatelliteID', 'SatelliteName', 'TipoSufijo', 'CompartidoEnUso',
+        'TreatmentID', 'StationID', 'StationName',
+        'CycleTime_min', 'TotalTime_min',
+        'CycleTime_min_NUEVO', 'TotalTime_min_NUEVO',
+        'Estado'
+      ]
+    );
 
-    addSheet('Catálogos', state.rows.catalogos, ['Categoria', 'Clave', 'Valor']);
+    addSheet('R4_LeadTime_Producto',
+      `R4 — ${RULE_LABELS.R4}. defaultLeadTime > 0 y productByProductId con nombre que cubra los sufijos del nombre del proceso.`,
+      state.rows.r4,
+      [
+        'ProcessID', 'ProcessName',
+        'LeadTime_horas_actual', 'LeadTime_horas_NUEVO',
+        'ProductID_actual', 'ProductName_actual', 'ProductName_NUEVO',
+        'SufijosAcabado', 'SufijosNoCubiertos', 'EstadoCoherencia'
+      ]
+    );
+
+    const dupHeaders = [
+      'ProcessID', 'ProcessName', 'Tipo', 'Source',
+      'GrupoID', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'EsArchivado',
+      'TambienEnD1', 'TambienEnD2', 'TambienEnD3',
+      'AccionSugerida', 'AccionSugerida_NUEVO', 'Notas_NUEVO'
+    ];
+
+    addSheet('D1_DuplicadoNombre',
+      `D1 — ${RULE_LABELS.D1}. Nodos activos distintos con el mismo nombre normalizado. Indica copias accidentales del catálogo.`,
+      state.rows.d1, dupHeaders);
+
+    addSheet('D2_DuplicadoTrenIDs',
+      `D2 — ${RULE_LABELS.D2}. Procesos que reusan exactamente los mismos hijos directos en el mismo orden. Templates compartidos.`,
+      state.rows.d2, dupHeaders);
+
+    addSheet('D3_DuplicadoTrenNombres',
+      `D3 — ${RULE_LABELS.D3}. Clones por "Save As...": mismos hijos top-level por nombre, IDs distintos. Caso más común.`,
+      state.rows.d3, dupHeaders);
+
+    addSheet('Catálogos',
+      'Catálogos — sufijos de acabado, satélites detectados, primeros 200 errores del run.',
+      state.rows.catalogos,
+      ['Categoria', 'Clave', 'Valor']
+    );
 
     const wbOut = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1003,17 +1351,41 @@ const ProcessDeepAudit = (() => {
     }
   }
 
+  // Descripciones canónicas (mismos textos en panel, leyenda XLSX y tooltips)
+  const RULE_LABELS = {
+    R1: '"Listo" con tipo incorrecto',
+    R2: 'Tiempos por sección/línea',
+    R3: 'Satélites con tiempos cargados',
+    R4: 'Lead time + producto coherente',
+    D1: 'Mismo nombre (catálogo drift)',
+    D2: 'Mismo tren de IDs top-level',
+    D3: 'Mismo tren de nombres top-level'
+  };
+
   function renderSummary() {
     const wrap = document.getElementById('pdeep-summary');
     if (!wrap) return;
     wrap.style.display = '';
-    const conIssues = state.rows.resumen.filter(r => r.EstadoGlobal === 'CON HALLAZGOS').length;
+    wrap.style.gridTemplateColumns = '1fr';  // override del CSS (5 cols) — ahora son listas
+    const r1 = state.rows.r1.length;
+    const r2 = state.rows.r2.filter(r => r.Estado && r.Estado !== 'OK').length;
+    const r3 = state.rows.r3.filter(r => r.Estado && r.Estado !== 'OK').length;
+    const r4 = state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length;
+    const d = state.duplicates || {};
+    const partialBadge = d.partial ? ` <span style="color:#c62828; font-size:10px;">[PARCIAL]</span>` : '';
     wrap.innerHTML = `
-      <div><b>${state.processes.length + state.satellites.length}</b><span>procesos</span></div>
-      <div><b>${state.rows.r1.length}</b><span>R1</span></div>
-      <div><b>${state.rows.r2.filter(r => r.Estado && r.Estado !== 'OK').length}</b><span>R2</span></div>
-      <div><b>${state.rows.r3.filter(r => r.Estado && r.Estado !== 'OK').length}</b><span>R3</span></div>
-      <div><b>${state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length}</b><span>R4</span></div>
+      <div style="text-align:left; padding:8px; background:#f5f5f5; border-radius:4px;">
+        <div style="font-weight:600; margin-bottom:4px;">${state.processes.length + state.satellites.length} procesos auditados</div>
+        <div style="font-weight:600; margin-top:8px;">Reglas estructurales</div>
+        <div title="${escapeHtml(RULE_LABELS.R1)}">▸ R1 — ${escapeHtml(RULE_LABELS.R1)} <b style="float:right;">${r1}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.R2)}">▸ R2 — ${escapeHtml(RULE_LABELS.R2)} <b style="float:right;">${r2}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.R3)}">▸ R3 — ${escapeHtml(RULE_LABELS.R3)} <b style="float:right;">${r3}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.R4)}">▸ R4 — ${escapeHtml(RULE_LABELS.R4)} <b style="float:right;">${r4}</b></div>
+        <div style="font-weight:600; margin-top:8px;">Duplicados ★ NUEVO${partialBadge}</div>
+        <div title="${escapeHtml(RULE_LABELS.D1)}">▸ D1 — ${escapeHtml(RULE_LABELS.D1)} <b style="float:right;">${d.groupsD1 || 0} grupos / ${d.membersD1 || 0}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.D2)}">▸ D2 — ${escapeHtml(RULE_LABELS.D2)} <b style="float:right;">${d.groupsD2 || 0} grupos / ${d.membersD2 || 0}</b></div>
+        <div title="${escapeHtml(RULE_LABELS.D3)}">▸ D3 — ${escapeHtml(RULE_LABELS.D3)} <b style="float:right;">${d.groupsD3 || 0} grupos / ${d.membersD3 || 0}</b></div>
+      </div>
     `;
     const tabsWrap = document.getElementById('pdeep-tabs-wrap');
     if (tabsWrap) tabsWrap.style.display = '';
@@ -1022,12 +1394,22 @@ const ProcessDeepAudit = (() => {
   function renderTabs() {
     const wrap = document.getElementById('pdeep-tabs');
     if (!wrap) return;
+    const r1Count = state.rows.r1.length;
+    const r2Count = state.rows.r2.filter(r => r.Estado !== 'OK').length;
+    const r3Count = state.rows.r3.filter(r => r.Estado !== 'OK').length;
+    const r4Count = state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length;
+    const d1Count = state.rows.d1.length;
+    const d2Count = state.rows.d2.length;
+    const d3Count = state.rows.d3.length;
     wrap.innerHTML = `
       <button data-act="tab-resumen" class="${_activeTab === 'resumen' ? 'active' : ''}">Resumen</button>
-      <button data-act="tab-r1" class="${_activeTab === 'r1' ? 'active' : ''}">R1 (${state.rows.r1.length})</button>
-      <button data-act="tab-r2" class="${_activeTab === 'r2' ? 'active' : ''}">R2 (${state.rows.r2.filter(r => r.Estado !== 'OK').length})</button>
-      <button data-act="tab-r3" class="${_activeTab === 'r3' ? 'active' : ''}">R3 (${state.rows.r3.filter(r => r.Estado !== 'OK').length})</button>
-      <button data-act="tab-r4" class="${_activeTab === 'r4' ? 'active' : ''}">R4 (${state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK').length})</button>
+      <button data-act="tab-r1" title="${escapeHtml(RULE_LABELS.R1)}" class="${_activeTab === 'r1' ? 'active' : ''}">R1 (${r1Count})</button>
+      <button data-act="tab-r2" title="${escapeHtml(RULE_LABELS.R2)}" class="${_activeTab === 'r2' ? 'active' : ''}">R2 (${r2Count})</button>
+      <button data-act="tab-r3" title="${escapeHtml(RULE_LABELS.R3)}" class="${_activeTab === 'r3' ? 'active' : ''}">R3 (${r3Count})</button>
+      <button data-act="tab-r4" title="${escapeHtml(RULE_LABELS.R4)}" class="${_activeTab === 'r4' ? 'active' : ''}">R4 (${r4Count})</button>
+      <button data-act="tab-d1" title="${escapeHtml(RULE_LABELS.D1)}" class="${_activeTab === 'd1' ? 'active' : ''}">D1 (${d1Count})</button>
+      <button data-act="tab-d2" title="${escapeHtml(RULE_LABELS.D2)}" class="${_activeTab === 'd2' ? 'active' : ''}">D2 (${d2Count})</button>
+      <button data-act="tab-d3" title="${escapeHtml(RULE_LABELS.D3)}" class="${_activeTab === 'd3' ? 'active' : ''}">D3 (${d3Count})</button>
     `;
   }
 
@@ -1052,6 +1434,15 @@ const ProcessDeepAudit = (() => {
     } else if (_activeTab === 'r4') {
       headers = ['ProcessName', 'ProductName_actual', 'SufijosNoCubiertos', 'EstadoCoherencia'];
       rows = state.rows.r4.filter(r => r.EstadoCoherencia !== 'OK');
+    } else if (_activeTab === 'd1') {
+      headers = ['ProcessName', 'Tipo', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'AccionSugerida'];
+      rows = state.rows.d1;
+    } else if (_activeTab === 'd2') {
+      headers = ['ProcessName', 'Tipo', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'AccionSugerida'];
+      rows = state.rows.d2;
+    } else if (_activeTab === 'd3') {
+      headers = ['ProcessName', 'Tipo', 'GrupoTamano', 'EsCanonico', 'ReferenciasEntrantes', 'AccionSugerida'];
+      rows = state.rows.d3;
     }
     if (filter) {
       rows = rows.filter(r => Object.values(r).some(v => String(v || '').toLowerCase().includes(filter)));
