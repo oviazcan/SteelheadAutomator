@@ -35,7 +35,7 @@ El catálogo de procesos de Steelhead acumula drift: nodos con el mismo nombre c
 process-deep-audit v0.8.0
   ├─ R1, R2, R3, R4 — sin cambios funcionales
   ├─ ★ D1, D2, D3 — nueva fase global post-R4
-  └─ XLSX: 9 hojas (Leyenda, Resumen, R1..R4, D1..D3, Catálogos)
+  └─ XLSX: 10 hojas (Leyenda, Resumen, R1..R4, D1..D3, Catálogos)
 
 Pipeline:
   1. loadAllNodes + loadScannerNodes + fetchAllProcesses
