@@ -1,5 +1,5 @@
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "lastUpdated": "2026-05-18",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -11,6 +11,7 @@
     "apolloClientVersion": "4.0.8",
     "hashes": {
       "mutations": {
+        "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b",
         "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163",
         "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49",
         "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa",
@@ -115,7 +116,7 @@
         "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8",
         "GetReceivedOrderDocuments": "c2df1330d49c30a52ac64fd5d7ad345f3f2d2b30411315e3311acd7ddba80cdc",
         "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156",
-        "GetSpec": "88dad36300dba70363eb14571de7eef68a1a26685131c87c762b72ccb48eb54e",
+        "GetSpec": "ab70f1e818961973705ce720e3f22e8eefc7c204e0f14543de8d5825a41155c3",
         "SpecFieldsAndOptions": "fc6242c2e83c84eee75b421f3cfc353c65719f2868e7299234bfab38fd5da5ee",
         "PartNumberSpecsSummary": "7f0434efa3bb397028356ae04c8431646a7c9b2e5cb1114ed7f53b4d81c1084f",
         "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db",
@@ -305,6 +306,17 @@
           "ignoreNamePatterns": [],
           "ignoreIds": []
         }
+      },
+      "specParamsBulk": {
+        "concurrency": {
+          "fetchDetails": 5,
+          "editShape": 10
+        },
+        "batchSize": 50,
+        "retryDelaysMs": [1000, 2000, 4000],
+        "labelMP": "MP",
+        "impPrefixRegex": "^IMP",
+        "page": { "first": 400 }
       }
     }
   },
@@ -663,6 +675,19 @@
       "actions": [
         { "id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run" },
         { "id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit" }
+      ]
+    },
+    {
+      "id": "spec-params-bulk",
+      "name": "Carga masiva Spec Params",
+      "subtitle": "Editar parámetros de specs vía XLSX",
+      "icon": "🧪",
+      "category": "Calidad",
+      "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"],
+      "requiredPermissions": [],
+      "actions": [
+        { "id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params" },
+        { "id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params" }
       ]
     },
     {
