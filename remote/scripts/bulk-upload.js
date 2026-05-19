@@ -1,16 +1,376 @@
-// Steelhead Bulk Upload v9 — Pipeline de 9 pasos
-// Migrado de dataLoader_v84.js a formato modular
+// Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
+// VERSION: 1.0.0 (2026-05-18) — hardening 7 fixes sobre v9
+//   Fix 1: pool concurrente SavePartNumber enrich
+//   Fix 2: paginación AllPartNumbers en checkPNExistence
+//   Fix 3: cancellation token + panel con botón Detener
+//   Fix 4: preview paginado del modal
+//   Fix 5: withRetry [1s,2s,4s] global
+//   Fix 6: pool concurrente archivado final
+//   Fix 7: resume tras crash en chrome.storage.local
 // Depende de: SteelheadAPI (steelhead-api.js)
 
 const BulkUpload = (() => {
   'use strict';
 
+  const VERSION = '1.0.0';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
   let onProgress = () => {};
   function setProgressCallback(fn) { onProgress = fn; }
+
+  // ═══════════════════════════════════════════
+  // CONFIG ACCESS (con defaults sanos si config no provee)
+  // ═══════════════════════════════════════════
+
+  const bulkCfg = () => {
+    const cfg = (api()?.getConfig?.() || window.__sa_config || {});
+    const d = cfg?.steelhead?.domain?.bulkUpload || {};
+    return {
+      concurrency: {
+        savePartNumber: d.concurrency?.savePartNumber ?? 5,
+        archive: d.concurrency?.archive ?? 5,
+      },
+      retry: {
+        delaysMs: d.retry?.delaysMs ?? [1000, 2000, 4000],
+      },
+      paging: {
+        allPartNumbersFirst: d.paging?.allPartNumbers?.first ?? 200,
+        allPartNumbersMaxResults: d.paging?.allPartNumbers?.maxResults ?? 1000,
+      },
+      preview: { pageSize: d.preview?.pageSize ?? 100 },
+      resume: { maxEntries: d.resume?.maxEntries ?? 20, purgeAgeDays: d.resume?.purgeAgeDays ?? 7 },
+    };
+  };
+
+  // ═══════════════════════════════════════════
+  // FIX 3 — CANCELLATION TOKEN + STATE
+  // ═══════════════════════════════════════════
+
+  class BailError extends Error {
+    constructor() { super('__sa_aborted__'); this.name = 'BailError'; }
+  }
+  const BAIL_MSG = '__sa_aborted__';
+  const isBail = (e) => e?.message === BAIL_MSG;
+
+  let state = {
+    runId: 0,
+    cancelled: false,
+    phase: 'idle',
+    progress: { current: 0, total: 0 },
+    counters: { ok: 0, retried: 0, errors: 0 },
+  };
+
+  // ── Fix 7: resume tras crash ──
+  // El plan original mencionaba chrome.storage.local, pero el applet vive en
+  // MAIN world (executeScript world:'MAIN') donde `chrome.*` no se expone de
+  // forma confiable. Otros applets del repo (paros-linea, invoice-auto-regen,
+  // bill-autofill) usan localStorage para persistencia: misma estrategia aquí.
+  // 5MB por origen alcanza de sobra (~9k PN keys ≈ 300KB JSON).
+  let resumeState = null;
+  const RESUME_KEY_PREFIX = 'sa_bulk_resume_';
+  const RESUME_INDEX_KEY = 'sa_bulk_resume_index';
+
+  async function computeRunKey(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function loadResumeIndex() {
+    try { return JSON.parse(localStorage.getItem(RESUME_INDEX_KEY) || '[]'); } catch { return []; }
+  }
+  function saveResumeIndex(idx) {
+    try { localStorage.setItem(RESUME_INDEX_KEY, JSON.stringify(idx)); } catch (_) {}
+  }
+  function loadResumeStateByKey(runKey) {
+    try { return JSON.parse(localStorage.getItem(RESUME_KEY_PREFIX + runKey) || 'null'); } catch { return null; }
+  }
+  function deleteResumeStateByKey(runKey) {
+    try { localStorage.removeItem(RESUME_KEY_PREFIX + runKey); } catch (_) {}
+    const idx = loadResumeIndex().filter(e => e.runKey !== runKey);
+    saveResumeIndex(idx);
+  }
+
+  function purgeOldResumeStates() {
+    try {
+      const cfg = bulkCfg().resume;
+      const maxAge = (cfg.purgeAgeDays || 7) * 24 * 60 * 60 * 1000;
+      const maxEntries = cfg.maxEntries || 20;
+      const now = Date.now();
+      const idx = loadResumeIndex();
+      const keep = [];
+      for (const entry of idx) {
+        const age = now - new Date(entry.lastUpdatedAt || 0).getTime();
+        if (entry.phase === 'done' && age > maxAge) {
+          try { localStorage.removeItem(RESUME_KEY_PREFIX + entry.runKey); } catch (_) {}
+        } else {
+          keep.push(entry);
+        }
+      }
+      // Cap por número de entradas (más viejas primero)
+      if (keep.length > maxEntries) {
+        keep.sort((a, b) => new Date(b.lastUpdatedAt || 0) - new Date(a.lastUpdatedAt || 0));
+        const drop = keep.splice(maxEntries);
+        for (const d of drop) try { localStorage.removeItem(RESUME_KEY_PREFIX + d.runKey); } catch (_) {}
+      }
+      saveResumeIndex(keep);
+    } catch (_) { /* persistencia es best-effort */ }
+  }
+
+  async function persistResumeState() {
+    if (!resumeState) return;
+    resumeState.lastUpdatedAt = new Date().toISOString();
+    try {
+      localStorage.setItem(RESUME_KEY_PREFIX + resumeState.runKey, JSON.stringify(resumeState));
+      const idx = loadResumeIndex().filter(e => e.runKey !== resumeState.runKey);
+      idx.push({ runKey: resumeState.runKey, lastUpdatedAt: resumeState.lastUpdatedAt, phase: resumeState.phase });
+      saveResumeIndex(idx);
+    } catch (e) {
+      // Si localStorage está lleno, deshabilitar resume en silencio para esta corrida.
+      console.warn('[bulk-upload] persistResumeState falló (storage lleno?):', e?.message || e);
+    }
+  }
+
+  function askResumeOrFresh(prev) {
+    return new Promise(resolve => {
+      injectStyles(); const { overlay, modal } = createOverlay();
+      const completed = (prev.completedPNs || []).length;
+      const failed = (prev.failedPNs || []).length;
+      const since = prev.lastUpdatedAt ? new Date(prev.lastUpdatedAt).toLocaleString() : '(desconocido)';
+      modal.innerHTML = `
+        <h2>Corrida previa detectada</h2>
+        <p class="dl9-sub">Este mismo CSV se intentó procesar antes. Puedes reanudar desde donde quedó o empezar de cero.</p>
+        <div class="dl9-stats">
+          <div class="dl9-stat"><b>Modo:</b> ${prev.mode || '?'}</div>
+          <div class="dl9-stat"><b>Fase actual:</b> ${prev.phase || '?'}</div>
+          <div class="dl9-stat"><b>PNs completados:</b> ${completed}</div>
+          <div class="dl9-stat"><b>PNs con error:</b> ${failed}</div>
+          <div class="dl9-stat"><b>Cliente(s):</b> ${prev.customerScope || '?'}</div>
+          <div class="dl9-stat"><b>Última actualización:</b> ${since}</div>
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-resume-cancel">CANCELAR</button>
+          <button class="dl9-btn" id="dl9-resume-fresh" style="background:#475569;color:#e2e8f0">EMPEZAR DE CERO</button>
+          <button class="dl9-btn dl9-btn-exec" id="dl9-resume-yes" style="background:#0d9488;color:white">REANUDAR</button>
+        </div>`;
+      modal.querySelector('#dl9-resume-yes').onclick = () => { removeOverlay(overlay); resolve('resume'); };
+      modal.querySelector('#dl9-resume-fresh').onclick = () => { removeOverlay(overlay); resolve('fresh'); };
+      modal.querySelector('#dl9-resume-cancel').onclick = () => { removeOverlay(overlay); resolve('cancel'); };
+    });
+  }
+
+  function nextRunId() {
+    state = {
+      runId: (state?.runId || 0) + 1,
+      cancelled: false,
+      phase: 'init',
+      progress: { current: 0, total: 0 },
+      counters: { ok: 0, retried: 0, errors: 0 },
+    };
+    return state.runId;
+  }
+  function isStale(myRunId) { return !state || state.cancelled || state.runId !== myRunId; }
+  function bailIfStale(myRunId) { if (isStale(myRunId)) throw new BailError(); }
+  function cancelRun() {
+    if (!state) return;
+    state.cancelled = true;
+    state.phase = 'cancelled';
+    addPanelLog('⏹ Cancelación solicitada — esperando que terminen las requests en vuelo...');
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // ═══════════════════════════════════════════
+  // FIX 5 — withRetry con backoff [1s, 2s, 4s] que respeta cancelación
+  // Solo reintenta en 429/503/network errors. unique_constraint NO se reintenta
+  // (la lógica progresiva ad-hoc en SavePartNumber sigue aplicando).
+  // ═══════════════════════════════════════════
+
+  const RETRYABLE_PATTERNS = [
+    /\b429\b/, /\b503\b/, /\b502\b/, /\b504\b/,
+    /too many requests/i, /service unavailable/i, /gateway/i,
+    /failed to fetch/i, /network/i, /timeout/i, /ECONN/i,
+  ];
+  function isRetryable(err) {
+    const msg = String(err?.message || err || '');
+    if (msg.includes('unique_constraint') || msg.includes('23505') || msg.includes('duplicate key')) return false;
+    if (msg.includes('exclusion constraint') || msg.includes('23P01')) return false;
+    return RETRYABLE_PATTERNS.some(re => re.test(msg));
+  }
+
+  async function withRetry(fn, label, myRunId, delaysMs) {
+    const delays = delaysMs || bulkCfg().retry.delaysMs;
+    let lastErr = null;
+    for (let attempt = 0; attempt <= delays.length; attempt++) {
+      if (myRunId != null) bailIfStale(myRunId);
+      try { return await fn(); }
+      catch (err) {
+        if (isBail(err)) throw err;
+        lastErr = err;
+        const more = attempt < delays.length && isRetryable(err);
+        if (!more) throw err;
+        state.counters.retried++;
+        const delay = delays[attempt];
+        warn(`${label}: intento ${attempt + 1} falló (${String(err).substring(0, 80)}), reintentando en ${delay}ms`);
+        if (myRunId != null) bailIfStale(myRunId);
+        await sleep(delay);
+      }
+    }
+    throw lastErr;
+  }
+
+  // ═══════════════════════════════════════════
+  // FIX 1 / FIX 6 — runPool: pool concurrente con semáforo + cancellation
+  // ═══════════════════════════════════════════
+
+  async function runPool(items, worker, concurrency, onProgressCb, myRunId) {
+    const queue = items.slice();
+    let active = 0, done = 0, idx = 0;
+    const total = queue.length;
+    return new Promise((resolve) => {
+      function next() {
+        if (state.cancelled || isStale(myRunId)) {
+          if (active === 0) resolve();
+          return;
+        }
+        while (active < concurrency && idx < queue.length) {
+          const item = queue[idx];
+          const myIdx = idx;
+          idx++;
+          active++;
+          Promise.resolve()
+            .then(() => worker(item, myIdx, myRunId))
+            .catch(err => {
+              if (!isBail(err)) {
+                state.counters.errors++;
+                warn(`runPool[${myIdx}]: ${String(err).substring(0, 120)}`);
+              }
+            })
+            .finally(() => {
+              active--; done++;
+              if (onProgressCb) {
+                try { onProgressCb(done, total); } catch (_) {}
+              }
+              if ((state.cancelled || isStale(myRunId)) && active === 0) { resolve(); return; }
+              if (done >= queue.length && active === 0) resolve();
+              else next();
+            });
+        }
+      }
+      if (!queue.length) resolve();
+      else next();
+    });
+  }
+
+  // ═══════════════════════════════════════════
+  // FIX 3 — Panel flotante con barra de progreso + botón Detener
+  // ═══════════════════════════════════════════
+
+  function ensurePanelStyles() {
+    if (document.getElementById('sa-bu-panel-styles')) return;
+    const s = document.createElement('style'); s.id = 'sa-bu-panel-styles';
+    s.textContent = `
+      #sa-bu-panel{position:fixed;top:20px;right:20px;width:480px;max-height:80vh;background:#1e293b;color:#e2e8f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;z-index:99998;display:flex;flex-direction:column;overflow:hidden}
+      #sa-bu-panel .sa-hdr{padding:14px 18px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
+      #sa-bu-panel .sa-hdr h3{margin:0;font-size:14px;color:#38bdf8;font-weight:600}
+      #sa-bu-panel .sa-hdr .sa-ver{font-size:11px;color:#64748b}
+      #sa-bu-panel .sa-body{padding:14px 18px;overflow-y:auto;flex:1;font-size:13px}
+      #sa-bu-panel .sa-phase{font-size:13px;color:#e2e8f0;font-weight:500;margin-bottom:6px}
+      #sa-bu-panel .sa-stats{display:flex;gap:12px;margin-bottom:8px;font-size:12px;color:#94a3b8}
+      #sa-bu-panel .sa-stats span b{color:#38bdf8;font-weight:600}
+      #sa-bu-panel .sa-bar{height:6px;background:#0f172a;border-radius:3px;overflow:hidden;margin-bottom:10px}
+      #sa-bu-panel .sa-bar-fill{height:100%;background:linear-gradient(90deg,#2563eb,#38bdf8);width:0%;transition:width 0.25s}
+      #sa-bu-panel .sa-log{max-height:200px;overflow-y:auto;font-size:11px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0f172a;border-radius:6px;padding:8px 10px;white-space:pre-wrap;line-height:1.5}
+      #sa-bu-panel .sa-actions{padding:10px 18px;border-top:1px solid #334155;display:flex;justify-content:flex-end;gap:8px}
+      #sa-bu-panel .sa-btn{padding:7px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity 0.2s}
+      #sa-bu-panel .sa-btn:hover{opacity:0.85}
+      #sa-bu-panel .sa-btn-stop{background:#dc2626;color:white}
+      #sa-bu-panel .sa-btn-close{background:#475569;color:#e2e8f0}
+      #sa-bu-panel.sa-cancelled .sa-phase{color:#f59e0b}
+      #sa-bu-panel.sa-error .sa-phase{color:#f87171}
+      #sa-bu-panel.sa-done .sa-phase{color:#4ade80}
+    `;
+    document.head.appendChild(s);
+  }
+
+  function ensurePanel() {
+    let p = document.getElementById('sa-bu-panel');
+    if (p) return p;
+    ensurePanelStyles();
+    p = document.createElement('div');
+    p.id = 'sa-bu-panel';
+    p.innerHTML = `
+      <div class="sa-hdr">
+        <h3>Carga masiva — Steelhead Automator</h3>
+        <span class="sa-ver">v${VERSION}</span>
+      </div>
+      <div class="sa-body">
+        <div class="sa-phase" id="sa-bu-phase">Inicializando...</div>
+        <div class="sa-stats">
+          <span><b id="sa-bu-current">0</b>/<span id="sa-bu-total">0</span></span>
+          <span>OK: <b id="sa-bu-ok">0</b></span>
+          <span>Reintentos: <b id="sa-bu-retried">0</b></span>
+          <span>Errores: <b id="sa-bu-errors">0</b></span>
+        </div>
+        <div class="sa-bar"><div class="sa-bar-fill" id="sa-bu-bar"></div></div>
+        <div class="sa-log" id="sa-bu-log"></div>
+      </div>
+      <div class="sa-actions">
+        <button class="sa-btn sa-btn-stop" id="sa-bu-stop">Detener</button>
+        <button class="sa-btn sa-btn-close" id="sa-bu-close" style="display:none">Cerrar</button>
+      </div>`;
+    document.body.appendChild(p);
+    p.querySelector('#sa-bu-stop').onclick = () => {
+      if (confirm('¿Detener la corrida? Las requests en vuelo seguirán hasta terminar, pero no se enviarán más.')) {
+        cancelRun();
+      }
+    };
+    p.querySelector('#sa-bu-close').onclick = () => hidePanel();
+    return p;
+  }
+
+  function showPanel() { ensurePanel().style.display = 'flex'; }
+  function hidePanel() {
+    const p = document.getElementById('sa-bu-panel');
+    if (p && p.parentNode) p.parentNode.removeChild(p);
+  }
+
+  function setPanelPhase(text) {
+    state.phase = text;
+    const el = document.getElementById('sa-bu-phase'); if (el) el.textContent = text;
+  }
+  function setPanelProgress(current, total) {
+    state.progress.current = current;
+    state.progress.total = total;
+    const c = document.getElementById('sa-bu-current');
+    const t = document.getElementById('sa-bu-total');
+    const bar = document.getElementById('sa-bu-bar');
+    if (c) c.textContent = String(current);
+    if (t) t.textContent = String(total);
+    if (bar) bar.style.width = (total ? Math.round((current / total) * 100) : 0) + '%';
+  }
+  function setPanelCounters() {
+    const o = document.getElementById('sa-bu-ok'); if (o) o.textContent = String(state.counters.ok);
+    const r = document.getElementById('sa-bu-retried'); if (r) r.textContent = String(state.counters.retried);
+    const e = document.getElementById('sa-bu-errors'); if (e) e.textContent = String(state.counters.errors);
+  }
+  function addPanelLog(msg) {
+    const el = document.getElementById('sa-bu-log');
+    if (!el) return;
+    const ts = new Date().toTimeString().slice(0, 8);
+    el.textContent += `[${ts}] ${msg}\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+  function markPanelDone(success, errorMsg) {
+    const p = document.getElementById('sa-bu-panel'); if (!p) return;
+    p.classList.remove('sa-cancelled', 'sa-error', 'sa-done');
+    if (errorMsg) { p.classList.add('sa-error'); setPanelPhase('ERROR: ' + errorMsg); }
+    else if (state.cancelled) { p.classList.add('sa-cancelled'); setPanelPhase('Cancelado'); }
+    else if (success) { p.classList.add('sa-done'); setPanelPhase('Completado'); }
+    const stopBtn = p.querySelector('#sa-bu-stop'); if (stopBtn) stopBtn.style.display = 'none';
+    const closeBtn = p.querySelector('#sa-bu-close'); if (closeBtn) closeBtn.style.display = 'inline-block';
+  }
 
   // ═══════════════════════════════════════════
   // UTILITIES
@@ -289,33 +649,67 @@ const BulkUpload = (() => {
     return Object.keys(ci).length > 0 ? ci : null;
   }
 
-  async function checkPNExistence(parts) {
-    // V10: PN existence is per (pn name, customerId) since the same name can exist under multiple customers
-    // Uses AllPartNumbers because SearchPartNumbers (older hash) doesn't return customer info in the response
+  async function checkPNExistence(parts, myRunId) {
+    // FIX 2 (2026-05-18): paginación real para AllPartNumbers. Antes era first:50 y si había
+    // >50 matches de searchQuery, el PN exacto podía caer fuera del window y se reportaba
+    // como NUEVO → duplicado silencioso (mismo bug del b4ccc7d disfrazado). Ahora avanza
+    // pageSize=200 (configurable) en loop hasta encontrar el exacto o agotar maxResults.
     const uniq = new Map(); // "PN|custId" → { name, customerId }
     for (const p of parts) {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
       if (!uniq.has(key)) uniq.set(key, { name: p.pn, customerId: p.customerId });
     }
-    const existMap = new Map(); // same key → { id }
-    log(`Buscando ${uniq.size} PN/cliente combinaciones...`);
+    const existMap = new Map(); // same key → { id, processId }
+    const cfg = bulkCfg();
+    const pageSize = cfg.paging.allPartNumbersFirst;
+    const maxResults = cfg.paging.allPartNumbersMaxResults;
+    log(`Buscando ${uniq.size} PN/cliente combinaciones (page=${pageSize}, cap=${maxResults})...`);
+    setPanelPhase('Verificando PNs existentes');
+    setPanelProgress(0, uniq.size);
+
+    let progress = 0;
     for (const [key, { name, customerId }] of uniq) {
+      if (myRunId != null) bailIfStale(myRunId);
       try {
-        const d = await api().query('AllPartNumbers', {
-          orderBy: ['ID_DESC'], offset: 0, first: 50, searchQuery: name
-        });
-        const nodes = d?.pagedData?.nodes || [];
-        const match = nodes.find(n =>
-          n.name?.toUpperCase() === name.toUpperCase() &&
-          !n.archivedAt &&
-          (n.customerByCustomerId?.id === customerId || n.customerId === customerId)
-        );
-        if (match) {
-          existMap.set(key, { id: match.id, processId: match.processNodeByDefaultProcessNodeId?.id || match.defaultProcessNodeId || null });
-          log(`  "${name}" (cust:${customerId}) -> EXISTE id:${match.id}`);
+        let offset = 0;
+        let found = null;
+        let totalScanned = 0;
+        while (offset < maxResults) {
+          if (myRunId != null) bailIfStale(myRunId);
+          const d = await withRetry(
+            () => api().query('AllPartNumbers', {
+              orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: name
+            }),
+            `AllPartNumbers "${name}" offset=${offset}`,
+            myRunId
+          );
+          const nodes = d?.pagedData?.nodes || [];
+          totalScanned += nodes.length;
+          const match = nodes.find(n =>
+            n.name?.toUpperCase() === name.toUpperCase() &&
+            !n.archivedAt &&
+            (n.customerByCustomerId?.id === customerId || n.customerId === customerId)
+          );
+          if (match) { found = match; break; }
+          if (nodes.length < pageSize) break; // última página
+          offset += pageSize;
         }
-        else log(`  "${name}" (cust:${customerId}) -> NUEVO (${nodes.length} resultados)`);
-      } catch (e) { warn(`Búsqueda "${name}": ${String(e).substring(0, 120)}`); }
+        if (found) {
+          existMap.set(key, { id: found.id, processId: found.processNodeByDefaultProcessNodeId?.id || found.defaultProcessNodeId || null });
+          log(`  "${name}" (cust:${customerId}) -> EXISTE id:${found.id} (scan=${totalScanned})`);
+        } else {
+          log(`  "${name}" (cust:${customerId}) -> NUEVO (scan=${totalScanned}${totalScanned >= maxResults ? ' CAP' : ''})`);
+          if (totalScanned >= maxResults) {
+            warn(`  ⚠ "${name}" alcanzó cap de ${maxResults} sin encontrar exacto — revisa si es duplicado silencioso`);
+          }
+        }
+      } catch (e) {
+        if (isBail(e)) throw e;
+        warn(`Búsqueda "${name}": ${String(e).substring(0, 120)}`);
+        state.counters.errors++;
+      }
+      progress++;
+      setPanelProgress(progress, uniq.size);
     }
     return parts.map(p => {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
@@ -343,42 +737,59 @@ const BulkUpload = (() => {
   function showPreview(header, parts, pnStatus, info, isSoloPN) {
     return new Promise(resolve => {
       injectStyles(); const { overlay, modal } = createOverlay();
-      const nc = pnStatus.filter(s => s.status === 'new').length, ec = pnStatus.filter(s => s.status === 'existing').length, dc = pnStatus.filter(s => s.status === 'forceDup').length;
 
-      // Build detail of what will be modified for each PN
-      let pnR = '';
-      for (let i = 0; i < pnStatus.length; i++) {
-        const s = pnStatus[i]; const part = parts[i];
-        const cls = s.status === 'new' ? 'dl9-new' : s.status === 'existing' ? 'dl9-exist' : 'dl9-dup';
-        const lbl = s.status === 'new' ? 'CREAR NUEVO'
-          : s.status === 'existing' ? `MODIFICAR (id:${s.existingId})`
-          : `DUPLICAR${part.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${s.existingId})`;
+      // ── Fix 4: preview paginado ──
+      // En vez de inyectar N <tr> con innerHTML (9k filas congelan Chrome),
+      // construimos un array de rows en memoria, filtramos/paginamos y solo
+      // renderizamos la página visible (100 filas) vía DOM.
 
-        // Summary of what data will be applied
+      const PAGE_SIZE = bulkCfg().preview.pageSize || 100;
+
+      // 1) Construir las rows una sola vez (objeto, no HTML)
+      const rows = pnStatus.map((s, i) => {
+        const part = parts[i];
         const changes = [];
         if (part.labels.length) changes.push(`${part.labels.length} labels`);
         if (part.specs.length) changes.push(`${part.specs.length} specs`);
         if (part.racks.length) changes.push(`${part.racks.length} racks`);
-        if (part.dims.length !== undefined || Object.values(part.dims).some(v => v !== null)) changes.push('dims');
+        if (part.dims && Object.values(part.dims).some(v => v !== null)) changes.push('dims');
         if (part.predictiveUsage.length) changes.push('predictive');
         if (part.unitConv.kgm !== null || part.unitConv.cmk !== null || part.unitConv.lm !== null) changes.push('unitConv');
         if (part.metalBase || part.pnAlterno || part.codigoSAT) changes.push('CI');
         if (part.validacion1er) changes.push('optIn');
         if (!isSoloPN && part.products.length) changes.push(`${part.products.length} products`);
         if (!isSoloPN) changes.push(`qty:${part.qty}`);
-        const changeSummary = changes.length ? changes.join(', ') : 'solo crear';
+        const customerBase = (part.cliente || '').split(/\s*[—–]\s*|\s+[-]\s+/)[0].trim();
+        return {
+          idx: i,
+          pn: s.pn,
+          status: s.status,
+          existingId: s.existingId || null,
+          archivarAnterior: !!part.archivarAnterior,
+          customer: customerBase || '(sin cliente)',
+          changeSummary: changes.length ? changes.join(', ') : 'solo crear',
+          qty: s.qty,
+          precio: s.precio,
+        };
+      });
 
-        pnR += `<tr>
-          <td><input type="checkbox" checked class="dl9-check" data-idx="${i}"></td>
-          <td>${s.pn}</td>
-          <td class="${cls}">${lbl}</td>
-          <td style="font-size:11px;color:#94a3b8">${changeSummary}</td>
-          ${isSoloPN ? '' : `<td>${s.qty}</td><td>${s.precio ?? '-'}</td>`}
-        </tr>`;
-      }
+      // 2) Selección global persistente: un Set, no checkboxes del DOM.
+      const selected = new Set(rows.map(r => r.idx));
 
-      // Mode-specific styling and content
-      const modeColor = isSoloPN ? '#0d9488' : '#2563eb'; // teal for SOLO_PN, blue for COTIZACIÓN
+      // 3) Conteos
+      const nc = rows.filter(r => r.status === 'new').length;
+      const ec = rows.filter(r => r.status === 'existing').length;
+      const dc = rows.filter(r => r.status === 'forceDup').length;
+
+      // 4) Catálogo de clientes para el dropdown (ordenado, top 50 si son muchos)
+      const customerCounts = new Map();
+      for (const r of rows) customerCounts.set(r.customer, (customerCounts.get(r.customer) || 0) + 1);
+      const customerOptions = [...customerCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }));
+
+      // Mode-specific styling
+      const modeColor = isSoloPN ? '#0d9488' : '#2563eb';
       const modeBg = isSoloPN ? '#0f2e2c' : '#1e293b';
       const modeLabel = isSoloPN ? 'SOLO NÚMEROS DE PARTE' : 'COTIZACIÓN + NP';
 
@@ -396,47 +807,196 @@ const BulkUpload = (() => {
             <div class="dl9-stat"><b>Empresa:</b> ${header.empresaEmisora || 'ECO'}</div>
            </div>`;
 
-      const tableHeaders = isSoloPN
-        ? '<th><input type="checkbox" checked id="dl9-select-all"></th><th>PN</th><th>Acción</th><th>Datos a aplicar</th>'
-        : '<th><input type="checkbox" checked id="dl9-select-all"></th><th>PN</th><th>Acción</th><th>Datos</th><th>Qty</th><th>Precio</th>';
+      // 5) Custom dropdown options HTML (built without innerHTML interpolation of row data)
+      const custOptsHtml = ['<option value="__all__">Todos los clientes</option>']
+        .concat(customerOptions.slice(0, 200).map(c => {
+          const safe = String(c.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          return `<option value="${safe}">${safe} (${c.count})</option>`;
+        }))
+        .join('');
 
       modal.style.background = modeBg;
       modal.innerHTML = `
-        <h2 style="color:${modeColor}">Steelhead Automator v9 — ${modeLabel}</h2>
-        <p class="dl9-sub">${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup</p>
+        <h2 style="color:${modeColor}">Steelhead Automator v10 — ${modeLabel}</h2>
+        <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup</p>
         ${statsHtml}
-        <h3>Part Numbers (${parts.length}) — desmarca los que NO quieras procesar:</h3>
-        <div style="max-height:250px;overflow-y:auto">
-          <table><tr>${tableHeaders}</tr>${pnR}</table>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center">
+          <label style="font-size:12px;color:#94a3b8">Filtro:
+            <select id="dl9-flt-status" style="margin-left:4px;padding:3px 6px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px">
+              <option value="__all__">Todos los estatus</option>
+              <option value="new">Solo nuevos</option>
+              <option value="existing">Solo existentes</option>
+              <option value="forceDup">Solo forceDup</option>
+            </select>
+          </label>
+          <label style="font-size:12px;color:#94a3b8">Cliente:
+            <select id="dl9-flt-cust" style="margin-left:4px;padding:3px 6px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;max-width:280px">${custOptsHtml}</select>
+          </label>
+          <span style="font-size:12px;color:#94a3b8;margin-left:auto">Seleccionadas: <b id="dl9-sel-count">${selected.size}</b> / ${rows.length}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <button class="dl9-btn" id="dl9-sel-page" style="background:#1e293b;color:#e2e8f0;font-size:11px;padding:4px 10px">Seleccionar todo (página)</button>
+          <button class="dl9-btn" id="dl9-unsel-page" style="background:#1e293b;color:#e2e8f0;font-size:11px;padding:4px 10px">Deseleccionar todo (página)</button>
+          <button class="dl9-btn" id="dl9-sel-global" style="background:#1e293b;color:#e2e8f0;font-size:11px;padding:4px 10px">Seleccionar TODO (global)</button>
+          <button class="dl9-btn" id="dl9-unsel-global" style="background:#1e293b;color:#e2e8f0;font-size:11px;padding:4px 10px">Deseleccionar TODO (global)</button>
+        </div>
+        <h3 id="dl9-preview-title" style="margin-bottom:4px">Part Numbers — página 1</h3>
+        <div id="dl9-table-wrap" style="max-height:300px;overflow-y:auto;border:1px solid #334155;border-radius:4px">
+          <table style="width:100%;border-collapse:collapse"><thead id="dl9-thead"></thead><tbody id="dl9-tbody"></tbody></table>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <button class="dl9-btn" id="dl9-prev-page" style="background:#1e293b;color:#e2e8f0;font-size:11px;padding:4px 10px">‹ Anterior</button>
+          <span id="dl9-page-info" style="font-size:12px;color:#94a3b8">Página 1 / 1</span>
+          <button class="dl9-btn" id="dl9-next-page" style="background:#1e293b;color:#e2e8f0;font-size:11px;padding:4px 10px">Siguiente ›</button>
+          <span style="font-size:12px;color:#94a3b8;margin-left:auto">Filtradas: <b id="dl9-filtered-count">0</b></span>
         </div>
         <div class="dl9-btnrow">
           <button class="dl9-btn dl9-btn-cancel" id="dl9-cancel">CANCELAR</button>
-          <button class="dl9-btn" id="dl9-exec" style="background:${modeColor};color:white">EJECUTAR (<span id="dl9-count">${parts.length}</span> PNs)</button>
+          <button class="dl9-btn" id="dl9-exec" style="background:${modeColor};color:white">EJECUTAR (<span id="dl9-count">${selected.size}</span> PNs)</button>
         </div>`;
 
-      // Select all checkbox
-      document.getElementById('dl9-select-all').onchange = (e) => {
-        modal.querySelectorAll('.dl9-check').forEach(cb => { cb.checked = e.target.checked; });
-        updateCount();
-      };
+      // Render thead
+      const thead = modal.querySelector('#dl9-thead');
+      const headerCells = isSoloPN
+        ? ['Sel', 'PN', 'Cliente', 'Acción', 'Datos a aplicar']
+        : ['Sel', 'PN', 'Cliente', 'Acción', 'Datos', 'Qty', 'Precio'];
+      const trh = document.createElement('tr');
+      for (const cell of headerCells) {
+        const th = document.createElement('th');
+        th.textContent = cell;
+        th.style.textAlign = 'left';
+        th.style.padding = '4px 6px';
+        th.style.background = '#0f172a';
+        th.style.fontSize = '11px';
+        th.style.borderBottom = '1px solid #334155';
+        trh.appendChild(th);
+      }
+      thead.appendChild(trh);
 
-      // Individual checkboxes update count
-      modal.querySelectorAll('.dl9-check').forEach(cb => { cb.onchange = updateCount; });
+      // Filter + pagination state
+      let filterStatus = '__all__';
+      let filterCustomer = '__all__';
+      let currentPage = 0;
+      let filteredRows = rows; // se recalcula en applyFilters
 
-      function updateCount() {
-        const checked = modal.querySelectorAll('.dl9-check:checked').length;
-        document.getElementById('dl9-count').textContent = checked;
+      function applyFilters() {
+        filteredRows = rows.filter(r => {
+          if (filterStatus !== '__all__' && r.status !== filterStatus) return false;
+          if (filterCustomer !== '__all__' && r.customer !== filterCustomer) return false;
+          return true;
+        });
+        currentPage = 0;
+        modal.querySelector('#dl9-filtered-count').textContent = filteredRows.length;
+        renderPage();
       }
 
-      document.getElementById('dl9-cancel').onclick = () => { removeOverlay(overlay); resolve(false); };
-      document.getElementById('dl9-exec').onclick = () => {
-        // Build array of selected indices
-        const selected = [];
-        modal.querySelectorAll('.dl9-check:checked').forEach(cb => {
-          selected.push(parseInt(cb.dataset.idx));
-        });
+      function totalPages() { return Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE)); }
+
+      function updateSelCount() {
+        modal.querySelector('#dl9-sel-count').textContent = selected.size;
+        modal.querySelector('#dl9-count').textContent = selected.size;
+      }
+
+      function renderPage() {
+        const tbody = modal.querySelector('#dl9-tbody');
+        tbody.replaceChildren();
+        const start = currentPage * PAGE_SIZE;
+        const slice = filteredRows.slice(start, start + PAGE_SIZE);
+        for (const r of slice) {
+          const tr = document.createElement('tr');
+          tr.style.borderBottom = '1px solid #1e293b';
+          tr.style.fontSize = '12px';
+
+          const tdCheck = document.createElement('td');
+          tdCheck.style.padding = '3px 6px';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = selected.has(r.idx);
+          cb.dataset.idx = String(r.idx);
+          cb.onchange = () => {
+            if (cb.checked) selected.add(r.idx);
+            else selected.delete(r.idx);
+            updateSelCount();
+          };
+          tdCheck.appendChild(cb);
+          tr.appendChild(tdCheck);
+
+          const tdPN = document.createElement('td');
+          tdPN.textContent = r.pn;
+          tdPN.style.padding = '3px 6px';
+          tdPN.style.fontFamily = 'monospace';
+          tr.appendChild(tdPN);
+
+          const tdCust = document.createElement('td');
+          tdCust.textContent = r.customer;
+          tdCust.style.padding = '3px 6px';
+          tdCust.style.color = '#94a3b8';
+          tdCust.style.fontSize = '11px';
+          tr.appendChild(tdCust);
+
+          const tdAct = document.createElement('td');
+          tdAct.style.padding = '3px 6px';
+          if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
+          else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
+          else { tdAct.className = 'dl9-dup'; tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`; }
+          tr.appendChild(tdAct);
+
+          const tdChg = document.createElement('td');
+          tdChg.textContent = r.changeSummary;
+          tdChg.style.fontSize = '11px';
+          tdChg.style.color = '#94a3b8';
+          tdChg.style.padding = '3px 6px';
+          tr.appendChild(tdChg);
+
+          if (!isSoloPN) {
+            const tdQ = document.createElement('td'); tdQ.textContent = r.qty != null ? String(r.qty) : '-';
+            tdQ.style.padding = '3px 6px'; tr.appendChild(tdQ);
+            const tdP = document.createElement('td'); tdP.textContent = r.precio != null ? String(r.precio) : '-';
+            tdP.style.padding = '3px 6px'; tr.appendChild(tdP);
+          }
+
+          tbody.appendChild(tr);
+        }
+        modal.querySelector('#dl9-preview-title').textContent =
+          `Part Numbers — página ${currentPage + 1} de ${totalPages()} (mostrando ${slice.length} de ${filteredRows.length} filtradas)`;
+        modal.querySelector('#dl9-page-info').textContent = `Página ${currentPage + 1} / ${totalPages()}`;
+      }
+
+      // Wire up controls
+      modal.querySelector('#dl9-flt-status').onchange = (e) => { filterStatus = e.target.value; applyFilters(); };
+      modal.querySelector('#dl9-flt-cust').onchange = (e) => { filterCustomer = e.target.value; applyFilters(); };
+      modal.querySelector('#dl9-prev-page').onclick = () => { if (currentPage > 0) { currentPage--; renderPage(); } };
+      modal.querySelector('#dl9-next-page').onclick = () => { if (currentPage < totalPages() - 1) { currentPage++; renderPage(); } };
+      modal.querySelector('#dl9-sel-page').onclick = () => {
+        const start = currentPage * PAGE_SIZE;
+        for (const r of filteredRows.slice(start, start + PAGE_SIZE)) selected.add(r.idx);
+        renderPage(); updateSelCount();
+      };
+      modal.querySelector('#dl9-unsel-page').onclick = () => {
+        const start = currentPage * PAGE_SIZE;
+        for (const r of filteredRows.slice(start, start + PAGE_SIZE)) selected.delete(r.idx);
+        renderPage(); updateSelCount();
+      };
+      modal.querySelector('#dl9-sel-global').onclick = () => {
+        // Si son >5k filas filtradas, pedir confirmación
+        if (filteredRows.length > 5000 && !confirm(`Vas a seleccionar ${filteredRows.length} filas. ¿Continuar?`)) return;
+        for (const r of filteredRows) selected.add(r.idx);
+        renderPage(); updateSelCount();
+      };
+      modal.querySelector('#dl9-unsel-global').onclick = () => {
+        for (const r of filteredRows) selected.delete(r.idx);
+        renderPage(); updateSelCount();
+      };
+
+      // Initial render
+      applyFilters();
+      updateSelCount();
+
+      modal.querySelector('#dl9-cancel').onclick = () => { removeOverlay(overlay); resolve(false); };
+      modal.querySelector('#dl9-exec').onclick = () => {
+        const out = [...selected].sort((a, b) => a - b);
         removeOverlay(overlay);
-        resolve(selected);
+        resolve(out);
       };
     });
   }
@@ -529,6 +1089,14 @@ const BulkUpload = (() => {
     const errors = [];
     const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
+    // Cancellation token + panel: cada corrida obtiene un runId monotónico que
+    // se propaga a runPool, withRetry, checkPNExistence y demás helpers async.
+    const myRunId = nextRunId();
+    try { showPanel(); } catch (_) {}
+    setPanelPhase('Iniciando...');
+    setPanelProgress(0, 0);
+    setPanelCounters();
+
     try {
       log('Steelhead Automator v9 — iniciando...');
 
@@ -548,6 +1116,48 @@ const BulkUpload = (() => {
       }
       stats.quoteName = isSoloPN ? '(SOLO_PN)' : quoteName;
       log(`Modo: ${isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP'} ${isSoloPN ? '' : '— "' + quoteName + '"'}`);
+
+      // ── Fix 7: detección de corrida previa por sha256(csvText) ──
+      // Si encuentro progreso previo de ESTE mismo CSV, ofrezco resume.
+      // Si el usuario edita el CSV entre runs, el runKey cambia y se trata como
+      // corrida nueva (intencional — el resume sólo cuadra con CSV idéntico).
+      purgeOldResumeStates();
+      const runKey = await computeRunKey(csvClean);
+      const prev = loadResumeStateByKey(runKey);
+      let resumeCompletedSet = new Set();
+      if (prev && prev.phase && prev.phase !== 'done') {
+        const decision = await askResumeOrFresh(prev);
+        if (decision === 'cancel') {
+          hidePanel();
+          log('Cancelado por usuario en modal de resume.');
+          return;
+        }
+        if (decision === 'resume') {
+          resumeState = prev;
+          resumeState.lastUpdatedAt = new Date().toISOString();
+          resumeCompletedSet = new Set(prev.completedPNs || []);
+          log(`Reanudando corrida previa — fase: ${prev.phase}, ${resumeCompletedSet.size} PNs ya completados.`);
+        } else {
+          // 'fresh' — borrar progreso previo
+          deleteResumeStateByKey(runKey);
+        }
+      }
+      if (!resumeState) {
+        resumeState = {
+          runKey,
+          csvFirstLineHash: (csvClean.split('\n')[0] || '').substring(0, 80),
+          startedAt: new Date().toISOString(),
+          mode: isSoloPN ? 'SOLO_PN' : 'COTIZACIÓN+NP',
+          customerScope: '', // se llena más abajo cuando conozcamos clientes únicos
+          phase: 'init',
+          completedPNs: [],
+          failedPNs: [],
+          quoteId: null,
+          quoteAction: null,
+          lastUpdatedAt: new Date().toISOString(),
+        };
+        await persistResumeState();
+      }
 
       // ── V10: Validate required per-line fields ──
       const sinCliente = parts.filter(p => !p.cliente);
@@ -700,7 +1310,8 @@ const BulkUpload = (() => {
       }
 
       // ── PN existence check ──
-      const pnStatus = await checkPNExistence(parts);
+      bailIfStale(myRunId);
+      const pnStatus = await checkPNExistence(parts, myRunId);
 
       // V10: Resolver proceso vacío / "-" según existence:
       //   "-"   → set null (borrar default process)
@@ -1193,11 +1804,24 @@ const BulkUpload = (() => {
       }
       if (existingPredictedMap.size) log(`  Pre-fetched predictivos existentes de ${existingPredictedMap.size} PNs`);
 
+      // FIX 1 (2026-05-18): pool concurrente (default 5) en lugar de loop secuencial.
+      // 9k PNs × 0.5-1s sec → 75 min se vuelven 15-30 min con concurrency 5.
       let okSP = 0, retrySP = 0;
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i]; const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
+      const enrichConcurrency = bulkCfg().concurrency.savePartNumber;
+      setPanelPhase('Enriqueciendo PNs (pool ' + enrichConcurrency + ')');
+      setPanelProgress(0, parts.length);
+
+      async function enrichWorker(part, idx, myRunId) {
+        bailIfStale(myRunId);
+        // Resume: si este PN ya quedó completado en una corrida previa, brincarlo.
+        if (resumeCompletedSet.has(`${part.pn}|${part.customerId}`)) {
+          okSP++;
+          state.counters.ok++;
+          return;
+        }
+        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+        if (!entry) return;
         const pn = entry.pn;
-        setProgressBar(55 + Math.round((i / parts.length) * 20));
 
         // Guión comodín: "-" en primer label = borrar todos los labels
         const labelsAreDash = part.labels.length === 1 && isDash(part.labels[0]);
@@ -1261,10 +1885,6 @@ const BulkUpload = (() => {
             optInOuts.push({ processNodeId: nodeId, processNodeOccurrence: 1, cancelOthers: false });
           }
           stats.validacionSet++;
-          log(`  -> ${pn.name}: OptIn validación ACTIVAR`);
-        } else {
-          // FALSE = explicitly deactivate (send empty array)
-          log(`  -> ${pn.name}: OptIn validación DESACTIVAR`);
         }
 
         // Grupo — "-" = quitar grupo
@@ -1274,7 +1894,6 @@ const BulkUpload = (() => {
         const dimValueIds = [];
         if (part.linea && !isDash(part.linea)) { const id = dimValueMap.get(part.linea); if (id) dimValueIds.push(id); else warn(`Línea "${part.linea}" no encontrada en dimensiones`); }
         if (part.departamento && !isDash(part.departamento)) { const id = dimValueMap.get(part.departamento); if (id) dimValueIds.push(id); else warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); }
-        // V10: Proceso siempre viene de la línea (obligatorio, sin fallback)
         const pnProcessId = part.processId;
 
         const pnInput = {
@@ -1284,9 +1903,6 @@ const BulkUpload = (() => {
           partNumberGroupId: pnGroupId,
           geometryTypeId: hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null),
           inventoryItemInput: ucs.length ? { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] } : null,
-          // V10: solo enviar predictivos NUEVOS (sin registro existente). Los que ya existen
-          // se actualizan después con UpdateInventoryItemPredictedUsage para evitar el unique
-          // constraint en (pn, inventoryItem) que disparaba el retry y strippeaba el campo.
           inventoryPredictedUsages: finalPredictive
             .filter(pu => !existingPredictedMap.get(pn.id)?.has(String(pu.inventoryItemId)))
             .map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
@@ -1298,28 +1914,70 @@ const BulkUpload = (() => {
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
         };
 
+        bailIfStale(myRunId);
         try {
-          const spRes = await api().query('SavePartNumber', { input: [pnInput] });
+          // withRetry para 429/503/network; unique_constraint cae a la lógica progresiva abajo
+          await withRetry(
+            () => api().query('SavePartNumber', { input: [pnInput] }),
+            `SavePartNumber "${pnInput.name}"`,
+            myRunId
+          );
           okSP++;
-          log(`  -> ${pnInput.name}: enrich OK (labels:${labelIds.length} specs:${specsToApply.length} dims:${dims.length} optIn:${optInOuts.length} pred:${part.predictiveUsage.length})`);
+          state.counters.ok++;
         }
         catch (e) {
+          if (isBail(e)) throw e;
           const errStr = String(e);
           if (errStr.includes('unique_constraint') || errStr.includes('exclusion constraint') || errStr.includes('23505') || errStr.includes('duplicate key')) {
             // Retry progressively removing fields that cause duplicates
             try {
-              await api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [] }] });
+              await withRetry(
+                () => api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [] }] }),
+                `SavePartNumber "${pnInput.name}" strip1`,
+                myRunId
+              );
               retrySP++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
             } catch (e2) {
+              if (isBail(e2)) throw e2;
               try {
-                await api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [], inventoryPredictedUsages: [] }] });
+                await withRetry(
+                  () => api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [], inventoryPredictedUsages: [] }] }),
+                  `SavePartNumber "${pnInput.name}" strip2`,
+                  myRunId
+                );
                 retrySP++; log(`  -> ${pnInput.name}: retry mínimo OK`);
-              } catch (e3) { errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`); }
+              } catch (e3) {
+                if (isBail(e3)) throw e3;
+                errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`);
+                state.counters.errors++;
+              }
             }
-          } else errors.push(`SavePartNumber "${pnInput.name}": ${errStr.substring(0, 120)}`);
+          } else {
+            errors.push(`SavePartNumber "${pnInput.name}": ${errStr.substring(0, 120)}`);
+            state.counters.errors++;
+          }
+        }
+
+        // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados
+        if ((okSP + retrySP) % 50 === 0 && resumeState) {
+          resumeState.completedPNs.push(`${part.pn}|${part.customerId}`);
+          persistResumeState().catch(() => {});
+        } else if (resumeState) {
+          resumeState.completedPNs.push(`${part.pn}|${part.customerId}`);
         }
       }
-      log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`); showProgressUI(`  -> ${okSP} OK, ${retrySP} retry`);
+
+      await runPool(
+        parts,
+        enrichWorker,
+        enrichConcurrency,
+        (done, total) => { setPanelProgress(done, total); setPanelCounters(); setProgressBar(55 + Math.round((done / Math.max(total, 1)) * 20)); },
+        myRunId
+      );
+      bailIfStale(myRunId);
+      log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`);
+      showProgressUI(`  -> ${okSP} OK, ${retrySP} retry`);
+      if (resumeState) { resumeState.phase = 'enrich-done'; await persistResumeState(); }
 
       // STEP 6a: Actualizar predictivos existentes vía UpdateInventoryItemPredictedUsage.
       // Steelhead almacena en microQuantityPerPart (kg/pza × 1e6 redondeado).
@@ -1595,17 +2253,57 @@ const BulkUpload = (() => {
         catch (e) { /* silencioso — puede que no fuera default */ }
       }
       if (priceIdsToUnsetDefault.length) log(`  Default price unset: ${stats.defaultPriceUnset || 0}`);
-      for (const p of pnsToArchive) {
-        try { await api().query('UpdatePartNumber', { id: p.id, archivedAt: new Date().toISOString() }); stats.archived++; }
-        catch (e) { errors.push(`Archivar "${p.name}": ${String(e).substring(0, 100)}`); }
-      }
-      for (const p of oldPnsToArchive) {
-        try { await api().query('UpdatePartNumber', { id: p.id, archivedAt: new Date().toISOString() }); stats.oldArchived++; }
-        catch (e) { errors.push(`ArchAnt "${p.name}": ${String(e).substring(0, 100)}`); }
-      }
-      for (const p of pnsToUnarchive) {
-        try { await api().query('UpdatePartNumber', { id: p.id, archivedAt: null }); stats.unarchived = (stats.unarchived || 0) + 1; }
-        catch (e) { /* silencioso — puede que no estuviera archivado */ }
+      // ── Fix 6: archivado en pool concurrente (5 workers + withRetry) ──
+      // Combinamos las 3 listas en un solo run para que el pool aproveche la
+      // capacidad cuando hay pocos items de un tipo y muchos de otro.
+      const archiveOps = [
+        ...pnsToArchive.map(p => ({ id: p.id, name: p.name, kind: 'archive' })),
+        ...oldPnsToArchive.map(p => ({ id: p.id, name: p.name, kind: 'oldArchive' })),
+        ...pnsToUnarchive.map(p => ({ id: p.id, name: p.name, kind: 'unarchive' })),
+      ];
+      if (archiveOps.length) {
+        const archiveConcurrency = bulkCfg().concurrency.archive;
+        setPanelPhase('Archivando PNs (pool ' + archiveConcurrency + ')');
+        setPanelProgress(0, archiveOps.length);
+        log(`  Archivado: ${pnsToArchive.length} nuevos archivar, ${oldPnsToArchive.length} viejos archivar, ${pnsToUnarchive.length} desarchivar (concurrencia ${archiveConcurrency})`);
+
+        async function archiveWorker(op, _idx, runId) {
+          bailIfStale(runId);
+          try {
+            if (op.kind === 'unarchive') {
+              await withRetry(
+                () => api().query('UpdatePartNumber', { id: op.id, archivedAt: null }),
+                `UpdatePartNumber unarchive "${op.name}"`, runId
+              );
+              stats.unarchived = (stats.unarchived || 0) + 1;
+            } else {
+              await withRetry(
+                () => api().query('UpdatePartNumber', { id: op.id, archivedAt: new Date().toISOString() }),
+                `UpdatePartNumber ${op.kind} "${op.name}"`, runId
+              );
+              if (op.kind === 'archive') stats.archived++;
+              else stats.oldArchived++;
+            }
+            state.counters.ok++;
+          } catch (e) {
+            if (isBail(e)) throw e;
+            // unarchive: silencioso (puede que no estuviera archivado)
+            if (op.kind !== 'unarchive') {
+              const label = op.kind === 'oldArchive' ? 'ArchAnt' : 'Archivar';
+              errors.push(`${label} "${op.name}": ${String(e).substring(0, 100)}`);
+              state.counters.errors++;
+            }
+          }
+        }
+
+        await runPool(
+          archiveOps,
+          archiveWorker,
+          archiveConcurrency,
+          (done, total) => { setPanelProgress(done, total); setPanelCounters(); setProgressBar(90 + Math.round((done / Math.max(total, 1)) * 8)); },
+          myRunId
+        );
+        bailIfStale(myRunId);
       }
       if (pnsToUnarchive.length) log(`  Desarchivados: ${stats.unarchived || 0}`);
 
@@ -1692,12 +2390,32 @@ const BulkUpload = (() => {
         log('  Log guardado en historial');
       } catch (e) { warn('Error guardando log: ' + e.message); }
 
+      // Fix 7: marcar la corrida como completa para que el próximo run con el
+      // mismo CSV no pregunte si reanudar. El TTL de purge la borrará después.
+      if (resumeState) {
+        resumeState.phase = 'done';
+        await persistResumeState();
+      }
+      try { markPanelDone(errors.length === 0); } catch (_) {}
+
       showResult(stats, quoteUrl, errors, quoteUrlLabel);
       return { success: true, stats, errors };
 
     } catch (e) {
+      if (isBail(e)) {
+        console.warn('[SA] cancelado por usuario.');
+        const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
+        try { markPanelDone(false, 'Cancelado'); } catch (_) {}
+        return { success: false, cancelled: true };
+      }
       console.error('[SA] FATAL:', e);
       const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
+      // Persistir el progreso parcial para que el próximo run pueda retomar
+      if (resumeState) {
+        resumeState.phase = resumeState.phase || 'error';
+        await persistResumeState().catch(() => {});
+      }
+      try { markPanelDone(false, e.message); } catch (_) {}
       showResult(stats, null, [`FATAL: ${e.message}`]);
       return { success: false, error: e.message };
     }
