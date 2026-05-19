@@ -37,7 +37,7 @@ const WODeadlineChanger = (() => {
       const nodes = data?.pagedData?.nodes || [];
       const total = data?.pagedData?.totalCount || 0;
       all.push(...nodes);
-      if (onProgress) onProgress(`OTs: ${all.length}/${total}`);
+      if (onProgress) onProgress({ current: all.length, total });
       if (nodes.length < PAGE) break;
       offset += PAGE;
     }
@@ -81,7 +81,7 @@ const WODeadlineChanger = (() => {
       for (const r of results) {
         if (r) pnCache[r.id] = r;
       }
-      if (onProgress) onProgress(`NPs: ${Math.min(i + BATCH, ids.length)}/${ids.length}`);
+      if (onProgress) onProgress({ current: Math.min(i + BATCH, ids.length), total: ids.length });
     }
     return pnCache;
   }
@@ -206,7 +206,19 @@ const WODeadlineChanger = (() => {
       .sa-wod-btn-exec{background:#8b5cf6;color:white}
       .sa-wod-btn-exec:disabled{opacity:0.4;cursor:default}
       .sa-wod-progress{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-      .sa-wod-progress-box{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;text-align:center;min-width:300px}
+      .sa-wod-progress-box{background:#1e293b;color:#e2e8f0;border-radius:14px;padding:26px 32px 22px;text-align:center;min-width:380px;max-width:460px;box-shadow:0 12px 40px rgba(0,0,0,0.55)}
+      .sa-wod-prog-spinner{width:30px;height:30px;border:3px solid #334155;border-top-color:#a78bfa;border-radius:50%;animation:sa-wod-spin 0.9s linear infinite;margin:0 auto 12px}
+      .sa-wod-prog-phase{font-size:11px;font-weight:600;color:#a78bfa;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;min-height:14px}
+      .sa-wod-prog-counter{font-size:34px;font-weight:700;color:#fff;margin-bottom:12px;font-variant-numeric:tabular-nums;line-height:1.05;letter-spacing:-0.5px}
+      .sa-wod-prog-bar{width:100%;height:8px;background:#334155;border-radius:4px;overflow:hidden;margin-bottom:10px;position:relative}
+      .sa-wod-prog-bar-fill{height:100%;background:linear-gradient(90deg,#8b5cf6,#a78bfa);border-radius:4px;width:0%;transition:width 0.3s ease-out}
+      .sa-wod-prog-bar.indet .sa-wod-prog-bar-fill{width:35%;background:linear-gradient(90deg,transparent,#a78bfa,transparent);animation:sa-wod-indet 1.4s ease-in-out infinite;transition:none}
+      .sa-wod-prog-msg{font-size:13px;color:#cbd5e1;margin-bottom:10px;min-height:18px}
+      .sa-wod-prog-foot{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b;gap:12px}
+      .sa-wod-prog-hint{flex:1;text-align:left;color:#64748b}
+      .sa-wod-prog-eta{color:#94a3b8;font-variant-numeric:tabular-nums;white-space:nowrap}
+      @keyframes sa-wod-spin{to{transform:rotate(360deg)}}
+      @keyframes sa-wod-indet{0%{transform:translateX(-100%)}100%{transform:translateX(370%)}}
       .sa-wod-labels-section{margin-bottom:8px}
       .sa-wod-labels-section .section-title{font-size:11px;color:#94a3b8;margin-bottom:4px}
       .sa-wod-label-chip{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;margin:2px 3px;cursor:pointer;border:2px solid transparent;transition:border-color 0.15s,opacity 0.15s;opacity:0.6}
@@ -217,22 +229,116 @@ const WODeadlineChanger = (() => {
     document.head.appendChild(s);
   }
 
-  function showProgress(msg) {
+  // Timer por fase para calcular ETA. Se resetea cuando cambia phase.
+  let _progState = { phaseKey: null, startTs: 0, startCurrent: 0 };
+
+  function fmtDuration(ms) {
+    if (!isFinite(ms) || ms <= 0) return '';
+    const s = Math.ceil(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem ? `${m}m ${rem}s` : `${m}m`;
+  }
+
+  function fmtNum(n) {
+    if (n == null) return '—';
+    return Number(n).toLocaleString('es-MX');
+  }
+
+  // showProgress acepta string (compat) o un objeto:
+  //   { phase, phaseNum, phaseTotal, label, current, total, hint, indeterminate }
+  function showProgress(opts) {
     ensureStyles();
     let el = document.getElementById('sa-wod-prog');
     if (!el) {
       el = document.createElement('div');
       el.id = 'sa-wod-prog';
       el.className = 'sa-wod-progress';
-      el.innerHTML = '<div class="sa-wod-progress-box"><div id="sa-wod-prog-msg" style="font-size:14px"></div></div>';
+      el.innerHTML = `
+        <div class="sa-wod-progress-box">
+          <div class="sa-wod-prog-spinner"></div>
+          <div class="sa-wod-prog-phase" id="sa-wod-prog-phase"></div>
+          <div class="sa-wod-prog-counter" id="sa-wod-prog-counter">—</div>
+          <div class="sa-wod-prog-bar" id="sa-wod-prog-bar"><div class="sa-wod-prog-bar-fill" id="sa-wod-prog-bar-fill"></div></div>
+          <div class="sa-wod-prog-msg" id="sa-wod-prog-msg"></div>
+          <div class="sa-wod-prog-foot">
+            <div class="sa-wod-prog-hint" id="sa-wod-prog-hint">Esto puede tardar 1-2 min. No cierres esta pestaña.</div>
+            <div class="sa-wod-prog-eta" id="sa-wod-prog-eta"></div>
+          </div>
+        </div>`;
       document.body.appendChild(el);
+      _progState = { phaseKey: null, startTs: Date.now(), startCurrent: 0 };
     }
-    document.getElementById('sa-wod-prog-msg').textContent = msg;
+
+    const o = typeof opts === 'string' ? { label: opts } : (opts || {});
+    const phase = o.phase || '';
+    const phaseNum = o.phaseNum, phaseTotal = o.phaseTotal;
+    const label = o.label || '';
+    const current = o.current, total = o.total;
+    const hint = o.hint;
+    const indeterminate = !!o.indeterminate || current == null || total == null || total <= 0;
+
+    // Reset timer cuando cambia de fase
+    const phaseKey = `${phaseNum || ''}|${phase}`;
+    if (_progState.phaseKey !== phaseKey) {
+      _progState.phaseKey = phaseKey;
+      _progState.startTs = Date.now();
+      _progState.startCurrent = current || 0;
+    }
+
+    // Phase header
+    const phaseEl = document.getElementById('sa-wod-prog-phase');
+    phaseEl.textContent = (phaseNum && phaseTotal && phase)
+      ? `Fase ${phaseNum} de ${phaseTotal} · ${phase}`
+      : (phase || '');
+
+    // Counter
+    const counterEl = document.getElementById('sa-wod-prog-counter');
+    counterEl.textContent = (current != null && total != null)
+      ? `${fmtNum(current)} / ${fmtNum(total)}`
+      : (indeterminate ? '…' : '—');
+
+    // Bar
+    const barEl = document.getElementById('sa-wod-prog-bar');
+    const fillEl = document.getElementById('sa-wod-prog-bar-fill');
+    if (indeterminate) {
+      barEl.classList.add('indet');
+    } else {
+      barEl.classList.remove('indet');
+      const pct = Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+      fillEl.style.width = pct + '%';
+    }
+
+    // Label
+    document.getElementById('sa-wod-prog-msg').textContent = label;
+
+    // Hint (sólo si lo pasan; conserva el default si no)
+    if (hint != null) document.getElementById('sa-wod-prog-hint').textContent = hint;
+
+    // ETA basado en velocidad de la fase actual
+    const etaEl = document.getElementById('sa-wod-prog-eta');
+    if (!indeterminate && current > _progState.startCurrent && current < total) {
+      const elapsed = Date.now() - _progState.startTs;
+      const done = current - _progState.startCurrent;
+      if (elapsed > 800 && done > 0) {
+        const rate = done / elapsed; // items per ms
+        const etaMs = (total - current) / rate;
+        etaEl.textContent = `⏱ ~${fmtDuration(etaMs)}`;
+      } else {
+        etaEl.textContent = '';
+      }
+    } else if (!indeterminate && current >= total && total > 0) {
+      etaEl.textContent = '✓ listo';
+    } else {
+      etaEl.textContent = '';
+    }
   }
 
   function hideProgress() {
     const el = document.getElementById('sa-wod-prog');
     if (el) el.parentNode.removeChild(el);
+    _progState = { phaseKey: null, startTs: 0, startCurrent: 0 };
   }
 
   function formatDate(iso) {
@@ -243,6 +349,7 @@ const WODeadlineChanger = (() => {
 
   async function fetchDropdownOptions() {
     // Fetch ALL active WOs (for counts + dropdown extraction) and products in parallel
+    const PH = { phaseNum: 1, phaseTotal: 3, phase: 'Catálogos' };
     const [prodResult, woCountResult] = await Promise.allSettled([
       (async () => {
         const d = await api().query('SearchProducts', {
@@ -250,7 +357,9 @@ const WODeadlineChanger = (() => {
         }, 'SearchProducts');
         return d?.searchProducts?.nodes || d?.pagedData?.nodes || [];
       })(),
-      fetchAllActiveWOs({}, null)
+      fetchAllActiveWOs({}, (p) => {
+        showProgress({ ...PH, label: 'Indexando clientes y procesos...', current: p.current, total: p.total });
+      })
     ]);
 
     const allProducts = prodResult.status === 'fulfilled' ? prodResult.value : [];
@@ -621,11 +730,13 @@ const WODeadlineChanger = (() => {
   // ══════════════════════════════════════════
 
   async function loadData(serverFilters, existingPnCache) {
-    showProgress('Cargando órdenes de trabajo...');
-    const wos = await fetchAllActiveWOs(serverFilters, (msg) => showProgress(msg));
+    const PH = { phaseTotal: 3 };
+    showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Listando...', indeterminate: true });
+    const wos = await fetchAllActiveWOs(serverFilters, (p) => {
+      showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Descargando lote...', current: p.current, total: p.total });
+    });
     log(`OTs cargadas: ${wos.length}`);
 
-    showProgress('Cargando números de parte...');
     const pnCache = existingPnCache || {};
     // Only fetch PNs we don't already have cached
     const uncached = [];
@@ -635,9 +746,10 @@ const WODeadlineChanger = (() => {
       }
     }
     if (uncached.length > 0) {
+      showProgress({ ...PH, phaseNum: 3, phase: 'Números de parte', label: 'Buscando detalles...', indeterminate: true });
       const newPns = await enrichWithPNData(
         wos.filter(wo => (wo.partNumberWorkOrdersByWorkOrderId?.nodes || []).some(p => uncached.includes(p.partNumberId))),
-        (msg) => showProgress(msg)
+        (p) => showProgress({ ...PH, phaseNum: 3, phase: 'Números de parte', label: 'Enriqueciendo...', current: p.current, total: p.total })
       );
       Object.assign(pnCache, newPns);
     }
@@ -687,7 +799,7 @@ const WODeadlineChanger = (() => {
           errors.push(`OT ${wo.idInDomain}: ${String(e).substring(0, 100)}`);
         }
       }));
-      if (onProgress) onProgress(`Etiquetas: ${Math.min(i + BATCH, selectedWOs.length)}/${selectedWOs.length}`);
+      if (onProgress) onProgress({ current: Math.min(i + BATCH, selectedWOs.length), total: selectedWOs.length });
     }
     return { added, removed, errors };
   }
@@ -702,10 +814,10 @@ const WODeadlineChanger = (() => {
     let finalChoice = null;
 
     // Fetch dropdown options once (shared across reloads)
-    showProgress('Cargando catálogos...');
+    showProgress({ phaseNum: 1, phaseTotal: 3, phase: 'Catálogos', label: 'Cargando opciones...', indeterminate: true });
     const dropdownCache = await fetchDropdownOptions();
 
-    showProgress('Cargando etiquetas...');
+    showProgress({ phaseNum: 1, phaseTotal: 3, phase: 'Catálogos', label: 'Cargando etiquetas...', indeterminate: true });
     const woLabelCatalog = await fetchWOLabels();
 
     // Load → show UI → reload loop
@@ -745,13 +857,15 @@ const WODeadlineChanger = (() => {
 
     // Apply labels first
     if (labelsToAdd.length > 0 || labelsToRemove.length > 0) {
-      showProgress(`Aplicando etiquetas a ${selectedWOs.length} OTs...`);
-      labelResult = await applyLabels(selectedWOs, labelsToAdd, labelsToRemove, woLabelCatalog, (msg) => showProgress(msg));
+      showProgress({ phase: 'Aplicando etiquetas', label: 'Procesando OTs...', current: 0, total: selectedWOs.length, hint: 'No cierres esta pestaña.' });
+      labelResult = await applyLabels(selectedWOs, labelsToAdd, labelsToRemove, woLabelCatalog, (p) => {
+        showProgress({ phase: 'Aplicando etiquetas', label: 'Procesando OTs...', current: p.current, total: p.total });
+      });
     }
 
     // Apply deadline
     if (newDeadline) {
-      showProgress(`Actualizando fecha de ${selectedIds.length} OTs...`);
+      showProgress({ phase: 'Actualizando fechas', label: 'Enviando lote...', current: 0, total: selectedIds.length, hint: 'No cierres esta pestaña.' });
       const deadline = new Date(newDeadline + 'T12:00:00.000Z').toISOString();
       const BATCH = 50;
       for (let i = 0; i < selectedIds.length; i += BATCH) {
@@ -760,7 +874,7 @@ const WODeadlineChanger = (() => {
         try {
           await api().query('CreateUpdateWorkOrdersChecked', { input }, 'CreateUpdateWorkOrdersChecked');
           deadlineUpdated += batch.length;
-          showProgress(`Fecha: ${deadlineUpdated}/${selectedIds.length}`);
+          showProgress({ phase: 'Actualizando fechas', label: 'Enviando lote...', current: deadlineUpdated, total: selectedIds.length });
         } catch (e) {
           const errMsg = `Batch ${i}-${i + batch.length}: ${String(e).substring(0, 150)}`;
           deadlineErrors.push(errMsg);
