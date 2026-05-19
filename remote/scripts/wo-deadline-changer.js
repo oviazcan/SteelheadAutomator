@@ -392,7 +392,9 @@ const WODeadlineChanger = (() => {
     const allCustomers = Object.entries(customerMap).map(([id, name]) => ({ id: parseInt(id), name }));
     const allProcesses = Object.keys(processMap).map(name => ({ id: name, name }));
 
-    return { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess };
+    // Devolvemos también las WOs descargadas para que loadData() pueda reutilizarlas
+    // cuando la primera carga es sin filtros server-side (ahorra ~50% del tiempo inicial).
+    return { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess, allWOsSnapshot: allWOs };
   }
 
   async function showMainUI(wos, pnCache, uiDefaults, dropdownCache, woLabelCatalog) {
@@ -729,13 +731,21 @@ const WODeadlineChanger = (() => {
   // ORCHESTRATOR
   // ══════════════════════════════════════════
 
-  async function loadData(serverFilters, existingPnCache) {
+  async function loadData(serverFilters, existingPnCache, prefetchedWOs) {
     const PH = { phaseTotal: 3 };
-    showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Listando...', indeterminate: true });
-    const wos = await fetchAllActiveWOs(serverFilters, (p) => {
-      showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Descargando lote...', current: p.current, total: p.total });
-    });
-    log(`OTs cargadas: ${wos.length}`);
+    let wos;
+    if (prefetchedWOs && prefetchedWOs.length > 0) {
+      // Reuso del snapshot que ya descargó fetchDropdownOptions(): mismas WOs, sin
+      // filtros server-side → ahorra una pasada completa por la red.
+      wos = prefetchedWOs;
+      log(`OTs reutilizadas del snapshot de catálogos: ${wos.length}`);
+    } else {
+      showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Listando...', indeterminate: true });
+      wos = await fetchAllActiveWOs(serverFilters, (p) => {
+        showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Descargando lote...', current: p.current, total: p.total });
+      });
+      log(`OTs cargadas: ${wos.length}`);
+    }
 
     const pnCache = existingPnCache || {};
     // Only fetch PNs we don't already have cached
@@ -820,9 +830,17 @@ const WODeadlineChanger = (() => {
     showProgress({ phaseNum: 1, phaseTotal: 3, phase: 'Catálogos', label: 'Cargando etiquetas...', indeterminate: true });
     const woLabelCatalog = await fetchWOLabels();
 
+    // Snapshot de WOs que dropdownCache descargó sin filtros server-side: lo usamos
+    // en la primera iteración del loop si no hay filtro inicial → evita doble fetch.
+    // Después de consumirlo, queda en null para que las recargas con filtros sí
+    // hagan su propia descarga.
+    let initialWOsSnapshot = dropdownCache.allWOsSnapshot;
+
     // Load → show UI → reload loop
     while (true) {
-      const data = await loadData(currentServerFilters, pnCache);
+      const canReuseSnapshot = initialWOsSnapshot && Object.keys(currentServerFilters || {}).length === 0;
+      const data = await loadData(currentServerFilters, pnCache, canReuseSnapshot ? initialWOsSnapshot : null);
+      initialWOsSnapshot = null;
       pnCache = data.pnCache;
 
       if (!data.wos.length) {
