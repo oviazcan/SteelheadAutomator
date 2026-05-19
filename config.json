@@ -1,5 +1,5 @@
 {
-  "version": "0.9.0",
+  "version": "1.0.0",
   "lastUpdated": "2026-05-18",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -317,6 +317,28 @@
         "labelMP": "MP",
         "impPrefixRegex": "^IMP",
         "page": { "first": 400 }
+      },
+      "bulkUpload": {
+        "concurrency": {
+          "savePartNumber": 5,
+          "archive": 5
+        },
+        "retry": {
+          "delaysMs": [1000, 2000, 4000]
+        },
+        "paging": {
+          "allPartNumbers": {
+            "first": 200,
+            "maxResults": 1000
+          }
+        },
+        "preview": {
+          "pageSize": 100
+        },
+        "resume": {
+          "maxEntries": 20,
+          "purgeAgeDays": 7
+        }
       }
     }
   },
