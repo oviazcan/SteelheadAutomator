@@ -42,3 +42,29 @@ test('harness boots and exports helpers object', () => {
   const H = loadHelpers();
   assert.equal(typeof H, 'object');
 });
+
+test('isNonFinishLabel matches blacklist exactly', () => {
+  const H = loadHelpers();
+  const NON_FINISH = ['SMY', 'STX', 'SXC', 'SRG', 'SCM', 'SQR', 'SQ2', 'NP desconocido', 'En desarrollo', 'Muestras', 'Lote', 'Obsoleto'];
+  assert.equal(H.isNonFinishLabel('SMY', NON_FINISH), true);
+  assert.equal(H.isNonFinishLabel('NP desconocido', NON_FINISH), true);
+  assert.equal(H.isNonFinishLabel('NIQ', NON_FINISH), false);
+  assert.equal(H.isNonFinishLabel('CROMADO', NON_FINISH), false);
+  assert.equal(H.isNonFinishLabel('', NON_FINISH), false);
+  assert.equal(H.isNonFinishLabel(null, NON_FINISH), false);
+  // Case-sensitive match (igual que vienen en Steelhead)
+  assert.equal(H.isNonFinishLabel('smy', NON_FINISH), false);
+});
+
+test('acabadosOrdenados filters blacklist, sorts, joins', () => {
+  const H = loadHelpers();
+  const NON_FINISH = ['SMY', 'STX', 'NP desconocido'];
+  assert.equal(H.acabadosOrdenados(['NIQ', 'EST', 'SMY'], NON_FINISH), 'EST|NIQ');
+  assert.equal(H.acabadosOrdenados(['SMY', 'STX'], NON_FINISH), '');
+  assert.equal(H.acabadosOrdenados([], NON_FINISH), '');
+  assert.equal(H.acabadosOrdenados(['CROMADO'], NON_FINISH), 'CROMADO');
+  // labels duplicados se deduplican
+  assert.equal(H.acabadosOrdenados(['NIQ', 'NIQ', 'EST'], NON_FINISH), 'EST|NIQ');
+  // ignora nulos/vacíos
+  assert.equal(H.acabadosOrdenados(['NIQ', null, '', 'EST'], NON_FINISH), 'EST|NIQ');
+});

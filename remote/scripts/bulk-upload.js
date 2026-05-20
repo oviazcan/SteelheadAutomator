@@ -2421,7 +2421,28 @@ const BulkUpload = (() => {
     }
   }
 
-  const __helpers = {};  // poblado en Task 2-5
+  // ─── Helpers de clasificación (puros, exportados a window.BulkUploadHelpers) ───
+
+  function isNonFinishLabel(name, nonFinishList) {
+    if (!name || typeof name !== 'string') return false;
+    return nonFinishList.includes(name);
+  }
+
+  function acabadosOrdenados(labels, nonFinishList) {
+    if (!Array.isArray(labels)) return '';
+    const seen = new Set();
+    const acabados = [];
+    for (const l of labels) {
+      if (!l || typeof l !== 'string') continue;
+      if (isNonFinishLabel(l, nonFinishList)) continue;
+      if (seen.has(l)) continue;
+      seen.add(l);
+      acabados.push(l);
+    }
+    return acabados.sort().join('|');
+  }
+
+  const __helpers = { isNonFinishLabel, acabadosOrdenados };
 
   return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();
