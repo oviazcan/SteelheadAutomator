@@ -880,7 +880,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}`;
     document.head.appendChild(s);
   }
 
@@ -923,6 +923,8 @@ const BulkUpload = (() => {
           changeSummary: changes.length ? changes.join(', ') : 'solo crear',
           qty: s.qty,
           precio: s.precio,
+          pase: s.pase,
+          candidates: s.candidates || [],
         };
       });
 
@@ -933,6 +935,7 @@ const BulkUpload = (() => {
       const nc = rows.filter(r => r.status === 'new').length;
       const ec = rows.filter(r => r.status === 'existing').length;
       const dc = rows.filter(r => r.status === 'forceDup').length;
+      const pendingCount = rows.filter(r => r.pase === 3).length;
 
       // 4) Catálogo de clientes para el dropdown (ordenado, top 50 si son muchos)
       const customerCounts = new Map();
@@ -971,7 +974,7 @@ const BulkUpload = (() => {
       modal.style.background = modeBg;
       modal.innerHTML = `
         <h2 style="color:${modeColor}">Steelhead Automator v10 — ${modeLabel}</h2>
-        <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup</p>
+        <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup${pendingCount > 0 ? ` · <span class="dl9-pending-chip"><b>${pendingCount}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">Solo pendientes</button>` : ''}</p>
         ${statsHtml}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center">
           <label style="font-size:12px;color:#94a3b8">Filtro:
@@ -1029,6 +1032,7 @@ const BulkUpload = (() => {
       // Filter + pagination state
       let filterStatus = '__all__';
       let filterCustomer = '__all__';
+      let filterPendingOnly = false;
       let currentPage = 0;
       let filteredRows = rows; // se recalcula en applyFilters
 
@@ -1036,6 +1040,7 @@ const BulkUpload = (() => {
         filteredRows = rows.filter(r => {
           if (filterStatus !== '__all__' && r.status !== filterStatus) return false;
           if (filterCustomer !== '__all__' && r.customer !== filterCustomer) return false;
+          if (filterPendingOnly && r.pase !== 3) return false;
           return true;
         });
         currentPage = 0;
@@ -1059,6 +1064,7 @@ const BulkUpload = (() => {
           const tr = document.createElement('tr');
           tr.style.borderBottom = '1px solid #1e293b';
           tr.style.fontSize = '12px';
+          if (r.pase === 3) tr.classList.add('dl9-row-pending');
 
           const tdCheck = document.createElement('td');
           tdCheck.style.padding = '3px 6px';
@@ -1118,6 +1124,14 @@ const BulkUpload = (() => {
       // Wire up controls
       modal.querySelector('#dl9-flt-status').onchange = (e) => { filterStatus = e.target.value; applyFilters(); };
       modal.querySelector('#dl9-flt-cust').onchange = (e) => { filterCustomer = e.target.value; applyFilters(); };
+      const pendingBtn = modal.querySelector('#dl9-toggle-pending');
+      if (pendingBtn) {
+        pendingBtn.addEventListener('click', () => {
+          filterPendingOnly = !filterPendingOnly;
+          pendingBtn.textContent = filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes';
+          applyFilters();
+        });
+      }
       modal.querySelector('#dl9-prev-page').onclick = () => { if (currentPage > 0) { currentPage--; renderPage(); } };
       modal.querySelector('#dl9-next-page').onclick = () => { if (currentPage < totalPages() - 1) { currentPage++; renderPage(); } };
       modal.querySelector('#dl9-sel-page').onclick = () => {
