@@ -2442,7 +2442,15 @@ const BulkUpload = (() => {
     return acabados.sort().join('|');
   }
 
-  const __helpers = { isNonFinishLabel, acabadosOrdenados };
+  function buildCompositeKey(pn, nonFinishList) {
+    const customerId = pn.customerId != null ? String(pn.customerId) : '';
+    const name = (pn.name || '').toUpperCase();
+    const metalBase = pn.metalBase ? String(pn.metalBase) : '';
+    const acabados = acabadosOrdenados(pn.labels || [], nonFinishList);
+    return `${customerId}||${name}||${metalBase}||${acabados}`;
+  }
+
+  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey };
 
   return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();

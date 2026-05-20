@@ -68,3 +68,22 @@ test('acabadosOrdenados filters blacklist, sorts, joins', () => {
   // ignora nulos/vacíos
   assert.equal(H.acabadosOrdenados(['NIQ', null, '', 'EST'], NON_FINISH), 'EST|NIQ');
 });
+
+test('buildCompositeKey concatena con separador y normaliza name a uppercase', () => {
+  const H = loadHelpers();
+  const NON_FINISH = ['SMY'];
+  const k1 = H.buildCompositeKey({ customerId: 42, name: 'ABC-123', metalBase: 'COBRE', labels: ['NIQ', 'SMY'] }, NON_FINISH);
+  assert.equal(k1, '42||ABC-123||COBRE||NIQ');
+
+  // Name lowercase se normaliza
+  const k2 = H.buildCompositeKey({ customerId: 42, name: 'abc-123', metalBase: 'COBRE', labels: ['NIQ'] }, NON_FINISH);
+  assert.equal(k2, '42||ABC-123||COBRE||NIQ');
+
+  // metalBase vacío se mantiene vacío
+  const k3 = H.buildCompositeKey({ customerId: 7, name: 'X', metalBase: '', labels: [] }, NON_FINISH);
+  assert.equal(k3, '7||X||||');
+
+  // metalBase null se mantiene vacío
+  const k4 = H.buildCompositeKey({ customerId: 7, name: 'X', metalBase: null, labels: ['EST', 'NIQ'] }, NON_FINISH);
+  assert.equal(k4, '7||X||||EST|NIQ');
+});
