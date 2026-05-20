@@ -254,3 +254,35 @@ test('classifyOnePN — archivedAt excluye PNs aunque matcheen', () => {
   assert.equal(r.pase, null);
   assert.equal(r.candidates.length, 0);
 });
+
+test('extractPNShape parsea customInputs como string JSON', () => {
+  const H = loadHelpers();
+  const node = {
+    id: 42,
+    name: 'X',
+    customInputs: '{"DatosAdicionalesNP":{"BaseMetal":"CU","QuoteIBMS":"Q1"}}',
+    partNumberLabelsByPartNumberId: { nodes: [{ labelByLabelId: { name: 'NIQ' } }, { labelByLabelId: { name: 'SMY' } }] },
+    archivedAt: null,
+    customerByCustomerId: { id: 7 },
+  };
+  const r = H.extractPNShape(node);
+  assert.equal(r.id, 42);
+  assert.equal(r.metalBase, 'CU');
+  assert.equal(r.quoteIBMS, 'Q1');
+  assert.equal(JSON.stringify(r.labels), JSON.stringify(['NIQ', 'SMY']));
+  assert.equal(r.customerId, 7);
+});
+
+test('extractPNShape tolera customInputs null/undefined sin throw', () => {
+  const H = loadHelpers();
+  const r = H.extractPNShape({ id: 1, name: 'Y', customInputs: null, partNumberLabelsByPartNumberId: null });
+  assert.equal(r.metalBase, '');
+  assert.equal(r.quoteIBMS, '');
+  assert.equal(JSON.stringify(r.labels), JSON.stringify([]));
+});
+
+test('extractPNShape acepta customInputs como objeto plano (shape real del API)', () => {
+  const H = loadHelpers();
+  const r = H.extractPNShape({ id: 1, name: 'Y', customInputs: { DatosAdicionalesNP: { BaseMetal: 'AL' } } });
+  assert.equal(r.metalBase, 'AL');
+});

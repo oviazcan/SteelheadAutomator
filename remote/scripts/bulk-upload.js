@@ -649,6 +649,81 @@ const BulkUpload = (() => {
     return Object.keys(ci).length > 0 ? ci : null;
   }
 
+  // ─── Prefetch global de PNs (modo masivo del dedup 1.1.0) ───
+  // Pagina AllPartNumbers SIN searchQuery (catálogo completo del dominio) y
+  // agrupa client-side por customerId. customerIds es un Set para filtrar el
+  // output — PNs cuyo cliente no esté en customerIds se descartan para
+  // ahorrar memoria (un dominio puede tener 50k+ PNs).
+  // Costo: ~N/200 queries para un dominio de N PNs (~250 para 50k).
+  // Solo conviene cuando |CSV| > massiveThreshold (typically 1000). En CSV
+  // chico, classifyPNs sigue el patrón on-demand de 1.0.0.
+  async function prefetchPNsByCustomer(customerIds, myRunId) {
+    const cfg = bulkCfg();
+    const pageSize = cfg.paging?.allPartNumbers?.first || 200;
+    const maxResults = cfg.paging?.allPartNumbers?.massiveMaxResults || 100000;
+    const customerSet = new Set(customerIds);
+    const result = new Map();
+    for (const cid of customerSet) result.set(cid, []);
+
+    setPanelPhase(`Prefetch global de PNs (subset: ${customerSet.size} clientes)`);
+    let offset = 0;
+    let scanned = 0;
+    let kept = 0;
+    while (offset < maxResults) {
+      if (myRunId != null) bailIfStale(myRunId);
+      const d = await withRetry(
+        () => api().query('AllPartNumbers', {
+          orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: ''
+        }),
+        `AllPartNumbers prefetch offset=${offset}`,
+        myRunId
+      );
+      const nodes = d?.pagedData?.nodes || [];
+      scanned += nodes.length;
+      for (const n of nodes) {
+        const cid = n.customerByCustomerId?.id || n.customerId;
+        if (cid != null && customerSet.has(cid)) {
+          result.get(cid).push(extractPNShape(n));
+          kept++;
+        }
+      }
+      const totalCount = d?.pagedData?.totalCount || 0;
+      setPanelProgress(scanned, Math.min(totalCount || maxResults, maxResults));
+      if (nodes.length < pageSize) break; // última página
+      offset += pageSize;
+    }
+    log(`Prefetch: ${scanned} PNs escaneados, ${kept} relevantes para ${customerSet.size} clientes`);
+    return result;
+  }
+
+  // Extrae el shape mínimo de un nodo de AllPartNumbers para el classifier.
+  // customInputs viene como objeto JS en AllPartNumbers (verificado en scan
+  // 2026-05-20); el branch del JSON.parse queda como defensa por si Steelhead
+  // cambia el shape en el futuro.
+  function extractPNShape(n) {
+    let ci = null;
+    if (typeof n.customInputs === 'string') {
+      try { ci = JSON.parse(n.customInputs); } catch { ci = null; }
+    } else if (n.customInputs && typeof n.customInputs === 'object') {
+      ci = n.customInputs;
+    }
+    const metalBase = ci?.DatosAdicionalesNP?.BaseMetal || '';
+    const quoteIBMS = ci?.DatosAdicionalesNP?.QuoteIBMS || '';
+    const labels = (n.partNumberLabelsByPartNumberId?.nodes || [])
+      .map(x => x?.labelByLabelId?.name)
+      .filter(Boolean);
+    return {
+      id: n.id,
+      name: n.name,
+      customerId: n.customerByCustomerId?.id || n.customerId,
+      metalBase,
+      quoteIBMS,
+      labels,
+      archivedAt: n.archivedAt || null,
+      defaultProcessNodeId: n.processNodeByDefaultProcessNodeId?.id || n.defaultProcessNodeId || null,
+    };
+  }
+
   async function checkPNExistence(parts, myRunId) {
     // FIX 2 (2026-05-18): paginación real para AllPartNumbers. Antes era first:50 y si había
     // >50 matches de searchQuery, el PN exacto podía caer fuera del window y se reportaba
@@ -2549,7 +2624,7 @@ const BulkUpload = (() => {
     };
   }
 
-  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN };
+  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape };
 
   return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();
