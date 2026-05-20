@@ -2450,7 +2450,35 @@ const BulkUpload = (() => {
     return `${customerId}||${name}||${metalBase}||${acabados}`;
   }
 
-  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey };
+  function rankCandidates(csvRow, candidates, nonFinishList) {
+    const csvMetal = csvRow.metalBase || '';
+    const csvAcabados = acabadosOrdenados(csvRow.labels || [], nonFinishList);
+    const csvIbms = csvRow.quoteIBMS || '';
+
+    function score(c) {
+      let s = 0;
+      if ((c.metalBase || '') === csvMetal) s++;
+      if (acabadosOrdenados(c.labels || [], nonFinishList) === csvAcabados) s++;
+      return s;
+    }
+
+    function ibmsRank(c) {
+      const ibms = c.quoteIBMS || '';
+      if (csvIbms && ibms === csvIbms) return 0; // mismo IBMS gana
+      if (!ibms) return 1;                       // IBMS vacío segundo
+      return 2;                                  // IBMS distinto último
+    }
+
+    return [...candidates].sort((a, b) => {
+      const sd = score(b) - score(a);
+      if (sd !== 0) return sd;
+      const id = ibmsRank(a) - ibmsRank(b);
+      if (id !== 0) return id;
+      return (a.id || 0) - (b.id || 0);
+    });
+  }
+
+  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates };
 
   return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();

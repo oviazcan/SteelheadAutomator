@@ -87,3 +87,38 @@ test('buildCompositeKey concatena con separador y normaliza name a uppercase', (
   const k4 = H.buildCompositeKey({ customerId: 7, name: 'X', metalBase: null, labels: ['EST', 'NIQ'] }, NON_FINISH);
   assert.equal(k4, '7||X||||EST|NIQ');
 });
+
+test('rankCandidates ordena por matchScore desc, IBMS vacío gana en ties, luego id asc', () => {
+  const H = loadHelpers();
+  const NON_FINISH = ['SMY'];
+  const csvRow = { customerId: 1, name: 'X', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1' };
+  const cands = [
+    { id: 10, name: 'X', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q9' }, // match-2 + IBMS distinto
+    { id: 5,  name: 'X', metalBase: 'CU', labels: ['EST'], quoteIBMS: '' },   // match-1 + IBMS vacío
+    { id: 8,  name: 'X', metalBase: 'AL', labels: [],     quoteIBMS: '' },    // match-0 + IBMS vacío
+    { id: 3,  name: 'X', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' },   // match-2 + IBMS vacío
+  ];
+  const ranked = H.rankCandidates(csvRow, cands, NON_FINISH);
+  // Esperado: id 3 (match-2, IBMS vacío) > id 10 (match-2, IBMS distinto) > id 5 (match-1) > id 8 (match-0)
+  // JSON.stringify evita fallo cross-realm de assert.deepEqual en Node >= 22 con vm arrays
+  assert.equal(JSON.stringify(ranked.map(c => c.id)), JSON.stringify([3, 10, 5, 8]));
+});
+
+test('rankCandidates tie-breaker por id ascendente cuando todo lo demás es igual', () => {
+  const H = loadHelpers();
+  const NON_FINISH = [];
+  const csvRow = { customerId: 1, name: 'X', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1' };
+  const cands = [
+    { id: 20, name: 'X', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' },
+    { id: 7,  name: 'X', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' },
+    { id: 15, name: 'X', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' },
+  ];
+  const ranked = H.rankCandidates(csvRow, cands, NON_FINISH);
+  assert.equal(JSON.stringify(ranked.map(c => c.id)), JSON.stringify([7, 15, 20]));
+});
+
+test('rankCandidates returns empty array for empty candidates', () => {
+  const H = loadHelpers();
+  const ranked = H.rankCandidates({ customerId: 1, name: 'X', metalBase: '', labels: [], quoteIBMS: '' }, [], []);
+  assert.equal(ranked.length, 0);
+});
