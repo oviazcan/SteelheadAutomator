@@ -880,7 +880,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:160px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:14px}.dl9-cand-link:hover{color:#7dd3fc}`;
     document.head.appendChild(s);
   }
 
@@ -1055,6 +1055,29 @@ const BulkUpload = (() => {
         modal.querySelector('#dl9-count').textContent = selected.size;
       }
 
+      function updateHeaderStats() {
+        const ncNow = rows.filter(r => r.status === 'new').length;
+        const ecNow = rows.filter(r => r.status === 'existing').length;
+        const dcNow = rows.filter(r => r.status === 'forceDup').length;
+        const pendingNow = rows.filter(r => r.pase === 3).length;
+        const line = modal.querySelector('#dl9-counts-line');
+        if (line) {
+          const pendingHtml = pendingNow > 0
+            ? ` · <span class="dl9-pending-chip"><b>${pendingNow}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">${filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes'}</button>`
+            : '';
+          line.innerHTML = `${rows.length} filas — ${ncNow} nuevos, ${ecNow} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dcNow} forzar dup${pendingHtml}`;
+          // Re-bindear el toggle pendientes (innerHTML borra el listener anterior)
+          const btn = modal.querySelector('#dl9-toggle-pending');
+          if (btn) {
+            btn.addEventListener('click', () => {
+              filterPendingOnly = !filterPendingOnly;
+              btn.textContent = filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes';
+              applyFilters();
+            });
+          }
+        }
+      }
+
       function renderPage() {
         const tbody = modal.querySelector('#dl9-tbody');
         tbody.replaceChildren();
@@ -1095,7 +1118,70 @@ const BulkUpload = (() => {
 
           const tdAct = document.createElement('td');
           tdAct.style.padding = '3px 6px';
-          if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
+          if (r.pase === 3) {
+            // Pase 3: dropdown con "Crear nuevo" (default) + hasta 3 candidatos.
+            // El select y los links se renderizan con DOM API (no innerHTML)
+            // para no caer en el XSS gotcha que ya está documentado en CLAUDE.md.
+            const sel = document.createElement('select');
+            sel.className = 'dl9-cls-select';
+            sel.dataset.rowIdx = String(r.idx);
+            const optNew = document.createElement('option');
+            optNew.value = '';
+            optNew.textContent = 'Crear nuevo';
+            sel.appendChild(optNew);
+            for (const c of (r.candidates || []).slice(0, 3)) {
+              const opt = document.createElement('option');
+              opt.value = String(c.id);
+              opt.textContent = `Modificar #${c.id}`;
+              const tipParts = [];
+              if (c.metalBase) tipParts.push(`metalBase: ${c.metalBase}`);
+              if (c.labels && c.labels.length) tipParts.push(`acabados: ${c.labels.join(', ')}`);
+              if (c.quoteIBMS) tipParts.push(`IBMS: ${c.quoteIBMS}`);
+              if (tipParts.length) opt.title = tipParts.join(' | ');
+              sel.appendChild(opt);
+            }
+            // Aplica selección persistida (volverá a aparecer al paginar)
+            const currentOverride = pnStatus[r.idx]?.userOverride;
+            sel.value = currentOverride != null ? String(currentOverride) : '';
+            sel.addEventListener('change', (e) => {
+              const idx = parseInt(e.target.dataset.rowIdx, 10);
+              const val = e.target.value;
+              if (val === '') {
+                pnStatus[idx].userOverride = null;
+                pnStatus[idx].status = 'new';
+                pnStatus[idx].existingId = null;
+                pnStatus[idx].existingProcessId = null;
+                rows[idx].status = 'new';
+                rows[idx].existingId = null;
+              } else {
+                const newTargetId = parseInt(val, 10);
+                const cand = (pnStatus[idx].candidates || []).find(c => c.id === newTargetId);
+                pnStatus[idx].userOverride = newTargetId;
+                pnStatus[idx].status = 'existing';
+                pnStatus[idx].existingId = newTargetId;
+                pnStatus[idx].existingProcessId = cand?.defaultProcessNodeId || null;
+                rows[idx].status = 'existing';
+                rows[idx].existingId = newTargetId;
+              }
+              updateHeaderStats();
+            });
+            tdAct.appendChild(sel);
+
+            // Links 🔗 a fichas de PN (target=_blank con rel=noopener)
+            const linksSpan = document.createElement('span');
+            linksSpan.className = 'dl9-cand-links';
+            for (const c of (r.candidates || []).slice(0, 3)) {
+              const a = document.createElement('a');
+              a.href = `https://app.gosteelhead.com/PartNumbers/${c.id}`;
+              a.target = '_blank';
+              a.rel = 'noopener';
+              a.className = 'dl9-cand-link';
+              a.textContent = '🔗';
+              a.title = `Abrir ficha de PN #${c.id} en pestaña nueva`;
+              linksSpan.appendChild(a);
+            }
+            tdAct.appendChild(linksSpan);
+          } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
           else { tdAct.className = 'dl9-dup'; tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`; }
           tr.appendChild(tdAct);
