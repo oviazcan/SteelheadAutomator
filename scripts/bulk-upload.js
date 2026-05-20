@@ -1,5 +1,15 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
-// VERSION: 1.0.0 (2026-05-18) — hardening 7 fixes sobre v9
+//
+// VERSION 1.1.0 (2026-05-20): Dedup por QuoteIBMS + composite con override manual
+//   - Pase 1 IBMS autoritativo, Pase 2 composite exacto con regla anti-colisión,
+//     Pase 3 near-match con dropdown en preview + links a candidatos
+//   - Blacklist nonFinishLabelNames en config para distinguir acabados vs plantas/status
+//   - Prefetch paginado por cliente (reemplaza loop "una query por nombre")
+//   - Reporte XLSX al final del run (Resumen + Decisiones Pase 3 + Errores)
+//   - Resume schema extendido con classifications + userOverride
+//   - Tests Node de helpers puros en tools/test/bulk-upload-helpers.test.js
+//
+// VERSION 1.0.0 (2026-05-18): hardening 7 fixes sobre v9
 //   Fix 1: pool concurrente SavePartNumber enrich
 //   Fix 2: paginación AllPartNumbers en checkPNExistence
 //   Fix 3: cancellation token + panel con botón Detener
@@ -12,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -649,31 +659,140 @@ const BulkUpload = (() => {
     return Object.keys(ci).length > 0 ? ci : null;
   }
 
-  async function checkPNExistence(parts, myRunId) {
-    // FIX 2 (2026-05-18): paginación real para AllPartNumbers. Antes era first:50 y si había
-    // >50 matches de searchQuery, el PN exacto podía caer fuera del window y se reportaba
-    // como NUEVO → duplicado silencioso (mismo bug del b4ccc7d disfrazado). Ahora avanza
-    // pageSize=200 (configurable) en loop hasta encontrar el exacto o agotar maxResults.
-    const uniq = new Map(); // "PN|custId" → { name, customerId }
+  // ─── Prefetch global de PNs (modo masivo del dedup 1.1.0) ───
+  // Pagina AllPartNumbers SIN searchQuery (catálogo completo del dominio) y
+  // agrupa client-side por customerId. customerIds es un Set para filtrar el
+  // output — PNs cuyo cliente no esté en customerIds se descartan para
+  // ahorrar memoria (un dominio puede tener 50k+ PNs).
+  // Costo: ~N/200 queries para un dominio de N PNs (~250 para 50k).
+  // Solo conviene cuando |CSV| > massiveThreshold (typically 1000). En CSV
+  // chico, classifyPNs sigue el patrón on-demand de 1.0.0.
+  async function prefetchPNsByCustomer(customerIds, myRunId) {
+    const cfg = bulkCfg();
+    const pageSize = cfg.paging?.allPartNumbers?.first || 200;
+    const maxResults = cfg.paging?.allPartNumbers?.massiveMaxResults || 100000;
+    const customerSet = new Set(customerIds);
+    const result = new Map();
+    for (const cid of customerSet) result.set(cid, []);
+
+    setPanelPhase(`Prefetch global de PNs (subset: ${customerSet.size} clientes)`);
+    let offset = 0;
+    let scanned = 0;
+    let kept = 0;
+    while (offset < maxResults) {
+      if (myRunId != null) bailIfStale(myRunId);
+      const d = await withRetry(
+        () => api().query('AllPartNumbers', {
+          orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: ''
+        }),
+        `AllPartNumbers prefetch offset=${offset}`,
+        myRunId
+      );
+      const nodes = d?.pagedData?.nodes || [];
+      scanned += nodes.length;
+      for (const n of nodes) {
+        const cid = n.customerByCustomerId?.id || n.customerId;
+        if (cid != null && customerSet.has(cid)) {
+          result.get(cid).push(extractPNShape(n));
+          kept++;
+        }
+      }
+      const totalCount = d?.pagedData?.totalCount || 0;
+      setPanelProgress(scanned, Math.min(totalCount || maxResults, maxResults));
+      if (nodes.length < pageSize) break; // última página
+      offset += pageSize;
+    }
+    log(`Prefetch: ${scanned} PNs escaneados, ${kept} relevantes para ${customerSet.size} clientes`);
+    return result;
+  }
+
+  // Extrae el shape mínimo de un nodo de AllPartNumbers para el classifier.
+  // customInputs viene como objeto JS en AllPartNumbers (verificado en scan
+  // 2026-05-20); el branch del JSON.parse queda como defensa por si Steelhead
+  // cambia el shape en el futuro.
+  function extractPNShape(n) {
+    let ci = null;
+    if (typeof n.customInputs === 'string') {
+      try { ci = JSON.parse(n.customInputs); } catch { ci = null; }
+    } else if (n.customInputs && typeof n.customInputs === 'object') {
+      ci = n.customInputs;
+    }
+    const metalBase = ci?.DatosAdicionalesNP?.BaseMetal || '';
+    const quoteIBMS = ci?.DatosAdicionalesNP?.QuoteIBMS || '';
+    const labels = (n.partNumberLabelsByPartNumberId?.nodes || [])
+      .map(x => x?.labelByLabelId?.name)
+      .filter(Boolean);
+    return {
+      id: n.id,
+      name: n.name,
+      customerId: n.customerByCustomerId?.id || n.customerId,
+      metalBase,
+      quoteIBMS,
+      labels,
+      archivedAt: n.archivedAt || null,
+      defaultProcessNodeId: n.processNodeByDefaultProcessNodeId?.id || n.defaultProcessNodeId || null,
+    };
+  }
+
+  // ─── classifyPNs (reemplaza checkPNExistence en 1.1.0) ───
+  // Auto-detect dual-mode por tamaño del CSV:
+  //   - CSV grande (> massiveThreshold, default 1000): prefetch global del
+  //     dominio + group-by customer (~250 queries para domain 50k vs ~9k
+  //     queries on-demand). Pase 1 (QuoteIBMS match) viable porque se
+  //     evalúan TODOS los PNs activos del cliente.
+  //   - CSV chico (≤ massiveThreshold): query on-demand searchQuery=name
+  //     por PN del CSV (patrón 1.0.0). Performance: ~|CSV| queries. Pase 1
+  //     limitado a matches por nombre exacto (raro pero acotado en CSVs <
+  //     1000 filas — diseño del día a día).
+  async function classifyPNs(parts, myRunId) {
+    const cfg = bulkCfg();
+    const massiveThreshold = cfg.dedup?.massiveThreshold ?? 1000;
+    const useMassive = parts.length > massiveThreshold;
+    log(`Clasificación: ${parts.length} filas — modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold})`);
+    return useMassive
+      ? await classifyPNsMassive(parts, myRunId)
+      : await classifyPNsOnDemand(parts, myRunId);
+  }
+
+  // Modo masivo: prefetch global + classifier puro.
+  async function classifyPNsMassive(parts, myRunId) {
+    const cfg = bulkCfg();
+    const nonFinishList = cfg.nonFinishLabelNames || [];
+    const customerIds = [...new Set(parts.map(p => p.customerId).filter(x => x != null))];
+    const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId);
+
+    setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
+    const out = parts.map(p => buildClassifiedRow(p, pnsByCustomer.get(p.customerId) || [], nonFinishList));
+    logClassificationSummary(out);
+    return out;
+  }
+
+  // Modo día: una pasada paginada de AllPartNumbers con searchQuery=name por
+  // PN del CSV; filtro client-side por customerId; mapeo a shape con
+  // extractPNShape; llamada a classifyOnePN.
+  async function classifyPNsOnDemand(parts, myRunId) {
+    const cfg = bulkCfg();
+    const nonFinishList = cfg.nonFinishLabelNames || [];
+    const pageSize = cfg.paging?.allPartNumbers?.first || cfg.paging?.allPartNumbersFirst || 200;
+    const maxResults = cfg.paging?.allPartNumbers?.maxResults || cfg.paging?.allPartNumbersMaxResults || 1000;
+
+    // Deduplicar por (PN|customerId) para no buscar dos veces el mismo lookup
+    const uniq = new Map();
     for (const p of parts) {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
       if (!uniq.has(key)) uniq.set(key, { name: p.pn, customerId: p.customerId });
     }
-    const existMap = new Map(); // same key → { id, processId }
-    const cfg = bulkCfg();
-    const pageSize = cfg.paging.allPartNumbersFirst;
-    const maxResults = cfg.paging.allPartNumbersMaxResults;
+    const candidatesByKey = new Map(); // key → PN[] del cliente con nombre cercano
     log(`Buscando ${uniq.size} PN/cliente combinaciones (page=${pageSize}, cap=${maxResults})...`);
-    setPanelPhase('Verificando PNs existentes');
+    setPanelPhase(`Verificando PNs existentes (${uniq.size} búsquedas)`);
     setPanelProgress(0, uniq.size);
 
     let progress = 0;
     for (const [key, { name, customerId }] of uniq) {
       if (myRunId != null) bailIfStale(myRunId);
+      const pnsForKey = [];
       try {
         let offset = 0;
-        let found = null;
-        let totalScanned = 0;
         while (offset < maxResults) {
           if (myRunId != null) bailIfStale(myRunId);
           const d = await withRetry(
@@ -684,41 +803,85 @@ const BulkUpload = (() => {
             myRunId
           );
           const nodes = d?.pagedData?.nodes || [];
-          totalScanned += nodes.length;
-          const match = nodes.find(n =>
-            n.name?.toUpperCase() === name.toUpperCase() &&
-            !n.archivedAt &&
-            (n.customerByCustomerId?.id === customerId || n.customerId === customerId)
-          );
-          if (match) { found = match; break; }
-          if (nodes.length < pageSize) break; // última página
-          offset += pageSize;
-        }
-        if (found) {
-          existMap.set(key, { id: found.id, processId: found.processNodeByDefaultProcessNodeId?.id || found.defaultProcessNodeId || null });
-          log(`  "${name}" (cust:${customerId}) -> EXISTE id:${found.id} (scan=${totalScanned})`);
-        } else {
-          log(`  "${name}" (cust:${customerId}) -> NUEVO (scan=${totalScanned}${totalScanned >= maxResults ? ' CAP' : ''})`);
-          if (totalScanned >= maxResults) {
-            warn(`  ⚠ "${name}" alcanzó cap de ${maxResults} sin encontrar exacto — revisa si es duplicado silencioso`);
+          for (const n of nodes) {
+            const cid = n.customerByCustomerId?.id || n.customerId;
+            if (cid === customerId) pnsForKey.push(extractPNShape(n));
           }
+          if (nodes.length < pageSize) break;
+          offset += pageSize;
         }
       } catch (e) {
         if (isBail(e)) throw e;
         warn(`Búsqueda "${name}": ${String(e).substring(0, 120)}`);
         state.counters.errors++;
       }
+      candidatesByKey.set(key, pnsForKey);
       progress++;
       setPanelProgress(progress, uniq.size);
     }
-    return parts.map(p => {
+
+    setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
+    const out = parts.map(p => {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
-      const ex = existMap.get(key);
-      if (!ex) return { pn: p.pn, status: 'new', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId };
-      if (p.forzarDuplicado) return { pn: p.pn, status: 'forceDup', existingId: ex.id, existingProcessId: ex.processId, qty: p.qty, precio: p.precio, customerId: p.customerId };
-      return { pn: p.pn, status: 'existing', existingId: ex.id, existingProcessId: ex.processId, qty: p.qty, precio: p.precio, customerId: p.customerId };
+      const pnsForCustomer = candidatesByKey.get(key) || [];
+      return buildClassifiedRow(p, pnsForCustomer, nonFinishList);
     });
+    logClassificationSummary(out);
+    return out;
   }
+
+  // Builder común: construye el objeto pnStatus retro-compatible + nuevos
+  // campos del refactor. Centraliza el mapping classification → status para
+  // que ambos modos (masivo y día) emitan el mismo shape.
+  function buildClassifiedRow(p, pnsForCustomer, nonFinishList) {
+    const csvRow = {
+      customerId: p.customerId,
+      name: p.pn,
+      metalBase: p.metalBase || '',
+      labels: p.labels || [],
+      quoteIBMS: p.quoteIBMS || '',
+    };
+    const cls = classifyOnePN(csvRow, pnsForCustomer, nonFinishList);
+
+    // Retro-compat: derivar status para enrichWorker y demás callers.
+    let status;
+    if (p.forzarDuplicado && cls.classification === 'MODIFY') status = 'forceDup';
+    else if (cls.classification === 'MODIFY') status = 'existing';
+    else status = 'new';
+    // forceDup sin target → degrada a 'new' (nada que duplicar)
+    if (status === 'forceDup' && !cls.targetPnId) status = 'new';
+
+    const pnTarget = cls.targetPnId ? pnsForCustomer.find(x => x.id === cls.targetPnId) : null;
+    return {
+      // retro-compat
+      pn: p.pn,
+      status,
+      existingId: cls.targetPnId,
+      existingProcessId: pnTarget?.defaultProcessNodeId || null,
+      qty: p.qty,
+      precio: p.precio,
+      customerId: p.customerId,
+      // nuevos campos
+      classification: cls.classification,
+      pase: cls.pase,
+      confidence: cls.confidence,
+      candidates: cls.candidates,
+      userOverride: null,
+      targetPnId: cls.targetPnId,
+      csvRowKey: `${p.pn.toUpperCase()}|${p.customerId}`,
+    };
+  }
+
+  function logClassificationSummary(out) {
+    const p1 = out.filter(s => s.pase === 1).length;
+    const p2 = out.filter(s => s.pase === 2).length;
+    const p3 = out.filter(s => s.pase === 3).length;
+    const newClean = out.filter(s => s.pase === null).length;
+    log(`Clasificación: P1=${p1} P2=${p2} P3=${p3} NEW=${newClean} (total ${out.length})`);
+  }
+
+  // Alias retro-compat: el callsite (~línea 1389) sigue invocando checkPNExistence.
+  const checkPNExistence = classifyPNs;
 
   // ═══════════════════════════════════════════
   // MODAL UI
@@ -727,7 +890,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:160px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:14px}.dl9-cand-link:hover{color:#7dd3fc}`;
     document.head.appendChild(s);
   }
 
@@ -770,6 +933,8 @@ const BulkUpload = (() => {
           changeSummary: changes.length ? changes.join(', ') : 'solo crear',
           qty: s.qty,
           precio: s.precio,
+          pase: s.pase,
+          candidates: s.candidates || [],
         };
       });
 
@@ -780,6 +945,7 @@ const BulkUpload = (() => {
       const nc = rows.filter(r => r.status === 'new').length;
       const ec = rows.filter(r => r.status === 'existing').length;
       const dc = rows.filter(r => r.status === 'forceDup').length;
+      const pendingCount = rows.filter(r => r.pase === 3).length;
 
       // 4) Catálogo de clientes para el dropdown (ordenado, top 50 si son muchos)
       const customerCounts = new Map();
@@ -818,7 +984,7 @@ const BulkUpload = (() => {
       modal.style.background = modeBg;
       modal.innerHTML = `
         <h2 style="color:${modeColor}">Steelhead Automator v10 — ${modeLabel}</h2>
-        <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup</p>
+        <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup${pendingCount > 0 ? ` · <span class="dl9-pending-chip"><b>${pendingCount}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">Solo pendientes</button>` : ''}</p>
         ${statsHtml}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center">
           <label style="font-size:12px;color:#94a3b8">Filtro:
@@ -876,6 +1042,7 @@ const BulkUpload = (() => {
       // Filter + pagination state
       let filterStatus = '__all__';
       let filterCustomer = '__all__';
+      let filterPendingOnly = false;
       let currentPage = 0;
       let filteredRows = rows; // se recalcula en applyFilters
 
@@ -883,6 +1050,7 @@ const BulkUpload = (() => {
         filteredRows = rows.filter(r => {
           if (filterStatus !== '__all__' && r.status !== filterStatus) return false;
           if (filterCustomer !== '__all__' && r.customer !== filterCustomer) return false;
+          if (filterPendingOnly && r.pase !== 3) return false;
           return true;
         });
         currentPage = 0;
@@ -897,6 +1065,29 @@ const BulkUpload = (() => {
         modal.querySelector('#dl9-count').textContent = selected.size;
       }
 
+      function updateHeaderStats() {
+        const ncNow = rows.filter(r => r.status === 'new').length;
+        const ecNow = rows.filter(r => r.status === 'existing').length;
+        const dcNow = rows.filter(r => r.status === 'forceDup').length;
+        const pendingNow = rows.filter(r => r.pase === 3).length;
+        const line = modal.querySelector('#dl9-counts-line');
+        if (line) {
+          const pendingHtml = pendingNow > 0
+            ? ` · <span class="dl9-pending-chip"><b>${pendingNow}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">${filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes'}</button>`
+            : '';
+          line.innerHTML = `${rows.length} filas — ${ncNow} nuevos, ${ecNow} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dcNow} forzar dup${pendingHtml}`;
+          // Re-bindear el toggle pendientes (innerHTML borra el listener anterior)
+          const btn = modal.querySelector('#dl9-toggle-pending');
+          if (btn) {
+            btn.addEventListener('click', () => {
+              filterPendingOnly = !filterPendingOnly;
+              btn.textContent = filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes';
+              applyFilters();
+            });
+          }
+        }
+      }
+
       function renderPage() {
         const tbody = modal.querySelector('#dl9-tbody');
         tbody.replaceChildren();
@@ -906,6 +1097,7 @@ const BulkUpload = (() => {
           const tr = document.createElement('tr');
           tr.style.borderBottom = '1px solid #1e293b';
           tr.style.fontSize = '12px';
+          if (r.pase === 3) tr.classList.add('dl9-row-pending');
 
           const tdCheck = document.createElement('td');
           tdCheck.style.padding = '3px 6px';
@@ -936,7 +1128,76 @@ const BulkUpload = (() => {
 
           const tdAct = document.createElement('td');
           tdAct.style.padding = '3px 6px';
-          if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
+          if (r.pase === 3) {
+            // Pase 3: dropdown con "Crear nuevo" (default) + hasta 3 candidatos.
+            // El select y los links se renderizan con DOM API (no innerHTML)
+            // para no caer en el XSS gotcha que ya está documentado en CLAUDE.md.
+            const sel = document.createElement('select');
+            sel.className = 'dl9-cls-select';
+            sel.dataset.rowIdx = String(r.idx);
+            const optNew = document.createElement('option');
+            optNew.value = '';
+            optNew.textContent = 'Crear nuevo';
+            sel.appendChild(optNew);
+            for (const c of (r.candidates || []).slice(0, 3)) {
+              const opt = document.createElement('option');
+              opt.value = String(c.id);
+              opt.textContent = `Modificar #${c.id}`;
+              const tipParts = [];
+              if (c.metalBase) tipParts.push(`metalBase: ${c.metalBase}`);
+              if (c.labels && c.labels.length) tipParts.push(`acabados: ${c.labels.join(', ')}`);
+              if (c.quoteIBMS) tipParts.push(`IBMS: ${c.quoteIBMS}`);
+              if (tipParts.length) opt.title = tipParts.join(' | ');
+              sel.appendChild(opt);
+            }
+            // Aplica selección persistida (volverá a aparecer al paginar)
+            const currentOverride = pnStatus[r.idx]?.userOverride;
+            sel.value = currentOverride != null ? String(currentOverride) : '';
+            sel.addEventListener('change', (e) => {
+              const idx = parseInt(e.target.dataset.rowIdx, 10);
+              const val = e.target.value;
+              if (val === '') {
+                pnStatus[idx].userOverride = null;
+                pnStatus[idx].status = 'new';
+                pnStatus[idx].existingId = null;
+                pnStatus[idx].existingProcessId = null;
+                rows[idx].status = 'new';
+                rows[idx].existingId = null;
+              } else {
+                const newTargetId = parseInt(val, 10);
+                const cand = (pnStatus[idx].candidates || []).find(c => c.id === newTargetId);
+                pnStatus[idx].userOverride = newTargetId;
+                pnStatus[idx].status = 'existing';
+                pnStatus[idx].existingId = newTargetId;
+                pnStatus[idx].existingProcessId = cand?.defaultProcessNodeId || null;
+                rows[idx].status = 'existing';
+                rows[idx].existingId = newTargetId;
+              }
+              updateHeaderStats();
+              // Persist override en resume (best-effort, no awaitear)
+              if (resumeState) {
+                const slot = resumeState.classifications?.[idx];
+                if (slot) slot.userOverride = pnStatus[idx].userOverride;
+                persistResumeState().catch(() => {});
+              }
+            });
+            tdAct.appendChild(sel);
+
+            // Links 🔗 a fichas de PN (target=_blank con rel=noopener)
+            const linksSpan = document.createElement('span');
+            linksSpan.className = 'dl9-cand-links';
+            for (const c of (r.candidates || []).slice(0, 3)) {
+              const a = document.createElement('a');
+              a.href = `https://app.gosteelhead.com/PartNumbers/${c.id}`;
+              a.target = '_blank';
+              a.rel = 'noopener';
+              a.className = 'dl9-cand-link';
+              a.textContent = '🔗';
+              a.title = `Abrir ficha de PN #${c.id} en pestaña nueva`;
+              linksSpan.appendChild(a);
+            }
+            tdAct.appendChild(linksSpan);
+          } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
           else { tdAct.className = 'dl9-dup'; tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`; }
           tr.appendChild(tdAct);
@@ -965,6 +1226,14 @@ const BulkUpload = (() => {
       // Wire up controls
       modal.querySelector('#dl9-flt-status').onchange = (e) => { filterStatus = e.target.value; applyFilters(); };
       modal.querySelector('#dl9-flt-cust').onchange = (e) => { filterCustomer = e.target.value; applyFilters(); };
+      const pendingBtn = modal.querySelector('#dl9-toggle-pending');
+      if (pendingBtn) {
+        pendingBtn.addEventListener('click', () => {
+          filterPendingOnly = !filterPendingOnly;
+          pendingBtn.textContent = filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes';
+          applyFilters();
+        });
+      }
       modal.querySelector('#dl9-prev-page').onclick = () => { if (currentPage > 0) { currentPage--; renderPage(); } };
       modal.querySelector('#dl9-next-page').onclick = () => { if (currentPage < totalPages() - 1) { currentPage++; renderPage(); } };
       modal.querySelector('#dl9-sel-page').onclick = () => {
@@ -1064,6 +1333,85 @@ const BulkUpload = (() => {
     });
   }
 
+  // ─── Reporte XLSX del run ───
+  function generateRunReport(state, pnStatus, parts, stats, errors) {
+    if (typeof window.XLSX === 'undefined') {
+      warn('XLSX no disponible; reporte saltado.');
+      return null;
+    }
+    const wb = window.XLSX.utils.book_new();
+
+    // ── Hoja Resumen ──
+    const counts = {
+      total: pnStatus.length,
+      newClean: pnStatus.filter(s => s.classification === 'NEW' && s.pase == null).length,
+      pase1: pnStatus.filter(s => s.pase === 1).length,
+      pase2: pnStatus.filter(s => s.pase === 2).length,
+      pase3Default: pnStatus.filter(s => s.pase === 3 && s.userOverride == null).length,
+      pase3Override: pnStatus.filter(s => s.pase === 3 && s.userOverride != null).length,
+      errors: errors.length,
+      omitidas: stats?.omitidas || 0,
+    };
+    const resumenAoa = [
+      ['Métrica', 'Conteo'],
+      ['PNs procesados', counts.total],
+      ['NEW limpios (sin candidatos)', counts.newClean],
+      ['MODIFY Pase 1 (IBMS)', counts.pase1],
+      ['MODIFY Pase 2 (composite)', counts.pase2],
+      ['NEW Pase 3 (default)', counts.pase3Default],
+      ['MODIFY Pase 3 (override)', counts.pase3Override],
+      ['Errores', counts.errors],
+      ['Omitidas', counts.omitidas],
+    ];
+    const wsResumen = window.XLSX.utils.aoa_to_sheet(resumenAoa);
+    window.XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+    // ── Hoja Decisiones Pase 3 ──
+    const pase3Headers = [
+      'CSVRow', 'PN', 'Cliente', 'QuoteIBMS_CSV', 'MetalBase_CSV', 'Acabados_CSV',
+      'DecisionFinal', 'CandidatoElegido', 'CandidatoLink',
+      'Candidato1', 'Candidato2', 'Candidato3',
+    ];
+    const pase3Rows = [pase3Headers];
+    pnStatus.forEach((s, i) => {
+      if (s.pase !== 3) return;
+      const decision = s.userOverride != null ? 'MODIFY' : 'NEW';
+      const chosen = s.userOverride || '';
+      const link = s.userOverride ? `https://app.gosteelhead.com/PartNumbers/${s.userOverride}` : '';
+      pase3Rows.push([
+        i + 1, s.pn, s.customerId,
+        parts[i]?.quoteIBMS || '',
+        parts[i]?.metalBase || '',
+        (parts[i]?.labels || []).join(','),
+        decision, chosen, link,
+        s.candidates?.[0]?.id || '',
+        s.candidates?.[1]?.id || '',
+        s.candidates?.[2]?.id || '',
+      ]);
+    });
+    const wsPase3 = window.XLSX.utils.aoa_to_sheet(pase3Rows);
+    window.XLSX.utils.book_append_sheet(wb, wsPase3, 'Decisiones Pase 3');
+
+    // ── Hoja Errores ──
+    const erroresAoa = [['Mensaje']].concat(errors.map(e => [typeof e === 'string' ? e : (e?.message || JSON.stringify(e))]));
+    const wsErrores = window.XLSX.utils.aoa_to_sheet(erroresAoa);
+    window.XLSX.utils.book_append_sheet(wb, wsErrores, 'Errores');
+
+    // Descargar
+    const runKey = state?.runKey || resumeState?.runKey || 'no-key';
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fname = `bulk-upload-report-${String(runKey).slice(0, 8)}-${ts}.xlsx`;
+    const wbout = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; document.body.appendChild(a); a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    log(`Reporte XLSX descargado: ${fname}`);
+    return fname;
+  }
+
   function showResult(stats, quoteUrl, errors, quoteUrlLabel) {
     const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
     injectStyles(); const { overlay, modal } = createOverlay();
@@ -1154,6 +1502,7 @@ const BulkUpload = (() => {
           failedPNs: [],
           quoteId: null,
           quoteAction: null,
+          classifications: null,
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
@@ -1312,6 +1661,37 @@ const BulkUpload = (() => {
       // ── PN existence check ──
       bailIfStale(myRunId);
       const pnStatus = await checkPNExistence(parts, myRunId);
+
+      // ── Restaurar userOverrides previos ANTES de pisar el snapshot ──
+      // Si el usuario ya eligió candidatos en un preview previo (Pase 3 dropdown),
+      // los recuperamos del resumeState antes de sobreescribir classifications.
+      const prevOverrides = new Map();
+      if (resumeState?.classifications) {
+        for (const slot of resumeState.classifications) {
+          if (slot.userOverride != null) prevOverrides.set(slot.csvRowKey, slot.userOverride);
+        }
+      }
+      for (let i = 0; i < pnStatus.length; i++) {
+        const ov = prevOverrides.get(pnStatus[i].csvRowKey);
+        if (ov != null) {
+          pnStatus[i].userOverride = ov;
+          pnStatus[i].existingId = ov;
+          pnStatus[i].status = 'existing';
+        }
+      }
+
+      // Persist classifications (con overrides ya re-aplicados)
+      if (resumeState) {
+        resumeState.classifications = pnStatus.map(s => ({
+          csvRowKey: s.csvRowKey,
+          classification: s.classification,
+          pase: s.pase,
+          targetPnId: s.targetPnId,
+          userOverride: s.userOverride,
+          candidates: (s.candidates || []).map(c => c.id),
+        }));
+        await persistResumeState();
+      }
 
       // V10: Resolver proceso vacío / "-" según existence:
       //   "-"   → set null (borrar default process)
@@ -2398,6 +2778,12 @@ const BulkUpload = (() => {
       }
       try { markPanelDone(errors.length === 0); } catch (_) {}
 
+      try {
+        generateRunReport(state, pnStatus, parts, stats, errors);
+      } catch (e) {
+        warn(`Reporte XLSX falló: ${e.message}`);
+      }
+
       showResult(stats, quoteUrl, errors, quoteUrlLabel);
       return { success: true, stats, errors };
 
@@ -2421,7 +2807,140 @@ const BulkUpload = (() => {
     }
   }
 
-  return { execute, setProgressCallback, parseCSV, parseRows };
+  // ─── Helpers de clasificación (puros, exportados a window.BulkUploadHelpers) ───
+
+  function isNonFinishLabel(name, nonFinishList) {
+    if (!name || typeof name !== 'string') return false;
+    return nonFinishList.includes(name);
+  }
+
+  function acabadosOrdenados(labels, nonFinishList) {
+    if (!Array.isArray(labels)) return '';
+    const seen = new Set();
+    const acabados = [];
+    for (const l of labels) {
+      if (!l || typeof l !== 'string') continue;
+      if (isNonFinishLabel(l, nonFinishList)) continue;
+      if (seen.has(l)) continue;
+      seen.add(l);
+      acabados.push(l);
+    }
+    return acabados.sort().join('|');
+  }
+
+  function buildCompositeKey(pn, nonFinishList) {
+    const customerId = pn.customerId != null ? String(pn.customerId) : '';
+    const name = (pn.name || '').toUpperCase();
+    const metalBase = pn.metalBase ? String(pn.metalBase) : '';
+    const acabados = acabadosOrdenados(pn.labels || [], nonFinishList);
+    return `${customerId}||${name}||${metalBase}||${acabados}`;
+  }
+
+  function rankCandidates(csvRow, candidates, nonFinishList) {
+    const csvMetal = csvRow.metalBase || '';
+    const csvAcabados = acabadosOrdenados(csvRow.labels || [], nonFinishList);
+    const csvIbms = csvRow.quoteIBMS || '';
+
+    function score(c) {
+      let s = 0;
+      if ((c.metalBase || '') === csvMetal) s++;
+      if (acabadosOrdenados(c.labels || [], nonFinishList) === csvAcabados) s++;
+      return s;
+    }
+
+    function ibmsRank(c) {
+      const ibms = c.quoteIBMS || '';
+      if (csvIbms && ibms === csvIbms) return 0; // mismo IBMS gana
+      if (!ibms) return 1;                       // IBMS vacío segundo
+      return 2;                                  // IBMS distinto último
+    }
+
+    return [...candidates].sort((a, b) => {
+      const sd = score(b) - score(a);
+      if (sd !== 0) return sd;
+      const id = ibmsRank(a) - ibmsRank(b);
+      if (id !== 0) return id;
+      return (a.id || 0) - (b.id || 0);
+    });
+  }
+
+  function classifyOnePN(csvRow, pnsForCustomer, nonFinishList) {
+    const activePns = (pnsForCustomer || []).filter(p => !p.archivedAt);
+    const csvIbms = csvRow.quoteIBMS || '';
+    const csvCompositeKey = buildCompositeKey(csvRow, nonFinishList);
+
+    // ── Pase 1: QuoteIBMS autoritativo ──
+    if (csvIbms) {
+      const byIbms = activePns.find(p => (p.quoteIBMS || '') === csvIbms);
+      if (byIbms) {
+        return {
+          classification: 'MODIFY',
+          pase: 1,
+          confidence: 'ibms-exacto',
+          targetPnId: byIbms.id,
+          candidates: [],
+        };
+      }
+    }
+
+    // ── Pase 2: composite exacto con regla anti-colisión ──
+    // Los PNs del catálogo pueden no traer customerId en su shape (ya están filtrados por cliente).
+    // Normalizamos usando el customerId del csvRow para que la comparación de keys sea apples-to-apples.
+    const csvCustomerId = csvRow.customerId;
+    const byComposite = activePns.find(p => {
+      const pNorm = (p.customerId != null) ? p : Object.assign({}, p, { customerId: csvCustomerId });
+      return buildCompositeKey(pNorm, nonFinishList) === csvCompositeKey;
+    });
+    if (byComposite) {
+      const pnIbms = byComposite.quoteIBMS || '';
+      const colision = csvIbms && pnIbms && pnIbms !== csvIbms;
+      if (!colision) {
+        let confSuffix;
+        if (!pnIbms && !csvIbms) confSuffix = 'ambos-sin-ibms';
+        else if (!pnIbms) confSuffix = 'pn-sin-ibms';
+        else if (!csvIbms) confSuffix = 'csv-sin-ibms';
+        else confSuffix = 'ibms-coincide';
+        return {
+          classification: 'MODIFY',
+          pase: 2,
+          confidence: `composite-exacto-${confSuffix}`,
+          targetPnId: byComposite.id,
+          candidates: [],
+        };
+      }
+      // colision → cae a Pase 3 (el PN aparecerá como candidato)
+    }
+
+    // ── Pase 3: near-match por nombre ──
+    const nameUpper = (csvRow.name || '').toUpperCase();
+    const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
+    if (nameCandidates.length > 0) {
+      const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList).slice(0, 3);
+      return {
+        classification: 'NEW',
+        pase: 3,
+        confidence: 'near-match-name',
+        targetPnId: null,
+        candidates: ranked,
+      };
+    }
+
+    // ── Sin candidatos en ningún pase ──
+    return {
+      classification: 'NEW',
+      pase: null,
+      confidence: 'sin-match',
+      targetPnId: null,
+      candidates: [],
+    };
+  }
+
+  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape };
+
+  return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();
 
-if (typeof window !== 'undefined') window.BulkUpload = BulkUpload;
+if (typeof window !== 'undefined') {
+  window.BulkUpload = BulkUpload;
+  window.BulkUploadHelpers = BulkUpload.__helpers || {};
+}
