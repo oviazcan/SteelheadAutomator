@@ -2421,7 +2421,12 @@ const BulkUpload = (() => {
     }
   }
 
-  return { execute, setProgressCallback, parseCSV, parseRows };
+  const __helpers = {};  // poblado en Task 2-5
+
+  return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();
 
-if (typeof window !== 'undefined') window.BulkUpload = BulkUpload;
+if (typeof window !== 'undefined') {
+  window.BulkUpload = BulkUpload;
+  window.BulkUploadHelpers = BulkUpload.__helpers || {};
+}
