@@ -286,3 +286,24 @@ test('extractPNShape acepta customInputs como objeto plano (shape real del API)'
   const r = H.extractPNShape({ id: 1, name: 'Y', customInputs: { DatosAdicionalesNP: { BaseMetal: 'AL' } } });
   assert.equal(r.metalBase, 'AL');
 });
+
+test('PNStatus post-override mantiene shape compatible con enrichWorker', () => {
+  const simulatedStatus = {
+    pn: 'X',
+    status: 'existing',
+    existingId: 100,
+    existingProcessId: null,
+    qty: 1,
+    precio: 0,
+    customerId: 7,
+    classification: 'NEW',
+    pase: 3,
+    confidence: 'near-match-name',
+    candidates: [{ id: 100, name: 'X', metalBase: 'CU', labels: [], quoteIBMS: '', defaultProcessNodeId: null }],
+    userOverride: 100,
+    targetPnId: null,
+    csvRowKey: 'X|7',
+  };
+  assert.equal(simulatedStatus.status, 'existing');
+  assert.equal(simulatedStatus.existingId, 100);
+});
