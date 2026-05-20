@@ -1164,6 +1164,12 @@ const BulkUpload = (() => {
                 rows[idx].existingId = newTargetId;
               }
               updateHeaderStats();
+              // Persist override en resume (best-effort, no awaitear)
+              if (resumeState) {
+                const slot = resumeState.classifications?.[idx];
+                if (slot) slot.userOverride = pnStatus[idx].userOverride;
+                persistResumeState().catch(() => {});
+              }
             });
             tdAct.appendChild(sel);
 
@@ -1407,6 +1413,7 @@ const BulkUpload = (() => {
           failedPNs: [],
           quoteId: null,
           quoteAction: null,
+          classifications: null,
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
@@ -1565,6 +1572,37 @@ const BulkUpload = (() => {
       // ── PN existence check ──
       bailIfStale(myRunId);
       const pnStatus = await checkPNExistence(parts, myRunId);
+
+      // ── Restaurar userOverrides previos ANTES de pisar el snapshot ──
+      // Si el usuario ya eligió candidatos en un preview previo (Pase 3 dropdown),
+      // los recuperamos del resumeState antes de sobreescribir classifications.
+      const prevOverrides = new Map();
+      if (resumeState?.classifications) {
+        for (const slot of resumeState.classifications) {
+          if (slot.userOverride != null) prevOverrides.set(slot.csvRowKey, slot.userOverride);
+        }
+      }
+      for (let i = 0; i < pnStatus.length; i++) {
+        const ov = prevOverrides.get(pnStatus[i].csvRowKey);
+        if (ov != null) {
+          pnStatus[i].userOverride = ov;
+          pnStatus[i].existingId = ov;
+          pnStatus[i].status = 'existing';
+        }
+      }
+
+      // Persist classifications (con overrides ya re-aplicados)
+      if (resumeState) {
+        resumeState.classifications = pnStatus.map(s => ({
+          csvRowKey: s.csvRowKey,
+          classification: s.classification,
+          pase: s.pase,
+          targetPnId: s.targetPnId,
+          userOverride: s.userOverride,
+          candidates: (s.candidates || []).map(c => c.id),
+        }));
+        await persistResumeState();
+      }
 
       // V10: Resolver proceso vacío / "-" según existence:
       //   "-"   → set null (borrar default process)
