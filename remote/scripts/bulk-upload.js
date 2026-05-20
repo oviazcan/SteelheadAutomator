@@ -1,5 +1,15 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
-// VERSION: 1.0.0 (2026-05-18) — hardening 7 fixes sobre v9
+//
+// VERSION 1.1.0 (2026-05-20): Dedup por QuoteIBMS + composite con override manual
+//   - Pase 1 IBMS autoritativo, Pase 2 composite exacto con regla anti-colisión,
+//     Pase 3 near-match con dropdown en preview + links a candidatos
+//   - Blacklist nonFinishLabelNames en config para distinguir acabados vs plantas/status
+//   - Prefetch paginado por cliente (reemplaza loop "una query por nombre")
+//   - Reporte XLSX al final del run (Resumen + Decisiones Pase 3 + Errores)
+//   - Resume schema extendido con classifications + userOverride
+//   - Tests Node de helpers puros en tools/test/bulk-upload-helpers.test.js
+//
+// VERSION 1.0.0 (2026-05-18): hardening 7 fixes sobre v9
 //   Fix 1: pool concurrente SavePartNumber enrich
 //   Fix 2: paginación AllPartNumbers en checkPNExistence
 //   Fix 3: cancellation token + panel con botón Detener
@@ -12,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
