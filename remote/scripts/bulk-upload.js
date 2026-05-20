@@ -2478,7 +2478,78 @@ const BulkUpload = (() => {
     });
   }
 
-  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates };
+  function classifyOnePN(csvRow, pnsForCustomer, nonFinishList) {
+    const activePns = (pnsForCustomer || []).filter(p => !p.archivedAt);
+    const csvIbms = csvRow.quoteIBMS || '';
+    const csvCompositeKey = buildCompositeKey(csvRow, nonFinishList);
+
+    // ── Pase 1: QuoteIBMS autoritativo ──
+    if (csvIbms) {
+      const byIbms = activePns.find(p => (p.quoteIBMS || '') === csvIbms);
+      if (byIbms) {
+        return {
+          classification: 'MODIFY',
+          pase: 1,
+          confidence: 'ibms-exacto',
+          targetPnId: byIbms.id,
+          candidates: [],
+        };
+      }
+    }
+
+    // ── Pase 2: composite exacto con regla anti-colisión ──
+    // Los PNs del catálogo pueden no traer customerId en su shape (ya están filtrados por cliente).
+    // Normalizamos usando el customerId del csvRow para que la comparación de keys sea apples-to-apples.
+    const csvCustomerId = csvRow.customerId;
+    const byComposite = activePns.find(p => {
+      const pNorm = (p.customerId != null) ? p : Object.assign({}, p, { customerId: csvCustomerId });
+      return buildCompositeKey(pNorm, nonFinishList) === csvCompositeKey;
+    });
+    if (byComposite) {
+      const pnIbms = byComposite.quoteIBMS || '';
+      const colision = csvIbms && pnIbms && pnIbms !== csvIbms;
+      if (!colision) {
+        let confSuffix;
+        if (!pnIbms && !csvIbms) confSuffix = 'ambos-sin-ibms';
+        else if (!pnIbms) confSuffix = 'pn-sin-ibms';
+        else if (!csvIbms) confSuffix = 'csv-sin-ibms';
+        else confSuffix = 'ibms-coincide';
+        return {
+          classification: 'MODIFY',
+          pase: 2,
+          confidence: `composite-exacto-${confSuffix}`,
+          targetPnId: byComposite.id,
+          candidates: [],
+        };
+      }
+      // colision → cae a Pase 3 (el PN aparecerá como candidato)
+    }
+
+    // ── Pase 3: near-match por nombre ──
+    const nameUpper = (csvRow.name || '').toUpperCase();
+    const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
+    if (nameCandidates.length > 0) {
+      const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList).slice(0, 3);
+      return {
+        classification: 'NEW',
+        pase: 3,
+        confidence: 'near-match-name',
+        targetPnId: null,
+        candidates: ranked,
+      };
+    }
+
+    // ── Sin candidatos en ningún pase ──
+    return {
+      classification: 'NEW',
+      pase: null,
+      confidence: 'sin-match',
+      targetPnId: null,
+      candidates: [],
+    };
+  }
+
+  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN };
 
   return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();

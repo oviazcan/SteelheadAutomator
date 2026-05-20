@@ -122,3 +122,135 @@ test('rankCandidates returns empty array for empty candidates', () => {
   const ranked = H.rankCandidates({ customerId: 1, name: 'X', metalBase: '', labels: [], quoteIBMS: '' }, [], []);
   assert.equal(ranked.length, 0);
 });
+
+test('classifyOnePN — Caso 1: IBMS exacto, name iguales → Pase 1 MODIFY', () => {
+  const H = loadHelpers();
+  const NON_FINISH = ['SMY'];
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, NON_FINISH);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 1);
+  assert.equal(r.targetPnId, 100);
+  assert.equal(r.confidence, 'ibms-exacto');
+});
+
+test('classifyOnePN — Caso 2: IBMS exacto, name distinto → Pase 1 MODIFY + rename', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'B', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 1);
+  assert.equal(r.targetPnId, 100);
+});
+
+test('classifyOnePN — Caso 3: CSV trae IBMS, PN no, composite match → Pase 2 MODIFY (populate)', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 2);
+  assert.equal(r.targetPnId, 100);
+  assert.equal(r.confidence, 'composite-exacto-pn-sin-ibms');
+});
+
+test('classifyOnePN — Caso 4: CSV sin IBMS, PN con IBMS, composite match → Pase 2 MODIFY (preserva IBMS)', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Y' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 2);
+  assert.equal(r.targetPnId, 100);
+  assert.equal(r.confidence, 'composite-exacto-csv-sin-ibms');
+});
+
+test('classifyOnePN — Caso 5: dos PNs, uno por IBMS y otro por name; gana Pase 1', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'Z', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' }, // matchea por IBMS
+    { id: 101, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Y' }, // matchea por composite, IBMS distinto
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 1);
+  assert.equal(r.targetPnId, 100);
+});
+
+test('classifyOnePN — Caso 6: name coincide, metalBase distinto → Pase 3 NEW default con candidato', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'AL', labels: ['NIQ'], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, 3);
+  assert.equal(r.targetPnId, null);
+  assert.equal(r.candidates.length, 1);
+  assert.equal(r.candidates[0].id, 100);
+});
+
+test('classifyOnePN — Caso 7: nada parecido → NEW sin candidatos', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'Z', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, null);
+  assert.equal(r.targetPnId, null);
+  assert.equal(r.candidates.length, 0);
+});
+
+test('classifyOnePN — anti-colisión Pase 2: composite match pero ambos IBMS no-vacíos y distintos → cae a Pase 3', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Y' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, 3);
+  assert.equal(r.candidates.length, 1);
+  assert.equal(r.candidates[0].id, 100);
+});
+
+test('classifyOnePN — Pase 3 top 3 cap aunque haya más candidatos', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: [], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 1, name: 'A', metalBase: 'AL', labels: [], quoteIBMS: '' },
+    { id: 2, name: 'A', metalBase: 'FE', labels: [], quoteIBMS: '' },
+    { id: 3, name: 'A', metalBase: 'ZN', labels: [], quoteIBMS: '' },
+    { id: 4, name: 'A', metalBase: 'PB', labels: [], quoteIBMS: '' },
+    { id: 5, name: 'A', metalBase: 'NI', labels: [], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.pase, 3);
+  assert.equal(r.candidates.length, 3);
+});
+
+test('classifyOnePN — archivedAt excluye PNs aunque matcheen', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: [], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: [], quoteIBMS: 'X', archivedAt: '2024-01-01' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, null);
+  assert.equal(r.candidates.length, 0);
+});
