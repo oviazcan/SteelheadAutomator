@@ -724,31 +724,65 @@ const BulkUpload = (() => {
     };
   }
 
-  async function checkPNExistence(parts, myRunId) {
-    // FIX 2 (2026-05-18): paginación real para AllPartNumbers. Antes era first:50 y si había
-    // >50 matches de searchQuery, el PN exacto podía caer fuera del window y se reportaba
-    // como NUEVO → duplicado silencioso (mismo bug del b4ccc7d disfrazado). Ahora avanza
-    // pageSize=200 (configurable) en loop hasta encontrar el exacto o agotar maxResults.
-    const uniq = new Map(); // "PN|custId" → { name, customerId }
+  // ─── classifyPNs (reemplaza checkPNExistence en 1.1.0) ───
+  // Auto-detect dual-mode por tamaño del CSV:
+  //   - CSV grande (> massiveThreshold, default 1000): prefetch global del
+  //     dominio + group-by customer (~250 queries para domain 50k vs ~9k
+  //     queries on-demand). Pase 1 (QuoteIBMS match) viable porque se
+  //     evalúan TODOS los PNs activos del cliente.
+  //   - CSV chico (≤ massiveThreshold): query on-demand searchQuery=name
+  //     por PN del CSV (patrón 1.0.0). Performance: ~|CSV| queries. Pase 1
+  //     limitado a matches por nombre exacto (raro pero acotado en CSVs <
+  //     1000 filas — diseño del día a día).
+  async function classifyPNs(parts, myRunId) {
+    const cfg = bulkCfg();
+    const massiveThreshold = cfg.dedup?.massiveThreshold ?? 1000;
+    const useMassive = parts.length > massiveThreshold;
+    log(`Clasificación: ${parts.length} filas — modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold})`);
+    return useMassive
+      ? await classifyPNsMassive(parts, myRunId)
+      : await classifyPNsOnDemand(parts, myRunId);
+  }
+
+  // Modo masivo: prefetch global + classifier puro.
+  async function classifyPNsMassive(parts, myRunId) {
+    const cfg = bulkCfg();
+    const nonFinishList = cfg.nonFinishLabelNames || [];
+    const customerIds = [...new Set(parts.map(p => p.customerId).filter(x => x != null))];
+    const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId);
+
+    setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
+    const out = parts.map(p => buildClassifiedRow(p, pnsByCustomer.get(p.customerId) || [], nonFinishList));
+    logClassificationSummary(out);
+    return out;
+  }
+
+  // Modo día: una pasada paginada de AllPartNumbers con searchQuery=name por
+  // PN del CSV; filtro client-side por customerId; mapeo a shape con
+  // extractPNShape; llamada a classifyOnePN.
+  async function classifyPNsOnDemand(parts, myRunId) {
+    const cfg = bulkCfg();
+    const nonFinishList = cfg.nonFinishLabelNames || [];
+    const pageSize = cfg.paging?.allPartNumbers?.first || cfg.paging?.allPartNumbersFirst || 200;
+    const maxResults = cfg.paging?.allPartNumbers?.maxResults || cfg.paging?.allPartNumbersMaxResults || 1000;
+
+    // Deduplicar por (PN|customerId) para no buscar dos veces el mismo lookup
+    const uniq = new Map();
     for (const p of parts) {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
       if (!uniq.has(key)) uniq.set(key, { name: p.pn, customerId: p.customerId });
     }
-    const existMap = new Map(); // same key → { id, processId }
-    const cfg = bulkCfg();
-    const pageSize = cfg.paging.allPartNumbersFirst;
-    const maxResults = cfg.paging.allPartNumbersMaxResults;
+    const candidatesByKey = new Map(); // key → PN[] del cliente con nombre cercano
     log(`Buscando ${uniq.size} PN/cliente combinaciones (page=${pageSize}, cap=${maxResults})...`);
-    setPanelPhase('Verificando PNs existentes');
+    setPanelPhase(`Verificando PNs existentes (${uniq.size} búsquedas)`);
     setPanelProgress(0, uniq.size);
 
     let progress = 0;
     for (const [key, { name, customerId }] of uniq) {
       if (myRunId != null) bailIfStale(myRunId);
+      const pnsForKey = [];
       try {
         let offset = 0;
-        let found = null;
-        let totalScanned = 0;
         while (offset < maxResults) {
           if (myRunId != null) bailIfStale(myRunId);
           const d = await withRetry(
@@ -759,41 +793,85 @@ const BulkUpload = (() => {
             myRunId
           );
           const nodes = d?.pagedData?.nodes || [];
-          totalScanned += nodes.length;
-          const match = nodes.find(n =>
-            n.name?.toUpperCase() === name.toUpperCase() &&
-            !n.archivedAt &&
-            (n.customerByCustomerId?.id === customerId || n.customerId === customerId)
-          );
-          if (match) { found = match; break; }
-          if (nodes.length < pageSize) break; // última página
-          offset += pageSize;
-        }
-        if (found) {
-          existMap.set(key, { id: found.id, processId: found.processNodeByDefaultProcessNodeId?.id || found.defaultProcessNodeId || null });
-          log(`  "${name}" (cust:${customerId}) -> EXISTE id:${found.id} (scan=${totalScanned})`);
-        } else {
-          log(`  "${name}" (cust:${customerId}) -> NUEVO (scan=${totalScanned}${totalScanned >= maxResults ? ' CAP' : ''})`);
-          if (totalScanned >= maxResults) {
-            warn(`  ⚠ "${name}" alcanzó cap de ${maxResults} sin encontrar exacto — revisa si es duplicado silencioso`);
+          for (const n of nodes) {
+            const cid = n.customerByCustomerId?.id || n.customerId;
+            if (cid === customerId) pnsForKey.push(extractPNShape(n));
           }
+          if (nodes.length < pageSize) break;
+          offset += pageSize;
         }
       } catch (e) {
         if (isBail(e)) throw e;
         warn(`Búsqueda "${name}": ${String(e).substring(0, 120)}`);
         state.counters.errors++;
       }
+      candidatesByKey.set(key, pnsForKey);
       progress++;
       setPanelProgress(progress, uniq.size);
     }
-    return parts.map(p => {
+
+    setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
+    const out = parts.map(p => {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
-      const ex = existMap.get(key);
-      if (!ex) return { pn: p.pn, status: 'new', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId };
-      if (p.forzarDuplicado) return { pn: p.pn, status: 'forceDup', existingId: ex.id, existingProcessId: ex.processId, qty: p.qty, precio: p.precio, customerId: p.customerId };
-      return { pn: p.pn, status: 'existing', existingId: ex.id, existingProcessId: ex.processId, qty: p.qty, precio: p.precio, customerId: p.customerId };
+      const pnsForCustomer = candidatesByKey.get(key) || [];
+      return buildClassifiedRow(p, pnsForCustomer, nonFinishList);
     });
+    logClassificationSummary(out);
+    return out;
   }
+
+  // Builder común: construye el objeto pnStatus retro-compatible + nuevos
+  // campos del refactor. Centraliza el mapping classification → status para
+  // que ambos modos (masivo y día) emitan el mismo shape.
+  function buildClassifiedRow(p, pnsForCustomer, nonFinishList) {
+    const csvRow = {
+      customerId: p.customerId,
+      name: p.pn,
+      metalBase: p.metalBase || '',
+      labels: p.labels || [],
+      quoteIBMS: p.quoteIBMS || '',
+    };
+    const cls = classifyOnePN(csvRow, pnsForCustomer, nonFinishList);
+
+    // Retro-compat: derivar status para enrichWorker y demás callers.
+    let status;
+    if (p.forzarDuplicado && cls.classification === 'MODIFY') status = 'forceDup';
+    else if (cls.classification === 'MODIFY') status = 'existing';
+    else status = 'new';
+    // forceDup sin target → degrada a 'new' (nada que duplicar)
+    if (status === 'forceDup' && !cls.targetPnId) status = 'new';
+
+    const pnTarget = cls.targetPnId ? pnsForCustomer.find(x => x.id === cls.targetPnId) : null;
+    return {
+      // retro-compat
+      pn: p.pn,
+      status,
+      existingId: cls.targetPnId,
+      existingProcessId: pnTarget?.defaultProcessNodeId || null,
+      qty: p.qty,
+      precio: p.precio,
+      customerId: p.customerId,
+      // nuevos campos
+      classification: cls.classification,
+      pase: cls.pase,
+      confidence: cls.confidence,
+      candidates: cls.candidates,
+      userOverride: null,
+      targetPnId: cls.targetPnId,
+      csvRowKey: `${p.pn.toUpperCase()}|${p.customerId}`,
+    };
+  }
+
+  function logClassificationSummary(out) {
+    const p1 = out.filter(s => s.pase === 1).length;
+    const p2 = out.filter(s => s.pase === 2).length;
+    const p3 = out.filter(s => s.pase === 3).length;
+    const newClean = out.filter(s => s.pase === null).length;
+    log(`Clasificación: P1=${p1} P2=${p2} P3=${p3} NEW=${newClean} (total ${out.length})`);
+  }
+
+  // Alias retro-compat: el callsite (~línea 1389) sigue invocando checkPNExistence.
+  const checkPNExistence = classifyPNs;
 
   // ═══════════════════════════════════════════
   // MODAL UI
