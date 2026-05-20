@@ -323,6 +323,13 @@ async function handleMessage(message, sender) {
     // ── Carga Masiva ──
     case 'run-csv': {
       const tab = await getSteelheadTab();
+      // XLSX library debe inyectarse antes del applet porque
+      // bulk-upload usa window.XLSX para generar el reporte al final del run.
+      const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (c) => { if (!window.XLSX) new Function(c)(); }, args: [xlsxCode]
+      });
       await injectAppScripts(tab.id, 'carga-masiva');
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',

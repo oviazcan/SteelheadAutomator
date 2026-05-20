@@ -1323,6 +1323,85 @@ const BulkUpload = (() => {
     });
   }
 
+  // ─── Reporte XLSX del run ───
+  function generateRunReport(state, pnStatus, parts, stats, errors) {
+    if (typeof window.XLSX === 'undefined') {
+      warn('XLSX no disponible; reporte saltado.');
+      return null;
+    }
+    const wb = window.XLSX.utils.book_new();
+
+    // ── Hoja Resumen ──
+    const counts = {
+      total: pnStatus.length,
+      newClean: pnStatus.filter(s => s.classification === 'NEW' && s.pase == null).length,
+      pase1: pnStatus.filter(s => s.pase === 1).length,
+      pase2: pnStatus.filter(s => s.pase === 2).length,
+      pase3Default: pnStatus.filter(s => s.pase === 3 && s.userOverride == null).length,
+      pase3Override: pnStatus.filter(s => s.pase === 3 && s.userOverride != null).length,
+      errors: errors.length,
+      omitidas: stats?.omitidas || 0,
+    };
+    const resumenAoa = [
+      ['Métrica', 'Conteo'],
+      ['PNs procesados', counts.total],
+      ['NEW limpios (sin candidatos)', counts.newClean],
+      ['MODIFY Pase 1 (IBMS)', counts.pase1],
+      ['MODIFY Pase 2 (composite)', counts.pase2],
+      ['NEW Pase 3 (default)', counts.pase3Default],
+      ['MODIFY Pase 3 (override)', counts.pase3Override],
+      ['Errores', counts.errors],
+      ['Omitidas', counts.omitidas],
+    ];
+    const wsResumen = window.XLSX.utils.aoa_to_sheet(resumenAoa);
+    window.XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+    // ── Hoja Decisiones Pase 3 ──
+    const pase3Headers = [
+      'CSVRow', 'PN', 'Cliente', 'QuoteIBMS_CSV', 'MetalBase_CSV', 'Acabados_CSV',
+      'DecisionFinal', 'CandidatoElegido', 'CandidatoLink',
+      'Candidato1', 'Candidato2', 'Candidato3',
+    ];
+    const pase3Rows = [pase3Headers];
+    pnStatus.forEach((s, i) => {
+      if (s.pase !== 3) return;
+      const decision = s.userOverride != null ? 'MODIFY' : 'NEW';
+      const chosen = s.userOverride || '';
+      const link = s.userOverride ? `https://app.gosteelhead.com/PartNumbers/${s.userOverride}` : '';
+      pase3Rows.push([
+        i + 1, s.pn, s.customerId,
+        parts[i]?.quoteIBMS || '',
+        parts[i]?.metalBase || '',
+        (parts[i]?.labels || []).join(','),
+        decision, chosen, link,
+        s.candidates?.[0]?.id || '',
+        s.candidates?.[1]?.id || '',
+        s.candidates?.[2]?.id || '',
+      ]);
+    });
+    const wsPase3 = window.XLSX.utils.aoa_to_sheet(pase3Rows);
+    window.XLSX.utils.book_append_sheet(wb, wsPase3, 'Decisiones Pase 3');
+
+    // ── Hoja Errores ──
+    const erroresAoa = [['Mensaje']].concat(errors.map(e => [typeof e === 'string' ? e : (e?.message || JSON.stringify(e))]));
+    const wsErrores = window.XLSX.utils.aoa_to_sheet(erroresAoa);
+    window.XLSX.utils.book_append_sheet(wb, wsErrores, 'Errores');
+
+    // Descargar
+    const runKey = state?.runKey || resumeState?.runKey || 'no-key';
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fname = `bulk-upload-report-${String(runKey).slice(0, 8)}-${ts}.xlsx`;
+    const wbout = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; document.body.appendChild(a); a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    log(`Reporte XLSX descargado: ${fname}`);
+    return fname;
+  }
+
   function showResult(stats, quoteUrl, errors, quoteUrlLabel) {
     const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
     injectStyles(); const { overlay, modal } = createOverlay();
@@ -2688,6 +2767,12 @@ const BulkUpload = (() => {
         await persistResumeState();
       }
       try { markPanelDone(errors.length === 0); } catch (_) {}
+
+      try {
+        generateRunReport(state, pnStatus, parts, stats, errors);
+      } catch (e) {
+        warn(`Reporte XLSX falló: ${e.message}`);
+      }
 
       showResult(stats, quoteUrl, errors, quoteUrlLabel);
       return { success: true, stats, errors };
