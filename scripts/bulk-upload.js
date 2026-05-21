@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.1';
+  const VERSION = '1.2.2';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -189,10 +189,27 @@ const BulkUpload = (() => {
   function isStale(myRunId) { return !state || state.cancelled || state.runId !== myRunId; }
   function bailIfStale(myRunId) { if (isStale(myRunId)) throw new BailError(); }
   function cancelRun() {
-    if (!state) return;
+    if (!state || state.cancelled) return;
     state.cancelled = true;
     state.phase = 'cancelled';
-    addPanelLog('⏹ Cancelación solicitada — esperando que terminen las requests en vuelo...');
+    // 1.2.2: pintar el panel como Cancelado inmediatamente sin esperar al
+    // próximo bailIfStale. Antes el panel quedaba "esperando..." durante
+    // segundos hasta que algún loop pegaba a un bailIfStale; el usuario lo
+    // percibía como colgado. Ahora el panel reacciona al instante: botón
+    // Detener desaparece, aparece Cerrar y el usuario puede salir aunque
+    // queden requests en vuelo terminando en background (los catch/finally
+    // se ejecutan igual cuando regresen).
+    const p = document.getElementById('sa-bu-panel');
+    if (p) {
+      p.classList.remove('sa-error', 'sa-done');
+      p.classList.add('sa-cancelled');
+      setPanelPhase('Cancelado — requests en vuelo terminarán en background');
+      const stopBtn = p.querySelector('#sa-bu-stop');
+      if (stopBtn) stopBtn.style.display = 'none';
+      const closeBtn = p.querySelector('#sa-bu-close');
+      if (closeBtn) closeBtn.style.display = 'inline-block';
+    }
+    addPanelLog('⏹ Cancelado. Puedes cerrar el panel — el resume guardado permite reanudar después.');
   }
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1768,6 +1785,7 @@ const BulkUpload = (() => {
       const uniqueClientNames = [...new Set(parts.map(p => p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim()))];
       log(`Clientes únicos en layout: ${uniqueClientNames.length}`);
       for (const cname of uniqueClientNames) {
+        bailIfStale(myRunId);
         const custData = await api().query('CustomerSearchByName', { nameLike: `%${cname}%`, orderBy: ['NAME_ASC'] });
         const custNodes = custData?.searchCustomers?.nodes || custData?.pagedData?.nodes || custData?.allCustomers?.nodes || [];
         const customer = custNodes.find(c => c.name?.toUpperCase().includes(cname.toUpperCase()));
@@ -1804,6 +1822,7 @@ const BulkUpload = (() => {
       async function fetchAllSpecsFull() {
         const all = []; const PAGE = 400; let offset = 0;
         while (true) {
+          bailIfStale(myRunId);
           let d;
           try {
             d = await api().query('AllSpecs', { includeArchived: 'NO', orderBy: ['ID_IN_DOMAIN_ASC'], offset, first: PAGE, searchQuery: '' });
@@ -1843,6 +1862,7 @@ const BulkUpload = (() => {
       const uniqueProcessNames = [...new Set(parts.map(p => p.procesoOverride).filter(n => n && !isDash(n)))];
       log(`Procesos únicos en layout: ${uniqueProcessNames.length}`);
       for (const pname of uniqueProcessNames) {
+        bailIfStale(myRunId);
         const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${pname}%`, first: 50 });
         const pn2 = pd?.allProcessNodes?.nodes || pd?.pagedData?.nodes || [];
         const pr = pn2.find(p => p.name?.toUpperCase() === pname.toUpperCase()) || pn2.find(p => p.name?.toUpperCase().includes(pname.toUpperCase()));
@@ -1866,6 +1886,7 @@ const BulkUpload = (() => {
       const dimValueMap = new Map(); // "valor" → id
       const dimIds = DOMAIN.dimensionIds || {};
       for (const dimId of Object.values(dimIds)) {
+        bailIfStale(myRunId);
         try {
           const dd = await api().query('GetDimension', { id: dimId, includeArchived: 'NO' });
           const nodes = dd?.acctDimensionById?.acctDimensionCustomValuesByDimensionId?.nodes || [];
@@ -1893,6 +1914,7 @@ const BulkUpload = (() => {
       const uniqueSpecs = new Set(); for (const p of parts) for (const s of p.specs) uniqueSpecs.add(s.name);
       const sfCache = new Map();
       for (const sn of uniqueSpecs) {
+        bailIfStale(myRunId);
         if (isDash(sn)) continue;
         const si = specByName.get(sn); if (!si) { warn(`Spec "${sn}" no encontrada.`); continue; }
         if (!sfCache.has(si.id)) {
