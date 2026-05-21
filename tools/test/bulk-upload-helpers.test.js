@@ -242,6 +242,59 @@ test('classifyOnePN — Caso 6d: name coincide, etiquetas iguales ignorando nonF
   assert.equal(r.targetPnId, 100);
 });
 
+test('classifyOnePN — Caso 6e (1.2.9): no strict match pero hay candidato sin-etiqueta → MODIFY blank', () => {
+  // CSV con etiquetas pero ningún candidato matchea exacto; UN candidato no tiene
+  // etiquetas (slate limpia). Default debe ser MODIFY ese blank candidate
+  // en vez de NEW — es más seguro completar un PN vacío que duplicar.
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['ANTITARNISH'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['PLATA FLASH', 'ANTITARNISH'], quoteIBMS: '' }, // etiquetas extras
+    { id: 200, name: 'A', metalBase: 'AL', labels: ['DECAPADO', 'ESTAÑO'], quoteIBMS: '' },        // etiquetas distintas
+    { id: 300, name: 'A', metalBase: 'CU', labels: [], quoteIBMS: '' },                            // blank — éste gana
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 3);
+  assert.equal(r.confidence, 'name+blank-candidate');
+  assert.equal(r.targetPnId, 300);
+  assert.equal(r.candidates.length, 3);
+});
+
+test('classifyOnePN — Caso 6f (1.2.9): no strict match, dos blank candidates → toma el primero por ranking (id asc en ties)', () => {
+  // Múltiples blanks → escoge el del menor id (rankCandidates tie-breaks por id asc
+  // cuando score e ibmsRank empatan).
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 500, name: 'A', metalBase: 'AL', labels: [], quoteIBMS: '' }, // blank id mayor
+    { id: 100, name: 'A', metalBase: 'AL', labels: [], quoteIBMS: '' }, // blank id menor
+    { id: 200, name: 'A', metalBase: 'CU', labels: ['CRO'], quoteIBMS: '' }, // labeled
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 3);
+  assert.equal(r.confidence, 'name+blank-candidate');
+  assert.equal(r.targetPnId, 100);
+});
+
+test('classifyOnePN — Caso 6g (1.2.9): no strict match y sin blank candidate → NEW', () => {
+  // Regresión: cuando ningún candidato es sin-etiqueta, el default sigue siendo NEW
+  // (no se hace fallback a un candidato labeled solo porque exista).
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'AL', labels: ['CRO'], quoteIBMS: '' },
+    { id: 200, name: 'A', metalBase: 'FE', labels: ['EST', 'DEC'], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, 3);
+  assert.equal(r.confidence, 'name-only-labels-differ');
+  assert.equal(r.targetPnId, null);
+  assert.equal(r.candidates.length, 2);
+});
+
 test('classifyOnePN — Caso 7: nada parecido → NEW sin candidatos', () => {
   const H = loadHelpers();
   const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
