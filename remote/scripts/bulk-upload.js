@@ -3198,6 +3198,39 @@ const BulkUpload = (() => {
         }
         if (labelIds.length) stats.labelsSet += labelIds.length;
 
+        // Fix C 1.3.2: pre-fetch del PN existente para poder filtrar specsToApply y NO
+        // gatillar unique_constraint en la link table. Antes (≤1.3.1) este fetch solo se
+        // hacía cuando hasArchiveSentinel — los demás PNs existing mandaban specsToApply
+        // con specs ya linkeadas → primer SavePartNumber fallaba con duplicate-key →
+        // strip1 quitaba specsToApply → 2x calls por PN.
+        let existingPnNode = null;
+        const statusEarly = pnStatus[idx];
+        if (statusEarly?.status === 'existing' && pn.id) {
+          existingPnNode = existingPnFullCache.get(pn.id);
+          if (!existingPnNode) {
+            try {
+              bailIfStale(myRunId);
+              const pnData = await withRetry(
+                () => api().query('GetPartNumber', { partNumberId: pn.id }),
+                `GetPartNumber prefetch "${pn.name}"`,
+                myRunId
+              );
+              existingPnNode = pnData?.partNumberById || null;
+              if (existingPnNode) existingPnFullCache.set(pn.id, existingPnNode);
+            } catch (e) {
+              if (isBail(e)) throw e;
+              warn(`GetPartNumber prefetch "${pn.name}" falló (${String(e).substring(0, 80)}) — caerá al flujo strip1`);
+            }
+          }
+        }
+        const alreadyLinkedSpecIds = new Set();
+        if (existingPnNode) {
+          for (const ls of (existingPnNode.partNumberSpecsByPartNumberId?.nodes || [])) {
+            if (ls.archivedAt) continue;
+            const sid = ls.specBySpecId?.id; if (sid) alreadyLinkedSpecIds.add(sid);
+          }
+        }
+
         // Specs — semántica del guión:
         //   * `spec1=-` solo → archive sentinel "borrar todas las linked specs" (specsToApply queda [])
         //   * `spec1=Y, spec2=-` → apply Y + archive sentinel "borrar el resto que no sea Y"
@@ -3237,22 +3270,9 @@ const BulkUpload = (() => {
         const partNumberSpecsToArchiveIds = [];
         const statusForArchive = pnStatus[idx];
         if (hasArchiveSentinel && statusForArchive?.status === 'existing' && pn.id) {
-          let cached = existingPnFullCache.get(pn.id);
-          if (!cached) {
-            try {
-              bailIfStale(myRunId);
-              const pnData = await withRetry(
-                () => api().query('GetPartNumber', { partNumberId: pn.id }),
-                `GetPartNumber archive "${pn.name}"`,
-                myRunId
-              );
-              cached = pnData?.partNumberById || null;
-              if (cached) existingPnFullCache.set(pn.id, cached);
-            } catch (e) {
-              if (isBail(e)) throw e;
-              warn(`Archive sentinel "${pn.name}": GetPartNumber falló (${String(e).substring(0, 80)}), no se archivará nada`);
-            }
-          }
+          // Fix C 1.3.2: existingPnNode ya fue pre-fetched arriba para todo PN existing;
+          // no hace falta un segundo GetPartNumber aquí.
+          const cached = existingPnNode;
           const linked = cached?.partNumberSpecsByPartNumberId?.nodes || [];
           for (const ls of linked) {
             if (ls.archivedAt) continue;
@@ -3278,6 +3298,12 @@ const BulkUpload = (() => {
           if (uc.minPzasLote !== null && uc.minPzasLote > 0) ucs.push({ unitId: DOMAIN.unitIds.LO, factor: 1 / uc.minPzasLote });
         }
         if (ucs.length || ucDash) stats.unitConvSet++;
+
+        // Fix C 1.3.2: para PNs existing, las specs ya linkeadas no se reenvían — Steelhead
+        // las trata como unique_constraint en partNumberSpec (pnId, specId).
+        const specsToApplyFiltered = alreadyLinkedSpecIds.size
+          ? specsToApply.filter(s => !alreadyLinkedSpecIds.has(s.specId))
+          : specsToApply;
 
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
@@ -3322,7 +3348,7 @@ const BulkUpload = (() => {
           inventoryPredictedUsages: finalPredictive
             .filter(pu => !existingPredictedMap.get(pn.id)?.has(String(pu.inventoryItemId)))
             .map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
-          specsToApply, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
+          specsToApply: specsToApplyFiltered, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
           dimensionCustomValueIds: dimValueIds,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
           partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
@@ -3340,6 +3366,11 @@ const BulkUpload = (() => {
           );
           okSP++;
           state.counters.ok++;
+          // Fix I 1.3.2: invalidar cache para que STEP 6b lea un GetPartNumber fresco con
+          // los specs/params que SavePartNumber acaba de agregar. Sin esto, STEP 6b
+          // reintenta AddParamsToPartNumber para params recién creados → 500 exclusion
+          // constraint → log "presente, skip" × N × pn.
+          if (pn.id) existingPnFullCache.delete(pn.id);
         }
         catch (e) {
           if (isBail(e)) throw e;
@@ -3353,6 +3384,7 @@ const BulkUpload = (() => {
                 myRunId
               );
               retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
+              if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
             } catch (e2) {
               if (isBail(e2)) throw e2;
               try {
@@ -3362,6 +3394,7 @@ const BulkUpload = (() => {
                   myRunId
                 );
                 retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+                if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
               } catch (e3) {
                 if (isBail(e3)) throw e3;
                 errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`);
