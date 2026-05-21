@@ -46,8 +46,14 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.12';
+  const VERSION = '1.2.13';
   const api = () => window.SteelheadAPI;
+
+  // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
+  // AllPartNumbers. El persisted query no expone archivedAt en su selection
+  // set, así que sintetizamos un valor truthy diferenciado de un ISO timestamp
+  // real (los callers solo chequean truthy/falsy con `!p.archivedAt`).
+  const ARCHIVED_SENTINEL = 'archived';
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
@@ -106,6 +112,12 @@ const BulkUpload = (() => {
     phase: 'idle',
     progress: { current: 0, total: 0 },
     counters: { ok: 0, retried: 0, errors: 0 },
+    // 1.2.13: expuestos en state para que el snippet diagnóstico
+    // (window.BulkUpload.__state) pueda leerlos sin tener que ser parámetros
+    // de execute(). Se rellenan durante execute() y se reinician en nextRunId().
+    parts: [],
+    pnStatus: [],
+    archiveGlobal: true,
   };
 
   // ── Fix 7: resume tras crash ──
@@ -219,6 +231,9 @@ const BulkUpload = (() => {
       phase: 'init',
       progress: { current: 0, total: 0 },
       counters: { ok: 0, retried: 0, errors: 0 },
+      parts: [],
+      pnStatus: [],
+      archiveGlobal: true,
     };
     return state.runId;
   }
@@ -753,8 +768,15 @@ const BulkUpload = (() => {
     const customerSet = new Set(customerIds);
     const result = new Map();
     for (const cid of customerSet) result.set(cid, []);
+    // 1.2.13: el persisted query de AllPartNumbers NO devuelve archivedAt en su
+    // selection set (verificado en consola 2026-05-21 — la respuesta solo trae
+    // nodeId/id/createdAt/name/... sin archivedAt). Para distinguir activos de
+    // archivados hacemos dos pasadas (includeArchived: 'NO' luego 'YES') y
+    // sintetizamos archivedAt = ARCHIVED_SENTINEL para los IDs que aparecen en
+    // YES pero no en NO. La lógica de Pases 1/2 ya respeta el flag (1.2.12).
+    const activeIds = new Set();
 
-    setPanelPhase(`Prefetch global de PNs (subset: ${customerSet.size} clientes)`);
+    setPanelPhase(`Prefetch PNs activos (subset: ${customerSet.size} clientes)`);
     let offset = 0;
     let scanned = 0;
     let kept = 0;
@@ -762,14 +784,16 @@ const BulkUpload = (() => {
       if (myRunId != null) bailIfStale(myRunId);
       const d = await withRetry(
         () => api().query('AllPartNumbers', {
-          orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: ''
+          orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: '',
+          includeArchived: 'NO'
         }),
-        `AllPartNumbers prefetch offset=${offset}`,
+        `AllPartNumbers (NO) prefetch offset=${offset}`,
         myRunId
       );
       const nodes = d?.pagedData?.nodes || [];
       scanned += nodes.length;
       for (const n of nodes) {
+        activeIds.add(n.id);
         const cid = n.customerByCustomerId?.id || n.customerId;
         if (cid != null && customerSet.has(cid)) {
           result.get(cid).push(extractPNShape(n));
@@ -778,10 +802,43 @@ const BulkUpload = (() => {
       }
       const totalCount = d?.pagedData?.totalCount || 0;
       setPanelProgress(scanned, Math.min(totalCount || maxResults, maxResults));
-      if (nodes.length < pageSize) break; // última página
+      if (nodes.length < pageSize) break;
       offset += pageSize;
     }
-    log(`Prefetch: ${scanned} PNs escaneados, ${kept} relevantes para ${customerSet.size} clientes`);
+    log(`Prefetch activos: ${scanned} PNs escaneados, ${kept} relevantes para ${customerSet.size} clientes`);
+
+    setPanelPhase(`Prefetch PNs archivados (subset: ${customerSet.size} clientes)`);
+    offset = 0;
+    let scannedArch = 0;
+    let keptArch = 0;
+    while (offset < maxResults) {
+      if (myRunId != null) bailIfStale(myRunId);
+      const d = await withRetry(
+        () => api().query('AllPartNumbers', {
+          orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: '',
+          includeArchived: 'YES'
+        }),
+        `AllPartNumbers (YES) prefetch offset=${offset}`,
+        myRunId
+      );
+      const nodes = d?.pagedData?.nodes || [];
+      scannedArch += nodes.length;
+      for (const n of nodes) {
+        if (activeIds.has(n.id)) continue; // ya añadido en pasada NO
+        const cid = n.customerByCustomerId?.id || n.customerId;
+        if (cid != null && customerSet.has(cid)) {
+          const shape = extractPNShape(n);
+          shape.archivedAt = ARCHIVED_SENTINEL;
+          result.get(cid).push(shape);
+          keptArch++;
+        }
+      }
+      const totalCount = d?.pagedData?.totalCount || 0;
+      setPanelProgress(scannedArch, Math.min(totalCount || maxResults, maxResults));
+      if (nodes.length < pageSize) break;
+      offset += pageSize;
+    }
+    log(`Prefetch archivados: ${scannedArch} PNs escaneados, ${keptArch} archivados relevantes`);
     return result;
   }
 
@@ -914,19 +971,28 @@ const BulkUpload = (() => {
       if (myRunId != null) bailIfStale(myRunId);
       const pnsForKey = [];
       const otherHits = [];
+      // 1.2.13: dos pasadas (NO + YES) — diff por ID sintetiza archivedAt para
+      // los archivados, porque el persisted query de AllPartNumbers no expone
+      // archivedAt en su selection set. Sin esta señal, Pases 1/2 no podían
+      // distinguir cuándo un match estaba archivado (no marcaba wasArchived
+      // ni disparaba el unarchive en STEP 8). Ver bitácora 1.2.13.
+      const activeIdsForKey = new Set();
       try {
+        // Pasada 1: solo activos (typical hit rate alto, queda cacheado para el diff)
         let offset = 0;
         while (offset < maxResults) {
           if (myRunId != null) bailIfStale(myRunId);
           const d = await withRetry(
             () => api().query('AllPartNumbers', {
-              orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: name
+              orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: name,
+              includeArchived: 'NO'
             }),
-            `AllPartNumbers "${name}" offset=${offset}`,
+            `AllPartNumbers (NO) "${name}" offset=${offset}`,
             myRunId
           );
           const nodes = d?.pagedData?.nodes || [];
           for (const n of nodes) {
+            activeIdsForKey.add(n.id);
             const cid = n.customerByCustomerId?.id || n.customerId;
             if (cid === customerId) pnsForKey.push(extractPNShape(n));
             else if ((n.name || '').toUpperCase() === name.toUpperCase()) {
@@ -934,7 +1000,39 @@ const BulkUpload = (() => {
                 id: n.id, name: n.name,
                 otherCustomerId: cid || null,
                 otherCustomerName: n.customerByCustomerId?.name || null,
-                archivedAt: n.archivedAt || null,
+                archivedAt: null,
+              });
+            }
+          }
+          if (nodes.length < pageSize) break;
+          offset += pageSize;
+        }
+        // Pasada 2: includeArchived YES — solo agregamos lo que NO esté en activeIds
+        offset = 0;
+        while (offset < maxResults) {
+          if (myRunId != null) bailIfStale(myRunId);
+          const d = await withRetry(
+            () => api().query('AllPartNumbers', {
+              orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: name,
+              includeArchived: 'YES'
+            }),
+            `AllPartNumbers (YES) "${name}" offset=${offset}`,
+            myRunId
+          );
+          const nodes = d?.pagedData?.nodes || [];
+          for (const n of nodes) {
+            if (activeIdsForKey.has(n.id)) continue; // ya añadido en pasada NO
+            const cid = n.customerByCustomerId?.id || n.customerId;
+            if (cid === customerId) {
+              const shape = extractPNShape(n);
+              shape.archivedAt = ARCHIVED_SENTINEL;
+              pnsForKey.push(shape);
+            } else if ((n.name || '').toUpperCase() === name.toUpperCase()) {
+              otherHits.push({
+                id: n.id, name: n.name,
+                otherCustomerId: cid || null,
+                otherCustomerName: n.customerByCustomerId?.name || null,
+                archivedAt: ARCHIVED_SENTINEL,
               });
             }
           }
@@ -2072,6 +2170,10 @@ const BulkUpload = (() => {
       // Parse CSV
       const csvClean = csvText.replace(/^\uFEFF/, '');
       const { header, parts } = parseRows(parseCSV(csvClean));
+      // 1.2.13: exponer parts en state para snippets diagnósticos. STEPs
+      // posteriores siguen mutando el array local (filtered/filteredParts), y
+      // ese mismo array vive en state.parts porque es la misma referencia.
+      state.parts = parts;
       log(`CSV: ${parts.length} partes, header: ${Object.keys(header).join(', ')}`);
       if (!parts.length) throw new Error('No se encontraron filas de datos.');
 
@@ -2314,6 +2416,8 @@ const BulkUpload = (() => {
       // ── PN existence check ──
       bailIfStale(myRunId);
       const pnStatus = await checkPNExistence(parts, myRunId);
+      // 1.2.13: exponer pnStatus en state para snippets diagnósticos.
+      state.pnStatus = pnStatus;
 
       // ── Restaurar userOverrides previos ANTES de pisar el snapshot ──
       // Si el usuario ya eligió candidatos en un preview previo (Pase 3 dropdown),
