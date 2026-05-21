@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Steelhead Bug Report — Quote Editor (2026-05-21)</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 880px; margin: 32px auto; padding: 0 24px; color: #1a1a1a; line-height: 1.55; }
+  h1 { font-size: 26px; border-bottom: 2px solid #d33; padding-bottom: 8px; color: #b30000; }
+  h2 { font-size: 20px; margin-top: 36px; color: #1a1a1a; border-left: 4px solid #d33; padding-left: 10px; }
+  h3 { font-size: 16px; margin-top: 20px; color: #444; }
+  .meta { background: #f6f6f6; border: 1px solid #ddd; padding: 12px 16px; border-radius: 6px; font-size: 14px; }
+  .meta dl { margin: 0; display: grid; grid-template-columns: 160px 1fr; gap: 4px 16px; }
+  .meta dt { font-weight: 600; }
+  .severity { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .sev-critical { background: #fde7e7; color: #a30000; border: 1px solid #d33; }
+  .sev-high     { background: #fff1d6; color: #9c5800; border: 1px solid #d97706; }
+  .sev-medium   { background: #fef9c3; color: #854d0e; border: 1px solid #ca8a04; }
+  pre { background: #1e1e1e; color: #e0e0e0; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; font-family: "SF Mono", Monaco, monospace; }
+  code { background: #f0f0f0; padding: 1px 6px; border-radius: 3px; font-family: "SF Mono", Monaco, monospace; font-size: 13px; }
+  .quote-block { border-left: 3px solid #d33; background: #fef5f5; padding: 10px 14px; margin: 12px 0; font-style: italic; color: #6b0000; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #f6f6f6; font-weight: 600; }
+  ul li, ol li { margin-bottom: 6px; }
+  .footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 13px; color: #666; }
+  .impact { background: #fffbe6; border: 1px solid #f0d000; padding: 10px 14px; border-radius: 6px; margin: 10px 0; }
+  .fix { background: #e6f7ee; border: 1px solid #5cb87c; padding: 10px 14px; border-radius: 6px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Steelhead Bug Report — Quote Editor (2026-05-21)</h1>
+
+<div class="meta">
+  <dl>
+    <dt>Reporter</dt><dd>Omar Viazcán (Ecoplating)</dd>
+    <dt>Domain</dt><dd>Ecoplating production (app.gosteelhead.com)</dd>
+    <dt>Browser</dt><dd>Chrome (latest), macOS</dd>
+    <dt>Date observed</dt><dd>2026-05-21</dd>
+    <dt>Bugs reported</dt><dd>3 (one critical, one high, one medium)</dd>
+    <dt>Evidence</dt><dd>Full network scan available on request (~2.6 MB JSON, captured 09:42 local time). All requests show the exact GraphQL hashes, variable shapes, and error responses listed below.</dd>
+  </dl>
+</div>
+
+<p>We have hit three independent issues in the native quote editor that block manual editing of quote part-number prices. Bugs #1 and #2 are tightly coupled (the second is a downstream effect of the first); bug #3 is independent but lives in the same area.</p>
+
+<hr />
+
+<h2>Bug #1 — <span class="severity sev-critical">CRITICAL</span> <code>PartNumberDialogProcessQuery</code> fails: <code>allSpecFieldParamDropdowns</code> pagination limit</h2>
+
+<h3>Symptom</h3>
+<p>When opening a part-number line inside a quote for editing, the dialog that populates the price builder fails to load fully. The GraphQL operation <code>PartNumberDialogProcessQuery</code> (hash <code>01d7d09423a65ca3772be469cb87aa7b7703064a7e4931f1b90a7622cd0f94b2</code>) returns HTTP 200 but with a GraphQL error in the response body:</p>
+
+<pre>{
+  "errors": [{
+    "message": "This field has hit the pagination limit and `onFull: ERROR` is set. Please use pagination when fetching from this field and then remove the `onFull` argument.",
+    "locations": [{ "line": 146, "column": 3 }],
+    "path": ["allSpecFieldParamDropdowns"]
+  }]
+}</pre>
+
+<p>The error fires consistently. Out of two consecutive opens we captured, both produced this error (errorCount = 2 in the captured session).</p>
+
+<h3>Root cause (based on the error message)</h3>
+<p>The <code>PartNumberDialogProcessQuery</code> selection set includes a child field <code>allSpecFieldParamDropdowns</code> that is being fetched without pagination, and the field is configured with <code>onFull: ERROR</code>. As our domain grew (we recently created several hundred new <code>SpecFieldParam</code> records via bulk operations), the total count of <code>specFieldParamDropdowns</code> in the domain exceeded whatever internal threshold the field enforces. The backend now refuses the fetch instead of returning the list truncated.</p>
+
+<div class="impact">
+<strong>User impact:</strong> The dialog opens visually but key inputs (treatment selection dropdowns, default values, currency selectors) come up empty or stale. The user cannot edit a quote line in any meaningful way. This blocks <strong>all manual quote edits</strong> for any user in this domain until the query is patched, regardless of how the quote was created.
+</div>
+
+<div class="fix">
+<strong>Suggested fix:</strong> Update the <code>PartNumberDialogProcessQuery</code> selection set to paginate <code>allSpecFieldParamDropdowns</code> (Relay-style <code>first</code> / <code>offset</code> or cursor), or fetch only the dropdowns referenced by the current part-number's <code>specFields</code> rather than the entire domain catalog. The <code>onFull: ERROR</code> argument should also be removed from this selection — surfacing a hard failure in a query that powers a critical UI dialog produces an unrecoverable state for the end user.
+</div>
+
+<hr />
+
+<h2>Bug #2 — <span class="severity sev-high">HIGH</span> <code>SaveManyPartNumberPrices</code> fails with generic error after Bug #1</h2>
+
+<h3>Symptom</h3>
+<p>When the user attempts to save the quote line anyway (because Steelhead's UI does not surface the silent failure from Bug #1), the save mutation <code>SaveManyPartNumberPrices</code> (hash <code>b3c7414179e41a07db3912deac48f0cd4bc7ac1569b9d6d1e3a505065ecdfdbc</code>) returns HTTP 200 with:</p>
+
+<pre>{
+  "errors": [{
+    "message": "An unexpected error occurred.",
+    "locations": [{ "line": 1749, "column": 3 }],
+    "path": ["saveManyPartNumberPrices"]
+  }]
+}</pre>
+
+<p>We captured 6 consecutive save attempts in our session. <strong>All 6 failed</strong> with this identical generic error. The user tried varying the shape between attempts (toggling <code>customInputs</code> between <code>null</code>, <code>{DatosPrecio:{Divisa:"USD"}}</code>, and <code>{DatosPrecio:{}}</code>; toggling the line item <code>productId</code> between <code>14519</code> and <code>null</code>) — every variation failed the same way.</p>
+
+<h3>Root cause (our hypothesis — to be confirmed by your team)</h3>
+<p>The failed <code>PartNumberDialogProcessQuery</code> in Bug #1 means the RJSF form that builds the price never loaded the catalog of treatment selections, dropdowns, or other process-derived choices. The form therefore submits with <code>treatmentSelections: []</code>, <code>priceTiers: []</code>, <code>priceBuilders: []</code> even when the underlying <code>processId</code> (215930 or 241753 in our case) has real treatments configured. Server-side, materializing the price record with an empty <code>treatmentSelections</code> for a process that has them triggers an unhandled exception that surfaces as the generic message above.</p>
+
+<p>This is a hypothesis — we cannot see your backend logs. The line/column hint in the error (<code>line: 1749, column: 3</code>) should help your team locate the exact mutation path that throws.</p>
+
+<div class="impact">
+<strong>User impact:</strong> The generic error message is opaque. Users assume the save worked (HTTP 200) and only later notice their changes were not persisted. We lost roughly two hours of editing time before realizing the saves were silently dropped.
+</div>
+
+<div class="fix">
+<strong>Suggested fix:</strong> Two distinct improvements are needed.
+<ol>
+  <li>Surface the actual exception in the GraphQL error response (or at minimum, a specific error code) instead of the generic <em>"An unexpected error occurred."</em>. Generic messages make support tickets unactionable.</li>
+  <li>Server-side, validate that <code>partNumberPrices[].treatmentSelections</code> matches the configured process; if it cannot, fail with a specific <code>VALIDATION_ERROR</code> instead of an unhandled exception.</li>
+</ol>
+Once Bug #1 is fixed, this downstream symptom should disappear naturally — but the better error surface is still worth implementing for future regressions.
+</div>
+
+<hr />
+
+<h2>Bug #3 — <span class="severity sev-medium">MEDIUM</span> Archived <code>partNumberSpecs</code> still appear in quote lines</h2>
+
+<h3>Symptom</h3>
+<p>When a part number undergoes a spec update via our bulk-upload flow, the previous spec is archived by sending a <code>SavePartNumber</code> mutation with the spec link's id included in <code>partNumberSpecsToArchive</code>. This archives the link correctly: queries that target the part number directly (e.g. <code>GetPartNumber</code>) correctly omit the archived spec.</p>
+
+<p><strong>However</strong>, the native quote-line viewer continues to display both specs side by side — the archived (old) one and the active (new) one — as if neither were archived.</p>
+
+<h3>Evidence</h3>
+<p>From a network scan captured earlier today (08:50 local, file <code>scan_results_2026-05-21_085044.json</code>), we observed 5 part numbers (<code>46007-580-01</code>, <code>46007-902-01</code>, <code>46008-071-01</code>, <code>46032-583-01</code>, <code>48182-577-01</code>) all exhibiting this pattern: their <code>GetQuote</code>-derived shape returns <code>partNumberSpecsByPartNumberId.nodes[]</code> with two entries, one with <code>archivedAt</code> set to a timestamp (the old, archived link) and one with <code>archivedAt: null</code> (the new active link).</p>
+
+<h3>Root cause</h3>
+<p>The query that powers the quote-line viewer (likely <code>GetQuote</code> or one of its companion fragments) selects <code>partNumberSpecsByPartNumberId.nodes</code> without filtering on <code>archivedAt IS NULL</code>. The standalone part-number query (<code>GetPartNumber</code>) filters correctly, so the schema definitely supports the filter — it just needs to be applied here.</p>
+
+<div class="impact">
+<strong>User impact:</strong> The displayed quote line is misleading: it shows the customer (and our internal users) inspecting the quote that the part number has both spec revisions associated, when in fact only one is active. This causes confusion during quote review, and for a customer-facing PDF it could lead to disputes over which spec applies.
+</div>
+
+<div class="fix">
+<strong>Suggested fix:</strong> Add <code>filter: { archivedAt: { isNull: true } }</code> (or your equivalent) to the <code>partNumberSpecsByPartNumberId</code> selection inside <code>GetQuote</code> and any other operation that powers quote-line spec rendering. This mirrors what <code>GetPartNumber</code> already does.
+</div>
+
+<hr />
+
+<h2>How to reproduce all three on your side</h2>
+<ol>
+  <li>In a domain with several hundred (or more) <code>SpecFieldParam</code> records that have at least one dropdown each (this triggers the pagination limit on <code>allSpecFieldParamDropdowns</code>).</li>
+  <li>Create or load an existing quote that has a few part-number lines, where at least one part number has a real process with treatment selections defined.</li>
+  <li>Open the part-number dialog inside the quote for editing → observe in DevTools Network that <code>PartNumberDialogProcessQuery</code> returns HTTP 200 with an error in the response body (Bug #1).</li>
+  <li>The dialog's treatment / dropdown fields will be empty even though the process has them configured.</li>
+  <li>Try to save anyway → <code>SaveManyPartNumberPrices</code> returns HTTP 200 with the generic "An unexpected error occurred." (Bug #2).</li>
+  <li>Separately, take any part number whose latest spec was applied via bulk-upload (replacing a previous spec), and look at the quote line → both spec entries appear, including the archived one (Bug #3).</li>
+</ol>
+
+<h2>Network scan</h2>
+<p>We have a sanitized JSON capture of the full session (all GraphQL request/response shapes, with secrets redacted by our internal scanner). It is approximately 2.6 MB and is available on request. The relevant operations to inspect are <code>PartNumberDialogProcessQuery</code>, <code>SaveManyPartNumberPrices</code>, and <code>GetQuote</code> — each entry includes the hash, request variables, HTTP status, and error samples.</p>
+
+<h2>Priority justification</h2>
+<table>
+  <tr><th>Bug</th><th>Severity</th><th>Justification</th></tr>
+  <tr><td>#1 PartNumberDialogProcessQuery pagination</td><td><span class="severity sev-critical">CRITICAL</span></td><td>Blocks all manual quote edits in any domain with sufficient spec catalog. The threshold scales with <em>total domain size</em>, not per-quote size, so dividing work into smaller quotes does not work around it. As more customers grow their catalogs they will hit this.</td></tr>
+  <tr><td>#2 SaveManyPartNumberPrices generic error</td><td><span class="severity sev-high">HIGH</span></td><td>Downstream of #1 — will likely resolve once #1 is fixed. The "improve error surface" recommendation should be addressed independently to prevent future opaque failures.</td></tr>
+  <tr><td>#3 Archived specs visible in quote line</td><td><span class="severity sev-medium">MEDIUM</span></td><td>Misleads users and customers during quote review. Does not block work but creates ambiguity over which spec is active.</td></tr>
+</table>
+
+<div class="footer">
+<p>Happy to provide the full network scan, additional part-number IDs, or open a screen-share to walk through the reproduction. Contact: oviazcan@ecoplating.com.</p>
+</div>
+
+</body>
+</html>
