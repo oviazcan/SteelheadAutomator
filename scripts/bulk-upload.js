@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.11';
+  const VERSION = '1.2.12';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -600,9 +600,18 @@ const BulkUpload = (() => {
       if (g(row, 43)) racks.push({ name: g(row, 43), ppr: gn(row, 44) });
 
       const predictiveUsage = [];
-      for (const mat of PREDICTIVE_MATERIALS) {
-        const val = gn(row, mat.col);
-        if (val !== null && val > 0) predictiveUsage.push({ inventoryItemId: mat.inventoryItemId, usagePerPart: String(val), name: mat.name });
+      // 1.2.12: sentinel "-" en BB=53 (primer material) borra todas las predictive usages
+      // existentes. Antes el sentinel estaba muerto porque gn() colapsa "-" a null
+      // (parseFloat("-")=NaN) indistinguible de celda vacía. Ahora lo detectamos en crudo.
+      const bbRaw = g(row, 53);
+      if (bbRaw === '-') {
+        // Placeholder con usagePerPart='-' para que predAreDash/predIsDash lo detecten más abajo.
+        predictiveUsage.push({ inventoryItemId: PREDICTIVE_MATERIALS[0].inventoryItemId, usagePerPart: '-', name: PREDICTIVE_MATERIALS[0].name });
+      } else {
+        for (const mat of PREDICTIVE_MATERIALS) {
+          const val = gn(row, mat.col);
+          if (val !== null && val > 0) predictiveUsage.push({ inventoryItemId: mat.inventoryItemId, usagePerPart: String(val), name: mat.name });
+        }
       }
 
       parts.push({
@@ -685,6 +694,14 @@ const BulkUpload = (() => {
 
   function mergeCustomInputs(existing, part) {
     const ci = existing ? JSON.parse(JSON.stringify(existing)) : {};
+
+    // 1.2.12: el campo MontoMinimo se removió del esquema; borrar siempre del legacy.
+    if (ci.DatosPlanificacion && 'montoMinimo' in ci.DatosPlanificacion) {
+      delete ci.DatosPlanificacion.montoMinimo;
+    }
+    if (ci.DatosPlanificacion && 'MontoMinimo' in ci.DatosPlanificacion) {
+      delete ci.DatosPlanificacion.MontoMinimo;
+    }
 
     // DatosFacturacion
     if (part.codigoSAT) {
@@ -889,7 +906,7 @@ const BulkUpload = (() => {
     // la respuesta (shape incompleto post-crash).
     const otherCustomerHits = new Map(); // key → [{id, name, otherCustomerId, otherCustomerName, archivedAt}]
     log(`Buscando ${uniq.size} PN/cliente combinaciones (page=${pageSize}, cap=${maxResults})...`);
-    setPanelPhase(`Verificando PNs existentes (${uniq.size} búsquedas)`);
+    setPanelPhase(`Verificando PNs existentes (${uniq.size} búsquedas únicas / ${parts.length} registros)`);
     setPanelProgress(0, uniq.size);
 
     let progress = 0;
@@ -1002,6 +1019,7 @@ const BulkUpload = (() => {
       candidates: cls.candidates,
       userOverride: null,
       targetPnId: cls.targetPnId,
+      wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado por Pase 1/2 estaba archivado
       csvRowKey: `${p.pn.toUpperCase()}|${p.customerId}`,
       // 1.2.11: snapshot del CSV para que dedupModifyTargets pueda evaluar
       // strict-match de alternates con la misma lógica de classifyOnePN.
@@ -1043,7 +1061,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:min(1400px,96vw);width:96%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:520px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:start}.dl9-p3-selrow{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}.dl9-p3-col{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border-radius:4px;min-width:0}.dl9-p3-col-csv{background:rgba(15,23,42,0.6);border-left:2px solid #38bdf8}.dl9-p3-col-cand{background:rgba(120,53,15,0.18);border-left:2px solid #fbbf24}.dl9-p3-col-cand.dl9-p3-col-cand-new{background:rgba(20,83,45,0.18);border-left-color:#4ade80}.dl9-p3-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr{color:#4ade80}.dl9-p3-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;word-break:break-word}.dl9-p3-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}.dl9-p3-chip{font-size:10px;padding:1px 7px;background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;font-family:inherit;line-height:1.4}.dl9-p3-chip-match{background:rgba(20,83,45,0.45);color:#86efac;border-color:#15803d}.dl9-p3-chip-miss{background:rgba(127,29,29,0.35);color:#fca5a5;border-color:#991b1b}.dl9-p3-chip-empty{color:#64748b;font-style:italic;border-style:dashed}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px;padding:4px 6px;background:rgba(15,23,42,0.4);border-radius:4px;border-left:2px solid #475569}.dl9-p3-specs-col{display:flex;flex-direction:column;gap:2px;min-width:0}.dl9-p3-specs-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase}.dl9-p3-specs-list{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.4;word-break:break-word}.dl9-p3-specs-err{color:#f87171}.dl9-p3-hdrrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:1px}.dl9-p3-hdr-title{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr-title{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr-title{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr-title{color:#4ade80}.dl9-p3-hdr-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.2}.dl9-p3-hdr-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-real-chip{font-size:10px;padding:1px 7px;border-radius:10px;font-family:inherit;line-height:1.4;border:1px solid transparent;display:inline-flex;align-items:center;gap:3px}.dl9-p3-real-chip.match::before{content:'✓';font-size:9px;opacity:0.8}.dl9-p3-real-chip.miss::before{content:'✗';font-size:9px;opacity:0.6}.dl9-p3-dedup-banner{grid-column:1/-1;font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;align-items:center;gap:6px}.dl9-p3-dedup-banner.reassigned{background:rgba(202,138,4,0.18);color:#fde68a;border-left:3px solid #d97706}.dl9-p3-dedup-banner.conflict{background:rgba(127,29,29,0.30);color:#fca5a5;border-left:3px solid #b91c1c}.dl9-csv-dup-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(234,88,12,0.22);color:#fdba74;border:1px solid #9a3412;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-archive-toggle{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;padding:3px 6px;background:#0f172a;border:1px solid #334155;border-radius:4px}.dl9-archive-toggle input{margin:0 4px 0 0;cursor:pointer}.dl9-archive-toggle.dl9-archive-off{background:rgba(127,29,29,0.18);color:#fca5a5;border-color:#7f1d1d}.dl9-archive-row-chk{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 5px;font-size:10px;background:rgba(124,45,18,0.20);color:#fed7aa;border:1px solid #9a3412;border-radius:3px;font-family:inherit;cursor:pointer;vertical-align:middle}.dl9-archive-row-chk input{margin:0 3px 0 0;cursor:pointer}.dl9-archive-row-chk.dl9-archive-row-off{background:rgba(15,23,42,0.6);color:#64748b;border-color:#334155;text-decoration:line-through}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:min(1400px,96vw);width:96%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:520px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:start}.dl9-p3-selrow{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}.dl9-p3-col{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border-radius:4px;min-width:0}.dl9-p3-col-csv{background:rgba(15,23,42,0.6);border-left:2px solid #38bdf8}.dl9-p3-col-cand{background:rgba(120,53,15,0.18);border-left:2px solid #fbbf24}.dl9-p3-col-cand.dl9-p3-col-cand-new{background:rgba(20,83,45,0.18);border-left-color:#4ade80}.dl9-p3-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr{color:#4ade80}.dl9-p3-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;word-break:break-word}.dl9-p3-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}.dl9-p3-chip{font-size:10px;padding:1px 7px;background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;font-family:inherit;line-height:1.4}.dl9-p3-chip-match{background:rgba(20,83,45,0.45);color:#86efac;border-color:#15803d}.dl9-p3-chip-miss{background:rgba(127,29,29,0.35);color:#fca5a5;border-color:#991b1b}.dl9-p3-chip-empty{color:#64748b;font-style:italic;border-style:dashed}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px;padding:4px 6px;background:rgba(15,23,42,0.4);border-radius:4px;border-left:2px solid #475569}.dl9-p3-specs-col{display:flex;flex-direction:column;gap:2px;min-width:0}.dl9-p3-specs-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase}.dl9-p3-specs-list{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.4;word-break:break-word}.dl9-p3-specs-err{color:#f87171}.dl9-p3-hdrrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:1px}.dl9-p3-hdr-title{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr-title{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr-title{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr-title{color:#4ade80}.dl9-p3-hdr-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.2}.dl9-p3-hdr-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-real-chip{font-size:10px;padding:1px 7px;border-radius:10px;font-family:inherit;line-height:1.4;border:1px solid transparent;display:inline-flex;align-items:center;gap:3px}.dl9-p3-real-chip.match::before{content:'✓';font-size:9px;opacity:0.8}.dl9-p3-real-chip.miss::before{content:'✗';font-size:9px;opacity:0.6}.dl9-p3-dedup-banner{grid-column:1/-1;font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;align-items:center;gap:6px}.dl9-p3-dedup-banner.reassigned{background:rgba(202,138,4,0.18);color:#fde68a;border-left:3px solid #d97706}.dl9-p3-dedup-banner.conflict{background:rgba(127,29,29,0.30);color:#fca5a5;border-left:3px solid #b91c1c}.dl9-csv-dup-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(234,88,12,0.22);color:#fdba74;border:1px solid #9a3412;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-unarch-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(37,99,235,0.20);color:#93c5fd;border:1px solid #1e40af;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-archive-toggle{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;padding:3px 6px;background:#0f172a;border:1px solid #334155;border-radius:4px}.dl9-archive-toggle input{margin:0 4px 0 0;cursor:pointer}.dl9-archive-toggle.dl9-archive-off{background:rgba(127,29,29,0.18);color:#fca5a5;border-color:#7f1d1d}.dl9-archive-row-chk{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 5px;font-size:10px;background:rgba(124,45,18,0.20);color:#fed7aa;border:1px solid #9a3412;border-radius:3px;font-family:inherit;cursor:pointer;vertical-align:middle}.dl9-archive-row-chk input{margin:0 3px 0 0;cursor:pointer}.dl9-archive-row-chk.dl9-archive-row-off{background:rgba(15,23,42,0.6);color:#64748b;border-color:#334155;text-decoration:line-through}`;
     document.head.appendChild(s);
   }
 
@@ -1106,6 +1124,8 @@ const BulkUpload = (() => {
           isCsvDuplicate: !!part.isCsvDuplicate,
           csvDuplicateIndex: part.csvDuplicateIndex || null,
           csvDuplicateGroupSize: part.csvDuplicateGroupSize || null,
+          // 1.2.12: Pase 1/2 matchearon un PN archivado → STEP 8 auto-desarchiva
+          wasArchived: !!s.wasArchived,
           confidence: s.confidence || null,
         };
       });
@@ -1329,6 +1349,15 @@ const BulkUpload = (() => {
             dupChip.textContent = `🔄 DUP ${r.csvDuplicateIndex}/${r.csvDuplicateGroupSize}`;
             dupChip.title = `El CSV trae ${r.csvDuplicateGroupSize} filas con este (PN, cliente) — fila ${r.csvDuplicateIndex} del grupo`;
             tdPN.appendChild(dupChip);
+          }
+          // 1.2.12: chip "🔓 desarch" cuando Pase 1/2 matchearon un PN archivado.
+          // STEP 8 lo desarchiva automáticamente (UpdatePartNumber archivedAt:null).
+          if (r.wasArchived) {
+            const unArchChip = document.createElement('span');
+            unArchChip.className = 'dl9-unarch-chip';
+            unArchChip.textContent = '🔓 desarch';
+            unArchChip.title = 'PN matcheado estaba archivado; se desarchivará automáticamente antes de aplicar cambios.';
+            tdPN.appendChild(unArchChip);
           }
           tr.appendChild(tdPN);
 
@@ -3121,9 +3150,16 @@ const BulkUpload = (() => {
         const entry = pnLookup.get(i);
         const exMap = entry?.pn?.id ? existingPredictedMap.get(entry.pn.id) : null;
         if (!exMap || !exMap.size) continue;
-        // Si el primer predictivo es "-" se borra todo (ya manejado por finalPredictive arriba: queda [])
+        // 1.2.12: Si el primer predictivo es "-" (sentinel borrar todo), poner microQuantityPerPart=0
+        // en TODOS los records existentes del PN. Workaround porque no hay mutation de archive de
+        // predictive usage en el scan; 0 los deja inertes (no afectan planeación) aunque sigan listados.
         const predIsDash = part.predictiveUsage.length === 1 && typeof part.predictiveUsage[0]?.usagePerPart === 'string' && isDash(part.predictiveUsage[0].usagePerPart);
-        if (predIsDash) continue;
+        if (predIsDash) {
+          for (const exId of exMap.values()) {
+            predictedUpdates.push({ id: exId, microQuantityPerPart: 0, inventoryUsageLowCodeId: null });
+          }
+          continue;
+        }
         for (const pu of part.predictiveUsage) {
           const exId = exMap.get(String(pu.inventoryItemId));
           if (!exId) continue; // es uno nuevo, ya fue al SavePartNumber
@@ -3653,29 +3689,35 @@ const BulkUpload = (() => {
   }
 
   function classifyOnePN(csvRow, pnsForCustomer, nonFinishList) {
-    const activePns = (pnsForCustomer || []).filter(p => !p.archivedAt);
+    const allPns = pnsForCustomer || [];
+    // 1.2.12: Pases 1 y 2 ven archivados también (auto-desarchiva en STEP 8 vía
+    // pnsToUnarchive cuando status='existing'). Pase 3 sigue limitado a activos
+    // para no ensuciar el dropdown de candidatos near-match con históricos.
+    const activePns = allPns.filter(p => !p.archivedAt);
     const csvIbms = csvRow.quoteIBMS || '';
     const csvCompositeKey = buildCompositeKey(csvRow, nonFinishList);
 
-    // ── Pase 1: QuoteIBMS autoritativo ──
+    // ── Pase 1: QuoteIBMS autoritativo (1.2.12: incluye archivados) ──
     if (csvIbms) {
-      const byIbms = activePns.find(p => (p.quoteIBMS || '') === csvIbms);
+      const byIbms = allPns.find(p => (p.quoteIBMS || '') === csvIbms);
       if (byIbms) {
+        const archSuffix = byIbms.archivedAt ? '-desarchiva' : '';
         return {
           classification: 'MODIFY',
           pase: 1,
-          confidence: 'ibms-exacto',
+          confidence: `ibms-exacto${archSuffix}`,
           targetPnId: byIbms.id,
+          wasArchived: !!byIbms.archivedAt,
           candidates: [],
         };
       }
     }
 
-    // ── Pase 2: composite exacto con regla anti-colisión ──
+    // ── Pase 2: composite exacto con regla anti-colisión (1.2.12: incluye archivados) ──
     // Los PNs del catálogo pueden no traer customerId en su shape (ya están filtrados por cliente).
     // Normalizamos usando el customerId del csvRow para que la comparación de keys sea apples-to-apples.
     const csvCustomerId = csvRow.customerId;
-    const byComposite = activePns.find(p => {
+    const byComposite = allPns.find(p => {
       const pNorm = (p.customerId != null) ? p : Object.assign({}, p, { customerId: csvCustomerId });
       return buildCompositeKey(pNorm, nonFinishList) === csvCompositeKey;
     });
@@ -3688,11 +3730,13 @@ const BulkUpload = (() => {
         else if (!pnIbms) confSuffix = 'pn-sin-ibms';
         else if (!csvIbms) confSuffix = 'csv-sin-ibms';
         else confSuffix = 'ibms-coincide';
+        const archSuffix = byComposite.archivedAt ? '-desarchiva' : '';
         return {
           classification: 'MODIFY',
           pase: 2,
-          confidence: `composite-exacto-${confSuffix}`,
+          confidence: `composite-exacto-${confSuffix}${archSuffix}`,
           targetPnId: byComposite.id,
+          wasArchived: !!byComposite.archivedAt,
           candidates: [],
         };
       }
@@ -3724,6 +3768,7 @@ const BulkUpload = (() => {
           pase: 3,
           confidence: 'name+labels-match',
           targetPnId: ranked[0].id,
+          wasArchived: false,
           candidates: ranked,
         };
       }
@@ -3735,6 +3780,7 @@ const BulkUpload = (() => {
           pase: 3,
           confidence: 'name+blank-candidate',
           targetPnId: blankCandidate.id,
+          wasArchived: false,
           candidates: ranked,
         };
       }
@@ -3743,6 +3789,7 @@ const BulkUpload = (() => {
         pase: 3,
         confidence: 'name-only-labels-differ',
         targetPnId: null,
+        wasArchived: false,
         candidates: ranked,
       };
     }
@@ -3753,6 +3800,7 @@ const BulkUpload = (() => {
       pase: null,
       confidence: 'sin-match',
       targetPnId: null,
+      wasArchived: false,
       candidates: [],
     };
   }
@@ -3799,12 +3847,15 @@ const BulkUpload = (() => {
     }
     if (claimers.length === 0) return { reassigned: 0, demoted: 0 };
 
+    // 1.2.12: el confidence puede traer suffix '-desarchiva' (Pase 1/2 con PN
+    // archivado); el rank es el mismo que su variante activa.
+    const stripArch = (c) => (c || '').replace(/-desarchiva$/, '');
     claimers.sort((a, b) => {
       const pa = a.s.pase == null ? 99 : a.s.pase;
       const pb = b.s.pase == null ? 99 : b.s.pase;
       if (pa !== pb) return pa - pb;
-      const ra = confRank[a.s.confidence] == null ? 99 : confRank[a.s.confidence];
-      const rb = confRank[b.s.confidence] == null ? 99 : confRank[b.s.confidence];
+      const ra = confRank[stripArch(a.s.confidence)] == null ? 99 : confRank[stripArch(a.s.confidence)];
+      const rb = confRank[stripArch(b.s.confidence)] == null ? 99 : confRank[stripArch(b.s.confidence)];
       if (ra !== rb) return ra - rb;
       return a.idx - b.idx;
     });
@@ -3900,7 +3951,9 @@ const BulkUpload = (() => {
 
   const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates };
 
-  return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
+  // 1.2.12: getter para que window.BulkUpload.__state apunte siempre al state actual
+  // (state se reasigna en nextRunId() así que un snapshot quedaría stale).
+  return { execute, setProgressCallback, parseCSV, parseRows, __helpers, get __state() { return state; } };
 })();
 
 if (typeof window !== 'undefined') {
