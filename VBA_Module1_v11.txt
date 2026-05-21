@@ -1,0 +1,192 @@
+' === MACRO 1: ExportarCSV (v11) ===
+' V11 (2026-05-19): hardening para corrida masiva de 18k filas con bulk-upload 1.0.0
+'   1. Valida Modo (G1) sea uno de los 2 valores conocidos
+'   2. En modo COTIZACIÓN+NP exige QuoteName (G3) y cliente único
+'   3. Ordena filas por (Cliente, PN) en libro temporal → byte-exact CSV
+'      para que el runKey (sha256) del resume tras crash sea estable
+'   4. Sugiere nombre de archivo según modo + fecha (no afecta runKey)
+'   5. Avisa si SOLO_PN supera 2,000 filas (recomienda chunkear)
+' V11.1 (2026-05-20): el literal "Ó" del Replace en línea de modoNorm vía ChrW(211)
+'   para sobrevivir paste-encoding del editor VBA (mismo bug que rompió Module2
+'   con "Líneas"). Sin esto, si la Ó se mangla al pegar, el Replace no encuentra
+'   nada y el modo "COTIZACIÓN+NP" del cliente nunca normaliza → falla validación.
+' V10: Exporta 69 columnas (A-BQ). Layout name viene de G3 (no C4).
+
+Sub ExportarCSV()
+    Dim ws As Worksheet, csvName As String, savePath As String
+    Set ws = ThisWorkbook.Sheets("Upload")
+
+    ' V11: leer modo + quoteName y validar
+    Dim modo As String, quoteName As String
+    modo = UCase(Trim(CStr(ws.Range("G1").Value)))
+    quoteName = Trim(CStr(ws.Range("G3").Value))
+
+    Dim modoNorm As String
+    ' V11.1: ChrW(211) = Ó para sobrevivir paste-encoding del VBE
+    modoNorm = Replace(Replace(modo, ChrW(211), "O"), " ", "_")
+    If modoNorm <> "COTIZACION+NP" And modoNorm <> "SOLO_PN" Then
+        MsgBox "Modo inválido en G1: '" & ws.Range("G1").Value & "'." & vbCrLf & vbCrLf & _
+               "Debe ser 'COTIZACIÓN+NP' o 'SOLO_PN'.", vbCritical, "Modo inválido"
+        Exit Sub
+    End If
+
+    Dim esCotizacion As Boolean
+    esCotizacion = (modoNorm = "COTIZACION+NP")
+
+    If esCotizacion And quoteName = "" Then
+        MsgBox "Modo COTIZACIÓN+NP requiere 'Nombre Cotización' en G3.", _
+               vbCritical, "QuoteName faltante"
+        Exit Sub
+    End If
+
+    ' V10: validar que toda línea con PN (col F) tenga Cliente (col E)
+    ' Cliente: necesario incluso en SOLO_PN porque los PNs están scoped por customer.
+    ' Proceso: NO se valida aquí porque vacío tiene significado (PN existente: copiar el suyo).
+    '          La extensión valida por línea y reporta errores sin matar el batch.
+    Dim r As Long, lastR As Long, sinCliente As String, nFaltantes As Long
+    Dim pnVal As String, clVal As String
+    lastR = ws.Cells(ws.Rows.Count, 6).End(xlUp).Row
+    For r = 9 To lastR
+        pnVal = Trim(CStr(ws.Cells(r, 6).Value)) ' col F = PN
+        If pnVal <> "" Then
+            clVal = Trim(CStr(ws.Cells(r, 5).Value)) ' col E = Cliente
+            If clVal = "" Or clVal = "(seleccione)" Or clVal = "(seleccione o escriba)" Then
+                nFaltantes = nFaltantes + 1
+                If nFaltantes <= 10 Then
+                    sinCliente = sinCliente & "  Fila " & r & ": " & pnVal & vbCrLf
+                End If
+            End If
+        End If
+    Next r
+    If nFaltantes > 0 Then
+        Dim msg As String
+        msg = "No se puede exportar: " & nFaltantes & " línea(s) con PN sin Cliente." & vbCrLf & vbCrLf
+        msg = msg & sinCliente
+        If nFaltantes > 10 Then msg = msg & "  ... y " & (nFaltantes - 10) & " más" & vbCrLf
+        msg = msg & vbCrLf & "Asigna un cliente en la columna E a cada línea con PN."
+        MsgBox msg, vbExclamation, "Cliente faltante"
+        Exit Sub
+    End If
+
+    ' V11: cliente único en COTIZACIÓN+NP
+    ' Una cotización vive bajo un solo cliente; mezclar rompe el flujo.
+    If esCotizacion Then
+        Dim clientesUnicos As New Collection, clTmp As String
+        For r = 9 To lastR
+            If Trim(CStr(ws.Cells(r, 6).Value)) <> "" Then
+                clTmp = Trim(CStr(ws.Cells(r, 5).Value))
+                If clTmp <> "" Then
+                    On Error Resume Next
+                    clientesUnicos.Add clTmp, clTmp
+                    On Error GoTo 0
+                End If
+            End If
+        Next r
+        If clientesUnicos.Count > 1 Then
+            Dim lista As String, i As Long
+            For i = 1 To clientesUnicos.Count
+                lista = lista & "  • " & clientesUnicos(i) & vbCrLf
+                If i >= 6 Then
+                    lista = lista & "  ... y " & (clientesUnicos.Count - i) & " más" & vbCrLf
+                    Exit For
+                End If
+            Next i
+            MsgBox "Modo COTIZACIÓN+NP requiere UN SOLO cliente, encontré " & _
+                   clientesUnicos.Count & ":" & vbCrLf & vbCrLf & lista & vbCrLf & _
+                   "Si quieres cargar varios clientes, usa modo SOLO_PN.", _
+                   vbCritical, "Cliente mixto"
+            Exit Sub
+        End If
+    End If
+
+    ' V11: aviso si SOLO_PN > 2000 filas (recomienda chunkear)
+    If Not esCotizacion Then
+        Dim dataRows As Long
+        dataRows = 0
+        For r = 9 To lastR
+            If Trim(CStr(ws.Cells(r, 6).Value)) <> "" Then dataRows = dataRows + 1
+        Next r
+        If dataRows > 2000 Then
+            Dim respChunk As VbMsgBoxResult
+            respChunk = MsgBox(dataRows & " filas SOLO_PN exceden las 2,000 recomendadas." & vbCrLf & vbCrLf & _
+                "Para evitar corridas largas y facilitar el resume tras crash," & vbCrLf & _
+                "parte la plantilla en chunks de 2,000 antes de exportar." & vbCrLf & vbCrLf & _
+                "¿Continuar exportando todo en un solo CSV?", _
+                vbYesNo + vbExclamation, "SOLO_PN grande")
+            If respChunk <> vbYes Then Exit Sub
+        End If
+    End If
+
+    ' V11: sugerencia de nombre alineado con las 4 cargas
+    ' Timestamp en el nombre NO afecta runKey (que se calcula sobre el contenido del CSV).
+    Dim baseName As String
+    If esCotizacion Then
+        baseName = quoteName & "-" & Format(Now, "yyyymmdd")
+    Else
+        If quoteName <> "" Then
+            baseName = quoteName & "-solopn-" & Format(Now, "yyyymmdd")
+        Else
+            baseName = "solopn-" & Format(Now, "yyyymmdd-hhnn")
+        End If
+    End If
+    csvName = baseName
+
+    ' V10: sanitizar caracteres inválidos
+    Dim inv As Variant, ch As Variant
+    inv = Array("/", "\", ":", "*", "?", Chr(34), "<", ">", "|")
+    For Each ch In inv: csvName = Replace(csvName, CStr(ch), "_"): Next
+
+    #If Mac Then
+        savePath = Application.GetSaveAsFilename(csvName & ".csv")
+    #Else
+        savePath = Application.GetSaveAsFilename(csvName & ".csv", "CSV (*.csv), *.csv")
+    #End If
+    If CStr(savePath) = "False" Or savePath = "" Then Exit Sub
+    If Right(savePath, 4) <> ".csv" Then savePath = savePath & ".csv"
+
+    ' Copiar hoja a libro temporal
+    ws.Copy
+    Dim tmpWb As Workbook
+    Set tmpWb = ActiveWorkbook
+
+    ' V10: 69 columnas (A-BQ). Eliminar columnas extra
+    Dim tmpWs As Worksheet
+    Set tmpWs = tmpWb.Sheets(1)
+    If tmpWs.UsedRange.Columns.Count > 69 Then
+        tmpWs.Range(tmpWs.Columns(70), tmpWs.Columns(tmpWs.UsedRange.Columns.Count)).Delete
+    End If
+
+    ' V11: ordenar filas 9..lastR por (col E Cliente, col F PN) en libro temporal
+    ' Determinismo del runKey de resume — dos exports del MISMO dataset → mismo byte-string.
+    ' Si el usuario re-ordena filas entre crashes, este sort las re-canoniza antes del CSV.
+    Dim tmpLastR As Long
+    tmpLastR = tmpWs.Cells(tmpWs.Rows.Count, 6).End(xlUp).Row
+    If tmpLastR >= 10 Then  ' al menos 2 filas de datos
+        With tmpWs.Sort
+            .SortFields.Clear
+            .SortFields.Add Key:=tmpWs.Range("E9:E" & tmpLastR), _
+                Order:=xlAscending, DataOption:=xlSortNormal
+            .SortFields.Add Key:=tmpWs.Range("F9:F" & tmpLastR), _
+                Order:=xlAscending, DataOption:=xlSortNormal
+            .SetRange tmpWs.Range("A9:BQ" & tmpLastR)
+            .Header = xlNo
+            .MatchCase = False
+            .Orientation = xlTopToBottom
+            .SortMethod = xlPinYin
+            .Apply
+        End With
+    End If
+
+    ' Guardar como CSV UTF-8 (formato 62)
+    Application.DisplayAlerts = False
+    tmpWb.SaveAs fileName:=savePath, FileFormat:=62
+    tmpWb.Close False
+    Application.DisplayAlerts = True
+
+    Dim resumen As String
+    resumen = "CSV UTF-8 exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf
+    resumen = resumen & "Modo: " & IIf(esCotizacion, "COTIZACIÓN+NP", "SOLO_PN") & vbCrLf
+    If esCotizacion Then resumen = resumen & "Cotización: " & quoteName & vbCrLf
+    resumen = resumen & "Filas ordenadas por (Cliente, PN) para runKey estable."
+    MsgBox resumen, vbInformation, "Listo"
+End Sub
