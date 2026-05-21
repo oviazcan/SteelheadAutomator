@@ -340,16 +340,17 @@ test('classifyOnePN — Pase 3 devuelve TODOS los matches por nombre (sin cap)',
   assert.equal(r.candidates.length, 5);
 });
 
-test('classifyOnePN — archivedAt excluye PNs aunque matcheen', () => {
+test('classifyOnePN — 1.2.12: archivedAt YA NO excluye en Pase 1 (opción B, desarchiva)', () => {
   const H = loadHelpers();
   const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: [], quoteIBMS: 'X' };
   const pnsForCustomer = [
     { id: 100, name: 'A', metalBase: 'CU', labels: [], quoteIBMS: 'X', archivedAt: '2024-01-01' },
   ];
   const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
-  assert.equal(r.classification, 'NEW');
-  assert.equal(r.pase, null);
-  assert.equal(r.candidates.length, 0);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 1);
+  assert.equal(r.wasArchived, true);
+  assert.equal(r.confidence, 'ibms-exacto-desarchiva');
 });
 
 test('extractPNShape parsea customInputs como string JSON', () => {
@@ -815,4 +816,75 @@ test('1.2.11 H5 — flags isCsvDuplicate/Index/GroupSize están en el shape espe
   assert.equal(typeof parts[0].csvDuplicateGroupSize, 'number');
   assert.ok(parts[0].csvDuplicateIndex >= 1);
   assert.ok(parts[0].csvDuplicateGroupSize >= 2);
+});
+
+// ── 1.2.12: Pase 1/2 ven archivados (opción B) ──
+
+test('1.2.12 Pase 1 IBMS — matchea PN archivado → MODIFY con wasArchived=true y suffix -desarchiva', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1', archivedAt: '2026-05-20T10:00:00Z' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 1);
+  assert.equal(r.targetPnId, 100);
+  assert.equal(r.wasArchived, true);
+  assert.equal(r.confidence, 'ibms-exacto-desarchiva');
+});
+
+test('1.2.12 Pase 2 composite — matchea PN archivado → MODIFY con wasArchived=true y suffix -desarchiva', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '', archivedAt: '2026-05-20T10:00:00Z' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 2);
+  assert.equal(r.targetPnId, 100);
+  assert.equal(r.wasArchived, true);
+  assert.ok(r.confidence.endsWith('-desarchiva'));
+});
+
+test('1.2.12 Pase 1 — IBMS match con PN activo no marca wasArchived', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1' /* sin archivedAt */ },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.pase, 1);
+  assert.equal(r.wasArchived, false);
+  assert.equal(r.confidence, 'ibms-exacto');
+});
+
+test('1.2.12 Pase 3 — ignora archivados (sólo activos como candidatos)', () => {
+  const H = loadHelpers();
+  // mismo name y labels pero distinto metalBase → Pase 3 (no composite)
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    // archivado: NO debe aparecer como candidato
+    { id: 100, name: 'A', metalBase: 'AL', labels: ['NIQ'], quoteIBMS: '', archivedAt: '2026-05-20T10:00:00Z' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, null);
+  assert.equal(r.candidates.length, 0);
+  assert.equal(r.wasArchived, false);
+});
+
+test('1.2.12 Pase 1 vs Pase 3 — IBMS archivado gana sobre name+labels activo (regresión loop auto-archive)', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A-LEGACY', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q1', archivedAt: '2026-05-20T10:00:00Z' }, // archivado pero IBMS coincide
+    { id: 101, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Q2' }, // activo pero IBMS distinto
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  // Pase 1 IBMS gana sobre cualquier otro; el archivado se desarchiva en STEP 8
+  assert.equal(r.pase, 1);
+  assert.equal(r.targetPnId, 100);
+  assert.equal(r.wasArchived, true);
 });
