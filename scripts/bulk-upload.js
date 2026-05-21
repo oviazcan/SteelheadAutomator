@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.3.1';
+  const VERSION = '1.3.2';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -429,6 +429,10 @@ const BulkUpload = (() => {
   function setPanelPhase(text) {
     state.phase = text;
     const el = document.getElementById('sa-bu-phase'); if (el) el.textContent = text;
+    // Fix H 1.3.2: espejear al modal viejo (dl9-progress-overlay) cuando esté visible
+    const live = document.getElementById('dl9-live-progress');
+    if (live) live.dataset.phase = text;
+    updateLiveProgressText();
   }
   function setPanelProgress(current, total) {
     state.progress.current = current;
@@ -439,11 +443,28 @@ const BulkUpload = (() => {
     if (c) c.textContent = String(current);
     if (t) t.textContent = String(total);
     if (bar) bar.style.width = (total ? Math.round((current / total) * 100) : 0) + '%';
+    updateLiveProgressText();
   }
   function setPanelCounters() {
     const o = document.getElementById('sa-bu-ok'); if (o) o.textContent = String(state.counters.ok);
     const r = document.getElementById('sa-bu-retried'); if (r) r.textContent = String(state.counters.retried);
     const e = document.getElementById('sa-bu-errors'); if (e) e.textContent = String(state.counters.errors);
+    updateLiveProgressText();
+  }
+  function updateLiveProgressText() {
+    const live = document.getElementById('dl9-live-progress');
+    if (!live) return;
+    const phase = live.dataset.phase || state.phase || '';
+    const cur = state.progress?.current || 0;
+    const tot = state.progress?.total || 0;
+    const ok = state.counters?.ok || 0;
+    const rt = state.counters?.retried || 0;
+    const er = state.counters?.errors || 0;
+    if (tot > 0) {
+      live.textContent = `${phase} — ${cur}/${tot}   OK:${ok}  Reintentos:${rt}  Errores:${er}`;
+    } else {
+      live.textContent = phase;
+    }
   }
   function addPanelLog(msg) {
     const el = document.getElementById('sa-bu-log');
@@ -2035,7 +2056,7 @@ const BulkUpload = (() => {
     let ov = document.getElementById('dl9-progress-overlay');
     if (!ov) {
       injectStyles(); ov = document.createElement('div'); ov.className = 'dl9-overlay'; ov.id = 'dl9-progress-overlay';
-      ov.innerHTML = `<div class="dl9-modal"><h2>Ejecutando...</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="dl9-bar"></div></div><div class="dl9-progress" id="dl9-progress-text"></div></div>`;
+      ov.innerHTML = `<div class="dl9-modal"><h2>Ejecutando...</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="dl9-bar"></div></div><div id="dl9-live-progress" style="color:#67e8f9;font-size:13px;margin:8px 0;font-weight:600;min-height:18px"></div><div class="dl9-progress" id="dl9-progress-text"></div></div>`;
       document.body.appendChild(ov);
     }
     const el = document.getElementById('dl9-progress-text');
@@ -2187,8 +2208,13 @@ const BulkUpload = (() => {
   }
 
   function showResult(stats, quoteUrl, errors, quoteUrlLabel) {
+    // Fix J 1.3.2: remover overlays previos (progress + cualquier resultado anterior)
+    // antes de crear uno nuevo. Antes (≤1.3.1) re-ejecuciones consecutivas apilaban
+    // modales de resultado y el botón CERRAR solo cerraba el último por id duplicado.
     const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
+    const prevResult = document.getElementById('dl9-result-overlay'); if (prevResult) removeOverlay(prevResult);
     injectStyles(); const { overlay, modal } = createOverlay();
+    overlay.id = 'dl9-result-overlay';
     const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.join('\n')}</div>` : '';
     const lbl = quoteUrlLabel || 'ABRIR COTIZACIÓN';
     modal.innerHTML = `<h2>${errors.length ? 'Completado con errores' : 'Completado OK'}</h2><div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
@@ -2214,6 +2240,11 @@ const BulkUpload = (() => {
     // Cancellation token + panel: cada corrida obtiene un runId monotónico que
     // se propaga a runPool, withRetry, checkPNExistence y demás helpers async.
     const myRunId = nextRunId();
+    // Fix G 1.3.2: liberar resumeState heredado del closure de corridas previas en la
+    // misma página. Sin esto, una segunda corrida (sin reload) arrastra completedChunks
+    // y completedPNs en memoria aunque localStorage esté limpio — el bloque
+    // `if (!resumeState)` de línea 2271 nunca entra y el state queda con datos viejos.
+    resumeState = null;
     try { showPanel(); } catch (_) {}
     setPanelPhase('Iniciando...');
     setPanelProgress(0, 0);
@@ -2840,6 +2871,7 @@ const BulkUpload = (() => {
 
         let quoteSeq = 0;
         let prodAddedTotal = 0;
+        let pnpItemsTotal = 0;
         for (const [cid, custParts] of partsByCustomer) {
           const cust = [...customerCache.values()].find(c => c.id === cid);
           if (!cust) { errors.push(`Cliente id ${cid} no en cache`); continue; }
@@ -2849,8 +2881,48 @@ const BulkUpload = (() => {
           // modal modify/skip/create al inicio, y se persiste como
           // completado al final del pipeline.
           for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
-            if (resumeState?.completedChunks?.[cid]?.includes(cIdx)) {
-              log(`  ${cust.name} chunk ${cIdx + 1}/${chunks.length}: ya completado, saltando`);
+            const chunkAlreadyDone = resumeState?.completedChunks?.[cid]?.includes(cIdx);
+            if (chunkAlreadyDone) {
+              // Fix B-resume 1.3.2: NO saltar ciegamente — reconstruir pnLookup desde la quote
+              // existente para que STEP 6 (enrich) y STEP 6b (sync params) corran sobre los
+              // PNs ya creados. Antes (1.3.1) este `continue` dejaba pnLookup vacío y todo
+              // el resto de fases reportaba 0/0/0.
+              bailIfStale(myRunId);
+              const chunkSliceLocal = chunks[cIdx];
+              const thisQuoteNameLocal = makeChunkQuoteName(quoteName, cIdx, chunks.length);
+              log(`  ${cust.name} chunk ${cIdx + 1}/${chunks.length}: ya completado, reconstruyendo pnLookup desde quote existente`);
+              const existing = await findExistingQuote(cid, thisQuoteNameLocal);
+              if (!existing) {
+                warn(`  Chunk marcado completo pero quote "${thisQuoteNameLocal}" no encontrada — saltando.`);
+                continue;
+              }
+              let qDataR;
+              try { ({ data: qDataR } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: existing.idInDomain, revisionNumber: 1 })); }
+              catch (e) { errors.push(`GetQuote (resume) ${existing.idInDomain}: ${String(e).substring(0, 120)}`); continue; }
+              const quoteR = qDataR?.quoteByIdInDomainAndRevisionNumber || qDataR?.quoteByIdInDomain;
+              if (!quoteR) { warn(`  No se pudo leer quote #${existing.idInDomain} para reconstruir lookup.`); continue; }
+              const qpnpNodesR = quoteR.quotePartNumberPricesByQuoteId?.nodes || [];
+              const qlNodesR = quoteR.quoteLinesByQuoteId?.nodes || [];
+              const qlByQpnpIdR = new Map(); for (const ql of qlNodesR) if (ql.autoGeneratedFromQuotePartNumberPriceId) qlByQpnpIdR.set(ql.autoGeneratedFromQuotePartNumberPriceId, ql);
+              // Match por (pn.name, customerId) → origIdx. Si hay duplicados name+customerId en chunkSliceLocal,
+              // el matching es best-effort y los duplicados extras se quedan sin entry (warn).
+              const pnByNameR = new Map();
+              for (const qpnp of qpnpNodesR) {
+                const pnp = qpnp.partNumberPriceByPartNumberPriceId; if (!pnp) continue;
+                const pn = pnp.partNumberByPartNumberId; if (!pn?.name) continue;
+                const arr = pnByNameR.get(pn.name.toUpperCase()) || [];
+                arr.push({ qpnp, pnp, pn, ql: qlByQpnpIdR.get(qpnp.id) || null, quoteId: existing.id });
+                pnByNameR.set(pn.name.toUpperCase(), arr);
+              }
+              for (const { part, origIdx } of chunkSliceLocal) {
+                const arr = pnByNameR.get(String(part.pn).toUpperCase()) || [];
+                const next = arr.shift();
+                if (!next) { warn(`pnLookup (resume): "${part.pn}" no en quote #${existing.idInDomain}`); continue; }
+                pnLookup.set(origIdx, next);
+              }
+              quotesCreated.push({ id: existing.id, idInDomain: existing.idInDomain, customerId: cid, name: thisQuoteNameLocal });
+              if (!primaryQuoteIdInDomain) primaryQuoteIdInDomain = existing.idInDomain;
+              // No re-popular productByName aquí — los productos ya están aplicados desde la corrida original.
               continue;
             }
             bailIfStale(myRunId);
@@ -2950,6 +3022,7 @@ const BulkUpload = (() => {
                 { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
             } catch (e) { errors.push(`SaveManyPNP quote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); }
           }
+          pnpItemsTotal += pnpItems.length;
           log(`  SaveManyPNP: ${pnpItems.length}`);
 
           // Re-read quote to populate pnLookup
@@ -3031,7 +3104,9 @@ const BulkUpload = (() => {
         stats.quoteIdInDomain = primaryQuoteIdInDomain;
         if (quotesCreated.length > 1) stats.quoteName = `${quotesCreated.length} cotizaciones "${quoteName}"`;
         else if (quotesCreated.length === 1) stats.quoteName = quotesCreated[0].name;
-        showProgressUI(`  -> ${quotesCreated.length} cotizaciones creadas, ${prodAddedTotal} products`);
+        const cotS = quotesCreated.length === 1 ? 'cotización' : 'cotizaciones';
+        const cotV = quotesCreated.length === 1 ? 'creada' : 'creadas';
+        showProgressUI(`  -> ${quotesCreated.length} ${cotS} ${cotV} con ${pnpItemsTotal} PNs y ${prodAddedTotal} productos`);
       } else {
         // SOLO_PN: build pnLookup from existing/new PN IDs (no quote context)
         // 1.2.11: keyed por rowIdx (índice en parts[]) — soporta duplicados name+customerId.
@@ -3153,6 +3228,39 @@ const BulkUpload = (() => {
         }
         if (labelIds.length) stats.labelsSet += labelIds.length;
 
+        // Fix C 1.3.2: pre-fetch del PN existente para poder filtrar specsToApply y NO
+        // gatillar unique_constraint en la link table. Antes (≤1.3.1) este fetch solo se
+        // hacía cuando hasArchiveSentinel — los demás PNs existing mandaban specsToApply
+        // con specs ya linkeadas → primer SavePartNumber fallaba con duplicate-key →
+        // strip1 quitaba specsToApply → 2x calls por PN.
+        let existingPnNode = null;
+        const statusEarly = pnStatus[idx];
+        if (statusEarly?.status === 'existing' && pn.id) {
+          existingPnNode = existingPnFullCache.get(pn.id);
+          if (!existingPnNode) {
+            try {
+              bailIfStale(myRunId);
+              const pnData = await withRetry(
+                () => api().query('GetPartNumber', { partNumberId: pn.id }),
+                `GetPartNumber prefetch "${pn.name}"`,
+                myRunId
+              );
+              existingPnNode = pnData?.partNumberById || null;
+              if (existingPnNode) existingPnFullCache.set(pn.id, existingPnNode);
+            } catch (e) {
+              if (isBail(e)) throw e;
+              warn(`GetPartNumber prefetch "${pn.name}" falló (${String(e).substring(0, 80)}) — caerá al flujo strip1`);
+            }
+          }
+        }
+        const alreadyLinkedSpecIds = new Set();
+        if (existingPnNode) {
+          for (const ls of (existingPnNode.partNumberSpecsByPartNumberId?.nodes || [])) {
+            if (ls.archivedAt) continue;
+            const sid = ls.specBySpecId?.id; if (sid) alreadyLinkedSpecIds.add(sid);
+          }
+        }
+
         // Specs — semántica del guión:
         //   * `spec1=-` solo → archive sentinel "borrar todas las linked specs" (specsToApply queda [])
         //   * `spec1=Y, spec2=-` → apply Y + archive sentinel "borrar el resto que no sea Y"
@@ -3192,22 +3300,9 @@ const BulkUpload = (() => {
         const partNumberSpecsToArchiveIds = [];
         const statusForArchive = pnStatus[idx];
         if (hasArchiveSentinel && statusForArchive?.status === 'existing' && pn.id) {
-          let cached = existingPnFullCache.get(pn.id);
-          if (!cached) {
-            try {
-              bailIfStale(myRunId);
-              const pnData = await withRetry(
-                () => api().query('GetPartNumber', { partNumberId: pn.id }),
-                `GetPartNumber archive "${pn.name}"`,
-                myRunId
-              );
-              cached = pnData?.partNumberById || null;
-              if (cached) existingPnFullCache.set(pn.id, cached);
-            } catch (e) {
-              if (isBail(e)) throw e;
-              warn(`Archive sentinel "${pn.name}": GetPartNumber falló (${String(e).substring(0, 80)}), no se archivará nada`);
-            }
-          }
+          // Fix C 1.3.2: existingPnNode ya fue pre-fetched arriba para todo PN existing;
+          // no hace falta un segundo GetPartNumber aquí.
+          const cached = existingPnNode;
           const linked = cached?.partNumberSpecsByPartNumberId?.nodes || [];
           for (const ls of linked) {
             if (ls.archivedAt) continue;
@@ -3233,6 +3328,12 @@ const BulkUpload = (() => {
           if (uc.minPzasLote !== null && uc.minPzasLote > 0) ucs.push({ unitId: DOMAIN.unitIds.LO, factor: 1 / uc.minPzasLote });
         }
         if (ucs.length || ucDash) stats.unitConvSet++;
+
+        // Fix C 1.3.2: para PNs existing, las specs ya linkeadas no se reenvían — Steelhead
+        // las trata como unique_constraint en partNumberSpec (pnId, specId).
+        const specsToApplyFiltered = alreadyLinkedSpecIds.size
+          ? specsToApply.filter(s => !alreadyLinkedSpecIds.has(s.specId))
+          : specsToApply;
 
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
@@ -3277,7 +3378,7 @@ const BulkUpload = (() => {
           inventoryPredictedUsages: finalPredictive
             .filter(pu => !existingPredictedMap.get(pn.id)?.has(String(pu.inventoryItemId)))
             .map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
-          specsToApply, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
+          specsToApply: specsToApplyFiltered, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
           dimensionCustomValueIds: dimValueIds,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
           partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
@@ -3295,6 +3396,11 @@ const BulkUpload = (() => {
           );
           okSP++;
           state.counters.ok++;
+          // Fix I 1.3.2: invalidar cache para que STEP 6b lea un GetPartNumber fresco con
+          // los specs/params que SavePartNumber acaba de agregar. Sin esto, STEP 6b
+          // reintenta AddParamsToPartNumber para params recién creados → 500 exclusion
+          // constraint → log "presente, skip" × N × pn.
+          if (pn.id) existingPnFullCache.delete(pn.id);
         }
         catch (e) {
           if (isBail(e)) throw e;
@@ -3308,6 +3414,7 @@ const BulkUpload = (() => {
                 myRunId
               );
               retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
+              if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
             } catch (e2) {
               if (isBail(e2)) throw e2;
               try {
@@ -3317,6 +3424,7 @@ const BulkUpload = (() => {
                   myRunId
                 );
                 retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+                if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
               } catch (e3) {
                 if (isBail(e3)) throw e3;
                 errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`);
@@ -3406,20 +3514,27 @@ const BulkUpload = (() => {
         if (part.specs.length === 1 && isDash(part.specs[0].name)) continue;
         step6bCandidates.push(i);
       }
-      setPanelPhase(`Sync params spec en PNs existentes (${step6bCandidates.length})`);
-      setPanelProgress(0, step6bCandidates.length);
-      let syncedParamsCount = 0;
-      let step6bDone = 0;
-      for (const i of step6bCandidates) {
+      // Fix D 1.3.2: runPool concurrencia 5 para STEP 6b. Antes (1.3.1) el loop era
+      // secuencial; con 100+ candidatos × varios AddParamsToPartNumber por PN, esto
+      // dominaba el tiempo total (>50% del wall-clock para corridas Schneider).
+      const syncConcurrency = bulkCfg().concurrency.savePartNumber; // reusamos la misma config (5)
+      const syncCounters = { synced: 0 };
+      async function step6bWorker(i, _idx, myRunIdLocal) {
+        bailIfStale(myRunIdLocal);
         const part = parts[i];
         const entry = pnLookup.get(i);
-        if (!entry?.pn?.id) { step6bDone++; setPanelProgress(step6bDone, step6bCandidates.length); continue; }
+        if (!entry?.pn?.id) return;
         try {
-          // 1.2.5: reusa cache poblado en enrichWorker (archive sentinel). Cache-miss → fetch.
+          // Fix I 1.3.2: cache invalidado por enrichWorker → fetch fresco con los specs/params
+          // que SavePartNumber acaba de agregar. Sin esto, AddParams reintenta params ya creados.
           let pnNode = existingPnFullCache.get(entry.pn.id);
           if (!pnNode) {
-            const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
-            pnNode = pnData?.partNumberById; if (!pnNode) continue;
+            const pnData = await withRetry(
+              () => api().query('GetPartNumber', { partNumberId: entry.pn.id }),
+              `GetPartNumber sync "${part.pn}"`,
+              myRunIdLocal
+            );
+            pnNode = pnData?.partNumberById; if (!pnNode) return;
             existingPnFullCache.set(entry.pn.id, pnNode);
           }
           const linkedSpecs = pnNode.partNumberSpecsByPartNumberId?.nodes || [];
@@ -3428,11 +3543,9 @@ const BulkUpload = (() => {
             if (isDash(cs.name)) continue;
             const si = specByName.get(cs.name); if (!si) continue;
             const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
-            if (!linked) continue; // not linked → SavePartNumber ya lo creó (o lo creará en otro flujo)
-            // wanted params: misma lógica que en STEP 6 spec build
+            if (!linked) continue;
             const sd = sfCache.get(si.id); if (!sd) continue;
-            const wantedParamIds = new Set();
-            const wantedSelections = []; // {specFieldId, specFieldParamId, isGeneric}
+            const wantedSelections = [];
             for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
               const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
               const fn = sf.specFieldBySpecFieldId?.name || '';
@@ -3442,55 +3555,55 @@ const BulkUpload = (() => {
               else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : params[0].id; }
               else pid = params[0].id;
               if (!pid) continue;
-              wantedParamIds.add(pid);
               wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
             }
-            // existing active params on this PN
             const existingParamIds = new Set(
-              allParams
-                .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-                .map(p => p.specFieldParamBySpecFieldParamId.id)
+              allParams.filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
+                       .map(p => p.specFieldParamBySpecFieldParamId.id)
             );
             const missing = wantedSelections.filter(s => !existingParamIds.has(s.specFieldParamId));
             if (!missing.length) continue;
-            // El scan de la UI muestra que AddParamsToPartNumber se llama con processNodeId:null
-            // (igual para isGeneric true o false). Pasar el processId real choca con exclusion constraint.
             const paramsToAdd = missing.map(m => ({
-              specFieldId: m.specFieldId,
-              specFieldParamId: m.specFieldParamId,
-              isGeneric: m.isGeneric,
-              geometryTypeSpecFieldId: null,
-              processNodeId: null,
-              processNodeOccurrence: null,
-              locationId: null
+              specFieldId: m.specFieldId, specFieldParamId: m.specFieldParamId, isGeneric: m.isGeneric,
+              geometryTypeSpecFieldId: null, processNodeId: null, processNodeOccurrence: null, locationId: null
             }));
-            // La UI los manda uno por uno; replicamos el patrón para que un param fallido no
-            // tire el batch, y para tolerar mejor exclusion-constraint en params ya presentes.
             let added = 0;
             for (const pa of paramsToAdd) {
+              if (isStale(myRunIdLocal)) return;
               try {
                 await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
                 added++;
               } catch (e) {
                 const msg = String(e);
                 if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
-                  // Steelhead dice que ya existe — lo tratamos como skip silencioso
-                  log(`  PN "${part.pn}" spec "${cs.name}": param ${pa.specFieldParamId} ya presente, skip`);
+                  // Fix D 1.3.2: skip silencioso — antes (1.3.1) loggeábamos "ya presente, skip" por cada
+                  // param ya existente, lo que llenaba consola con N × M × PNs líneas inútiles. Con Fix I
+                  // (cache invalidado tras SavePartNumber) esto debería ser raro; cuando ocurre, queda solo
+                  // como contador implícito (added no incrementa).
                 } else {
                   errors.push(`AddParams "${part.pn}" spec "${cs.name}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
                 }
               }
             }
-            syncedParamsCount += added;
+            syncCounters.synced += added;
             if (added) log(`  PN "${part.pn}" spec "${cs.name}": ${added} params nuevos sincronizados`);
           }
         } catch (e) {
+          if (isBail(e)) throw e;
           warn(`Sync specs "${part.pn}": ${String(e).substring(0, 100)}`);
         }
-        step6bDone++;
-        setPanelProgress(step6bDone, step6bCandidates.length);
       }
-      if (syncedParamsCount) log(`  Spec params sync: ${syncedParamsCount} params agregados`);
+      setPanelPhase(`Sync params spec en PNs existentes (pool ${syncConcurrency})`);
+      setPanelProgress(0, step6bCandidates.length);
+      await runPool(
+        step6bCandidates,
+        step6bWorker,
+        syncConcurrency,
+        (done, total) => { setPanelProgress(done, total); setPanelCounters(); },
+        myRunId
+      );
+      if (syncCounters.synced) log(`  Spec params sync: ${syncCounters.synced} params agregados`);
+      bailIfStale(myRunId);
 
       // STEP 7: RackTypes — runs in BOTH modes
       // 1.2.11: iteramos con índice para resolver pnLookup por rowIdx. Si la fila CSV NO trae
