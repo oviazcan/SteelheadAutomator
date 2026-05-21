@@ -82,6 +82,12 @@ const BulkUpload = (() => {
   const RESUME_KEY_PREFIX = 'sa_bulk_resume_';
   const RESUME_INDEX_KEY = 'sa_bulk_resume_index';
 
+  // 1.2.0 R4: cache de specs por candidato (lazy fetch en preview Pase 3).
+  // Vida del cache: el IIFE — sobrevive entre clics del usuario en distintas
+  // filas pero no entre reloads de la extensión. Suficiente porque GetPartNumber
+  // es estable y el usuario raramente cambia datos del candidato fuera del run.
+  const specsCache = new Map(); // pnId → { state: 'loading'|'loaded'|'error', specs: string[], err: string }
+
   async function computeRunKey(text) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -735,6 +741,31 @@ const BulkUpload = (() => {
     };
   }
 
+  // 1.2.0 R4: lazy fetch de specs del PN candidato.
+  // Llamamos GetPartNumber con usagesLimit=1 (mínimo aceptado por el server,
+  // no usamos los usages pero la query exige el param). El shape relevante es
+  // partNumberById.partNumberSpecsByPartNumberId.nodes[].specBySpecId.name.
+  // Devuelve siempre lo que esté en cache (con state: loading/loaded/error).
+  async function fetchCandidateSpecs(pnId) {
+    const cached = specsCache.get(pnId);
+    if (cached?.state === 'loaded' || cached?.state === 'loading') return cached;
+    specsCache.set(pnId, { state: 'loading', specs: [], err: '' });
+    try {
+      const d = await api().query('GetPartNumber', {
+        partNumberId: pnId, usagesLimit: 1, usagesOffset: 0,
+      });
+      const nodes = d?.partNumberById?.partNumberSpecsByPartNumberId?.nodes || [];
+      const specs = nodes.map(x => x?.specBySpecId?.name).filter(Boolean);
+      const entry = { state: 'loaded', specs, err: '' };
+      specsCache.set(pnId, entry);
+      return entry;
+    } catch (e) {
+      const entry = { state: 'error', specs: [], err: e?.message || String(e) };
+      specsCache.set(pnId, entry);
+      return entry;
+    }
+  }
+
   // ─── classifyPNs (reemplaza checkPNExistence en 1.1.0) ───
   // Auto-detect dual-mode por tamaño del CSV:
   //   - CSV grande (> massiveThreshold, default 1000): prefetch global del
@@ -891,7 +922,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:200px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:flex;flex-direction:column;gap:2px}.dl9-p3-selrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.dl9-p3-csv{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(15,23,42,0.6);border-radius:3px}.dl9-p3-cand{font-size:10px;color:#fbbf24;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(120,53,15,0.25);border-radius:3px}.dl9-p3-cand.dl9-p3-cand-new{color:#4ade80;background:rgba(20,83,45,0.25)}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:200px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:flex;flex-direction:column;gap:2px}.dl9-p3-selrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.dl9-p3-csv{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(15,23,42,0.6);border-radius:3px}.dl9-p3-cand{font-size:10px;color:#fbbf24;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(120,53,15,0.25);border-radius:3px}.dl9-p3-cand.dl9-p3-cand-new{color:#4ade80;background:rgba(20,83,45,0.25)}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{display:flex;flex-direction:column;gap:1px;margin-top:2px;padding:3px 4px;background:rgba(15,23,42,0.4);border-radius:3px;border-left:2px solid #475569}.dl9-p3-specs-csv{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3}.dl9-p3-specs-cand{font-size:10px;color:#fbbf24;font-family:monospace;line-height:1.3}.dl9-p3-specs-err{color:#f87171}`;
     document.head.appendChild(s);
   }
 
@@ -936,11 +967,12 @@ const BulkUpload = (() => {
           precio: s.precio,
           pase: s.pase,
           candidates: s.candidates || [],
-          // 1.2.0 R3: snapshot del CSV row para comparación inline en Pase 3
+          // 1.2.0 R3/R4: snapshot del CSV row para comparación inline en Pase 3
           csvLabels: part.labels || [],
           csvMetalBase: part.metalBase || '',
           csvIBMS: part.quoteIBMS || '',
           csvProceso: part.procesoOverride || '',
+          csvSpecs: (part.specs || []).map(s => s.name).filter(Boolean),
         };
       });
 
@@ -1191,6 +1223,13 @@ const BulkUpload = (() => {
               linksSpan.appendChild(a);
             }
             selRow.appendChild(linksSpan);
+
+            // R4: botón "📋 specs" que despliega panel comparativo lazy-loaded
+            const specsBtn = document.createElement('button');
+            specsBtn.className = 'dl9-p3-specs-btn';
+            specsBtn.textContent = '📋 specs';
+            specsBtn.title = 'Comparar specs del CSV vs PN candidato';
+            selRow.appendChild(specsBtn);
             wrap.appendChild(selRow);
 
             // Fila 2: snapshot del CSV (datos que vienen a cargarse)
@@ -1228,6 +1267,56 @@ const BulkUpload = (() => {
             renderCandLine(initialVal);
             wrap.appendChild(candLine);
 
+            // R4: panel de specs (oculto hasta primer click en "📋 specs")
+            const specsPanel = document.createElement('div');
+            specsPanel.className = 'dl9-p3-specs';
+            specsPanel.style.display = 'none';
+            wrap.appendChild(specsPanel);
+
+            const renderSpecsPanel = async (selVal) => {
+              specsPanel.replaceChildren();
+              // Línea CSV specs (siempre instantáneo)
+              const csvLn = document.createElement('div');
+              csvLn.className = 'dl9-p3-specs-csv';
+              csvLn.textContent = r.csvSpecs.length
+                ? `📄 CSV specs (${r.csvSpecs.length}): ${r.csvSpecs.join(' · ')}`
+                : '📄 CSV: (sin specs en plantilla)';
+              specsPanel.appendChild(csvLn);
+              // Línea candidato specs (lazy fetch + spinner)
+              const candLn = document.createElement('div');
+              candLn.className = 'dl9-p3-specs-cand';
+              if (selVal === '__new__') {
+                candLn.textContent = '🆕 (PN nuevo — sin specs preexistentes)';
+                specsPanel.appendChild(candLn);
+                return;
+              }
+              const pnId = parseInt(selVal, 10);
+              candLn.textContent = `🎯 #${pnId}: cargando...`;
+              specsPanel.appendChild(candLn);
+              const entry = await fetchCandidateSpecs(pnId);
+              if (entry.state === 'error') {
+                candLn.textContent = `🎯 #${pnId}: error — ${entry.err}`;
+                candLn.classList.add('dl9-p3-specs-err');
+              } else {
+                candLn.textContent = entry.specs.length
+                  ? `🎯 #${pnId} specs (${entry.specs.length}): ${entry.specs.join(' · ')}`
+                  : `🎯 #${pnId}: (sin specs en este PN)`;
+              }
+            };
+
+            let specsExpanded = false;
+            specsBtn.addEventListener('click', () => {
+              specsExpanded = !specsExpanded;
+              if (specsExpanded) {
+                specsPanel.style.display = 'block';
+                specsBtn.textContent = '📋 ocultar';
+                renderSpecsPanel(sel.value);
+              } else {
+                specsPanel.style.display = 'none';
+                specsBtn.textContent = '📋 specs';
+              }
+            });
+
             sel.addEventListener('change', (e) => {
               const idx = parseInt(e.target.dataset.rowIdx, 10);
               const val = e.target.value;
@@ -1252,6 +1341,7 @@ const BulkUpload = (() => {
                 rows[idx].existingId = newTargetId;
               }
               renderCandLine(val);
+              if (specsExpanded) renderSpecsPanel(val);
               updateHeaderStats();
               if (resumeState) {
                 const slot = resumeState.classifications?.[idx];
