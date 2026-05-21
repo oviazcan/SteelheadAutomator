@@ -3546,8 +3546,10 @@ const BulkUpload = (() => {
               } catch (e) {
                 const msg = String(e);
                 if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
-                  // Steelhead dice que ya existe — lo tratamos como skip silencioso
-                  log(`  PN "${part.pn}" spec "${cs.name}": param ${pa.specFieldParamId} ya presente, skip`);
+                  // Fix D 1.3.2: skip silencioso — antes (1.3.1) loggeábamos "ya presente, skip" por cada
+                  // param ya existente, lo que llenaba consola con N × M × PNs líneas inútiles. Con Fix I
+                  // (cache invalidado tras SavePartNumber) esto debería ser raro; cuando ocurre, queda solo
+                  // como contador implícito (added no incrementa).
                 } else {
                   errors.push(`AddParams "${part.pn}" spec "${cs.name}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
                 }
