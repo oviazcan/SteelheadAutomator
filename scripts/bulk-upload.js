@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.13';
+  const VERSION = '1.3.0';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -81,6 +81,7 @@ const BulkUpload = (() => {
       },
       preview: { pageSize: d.preview?.pageSize ?? 100 },
       resume: { maxEntries: d.resume?.maxEntries ?? 20, purgeAgeDays: d.resume?.purgeAgeDays ?? 7 },
+      chunking: { defaultChunkSize: d.chunking?.defaultChunkSize ?? 250 },
     };
   };
 
@@ -118,6 +119,10 @@ const BulkUpload = (() => {
     parts: [],
     pnStatus: [],
     archiveGlobal: true,
+    // 1.3.0: chunkSize editable en el preview (solo COTIZACIÓN+NP). El default
+    // se lee de bulkCfg().chunking.defaultChunkSize. Se persiste en resumeState
+    // para que el restart respete el tamaño elegido en la corrida original.
+    chunkSize: null,
   };
 
   // ── Fix 7: resume tras crash ──
@@ -234,6 +239,7 @@ const BulkUpload = (() => {
       parts: [],
       pnStatus: [],
       archiveGlobal: true,
+      chunkSize: null,
     };
     return state.runId;
   }
@@ -1310,6 +1316,10 @@ const BulkUpload = (() => {
             <input type="checkbox" id="dl9-archive-global" checked>
             🗄️ Archivar PNs viejos (CSV)
           </label>
+          ${isSoloPN ? '' : `<label style="font-size:12px;color:#94a3b8" title="Si la cotización tiene más de N líneas se parte en varias cotizaciones nombradas '<nombre> 01', '<nombre> 02', etc. Útil para clientes muy grandes (Schneider) donde abrir una quote de miles de líneas tarda minutos.">Chunk:
+            <input type="number" id="dl9-chunksize" min="10" step="10" value="${bulkCfg().chunking.defaultChunkSize}" style="margin-left:4px;width:70px;padding:3px 6px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px">
+            <span id="dl9-chunkpreview" style="margin-left:6px;color:#cbd5e1"></span>
+          </label>`}
           <span style="font-size:12px;color:#94a3b8;margin-left:auto">Seleccionadas: <b id="dl9-sel-count">${selected.size}</b> / ${rows.length}</span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
@@ -1372,9 +1382,13 @@ const BulkUpload = (() => {
 
       function totalPages() { return Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE)); }
 
+      // 1.3.0: hook opcional para recalcular preview de chunks cuando cambia
+      // la selección. Lo asigna el bloque !isSoloPN más abajo.
+      let onSelChange = null;
       function updateSelCount() {
         modal.querySelector('#dl9-sel-count').textContent = selected.size;
         modal.querySelector('#dl9-count').textContent = selected.size;
+        if (onSelChange) onSelChange();
       }
 
       function updateHeaderStats() {
@@ -1932,6 +1946,31 @@ const BulkUpload = (() => {
           renderPage();
         });
       }
+      // 1.3.0: chunk size preview live update (solo COTIZACIÓN+NP). Recalcula
+      // cuántas cotizaciones se van a crear: ceil(parts[cliente].length / size)
+      // sumado para todos los clientes seleccionados. Solo informativo; el
+      // valor se aplica al ejecutar.
+      if (!isSoloPN) {
+        const chunkInput = modal.querySelector('#dl9-chunksize');
+        const chunkPreview = modal.querySelector('#dl9-chunkpreview');
+        const recalcChunkPreview = () => {
+          const size = Math.max(1, Math.floor(Number(chunkInput.value) || 1));
+          // Cuenta líneas por cliente sobre filas seleccionadas
+          const perCust = new Map();
+          for (const r of rows) {
+            if (!selected.has(r.idx)) continue;
+            perCust.set(r.customer, (perCust.get(r.customer) || 0) + 1);
+          }
+          let totalQuotes = 0;
+          for (const n of perCust.values()) totalQuotes += Math.ceil(n / size);
+          chunkPreview.textContent = `→ ${perCust.size} cliente(s), ${totalQuotes} cotización(es)`;
+        };
+        chunkInput.addEventListener('input', recalcChunkPreview);
+        // Hook: updateSelCount llama onSelChange si está seteado.
+        onSelChange = recalcChunkPreview;
+        recalcChunkPreview();
+      }
+
       const pendingBtn = modal.querySelector('#dl9-toggle-pending');
       if (pendingBtn) {
         pendingBtn.addEventListener('click', () => {
@@ -1969,6 +2008,16 @@ const BulkUpload = (() => {
 
       modal.querySelector('#dl9-cancel').onclick = () => { removeOverlay(overlay); resolve(false); };
       modal.querySelector('#dl9-exec').onclick = () => {
+        // 1.3.0: capturar chunkSize si aplica (solo COTIZACIÓN+NP). El default
+        // viene de bulkCfg().chunking.defaultChunkSize. Persiste en state para
+        // que execute() y resumeState lo encuentren.
+        if (!isSoloPN) {
+          const chunkInput = modal.querySelector('#dl9-chunksize');
+          const sizeRaw = chunkInput ? parseInt(chunkInput.value, 10) : NaN;
+          state.chunkSize = (Number.isFinite(sizeRaw) && sizeRaw >= 1)
+            ? sizeRaw
+            : bulkCfg().chunking.defaultChunkSize;
+        }
         const out = [...selected].sort((a, b) => a - b);
         removeOverlay(overlay);
         resolve(out);
@@ -2226,9 +2275,24 @@ const BulkUpload = (() => {
           quoteId: null,
           quoteAction: null,
           classifications: null,
+          // 1.3.0: chunkSize lockeado en la corrida original. Si el usuario hace
+          // resume, las fronteras de chunks se respetan (mismo tamaño → mismas
+          // particiones contiguas). En isSoloPN queda null (no aplica).
+          chunkSize: isSoloPN ? null : (state.chunkSize || bulkCfg().chunking.defaultChunkSize),
+          // 1.3.0: chunks completados por cliente. Mapa cid (string) → number[].
+          // Cada chunk se marca al final de su pipeline (UpdateQuote ok).
+          completedChunks: {},
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
+      } else {
+        // Resume: si la corrida previa no tenía chunkSize (pre-1.3.0) y estamos
+        // en COTIZACIÓN+NP, hidratar desde state o default. Esto evita partir un
+        // resume "fresco" en chunks distintos a la corrida original.
+        if (!isSoloPN && resumeState.chunkSize == null) {
+          resumeState.chunkSize = state.chunkSize || bulkCfg().chunking.defaultChunkSize;
+        }
+        if (!resumeState.completedChunks) resumeState.completedChunks = {};
       }
 
       // ── V10: Validate required per-line fields ──
@@ -2750,26 +2814,54 @@ const BulkUpload = (() => {
           if (!partsByCustomer.has(cid)) partsByCustomer.set(cid, []);
           partsByCustomer.get(cid).push({ part: parts[i], status: pnStatus[i], origIdx: i });
         }
-        log(`Cotizaciones a crear: ${partsByCustomer.size} (una por cliente)`);
+        // 1.3.0: chunking. chunkSize lockeado en resumeState (sobrevive resume).
+        // Si la corrida nace fresh, resumeState.chunkSize ya tiene state.chunkSize o el default.
+        const chunkSize = (resumeState && resumeState.chunkSize) || state.chunkSize || bulkCfg().chunking.defaultChunkSize;
+
+        // Pre-cómputo: chunks por cliente + total global para barras de progreso.
+        const chunksByCust = new Map();
+        let totalChunks = 0;
+        for (const [cid, custParts] of partsByCustomer) {
+          const chunks = chunkParts(custParts, chunkSize);
+          chunksByCust.set(cid, chunks);
+          totalChunks += chunks.length;
+        }
+        if (totalChunks !== partsByCustomer.size) {
+          log(`Cotizaciones a crear: ${totalChunks} (${partsByCustomer.size} cliente(s), chunkSize=${chunkSize})`);
+        } else {
+          log(`Cotizaciones a crear: ${totalChunks} (una por cliente, chunkSize=${chunkSize})`);
+        }
 
         let quoteSeq = 0;
         let prodAddedTotal = 0;
         for (const [cid, custParts] of partsByCustomer) {
-          quoteSeq++;
           const cust = [...customerCache.values()].find(c => c.id === cid);
           if (!cust) { errors.push(`Cliente id ${cid} no en cache`); continue; }
-          // V10: same layout name for all quotes — distinguishable by customer column in Steelhead UI
-          const thisQuoteName = quoteName;
+          const chunks = chunksByCust.get(cid);
+          // 1.3.0: loop interno por chunk. Cada chunk es una cotización
+          // independiente con su propio nombre derivado, su propio
+          // modal modify/skip/create al inicio, y se persiste como
+          // completado al final del pipeline.
+          for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
+            if (resumeState?.completedChunks?.[cid]?.includes(cIdx)) {
+              log(`  ${cust.name} chunk ${cIdx + 1}/${chunks.length}: ya completado, saltando`);
+              continue;
+            }
+            bailIfStale(myRunId);
+            const chunkSlice = chunks[cIdx];
+          quoteSeq++;
+          // 1.3.0: 1 chunk → nombre original; >1 → "<name> 01", " 02", ... (padStart 2 dígitos, escala a 3+ si pasamos 99)
+          const thisQuoteName = makeChunkQuoteName(quoteName, cIdx, chunks.length);
           // Use first part's divisa as quote-level divisa (per-line drives prices later)
-          const quoteDivisa = (custParts[0].part.divisa || 'USD').toUpperCase();
+          const quoteDivisa = (chunkSlice[0].part.divisa || 'USD').toUpperCase();
           const quoteCI = {
             Comentarios: { CargosFletes: true, CotizacionSujetaPruebas: true, ReferirNumeroCotizacion: true, ModificacionRequiereRecotizar: true },
             DatosAdicionales: { Divisa: quoteDivisa, Decimales: '2', EmpresaEmisora: empresaStr, MostrarProceso: false, MostrarTotales: true },
             Autorizacion: {}, CondicionesComerciales: {},
           };
 
-          showProgressUI(`Quote ${quoteSeq}/${partsByCustomer.size}: buscando duplicados...`);
-          setProgressBar(5 + Math.round((quoteSeq / partsByCustomer.size) * 40));
+          showProgressUI(`Quote ${quoteSeq}/${totalChunks}: buscando duplicados...`);
+          setProgressBar(5 + Math.round((quoteSeq / totalChunks) * 40));
 
           // V10: detect existing quote with same name+customer
           let thisQuoteId = null, thisQuoteIdInDomain = null;
@@ -2801,7 +2893,7 @@ const BulkUpload = (() => {
 
           if (!thisQuoteId) {
             // No existing or user chose to create new
-            showProgressUI(`Quote ${quoteSeq}/${partsByCustomer.size}: "${thisQuoteName}"`);
+            showProgressUI(`Quote ${quoteSeq}/${totalChunks}: "${thisQuoteName}"`);
             let createResult;
             try {
               createResult = await api().query('CreateQuote', {
@@ -2829,7 +2921,7 @@ const BulkUpload = (() => {
           // Cada qpnp.lineNumber en la respuesta corresponde 1:1 con el pnpItem que lo creó.
           const pnpItems = []; let lineNum = 0;
           const lineNumberToOrigIdx = new Map();
-          for (const { part, status, origIdx } of custParts) {
+          for (const { part, status, origIdx } of chunkSlice) {
             lineNum++;
             let partNumberId;
             if (status.status === 'existing') { partNumberId = status.existingId; stats.pnsExisting++; }
@@ -2884,7 +2976,7 @@ const BulkUpload = (() => {
           // 1.2.11: iteramos por { part, origIdx } y resolvemos pnLookup.get(origIdx) — cada fila CSV
           // tiene su propio ql aunque comparta name+customerId con otra. Esto soluciona Bug E
           // (productos combinados entre líneas) y Bug F (PNs duplicados que se pisaban entre sí).
-          for (const { part, origIdx } of custParts) {
+          for (const { part, origIdx } of chunkSlice) {
             if (!part.products.length) continue;
             const entry = pnLookup.get(origIdx); if (!entry) { errors.push(`PN "${part.pn}" (row ${origIdx}) no en quote.`); continue; }
             const ql = entry.ql; if (!ql) { errors.push(`QuoteLine no encontrada para "${part.pn}" (row ${origIdx}).`); continue; }
@@ -2919,6 +3011,15 @@ const BulkUpload = (() => {
             if (header.notasExternas) await api().query('UpdateQuote', { id: thisQuoteId, notesMarkdown: isDash(header.notasExternas) ? '' : header.notasExternas });
             if (header.notasInternas) await api().query('UpdateQuote', { id: thisQuoteId, internalNotesMarkdown: isDash(header.notasInternas) ? '' : header.notasInternas });
           } catch (e) { errors.push(`UpdateQuote ${thisQuoteIdInDomain}: ${String(e).substring(0, 100)}`); }
+
+          // 1.3.0: chunk completado — persistir para que un resume futuro lo salte.
+          if (resumeState) {
+            if (!resumeState.completedChunks) resumeState.completedChunks = {};
+            if (!resumeState.completedChunks[cid]) resumeState.completedChunks[cid] = [];
+            if (!resumeState.completedChunks[cid].includes(cIdx)) resumeState.completedChunks[cid].push(cIdx);
+            await persistResumeState().catch(() => {});
+          }
+          } // end chunk loop
         }
         stats.productsSet = prodAddedTotal;
         stats.quoteIdInDomain = primaryQuoteIdInDomain;
@@ -4053,7 +4154,24 @@ const BulkUpload = (() => {
     return { dupGroups, dupRows };
   }
 
-  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates };
+  // 1.3.0: chunking helpers — partir corridas grandes COTIZACIÓN+NP en cotizaciones
+  // de hasta `chunkSize` líneas. Contiguous slicing, no agrupa duplicados a través
+  // de fronteras (los duplicados internos del CSV se distribuyen libremente).
+  function chunkParts(arr, chunkSize) {
+    if (!Array.isArray(arr) || arr.length === 0) return [];
+    const size = Math.max(1, Math.floor(Number(chunkSize) || 1));
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  }
+  // 1.3.0: nombre derivado para chunks. 1 chunk → nombre original (sin sufijo).
+  // >1 chunks → "<name> 01", "<name> 02", ..., padStart(2,'0') deja 3+ dígitos si pasamos 99.
+  function makeChunkQuoteName(originalName, chunkIndex, totalChunks) {
+    if (totalChunks <= 1) return originalName;
+    return `${originalName} ${String(chunkIndex + 1).padStart(2, '0')}`;
+  }
+
+  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates, chunkParts, makeChunkQuoteName };
 
   // 1.2.12: getter para que window.BulkUpload.__state apunte siempre al state actual
   // (state se reasigna en nextRunId() así que un snapshot quedaría stale).
