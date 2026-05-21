@@ -461,7 +461,7 @@ const BulkUpload = (() => {
     const rt = state.counters?.retried || 0;
     const er = state.counters?.errors || 0;
     if (tot > 0) {
-      live.textContent = `${phase} — ${cur}/${tot}   OK:${ok}  Retries:${rt}  Errors:${er}`;
+      live.textContent = `${phase} — ${cur}/${tot}   OK:${ok}  Reintentos:${rt}  Errores:${er}`;
     } else {
       live.textContent = phase;
     }
