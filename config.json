@@ -1,5 +1,5 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.3",
   "lastUpdated": "2026-05-20",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -20,8 +20,8 @@
         "SaveQuoteLines": "b227e2f5a5b40021383077e58ab311169da2d5438d566bfe389fd7642e4d1937",
         "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6",
         "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154",
-        "SaveManyPNP_Quote": "af7b81567691854da4b9bbdf473b2732d89e3e6224ba52cbfb3d13dbfa93841b",
-        "SaveManyPNP_PN": "bd2db06e8e0b0a66cb65ada5b5433d9c5abe981b4aee4b39b86be4bba077cd05",
+        "SaveManyPNP_Quote": "b3c7414179e41a07db3912deac48f0cd4bc7ac1569b9d6d1e3a505065ecdfdbc",
+        "SaveManyPNP_PN": "b3c7414179e41a07db3912deac48f0cd4bc7ac1569b9d6d1e3a505065ecdfdbc",
         "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40",
         "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363",
         "SendEmailChecked": "821bd8f1144fd29bd972a9471a59d036ad04e8c77003f08ea7b1009e8a640beb",
@@ -73,8 +73,8 @@
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
-        "GetQuote_v8": "15db7a9b0325c45c181d7be61e223d1dbede8179433a25db36ebc9699097acb6",
-        "GetQuote_v71": "083046b3bca84f1bc8039145b40bdb10625194735ff18ce0c3815d83600ecd99",
+        "GetQuote_v8": "28ea8b40e659a812bd53ffb0c2faff561643258a357bfa8fd2661fb8952470f2",
+        "GetQuote_v71": "28ea8b40e659a812bd53ffb0c2faff561643258a357bfa8fd2661fb8952470f2",
         "GetQuoteRelatedData": "04cc75ea43a2860a31e3f5043bb00e83d4c67a8b49b1d86c59cf65b72583f480",
         "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02",
         "CustomerFinancialById": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9",
