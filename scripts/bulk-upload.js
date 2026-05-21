@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.2';
+  const VERSION = '1.2.4';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -63,6 +63,18 @@ const BulkUpload = (() => {
   }
   const BAIL_MSG = '__sa_aborted__';
   const isBail = (e) => e?.message === BAIL_MSG;
+  // 1.2.4: Steelhead devuelve "A record with these details already exists" como
+  // user-friendly version del unique_constraint (códigos 23505/duplicate key).
+  // Sin este patrón el retry progresivo no se dispara y el error escapa hasta
+  // el reporte como falla dura.
+  const isDuplicateKeyError = (e) => {
+    const s = String(e || '');
+    return s.includes('unique_constraint')
+      || s.includes('exclusion constraint')
+      || s.includes('23505')
+      || s.includes('duplicate key')
+      || s.includes('A record with these details already exists');
+  };
 
   let state = {
     runId: 0,
@@ -2488,6 +2500,7 @@ const BulkUpload = (() => {
         const specsAreDash = part.specs.length === 1 && isDash(part.specs[0].name);
         const specsToApply = [];
         if (!specsAreDash) for (const cs of part.specs) {
+          if (isDash(cs.name)) continue; // filas con varias specs pueden traer "-" mezclado; ignorar silencio
           const si = specByName.get(cs.name); if (!si) { errors.push(`Spec "${cs.name}" no encontrada.`); continue; }
           const sd = sfCache.get(si.id); if (!sd) continue;
           const dS = [], gS = [];
@@ -2584,7 +2597,7 @@ const BulkUpload = (() => {
         catch (e) {
           if (isBail(e)) throw e;
           const errStr = String(e);
-          if (errStr.includes('unique_constraint') || errStr.includes('exclusion constraint') || errStr.includes('23505') || errStr.includes('duplicate key')) {
+          if (isDuplicateKeyError(e)) {
             // Retry progressively removing fields that cause duplicates
             try {
               await withRetry(
@@ -2787,7 +2800,7 @@ const BulkUpload = (() => {
         try {
           await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
         } catch (e2) {
-          if (String(e2).includes('duplicate key') || String(e2).includes('23505')) {
+          if (isDuplicateKeyError(e2)) {
             // V10: usar mutación dedicada UpdatePartNumberPerPerRackType (typo en el API real)
             // que actualiza por composite key (partNumberId, rackTypeId).
             try {
@@ -2812,7 +2825,7 @@ const BulkUpload = (() => {
           try {
             await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } });
           } catch (e) {
-            if (String(e).includes('duplicate key') || String(e).includes('23505')) {
+            if (isDuplicateKeyError(e)) {
               log(`  Racks batch ${Math.floor(i / 50) + 1}: duplicados, upsertando uno por uno...`);
               for (const rk of batch) await upsertRack(rk);
             } else { errors.push(`SavePartNumberRackTypes: ${String(e).substring(0, 120)}`); }
