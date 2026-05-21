@@ -188,16 +188,16 @@ test('classifyOnePN — Caso 5: dos PNs, uno por IBMS y otro por name; gana Pase
   assert.equal(r.targetPnId, 100);
 });
 
-test('classifyOnePN — Caso 6: name coincide, metalBase distinto → Pase 3 NEW default con candidato', () => {
+test('classifyOnePN — Caso 6: name coincide, metalBase distinto → Pase 3 MODIFY default al top match', () => {
   const H = loadHelpers();
   const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
   const pnsForCustomer = [
     { id: 100, name: 'A', metalBase: 'AL', labels: ['NIQ'], quoteIBMS: '' },
   ];
   const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
-  assert.equal(r.classification, 'NEW');
+  assert.equal(r.classification, 'MODIFY');
   assert.equal(r.pase, 3);
-  assert.equal(r.targetPnId, null);
+  assert.equal(r.targetPnId, 100);
   assert.equal(r.candidates.length, 1);
   assert.equal(r.candidates[0].id, 100);
 });
@@ -215,15 +215,16 @@ test('classifyOnePN — Caso 7: nada parecido → NEW sin candidatos', () => {
   assert.equal(r.candidates.length, 0);
 });
 
-test('classifyOnePN — anti-colisión Pase 2: composite match pero ambos IBMS no-vacíos y distintos → cae a Pase 3', () => {
+test('classifyOnePN — anti-colisión Pase 2: composite match pero ambos IBMS no-vacíos y distintos → cae a Pase 3 con default MODIFY', () => {
   const H = loadHelpers();
   const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
   const pnsForCustomer = [
     { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'Y' },
   ];
   const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
-  assert.equal(r.classification, 'NEW');
+  assert.equal(r.classification, 'MODIFY');
   assert.equal(r.pase, 3);
+  assert.equal(r.targetPnId, 100);
   assert.equal(r.candidates.length, 1);
   assert.equal(r.candidates[0].id, 100);
 });

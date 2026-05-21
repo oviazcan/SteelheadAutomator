@@ -2912,15 +2912,17 @@ const BulkUpload = (() => {
     }
 
     // ── Pase 3: near-match por nombre ──
+    // 1.2.0: default MODIFY al top match (ranked[0]); el usuario puede override en UI.
+    // Si no hay candidatos cae al return final (NEW sin candidatos).
     const nameUpper = (csvRow.name || '').toUpperCase();
     const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
     if (nameCandidates.length > 0) {
       const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList).slice(0, 3);
       return {
-        classification: 'NEW',
+        classification: 'MODIFY',
         pase: 3,
         confidence: 'near-match-name',
-        targetPnId: null,
+        targetPnId: ranked[0].id,
         candidates: ranked,
       };
     }
