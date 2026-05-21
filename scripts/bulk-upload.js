@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.8';
+  const VERSION = '1.2.9';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -3336,16 +3336,20 @@ const BulkUpload = (() => {
     }
 
     // ── Pase 3: near-match por nombre ──
-    // 1.2.1: default MODIFY al top match SOLO si las etiquetas de acabado del top
-    // coinciden exactas con las del CSV (sets iguales sin contar nonFinish). Si no,
-    // default NEW con los candidatos disponibles en el dropdown para override manual.
-    // Esto evita pisar PNs con etiquetas distintas por nombre coincidente accidental.
+    // 1.2.9: tres niveles de default según evidencia de match:
+    //   1) Top match estricto (nombre + acabados exactos sin contar nonFinish)
+    //      → MODIFY ranked[0]. Confianza alta, operador puede confirmar de un vistazo.
+    //   2) Sin match estricto pero existe candidato sin-etiqueta (slate limpia)
+    //      → MODIFY ese candidato. Es más seguro completar un PN vacío que crear
+    //      un duplicado con etiquetas; el PN sin-etiq típicamente nació por accidente
+    //      (creado sin clasificar) y este es el momento natural para corregirlo.
+    //   3) Sin match estricto y sin candidato sin-etiq → NEW. El operador decide
+    //      a mano si quiere pisar alguno de los candidatos con etiquetas distintas.
+    // En los 3 casos el dropdown del panel muestra TODOS los candidatos por nombre
+    // (1.2.8) para que el operador pueda override.
     const nameUpper = (csvRow.name || '').toUpperCase();
     const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
     if (nameCandidates.length > 0) {
-      // 1.2.8: sin cap — devuelve todos los matches por nombre. El operador ve
-      // la lista completa en el dropdown del panel y decide. Antes capábamos a 3
-      // y eso ocultaba PNs reales que el operador esperaba ver.
       const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList);
       const csvAcabados = acabadosOrdenados(csvRow.labels || [], nonFinishList);
       const topAcabados = acabadosOrdenados(ranked[0].labels || [], nonFinishList);
@@ -3356,6 +3360,17 @@ const BulkUpload = (() => {
           pase: 3,
           confidence: 'name+labels-match',
           targetPnId: ranked[0].id,
+          candidates: ranked,
+        };
+      }
+      // 1.2.9: fallback a candidato sin-etiqueta si existe.
+      const blankCandidate = ranked.find(c => acabadosOrdenados(c.labels || [], nonFinishList) === '');
+      if (blankCandidate) {
+        return {
+          classification: 'MODIFY',
+          pase: 3,
+          confidence: 'name+blank-candidate',
+          targetPnId: blankCandidate.id,
           candidates: ranked,
         };
       }
