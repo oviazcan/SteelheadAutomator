@@ -384,6 +384,162 @@ test('extractPNShape acepta customInputs como objeto plano (shape real del API)'
   assert.equal(r.metalBase, 'AL');
 });
 
+// ─── 1.2.10 dedup MODIFY targets ───
+
+function makeRow({ idx, pn, pase, confidence, existingId, candidates = [], status = 'existing', userOverride = null }) {
+  return {
+    idx, // sintético para sort estable en helpers (no es el field idx real)
+    pn,
+    status,
+    existingId,
+    existingProcessId: null,
+    qty: 1, precio: 0, customerId: 7,
+    classification: status === 'new' ? 'NEW' : 'MODIFY',
+    pase, confidence,
+    candidates,
+    userOverride,
+    targetPnId: existingId,
+    csvRowKey: `${pn}|7`,
+  };
+}
+
+test('dedupModifyTargets — sin conflictos, no muta nada', () => {
+  const H = loadHelpers();
+  const rows = [
+    makeRow({ pn: 'A', pase: 1, confidence: 'ibms-exacto', existingId: 100 }),
+    makeRow({ pn: 'B', pase: 1, confidence: 'ibms-exacto', existingId: 200 }),
+    makeRow({ pn: 'C', pase: 3, confidence: 'name+labels-match', existingId: 300, candidates: [{ id: 300, labels: [] }, { id: 301, labels: [] }] }),
+  ];
+  const r = H.dedupModifyTargets(rows);
+  assert.equal(r.reassigned, 0);
+  assert.equal(r.demoted, 0);
+  assert.equal(rows[0].existingId, 100);
+  assert.equal(rows[1].existingId, 200);
+  assert.equal(rows[2].existingId, 300);
+});
+
+test('dedupModifyTargets — Pase 1 gana, Pase 3 con alterno se re-asigna', () => {
+  const H = loadHelpers();
+  // Row #0 Pase 1 → #500 (autoritativo, sin alternativas)
+  // Row #1 Pase 3 strict → #500 (top match)... pero #500 ya tomado por #0
+  //   Alternativa en candidates: #501
+  const rows = [
+    makeRow({ pn: 'X', pase: 1, confidence: 'ibms-exacto', existingId: 500 }),
+    makeRow({ pn: 'X', pase: 3, confidence: 'name+labels-match', existingId: 500, candidates: [
+      { id: 500, labels: [], defaultProcessNodeId: 11 },
+      { id: 501, labels: [], defaultProcessNodeId: 22 },
+    ]}),
+  ];
+  const r = H.dedupModifyTargets(rows);
+  assert.equal(r.reassigned, 1);
+  assert.equal(r.demoted, 0);
+  assert.equal(rows[0].existingId, 500); // ganó
+  assert.equal(rows[1].existingId, 501); // re-asignado
+  assert.equal(rows[1].dedupReassigned, true);
+  assert.equal(rows[1].dedupOriginalTargetPnId, 500);
+  assert.equal(rows[1].existingProcessId, 22); // del nuevo target
+  assert.equal(rows[1].status, 'existing'); // sigue MODIFY
+});
+
+test('dedupModifyTargets — dos Pase 3 con mismo top → loser toma alterno', () => {
+  // Caso real del usuario: dos filas con mismo nombre en el CSV; ambas Pase 3
+  // con candidates idénticos. El primer row (idx menor) toma el #1; el segundo
+  // toma el #2 de la lista.
+  const H = loadHelpers();
+  const candidates = [
+    { id: 700, labels: ['NIQ'], defaultProcessNodeId: 11 },
+    { id: 701, labels: [], defaultProcessNodeId: 22 },
+  ];
+  const rows = [
+    makeRow({ pn: 'A', pase: 3, confidence: 'name+blank-candidate', existingId: 701, candidates }),
+    makeRow({ pn: 'A', pase: 3, confidence: 'name+blank-candidate', existingId: 701, candidates }),
+  ];
+  const r = H.dedupModifyTargets(rows);
+  assert.equal(r.reassigned, 1);
+  assert.equal(r.demoted, 0);
+  assert.equal(rows[0].existingId, 701); // primero gana (idx asc)
+  assert.equal(rows[1].existingId, 700); // alterno disponible
+  assert.equal(rows[1].dedupReassigned, true);
+});
+
+test('dedupModifyTargets — sin alternativas → demota a NEW con conflict marker', () => {
+  const H = loadHelpers();
+  // Row #0 toma #800. Row #1 Pase 3 con UN solo candidato (#800) que ya está tomado.
+  const rows = [
+    makeRow({ pn: 'A', pase: 2, confidence: 'composite-exacto-ambos-sin-ibms', existingId: 800 }),
+    makeRow({ pn: 'A', pase: 3, confidence: 'name+labels-match', existingId: 800, candidates: [
+      { id: 800, labels: ['NIQ'], defaultProcessNodeId: 11 },
+    ]}),
+  ];
+  const r = H.dedupModifyTargets(rows);
+  assert.equal(r.reassigned, 0);
+  assert.equal(r.demoted, 1);
+  assert.equal(rows[0].existingId, 800);
+  assert.equal(rows[1].status, 'new');
+  assert.equal(rows[1].classification, 'NEW');
+  assert.equal(rows[1].existingId, null);
+  assert.equal(rows[1].dedupConflict, true);
+  assert.equal(rows[1].dedupConflictTargetPnId, 800);
+});
+
+test('dedupModifyTargets — Pase 1 vs Pase 1 con mismo id (CSV con dos filas mismo IBMS) → loser demotado', () => {
+  const H = loadHelpers();
+  // Pase 1 no tiene candidates → no hay alternativas; loser obligado a NEW.
+  const rows = [
+    makeRow({ pn: 'A', pase: 1, confidence: 'ibms-exacto', existingId: 900 }),
+    makeRow({ pn: 'A', pase: 1, confidence: 'ibms-exacto', existingId: 900 }),
+  ];
+  const r = H.dedupModifyTargets(rows);
+  assert.equal(r.demoted, 1);
+  assert.equal(rows[1].status, 'new');
+  assert.equal(rows[1].dedupConflict, true);
+});
+
+test('dedupModifyTargets — orden de precedencia Pase 1 > Pase 2 > Pase 3 strict > Pase 3 blank', () => {
+  const H = loadHelpers();
+  // Cuatro filas todas apuntan a #1000. Solo la Pase 1 (en idx más alto)
+  // debe ganar, las otras se reparten o demotán.
+  // Para forzar el orden, las pongo en orden inverso al idx CSV: el Pase 1
+  // está en idx 3 (último). Aún así dedup debe darle precedencia por pase.
+  const candidatesShared = [
+    { id: 1000, labels: [], defaultProcessNodeId: null },
+    { id: 1001, labels: [], defaultProcessNodeId: null },
+    { id: 1002, labels: [], defaultProcessNodeId: null },
+    { id: 1003, labels: [], defaultProcessNodeId: null },
+  ];
+  const rows = [
+    makeRow({ pn: 'A', pase: 3, confidence: 'name+blank-candidate', existingId: 1000, candidates: candidatesShared }),
+    makeRow({ pn: 'A', pase: 3, confidence: 'name+labels-match', existingId: 1000, candidates: candidatesShared }),
+    makeRow({ pn: 'A', pase: 2, confidence: 'composite-exacto-ambos-sin-ibms', existingId: 1000 }),
+    makeRow({ pn: 'A', pase: 1, confidence: 'ibms-exacto', existingId: 1000 }),
+  ];
+  H.dedupModifyTargets(rows);
+  // Pase 1 (idx 3) gana #1000
+  assert.equal(rows[3].existingId, 1000);
+  assert.equal(!!rows[3].dedupReassigned, false);
+  // Pase 2 (idx 2) sin alternativas → demotado
+  assert.equal(rows[2].status, 'new');
+  assert.equal(rows[2].dedupConflict, true);
+  // Pase 3 strict (idx 1) toma siguiente alterno disponible (#1001)
+  assert.equal(rows[1].existingId, 1001);
+  assert.equal(rows[1].dedupReassigned, true);
+  // Pase 3 blank (idx 0) toma el siguiente (#1002)
+  assert.equal(rows[0].existingId, 1002);
+  assert.equal(rows[0].dedupReassigned, true);
+});
+
+test('dedupModifyTargets — rows con status=new no participan', () => {
+  const H = loadHelpers();
+  const rows = [
+    makeRow({ pn: 'A', pase: null, confidence: 'sin-match', existingId: null, status: 'new' }),
+    makeRow({ pn: 'B', pase: 3, confidence: 'name+labels-match', existingId: 555, candidates: [{ id: 555, labels: [] }] }),
+  ];
+  const r = H.dedupModifyTargets(rows);
+  assert.equal(r.reassigned, 0);
+  assert.equal(r.demoted, 0);
+  assert.equal(rows[1].existingId, 555);
+});
+
 test('PNStatus post-override mantiene shape compatible con enrichWorker', () => {
   const simulatedStatus = {
     pn: 'X',
