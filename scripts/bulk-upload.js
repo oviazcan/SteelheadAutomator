@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.4';
+  const VERSION = '1.2.5';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -2226,6 +2226,12 @@ const BulkUpload = (() => {
       // V10: pnLookup keyed by "pn|customerId" to support multi-customer
       const pnLookup = new Map();
 
+      // 1.2.5: cache compartida entre enrichWorker (archive sentinel) y STEP 6b (param sync).
+      // pnId → partNumberById (shape completo de GetPartNumber, incluye partNumberSpecsByPartNumberId
+      // y partNumberSpecFieldParamsByPartNumberId). On-demand fetch — solo se popula cuando algún
+      // PN existente lo necesita. Evita doble GetPartNumber al mismo PN.
+      const existingPnFullCache = new Map();
+
       if (!isSoloPN) {
         // V10: Group parts by customer and create one quote per customer
         const partsByCustomer = new Map();
@@ -2496,12 +2502,21 @@ const BulkUpload = (() => {
         const labelIds = labelsAreDash ? [] : part.labels.map(n => labelByName.get(n)).filter(Boolean);
         if (labelIds.length) stats.labelsSet += labelIds.length;
 
-        // Specs — "-" en primer spec = borrar todas las specs
-        const specsAreDash = part.specs.length === 1 && isDash(part.specs[0].name);
+        // Specs — semántica del guión:
+        //   * `spec1=-` solo → archive sentinel "borrar todas las linked specs" (specsToApply queda [])
+        //   * `spec1=Y, spec2=-` → apply Y + archive sentinel "borrar el resto que no sea Y"
+        //   * `spec1=Y, spec2=Z, spec3=-` → apply Y,Z + archive el resto
+        //   * sin "-" en ninguna posición → solo upsert (no archive). Comportamiento histórico.
+        // 1.2.5: SavePartNumber.specsToApply es upsert/add-only (ver STEP 6b). Para archivar
+        // de verdad hay que pasar IDs explícitos en partNumberSpecsToArchive — esos IDs son
+        // del registro link (partNumberSpec.id), no del Spec mismo.
+        const hasArchiveSentinel = part.specs.length > 0 && part.specs.some(s => isDash(s.name));
+        const wantedSpecIds = new Set(); // si.id de las specs no-dash del CSV
         const specsToApply = [];
-        if (!specsAreDash) for (const cs of part.specs) {
-          if (isDash(cs.name)) continue; // filas con varias specs pueden traer "-" mezclado; ignorar silencio
+        for (const cs of part.specs) {
+          if (isDash(cs.name)) continue; // "-" mezclado o solo: no se aplica (archive sentinel maneja el resto)
           const si = specByName.get(cs.name); if (!si) { errors.push(`Spec "${cs.name}" no encontrada.`); continue; }
+          wantedSpecIds.add(si.id);
           const sd = sfCache.get(si.id); if (!sd) continue;
           const dS = [], gS = [];
           for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
@@ -2518,6 +2533,41 @@ const BulkUpload = (() => {
           }
           specsToApply.push({ specId: si.id, classificationSetId: null, classificationIds: [], defaultSelections: dS, genericSelections: gS });
           stats.specsSet++;
+        }
+
+        // partNumberSpecsToArchive: solo se popula si hay archive sentinel y el PN ya existe.
+        // Para PN nuevo no hay nada que archivar. El fetch on-demand reusa existingPnFullCache
+        // para que STEP 6b no vuelva a pegarle a GetPartNumber del mismo PN.
+        const partNumberSpecsToArchiveIds = [];
+        const statusForArchive = pnStatus[idx];
+        if (hasArchiveSentinel && statusForArchive?.status === 'existing' && pn.id) {
+          let cached = existingPnFullCache.get(pn.id);
+          if (!cached) {
+            try {
+              bailIfStale(myRunId);
+              const pnData = await withRetry(
+                () => api().query('GetPartNumber', { partNumberId: pn.id }),
+                `GetPartNumber archive "${pn.name}"`,
+                myRunId
+              );
+              cached = pnData?.partNumberById || null;
+              if (cached) existingPnFullCache.set(pn.id, cached);
+            } catch (e) {
+              if (isBail(e)) throw e;
+              warn(`Archive sentinel "${pn.name}": GetPartNumber falló (${String(e).substring(0, 80)}), no se archivará nada`);
+            }
+          }
+          const linked = cached?.partNumberSpecsByPartNumberId?.nodes || [];
+          for (const ls of linked) {
+            if (ls.archivedAt) continue;
+            const linkedSpecId = ls.specBySpecId?.id;
+            if (!linkedSpecId) continue;
+            if (!wantedSpecIds.has(linkedSpecId)) partNumberSpecsToArchiveIds.push(ls.id);
+          }
+          if (partNumberSpecsToArchiveIds.length) {
+            stats.specsArchivedBySentinel = (stats.specsArchivedBySentinel || 0) + partNumberSpecsToArchiveIds.length;
+            log(`  "${pn.name}": archive sentinel → ${partNumberSpecsToArchiveIds.length} specs serán archivadas`);
+          }
         }
 
         // Unit conversions — guión en cualquier campo = borrar todas (enviar inventoryItemInput null)
@@ -2579,7 +2629,7 @@ const BulkUpload = (() => {
           dimensionCustomValueIds: dimValueIds,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
           partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
-          partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [], specFieldParamUpdates: [],
+          partNumberSpecsToArchive: partNumberSpecsToArchiveIds, partNumberSpecsToUnarchive: [], specFieldParamUpdates: [],
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
         };
 
@@ -2693,8 +2743,13 @@ const BulkUpload = (() => {
         const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
         if (!entry?.pn?.id) continue;
         try {
-          const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
-          const pnNode = pnData?.partNumberById; if (!pnNode) continue;
+          // 1.2.5: reusa cache poblado en enrichWorker (archive sentinel). Cache-miss → fetch.
+          let pnNode = existingPnFullCache.get(entry.pn.id);
+          if (!pnNode) {
+            const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
+            pnNode = pnData?.partNumberById; if (!pnNode) continue;
+            existingPnFullCache.set(entry.pn.id, pnNode);
+          }
           const linkedSpecs = pnNode.partNumberSpecsByPartNumberId?.nodes || [];
           const allParams = pnNode.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
           for (const cs of part.specs) {
