@@ -1,6 +1,24 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.3.0. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.3.1. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.3.1: predictivos granulares + progreso STEP 6b + bookkeeping retries (2026-05-21, deploy `9d7437e` main / `5b2aaa2` gh-pages, validación en prod PENDIENTE)
+
+Tres fixes derivados de la corrida 1.3.0 de Schneider donde el usuario reportó "atorada en Enriqueciendo PNs (pool 5)" con "muchos errores" en DevTools.
+
+**E. Predictivos granulares por material (`bulk-upload.js:623-642`, `3239-3243`, `3358-3374`).** Antes (1.2.12-1.3.0) el sentinel "borrar predictivos" solo funcionaba si la columna BB=53 (primer material = Plata Fina) traía `-` — eso archivaba TODOS los predictivos del PN. Si ponías `-` en otra columna (Estaño/Níquel/Zinc/etc.) `gn(row, col)` colapsaba `-`→null indistinguible de celda vacía y se ignoraba. Ahora cada celda BB..BJ se evalúa en crudo: `-` archiva ese material individual (microQuantityPerPart=0 vía UpdateInventoryItemPredictedUsage); número > 0 lo upserta; vacío no toca. Se quita el wildcard BB=`-` — para borrar todos hay que poner `-` en cada columna que aplique.
+
+**A. Progreso en STEP 6b "Sync params spec en PNs existentes" (`bulk-upload.js:3395-3417, 3479-3482`).** El loop secuencial de STEP 6b nunca llamaba `setPanelPhase` ni `setPanelProgress`, así que el panel quedaba congelado en `"Enriqueciendo PNs (pool N)"` con el contador del STEP 6 mientras procesaba 100+ PNs uno por uno (cada uno con varias calls AddParamsToPartNumber). Parecía atorada. Fix: cuenta candidatos primero, setea fase + total, e incrementa en cada iteración. Síntoma colateral observado: los `POST .../graphql 500 (Internal Server Error)` del Network panel son la forma como Steelhead reporta exclusion-constraint cuando el param ya existe — el código lo trata como skip silencioso (línea 3464-3466). Ruido visual en DevTools, no bug.
+
+**B. `state.counters.retried++` junto a `retrySP++` en strip1/strip2 (`bulk-upload.js:3310, 3319`).** Antes el modal mostraba "Reintentos: 0" aunque la consola loggeara docenas de `"retry sin specs/optIn OK"`. Solo `withRetry` (red 429/503/network) sumaba al contador; los retries de unique-constraint (que son los que dominan cuando un PN existente se manda sin id) no. Ahora el modal refleja la realidad.
+
+**Diagnóstico de fondo NO resuelto en 1.3.1 (queda para 1.3.2):**
+
+- **TODOS los PNs caen en strip1** durante STEP 6 enrich (`retry sin specs/optIn OK`). El primer `SavePartNumber` choca con unique-constraint (probablemente name+customerId) → strip1 pasa. Hipótesis: `entry.pn.id` no se está pasando al `pnInput` cuando el PN es `existing`, por lo que el backend lo trata como CREATE. Efecto: 2x calls contra el server, ~50% del tiempo de STEP 6 es desperdicio. Necesita investigación específica de `pnLookup` / `pn.id` propagation.
+- **STEP 6b pool concurrente** (D del plan). Después de A queda menos urgente — primero confirmar que A muestra progreso decente en prod.
+- **`montoMinimo`:** el usuario confirmó que `delete ci.DatosPlanificacion.montoMinimo` SÍ borra del backend tras reload de la página. Steelhead aplica REPLACE en `customInputs` de SavePartNumber, no MERGE. Fix F propuesto (mandar `null` explícito) NO se aplicó.
+
+
 
 ## 1.0.0: hardening para corrida masiva de 18k filas (2026-05-18, deploy `18a453e` main / `4e91ffe` gh-pages, validación en prod PENDIENTE)
 
