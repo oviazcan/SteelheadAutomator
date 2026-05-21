@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
