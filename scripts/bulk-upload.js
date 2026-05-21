@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.7';
+  const VERSION = '1.2.8';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -1261,7 +1261,10 @@ const BulkUpload = (() => {
             //   "Modificar #ID etiq:[NIQ,CRO] metal:CU"
             // Etiquetas filtradas con nonFinishList (V/Cobre fuera) y ordenadas.
             const nonFinishListUI = (bulkCfg().nonFinishLabelNames || []);
-            for (let ci = 0; ci < (r.candidates || []).length && ci < 3; ci++) {
+            // 1.2.8: sin cap — antes filtrábamos a 3 y eso confundía al operador
+            // (parecía que faltaban PNs). Ahora salen TODOS los matches por nombre
+            // del cliente; en escenarios reales son <=10, sin riesgo de saturar.
+            for (let ci = 0; ci < (r.candidates || []).length; ci++) {
               const c = r.candidates[ci];
               const candLabels = (c.labels || []).filter(l => !nonFinishListUI.some(nf => nf.toUpperCase() === String(l).toUpperCase()));
               candLabels.sort((a, b) => String(a).localeCompare(String(b)));
@@ -1295,7 +1298,7 @@ const BulkUpload = (() => {
             // Links 🔗 a fichas de cada candidato
             const linksSpan = document.createElement('span');
             linksSpan.className = 'dl9-cand-links';
-            for (const c of (r.candidates || []).slice(0, 3)) {
+            for (const c of (r.candidates || [])) {
               const a = document.createElement('a');
               a.href = `https://app.gosteelhead.com/PartNumbers/${c.id}`;
               a.target = '_blank';
@@ -1382,7 +1385,12 @@ const BulkUpload = (() => {
               const id = parseInt(selVal, 10);
               const c = (r.candidates || []).find(x => x.id === id);
               if (!c) return;
-              const isTop = (r.candidates?.[0]?.id === id);
+              // 1.2.8: "(top match)" SOLO cuando el top candidato cumple match
+              // estricto (mismo nombre + mismas etiquetas de acabado sin contar
+              // nonFinish como SRG). Antes el badge salía siempre que id fuera el
+              // primero del ranking, lo que confundía cuando las etiquetas no
+              // empataban exacto (ej. CSV [Antitarnish,SRG] vs PN [Plata Flash,Antitarnish]).
+              const isTop = (r.candidates?.[0]?.id === id) && hasStrictTopMatch;
               const hdr = document.createElement('div');
               hdr.className = 'dl9-p3-hdr';
               hdr.textContent = `🎯 #${c.id}` + (isTop ? ' (top match)' : '');
@@ -3335,7 +3343,10 @@ const BulkUpload = (() => {
     const nameUpper = (csvRow.name || '').toUpperCase();
     const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
     if (nameCandidates.length > 0) {
-      const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList).slice(0, 3);
+      // 1.2.8: sin cap — devuelve todos los matches por nombre. El operador ve
+      // la lista completa en el dropdown del panel y decide. Antes capábamos a 3
+      // y eso ocultaba PNs reales que el operador esperaba ver.
+      const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList);
       const csvAcabados = acabadosOrdenados(csvRow.labels || [], nonFinishList);
       const topAcabados = acabadosOrdenados(ranked[0].labels || [], nonFinishList);
       const labelsMatchFull = csvAcabados === topAcabados;
