@@ -2871,6 +2871,7 @@ const BulkUpload = (() => {
 
         let quoteSeq = 0;
         let prodAddedTotal = 0;
+        let pnpItemsTotal = 0;
         for (const [cid, custParts] of partsByCustomer) {
           const cust = [...customerCache.values()].find(c => c.id === cid);
           if (!cust) { errors.push(`Cliente id ${cid} no en cache`); continue; }
@@ -3021,6 +3022,7 @@ const BulkUpload = (() => {
                 { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
             } catch (e) { errors.push(`SaveManyPNP quote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); }
           }
+          pnpItemsTotal += pnpItems.length;
           log(`  SaveManyPNP: ${pnpItems.length}`);
 
           // Re-read quote to populate pnLookup
@@ -3102,7 +3104,9 @@ const BulkUpload = (() => {
         stats.quoteIdInDomain = primaryQuoteIdInDomain;
         if (quotesCreated.length > 1) stats.quoteName = `${quotesCreated.length} cotizaciones "${quoteName}"`;
         else if (quotesCreated.length === 1) stats.quoteName = quotesCreated[0].name;
-        showProgressUI(`  -> ${quotesCreated.length} cotizaciones creadas, ${prodAddedTotal} products`);
+        const cotS = quotesCreated.length === 1 ? 'cotización' : 'cotizaciones';
+        const cotV = quotesCreated.length === 1 ? 'creada' : 'creadas';
+        showProgressUI(`  -> ${quotesCreated.length} ${cotS} ${cotV} con ${pnpItemsTotal} PNs y ${prodAddedTotal} productos`);
       } else {
         // SOLO_PN: build pnLookup from existing/new PN IDs (no quote context)
         // 1.2.11: keyed por rowIdx (índice en parts[]) — soporta duplicados name+customerId.
