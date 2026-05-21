@@ -269,7 +269,10 @@ test('classifyOnePN — anti-colisión Pase 2: composite match pero ambos IBMS n
   assert.equal(r.candidates[0].id, 100);
 });
 
-test('classifyOnePN — Pase 3 top 3 cap aunque haya más candidatos', () => {
+test('classifyOnePN — Pase 3 devuelve TODOS los matches por nombre (sin cap)', () => {
+  // 1.2.8: removimos el cap de 3 candidatos. Antes confundía al operador porque
+  // parecía que faltaban PNs cuando en realidad estaban abajo del corte. Ahora
+  // el dropdown muestra todos los matches por nombre del cliente.
   const H = loadHelpers();
   const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: [], quoteIBMS: '' };
   const pnsForCustomer = [
@@ -281,7 +284,7 @@ test('classifyOnePN — Pase 3 top 3 cap aunque haya más candidatos', () => {
   ];
   const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
   assert.equal(r.pase, 3);
-  assert.equal(r.candidates.length, 3);
+  assert.equal(r.candidates.length, 5);
 });
 
 test('classifyOnePN — archivedAt excluye PNs aunque matcheen', () => {
