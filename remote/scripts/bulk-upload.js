@@ -3603,6 +3603,7 @@ const BulkUpload = (() => {
         myRunId
       );
       if (syncCounters.synced) log(`  Spec params sync: ${syncCounters.synced} params agregados`);
+      bailIfStale(myRunId);
 
       // STEP 7: RackTypes — runs in BOTH modes
       // 1.2.11: iteramos con índice para resolver pnLookup por rowIdx. Si la fila CSV NO trae
