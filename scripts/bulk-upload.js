@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.0';
+  const VERSION = '1.2.1';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -922,7 +922,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:200px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:flex;flex-direction:column;gap:2px}.dl9-p3-selrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.dl9-p3-csv{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(15,23,42,0.6);border-radius:3px}.dl9-p3-cand{font-size:10px;color:#fbbf24;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(120,53,15,0.25);border-radius:3px}.dl9-p3-cand.dl9-p3-cand-new{color:#4ade80;background:rgba(20,83,45,0.25)}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{display:flex;flex-direction:column;gap:1px;margin-top:2px;padding:3px 4px;background:rgba(15,23,42,0.4);border-radius:3px;border-left:2px solid #475569}.dl9-p3-specs-csv{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3}.dl9-p3-specs-cand{font-size:10px;color:#fbbf24;font-family:monospace;line-height:1.3}.dl9-p3-specs-err{color:#f87171}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:min(1400px,96vw);width:96%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:200px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:start}.dl9-p3-selrow{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}.dl9-p3-col{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border-radius:4px;min-width:0}.dl9-p3-col-csv{background:rgba(15,23,42,0.6);border-left:2px solid #38bdf8}.dl9-p3-col-cand{background:rgba(120,53,15,0.18);border-left:2px solid #fbbf24}.dl9-p3-col-cand.dl9-p3-col-cand-new{background:rgba(20,83,45,0.18);border-left-color:#4ade80}.dl9-p3-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr{color:#4ade80}.dl9-p3-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;word-break:break-word}.dl9-p3-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}.dl9-p3-chip{font-size:10px;padding:1px 7px;background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;font-family:inherit;line-height:1.4}.dl9-p3-chip-match{background:rgba(20,83,45,0.45);color:#86efac;border-color:#15803d}.dl9-p3-chip-miss{background:rgba(127,29,29,0.35);color:#fca5a5;border-color:#991b1b}.dl9-p3-chip-empty{color:#64748b;font-style:italic;border-style:dashed}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px;padding:4px 6px;background:rgba(15,23,42,0.4);border-radius:4px;border-left:2px solid #475569}.dl9-p3-specs-col{display:flex;flex-direction:column;gap:2px;min-width:0}.dl9-p3-specs-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase}.dl9-p3-specs-list{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.4;word-break:break-word}.dl9-p3-specs-err{color:#f87171}`;
     document.head.appendChild(s);
   }
 
@@ -1232,40 +1232,100 @@ const BulkUpload = (() => {
             selRow.appendChild(specsBtn);
             wrap.appendChild(selRow);
 
-            // Fila 2: snapshot del CSV (datos que vienen a cargarse)
-            const csvLine = document.createElement('div');
-            csvLine.className = 'dl9-p3-csv';
-            const csvParts = [];
-            if (r.csvMetalBase) csvParts.push(`metal:${r.csvMetalBase}`);
-            if (r.csvLabels?.length) csvParts.push(`etiq:[${r.csvLabels.join(', ')}]`);
-            if (r.csvProceso && r.csvProceso !== '-') csvParts.push(`proc:${r.csvProceso}`);
-            if (r.csvIBMS) csvParts.push(`IBMS:${r.csvIBMS}`);
-            csvLine.textContent = '📄 CSV — ' + (csvParts.length ? csvParts.join(' · ') : '(sin datos extras)');
-            wrap.appendChild(csvLine);
+            // Fila 2: columnas side-by-side CSV vs candidato.
+            // Las etiquetas se renderizan como chips con color match/miss
+            // para que el operador valide de un vistazo si el match propuesto
+            // tiene sentido. Los demás campos (metal, proc, IBMS) se muestran
+            // como meta-lines tipo "key: value".
+            const makeMeta = (key, value) => {
+              const div = document.createElement('div');
+              div.className = 'dl9-p3-meta';
+              const k = document.createElement('b');
+              k.textContent = key + ': ';
+              div.appendChild(k);
+              div.appendChild(document.createTextNode(value));
+              return div;
+            };
+            const makeChip = (text, kind) => {
+              const chip = document.createElement('span');
+              chip.className = 'dl9-p3-chip' + (kind ? ' dl9-p3-chip-' + kind : '');
+              chip.textContent = text;
+              return chip;
+            };
 
-            // Fila 3: snapshot del candidato seleccionado (se actualiza al cambiar)
-            const candLine = document.createElement('div');
-            candLine.className = 'dl9-p3-cand';
-            const renderCandLine = (selVal) => {
+            // Columna CSV (fija — la metadata del CSV no cambia)
+            const csvCol = document.createElement('div');
+            csvCol.className = 'dl9-p3-col dl9-p3-col-csv';
+            const csvHdr = document.createElement('div');
+            csvHdr.className = 'dl9-p3-hdr';
+            csvHdr.textContent = '📄 CSV';
+            csvCol.appendChild(csvHdr);
+            if (r.csvMetalBase) csvCol.appendChild(makeMeta('metal', r.csvMetalBase));
+            if (r.csvIBMS) csvCol.appendChild(makeMeta('IBMS', r.csvIBMS));
+            if (r.csvProceso && r.csvProceso !== '-') csvCol.appendChild(makeMeta('proc', r.csvProceso));
+            const csvChips = document.createElement('div');
+            csvChips.className = 'dl9-p3-chips';
+            csvCol.appendChild(csvChips);
+            wrap.appendChild(csvCol);
+
+            // Columna candidato (se rerenderea al cambiar el dropdown).
+            const candCol = document.createElement('div');
+            candCol.className = 'dl9-p3-col dl9-p3-col-cand';
+            wrap.appendChild(candCol);
+
+            const renderCandColumn = (selVal) => {
+              candCol.replaceChildren();
+              csvChips.replaceChildren();
+              // Caso NEW: no hay candidato, chips del CSV sin comparación.
               if (selVal === '__new__') {
-                candLine.textContent = '🆕 Se creará un PN nuevo (sin tocar los existentes)';
-                candLine.classList.add('dl9-p3-cand-new');
+                candCol.classList.add('dl9-p3-col-cand-new');
+                const hdr = document.createElement('div');
+                hdr.className = 'dl9-p3-hdr';
+                hdr.textContent = '🆕 Crear nuevo PN';
+                candCol.appendChild(hdr);
+                const note = document.createElement('div');
+                note.className = 'dl9-p3-meta';
+                note.textContent = 'Se creará sin tocar los existentes.';
+                candCol.appendChild(note);
+                for (const lbl of (r.csvLabels || [])) {
+                  csvChips.appendChild(makeChip(lbl, null));
+                }
+                if (!r.csvLabels?.length) {
+                  csvChips.appendChild(makeChip('(sin etiquetas)', 'empty'));
+                }
                 return;
               }
-              candLine.classList.remove('dl9-p3-cand-new');
+              candCol.classList.remove('dl9-p3-col-cand-new');
               const id = parseInt(selVal, 10);
               const c = (r.candidates || []).find(x => x.id === id);
-              if (!c) { candLine.textContent = ''; return; }
-              const candParts = [];
-              if (c.metalBase) candParts.push(`metal:${c.metalBase}`);
-              if (c.labels?.length) candParts.push(`etiq:[${c.labels.join(', ')}]`);
-              if (c.processName) candParts.push(`proc:${c.processName}`);
-              else candParts.push('proc:(sin proceso default)');
-              if (c.quoteIBMS) candParts.push(`IBMS:${c.quoteIBMS}`);
-              candLine.textContent = `🎯 #${c.id} — ` + candParts.join(' · ');
+              if (!c) return;
+              const isTop = (r.candidates?.[0]?.id === id);
+              const hdr = document.createElement('div');
+              hdr.className = 'dl9-p3-hdr';
+              hdr.textContent = `🎯 #${c.id}` + (isTop ? ' (top match)' : '');
+              candCol.appendChild(hdr);
+              if (c.metalBase) candCol.appendChild(makeMeta('metal', c.metalBase));
+              if (c.quoteIBMS) candCol.appendChild(makeMeta('IBMS', c.quoteIBMS));
+              candCol.appendChild(makeMeta('proc', c.processName || '(sin proceso default)'));
+              const csvSet = new Set(r.csvLabels || []);
+              const candSet = new Set(c.labels || []);
+              for (const lbl of (r.csvLabels || [])) {
+                csvChips.appendChild(makeChip(lbl, candSet.has(lbl) ? 'match' : 'miss'));
+              }
+              if (!r.csvLabels?.length) {
+                csvChips.appendChild(makeChip('(sin etiquetas)', 'empty'));
+              }
+              const candChips = document.createElement('div');
+              candChips.className = 'dl9-p3-chips';
+              for (const lbl of (c.labels || [])) {
+                candChips.appendChild(makeChip(lbl, csvSet.has(lbl) ? 'match' : 'miss'));
+              }
+              if (!c.labels?.length) {
+                candChips.appendChild(makeChip('(sin etiquetas)', 'empty'));
+              }
+              candCol.appendChild(candChips);
             };
-            renderCandLine(initialVal);
-            wrap.appendChild(candLine);
+            renderCandColumn(initialVal);
 
             // R4: panel de specs (oculto hasta primer click en "📋 specs")
             const specsPanel = document.createElement('div');
@@ -1275,32 +1335,51 @@ const BulkUpload = (() => {
 
             const renderSpecsPanel = async (selVal) => {
               specsPanel.replaceChildren();
-              // Línea CSV specs (siempre instantáneo)
-              const csvLn = document.createElement('div');
-              csvLn.className = 'dl9-p3-specs-csv';
-              csvLn.textContent = r.csvSpecs.length
-                ? `📄 CSV specs (${r.csvSpecs.length}): ${r.csvSpecs.join(' · ')}`
-                : '📄 CSV: (sin specs en plantilla)';
-              specsPanel.appendChild(csvLn);
-              // Línea candidato specs (lazy fetch + spinner)
-              const candLn = document.createElement('div');
-              candLn.className = 'dl9-p3-specs-cand';
+              // Columna CSV specs (instantáneo)
+              const csvSpecsCol = document.createElement('div');
+              csvSpecsCol.className = 'dl9-p3-specs-col';
+              const csvSpecsHdr = document.createElement('div');
+              csvSpecsHdr.className = 'dl9-p3-specs-hdr';
+              csvSpecsHdr.textContent = '📄 CSV specs';
+              csvSpecsCol.appendChild(csvSpecsHdr);
+              const csvSpecsList = document.createElement('div');
+              csvSpecsList.className = 'dl9-p3-specs-list';
+              csvSpecsList.textContent = r.csvSpecs.length
+                ? `(${r.csvSpecs.length}) ${r.csvSpecs.join(' · ')}`
+                : '(sin specs en plantilla)';
+              csvSpecsCol.appendChild(csvSpecsList);
+              specsPanel.appendChild(csvSpecsCol);
+              // Columna candidato specs (lazy fetch)
+              const candSpecsCol = document.createElement('div');
+              candSpecsCol.className = 'dl9-p3-specs-col';
+              const candSpecsHdr = document.createElement('div');
+              candSpecsHdr.className = 'dl9-p3-specs-hdr';
               if (selVal === '__new__') {
-                candLn.textContent = '🆕 (PN nuevo — sin specs preexistentes)';
-                specsPanel.appendChild(candLn);
+                candSpecsHdr.textContent = '🆕 PN nuevo';
+                candSpecsCol.appendChild(candSpecsHdr);
+                const note = document.createElement('div');
+                note.className = 'dl9-p3-specs-list';
+                note.textContent = '(sin specs preexistentes)';
+                candSpecsCol.appendChild(note);
+                specsPanel.appendChild(candSpecsCol);
                 return;
               }
               const pnId = parseInt(selVal, 10);
-              candLn.textContent = `🎯 #${pnId}: cargando...`;
-              specsPanel.appendChild(candLn);
+              candSpecsHdr.textContent = `🎯 #${pnId} specs`;
+              candSpecsCol.appendChild(candSpecsHdr);
+              const candSpecsList = document.createElement('div');
+              candSpecsList.className = 'dl9-p3-specs-list';
+              candSpecsList.textContent = 'cargando...';
+              candSpecsCol.appendChild(candSpecsList);
+              specsPanel.appendChild(candSpecsCol);
               const entry = await fetchCandidateSpecs(pnId);
               if (entry.state === 'error') {
-                candLn.textContent = `🎯 #${pnId}: error — ${entry.err}`;
-                candLn.classList.add('dl9-p3-specs-err');
+                candSpecsList.textContent = `error — ${entry.err}`;
+                candSpecsList.classList.add('dl9-p3-specs-err');
               } else {
-                candLn.textContent = entry.specs.length
-                  ? `🎯 #${pnId} specs (${entry.specs.length}): ${entry.specs.join(' · ')}`
-                  : `🎯 #${pnId}: (sin specs en este PN)`;
+                candSpecsList.textContent = entry.specs.length
+                  ? `(${entry.specs.length}) ${entry.specs.join(' · ')}`
+                  : '(sin specs en este PN)';
               }
             };
 
@@ -1320,8 +1399,12 @@ const BulkUpload = (() => {
             sel.addEventListener('change', (e) => {
               const idx = parseInt(e.target.dataset.rowIdx, 10);
               const val = e.target.value;
+              // 1.2.1: `classification` original (set por classifyOnePN) define el default:
+              //   'MODIFY' → default top match; userOverride null si user elige top
+              //   'NEW'    → default crear nuevo; userOverride null si user deja NEW
+              const origClass = pnStatus[idx].classification;
               if (val === '__new__') {
-                pnStatus[idx].userOverride = '__new__';
+                pnStatus[idx].userOverride = origClass === 'NEW' ? null : '__new__';
                 pnStatus[idx].status = 'new';
                 pnStatus[idx].existingId = null;
                 pnStatus[idx].existingProcessId = null;
@@ -1330,17 +1413,15 @@ const BulkUpload = (() => {
               } else {
                 const newTargetId = parseInt(val, 10);
                 const cand = (pnStatus[idx].candidates || []).find(c => c.id === newTargetId);
-                // userOverride es null cuando el usuario no cambió (mantuvo el top match);
-                // si elige otro candidato (no-top), userOverride = newTargetId.
                 const isTopMatch = newTargetId === (pnStatus[idx].candidates?.[0]?.id || null);
-                pnStatus[idx].userOverride = isTopMatch ? null : newTargetId;
+                pnStatus[idx].userOverride = (origClass === 'MODIFY' && isTopMatch) ? null : newTargetId;
                 pnStatus[idx].status = 'existing';
                 pnStatus[idx].existingId = newTargetId;
                 pnStatus[idx].existingProcessId = cand?.defaultProcessNodeId || null;
                 rows[idx].status = 'existing';
                 rows[idx].existingId = newTargetId;
               }
-              renderCandLine(val);
+              renderCandColumn(val);
               if (specsExpanded) renderSpecsPanel(val);
               updateHeaderStats();
               if (resumeState) {
@@ -1504,9 +1585,13 @@ const BulkUpload = (() => {
       newClean: pnStatus.filter(s => s.classification === 'NEW' && s.pase == null).length,
       pase1: pnStatus.filter(s => s.pase === 1).length,
       pase2: pnStatus.filter(s => s.pase === 2).length,
-      pase3DefaultModify: pnStatus.filter(s => s.pase === 3 && s.userOverride == null && s.status === 'existing').length,
+      // 1.2.1: Pase 3 ahora tiene 2 defaults distintos.
+      //   default MODIFY: classification=MODIFY (etiquetas matchean) + userOverride=null
+      //   default NEW:    classification=NEW    (etiquetas distintas)  + userOverride=null
+      pase3DefaultModify: pnStatus.filter(s => s.pase === 3 && s.classification === 'MODIFY' && s.userOverride == null && s.status === 'existing').length,
+      pase3DefaultNew: pnStatus.filter(s => s.pase === 3 && s.classification === 'NEW' && s.userOverride == null && s.status === 'new').length,
       pase3OverrideModify: pnStatus.filter(s => s.pase === 3 && s.userOverride != null && s.userOverride !== '__new__' && s.status === 'existing').length,
-      pase3OverrideNew: pnStatus.filter(s => s.pase === 3 && s.status === 'new').length,
+      pase3OverrideNew: pnStatus.filter(s => s.pase === 3 && s.userOverride === '__new__' && s.status === 'new').length,
       errors: errors.length,
       omitidas: stats?.omitidas || 0,
     };
@@ -1516,8 +1601,9 @@ const BulkUpload = (() => {
       ['NEW limpios (sin candidatos)', counts.newClean],
       ['MODIFY Pase 1 (IBMS)', counts.pase1],
       ['MODIFY Pase 2 (composite)', counts.pase2],
-      ['MODIFY Pase 3 (default — top match)', counts.pase3DefaultModify],
-      ['MODIFY Pase 3 (override a otro candidato)', counts.pase3OverrideModify],
+      ['MODIFY Pase 3 (default — top match, etiquetas iguales)', counts.pase3DefaultModify],
+      ['NEW Pase 3 (default — etiquetas distintas)', counts.pase3DefaultNew],
+      ['MODIFY Pase 3 (override a candidato)', counts.pase3OverrideModify],
       ['NEW Pase 3 (override Crear nuevo)', counts.pase3OverrideNew],
       ['Errores', counts.errors],
       ['Omitidas', counts.omitidas],
@@ -1837,8 +1923,14 @@ const BulkUpload = (() => {
         const ov = prevOverrides.get(pnStatus[i].csvRowKey);
         if (ov != null) {
           pnStatus[i].userOverride = ov;
-          pnStatus[i].existingId = ov;
-          pnStatus[i].status = 'existing';
+          if (ov === '__new__') {
+            pnStatus[i].status = 'new';
+            pnStatus[i].existingId = null;
+            pnStatus[i].existingProcessId = null;
+          } else {
+            pnStatus[i].existingId = ov;
+            pnStatus[i].status = 'existing';
+          }
         }
       }
 
@@ -3074,17 +3166,31 @@ const BulkUpload = (() => {
     }
 
     // ── Pase 3: near-match por nombre ──
-    // 1.2.0: default MODIFY al top match (ranked[0]); el usuario puede override en UI.
-    // Si no hay candidatos cae al return final (NEW sin candidatos).
+    // 1.2.1: default MODIFY al top match SOLO si las etiquetas de acabado del top
+    // coinciden exactas con las del CSV (sets iguales sin contar nonFinish). Si no,
+    // default NEW con los candidatos disponibles en el dropdown para override manual.
+    // Esto evita pisar PNs con etiquetas distintas por nombre coincidente accidental.
     const nameUpper = (csvRow.name || '').toUpperCase();
     const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
     if (nameCandidates.length > 0) {
       const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList).slice(0, 3);
+      const csvAcabados = acabadosOrdenados(csvRow.labels || [], nonFinishList);
+      const topAcabados = acabadosOrdenados(ranked[0].labels || [], nonFinishList);
+      const labelsMatchFull = csvAcabados === topAcabados;
+      if (labelsMatchFull) {
+        return {
+          classification: 'MODIFY',
+          pase: 3,
+          confidence: 'name+labels-match',
+          targetPnId: ranked[0].id,
+          candidates: ranked,
+        };
+      }
       return {
-        classification: 'MODIFY',
+        classification: 'NEW',
         pase: 3,
-        confidence: 'near-match-name',
-        targetPnId: ranked[0].id,
+        confidence: 'name-only-labels-differ',
+        targetPnId: null,
         candidates: ranked,
       };
     }
