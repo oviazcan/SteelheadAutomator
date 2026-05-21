@@ -22,7 +22,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.5';
+  const VERSION = '1.2.6';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -586,7 +586,10 @@ const BulkUpload = (() => {
         cliente: g(row, 4),                     // E=4 NEW per-line customer
         precio: gn(row, 10),                    // K=10
         unidadPrecio: g(row, 11).toUpperCase(), // L=11
-        divisa: (g(row, 12) || 'USD').toUpperCase(), // M=12 NEW per-line currency
+        // 1.2.6: VBA exporta '-' como sentinel "borrar / default". `-` es truthy,
+        // así que `|| 'USD'` no aplica y se enviaba `Divisa: '-'` al server, que
+        // falla la enum ["USD","MXN"] y el campo queda vacío en el PN.
+        divisa: (() => { const v = g(row, 12); return (v && v !== '-') ? v.toUpperCase() : 'USD'; })(), // M=12
         precioDefault: toBool(g(row, 13)),      // N=13
         descripcion: g(row, 6),                 // G=6
         pnAlterno: g(row, 7),                   // H=7
@@ -844,6 +847,12 @@ const BulkUpload = (() => {
       if (!uniq.has(key)) uniq.set(key, { name: p.pn, customerId: p.customerId });
     }
     const candidatesByKey = new Map(); // key → PN[] del cliente con nombre cercano
+    // 1.2.6: trackear nodos que matchearon por nombre pero NO por customerId, para
+    // diagnosticar el caso "PN existe en Steelhead pero el comparador no lo muestra
+    // como opción". Causas típicas: la previous run creó el PN bajo otro
+    // customerId (ej. duplicate cliente), o el customerByCustomerId vino null en
+    // la respuesta (shape incompleto post-crash).
+    const otherCustomerHits = new Map(); // key → [{id, name, otherCustomerId, otherCustomerName, archivedAt}]
     log(`Buscando ${uniq.size} PN/cliente combinaciones (page=${pageSize}, cap=${maxResults})...`);
     setPanelPhase(`Verificando PNs existentes (${uniq.size} búsquedas)`);
     setPanelProgress(0, uniq.size);
@@ -852,6 +861,7 @@ const BulkUpload = (() => {
     for (const [key, { name, customerId }] of uniq) {
       if (myRunId != null) bailIfStale(myRunId);
       const pnsForKey = [];
+      const otherHits = [];
       try {
         let offset = 0;
         while (offset < maxResults) {
@@ -867,6 +877,14 @@ const BulkUpload = (() => {
           for (const n of nodes) {
             const cid = n.customerByCustomerId?.id || n.customerId;
             if (cid === customerId) pnsForKey.push(extractPNShape(n));
+            else if ((n.name || '').toUpperCase() === name.toUpperCase()) {
+              otherHits.push({
+                id: n.id, name: n.name,
+                otherCustomerId: cid || null,
+                otherCustomerName: n.customerByCustomerId?.name || null,
+                archivedAt: n.archivedAt || null,
+              });
+            }
           }
           if (nodes.length < pageSize) break;
           offset += pageSize;
@@ -877,6 +895,7 @@ const BulkUpload = (() => {
         state.counters.errors++;
       }
       candidatesByKey.set(key, pnsForKey);
+      if (otherHits.length) otherCustomerHits.set(key, otherHits);
       progress++;
       setPanelProgress(progress, uniq.size);
     }
@@ -888,6 +907,21 @@ const BulkUpload = (() => {
       return buildClassifiedRow(p, pnsForCustomer, nonFinishList);
     });
     logClassificationSummary(out);
+
+    // 1.2.6: diagnóstico — para cada PN que terminó sin candidatos pero existe
+    // bajo otro customerId, reportar el desvío. El usuario ve esto en logs si
+    // el comparador "no toma en cuenta" un PN que él sabe que existe.
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]; const cls = out[i];
+      if (cls.pase != null) continue; // ya tiene match
+      const key = `${p.pn.toUpperCase()}|${p.customerId}`;
+      const others = otherCustomerHits.get(key);
+      if (!others?.length) continue;
+      const sample = others.slice(0, 3).map(o =>
+        `#${o.id}${o.archivedAt ? ' (archivado)' : ''} bajo cust=${o.otherCustomerId ?? 'null'}${o.otherCustomerName ? ` "${o.otherCustomerName}"` : ''}`
+      ).join(', ');
+      warn(`PN "${p.pn}" sin candidatos para cust=${p.customerId}, pero ${others.length} match(es) en otro(s) cliente(s): ${sample}${others.length > 3 ? '…' : ''}`);
+    }
     return out;
   }
 
@@ -1165,6 +1199,11 @@ const BulkUpload = (() => {
           tr.style.borderBottom = '1px solid #1e293b';
           tr.style.fontSize = '12px';
           if (r.pase === 3) tr.classList.add('dl9-row-pending');
+          // 1.2.6: en Pase 3 el wrap se monta en una fila aparte (colspan completo)
+          // para que el dropdown + comparación inline aproveche todo el ancho del
+          // modal y quede visualmente atado al PN de su row principal (no compete
+          // por el espacio angosto de la columna Acción).
+          let pase3Wrap = null;
 
           const tdCheck = document.createElement('td');
           tdCheck.style.padding = '3px 6px';
@@ -1460,7 +1499,10 @@ const BulkUpload = (() => {
               }
             });
 
-            tdAct.appendChild(wrap);
+            pase3Wrap = wrap;
+            tdAct.className = 'dl9-exist';
+            tdAct.style.fontStyle = 'italic';
+            tdAct.textContent = '👇 decidir abajo';
           } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
           else { tdAct.className = 'dl9-dup'; tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`; }
@@ -1481,6 +1523,21 @@ const BulkUpload = (() => {
           }
 
           tbody.appendChild(tr);
+
+          // 1.2.6: fila secundaria full-width con el dropdown + comparación Pase 3.
+          // Pegada visualmente al row principal (mismo bg dl9-row-pending) para que
+          // sea obvio que "pertenece" al PN de arriba.
+          if (pase3Wrap) {
+            const tr2 = document.createElement('tr');
+            tr2.classList.add('dl9-row-pending');
+            const td2 = document.createElement('td');
+            td2.colSpan = headerCells.length;
+            td2.style.padding = '4px 12px 10px 32px';
+            td2.style.borderBottom = '1px solid #1e293b';
+            td2.appendChild(pase3Wrap);
+            tr2.appendChild(td2);
+            tbody.appendChild(tr2);
+          }
         }
         modal.querySelector('#dl9-preview-title').textContent =
           `Part Numbers — página ${currentPage + 1} de ${totalPages()} (mostrando ${slice.length} de ${filteredRows.length} filtradas)`;
@@ -2323,7 +2380,7 @@ const BulkUpload = (() => {
             else { partNumberId = newPnIds.get(`${part.pn.toUpperCase()}|${cid}`); if (!partNumberId) { errors.push(`PN "${part.pn}" no fue creado, omitido de quote.`); continue; } }
             pnpItems.push({
               partNumberId, processId: part.processId,
-              customInputs: { DatosPrecio: { Divisa: part.divisa || 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
+              customInputs: { DatosPrecio: { Divisa: (part.divisa && !isDash(part.divisa)) ? part.divisa : 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
               partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
               usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
               unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
@@ -2426,7 +2483,7 @@ const BulkUpload = (() => {
           pnpWithPrice.push({
             partNumberId: entry.pn.id,
             processId: part.processId,
-            customInputs: { DatosPrecio: { Divisa: part.divisa || 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
+            customInputs: { DatosPrecio: { Divisa: (part.divisa && !isDash(part.divisa)) ? part.divisa : 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
             partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
             usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
             unitId: (part.unidadPrecio && PRICE_UNIT_MAP[part.unidadPrecio] !== undefined) ? PRICE_UNIT_MAP[part.unidadPrecio] : null,
