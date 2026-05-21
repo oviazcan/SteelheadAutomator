@@ -1,5 +1,17 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.2.11 (2026-05-20): Dedup strict-match en alternates + chips CSV con color catálogo
+//   - F1: dedupModifyTargets ahora respeta la misma regla que classifyOnePN al elegir
+//     alternates (Pase 3): nivel 1 strict-match (acabados ordenados iguales al CSV),
+//     nivel 2 blank candidate, nivel 3 demota a NEW. Antes (1.2.10) tomaba el primer
+//     candidato disponible aunque sus acabados no matchearan, causando re-asignaciones
+//     silenciosas. Threading nonFinishList por dedupModifyTargets para coincidir
+//     filtrado con classifyOnePN.
+//   - F2: chips CSV ahora se pintan con color real del catálogo Steelhead. Aunque el
+//     CSV no trae color de origen, si el nombre del label matchea algún labelObj.color
+//     visto en candidates del run, se aplica ese color. Construido un labelColorByName
+//     global a nivel preview vía recorrido por todos los candidates.labelObjs.
+//
 // VERSION 1.2.10 (2026-05-20): Dedup MODIFY targets + UI slim + label colors reales
 //   - dedupModifyTargets(): impide que dos filas CSV apunten al mismo existingId; loser
 //     se re-asigna a un candidato alterno o se demota a NEW si no hay alternativa
@@ -34,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.2.10';
+  const VERSION = '1.2.11';
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -846,7 +858,7 @@ const BulkUpload = (() => {
 
     setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
     const out = parts.map(p => buildClassifiedRow(p, pnsByCustomer.get(p.customerId) || [], nonFinishList));
-    const dedup = dedupModifyTargets(out);
+    const dedup = dedupModifyTargets(out, nonFinishList);
     if (dedup.reassigned || dedup.demoted) {
       log(`Dedup MODIFY targets: ${dedup.reassigned} re-asignaciones, ${dedup.demoted} demotadas a NEW por conflicto`);
     }
@@ -929,7 +941,7 @@ const BulkUpload = (() => {
       const pnsForCustomer = candidatesByKey.get(key) || [];
       return buildClassifiedRow(p, pnsForCustomer, nonFinishList);
     });
-    const dedup = dedupModifyTargets(out);
+    const dedup = dedupModifyTargets(out, nonFinishList);
     if (dedup.reassigned || dedup.demoted) {
       log(`Dedup MODIFY targets: ${dedup.reassigned} re-asignaciones, ${dedup.demoted} demotadas a NEW por conflicto`);
     }
@@ -991,6 +1003,10 @@ const BulkUpload = (() => {
       userOverride: null,
       targetPnId: cls.targetPnId,
       csvRowKey: `${p.pn.toUpperCase()}|${p.customerId}`,
+      // 1.2.11: snapshot del CSV para que dedupModifyTargets pueda evaluar
+      // strict-match de alternates con la misma lógica de classifyOnePN.
+      csvLabels: p.labels || [],
+      csvMetalBase: p.metalBase || '',
     };
   }
 
@@ -1027,7 +1043,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:min(1400px,96vw);width:96%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:520px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:start}.dl9-p3-selrow{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}.dl9-p3-col{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border-radius:4px;min-width:0}.dl9-p3-col-csv{background:rgba(15,23,42,0.6);border-left:2px solid #38bdf8}.dl9-p3-col-cand{background:rgba(120,53,15,0.18);border-left:2px solid #fbbf24}.dl9-p3-col-cand.dl9-p3-col-cand-new{background:rgba(20,83,45,0.18);border-left-color:#4ade80}.dl9-p3-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr{color:#4ade80}.dl9-p3-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;word-break:break-word}.dl9-p3-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}.dl9-p3-chip{font-size:10px;padding:1px 7px;background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;font-family:inherit;line-height:1.4}.dl9-p3-chip-match{background:rgba(20,83,45,0.45);color:#86efac;border-color:#15803d}.dl9-p3-chip-miss{background:rgba(127,29,29,0.35);color:#fca5a5;border-color:#991b1b}.dl9-p3-chip-empty{color:#64748b;font-style:italic;border-style:dashed}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px;padding:4px 6px;background:rgba(15,23,42,0.4);border-radius:4px;border-left:2px solid #475569}.dl9-p3-specs-col{display:flex;flex-direction:column;gap:2px;min-width:0}.dl9-p3-specs-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase}.dl9-p3-specs-list{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.4;word-break:break-word}.dl9-p3-specs-err{color:#f87171}.dl9-p3-hdrrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:1px}.dl9-p3-hdr-title{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr-title{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr-title{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr-title{color:#4ade80}.dl9-p3-hdr-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.2}.dl9-p3-hdr-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-real-chip{font-size:10px;padding:1px 7px;border-radius:10px;font-family:inherit;line-height:1.4;border:1px solid transparent;display:inline-flex;align-items:center;gap:3px}.dl9-p3-real-chip.match::before{content:'✓';font-size:9px;opacity:0.8}.dl9-p3-real-chip.miss::before{content:'✗';font-size:9px;opacity:0.6}.dl9-p3-dedup-banner{grid-column:1/-1;font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;align-items:center;gap:6px}.dl9-p3-dedup-banner.reassigned{background:rgba(202,138,4,0.18);color:#fde68a;border-left:3px solid #d97706}.dl9-p3-dedup-banner.conflict{background:rgba(127,29,29,0.30);color:#fca5a5;border-left:3px solid #b91c1c}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:min(1400px,96vw);width:96%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:520px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:start}.dl9-p3-selrow{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}.dl9-p3-col{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border-radius:4px;min-width:0}.dl9-p3-col-csv{background:rgba(15,23,42,0.6);border-left:2px solid #38bdf8}.dl9-p3-col-cand{background:rgba(120,53,15,0.18);border-left:2px solid #fbbf24}.dl9-p3-col-cand.dl9-p3-col-cand-new{background:rgba(20,83,45,0.18);border-left-color:#4ade80}.dl9-p3-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr{color:#4ade80}.dl9-p3-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;word-break:break-word}.dl9-p3-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}.dl9-p3-chip{font-size:10px;padding:1px 7px;background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;font-family:inherit;line-height:1.4}.dl9-p3-chip-match{background:rgba(20,83,45,0.45);color:#86efac;border-color:#15803d}.dl9-p3-chip-miss{background:rgba(127,29,29,0.35);color:#fca5a5;border-color:#991b1b}.dl9-p3-chip-empty{color:#64748b;font-style:italic;border-style:dashed}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px;padding:4px 6px;background:rgba(15,23,42,0.4);border-radius:4px;border-left:2px solid #475569}.dl9-p3-specs-col{display:flex;flex-direction:column;gap:2px;min-width:0}.dl9-p3-specs-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase}.dl9-p3-specs-list{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.4;word-break:break-word}.dl9-p3-specs-err{color:#f87171}.dl9-p3-hdrrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:1px}.dl9-p3-hdr-title{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr-title{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr-title{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr-title{color:#4ade80}.dl9-p3-hdr-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.2}.dl9-p3-hdr-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-real-chip{font-size:10px;padding:1px 7px;border-radius:10px;font-family:inherit;line-height:1.4;border:1px solid transparent;display:inline-flex;align-items:center;gap:3px}.dl9-p3-real-chip.match::before{content:'✓';font-size:9px;opacity:0.8}.dl9-p3-real-chip.miss::before{content:'✗';font-size:9px;opacity:0.6}.dl9-p3-dedup-banner{grid-column:1/-1;font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;align-items:center;gap:6px}.dl9-p3-dedup-banner.reassigned{background:rgba(202,138,4,0.18);color:#fde68a;border-left:3px solid #d97706}.dl9-p3-dedup-banner.conflict{background:rgba(127,29,29,0.30);color:#fca5a5;border-left:3px solid #b91c1c}.dl9-csv-dup-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(234,88,12,0.22);color:#fdba74;border:1px solid #9a3412;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-archive-toggle{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;padding:3px 6px;background:#0f172a;border:1px solid #334155;border-radius:4px}.dl9-archive-toggle input{margin:0 4px 0 0;cursor:pointer}.dl9-archive-toggle.dl9-archive-off{background:rgba(127,29,29,0.18);color:#fca5a5;border-color:#7f1d1d}.dl9-archive-row-chk{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 5px;font-size:10px;background:rgba(124,45,18,0.20);color:#fed7aa;border:1px solid #9a3412;border-radius:3px;font-family:inherit;cursor:pointer;vertical-align:middle}.dl9-archive-row-chk input{margin:0 3px 0 0;cursor:pointer}.dl9-archive-row-chk.dl9-archive-row-off{background:rgba(15,23,42,0.6);color:#64748b;border-color:#334155;text-decoration:line-through}`;
     document.head.appendChild(s);
   }
 
@@ -1083,11 +1099,37 @@ const BulkUpload = (() => {
           dedupOriginalTargetPnId: s.dedupOriginalTargetPnId || null,
           dedupConflict: !!s.dedupConflict,
           dedupConflictTargetPnId: s.dedupConflictTargetPnId || null,
+          // 1.2.11 H5: duplicados internos del CSV (detectados en parse).
+          // Se muestran como chip naranja "🔄 DUP n/m" junto al PN para que el
+          // operador entienda que esa fila comparte (name, customerId) con otra
+          // — informativo; el classifier decide cada fila por separado.
+          isCsvDuplicate: !!part.isCsvDuplicate,
+          csvDuplicateIndex: part.csvDuplicateIndex || null,
+          csvDuplicateGroupSize: part.csvDuplicateGroupSize || null,
+          confidence: s.confidence || null,
         };
       });
 
       // 2) Selección global persistente: un Set, no checkboxes del DOM.
       const selected = new Set(rows.map(r => r.idx));
+
+      // 1.2.11 F2: mapa global label-name → color real del catálogo Steelhead.
+      // Se construye recorriendo labelObjs de TODOS los candidates de TODAS las
+      // filas. Los labels del CSV no traen color de origen, pero si su nombre
+      // matchea alguno visto en el catálogo (vía candidates de Steelhead) podemos
+      // pintarlos con el mismo color para que el operador identifique al vuelo
+      // qué etiqueta es cuál sin tener que mirar el candidato.
+      const labelColorByName = new Map();
+      for (const r of rows) {
+        for (const c of (r.candidates || [])) {
+          for (const o of (c.labelObjs || [])) {
+            if (o && o.name && o.color && !labelColorByName.has(o.name)) {
+              labelColorByName.set(o.name, o.color);
+            }
+          }
+        }
+      }
+      const enrichCsvLabel = (name) => ({ name, color: labelColorByName.get(name) || null });
 
       // 3) Conteos
       const nc = rows.filter(r => r.status === 'new').length;
@@ -1145,6 +1187,10 @@ const BulkUpload = (() => {
           </label>
           <label style="font-size:12px;color:#94a3b8">Cliente:
             <select id="dl9-flt-cust" style="margin-left:4px;padding:3px 6px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;max-width:280px">${custOptsHtml}</select>
+          </label>
+          <label class="dl9-archive-toggle" id="dl9-archive-global-lbl" title="Cuando está prendido, las filas con 'archivar anterior' en el CSV archivan el PN viejo (forceDup). Apaga para que ninguna archive (override blanket).">
+            <input type="checkbox" id="dl9-archive-global" checked>
+            🗄️ Archivar PNs viejos (CSV)
           </label>
           <span style="font-size:12px;color:#94a3b8;margin-left:auto">Seleccionadas: <b id="dl9-sel-count">${selected.size}</b> / ${rows.length}</span>
         </div>
@@ -1267,9 +1313,23 @@ const BulkUpload = (() => {
           tr.appendChild(tdCheck);
 
           const tdPN = document.createElement('td');
-          tdPN.textContent = r.pn;
           tdPN.style.padding = '3px 6px';
           tdPN.style.fontFamily = 'monospace';
+          const pnNameSpan = document.createElement('span');
+          pnNameSpan.textContent = r.pn;
+          tdPN.appendChild(pnNameSpan);
+          // 1.2.11 H5: chip "🔄 DUP n/m" cuando el CSV tiene 2+ filas con el
+          // mismo (name, customerId). Informativo — el classifier maneja cada
+          // fila por separado; el chip avisa al operador para que verifique
+          // visualmente que las decisiones (MODIFY a IDs distintos o NEW
+          // duplicados) están bien.
+          if (r.isCsvDuplicate && r.csvDuplicateIndex && r.csvDuplicateGroupSize) {
+            const dupChip = document.createElement('span');
+            dupChip.className = 'dl9-csv-dup-chip';
+            dupChip.textContent = `🔄 DUP ${r.csvDuplicateIndex}/${r.csvDuplicateGroupSize}`;
+            dupChip.title = `El CSV trae ${r.csvDuplicateGroupSize} filas con este (PN, cliente) — fila ${r.csvDuplicateIndex} del grupo`;
+            tdPN.appendChild(dupChip);
+          }
           tr.appendChild(tdPN);
 
           const tdCust = document.createElement('td');
@@ -1474,7 +1534,8 @@ const BulkUpload = (() => {
                 note.textContent = 'Se creará sin tocar los existentes.';
                 candCol.appendChild(note);
                 for (const lbl of (r.csvLabels || [])) {
-                  csvChips.appendChild(makeLabelChip(lbl, null));
+                  // 1.2.11 F2: chip CSV con color del catálogo si el nombre matchea.
+                  csvChips.appendChild(makeLabelChip(enrichCsvLabel(lbl), null));
                 }
                 if (!r.csvLabels?.length) {
                   csvChips.appendChild(makeEmptyChip('(sin etiquetas)'));
@@ -1510,7 +1571,11 @@ const BulkUpload = (() => {
                 if (matched) {
                   csvChips.appendChild(makeLabelChip(candByName.get(lblName), 'match'));
                 } else {
-                  csvChips.appendChild(makeLabelChip(lblName, 'miss'));
+                  // 1.2.11 F2: aun siendo 'miss' vs este candidato, pintamos con
+                  // el color real del catálogo Steelhead (si el label existe en
+                  // algún otro candidato del run). 'miss' kind sigue señalando
+                  // que NO matchea con ESTE candidato seleccionado.
+                  csvChips.appendChild(makeLabelChip(enrichCsvLabel(lblName), 'miss'));
                 }
               }
               if (!r.csvLabels?.length) csvChips.appendChild(makeEmptyChip('(sin etiquetas)'));
@@ -1636,7 +1701,49 @@ const BulkUpload = (() => {
             tdAct.textContent = '👇 decidir abajo';
           } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
-          else { tdAct.className = 'dl9-dup'; tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`; }
+          else {
+            tdAct.className = 'dl9-dup';
+            tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`;
+            // 1.2.11 H5: checkbox per-row para override de "archivar anterior".
+            // Solo aplica a filas forceDup con archivarAnterior=true en el CSV.
+            // - undefined (default): sigue toggle global + flag del CSV
+            // - true:                fuerza archivar aunque global esté off
+            // - false:               fuerza NO archivar aunque CSV diga true
+            // Se renderiza checked si la fila va a archivar en este momento.
+            if (r.status === 'forceDup' && r.archivarAnterior) {
+              const archLbl = document.createElement('label');
+              archLbl.className = 'dl9-archive-row-chk';
+              archLbl.title = 'Archivar el PN viejo (id ' + r.existingId + ') al duplicar. Override per-row del toggle global.';
+              const archCb = document.createElement('input');
+              archCb.type = 'checkbox';
+              const part = parts[r.idx];
+              const override = part.archiveOverride;
+              // Default: si no hay override, sigue el toggle global (state.archiveGlobal)
+              // Si global está off y CSV=true, mostrar desmarcado (porque no va a archivar)
+              const globalOn = (state.archiveGlobal !== false);
+              const willArchive = (override === true) || (override === undefined && globalOn);
+              archCb.checked = willArchive;
+              const archTxt = document.createTextNode('🗄️ Arch ant');
+              archLbl.appendChild(archCb);
+              archLbl.appendChild(archTxt);
+              if (!willArchive) archLbl.classList.add('dl9-archive-row-off');
+              archCb.addEventListener('change', () => {
+                const globalOnNow = (state.archiveGlobal !== false);
+                // Si el nuevo estado coincide con el default (toggle global + CSV=true),
+                // limpiamos el override para que la fila vuelva a seguir al global.
+                // Si difiere, fijamos el override explícito.
+                if (archCb.checked === globalOnNow) {
+                  delete part.archiveOverride;
+                } else {
+                  part.archiveOverride = archCb.checked;
+                }
+                if (archCb.checked) archLbl.classList.remove('dl9-archive-row-off');
+                else archLbl.classList.add('dl9-archive-row-off');
+              });
+              tdAct.appendChild(document.createTextNode(' '));
+              tdAct.appendChild(archLbl);
+            }
+          }
           tr.appendChild(tdAct);
 
           const tdChg = document.createElement('td');
@@ -1678,6 +1785,26 @@ const BulkUpload = (() => {
       // Wire up controls
       modal.querySelector('#dl9-flt-status').onchange = (e) => { filterStatus = e.target.value; applyFilters(); };
       modal.querySelector('#dl9-flt-cust').onchange = (e) => { filterCustomer = e.target.value; applyFilters(); };
+      // 1.2.11 H5: toggle global de archive. Lee de state.archiveGlobal y al
+      // cambiar actualiza state + re-rendea la página para que los checkboxes
+      // per-row reflejen el nuevo default (siempre que NO tengan override
+      // explícito). El archive flow en STEP 8 ya lee state.archiveGlobal.
+      {
+        const archGlobalCb = modal.querySelector('#dl9-archive-global');
+        const archGlobalLbl = modal.querySelector('#dl9-archive-global-lbl');
+        // Sincroniza estado inicial con state.archiveGlobal por si vino de un
+        // resume previo (default: undefined → true).
+        archGlobalCb.checked = (state.archiveGlobal !== false);
+        if (!archGlobalCb.checked) archGlobalLbl.classList.add('dl9-archive-off');
+        archGlobalCb.addEventListener('change', () => {
+          state.archiveGlobal = archGlobalCb.checked;
+          if (archGlobalCb.checked) archGlobalLbl.classList.remove('dl9-archive-off');
+          else archGlobalLbl.classList.add('dl9-archive-off');
+          // Re-rendea para que los checkboxes per-row sin override sigan el
+          // nuevo default visualmente.
+          renderPage();
+        });
+      }
       const pendingBtn = modal.querySelector('#dl9-toggle-pending');
       if (pendingBtn) {
         pendingBtn.addEventListener('click', () => {
@@ -2099,6 +2226,16 @@ const BulkUpload = (() => {
         p.customerInvoiceTermsId = cust.invoiceTermsId;
       }
 
+      // 1.2.11: detectar duplicados internos del CSV (mismo PN+customer en 2+ filas).
+      // Steelhead permite múltiples PNs con (name, customerId) — son PNs físicos
+      // distintos con mismo nombre. El flag se usa para info de UI (chip rojo en
+      // preview) y para decidir Capa A/B en SavePartNumber (serializar la creación
+      // de NEWs duplicados para evitar race en INSERT concurrente).
+      {
+        const { dupGroups, dupRows } = detectCsvDuplicates(parts);
+        if (dupGroups) log(`  Duplicados internos del CSV detectados: ${dupGroups} grupos, ${dupRows} fila(s) extra`);
+      }
+
       // Load dimension value maps (Línea/Departamento → ID)
       const dimValueMap = new Map(); // "valor" → id
       const dimIds = DOMAIN.dimensionIds || {};
@@ -2180,7 +2317,7 @@ const BulkUpload = (() => {
       // veces" sin importar cómo llegamos al estado actual. Si el usuario
       // intencionalmente override-ó dos filas al mismo id, dedup reparte al
       // segundo entre candidatos disponibles o lo demota a NEW.
-      const dedup2 = dedupModifyTargets(pnStatus);
+      const dedup2 = dedupModifyTargets(pnStatus, (bulkCfg().nonFinishLabelNames || []));
       if (dedup2.reassigned || dedup2.demoted) {
         warn(`Dedup post-overrides: ${dedup2.reassigned} re-asignaciones, ${dedup2.demoted} demotadas a NEW por conflicto`);
       }
@@ -2404,13 +2541,35 @@ const BulkUpload = (() => {
       }
 
       // STEP 2a: Create new PNs via SavePartNumber (minimal)
-      // V10: newPnIds keyed by "pn|customerId" to support multi-customer
+      // 1.2.11: newPnIds keyed por rowIdx (origen en parts[]) en vez de "pn|customerId".
+      // Steelhead permite múltiples PNs con (name, customerId) → necesitamos UN id por fila CSV
+      // independiente. Capa A crea las filas NEW con name+customerId únicos en paralelo; Capa B
+      // serializa los duplicados restantes (mismo name+customerId) uno por uno para evitar race
+      // en el server (que rechaza creates concurrentes con identidad colisionante).
       showProgressUI('Paso 2/9: Creando PNs nuevos...'); setProgressBar(10);
-      const newPnIds = new Map();
+      const newPnIds = new Map(); // rowIdx → pn.id
       const newOrDupParts = [];
       for (let i = 0; i < parts.length; i++) { const status = pnStatus[i]; if (status.status !== 'existing') newOrDupParts.push({ part: parts[i], status, idx: i }); }
+      // Capa A: filas con (name, customerId) único entre newOrDupParts → seguras en paralelo (futuro pool).
+      // Capa B: filas que comparten name+customerId con otra del mismo set → serializar.
+      const seenNameCust = new Map(); // "${pn}|${cid}" → [idx en newOrDupParts]
       for (let j = 0; j < newOrDupParts.length; j++) {
-        const { part, status } = newOrDupParts[j];
+        const { part } = newOrDupParts[j];
+        const k = `${String(part.pn).toUpperCase()}|${part.customerId}`;
+        if (!seenNameCust.has(k)) seenNameCust.set(k, []);
+        seenNameCust.get(k).push(j);
+      }
+      const capaA = [], capaB = [];
+      for (const indices of seenNameCust.values()) {
+        if (indices.length === 1) capaA.push(indices[0]);
+        else { capaA.push(indices[0]); for (let n = 1; n < indices.length; n++) capaB.push(indices[n]); }
+      }
+      // Procesamos capa A primero, luego capa B en orden (la B siempre serial — sin paralelo).
+      const orderedJs = [...capaA, ...capaB];
+      if (capaB.length) log(`  Capa A (únicos): ${capaA.length} PNs; Capa B (duplicados name+customerId): ${capaB.length} — serializados`);
+      for (const jSlot of orderedJs) {
+        const j = jSlot;
+        const { part, status, idx } = newOrDupParts[j];
         setProgressBar(10 + Math.round((j / Math.max(newOrDupParts.length, 1)) * 5));
         const processId = part.processId; // V10: per-line, no fallback
         const groupId = await resolveGroupId(part.pnGroup);
@@ -2432,11 +2591,12 @@ const BulkUpload = (() => {
         try {
           const res = await api().query('SavePartNumber', { input: [minInput] });
           const created = (res?.savePartNumbers || [])[0]; if (!created?.id) throw new Error('No id returned');
-          // V10: key by pn|customerId so the same PN under different customers stays separate
-          newPnIds.set(`${part.pn.toUpperCase()}|${part.customerId}`, created.id);
+          // 1.2.11: key por rowIdx (no por "name|cid") — duplicados name+customerId ahora resuelven
+          // ids distintos.
+          newPnIds.set(idx, created.id);
           if (status.status === 'forceDup') stats.pnsDuplicated++; else stats.pnsCreated++;
-          log(`  "${part.pn}" (cust:${part.customerId}) -> creado id:${created.id}`);
-        } catch (e) { errors.push(`Crear PN "${part.pn}": ${String(e).substring(0, 150)}`); }
+          log(`  "${part.pn}" (cust:${part.customerId}) -> creado id:${created.id} (row ${idx})`);
+        } catch (e) { errors.push(`Crear PN "${part.pn}" (row ${idx}): ${String(e).substring(0, 150)}`); }
       }
       showProgressUI(`  -> ${newPnIds.size} PNs creados`);
 
@@ -2532,12 +2692,16 @@ const BulkUpload = (() => {
           log(`  Quote #${thisQuoteIdInDomain} (id:${thisQuoteId}) — ${cust.name}`);
 
           // SaveManyPNP for this customer's parts
+          // 1.2.11: tracking lineNum → origIdx para reconstruir pnLookup por rowIdx tras el GetQuote.
+          // Cada qpnp.lineNumber en la respuesta corresponde 1:1 con el pnpItem que lo creó.
           const pnpItems = []; let lineNum = 0;
-          for (const { part, status } of custParts) {
+          const lineNumberToOrigIdx = new Map();
+          for (const { part, status, origIdx } of custParts) {
             lineNum++;
             let partNumberId;
             if (status.status === 'existing') { partNumberId = status.existingId; stats.pnsExisting++; }
-            else { partNumberId = newPnIds.get(`${part.pn.toUpperCase()}|${cid}`); if (!partNumberId) { errors.push(`PN "${part.pn}" no fue creado, omitido de quote.`); continue; } }
+            else { partNumberId = newPnIds.get(origIdx); if (!partNumberId) { errors.push(`PN "${part.pn}" (row ${origIdx}) no fue creado, omitido de quote.`); continue; } }
+            lineNumberToOrigIdx.set(lineNum, origIdx);
             pnpItems.push({
               partNumberId, processId: part.processId,
               customInputs: { DatosPrecio: { Divisa: (part.divisa && !isDash(part.divisa)) ? part.divisa : 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
@@ -2566,19 +2730,31 @@ const BulkUpload = (() => {
           const qpnpNodes = quote.quotePartNumberPricesByQuoteId?.nodes || [];
           const qlNodes = quote.quoteLinesByQuoteId?.nodes || [];
           const qlByQpnpId = new Map(); for (const ql of qlNodes) if (ql.autoGeneratedFromQuotePartNumberPriceId) qlByQpnpId.set(ql.autoGeneratedFromQuotePartNumberPriceId, ql);
+          // 1.2.11: keyed por rowIdx via lineNumberToOrigIdx. Si qpnp.lineNumber no matchea
+          // ningún rowIdx (raro pero posible si Steelhead asigna lineNumbers distintos a los pedidos),
+          // se cae a un fallback por (pn.name, cid) que solo aplica a filas únicas — duplicados name
+          // dentro de un cliente quedarían sin lookup (warning explícito).
           for (const qpnp of qpnpNodes) {
             const pnp = qpnp.partNumberPriceByPartNumberPriceId; if (!pnp) continue;
             const pn = pnp.partNumberByPartNumberId; if (!pn?.name) continue;
-            pnLookup.set(`${pn.name.toUpperCase()}|${cid}`, { qpnp, pnp, pn, ql: qlByQpnpId.get(qpnp.id) || null, quoteId: thisQuoteId });
+            const origIdx = lineNumberToOrigIdx.get(qpnp.lineNumber);
+            if (origIdx == null) {
+              warn(`pnLookup: qpnp lineNumber=${qpnp.lineNumber} (pn="${pn.name}") sin origIdx — fila omitida del lookup`);
+              continue;
+            }
+            pnLookup.set(origIdx, { qpnp, pnp, pn, ql: qlByQpnpId.get(qpnp.id) || null, quoteId: thisQuoteId });
           }
           const allProdNodes = quote.allProducts?.nodes || qData.allProducts?.nodes || [];
           if (allProdNodes.length) for (const p of allProdNodes) productByName.set(p.name, p);
 
           // SaveQuoteLines (products) for this customer's parts
-          for (const { part } of custParts) {
+          // 1.2.11: iteramos por { part, origIdx } y resolvemos pnLookup.get(origIdx) — cada fila CSV
+          // tiene su propio ql aunque comparta name+customerId con otra. Esto soluciona Bug E
+          // (productos combinados entre líneas) y Bug F (PNs duplicados que se pisaban entre sí).
+          for (const { part, origIdx } of custParts) {
             if (!part.products.length) continue;
-            const entry = pnLookup.get(`${part.pn.toUpperCase()}|${cid}`); if (!entry) { errors.push(`PN "${part.pn}" no en quote.`); continue; }
-            const ql = entry.ql; if (!ql) { errors.push(`QuoteLine no encontrada para "${part.pn}".`); continue; }
+            const entry = pnLookup.get(origIdx); if (!entry) { errors.push(`PN "${part.pn}" (row ${origIdx}) no en quote.`); continue; }
+            const ql = entry.ql; if (!ql) { errors.push(`QuoteLine no encontrada para "${part.pn}" (row ${origIdx}).`); continue; }
             const existing = ql.quoteLineItemsByQuoteLineId?.nodes || [];
             const idsToDelete = existing.map(ei => ei.id).filter(Boolean);
 
@@ -2618,15 +2794,15 @@ const BulkUpload = (() => {
         showProgressUI(`  -> ${quotesCreated.length} cotizaciones creadas, ${prodAddedTotal} products`);
       } else {
         // SOLO_PN: build pnLookup from existing/new PN IDs (no quote context)
+        // 1.2.11: keyed por rowIdx (índice en parts[]) — soporta duplicados name+customerId.
         showProgressUI('Modo SOLO_PN: construyendo mapa de PNs...'); setProgressBar(30);
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i]; const status = pnStatus[i];
           let pnId;
           if (status.status === 'existing') { pnId = status.existingId; stats.pnsExisting++; }
-          else { pnId = newPnIds.get(`${part.pn.toUpperCase()}|${part.customerId}`); }
+          else { pnId = newPnIds.get(i); }
           if (!pnId) continue;
-          // V10: key by pn|customerId
-          pnLookup.set(`${part.pn.toUpperCase()}|${part.customerId}`, {
+          pnLookup.set(i, {
             qpnp: null, pnp: null,
             pn: { id: pnId, name: part.pn, customerId: part.customerId, defaultProcessNodeId: part.processId, customInputs: {}, descriptionMarkdown: '', customerFacingNotes: '', geometryTypeId: null, partNumberGroupId: null },
             ql: null
@@ -2639,7 +2815,7 @@ const BulkUpload = (() => {
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
           if (part.precio === null && !part.qty) continue; // no price data
-          const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
+          const entry = pnLookup.get(i); if (!entry) continue;
           pnpWithPrice.push({
             partNumberId: entry.pn.id,
             processId: part.processId,
@@ -2680,7 +2856,7 @@ const BulkUpload = (() => {
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i]; const st = pnStatus[i];
         if (st.status !== 'existing' || !p.predictiveUsage.length) continue;
-        const e = pnLookup.get(`${p.pn.toUpperCase()}|${p.customerId}`); if (!e?.pn?.id) continue;
+        const e = pnLookup.get(i); if (!e?.pn?.id) continue;
         if (existingPredictedMap.has(e.pn.id)) continue; // ya cargado
         try {
           const pnData = await api().query('GetPartNumber', { partNumberId: e.pn.id });
@@ -2704,13 +2880,16 @@ const BulkUpload = (() => {
 
       async function enrichWorker(part, idx, myRunId) {
         bailIfStale(myRunId);
-        // Resume: si este PN ya quedó completado en una corrida previa, brincarlo.
-        if (resumeCompletedSet.has(`${part.pn}|${part.customerId}`)) {
+        // Resume: si esta fila (rowIdx-aware) ya quedó completada en una corrida previa, brincarla.
+        // 1.2.11: clave de resume incluye rowIdx para que duplicados name+customerId no se brinquen
+        // por culpa de uno solo del grupo haber sido completado.
+        const resumeKey = `${idx}|${part.pn}|${part.customerId}`;
+        if (resumeCompletedSet.has(resumeKey)) {
           okSP++;
           state.counters.ok++;
           return;
         }
-        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+        const entry = pnLookup.get(idx);
         if (!entry) return;
         const pn = entry.pn;
 
@@ -2910,11 +3089,13 @@ const BulkUpload = (() => {
         }
 
         // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados
+        // 1.2.11: incluye rowIdx en la clave para distinguir duplicados name+customerId.
+        const rkey = `${idx}|${part.pn}|${part.customerId}`;
         if ((okSP + retrySP) % 50 === 0 && resumeState) {
-          resumeState.completedPNs.push(`${part.pn}|${part.customerId}`);
+          resumeState.completedPNs.push(rkey);
           persistResumeState().catch(() => {});
         } else if (resumeState) {
-          resumeState.completedPNs.push(`${part.pn}|${part.customerId}`);
+          resumeState.completedPNs.push(rkey);
         }
       }
 
@@ -2937,7 +3118,7 @@ const BulkUpload = (() => {
         const part = parts[i]; const status = pnStatus[i];
         if (status.status !== 'existing') continue;
         if (!part.predictiveUsage.length) continue;
-        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+        const entry = pnLookup.get(i);
         const exMap = entry?.pn?.id ? existingPredictedMap.get(entry.pn.id) : null;
         if (!exMap || !exMap.size) continue;
         // Si el primer predictivo es "-" se borra todo (ya manejado por finalPredictive arriba: queda [])
@@ -2972,7 +3153,7 @@ const BulkUpload = (() => {
         const part = parts[i]; const status = pnStatus[i];
         if (status.status !== 'existing' || !part.specs.length) continue;
         if (part.specs.length === 1 && isDash(part.specs[0].name)) continue;
-        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+        const entry = pnLookup.get(i);
         if (!entry?.pn?.id) continue;
         try {
           // 1.2.5: reusa cache poblado en enrichWorker (archive sentinel). Cache-miss → fetch.
@@ -3051,21 +3232,30 @@ const BulkUpload = (() => {
       if (syncedParamsCount) log(`  Spec params sync: ${syncedParamsCount} params agregados`);
 
       // STEP 7: RackTypes — runs in BOTH modes
+      // 1.2.11: iteramos con índice para resolver pnLookup por rowIdx. Si la fila CSV NO trae
+      // racks (Bug C), no contribuye nada — ya no hay riesgo de que rows duplicadas (mismo
+      // name+customerId) compartan entry y se infecten con el rack de la otra.
+      // Además: dedup por (rackTypeId, partNumberId) — si 2 filas del CSV apuntan al mismo PN
+      // físico (Pase 1 IBMS coincidente) con el mismo rack, evitamos el duplicate-key insert.
       showProgressUI(`${isSoloPN ? 'Paso 4' : 'Paso 7'}: Racks...`); setProgressBar(78);
       const rackIn = [];
-      const racksToDelete = []; // PNs where racks should be deleted (guión)
-      for (const part of parts) {
+      const rackInSeen = new Set(); // "rtId|pnId" para dedup intra-corrida
+      const racksToDelete = new Set(); // pn.id (Set para auto-dedup)
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
         if (!part.racks.length) continue;
-        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
-        // Guión (-) in first rack = delete all racks
+        const entry = pnLookup.get(i); if (!entry) continue;
         if (part.racks.length === 1 && isDash(part.racks[0].name)) {
-          racksToDelete.push(entry.pn.id);
+          racksToDelete.add(entry.pn.id);
           continue;
         }
         for (const rk of part.racks) {
           if (isDash(rk.name)) continue;
           const rt = rackTypeByName.get(rk.name); if (!rt) { errors.push(`RackType "${rk.name}" no encontrado.`); continue; }
           if (rk.ppr === null) continue;
+          const key = `${rt.id}|${entry.pn.id}`;
+          if (rackInSeen.has(key)) continue; // misma combinación ya agregada por otra fila
+          rackInSeen.add(key);
           rackIn.push({ rackTypeId: rt.id, partNumberId: entry.pn.id, partsPerRack: rk.ppr });
         }
       }
@@ -3122,10 +3312,16 @@ const BulkUpload = (() => {
       stats.racksSet = rackIn.length + racksToDelete.length; log(`  Racks: ${rackIn.length} agregados, ${racksToDelete.length} PNs con racks eliminados`);
 
       // STEP 7b: Delete prices (guión in precio column)
+      // 1.2.11: iteramos con índice para resolver entry por rowIdx; dedup por pnId
+      // porque si 2 filas apuntan al mismo PN físico con guión, una sola pasada borra todos los precios.
       const pricesToDelete = [];
-      for (const part of parts) {
+      const pricesToDeleteSeen = new Set();
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
         if (!isDash(String(part.precio))) continue;
-        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
+        const entry = pnLookup.get(i); if (!entry) continue;
+        if (pricesToDeleteSeen.has(entry.pn.id)) continue;
+        pricesToDeleteSeen.add(entry.pn.id);
         pricesToDelete.push({ pnId: entry.pn.id, pnName: part.pn });
       }
       if (pricesToDelete.length) {
@@ -3144,18 +3340,34 @@ const BulkUpload = (() => {
       }
 
       // STEP 8: Default Price + Archive
+      // 1.2.11: respeta archiveOverride (per-row) y archiveGlobal (toggle UI preview).
+      // archiveGlobal=true  → archivarAnterior se aplica (default del CSV honrado)
+      // archiveGlobal=false → ninguna fila archiva anterior (override blanket)
+      // archiveOverride por fila TRUE  → fuerza archivar aunque global esté off
+      // archiveOverride por fila FALSE → fuerza no archivar aunque CSV diga true
+      // Dedup por pnId para no archivar/desarchivar 2 veces el mismo PN físico.
       showProgressUI(`${isSoloPN ? 'Paso 5' : 'Paso 8'}: Archivado...`); setProgressBar(85);
       const pnsToArchive = [], oldPnsToArchive = [], pnsToUnarchive = [];
+      const archiveSeen = new Set(), unarchiveSeen = new Set(), oldArchiveSeen = new Set();
+      const archiveGlobal = (state.archiveGlobal !== false); // default true si el toggle no fue tocado
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
-        const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
+        const entry = pnLookup.get(i); if (!entry) continue;
         if (part.archivado) {
-          pnsToArchive.push({ id: entry.pn.id, name: part.pn });
+          if (!archiveSeen.has(entry.pn.id)) { pnsToArchive.push({ id: entry.pn.id, name: part.pn }); archiveSeen.add(entry.pn.id); }
         } else if (pnStatus[i].status === 'existing') {
-          // FALSE on existing PN = desarchivar si estaba archivado
-          pnsToUnarchive.push({ id: entry.pn.id, name: part.pn });
+          if (!unarchiveSeen.has(entry.pn.id)) { pnsToUnarchive.push({ id: entry.pn.id, name: part.pn }); unarchiveSeen.add(entry.pn.id); }
         }
-        if (status.status === 'forceDup' && part.archivarAnterior && status.existingId) oldPnsToArchive.push({ id: status.existingId, name: part.pn + ' (ant)' });
+        // archiveOverride per-row: undefined → seguir CSV; true → archivar; false → no archivar
+        const csvWantsArchive = !!part.archivarAnterior;
+        const rowOverride = part.archiveOverride; // boolean | undefined
+        const willArchive = (rowOverride === true) || (rowOverride === undefined && csvWantsArchive && archiveGlobal);
+        if (status.status === 'forceDup' && willArchive && status.existingId) {
+          if (!oldArchiveSeen.has(status.existingId)) {
+            oldPnsToArchive.push({ id: status.existingId, name: part.pn + ' (ant)' });
+            oldArchiveSeen.add(status.existingId);
+          }
+        }
       }
       // Default price: set or unset
       const priceIdsForDefault = [];
@@ -3164,7 +3376,7 @@ const BulkUpload = (() => {
         // In quote mode, use qpnp price IDs
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
-          const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`); if (!entry) continue;
+          const entry = pnLookup.get(i); if (!entry) continue;
           const pnpId = entry.pnp?.id;
           if (!pnpId) continue;
           if (part.precioDefault) priceIdsForDefault.push(pnpId);
@@ -3175,7 +3387,7 @@ const BulkUpload = (() => {
         // no lo tenemos (SaveManyPartNumberPrices no devuelve los IDs en este flujo)
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
-          const entry = pnLookup.get(`${part.pn.toUpperCase()}|${part.customerId}`);
+          const entry = pnLookup.get(i);
           if (!entry?.pn?.id) continue;
           // Solo releemos si hay algo que hacer con el default
           const needsRead = part.precioDefault || (!part.precioDefault && pnStatus[i].status === 'existing');
@@ -3545,23 +3757,30 @@ const BulkUpload = (() => {
     };
   }
 
-  // 1.2.10: dedup MODIFY targets para evitar que dos filas del CSV apunten al
-  // mismo PN existente. La regla del usuario: si el CSV trae dos veces el mismo
+  // 1.2.10/1.2.11: dedup MODIFY targets para evitar que dos filas del CSV apunten
+  // al mismo PN existente. La regla del usuario: si el CSV trae dos veces el mismo
   // nombre y el catálogo tiene dos PNs distintos con ese nombre, AMBAS filas
   // pueden ser MODIFY pero a IDs distintos; lo que NO se permite es que ambas
   // pisen el mismo id (perdería datos en silencio y el log mentiría diciendo
-  // que las dos cargaron). El pase resuelve esto repartiendo entre candidatos
-  // disponibles del ranking de Pase 3; Pase 1/2 sin alternativas degradan a NEW.
+  // que las dos cargaron).
   //
   // Precedencia (gana el target primero): Pase 1 > Pase 2 > Pase 3 strict
   // > Pase 3 blank > Pase 3 id asc. Empate → idx ascendente (orden de CSV).
   //
+  // 1.2.11: el loser solo se re-asigna a un alternate que pase strict-match
+  // (mismas acabados ignorando nonFinishList) o blank candidate (sin acabados).
+  // Antes (1.2.10) se aceptaba el primer alternate disponible aunque las
+  // etiquetas fueran distintas, lo que violaba la regla "si no hay match de
+  // etiquetas, default a crear nuevo". Mismo 3-level fallback que classifyOnePN.
+  //
   // Mutaciones (en place) por loser:
-  //   - Si hay candidato alterno disponible → re-asigna existingId/targetPnId/
-  //     existingProcessId. Marca dedupReassigned=true y dedupOriginalTargetPnId.
-  //   - Si no hay alterno → demota a NEW. Marca dedupConflict=true y
-  //     dedupConflictTargetPnId con el id originalmente propuesto.
-  function dedupModifyTargets(pnStatus) {
+  //   - Alternate strict (acabados iguales) → re-asigna. confidence='name+labels-match',
+  //     pase=3, dedupReassigned=true, dedupOriginalTargetPnId guarda el id original.
+  //   - Alternate blank (sin acabados) → re-asigna. confidence='name+blank-candidate'.
+  //   - Sin alternate aceptable → demota a NEW. dedupConflict=true,
+  //     dedupConflictTargetPnId guarda el id originalmente propuesto.
+  function dedupModifyTargets(pnStatus, nonFinishList) {
+    const nfList = nonFinishList || [];
     const confRank = {
       'ibms-exacto': 0,
       'composite-exacto-ambos-sin-ibms': 1,
@@ -3597,12 +3816,33 @@ const BulkUpload = (() => {
         used.add(s.existingId);
         continue;
       }
-      // Target tomado por una fila de precedencia mayor. Buscar alterno en candidates.
+      // Target tomado por una fila de precedencia mayor. Buscar alterno strict
+      // o blank entre s.candidates (poblado solo en Pase 3; Pase 1/2 traen [] → demote).
       const candidates = s.candidates || [];
+      const csvAcabados = acabadosOrdenados(s.csvLabels || [], nfList);
       let alternative = null;
+      let altConfidence = null;
+      // Nivel 1: alternate con acabados estrictamente iguales al CSV.
       for (const c of candidates) {
-        if (c.id === s.existingId) continue;
-        if (!used.has(c.id)) { alternative = c; break; }
+        if (c.id === s.existingId || used.has(c.id)) continue;
+        const candAcabados = acabadosOrdenados(c.labels || [], nfList);
+        if (candAcabados === csvAcabados) {
+          alternative = c;
+          altConfidence = 'name+labels-match';
+          break;
+        }
+      }
+      // Nivel 2: alternate sin acabados (slate limpia).
+      if (!alternative) {
+        for (const c of candidates) {
+          if (c.id === s.existingId || used.has(c.id)) continue;
+          const candAcabados = acabadosOrdenados(c.labels || [], nfList);
+          if (candAcabados === '') {
+            alternative = c;
+            altConfidence = 'name+blank-candidate';
+            break;
+          }
+        }
       }
       if (alternative) {
         s.dedupOriginalTargetPnId = s.existingId;
@@ -3610,6 +3850,8 @@ const BulkUpload = (() => {
         s.existingId = alternative.id;
         s.targetPnId = alternative.id;
         s.existingProcessId = alternative.defaultProcessNodeId || null;
+        s.confidence = altConfidence;
+        s.pase = 3;
         used.add(alternative.id);
         reassigned++;
       } else {
@@ -3626,7 +3868,37 @@ const BulkUpload = (() => {
     return { reassigned, demoted };
   }
 
-  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets };
+  // 1.2.11: detectar duplicados internos del CSV (mismo PN+customer en 2+ filas).
+  // Marca TODAS las filas del grupo (incluyendo la 1ª) con flags para UI y para
+  // que SavePartNumber decida la asignación a Capa A/B. No fuerza status — el
+  // clasificador (Pase 1 IBMS / Pase 2 composite / Pase 3 near-match) decide
+  // independientemente; dedupModifyTargets ya maneja conflictos por existingId.
+  function detectCsvDuplicates(parts) {
+    const groups = new Map(); // key → [idx]
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (!p.pn || p.customerId == null) continue;
+      const key = `${String(p.pn).toUpperCase()}|${p.customerId}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(i);
+    }
+    let dupGroups = 0;
+    let dupRows = 0;
+    for (const indices of groups.values()) {
+      if (indices.length < 2) continue;
+      dupGroups++;
+      for (let n = 0; n < indices.length; n++) {
+        const idx = indices[n];
+        parts[idx].isCsvDuplicate = true;
+        parts[idx].csvDuplicateIndex = n + 1;
+        parts[idx].csvDuplicateGroupSize = indices.length;
+        if (n > 0) dupRows++;
+      }
+    }
+    return { dupGroups, dupRows };
+  }
+
+  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates };
 
   return { execute, setProgressCallback, parseCSV, parseRows, __helpers };
 })();
