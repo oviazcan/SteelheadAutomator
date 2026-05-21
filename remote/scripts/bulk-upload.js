@@ -429,6 +429,10 @@ const BulkUpload = (() => {
   function setPanelPhase(text) {
     state.phase = text;
     const el = document.getElementById('sa-bu-phase'); if (el) el.textContent = text;
+    // Fix H 1.3.2: espejear al modal viejo (dl9-progress-overlay) cuando esté visible
+    const live = document.getElementById('dl9-live-progress');
+    if (live) live.dataset.phase = text;
+    updateLiveProgressText();
   }
   function setPanelProgress(current, total) {
     state.progress.current = current;
@@ -439,11 +443,28 @@ const BulkUpload = (() => {
     if (c) c.textContent = String(current);
     if (t) t.textContent = String(total);
     if (bar) bar.style.width = (total ? Math.round((current / total) * 100) : 0) + '%';
+    updateLiveProgressText();
   }
   function setPanelCounters() {
     const o = document.getElementById('sa-bu-ok'); if (o) o.textContent = String(state.counters.ok);
     const r = document.getElementById('sa-bu-retried'); if (r) r.textContent = String(state.counters.retried);
     const e = document.getElementById('sa-bu-errors'); if (e) e.textContent = String(state.counters.errors);
+    updateLiveProgressText();
+  }
+  function updateLiveProgressText() {
+    const live = document.getElementById('dl9-live-progress');
+    if (!live) return;
+    const phase = live.dataset.phase || state.phase || '';
+    const cur = state.progress?.current || 0;
+    const tot = state.progress?.total || 0;
+    const ok = state.counters?.ok || 0;
+    const rt = state.counters?.retried || 0;
+    const er = state.counters?.errors || 0;
+    if (tot > 0) {
+      live.textContent = `${phase} — ${cur}/${tot}   OK:${ok}  Retries:${rt}  Errors:${er}`;
+    } else {
+      live.textContent = phase;
+    }
   }
   function addPanelLog(msg) {
     const el = document.getElementById('sa-bu-log');
@@ -2035,7 +2056,7 @@ const BulkUpload = (() => {
     let ov = document.getElementById('dl9-progress-overlay');
     if (!ov) {
       injectStyles(); ov = document.createElement('div'); ov.className = 'dl9-overlay'; ov.id = 'dl9-progress-overlay';
-      ov.innerHTML = `<div class="dl9-modal"><h2>Ejecutando...</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="dl9-bar"></div></div><div class="dl9-progress" id="dl9-progress-text"></div></div>`;
+      ov.innerHTML = `<div class="dl9-modal"><h2>Ejecutando...</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="dl9-bar"></div></div><div id="dl9-live-progress" style="color:#67e8f9;font-size:13px;margin:8px 0;font-weight:600;min-height:18px"></div><div class="dl9-progress" id="dl9-progress-text"></div></div>`;
       document.body.appendChild(ov);
     }
     const el = document.getElementById('dl9-progress-text');
@@ -2187,8 +2208,13 @@ const BulkUpload = (() => {
   }
 
   function showResult(stats, quoteUrl, errors, quoteUrlLabel) {
+    // Fix J 1.3.2: remover overlays previos (progress + cualquier resultado anterior)
+    // antes de crear uno nuevo. Antes (≤1.3.1) re-ejecuciones consecutivas apilaban
+    // modales de resultado y el botón CERRAR solo cerraba el último por id duplicado.
     const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
+    const prevResult = document.getElementById('dl9-result-overlay'); if (prevResult) removeOverlay(prevResult);
     injectStyles(); const { overlay, modal } = createOverlay();
+    overlay.id = 'dl9-result-overlay';
     const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.join('\n')}</div>` : '';
     const lbl = quoteUrlLabel || 'ABRIR COTIZACIÓN';
     modal.innerHTML = `<h2>${errors.length ? 'Completado con errores' : 'Completado OK'}</h2><div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
