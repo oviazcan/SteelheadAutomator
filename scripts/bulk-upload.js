@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.3.0';
+  const VERSION = '1.3.1';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -621,17 +621,23 @@ const BulkUpload = (() => {
       if (g(row, 43)) racks.push({ name: g(row, 43), ppr: gn(row, 44) });
 
       const predictiveUsage = [];
-      // 1.2.12: sentinel "-" en BB=53 (primer material) borra todas las predictive usages
-      // existentes. Antes el sentinel estaba muerto porque gn() colapsa "-" a null
-      // (parseFloat("-")=NaN) indistinguible de celda vacía. Ahora lo detectamos en crudo.
-      const bbRaw = g(row, 53);
-      if (bbRaw === '-') {
-        // Placeholder con usagePerPart='-' para que predAreDash/predIsDash lo detecten más abajo.
-        predictiveUsage.push({ inventoryItemId: PREDICTIVE_MATERIALS[0].inventoryItemId, usagePerPart: '-', name: PREDICTIVE_MATERIALS[0].name });
-      } else {
-        for (const mat of PREDICTIVE_MATERIALS) {
+      // 1.3.1: sentinel "-" granular por material. Cada celda BB..BJ se evalúa en crudo:
+      //   * "-" → placeholder usagePerPart='-' (STEP 6a lo manda con microQuantityPerPart=0
+      //     vía UpdateInventoryItemPredictedUsage para "archivar" ese predictivo individual)
+      //   * número > 0 → upsert ese predictivo
+      //   * vacío → no tocar
+      // Antes (1.2.12-1.3.0) solo BB=`-` actuaba como wildcard "borrar todos" y `-` en otras
+      // columnas se ignoraba porque gn() colapsa "-"→null igual que celda vacía. El wildcard
+      // se quita: para borrar todos, pone `-` en cada columna que aplique.
+      for (const mat of PREDICTIVE_MATERIALS) {
+        const raw = g(row, mat.col);
+        if (raw === '-') {
+          predictiveUsage.push({ inventoryItemId: mat.inventoryItemId, usagePerPart: '-', name: mat.name });
+        } else {
           const val = gn(row, mat.col);
-          if (val !== null && val > 0) predictiveUsage.push({ inventoryItemId: mat.inventoryItemId, usagePerPart: String(val), name: mat.name });
+          if (val !== null && val > 0) {
+            predictiveUsage.push({ inventoryItemId: mat.inventoryItemId, usagePerPart: String(val), name: mat.name });
+          }
         }
       }
 
@@ -3236,9 +3242,10 @@ const BulkUpload = (() => {
         const dims = dimsAreDash ? [] : buildDimensions(part.dims, DOMAIN);
         const hasDims = dims.length > 0; if (hasDims) stats.dimsSet++;
 
-        // Predictive — "-" en primer material = borrar predictive usage
-        const predAreDash = part.predictiveUsage.length === 1 && isDash(part.predictiveUsage[0]?.usagePerPart);
-        const finalPredictive = predAreDash ? [] : part.predictiveUsage;
+        // Predictive — 1.3.1: dash granular por material. SavePartNumber.inventoryPredictedUsages
+        // solo lleva los predictivos con valor numérico (los nuevos para el PN). Los con
+        // usagePerPart='-' los archiva STEP 6a vía UpdateInventoryItemPredictedUsage(microQuantityPerPart=0).
+        const finalPredictive = part.predictiveUsage.filter(pu => !isDash(String(pu.usagePerPart)));
         if (finalPredictive.length) stats.predictiveSet++;
 
         // OptIn: TRUE = activar, FALSE = desactivar (enviar [])
@@ -3300,7 +3307,7 @@ const BulkUpload = (() => {
                 `SavePartNumber "${pnInput.name}" strip1`,
                 myRunId
               );
-              retrySP++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
+              retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
             } catch (e2) {
               if (isBail(e2)) throw e2;
               try {
@@ -3309,7 +3316,7 @@ const BulkUpload = (() => {
                   `SavePartNumber "${pnInput.name}" strip2`,
                   myRunId
                 );
-                retrySP++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+                retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry mínimo OK`);
               } catch (e3) {
                 if (isBail(e3)) throw e3;
                 errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`);
@@ -3355,19 +3362,18 @@ const BulkUpload = (() => {
         const entry = pnLookup.get(i);
         const exMap = entry?.pn?.id ? existingPredictedMap.get(entry.pn.id) : null;
         if (!exMap || !exMap.size) continue;
-        // 1.2.12: Si el primer predictivo es "-" (sentinel borrar todo), poner microQuantityPerPart=0
-        // en TODOS los records existentes del PN. Workaround porque no hay mutation de archive de
-        // predictive usage en el scan; 0 los deja inertes (no afectan planeación) aunque sigan listados.
-        const predIsDash = part.predictiveUsage.length === 1 && typeof part.predictiveUsage[0]?.usagePerPart === 'string' && isDash(part.predictiveUsage[0].usagePerPart);
-        if (predIsDash) {
-          for (const exId of exMap.values()) {
-            predictedUpdates.push({ id: exId, microQuantityPerPart: 0, inventoryUsageLowCodeId: null });
-          }
-          continue;
-        }
+        // 1.3.1: dash granular por material. Cada pu con usagePerPart='-' archiva ese material
+        // específico (microQuantityPerPart=0); cada pu con número actualiza su material.
+        // Antes (1.2.12-1.3.0) solo se archivaba TODO el PN si la primera columna BB era "-".
+        // Workaround porque no hay mutation de archive de predictive usage en el scan; 0 los
+        // deja inertes (no afectan planeación) aunque sigan listados.
         for (const pu of part.predictiveUsage) {
           const exId = exMap.get(String(pu.inventoryItemId));
-          if (!exId) continue; // es uno nuevo, ya fue al SavePartNumber
+          if (!exId) continue; // es uno nuevo, ya fue al SavePartNumber (o no existe en el PN)
+          if (isDash(String(pu.usagePerPart))) {
+            predictedUpdates.push({ id: exId, microQuantityPerPart: 0, inventoryUsageLowCodeId: null });
+            continue;
+          }
           const micro = Math.round(parseFloat(pu.usagePerPart) * 1e6);
           if (!Number.isFinite(micro)) continue;
           predictedUpdates.push({ id: exId, microQuantityPerPart: micro, inventoryUsageLowCodeId: null });
@@ -3389,13 +3395,25 @@ const BulkUpload = (() => {
       // STEP 6b: Sync params on existing PNs whose specs were already linked.
       // SavePartNumber.specsToApply ignora specs ya ligadas — si el usuario agregó un field
       // nuevo a la spec definición, no se aplica al PN. Aquí lo emparejamos con AddParamsToPartNumber.
-      let syncedParamsCount = 0;
+      // 1.3.1: Cuenta candidatos primero y reporta progreso por iteración. Antes el panel
+      // quedaba pegado en "Enriqueciendo PNs (pool N)" del STEP 6 mientras este loop
+      // secuencial procesaba 100+ PNs uno por uno con varios AddParamsToPartNumber cada uno;
+      // parecía atorado aunque sí avanzaba.
+      const step6bCandidates = [];
       for (let i = 0; i < parts.length; i++) {
-        const part = parts[i]; const status = pnStatus[i];
+        const status = pnStatus[i]; const part = parts[i];
         if (status.status !== 'existing' || !part.specs.length) continue;
         if (part.specs.length === 1 && isDash(part.specs[0].name)) continue;
+        step6bCandidates.push(i);
+      }
+      setPanelPhase(`Sync params spec en PNs existentes (${step6bCandidates.length})`);
+      setPanelProgress(0, step6bCandidates.length);
+      let syncedParamsCount = 0;
+      let step6bDone = 0;
+      for (const i of step6bCandidates) {
+        const part = parts[i];
         const entry = pnLookup.get(i);
-        if (!entry?.pn?.id) continue;
+        if (!entry?.pn?.id) { step6bDone++; setPanelProgress(step6bDone, step6bCandidates.length); continue; }
         try {
           // 1.2.5: reusa cache poblado en enrichWorker (archive sentinel). Cache-miss → fetch.
           let pnNode = existingPnFullCache.get(entry.pn.id);
@@ -3469,6 +3487,8 @@ const BulkUpload = (() => {
         } catch (e) {
           warn(`Sync specs "${part.pn}": ${String(e).substring(0, 100)}`);
         }
+        step6bDone++;
+        setPanelProgress(step6bDone, step6bCandidates.length);
       }
       if (syncedParamsCount) log(`  Spec params sync: ${syncedParamsCount} params agregados`);
 
