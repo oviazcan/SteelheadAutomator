@@ -1,0 +1,39 @@
+# Low-code hooks de Steelhead (Power Tools): `rowKey` como handle de WO por crear (2026-05-15, `ordendeventa.ts`)
+
+Los Power Tools de Steelhead exponen hooks TS (`getReceivedOrderCustomization`, `getInvoicePricing`, etc.) cuyo `LowCodeResult` declara campos como `workOrderLabels: { workOrderId: number, labelId: number }[]`. El typedef obliga `workOrderId: number`, pero en flujos donde la WO **aún no nace** (ej. "Add Parts to Sales Order") el `row.workOrder` viene como placeholder:
+
+```ts
+row.workOrder = {
+  name: "New WO#1",                              // visual del dropdown
+  fromRowKey: "29917336-b496-4a3b-a05c-...",     // no está en el typedef
+  createdBy: { id: 11973, name: "..." }           // del usuario, no del WO
+}
+// no hay row.workOrder.id porque la WO no existe aún
+```
+
+**Hallazgo**: el runtime de Steelhead acepta `{ rowKey, labelId }` en `workOrderLabels` (mismo patrón que `partNumberWorkOrdersToGroup`, donde `rowKey` ya es el handle oficial). Etiqueta la WO al momento de nacer. Hay que castear a `any` porque el typedef no lo declara:
+```ts
+result.workOrderLabels!.push({ rowKey: group.rowKey, labelId: loteLabel.id } as any);
+```
+Verificado: la etiqueta `Lote` aparece en la WO 2503 recién creada al guardar.
+
+**Generalizable**: cuando un campo de `LowCodeResult` pide un id pero estás en flujo "create" (sin id todavía), prueba `rowKey` casteado antes de descartar. Si el typedef de TS lo prohíbe pero existe un campo hermano que sí usa `rowKey` como handle (`partNumberWorkOrdersToGroup`), es señal fuerte de que el runtime acepta el mismo patrón en otros.
+
+**Diagnóstico del shape**: `helpers.log` parece no imprimir en el panel "Test" del Power Tool (al menos no en este flujo). Atajo: dumpear el shape en un `helpers.addErrorMessage` temporal (`severity: 'info'`) con `JSON.stringify(...)` — sale directo en el UI. Se quita cuando el dato esté claro.
+
+**Otras lecciones del mismo ciclo (`ordendeventa.ts`, lote mínimo + NP Desconocido):**
+- **Piezas pedidas en "Add Parts to Sales Order"**: `row.lineItems` viene vacío (las líneas se crean al guardar). Las piezas reales son `row.quantity / row.selectedUnitConversion.factor + sum(row.inventory[].depleteQuantity)`. Si calculas desde `row.lineItems` el lote mínimo nunca se dispara.
+- **"PN tiene proceso default"**: `partNumber.partNumberTreatment` viene vacío incluso cuando el PN sí tiene proceso. La señal confiable es `row.process != null` (Steelhead lo auto-rellena del default del PN).
+- **`specFieldParam` para rango de Espesor**: el shape NO trae `.name` con el rango como string; trae `minimumValue` + `maximumValue` numéricos (y `targetValue` opcional). Construir `"${min}-${max}"` directamente, no caer al `name` que es undefined.
+- **Etiquetas en PN vs en WO**: `LowCodeResult` no tiene canal para escribir `partNumberLabels` (solo lee). Probadas 3 formas casteadas a `any` en `getReceivedOrderCustomization` (2026-05-15) — todas aparecen sanas en el output del test pero ninguna aplica al backend al presionar Save:
+  - `(result as any).partNumberLabels = [{partNumberId, labelId}]` (top-level inexistente)
+  - `partNumberUpdates.push({partNumberId, labels: [labelId]} as any)` (extender con `labels`)
+  - `partNumberUpdates.push({partNumberId, partNumberLabels: [{id, name}]} as any)` (shape exacto del input)
+
+  `partNumberUpdates` solo acepta `customInputs` para escritura. A diferencia de `workOrderLabels` (donde `rowKey` sí se proyectó como canal alterno), aquí ningún cast funcionó. Para "NP Desconocido" (PN sin proceso o sin spec) el operador etiqueta manual; el mensaje del hook lo guía. Si en el futuro se necesita etiquetar PNs desde código, hay que abrir otro canal (mutation GraphQL desde un applet de extensión).
+- **Consolidación de mensajes por severidad**: el UI de Steelhead apila cada `addErrorMessage` como row del alert panel. Si tienes N PNs con N issues, juntar chips por severidad en una sola llamada por bucket (`error`, `warning`, `info`) evita saturar el panel. Patrón: array de chips por bucket → `addErrorMessage({severity, message: bucketChips.join(' | ')})` al final.
+- **Multi-fuente para detectar precio default**: `row.lineItems[].unitPrice` viene en algunos flujos pero **sin `unit` asociado** (visto en "Add Parts to Sales Order"). No condicionar la captura a `li.unit`; caer a `row.selectedUnitConversion.unitByUnitId` como unidad. Y agregar fallbacks: `row.unitPrice` (string, populado cuando hay precio default activo) → `row.quotePartNumber?.priceDollars` (de la quote vinculada). Si exiges `li.unit`, los PNs con precio default sin lineItem-unit reportan falsamente "Sin precio default".
+- **Distinguir "precio asignado" de "precio positivo"**: `unitPrice === 0` es un valor válido en ciertos casos (ej. excepciones comerciales — Schneider Electric México en Javier Rojo Gómez requiere $0). El flag `priceAssigned = unitPrice != null` (incluye 0); el flag `hasPositivePrice = unitPrice > 0` (para mostrar monto de lote mínimo). Mezclar los dos lleva a falsos negativos.
+- **Validaciones de precio NO dependen del groupMap del lote mínimo**: si el groupMap se crea solo cuando hay conversión LO, todas las validaciones que viven en el group loop (sinPrecio, excepciones comerciales) se brincan para PNs sin conversión. Patrón correcto: el groupMap se crea **siempre**, `piezasPorLote` se vuelve nullable, y solo el bloque `aplicaLoteMinimo` requiere `piezasPorLote != null`. Captura en `ordendeventa.ts` (2026-05-15) cuando el usuario borró la conversión LO para probar y desapareció el warning de "Sin precio default" — no era bug del warning, era que el path nunca corría.
+- **Excepción de cliente por nombre + ship-to**: `inputs.customer.name` y `inputs.receivedOrder.shipToAddress.address` permiten gating por cliente. Patrón case-insensitive con `.includes()` tolera variantes ortográficas ("SCHNEIDER ELECTRIC MEXICO" vs "Schneider Electric México"). Para reglas atadas a una bodega del cliente, también checa el ship-to (ej. Schneider tiene varias plantas; solo "Javier Rojo Gómez" requiere $0).
+
