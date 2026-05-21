@@ -1,6 +1,54 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.3.1. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.3.2. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.3.2: perf + robustez resume (2026-05-21, deploy gh-pages PENDIENTE, validación en prod PENDIENTE)
+
+Ocho fixes orientados a recortar el tiempo de corrida Schneider (proyección 5 hrs → ~2 hrs para 9k PNs) y eliminar el escenario donde un atorón a media corrida obliga a limpiar `localStorage` manualmente. Plan formal en `docs/superpowers/plans/2026-05-21-bulk-upload-1.3.2-perf.md`.
+
+**Commits (main):** `44ac9b8` T1 · `eaaf5ca` T2 · `e9a1b1d` + `fdff954` T3 + cleanup · `b6a0412` + `3feb1cf` T4 + cleanup · `45bd02b` T5 · `eac1ec4` T6 bump.
+
+### Fixes de performance (esperado ~50% reducción wall-clock)
+
+- **C. `specsToApply` filtrado en PNs existing (`bulk-upload.js:enrichWorker`).** Pre-fetch `GetPartNumber` al inicio del worker cuando `status==='existing'` (no solo con archive sentinel), construye `alreadyLinkedSpecIds` Set, filtra `specsToApply` quitando las ya linkeadas. Sin esto el primer `SavePartNumber` siempre fallaba con `unique_constraint` en `partNumberSpec(pnId,specId)` → fallback strip1 quitaba `specsToApply` → 2× calls por PN existing. Con esto, primer `SavePartNumber` pasa limpio.
+
+- **I. Invalidar `existingPnFullCache` después de `SavePartNumber` (`bulk-upload.js:enrichWorker`).** Sin esto, el cache que STEP 6b lee es el snapshot pre-enrich; cree que los params recién agregados no existen y manda `AddParamsToPartNumber` que devuelven 500 exclusion constraint. El cache fresco hace que `existingParamIds` cubra los params actualizados → `missing` se vacía → skip silencioso sin call espuria. Tres invalidaciones (primary + strip1 + strip2), todas guardadas por `if (pn.id)`.
+
+- **D. STEP 6b paralelizado con `runPool` concurrencia 5 (`bulk-upload.js:STEP 6b`).** Antes el loop era secuencial: 100 PNs × varios specs × varios params × ~300ms ≈ 100s. Con pool 5: ~25s. Para Schneider 9k es el cambio más impactante (~2.5 hrs ahorradas). El `step6bWorker` hace cache-first read (poblado por Fix I), itera specs, filtra missing params contra `existingParamIds`, envía `AddParamsToPartNumber` uno a la vez con catch silencioso para `exclusion constraint`/`conflicting key`/`23P01`. Cleanup `fdff954` removió el `log("ya presente, skip")` que originalmente preservé del 1.3.1 — el plan pedía silent skip explícitamente para no spammear consola con N × M × PNs líneas en corridas de 9k+.
+
+### Fixes de robustez resume
+
+- **G. `resumeState = null` al inicio de `execute()` (`bulk-upload.js:~2217`).** `let resumeState = null;` (línea 134) es variable del IIFE (closure de módulo). Si una corrida entró al modal Reanudar, la SIGUIENTE corrida en la misma página la encontraba con datos viejos → `if (!resumeState)` línea ~2277 era false → no se creaba state limpio → chunk loop saltaba usando `completedChunks` heredado. **Bug observado 2026-05-21**: tras limpiar `localStorage` manualmente, las re-ejecuciones SEGUÍAN saltando el chunk 1/1 hasta que el usuario recargó la página. Fix simple: `resumeState = null;` justo después de `nextRunId()`.
+
+- **B-resume. Reconstruir `pnLookup` desde quote existente cuando chunk está en `completedChunks` (`bulk-upload.js:~2857`).** Antes el chunk loop hacía `continue` ciego → `pnLookup` vacío → STEP 6/6a/6b skip silencioso → "Completado OK" con 0/0/0. Fix: `findExistingQuote` + `GetQuote` vía `queryWithFallback` para reconstruir el lookup; matching por `pn.name.toUpperCase()` con arrays + `arr.shift()` para duplicados name+customerId. Las write-ops (CreateQuote, SaveManyPNP, SaveQuoteLines, UpdateQuote) sí se saltan porque ya están aplicadas; solo el enrich corre. **Conocido (1.3.3):** si el usuario modificó la quote en Steelhead entre runs (renombró PN, borró+recreó), el matching falla con `warn` pero NO empuja a `errors[]` — la corrida termina "OK" con stats parciales sin alerta clara. Aceptable porque es estrictamente mejor que 1.3.1 (que dejaba todo en 0); a mejorar en 1.3.3.
+
+### Fixes de UX
+
+- **H. Espejear phase + progress + counters en el modal viejo `dl9-progress-overlay` (`bulk-upload.js:showProgressUI` + `setPanelPhase`/`setPanelProgress`/`setPanelCounters`).** El modal viejo tiene backdrop oscuro y tapa al panel flotante `sa-bu-panel`. Antes durante STEP 6 (que dura minutos) el modal viejo se quedaba en "Paso 6: Enriqueciendo PNs..." sin más output mientras el panel flotante (oculto) sí tenía progreso. Nuevo elemento `#dl9-live-progress` se actualiza desde los 3 setters vía helper `updateLiveProgressText()` con `"<phase> — X/Y   OK:N Reintentos:M Errores:K"` (cleanup `3feb1cf` corrigió los labels de inglés a español por convención del proyecto).
+
+- **J. Cierre conjunto + id estable para `showResult` (`bulk-upload.js:~2210`).** Antes cada re-ejecución apilaba un nuevo modal de resultado sin id estable → click en CERRAR solo cerraba el último por id duplicado, dejando los anteriores vivos. Fix: `overlay.id = 'dl9-result-overlay'`; al entrar a `showResult`, remover overlays previos (progress + resultado anterior). `removeOverlay` ya es idempotente, así que las llamadas dobles son seguras.
+
+- **Texto resultado:** `"1 cotizaciones creadas, 105 products"` → `"1 cotización creada con 100 PNs y 105 productos"` (singular/plural correcto + clarifica que son PNs, no productos). Acumulador `pnpItemsTotal += pnpItems.length` se suma por chunk dentro del chunk loop, antes del push de `completedChunks`.
+
+### Conocidos NO resueltos (queda para 1.3.3)
+
+- **`Racks: NaN`** en stats — observado en todas las pruebas. Variable inicializada como `NaN` o sumando `undefined`.
+- **Mensaje stale en prefetch failure (Fix C).** El warn `"GetPartNumber prefetch X falló — caerá al flujo strip1"` es engañoso post-Fix-C: el strip1 ya no es el camino normal, solo fallback degradado. Reescribir cuando se toque el área.
+- **`syncCounters.synced` no se mapea a `state.counters`** durante STEP 6b paralelo — durante esa fase el panel muestra los counters de STEP 6 (estáticos). Cosmético.
+- **Doble lookup DOM en `setPanelPhase`** (`getElementById('dl9-live-progress')` se hace dos veces). Despreciable a 10-15 llamadas por corrida.
+
+### Files tocados (deploy gh-pages PENDIENTE)
+
+- MODIFICADO `remote/scripts/bulk-upload.js` — `VERSION 1.3.1 → 1.3.2`.
+- MODIFICADO `remote/config.json` — bump `1.3.1 → 1.3.2`.
+- MODIFICADO `docs/applets/bulk-upload.md` (este archivo).
+
+### Plan de validación
+
+1. Run sobre el mismo CSV "Corrida de prueba 100 NP RG arch" (100 PNs Schneider). Esperado: <2 min total. Modal live-progress muestra fase + counters en vivo. STEP 6b paralelo (5 a la vez). Sin 500s espurios. Sin `retry sin specs/optIn OK` (o muy pocos).
+2. Test de robustez: recargar página a mitad de STEP 6 → relanzar mismo XLSX → modal "Corrida previa detectada" → REANUDAR → confirmar que reconstruye `pnLookup` desde quote existente y enrich se completa.
+3. Test de re-ejecución sin reload: correr 100 PNs → cerrar modal de resultado → correr otra vez → verificar que NO se apilan modales (solo uno visible) y que el chunk NO se salta con `completedChunks` heredado (`resumeState` debe quedar en `null` al inicio).
+4. Si todo OK → arrancar Schneider 9k con resume habilitado.
 
 ## 1.3.1: predictivos granulares + progreso STEP 6b + bookkeeping retries (2026-05-21, deploy `9d7437e` main / `5b2aaa2` gh-pages, validación en prod PENDIENTE)
 
@@ -14,6 +62,10 @@ Tres fixes derivados de la corrida 1.3.0 de Schneider donde el usuario reportó 
 
 **Diagnóstico de fondo NO resuelto en 1.3.1 (queda para 1.3.2):**
 
+- **🔴 BUG CRÍTICO de resume con `completedChunks` huérfano (descubierto 2026-05-21).** El chunk loop marca `completedChunks[cid].push(cIdx)` en línea 3025 al final del pipeline de creación de quote (CreateQuote + SaveManyPNP + GetQuote + SaveQuoteLines + UpdateQuote). **Pero el STEP 6 (enrich de PNs vía SavePartNumber + predictivos + specs sync) viene DESPUÉS del chunk loop**, así que si el usuario recarga la página o se atora durante STEP 6, el chunk queda marcado completo pero el enrich no terminó. Al reanudar: el chunk loop hace `continue` en línea 2854, `pnLookup` queda vacío, todos los `enrichWorker` regresan con `if (!entry) return` (línea 3133), terminan con 0 OK / 0 retry, y `execute()` marca `phase='done'` (línea 3825) sin haber hecho nada. Resultado en el modal: "Completado OK" con TODO en cero (incluso `Quote: ... (#null)` porque `primaryQuoteIdInDomain` no se setea). El usuario queda atrapado: la quote existe en Steelhead pero los PNs no se enriquecieron, y el resume key marcado `done` impide reanudar.
+  - **Recuperación manual:** borrar todos los `sa_bulk_resume_*` del localStorage y relanzar el applet. Como los PNs ya están creados en Steelhead, la clasificación los detectará como `existing`, `findExistingQuote` encontrará la quote, modal modify/skip/create → MODIFY limpia PNPs viejos y re-aplica; esta vez STEP 6 sí corre.
+  - **Fix para 1.3.2 (Opción B):** cuando el chunk loop detecta un chunk en `completedChunks`, en lugar de `continue` ciego: ejecutar solo `findExistingQuote` + `GetQuote` para reconstruir `pnLookup` y `productByName` SIN volver a hacer SaveManyPNP/SaveQuoteLines/UpdateQuote (porque ya están aplicadas). Después dejar que el flujo siga normal al STEP 6 con pnLookup poblado.
+  - **Alternativa Opción A (descartada):** mover el `push` de completedChunks a después del STEP 6. Más limpio conceptualmente pero requiere trackear "chunk parcialmente terminado" lo que complica la recuperación cuando el enrich falla a mitad.
 - **TODOS los PNs caen en strip1** durante STEP 6 enrich (`retry sin specs/optIn OK`). El primer `SavePartNumber` choca con unique-constraint (probablemente name+customerId) → strip1 pasa. Hipótesis: `entry.pn.id` no se está pasando al `pnInput` cuando el PN es `existing`, por lo que el backend lo trata como CREATE. Efecto: 2x calls contra el server, ~50% del tiempo de STEP 6 es desperdicio. Necesita investigación específica de `pnLookup` / `pn.id` propagation.
 - **STEP 6b pool concurrente** (D del plan). Después de A queda menos urgente — primero confirmar que A muestra progreso decente en prod.
 - **`montoMinimo`:** el usuario confirmó que `delete ci.DatosPlanificacion.montoMinimo` SÍ borra del backend tras reload de la página. Steelhead aplica REPLACE en `customInputs` de SavePartNumber, no MERGE. Fix F propuesto (mandar `null` explícito) NO se aplicó.
