@@ -731,6 +731,7 @@ const BulkUpload = (() => {
       labels,
       archivedAt: n.archivedAt || null,
       defaultProcessNodeId: n.processNodeByDefaultProcessNodeId?.id || n.defaultProcessNodeId || null,
+      processName: n.processNodeByDefaultProcessNodeId?.name || null,
     };
   }
 
@@ -890,7 +891,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:160px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:14px}.dl9-cand-link:hover{color:#7dd3fc}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:200px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:flex;flex-direction:column;gap:2px}.dl9-p3-selrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.dl9-p3-csv{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(15,23,42,0.6);border-radius:3px}.dl9-p3-cand{font-size:10px;color:#fbbf24;font-family:monospace;line-height:1.3;padding:1px 4px;background:rgba(120,53,15,0.25);border-radius:3px}.dl9-p3-cand.dl9-p3-cand-new{color:#4ade80;background:rgba(20,83,45,0.25)}`;
     document.head.appendChild(s);
   }
 
@@ -935,6 +936,11 @@ const BulkUpload = (() => {
           precio: s.precio,
           pase: s.pase,
           candidates: s.candidates || [],
+          // 1.2.0 R3: snapshot del CSV row para comparación inline en Pase 3
+          csvLabels: part.labels || [],
+          csvMetalBase: part.metalBase || '',
+          csvIBMS: part.quoteIBMS || '',
+          csvProceso: part.procesoOverride || '',
         };
       });
 
@@ -1129,61 +1135,49 @@ const BulkUpload = (() => {
           const tdAct = document.createElement('td');
           tdAct.style.padding = '3px 6px';
           if (r.pase === 3) {
-            // Pase 3: dropdown con "Crear nuevo" (default) + hasta 3 candidatos.
-            // El select y los links se renderizan con DOM API (no innerHTML)
-            // para no caer en el XSS gotcha que ya está documentado en CLAUDE.md.
+            // Pase 3 (1.2.0): default MODIFY al top match. Dropdown ordena
+            // candidatos primero y "Crear nuevo" al final. Debajo del select
+            // se muestran dos líneas comparativas (CSV vs candidato seleccionado)
+            // con etiquetas + proceso + metal + IBMS para que el operador valide
+            // de un vistazo si el match propuesto tiene sentido.
+            // DOM API (no innerHTML) por el XSS gotcha conocido (CLAUDE.md).
+            const wrap = document.createElement('div');
+            wrap.className = 'dl9-p3-wrap';
+
+            // Fila 1: select + links
+            const selRow = document.createElement('div');
+            selRow.className = 'dl9-p3-selrow';
+
             const sel = document.createElement('select');
             sel.className = 'dl9-cls-select';
             sel.dataset.rowIdx = String(r.idx);
-            const optNew = document.createElement('option');
-            optNew.value = '';
-            optNew.textContent = 'Crear nuevo';
-            sel.appendChild(optNew);
-            for (const c of (r.candidates || []).slice(0, 3)) {
+            for (let ci = 0; ci < (r.candidates || []).length && ci < 3; ci++) {
+              const c = r.candidates[ci];
               const opt = document.createElement('option');
               opt.value = String(c.id);
-              opt.textContent = `Modificar #${c.id}`;
-              const tipParts = [];
-              if (c.metalBase) tipParts.push(`metalBase: ${c.metalBase}`);
-              if (c.labels && c.labels.length) tipParts.push(`acabados: ${c.labels.join(', ')}`);
-              if (c.quoteIBMS) tipParts.push(`IBMS: ${c.quoteIBMS}`);
-              if (tipParts.length) opt.title = tipParts.join(' | ');
+              opt.textContent = `Modificar #${c.id}` + (ci === 0 ? ' ⭐ top match' : '');
               sel.appendChild(opt);
             }
-            // Aplica selección persistida (volverá a aparecer al paginar)
-            const currentOverride = pnStatus[r.idx]?.userOverride;
-            sel.value = currentOverride != null ? String(currentOverride) : '';
-            sel.addEventListener('change', (e) => {
-              const idx = parseInt(e.target.dataset.rowIdx, 10);
-              const val = e.target.value;
-              if (val === '') {
-                pnStatus[idx].userOverride = null;
-                pnStatus[idx].status = 'new';
-                pnStatus[idx].existingId = null;
-                pnStatus[idx].existingProcessId = null;
-                rows[idx].status = 'new';
-                rows[idx].existingId = null;
-              } else {
-                const newTargetId = parseInt(val, 10);
-                const cand = (pnStatus[idx].candidates || []).find(c => c.id === newTargetId);
-                pnStatus[idx].userOverride = newTargetId;
-                pnStatus[idx].status = 'existing';
-                pnStatus[idx].existingId = newTargetId;
-                pnStatus[idx].existingProcessId = cand?.defaultProcessNodeId || null;
-                rows[idx].status = 'existing';
-                rows[idx].existingId = newTargetId;
-              }
-              updateHeaderStats();
-              // Persist override en resume (best-effort, no awaitear)
-              if (resumeState) {
-                const slot = resumeState.classifications?.[idx];
-                if (slot) slot.userOverride = pnStatus[idx].userOverride;
-                persistResumeState().catch(() => {});
-              }
-            });
-            tdAct.appendChild(sel);
+            const optNew = document.createElement('option');
+            optNew.value = '__new__';
+            optNew.textContent = '🆕 Crear nuevo PN';
+            sel.appendChild(optNew);
 
-            // Links 🔗 a fichas de PN (target=_blank con rel=noopener)
+            // Determinar selección inicial: respeta status actual.
+            // - status='existing' + existingId → ese candidato
+            // - status='new' → "__new__"
+            // Si no hay candidatos (caso edge), el bloque pase===3 no se renderiza
+            // (porque pase=3 implica candidates.length>0 por contrato del classifier).
+            let initialVal;
+            if (pnStatus[r.idx].status === 'new') {
+              initialVal = '__new__';
+            } else {
+              initialVal = String(pnStatus[r.idx].existingId || r.candidates[0].id);
+            }
+            sel.value = initialVal;
+            selRow.appendChild(sel);
+
+            // Links 🔗 a fichas de cada candidato
             const linksSpan = document.createElement('span');
             linksSpan.className = 'dl9-cand-links';
             for (const c of (r.candidates || []).slice(0, 3)) {
@@ -1192,11 +1186,81 @@ const BulkUpload = (() => {
               a.target = '_blank';
               a.rel = 'noopener';
               a.className = 'dl9-cand-link';
-              a.textContent = '🔗';
+              a.textContent = `🔗#${c.id}`;
               a.title = `Abrir ficha de PN #${c.id} en pestaña nueva`;
               linksSpan.appendChild(a);
             }
-            tdAct.appendChild(linksSpan);
+            selRow.appendChild(linksSpan);
+            wrap.appendChild(selRow);
+
+            // Fila 2: snapshot del CSV (datos que vienen a cargarse)
+            const csvLine = document.createElement('div');
+            csvLine.className = 'dl9-p3-csv';
+            const csvParts = [];
+            if (r.csvMetalBase) csvParts.push(`metal:${r.csvMetalBase}`);
+            if (r.csvLabels?.length) csvParts.push(`etiq:[${r.csvLabels.join(', ')}]`);
+            if (r.csvProceso && r.csvProceso !== '-') csvParts.push(`proc:${r.csvProceso}`);
+            if (r.csvIBMS) csvParts.push(`IBMS:${r.csvIBMS}`);
+            csvLine.textContent = '📄 CSV — ' + (csvParts.length ? csvParts.join(' · ') : '(sin datos extras)');
+            wrap.appendChild(csvLine);
+
+            // Fila 3: snapshot del candidato seleccionado (se actualiza al cambiar)
+            const candLine = document.createElement('div');
+            candLine.className = 'dl9-p3-cand';
+            const renderCandLine = (selVal) => {
+              if (selVal === '__new__') {
+                candLine.textContent = '🆕 Se creará un PN nuevo (sin tocar los existentes)';
+                candLine.classList.add('dl9-p3-cand-new');
+                return;
+              }
+              candLine.classList.remove('dl9-p3-cand-new');
+              const id = parseInt(selVal, 10);
+              const c = (r.candidates || []).find(x => x.id === id);
+              if (!c) { candLine.textContent = ''; return; }
+              const candParts = [];
+              if (c.metalBase) candParts.push(`metal:${c.metalBase}`);
+              if (c.labels?.length) candParts.push(`etiq:[${c.labels.join(', ')}]`);
+              if (c.processName) candParts.push(`proc:${c.processName}`);
+              else candParts.push('proc:(sin proceso default)');
+              if (c.quoteIBMS) candParts.push(`IBMS:${c.quoteIBMS}`);
+              candLine.textContent = `🎯 #${c.id} — ` + candParts.join(' · ');
+            };
+            renderCandLine(initialVal);
+            wrap.appendChild(candLine);
+
+            sel.addEventListener('change', (e) => {
+              const idx = parseInt(e.target.dataset.rowIdx, 10);
+              const val = e.target.value;
+              if (val === '__new__') {
+                pnStatus[idx].userOverride = '__new__';
+                pnStatus[idx].status = 'new';
+                pnStatus[idx].existingId = null;
+                pnStatus[idx].existingProcessId = null;
+                rows[idx].status = 'new';
+                rows[idx].existingId = null;
+              } else {
+                const newTargetId = parseInt(val, 10);
+                const cand = (pnStatus[idx].candidates || []).find(c => c.id === newTargetId);
+                // userOverride es null cuando el usuario no cambió (mantuvo el top match);
+                // si elige otro candidato (no-top), userOverride = newTargetId.
+                const isTopMatch = newTargetId === (pnStatus[idx].candidates?.[0]?.id || null);
+                pnStatus[idx].userOverride = isTopMatch ? null : newTargetId;
+                pnStatus[idx].status = 'existing';
+                pnStatus[idx].existingId = newTargetId;
+                pnStatus[idx].existingProcessId = cand?.defaultProcessNodeId || null;
+                rows[idx].status = 'existing';
+                rows[idx].existingId = newTargetId;
+              }
+              renderCandLine(val);
+              updateHeaderStats();
+              if (resumeState) {
+                const slot = resumeState.classifications?.[idx];
+                if (slot) slot.userOverride = pnStatus[idx].userOverride;
+                persistResumeState().catch(() => {});
+              }
+            });
+
+            tdAct.appendChild(wrap);
           } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
           else { tdAct.className = 'dl9-dup'; tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`; }
@@ -1342,13 +1406,17 @@ const BulkUpload = (() => {
     const wb = window.XLSX.utils.book_new();
 
     // ── Hoja Resumen ──
+    // 1.2.0: el default del Pase 3 ahora es MODIFY al top match (R2). Las stats
+    // distinguen 3 sub-casos: default (no tocó), override-MODIFY (cambió a otro
+    // candidato), override-NEW (eligió Crear nuevo).
     const counts = {
       total: pnStatus.length,
       newClean: pnStatus.filter(s => s.classification === 'NEW' && s.pase == null).length,
       pase1: pnStatus.filter(s => s.pase === 1).length,
       pase2: pnStatus.filter(s => s.pase === 2).length,
-      pase3Default: pnStatus.filter(s => s.pase === 3 && s.userOverride == null).length,
-      pase3Override: pnStatus.filter(s => s.pase === 3 && s.userOverride != null).length,
+      pase3DefaultModify: pnStatus.filter(s => s.pase === 3 && s.userOverride == null && s.status === 'existing').length,
+      pase3OverrideModify: pnStatus.filter(s => s.pase === 3 && s.userOverride != null && s.userOverride !== '__new__' && s.status === 'existing').length,
+      pase3OverrideNew: pnStatus.filter(s => s.pase === 3 && s.status === 'new').length,
       errors: errors.length,
       omitidas: stats?.omitidas || 0,
     };
@@ -1358,8 +1426,9 @@ const BulkUpload = (() => {
       ['NEW limpios (sin candidatos)', counts.newClean],
       ['MODIFY Pase 1 (IBMS)', counts.pase1],
       ['MODIFY Pase 2 (composite)', counts.pase2],
-      ['NEW Pase 3 (default)', counts.pase3Default],
-      ['MODIFY Pase 3 (override)', counts.pase3Override],
+      ['MODIFY Pase 3 (default — top match)', counts.pase3DefaultModify],
+      ['MODIFY Pase 3 (override a otro candidato)', counts.pase3OverrideModify],
+      ['NEW Pase 3 (override Crear nuevo)', counts.pase3OverrideNew],
       ['Errores', counts.errors],
       ['Omitidas', counts.omitidas],
     ];
@@ -1375,9 +1444,12 @@ const BulkUpload = (() => {
     const pase3Rows = [pase3Headers];
     pnStatus.forEach((s, i) => {
       if (s.pase !== 3) return;
-      const decision = s.userOverride != null ? 'MODIFY' : 'NEW';
-      const chosen = s.userOverride || '';
-      const link = s.userOverride ? `https://app.gosteelhead.com/PartNumbers/${s.userOverride}` : '';
+      // 1.2.0: decisión final basada en status (no en userOverride), porque el
+      // default Pase 3 ahora es MODIFY al top match y userOverride==null ya
+      // implica MODIFY al candidato top.
+      const decision = s.status === 'existing' ? 'MODIFY' : 'NEW';
+      const chosen = decision === 'MODIFY' ? (s.existingId || '') : '';
+      const link = chosen ? `https://app.gosteelhead.com/PartNumbers/${chosen}` : '';
       pase3Rows.push([
         i + 1, s.pn, s.customerId,
         parts[i]?.quoteIBMS || '',
