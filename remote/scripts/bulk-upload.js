@@ -3484,20 +3484,27 @@ const BulkUpload = (() => {
         if (part.specs.length === 1 && isDash(part.specs[0].name)) continue;
         step6bCandidates.push(i);
       }
-      setPanelPhase(`Sync params spec en PNs existentes (${step6bCandidates.length})`);
-      setPanelProgress(0, step6bCandidates.length);
-      let syncedParamsCount = 0;
-      let step6bDone = 0;
-      for (const i of step6bCandidates) {
+      // Fix D 1.3.2: runPool concurrencia 5 para STEP 6b. Antes (1.3.1) el loop era
+      // secuencial; con 100+ candidatos × varios AddParamsToPartNumber por PN, esto
+      // dominaba el tiempo total (>50% del wall-clock para corridas Schneider).
+      const syncConcurrency = bulkCfg().concurrency.savePartNumber; // reusamos la misma config (5)
+      const syncCounters = { synced: 0 };
+      async function step6bWorker(i, _idx, myRunIdLocal) {
+        bailIfStale(myRunIdLocal);
         const part = parts[i];
         const entry = pnLookup.get(i);
-        if (!entry?.pn?.id) { step6bDone++; setPanelProgress(step6bDone, step6bCandidates.length); continue; }
+        if (!entry?.pn?.id) return;
         try {
-          // 1.2.5: reusa cache poblado en enrichWorker (archive sentinel). Cache-miss → fetch.
+          // Fix I 1.3.2: cache invalidado por enrichWorker → fetch fresco con los specs/params
+          // que SavePartNumber acaba de agregar. Sin esto, AddParams reintenta params ya creados.
           let pnNode = existingPnFullCache.get(entry.pn.id);
           if (!pnNode) {
-            const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
-            pnNode = pnData?.partNumberById; if (!pnNode) continue;
+            const pnData = await withRetry(
+              () => api().query('GetPartNumber', { partNumberId: entry.pn.id }),
+              `GetPartNumber sync "${part.pn}"`,
+              myRunIdLocal
+            );
+            pnNode = pnData?.partNumberById; if (!pnNode) return;
             existingPnFullCache.set(entry.pn.id, pnNode);
           }
           const linkedSpecs = pnNode.partNumberSpecsByPartNumberId?.nodes || [];
@@ -3506,11 +3513,9 @@ const BulkUpload = (() => {
             if (isDash(cs.name)) continue;
             const si = specByName.get(cs.name); if (!si) continue;
             const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
-            if (!linked) continue; // not linked → SavePartNumber ya lo creó (o lo creará en otro flujo)
-            // wanted params: misma lógica que en STEP 6 spec build
+            if (!linked) continue;
             const sd = sfCache.get(si.id); if (!sd) continue;
-            const wantedParamIds = new Set();
-            const wantedSelections = []; // {specFieldId, specFieldParamId, isGeneric}
+            const wantedSelections = [];
             for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
               const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
               const fn = sf.specFieldBySpecFieldId?.name || '';
@@ -3520,32 +3525,21 @@ const BulkUpload = (() => {
               else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : params[0].id; }
               else pid = params[0].id;
               if (!pid) continue;
-              wantedParamIds.add(pid);
               wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
             }
-            // existing active params on this PN
             const existingParamIds = new Set(
-              allParams
-                .filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-                .map(p => p.specFieldParamBySpecFieldParamId.id)
+              allParams.filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
+                       .map(p => p.specFieldParamBySpecFieldParamId.id)
             );
             const missing = wantedSelections.filter(s => !existingParamIds.has(s.specFieldParamId));
             if (!missing.length) continue;
-            // El scan de la UI muestra que AddParamsToPartNumber se llama con processNodeId:null
-            // (igual para isGeneric true o false). Pasar el processId real choca con exclusion constraint.
             const paramsToAdd = missing.map(m => ({
-              specFieldId: m.specFieldId,
-              specFieldParamId: m.specFieldParamId,
-              isGeneric: m.isGeneric,
-              geometryTypeSpecFieldId: null,
-              processNodeId: null,
-              processNodeOccurrence: null,
-              locationId: null
+              specFieldId: m.specFieldId, specFieldParamId: m.specFieldParamId, isGeneric: m.isGeneric,
+              geometryTypeSpecFieldId: null, processNodeId: null, processNodeOccurrence: null, locationId: null
             }));
-            // La UI los manda uno por uno; replicamos el patrón para que un param fallido no
-            // tire el batch, y para tolerar mejor exclusion-constraint en params ya presentes.
             let added = 0;
             for (const pa of paramsToAdd) {
+              if (isStale(myRunIdLocal)) return;
               try {
                 await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
                 added++;
@@ -3559,16 +3553,24 @@ const BulkUpload = (() => {
                 }
               }
             }
-            syncedParamsCount += added;
+            syncCounters.synced += added;
             if (added) log(`  PN "${part.pn}" spec "${cs.name}": ${added} params nuevos sincronizados`);
           }
         } catch (e) {
+          if (isBail(e)) throw e;
           warn(`Sync specs "${part.pn}": ${String(e).substring(0, 100)}`);
         }
-        step6bDone++;
-        setPanelProgress(step6bDone, step6bCandidates.length);
       }
-      if (syncedParamsCount) log(`  Spec params sync: ${syncedParamsCount} params agregados`);
+      setPanelPhase(`Sync params spec en PNs existentes (pool ${syncConcurrency})`);
+      setPanelProgress(0, step6bCandidates.length);
+      await runPool(
+        step6bCandidates,
+        step6bWorker,
+        syncConcurrency,
+        (done, total) => { setPanelProgress(done, total); setPanelCounters(); },
+        myRunId
+      );
+      if (syncCounters.synced) log(`  Spec params sync: ${syncCounters.synced} params agregados`);
 
       // STEP 7: RackTypes — runs in BOTH modes
       // 1.2.11: iteramos con índice para resolver pnLookup por rowIdx. Si la fila CSV NO trae
