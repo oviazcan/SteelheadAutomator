@@ -888,3 +888,64 @@ test('1.2.12 Pase 1 vs Pase 3 — IBMS archivado gana sobre name+labels activo (
   assert.equal(r.targetPnId, 100);
   assert.equal(r.wasArchived, true);
 });
+
+// === 1.3.0 chunking helpers ===
+
+test('1.3.0 chunkParts — array vacío devuelve []', () => {
+  const H = loadHelpers();
+  const r = H.chunkParts([], 250);
+  assert.equal(r.length, 0);
+});
+
+test('1.3.0 chunkParts — array más chico que chunkSize devuelve un solo chunk', () => {
+  const H = loadHelpers();
+  const r = H.chunkParts([1, 2, 3], 250);
+  assert.equal(r.length, 1);
+  assert.deepEqual(r[0], [1, 2, 3]);
+});
+
+test('1.3.0 chunkParts — 251 elementos con chunkSize 250 devuelve [250, 1]', () => {
+  const H = loadHelpers();
+  const arr = Array.from({ length: 251 }, (_, i) => i + 1);
+  const r = H.chunkParts(arr, 250);
+  assert.equal(r.length, 2);
+  assert.equal(r[0].length, 250);
+  assert.equal(r[1].length, 1);
+  assert.equal(r[1][0], 251);
+});
+
+test('1.3.0 chunkParts — 500 elementos con chunkSize 250 devuelve 2 chunks de 250', () => {
+  const H = loadHelpers();
+  const arr = Array.from({ length: 500 }, (_, i) => i + 1);
+  const r = H.chunkParts(arr, 250);
+  assert.equal(r.length, 2);
+  assert.equal(r[0].length, 250);
+  assert.equal(r[1].length, 250);
+  assert.equal(r[0][0], 1);
+  assert.equal(r[1][0], 251);
+});
+
+test('1.3.0 chunkParts — chunkSize 0 o inválido defaultea a 1', () => {
+  const H = loadHelpers();
+  assert.equal(H.chunkParts([1, 2, 3], 0).length, 3);
+  assert.equal(H.chunkParts([1, 2, 3], -5).length, 3);
+  assert.equal(H.chunkParts([1, 2, 3], NaN).length, 3);
+});
+
+test('1.3.0 makeChunkQuoteName — un solo chunk no agrega sufijo', () => {
+  const H = loadHelpers();
+  assert.equal(H.makeChunkQuoteName('MyQuote', 0, 1), 'MyQuote');
+});
+
+test('1.3.0 makeChunkQuoteName — múltiples chunks padStart 2 dígitos', () => {
+  const H = loadHelpers();
+  assert.equal(H.makeChunkQuoteName('MyQuote', 0, 5), 'MyQuote 01');
+  assert.equal(H.makeChunkQuoteName('MyQuote', 4, 5), 'MyQuote 05');
+  assert.equal(H.makeChunkQuoteName('MyQuote', 9, 100), 'MyQuote 10');
+});
+
+test('1.3.0 makeChunkQuoteName — >99 chunks devuelve 3 dígitos sin truncar', () => {
+  const H = loadHelpers();
+  assert.equal(H.makeChunkQuoteName('MyQuote', 99, 100), 'MyQuote 100');
+  assert.equal(H.makeChunkQuoteName('MyQuote', 999, 1000), 'MyQuote 1000');
+});
