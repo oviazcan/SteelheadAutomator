@@ -188,7 +188,7 @@ test('classifyOnePN — Caso 5: dos PNs, uno por IBMS y otro por name; gana Pase
   assert.equal(r.targetPnId, 100);
 });
 
-test('classifyOnePN — Caso 6: name coincide, metalBase distinto → Pase 3 MODIFY default al top match', () => {
+test('classifyOnePN — Caso 6: name + etiquetas coinciden, metalBase distinto → Pase 3 MODIFY default al top match', () => {
   const H = loadHelpers();
   const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: 'X' };
   const pnsForCustomer = [
@@ -197,9 +197,49 @@ test('classifyOnePN — Caso 6: name coincide, metalBase distinto → Pase 3 MOD
   const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
   assert.equal(r.classification, 'MODIFY');
   assert.equal(r.pase, 3);
+  assert.equal(r.confidence, 'name+labels-match');
   assert.equal(r.targetPnId, 100);
   assert.equal(r.candidates.length, 1);
   assert.equal(r.candidates[0].id, 100);
+});
+
+test('classifyOnePN — Caso 6b: name coincide pero etiquetas distintas → Pase 3 NEW default + candidatos disponibles', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ', 'CRO'], quoteIBMS: 'X' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'AL', labels: ['NIQ'], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, 3);
+  assert.equal(r.confidence, 'name-only-labels-differ');
+  assert.equal(r.targetPnId, null);
+  assert.equal(r.candidates.length, 1);
+  assert.equal(r.candidates[0].id, 100);
+});
+
+test('classifyOnePN — Caso 6c: name coincide, CSV labels superset del candidato → Pase 3 NEW default', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ', 'CRO', 'EST'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'CU', labels: ['NIQ', 'CRO'], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
+  assert.equal(r.classification, 'NEW');
+  assert.equal(r.pase, 3);
+  assert.equal(r.candidates.length, 1);
+});
+
+test('classifyOnePN — Caso 6d: name coincide, etiquetas iguales ignorando nonFinish → MODIFY top match', () => {
+  const H = loadHelpers();
+  const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ', 'SMY'], quoteIBMS: '' };
+  const pnsForCustomer = [
+    { id: 100, name: 'A', metalBase: 'AL', labels: ['NIQ', 'SXC'], quoteIBMS: '' },
+  ];
+  const r = H.classifyOnePN(csvRow, pnsForCustomer, ['SMY', 'SXC']);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 3);
+  assert.equal(r.targetPnId, 100);
 });
 
 test('classifyOnePN — Caso 7: nada parecido → NEW sin candidatos', () => {
