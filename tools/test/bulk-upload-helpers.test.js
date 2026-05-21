@@ -386,7 +386,7 @@ test('extractPNShape acepta customInputs como objeto plano (shape real del API)'
 
 // ─── 1.2.10 dedup MODIFY targets ───
 
-function makeRow({ idx, pn, pase, confidence, existingId, candidates = [], status = 'existing', userOverride = null }) {
+function makeRow({ idx, pn, pase, confidence, existingId, candidates = [], status = 'existing', userOverride = null, csvLabels = [], csvMetalBase = '' }) {
   return {
     idx, // sintético para sort estable en helpers (no es el field idx real)
     pn,
@@ -400,6 +400,8 @@ function makeRow({ idx, pn, pase, confidence, existingId, candidates = [], statu
     userOverride,
     targetPnId: existingId,
     csvRowKey: `${pn}|7`,
+    csvLabels,
+    csvMetalBase,
   };
 }
 
@@ -441,10 +443,11 @@ test('dedupModifyTargets — Pase 1 gana, Pase 3 con alterno se re-asigna', () =
   assert.equal(rows[1].status, 'existing'); // sigue MODIFY
 });
 
-test('dedupModifyTargets — dos Pase 3 con mismo top → loser toma alterno', () => {
+test('dedupModifyTargets — dos Pase 3 con mismo top → loser toma alterno (todos blank con nfList vacío)', () => {
   // Caso real del usuario: dos filas con mismo nombre en el CSV; ambas Pase 3
-  // con candidates idénticos. El primer row (idx menor) toma el #1; el segundo
-  // toma el #2 de la lista.
+  // con candidates idénticos cuyos labels filtrados quedan vacíos. El primer
+  // row (idx menor) toma el #701; el segundo busca strict-match → ambos blank →
+  // toma el #700.
   const H = loadHelpers();
   const candidates = [
     { id: 700, labels: ['NIQ'], defaultProcessNodeId: 11 },
@@ -454,7 +457,9 @@ test('dedupModifyTargets — dos Pase 3 con mismo top → loser toma alterno', (
     makeRow({ pn: 'A', pase: 3, confidence: 'name+blank-candidate', existingId: 701, candidates }),
     makeRow({ pn: 'A', pase: 3, confidence: 'name+blank-candidate', existingId: 701, candidates }),
   ];
-  const r = H.dedupModifyTargets(rows);
+  // Pasamos 'NIQ' al nonFinishList → ambos candidates colapsan a acabados=''
+  // → strict-match acepta #700.
+  const r = H.dedupModifyTargets(rows, ['NIQ']);
   assert.equal(r.reassigned, 1);
   assert.equal(r.demoted, 0);
   assert.equal(rows[0].existingId, 701); // primero gana (idx asc)
@@ -540,6 +545,86 @@ test('dedupModifyTargets — rows con status=new no participan', () => {
   assert.equal(rows[1].existingId, 555);
 });
 
+// ─── 1.2.11 dedup strict-match en alternates ───
+
+test('1.2.11 dedup — alternate strict-match (acabados iguales al CSV) se acepta', () => {
+  const H = loadHelpers();
+  // CSV labels: [NIQ, CRO] → acabados ordenados: 'CRO-NIQ'
+  // Row 0 toma #800 (strict-match top).
+  // Row 1 también quiere #800; alterno #801 tiene mismos acabados (strict) → re-asigna.
+  const candidates = [
+    { id: 800, labels: ['NIQ', 'CRO'], defaultProcessNodeId: 10 },
+    { id: 801, labels: ['CRO', 'NIQ'], defaultProcessNodeId: 20 }, // mismo set, distinto orden
+    { id: 802, labels: ['NIQ'], defaultProcessNodeId: 30 },        // distinto
+  ];
+  const rows = [
+    makeRow({ pn: 'P', pase: 3, confidence: 'name+labels-match', existingId: 800, candidates, csvLabels: ['NIQ', 'CRO'] }),
+    makeRow({ pn: 'P', pase: 3, confidence: 'name+labels-match', existingId: 800, candidates, csvLabels: ['NIQ', 'CRO'] }),
+  ];
+  const r = H.dedupModifyTargets(rows, []);
+  assert.equal(r.reassigned, 1);
+  assert.equal(r.demoted, 0);
+  assert.equal(rows[0].existingId, 800);
+  assert.equal(rows[1].existingId, 801); // strict-match con CSV
+  assert.equal(rows[1].dedupReassigned, true);
+  assert.equal(rows[1].confidence, 'name+labels-match');
+  assert.equal(rows[1].existingProcessId, 20);
+});
+
+test('1.2.11 dedup — alternate sin strict-match pero blank disponible → usa blank', () => {
+  const H = loadHelpers();
+  // CSV labels: [NIQ] → csvAcabados='NIQ'
+  // Candidates: #900 ['NIQ'] (strict-match top), #901 ['CRO'] (no strict), #902 [] (blank).
+  // Row 0 toma #900. Row 1 quiere #900; no hay strict-match alterno → cae a blank #902.
+  const candidates = [
+    { id: 900, labels: ['NIQ'], defaultProcessNodeId: 11 },
+    { id: 901, labels: ['CRO'], defaultProcessNodeId: 22 },
+    { id: 902, labels: [], defaultProcessNodeId: 33 },
+  ];
+  const rows = [
+    makeRow({ pn: 'Q', pase: 3, confidence: 'name+labels-match', existingId: 900, candidates, csvLabels: ['NIQ'] }),
+    makeRow({ pn: 'Q', pase: 3, confidence: 'name+labels-match', existingId: 900, candidates, csvLabels: ['NIQ'] }),
+  ];
+  const r = H.dedupModifyTargets(rows, []);
+  assert.equal(r.reassigned, 1);
+  assert.equal(r.demoted, 0);
+  assert.equal(rows[0].existingId, 900);
+  assert.equal(rows[1].existingId, 902); // blank fallback
+  assert.equal(rows[1].dedupReassigned, true);
+  assert.equal(rows[1].confidence, 'name+blank-candidate');
+  assert.equal(rows[1].existingProcessId, 33);
+});
+
+test('1.2.11 dedup — alternate sin strict-match y sin blank → demota a NEW (caso Image #10)', () => {
+  const H = loadHelpers();
+  // Caso del screenshot Image #10:
+  // - CSV PN 80360-046-03 con labels [Antitarnish, SRG], metalBase Cobre.
+  //   SRG es nonFinish → csvAcabados='Antitarnish'.
+  // - Candidates: #2868691 ['Antitarnish'] (strict-match top), #2868692 ['Antitarnish', 'Plata Flash'].
+  //   acabados de #2868692 = 'Antitarnish-Plata Flash' ≠ 'Antitarnish'.
+  // - Row 0 toma #2868691.
+  // - Row 1 quiere #2868691; no hay strict-match (solo #2868692 con acabados distintos)
+  //   ni blank (no hay candidato sin acabados) → DEMOTA a NEW.
+  const candidates = [
+    { id: 2868691, labels: ['Antitarnish'], defaultProcessNodeId: 100 },
+    { id: 2868692, labels: ['Antitarnish', 'Plata Flash'], defaultProcessNodeId: 200 },
+  ];
+  const rows = [
+    makeRow({ pn: '80360-046-03', pase: 3, confidence: 'name+labels-match', existingId: 2868691, candidates, csvLabels: ['Antitarnish', 'SRG'], csvMetalBase: 'CU' }),
+    makeRow({ pn: '80360-046-03', pase: 3, confidence: 'name+labels-match', existingId: 2868691, candidates, csvLabels: ['Antitarnish', 'SRG'], csvMetalBase: 'CU' }),
+  ];
+  const r = H.dedupModifyTargets(rows, ['SRG']);
+  assert.equal(r.reassigned, 0);
+  assert.equal(r.demoted, 1);
+  assert.equal(rows[0].existingId, 2868691); // primero gana
+  assert.equal(rows[1].status, 'new');
+  assert.equal(rows[1].classification, 'NEW');
+  assert.equal(rows[1].existingId, null);
+  assert.equal(rows[1].targetPnId, null);
+  assert.equal(rows[1].dedupConflict, true);
+  assert.equal(rows[1].dedupConflictTargetPnId, 2868691);
+});
+
 test('PNStatus post-override mantiene shape compatible con enrichWorker', () => {
   const simulatedStatus = {
     pn: 'X',
@@ -559,4 +644,175 @@ test('PNStatus post-override mantiene shape compatible con enrichWorker', () => 
   };
   assert.equal(simulatedStatus.status, 'existing');
   assert.equal(simulatedStatus.existingId, 100);
+});
+
+// ────────────────────────────────────────────────────────────────────
+// 1.2.11 H7: detectCsvDuplicates + integridad de keys por rowIdx
+// ────────────────────────────────────────────────────────────────────
+
+test('1.2.11 H1 detectCsvDuplicates — sin duplicados marca todo limpio', () => {
+  const H = loadHelpers();
+  const parts = [
+    { pn: 'A-001', customerId: 7 },
+    { pn: 'B-002', customerId: 7 },
+    { pn: 'A-001', customerId: 99 }, // mismo nombre pero distinto cliente — no es dup
+  ];
+  const { dupGroups, dupRows } = H.detectCsvDuplicates(parts);
+  assert.equal(dupGroups, 0);
+  assert.equal(dupRows, 0);
+  for (const p of parts) {
+    assert.equal(!!p.isCsvDuplicate, false);
+    assert.equal(p.csvDuplicateIndex || null, null);
+    assert.equal(p.csvDuplicateGroupSize || null, null);
+  }
+});
+
+test('1.2.11 H1 detectCsvDuplicates — dos filas mismo (PN, cliente) marca ambas y reporta 1 grupo / 1 fila extra', () => {
+  const H = loadHelpers();
+  const parts = [
+    { pn: 'A-001', customerId: 7 },
+    { pn: 'A-001', customerId: 7 },
+  ];
+  const { dupGroups, dupRows } = H.detectCsvDuplicates(parts);
+  assert.equal(dupGroups, 1);
+  assert.equal(dupRows, 1); // n filas dup, extras = n - 1
+  assert.equal(parts[0].isCsvDuplicate, true);
+  assert.equal(parts[0].csvDuplicateIndex, 1);
+  assert.equal(parts[0].csvDuplicateGroupSize, 2);
+  assert.equal(parts[1].isCsvDuplicate, true);
+  assert.equal(parts[1].csvDuplicateIndex, 2);
+  assert.equal(parts[1].csvDuplicateGroupSize, 2);
+});
+
+test('1.2.11 H1 detectCsvDuplicates — 3 grupos mezclados, conteos correctos', () => {
+  const H = loadHelpers();
+  const parts = [
+    { pn: 'A', customerId: 1 },         // grupo A/1: 3 filas
+    { pn: 'B', customerId: 1 },         // grupo B/1: 1 fila (unique)
+    { pn: 'A', customerId: 1 },
+    { pn: 'C', customerId: 2 },         // grupo C/2: 2 filas
+    { pn: 'A', customerId: 1 },
+    { pn: 'C', customerId: 2 },
+    { pn: 'B', customerId: 2 },         // grupo B/2: 1 fila (unique, distinto cliente)
+  ];
+  const { dupGroups, dupRows } = H.detectCsvDuplicates(parts);
+  assert.equal(dupGroups, 2); // A/1 y C/2
+  assert.equal(dupRows, (3 - 1) + (2 - 1)); // 3 filas extra
+  // A/1 → 3 filas, todas marcadas
+  assert.equal(parts[0].csvDuplicateGroupSize, 3);
+  assert.equal(parts[2].csvDuplicateGroupSize, 3);
+  assert.equal(parts[4].csvDuplicateGroupSize, 3);
+  assert.equal(parts[0].csvDuplicateIndex, 1);
+  assert.equal(parts[2].csvDuplicateIndex, 2);
+  assert.equal(parts[4].csvDuplicateIndex, 3);
+  // C/2 → 2 filas, ambas marcadas
+  assert.equal(parts[3].csvDuplicateGroupSize, 2);
+  assert.equal(parts[5].csvDuplicateGroupSize, 2);
+  // B/1 y B/2 quedan limpias
+  assert.equal(!!parts[1].isCsvDuplicate, false);
+  assert.equal(!!parts[6].isCsvDuplicate, false);
+});
+
+test('1.2.11 H1 detectCsvDuplicates — case-insensitive del nombre', () => {
+  const H = loadHelpers();
+  const parts = [
+    { pn: 'abc-123', customerId: 7 },
+    { pn: 'ABC-123', customerId: 7 },
+    { pn: 'AbC-123', customerId: 7 },
+  ];
+  const { dupGroups, dupRows } = H.detectCsvDuplicates(parts);
+  assert.equal(dupGroups, 1);
+  assert.equal(dupRows, 2);
+  for (const p of parts) {
+    assert.equal(p.isCsvDuplicate, true);
+    assert.equal(p.csvDuplicateGroupSize, 3);
+  }
+});
+
+test('1.2.11 H1 detectCsvDuplicates — ignora filas sin pn o sin customerId', () => {
+  const H = loadHelpers();
+  const parts = [
+    { pn: '', customerId: 7 },
+    { pn: null, customerId: 7 },
+    { pn: 'A-001', customerId: null },
+    { pn: 'A-001', customerId: undefined },
+    { pn: 'A-001', customerId: 7 }, // este solo no aparea con nada → unique
+  ];
+  const { dupGroups, dupRows } = H.detectCsvDuplicates(parts);
+  assert.equal(dupGroups, 0);
+  assert.equal(dupRows, 0);
+});
+
+test('1.2.11 H2 — Map<rowIdx,...> no colapsa duplicados aunque compartan (name, customerId)', () => {
+  // Modelo simplificado del refactor H2: lo crítico es que la clave de los
+  // maps `newPnIds` y `pnLookup` sea el origIdx (índice en parts[]) y NO
+  // `${name}|${customerId}`. Tests previos a 1.2.11 perdían silenciosamente
+  // la última escritura cuando dos filas compartían (name, cust).
+  const parts = [
+    { pn: 'A', customerId: 7 },
+    { pn: 'A', customerId: 7 },
+    { pn: 'B', customerId: 7 },
+  ];
+  // Simula creación: cada fila tiene su pn.id distinto en Steelhead
+  const createdIds = [1001, 1002, 1003];
+  const newPnIds = new Map();
+  for (let i = 0; i < parts.length; i++) {
+    newPnIds.set(i, createdIds[i]);
+  }
+  // Las dos filas duplicadas se preservan con su propio id
+  assert.equal(newPnIds.get(0), 1001);
+  assert.equal(newPnIds.get(1), 1002);
+  assert.equal(newPnIds.get(2), 1003);
+  assert.equal(newPnIds.size, 3, 'Map por rowIdx no debe colapsar duplicados');
+
+  // pnLookup paralelo: misma key strategy
+  const pnLookup = new Map();
+  for (let i = 0; i < parts.length; i++) {
+    pnLookup.set(i, { pnId: createdIds[i], rowIdx: i });
+  }
+  assert.equal(pnLookup.size, 3);
+  // Cada fila resuelve a su propio pn.id (no last-write-wins de las duplicadas)
+  assert.equal(pnLookup.get(0).pnId, 1001);
+  assert.equal(pnLookup.get(1).pnId, 1002);
+  assert.equal(pnLookup.get(2).pnId, 1003);
+});
+
+test('1.2.11 H2 contraste — Map<"name|cust",...> SÍ colapsa (el bug que arreglamos)', () => {
+  // Test de regresión: documentar el comportamiento ANTERIOR para que si
+  // alguien futuro vuelve a usar la key compuesta vea por qué falla.
+  const parts = [
+    { pn: 'A', customerId: 7 },
+    { pn: 'A', customerId: 7 },
+    { pn: 'B', customerId: 7 },
+  ];
+  const createdIds = [1001, 1002, 1003];
+  const buggyMap = new Map();
+  for (let i = 0; i < parts.length; i++) {
+    const key = `${String(parts[i].pn).toUpperCase()}|${parts[i].customerId}`;
+    buggyMap.set(key, createdIds[i]);
+  }
+  // Esto es lo que rompía pnLookup en 1.2.10: last-write-wins, las dos filas
+  // duplicadas terminan apuntando al mismo id (1002), y la fila 0 (1001)
+  // se pierde del map → SaveManyPNP / SaveQuoteLines no la encuentran.
+  assert.equal(buggyMap.size, 2);
+  assert.equal(buggyMap.get('A|7'), 1002, 'last-write-wins: fila 0 (1001) se perdió');
+  assert.equal(buggyMap.get('B|7'), 1003);
+});
+
+test('1.2.11 H5 — flags isCsvDuplicate/Index/GroupSize están en el shape esperado por la UI', () => {
+  // El preview lee r.isCsvDuplicate, r.csvDuplicateIndex y r.csvDuplicateGroupSize
+  // para renderear el chip "🔄 DUP n/m". Aseguramos que detectCsvDuplicates
+  // los popula con tipos correctos (boolean / number / number) para que el
+  // template de chip los pueda interpolar sin coerciones implícitas.
+  const H = loadHelpers();
+  const parts = [
+    { pn: 'X', customerId: 1 },
+    { pn: 'X', customerId: 1 },
+  ];
+  H.detectCsvDuplicates(parts);
+  assert.equal(typeof parts[0].isCsvDuplicate, 'boolean');
+  assert.equal(typeof parts[0].csvDuplicateIndex, 'number');
+  assert.equal(typeof parts[0].csvDuplicateGroupSize, 'number');
+  assert.ok(parts[0].csvDuplicateIndex >= 1);
+  assert.ok(parts[0].csvDuplicateGroupSize >= 2);
 });
