@@ -1,6 +1,135 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.3. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.4. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.4: cuello STEP 8 SOLO_PN + progreso visible STEP 4.5/5/8 + cuota sa_load_history (Fix O, 2026-05-22)
+
+**Contexto.** La corrida de 1501 PNs en modo SOLO_PN terminó exitosamente con `success: true, errors: []` (1342 nuevos + 159 existentes, 1501 default prices, 1501 archivados), **pero**:
+
+1. El usuario reportó que se "atoraba en Paso 5: Archivado..." viendo en DevTools cientos de `GetPartNumber` (no `UpdatePartNumber`) consecutivos sin que la UI avanzara visualmente.
+2. Al cerrar la corrida apareció el warn `Failed to execute 'setItem' on 'Storage': Setting the value of 'sa_load_history' exceeded the quota`.
+
+### Causa raíz (3 bugs interconectados)
+
+**Bug A — STEP 8 SOLO_PN tiene `for` secuencial de `GetPartNumber` (sin runPool).** En modo SOLO_PN no se conoce el ID del precio recién creado (`SaveManyPartNumberPrices` no devuelve IDs), entonces el código re-lee los precios de cada PN antes de poder fijar el default (líneas ~4007–4032 en 1.4.3):
+
+```js
+for (let i = 0; i < parts.length; i++) {
+  // ...
+  if (!needsRead) continue;
+  try {
+    const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
+    // ...
+  } catch (_) {}
+}
+```
+
+Con ~1500 PNs y ~300–800 ms por llamada en serie, esto tarda **7–20 minutos**, y durante todo ese rato la UI muestra "Paso 5: Archivado..." sin progreso. El archivado real (líneas 4051+) ya usaba `runPool` con concurrencia 5 y `setPanelProgress`, pero el usuario nunca llegaba a verlo porque el cuello estaba antes.
+
+**Por qué el usuario veía solo `GetPartNumber` "como loco" en DevTools.** Porque eran exactamente esos 1500 GETs secuenciales antes del archivado real con `UpdatePartNumber`. El texto "Paso 5: Archivado..." que pone `showProgressUI` (línea 3968) se setea ANTES de ese loop, no después.
+
+**Bug B — STEP 4.5 desarchive y STEP 5 sentinel archive no actualizan el panel.** Sus `onProgressCb` de `runPool` solo movían `setProgressBar` 3% (de 13→16 y de 16→19 respectivamente). El panel principal (`#sa-bu-current/total`) y el `#dl9-live-progress` quedaban estáticos. Por contraste STEP 6 enrich (línea 3670) ya llamaba `setPanelProgress(done, total)` correctamente.
+
+**Bug C — `sa_load_history` excede cuota de localStorage.** Cada entry de `loadLog` incluía:
+- `parts: parts.map(p => ({...30+ campos}))` — ~1 MB por corrida grande.
+- `log: api().getLog()` — texto completo de la sesión, ~1–2 MB por corrida con 1500 PNs.
+
+Cap previo: 50 entradas. Teórico máximo: ~150 MB. Chrome localStorage limit: ~5 MB. Tras pocas corridas grandes el `setItem` reventaba.
+
+### Fix
+
+**A. STEP 8 SOLO_PN: meter el loop en `runPool`.** Pre-filtramos a un array `priceReadTargets`, lanzamos `runPool` con `concurrency.savePartNumber || 5` y `withRetry`, actualizamos `setPanelProgress(done, total)` por cada item. La sección anuncia su propia fase: `setPanelPhase('Releyendo precios para fijar default (N)')` antes de empezar.
+
+```js
+const priceReadTargets = [];
+for (let i = 0; i < parts.length; i++) {
+  // pre-filtrado igual que antes
+  if (!needsRead) continue;
+  priceReadTargets.push({ pnId, pnName, precioDefault });
+}
+if (priceReadTargets.length) {
+  setPanelPhase(`Releyendo precios para fijar default (${priceReadTargets.length})`);
+  setPanelProgress(0, priceReadTargets.length);
+  await runPool(priceReadTargets, async (target, _i, myRunIdLocal) => {
+    const pnData = await withRetry(() => api().query('GetPartNumber', { partNumberId: target.pnId }), ..., myRunIdLocal);
+    // mismo procesamiento de prices que antes
+  }, priceReadConcurrency, (done, total) => {
+    setPanelProgress(done, total);
+    setProgressBar(86 + Math.round((done / total) * 2));
+  }, myRunId);
+}
+```
+
+Beneficios:
+- 5× speed-up inmediato a concurrencia 5 → ~2 min en vez de 7–20 min.
+- UI viva: el panel cuenta 1/1500, 2/1500, ...
+- `withRetry` agrega resiliencia que antes no tenía (el `try/catch (_) {}` original tragaba errores silenciosamente sin reintentar).
+
+**B. STEP 4.5 + STEP 5 sentinel: agregar `setPanelPhase` + `setPanelProgress`.**
+
+```js
+// STEP 4.5
+setPanelPhase(`Desarchivando PNs pre-enrich (${pnsToUnarchivePre.length})`);
+setPanelProgress(0, pnsToUnarchivePre.length);
+// ... runPool con onProgressCb: setPanelProgress(done, total); setProgressBar(...)
+
+// STEP 5 sentinel
+setPanelPhase(`Archive specs sentinel pre-quote (${sentinelTargets.length})`);
+setPanelProgress(0, sentinelTargets.length);
+// ... runPool con onProgressCb: setPanelProgress(done, total); setProgressBar(...)
+```
+
+`setPanelPhase` ya actualiza automáticamente `#dl9-live-progress` vía `updateLiveProgressText` (línea 454), entonces el modal viejo (`dl9-progress-overlay`) también refleja la fase.
+
+**C. `sa_load_history`: quitar `log`, cap 50→20, auto-prune por QuotaExceededError.**
+
+```js
+// Antes
+log: api().getLog(),     // ← quitado: ya va en XLSX
+if (history.length > 50) history.length = 50;
+localStorage.setItem('sa_load_history', JSON.stringify(history));
+
+// Después
+// (sin field log)
+if (history.length > 20) history.length = 20;
+try {
+  localStorage.setItem('sa_load_history', JSON.stringify(history));
+} catch (quotaErr) {
+  let attempts = 0;
+  while (history.length > 1 && attempts < 6) {
+    attempts++;
+    history.length = Math.floor(history.length / 2) || 1;
+    try { localStorage.setItem(...); break; } catch (_) {}
+  }
+}
+```
+
+El `log` completo de la corrida ya se persiste en el XLSX de reporte (`bulk-upload-report-*.xlsx`), entonces no se pierde nada útil. El historial sigue sirviendo para "view-load-history" y "download-load-csv" (que solo usa `parts`).
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js`:
+  - `VERSION = '1.4.4'`
+  - STEP 4.5 (~2927–2954): `setPanelPhase` + `setPanelProgress(0, total)` antes del runPool; `onProgressCb` ahora llama `setPanelProgress(done, total)`.
+  - STEP 5 sentinel (~2976–3057): mismo patrón.
+  - STEP 8 SOLO_PN price re-read (~4007–4062): `for` secuencial reemplazado por `runPool` con `withRetry`, `setPanelPhase`, `setPanelProgress`, `setProgressBar`.
+  - `loadLog`: removido el field `log: api().getLog()` (~4174).
+  - Cap historial 50→20 + auto-prune por `QuotaExceededError` (~4210–4230).
+- `remote/config.json`: bump `version` a `1.4.4`.
+
+### Plan de validación pendiente
+
+- [ ] Próxima corrida SOLO_PN >500 PNs: confirmar que "Paso 5: Archivado..." ahora muestra fase "Releyendo precios..." con contador X/N + bar avanzando y termina en ~2 min en vez de 10+.
+- [ ] STEP 4.5 y STEP 5 sentinel: contador visible.
+- [ ] Después de varias corridas grandes consecutivas: NO debe aparecer el warn `'sa_load_history' exceeded the quota`. Si aparece, el auto-prune debe registrar el warn "cuota excedida, recortado a N entradas".
+- [ ] `view-load-history` y `download-load-csv` siguen funcionando con cap=20.
+
+### Pendientes derivados
+
+- Considerar mover `sa_load_history` a `chrome.storage.local` (cuota ~10MB hasta unlimited) en una 1.5.x si el cap=20 termina siendo limitante. Requiere refactor mayor del popup.
+- Documentar en `docs/architecture/dom-patterns.md` el patrón `setPanelPhase` + `setPanelProgress` para que futuras fases asíncronas no caigan en el mismo error.
+
+---
 
 ## 1.4.3: matcher con equivalencias semánticas + UX modal Pase 3 (Fix N, 2026-05-22)
 

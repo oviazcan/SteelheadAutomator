@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.3';
+  const VERSION = '1.4.4';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -2927,6 +2927,8 @@ const BulkUpload = (() => {
       if (pnsToUnarchivePre.length) {
         showProgressUI(`Paso 4.5/9: Desarchive pre-enrich (${pnsToUnarchivePre.length} PN(s))...`);
         setProgressBar(13);
+        setPanelPhase(`Desarchivando PNs pre-enrich (${pnsToUnarchivePre.length})`);
+        setPanelProgress(0, pnsToUnarchivePre.length);
         const unarchivePreConcurrency = bulkCfg().concurrency.savePartNumber || 5;
         let unarchivedPreOk = 0;
         await runPool(
@@ -2946,7 +2948,10 @@ const BulkUpload = (() => {
             }
           },
           unarchivePreConcurrency,
-          (done, total) => { setProgressBar(13 + Math.round((done / Math.max(total, 1)) * 3)); },
+          (done, total) => {
+            setPanelProgress(done, total);
+            setProgressBar(13 + Math.round((done / Math.max(total, 1)) * 3));
+          },
           myRunId
         );
         bailIfStale(myRunId);
@@ -2975,6 +2980,8 @@ const BulkUpload = (() => {
         if (sentinelTargets.length) {
           showProgressUI(`Paso 5/9: Archive de specs sentinel pre-cotización (${sentinelTargets.length} PN(s))...`);
           setProgressBar(16);
+          setPanelPhase(`Archive specs sentinel pre-quote (${sentinelTargets.length})`);
+          setPanelProgress(0, sentinelTargets.length);
           let sentinelOk = 0, sentinelSkip = 0;
           const sentinelConcurrency = bulkCfg().concurrency.savePartNumber || 5;
           await runPool(
@@ -3052,7 +3059,10 @@ const BulkUpload = (() => {
               }
             },
             sentinelConcurrency,
-            (done, total) => { setProgressBar(16 + Math.round((done / Math.max(total, 1)) * 3)); },
+            (done, total) => {
+              setPanelProgress(done, total);
+              setProgressBar(16 + Math.round((done / Math.max(total, 1)) * 3));
+            },
             myRunId
           );
           bailIfStale(myRunId);
@@ -4003,32 +4013,59 @@ const BulkUpload = (() => {
         }
       } else {
         // SOLO_PN: necesitamos releer los precios del PN porque el ID del nuevo precio
-        // no lo tenemos (SaveManyPartNumberPrices no devuelve los IDs en este flujo)
+        // no lo tenemos (SaveManyPartNumberPrices no devuelve los IDs en este flujo).
+        // Fix 1.4.4: pre-filtrar items que necesitan lectura y meterlos en runPool
+        // (antes era for secuencial → 1500 GetPartNumber en serie ~10-20 min, UI atascada
+        // mostrando "Archivado..." sin progreso).
+        const priceReadTargets = [];
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
           const entry = pnLookup.get(i);
           if (!entry?.pn?.id) continue;
-          // Solo releemos si hay algo que hacer con el default
           const needsRead = part.precioDefault || (!part.precioDefault && pnStatus[i].status === 'existing');
           if (!needsRead) continue;
-          try {
-            const pnData = await api().query('GetPartNumber', { partNumberId: entry.pn.id });
-            const prices = pnData?.partNumberById?.partNumberPricesByPartNumberId?.nodes || [];
-            if (!prices.length) continue;
-            if (part.precioDefault) {
-              // El precio recién creado en esta corrida es el de ID más alto
-              const sorted = [...prices].sort((a, b) => Number(b.id) - Number(a.id));
-              const newest = sorted[0];
-              if (newest) priceIdsForDefault.push(newest.id);
-              // Quita el default del viejo (si era distinto del nuevo)
-              const oldDefault = prices.find(p => p.isDefault && p.id !== newest.id);
-              if (oldDefault) priceIdsToUnsetDefault.push(oldDefault.id);
-            } else {
-              // FALSE explícito en existente = quitar el default actual
-              const defaultPrice = prices.find(p => p.isDefault);
-              if (defaultPrice) priceIdsToUnsetDefault.push(defaultPrice.id);
-            }
-          } catch (_) {}
+          priceReadTargets.push({ pnId: entry.pn.id, pnName: part.pn, precioDefault: !!part.precioDefault });
+        }
+        if (priceReadTargets.length) {
+          setPanelPhase(`Releyendo precios para fijar default (${priceReadTargets.length})`);
+          setPanelProgress(0, priceReadTargets.length);
+          setProgressBar(86);
+          const priceReadConcurrency = bulkCfg().concurrency.savePartNumber || 5;
+          await runPool(
+            priceReadTargets,
+            async (target, _idx, myRunIdLocal) => {
+              bailIfStale(myRunIdLocal);
+              try {
+                const pnData = await withRetry(
+                  () => api().query('GetPartNumber', { partNumberId: target.pnId }),
+                  `GetPartNumber default-price "${target.pnName}"`,
+                  myRunIdLocal
+                );
+                const prices = pnData?.partNumberById?.partNumberPricesByPartNumberId?.nodes || [];
+                if (!prices.length) return;
+                if (target.precioDefault) {
+                  const sorted = [...prices].sort((a, b) => Number(b.id) - Number(a.id));
+                  const newest = sorted[0];
+                  if (newest) priceIdsForDefault.push(newest.id);
+                  const oldDefault = prices.find(p => p.isDefault && p.id !== newest.id);
+                  if (oldDefault) priceIdsToUnsetDefault.push(oldDefault.id);
+                } else {
+                  const defaultPrice = prices.find(p => p.isDefault);
+                  if (defaultPrice) priceIdsToUnsetDefault.push(defaultPrice.id);
+                }
+              } catch (e) {
+                if (isBail(e)) throw e;
+                // silencioso — el default no se aplicará pero no rompemos el flujo
+              }
+            },
+            priceReadConcurrency,
+            (done, total) => {
+              setPanelProgress(done, total);
+              setProgressBar(86 + Math.round((done / Math.max(total, 1)) * 2));
+            },
+            myRunId
+          );
+          bailIfStale(myRunId);
         }
       }
       if (priceIdsForDefault.length) {
@@ -4134,7 +4171,8 @@ const BulkUpload = (() => {
           },
           stats: { ...stats },
           errors: [...errors],
-          log: api().getLog(),
+          // Fix 1.4.4: api().getLog() puede ser 1-2MB por corrida grande y reventaba
+          // la cuota de localStorage. El log completo ya va en el XLSX de reporte.
           partsCount: parts.length,
           // V10: snapshot completo (todas las cols A-BQ) para round-trip
           parts: parts.map(p => ({
@@ -4172,8 +4210,24 @@ const BulkUpload = (() => {
         };
         const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
         history.unshift(loadLog);
-        if (history.length > 50) history.length = 50; // keep last 50
-        localStorage.setItem('sa_load_history', JSON.stringify(history));
+        // Fix 1.4.4: cap reducido 50→20 + auto-prune ante QuotaExceededError.
+        // Una corrida de 1500 PNs serializa ~1MB en parts[]; con cap=50 podía intentar
+        // guardar 50MB y reventar el cuota de localStorage (~5MB en Chrome).
+        if (history.length > 20) history.length = 20;
+        try {
+          localStorage.setItem('sa_load_history', JSON.stringify(history));
+        } catch (quotaErr) {
+          let attempts = 0;
+          while (history.length > 1 && attempts < 6) {
+            attempts++;
+            history.length = Math.floor(history.length / 2) || 1;
+            try {
+              localStorage.setItem('sa_load_history', JSON.stringify(history));
+              warn(`sa_load_history: cuota excedida, recortado a ${history.length} entradas`);
+              break;
+            } catch (_) { /* sigue recortando */ }
+          }
+        }
         log('  Log guardado en historial');
       } catch (e) { warn('Error guardando log: ' + e.message); }
 
