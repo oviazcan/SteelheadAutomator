@@ -1,6 +1,48 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.0. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.1. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.1: desarchive pre-enrich (Fix L2, 2026-05-21)
+
+**Problema.** El Fix L del 1.4.0 (archive de specs sentinel pre-quote) no resolvió el síntoma — las specs viejas siguieron apareciendo tachadas en la línea de cotización, incluso con quote completamente nueva (#139 archivada, corrida fresca con localStorage limpio y nombre nuevo). Repro reportada por el operador: PN id 3017160 en la quote nueva — al alternar el toggle "archived" del NÚMERO DE PARTE en la UI, las specs viejas desaparecían/reaparecían según el estado del PN.
+
+### Causa raíz
+Los 100 PNs del CSV "Schneider RG arch" ya estaban archivados en Steelhead. La clasificación los marcaba `status='existing'`, `wasArchived=true`. Como el CSV también pedía archivar al final (`part.archivado=true`), STEP 8 nunca empujaba a `pnsToUnarchive` (el `else if` de la línea 3858 jamás se ejecutaba), así que el PN pasaba **archivado de principio a fin**. Resultado: STEP 5 archive sentinel + STEP 6 enrich + `SaveManyPNP_Quote(autoGenerateQuoteLines:true)` corrían todos sobre un PN archivado, y el snapshot que la quote line capturaba al auto-generarse heredaba el estado archivado → todas las specs salían como "archivadas" aunque las del CSV fueran nuevas o las viejas hubieran sido archivadas correctamente por STEP 5.
+
+### Solución
+Insertar **STEP 4.5** que desarchiva todos los PNs `wasArchived` ANTES del STEP 5. STEP 8 ya re-archiva al final si el CSV lo pide (`part.archivado=true`) — el flujo queda idempotent: PN llega archivado → desarchive → enrich completo con PN activo → snapshot fresco → re-archive si CSV lo pide.
+
+### Diseño
+- Aplica en **ambos modos** (`COTIZACIÓN+NP` y `SOLO_PN`). Aunque el bug visible es el snapshot de la quote line, una mutación de SavePartNumber sobre un PN archivado puede ser silenciosa o tener side effects (caso K1 confirmado en 1.3.3 con predictivos huérfanos). Defensa en profundidad para ambos modos.
+- Dedup por `existingId` con `unarchivePreSeen` para no pegar dos veces al mismo PN físico cuando dos filas del CSV apuntan al mismo PN.
+- Pool concurrente `runPool` (default 5, reusa `concurrency.savePartNumber`). `withRetry` con backoff [1s, 2s, 4s] para HTTP 429/503/network.
+- `bailIfStale` propagado para soportar el botón "Detener" del panel.
+- Costo extra: ~1 `UpdatePartNumber` por PN archivado. Para una corrida típica Schneider con 100 PNs archivados, ~3-5s adicionales. Marginal vs el beneficio.
+- Si la corrida muere a mitad de camino (post-desarchive, pre-STEP-8), los PNs quedan **desarchivados** hasta que el usuario reanude o re-archive manual. Trade-off aceptado vs el bug actual de specs tachadas.
+
+### Cambios
+- **`remote/config.json`:** bump `version` 1.4.0 → 1.4.1.
+- **`remote/scripts/bulk-upload.js:VERSION`:** `1.4.0` → `1.4.1`.
+- **`remote/scripts/bulk-upload.js:~2846`:** insertado bloque STEP 4.5 entre `existingPnFullCache` y `if (!isSoloPN)`. STEP 5 / 6 / 6a / 6b / 7 / 7b / 8 intactos.
+
+### Plan de validación pendiente
+1. CSV "Corrida de prueba 100 NP RG arch" (100 PNs archivados, archivar al final). Verificar:
+   - Modal de progreso muestra "Paso 4.5/9: Desarchive pre-enrich (100 PN(s))..." al inicio.
+   - Consola loggea `STEP 4.5 desarchive pre-enrich: N/N OK`.
+   - Quote nueva, abrir línea — specs **NO** aparecen tachadas/archivadas.
+   - STEP 8 al final loggea `Archivado: 100 nuevos archivar, ...` y el PN queda archivado en Steelhead post-corrida.
+2. CSV con PNs activos (no archivados): STEP 4.5 no debe loggear nada (pnsToUnarchivePre.length === 0).
+3. CSV mixto: PNs activos + archivados — solo desarchive los archivados.
+4. Test de robustez: matar la pestaña justo después del STEP 4.5 → verificar que los PNs quedan desarchivados temporal (esperado) y que el resume al reanudar los re-archiva en STEP 8.
+5. Modo SOLO_PN con PNs archivados: confirmar que también desarchive y que el applet enriquece correctamente.
+
+### Files tocados
+- `remote/scripts/bulk-upload.js:49` (VERSION) y `~2846` (STEP 4.5)
+- `remote/config.json:2` (version)
+- `docs/applets/bulk-upload.md` (esta entrada)
+- `CLAUDE.md` (tabla índice 1.4.0 → 1.4.1)
+
+---
 
 ## 1.4.0: archive de specs sentinel pre-quote (Fix L, 2026-05-21)
 

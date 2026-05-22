@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.0';
+  const VERSION = '1.4.1';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -2842,6 +2842,54 @@ const BulkUpload = (() => {
       // y partNumberSpecFieldParamsByPartNumberId). On-demand fetch — solo se popula cuando algún
       // PN existente lo necesita. Evita doble GetPartNumber al mismo PN.
       const existingPnFullCache = new Map();
+
+      // STEP 4.5 (1.4.1): Desarchivar PNs que llegan archivados ANTES de cualquier
+      // mutación de enrich. Problema observado (1.4.0): cuando un PN existing matcheaba
+      // a un PN archivado en Steelhead, STEP 5 / STEP 6 / SaveManyPNP_Quote corrían sobre
+      // el PN aún archivado. La quote line auto-generada heredaba el estado archivado
+      // → las specs salían tachadas en la cotización aunque STEP 5 archivara los sentinels.
+      // Repro: PN id 3017160 quote nueva tras archivar #139 — toggle archived de la línea
+      // mostraba/escondía las specs igual que la columna del PN. Fix: UpdatePartNumber
+      // (archivedAt:null) para todos los wasArchived antes del STEP 5. STEP 8 ya
+      // re-archiva al final si CSV lo pide (part.archivado=true) — el flujo queda idempotent.
+      const pnsToUnarchivePre = [];
+      const unarchivePreSeen = new Set();
+      for (let i = 0; i < parts.length; i++) {
+        const status = pnStatus[i];
+        if (!status.wasArchived || !status.existingId) continue;
+        if (unarchivePreSeen.has(status.existingId)) continue;
+        unarchivePreSeen.add(status.existingId);
+        pnsToUnarchivePre.push({ id: status.existingId, name: parts[i].pn });
+      }
+      if (pnsToUnarchivePre.length) {
+        showProgressUI(`Paso 4.5/9: Desarchive pre-enrich (${pnsToUnarchivePre.length} PN(s))...`);
+        setProgressBar(13);
+        const unarchivePreConcurrency = bulkCfg().concurrency.savePartNumber || 5;
+        let unarchivedPreOk = 0;
+        await runPool(
+          pnsToUnarchivePre,
+          async (op, _idx, myRunIdLocal) => {
+            bailIfStale(myRunIdLocal);
+            try {
+              await withRetry(
+                () => api().query('UpdatePartNumber', { id: op.id, archivedAt: null }),
+                `UpdatePartNumber unarchive-pre "${op.name}"`,
+                myRunIdLocal
+              );
+              unarchivedPreOk++;
+            } catch (e) {
+              if (isBail(e)) throw e;
+              errors.push(`UpdatePartNumber unarchive-pre "${op.name}": ${String(e).substring(0, 120)}`);
+            }
+          },
+          unarchivePreConcurrency,
+          (done, total) => { setProgressBar(13 + Math.round((done / Math.max(total, 1)) * 3)); },
+          myRunId
+        );
+        bailIfStale(myRunId);
+        stats.unarchivedPre = unarchivedPreOk;
+        log(`  STEP 4.5 desarchive pre-enrich: ${unarchivedPreOk}/${pnsToUnarchivePre.length} OK`);
+      }
 
       if (!isSoloPN) {
         // STEP 5 (1.4.0): Archive de specs sentinel ANTES del chunk loop.
