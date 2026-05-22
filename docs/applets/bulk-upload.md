@@ -1,6 +1,75 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.1. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.2. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.2: Math.floor en partsPerRack + .size en racksToDelete (Fix M, 2026-05-21)
+
+**Problema.** Corrida SOLO_PN con 102 PNs (Schneider/Brainin/CGR/Cuprum/Diseño y Metalmecánica): completó con 1 error y dos rarezas visuales:
+
+```
+[SA] ERRORES: 1
+SavePartNumberRackTypes: Error: HTTP 400 en SavePartNumberRackTypes:
+{"errors":[{"message":"Variable \"$input\" got invalid value 10775.86 at \"i…
+[SA] Racks: 102 agregados, undefined PNs con racks eliminados
+[SA] Summary panel → Racks: NaN
+```
+
+### Causa raíz
+
+**Fix A — partsPerRack acepta decimal.** Línea 641 del CSV reader: `racks.push({ name: g(row, 41), ppr: gn(row, 42) })`. `gn()` devuelve número o `null` sin forzar Int. Cuando una celda AQ/AS del Excel trae decimal (fórmula con resultado no entero, o columna mal pegada), línea 3807 lo pasa tal cual a `partsPerRack: rk.ppr`. GraphQL valida `partsPerRack` como Int y rechaza con HTTP 400.
+
+**Agravante crítico:** el catch de `SavePartNumberRackTypes` (línea 3852) solo hace fallback uno-por-uno si el error es `duplicateKey`. Si es validación de tipo, el `errors.push(...)` ejecuta y el batch entero de 50 racks **se pierde silenciosamente** — `stats.racksSet` cuenta intentos (`rackIn.length`), no éxitos, así que el resumen miente con "102 agregados". Para una sola celda mal en el Excel, hasta 49 racks vecinos no se insertan.
+
+**Fix B — `racksToDelete.length` sobre un Set.** Línea 3791 lo declara `new Set()` (auto-dedup por `pn.id`), pero líneas 3860 y `stats.racksSet = rackIn.length + racksToDelete.length` leen `.length` (propiedad solo de Array). En `Set` el accessor correcto es `.size`. `undefined + número = NaN` → de ahí `Racks: NaN` en el summary y `undefined PNs con racks eliminados` en el log.
+
+### Solución
+
+**Fix A:**
+```js
+// remote/scripts/bulk-upload.js:3800-3812
+for (const rk of part.racks) {
+  if (isDash(rk.name)) continue;
+  const rt = rackTypeByName.get(rk.name); if (!rt) { errors.push(...); continue; }
+  if (rk.ppr === null) continue;
+  // Fix M 1.4.2: GraphQL espera Int para partsPerRack.
+  const ppr = Math.floor(rk.ppr);
+  if (!Number.isFinite(ppr)) continue;
+  if (ppr !== rk.ppr) log(`  WARN: rack "${rk.name}" PN id ${entry.pn.id} ppr=${rk.ppr} no entero → redondeado a ${ppr}`);
+  ...
+  rackIn.push({ rackTypeId: rt.id, partNumberId: entry.pn.id, partsPerRack: ppr });
+}
+```
+
+- `Math.floor` redondea hacia abajo (decisión del operador — más permisivo que rechazar, y la fila culpable queda señalada en el log).
+- `Number.isFinite` cubre el caso degenerado donde la celda no es número y `gn()` aún así devolvió algo no-numérico (defensa en profundidad).
+- WARN con `entry.pn.id` permite identificar qué PN trae el decimal sin volver a correr — el operador busca el log y corrige el Excel.
+
+**Fix B:**
+```js
+// línea 3860
+stats.racksSet = rackIn.length + racksToDelete.size;
+log(`  Racks: ${rackIn.length} agregados, ${racksToDelete.size} PNs con racks eliminados`);
+```
+
+### Cambios
+- **`remote/config.json`:** bump `version` 1.4.1 → 1.4.2.
+- **`remote/scripts/bulk-upload.js:VERSION`:** `1.4.1` → `1.4.2`.
+- **`remote/scripts/bulk-upload.js:3800-3812`:** redondeo + warn por rack no-entero.
+- **`remote/scripts/bulk-upload.js:3860`:** `.length` → `.size` (dos ocurrencias).
+
+### Plan de validación
+- [ ] Repetir corrida SOLO_PN del CSV "Schneider RG arch" + Brainin/CGR/Cuprum/Diseño (102 PNs). Confirmar:
+  - Si la celda AQ/AS del PN problemático trae decimal, el log emite WARN identificando PN id + valor original + redondeado.
+  - El batch de racks ya no se aborta — los 102 entran (o el subset correcto si hay racks con guión).
+  - Summary panel: `Racks: <N>` (entero, no NaN), log final dice `Racks: X agregados, Y PNs con racks eliminados` (sin `undefined`).
+- [ ] Verificar en Steelhead UI que los PNs del batch que fallaba en 1.4.1 ahora sí tengan su rack asignado con partsPerRack correcto.
+
+### Pendientes derivados
+- **Identificar la fila culpable del CSV.** El 10775.86 sigue siendo dato sucio en el Excel; el applet ahora lo redondea y no falla, pero el operador debe revisar la celda y decidir si era error de fórmula o realmente 10775 piezas (poco probable físicamente).
+- **Fortalecer el catch del batch (futuro).** Si el endpoint cambia y rechaza por otro tipo de validación (no `Int`), el batch sigue cayendo entero — solo `duplicateKey` tiene fallback uno-por-uno. Considerar retry uno-por-uno también ante HTTP 400 genérico.
+- **`stats.racksSet` cuenta intentos, no éxitos.** Si en el futuro vuelve a fallar un batch entero por otra razón, el summary mentirá igual. Pendiente: distinguir `racksOk` vs `racksAttempted`.
+
+---
 
 ## 1.4.1: desarchive pre-enrich (Fix L2, 2026-05-21) — NO resolvió el síntoma visual; se mantiene como defensa en profundidad
 
