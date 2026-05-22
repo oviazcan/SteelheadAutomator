@@ -83,6 +83,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `process-canon` | varios | [`docs/processes-architecture.md`](docs/processes-architecture.md) (glosario §9) |
 | `hash-scanner` | 0.6.23 | [`docs/applets/hash-scanner.md`](docs/applets/hash-scanner.md) |
 | Power Tools `ordendeventa.ts` | n/a (low-code hook) | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
+| Power Tools `facturacion-pdf.ts` | n/a (low-code hook `getPdfCustomization`) | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).
