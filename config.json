@@ -1,5 +1,5 @@
 {
-  "version": "1.3.2",
+  "version": "1.3.3",
   "lastUpdated": "2026-05-21",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -48,6 +48,7 @@
         "DeleteFolderById": "282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15",
         "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0",
         "UpdateInventoryItemPredictedUsage": "53b14385e1ce1637d9f3d11eade01ce96db8762a43c55b86021a041bda5841cb",
+        "ArchivePredictedInventoryUsage": "985513e9b42027571b365453d96098d52e376031c881fbdda5fbf5a1c391dc3e",
         "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3",
         "UpdateReceivedOrder": "84f5c4550e9bad52df7e297049b9c42b3e28cb3cd21215bb4fe57f236ce42d08",
         "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942",
@@ -797,6 +798,7 @@
     "AllSpecs": { "type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva" },
     "AllCustomers": { "type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva" },
     "UpdateInventoryItemPredictedUsage": { "type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva" },
+    "ArchivePredictedInventoryUsage": { "type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. Necesario porque UpdateInventoryItemPredictedUsage(microQuantityPerPart=0) solo deja inerte el predictivo pero sigue listado en la UI; archivarlo lo retira por completo de Predicted Inventory Usage", "usedBy": "carga-masiva" },
     "UpdatePartNumberPerPerRackType": { "type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva" },
     "GetSpecFieldSpec": { "type": "query", "description": "Obtener detalle de un specFieldSpec con PNs y params. REQUIERE todas las variables de los 3 tabs aunque solo se usen PNs: partNumber* (lo que usamos), treatment* (requerido, pasar vacío), partNumberWorkOrder* (requerido, pasar vacío). Variables PN: specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, partNumberSearchQuery:'', partNumberFirst/Offset/OrderBy. Variables treatment: treatmentUnassignedActive:false, treatmentSpecFieldParamActive:false, treatmentSearchQuery:'', treatmentFirst:10, treatmentOffset:0, treatmentOrderBy:['ID_DESC']. Variables WO: partNumberWorkOrderUnassignedActive:false, partNumberWorkOrderSpecFieldParamActive:false, partNumberWorkOrderSearchQuery:'', partNumberWorkOrderFirst:10, partNumberWorkOrderOffset:0, partNumberWorkOrderOrderBy:['ID_DESC']. Responde: searchPartNumbers.totalCount/.nodes[].{id,name}, specFieldSpecById.defaultValues.nodes[].{id,name,isDefault}, specFieldSpecById.isGeneric, specFieldSpecById.specFieldBySpecFieldId.id", "usedBy": "spec-migrator" },
     "CheckDuplicatePO": { "type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator" },
