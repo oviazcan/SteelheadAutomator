@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.6';
+  const VERSION = '1.4.7';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -65,7 +65,11 @@ const BulkUpload = (() => {
   // ═══════════════════════════════════════════
 
   const bulkCfg = () => {
-    const cfg = (api()?.getConfig?.() || window.__sa_config || {});
+    // 1.4.7: SteelheadAPI no expone getConfig (sólo getDomain), y __sa_config
+    // tampoco existe — el background setea window.REMOTE_CONFIG. Antes esta
+    // línea siempre caía a {} y TODO el shape devolvía defaults, lo que dejó
+    // muerto el filtro nonFinish y las equivalencias semánticas desde 1.4.3.
+    const cfg = window.REMOTE_CONFIG || api()?.getConfig?.() || window.__sa_config || {};
     const d = cfg?.steelhead?.domain?.bulkUpload || {};
     return {
       concurrency: {
