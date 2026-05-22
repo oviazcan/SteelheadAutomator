@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.11';
+  const VERSION = '1.4.13';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -2552,23 +2552,32 @@ const BulkUpload = (() => {
       const customerCache = new Map(); // name → { id, name, addressId, contactId, invoiceTermsId }
       const uniqueClientNames = [...new Set(parts.map(p => p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim()))];
       log(`Clientes únicos en layout: ${uniqueClientNames.length}`);
-      for (const cname of uniqueClientNames) {
-        bailIfStale(myRunId);
-        const custData = await api().query('CustomerSearchByName', { nameLike: `%${cname}%`, orderBy: ['NAME_ASC'] });
-        const custNodes = custData?.searchCustomers?.nodes || custData?.pagedData?.nodes || custData?.allCustomers?.nodes || [];
-        const customer = custNodes.find(c => c.name?.toUpperCase().includes(cname.toUpperCase()));
-        if (!customer) throw new Error(`Cliente "${cname}" no encontrado.`);
-        const cid = customer.id;
-        const relData = await api().query('GetQuoteRelatedData', { customerId: cid });
-        const addr = relData?.customerById?.customerAddressesByCustomerId?.nodes || [];
-        const cont = relData?.customerById?.customerContactsByCustomerId?.nodes || [];
-        let invTerms = null;
-        try { const fin = await api().query('CustomerFinancialByCustomerId', { id: cid }, 'CustomerFinancialById'); invTerms = fin?.customerById?.invoiceTermsId || null; } catch (_) {}
-        if (!invTerms) {
-          try { const t = await api().query('SearchInvoiceTerms', { termsLike: '%%' }); const tn = t?.allInvoiceTerms?.nodes || t?.pagedData?.nodes || t?.searchInvoiceTerms?.nodes || []; if (tn.length) invTerms = tn[0].id; } catch (_) {}
+      // 1.4.12: loop secuencial con feedback en panel (antes silent).
+      setPanelPhase(`Resolviendo clientes (${uniqueClientNames.length})`);
+      setPanelProgress(0, uniqueClientNames.length);
+      {
+        let custDone = 0;
+        for (const cname of uniqueClientNames) {
+          bailIfStale(myRunId);
+          setPanelSubPhase(`Cliente: ${cname}`);
+          const custData = await api().query('CustomerSearchByName', { nameLike: `%${cname}%`, orderBy: ['NAME_ASC'] });
+          const custNodes = custData?.searchCustomers?.nodes || custData?.pagedData?.nodes || custData?.allCustomers?.nodes || [];
+          const customer = custNodes.find(c => c.name?.toUpperCase().includes(cname.toUpperCase()));
+          if (!customer) throw new Error(`Cliente "${cname}" no encontrado.`);
+          const cid = customer.id;
+          const relData = await api().query('GetQuoteRelatedData', { customerId: cid });
+          const addr = relData?.customerById?.customerAddressesByCustomerId?.nodes || [];
+          const cont = relData?.customerById?.customerContactsByCustomerId?.nodes || [];
+          let invTerms = null;
+          try { const fin = await api().query('CustomerFinancialByCustomerId', { id: cid }, 'CustomerFinancialById'); invTerms = fin?.customerById?.invoiceTermsId || null; } catch (_) {}
+          if (!invTerms) {
+            try { const t = await api().query('SearchInvoiceTerms', { termsLike: '%%' }); const tn = t?.allInvoiceTerms?.nodes || t?.pagedData?.nodes || t?.searchInvoiceTerms?.nodes || []; if (tn.length) invTerms = tn[0].id; } catch (_) {}
+          }
+          customerCache.set(cname, { id: cid, name: customer.name, addressId: addr[0]?.id || null, contactId: cont[0]?.id || null, invoiceTermsId: invTerms });
+          log(`  "${cname}" → ${customer.name} (id:${cid})`);
+          custDone++;
+          setPanelProgress(custDone, uniqueClientNames.length);
         }
-        customerCache.set(cname, { id: cid, name: customer.name, addressId: addr[0]?.id || null, contactId: cont[0]?.id || null, invoiceTermsId: invTerms });
-        log(`  "${cname}" → ${customer.name} (id:${cid})`);
       }
 
       // ── Assignee ──
@@ -2646,13 +2655,24 @@ const BulkUpload = (() => {
       const processCache = new Map(); // name → id
       const uniqueProcessNames = [...new Set(parts.map(p => p.procesoOverride).filter(n => n && !isDash(n)))];
       log(`Procesos únicos en layout: ${uniqueProcessNames.length}`);
-      for (const pname of uniqueProcessNames) {
-        bailIfStale(myRunId);
-        const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${pname}%`, first: 50 });
-        const pn2 = pd?.allProcessNodes?.nodes || pd?.pagedData?.nodes || [];
-        const pr = pn2.find(p => p.name?.toUpperCase() === pname.toUpperCase()) || pn2.find(p => p.name?.toUpperCase().includes(pname.toUpperCase()));
-        if (!pr) throw new Error(`Proceso "${pname}" no encontrado en Steelhead.`);
-        processCache.set(pname, pr.id);
+      // 1.4.12: feedback en panel (antes silent).
+      if (uniqueProcessNames.length) {
+        setPanelPhase(`Resolviendo procesos (${uniqueProcessNames.length})`);
+        setPanelProgress(0, uniqueProcessNames.length);
+      }
+      {
+        let procDone = 0;
+        for (const pname of uniqueProcessNames) {
+          bailIfStale(myRunId);
+          setPanelSubPhase(`Proceso: ${pname}`);
+          const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${pname}%`, first: 50 });
+          const pn2 = pd?.allProcessNodes?.nodes || pd?.pagedData?.nodes || [];
+          const pr = pn2.find(p => p.name?.toUpperCase() === pname.toUpperCase()) || pn2.find(p => p.name?.toUpperCase().includes(pname.toUpperCase()));
+          if (!pr) throw new Error(`Proceso "${pname}" no encontrado en Steelhead.`);
+          processCache.set(pname, pr.id);
+          procDone++;
+          setPanelProgress(procDone, uniqueProcessNames.length);
+        }
       }
       // Annotate each part with its resolved processId and customerId
       for (const p of parts) {
@@ -2680,13 +2700,25 @@ const BulkUpload = (() => {
       // Load dimension value maps (Línea/Departamento → ID)
       const dimValueMap = new Map(); // "valor" → id
       const dimIds = DOMAIN.dimensionIds || {};
-      for (const dimId of Object.values(dimIds)) {
-        bailIfStale(myRunId);
-        try {
-          const dd = await api().query('GetDimension', { id: dimId, includeArchived: 'NO' });
-          const nodes = dd?.acctDimensionById?.acctDimensionCustomValuesByDimensionId?.nodes || [];
-          for (const n of nodes) { if (n.value && !n.archivedAt) dimValueMap.set(n.value.trim(), n.id); }
-        } catch (_) {}
+      // 1.4.12: feedback en panel (típicamente 3-5 dims, corto pero consistente).
+      const dimEntries = Object.entries(dimIds);
+      if (dimEntries.length) {
+        setPanelPhase(`Cargando dimensiones contables (${dimEntries.length})`);
+        setPanelProgress(0, dimEntries.length);
+      }
+      {
+        let dimDone = 0;
+        for (const [dimKey, dimId] of dimEntries) {
+          bailIfStale(myRunId);
+          setPanelSubPhase(`Dimensión: ${dimKey}`);
+          try {
+            const dd = await api().query('GetDimension', { id: dimId, includeArchived: 'NO' });
+            const nodes = dd?.acctDimensionById?.acctDimensionCustomValuesByDimensionId?.nodes || [];
+            for (const n of nodes) { if (n.value && !n.archivedAt) dimValueMap.set(n.value.trim(), n.id); }
+          } catch (_) {}
+          dimDone++;
+          setPanelProgress(dimDone, dimEntries.length);
+        }
       }
       log(`  ${dimValueMap.size} dimensiones contables cargadas`);
 
@@ -2708,18 +2740,30 @@ const BulkUpload = (() => {
       // Spec fields cache — V10: AllSpecs ya trajo los fields embebidos, sin más queries
       const uniqueSpecs = new Set(); for (const p of parts) for (const s of p.specs) uniqueSpecs.add(s.name);
       const sfCache = new Map();
-      for (const sn of uniqueSpecs) {
-        bailIfStale(myRunId);
-        if (isDash(sn)) continue;
-        const si = specByName.get(sn); if (!si) { warn(`Spec "${sn}" no encontrada.`); continue; }
-        if (!sfCache.has(si.id)) {
-          // V10: AllSpecs embed no devuelve params para todos los field types (e.g. DROPDOWN
-          // viene vacío). SpecFieldsAndOptions sí trae el shape completo (mismo que usa
-          // spec-migrator y está validado). Costo: N queries por upload, pero N suele ser < 10.
-          try {
-            const d = await api().query('SpecFieldsAndOptions', { specId: si.id }, 'SpecFieldsAndOptions');
-            const sd = d?.specById; if (sd) { sfCache.set(si.id, sd); log(`  Spec "${sn}": ${sd.specFieldSpecsBySpecId?.nodes?.length || 0} campos`); }
-          } catch (e) { warn(`Spec "${sn}" fields: ${String(e).substring(0, 100)}`); }
+      // 1.4.12: feedback en panel (antes silent en runs con muchos specs únicos).
+      const specCount = uniqueSpecs.size;
+      if (specCount) {
+        setPanelPhase(`Cargando definiciones de specs (${specCount})`);
+        setPanelProgress(0, specCount);
+      }
+      {
+        let specDone = 0;
+        for (const sn of uniqueSpecs) {
+          bailIfStale(myRunId);
+          if (isDash(sn)) { specDone++; setPanelProgress(specDone, specCount); continue; }
+          const si = specByName.get(sn); if (!si) { warn(`Spec "${sn}" no encontrada.`); specDone++; setPanelProgress(specDone, specCount); continue; }
+          setPanelSubPhase(`Spec: ${sn}`);
+          if (!sfCache.has(si.id)) {
+            // V10: AllSpecs embed no devuelve params para todos los field types (e.g. DROPDOWN
+            // viene vacío). SpecFieldsAndOptions sí trae el shape completo (mismo que usa
+            // spec-migrator y está validado). Costo: N queries por upload, pero N suele ser < 10.
+            try {
+              const d = await api().query('SpecFieldsAndOptions', { specId: si.id }, 'SpecFieldsAndOptions');
+              const sd = d?.specById; if (sd) { sfCache.set(si.id, sd); log(`  Spec "${sn}": ${sd.specFieldSpecsBySpecId?.nodes?.length || 0} campos`); }
+            } catch (e) { warn(`Spec "${sn}" fields: ${String(e).substring(0, 100)}`); }
+          }
+          specDone++;
+          setPanelProgress(specDone, specCount);
         }
       }
 
@@ -3590,11 +3634,11 @@ const BulkUpload = (() => {
                 input: { quoteId: null, autoGenerateQuoteLines: false, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] }
               }, 'SaveManyPNP_PN');
               {
-                // 1.4.10: agrupado — pre-1.4.10 esto loggeaba cada batch (250+ líneas en
-                // runs grandes, principal culpable del OOM del modal viejo). Ahora la
-                // sub-fase muestra el batch actual en vivo y el log resume cada 10.
+                // 1.4.13: el totalBatches referenciaba `quotePnIds` que no existe en SOLO_PN,
+                // tiraba ReferenceError y se tragaba TODA la fase de precios standalone.
+                // En SOLO_PN el iterable es `pnpWithPrice` — usar su length.
                 const batchNum = Math.floor(i / 20) + 1;
-                const totalBatches = Math.ceil(quotePnIds.length / 20);
+                const totalBatches = Math.ceil(pnpWithPrice.length / 20);
                 setPanelSubPhase(`Precios batch ${batchNum}/${totalBatches} (${batch.length} PNs)`);
                 if (batchNum % 10 === 0 || batchNum === totalBatches) addPanelLog(`Precios: ${batchNum * 20} PNs procesados`);
               }
@@ -3611,25 +3655,61 @@ const BulkUpload = (() => {
       // STEP 6: SavePartNumber (enrich) — runs in BOTH modes
       setPanelPhase(`${isSoloPN ? 'Paso 3/5' : 'Paso 6/9'}: Enriqueciendo PNs...`); setProgressBar(55);
 
-      // V10 fix: Pre-fetch existing predicted inventory usages para PNs existentes con predictivos.
-      // SavePartNumber inserta sin id → unique constraint en (pn, inventoryItem) → retry strippea
-      // los predictivos y se pierde la actualización. Pasamos el id existente para forzar UPDATE.
+      // V10 fix + 1.4.12: Pre-fetch existing predicted inventory usages para PNs existentes con
+      // predictivos. SavePartNumber inserta sin id → unique constraint en (pn, inventoryItem) →
+      // retry strippea los predictivos y se pierde la actualización. Pasamos el id existente
+      // para forzar UPDATE.
+      //
+      // 1.4.12 (Fix W): antes era loop secuencial sin feedback (silent). En runs grandes (4000+
+      // PNs existing con predictivo) tomaba 15-35 min con el panel mostrando "Paso 3/5:
+      // Enriqueciendo PNs... 24364/24364 OK: 0" (residual del scan de archivados) — el usuario
+      // lo veía como "atorado". Ahora:
+      //   1) Skip resumeCompletedSet (en reanudación, ya se enriquecieron — su predictivo
+      //      no se va a re-aplicar, así que ahorra el fetch).
+      //   2) runPool concurrency = savePartNumber (8 por default) → 15-35 min → 2-5 min.
+      //   3) setPanelPhase + setPanelSubPhase + setPanelProgress + bailIfStale.
       const existingPredictedMap = new Map(); // pnId → Map(inventoryItemId → existingRecordId)
+      const predictedFetchTargets = [];
+      const seenPredFetch = new Set();
+      let predFetchSkippedByResume = 0;
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i]; const st = pnStatus[i];
         if (st.status !== 'existing' || !p.predictiveUsage.length) continue;
         const e = pnLookup.get(i); if (!e?.pn?.id) continue;
-        if (existingPredictedMap.has(e.pn.id)) continue; // ya cargado
-        try {
-          const pnData = await api().query('GetPartNumber', { partNumberId: e.pn.id });
-          const exPred = pnData?.partNumberById?.predictedInventoryUsagesByPartNumberId?.nodes || [];
-          const m = new Map();
-          for (const ep of exPred) {
-            const itemId = ep.inventoryItemByInventoryItemId?.id || ep.inventoryItemId;
-            if (itemId && ep.id) m.set(String(itemId), ep.id);
-          }
-          existingPredictedMap.set(e.pn.id, m);
-        } catch (_) {}
+        if (seenPredFetch.has(e.pn.id)) continue;
+        const resumeKey = `${i}|${p.pn}|${p.customerId}`;
+        if (resumeCompletedSet.has(resumeKey)) { predFetchSkippedByResume++; continue; }
+        seenPredFetch.add(e.pn.id);
+        predictedFetchTargets.push({ pnId: e.pn.id, name: e.pn.name || p.pn });
+      }
+      if (predFetchSkippedByResume) {
+        log(`  Pre-fetch predictivos: ${predFetchSkippedByResume} PN(s) saltados (ya enriquecidos en corrida previa).`);
+      }
+      if (predictedFetchTargets.length) {
+        setPanelPhase(`Pre-fetch predictivos existentes (${predictedFetchTargets.length})`);
+        setPanelProgress(0, predictedFetchTargets.length);
+        const predFetchConcurrency = bulkCfg().concurrency.savePartNumber || 8;
+        await runPool(
+          predictedFetchTargets,
+          async (target, _idx, myRunIdLocal) => {
+            bailIfStale(myRunIdLocal);
+            setPanelSubPhase(`Pre-fetch predictivos: ${target.name}`);
+            try {
+              const pnData = await api().query('GetPartNumber', { partNumberId: target.pnId });
+              const exPred = pnData?.partNumberById?.predictedInventoryUsagesByPartNumberId?.nodes || [];
+              const m = new Map();
+              for (const ep of exPred) {
+                const itemId = ep.inventoryItemByInventoryItemId?.id || ep.inventoryItemId;
+                if (itemId && ep.id) m.set(String(itemId), ep.id);
+              }
+              existingPredictedMap.set(target.pnId, m);
+            } catch (_) {}
+          },
+          predFetchConcurrency,
+          (done, total) => { setPanelProgress(done, total); },
+          myRunId
+        );
+        bailIfStale(myRunId);
       }
       if (existingPredictedMap.size) log(`  Pre-fetched predictivos existentes de ${existingPredictedMap.size} PNs`);
 
@@ -3906,6 +3986,13 @@ const BulkUpload = (() => {
         };
 
         bailIfStale(myRunId);
+        // 1.4.13 Fix Y: pnSucceeded gating — antes (≤1.4.12) este bloque marcaba el rkey
+        // en resumeState.completedPNs aunque SavePartNumber hubiera fallado por red
+        // (Failed to fetch) o por retry exhausted. Eso causó "false-completed PNs": entradas
+        // que el resume brincaba silenciosamente sin tener labels/specs reales en Steelhead.
+        // Síntoma: en runs con red intermitente, el listado quedaba con bloques de PNs
+        // vacíos intercalados con bloques OK, mientras el panel reportaba "Labels: 0".
+        let pnSucceeded = false;
         try {
           // withRetry para 429/503/network; unique_constraint cae a la lógica progresiva abajo
           await withRetry(
@@ -3915,6 +4002,7 @@ const BulkUpload = (() => {
           );
           okSP++;
           state.counters.ok++;
+          pnSucceeded = true;
           // Fix I 1.3.2: invalidar cache para que STEP 6b lea un GetPartNumber fresco con
           // los specs/params que SavePartNumber acaba de agregar. Sin esto, STEP 6b
           // reintenta AddParamsToPartNumber para params recién creados → 500 exclusion
@@ -3933,6 +4021,7 @@ const BulkUpload = (() => {
                 myRunId
               );
               retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
+              pnSucceeded = true;
               if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
             } catch (e2) {
               if (isBail(e2)) throw e2;
@@ -3943,6 +4032,7 @@ const BulkUpload = (() => {
                   myRunId
                 );
                 retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+                pnSucceeded = true;
                 if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
               } catch (e3) {
                 if (isBail(e3)) throw e3;
@@ -3956,14 +4046,16 @@ const BulkUpload = (() => {
           }
         }
 
-        // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados
-        // 1.2.11: incluye rowIdx en la clave para distinguir duplicados name+customerId.
-        const rkey = `${idx}|${part.pn}|${part.customerId}`;
-        if ((okSP + retrySP) % 50 === 0 && resumeState) {
+        // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados.
+        // 1.2.11: clave incluye rowIdx para distinguir duplicados name+customerId.
+        // 1.4.13: solo persiste si pnSucceeded — un PN con SavePartNumber fallado se
+        // reintentará en la próxima reanudación en lugar de quedar como false-completed.
+        if (pnSucceeded && resumeState) {
+          const rkey = `${idx}|${part.pn}|${part.customerId}`;
           resumeState.completedPNs.push(rkey);
-          persistResumeState().catch(() => {});
-        } else if (resumeState) {
-          resumeState.completedPNs.push(rkey);
+          if ((okSP + retrySP) % 50 === 0) {
+            persistResumeState().catch(() => {});
+          }
         }
       }
 
@@ -4364,7 +4456,7 @@ const BulkUpload = (() => {
       // archiveOverride por fila TRUE  → fuerza archivar aunque global esté off
       // archiveOverride por fila FALSE → fuerza no archivar aunque CSV diga true
       // Dedup por pnId para no archivar/desarchivar 2 veces el mismo PN físico.
-      setPanelPhase(`${isSoloPN ? 'Paso 5/5' : 'Paso 8/9'}: Archivado...`); setProgressBar(85);
+      setPanelPhase(`${isSoloPN ? 'Paso 5/5' : 'Paso 8/9'}: Archivado / Desarchivado...`); setProgressBar(85);
       const pnsToArchive = [], oldPnsToArchive = [], pnsToUnarchive = [];
       const archiveSeen = new Set(), unarchiveSeen = new Set(), oldArchiveSeen = new Set();
       const archiveGlobal = (state.archiveGlobal !== false); // default true si el toggle no fue tocado
@@ -4477,7 +4569,11 @@ const BulkUpload = (() => {
       ];
       if (archiveOps.length) {
         const archiveConcurrency = bulkCfg().concurrency.archive;
-        setPanelPhase('Archivando PNs (pool ' + archiveConcurrency + ')');
+        // 1.4.13: desglose claro en phase line para evitar la confusión de "¿por qué archiva en ronda de activos?".
+        // En rondas de activos el grueso suele ser desarchivar (PNs marcados archivados en Steelhead pero
+        // que el CSV los lista como activos → STEP 8 los desarchiva para que los updates apliquen a vivos).
+        const archivePhaseLbl = `Archivando ${pnsToArchive.length + oldPnsToArchive.length} / Desarchivando ${pnsToUnarchive.length} (pool ${archiveConcurrency})`;
+        setPanelPhase(archivePhaseLbl);
         setPanelProgress(0, archiveOps.length);
         log(`  Archivado: ${pnsToArchive.length} nuevos archivar, ${oldPnsToArchive.length} viejos archivar, ${pnsToUnarchive.length} desarchivar (concurrencia ${archiveConcurrency})`);
 
