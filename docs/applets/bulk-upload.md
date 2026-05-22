@@ -1,6 +1,43 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.3.3. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.0. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.0: archive de specs sentinel pre-quote (Fix L, 2026-05-21)
+
+**Problema.** Cotizaciones de PNs modificados mostraban specs **archivadas** en la línea (aparecían tachadas / con marker de "archivada"). El operador validaba manualmente y, para limpiar la línea de cotización, tenía que: (1) desarchivar el NÚMERO DE PARTE en otra pestaña, (2) abrir la cotización y dar click en "editar línea" (Steelhead lanza una llamada que refresca el snapshot y quita la spec archivada del display), (3) guardar la cotización, (4) re-archivar el NP. Reproducible en cada corrida con archive sentinel `spec=-`.
+
+### Causa raíz
+El enrichWorker (STEP 6) archivaba las specs vigentes **después** de `CreateQuote` + `SaveManyPNP_Quote` + `GetQuote` + `SaveQuoteLines`. El snapshot que arma la quote line al momento del SaveQuoteLines captura las specs vigentes del PN — específicamente las que aún no han pasado por `partNumberSpecsToArchive`. Cuando Steelhead refrescaba la UI, comparaba el snapshot vs el estado actual del PN y mostraba las specs como "archivadas". El workaround manual confirma el modelo: bastaba un trigger (edit-line + save) en un PN limpio para que el snapshot se reconstruya correctamente.
+
+### Solución
+Insertar **STEP 5 (pre-chunk-loop)** que archiva las specs sentinel **antes** del primer `SaveQuoteLines`. Cuando llega STEP 6, ya no hay specs vigentes que archivar → la rama `partNumberSpecsToArchiveIds` queda idempotent (no-op). El resto del enriquecimiento (params, dims, racks, customInputs) sigue corriendo después y no afecta el snapshot de la línea.
+
+### Diseño
+- Solo se ejecuta para PNs con `pnStatus.status === 'existing'` **y** algún `spec.name === '-'` en el CSV.
+- Pool concurrente con `runPool` (default 5, configurable vía `concurrency.savePartNumber`).
+- Reusa `existingPnFullCache` (poblada de cero si el cache estaba frío): `GetPartNumber` on-demand → SavePartNumber mínimo con SOLO `partNumberSpecsToArchive` poblado. Invalida la entrada del cache tras archivar para que STEP 6 vea el estado fresco.
+- Solo aplica en modo NORMAL (`!isSoloPN`); SOLO_PN no genera cotizaciones, no tiene el bug.
+- Costo extra esperado: ~1 GetPartNumber + ~1 SavePartNumber por PN con sentinel. Para una corrida típica (cientos de PNs con `-`) son ~30s adicionales. Marginal vs el beneficio de eliminar el workaround manual post-corrida.
+
+### Cambios
+- **`remote/config.json`:** bump `version` 1.3.3 → 1.4.0.
+- **`remote/scripts/bulk-upload.js:VERSION`:** `1.3.3` → `1.4.0`.
+- **`remote/scripts/bulk-upload.js:` (~línea 2846, principio del `if (!isSoloPN)`):** insertado bloque STEP 5. Se mantienen STEPs 6, 6a, 6b, 7, 7b, 8 intactos.
+
+### Plan de validación pendiente
+1. CSV con PN existing + `spec1=-` (sentinel "borrar todas las linked specs"). Verificar que la cotización se crea con la línea **sin** specs archivadas mostradas.
+2. CSV con PN existing + `spec1=Y, spec2=-` (apply Y + archive el resto). Verificar que la línea muestra solo Y y nada archivado.
+3. CSV sin sentinel — confirmar 0 overhead (`STEP 5` no debe loggear nada).
+4. Confirmar `log("STEP 5 archive sentinel pre-cotización: N OK, M skip")` en consola.
+5. Verificar que `stats.specsArchivedBySentinel` se incrementa correctamente (puede sumar dos veces si por algún motivo STEP 6 también archiva — defensa en profundidad pero no debería pasar).
+
+### Files tocados
+- `remote/scripts/bulk-upload.js:49` (VERSION) y `~2846` (STEP 5)
+- `remote/config.json:2` (version)
+- `docs/applets/bulk-upload.md` (esta entrada)
+- `CLAUDE.md` (tabla índice 1.3.3 → 1.4.0)
+
+---
 
 ## 1.3.3: archive real de predictivos huérfanos (2026-05-21)
 

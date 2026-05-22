@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.3.3';
+  const VERSION = '1.4.0';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -2844,6 +2844,110 @@ const BulkUpload = (() => {
       const existingPnFullCache = new Map();
 
       if (!isSoloPN) {
+        // STEP 5 (1.4.0): Archive de specs sentinel ANTES del chunk loop.
+        // Problema (1.3.x): enrichWorker archivaba specs vigentes DESPUÉS de
+        // SaveQuoteLines — el snapshot de la línea capturaba la spec aún vigente y
+        // al refrescar la cotización aparecía como "archivada". El workaround manual
+        // del usuario (desarchivar NP → editar línea → guardar → re-archivar NP)
+        // confirma que un GetQuote tras un PN limpio refresca el snapshot.
+        // Solución quirúrgica: archivar specs sentinel pre-quote. Cuando llega
+        // STEP 6, no encuentra specs vigentes que archivar y queda idempotent.
+        const sentinelTargets = [];
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i]; const status = pnStatus[i];
+          if (status.status !== 'existing') continue;
+          if (!status.existingId) continue;
+          if (!part.specs.length) continue;
+          if (!part.specs.some(s => isDash(s.name))) continue;
+          sentinelTargets.push({ part, pnId: status.existingId, idx: i });
+        }
+        if (sentinelTargets.length) {
+          showProgressUI(`Paso 5/9: Archive de specs sentinel pre-cotización (${sentinelTargets.length} PN(s))...`);
+          setProgressBar(16);
+          let sentinelOk = 0, sentinelSkip = 0;
+          const sentinelConcurrency = bulkCfg().concurrency.savePartNumber || 5;
+          await runPool(
+            sentinelTargets,
+            async (target, _idx, myRunIdLocal) => {
+              bailIfStale(myRunIdLocal);
+              let pnNode = existingPnFullCache.get(target.pnId);
+              if (!pnNode) {
+                try {
+                  const pnData = await withRetry(
+                    () => api().query('GetPartNumber', { partNumberId: target.pnId }),
+                    `GetPartNumber pre-archive "${target.part.pn}"`,
+                    myRunIdLocal
+                  );
+                  pnNode = pnData?.partNumberById || null;
+                  if (pnNode) existingPnFullCache.set(target.pnId, pnNode);
+                } catch (e) {
+                  if (isBail(e)) throw e;
+                  errors.push(`GetPartNumber pre-archive "${target.part.pn}": ${String(e).substring(0, 120)}`);
+                  return;
+                }
+              }
+              if (!pnNode) { sentinelSkip++; return; }
+              const wantedSpecIds = new Set();
+              for (const cs of target.part.specs) {
+                if (isDash(cs.name)) continue;
+                const si = specByName.get(cs.name);
+                if (si) wantedSpecIds.add(si.id);
+              }
+              const archiveIds = [];
+              for (const ls of (pnNode.partNumberSpecsByPartNumberId?.nodes || [])) {
+                if (ls.archivedAt) continue;
+                const linkedSpecId = ls.specBySpecId?.id;
+                if (!linkedSpecId) continue;
+                if (!wantedSpecIds.has(linkedSpecId)) archiveIds.push(ls.id);
+              }
+              if (!archiveIds.length) { sentinelSkip++; return; }
+              const minInput = {
+                id: target.pnId,
+                name: pnNode.name,
+                customerId: pnNode.customerId || target.part.customerId,
+                defaultProcessNodeId: pnNode.defaultProcessNodeId || target.part.processId,
+                inputSchemaId: DOMAIN.inputSchemaId_PN,
+                customInputs: pnNode.customInputs || {},
+                geometryTypeId: pnNode.geometryTypeId || null,
+                userFileName: null,
+                inventoryItemInput: null,
+                glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+                isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
+                partNumberGroupId: pnNode.partNumberGroupId || null,
+                descriptionMarkdown: pnNode.descriptionMarkdown || '',
+                customerFacingNotes: pnNode.customerFacingNotes || '',
+                labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
+                inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
+                partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+                partNumberSpecsToArchive: archiveIds,
+                partNumberSpecsToUnarchive: [],
+                partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+                partNumberSpecClassificationsToUpdate: [],
+                partNumberSpecFieldParamUpdates: [], specFieldParamUpdates: []
+              };
+              try {
+                await withRetry(
+                  () => api().query('SavePartNumber', { input: [minInput] }),
+                  `SavePartNumber pre-archive "${pnNode.name}"`,
+                  myRunIdLocal
+                );
+                sentinelOk++;
+                stats.specsArchivedBySentinel = (stats.specsArchivedBySentinel || 0) + archiveIds.length;
+                // Invalidar cache: STEP 6 vuelve a fetchear y ve specs ya archivadas → no-op.
+                existingPnFullCache.delete(target.pnId);
+              } catch (e) {
+                if (isBail(e)) throw e;
+                errors.push(`SavePartNumber pre-archive "${pnNode.name}": ${String(e).substring(0, 120)}`);
+              }
+            },
+            sentinelConcurrency,
+            (done, total) => { setProgressBar(16 + Math.round((done / Math.max(total, 1)) * 3)); },
+            myRunId
+          );
+          bailIfStale(myRunId);
+          log(`  STEP 5 archive sentinel pre-cotización: ${sentinelOk} OK, ${sentinelSkip} skip (sin specs vigentes que archivar)`);
+        }
+
         // V10: Group parts by customer and create one quote per customer
         const partsByCustomer = new Map();
         for (let i = 0; i < parts.length; i++) {
