@@ -1,6 +1,34 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.3.2. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.3.3. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.3.3: archive real de predictivos huérfanos (2026-05-21)
+
+**Fix K1.** STEP 6a ahora **archiva** (soft-delete) los predictivos cuyo CSV trae `-` en lugar de zerificarlos. Antes (1.3.1-1.3.2) se mandaba `UpdateInventoryItemPredictedUsage(microQuantityPerPart=0)` — el predictivo seguía listado en *Predicted Inventory Usage* del PN, solo con `0 (LTS)`. Caso real reportado: `Sterlingshield S (Antitarnish) (Materia Prima)` se quedó con 2728.8 LTS Total Predicted Usage después de una corrida donde el CSV traía `-`. La UI manual de Steelhead tampoco podía borrarlo (probablemente porque se había creado sin `treatmentId` desde una corrida previa via `SavePartNumber.inventoryPredictedUsages`).
+
+### Causa raíz
+El comentario del código (1.3.1, línea 3476) decía *"no hay mutation de archive de predictive usage en el scan; 0 los deja inertes"*. Eso **dejó de ser cierto** — el scan `2026-05-21_185409.json` capturó `ArchivePredictedInventoryUsage` (hash `985513e9b42027571b365453d96098d52e376031c881fbdda5fbf5a1c391dc3e`, 507 invocaciones, 0 errores). Input singular: `{input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}`.
+
+### Cambios
+- **`remote/config.json`:** agregado hash + entrada `operations.ArchivePredictedInventoryUsage`. Bump `version` 1.3.2 → 1.3.3.
+- **`remote/scripts/bulk-upload.js:VERSION`:** `1.3.2` → `1.3.3`.
+- **`remote/scripts/bulk-upload.js:STEP 6a`:** se separan dos buckets — `predictedUpdates` (numérico, batch 20 vía `UpdateInventoryItemPredictedUsage`) y `predictedArchives` (dash granular, paralelo con pool 5 vía `ArchivePredictedInventoryUsage` singular). `archivedAt = new Date().toISOString()`. Errores van a `errors[]` para el reporte XLSX.
+
+### Sobre la creación (Fix K2 NO necesario)
+La **creación** sigue por `SavePartNumber.inventoryPredictedUsages` (insert-only, sin `treatmentId`). El scan también captura `SavePredictedInventoryUsagesWithCascade` que requiere `treatmentId`, pero validación operativa confirma que Steelhead acepta crear sin treatmentId **si el proceso del PN contiene al menos un treatment que use ese inventoryItem**. Ese predictivo después sí se puede archivar (vía la mutation que K1 incorpora). El problema histórico que dejó a `Sterlingshield S` huérfano fue de **input del operador**: meter el material en un PN cuyo proceso no contenía un treatment con ese inventoryItem → Steelhead lo guardó pero ni la UI manual permite borrarlo. No es algo que el applet pueda detectar sin replicar el árbol de procesos por PN, queda como lección operativa.
+
+### Plan de validación pendiente
+1. Subir CSV con `-` en BB-BJ para un PN que ya tenga ≥1 predictivo numérico, verificar que el predictivo desaparece de *Predicted Inventory Usage* (no que quede en 0).
+2. Verificar que predictivos numéricos siguen funcionando sin regresión.
+3. Confirmar `log("Predictivos archivados: N/N")` en consola.
+
+### Files tocados
+- `remote/scripts/bulk-upload.js:49,3463-3520` (VERSION + STEP 6a refactor)
+- `remote/config.json:50` (hash) + entrada `operations.ArchivePredictedInventoryUsage` + `version`
+- `docs/applets/bulk-upload.md` (esta entrada)
+- `CLAUDE.md` (tabla índice 1.3.2 → 1.3.3)
+
+---
 
 ## 1.3.2: perf + robustez resume (2026-05-21, deploy gh-pages PENDIENTE, validación en prod PENDIENTE)
 

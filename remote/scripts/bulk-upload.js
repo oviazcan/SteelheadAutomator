@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.3.2';
+  const VERSION = '1.3.3';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -3462,7 +3462,13 @@ const BulkUpload = (() => {
 
       // STEP 6a: Actualizar predictivos existentes vía UpdateInventoryItemPredictedUsage.
       // Steelhead almacena en microQuantityPerPart (kg/pza × 1e6 redondeado).
+      // 1.3.3: dash granular por material AHORA archiva real vía ArchivePredictedInventoryUsage
+      // (input singular {id, predictedInventoryUsagePatch:{archivedAt}}). Antes (1.3.1-1.3.2) se
+      // mandaba microQuantityPerPart=0 — los dejaba inertes pero seguían listados en Predicted
+      // Inventory Usage. Se separan dos buckets: numérico → UpdateInventoryItemPredictedUsage
+      // (batch 20), dash → ArchivePredictedInventoryUsage (singular, paralelo con pool).
       const predictedUpdates = [];
+      const predictedArchives = []; // ids a archivar (dash granular)
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
         if (status.status !== 'existing') continue;
@@ -3470,16 +3476,11 @@ const BulkUpload = (() => {
         const entry = pnLookup.get(i);
         const exMap = entry?.pn?.id ? existingPredictedMap.get(entry.pn.id) : null;
         if (!exMap || !exMap.size) continue;
-        // 1.3.1: dash granular por material. Cada pu con usagePerPart='-' archiva ese material
-        // específico (microQuantityPerPart=0); cada pu con número actualiza su material.
-        // Antes (1.2.12-1.3.0) solo se archivaba TODO el PN si la primera columna BB era "-".
-        // Workaround porque no hay mutation de archive de predictive usage en el scan; 0 los
-        // deja inertes (no afectan planeación) aunque sigan listados.
         for (const pu of part.predictiveUsage) {
           const exId = exMap.get(String(pu.inventoryItemId));
           if (!exId) continue; // es uno nuevo, ya fue al SavePartNumber (o no existe en el PN)
           if (isDash(String(pu.usagePerPart))) {
-            predictedUpdates.push({ id: exId, microQuantityPerPart: 0, inventoryUsageLowCodeId: null });
+            predictedArchives.push(exId);
             continue;
           }
           const micro = Math.round(parseFloat(pu.usagePerPart) * 1e6);
@@ -3498,6 +3499,27 @@ const BulkUpload = (() => {
           }
         }
         log(`  Predictivos actualizados: ${predictedUpdates.length}`);
+      }
+      if (predictedArchives.length) {
+        // ArchivePredictedInventoryUsage es input singular {input:{id, predictedInventoryUsagePatch:{archivedAt}}}.
+        // Pool concurrente para no serializar — 1 round-trip por predictivo a archivar.
+        const archivedAt = new Date().toISOString();
+        let archivedOk = 0;
+        await runPool(predictedArchives, async (exId) => {
+          bailIfStale(myRunId);
+          try {
+            await withRetry(
+              () => api().query('ArchivePredictedInventoryUsage', { input: { id: exId, predictedInventoryUsagePatch: { archivedAt } } }, 'ArchivePredictedInventoryUsage'),
+              `ArchivePredictedInventoryUsage(id=${exId})`,
+              myRunId
+            );
+            archivedOk++;
+          } catch (e) {
+            if (isBail(e)) throw e;
+            errors.push(`ArchivePredictedInventoryUsage(id=${exId}): ${String(e).substring(0, 120)}`);
+          }
+        }, bulkCfg().concurrency.savePartNumber || 5, null, myRunId);
+        log(`  Predictivos archivados: ${archivedOk}/${predictedArchives.length}`);
       }
 
       // STEP 6b: Sync params on existing PNs whose specs were already linked.
