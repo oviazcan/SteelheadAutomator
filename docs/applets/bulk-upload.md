@@ -1,6 +1,62 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.9. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.10. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.10: consolidación de modales + log circular + sub-fase visible en workers (Fix U, 2026-05-22)
+
+**Contexto.** Durante la corrida masiva de Schneider (~7392 PNs) y Clientes Generales (~4272 PNs), Edge tronó con `SBOX_FATAL_MEMORY_EXCEEDED` (error 5) — esta vez NO por buffers de red sino por el `textContent` del modal `dl9-progress-overlay` creciendo sin tope. Cada batch de `log()` apendaba al `dl9-progress-text` (4212 PNs × varias líneas por etapa + 200+ batch lines de Precios) hasta rebasar el sandbox del renderer.
+
+Adicional, el operador reportó dos issues de UX:
+1. **Dos modales encimados confunden** — `dl9-progress-overlay` (modal grande de pantalla completa con log y barra) + `#sa-bu-panel` (panel flotante arrastrable con barra, fase y contadores). Mismo info duplicada, modal grande tapando la app de Steelhead.
+2. **Etapas "mudas" cuando son largas** — `setPanelPhase('Paso 6/9: Enriqueciendo PNs')` se setea una vez, los workers paralelos procesan miles de PNs durante 15-30 min sin update visible de qué PN está in-flight. El operador ve la barra moviéndose pero no sabe si está en labels, specs, racks, archive, etc.
+
+### Fix
+
+1. **Eliminado `dl9-progress-overlay`** — el modal grande de progreso ya no se usa. Toda la UI de progreso vive en `#sa-bu-panel`. Removidas las funciones `showProgressUI`, `updateLiveProgressText` y los defensivos `removeOverlay(dl9-progress-overlay)` repartidos por el flujo (3 sitios).
+2. **Log circular en `#sa-bu-panel`** — nuevo `addPanelLog(msg)` con ring buffer `PANEL_LOG_MAX = 200` líneas. Cada línea con timestamp `[HH:MM:SS]`. Cuando se llena, recorta a las últimas 200. Sin crecimiento ilimitado del DOM.
+3. **Sub-fase en panel** — nuevo `<div class="sa-subphase" id="sa-bu-subphase">` debajo de la fase principal. Función `setPanelSubPhase(text)` se invoca dentro de cada worker (enrichWorker, step6bWorker, unarchive-pre, sentinel archive, predicted archive, default-price, archiveWorker) para mostrar el PN/operación in-flight. Cuando cambia la fase principal, la sub-fase se limpia automáticamente.
+4. **Migración de 21 call-sites** — todos los `showProgressUI(...)` ahora son `setPanelPhase(...)`. Los `log(...)` que reportaban resúmenes (ej. `-> N PNs creados`) son `addPanelLog(...)`. Las etapas con batches ruidosos (Precios batch N/M) usan `setPanelSubPhase` para el batch actual + `addPanelLog` cada 10 batches o al final, no por batch.
+
+### Por qué ring buffer (no `cap` único)
+
+Capar el `textContent` a `slice(-N chars)` falla porque cada `log()` lee → recorta → re-asigna el string completo: O(N²) en escrituras y allocación cara. El ring buffer en `state.panelLog[]` mantiene un array de strings, se hace `push + slice(-200)`, y el `textContent` se rebuild una sola vez con `join('\n')`. Cap predecible en 200 líneas × ~120 chars = 24KB DOM máx.
+
+### Por qué sub-fase con `setPanelSubPhase` (no logs)
+
+El operador necesita "qué está procesando AHORA" — los logs son histórico. Sub-fase muestra el PN/operación in-flight del último worker que ejecutó. Con concurrencia 5, el sub-fase oscila rápido entre 5 PNs, pero el ojo lee uno cualquiera y entiende que está en X step. Logs siguen funcionando para el resumen ("Enrich: 4180 OK, 12 retry").
+
+### Por qué los logs masivos de batches no van a `addPanelLog`
+
+Antes (≤1.4.9), `log('  Precios batch 5: 20 PNs')` se ejecutaba ~200 veces. Esto inflaba el log circular sin aportar info útil (el operador no necesita ver cada batch). En 1.4.10:
+- `setPanelSubPhase('Precios batch 5/200 (20 PNs)')` — visible en pantalla, no se acumula en el log.
+- `addPanelLog('Precios: 100 PNs procesados')` — solo cada 10 batches o al final. El log queda con ~20 líneas para esta etapa, no 200.
+
+### Plan de validación pendiente
+
+- [ ] Reanudar el run de Clientes Generales (resumeKey `17fc5ef8...`, phase `enrich-done`, ~4270 PNs) y confirmar que NO aparece el modal grande `dl9-progress-overlay`.
+- [ ] Confirmar que el panel `#sa-bu-panel` muestra: barra, fase principal, sub-fase con PN actual, log con últimas 200 líneas máximo.
+- [ ] Memoria del tab estable (DevTools → Memory): después de STEP 6/STEP 6b/STEP 8, el `Performance.memory.usedJSHeapSize` no debe crecer monotónicamente; el log circular debe recortarse visible al pasar de 200 entradas.
+- [ ] Sub-fase visible durante STEP 6 (enrich), STEP 6b (sync), STEP 7 (racks), STEP 8 (archive) — el operador debe ver el PN procesándose cambiar cada ~0.5-1s.
+- [ ] Resume natural sigue funcionando — `state.panelLog` se reinicia al arrancar, los logs viejos no se persisten en `localStorage` (solo `resumeState`).
+
+### Pendientes derivados (no en 1.4.10)
+
+- Análisis de paralelización adicional entre steps (mover Metal Base / labels / Quote IBMS a una corrida previa para que classifyPNs match correcto tras crash) — diferido a 1.4.11 / 1.5.0. Ver discusión en chat 2026-05-22.
+- Posible split del enrich en dos fases (fase A: identificadores baratos = name+customer+labels+metalBase+QuoteIBMS; fase B: specs/params/racks/precios pesados). Justificación: cuando truena en fase B, el resume con fase A completa hace que `classifyPNs` haga match exacto vía labels/QuoteIBMS → cero duplicados al reanudar.
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js`:
+  - `VERSION = '1.4.10'`.
+  - Removidas `showProgressUI`, `updateLiveProgressText`, `removeOverlay(dl9-progress-overlay)` (3 sitios).
+  - `setProgressBar(p)` simplificada (solo `#sa-bu-bar`, no toca `dl9-bar`).
+  - Nuevas: `setPanelPhase`, `setPanelSubPhase`, `addPanelLog` (ring buffer 200), `setPanelCounters`.
+  - Panel HTML con nuevo `<div class="sa-subphase">`.
+  - 21 call-sites migrados de `showProgressUI`/`log` a `setPanelPhase`/`setPanelSubPhase`/`addPanelLog`.
+  - `setPanelSubPhase` invocado dentro de 6 workers: enrichWorker (STEP 6), step6bWorker (STEP 6b), unarchive-pre (STEP 4.5), sentinel archive (STEP 5), predicted archive, default-price reread, archiveWorker (STEP 8).
+- `remote/config.json`: bump `version` a `1.4.10`.
+- `docs/applets/bulk-upload.md`: esta sección.
+- `CLAUDE.md`: índice de applets actualizado.
 
 ## 1.4.9: fix de duplicados de params en STEP 6b + cleanup defensivo + checkpoints intermedios + z-index del Detener (Fix T, 2026-05-22)
 
