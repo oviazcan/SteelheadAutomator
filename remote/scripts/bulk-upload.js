@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.8';
+  const VERSION = '1.4.9';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -266,6 +266,15 @@ const BulkUpload = (() => {
     if (!state || state.cancelled) return;
     state.cancelled = true;
     state.phase = 'cancelled';
+    // 1.4.9: persistir cancelled en localStorage. Antes (≤1.4.8) solo se cambiaba
+    // state.phase (memoria) — el resumeState quedaba con phase del último checkpoint
+    // (o 'init' si nunca se completó STEP 6). Esto distorsionaba el modal de resume
+    // que mostraba "Fase actual: init" para corridas que ya habían avanzado hasta
+    // STEP 6b o más. fire-and-forget para no bloquear el repintado del panel.
+    if (resumeState) {
+      resumeState.phase = 'cancelled';
+      persistResumeState().catch(() => {});
+    }
     // 1.2.2: pintar el panel como Cancelado inmediatamente sin esperar al
     // próximo bailIfStale. Antes el panel quedaba "esperando..." durante
     // segundos hasta que algún loop pegaba a un bailIfStale; el usuario lo
@@ -378,7 +387,7 @@ const BulkUpload = (() => {
     if (document.getElementById('sa-bu-panel-styles')) return;
     const s = document.createElement('style'); s.id = 'sa-bu-panel-styles';
     s.textContent = `
-      #sa-bu-panel{position:fixed;top:20px;right:20px;width:480px;max-height:80vh;background:#1e293b;color:#e2e8f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;z-index:99998;display:flex;flex-direction:column;overflow:hidden}
+      #sa-bu-panel{position:fixed;top:20px;right:20px;width:480px;max-height:80vh;background:#1e293b;color:#e2e8f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;z-index:100000;display:flex;flex-direction:column;overflow:hidden}
       #sa-bu-panel .sa-hdr{padding:14px 18px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
       #sa-bu-panel .sa-hdr h3{margin:0;font-size:14px;color:#38bdf8;font-weight:600}
       #sa-bu-panel .sa-hdr .sa-ver{font-size:11px;color:#64748b}
@@ -3918,6 +3927,9 @@ const BulkUpload = (() => {
       // dominaba el tiempo total (>50% del wall-clock para corridas Schneider).
       const syncConcurrency = bulkCfg().concurrency.savePartNumber; // reusamos la misma config (5)
       const syncCounters = { synced: 0 };
+      // 1.4.9 STEP 0 cleanup defensivo: contador de params duplicados archivados
+      // por el cleanup integrado en STEP 6b (ver comentario abajo).
+      const cleanupCounters = { archived: 0, pnsTouched: 0 };
       async function step6bWorker(i, _idx, myRunIdLocal) {
         bailIfStale(myRunIdLocal);
         const part = parts[i];
@@ -3937,7 +3949,77 @@ const BulkUpload = (() => {
             existingPnFullCache.set(entry.pn.id, pnNode);
           }
           const linkedSpecs = pnNode.partNumberSpecsByPartNumberId?.nodes || [];
-          const allParams = pnNode.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+          let allParams = pnNode.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+
+          // 1.4.9 STEP 0 cleanup defensivo (idempotente): detectar params
+          // duplicados causados por bug 1.3.x-1.4.8 — STEP 6b insertaba con
+          // processNodeId: null mientras STEP 6 ponía processNodeId real. Si
+          // existe el par (mismo specFieldParamId con processNodeId null Y
+          // otro con processNodeId !== null), archivamos el null.
+          // Corre dentro del worker porque ya tenemos el GetPartNumber fresco
+          // — cero round-trips extra fuera del SavePartNumber del archive.
+          const paramsBySfpId = new Map();
+          for (const p of allParams) {
+            if (p.archivedAt || !p.specFieldParamBySpecFieldParamId) continue;
+            const sfpId = p.specFieldParamBySpecFieldParamId.id;
+            if (!paramsBySfpId.has(sfpId)) paramsBySfpId.set(sfpId, []);
+            paramsBySfpId.get(sfpId).push(p);
+          }
+          const duplicateNullIdsToArchive = [];
+          for (const [, rows] of paramsBySfpId) {
+            if (rows.length < 2) continue;
+            const hasNonNull = rows.some(r => r.processNodeId);
+            if (!hasNonNull) continue;
+            for (const r of rows) {
+              if (!r.processNodeId) duplicateNullIdsToArchive.push(r.id);
+            }
+          }
+          if (duplicateNullIdsToArchive.length) {
+            const cleanupInput = {
+              id: entry.pn.id,
+              name: pnNode.name,
+              customerId: pnNode.customerId || part.customerId,
+              defaultProcessNodeId: pnNode.defaultProcessNodeId || part.processId,
+              inputSchemaId: DOMAIN.inputSchemaId_PN,
+              customInputs: pnNode.customInputs || {},
+              geometryTypeId: pnNode.geometryTypeId || null,
+              userFileName: null,
+              inventoryItemInput: null,
+              glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+              isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
+              partNumberGroupId: pnNode.partNumberGroupId || null,
+              descriptionMarkdown: pnNode.descriptionMarkdown || '',
+              customerFacingNotes: pnNode.customerFacingNotes || '',
+              labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
+              inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
+              partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+              partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+              partNumberSpecFieldParamsToArchive: duplicateNullIdsToArchive,
+              partNumberSpecFieldParamsToUnarchive: [],
+              partNumberSpecClassificationsToUpdate: [],
+              partNumberSpecFieldParamUpdates: [], specFieldParamUpdates: []
+            };
+            try {
+              await withRetry(
+                () => api().query('SavePartNumber', { input: [cleanupInput] }),
+                `SavePartNumber cleanup-dups "${pnNode.name}"`,
+                myRunIdLocal
+              );
+              cleanupCounters.archived += duplicateNullIdsToArchive.length;
+              cleanupCounters.pnsTouched++;
+              log(`  PN "${part.pn}": cleanup ${duplicateNullIdsToArchive.length} params duplicados (processNodeId: null) archivados`);
+              // Reflejar en memoria: filtrar params recién archivados para que
+              // el dedup tuple del loop siguiente no los vea como existentes.
+              const archivedSet = new Set(duplicateNullIdsToArchive);
+              allParams = allParams.filter(p => !archivedSet.has(p.id));
+              // Invalidar cache para que cualquier consumidor posterior fetchee fresco.
+              existingPnFullCache.delete(entry.pn.id);
+            } catch (e) {
+              if (isBail(e)) throw e;
+              errors.push(`Cleanup dups "${part.pn}": ${String(e).substring(0, 120)}`);
+            }
+          }
+
           for (const cs of part.specs) {
             if (isDash(cs.name)) continue;
             const si = specByName.get(cs.name); if (!si) continue;
@@ -3956,15 +4038,26 @@ const BulkUpload = (() => {
               if (!pid) continue;
               wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
             }
-            const existingParamIds = new Set(
+            // Fix 1.4.9: dedup por tuple (specFieldParamId, processNodeId).
+            // Antes (≤1.4.8) era solo por specFieldParamId — y `paramsToAdd` insertaba
+            // con processNodeId: null. Resultado: si STEP 6 (enrichWorker) ya había
+            // dejado un row con processNodeId real para el mismo param, STEP 6b lo
+            // duplicaba con processNodeId: null. El dedup tuple + asignar el mismo
+            // processNodeId que STEP 6 usaría (part.processId || pn.defaultProcessNodeId)
+            // resuelve ambos lados del bug.
+            const targetProcessNodeId = part.processId || pnNode.defaultProcessNodeId || null;
+            const targetOccurrence = targetProcessNodeId ? 1 : null;
+            const existingParamKeys = new Set(
               allParams.filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-                       .map(p => p.specFieldParamBySpecFieldParamId.id)
+                       .map(p => `${p.specFieldParamBySpecFieldParamId.id}|${p.processNodeId || ''}`)
             );
-            const missing = wantedSelections.filter(s => !existingParamIds.has(s.specFieldParamId));
+            const missing = wantedSelections.filter(s =>
+              !existingParamKeys.has(`${s.specFieldParamId}|${targetProcessNodeId || ''}`)
+            );
             if (!missing.length) continue;
             const paramsToAdd = missing.map(m => ({
               specFieldId: m.specFieldId, specFieldParamId: m.specFieldParamId, isGeneric: m.isGeneric,
-              geometryTypeSpecFieldId: null, processNodeId: null, processNodeOccurrence: null, locationId: null
+              geometryTypeSpecFieldId: null, processNodeId: targetProcessNodeId, processNodeOccurrence: targetOccurrence, locationId: null
             }));
             let added = 0;
             for (const pa of paramsToAdd) {
@@ -4002,6 +4095,11 @@ const BulkUpload = (() => {
         myRunId
       );
       if (syncCounters.synced) log(`  Spec params sync: ${syncCounters.synced} params agregados`);
+      if (cleanupCounters.archived) log(`  Cleanup duplicados (1.4.9): ${cleanupCounters.archived} params null archivados en ${cleanupCounters.pnsTouched} PNs`);
+      // 1.4.9: checkpoint intermedio. Si un crash ocurre en STEP 7/8, el modal
+      // de resume muestra "sync-done" y el operador sabe que STEP 5/6/6b ya
+      // pasaron — útil para diagnóstico aunque no implementemos skip-by-phase.
+      if (resumeState) { resumeState.phase = 'sync-done'; await persistResumeState(); }
       bailIfStale(myRunId);
 
       // STEP 7: RackTypes — runs in BOTH modes
@@ -4119,6 +4217,10 @@ const BulkUpload = (() => {
         }
         log(`  Precios eliminados de ${pricesToDelete.length} PNs`);
       }
+
+      // 1.4.9: checkpoint intermedio. Si crashea STEP 8, el modal de resume
+      // muestra "racks-done" — diagnóstico de qué quedó pendiente.
+      if (resumeState) { resumeState.phase = 'racks-done'; await persistResumeState(); }
 
       // STEP 8: Default Price + Archive
       // 1.2.11: respeta archiveOverride (per-row) y archiveGlobal (toggle UI preview).

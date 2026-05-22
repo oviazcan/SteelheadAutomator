@@ -1,6 +1,72 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.8. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.9. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.9: fix de duplicados de params en STEP 6b + cleanup defensivo + checkpoints intermedios + z-index del Detener (Fix T, 2026-05-22)
+
+**Contexto.** Tras el run masivo de Schneider (~4799 PNs en STEP 6b), el operador detectó dos problemas:
+1. **Duplicados de params**: en PNs existentes con specs ya linkeadas (`linkedSpecs`), aparecían dobletes idénticos en `partNumberSpecFieldParams` — uno con `processNodeId` real (asignado por STEP 6) y otro con `processNodeId: null`. Visualmente en la UI de Steelhead, el spec mostraba dos filas con el mismo valor de param (ej. "5-10 µm") pero distinto ProcessNode (uno con el nodo real, otro con "Ninguno").
+2. **Botón Detener inalcanzable**: el panel flotante `#sa-bu-panel` quedaba detrás del modal `dl9-overlay` por z-index (99998 vs 99999) → al querer cancelar el run que se atoró en 4795/4799 sync params, no había forma de clickear "Detener" por UI.
+
+Adicional: el `cancelRun()` solo modificaba `state.phase` (memoria) — el `resumeState` en localStorage quedaba con la fase del último checkpoint mayor (o `init` si nunca se completó STEP 6). El modal de resume mostraba "Fase actual: init" para corridas que ya habían avanzado mucho más, confundiendo el diagnóstico.
+
+### Root cause del duplicado (STEP 6b vs STEP 6)
+
+STEP 6 (`enrichWorker`) arma `specsToApply` con `defaultSelections` que incluyen `processNodeId: part.processId || pn.defaultProcessNodeId || null`. Pero **si el PN ya tenía la spec linkeada** (`alreadyLinkedSpecIds.has(s.specId)`), STEP 6 NO la reenvía — para evitar `unique_constraint` en la tabla `partNumberSpec`. Eso significa que los params asociados a esa spec ya-linkeada tampoco se actualizan en STEP 6.
+
+STEP 6b cubre ese hueco: hace `GetPartNumber` fresco y agrega los params faltantes vía `AddParamsToPartNumber`. **Pero** insertaba con `processNodeId: null` (líneas 3965-3967 en ≤1.4.8) en vez del `processNodeId` real que STEP 6 hubiera usado. Si una corrida previa (o STEP 6 de la misma corrida) ya había dejado un row con `processNodeId` real para el mismo `specFieldParamId`, el dedup de STEP 6b (línea 3963 en ≤1.4.8) lo ignoraba porque solo agrupaba por `specFieldParamId`, sin considerar el tuple `(specFieldParamId, processNodeId)`. Resultado: insertaba un segundo row con `processNodeId: null` → duplicado.
+
+### Fix
+
+1. **Dedup por tuple `(specFieldParamId, processNodeId)`** — `existingParamKeys` en STEP 6b ahora se construye como `${id}|${processNodeId || ''}`. Si ya existe el par exacto, no se reinserta.
+2. **`processNodeId` correcto en `paramsToAdd`** — pasa de `null` a `part.processId || pnNode.defaultProcessNodeId || null`, alineado con la lógica de STEP 6. Si más adelante alguien quiere un row con `processNodeId: null` intencional, será otro path (no este).
+3. **STEP 0 cleanup defensivo integrado en STEP 6b** — antes del loop de specs, detectar pares activos del mismo `specFieldParamId` donde uno tiene `processNodeId !== null` y otro `processNodeId === null`. Archivar el null vía `SavePartNumber.partNumberSpecFieldParamsToArchive`. Idempotente: si no hay duplicados, no hace nada. Reusa el `GetPartNumber` fresco que STEP 6b ya hace (cero round-trips extra fuera del SavePartNumber del archive). El array `allParams` en memoria se filtra para que el dedup tuple del loop siguiente no vea los archivados como existentes, y se invalida `existingPnFullCache` para consumidores posteriores.
+4. **Checkpoints intermedios `sync-done` y `racks-done`** — `resumeState.phase` se persiste tras STEP 6b (`sync-done`) y antes de STEP 8 (`racks-done`). Sin esto (≤1.4.8), `resumeState.phase` saltaba directo de `enrich-done` a `done`; un crash en STEP 7 o STEP 8 mostraba en el modal "Fase actual: enrich-done", impreciso.
+5. **`cancelRun()` persiste `phase: 'cancelled'`** — además de tocar `state.phase` (memoria), ahora también `resumeState.phase = 'cancelled'` con fire-and-forget `persistResumeState()`. El modal de resume refleja el estado real.
+6. **z-index del panel #sa-bu-panel subido a 100000** — antes 99998, por debajo del `dl9-overlay` (99999) → tapado por el modal "Ejecutando..." de `showProgressUI`. Ahora flota encima y el botón Detener es siempre alcanzable.
+
+### Por qué el cleanup defensivo se queda en STEP 6b (no como STEP separado)
+
+STEP 6b ya hace `GetPartNumber` fresco para todos los `step6bCandidates` (PNs existing con specs no-dash). Meter el cleanup ahí significa:
+- Cero round-trips extra para detectar duplicados (reusa `allParams` del fetch fresco).
+- Un solo `SavePartNumber` por PN con `partNumberSpecFieldParamsToArchive` cuando hay duplicados (no agregamos calls si no hay).
+- Idempotente: corre siempre, incluso si no había duplicados — `duplicateNullIdsToArchive.length === 0` salta el `SavePartNumber`.
+
+### Cómo resume el caso del run de Schneider sin re-clasificar PNs
+
+El usuario quería reanudar el run que se atoró en STEP 6b 4795/4799 sin re-tomar decisiones de dropdowns. El resume natural lo cubre porque:
+- `resumeState.classifications` persiste `userOverride`, `userDecided`, `pase`, `targetPnId`, `candidates` (líneas 2715-2725). Al reanudar, líneas 2675-2700 los rehidratan ANTES de pisar el snapshot.
+- `resumeState.completedChunks` saltea cotizaciones ya creadas (línea 3261).
+- `resumeState.archivedSentinelsPreQuote` saltea sentinels ya archivados en STEP 5 (1.4.8).
+- `resumeState.completedPNs` saltea PNs ya enriched en STEP 6 (línea 3579).
+- STEP 6b se ejecuta para todos los `step6bCandidates` — pero con el fix de tuple + cleanup defensivo, es idempotente: archiva los null duplicados al pasar por cada PN.
+- STEP 7 y STEP 8 corren completos (nunca habían pasado).
+
+### Plan de validación pendiente
+
+- [ ] Reanudar el run de Schneider y confirmar que el log muestra `Cleanup duplicados (1.4.9): N params null archivados en M PNs` con N ≈ varios cientos.
+- [ ] Spot-check 5 PNs en la UI de Steelhead: el spec debe mostrar un solo row con el param y ProcessNode correcto, sin "Ninguno".
+- [ ] Después de STEP 6b, el modal de resume (si lo abres en otro tab) debe mostrar `Fase actual: sync-done`.
+- [ ] STEP 7 Racks: confirmar que se aplican `partsPerRack` y `rackTypes` para todas las filas con racks en el CSV.
+- [ ] STEP 8 Archive: confirmar que los PN SRG a archivar quedan archivados y los nuevos PN quedan default-priced.
+- [ ] Bug del Detener: durante STEP 6b/7/8, clickear "Detener" debe funcionar al primer intento sin trucos de consola.
+
+### Pendientes derivados (no en 1.4.9)
+
+- UI "Forzar resume desde fase" — descartada para 1.4.9 porque el resume natural + checkpoints intermedios cubren el caso operacional. Si vuelve a hacer falta, replantear en 1.5.x.
+- Lógica de skip-by-phase en el runner (saltear STEP 5/6/6b si `phase === 'sync-done'`) — diferida. Hoy el resume natural saltea por marcadores granulares (`completedPNs`, `archivedSentinelsPreQuote`, `completedChunks`) que son más seguros que un skip por fase ancho. Si la performance del resume natural se vuelve un cuello, evaluar.
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js`:
+  - `VERSION = '1.4.9'`.
+  - `cancelRun()` persiste `resumeState.phase = 'cancelled'` con fire-and-forget.
+  - CSS `#sa-bu-panel` `z-index: 99998` → `100000`.
+  - STEP 6b: cleanup defensivo (detecta y archiva params null duplicados antes del loop de specs); dedup por tuple `(specFieldParamId, processNodeId)`; `paramsToAdd` con `processNodeId: targetProcessNodeId` (no null).
+  - Checkpoint `phase = 'sync-done'` tras STEP 6b; `phase = 'racks-done'` antes de STEP 8.
+- `remote/config.json`: bump `version` a `1.4.9`.
+- `docs/applets/bulk-upload.md`: esta sección.
+- `CLAUDE.md`: índice de applets actualizado.
 
 ## 1.4.8: persistencia intra-STEP 5 + concurrencia dedicada al archive sentinel pre-cotización (Fix S, 2026-05-22)
 
