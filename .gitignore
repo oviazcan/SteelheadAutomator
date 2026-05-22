@@ -8,6 +8,7 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+*.code-workspace
 
 # Build
 *.zip
@@ -22,3 +23,6 @@ scan_results_*.json
 ~$*.xlsm
 ~$*.xlsx
 Plantilla_Cotizaciones_y_NP_v84_2.xlsm
+
+# Scratch payloads locales (samples de GraphQL/factura, etc.)
+/json
