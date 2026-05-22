@@ -1,6 +1,102 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.12. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.13. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.13: fix `quotePnIds` no definida + rename Archivado/Desarchivado + fix `resumeState` false-completed (Fixes X+Y, 2026-05-22)
+
+Tres bugs encontrados en post-mortem de la corrida 1.4.11 de 4270 P1 con red intermitente (416 errores). Stats finales habían reportado `Labels: 0, Specs: 0` y el listado de Steelhead mostraba bloques de PNs sin labels/specs intercalados con bloques OK.
+
+### Fix X1 — `Precios standalone: ReferenceError: quotePnIds is not defined` (~200 errores)
+
+En el batch de precios standalone del modo `SOLO_PN` (línea 3641), el log de sub-phase referenciaba `quotePnIds.length` para calcular `totalBatches`. Pero `quotePnIds` solo existe en la rama con cotización; en SOLO_PN el iterable es `pnpWithPrice`. El ReferenceError saltaba al `catch` que tragaba toda la llamada `SaveManyPNP_PN`. Resultado: cero precios standalone guardados en SOLO_PN aunque `Default Price: 4182` sí entrara (eso viene de STEP 8 releyendo del PN, no de SaveManyPNP).
+
+```diff
+- const totalBatches = Math.ceil(quotePnIds.length / 20);
++ const totalBatches = Math.ceil(pnpWithPrice.length / 20);
+```
+
+### Fix X2 — panel "Paso 5/5: Archivado..." engañoso
+
+En rondas de activos el STEP 8 mayoritariamente DESARCHIVA PNs (no archiva). El panel decía solo "Archivado..." sin distinguir, generando confusión razonable ("¿por qué archiva si esta ronda es de activos?"). Cambios:
+
+- `setPanelPhase` de STEP 8: `'Paso 5/5: Archivado...'` → `'Paso 5/5: Archivado / Desarchivado...'`.
+- Phase line del pool: `'Archivando PNs (pool 8)'` → `'Archivando N / Desarchivando M (pool 8)'` (línea 4560), con desglose visible en tiempo real.
+
+El log txt ya tenía el desglose desde 1.4.8 (`Archivado: X nuevos archivar, Y viejos archivar, Z desarchivar`), solo faltaba reflejarlo en el panel.
+
+### Fix Y — `resumeState.completedPNs` marcaba false-completed (CRÍTICO)
+
+**Síntoma reportado por el usuario:** después de 2 corridas (la primera atorada, la segunda como reanudación), el listado "Created At Descending" de Part Numbers en Steelhead mostraba bloques de PNs vacíos (sin labels, sin spec params) intercalados con bloques con todos los datos. PNs con múltiples rowIdx en el CSV (forceDup) tenían unas entradas OK y otras vacías. Stats de la segunda corrida: `Enrich: 4270 OK, 0 retry` pero `Labels: 0, Specs: 0` — todo brincado por resume.
+
+**Root cause (líneas 4039-4047 pre-1.4.13):**
+
+```js
+// Pre-1.4.13: marcaba incondicionalmente
+const rkey = `${idx}|${part.pn}|${part.customerId}`;
+if ((okSP + retrySP) % 50 === 0 && resumeState) {
+  resumeState.completedPNs.push(rkey);
+  persistResumeState().catch(() => {});
+} else if (resumeState) {
+  resumeState.completedPNs.push(rkey);
+}
+```
+
+El bloque corre **al final del `enrichWorker`** sin distinguir si `SavePartNumber` tuvo éxito o cayó al `errors.push` del catch en línea 4034 (Failed to fetch tras 3 retries no es retry-able y no hace `throw`, solo `errors.push + counters.errors++`). Resultado: cada PN que falló por red intermitente quedaba marcado en `completedPNs` de localStorage. La siguiente corrida lo brincaba en línea 3729 (`if (resumeCompletedSet.has(resumeKey)) { okSP++; return; }`) sin ni siquiera intentar labels o specs.
+
+**Cadena de eventos en la corrida del usuario:**
+1. Corrida #1 (~50% del CSV procesado en STEP 6 enrich, red intermitente). N PNs cayeron a `Failed to fetch` después de los 3 retries de `withRetry`. Quedaron marcados como completed-falsos en localStorage.
+2. Usuario detuvo. Reanudó.
+3. Corrida #2 (la del log con 416 errores). En enrich: brincó los 4270 PNs por `resumeCompletedSet`. Stats `Labels: 0, Specs: 0`. STEP 8 desarchivó OK los 4267 existentes. STEP 6b (params) y STEP 7 (racks) sí corrieron (no usan el mismo gate de resumeCompletedSet) — esos sí dejaron errores nuevos en el log (`AddParams ... Failed to fetch`, `SavePartNumberRackTypes ... Failed to fetch`).
+4. Estado final en Steelhead: PNs creados/desarchivados pero **algunos sin labels ni specs** (los que cayeron en paso 1).
+
+**Fix Y:** introducir flag local `pnSucceeded`. Setearlo a `true` en los 3 success paths (línea 3996 `okSP++`, línea 4015 `retrySP++` strip1, línea 4025 `retrySP++` strip2). El bloque de persistencia ahora chequea `if (pnSucceeded && resumeState)` antes de pushear el rkey. Un PN que falló queda fuera de `completedPNs` y se reintentará en la próxima reanudación.
+
+```diff
++ let pnSucceeded = false;
+  try {
+    await withRetry(() => api().query('SavePartNumber', { input: [pnInput] }), ...);
+-   okSP++; state.counters.ok++;
++   okSP++; state.counters.ok++; pnSucceeded = true;
+    if (pn.id) existingPnFullCache.delete(pn.id);
+  } catch (e) {
+    // ...strip1...
++   pnSucceeded = true;  // en éxito
+    // ...strip2...
++   pnSucceeded = true;  // en éxito
+    // else: errors.push (pnSucceeded queda false)
+  }
+
+- const rkey = `${idx}|${part.pn}|${part.customerId}`;
+- if ((okSP + retrySP) % 50 === 0 && resumeState) {
+-   resumeState.completedPNs.push(rkey);
+-   persistResumeState().catch(() => {});
+- } else if (resumeState) {
+-   resumeState.completedPNs.push(rkey);
+- }
++ if (pnSucceeded && resumeState) {
++   const rkey = `${idx}|${part.pn}|${part.customerId}`;
++   resumeState.completedPNs.push(rkey);
++   if ((okSP + retrySP) % 50 === 0) persistResumeState().catch(() => {});
++ }
+```
+
+### Recuperación de los 4267 PNs corruptos
+
+El fix Y previene daño futuro pero los PNs ya marcados false-completed no se auto-arreglan. Approach acordado con el usuario: generar un CSV de recuperación que incluya solo los PNs que en Steelhead quedaron sin labels o sin spec params, y volverlos a meter con bulk-upload normal. Como los PNs ya existen, el matcher debería identificarlos como `existing` y el enrich los actualizará. Pendiente: script de auditoría que detecte PNs incompletos vía GraphQL y derive el subset del CSV.
+
+### Validación pendiente
+
+- [ ] Smoke run con red flaky simulada (DevTools throttling "Offline" durante 2-3 batches del enrich): los PNs fallidos NO deben quedar en `resumeState.completedPNs`. Al reanudar deben reintentarse.
+- [ ] Run completo del CSV de recuperación (subset de los 4267 corruptos): después de la corrida, todos deben tener labels + specs visibles en Steelhead.
+- [ ] Verificar que la phase line del STEP 8 muestra el desglose `Archivando N / Desarchivando M`.
+- [ ] Verificar que SaveManyPNP_PN en SOLO_PN ya no tira ReferenceError (smoke en CSV con `precio` poblado).
+
+### Pendientes derivados
+
+- 1.4.14: script/applet de auditoría que detecte PNs incompletos en Steelhead (sin labels o sin spec params después de bulk-upload) y exporte un CSV ya filtrado, en vez de que el operador tenga que armarlo a mano.
+- 1.4.14: considerar también gatear el push en `resumeState.identifierEnrichDone` (Call A) por la misma razón — actualmente se marca después de cada Save\* sin distinguir el éxito.
+
+---
 
 ## 1.4.12: feedback en silent loops del pre-enrich + paralelización del pre-fetch de predictivos (Fix W, 2026-05-22)
 

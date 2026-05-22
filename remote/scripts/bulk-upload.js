@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.12';
+  const VERSION = '1.4.13';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -3634,11 +3634,11 @@ const BulkUpload = (() => {
                 input: { quoteId: null, autoGenerateQuoteLines: false, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] }
               }, 'SaveManyPNP_PN');
               {
-                // 1.4.10: agrupado — pre-1.4.10 esto loggeaba cada batch (250+ líneas en
-                // runs grandes, principal culpable del OOM del modal viejo). Ahora la
-                // sub-fase muestra el batch actual en vivo y el log resume cada 10.
+                // 1.4.13: el totalBatches referenciaba `quotePnIds` que no existe en SOLO_PN,
+                // tiraba ReferenceError y se tragaba TODA la fase de precios standalone.
+                // En SOLO_PN el iterable es `pnpWithPrice` — usar su length.
                 const batchNum = Math.floor(i / 20) + 1;
-                const totalBatches = Math.ceil(quotePnIds.length / 20);
+                const totalBatches = Math.ceil(pnpWithPrice.length / 20);
                 setPanelSubPhase(`Precios batch ${batchNum}/${totalBatches} (${batch.length} PNs)`);
                 if (batchNum % 10 === 0 || batchNum === totalBatches) addPanelLog(`Precios: ${batchNum * 20} PNs procesados`);
               }
@@ -3986,6 +3986,13 @@ const BulkUpload = (() => {
         };
 
         bailIfStale(myRunId);
+        // 1.4.13 Fix Y: pnSucceeded gating — antes (≤1.4.12) este bloque marcaba el rkey
+        // en resumeState.completedPNs aunque SavePartNumber hubiera fallado por red
+        // (Failed to fetch) o por retry exhausted. Eso causó "false-completed PNs": entradas
+        // que el resume brincaba silenciosamente sin tener labels/specs reales en Steelhead.
+        // Síntoma: en runs con red intermitente, el listado quedaba con bloques de PNs
+        // vacíos intercalados con bloques OK, mientras el panel reportaba "Labels: 0".
+        let pnSucceeded = false;
         try {
           // withRetry para 429/503/network; unique_constraint cae a la lógica progresiva abajo
           await withRetry(
@@ -3995,6 +4002,7 @@ const BulkUpload = (() => {
           );
           okSP++;
           state.counters.ok++;
+          pnSucceeded = true;
           // Fix I 1.3.2: invalidar cache para que STEP 6b lea un GetPartNumber fresco con
           // los specs/params que SavePartNumber acaba de agregar. Sin esto, STEP 6b
           // reintenta AddParamsToPartNumber para params recién creados → 500 exclusion
@@ -4013,6 +4021,7 @@ const BulkUpload = (() => {
                 myRunId
               );
               retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
+              pnSucceeded = true;
               if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
             } catch (e2) {
               if (isBail(e2)) throw e2;
@@ -4023,6 +4032,7 @@ const BulkUpload = (() => {
                   myRunId
                 );
                 retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+                pnSucceeded = true;
                 if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
               } catch (e3) {
                 if (isBail(e3)) throw e3;
@@ -4036,14 +4046,16 @@ const BulkUpload = (() => {
           }
         }
 
-        // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados
-        // 1.2.11: incluye rowIdx en la clave para distinguir duplicados name+customerId.
-        const rkey = `${idx}|${part.pn}|${part.customerId}`;
-        if ((okSP + retrySP) % 50 === 0 && resumeState) {
+        // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados.
+        // 1.2.11: clave incluye rowIdx para distinguir duplicados name+customerId.
+        // 1.4.13: solo persiste si pnSucceeded — un PN con SavePartNumber fallado se
+        // reintentará en la próxima reanudación en lugar de quedar como false-completed.
+        if (pnSucceeded && resumeState) {
+          const rkey = `${idx}|${part.pn}|${part.customerId}`;
           resumeState.completedPNs.push(rkey);
-          persistResumeState().catch(() => {});
-        } else if (resumeState) {
-          resumeState.completedPNs.push(rkey);
+          if ((okSP + retrySP) % 50 === 0) {
+            persistResumeState().catch(() => {});
+          }
         }
       }
 
@@ -4444,7 +4456,7 @@ const BulkUpload = (() => {
       // archiveOverride por fila TRUE  → fuerza archivar aunque global esté off
       // archiveOverride por fila FALSE → fuerza no archivar aunque CSV diga true
       // Dedup por pnId para no archivar/desarchivar 2 veces el mismo PN físico.
-      setPanelPhase(`${isSoloPN ? 'Paso 5/5' : 'Paso 8/9'}: Archivado...`); setProgressBar(85);
+      setPanelPhase(`${isSoloPN ? 'Paso 5/5' : 'Paso 8/9'}: Archivado / Desarchivado...`); setProgressBar(85);
       const pnsToArchive = [], oldPnsToArchive = [], pnsToUnarchive = [];
       const archiveSeen = new Set(), unarchiveSeen = new Set(), oldArchiveSeen = new Set();
       const archiveGlobal = (state.archiveGlobal !== false); // default true si el toggle no fue tocado
@@ -4557,7 +4569,11 @@ const BulkUpload = (() => {
       ];
       if (archiveOps.length) {
         const archiveConcurrency = bulkCfg().concurrency.archive;
-        setPanelPhase('Archivando PNs (pool ' + archiveConcurrency + ')');
+        // 1.4.13: desglose claro en phase line para evitar la confusión de "¿por qué archiva en ronda de activos?".
+        // En rondas de activos el grueso suele ser desarchivar (PNs marcados archivados en Steelhead pero
+        // que el CSV los lista como activos → STEP 8 los desarchiva para que los updates apliquen a vivos).
+        const archivePhaseLbl = `Archivando ${pnsToArchive.length + oldPnsToArchive.length} / Desarchivando ${pnsToUnarchive.length} (pool ${archiveConcurrency})`;
+        setPanelPhase(archivePhaseLbl);
         setPanelProgress(0, archiveOps.length);
         log(`  Archivado: ${pnsToArchive.length} nuevos archivar, ${oldPnsToArchive.length} viejos archivar, ${pnsToUnarchive.length} desarchivar (concurrencia ${archiveConcurrency})`);
 
