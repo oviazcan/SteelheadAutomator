@@ -1,6 +1,49 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.11. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.12. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.12: feedback en silent loops del pre-enrich + paralelización del pre-fetch de predictivos (Fix W, 2026-05-22)
+
+**Contexto.** En 1.4.11 con corrida masiva (4270 P1 existing de Clientes Generales) el panel se quedó visualmente "atorado" en `Paso 3/5: Enriqueciendo PNs... 24364/24364 OK: 0  [HH:MM:SS] 3 PNs creados` durante ~15-35 minutos sin avance visible. La consola y DevTools Network confirmaban que sí estaba procesando — puros `GetPartNumber` secuenciales — pero el panel no reflejaba nada.
+
+### Problema raíz
+
+Entre `setPanelPhase('Paso 3/5: Enriqueciendo PNs...')` (línea ~3612) y el inicio del runPool de `enrichWorker` (línea ~3641) hay un loop **secuencial** (líneas 3617-3633) que pre-fetcha `predictedInventoryUsages` de cada PN existing con `predictiveUsage` desde el CSV. Ese loop:
+
+1. NO tiene `bailIfStale` — "Detener" no lo detiene.
+2. NO tiene `setPanelSubPhase` ni `setPanelProgress` — los `24364/24364` visibles son **residuales** del scan de archivados (línea 938: `setPanelProgress(scannedArch, ...)`).
+3. NO consulta `resumeCompletedSet` — refetcha incluso para PNs ya enriquecidos en una corrida previa.
+4. Es secuencial sin runPool — 4270 × ~0.3-0.5s = 15-35 min.
+
+Auditoría reveló más loops `for await` silenciosos en la fase pre-STEP: customer prep (`uniqueClientNames`), process names (`uniqueProcessNames`), dim ids (`Object.values(dimIds)`), spec fields cache (`uniqueSpecs`).
+
+### Fix W: feedback consistente + paralelización del pre-fetch crítico
+
+**Pre-fetch predictivos (líneas 3617-3673):**
+1. Skip por `resumeCompletedSet` — en reanudación, los PNs ya enriquecidos no necesitan refetch (su predictivo no se va a re-aplicar). Loggea `Pre-fetch predictivos: N PN(s) saltados (ya enriquecidos en corrida previa)`.
+2. `runPool` concurrency = `bulkCfg().concurrency.savePartNumber` (8 por default) → 15-35 min → 2-5 min.
+3. `setPanelPhase('Pre-fetch predictivos existentes (N)')` + `setPanelSubPhase('Pre-fetch predictivos: <name>')` + `setPanelProgress(done, total)` + `bailIfStale`.
+
+**Customer prep (líneas 2555-2585):** `setPanelPhase('Resolviendo clientes (N)')` + `setPanelSubPhase('Cliente: <cname>')` + `setPanelProgress(done, total)`.
+
+**Process names (líneas 2655-2673):** `setPanelPhase('Resolviendo procesos (N)')` + `setPanelSubPhase('Proceso: <pname>')` + `setPanelProgress(done, total)`.
+
+**Dim ids (líneas 2701-2722):** `setPanelPhase('Cargando dimensiones contables (N)')` + `setPanelSubPhase('Dimensión: <key>')` + `setPanelProgress(done, total)`.
+
+**Spec fields cache (líneas 2727-2755):** `setPanelPhase('Cargando definiciones de specs (N)')` + `setPanelSubPhase('Spec: <sn>')` + `setPanelProgress(done, total)`. El log existente `Spec "X": N campos` se conserva.
+
+### Validación pendiente
+
+- [ ] Smoke run en CSV chico (1 cliente, 10 PNs nuevos): panel transiciona por cada sub-fase con texto y progress bar moviéndose.
+- [ ] Run Clientes Generales (4270 P1): el "Paso 3/5: Enriqueciendo PNs..." ahora intercala una sub-fase `Pre-fetch predictivos existentes (N)` con progress bar antes de entrar al enrich real. En reanudación, debe loggear `N PN(s) saltados (ya enriquecidos)` y el pre-fetch debe ser casi instantáneo.
+- [ ] Validar que `Detener` durante cualquiera de las nuevas sub-fases corta inmediatamente (todas tienen `bailIfStale`).
+
+### Pendientes derivados
+
+- 1.4.13 (opcional): otras zonas con `addPanelLog` muy ruidoso (ej. `Precios batch X/Y`) ya están agrupadas vía `setPanelSubPhase` desde 1.4.10; auditar si hay residuales.
+- 1.4.13 (opcional): considerar **borrar** los entries de `resumeState.identifierEnrichDone` cuyo `rowKey` ya está en `completedPNs` (cleanup periódico para no inflar el JSON al reanudar).
+
+---
 
 ## 1.4.11: STEP 6 Split A/B (anti-duplicados al reanudar) + concurrencia 8 + medidor de memoria (Fix V, 2026-05-22)
 
