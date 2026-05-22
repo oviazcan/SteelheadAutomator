@@ -1,6 +1,129 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.2. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.3. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.3: matcher con equivalencias semánticas + UX modal Pase 3 (Fix N, 2026-05-22)
+
+**Contexto.** Corrida con 1501 PNs (Solo_PN + COTIZACIÓN+NP) generó cientos de filas Pase 3 que el operador debía validar a mano una por una. Reportes en vivo:
+
+1. "Sólo me deja validar de a dos por el espacio tan pequeño de la ventana, son muchos clicks".
+2. "Estaño vs. Estaño s/Aluminio vs. Estaño s/Cobre serían equivalentes. También Plata vs. Plata Flash. Decapado vs. Decapado no la detectó, quizá porque el CSV trae la planta STX y esas se supone que se están excluyendo".
+3. "El orden de etiquetas la toma como un diferencial y no lo es, el orden no importa".
+4. "No puedo saber cuántas llevo porque no dice el número de línea".
+5. "El tema de que no se guarda — al menos cada paso de página".
+
+### Causa raíz (5 bugs interconectados)
+
+**Bug 1 — `isNonFinishLabel` case+space-sensitive.** Línea 4164 usaba `nonFinishList.some(nf => nf.toUpperCase() === String(name).toUpperCase())` que NO trimea espacios. Si Steelhead devolvía `"SRG "` (con trailing space) o `"srg"` (lowercase, edge no observado pero posible), las 7 plantas (`SCM/SMY/SQR/SQ2/SRG/STX/SXC`) escapaban al filtro y contaban como acabados → "Decapado + STX" se comparaba contra "Decapado" del CSV y fallaba.
+
+**Bug 2 — Chips en modal no aplicaban `isNonFinishLabel`.** El render de chips CSV vs candidato (1737-1748 y 1753-1756) iteraba `r.csvLabels` y `candObjs` raw, sin filtrar nonFinish. Aunque el matcher SÍ los filtraba para clasificar, el operador veía chip "STX" o "SCM" pintado como `miss` en pantalla y dudaba si la fila debía ser match.
+
+**Bug 3 — `score()` y `labelsMatchFull` no conocen equivalencias semánticas.** El matcher comparaba `c.metalBase === csvMetal` y `acabadosOrdenados(...) === acabadosOrdenados(...)` por string. "Estaño" vs "Estaño s/Aluminio" salía como `miss` aunque para el operador son intercambiables. Idem "Plata" vs "Plata Flash". → Cientos de filas que debían ser top match acababan en Pase 3 sin top.
+
+**Bug 4 — Modal demasiado angosto.** CSS `max-width:min(1400px,96vw); max-height:88vh; padding:28px 32px` cabía ~2-3 filas Pase 3 por viewport. En un run de 1501 PN con ~500 Pase 3, eso son ~200 scrolls verticales.
+
+**Bug 5 — Decisiones del modal "no se guardan" (percepción).** En realidad SÍ se persisten (`bulk-upload.js:1859-1863` llama `persistResumeState()` por cada cambio de dropdown, y `:2527-2545` restaura los `userOverride` al re-abrir el CSV con REANUDAR). Pero el operador no lo sabía: no había chip "✓ guardada", no había número de línea para llevar la cuenta, y al cancelar el modal no había feedback de que sus decisiones quedaron salvas.
+
+### Solución
+
+**Helpers nuevos (`bulk-upload.js:4156-4253`).**
+
+```js
+function normLabel(s) { return String(s ?? '').trim().toUpperCase(); }
+function isNonFinishLabel(name, nonFinishList) {
+  const n = normLabel(name);
+  return !!n && nonFinishList.some(nf => normLabel(nf) === n);
+}
+function buildEquivIndex(groups) { /* Map<normLabel, groupId> desde config.metalEquivalents */ }
+function equivalentValues(map, a, b) {
+  const na = normLabel(a), nb = normLabel(b);
+  if (na === nb) return true;
+  const ga = map.get(na), gb = map.get(nb);
+  return ga != null && gb != null && ga === gb;
+}
+function metalCanonico(metal, equivIndex) { /* "__M<groupId>" o normLabel */ }
+function acabadosCanonicos(labels, nonFinishList, equivIndex) {
+  // Filtra nonFinish, normaliza, colapsa equivalentes a "__G<groupId>",
+  // dedup vía Set, sort, join("|"). Permite que "Estaño" y "Estaño s/Cobre"
+  // cuenten como el mismo acabado.
+}
+```
+
+**Threading `equivIndex` por el matcher.** `buildClassifiedRow` → `classifyOnePN` → `rankCandidates`, además de `dedupModifyTargets`. Construido una sola vez en `classifyPNsMassive`/`classifyPNsOnDemand` desde `cfg.metalEquivalents`.
+
+```js
+function rankCandidates(csvRow, candidates, nonFinishList, equivIndex) {
+  const csvMetalCanon = metalCanonico(csvRow.metalBase || '', equivIndex);
+  const csvAcabadosCanon = acabadosCanonicos(csvRow.labels || [], nonFinishList, equivIndex);
+  function score(c) {
+    let s = 0;
+    if (metalCanonico(c.metalBase || '', equivIndex) === csvMetalCanon) s++;
+    if (acabadosCanonicos(c.labels || [], nonFinishList, equivIndex) === csvAcabadosCanon) s++;
+    return s;
+  }
+  // ...
+}
+```
+
+**`buildCompositeKey` también canonicaliza.** Pase 2 ahora matchea "Estaño s/Aluminio" en el PN existente vs "Estaño" en el CSV sin caer a Pase 3 — un PN al click menos.
+
+**Config (`config.json:343-349`).**
+```json
+"metalEquivalents": [
+  ["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"],
+  ["Plata", "Plata Flash"]
+]
+```
+Vacío = se comporta como pre-1.4.3 (sólo exacto).
+
+**UX modal Pase 3.**
+
+| Cambio | Antes | Ahora |
+|---|---|---|
+| Ancho modal | `max-width:1400px / 88vh, padding 28×32` | `1800px / 96vh, padding 14×22` (≈2× espacio vertical) |
+| Acción Pase 3 | `tdAct = "👇 decidir abajo"` (gris-italic) | Chip `✓ guardada` (verde) cuando `userOverride != null`, o `pendiente` (naranja-italic) |
+| Número línea CSV | No había | `L<idx+2>` (header=1, primera data=2) en columna PN, monoespacio gris |
+| Contador header | `N decisiones pendientes` | `Pase 3: X/Y validadas (Z restantes)` (decide = `userOverride != null`) |
+| Chips CSV/candidato | Mostraban TODOS los labels (incluyendo STX/SMY/...) | Filtran nonFinish; agrupan equivalentes como match (Estaño ≡ Estaño s/Cobre se pinta verde) |
+| Cancelar modal con decisiones tomadas | Cierra sin feedback | `alert()` "Guardé N decisiones — sube el mismo CSV y elige REANUDAR" |
+
+El chip `✓ guardada` se re-pinta en `sel.change` mediante hook `wrap._renderSavedChip`.
+
+### Cambios
+- **`remote/config.json`:** bump `version` 1.4.2 → 1.4.3, `lastUpdated` 2026-05-22, agrega `metalEquivalents`.
+- **`remote/scripts/bulk-upload.js:49`:** VERSION `1.4.2` → `1.4.3`.
+- **`bulk-upload.js:1195`:** CSS modal más ancho/alto + clase `dl9-line-num`, `dl9-saved-chip`.
+- **`bulk-upload.js:1421-1442`:** `updateHeaderStats` cuenta `decidedNow` (con override) vs `remainingNow`.
+- **`bulk-upload.js:1474-1500`:** prefijo `L<idx+2>` en columna PN.
+- **`bulk-upload.js:1538-1539`:** construcción de `equivIndexUI` en showPreview.
+- **`bulk-upload.js:1544`:** filtro nonFinish en options del dropdown via `isNonFinishLabel`.
+- **`bulk-upload.js:1704-1712`:** chips CSV (rama NEW) filtra nonFinish.
+- **`bulk-upload.js:1729-1759`:** chips CSV/candidato filtran nonFinish + aceptan equivalencias.
+- **`bulk-upload.js:1866-1893`:** quita "👇 decidir abajo"; agrega `savedChipSlot` con `renderSavedChip()`.
+- **`bulk-upload.js:1862`:** re-pinta chip guardada al cambiar el select.
+- **`bulk-upload.js:2036-2052`:** banner al cancelar modal con decisiones tomadas.
+- **`bulk-upload.js:2589`:** dedupModifyTargets post-overrides recibe equivIndex.
+- **`bulk-upload.js:960-1090`:** classifyPNsMassive/OnDemand construyen y propagan equivIndex.
+- **`bulk-upload.js:1118-1126`:** buildClassifiedRow propaga a classifyOnePN.
+- **`bulk-upload.js:4197-4253`:** helpers normLabel, buildEquivIndex, equivalentValues, metalCanonico, acabadosCanonicos.
+- **`bulk-upload.js:4263-4395`:** rankCandidates + classifyOnePN aceptan equivIndex.
+- **`bulk-upload.js:4476-4540`:** dedupModifyTargets canonicaliza acabados.
+- **`bulk-upload.js:4569`:** export helpers a `__helpers` para test/snippets.
+
+### Plan de validación
+- [ ] Cargar 1.4.3 (recargar extensión); abrir CSV grande del run actual.
+- [ ] En Pase 3: verificar que filas con "Estaño" vs "Estaño s/Aluminio" salen como top match (ya no requieren click).
+- [ ] Misma cosa con "Plata" vs "Plata Flash".
+- [ ] Verificar que chips de plantas (SCM/SMY/STX/...) NO se pintan ni en CSV ni en candidato.
+- [ ] Confirmar que "Decapado vs Decapado" con CSV trayendo STX ahora matchea sin click.
+- [ ] Comprobar que el contador del header dice "X/Y validadas (Z restantes)" y baja al hacer un click.
+- [ ] Comprobar que prefijo `L42` aparece junto a cada PN.
+- [ ] Hacer 3 clicks, cancelar modal → alert aparece. Volver a subir mismo CSV → "Corrida previa detectada" → REANUDAR → las 3 decisiones aplicadas.
+- [ ] Editar el CSV (cambiar 1 carácter) → runKey cambia → NO ofrece resume.
+
+### Pendientes derivados
+- Bright Dip case: el usuario reportó "Bright Dip sí se tenía en un número de parte y no la hizo top match", pero sin caso específico para reproducir. Si vuelve a aparecer, capturar (CSV row + candidate PN id) y ver si conviene agregar Bright Dip a `metalEquivalents` o si el problema es un acabado distinto.
+- Plan de rollback (item del audit pre-prod): pendiente desde 1.4.2; tags atados a `config.version` aún sin implementar.
 
 ## 1.4.2: Math.floor en partsPerRack + .size en racksToDelete (Fix M, 2026-05-21)
 

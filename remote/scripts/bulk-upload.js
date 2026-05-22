@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.2';
+  const VERSION = '1.4.3';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -960,12 +960,14 @@ const BulkUpload = (() => {
   async function classifyPNsMassive(parts, myRunId) {
     const cfg = bulkCfg();
     const nonFinishList = cfg.nonFinishLabelNames || [];
+    // 1.4.3: equivalencias semánticas (Estaño/Plata...) configurables.
+    const equivIndex = buildEquivIndex(cfg.metalEquivalents);
     const customerIds = [...new Set(parts.map(p => p.customerId).filter(x => x != null))];
     const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId);
 
     setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
-    const out = parts.map(p => buildClassifiedRow(p, pnsByCustomer.get(p.customerId) || [], nonFinishList));
-    const dedup = dedupModifyTargets(out, nonFinishList);
+    const out = parts.map(p => buildClassifiedRow(p, pnsByCustomer.get(p.customerId) || [], nonFinishList, equivIndex));
+    const dedup = dedupModifyTargets(out, nonFinishList, equivIndex);
     if (dedup.reassigned || dedup.demoted) {
       log(`Dedup MODIFY targets: ${dedup.reassigned} re-asignaciones, ${dedup.demoted} demotadas a NEW por conflicto`);
     }
@@ -979,6 +981,8 @@ const BulkUpload = (() => {
   async function classifyPNsOnDemand(parts, myRunId) {
     const cfg = bulkCfg();
     const nonFinishList = cfg.nonFinishLabelNames || [];
+    // 1.4.3: equivalencias semánticas (Estaño/Plata...) configurables.
+    const equivIndex = buildEquivIndex(cfg.metalEquivalents);
     const pageSize = cfg.paging?.allPartNumbers?.first || cfg.paging?.allPartNumbersFirst || 200;
     const maxResults = cfg.paging?.allPartNumbers?.maxResults || cfg.paging?.allPartNumbersMaxResults || 1000;
 
@@ -1087,9 +1091,9 @@ const BulkUpload = (() => {
     const out = parts.map(p => {
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
       const pnsForCustomer = candidatesByKey.get(key) || [];
-      return buildClassifiedRow(p, pnsForCustomer, nonFinishList);
+      return buildClassifiedRow(p, pnsForCustomer, nonFinishList, equivIndex);
     });
-    const dedup = dedupModifyTargets(out, nonFinishList);
+    const dedup = dedupModifyTargets(out, nonFinishList, equivIndex);
     if (dedup.reassigned || dedup.demoted) {
       log(`Dedup MODIFY targets: ${dedup.reassigned} re-asignaciones, ${dedup.demoted} demotadas a NEW por conflicto`);
     }
@@ -1115,7 +1119,7 @@ const BulkUpload = (() => {
   // Builder común: construye el objeto pnStatus retro-compatible + nuevos
   // campos del refactor. Centraliza el mapping classification → status para
   // que ambos modos (masivo y día) emitan el mismo shape.
-  function buildClassifiedRow(p, pnsForCustomer, nonFinishList) {
+  function buildClassifiedRow(p, pnsForCustomer, nonFinishList, equivIndex) {
     const csvRow = {
       customerId: p.customerId,
       name: p.pn,
@@ -1123,7 +1127,7 @@ const BulkUpload = (() => {
       labels: p.labels || [],
       quoteIBMS: p.quoteIBMS || '',
     };
-    const cls = classifyOnePN(csvRow, pnsForCustomer, nonFinishList);
+    const cls = classifyOnePN(csvRow, pnsForCustomer, nonFinishList, equivIndex);
 
     // Retro-compat: derivar status para enrichWorker y demás callers.
     let status;
@@ -1192,7 +1196,7 @@ const BulkUpload = (() => {
   function injectStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:min(1400px,96vw);width:96%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:520px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:start}.dl9-p3-selrow{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}.dl9-p3-col{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border-radius:4px;min-width:0}.dl9-p3-col-csv{background:rgba(15,23,42,0.6);border-left:2px solid #38bdf8}.dl9-p3-col-cand{background:rgba(120,53,15,0.18);border-left:2px solid #fbbf24}.dl9-p3-col-cand.dl9-p3-col-cand-new{background:rgba(20,83,45,0.18);border-left-color:#4ade80}.dl9-p3-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr{color:#4ade80}.dl9-p3-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;word-break:break-word}.dl9-p3-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}.dl9-p3-chip{font-size:10px;padding:1px 7px;background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;font-family:inherit;line-height:1.4}.dl9-p3-chip-match{background:rgba(20,83,45,0.45);color:#86efac;border-color:#15803d}.dl9-p3-chip-miss{background:rgba(127,29,29,0.35);color:#fca5a5;border-color:#991b1b}.dl9-p3-chip-empty{color:#64748b;font-style:italic;border-style:dashed}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px;padding:4px 6px;background:rgba(15,23,42,0.4);border-radius:4px;border-left:2px solid #475569}.dl9-p3-specs-col{display:flex;flex-direction:column;gap:2px;min-width:0}.dl9-p3-specs-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase}.dl9-p3-specs-list{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.4;word-break:break-word}.dl9-p3-specs-err{color:#f87171}.dl9-p3-hdrrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:1px}.dl9-p3-hdr-title{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr-title{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr-title{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr-title{color:#4ade80}.dl9-p3-hdr-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.2}.dl9-p3-hdr-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-real-chip{font-size:10px;padding:1px 7px;border-radius:10px;font-family:inherit;line-height:1.4;border:1px solid transparent;display:inline-flex;align-items:center;gap:3px}.dl9-p3-real-chip.match::before{content:'✓';font-size:9px;opacity:0.8}.dl9-p3-real-chip.miss::before{content:'✗';font-size:9px;opacity:0.6}.dl9-p3-dedup-banner{grid-column:1/-1;font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;align-items:center;gap:6px}.dl9-p3-dedup-banner.reassigned{background:rgba(202,138,4,0.18);color:#fde68a;border-left:3px solid #d97706}.dl9-p3-dedup-banner.conflict{background:rgba(127,29,29,0.30);color:#fca5a5;border-left:3px solid #b91c1c}.dl9-csv-dup-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(234,88,12,0.22);color:#fdba74;border:1px solid #9a3412;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-unarch-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(37,99,235,0.20);color:#93c5fd;border:1px solid #1e40af;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-archive-toggle{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;padding:3px 6px;background:#0f172a;border:1px solid #334155;border-radius:4px}.dl9-archive-toggle input{margin:0 4px 0 0;cursor:pointer}.dl9-archive-toggle.dl9-archive-off{background:rgba(127,29,29,0.18);color:#fca5a5;border-color:#7f1d1d}.dl9-archive-row-chk{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 5px;font-size:10px;background:rgba(124,45,18,0.20);color:#fed7aa;border:1px solid #9a3412;border-radius:3px;font-family:inherit;cursor:pointer;vertical-align:middle}.dl9-archive-row-chk input{margin:0 3px 0 0;cursor:pointer}.dl9-archive-row-chk.dl9-archive-row-off{background:rgba(15,23,42,0.6);color:#64748b;border-color:#334155;text-decoration:line-through}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:14px 22px;max-width:min(1800px,98vw);width:98%;max-height:96vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-line-num{display:inline-block;font-size:10px;color:#64748b;font-family:monospace;margin-right:6px;min-width:36px}.dl9-saved-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(20,83,45,0.30);color:#86efac;border:1px solid #15803d;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-modal h3{font-size:14px;margin:16px 0 6px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px}.dl9-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:16px}.dl9-modal table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}.dl9-modal th{text-align:left;padding:4px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}.dl9-modal td{padding:4px 8px;border-bottom:1px solid #1e293b}.dl9-new{color:#4ade80}.dl9-exist{color:#facc15}.dl9-dup{color:#f97316}.dl9-err{color:#f87171}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s}.dl9-btn:hover{opacity:0.85}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#2563eb;color:white}.dl9-btn-close{background:#475569;color:#e2e8f0}.dl9-btn-copy{background:#0d9488;color:white}.dl9-progress{font-size:13px;color:#94a3b8;margin-top:8px;white-space:pre-wrap;line-height:1.6}.dl9-bar{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden}.dl9-bar-fill{height:100%;background:#2563eb;transition:width 0.3s;width:0%}.dl9-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.dl9-stat{background:#0f172a;padding:8px 12px;border-radius:6px;font-size:13px}.dl9-stat b{color:#38bdf8}.dl9-pending-chip{background:#7c2d12;color:#fed7aa;padding:2px 8px;border-radius:4px;font-weight:600}.dl9-pending-chip b{color:#fdba74}.dl9-btn-mini{padding:2px 8px;font-size:11px;margin-left:6px;background:#9a3412;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600}.dl9-btn-mini:hover{opacity:0.85}.dl9-row-pending{background:rgba(124,45,18,0.18)}.dl9-cls-select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;padding:2px 6px;border-radius:4px;font-size:12px;max-width:520px}.dl9-cand-links{display:inline-flex;gap:4px;margin-left:6px}.dl9-cand-link{color:#38bdf8;text-decoration:none;font-size:11px;padding:1px 4px;background:#0f172a;border-radius:3px}.dl9-cand-link:hover{color:#7dd3fc;background:#1e293b}.dl9-p3-wrap{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:start}.dl9-p3-selrow{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}.dl9-p3-col{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border-radius:4px;min-width:0}.dl9-p3-col-csv{background:rgba(15,23,42,0.6);border-left:2px solid #38bdf8}.dl9-p3-col-cand{background:rgba(120,53,15,0.18);border-left:2px solid #fbbf24}.dl9-p3-col-cand.dl9-p3-col-cand-new{background:rgba(20,83,45,0.18);border-left-color:#4ade80}.dl9-p3-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr{color:#4ade80}.dl9-p3-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.3;word-break:break-word}.dl9-p3-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}.dl9-p3-chip{font-size:10px;padding:1px 7px;background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:10px;font-family:inherit;line-height:1.4}.dl9-p3-chip-match{background:rgba(20,83,45,0.45);color:#86efac;border-color:#15803d}.dl9-p3-chip-miss{background:rgba(127,29,29,0.35);color:#fca5a5;border-color:#991b1b}.dl9-p3-chip-empty{color:#64748b;font-style:italic;border-style:dashed}.dl9-p3-specs-btn{font-size:10px;padding:1px 6px;background:#1e293b;color:#94a3b8;border:1px solid #475569;border-radius:3px;cursor:pointer;font-family:inherit}.dl9-p3-specs-btn:hover{background:#334155;color:#e2e8f0}.dl9-p3-specs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:2px;padding:4px 6px;background:rgba(15,23,42,0.4);border-radius:4px;border-left:2px solid #475569}.dl9-p3-specs-col{display:flex;flex-direction:column;gap:2px;min-width:0}.dl9-p3-specs-hdr{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase}.dl9-p3-specs-list{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.4;word-break:break-word}.dl9-p3-specs-err{color:#f87171}.dl9-p3-hdrrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:1px}.dl9-p3-hdr-title{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px}.dl9-p3-col-csv .dl9-p3-hdr-title{color:#38bdf8}.dl9-p3-col-cand .dl9-p3-hdr-title{color:#fbbf24}.dl9-p3-col-cand-new .dl9-p3-hdr-title{color:#4ade80}.dl9-p3-hdr-meta{font-size:10px;color:#cbd5e1;font-family:monospace;line-height:1.2}.dl9-p3-hdr-meta b{color:#e2e8f0;font-weight:500}.dl9-p3-real-chip{font-size:10px;padding:1px 7px;border-radius:10px;font-family:inherit;line-height:1.4;border:1px solid transparent;display:inline-flex;align-items:center;gap:3px}.dl9-p3-real-chip.match::before{content:'✓';font-size:9px;opacity:0.8}.dl9-p3-real-chip.miss::before{content:'✗';font-size:9px;opacity:0.6}.dl9-p3-dedup-banner{grid-column:1/-1;font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;align-items:center;gap:6px}.dl9-p3-dedup-banner.reassigned{background:rgba(202,138,4,0.18);color:#fde68a;border-left:3px solid #d97706}.dl9-p3-dedup-banner.conflict{background:rgba(127,29,29,0.30);color:#fca5a5;border-left:3px solid #b91c1c}.dl9-csv-dup-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(234,88,12,0.22);color:#fdba74;border:1px solid #9a3412;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-unarch-chip{display:inline-block;margin-left:6px;padding:1px 7px;font-size:10px;font-weight:600;background:rgba(37,99,235,0.20);color:#93c5fd;border:1px solid #1e40af;border-radius:10px;font-family:inherit;vertical-align:middle;line-height:1.4}.dl9-archive-toggle{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;padding:3px 6px;background:#0f172a;border:1px solid #334155;border-radius:4px}.dl9-archive-toggle input{margin:0 4px 0 0;cursor:pointer}.dl9-archive-toggle.dl9-archive-off{background:rgba(127,29,29,0.18);color:#fca5a5;border-color:#7f1d1d}.dl9-archive-row-chk{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 5px;font-size:10px;background:rgba(124,45,18,0.20);color:#fed7aa;border:1px solid #9a3412;border-radius:3px;font-family:inherit;cursor:pointer;vertical-align:middle}.dl9-archive-row-chk input{margin:0 3px 0 0;cursor:pointer}.dl9-archive-row-chk.dl9-archive-row-off{background:rgba(15,23,42,0.6);color:#64748b;border-color:#334155;text-decoration:line-through}`;
     document.head.appendChild(s);
   }
 
@@ -1422,11 +1426,17 @@ const BulkUpload = (() => {
         const ncNow = rows.filter(r => r.status === 'new').length;
         const ecNow = rows.filter(r => r.status === 'existing').length;
         const dcNow = rows.filter(r => r.status === 'forceDup').length;
-        const pendingNow = rows.filter(r => r.pase === 3).length;
+        const pase3Rows = rows.filter(r => r.pase === 3);
+        const pendingTotal = pase3Rows.length;
+        // 1.4.3: una decisión "tomada" = el operador interactuó con el dropdown
+        // (userOverride != null). El default top-match cuenta como pendiente
+        // aunque el classifier ya haya elegido — para que el operador valide.
+        const decidedNow = pase3Rows.filter(r => pnStatus[r.idx]?.userOverride != null).length;
+        const remainingNow = pendingTotal - decidedNow;
         const line = modal.querySelector('#dl9-counts-line');
         if (line) {
-          const pendingHtml = pendingNow > 0
-            ? ` · <span class="dl9-pending-chip"><b>${pendingNow}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">${filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes'}</button>`
+          const pendingHtml = pendingTotal > 0
+            ? ` · <span class="dl9-pending-chip">Pase 3: <b>${decidedNow}</b>/${pendingTotal} validadas (${remainingNow} restantes)</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">${filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes'}</button>`
             : '';
           line.innerHTML = `${rows.length} filas — ${ncNow} nuevos, ${ecNow} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dcNow} forzar dup${pendingHtml}`;
           // Re-bindear el toggle pendientes (innerHTML borra el listener anterior)
@@ -1474,6 +1484,13 @@ const BulkUpload = (() => {
           const tdPN = document.createElement('td');
           tdPN.style.padding = '3px 6px';
           tdPN.style.fontFamily = 'monospace';
+          // 1.4.3: número de línea CSV (header=1, primera fila de datos=2) para
+          // que el operador sepa cuántas decisiones le faltan/lleva.
+          const lineSpan = document.createElement('span');
+          lineSpan.className = 'dl9-line-num';
+          lineSpan.textContent = `L${r.idx + 2}`;
+          lineSpan.title = `Fila ${r.idx + 2} del CSV (idx ${r.idx})`;
+          tdPN.appendChild(lineSpan);
           const pnNameSpan = document.createElement('span');
           pnNameSpan.textContent = r.pn;
           tdPN.appendChild(pnNameSpan);
@@ -1536,12 +1553,14 @@ const BulkUpload = (() => {
             //   "Modificar #ID etiq:[NIQ,CRO] metal:CU"
             // Etiquetas filtradas con nonFinishList (V/Cobre fuera) y ordenadas.
             const nonFinishListUI = (bulkCfg().nonFinishLabelNames || []);
+            // 1.4.3: index de equivalencias semánticas reusado en chips y options.
+            const equivIndexUI = buildEquivIndex(bulkCfg().metalEquivalents);
             // 1.2.8: sin cap — antes filtrábamos a 3 y eso confundía al operador
             // (parecía que faltaban PNs). Ahora salen TODOS los matches por nombre
             // del cliente; en escenarios reales son <=10, sin riesgo de saturar.
             for (let ci = 0; ci < (r.candidates || []).length; ci++) {
               const c = r.candidates[ci];
-              const candLabels = (c.labels || []).filter(l => !nonFinishListUI.some(nf => nf.toUpperCase() === String(l).toUpperCase()));
+              const candLabels = (c.labels || []).filter(l => !isNonFinishLabel(l, nonFinishListUI));
               candLabels.sort((a, b) => String(a).localeCompare(String(b)));
               const etiqStr = candLabels.length ? `etiq:[${candLabels.join(',')}]` : 'sin-etiq';
               const metalStr = c.metalBase ? `metal:${c.metalBase}` : 'sin-metal';
@@ -1701,12 +1720,13 @@ const BulkUpload = (() => {
                 note.className = 'dl9-p3-meta';
                 note.textContent = 'Se creará sin tocar los existentes.';
                 candCol.appendChild(note);
-                for (const lbl of (r.csvLabels || [])) {
-                  // 1.2.11 F2: chip CSV con color del catálogo si el nombre matchea.
+                // 1.4.3: filtrar nonFinish también aquí (chips informativos del CSV)
+                const csvLabelsCleanN = (r.csvLabels || []).filter(l => !isNonFinishLabel(l, nonFinishListUI));
+                for (const lbl of csvLabelsCleanN) {
                   csvChips.appendChild(makeLabelChip(enrichCsvLabel(lbl), null));
                 }
-                if (!r.csvLabels?.length) {
-                  csvChips.appendChild(makeEmptyChip('(sin etiquetas)'));
+                if (!csvLabelsCleanN.length) {
+                  csvChips.appendChild(makeEmptyChip('(sin etiquetas de acabado)'));
                 }
                 return;
               }
@@ -1726,35 +1746,36 @@ const BulkUpload = (() => {
               candCol.appendChild(hdrRow);
               candCol.appendChild(makeMeta('proc', c.processName || '(sin proceso default)'));
 
-              // Match-aware chip pintado con color real del Steelhead label.
-              // Para CSV labels: si el candidato tiene un label con el mismo
-              // nombre, lo pintamos como 'match' (con color real del candidato);
-              // si no, 'miss' (color neutro).
-              const candObjs = c.labelObjs || (c.labels || []).map(n => ({ name: n, color: null }));
-              const csvSet = new Set(r.csvLabels || []);
-              const candSet = new Set(c.labels || []);
+              // 1.4.3: filtrar etiquetas nonFinish (plantas SCM/SMY/STX/... y status)
+              // ANTES de pintar chips — esas etiquetas no son acabados y no deberían
+              // contar como match/miss visible. Match con equivalencias semánticas
+              // (Estaño ≡ Estaño s/Aluminio etc.) vía equivIndexUI.
+              const csvLabelsClean = (r.csvLabels || []).filter(l => !isNonFinishLabel(l, nonFinishListUI));
+              const candLabelsClean = (c.labels || []).filter(l => !isNonFinishLabel(l, nonFinishListUI));
+              const candObjsAll = c.labelObjs || (c.labels || []).map(n => ({ name: n, color: null }));
+              const candObjs = candObjsAll.filter(o => !isNonFinishLabel(o.name, nonFinishListUI));
               const candByName = new Map(candObjs.map(o => [o.name, o]));
-              for (const lblName of (r.csvLabels || [])) {
-                const matched = candSet.has(lblName);
-                if (matched) {
-                  csvChips.appendChild(makeLabelChip(candByName.get(lblName), 'match'));
+              const matchInCand = (lbl) => candLabelsClean.some(cl => equivalentValues(equivIndexUI, lbl, cl));
+              const matchInCsv = (lbl) => csvLabelsClean.some(cv => equivalentValues(equivIndexUI, lbl, cv));
+              for (const lblName of csvLabelsClean) {
+                if (matchInCand(lblName)) {
+                  // Si existe exactamente igual usamos el color del candidato; si
+                  // sólo es equivalente, color del catálogo (puede ser null).
+                  const exact = candByName.get(lblName);
+                  csvChips.appendChild(makeLabelChip(exact || enrichCsvLabel(lblName), 'match'));
                 } else {
-                  // 1.2.11 F2: aun siendo 'miss' vs este candidato, pintamos con
-                  // el color real del catálogo Steelhead (si el label existe en
-                  // algún otro candidato del run). 'miss' kind sigue señalando
-                  // que NO matchea con ESTE candidato seleccionado.
                   csvChips.appendChild(makeLabelChip(enrichCsvLabel(lblName), 'miss'));
                 }
               }
-              if (!r.csvLabels?.length) csvChips.appendChild(makeEmptyChip('(sin etiquetas)'));
+              if (!csvLabelsClean.length) csvChips.appendChild(makeEmptyChip('(sin etiquetas de acabado)'));
 
               const candChips = document.createElement('div');
               candChips.className = 'dl9-p3-chips';
               for (const obj of candObjs) {
-                const kind = csvSet.has(obj.name) ? 'match' : 'miss';
+                const kind = matchInCsv(obj.name) ? 'match' : 'miss';
                 candChips.appendChild(makeLabelChip(obj, kind));
               }
-              if (!candObjs.length) candChips.appendChild(makeEmptyChip('(sin etiquetas)'));
+              if (!candObjs.length) candChips.appendChild(makeEmptyChip('(sin etiquetas de acabado)'));
               candCol.appendChild(candChips);
             };
             renderCandColumn(initialVal);
@@ -1856,6 +1877,8 @@ const BulkUpload = (() => {
               renderCandColumn(val);
               if (specsExpanded) renderSpecsPanel(val);
               updateHeaderStats();
+              // 1.4.3: re-pintar el chip "✓ guardada" / "pendiente" en vivo.
+              if (wrap._renderSavedChip) wrap._renderSavedChip();
               if (resumeState) {
                 const slot = resumeState.classifications?.[idx];
                 if (slot) slot.userOverride = pnStatus[idx].userOverride;
@@ -1864,9 +1887,33 @@ const BulkUpload = (() => {
             });
 
             pase3Wrap = wrap;
-            tdAct.className = 'dl9-exist';
-            tdAct.style.fontStyle = 'italic';
-            tdAct.textContent = '👇 decidir abajo';
+            // 1.4.3: liberamos el espacio del "👇 decidir abajo" (la fila
+            // completa ya está pintada naranja por dl9-row-pending). Mostramos
+            // chip "✓ guardado" si el operador ya decidió (userOverride != null);
+            // si no, "pendiente". El chip se re-pinta en sel.change.
+            const savedChipSlot = document.createElement('span');
+            savedChipSlot.className = 'dl9-p3-saved-slot';
+            const renderSavedChip = () => {
+              savedChipSlot.replaceChildren();
+              const ov = pnStatus[r.idx]?.userOverride;
+              if (ov != null) {
+                const chip = document.createElement('span');
+                chip.className = 'dl9-saved-chip';
+                chip.textContent = '✓ guardada';
+                chip.title = 'Esta decisión ya está persistida en localStorage; si recargas y eliges REANUDAR vuelve aplicada.';
+                savedChipSlot.appendChild(chip);
+              } else {
+                const chip = document.createElement('span');
+                chip.style.cssText = 'font-size:10px;color:#fdba74;font-style:italic';
+                chip.textContent = 'pendiente';
+                savedChipSlot.appendChild(chip);
+              }
+            };
+            renderSavedChip();
+            tdAct.appendChild(savedChipSlot);
+            // Hook para re-pintar el chip cuando cambia el select.
+            wrap.dataset.savedChipHook = '1';
+            wrap._renderSavedChip = renderSavedChip;
           } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
           else {
@@ -2033,7 +2080,23 @@ const BulkUpload = (() => {
       applyFilters();
       updateSelCount();
 
-      modal.querySelector('#dl9-cancel').onclick = () => { removeOverlay(overlay); resolve(false); };
+      modal.querySelector('#dl9-cancel').onclick = () => {
+        // 1.4.3: si el operador alcanzó a tomar decisiones (userOverride != null
+        // en cualquier fila Pase 3), avisar que YA quedaron persistidas en
+        // localStorage — al volver a procesar el mismo CSV puede elegir REANUDAR
+        // y vuelven aplicadas. Evita la angustia de "perdí 2 horas de clicks".
+        try {
+          const decisionsTaken = pnStatus.filter(s => s.userOverride != null).length;
+          if (decisionsTaken > 0) {
+            alert(
+              `Guardé ${decisionsTaken} decisión${decisionsTaken === 1 ? '' : 'es'} en este navegador.\n\n` +
+              `Si vuelves a subir EL MISMO CSV te aparecerá el prompt "Corrida previa detectada" — elige REANUDAR y tus decisiones se aplican automáticamente.\n\n` +
+              `(Si editas el CSV el runKey cambia y se trata como corrida nueva.)`
+            );
+          }
+        } catch (_) { /* alert es best-effort */ }
+        removeOverlay(overlay); resolve(false);
+      };
       modal.querySelector('#dl9-exec').onclick = () => {
         // 1.3.0: capturar chunkSize si aplica (solo COTIZACIÓN+NP). El default
         // viene de bulkCfg().chunking.defaultChunkSize. Persiste en state para
@@ -2551,7 +2614,7 @@ const BulkUpload = (() => {
       // veces" sin importar cómo llegamos al estado actual. Si el usuario
       // intencionalmente override-ó dos filas al mismo id, dedup reparte al
       // segundo entre candidatos disponibles o lo demota a NEW.
-      const dedup2 = dedupModifyTargets(pnStatus, (bulkCfg().nonFinishLabelNames || []));
+      const dedup2 = dedupModifyTargets(pnStatus, (bulkCfg().nonFinishLabelNames || []), buildEquivIndex(bulkCfg().metalEquivalents));
       if (dedup2.reassigned || dedup2.demoted) {
         warn(`Dedup post-overrides: ${dedup2.reassigned} re-asignaciones, ${dedup2.demoted} demotadas a NEW por conflicto`);
       }
@@ -4153,9 +4216,45 @@ const BulkUpload = (() => {
 
   // ─── Helpers de clasificación (puros, exportados a window.BulkUploadHelpers) ───
 
+  // 1.4.3: normalización trim+upper para comparar labels/metales sin que un espacio
+  // accidental o variante de case (ej. "SRG " vs "SRG", "Estaño" vs "estaño") rompa
+  // matches.
+  function normLabel(s) {
+    if (s == null) return '';
+    return String(s).trim().toUpperCase();
+  }
+
   function isNonFinishLabel(name, nonFinishList) {
     if (!name || typeof name !== 'string') return false;
-    return nonFinishList.includes(name);
+    const n = normLabel(name);
+    if (!n) return false;
+    return nonFinishList.some(nf => normLabel(nf) === n);
+  }
+
+  // 1.4.3: equivalencias semánticas configurables. Cada grupo es una lista de
+  // sinónimos para match — si dos valores caen en el mismo grupo se consideran
+  // equivalentes (no exactos). Se construye un mapa name→groupId una sola vez.
+  function buildEquivIndex(groups) {
+    const map = new Map();
+    if (!Array.isArray(groups)) return map;
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi];
+      if (!Array.isArray(g)) continue;
+      for (const item of g) {
+        const k = normLabel(item);
+        if (k) map.set(k, gi);
+      }
+    }
+    return map;
+  }
+  function equivGroup(map, value) {
+    return map.get(normLabel(value));
+  }
+  function equivalentValues(map, a, b) {
+    const na = normLabel(a), nb = normLabel(b);
+    if (na === nb) return true;
+    const ga = map.get(na), gb = map.get(nb);
+    return ga != null && gb != null && ga === gb;
   }
 
   function acabadosOrdenados(labels, nonFinishList) {
@@ -4165,30 +4264,71 @@ const BulkUpload = (() => {
     for (const l of labels) {
       if (!l || typeof l !== 'string') continue;
       if (isNonFinishLabel(l, nonFinishList)) continue;
-      if (seen.has(l)) continue;
-      seen.add(l);
-      acabados.push(l);
+      const key = normLabel(l);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      acabados.push(key);
     }
     return acabados.sort().join('|');
   }
 
-  function buildCompositeKey(pn, nonFinishList) {
+  // 1.4.3: misma función que acabadosOrdenados pero colapsa equivalentes a un
+  // mismo token canonical "__G<id>" antes de ordenar. Permite que "Estaño" y
+  // "Estaño s/Aluminio" cuenten como el mismo acabado para fines de match.
+  // Si no hay equivIndex (config sin metalEquivalents) se comporta igual que
+  // acabadosOrdenados.
+  function acabadosCanonicos(labels, nonFinishList, equivIndex) {
+    if (!Array.isArray(labels)) return '';
+    const seen = new Set();
+    const tokens = [];
+    for (const l of labels) {
+      if (!l || typeof l !== 'string') continue;
+      if (isNonFinishLabel(l, nonFinishList)) continue;
+      const norm = normLabel(l);
+      let token = norm;
+      if (equivIndex && equivIndex.size) {
+        const g = equivIndex.get(norm);
+        if (g != null) token = `__G${g}`;
+      }
+      if (seen.has(token)) continue;
+      seen.add(token);
+      tokens.push(token);
+    }
+    return tokens.sort().join('|');
+  }
+
+  // 1.4.3: representación canonical de un metal — si está en un grupo
+  // equivalente devuelve "__M<groupId>", si no devuelve el metal normalizado.
+  function metalCanonico(metal, equivIndex) {
+    const m = normLabel(metal);
+    if (!m) return '';
+    if (equivIndex && equivIndex.size) {
+      const g = equivIndex.get(m);
+      if (g != null) return `__M${g}`;
+    }
+    return m;
+  }
+
+  function buildCompositeKey(pn, nonFinishList, equivIndex) {
     const customerId = pn.customerId != null ? String(pn.customerId) : '';
     const name = (pn.name || '').toUpperCase();
-    const metalBase = pn.metalBase ? String(pn.metalBase) : '';
-    const acabados = acabadosOrdenados(pn.labels || [], nonFinishList);
+    // 1.4.3: metal y acabados ahora se canonicalizan para que el composite
+    // matchee aunque el CSV traiga "Estaño" y el PN tenga "Estaño s/Aluminio".
+    // Sin equivIndex se comporta como antes (exacto).
+    const metalBase = metalCanonico(pn.metalBase || '', equivIndex);
+    const acabados = acabadosCanonicos(pn.labels || [], nonFinishList, equivIndex);
     return `${customerId}||${name}||${metalBase}||${acabados}`;
   }
 
-  function rankCandidates(csvRow, candidates, nonFinishList) {
-    const csvMetal = csvRow.metalBase || '';
-    const csvAcabados = acabadosOrdenados(csvRow.labels || [], nonFinishList);
+  function rankCandidates(csvRow, candidates, nonFinishList, equivIndex) {
+    const csvMetalCanon = metalCanonico(csvRow.metalBase || '', equivIndex);
+    const csvAcabadosCanon = acabadosCanonicos(csvRow.labels || [], nonFinishList, equivIndex);
     const csvIbms = csvRow.quoteIBMS || '';
 
     function score(c) {
       let s = 0;
-      if ((c.metalBase || '') === csvMetal) s++;
-      if (acabadosOrdenados(c.labels || [], nonFinishList) === csvAcabados) s++;
+      if (metalCanonico(c.metalBase || '', equivIndex) === csvMetalCanon) s++;
+      if (acabadosCanonicos(c.labels || [], nonFinishList, equivIndex) === csvAcabadosCanon) s++;
       return s;
     }
 
@@ -4208,14 +4348,14 @@ const BulkUpload = (() => {
     });
   }
 
-  function classifyOnePN(csvRow, pnsForCustomer, nonFinishList) {
+  function classifyOnePN(csvRow, pnsForCustomer, nonFinishList, equivIndex) {
     const allPns = pnsForCustomer || [];
     // 1.2.12: Pases 1 y 2 ven archivados también (auto-desarchiva en STEP 8 vía
     // pnsToUnarchive cuando status='existing'). Pase 3 sigue limitado a activos
     // para no ensuciar el dropdown de candidatos near-match con históricos.
     const activePns = allPns.filter(p => !p.archivedAt);
     const csvIbms = csvRow.quoteIBMS || '';
-    const csvCompositeKey = buildCompositeKey(csvRow, nonFinishList);
+    const csvCompositeKey = buildCompositeKey(csvRow, nonFinishList, equivIndex);
 
     // ── Pase 1: QuoteIBMS autoritativo (1.2.12: incluye archivados) ──
     if (csvIbms) {
@@ -4239,7 +4379,7 @@ const BulkUpload = (() => {
     const csvCustomerId = csvRow.customerId;
     const byComposite = allPns.find(p => {
       const pNorm = (p.customerId != null) ? p : Object.assign({}, p, { customerId: csvCustomerId });
-      return buildCompositeKey(pNorm, nonFinishList) === csvCompositeKey;
+      return buildCompositeKey(pNorm, nonFinishList, equivIndex) === csvCompositeKey;
     });
     if (byComposite) {
       const pnIbms = byComposite.quoteIBMS || '';
@@ -4278,9 +4418,11 @@ const BulkUpload = (() => {
     const nameUpper = (csvRow.name || '').toUpperCase();
     const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
     if (nameCandidates.length > 0) {
-      const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList);
-      const csvAcabados = acabadosOrdenados(csvRow.labels || [], nonFinishList);
-      const topAcabados = acabadosOrdenados(ranked[0].labels || [], nonFinishList);
+      const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList, equivIndex);
+      // 1.4.3: comparación canonical para que "Estaño" vs "Estaño s/Cobre" o
+      // mismo acabado con casing/espacios distintos cuenten como labelsMatchFull.
+      const csvAcabados = acabadosCanonicos(csvRow.labels || [], nonFinishList, equivIndex);
+      const topAcabados = acabadosCanonicos(ranked[0].labels || [], nonFinishList, equivIndex);
       const labelsMatchFull = csvAcabados === topAcabados;
       if (labelsMatchFull) {
         return {
@@ -4293,7 +4435,7 @@ const BulkUpload = (() => {
         };
       }
       // 1.2.9: fallback a candidato sin-etiqueta si existe.
-      const blankCandidate = ranked.find(c => acabadosOrdenados(c.labels || [], nonFinishList) === '');
+      const blankCandidate = ranked.find(c => acabadosCanonicos(c.labels || [], nonFinishList, equivIndex) === '');
       if (blankCandidate) {
         return {
           classification: 'MODIFY',
@@ -4347,8 +4489,9 @@ const BulkUpload = (() => {
   //   - Alternate blank (sin acabados) → re-asigna. confidence='name+blank-candidate'.
   //   - Sin alternate aceptable → demota a NEW. dedupConflict=true,
   //     dedupConflictTargetPnId guarda el id originalmente propuesto.
-  function dedupModifyTargets(pnStatus, nonFinishList) {
+  function dedupModifyTargets(pnStatus, nonFinishList, equivIndex) {
     const nfList = nonFinishList || [];
+    const eIdx = equivIndex || null;
     const confRank = {
       'ibms-exacto': 0,
       'composite-exacto-ambos-sin-ibms': 1,
@@ -4390,13 +4533,13 @@ const BulkUpload = (() => {
       // Target tomado por una fila de precedencia mayor. Buscar alterno strict
       // o blank entre s.candidates (poblado solo en Pase 3; Pase 1/2 traen [] → demote).
       const candidates = s.candidates || [];
-      const csvAcabados = acabadosOrdenados(s.csvLabels || [], nfList);
+      const csvAcabados = acabadosCanonicos(s.csvLabels || [], nfList, eIdx);
       let alternative = null;
       let altConfidence = null;
       // Nivel 1: alternate con acabados estrictamente iguales al CSV.
       for (const c of candidates) {
         if (c.id === s.existingId || used.has(c.id)) continue;
-        const candAcabados = acabadosOrdenados(c.labels || [], nfList);
+        const candAcabados = acabadosCanonicos(c.labels || [], nfList, eIdx);
         if (candAcabados === csvAcabados) {
           alternative = c;
           altConfidence = 'name+labels-match';
@@ -4407,7 +4550,7 @@ const BulkUpload = (() => {
       if (!alternative) {
         for (const c of candidates) {
           if (c.id === s.existingId || used.has(c.id)) continue;
-          const candAcabados = acabadosOrdenados(c.labels || [], nfList);
+          const candAcabados = acabadosCanonicos(c.labels || [], nfList, eIdx);
           if (candAcabados === '') {
             alternative = c;
             altConfidence = 'name+blank-candidate';
@@ -4486,7 +4629,7 @@ const BulkUpload = (() => {
     return `${originalName} ${String(chunkIndex + 1).padStart(2, '0')}`;
   }
 
-  const __helpers = { isNonFinishLabel, acabadosOrdenados, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates, chunkParts, makeChunkQuoteName };
+  const __helpers = { isNonFinishLabel, normLabel, buildEquivIndex, equivGroup, equivalentValues, metalCanonico, acabadosOrdenados, acabadosCanonicos, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates, chunkParts, makeChunkQuoteName };
 
   // 1.2.12: getter para que window.BulkUpload.__state apunte siempre al state actual
   // (state se reasigna en nextRunId() así que un snapshot quedaría stale).

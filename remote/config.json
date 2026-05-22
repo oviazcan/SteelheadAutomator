@@ -1,6 +1,6 @@
 {
-  "version": "1.4.2",
-  "lastUpdated": "2026-05-21",
+  "version": "1.4.3",
+  "lastUpdated": "2026-05-22",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -343,6 +343,10 @@
         "nonFinishLabelNames": [
           "SMY", "STX", "SXC", "SRG", "SCM", "SQR", "SQ2",
           "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"
+        ],
+        "metalEquivalents": [
+          ["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"],
+          ["Plata", "Plata Flash"]
         ],
         "dedup": {
           "massiveThreshold": 1000
