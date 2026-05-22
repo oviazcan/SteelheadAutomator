@@ -1,6 +1,60 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.6. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.7. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.7: bulkCfg() leía de api().getConfig() que no existe — config nunca llegaba al matcher (Fix R, 2026-05-22)
+
+**Contexto.** Tras el deploy de 1.4.6 el usuario reportó dos escenarios que demostraban que el filtro nonFinish y las equivalencias semánticas seguían muertos en producción:
+
+1. **Plata Flash vs Plata** (Image #13): CSV `[Plata Flash]` no matcheaba con PN existente `[Plata]` a pesar de que `metalEquivalents` los agrupa.
+2. **NP Desconocido como blank** (Image #14): PN candidato `[NP Desconocido]` debería filtrarse a `[]` y caer en la rama blank-candidate, pero el modal mostraba el chip `NP Desconocido` y el default era `🆕 Crear nuevo PN`.
+
+### Causa raíz
+
+El fix de 1.4.6 wireó `nonFinishLabelNames` y `metalEquivalents` al shape de `bulkCfg()`, pero la **fuente** de donde leía el config estaba rota desde 1.4.3:
+
+```js
+const cfg = (api()?.getConfig?.() || window.__sa_config || {});
+```
+
+- `SteelheadAPI` (`remote/scripts/steelhead-api.js:170`) NO expone `getConfig` — solo `init`, `query`, `queryWithFallback`, `keepAlive`, `getDomain`, `getHash`, `getLog`, `copyLastLog`, `log`, `warn`. Así que `api()?.getConfig?.()` siempre devolvía `undefined`.
+- `window.__sa_config` tampoco existe — el background (`extension/background.js:102`) setea `window.REMOTE_CONFIG`, no `__sa_config`.
+
+Resultado: `cfg = {}` siempre → `d = {}` → todo el shape de `bulkCfg()` devolvía sus defaults. Para casi todas las claves (`concurrency`, `retry`, `paging`, `preview`, `resume`, `chunking`) los defaults coinciden con el config, así que el bug pasó desapercibido. Pero para `nonFinishLabelNames` y `metalEquivalents` el default es `[]` — y el matcher operó con lista vacía desde 1.4.3, sin importar lo que dijera el config.
+
+### Fix
+
+Leer primero de `window.REMOTE_CONFIG` (que el background SÍ setea), con fallbacks defensivos:
+
+```js
+const cfg = window.REMOTE_CONFIG || api()?.getConfig?.() || window.__sa_config || {};
+```
+
+Cero cambios en el clasificador ni en la UI.
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js`:
+  - `VERSION = '1.4.7'`
+  - `bulkCfg()` ahora lee de `window.REMOTE_CONFIG` primero.
+- `remote/config.json`: bump `version` a `1.4.7`.
+
+### Plan de validación pendiente
+
+- Confirmar en DevTools sobre la pestaña de Steelhead, después de recargar la extensión:
+  ```js
+  // Debe incluir nonFinishLabelNames y metalEquivalents con datos
+  Object.keys(window.REMOTE_CONFIG?.steelhead?.domain?.bulkUpload || {});
+  ```
+- Options del Pase 3 con candidatos `[NP Desconocido]` deben mostrar `sin-etiq` (no `etiq:[NP Desconocido]`) y caer en blank-candidate como default.
+- Filas CSV `[Plata Flash]` vs PN existente `[Plata]` deben matchear en Pase 2 (`composite-exacto-*`), no llegar a Pase 3.
+
+### Pendientes derivados
+
+- Auditar otros applets que usen el patrón roto (`api()?.getConfig?.() || window.__sa_config`). Candidatos: `process-deep-audit`, `spec-params-bulk`, `po-comparator`.
+- Considerar exponer `getConfig()` directamente en `SteelheadAPI` para unificar el acceso y eliminar la dependencia frágil en `window.REMOTE_CONFIG`.
+
+---
 
 ## 1.4.6: bulkCfg() exponía nonFinishLabelNames/metalEquivalents — equivalencias muertas (Fix Q, 2026-05-22)
 
