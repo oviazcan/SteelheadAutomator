@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.5';
+  const VERSION = '1.4.6';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -82,6 +82,12 @@ const BulkUpload = (() => {
       preview: { pageSize: d.preview?.pageSize ?? 100 },
       resume: { maxEntries: d.resume?.maxEntries ?? 20, purgeAgeDays: d.resume?.purgeAgeDays ?? 7 },
       chunking: { defaultChunkSize: d.chunking?.defaultChunkSize ?? 250 },
+      // 1.4.6: estos dos faltaban en el shape — sin ellos classifyPNsMassive y
+      // los chips de Pase 3 quedaban siempre con nonFinishList=[] y equivIndex
+      // vacío, así que SRG no se filtraba y Plata ≠ Plata Flash, contradiciendo
+      // lo que el config sí define. Bug introducido en 1.4.3.
+      nonFinishLabelNames: Array.isArray(d.nonFinishLabelNames) ? d.nonFinishLabelNames : [],
+      metalEquivalents: Array.isArray(d.metalEquivalents) ? d.metalEquivalents : [],
     };
   };
 

@@ -1,6 +1,52 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.5. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.6. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.6: bulkCfg() exponía nonFinishLabelNames/metalEquivalents — equivalencias muertas (Fix Q, 2026-05-22)
+
+**Contexto.** Usuario en página 3 de validaciones, reporta que en una sola fila (L1538, 80255-103-01, SCHNEIDER) el matcher no detectó que **CSV `Decapado + Plata + SRG` ≡ PN `Decapado + Plata Flash`**, a pesar de que el config (desde 1.4.3) define ambos como equivalentes:
+
+- `nonFinishLabelNames` incluye `"SRG"` → debería filtrarse antes de comparar.
+- `metalEquivalents` incluye `["Plata", "Plata Flash"]` → deberían colapsar al mismo token canonical.
+
+La fila cayó en Pase 3 como DUP cuando debía haberse resuelto en Pase 2 (`composite-exacto-*`) automáticamente. Los chips del modal mostraban `✓ Decapado, × Plata, × SRG` — evidencia de que la UI también ignoraba el nonFinish list y el equivIndex.
+
+### Causa raíz
+
+El helper `bulkCfg()` (línea 67) devuelve un objeto **sin** `nonFinishLabelNames` ni `metalEquivalents`. Bug introducido en 1.4.3 cuando se agregaron esas claves al `config.json` pero se olvidó wirearlas en el shape de `bulkCfg()`.
+
+Resultado: tanto en clasificación masiva (`classifyPNsMassive` línea 962-964) como en clasificación on-demand (`classifyPNsOnDemand` línea 983-985) Y en el render de chips del modal Pase 3 (línea 1592-1594), las llamadas a `cfg.nonFinishLabelNames || []` y `buildEquivIndex(cfg.metalEquivalents)` siempre recibían `undefined` → lista vacía / Map vacío. Las equivalencias del config nunca llegaron al matcher en producción.
+
+### Fix
+
+Agregar las dos claves al objeto que devuelve `bulkCfg()`:
+
+```js
+nonFinishLabelNames: Array.isArray(d.nonFinishLabelNames) ? d.nonFinishLabelNames : [],
+metalEquivalents: Array.isArray(d.metalEquivalents) ? d.metalEquivalents : [],
+```
+
+Cero cambios en clasificadores ni en UI — el bug era 100% del shape de config.
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js`:
+  - `VERSION = '1.4.6'`
+  - `bulkCfg()` ahora propaga `nonFinishLabelNames` y `metalEquivalents` desde `cfg.steelhead.domain.bulkUpload`.
+- `remote/config.json`: bump `version` a `1.4.6`.
+
+### Plan de validación pendiente
+
+- Próxima corrida con CSV que tenga combinaciones `Plata` (CSV) vs `Plata Flash` (PN existente) → debería caer en Pase 2 (composite-exacto) automáticamente, no en Pase 3.
+- Verificar que filas con etiquetas planta (`SRG`, `SMY`, `STX`, `SCM`, etc.) ya no muestren esos chips en el modal — solo etiquetas reales de acabado.
+- Si por alguna razón el bug persiste post-deploy, abrir DevTools y ejecutar `BulkUpload.__test().bulkCfg()` (o equivalente) para confirmar que el shape ya trae los arrays no vacíos.
+
+### Pendientes derivados
+
+- Auditar otros applets por el mismo patrón: claves de config agregadas pero no wireadas en su helper local. Candidatos: `process-deep-audit`, `spec-params-bulk` (también tienen `<applet>Cfg()` helpers).
+- Considerar test unitario sobre `bulkCfg()` que valide round-trip de TODAS las claves de `config.steelhead.domain.bulkUpload`.
+
+---
 
 ## 1.4.5: Pase 3 — userDecided separado de userOverride + altura modal + "Aceptar visibles" (Fix P, 2026-05-22)
 
