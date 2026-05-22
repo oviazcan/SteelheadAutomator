@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.7';
+  const VERSION = '1.4.8';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -75,6 +75,13 @@ const BulkUpload = (() => {
       concurrency: {
         savePartNumber: d.concurrency?.savePartNumber ?? 5,
         archive: d.concurrency?.archive ?? 5,
+        // 1.4.8: concurrencia dedicada al STEP 5 (archive de specs sentinel
+        // pre-cotización). Más conservadora porque este paso corre antes del
+        // chunk loop sobre el universo completo de PNs existentes — en runs
+        // de >3k PNs, mantener buffers de SavePartNumber en vuelo dispara
+        // OOM del sandbox de Edge/Chrome. Si no se define, cae al default
+        // de savePartNumber para retro-compat.
+        sentinelPreQuoteArchive: d.concurrency?.sentinelPreQuoteArchive ?? d.concurrency?.savePartNumber ?? 3,
       },
       retry: {
         delaysMs: d.retry?.delaysMs ?? [1000, 2000, 4000],
@@ -2451,6 +2458,12 @@ const BulkUpload = (() => {
           // 1.3.0: chunks completados por cliente. Mapa cid (string) → number[].
           // Cada chunk se marca al final de su pipeline (UpdateQuote ok).
           completedChunks: {},
+          // 1.4.8: pnIds cuyo archive de specs sentinel pre-cotización (STEP 5)
+          // ya quedó OK. Se persiste cada N=100 y permite que un resume tras
+          // crash OOM saltee los pnIds ya procesados en vez de re-correr los
+          // ~5879 sentinels desde cero (idempotente pero caro: ~10 min de
+          // SavePartNumber no-ops + buffers GraphQL que dispararon OOM).
+          archivedSentinelsPreQuote: [],
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
@@ -2462,6 +2475,10 @@ const BulkUpload = (() => {
           resumeState.chunkSize = state.chunkSize || bulkCfg().chunking.defaultChunkSize;
         }
         if (!resumeState.completedChunks) resumeState.completedChunks = {};
+        // 1.4.8: hidratar lista de sentinels archivados si la corrida es pre-1.4.8.
+        if (!Array.isArray(resumeState.archivedSentinelsPreQuote)) {
+          resumeState.archivedSentinelsPreQuote = [];
+        }
       }
 
       // ── V10: Validate required per-line fields ──
@@ -3044,14 +3061,31 @@ const BulkUpload = (() => {
         // confirma que un GetQuote tras un PN limpio refresca el snapshot.
         // Solución quirúrgica: archivar specs sentinel pre-quote. Cuando llega
         // STEP 6, no encuentra specs vigentes que archivar y queda idempotent.
+        // 1.4.8: si venimos de un resume, filtrar los pnIds que ya quedaron
+        // archivados en una corrida previa. Aún así pasan por el armado para
+        // recalcular targets desde parts/pnStatus actuales (csv puede haber
+        // cambiado entre corridas — runKey distinto sería un run nuevo).
+        const alreadyArchivedSet = new Set(
+          Array.isArray(resumeState?.archivedSentinelsPreQuote)
+            ? resumeState.archivedSentinelsPreQuote
+            : []
+        );
         const sentinelTargets = [];
+        let sentinelSkippedByResume = 0;
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i]; const status = pnStatus[i];
           if (status.status !== 'existing') continue;
           if (!status.existingId) continue;
           if (!part.specs.length) continue;
           if (!part.specs.some(s => isDash(s.name))) continue;
+          if (alreadyArchivedSet.has(status.existingId)) {
+            sentinelSkippedByResume++;
+            continue;
+          }
           sentinelTargets.push({ part, pnId: status.existingId, idx: i });
+        }
+        if (sentinelSkippedByResume > 0) {
+          log(`  STEP 5 resume: ${sentinelSkippedByResume} PN(s) saltados (sentinels ya archivados en corrida previa).`);
         }
         if (sentinelTargets.length) {
           showProgressUI(`Paso 5/9: Archive de specs sentinel pre-cotización (${sentinelTargets.length} PN(s))...`);
@@ -3059,7 +3093,29 @@ const BulkUpload = (() => {
           setPanelPhase(`Archive specs sentinel pre-quote (${sentinelTargets.length})`);
           setPanelProgress(0, sentinelTargets.length);
           let sentinelOk = 0, sentinelSkip = 0;
-          const sentinelConcurrency = bulkCfg().concurrency.savePartNumber || 5;
+          // 1.4.8: concurrencia dedicada (default 3). Antes usaba savePartNumber=5
+          // y eso saturaba memoria con buffers GraphQL en runs de >3k PNs → OOM.
+          const sentinelConcurrency = bulkCfg().concurrency.sentinelPreQuoteArchive || 3;
+          // 1.4.8: buffer local de pnIds archivados en este pase. Se flushea a
+          // resumeState.archivedSentinelsPreQuote cada FLUSH_EVERY items y al
+          // terminar el runPool. Persistir cada call sería muy ruidoso para
+          // localStorage; cada 100 da grano fino sin amplificar I/O.
+          const SENTINEL_FLUSH_EVERY = 100;
+          const sentinelArchivedBuffer = [];
+          const flushSentinelBuffer = async () => {
+            if (!sentinelArchivedBuffer.length || !resumeState) return;
+            if (!Array.isArray(resumeState.archivedSentinelsPreQuote)) {
+              resumeState.archivedSentinelsPreQuote = [];
+            }
+            for (const id of sentinelArchivedBuffer) {
+              if (!alreadyArchivedSet.has(id)) {
+                resumeState.archivedSentinelsPreQuote.push(id);
+                alreadyArchivedSet.add(id);
+              }
+            }
+            sentinelArchivedBuffer.length = 0;
+            try { await persistResumeState(); } catch (_) {}
+          };
           await runPool(
             sentinelTargets,
             async (target, _idx, myRunIdLocal) => {
@@ -3127,6 +3183,11 @@ const BulkUpload = (() => {
                 );
                 sentinelOk++;
                 stats.specsArchivedBySentinel = (stats.specsArchivedBySentinel || 0) + archiveIds.length;
+                // 1.4.8: marcar este pnId como sentinel-archived para que un
+                // resume tras crash no lo vuelva a procesar. Push al buffer
+                // local; el flush a resumeState ocurre cada FLUSH_EVERY items
+                // en el callback de progreso del runPool.
+                sentinelArchivedBuffer.push(target.pnId);
                 // Invalidar cache: STEP 6 vuelve a fetchear y ve specs ya archivadas → no-op.
                 existingPnFullCache.delete(target.pnId);
               } catch (e) {
@@ -3138,10 +3199,25 @@ const BulkUpload = (() => {
             (done, total) => {
               setPanelProgress(done, total);
               setProgressBar(16 + Math.round((done / Math.max(total, 1)) * 3));
+              // 1.4.8: flush periódico — el callback se invoca tras cada item
+              // completado por el runPool. Si el buffer creció más allá del
+              // umbral, persistir resumeState para que un OOM mid-step no
+              // pierda el progreso intra-paso. fire-and-forget para no bloquear
+              // el pipeline.
+              if (sentinelArchivedBuffer.length >= SENTINEL_FLUSH_EVERY) {
+                flushSentinelBuffer().catch(() => {});
+              }
             },
             myRunId
           );
           bailIfStale(myRunId);
+          // 1.4.8: flush final del buffer antes de pasar al siguiente paso.
+          // No limpiamos archivedSentinelsPreQuote al final de STEP 5: si un
+          // crash ocurre en STEP 6/7, el resume vuelve a entrar a STEP 5 y
+          // necesita la lista para saltear lo ya hecho. La purga del estado
+          // completo se hace cuando phase llega a 'done' (deleteResumeStateByKey).
+          // 5879 UUIDs ≈ 420KB en localStorage — cabe holgadamente.
+          await flushSentinelBuffer();
           log(`  STEP 5 archive sentinel pre-cotización: ${sentinelOk} OK, ${sentinelSkip} skip (sin specs vigentes que archivar)`);
         }
 

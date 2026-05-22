@@ -1,6 +1,58 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.7. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.8. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.8: persistencia intra-STEP 5 + concurrencia dedicada al archive sentinel pre-cotización (Fix S, 2026-05-22)
+
+**Contexto.** En una corrida masiva de Schneider (~5879 PNs existentes con sentinel `-`) el tab de Edge crasheó con `SBOX_FATAL_MEMORY_EXCEEDED` (error 5) durante el STEP 5 a la altura de 5728/5879. Steelhead estaba respondiendo bien; el cuello no era red sino memoria del sandbox del renderer. Tres corridas paralelas en distintos tabs del mismo Edge multiplicaron la presión y dos de tres tabs murieron por OOM.
+
+El crash NO era bug del código, era saturación: el STEP 5 corre `SavePartNumber` con concurrencia 5 sobre miles de PNs antes de empezar el chunk loop, y los buffers de los responses GraphQL en vuelo + closures retenidos terminaron por rebasar el límite del sandbox.
+
+### Problema #1: retrabajo del 100% al reanudar
+
+`resumeState.phase` se commitea entre pasos mayores, no intra-paso. Si el crash ocurría a la mitad del STEP 5 (5728 de 5879), al reanudar la corrida volvía a procesar los 5879 sentinels desde cero. Idempotente (archivar specs ya archivadas es no-op silencioso en `SavePartNumber`), pero costoso: ~10 min de retrabajo + se vuelven a inflar los mismos buffers que tronaron el tab la vez pasada.
+
+### Problema #2: concurrencia compartida con `savePartNumber`
+
+`sentinelConcurrency` leía de `bulkCfg().concurrency.savePartNumber` (= 5). Bajar ese número afectaría TODOS los pasos que usan SavePartNumber (STEP 6, STEP 7 enrichment, etc.), no solo el STEP 5. No teníamos una palanca dedicada al paso que más memoria consume en runs grandes.
+
+### Fix
+
+1. **`resumeState.archivedSentinelsPreQuote: string[]`** — set de `pnId` cuyo archive de sentinels ya quedó OK. Inicializado en `[]` en runs frescos; hidratado defensivamente en runs pre-1.4.8 que no traigan la clave.
+2. **Filtrado al armar `sentinelTargets`** — los `pnId` que ya están en el set se saltean ANTES del `runPool`. Un crash + reanudación tras procesar 5728 → siguiente corrida arranca con solo 151 targets.
+3. **Buffer local + flush periódico** — los `pnId` que terminan OK se acumulan en `sentinelArchivedBuffer` (local al closure del STEP 5). Cada 100 items completados, el callback de progreso del `runPool` dispara `flushSentinelBuffer()` que copia el buffer a `resumeState.archivedSentinelsPreQuote` y persiste a `localStorage`. Flush final tras el `runPool` para no perder el último parcial.
+4. **Concurrencia dedicada `concurrency.sentinelPreQuoteArchive`** — default 3 (vs 5 que tenía compartido con `savePartNumber`). Reduce ~30% el pico de buffers GraphQL en vuelo en este paso sin tocar los otros. Si la clave no está en `config.json`, cae al default de `savePartNumber` para retro-compat.
+5. **NO se limpia `archivedSentinelsPreQuote` al terminar STEP 5** — la lista vive durante toda la corrida. Si un crash ocurre en STEP 6/7 después de que STEP 5 terminó OK, el resume vuelve a entrar a STEP 5 y necesita la lista para saltear. 5879 UUIDs ≈ 420KB de localStorage, cabe holgadamente. La purga se hace cuando `phase === 'done'` (vía `deleteResumeStateByKey`, ya existente).
+
+### Por qué cada 100 y no cada item
+
+Persistir `localStorage` por cada `SavePartNumber` exitoso ampliaría I/O a ~5879 writes en serie. Cada 100 da grano fino (en el peor caso pierdes ~100 items de progreso, ~30s de trabajo) sin saturar el storage ni meter latencia al pipeline. El callback de progreso del `runPool` ya se invoca por item completado (línea 358-361), así que el chequeo `buffer.length >= 100` es free.
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js`:
+  - `VERSION = '1.4.8'`
+  - `bulkCfg()` expone `concurrency.sentinelPreQuoteArchive` (default 3, fallback a `savePartNumber`).
+  - `resumeState` inicial lleva `archivedSentinelsPreQuote: []`; hidratación defensiva en la rama de resume.
+  - STEP 5 filtra targets contra el set, usa la concurrencia dedicada, mantiene buffer local y flushea cada 100.
+- `remote/config.json`:
+  - bump `version` a `1.4.8`.
+  - `bulkUpload.concurrency.sentinelPreQuoteArchive: 3`.
+
+### Plan de validación
+
+- Resumes desde crash mid-STEP 5: el conteo de "saltados (sentinels ya archivados en corrida previa)" debe coincidir con el progreso reportado antes del crash (±100 por el ventana de flush).
+- Verificar en DevTools (Application → Local Storage → `bulkUploadResume__<runKey>`) que `archivedSentinelsPreQuote.length` crece monotónicamente durante STEP 5.
+- Confirmar que el tab vivo no se ve afectado por el deploy (no recarga 1.4.8 hasta que el usuario recargue tab o reinicie extensión).
+- Medir tiempo del STEP 5 con concurrencia 3 vs 5: probablemente 1.4-1.7× más lento, aceptable a cambio de no tronar el sandbox.
+
+### Pendientes derivados (1.4.9+)
+
+- Auditar otros pasos que mantienen colecciones grandes en memoria (`existingPnFullCache`, `pnLookup`) para ver si conviene flush periódico.
+- Considerar `console.log` gating por flag `DEBUG` — durante el crash, 1015 mensajes acumulados en consola amplificaron la presión de memoria (item ya listado en el audit pre-producción del CLAUDE.md root).
+- Investigar si STEP 5 se puede batchear (un `SavePartNumber` con input de N PNs en lugar de N llamadas), para reducir el número de responses GraphQL en vuelo.
+
+---
 
 ## 1.4.7: bulkCfg() leía de api().getConfig() que no existe — config nunca llegaba al matcher (Fix R, 2026-05-22)
 
