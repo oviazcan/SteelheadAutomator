@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.9';
+  const VERSION = '1.4.11';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -140,6 +140,9 @@ const BulkUpload = (() => {
     // se lee de bulkCfg().chunking.defaultChunkSize. Se persiste en resumeState
     // para que el restart respete el tamaño elegido en la corrida original.
     chunkSize: null,
+    // 1.4.10: ring buffer del log del panel chico — addPanelLog recorta a
+    // PANEL_LOG_MAX líneas para evitar OOM en runs largos.
+    panelLog: [],
   };
 
   // ── Fix 7: resume tras crash ──
@@ -257,6 +260,7 @@ const BulkUpload = (() => {
       pnStatus: [],
       archiveGlobal: true,
       chunkSize: null,
+      panelLog: [],
     };
     return state.runId;
   }
@@ -390,9 +394,14 @@ const BulkUpload = (() => {
       #sa-bu-panel{position:fixed;top:20px;right:20px;width:480px;max-height:80vh;background:#1e293b;color:#e2e8f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;z-index:100000;display:flex;flex-direction:column;overflow:hidden}
       #sa-bu-panel .sa-hdr{padding:14px 18px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
       #sa-bu-panel .sa-hdr h3{margin:0;font-size:14px;color:#38bdf8;font-weight:600}
+      #sa-bu-panel .sa-hdr .sa-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px;color:#64748b}
       #sa-bu-panel .sa-hdr .sa-ver{font-size:11px;color:#64748b}
+      #sa-bu-panel .sa-hdr .sa-mem{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:#64748b}
+      #sa-bu-panel .sa-hdr .sa-mem.sa-mem-warn{color:#f59e0b}
+      #sa-bu-panel .sa-hdr .sa-mem.sa-mem-crit{color:#f87171;font-weight:600}
       #sa-bu-panel .sa-body{padding:14px 18px;overflow-y:auto;flex:1;font-size:13px}
-      #sa-bu-panel .sa-phase{font-size:13px;color:#e2e8f0;font-weight:500;margin-bottom:6px}
+      #sa-bu-panel .sa-phase{font-size:13px;color:#e2e8f0;font-weight:500;margin-bottom:2px}
+      #sa-bu-panel .sa-subphase{font-size:11px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-bottom:6px;min-height:14px}
       #sa-bu-panel .sa-stats{display:flex;gap:12px;margin-bottom:8px;font-size:12px;color:#94a3b8}
       #sa-bu-panel .sa-stats span b{color:#38bdf8;font-weight:600}
       #sa-bu-panel .sa-bar{height:6px;background:#0f172a;border-radius:3px;overflow:hidden;margin-bottom:10px}
@@ -419,10 +428,14 @@ const BulkUpload = (() => {
     p.innerHTML = `
       <div class="sa-hdr">
         <h3>Carga masiva — Steelhead Automator</h3>
-        <span class="sa-ver">v${VERSION}</span>
+        <div class="sa-meta">
+          <span class="sa-ver">v${VERSION}</span>
+          <span class="sa-mem" id="sa-bu-mem" title="Memoria JS del tab (Chrome/Edge)"></span>
+        </div>
       </div>
       <div class="sa-body">
         <div class="sa-phase" id="sa-bu-phase">Inicializando...</div>
+        <div class="sa-subphase" id="sa-bu-subphase"></div>
         <div class="sa-stats">
           <span><b id="sa-bu-current">0</b>/<span id="sa-bu-total">0</span></span>
           <span>OK: <b id="sa-bu-ok">0</b></span>
@@ -446,19 +459,57 @@ const BulkUpload = (() => {
     return p;
   }
 
-  function showPanel() { ensurePanel().style.display = 'flex'; }
+  function showPanel() { ensurePanel().style.display = 'flex'; startMemoryGauge(); }
   function hidePanel() {
+    stopMemoryGauge();
     const p = document.getElementById('sa-bu-panel');
     if (p && p.parentNode) p.parentNode.removeChild(p);
   }
 
+  // 1.4.11: medidor de memoria del tab. performance.memory (Chrome/Edge) reporta
+  // usedJSHeapSize y jsHeapSizeLimit en bytes. Polling cada 2s — lectura nativa
+  // sin costo medible. Alerta amarilla a >70% del límite y roja a >85%.
+  // Sin performance.memory (Firefox/Safari) el span queda en blanco.
+  let memoryGaugeTimer = null;
+  function startMemoryGauge() {
+    if (memoryGaugeTimer) return;
+    if (!(performance && performance.memory)) return;
+    const tick = () => {
+      const el = document.getElementById('sa-bu-mem'); if (!el) return;
+      const used = performance.memory.usedJSHeapSize;
+      const limit = performance.memory.jsHeapSizeLimit;
+      const usedMB = Math.round(used / 1024 / 1024);
+      const limitMB = Math.round(limit / 1024 / 1024);
+      const pct = limit > 0 ? Math.round(used / limit * 100) : 0;
+      el.textContent = `Mem: ${usedMB}MB / ${limitMB}MB (${pct}%)`;
+      el.classList.remove('sa-mem-warn', 'sa-mem-crit');
+      if (pct >= 85) el.classList.add('sa-mem-crit');
+      else if (pct >= 70) el.classList.add('sa-mem-warn');
+    };
+    tick();
+    memoryGaugeTimer = setInterval(tick, 2000);
+  }
+  function stopMemoryGauge() {
+    if (memoryGaugeTimer) { clearInterval(memoryGaugeTimer); memoryGaugeTimer = null; }
+  }
+
+  // 1.4.10: panel chico es la única UI de progreso. Tamaño del ring buffer del log
+  // — chico para que el textContent del DOM no crezca sin pausa y agote el renderer.
+  const PANEL_LOG_MAX = 200;
+
   function setPanelPhase(text) {
     state.phase = text;
     const el = document.getElementById('sa-bu-phase'); if (el) el.textContent = text;
-    // Fix H 1.3.2: espejear al modal viejo (dl9-progress-overlay) cuando esté visible
-    const live = document.getElementById('dl9-live-progress');
-    if (live) live.dataset.phase = text;
-    updateLiveProgressText();
+    // 1.4.10: limpiar sub-fase cuando cambia la fase principal (la sub-fase es
+    // propia del step actual y no debe arrastrarse al siguiente).
+    setPanelSubPhase('');
+  }
+  // 1.4.10: línea fina debajo de la fase principal. La usan los workers de
+  // runPool en pasos largos (enrich, sync, racks, archive) para mostrar qué
+  // tipo de operación se ejecuta en este momento ("specs", "racks", "labels",
+  // "params"…) sin inundar el log.
+  function setPanelSubPhase(text) {
+    const el = document.getElementById('sa-bu-subphase'); if (el) el.textContent = text || '';
   }
   function setPanelProgress(current, total) {
     state.progress.current = current;
@@ -469,34 +520,25 @@ const BulkUpload = (() => {
     if (c) c.textContent = String(current);
     if (t) t.textContent = String(total);
     if (bar) bar.style.width = (total ? Math.round((current / total) * 100) : 0) + '%';
-    updateLiveProgressText();
   }
   function setPanelCounters() {
     const o = document.getElementById('sa-bu-ok'); if (o) o.textContent = String(state.counters.ok);
     const r = document.getElementById('sa-bu-retried'); if (r) r.textContent = String(state.counters.retried);
     const e = document.getElementById('sa-bu-errors'); if (e) e.textContent = String(state.counters.errors);
-    updateLiveProgressText();
-  }
-  function updateLiveProgressText() {
-    const live = document.getElementById('dl9-live-progress');
-    if (!live) return;
-    const phase = live.dataset.phase || state.phase || '';
-    const cur = state.progress?.current || 0;
-    const tot = state.progress?.total || 0;
-    const ok = state.counters?.ok || 0;
-    const rt = state.counters?.retried || 0;
-    const er = state.counters?.errors || 0;
-    if (tot > 0) {
-      live.textContent = `${phase} — ${cur}/${tot}   OK:${ok}  Reintentos:${rt}  Errores:${er}`;
-    } else {
-      live.textContent = phase;
-    }
   }
   function addPanelLog(msg) {
+    const ts = new Date().toTimeString().slice(0, 8);
+    if (!state.panelLog) state.panelLog = [];
+    state.panelLog.push(`[${ts}] ${msg}`);
+    // 1.4.10: recortar para evitar crecimiento ilimitado del textContent en runs
+    // largos (10k+ batches). Pre-1.4.10 el modal grande acumulaba TODO el log y
+    // tronaba la pestaña por OOM (SBOX_FATAL_MEMORY_EXCEEDED) cerca del final.
+    if (state.panelLog.length > PANEL_LOG_MAX) {
+      state.panelLog = state.panelLog.slice(-PANEL_LOG_MAX);
+    }
     const el = document.getElementById('sa-bu-log');
     if (!el) return;
-    const ts = new Date().toTimeString().slice(0, 8);
-    el.textContent += `[${ts}] ${msg}\n`;
+    el.textContent = state.panelLog.join('\n') + '\n';
     el.scrollTop = el.scrollHeight;
   }
   function markPanelDone(success, errorMsg) {
@@ -2200,18 +2242,12 @@ const BulkUpload = (() => {
     });
   }
 
-  function showProgressUI(msg) {
-    let ov = document.getElementById('dl9-progress-overlay');
-    if (!ov) {
-      injectStyles(); ov = document.createElement('div'); ov.className = 'dl9-overlay'; ov.id = 'dl9-progress-overlay';
-      ov.innerHTML = `<div class="dl9-modal"><h2>Ejecutando...</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="dl9-bar"></div></div><div id="dl9-live-progress" style="color:#67e8f9;font-size:13px;margin:8px 0;font-weight:600;min-height:18px"></div><div class="dl9-progress" id="dl9-progress-text"></div></div>`;
-      document.body.appendChild(ov);
-    }
-    const el = document.getElementById('dl9-progress-text');
-    if (el) el.textContent += msg + '\n';
-  }
-
-  function setProgressBar(p) { const b = document.getElementById('dl9-bar'); if (b) b.style.width = p + '%'; }
+  // 1.4.10: setProgressBar ahora apunta al panel chico (`#sa-bu-bar`). El modal
+  // grande `dl9-progress-overlay` fue eliminado — coexistía con el panel y
+  // duplicaba info, además de acumular textContent sin recorte (causa raíz del
+  // OOM de la pestaña en runs de 4k+ PNs). Mantenemos la firma porcentual para
+  // no romper los call-sites que pasan 5/10/30/55/78/85/100.
+  function setProgressBar(p) { const b = document.getElementById('sa-bu-bar'); if (b) b.style.width = p + '%'; }
 
   // V10: search for existing quotes by customer + name
   async function findExistingQuote(customerId, name) {
@@ -2356,10 +2392,10 @@ const BulkUpload = (() => {
   }
 
   function showResult(stats, quoteUrl, errors, quoteUrlLabel) {
-    // Fix J 1.3.2: remover overlays previos (progress + cualquier resultado anterior)
-    // antes de crear uno nuevo. Antes (≤1.3.1) re-ejecuciones consecutivas apilaban
-    // modales de resultado y el botón CERRAR solo cerraba el último por id duplicado.
-    const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
+    // Fix J 1.3.2: remover overlays previos (resultado anterior) antes de crear uno
+    // nuevo. Antes (≤1.3.1) re-ejecuciones consecutivas apilaban modales de
+    // resultado y el botón CERRAR solo cerraba el último por id duplicado.
+    // 1.4.10: el `dl9-progress-overlay` fue eliminado (consolidación al panel chico).
     const prevResult = document.getElementById('dl9-result-overlay'); if (prevResult) removeOverlay(prevResult);
     injectStyles(); const { overlay, modal } = createOverlay();
     overlay.id = 'dl9-result-overlay';
@@ -2430,6 +2466,8 @@ const BulkUpload = (() => {
       const runKey = await computeRunKey(csvClean);
       const prev = loadResumeStateByKey(runKey);
       let resumeCompletedSet = new Set();
+      // 1.4.11: identificadores ya commiteados (Call A del Split A/B) en corridas previas.
+      let resumeIdentifierSet = new Set();
       if (prev && prev.phase && prev.phase !== 'done') {
         const decision = await askResumeOrFresh(prev);
         if (decision === 'cancel') {
@@ -2441,7 +2479,8 @@ const BulkUpload = (() => {
           resumeState = prev;
           resumeState.lastUpdatedAt = new Date().toISOString();
           resumeCompletedSet = new Set(prev.completedPNs || []);
-          log(`Reanudando corrida previa — fase: ${prev.phase}, ${resumeCompletedSet.size} PNs ya completados.`);
+          resumeIdentifierSet = new Set(prev.identifierEnrichDone || []);
+          log(`Reanudando corrida previa — fase: ${prev.phase}, ${resumeCompletedSet.size} PNs ya completados, ${resumeIdentifierSet.size} con identificadores commiteados.`);
         } else {
           // 'fresh' — borrar progreso previo
           deleteResumeStateByKey(runKey);
@@ -2473,6 +2512,14 @@ const BulkUpload = (() => {
           // ~5879 sentinels desde cero (idempotente pero caro: ~10 min de
           // SavePartNumber no-ops + buffers GraphQL que dispararon OOM).
           archivedSentinelsPreQuote: [],
+          // 1.4.11: STEP 6 split A/B. Call A persiste identificadores
+          // (labels + customInputs.BaseMetal + customInputs.QuoteIBMS + name +
+          // customerId) ANTES de Call B (specs/params/dims/archive/processNode).
+          // Si truena entre A y B, el siguiente resume corre classifyPNs sobre
+          // un catálogo donde los PNs ya tienen labels y QuoteIBMS — los pases
+          // 1/2 de classifyOnePN matchean correcto en vez de caer a "NEW" y
+          // duplicar PNs. Lista de rowKeys "idx|pn|customerId" que ya pasaron A.
+          identifierEnrichDone: [],
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
@@ -2487,6 +2534,10 @@ const BulkUpload = (() => {
         // 1.4.8: hidratar lista de sentinels archivados si la corrida es pre-1.4.8.
         if (!Array.isArray(resumeState.archivedSentinelsPreQuote)) {
           resumeState.archivedSentinelsPreQuote = [];
+        }
+        // 1.4.11: hidratar lista de identifier-enriched si la corrida es pre-1.4.11.
+        if (!Array.isArray(resumeState.identifierEnrichDone)) {
+          resumeState.identifierEnrichDone = [];
         }
       }
 
@@ -2869,7 +2920,7 @@ const BulkUpload = (() => {
 
       // ── Create new Metal Base values if confirmed ──
       if (createMetals && newMetals.size > 0) {
-        showProgressUI('Actualizando catálogo de Metal Base...');
+        setPanelPhase('Actualizando catálogo de Metal Base...');
         try {
           const updatedEnum = [...metalBaseEnum, ...newMetals];
           const fullSchema = {
@@ -2914,7 +2965,7 @@ const BulkUpload = (() => {
           };
           await api().query('CreatePartNumberInputSchema', fullSchema, 'CreatePartNumberInputSchema');
           log(`  Metal Base actualizado: +${[...newMetals].join(', ')}`);
-          showProgressUI(`  Metal Base: ${[...newMetals].join(', ')} agregados al catálogo`);
+          addPanelLog(`Metal Base: ${[...newMetals].join(', ')} agregados al catálogo`);
         } catch (e) {
           errors.push(`Actualizar Metal Base: ${String(e).substring(0, 120)}`);
           warn(`Metal Base schema update falló: ${e.message}`);
@@ -2924,7 +2975,7 @@ const BulkUpload = (() => {
       // ═══════════════════════════════════════
       // EXECUTION
       // ═══════════════════════════════════════
-      showProgressUI('Iniciando...');
+      setPanelPhase('Iniciando...');
 
       // V10: quote vars now per-customer; we track all of them
       const quotesCreated = []; // [{ id, idInDomain, customerId, name }]
@@ -2934,9 +2985,9 @@ const BulkUpload = (() => {
       const validDays = parseInt(header.validaDias) || 30;
 
       if (!isSoloPN) {
-        showProgressUI('Paso 1: Preparando cotizaciones...'); setProgressBar(5);
+        setPanelPhase('Paso 1/9: Preparando cotizaciones...'); setProgressBar(5);
       } else {
-        showProgressUI('Modo SOLO_PN — omitiendo cotización'); setProgressBar(5);
+        setPanelPhase('Modo SOLO_PN — omitiendo cotización'); setProgressBar(5);
       }
 
       // STEP 2a: Create new PNs via SavePartNumber (minimal)
@@ -2945,7 +2996,7 @@ const BulkUpload = (() => {
       // independiente. Capa A crea las filas NEW con name+customerId únicos en paralelo; Capa B
       // serializa los duplicados restantes (mismo name+customerId) uno por uno para evitar race
       // en el server (que rechaza creates concurrentes con identidad colisionante).
-      showProgressUI('Paso 2/9: Creando PNs nuevos...'); setProgressBar(10);
+      setPanelPhase('Paso 2/9: Creando PNs nuevos...'); setProgressBar(10);
       const newPnIds = new Map(); // rowIdx → pn.id
       const newOrDupParts = [];
       for (let i = 0; i < parts.length; i++) { const status = pnStatus[i]; if (status.status !== 'existing') newOrDupParts.push({ part: parts[i], status, idx: i }); }
@@ -2997,7 +3048,7 @@ const BulkUpload = (() => {
           log(`  "${part.pn}" (cust:${part.customerId}) -> creado id:${created.id} (row ${idx})`);
         } catch (e) { errors.push(`Crear PN "${part.pn}" (row ${idx}): ${String(e).substring(0, 150)}`); }
       }
-      showProgressUI(`  -> ${newPnIds.size} PNs creados`);
+      addPanelLog(`${newPnIds.size} PNs creados`);
 
       // V10: pnLookup keyed by "pn|customerId" to support multi-customer
       const pnLookup = new Map();
@@ -3027,7 +3078,7 @@ const BulkUpload = (() => {
         pnsToUnarchivePre.push({ id: status.existingId, name: parts[i].pn });
       }
       if (pnsToUnarchivePre.length) {
-        showProgressUI(`Paso 4.5/9: Desarchive pre-enrich (${pnsToUnarchivePre.length} PN(s))...`);
+        setPanelPhase(`Paso 4.5/9: Desarchive pre-enrich (${pnsToUnarchivePre.length} PN(s))...`);
         setProgressBar(13);
         setPanelPhase(`Desarchivando PNs pre-enrich (${pnsToUnarchivePre.length})`);
         setPanelProgress(0, pnsToUnarchivePre.length);
@@ -3037,6 +3088,7 @@ const BulkUpload = (() => {
           pnsToUnarchivePre,
           async (op, _idx, myRunIdLocal) => {
             bailIfStale(myRunIdLocal);
+            setPanelSubPhase(`Desarchivando: ${op.name}`);
             try {
               await withRetry(
                 () => api().query('UpdatePartNumber', { id: op.id, archivedAt: null }),
@@ -3097,7 +3149,7 @@ const BulkUpload = (() => {
           log(`  STEP 5 resume: ${sentinelSkippedByResume} PN(s) saltados (sentinels ya archivados en corrida previa).`);
         }
         if (sentinelTargets.length) {
-          showProgressUI(`Paso 5/9: Archive de specs sentinel pre-cotización (${sentinelTargets.length} PN(s))...`);
+          setPanelPhase(`Paso 5/9: Archive de specs sentinel pre-cotización (${sentinelTargets.length} PN(s))...`);
           setProgressBar(16);
           setPanelPhase(`Archive specs sentinel pre-quote (${sentinelTargets.length})`);
           setPanelProgress(0, sentinelTargets.length);
@@ -3129,6 +3181,7 @@ const BulkUpload = (() => {
             sentinelTargets,
             async (target, _idx, myRunIdLocal) => {
               bailIfStale(myRunIdLocal);
+              setPanelSubPhase(`Archive sentinel: ${target.part.pn}`);
               let pnNode = existingPnFullCache.get(target.pnId);
               if (!pnNode) {
                 try {
@@ -3324,7 +3377,7 @@ const BulkUpload = (() => {
             Autorizacion: {}, CondicionesComerciales: {},
           };
 
-          showProgressUI(`Quote ${quoteSeq}/${totalChunks}: buscando duplicados...`);
+          setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: buscando duplicados...`);
           setProgressBar(5 + Math.round((quoteSeq / totalChunks) * 40));
 
           // V10: detect existing quote with same name+customer
@@ -3357,7 +3410,7 @@ const BulkUpload = (() => {
 
           if (!thisQuoteId) {
             // No existing or user chose to create new
-            showProgressUI(`Quote ${quoteSeq}/${totalChunks}: "${thisQuoteName}"`);
+            setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: "${thisQuoteName}"`);
             let createResult;
             try {
               createResult = await api().query('CreateQuote', {
@@ -3492,11 +3545,11 @@ const BulkUpload = (() => {
         else if (quotesCreated.length === 1) stats.quoteName = quotesCreated[0].name;
         const cotS = quotesCreated.length === 1 ? 'cotización' : 'cotizaciones';
         const cotV = quotesCreated.length === 1 ? 'creada' : 'creadas';
-        showProgressUI(`  -> ${quotesCreated.length} ${cotS} ${cotV} con ${pnpItemsTotal} PNs y ${prodAddedTotal} productos`);
+        addPanelLog(`${quotesCreated.length} ${cotS} ${cotV} con ${pnpItemsTotal} PNs y ${prodAddedTotal} productos`);
       } else {
         // SOLO_PN: build pnLookup from existing/new PN IDs (no quote context)
         // 1.2.11: keyed por rowIdx (índice en parts[]) — soporta duplicados name+customerId.
-        showProgressUI('Modo SOLO_PN: construyendo mapa de PNs...'); setProgressBar(30);
+        setPanelPhase('Modo SOLO_PN: construyendo mapa de PNs...'); setProgressBar(30);
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i]; const status = pnStatus[i];
           let pnId;
@@ -3529,14 +3582,22 @@ const BulkUpload = (() => {
           });
         }
         if (pnpWithPrice.length) {
-          showProgressUI('Modo SOLO_PN: Creando precios standalone...'); setProgressBar(40);
+          setPanelPhase('Modo SOLO_PN: Creando precios standalone...'); setProgressBar(40);
           for (let i = 0; i < pnpWithPrice.length; i += 20) {
             const batch = pnpWithPrice.slice(i, i + 20);
             try {
               await api().query('SaveManyPartNumberPrices', {
                 input: { quoteId: null, autoGenerateQuoteLines: false, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] }
               }, 'SaveManyPNP_PN');
-              showProgressUI(`  -> Precios batch ${Math.floor(i / 20) + 1}: ${batch.length} PNs`);
+              {
+                // 1.4.10: agrupado — pre-1.4.10 esto loggeaba cada batch (250+ líneas en
+                // runs grandes, principal culpable del OOM del modal viejo). Ahora la
+                // sub-fase muestra el batch actual en vivo y el log resume cada 10.
+                const batchNum = Math.floor(i / 20) + 1;
+                const totalBatches = Math.ceil(quotePnIds.length / 20);
+                setPanelSubPhase(`Precios batch ${batchNum}/${totalBatches} (${batch.length} PNs)`);
+                if (batchNum % 10 === 0 || batchNum === totalBatches) addPanelLog(`Precios: ${batchNum * 20} PNs procesados`);
+              }
             } catch (e) {
               errors.push(`Precios standalone: ${String(e).substring(0, 120)}`);
             }
@@ -3548,7 +3609,7 @@ const BulkUpload = (() => {
       }
 
       // STEP 6: SavePartNumber (enrich) — runs in BOTH modes
-      showProgressUI(`${isSoloPN ? 'Paso 3' : 'Paso 6'}: Enriqueciendo PNs...`); setProgressBar(55);
+      setPanelPhase(`${isSoloPN ? 'Paso 3/5' : 'Paso 6/9'}: Enriqueciendo PNs...`); setProgressBar(55);
 
       // V10 fix: Pre-fetch existing predicted inventory usages para PNs existentes con predictivos.
       // SavePartNumber inserta sin id → unique constraint en (pn, inventoryItem) → retry strippea
@@ -3593,6 +3654,7 @@ const BulkUpload = (() => {
         const entry = pnLookup.get(idx);
         if (!entry) return;
         const pn = entry.pn;
+        setPanelSubPhase(`Enriqueciendo: ${part.pn}`);
 
         // Guión comodín: "-" en primer label = borrar todos los labels
         const labelsAreDash = part.labels.length === 1 && isDash(part.labels[0]);
@@ -3724,6 +3786,77 @@ const BulkUpload = (() => {
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
 
+        // 1.4.11: Call A del Split A/B — identifier-enrich.
+        // Antes (≤1.4.10) el único SavePartNumber por PN mandaba TODO de una vez:
+        // labels + customInputs (BaseMetal, QuoteIBMS) + specs + params + dims +
+        // archive + processNode. Si truena DESPUÉS de classifyPNs pero ANTES de
+        // que SavePartNumber commitee, al reanudar `classifyPNs` veía el PN
+        // existente todavía SIN labels y SIN QuoteIBMS — pases 1/2 del matcher
+        // no detectaban duplicados → `forceNew` → PN duplicado en el catálogo.
+        // Repro real: corrida que tronó a 4795/4799 dejó 58 PNs duplicados al
+        // reanudar.
+        //
+        // 1.4.11 fix: hacer DOS SavePartNumber por PN. Call A primero (labels +
+        // customInputs + name + customerId + inputSchemaId con todo lo demás
+        // vacío) → persistir rowKey en `resumeState.identifierEnrichDone[]` con
+        // flush incremental cada 50. Call B (todo lo pesado) se mantiene igual.
+        // Si truena entre A y B, el siguiente resume corre classifyPNs sobre un
+        // catálogo donde el PN existente ya trae labels/BaseMetal/QuoteIBMS
+        // frescos → matcheo limpio.
+        //
+        // Coste por PN: +1 round-trip SavePartNumber (~0.3-0.5s) — compensado
+        // por el bump de concurrency 5→8 en este mismo release.
+        const identifierKey = `${idx}|${part.pn}|${part.customerId}`;
+        if (!resumeIdentifierSet.has(identifierKey)) {
+          const identifierInput = {
+            id: pn.id, name: pn.name, customerId: pn.customerId || part.customerId,
+            descriptionMarkdown: pn.descriptionMarkdown || '',
+            customerFacingNotes: pn.customerFacingNotes || '',
+            customInputs: mergedCI || pn.customInputs || {},
+            inputSchemaId: DOMAIN.inputSchemaId_PN,
+            labelIds: labelsAreDash ? [] : labelIds,
+            partNumberGroupId: pn.partNumberGroupId || null,
+            // Heavy fields explícitamente vacíos — Steelhead acepta el shape mínimo
+            // como un upsert idempotente de identificadores.
+            defaultProcessNodeId: pn.defaultProcessNodeId || null,
+            geometryTypeId: pn.geometryTypeId || null,
+            inventoryItemInput: null, inventoryPredictedUsages: [],
+            specsToApply: [], paramsToApply: [], partNumberDimensions: [],
+            partNumberLocations: [], dimensionCustomValueIds: [],
+            isCoupon: false, isOneOff: false, isTemplatePartNumber: false,
+            optInOuts: [], ownerIds: [], defaults: [],
+            partNumberSpecClassificationsToUpdate: [],
+            partNumberSpecFieldParamUpdates: [],
+            partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+            partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+            specFieldParamUpdates: [],
+            glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
+          };
+          bailIfStale(myRunId);
+          try {
+            await withRetry(
+              () => api().query('SavePartNumber', { input: [identifierInput] }),
+              `SavePartNumber-A (identifier) "${pn.name}"`,
+              myRunId
+            );
+            resumeIdentifierSet.add(identifierKey);
+            if (resumeState) {
+              resumeState.identifierEnrichDone.push(identifierKey);
+              // Persistir cada 50 — mismo ritmo que completedPNs para no inundar localStorage.
+              if (resumeState.identifierEnrichDone.length % 50 === 0) {
+                persistResumeState().catch(() => {});
+              }
+            }
+          } catch (eA) {
+            if (isBail(eA)) throw eA;
+            // Call A falló: NO marcamos identifierEnrichDone. Call B sigue intentando
+            // (con el pnInput completo); si Steelhead acepta B con todos los campos,
+            // el PN queda enriched. Si B también falla, error queda registrado.
+            // Loggeamos warn para diagnóstico pero no abortamos el worker.
+            warn(`SavePartNumber-A (identifier) "${pn.name}" falló (${String(eA).substring(0, 80)}) — caemos a Call B con pnInput completo`);
+          }
+        }
+
         // Dims — "-" en longitud = borrar dimensiones
         const dimsAreDash = typeof part.dims.length === 'string' && isDash(part.dims.length);
         const dims = dimsAreDash ? [] : buildDimensions(part.dims, DOMAIN);
@@ -3843,7 +3976,7 @@ const BulkUpload = (() => {
       );
       bailIfStale(myRunId);
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`);
-      showProgressUI(`  -> ${okSP} OK, ${retrySP} retry`);
+      addPanelLog(`Enrich: ${okSP} OK, ${retrySP} retry`);
       if (resumeState) { resumeState.phase = 'enrich-done'; await persistResumeState(); }
 
       // STEP 6a: Actualizar predictivos existentes vía UpdateInventoryItemPredictedUsage.
@@ -3893,6 +4026,7 @@ const BulkUpload = (() => {
         let archivedOk = 0;
         await runPool(predictedArchives, async (exId) => {
           bailIfStale(myRunId);
+          setPanelSubPhase(`Archivando predictivo id=${exId}`);
           try {
             await withRetry(
               () => api().query('ArchivePredictedInventoryUsage', { input: { id: exId, predictedInventoryUsagePatch: { archivedAt } } }, 'ArchivePredictedInventoryUsage'),
@@ -3935,6 +4069,7 @@ const BulkUpload = (() => {
         const part = parts[i];
         const entry = pnLookup.get(i);
         if (!entry?.pn?.id) return;
+        setPanelSubPhase(`Sync params: ${part.pn}`);
         try {
           // Fix I 1.3.2: cache invalidado por enrichWorker → fetch fresco con los specs/params
           // que SavePartNumber acaba de agregar. Sin esto, AddParams reintenta params ya creados.
@@ -4108,7 +4243,7 @@ const BulkUpload = (() => {
       // name+customerId) compartan entry y se infecten con el rack de la otra.
       // Además: dedup por (rackTypeId, partNumberId) — si 2 filas del CSV apuntan al mismo PN
       // físico (Pase 1 IBMS coincidente) con el mismo rack, evitamos el duplicate-key insert.
-      showProgressUI(`${isSoloPN ? 'Paso 4' : 'Paso 7'}: Racks...`); setProgressBar(78);
+      setPanelPhase(`${isSoloPN ? 'Paso 4/5' : 'Paso 7/9'}: Racks...`); setProgressBar(78);
       const rackIn = [];
       const rackInSeen = new Set(); // "rtId|pnId" para dedup intra-corrida
       const racksToDelete = new Set(); // pn.id (Set para auto-dedup)
@@ -4204,7 +4339,7 @@ const BulkUpload = (() => {
         pricesToDelete.push({ pnId: entry.pn.id, pnName: part.pn });
       }
       if (pricesToDelete.length) {
-        showProgressUI(`Borrando precios de ${pricesToDelete.length} PNs...`);
+        setPanelSubPhase(`Borrando precios de ${pricesToDelete.length} PNs...`);
         for (const { pnId, pnName } of pricesToDelete) {
           try {
             const pnData = await api().query('GetPartNumber', { partNumberId: pnId });
@@ -4229,7 +4364,7 @@ const BulkUpload = (() => {
       // archiveOverride por fila TRUE  → fuerza archivar aunque global esté off
       // archiveOverride por fila FALSE → fuerza no archivar aunque CSV diga true
       // Dedup por pnId para no archivar/desarchivar 2 veces el mismo PN físico.
-      showProgressUI(`${isSoloPN ? 'Paso 5' : 'Paso 8'}: Archivado...`); setProgressBar(85);
+      setPanelPhase(`${isSoloPN ? 'Paso 5/5' : 'Paso 8/9'}: Archivado...`); setProgressBar(85);
       const pnsToArchive = [], oldPnsToArchive = [], pnsToUnarchive = [];
       const archiveSeen = new Set(), unarchiveSeen = new Set(), oldArchiveSeen = new Set();
       const archiveGlobal = (state.archiveGlobal !== false); // default true si el toggle no fue tocado
@@ -4289,6 +4424,7 @@ const BulkUpload = (() => {
             priceReadTargets,
             async (target, _idx, myRunIdLocal) => {
               bailIfStale(myRunIdLocal);
+              setPanelSubPhase(`Releyendo precio: ${target.pnName}`);
               try {
                 const pnData = await withRetry(
                   () => api().query('GetPartNumber', { partNumberId: target.pnId }),
@@ -4347,6 +4483,8 @@ const BulkUpload = (() => {
 
         async function archiveWorker(op, _idx, runId) {
           bailIfStale(runId);
+          const verb = op.kind === 'unarchive' ? 'Desarchivando' : (op.kind === 'oldArchive' ? 'Arch.viejo' : 'Archivando');
+          setPanelSubPhase(`${verb}: ${op.name}`);
           try {
             if (op.kind === 'unarchive') {
               await withRetry(
@@ -4386,7 +4524,7 @@ const BulkUpload = (() => {
       if (pnsToUnarchive.length) log(`  Desarchivados: ${stats.unarchived || 0}`);
 
       // STEP 9: Done
-      showProgressUI('Completado.'); setProgressBar(100);
+      setPanelPhase('Completado.'); setProgressBar(100);
       const domainId = window.location.pathname.match(/\/Domains\/(\d+)/)?.[1] || DOMAIN.id;
       // V10: si se creó UNA sola cotización abrir esa; si fueron varias, abrir el listado general
       let quoteUrl = null;
@@ -4505,12 +4643,10 @@ const BulkUpload = (() => {
     } catch (e) {
       if (isBail(e)) {
         console.warn('[SA] cancelado por usuario.');
-        const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
         try { markPanelDone(false, 'Cancelado'); } catch (_) {}
         return { success: false, cancelled: true };
       }
       console.error('[SA] FATAL:', e);
-      const po = document.getElementById('dl9-progress-overlay'); if (po) removeOverlay(po);
       // Persistir el progreso parcial para que el próximo run pueda retomar
       if (resumeState) {
         resumeState.phase = resumeState.phase || 'error';
