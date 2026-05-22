@@ -2,7 +2,9 @@
 
 Versiones documentadas: 1.0.0 → 1.4.1. Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
-## 1.4.1: desarchive pre-enrich (Fix L2, 2026-05-21)
+## 1.4.1: desarchive pre-enrich (Fix L2, 2026-05-21) — NO resolvió el síntoma visual; se mantiene como defensa en profundidad
+
+> **⚠️ Nota de cierre post-validación.** Este fix **NO** arregla el bug visual reportado (specs tachadas en la línea de cotización cuando el PN está archivado). Ver sección **"Lección aprendida"** al final de esta entrada. Se mantiene en el código como **defensa en profundidad** — mutaciones de `SavePartNumber` / `ArchivePredictedInventoryUsage` / `AddParamsToPartNumber` sobre un PN archivado pueden tener side effects silenciosos (precedente: 1.3.3 Sterlingshield S huérfano). El "fix visual" del síntoma está **fuera del scope del applet** (es una contradicción inherente del diseño de Steelhead — ver lección).
 
 **Problema.** El Fix L del 1.4.0 (archive de specs sentinel pre-quote) no resolvió el síntoma — las specs viejas siguieron apareciendo tachadas en la línea de cotización, incluso con quote completamente nueva (#139 archivada, corrida fresca con localStorage limpio y nombre nuevo). Repro reportada por el operador: PN id 3017160 en la quote nueva — al alternar el toggle "archived" del NÚMERO DE PARTE en la UI, las specs viejas desaparecían/reaparecían según el estado del PN.
 
@@ -25,22 +27,52 @@ Insertar **STEP 4.5** que desarchiva todos los PNs `wasArchived` ANTES del STEP 
 - **`remote/scripts/bulk-upload.js:VERSION`:** `1.4.0` → `1.4.1`.
 - **`remote/scripts/bulk-upload.js:~2846`:** insertado bloque STEP 4.5 entre `existingPnFullCache` y `if (!isSoloPN)`. STEP 5 / 6 / 6a / 6b / 7 / 7b / 8 intactos.
 
-### Plan de validación pendiente
+### Plan de validación
+
+**Validación visual (síntoma original):** ❌ CERRADO — el STEP 4.5 no resuelve el "specs tachadas en la línea" porque Steelhead renderiza en tiempo real (ver Lección aprendida). No re-probar este criterio.
+
+**Validación de defensa en profundidad:** ✅ vale la pena confirmar antes de cargas grandes:
 1. CSV "Corrida de prueba 100 NP RG arch" (100 PNs archivados, archivar al final). Verificar:
    - Modal de progreso muestra "Paso 4.5/9: Desarchive pre-enrich (100 PN(s))..." al inicio.
    - Consola loggea `STEP 4.5 desarchive pre-enrich: N/N OK`.
-   - Quote nueva, abrir línea — specs **NO** aparecen tachadas/archivadas.
    - STEP 8 al final loggea `Archivado: 100 nuevos archivar, ...` y el PN queda archivado en Steelhead post-corrida.
-2. CSV con PNs activos (no archivados): STEP 4.5 no debe loggear nada (pnsToUnarchivePre.length === 0).
+   - Sin errores HTTP 500 sobre mutations a PNs archivados (que es justo lo que el STEP 4.5 previene).
+2. CSV con PNs activos (no archivados): STEP 4.5 no debe loggear nada (`pnsToUnarchivePre.length === 0`). Sin overhead.
 3. CSV mixto: PNs activos + archivados — solo desarchive los archivados.
-4. Test de robustez: matar la pestaña justo después del STEP 4.5 → verificar que los PNs quedan desarchivados temporal (esperado) y que el resume al reanudar los re-archiva en STEP 8.
-5. Modo SOLO_PN con PNs archivados: confirmar que también desarchive y que el applet enriquece correctamente.
+4. Modo SOLO_PN con PNs archivados: confirmar desarchive + enrich + re-archive funcionando.
+5. Test de robustez: matar la pestaña justo después del STEP 4.5 → PNs quedan desarchivados (esperado). Reanudar → STEP 8 los re-archiva.
 
 ### Files tocados
 - `remote/scripts/bulk-upload.js:49` (VERSION) y `~2846` (STEP 4.5)
 - `remote/config.json:2` (version)
 - `docs/applets/bulk-upload.md` (esta entrada)
 - `CLAUDE.md` (tabla índice 1.4.0 → 1.4.1)
+
+### Lección aprendida (2026-05-21, post-validación con PN id 3017160)
+
+**Steelhead renderiza las quote lines en tiempo real — NO usa snapshot estático.** Hipótesis verificada por el operador: con la quote ya creada y guardada, desarchivar manualmente el PN y recargar la página → las marcas de "archivada" en las specs de la línea desaparecen instantáneamente. Re-archivar el PN → reaparecen. Cada render de la línea consulta el estado vigente del PN y sus specs, no un snapshot capturado al momento del `SaveQuoteLines`.
+
+**Implicación del modelo previo (1.4.0 + 1.4.1):**
+- La hipótesis original del Fix L ("el snapshot de la quote line captura las specs vigentes al momento del SaveQuoteLines") era **incorrecta**. No hay tal snapshot.
+- La hipótesis del Fix L2 ("el snapshot hereda el estado archivado del PN cuando SaveManyPNP corre sobre un PN archivado") **también era incorrecta** por la misma razón.
+- El workaround manual histórico (desarchivar NP → editar línea → guardar → re-archivar NP) funcionaba porque entre el "guardar" y el "re-archivar", el operador alcanzaba a ver la línea con el PN activo. Pero al re-archivar, la línea vuelve a verse archivada — se aceptaba el comportamiento durante el flujo manual sin haberlo identificado como "render en tiempo real".
+
+**Conclusión sobre el síntoma visual:**
+- **Un PN archivado SIEMPRE se ve tachado en cualquier quote que lo referencie**, sin importar cuándo se creó la línea ni qué se haya hecho con sus specs. Es comportamiento intencional de Steelhead.
+- Para que la cotización se vea "limpia", el PN tiene que quedar **desarchivado**. Pero el CSV pide archivar al final → contradicción visual inherente.
+- No hay forma desde el applet de resolver esto sin cambiar el contrato del CSV (ej. introducir un toggle "no archivar PNs hasta validar la quote" — fuera de scope actual).
+
+**Por qué se mantiene el STEP 4.5 igual:**
+- Sí cubre un problema real, aunque distinto al original: `SavePartNumber` (y mutaciones afines) sobre un PN archivado puede tener side effects silenciosos. Precedente concreto: 1.3.3 documentó que el `Sterlingshield S` huérfano se creó porque `SavePartNumber.inventoryPredictedUsages` aceptó la mutación en un contexto que la UI manual no permitía borrar después.
+- Con STEP 4.5 garantizamos que el enrich (STEP 5/6/6a/6b) corra siempre contra un PN activo, lo que elimina cualquier ambigüedad de "¿la mutation pasó o fue silencioso?".
+- Trade-off: `~3-5s` extra por corrida con PNs archivados + ventana corta donde un crash mid-run deja PNs desarchivados. Aceptable.
+
+**Recomendación operativa para el usuario:**
+- Si necesitas validar la cotización "limpia" (specs no tachadas), desarchiva el PN antes de revisar y re-archívalo después. Ese ya era el workaround manual original — sigue siendo el único.
+- Si el CSV pide archivar, el PN va a quedar archivado al final de la corrida y la línea se va a ver tachada. **No es un bug del applet; es comportamiento de Steelhead.**
+- Para próximas corridas: si un cliente exige ver las quotes "limpias", coordina con el operador para validar quotes ANTES de marcar los PNs como archivados en el CSV (es decir, dos corridas: una sin archivar, validas, otra solo para archivar).
+
+**Pendiente derivado (sin commit):** evaluar si vale la pena introducir un toggle en el modal del applet tipo "no archivar PNs al final de esta corrida (validación pendiente)" que sobreescriba `part.archivado=true` solo para esa ejecución. Bajo costo de implementación, beneficio claro para flujos de validación. No es urgente — el workaround manual es viable.
 
 ---
 
