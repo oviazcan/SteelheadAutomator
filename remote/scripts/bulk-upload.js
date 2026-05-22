@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.4';
+  const VERSION = '1.4.5';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -1153,6 +1153,11 @@ const BulkUpload = (() => {
       confidence: cls.confidence,
       candidates: cls.candidates,
       userOverride: null,
+      // 1.4.5: separar "el operador ya validó esta fila" de "el operador eligió
+      // algo distinto al default". Antes usábamos userOverride!=null para ambos,
+      // pero re-seleccionar el default propuesto resetea userOverride a null y la
+      // fila vuelve a aparecer como pendiente — UX confusa.
+      userDecided: false,
       targetPnId: cls.targetPnId,
       wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado por Pase 1/2 estaba archivado
       csvRowKey: `${p.pn.toUpperCase()}|${p.customerId}`,
@@ -1360,7 +1365,7 @@ const BulkUpload = (() => {
           <button class="dl9-btn" id="dl9-unsel-global" style="background:#1e293b;color:#e2e8f0;font-size:11px;padding:4px 10px">Deseleccionar TODO (global)</button>
         </div>
         <h3 id="dl9-preview-title" style="margin-bottom:4px">Part Numbers — página 1</h3>
-        <div id="dl9-table-wrap" style="max-height:300px;overflow-y:auto;border:1px solid #334155;border-radius:4px">
+        <div id="dl9-table-wrap" style="max-height:calc(96vh - 280px);min-height:300px;overflow-y:auto;border:1px solid #334155;border-radius:4px">
           <table style="width:100%;border-collapse:collapse"><thead id="dl9-thead"></thead><tbody id="dl9-tbody"></tbody></table>
         </div>
         <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
@@ -1428,15 +1433,18 @@ const BulkUpload = (() => {
         const dcNow = rows.filter(r => r.status === 'forceDup').length;
         const pase3Rows = rows.filter(r => r.pase === 3);
         const pendingTotal = pase3Rows.length;
-        // 1.4.3: una decisión "tomada" = el operador interactuó con el dropdown
-        // (userOverride != null). El default top-match cuenta como pendiente
-        // aunque el classifier ya haya elegido — para que el operador valide.
-        const decidedNow = pase3Rows.filter(r => pnStatus[r.idx]?.userOverride != null).length;
+        // 1.4.5: una decisión "tomada" = el operador interactuó con el dropdown
+        // o aceptó explícitamente la sugerencia (userDecided === true). Antes
+        // usábamos userOverride!=null, lo que tenía dos bugs: (a) si el usuario
+        // re-elegía el default propuesto, userOverride volvía a null y la fila
+        // re-aparecía como pendiente; (b) si el usuario estaba de acuerdo con la
+        // sugerencia y no clickeaba nada, la fila quedaba pendiente para siempre.
+        const decidedNow = pase3Rows.filter(r => pnStatus[r.idx]?.userDecided === true).length;
         const remainingNow = pendingTotal - decidedNow;
         const line = modal.querySelector('#dl9-counts-line');
         if (line) {
           const pendingHtml = pendingTotal > 0
-            ? ` · <span class="dl9-pending-chip">Pase 3: <b>${decidedNow}</b>/${pendingTotal} validadas (${remainingNow} restantes)</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">${filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes'}</button>`
+            ? ` · <span class="dl9-pending-chip">Pase 3: <b>${decidedNow}</b>/${pendingTotal} validadas (${remainingNow} restantes)</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">${filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes'}</button> <button id="dl9-accept-visible" class="dl9-btn-mini" style="background:#15803d" title="Marca como validadas todas las filas Pase 3 visibles en la página actual con la sugerencia que tienen (sin tener que clickear una por una)">✓ Aceptar visibles</button>`
             : '';
           line.innerHTML = `${rows.length} filas — ${ncNow} nuevos, ${ecNow} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dcNow} forzar dup${pendingHtml}`;
           // Re-bindear el toggle pendientes (innerHTML borra el listener anterior)
@@ -1446,6 +1454,35 @@ const BulkUpload = (() => {
               filterPendingOnly = !filterPendingOnly;
               btn.textContent = filterPendingOnly ? 'Mostrar todas' : 'Solo pendientes';
               applyFilters();
+            });
+          }
+          // 1.4.5: botón "Aceptar visibles" — marca como validadas todas las
+          // filas Pase 3 visibles en la página actual con la sugerencia actual
+          // del select. Acelera el flujo cuando el operador está de acuerdo con
+          // las sugerencias automáticas sin tener que clickear cada select.
+          const acceptBtn = modal.querySelector('#dl9-accept-visible');
+          if (acceptBtn) {
+            acceptBtn.addEventListener('click', () => {
+              const start = currentPage * PAGE_SIZE;
+              const visiblePase3 = filteredRows.slice(start, start + PAGE_SIZE).filter(r => r.pase === 3);
+              let accepted = 0;
+              for (const r of visiblePase3) {
+                if (!pnStatus[r.idx]?.userDecided) {
+                  pnStatus[r.idx].userDecided = true;
+                  accepted++;
+                  if (resumeState?.classifications?.[r.idx]) {
+                    resumeState.classifications[r.idx].userDecided = true;
+                  }
+                }
+              }
+              if (accepted > 0 && resumeState) {
+                persistResumeState().catch(() => {});
+              }
+              // Re-pintar todos los chips visibles
+              modal.querySelectorAll('.dl9-p3-wrap').forEach(w => {
+                if (w._renderSavedChip) w._renderSavedChip();
+              });
+              updateHeaderStats();
             });
           }
         }
@@ -1874,6 +1911,8 @@ const BulkUpload = (() => {
                 rows[idx].status = 'existing';
                 rows[idx].existingId = newTargetId;
               }
+              // 1.4.5: marcar la fila como validada por el operador.
+              pnStatus[idx].userDecided = true;
               renderCandColumn(val);
               if (specsExpanded) renderSpecsPanel(val);
               updateHeaderStats();
@@ -1881,8 +1920,28 @@ const BulkUpload = (() => {
               if (wrap._renderSavedChip) wrap._renderSavedChip();
               if (resumeState) {
                 const slot = resumeState.classifications?.[idx];
-                if (slot) slot.userOverride = pnStatus[idx].userOverride;
+                if (slot) {
+                  slot.userOverride = pnStatus[idx].userOverride;
+                  slot.userDecided = true;
+                }
                 persistResumeState().catch(() => {});
+              }
+            });
+            // 1.4.5: si el usuario hace click en el select (incluso si re-elige
+            // la misma opción), también lo tomamos como confirmación explícita.
+            // El evento 'change' NO se dispara cuando re-seleccionas la opción
+            // ya seleccionada — por eso el bug donde el contador no avanzaba.
+            sel.addEventListener('click', (e) => {
+              const idx = parseInt(e.target.dataset.rowIdx, 10);
+              if (!pnStatus[idx].userDecided) {
+                pnStatus[idx].userDecided = true;
+                updateHeaderStats();
+                if (wrap._renderSavedChip) wrap._renderSavedChip();
+                if (resumeState) {
+                  const slot = resumeState.classifications?.[idx];
+                  if (slot) slot.userDecided = true;
+                  persistResumeState().catch(() => {});
+                }
               }
             });
 
@@ -1895,12 +1954,13 @@ const BulkUpload = (() => {
             savedChipSlot.className = 'dl9-p3-saved-slot';
             const renderSavedChip = () => {
               savedChipSlot.replaceChildren();
-              const ov = pnStatus[r.idx]?.userOverride;
-              if (ov != null) {
+              // 1.4.5: usar userDecided (no userOverride) — ver comentario en línea
+              // del contador `decidedNow`.
+              if (pnStatus[r.idx]?.userDecided === true) {
                 const chip = document.createElement('span');
                 chip.className = 'dl9-saved-chip';
-                chip.textContent = '✓ guardada';
-                chip.title = 'Esta decisión ya está persistida en localStorage; si recargas y eliges REANUDAR vuelve aplicada.';
+                chip.textContent = '✓ validada';
+                chip.title = 'Decisión persistida en localStorage; al recargar y elegir REANUDAR vuelve aplicada.';
                 savedChipSlot.appendChild(chip);
               } else {
                 const chip = document.createElement('span');
@@ -2081,12 +2141,11 @@ const BulkUpload = (() => {
       updateSelCount();
 
       modal.querySelector('#dl9-cancel').onclick = () => {
-        // 1.4.3: si el operador alcanzó a tomar decisiones (userOverride != null
-        // en cualquier fila Pase 3), avisar que YA quedaron persistidas en
-        // localStorage — al volver a procesar el mismo CSV puede elegir REANUDAR
-        // y vuelven aplicadas. Evita la angustia de "perdí 2 horas de clicks".
+        // 1.4.5: usar userDecided (filas validadas explícitamente por el operador)
+        // en vez de userOverride!=null. Antes el banner subestimaba el progreso
+        // cuando el usuario aceptaba sugerencias sin override.
         try {
-          const decisionsTaken = pnStatus.filter(s => s.userOverride != null).length;
+          const decisionsTaken = pnStatus.filter(s => s.userDecided === true).length;
           if (decisionsTaken > 0) {
             alert(
               `Guardé ${decisionsTaken} decisión${decisionsTaken === 1 ? '' : 'es'} en este navegador.\n\n` +
@@ -2583,13 +2642,15 @@ const BulkUpload = (() => {
       // 1.2.13: exponer pnStatus en state para snippets diagnósticos.
       state.pnStatus = pnStatus;
 
-      // ── Restaurar userOverrides previos ANTES de pisar el snapshot ──
+      // ── Restaurar userOverrides + userDecided previos ANTES de pisar el snapshot ──
       // Si el usuario ya eligió candidatos en un preview previo (Pase 3 dropdown),
       // los recuperamos del resumeState antes de sobreescribir classifications.
       const prevOverrides = new Map();
+      const prevDecided = new Set();
       if (resumeState?.classifications) {
         for (const slot of resumeState.classifications) {
           if (slot.userOverride != null) prevOverrides.set(slot.csvRowKey, slot.userOverride);
+          if (slot.userDecided === true) prevDecided.add(slot.csvRowKey);
         }
       }
       for (let i = 0; i < pnStatus.length; i++) {
@@ -2604,6 +2665,10 @@ const BulkUpload = (() => {
             pnStatus[i].existingId = ov;
             pnStatus[i].status = 'existing';
           }
+        }
+        // 1.4.5: restaurar userDecided independiente de userOverride.
+        if (prevDecided.has(pnStatus[i].csvRowKey)) {
+          pnStatus[i].userDecided = true;
         }
       }
 
@@ -2627,6 +2692,7 @@ const BulkUpload = (() => {
           pase: s.pase,
           targetPnId: s.targetPnId,
           userOverride: s.userOverride,
+          userDecided: !!s.userDecided, // 1.4.5
           candidates: (s.candidates || []).map(c => c.id),
         }));
         await persistResumeState();

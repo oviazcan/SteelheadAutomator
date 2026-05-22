@@ -1,6 +1,48 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.4. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.5. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.5: Pase 3 — userDecided separado de userOverride + altura modal + "Aceptar visibles" (Fix P, 2026-05-22)
+
+**Contexto.** Tras deploy de 1.4.3/1.4.4 el usuario reportó dos UX bugs en el modal Pase 3:
+
+1. "Subió muy poco el espacio de la ventana, ahora puedo resolver 2 y media [filas]" — el wrap interno tenía `max-height:300px` hardcoded; el bump anterior del modal (a 96vh) no propagaba al contenedor de tabla.
+2. "Cuando estoy de acuerdo con tu sugerencia no doy click y no sabes que ya no está pendiente, pero además, cuando sí doy click y vuelvo a seleccionar lo que pusiste, aún así me sigue diciendo que la decisión está pendiente."
+
+### Causa raíz
+
+**Bug A — altura del wrap interno fija.** En el preview del modal hay un `<div id="dl9-table-wrap" style="max-height:300px;...">` (línea 1363). El modal padre crece a 96vh con 1.4.3 pero el wrap interno seguía limitado a 300px, dejando solo ~2.5 filas Pase 3 visibles.
+
+**Bug B — semántica de `userOverride` confundía dos conceptos.** El campo significaba "el operador eligió algo DISTINTO al default" (null cuando coincide con la sugerencia del clasificador). Pero el counter `decidedNow` lo usaba como proxy de "el operador validó la fila":
+
+- Si el operador estaba de acuerdo con la sugerencia y NO clickeaba → `userOverride=null` → contaba como pendiente.
+- Si el operador clickeaba el select y re-seleccionaba la misma opción → el evento `change` NO se dispara (HTML spec) → `userOverride` queda como estaba.
+- Si clickeaba y elegía otra opción y luego volvía a la sugerencia → `userOverride` se reseteaba a null → fila vuelve a aparecer pendiente.
+
+### Fix
+
+**Campo separado `userDecided: false` en `pnStatus`** (línea ~1156). Tracking explícito de "el operador validó esta fila", independiente de si su decisión coincide con el default.
+
+**Triggers:**
+- `sel.addEventListener('change', ...)`: marca `userDecided=true` además de actualizar `userOverride` como antes.
+- `sel.addEventListener('click', ...)`: marca `userDecided=true` aunque el operador re-seleccione la misma opción (cubre "vuelvo a elegir lo mismo que pusiste").
+- Botón **"✓ Aceptar visibles"** en el header de pendientes: marca todas las filas Pase 3 de la página actual como validadas con su valor actual del select. Un click por página en vez de uno por fila.
+
+**Wrap interno**: `max-height:300px` → `max-height:calc(96vh - 280px); min-height:300px`. Aprovecha viewport disponible.
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js` (~1155, 1363, 1431-1500, 1885-1910, 1900-1920, 2645-2660, 2685, 2150).
+- `remote/config.json`: bump `version` a `1.4.5`.
+
+### Plan de validación pendiente
+
+- [ ] Wrap muestra 5-7 filas Pase 3 en vez de 2.5.
+- [ ] Click sobre select con re-elección del mismo valor → contador avanza, chip "✓ validada".
+- [ ] Botón "✓ Aceptar visibles" marca toda la página en un click.
+- [ ] Reload → REANUDAR → `userDecided` restauradas.
+
+---
 
 ## 1.4.4: cuello STEP 8 SOLO_PN + progreso visible STEP 4.5/5/8 + cuota sa_load_history (Fix O, 2026-05-22)
 
