@@ -1,6 +1,71 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.10. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.11. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.11: STEP 6 Split A/B (anti-duplicados al reanudar) + concurrencia 8 + medidor de memoria (Fix V, 2026-05-22)
+
+**Contexto.** Después de los crashes OOM de 1.4.7/1.4.8/1.4.9, al reanudar corridas masivas se observaron PNs duplicados creados en lugar de matcheados. Caso concreto: corrida Schneider que tronó a ~4795/4799 PNs en STEP 6b dejó **58 PNs duplicados** al reanudar — `classifyPNs` no encontraba el PN existente porque la corrida anterior no alcanzó a commitear los identificadores (labels, BaseMetal, QuoteIBMS) antes del crash. Los pases 1/2 de `classifyOnePN` que matchean por QuoteIBMS + BaseMetal + labels fallaban y el row caía a `forceNew`.
+
+### Problema raíz
+
+`enrichWorker` hacía UN solo `SavePartNumber` por PN con TODO de una vez: `labels + customInputs (BaseMetal, QuoteIBMS) + specs + params + dims + archive + processNode`. Si truena después de classifyPNs pero antes de que el SavePartNumber commitee, al reanudar `classifyPNs` ve el PN existente "pelón" (sin labels, sin BaseMetal, sin QuoteIBMS) → ningún pase del matcher encuentra el PN → `forceNew` → duplicado.
+
+### Fix: Split A/B en enrichWorker
+
+**Call A (identificadores, barata ~0.3-0.5s):** `SavePartNumber` con `name + customerId + labelIds + customInputs (BaseMetal+QuoteIBMS) + inputSchemaId` + arrays vacíos para todo lo pesado. Tras éxito, rowKey `${idx}|${pn}|${customerId}` se persiste en `resumeState.identifierEnrichDone[]` con flush incremental cada 50.
+
+**Call B (todo lo pesado, sin cambios):** el `pnInput` actual con specs/params/dims/archive/processNode/predictive. Sigue marcando `completedPNs` al final.
+
+Si truena entre A y B: el siguiente resume corre `classifyPNs` sobre un catálogo donde el PN existente YA tiene labels + BaseMetal + QuoteIBMS frescos. `extractPNShape` (línea ~950) lee esos campos del response de `AllPartNumbers`, los pases 1/2 del matcher detectan el duplicado y lo asignan como `existing` en vez de `forceNew`.
+
+Si Call A falla (caso raro): NO se marca `identifierEnrichDone`, Call B intenta igual con el pnInput completo. Si B acepta, el PN queda enriched. Si B también falla, error queda registrado y no se marca completedPNs.
+
+### Coste
+
+- +1 `SavePartNumber` round-trip por PN (~0.3-0.5s).
+- Compensado por bump de concurrency `savePartNumber: 5 → 8` y `archive: 5 → 8` en `config.json` — Steelhead aguanta 8 sin 429.
+- Neto estimado en run de 7k PNs: **–10 a –15 min** wall-clock comparado con 1.4.10.
+
+### Cambios adicionales
+
+1. **Concurrency bump 5→8** en `bulkUpload.concurrency.savePartNumber` y `archive`. `sentinelPreQuoteArchive: 3` se mantiene (ya tronó a 5 por buffers GraphQL en runs >3k).
+
+2. **Medidor de memoria en panel** — `performance.memory.usedJSHeapSize` reportado en el header del panel cada 2s. Formato `Mem: 234MB / 4096MB (5%)`. Color cambia a ámbar a >70% del límite, rojo a >85%. Polling es lectura nativa, cero costo medible. Sin `performance.memory` (Firefox/Safari) el span queda en blanco. Diagnóstico in-line del riesgo de OOM antes de que tronara.
+
+### Por qué NO se paralelizaron STEP 4.5 || STEP 5 y STEP 7 || STEP 8
+
+Refactor invasivo (los bloques están estructuralmente entrelazados con STEP 1 y STEP 7b/8 default-price) para ganancia marginal (~5 min en runs de 7k PNs). El bump de concurrency 5→8 ya entrega el grueso del ahorro (–25%). Diferido a 1.4.12 si tras validar 1.4.11 vale la pena.
+
+### Plan de validación pendiente
+
+- [ ] Reanudar el run de Clientes Generales (resumeKey `17fc5ef8...`, phase `enrich-done`, ~4270 PNs) y confirmar `Reanudando corrida previa — N PNs ya completados, M con identificadores commiteados`.
+- [ ] Run fresh de Schneider: verificar que Call A loguea OK (sin warns "SavePartNumber-A falló") y que NO crea duplicados al reanudar tras un crash forzado (matar el tab a mitad de STEP 6).
+- [ ] Concurrency 8 sin 429s: confirmar que Steelhead no devuelve `Too Many Requests` ni `503` durante STEP 6 / STEP 6b / STEP 8.
+- [ ] Medidor de memoria: confirmar que el header del panel muestra `Mem: X MB / Y MB (Z%)` y que el color cambia a ámbar/rojo si la memoria sube.
+- [ ] Auditar catálogo post-run con el snippet de PN dups por (name|customerId) — el conteo debe ser menor que el de 1.4.10.
+
+### Pendientes derivados (no en 1.4.11)
+
+- STEP 4.5 || STEP 5 paralelo: diferido a 1.4.12 si vale la pena.
+- STEP 7 || STEP 8 paralelo: diferido a 1.4.12 si vale la pena.
+- Limpieza periódica de `identifierEnrichDone` cuando rowKey ya está en `completedPNs`: en teoría redundante pero no crítico (cada key ~30 bytes; 7k keys = ~200KB en localStorage de 5MB).
+- Métricas de performance por step en el panel (tiempo medio por SavePartNumber A vs B) — útil si quieres bajar la latencia de A.
+
+### Archivos cambiados
+
+- `remote/scripts/bulk-upload.js`:
+  - `VERSION = '1.4.11'`.
+  - `resumeState.identifierEnrichDone: []` agregado al init y al rehidratar resumes previos.
+  - `resumeIdentifierSet` Set hidratado paralelo a `resumeCompletedSet`; log de resume incluye conteo.
+  - `enrichWorker`: Call A (identifier-enrich) antes de Call B (heavy). Persistencia incremental cada 50 en `identifierEnrichDone`.
+  - Medidor de memoria: `startMemoryGauge()` / `stopMemoryGauge()` con `performance.memory` polling 2s. CSS `.sa-mem` + `.sa-mem-warn` + `.sa-mem-crit`. Span `#sa-bu-mem` en header.
+  - `showPanel()` arranca el gauge; `hidePanel()` lo detiene.
+- `remote/config.json`:
+  - `version: '1.4.11'`.
+  - `bulkUpload.concurrency.savePartNumber: 5 → 8`.
+  - `bulkUpload.concurrency.archive: 5 → 8`.
+- `docs/applets/bulk-upload.md`: esta sección.
+- `CLAUDE.md`: índice de applets actualizado a 1.4.11.
 
 ## 1.4.10: consolidación de modales + log circular + sub-fase visible en workers (Fix U, 2026-05-22)
 

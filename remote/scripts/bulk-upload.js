@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.10';
+  const VERSION = '1.4.11';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -394,7 +394,11 @@ const BulkUpload = (() => {
       #sa-bu-panel{position:fixed;top:20px;right:20px;width:480px;max-height:80vh;background:#1e293b;color:#e2e8f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;z-index:100000;display:flex;flex-direction:column;overflow:hidden}
       #sa-bu-panel .sa-hdr{padding:14px 18px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
       #sa-bu-panel .sa-hdr h3{margin:0;font-size:14px;color:#38bdf8;font-weight:600}
+      #sa-bu-panel .sa-hdr .sa-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px;color:#64748b}
       #sa-bu-panel .sa-hdr .sa-ver{font-size:11px;color:#64748b}
+      #sa-bu-panel .sa-hdr .sa-mem{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:#64748b}
+      #sa-bu-panel .sa-hdr .sa-mem.sa-mem-warn{color:#f59e0b}
+      #sa-bu-panel .sa-hdr .sa-mem.sa-mem-crit{color:#f87171;font-weight:600}
       #sa-bu-panel .sa-body{padding:14px 18px;overflow-y:auto;flex:1;font-size:13px}
       #sa-bu-panel .sa-phase{font-size:13px;color:#e2e8f0;font-weight:500;margin-bottom:2px}
       #sa-bu-panel .sa-subphase{font-size:11px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-bottom:6px;min-height:14px}
@@ -424,7 +428,10 @@ const BulkUpload = (() => {
     p.innerHTML = `
       <div class="sa-hdr">
         <h3>Carga masiva — Steelhead Automator</h3>
-        <span class="sa-ver">v${VERSION}</span>
+        <div class="sa-meta">
+          <span class="sa-ver">v${VERSION}</span>
+          <span class="sa-mem" id="sa-bu-mem" title="Memoria JS del tab (Chrome/Edge)"></span>
+        </div>
       </div>
       <div class="sa-body">
         <div class="sa-phase" id="sa-bu-phase">Inicializando...</div>
@@ -452,10 +459,38 @@ const BulkUpload = (() => {
     return p;
   }
 
-  function showPanel() { ensurePanel().style.display = 'flex'; }
+  function showPanel() { ensurePanel().style.display = 'flex'; startMemoryGauge(); }
   function hidePanel() {
+    stopMemoryGauge();
     const p = document.getElementById('sa-bu-panel');
     if (p && p.parentNode) p.parentNode.removeChild(p);
+  }
+
+  // 1.4.11: medidor de memoria del tab. performance.memory (Chrome/Edge) reporta
+  // usedJSHeapSize y jsHeapSizeLimit en bytes. Polling cada 2s — lectura nativa
+  // sin costo medible. Alerta amarilla a >70% del límite y roja a >85%.
+  // Sin performance.memory (Firefox/Safari) el span queda en blanco.
+  let memoryGaugeTimer = null;
+  function startMemoryGauge() {
+    if (memoryGaugeTimer) return;
+    if (!(performance && performance.memory)) return;
+    const tick = () => {
+      const el = document.getElementById('sa-bu-mem'); if (!el) return;
+      const used = performance.memory.usedJSHeapSize;
+      const limit = performance.memory.jsHeapSizeLimit;
+      const usedMB = Math.round(used / 1024 / 1024);
+      const limitMB = Math.round(limit / 1024 / 1024);
+      const pct = limit > 0 ? Math.round(used / limit * 100) : 0;
+      el.textContent = `Mem: ${usedMB}MB / ${limitMB}MB (${pct}%)`;
+      el.classList.remove('sa-mem-warn', 'sa-mem-crit');
+      if (pct >= 85) el.classList.add('sa-mem-crit');
+      else if (pct >= 70) el.classList.add('sa-mem-warn');
+    };
+    tick();
+    memoryGaugeTimer = setInterval(tick, 2000);
+  }
+  function stopMemoryGauge() {
+    if (memoryGaugeTimer) { clearInterval(memoryGaugeTimer); memoryGaugeTimer = null; }
   }
 
   // 1.4.10: panel chico es la única UI de progreso. Tamaño del ring buffer del log
@@ -2431,6 +2466,8 @@ const BulkUpload = (() => {
       const runKey = await computeRunKey(csvClean);
       const prev = loadResumeStateByKey(runKey);
       let resumeCompletedSet = new Set();
+      // 1.4.11: identificadores ya commiteados (Call A del Split A/B) en corridas previas.
+      let resumeIdentifierSet = new Set();
       if (prev && prev.phase && prev.phase !== 'done') {
         const decision = await askResumeOrFresh(prev);
         if (decision === 'cancel') {
@@ -2442,7 +2479,8 @@ const BulkUpload = (() => {
           resumeState = prev;
           resumeState.lastUpdatedAt = new Date().toISOString();
           resumeCompletedSet = new Set(prev.completedPNs || []);
-          log(`Reanudando corrida previa — fase: ${prev.phase}, ${resumeCompletedSet.size} PNs ya completados.`);
+          resumeIdentifierSet = new Set(prev.identifierEnrichDone || []);
+          log(`Reanudando corrida previa — fase: ${prev.phase}, ${resumeCompletedSet.size} PNs ya completados, ${resumeIdentifierSet.size} con identificadores commiteados.`);
         } else {
           // 'fresh' — borrar progreso previo
           deleteResumeStateByKey(runKey);
@@ -2474,6 +2512,14 @@ const BulkUpload = (() => {
           // ~5879 sentinels desde cero (idempotente pero caro: ~10 min de
           // SavePartNumber no-ops + buffers GraphQL que dispararon OOM).
           archivedSentinelsPreQuote: [],
+          // 1.4.11: STEP 6 split A/B. Call A persiste identificadores
+          // (labels + customInputs.BaseMetal + customInputs.QuoteIBMS + name +
+          // customerId) ANTES de Call B (specs/params/dims/archive/processNode).
+          // Si truena entre A y B, el siguiente resume corre classifyPNs sobre
+          // un catálogo donde los PNs ya tienen labels y QuoteIBMS — los pases
+          // 1/2 de classifyOnePN matchean correcto en vez de caer a "NEW" y
+          // duplicar PNs. Lista de rowKeys "idx|pn|customerId" que ya pasaron A.
+          identifierEnrichDone: [],
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
@@ -2488,6 +2534,10 @@ const BulkUpload = (() => {
         // 1.4.8: hidratar lista de sentinels archivados si la corrida es pre-1.4.8.
         if (!Array.isArray(resumeState.archivedSentinelsPreQuote)) {
           resumeState.archivedSentinelsPreQuote = [];
+        }
+        // 1.4.11: hidratar lista de identifier-enriched si la corrida es pre-1.4.11.
+        if (!Array.isArray(resumeState.identifierEnrichDone)) {
+          resumeState.identifierEnrichDone = [];
         }
       }
 
@@ -3735,6 +3785,77 @@ const BulkUpload = (() => {
 
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
+
+        // 1.4.11: Call A del Split A/B — identifier-enrich.
+        // Antes (≤1.4.10) el único SavePartNumber por PN mandaba TODO de una vez:
+        // labels + customInputs (BaseMetal, QuoteIBMS) + specs + params + dims +
+        // archive + processNode. Si truena DESPUÉS de classifyPNs pero ANTES de
+        // que SavePartNumber commitee, al reanudar `classifyPNs` veía el PN
+        // existente todavía SIN labels y SIN QuoteIBMS — pases 1/2 del matcher
+        // no detectaban duplicados → `forceNew` → PN duplicado en el catálogo.
+        // Repro real: corrida que tronó a 4795/4799 dejó 58 PNs duplicados al
+        // reanudar.
+        //
+        // 1.4.11 fix: hacer DOS SavePartNumber por PN. Call A primero (labels +
+        // customInputs + name + customerId + inputSchemaId con todo lo demás
+        // vacío) → persistir rowKey en `resumeState.identifierEnrichDone[]` con
+        // flush incremental cada 50. Call B (todo lo pesado) se mantiene igual.
+        // Si truena entre A y B, el siguiente resume corre classifyPNs sobre un
+        // catálogo donde el PN existente ya trae labels/BaseMetal/QuoteIBMS
+        // frescos → matcheo limpio.
+        //
+        // Coste por PN: +1 round-trip SavePartNumber (~0.3-0.5s) — compensado
+        // por el bump de concurrency 5→8 en este mismo release.
+        const identifierKey = `${idx}|${part.pn}|${part.customerId}`;
+        if (!resumeIdentifierSet.has(identifierKey)) {
+          const identifierInput = {
+            id: pn.id, name: pn.name, customerId: pn.customerId || part.customerId,
+            descriptionMarkdown: pn.descriptionMarkdown || '',
+            customerFacingNotes: pn.customerFacingNotes || '',
+            customInputs: mergedCI || pn.customInputs || {},
+            inputSchemaId: DOMAIN.inputSchemaId_PN,
+            labelIds: labelsAreDash ? [] : labelIds,
+            partNumberGroupId: pn.partNumberGroupId || null,
+            // Heavy fields explícitamente vacíos — Steelhead acepta el shape mínimo
+            // como un upsert idempotente de identificadores.
+            defaultProcessNodeId: pn.defaultProcessNodeId || null,
+            geometryTypeId: pn.geometryTypeId || null,
+            inventoryItemInput: null, inventoryPredictedUsages: [],
+            specsToApply: [], paramsToApply: [], partNumberDimensions: [],
+            partNumberLocations: [], dimensionCustomValueIds: [],
+            isCoupon: false, isOneOff: false, isTemplatePartNumber: false,
+            optInOuts: [], ownerIds: [], defaults: [],
+            partNumberSpecClassificationsToUpdate: [],
+            partNumberSpecFieldParamUpdates: [],
+            partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+            partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+            specFieldParamUpdates: [],
+            glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
+          };
+          bailIfStale(myRunId);
+          try {
+            await withRetry(
+              () => api().query('SavePartNumber', { input: [identifierInput] }),
+              `SavePartNumber-A (identifier) "${pn.name}"`,
+              myRunId
+            );
+            resumeIdentifierSet.add(identifierKey);
+            if (resumeState) {
+              resumeState.identifierEnrichDone.push(identifierKey);
+              // Persistir cada 50 — mismo ritmo que completedPNs para no inundar localStorage.
+              if (resumeState.identifierEnrichDone.length % 50 === 0) {
+                persistResumeState().catch(() => {});
+              }
+            }
+          } catch (eA) {
+            if (isBail(eA)) throw eA;
+            // Call A falló: NO marcamos identifierEnrichDone. Call B sigue intentando
+            // (con el pnInput completo); si Steelhead acepta B con todos los campos,
+            // el PN queda enriched. Si B también falla, error queda registrado.
+            // Loggeamos warn para diagnóstico pero no abortamos el worker.
+            warn(`SavePartNumber-A (identifier) "${pn.name}" falló (${String(eA).substring(0, 80)}) — caemos a Call B con pnInput completo`);
+          }
+        }
 
         // Dims — "-" en longitud = borrar dimensiones
         const dimsAreDash = typeof part.dims.length === 'string' && isDash(part.dims.length);
