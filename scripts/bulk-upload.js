@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.1';
+  const VERSION = '1.4.2';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -3801,10 +3801,18 @@ const BulkUpload = (() => {
           if (isDash(rk.name)) continue;
           const rt = rackTypeByName.get(rk.name); if (!rt) { errors.push(`RackType "${rk.name}" no encontrado.`); continue; }
           if (rk.ppr === null) continue;
+          // Fix M 1.4.2: partsPerRack es Int en GraphQL. Si la celda CSV trae decimal
+          // (fórmula con resultado no-entero, error de pegado), Math.floor evita el
+          // HTTP 400 que en 1.4.1 tiraba el batch entero de 50 racks — el catch de
+          // SavePartNumberRackTypes solo hace fallback uno-por-uno si el error es
+          // duplicate-key, no si es validación de tipo.
+          const ppr = Math.floor(rk.ppr);
+          if (!Number.isFinite(ppr)) continue;
+          if (ppr !== rk.ppr) log(`  WARN: rack "${rk.name}" PN id ${entry.pn.id} ppr=${rk.ppr} no entero → redondeado a ${ppr}`);
           const key = `${rt.id}|${entry.pn.id}`;
           if (rackInSeen.has(key)) continue; // misma combinación ya agregada por otra fila
           rackInSeen.add(key);
-          rackIn.push({ rackTypeId: rt.id, partNumberId: entry.pn.id, partsPerRack: rk.ppr });
+          rackIn.push({ rackTypeId: rt.id, partNumberId: entry.pn.id, partsPerRack: ppr });
         }
       }
       // Delete racks for PNs with guión
@@ -3857,7 +3865,7 @@ const BulkUpload = (() => {
           }
         }
       }
-      stats.racksSet = rackIn.length + racksToDelete.length; log(`  Racks: ${rackIn.length} agregados, ${racksToDelete.length} PNs con racks eliminados`);
+      stats.racksSet = rackIn.length + racksToDelete.size; log(`  Racks: ${rackIn.length} agregados, ${racksToDelete.size} PNs con racks eliminados`);
 
       // STEP 7b: Delete prices (guión in precio column)
       // 1.2.11: iteramos con índice para resolver entry por rowIdx; dedup por pnId
