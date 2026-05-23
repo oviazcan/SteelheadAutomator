@@ -1,5 +1,5 @@
 {
-  "version": "1.4.15",
+  "version": "1.4.16",
   "lastUpdated": "2026-05-22",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
@@ -678,6 +678,19 @@
       ]
     },
     {
+      "id": "create-order-autofill",
+      "name": "Crear OV — Autofill",
+      "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta",
+      "icon": "📝",
+      "category": "Recibo",
+      "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill.js"],
+      "autoInject": true,
+      "requiredPermissions": ["READ_RECEIVING"],
+      "actions": [
+        { "id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill" }
+      ]
+    },
+    {
       "id": "bill-autofill",
       "name": "Bill Autofill",
       "subtitle": "Llenado automático de cuentas contables en Bills",
@@ -859,7 +872,7 @@
     "InvoiceLowCodeData": { "type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill" },
     "GetReceivedOrdersWithReceivedOrderLineItems": { "type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill" },
     "CreateInvoiceAndUpdatePartTransferAccounts": { "type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill" },
-    "Customer": { "type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill" },
+    "Customer": { "type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill" },
     "GetProcessNode": { "type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit" },
     "CreateEditProcessDialogQuery": { "type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit" },
     "GetTreatment": { "type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit" },

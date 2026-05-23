@@ -80,10 +80,12 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `receiver-date-override` | 0.5.68 | [`docs/applets/receiver-date-override.md`](docs/applets/receiver-date-override.md) |
 | `warehouse-location-prefill` | 0.5.80 | [`docs/applets/warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
 | `weight-quick-entry` | 0.5.81 | [`docs/applets/weight-quick-entry.md`](docs/applets/weight-quick-entry.md) |
+| `create-order-autofill` | 0.1.0 | [`docs/applets/create-order-autofill.md`](docs/applets/create-order-autofill.md) |
 | `process-canon` | varios | [`docs/processes-architecture.md`](docs/processes-architecture.md) (glosario §9) |
 | `hash-scanner` | 0.6.23 | [`docs/applets/hash-scanner.md`](docs/applets/hash-scanner.md) |
 | Power Tools `ordendeventa.ts` | n/a (low-code hook) | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
 | Power Tools `facturacion-pdf.ts` | n/a (low-code hook `getPdfCustomization`) | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |
+| Power Tools `facturacion.ts` | n/a (low-code hook `getInvoicePricing`) | [`docs/applets/powertools-facturacion.md`](docs/applets/powertools-facturacion.md) |
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).
