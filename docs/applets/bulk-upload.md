@@ -1,6 +1,37 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.18. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.19. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.19: stop Datadog Session Replay (Fix CC, 2026-05-23)
+
+### Síntoma
+Runs largos (3281 PNs) crecían linealmente ~1.2 MB/PN. Heap iba de 553 → 952 → 1218 → 2076 MB en corridas sucesivas. Crash por OOM antes de terminar.
+
+### Diagnóstico (heap snapshots)
+Dos snapshots tomados con ~20 min de delta (1.4 GB → 2.9 GB). `JSON.stringify(__state)` solo daba ~9 MB → los retainers no estaban en el state visible. Análisis con `tools/analyze-heap.js`:
+
+| `__typename` | Snap 1 | Snap 2 | × |
+|---|---|---|---|
+| `StationParametersConnection` | 448K | 1.55M | 3.5× |
+| `WorkboardCardsConnection` | 458K | 1.59M | 3.5× |
+| `WorkboardsConnection` | 448K | 1.55M | 3.5× |
+| `Station` | 710K | 2.21M | 3.1× |
+
+Counts no correspondían a objetos de bulk-upload (que usa `fetch` directo, no Apollo). Inspección de Network reveló: Datadog RUM SDK con `session_replay_sample_rate: 100` corriendo en `app.gosteelhead.com` graba TODA respuesta de fetch (incluidas las del bulk-upload) en buffer para enviar como replay. Cada `GetPartNumber`/`SaveQuote` retorna ~700 objetos anidados — multiplicado por 3281 PNs ≈ 2.3M objetos. Cuadra exacto con los counts observados.
+
+Tras `Cmd+Shift+R` + `DD_RUM.stopSessionReplayRecording()`: heap se quedó estable. Snapshot post-fix mostró `WorkboardsConnection` desaparecido del top y crecimiento ~3 MB/min (vs ~50 MB/min antes) — el residual cabe en el límite de 4GB para runs nocturnos.
+
+### Fix
+Nueva función `stopDatadogSessionReplay()` que busca `window.DD_RUM`/`datadogRum`/`__DD_RUM__` y llama a `stopSessionReplayRecording()` defensivamente (no rompe si la API cambia). Se invoca al inicio de `execute()` justo después de `showPanel()`. Se re-ejecuta en cada execute() porque tras crash + resume el cleanup debe reaplicarse.
+
+### Lección
+- En apps host con Datadog/Sentry/LogRocket, `session_replay_sample_rate: 100` es incompatible con automatizaciones que generan miles de fetch en una sesión. Buscar y desactivar al iniciar.
+- Heap snapshots > `__state` diagnostics cuando el leak está en globals que la app inyecta.
+- `tools/analyze-heap.js` parsea snapshots > 1 GB en streaming sin requerir DevTools UI.
+
+### Pendientes
+- Validar que el run de 3281 PNs termina sin OOM con 1.4.19 deployado.
+- Considerar parametrizar el stop por config (algunos clientes podrían querer mantener replay activo en runs cortos).
 
 ## 1.4.18: showResult inmune al churn React de Steelhead (Fix BB, 2026-05-23)
 
