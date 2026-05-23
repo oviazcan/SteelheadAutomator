@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.23';
+  const VERSION = '1.4.24';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -59,6 +59,30 @@ const BulkUpload = (() => {
   //      (cierra el loop: aunque el SDK acumule buffer, no logra enviarlo
   //       y los retries no inflan más el heap)
   function stopDatadogSessionReplay() {
+    // 1.4.24 Fix EE: latch. La invocación desde startMemoryGauge.tick() corre
+    // cada 2s mientras pct >= 70 — antes (1.4.20-1.4.23) eso ejecutaba todo el
+    // bloque cada tick y, peor, llamaba log() cada vez. El log() de steelhead-api
+    // pushea a un array sin cap y re-serializa a localStorage en cada call →
+    // O(n²) memoria + churn de sa_last_log. Latch idempotente: el primer call
+    // hace el trabajo (stops + patches + Apollo cleanup), los siguientes solo
+    // re-intentan Apollo cleanup silencioso (porque el cache sí puede crecer y
+    // queremos drenarlo periódicamente).
+    if (window.__sa_dd_stopped) {
+      try {
+        const candidates = [
+          window.__APOLLO_CLIENT__,
+          window.apolloClient,
+          window.__APOLLO__?.client
+        ].filter(Boolean);
+        for (const client of candidates) {
+          try {
+            if (typeof client.clearStore === 'function') client.clearStore().catch(() => {});
+            else if (client.cache && typeof client.cache.reset === 'function') client.cache.reset();
+          } catch (_) {}
+        }
+      } catch (_) {}
+      return;
+    }
     try {
       const dd = window.DD_RUM || window.datadogRum || window.__DD_RUM__;
       if (dd) {
@@ -134,6 +158,9 @@ const BulkUpload = (() => {
         } catch (_) {}
       }
     } catch (_) {}
+    // 1.4.24 Fix EE: latch al final del primer call. Próximos ticks del
+    // memoryGauge entran al early-return arriba (solo Apollo cleanup silencioso).
+    window.__sa_dd_stopped = true;
   }
 
   // 1.4.20: guardrail anti-OOM. Si el heap pasa 88% del límite, persiste
@@ -2684,6 +2711,13 @@ const BulkUpload = (() => {
           // 1/2 de classifyOnePN matchean correcto en vez de caer a "NEW" y
           // duplicar PNs. Lista de rowKeys "idx|pn|customerId" que ya pasaron A.
           identifierEnrichDone: [],
+          // 1.4.24 Fix EE: lista de rowKeys que ya completaron STEP 6b
+          // (Sync params spec). Antes, STEP 6b siempre arrancaba desde 0 en
+          // cada reanudación → re-procesaba GetPartNumber + AddParams sobre
+          // PNs ya completos (silent-skip 23P01 pero igual ~1.6 MB/PN por
+          // Apollo cache). Para CSVs > 3000 PNs, eso disparaba OOM en
+          // cada ciclo aunque solo faltaran ~200 PNs reales.
+          syncParamsCompletedPNs: [],
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
@@ -2702,6 +2736,10 @@ const BulkUpload = (() => {
         // 1.4.11: hidratar lista de identifier-enriched si la corrida es pre-1.4.11.
         if (!Array.isArray(resumeState.identifierEnrichDone)) {
           resumeState.identifierEnrichDone = [];
+        }
+        // 1.4.24 Fix EE: hidratar set de STEP 6b si la corrida es pre-1.4.24.
+        if (!Array.isArray(resumeState.syncParamsCompletedPNs)) {
+          resumeState.syncParamsCompletedPNs = [];
         }
       }
 
@@ -4432,12 +4470,20 @@ const BulkUpload = (() => {
       // 1.4.9 STEP 0 cleanup defensivo: contador de params duplicados archivados
       // por el cleanup integrado en STEP 6b (ver comentario abajo).
       const cleanupCounters = { archived: 0, pnsTouched: 0 };
+      // 1.4.24 Fix EE: set en memoria hidratado desde resumeState para skip rápido.
+      // Si una corrida previa crasheó en STEP 6b al PN 691/3692, esta reanudación
+      // saltea esos 691 sin volver a pegarle a GetPartNumber + AddParams.
+      const syncParamsCompletedSet = new Set(resumeState?.syncParamsCompletedPNs || []);
       async function step6bWorker(i, _idx, myRunIdLocal) {
         bailIfStale(myRunIdLocal);
         const part = parts[i];
         const entry = pnLookup.get(i);
         if (!entry?.pn?.id) return;
+        // 1.4.24 Fix EE: skip si esta fila ya completó STEP 6b en corrida previa.
+        const rkey = `${i}|${part.pn}|${part.customerId}`;
+        if (syncParamsCompletedSet.has(rkey)) return;
         setPanelSubPhase(`Sync params: ${part.pn}`);
+        let workerError = null;
         try {
           // Fix I 1.3.2: cache invalidado por enrichWorker → fetch fresco con los specs/params
           // que SavePartNumber acaba de agregar. Sin esto, AddParams reintenta params ya creados.
@@ -4585,7 +4631,24 @@ const BulkUpload = (() => {
           }
         } catch (e) {
           if (isBail(e)) throw e;
+          workerError = e;
           warn(`Sync specs "${part.pn}": ${String(e).substring(0, 100)}`);
+        } finally {
+          // 1.4.24 Fix EE: liberar buffer del PN procesado. Antes el cache
+          // retenía ~25KB × N PNs hasta el clear() final post-STEP 6b — para
+          // 3692 PNs eso son ~92MB acumulados solo en pnNodes, sin contar el
+          // overhead de Apollo cache (__typename normalization).
+          if (entry?.pn?.id) existingPnFullCache.delete(entry.pn.id);
+        }
+        // 1.4.24 Fix EE: marcar completed sólo si no hubo error. Persistir cada 50
+        // — mismo ritmo que completedPNs de STEP 6. Si ocurre OOM/crash a mitad,
+        // el set en localStorage refleja PNs realmente terminados.
+        if (!workerError && resumeState) {
+          resumeState.syncParamsCompletedPNs.push(rkey);
+          syncParamsCompletedSet.add(rkey);
+          if (resumeState.syncParamsCompletedPNs.length % 50 === 0) {
+            persistResumeState().catch(() => {});
+          }
         }
       }
       setPanelPhase(`Sync params spec en PNs existentes (pool ${syncConcurrency})`);
