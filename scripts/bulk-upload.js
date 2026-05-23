@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.20';
+  const VERSION = '1.4.21';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -88,10 +88,52 @@ const BulkUpload = (() => {
             return origBeacon(url, data);
           };
         }
+        // 1.4.21 Fix CC v3: también XHR. Algunas SDKs (incluido Apollo DevTools y
+        // ciertos sinks de RUM) usan XMLHttpRequest, no fetch. Sin esto, el patch
+        // de fetch deja la mitad del flujo abierto.
+        if (window.XMLHttpRequest && !window.__sa_xhr_patched) {
+          const origOpen = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function (method, url) {
+            this.__sa_url = url;
+            return origOpen.apply(this, arguments);
+          };
+          const origSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.send = function (body) {
+            const url = this.__sa_url || '';
+            if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
+              try { this.abort(); } catch (_) {}
+              return;
+            }
+            return origSend.apply(this, arguments);
+          };
+          window.__sa_xhr_patched = true;
+        }
         window.__sa_fetch_patched = true;
-        log('Fetch+sendBeacon a Datadog patcheados (defensa anti-leak).');
+        log('Fetch+sendBeacon+XHR a Datadog patcheados (defensa anti-leak).');
       } catch (e) { warn(`Patch fetch falló: ${String(e?.message || e).substring(0, 80)}`); }
     }
+    // 1.4.21 Fix CC v3: intento agresivo de cleanup del Apollo Client de Steelhead.
+    // El cliente no está expuesto en window.__APOLLO_CLIENT__ en su build de prod,
+    // pero podemos intentar varios accesos. Si encontramos uno, clearStore() libera
+    // todo el InMemoryCache normalizado (es la fuente sospechada del leak real).
+    try {
+      const candidates = [
+        window.__APOLLO_CLIENT__,
+        window.apolloClient,
+        window.__APOLLO__?.client
+      ].filter(Boolean);
+      for (const client of candidates) {
+        try {
+          if (typeof client.clearStore === 'function') {
+            client.clearStore().catch(() => {});
+            log('Apollo cache clearStore() invocado.');
+          } else if (client.cache && typeof client.cache.reset === 'function') {
+            client.cache.reset();
+            log('Apollo cache reset() invocado.');
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   // 1.4.20: guardrail anti-OOM. Si el heap pasa 88% del límite, persiste
@@ -2891,7 +2933,45 @@ const BulkUpload = (() => {
 
       // ── PN existence check ──
       bailIfStale(myRunId);
-      const pnStatus = await checkPNExistence(parts, myRunId);
+      // 1.4.21 Fix CC v3 (opción B): si tenemos resumeState con classifications
+      // completos para todos los parts, saltar classifyPNs (que dispara prefetch
+      // global de ~22k PNs activos + 24k archivados, ~1.7GB baseline). El resume
+      // ya tiene targetPnId + existingProcessId + classification de cada fila;
+      // reconstruimos pnStatus desde ahí sin tocar la red.
+      let pnStatus;
+      const canSkipPrefetch =
+        resumeState?.classifications?.length === parts.length &&
+        parts.length > 0 &&
+        resumeState.classifications.every((c, i) =>
+          c &&
+          c.csvRowKey === parts[i].csvRowKey &&
+          c.classification != null &&
+          (c.classification === 'NEW' || c.targetPnId != null) &&
+          // Si el PN va a MODIFY, necesitamos existingProcessId para no romper
+          // STEP 6/8. Pre-1.4.21 no se guardaba → forzar full classifyPNs como
+          // migración. Post-1.4.21 sí.
+          (c.classification === 'NEW' || c.existingProcessId !== undefined)
+        );
+      if (canSkipPrefetch) {
+        log(`Resume detectado con classifications completas — saltando prefetch global (ahorro ~1.7GB baseline).`);
+        pnStatus = resumeState.classifications.map((c, i) => {
+          const isExisting = c.classification !== 'NEW' && c.targetPnId != null;
+          return {
+            csvRowKey: c.csvRowKey,
+            classification: c.classification,
+            pase: c.pase || null,
+            targetPnId: c.targetPnId || null,
+            userOverride: c.userOverride || null,
+            userDecided: !!c.userDecided,
+            candidates: (c.candidates || []).map(id => ({ id })),
+            status: isExisting ? 'existing' : 'new',
+            existingId: isExisting ? c.targetPnId : null,
+            existingProcessId: c.existingProcessId || null,
+          };
+        });
+      } else {
+        pnStatus = await checkPNExistence(parts, myRunId);
+      }
       // 1.2.13: exponer pnStatus en state para snippets diagnósticos.
       state.pnStatus = pnStatus;
 
@@ -2947,6 +3027,10 @@ const BulkUpload = (() => {
           userOverride: s.userOverride,
           userDecided: !!s.userDecided, // 1.4.5
           candidates: (s.candidates || []).map(c => c.id),
+          // 1.4.21 Fix CC v3: persistir existingProcessId habilita el fast-path
+          // de "skip prefetch en resume". Sin esto, un resume re-corre classifyPNs
+          // entero (~1.7GB de baseline para CSVs grandes).
+          existingProcessId: s.existingProcessId || null,
         }));
         await persistResumeState();
       }
@@ -3403,7 +3487,15 @@ const BulkUpload = (() => {
                 if (!linkedSpecId) continue;
                 if (!wantedSpecIds.has(linkedSpecId)) archiveIds.push(ls.id);
               }
-              if (!archiveIds.length) { sentinelSkip++; return; }
+              if (!archiveIds.length) {
+                sentinelSkip++;
+                // 1.4.21 Fix CC v3: marcar PN como "ya procesado" aunque no haya
+                // archivado nada. Antes solo se marcaban los OK reales → un resume
+                // re-procesaba miles de PNs limpios, llamando GetPartNumber (~25KB
+                // por response) y disparando OOM aunque no hubiera trabajo real.
+                sentinelArchivedBuffer.push(target.pnId);
+                return;
+              }
               const minInput = {
                 id: target.pnId,
                 name: pnNode.name,
