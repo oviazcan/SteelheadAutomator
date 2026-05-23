@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.24';
+  const VERSION = '1.4.25';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -3386,9 +3386,10 @@ const BulkUpload = (() => {
         pnsToUnarchivePre.push({ id: status.existingId, name: parts[i].pn });
       }
       if (pnsToUnarchivePre.length) {
-        setPanelPhase(`Paso 4.5/9: Desarchive pre-enrich (${pnsToUnarchivePre.length} PN(s))...`);
+        // 1.4.25 Fix FF: consolidamos la fase en un solo setPanelPhase con prefix
+        // "Paso 4.5/9" — antes la segunda llamada sobrescribía y borraba el prefix.
+        setPanelPhase(`Paso 4.5/9: Desarchivando PNs pre-enrich (${pnsToUnarchivePre.length})`);
         setProgressBar(13);
-        setPanelPhase(`Desarchivando PNs pre-enrich (${pnsToUnarchivePre.length})`);
         setPanelProgress(0, pnsToUnarchivePre.length);
         const unarchivePreConcurrency = bulkCfg().concurrency.savePartNumber || 5;
         let unarchivedPreOk = 0;
@@ -3457,9 +3458,9 @@ const BulkUpload = (() => {
           log(`  STEP 5 resume: ${sentinelSkippedByResume} PN(s) saltados (sentinels ya archivados en corrida previa).`);
         }
         if (sentinelTargets.length) {
-          setPanelPhase(`Paso 5/9: Archive de specs sentinel pre-cotización (${sentinelTargets.length} PN(s))...`);
+          // 1.4.25 Fix FF: consolidado en un solo setPanelPhase con prefix "Paso 5/9".
+          setPanelPhase(`Paso 5/9: Archive specs sentinel pre-cotización (${sentinelTargets.length} PN(s))`);
           setProgressBar(16);
-          setPanelPhase(`Archive specs sentinel pre-quote (${sentinelTargets.length})`);
           setPanelProgress(0, sentinelTargets.length);
           let sentinelOk = 0, sentinelSkip = 0;
           // 1.4.8: concurrencia dedicada (default 3). Antes usaba savePartNumber=5
@@ -3658,6 +3659,14 @@ const BulkUpload = (() => {
           log(`Cotizaciones a crear: ${totalChunks} (una por cliente, chunkSize=${chunkSize})`);
         }
 
+        // 1.4.25 Fix FF: faltaba setPanelPhase para STEP 3 (chunk loop). El modal
+        // quedaba mostrando "Paso 2/9: Creando PNs nuevos... 9/9 0 PNs creados"
+        // durante todos los chunks. Operator no veía qué estaba pasando aunque
+        // la consola loggeara "chunk N/15: ya completado, reconstruyendo pnLookup".
+        setPanelPhase(`Paso 3/9: Creando/reanudando cotizaciones (${totalChunks})...`);
+        setPanelProgress(0, totalChunks);
+        setProgressBar(20);
+
         let quoteSeq = 0;
         let prodAddedTotal = 0;
         let pnpItemsTotal = 0;
@@ -3679,6 +3688,11 @@ const BulkUpload = (() => {
               bailIfStale(myRunId);
               const chunkSliceLocal = chunks[cIdx];
               const thisQuoteNameLocal = makeChunkQuoteName(quoteName, cIdx, chunks.length);
+              // 1.4.25 Fix FF: mostrar en modal qué chunk se está reconstruyendo.
+              quoteSeq++;
+              setPanelSubPhase(`Reanudando chunk ${quoteSeq}/${totalChunks}: "${thisQuoteNameLocal}" (GetQuote)`);
+              setPanelProgress(quoteSeq, totalChunks);
+              setProgressBar(20 + Math.round((quoteSeq / totalChunks) * 25));
               log(`  ${cust.name} chunk ${cIdx + 1}/${chunks.length}: ya completado, reconstruyendo pnLookup desde quote existente`);
               const existing = await findExistingQuote(cid, thisQuoteNameLocal);
               if (!existing) {
@@ -3727,8 +3741,10 @@ const BulkUpload = (() => {
             Autorizacion: {}, CondicionesComerciales: {},
           };
 
+          // 1.4.25 Fix FF: actualizar progress bar del panel (no solo el bar lateral).
+          setPanelProgress(quoteSeq, totalChunks);
           setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: buscando duplicados...`);
-          setProgressBar(5 + Math.round((quoteSeq / totalChunks) * 40));
+          setProgressBar(20 + Math.round((quoteSeq / totalChunks) * 25));
 
           // V10: detect existing quote with same name+customer
           let thisQuoteId = null, thisQuoteIdInDomain = null;
@@ -3804,8 +3820,12 @@ const BulkUpload = (() => {
               quotePartNumberPrice: { savedQuotePartNumberPriceId: null, quoteId: thisQuoteId, quantityPerParent: part.qty, lineNumber: lineNum }
             });
           }
+          const pnpBatches = Math.ceil(pnpItems.length / 20);
           for (let i = 0; i < pnpItems.length; i += 20) {
             const batch = pnpItems.slice(i, i + 20);
+            const bnum = Math.floor(i / 20) + 1;
+            // 1.4.25 Fix FF: sub-fase visible para SaveManyPNP batches.
+            setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: SaveManyPNP batch ${bnum}/${pnpBatches} (${batch.length} PNs)`);
             try {
               await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
                 { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
@@ -3815,6 +3835,7 @@ const BulkUpload = (() => {
           log(`  SaveManyPNP: ${pnpItems.length}`);
 
           // Re-read quote to populate pnLookup
+          setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: leyendo quote para reconstruir lookup`);
           let qData;
           try { ({ data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: thisQuoteIdInDomain, revisionNumber: 1 })); }
           catch (e) { errors.push(`GetQuote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); continue; }
@@ -3844,6 +3865,7 @@ const BulkUpload = (() => {
           // 1.2.11: iteramos por { part, origIdx } y resolvemos pnLookup.get(origIdx) — cada fila CSV
           // tiene su propio ql aunque comparta name+customerId con otra. Esto soluciona Bug E
           // (productos combinados entre líneas) y Bug F (PNs duplicados que se pisaban entre sí).
+          setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: aplicando productos a líneas...`);
           for (const { part, origIdx } of chunkSlice) {
             if (!part.products.length) continue;
             const entry = pnLookup.get(origIdx); if (!entry) { errors.push(`PN "${part.pn}" (row ${origIdx}) no en quote.`); continue; }
@@ -3899,7 +3921,7 @@ const BulkUpload = (() => {
       } else {
         // SOLO_PN: build pnLookup from existing/new PN IDs (no quote context)
         // 1.2.11: keyed por rowIdx (índice en parts[]) — soporta duplicados name+customerId.
-        setPanelPhase('Modo SOLO_PN: construyendo mapa de PNs...'); setProgressBar(30);
+        setPanelPhase('Paso 1/5: SOLO_PN — construyendo mapa de PNs...'); setProgressBar(30);
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i]; const status = pnStatus[i];
           let pnId;
@@ -3932,7 +3954,7 @@ const BulkUpload = (() => {
           });
         }
         if (pnpWithPrice.length) {
-          setPanelPhase('Modo SOLO_PN: Creando precios standalone...'); setProgressBar(40);
+          setPanelPhase('Paso 2/5: SOLO_PN — creando precios standalone...'); setProgressBar(40);
           for (let i = 0; i < pnpWithPrice.length; i += 20) {
             const batch = pnpWithPrice.slice(i, i + 20);
             try {
@@ -3992,7 +4014,9 @@ const BulkUpload = (() => {
         log(`  Pre-fetch predictivos: ${predFetchSkippedByResume} PN(s) saltados (ya enriquecidos en corrida previa).`);
       }
       if (predictedFetchTargets.length) {
-        setPanelPhase(`Pre-fetch predictivos existentes (${predictedFetchTargets.length})`);
+        // 1.4.25 Fix FF: prefix de paso. Es sub-fase del STEP 6 enrich, antes
+        // del enrichWorker. Mantiene el "Paso 6/9" en pantalla.
+        setPanelPhase(`Paso 6/9: Pre-fetch predictivos existentes (${predictedFetchTargets.length})`);
         setPanelProgress(0, predictedFetchTargets.length);
         const predFetchConcurrency = bulkCfg().concurrency.savePartNumber || 8;
         await runPool(
@@ -4023,7 +4047,8 @@ const BulkUpload = (() => {
       // 9k PNs × 0.5-1s sec → 75 min se vuelven 15-30 min con concurrency 5.
       let okSP = 0, retrySP = 0;
       const enrichConcurrency = bulkCfg().concurrency.savePartNumber;
-      setPanelPhase('Enriqueciendo PNs (pool ' + enrichConcurrency + ')');
+      // 1.4.25 Fix FF: mantener prefix de paso (sobreescribía a "Enriqueciendo PNs" sin número).
+      setPanelPhase(`${isSoloPN ? 'Paso 3/5' : 'Paso 6/9'}: Enriqueciendo PNs (pool ${enrichConcurrency})`);
       setPanelProgress(0, parts.length);
 
       async function enrichWorker(part, idx, myRunId) {
@@ -4413,15 +4438,28 @@ const BulkUpload = (() => {
           predictedUpdates.push({ id: exId, microQuantityPerPart: micro, inventoryUsageLowCodeId: null });
         }
       }
+      // 1.4.25 Fix FF: setPanelPhase para STEP 6a (predictivos). Antes el modal
+      // quedaba en "Paso 6/9: Enriqueciendo PNs..." durante esta fase, aunque
+      // STEP 6 ya hubiera terminado.
+      const predTotalOps = predictedUpdates.length + predictedArchives.length;
+      if (predTotalOps) {
+        setPanelPhase(`Paso 6a/9: Predictivos (${predictedUpdates.length} update / ${predictedArchives.length} archive)`);
+        setPanelProgress(0, predTotalOps);
+        setProgressBar(75);
+      }
       if (predictedUpdates.length) {
         // Batches de 20 para no abusar del payload
+        let predUpdDone = 0;
         for (let i = 0; i < predictedUpdates.length; i += 20) {
           const batch = predictedUpdates.slice(i, i + 20);
+          setPanelSubPhase(`Predictivos: batch ${Math.floor(i / 20) + 1} (${batch.length} items)`);
           try {
             await api().query('UpdateInventoryItemPredictedUsage', { mnPredictedInventoryUsagePatch: batch }, 'UpdateInventoryItemPredictedUsage');
           } catch (e) {
             errors.push(`UpdatePredictedUsage batch ${Math.floor(i / 20) + 1}: ${String(e).substring(0, 120)}`);
           }
+          predUpdDone += batch.length;
+          setPanelProgress(predUpdDone, predTotalOps);
         }
         log(`  Predictivos actualizados: ${predictedUpdates.length}`);
       }
@@ -4444,7 +4482,10 @@ const BulkUpload = (() => {
             if (isBail(e)) throw e;
             errors.push(`ArchivePredictedInventoryUsage(id=${exId}): ${String(e).substring(0, 120)}`);
           }
-        }, bulkCfg().concurrency.savePartNumber || 5, null, myRunId);
+        }, bulkCfg().concurrency.savePartNumber || 5,
+          // 1.4.25 Fix FF: callback de progreso global (update + archive).
+          (done) => { setPanelProgress(predictedUpdates.length + done, predTotalOps); },
+          myRunId);
         log(`  Predictivos archivados: ${archivedOk}/${predictedArchives.length}`);
       }
 
@@ -4651,8 +4692,13 @@ const BulkUpload = (() => {
           }
         }
       }
-      setPanelPhase(`Sync params spec en PNs existentes (pool ${syncConcurrency})`);
+      // 1.4.25 Fix FF: prefix "Paso 6b/9" para mantener numeración consistente
+      // con los otros pasos del modal. Sin esto, en STEP 6b el modal mostraba
+      // sólo "Sync params spec en PNs existentes" sin indicar dónde estamos en
+      // el pipeline de 9 pasos.
+      setPanelPhase(`Paso 6b/9: Sync params spec en PNs existentes (pool ${syncConcurrency})`);
       setPanelProgress(0, step6bCandidates.length);
+      setProgressBar(76);
       await runPool(
         step6bCandidates,
         step6bWorker,
@@ -4710,16 +4756,22 @@ const BulkUpload = (() => {
         }
       }
       // Delete racks for PNs with guión
-      for (const pnId of racksToDelete) {
-        try {
-          const pnData = await api().query('GetPartNumber', { partNumberId: pnId });
-          const existingRacks = pnData?.partNumberById?.partNumberRackTypesByPartNumberId?.nodes || [];
-          for (const rk of existingRacks) {
-            await api().query('DeletePartNumberRackType', { id: rk.id });
-            log(`  Rack ${rk.id} eliminado de PN ${pnId}`);
-          }
-          if (existingRacks.length) stats.racksSet += existingRacks.length;
-        } catch (e) { errors.push(`Borrar racks PN ${pnId}: ${String(e).substring(0, 100)}`); }
+      if (racksToDelete.size) {
+        // 1.4.25 Fix FF: subPhase visible para el delete loop de racks.
+        let delDone = 0;
+        for (const pnId of racksToDelete) {
+          delDone++;
+          setPanelSubPhase(`Borrando racks ${delDone}/${racksToDelete.size} (PN ${pnId})`);
+          try {
+            const pnData = await api().query('GetPartNumber', { partNumberId: pnId });
+            const existingRacks = pnData?.partNumberById?.partNumberRackTypesByPartNumberId?.nodes || [];
+            for (const rk of existingRacks) {
+              await api().query('DeletePartNumberRackType', { id: rk.id });
+              log(`  Rack ${rk.id} eliminado de PN ${pnId}`);
+            }
+            if (existingRacks.length) stats.racksSet += existingRacks.length;
+          } catch (e) { errors.push(`Borrar racks PN ${pnId}: ${String(e).substring(0, 100)}`); }
+        }
       }
       // Add new racks. Si ya existe el (rackType, PN) hay duplicate key —
       // entonces borramos el viejo y reinsertamos con el partsPerRack nuevo.
@@ -4753,9 +4805,14 @@ const BulkUpload = (() => {
       // queda registrado con su nombre+PN para reproducción.
       let rackBatchFailures = 0, rackIndividualFailures = 0;
       if (rackIn.length) {
+        // 1.4.25 Fix FF: panel progress + subPhase para batches de racks.
+        const rackTotalBatches = Math.ceil(rackIn.length / 50);
+        setPanelProgress(0, rackIn.length);
         for (let i = 0; i < rackIn.length; i += 50) {
           const batch = rackIn.slice(i, i + 50);
           const batchNum = Math.floor(i / 50) + 1;
+          setPanelSubPhase(`Racks batch ${batchNum}/${rackTotalBatches} (${batch.length} racks)`);
+          setPanelProgress(Math.min(i + batch.length, rackIn.length), rackIn.length);
           try {
             await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } });
           } catch (e) {
@@ -4875,7 +4932,8 @@ const BulkUpload = (() => {
           priceReadTargets.push({ pnId: entry.pn.id, pnName: part.pn, precioDefault: !!part.precioDefault });
         }
         if (priceReadTargets.length) {
-          setPanelPhase(`Releyendo precios para fijar default (${priceReadTargets.length})`);
+          // 1.4.25 Fix FF: prefix Paso 8a/9 (sub-fase del STEP 8 archive).
+          setPanelPhase(`${isSoloPN ? 'Paso 5a/5' : 'Paso 8a/9'}: Releyendo precios para fijar default (${priceReadTargets.length})`);
           setPanelProgress(0, priceReadTargets.length);
           setProgressBar(86);
           const priceReadConcurrency = bulkCfg().concurrency.savePartNumber || 5;
@@ -4939,7 +4997,8 @@ const BulkUpload = (() => {
         // 1.4.13: desglose claro en phase line para evitar la confusión de "¿por qué archiva en ronda de activos?".
         // En rondas de activos el grueso suele ser desarchivar (PNs marcados archivados en Steelhead pero
         // que el CSV los lista como activos → STEP 8 los desarchiva para que los updates apliquen a vivos).
-        const archivePhaseLbl = `Archivando ${pnsToArchive.length + oldPnsToArchive.length} / Desarchivando ${pnsToUnarchive.length} (pool ${archiveConcurrency})`;
+        // 1.4.25 Fix FF: prefix Paso 8/9 (antes sobrescribía sin numerar).
+        const archivePhaseLbl = `${isSoloPN ? 'Paso 5/5' : 'Paso 8/9'}: Archivando ${pnsToArchive.length + oldPnsToArchive.length} / Desarchivando ${pnsToUnarchive.length} (pool ${archiveConcurrency})`;
         setPanelPhase(archivePhaseLbl);
         setPanelProgress(0, archiveOps.length);
         log(`  Archivado: ${pnsToArchive.length} nuevos archivar, ${oldPnsToArchive.length} viejos archivar, ${pnsToUnarchive.length} desarchivar (concurrencia ${archiveConcurrency})`);
