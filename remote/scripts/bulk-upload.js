@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.14';
+  const VERSION = '1.4.15';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -2970,6 +2970,20 @@ const BulkUpload = (() => {
         pnStatus.length = 0; pnStatus.push(...filteredStatus);
       }
 
+      // 1.4.15 Fix Y: liberar candidates/csvLabels/csvMetalBase de pnStatus.
+      // Después de showPreview ya no se usan: enrichWorker solo lee status,
+      // existingId, existingProcessId, csvRowKey, userOverride, userDecided.
+      // Para 3,700 PNs × ~20 candidatos × ~1KB/shape ≈ ~75MB retenidos en
+      // state.pnStatus durante todo STEP 6/6a/6b/7/8. Si el resume vuelve a
+      // entrar al pipeline, classifyPNs re-genera candidates frescos en
+      // memoria nueva — no perdemos información persistible (en resumeState
+      // solo guardamos los IDs, no los shapes).
+      for (const s of pnStatus) {
+        s.candidates = null;
+        s.csvLabels = null;
+        s.csvMetalBase = null;
+      }
+
       // ── Create new Metal Base values if confirmed ──
       if (createMetals && newMetals.size > 0) {
         setPanelPhase('Actualizando catálogo de Metal Base...');
@@ -3362,6 +3376,11 @@ const BulkUpload = (() => {
           // estado completo se hace cuando phase llega a 'done'
           // (deleteResumeStateByKey). 5879 UUIDs ≈ 420KB, cabe holgadamente.
           log(`  STEP 5 archive sentinel pre-cotización: ${sentinelOk} OK, ${sentinelSkip} skip (sin specs vigentes que archivar)`);
+          // 1.4.15 Fix Y: clear cache entre fases (defensa en profundidad). El delete
+          // por-item en el finally del worker (línea 3332) cubre el caso normal, pero
+          // un BailError en mid-pool deja orfanos. STEP 6 re-fetchea via GetPartNumber
+          // si necesita el pnNode — coste ~0.3s/PN existing.
+          existingPnFullCache.clear();
         }
 
         // V10: Group parts by customer and create one quote per customer
@@ -4031,56 +4050,59 @@ const BulkUpload = (() => {
         // vacíos intercalados con bloques OK, mientras el panel reportaba "Labels: 0".
         let pnSucceeded = false;
         try {
-          // withRetry para 429/503/network; unique_constraint cae a la lógica progresiva abajo
-          await withRetry(
-            () => api().query('SavePartNumber', { input: [pnInput] }),
-            `SavePartNumber "${pnInput.name}"`,
-            myRunId
-          );
-          okSP++;
-          state.counters.ok++;
-          pnSucceeded = true;
-          // Fix I 1.3.2: invalidar cache para que STEP 6b lea un GetPartNumber fresco con
-          // los specs/params que SavePartNumber acaba de agregar. Sin esto, STEP 6b
-          // reintenta AddParamsToPartNumber para params recién creados → 500 exclusion
-          // constraint → log "presente, skip" × N × pn.
-          if (pn.id) existingPnFullCache.delete(pn.id);
-        }
-        catch (e) {
-          if (isBail(e)) throw e;
-          const errStr = String(e);
-          if (isDuplicateKeyError(e)) {
-            // Retry progressively removing fields that cause duplicates
-            try {
-              await withRetry(
-                () => api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [] }] }),
-                `SavePartNumber "${pnInput.name}" strip1`,
-                myRunId
-              );
-              retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
-              pnSucceeded = true;
-              if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
-            } catch (e2) {
-              if (isBail(e2)) throw e2;
+          try {
+            // withRetry para 429/503/network; unique_constraint cae a la lógica progresiva abajo
+            await withRetry(
+              () => api().query('SavePartNumber', { input: [pnInput] }),
+              `SavePartNumber "${pnInput.name}"`,
+              myRunId
+            );
+            okSP++;
+            state.counters.ok++;
+            pnSucceeded = true;
+          }
+          catch (e) {
+            if (isBail(e)) throw e;
+            const errStr = String(e);
+            if (isDuplicateKeyError(e)) {
+              // Retry progressively removing fields that cause duplicates
               try {
                 await withRetry(
-                  () => api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [], inventoryPredictedUsages: [] }] }),
-                  `SavePartNumber "${pnInput.name}" strip2`,
+                  () => api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [] }] }),
+                  `SavePartNumber "${pnInput.name}" strip1`,
                   myRunId
                 );
-                retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+                retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry sin specs/optIn OK`);
                 pnSucceeded = true;
-                if (pn.id) existingPnFullCache.delete(pn.id); // Fix I 1.3.2
-              } catch (e3) {
-                if (isBail(e3)) throw e3;
-                errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`);
-                state.counters.errors++;
+              } catch (e2) {
+                if (isBail(e2)) throw e2;
+                try {
+                  await withRetry(
+                    () => api().query('SavePartNumber', { input: [{ ...pnInput, specsToApply: [], optInOuts: [], inventoryPredictedUsages: [] }] }),
+                    `SavePartNumber "${pnInput.name}" strip2`,
+                    myRunId
+                  );
+                  retrySP++; state.counters.retried++; log(`  -> ${pnInput.name}: retry mínimo OK`);
+                  pnSucceeded = true;
+                } catch (e3) {
+                  if (isBail(e3)) throw e3;
+                  errors.push(`${pnInput.name}: retry falló: ${String(e3).substring(0, 120)}`);
+                  state.counters.errors++;
+                }
               }
+            } else {
+              errors.push(`SavePartNumber "${pnInput.name}": ${errStr.substring(0, 120)}`);
+              state.counters.errors++;
             }
-          } else {
-            errors.push(`SavePartNumber "${pnInput.name}": ${errStr.substring(0, 120)}`);
-            state.counters.errors++;
           }
+        } finally {
+          // 1.4.15 Fix Y: invalidar cache SIEMPRE (antes solo en path de éxito, líneas
+          // 4047/4062/4073). Si bailIfStale arroja BailError o retry exhausted, el pnNode
+          // ~25KB quedaba retenido en existingPnFullCache hasta el fin del run. Para 3,700
+          // PNs en concurrency 8, los fallos acumulados eran ~90MB que nunca se liberaban.
+          // STEP 6b vuelve a fetchear fresh via GetPartNumber si necesita el pnNode.
+          // Mismo patrón que Fix Z aplicó al STEP 5 (línea 3332).
+          if (pn.id) existingPnFullCache.delete(pn.id);
         }
 
         // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados.
@@ -4107,6 +4129,11 @@ const BulkUpload = (() => {
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`);
       addPanelLog(`Enrich: ${okSP} OK, ${retrySP} retry`);
       if (resumeState) { resumeState.phase = 'enrich-done'; await persistResumeState(); }
+      // 1.4.15 Fix Y: clear cache entre STEP 6 y STEP 6a/6b. Defensa en profundidad —
+      // el finally del enrichWorker (Fix Y) ya limpia por item, pero un BailError
+      // mid-pool puede dejar 8 orfanos × ~25KB = ~200KB. STEP 6b re-fetchea vía
+      // GetPartNumber on-demand (líneas ~4222 con cache miss).
+      existingPnFullCache.clear();
 
       // STEP 6a: Actualizar predictivos existentes vía UpdateInventoryItemPredictedUsage.
       // Steelhead almacena en microQuantityPerPart (kg/pza × 1e6 redondeado).
@@ -4364,6 +4391,11 @@ const BulkUpload = (() => {
       // de resume muestra "sync-done" y el operador sabe que STEP 5/6/6b ya
       // pasaron — útil para diagnóstico aunque no implementemos skip-by-phase.
       if (resumeState) { resumeState.phase = 'sync-done'; await persistResumeState(); }
+      // 1.4.15 Fix Y: clear cache entre STEP 6b y STEP 7. STEP 7 (Racks) y STEP 8
+      // (default price + archive) NO usan existingPnFullCache — solo invocan otras
+      // queries por pnId. Sin clear, los pnNodes acumulados en 6b se mantienen
+      // hasta el GC del run.
+      existingPnFullCache.clear();
       bailIfStale(myRunId);
 
       // STEP 7: RackTypes — runs in BOTH modes
