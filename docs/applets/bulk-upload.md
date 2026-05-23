@@ -1,6 +1,33 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.21. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.23. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.23: fix fast-path de resume — comparar pn|customerId, no csvRowKey inexistente (Fix DD, 2026-05-23)
+
+### Síntoma
+Aunque 1.4.21/22 introdujeron el fast-path para saltar `classifyPNs` en resume, **el fast-path nunca se aplicaba**: cada reanudación volvía a correr el prefetch global (~1.7GB baseline) y la barra mostraba "Clasificación: evaluando 3692 filas" + "24408/24408" otra vez. Causa observada en sesión 2026-05-23 cuando el applet quedó atascado re-clasificando tras un cancel del STEP 6b a 3550/3692.
+
+### Diagnóstico
+La condición `c.csvRowKey === parts[i].csvRowKey` evaluaba a `false` siempre, porque **`parts[i].csvRowKey` siempre es `undefined`**. El campo `csvRowKey` solo existe en el shape de `pnStatus` (poblado en `classifyOnePN` línea 1379 con la fórmula `${p.pn.toUpperCase()}|${p.customerId}`), nunca en el shape de `parts` (output de `parseRows()`). El fast-path nunca aplicaba → cada resume re-corre classifyPNs completo.
+
+### Fix
+Reconstruir el key esperado desde `parts[i]` con la misma fórmula:
+
+```js
+const expectedKey = `${(parts[i].pn || '').toUpperCase()}|${parts[i].customerId}`;
+return c && c.csvRowKey === expectedKey && /* … */;
+```
+
+### Lección
+- **Fast-paths sobre objetos con shapes asimétricos requieren reconstruir el comparador, no asumir simetría**. `parts` y `pnStatus` son arrays paralelos por índice pero con campos distintos — `pn` está en ambos, `csvRowKey` solo en uno. La validación correcta es comparar contra una reconstrucción determinística desde el lado fuente, no contra una propiedad que no se hereda.
+- **Code review post-deploy con telemetría real**: el bug pasó dos deploys (1.4.21, 1.4.22) porque ningún log delataba el branch tomado (`canSkipPrefetch === true/false`). Falta agregar un `log()` discriminante de cuál branch se tomó (ya existe el "Resume detectado..." pero solo se imprime en `true`, no en `false`).
+
+### Plan de validación
+- [ ] Run con CSV ≥ 3000 PNs: cancelar mid-STEP-6b, recargar, reanudar; verificar log `Resume detectado con classifications completas — saltando prefetch global (ahorro ~1.7GB baseline).`
+- [ ] Memoria del segundo arranque < 500MB durante toda la fase de classify (porque ya no hay prefetch).
+- [ ] Resume llega a STEP donde quedó sin re-procesar PNs ya completados.
+
+
 
 ## 1.4.21: skip prefetch en resume + STEP 5 marca skips + XHR patch + Apollo cleanup (Fix CC v3, 2026-05-23)
 
