@@ -1,6 +1,33 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.20. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.21. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.21: skip prefetch en resume + STEP 5 marca skips + XHR patch + Apollo cleanup (Fix CC v3, 2026-05-23)
+
+### Síntoma
+Con 1.4.20, guardrail dispara correctamente al 88% pero **cada reanudación procesa muy pocos PNs nuevos**. Ciclos de ~5 min (reload → prefetch → STEP 5 → 88% → guardrail → repeat) prácticamente sin progreso. El resume marcaba sólo 72 sentinels "saltados" aunque la barra mostrara `1908/3281`. La memoria seguía creciendo a ~1.12 MB/PN.
+
+### Diagnóstico
+Tres problemas amplifican el OOM:
+
+1. **Prefetch global se re-ejecuta cada reanudación**: `classifyPNsMassive` (línea 1176) llama `prefetchPNsByCustomer` que carga ~22k PNs activos + ~24k archivados a memoria → baseline ~1.7GB antes de procesar nada. Como el resume re-corre `classifyPNs` desde cero, cada ciclo paga esa cuenta.
+2. **STEP 5 skip sin persistencia** (línea 3406): `if (!archiveIds.length) { sentinelSkip++; return; }` no marcaba el PN en `archivedSentinelsPreQuote`. Sólo los OK reales se guardaban. Los miles de PNs ya limpios (sin specs sentinel vigentes) se re-procesaban en cada resume → `GetPartNumber` por cada uno (~25KB response) → memoria crece sin trabajo útil.
+3. **Apollo Client de Steelhead acumula responses**: heap snapshot mostraba `Station`/`WorkboardsConnection`/`StationParametersConnection` `__typename` creciendo 3.5× entre snapshots. El cliente Apollo del SPA normaliza TODOS los responses por `__typename + id` en `InMemoryCache`. Nuestro stop de Datadog no toca esto.
+
+### Fix
+- **Fast-path en resume — saltar `classifyPNs` (opción B real)**: antes de llamar `checkPNExistence` (línea 2936), verificar si `resumeState.classifications` ya cubre los `parts` con `classification != null` y `existingProcessId` poblado. Si sí, reconstruir `pnStatus` desde el resume directamente sin tocar la red. Baseline cae de ~1.7GB → ~400MB en cada reanudación.
+- **Persistir `existingProcessId` en classifications** (línea ~2984): necesario para el fast-path. Migración suave — runs viejos sin este campo caen al classifyPNs completo, después de ese pase ya tienen el shape nuevo.
+- **STEP 5 skip marca como done** (línea 3406): tanto `sentinelOk` como `sentinelSkip` ahora `push(target.pnId)` al buffer. La próxima reanudación los salta sin llamar `GetPartNumber`.
+- **Patch XHR** (`stopDatadogSessionReplay`): además de fetch+sendBeacon, monkeypatch `XMLHttpRequest.prototype.open/send` para abortar requests a `browser-intake-ddog-gov.com` / `datadoghq.com`.
+- **Intento de Apollo cleanup**: tras cada disparo, probar `window.__APOLLO_CLIENT__ / window.apolloClient / window.__APOLLO__.client`. Si alguno existe, llamar `clearStore()` o `cache.reset()`. La build de Steelhead no lo expone por defecto, pero si una versión futura lo hace, este código aprovecha sin nuevo deploy.
+
+### Lección
+- **El resume debe minimizar la pre-fase de cada reanudación**: si la fase A ya terminó en una corrida previa, la próxima no debería re-ejecutarla. Antes confiábamos en que classifyPNs era barato; con CSVs >3k filas el prefetch global mete 1.7GB que el navegador no libera entre fases. El fast-path corta la dependencia.
+- **Marcar "ya procesado" debe incluir todos los terminales** (OK, skip por idempotencia). Un skip por "ya está limpio" es semánticamente equivalente a OK para efectos de resume.
+
+### Pendientes
+- Validar 1.4.21 con run de 7000 PNs (mismo cliente). El primer resume desde 1.4.20 aún hará classifyPNs (porque el resume actual no tiene `existingProcessId`); del segundo en adelante salta el prefetch.
+- Si STEP 5/6b siguen creciendo aunque el baseline baje, el leak residual es Apollo Client — siguiente fase: explorar hook de Apollo devtools o session segmentada por chunks.
 
 ## 1.4.20: stop Datadog agresivo + guardrail OOM (Fix CC v2, 2026-05-23)
 
