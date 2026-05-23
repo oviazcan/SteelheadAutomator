@@ -1,6 +1,52 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.24. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.25. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.25: auditoría completa del modal — todos los pasos hablan (Fix FF, 2026-05-23)
+
+### Síntoma
+Operador reporta modal mudo en varias fases: muestra "Paso 2/9: Creando PNs nuevos... 9/9 0 PNs creados" durante TODO el chunk loop de cotizaciones, durante STEP 6a (predictivos), STEP 6b (sync params) y STEP 8 (archive). El log de consola sí avanzaba (`SCHNEIDER ELECTRIC MEXICO chunk N/15: ya completado...`), pero el panel daba la impresión de estar congelado. Pidió "de una vez revisa todos los pasos donde se quede mudo".
+
+### Diagnóstico
+Audit completo de `setPanelPhase` calls reveló 6+ lugares donde una segunda llamada sobreescribía el prefix "Paso N/9" puesto líneas antes, más fases sin numerar:
+
+| Fase | Problema |
+|---|---|
+| Chunk loop (cotizaciones) | **No tenía** `setPanelPhase('Paso 3/9: ...')` — saltaba directo del Paso 2 al Paso 4.5 visualmente. |
+| Desarchive pre-enrich | `setPanelPhase('Paso 4.5/9')` seguido de `setPanelPhase('Desarchivando PNs...')` sin prefix → borraba la numeración. |
+| Archive sentinel pre-quote | Mismo patrón: línea con prefix + línea sin prefix lo sobreescribía. |
+| Pre-fetch predictivos | `setPanelPhase('Pre-fetch predictivos...')` sin "Paso 6/9". |
+| Enriqueciendo PNs (pool) | `setPanelPhase('Enriqueciendo PNs (pool N)')` sin "Paso 6/9". |
+| STEP 6a Predictivos | No tenía `setPanelPhase` en absoluto — solo `setPanelSubPhase` por item. Modal quedaba en STEP 6 antiguo. |
+| STEP 6b Sync params | `setPanelPhase('Sync params spec...')` sin "Paso 6b/9". |
+| Releyendo precios | `setPanelPhase('Releyendo precios...')` sin "Paso 8a/9". |
+| Archive ops batch | `setPanelPhase(archivePhaseLbl)` sin "Paso 8/9". |
+| SOLO_PN: mapa y precios | Sin "Paso 1/5" ni "Paso 2/5". |
+
+Adicional: dentro del chunk loop el `SaveManyPNP` batches, `SaveQuoteLines` por PN y `GetQuote` ejecutaban sin `setPanelSubPhase` — operador no veía progreso intra-chunk. STEP 7 (Racks) tampoco mostraba progreso de batches ni del delete loop.
+
+### Fix
+- **Consolidar setPanelPhase**: cada paso ahora tiene UNA sola llamada con prefix "Paso N/9" (o "Paso N/5" en SOLO_PN). Las llamadas redundantes que borraban el prefix se eliminaron.
+- **Pasos antes mudos numerados**: Paso 3/9 (chunk loop), Paso 6a/9 (predictivos), Paso 6b/9 (sync params), Paso 8a/9 (releyendo precios). SOLO_PN: Paso 1/5 (mapa) y Paso 2/5 (precios standalone).
+- **SubPhase en sub-fases del chunk loop**: SaveManyPNP batches (`batch N/M`), GetQuote (`leyendo quote para reconstruir lookup`), SaveQuoteLines (`aplicando productos a líneas`), reconstrucción de chunks ya completados (`Reanudando chunk N/M`).
+- **Progress visible en STEP 7 racks**: subPhase + setPanelProgress por batch de 50 racks; subPhase por PN en delete loop.
+- **PanelProgress global**: el modal muestra una barra de progreso en cada uno de los pasos numerados, no solo el bar lateral.
+
+### Lección
+- **Una fase = un setPanelPhase**. Cuando hay dos llamadas seguidas, la última gana — si solo la primera tiene el prefix de paso, el prefix se pierde. Patrón a evitar: `setPanelPhase('Paso N/9: ...')` seguido inmediatamente de `setPanelPhase('detalle sin prefix')`.
+- **Sub-fases necesitan setPanelSubPhase**, no setPanelPhase. La distinción es importante: `setPanelPhase` clava el nombre del paso (visible toda la duración), `setPanelSubPhase` es la línea inferior que rota. Re-usar setPanelPhase para "detalle" mata la jerarquía visual.
+- **Cada loop interno con N iteraciones debe llamar setPanelProgress o setPanelSubPhase al menos por iteración**. Si no, el operador ve UI congelada aunque el código avance correctamente — fuente recurrente de soporte ("¿está atorado?").
+
+### Plan de validación
+- [ ] Run con CSV ≥ 3000 PNs con resume tras crash: verificar que el modal muestra "Paso 3/9: Creando/reanudando cotizaciones (15)" durante el chunk loop y avanza 1..15.
+- [ ] STEP 6a (Predictivos): si la corrida tiene predictivos, modal debe mostrar "Paso 6a/9" con progreso n/total.
+- [ ] STEP 6b: modal muestra "Paso 6b/9" con progreso visible.
+- [ ] STEP 7 (Racks): si hay racks, modal muestra "Paso 7/9: Racks..." + subPhase "Racks batch N/M (50 racks)" cada 50 items.
+- [ ] STEP 8 (Archive): modal muestra "Paso 8/9: Archivando X / Desarchivando Y (pool Z)" — no se borra el prefix.
+
+### Pendientes derivados
+- [ ] La numeración tiene huecos (1, 2, 3, 4.5, 5, 6, 6a, 6b, 7, 8). Renumerar a secuencia lineal en una corrida futura, o aceptar que los .5/a/b reflejan sub-pasos opcionales. Por ahora la prioridad es que cada paso hable.
+- [ ] No hay "Paso 9/9" explícito — al terminar pone directamente "Completado.". Considerar agregar "Paso 9/9: Finalizando..." para simetría visual.
 
 ## 1.4.24: persistir progreso de STEP 6b + latch en stop Datadog + liberar cache por PN (Fix EE, 2026-05-23)
 
