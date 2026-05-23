@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.13';
+  const VERSION = '1.4.14';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -277,6 +277,14 @@ const BulkUpload = (() => {
     // STEP 6b o más. fire-and-forget para no bloquear el repintado del panel.
     if (resumeState) {
       resumeState.phase = 'cancelled';
+      // 1.4.14 Fix Z: flush del buffer de sentinels archivados ANTES de persistir
+      // el cancel. Antes (1.4.13) el cancel mid-STEP-5 dejaba en limbo todos los
+      // pnIds ya archivados en el server pero aún en el buffer in-memory; al
+      // reanudar, archivedSentinelsPreQuote quedaba vacío y se re-procesaban
+      // 800-2800 items idempotentes (caros).
+      if (typeof state.flushSentinelBuffer === 'function') {
+        try { state.flushSentinelBuffer(); } catch (_) {}
+      }
       persistResumeState().catch(() => {});
     }
     // 1.2.2: pintar el panel como Cancelado inmediatamente sin esperar al
@@ -3205,7 +3213,10 @@ const BulkUpload = (() => {
           // resumeState.archivedSentinelsPreQuote cada FLUSH_EVERY items y al
           // terminar el runPool. Persistir cada call sería muy ruidoso para
           // localStorage; cada 100 da grano fino sin amplificar I/O.
-          const SENTINEL_FLUSH_EVERY = 100;
+          // 1.4.14 Fix Z: threshold bajó de 100 a 25 para reducir pérdida en
+          // crash/cancel mid-STEP-5. Cost extra: ~4× más setItem() en localStorage,
+          // pero c/u <2ms con ~150KB JSON, irrelevante vs costo de re-archivar PNs.
+          const SENTINEL_FLUSH_EVERY = 25;
           const sentinelArchivedBuffer = [];
           const flushSentinelBuffer = async () => {
             if (!sentinelArchivedBuffer.length || !resumeState) return;
@@ -3219,8 +3230,16 @@ const BulkUpload = (() => {
               }
             }
             sentinelArchivedBuffer.length = 0;
-            try { await persistResumeState(); } catch (_) {}
+            try { await persistResumeState(); } catch (e) {
+              // 1.4.14 Fix Z: antes el catch era silencioso ({}) — si localStorage
+              // quota se saturaba, el usuario perdía progreso sin saberlo. Ahora
+              // log visible en el panel-log para diagnóstico.
+              addPanelLog(`⚠ Persist sentinel buffer falló: ${String(e?.message || e).substring(0, 80)}`);
+            }
           };
+          // 1.4.14 Fix Z: exponer al state para que cancelRun() pueda flushear
+          // ANTES de persistir el cancelled, no perdiendo items in-flight.
+          state.flushSentinelBuffer = flushSentinelBuffer;
           await runPool(
             sentinelTargets,
             async (target, _idx, myRunIdLocal) => {
@@ -3294,11 +3313,23 @@ const BulkUpload = (() => {
                 // local; el flush a resumeState ocurre cada FLUSH_EVERY items
                 // en el callback de progreso del runPool.
                 sentinelArchivedBuffer.push(target.pnId);
-                // Invalidar cache: STEP 6 vuelve a fetchear y ve specs ya archivadas → no-op.
-                existingPnFullCache.delete(target.pnId);
               } catch (e) {
                 if (isBail(e)) throw e;
                 errors.push(`SavePartNumber pre-archive "${pnNode.name}": ${String(e).substring(0, 120)}`);
+                // 1.4.14 Fix Z: contador visible y log al panel cada N fallos —
+                // si la mutation revienta para todo el batch (hash rotado /
+                // schema cambio), el usuario lo ve en vez de pensar que avanza
+                // OK (panel mostraba "OK: 0, Errores: 0" engañoso).
+                state.counters.errors++;
+                if (state.counters.errors === 1 || state.counters.errors % 50 === 0) {
+                  addPanelLog(`⚠ STEP 5 SavePartNumber fallos: ${state.counters.errors} — ej: ${String(e?.message || e).substring(0, 100)}`);
+                }
+              } finally {
+                // 1.4.14 Fix Z: invalidar cache SIEMPRE (antes solo en éxito).
+                // STEP 6 vuelve a fetchear y ve specs ya archivadas → no-op.
+                // Sin esto, existingPnFullCache retiene ~25KB/PN × 7300 = ~180MB
+                // que nunca se libera hasta el fin del run.
+                existingPnFullCache.delete(target.pnId);
               }
             },
             sentinelConcurrency,
@@ -3316,14 +3347,20 @@ const BulkUpload = (() => {
             },
             myRunId
           );
-          bailIfStale(myRunId);
-          // 1.4.8: flush final del buffer antes de pasar al siguiente paso.
-          // No limpiamos archivedSentinelsPreQuote al final de STEP 5: si un
-          // crash ocurre en STEP 6/7, el resume vuelve a entrar a STEP 5 y
-          // necesita la lista para saltear lo ya hecho. La purga del estado
-          // completo se hace cuando phase llega a 'done' (deleteResumeStateByKey).
-          // 5879 UUIDs ≈ 420KB en localStorage — cabe holgadamente.
+          // 1.4.14 Fix Z: flush ANTES de bailIfStale. Si runPool sale por cancel
+          // mid-step, bailIfStale lanza BailError y el flush final NUNCA corría
+          // → archivedSentinelsPreQuote quedaba en 0 aunque hubieran cientos de
+          // items archivados con éxito. Ahora flushea siempre, incluso al cancel.
           await flushSentinelBuffer();
+          // Soltar referencia para que cancel post-STEP-5 no intente flushear
+          // un buffer huérfano.
+          state.flushSentinelBuffer = null;
+          bailIfStale(myRunId);
+          // (Nota histórica) No limpiamos archivedSentinelsPreQuote al final de
+          // STEP 5: si un crash ocurre en STEP 6/7, el resume vuelve a entrar a
+          // STEP 5 y necesita la lista para saltear lo ya hecho. La purga del
+          // estado completo se hace cuando phase llega a 'done'
+          // (deleteResumeStateByKey). 5879 UUIDs ≈ 420KB, cabe holgadamente.
           log(`  STEP 5 archive sentinel pre-cotización: ${sentinelOk} OK, ${sentinelSkip} skip (sin specs vigentes que archivar)`);
         }
 
