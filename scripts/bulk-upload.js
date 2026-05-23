@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.15';
+  const VERSION = '1.4.17';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -4471,18 +4471,41 @@ const BulkUpload = (() => {
         }
       }
 
+      // 1.4.16: fallback uno-por-uno también para errores no-duplicate-key. Antes
+      // (≤1.4.15) si una batch fallaba por timeout/validación/red, los 50 racks
+      // quedaban sin asignar sin diagnóstico — la audit detectó >1000 PNs con racks
+      // missing sin log explícito. Ahora cada rack se reintenta solo y si falla,
+      // queda registrado con su nombre+PN para reproducción.
+      let rackBatchFailures = 0, rackIndividualFailures = 0;
       if (rackIn.length) {
         for (let i = 0; i < rackIn.length; i += 50) {
           const batch = rackIn.slice(i, i + 50);
+          const batchNum = Math.floor(i / 50) + 1;
           try {
             await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } });
           } catch (e) {
+            rackBatchFailures++;
+            const errMsg = String(e).substring(0, 200);
             if (isDuplicateKeyError(e)) {
-              log(`  Racks batch ${Math.floor(i / 50) + 1}: duplicados, upsertando uno por uno...`);
-              for (const rk of batch) await upsertRack(rk);
-            } else { errors.push(`SavePartNumberRackTypes: ${String(e).substring(0, 120)}`); }
+              log(`  Racks batch ${batchNum}: duplicados, upsertando uno por uno...`);
+            } else {
+              log(`  Racks batch ${batchNum} FAIL (${batch.length} racks): ${errMsg}`);
+              errors.push(`SavePartNumberRackTypes batch ${batchNum}: ${errMsg.substring(0, 120)}`);
+            }
+            // Fallback uno-por-uno para AMBOS casos (duplicate o cualquier otro error).
+            for (const rk of batch) {
+              try {
+                await upsertRack(rk);
+              } catch (e2) {
+                rackIndividualFailures++;
+                errors.push(`Rack PN ${rk.partNumberId} rackTypeId ${rk.rackTypeId}: ${String(e2).substring(0, 100)}`);
+              }
+            }
           }
         }
+      }
+      if (rackBatchFailures) {
+        log(`  ⚠️ ${rackBatchFailures} batches fallaron (de ${Math.ceil(rackIn.length / 50)}), ${rackIndividualFailures} racks individuales sin asignar tras retry`);
       }
       stats.racksSet = rackIn.length + racksToDelete.size; log(`  Racks: ${rackIn.length} agregados, ${racksToDelete.size} PNs con racks eliminados`);
 
