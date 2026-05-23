@@ -1,6 +1,53 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.23. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.24. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.24: persistir progreso de STEP 6b + latch en stop Datadog + liberar cache por PN (Fix EE, 2026-05-23)
+
+### Síntoma
+Tras 1.4.23 (fast-path corregido), el resume saltaba bien `classifyPNs` pero **STEP 6b (`Sync params spec en PNs existentes`) volvía a empezar desde 0 en cada reanudación**. Run de 3692 PNs en CSV Schneider: cancel a 691/3692 → reload → resume → STEP 6b vuelve a 0/3692. Cada ciclo: ~691 PNs procesados, OOM, reload, otros ~691, OOM, … El operador reportó: "este paso es el que se atora, pero vuelve a empezar desde el inicio siempre, no podemos hacer algo?". Adicional: log de consola saturado con `[SA] Datadog: stopSessionReplay …` (40+ líneas seguidas) — cada tick del `memoryGauge` (cada 2s) cuando `pct >= 70` invocaba la función completa otra vez.
+
+### Diagnóstico
+1. **STEP 6b sin persistencia**: el loop `runPool(step6bCandidates, step6bWorker, syncConcurrency)` no marcaba PNs como completados en `resumeState`. STEP 6 (enrich) sí lo hace (`completedPNs.push(rkey)` cada 50), pero 6b nunca lo replicó. El operador veía progreso visual pero al recargar, el set vacío reiniciaba todo. Multiplicado por la presión OOM (cada PN fetchea `GetPartNumber` ~25KB + Apollo cache lo retiene por `__typename` normalization) → ciclo infinito.
+2. **`stopDatadogSessionReplay` sin idempotencia real**: aunque tenía guards internos por API (`if (DD_RUM?.stopSession)`), las funciones se podían llamar todas en cada invocación; lo crítico era el `log()` por cada layer y los monkey-patches que se re-aplicaban. Cada llamada extra agregaba al menos 4-5 entries a `_log` → `_persist()` re-serializaba el array completo a `localStorage` → quota churn + GC pressure.
+3. **`existingPnFullCache` sin liberación por PN en STEP 6b**: cada `pnNode` (~25KB) quedaba retenido hasta el `clear()` post-STEP 6b. Para 3692 PNs son ~92MB acumulados solo en pnNodes, sin contar overhead Apollo. Si el run truena a mitad, esos buffers nunca se liberan.
+
+### Fix
+1. **Persistencia STEP 6b (Fix EE)**:
+   ```js
+   // Init resumeState (fresh-run):
+   syncParamsCompletedPNs: [],
+   // Hidratación pre-1.4.24:
+   if (!Array.isArray(resumeState.syncParamsCompletedPNs)) resumeState.syncParamsCompletedPNs = [];
+   // Set en memoria:
+   const syncParamsCompletedSet = new Set(resumeState?.syncParamsCompletedPNs || []);
+   // Skip al inicio del worker:
+   const rkey = `${i}|${part.pn}|${part.customerId}`;
+   if (syncParamsCompletedSet.has(rkey)) return;
+   // Persist al final solo si no hubo error, cada 50:
+   if (!workerError && resumeState) {
+     resumeState.syncParamsCompletedPNs.push(rkey);
+     syncParamsCompletedSet.add(rkey);
+     if (resumeState.syncParamsCompletedPNs.length % 50 === 0) persistResumeState();
+   }
+   ```
+2. **Latch Datadog**: flag `window.__sa_dd_stopped` — la primera llamada hace todo el trabajo y lo setea; subsecuentes hacen solo cleanup mínimo de Apollo (`clearStore()` / `cache.reset()`) y vuelven. Cero ruido en consola/localStorage.
+3. **`existingPnFullCache.delete(entry.pn.id)` en `finally` del step6bWorker**: cada PN libera su buffer al terminar (OK o error). El `clear()` final post-STEP 6b queda como red de seguridad.
+
+### Lección
+- **Toda fase con cardinalidad alta + costo memoria por iteración debe persistir progreso**. STEP 5 (sentinels) lo aprendió en 1.4.8. STEP 6 (enrich) lo tiene desde el inicio. STEP 6b se omitió porque era "rápido" en runs chicos — pero para 3000+ PNs con Apollo cache leak, se vuelve la fase OOM-prone número 1.
+- **Cualquier función que se invoque desde un tick (interval, gauge, etc.) necesita latch idempotente real, no solo guards condicionales**. Cada llamada que toca un singleton (`_log`, `localStorage`) tiene costo amortizado y a 0.5Hz se acumula.
+- **Buffers retenidos por toda la fase = ~N × tamaño_buffer × MB**. Liberar por iteración (delete in finally) divide el peak por N. Aquí: 3692 × 25KB ≈ 92MB → 25KB.
+
+### Plan de validación
+- [ ] Run de 3000+ PNs: cancelar mid-STEP-6b a ~500/3000, recargar, reanudar; verificar que la barra parte de ~500 (no 0) y que el log incluye `Reanudando corrida previa — fase: …` con `syncParamsCompletedPNs.length` reflejado.
+- [ ] Consola libre del spam `[SA] Datadog: stopSessionReplay …` después del primer tick que cruza 70%.
+- [ ] `performance.memory.usedJSHeapSize` durante STEP 6b se mantiene plana (delta < 200MB sobre 1000 PNs), no creciente lineal.
+
+### Pendientes derivados
+- [ ] Aplicar el mismo patrón de persistencia a STEP 7 (Racks) y STEP 8 (default price + archive) si crashes muestran que también re-arrancan desde 0.
+- [ ] Throttle de `_persist()` en `steelhead-api.js` (cap del `_log` a últimas N líneas + `persistResumeState`-style debounce). Hoy se serializa el array completo en cada `log()`.
+- [ ] Considerar bajar `concurrency.savePartNumber` de 8 a 3 para STEP 6b si OOM persiste — los 8 workers concurrentes fetchean 8 × `GetPartNumber` simultáneos, multiplicando el peak instantáneo.
 
 ## 1.4.23: fix fast-path de resume — comparar pn|customerId, no csvRowKey inexistente (Fix DD, 2026-05-23)
 
