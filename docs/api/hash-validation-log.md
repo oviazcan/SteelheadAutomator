@@ -12,3 +12,29 @@ Cuando aparece una entrada con rotados:
 4. Verificar con re-corrida manual de `tools/validate-hashes.py`
 
 ---
+
+## 2026-05-23 — Setup inicial + primera rotación detectada
+
+**Corrida**: manual (cron aún no agendado).
+
+**Resultado**: 152 ok / 0 stale / 2 skipped / 0 unknown / 0 auth (config v1.4.26).
+
+### Hashes rotados (detectados + reparados en la misma sesión)
+
+| Operación | Hash viejo | Hash nuevo | Detectado por | Capturado por |
+|---|---|---|---|---|
+| `GetReceivedOrder` | `c8b31fbc…c151e4f7` | `a286ac8f…f743b8dd5` | validador (Must provide a query string) | hash-scanner navegador (pantalla Receiver Edit) |
+| `GetAddPartsReceivedOrder` | `88063397…cda765467` | `f42b08f4…2134ac9f` | validador (Must provide a query string) | hash-scanner navegador (pantalla Add Parts) |
+
+Deploy: `gh-pages` bump 1.4.26, byte-exact verificado con `tools/check-deploy.sh`.
+
+### Whitelist (falsos positivos confirmados)
+
+- `CurrentUser` → hash idéntico en config y scan; 61 invocaciones browser OK;
+  responde "Must provide a query string" sólo a scripts externos.
+- `GetPurchaseOrder` → mismo patrón; 12 invocaciones browser OK en pantalla Bills.
+
+Diagnóstico: Steelhead distingue browser-Apollo vs cliente-externo para
+estas dos ops sensibles a sesión. La validación confiable de éstas es
+sólo vía `hash-scanner` en navegador, no este script.
+
