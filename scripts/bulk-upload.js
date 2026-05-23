@@ -46,8 +46,27 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.18';
+  const VERSION = '1.4.19';
   const api = () => window.SteelheadAPI;
+
+  // 1.4.19: Datadog RUM con session_replay_sample_rate=100 graba TODA respuesta
+  // de fetch (incluidas las del bulk-upload, que en una corrida de miles de PNs
+  // acumula millones de objetos `__typename` en buffer → ~1.2MB/PN de leak en
+  // heap. Verificado con heap snapshots: counts de WorkboardsConnection/
+  // StationParametersConnection/Station llegando a 2.2M en runs largos).
+  // Detener el replay al iniciar libera el buffer y evita OOM.
+  // Re-ejecutar en cada execute() porque resume tras crash necesita re-detener.
+  function stopDatadogSessionReplay() {
+    try {
+      const dd = window.DD_RUM || window.datadogRum || window.__DD_RUM__;
+      if (dd?.stopSessionReplayRecording) {
+        dd.stopSessionReplayRecording();
+        log('Datadog session replay detenido (libera buffer de heap para run largo).');
+        return true;
+      }
+    } catch (_) { /* defensa: no romper run si DD_RUM cambia API */ }
+    return false;
+  }
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
   // AllPartNumbers. El persisted query no expone archivedAt en su selection
@@ -2450,6 +2469,10 @@ const BulkUpload = (() => {
     // `if (!resumeState)` de línea 2271 nunca entra y el state queda con datos viejos.
     resumeState = null;
     try { showPanel(); } catch (_) {}
+    // 1.4.19: cortar Datadog session replay antes de empezar — su sample_rate=100
+    // graba toda respuesta GraphQL y satura el heap en runs > 1000 PNs (root cause
+    // del OOM nocturno verificado con heap snapshots 2026-05-23).
+    stopDatadogSessionReplay();
     setPanelPhase('Iniciando...');
     setPanelProgress(0, 0);
     setPanelCounters();
