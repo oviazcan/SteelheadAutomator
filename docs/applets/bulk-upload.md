@@ -1,6 +1,32 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.19. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.20. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.20: stop Datadog agresivo + guardrail OOM (Fix CC v2, 2026-05-23)
+
+### Síntoma
+1.4.19 con `stopSessionReplayRecording()` no aguantó. Validación 04:00: run de 3692 PNs en STEP 6b llegó a 2724 MB. Tras stop manual, memoria SIGUIÓ creciendo ~43 MB/min (vs ~50 sin stop). Crash por OOM a 93% antes de terminar el step.
+
+### Diagnóstico
+El SDK de Datadog mantiene observers de DOM activos aunque el flag de `stopSessionReplayRecording` esté en "stopped". El buffer en RAM sigue creciendo con cada DOM mutation. Si el envío al endpoint Datadog falla, el SDK puede acumular eventos en buffer esperando retry.
+
+### Fix
+Tres capas defensivas:
+
+1. **Stop multi-API** en `stopDatadogSessionReplay()`: `stopSessionReplayRecording()` + `stopSession()` + `setTrackingConsent('not-granted')`.
+
+2. **Monkey-patch** de `window.fetch` y `navigator.sendBeacon`: descarta requests a `browser-intake-ddog-gov.com` / `datadoghq.com` con 204. Aunque el SDK siga grabando, no logra enviar ni acumular retries.
+
+3. **Guardrail anti-OOM**: el memory gauge tick (cada 2s) re-aplica el stop a >70% y dispara `triggerMemoryGuardrail()` a >88%, que persiste resume + `cancelRun()` + muestra modal "Recarga la tab para reanudar". Convierte un crash impredecible en checkpoint limpio.
+
+### Lección
+- `stopSessionReplayRecording()` por sí solo NO libera memoria — el SDK solo marca un flag, los observers DOM siguen activos.
+- Para SDKs third-party que leakean, defensa robusta = bloqueo del endpoint vía monkey-patch + guardrail con checkpoint.
+- En runs > 2 hrs, asumir que algo va a leakear y diseñar para checkpoints frecuentes.
+
+### Pendientes
+- Validar 1.4.20 con run > 3000 PNs sin intervención manual.
+- Si tras guardrail el reload no es suficiente, evaluar partir CSV en chunks de 1500.
 
 ## 1.4.19: stop Datadog Session Replay (Fix CC, 2026-05-23)
 
