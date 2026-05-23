@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.22';
+  const VERSION = '1.4.23';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -2939,19 +2939,25 @@ const BulkUpload = (() => {
       // ya tiene targetPnId + existingProcessId + classification de cada fila;
       // reconstruimos pnStatus desde ahí sin tocar la red.
       let pnStatus;
+      // 1.4.23 Fix DD: parts[i].csvRowKey es undefined — el shape de parts viene
+      // de parseRows() y no incluye csvRowKey (ese campo solo nace dentro de
+      // classifyOnePN, línea 1379). Reconstruimos el key esperado con la misma
+      // fórmula para que la comparación sea real. Antes el fast-path nunca
+      // aplicaba porque `c.csvRowKey === undefined` siempre era false.
       const canSkipPrefetch =
         resumeState?.classifications?.length === parts.length &&
         parts.length > 0 &&
-        resumeState.classifications.every((c, i) =>
-          c &&
-          c.csvRowKey === parts[i].csvRowKey &&
-          c.classification != null &&
-          (c.classification === 'NEW' || c.targetPnId != null) &&
-          // Si el PN va a MODIFY, necesitamos existingProcessId para no romper
-          // STEP 6/8. Pre-1.4.21 no se guardaba → forzar full classifyPNs como
-          // migración. Post-1.4.21 sí.
-          (c.classification === 'NEW' || c.existingProcessId !== undefined)
-        );
+        resumeState.classifications.every((c, i) => {
+          const expectedKey = `${(parts[i].pn || '').toUpperCase()}|${parts[i].customerId}`;
+          return c &&
+            c.csvRowKey === expectedKey &&
+            c.classification != null &&
+            (c.classification === 'NEW' || c.targetPnId != null) &&
+            // Si el PN va a MODIFY, necesitamos existingProcessId para no romper
+            // STEP 6/8. Pre-1.4.21 no se guardaba → forzar full classifyPNs como
+            // migración. Post-1.4.21 sí.
+            (c.classification === 'NEW' || c.existingProcessId !== undefined);
+        });
       if (canSkipPrefetch) {
         log(`Resume detectado con classifications completas — saltando prefetch global (ahorro ~1.7GB baseline).`);
         pnStatus = resumeState.classifications.map((c, i) => {
