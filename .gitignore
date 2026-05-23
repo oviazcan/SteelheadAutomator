@@ -19,6 +19,9 @@ node_modules/
 # Scan results (contain Steelhead invoice tokens)
 scan_results_*.json
 
+# Validador de hashes — resultados diarios (ruido, no aportan al repo)
+tools/.hash-validation/
+
 # Excel temp lock files
 ~$*.xlsm
 ~$*.xlsx

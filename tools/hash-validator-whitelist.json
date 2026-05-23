@@ -1,0 +1,16 @@
+{
+  "_doc": "Operaciones que el validador NO debe marcar como STALE. Steelhead trata distinto al navegador oficial vs scripts externos para algunas operaciones sensibles a sesión: el hash es válido (verificado contra hash-scanner que captura desde el navegador), pero el endpoint responde 'Must provide a query string' cuando le pega un cliente que no sea el frontend de Apollo del browser. Para esas operaciones la única validación confiable es el scan en navegador, no este script.",
+  "_format": "{ operation: nombre_de_op, reason: explicación, verifiedOn: YYYY-MM-DD }",
+  "falseStale": [
+    {
+      "operation": "CurrentUser",
+      "reason": "Hash idéntico en config y scan-de-navegador con 61 invocaciones exitosas, pero responde 'Must provide a query string' desde scripts externos.",
+      "verifiedOn": "2026-05-23"
+    },
+    {
+      "operation": "GetPurchaseOrder",
+      "reason": "Mismo patrón: hash idéntico en config y scan con 12 invocaciones exitosas en pantalla Bills, pero responde 'Must provide a query string' desde scripts externos.",
+      "verifiedOn": "2026-05-23"
+    }
+  ]
+}
