@@ -46,26 +46,93 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.19';
+  const VERSION = '1.4.20';
   const api = () => window.SteelheadAPI;
 
-  // 1.4.19: Datadog RUM con session_replay_sample_rate=100 graba TODA respuesta
-  // de fetch (incluidas las del bulk-upload, que en una corrida de miles de PNs
-  // acumula millones de objetos `__typename` en buffer → ~1.2MB/PN de leak en
-  // heap. Verificado con heap snapshots: counts de WorkboardsConnection/
-  // StationParametersConnection/Station llegando a 2.2M en runs largos).
-  // Detener el replay al iniciar libera el buffer y evita OOM.
-  // Re-ejecutar en cada execute() porque resume tras crash necesita re-detener.
+  // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
+  // stopSessionReplayRecording() pero en runs largos (3692 PNs) la memoria
+  // seguía creciendo ~43 MB/min — el SDK mantiene observers de DOM activos
+  // aunque el flag esté "stopped". Esta versión:
+  //   1) Intenta TODAS las APIs de stop conocidas
+  //   2) Revoca tracking consent (impide nuevos eventos)
+  //   3) Monkey-patchea fetch para descartar requests al endpoint Datadog
+  //      (cierra el loop: aunque el SDK acumule buffer, no logra enviarlo
+  //       y los retries no inflan más el heap)
   function stopDatadogSessionReplay() {
     try {
       const dd = window.DD_RUM || window.datadogRum || window.__DD_RUM__;
-      if (dd?.stopSessionReplayRecording) {
-        dd.stopSessionReplayRecording();
-        log('Datadog session replay detenido (libera buffer de heap para run largo).');
-        return true;
+      if (dd) {
+        try { dd.stopSessionReplayRecording?.(); } catch (_) {}
+        try { dd.stopSession?.(); } catch (_) {}
+        try { dd.setTrackingConsent?.('not-granted'); } catch (_) {}
+        log('Datadog: stopSessionReplay + stopSession + consent revoked.');
       }
-    } catch (_) { /* defensa: no romper run si DD_RUM cambia API */ }
-    return false;
+    } catch (_) { /* defensa */ }
+    // Monkey-patch fetch: una sola vez por tab. Descarta requests a Datadog
+    // y los responde con 204 vacío para que el SDK no haga retry.
+    if (!window.__sa_fetch_patched) {
+      try {
+        const origFetch = window.fetch;
+        window.fetch = function (input, init) {
+          const url = typeof input === 'string' ? input : (input?.url || '');
+          if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
+            return Promise.resolve(new Response('', { status: 204 }));
+          }
+          return origFetch.call(this, input, init);
+        };
+        // También sendBeacon (Datadog lo usa para session replay)
+        if (navigator.sendBeacon) {
+          const origBeacon = navigator.sendBeacon.bind(navigator);
+          navigator.sendBeacon = function (url, data) {
+            if (/browser-intake-ddog-gov\.com|datadoghq\.com/i.test(url)) return true;
+            return origBeacon(url, data);
+          };
+        }
+        window.__sa_fetch_patched = true;
+        log('Fetch+sendBeacon a Datadog patcheados (defensa anti-leak).');
+      } catch (e) { warn(`Patch fetch falló: ${String(e?.message || e).substring(0, 80)}`); }
+    }
+  }
+
+  // 1.4.20: guardrail anti-OOM. Si el heap pasa 88% del límite, persiste
+  // resume y detiene el run con modal pidiendo reload. Mejor un checkpoint
+  // limpio que un crash que pierde el step intermedio (STEP 6b/7 no flushean
+  // intra-step). El usuario hace Cmd+Shift+R y reanuda desde donde quedó.
+  async function triggerMemoryGuardrail(pct) {
+    warn(`Memoria al ${pct}% del límite — guardrail dispara cancelRun + modal de reload.`);
+    try {
+      if (typeof state.flushSentinelBuffer === 'function') {
+        try { await state.flushSentinelBuffer(); } catch (_) {}
+      }
+      if (resumeState) {
+        try { await persistResumeState(); } catch (_) {}
+      }
+      cancelRun();
+    } catch (_) {}
+    setTimeout(() => {
+      if (document.getElementById('sa-mem-guardrail')) return;
+      const m = document.createElement('div');
+      m.id = 'sa-mem-guardrail';
+      m.style.cssText = 'position:fixed;inset:0;z-index:1000001;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;color:#fff;font-family:system-ui;';
+      const card = document.createElement('div');
+      card.style.cssText = 'background:#1e293b;padding:32px;border-radius:12px;max-width:520px;text-align:center;';
+      const h = document.createElement('h2');
+      h.style.cssText = 'color:#fca5a5;margin:0 0 16px;';
+      h.textContent = `Memoria al ${pct}% — checkpoint forzado`;
+      const p1 = document.createElement('p');
+      p1.style.cssText = 'margin:0 0 16px;';
+      p1.textContent = 'El run se detuvo en checkpoint para evitar crash. Tu progreso está guardado en resume.';
+      const p2 = document.createElement('p');
+      p2.style.cssText = 'margin:0 0 24px;';
+      p2.innerHTML = 'Recarga la tab (Cmd+Shift+R) y abre el bulk-upload para reanudar.';
+      const btn = document.createElement('button');
+      btn.style.cssText = 'background:#3b82f6;color:#fff;border:0;padding:10px 24px;border-radius:6px;font-size:14px;cursor:pointer;';
+      btn.textContent = 'Cerrar';
+      btn.onclick = () => m.remove();
+      card.appendChild(h); card.appendChild(p1); card.appendChild(p2); card.appendChild(btn);
+      m.appendChild(card);
+      document.body.appendChild(m);
+    }, 500);
   }
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -162,6 +229,8 @@ const BulkUpload = (() => {
     // 1.4.10: ring buffer del log del panel chico — addPanelLog recorta a
     // PANEL_LOG_MAX líneas para evitar OOM en runs largos.
     panelLog: [],
+    // 1.4.20: latch del guardrail anti-OOM — una sola vez por run.
+    memoryGuardrailFired: false,
   };
 
   // ── Fix 7: resume tras crash ──
@@ -280,6 +349,7 @@ const BulkUpload = (() => {
       archiveGlobal: true,
       chunkSize: null,
       panelLog: [],
+      memoryGuardrailFired: false,
     };
     return state.runId;
   }
@@ -512,6 +582,15 @@ const BulkUpload = (() => {
       el.classList.remove('sa-mem-warn', 'sa-mem-crit');
       if (pct >= 85) el.classList.add('sa-mem-crit');
       else if (pct >= 70) el.classList.add('sa-mem-warn');
+      // 1.4.20: re-aplicar stop de Datadog cada tick (defensa por si el SDK
+      // se re-inicializa). Idempotente y barato — solo invoca stop API si
+      // sigue presente. El monkey-patch de fetch se aplica una sola vez.
+      if (pct >= 70) stopDatadogSessionReplay();
+      // 1.4.20: guardrail anti-OOM a 88%.
+      if (pct >= 88 && !state.memoryGuardrailFired) {
+        state.memoryGuardrailFired = true;
+        triggerMemoryGuardrail(pct);
+      }
     };
     tick();
     memoryGaugeTimer = setInterval(tick, 2000);
