@@ -1,6 +1,41 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.13. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.18. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.18: showResult inmune al churn React de Steelhead (Fix BB, 2026-05-23)
+
+### Síntoma
+Corrida diferencial de 2017 PNs SOLO_PN completó todo el pipeline (Racks 2015, Default Price 2020, etc.) y al renderizar el modal final el outer catch capturó:
+
+```
+FATAL: Cannot set properties of null (setting 'onclick')
+```
+
+Stats arriba del error mostraban todos los pasos llenos — el pipeline era correcto; el bug estaba en el modal de resultado.
+
+### Diagnóstico
+Las únicas asignaciones `.onclick` sin try/catch en el path post-pipeline (después de `setPanelPhase('Completado.')`) viven en `showResult()` líneas 2419-2420 (versiones ≤1.4.17):
+
+```js
+document.getElementById('dl9-close').onclick = () => removeOverlay(overlay);
+document.getElementById('dl9-copy-log').onclick = () => { ... };
+```
+
+El resto de modales del archivo usan `modal.querySelector(...)` (preview, conflict, resume, pagination — todos funcionan sin error). `showResult` era el outlier que escaneaba el `document` global. Cuando el árbol React de Steelhead re-reconcilia durante la corrida larga (el modal vive 100+ms hasta que el usuario lo cierra), `getElementById` puede devolver `null` para ids recién insertados aunque el nodo siga vivo dentro de `modal`.
+
+### Fix BB
+- Cambiar `document.getElementById('dl9-close' | 'dl9-copy-log' | 'dl9-open-quote')` → `modal.querySelector('#...')` en `showResult()`.
+- Agregar null guards con `warn(...)` para visibilidad si Steelhead llegara a desreferenciar el botón aún dentro del modal.
+- `modal` es el nodo que acabamos de crear en `createOverlay()` — está aislado del churn externo.
+
+Otros modales (showQuoteConflict líneas 2304-2306) usan el mismo patrón `document.getElementById` pero se descartan al instante (resolve dentro del onclick), así que no son vulnerables al mismo timing. Quedan como están para no inflar el cambio.
+
+### Plan de validación
+- Correr una carga SOLO_PN diferencial de ~2k PNs y verificar que el modal final aparezca sin `FATAL: Cannot set properties of null` aunque haya errores acumulados.
+- Si aparece algún `warn('showResult: #... no encontrado en modal.')` en la consola, abrir issue: el churn React llegó hasta el modal interno y necesitamos reaplicar el innerHTML.
+
+### Pendientes derivados
+- Considerar generalizar el patrón: cualquier modal nuevo debe usar `modal.querySelector` en vez de `document.getElementById` (regla del playbook DOM).
 
 ## 1.4.13: fix `quotePnIds` no definida + rename Archivado/Desarchivado + fix `resumeState` false-completed (Fixes X+Y, 2026-05-22)
 

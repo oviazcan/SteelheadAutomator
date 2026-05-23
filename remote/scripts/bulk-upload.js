@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.17';
+  const VERSION = '1.4.18';
   const api = () => window.SteelheadAPI;
 
   // 1.2.13: sentinel para marcar PNs archivados en el shape extraído de
@@ -2410,14 +2410,26 @@ const BulkUpload = (() => {
     const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.join('\n')}</div>` : '';
     const lbl = quoteUrlLabel || 'ABRIR COTIZACIÓN';
     modal.innerHTML = `<h2>${errors.length ? 'Completado con errores' : 'Completado OK'}</h2><div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
+    // 1.4.18 Fix BB: scope a `modal.querySelector` (no `document.getElementById`) + null
+    // guards. Antes, en runs grandes el outer catch capturaba "Cannot set properties of
+    // null (setting 'onclick')" tras completar el pipeline: el árbol React de Steelhead
+    // re-reconcilia agresivamente y puede desreferenciar elementos por id global aunque
+    // sigan vivos dentro del modal nuestro. modal.querySelector busca dentro del nodo
+    // que acabamos de crear, inmune al churn externo.
     if (quoteUrl) {
-      document.getElementById('dl9-open-quote').addEventListener('click', () => {
+      const openBtn = modal.querySelector('#dl9-open-quote');
+      if (openBtn) openBtn.addEventListener('click', () => {
         // V10: navega en la pestaña actual (Steelhead es SPA, evita perder contexto)
         window.location.href = quoteUrl;
       });
+      else warn('showResult: #dl9-open-quote no encontrado (esperado tras quoteUrl truthy).');
     }
-    document.getElementById('dl9-close').onclick = () => removeOverlay(overlay);
-    document.getElementById('dl9-copy-log').onclick = () => { navigator.clipboard.writeText(api().getLog().join('\n')).then(() => alert('Log copiado.')).catch(() => { const w = window.open('', '_blank'); w.document.write('<pre>' + api().getLog().join('\n') + '</pre>'); }); };
+    const closeBtn = modal.querySelector('#dl9-close');
+    if (closeBtn) closeBtn.onclick = () => removeOverlay(overlay);
+    else warn('showResult: #dl9-close no encontrado en modal.');
+    const copyBtn = modal.querySelector('#dl9-copy-log');
+    if (copyBtn) copyBtn.onclick = () => { navigator.clipboard.writeText(api().getLog().join('\n')).then(() => alert('Log copiado.')).catch(() => { const w = window.open('', '_blank'); w.document.write('<pre>' + api().getLog().join('\n') + '</pre>'); }); };
+    else warn('showResult: #dl9-copy-log no encontrado en modal.');
   }
 
   // ═══════════════════════════════════════════
