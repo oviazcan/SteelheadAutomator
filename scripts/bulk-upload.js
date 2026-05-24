@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.28';
+  const VERSION = '1.4.29';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -2583,6 +2583,9 @@ const BulkUpload = (() => {
   }
 
   // Modal: ask user what to do when a quote with same name+customer exists
+  // 1.4.29 Fix II: devuelve { action, applyToAll }. El caller usa applyToAll para
+  // setear una decisión sticky y saltarse el modal en cotizaciones existentes
+  // subsecuentes del mismo run.
   function showQuoteConflict(customerName, quoteName, existing) {
     return new Promise((resolve) => {
       injectStyles(); const { overlay, modal } = createOverlay();
@@ -2608,10 +2611,15 @@ const BulkUpload = (() => {
           <button class="dl9-btn" id="dl9-conflict-skip" style="background:#dc2626;color:white;justify-content:flex-start">
             ⏭️ <b>Omitir este cliente</b> — no procesar sus PNs en esta corrida
           </button>
-        </div>`;
-      document.getElementById('dl9-conflict-modify').onclick = () => { removeOverlay(overlay); resolve('modify'); };
-      document.getElementById('dl9-conflict-create').onclick = () => { removeOverlay(overlay); resolve('create'); };
-      document.getElementById('dl9-conflict-skip').onclick = () => { removeOverlay(overlay); resolve('skip'); };
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px;background:#0f172a;border-radius:6px;color:#e2e8f0;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="dl9-conflict-applyall" style="width:16px;height:16px;cursor:pointer">
+          <span>Aplicar esta decisión a <b>todas las siguientes</b> cotizaciones existentes de esta corrida</span>
+        </label>`;
+      const readApplyAll = () => !!document.getElementById('dl9-conflict-applyall')?.checked;
+      document.getElementById('dl9-conflict-modify').onclick = () => { const a = readApplyAll(); removeOverlay(overlay); resolve({ action: 'modify', applyToAll: a }); };
+      document.getElementById('dl9-conflict-create').onclick = () => { const a = readApplyAll(); removeOverlay(overlay); resolve({ action: 'create', applyToAll: a }); };
+      document.getElementById('dl9-conflict-skip').onclick   = () => { const a = readApplyAll(); removeOverlay(overlay); resolve({ action: 'skip',   applyToAll: a }); };
     });
   }
 
@@ -3811,6 +3819,11 @@ const BulkUpload = (() => {
         let quoteSeq = 0;
         let prodAddedTotal = 0;
         let pnpItemsTotal = 0;
+        // 1.4.29 Fix II: decisión sticky para showQuoteConflict. Cuando el operador
+        // marca el checkbox "aplicar a todas las siguientes" en el modal, persistimos
+        // la acción aquí ('modify' | 'create' | 'skip') y saltamos el modal en los
+        // siguientes choques de cotización existente, atravesando clientes y chunks.
+        let stickyQuoteAction = null;
         for (const [cid, custParts] of partsByCustomer) {
           const cust = [...customerCache.values()].find(c => c.id === cid);
           if (!cust) { errors.push(`Cliente id ${cid} no en cache`); continue; }
@@ -3892,7 +3905,20 @@ const BulkUpload = (() => {
           const existingQuote = await findExistingQuote(cid, thisQuoteName);
           if (existingQuote) {
             log(`  Cotización existente encontrada: #${existingQuote.idInDomain} (${cust.name})`);
-            const action = await showQuoteConflict(cust.name, thisQuoteName, existingQuote);
+            // 1.4.29 Fix II: si el operador ya marcó "aplicar a todas" en un modal previo,
+            // reutilizamos esa decisión y omitimos el modal en esta cotización.
+            let action;
+            if (stickyQuoteAction) {
+              action = stickyQuoteAction;
+              log(`  Aplicando decisión sticky: ${action} (set por usuario en modal anterior)`);
+            } else {
+              const result = await showQuoteConflict(cust.name, thisQuoteName, existingQuote);
+              action = result.action;
+              if (result.applyToAll) {
+                stickyQuoteAction = action;
+                log(`  Decisión "${action}" marcada como sticky — se aplicará a las siguientes cotizaciones existentes.`);
+              }
+            }
             if (action === 'skip') {
               log(`  ${cust.name}: omitido por usuario`);
               continue;
