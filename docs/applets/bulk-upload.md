@@ -1,6 +1,93 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.27. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.28. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.28: classifyOnePN Pase 1 — discriminar homónimos con mismo QuoteIBMS (Fix HH, 2026-05-24)
+
+### Síntoma
+Re-carga del CSV de recovery emitido por `audit-incomplete-pns` (425 SCHNEIDER
+incompletos) reportó **463 OK / 0 errores** en el modal y xlsx, pero el re-audit
+posterior dejó **412 PNs todavía incompletos** (97% de los originales). El cluster
+era SCHNEIDER ELECTRIC MEXICO. xlsx `Resumen` decía 463 MODIFY Pase 1 (IBMS), 0
+errores, 0 unknownLabels — perfecto en papel. Realidad: los labels/specs nunca
+tocaron los PNs que el audit señalaba.
+
+### Diagnóstico
+1. **Test directo manual** (snippet de consola replicando `SavePartNumber-A`):
+   `labelIds=[Plata Flash, Antitarnish, Empaque, SRG]` aplicó perfectamente al PN
+   2867612. El shape de Call A funciona; el bug NO era partial-success silencioso.
+2. **Inspección del resume state IDB**: 463 PNs en `completedPNs` con
+   `pnSucceeded=true` (Fix Y gating de 1.4.15) → Call B retornó éxito para los 463.
+3. **Smoking gun**: `AllPartNumbers searchQuery="1221-086412"` reveló **DOS PNs**
+   en SCHNEIDER con `customInputs.DatosAdicionalesNP.QuoteIBMS=52675`:
+   - **2867612** "1221-086412" (creado 2025-11-19) — el que el CSV apuntaba
+   - **3028592** "1221-086412 PROYECTO BARRAS" (creado 2026-01-08) — homónimo casi-exacto
+4. **`classifyOnePN` Pase 1** (`bulk-upload.js:5469` pre-fix):
+   ```js
+   const byIbms = allPns.find(p => (p.quoteIBMS || '') === csvIbms);
+   ```
+   `find()` devuelve el **primer** match. Como `AllPartNumbers` ordena `ID_DESC`,
+   el primero en aparecer es el de mayor ID (3028592). El recovery aplicó MODIFY +
+   Call B al 3028592 (que ya tenía los labels). El 2867612 quedó **intacto**, audit
+   re-detecta missing → loop infinito de "recovery que no recupera".
+
+El bug existía desde 1.1.0 (introducción del Pase 1 IBMS) pero solo manifestó
+cuando un cliente acumuló duplicados QuoteIBMS — caso confirmado por el propio
+audit post-fix-2026-05-23 (22 buckets en SCHNEIDER). El audit ya discrimina con
+`fingerprint matching` (Fase 5.4b); bulk-upload no.
+
+### Fix (`bulk-upload.js:5467`)
+Tres-niveles en Pase 1:
+1. **1 candidato con ese QuoteIBMS** → MODIFY directo, `confidence: ibms-exacto`
+   (compatible con renombres post-IBMS donde el name cambió pero el IBMS persiste).
+2. **N candidatos con ese QuoteIBMS, uno matchea name exacto** (UPPER+trim) → MODIFY
+   directo, `confidence: ibms+name-exacto`.
+3. **N candidatos con ese QuoteIBMS, ninguno matchea name** → **NO escoge ciego**;
+   cae a Pase 2 (composite key `metalBase + labels sorted`) que es estricto, o a
+   Pase 3 (name+labels) si tampoco resuelve.
+
+Mismo patrón que el audit Phase 5.4b aplicó en fix-2026-05-23.
+
+### Lecciones
+- **`find()` por clave "única" sin verificar uniqueness es bomba de tiempo** cuando
+  la clave depende de datos del cliente (QuoteIBMS lo asignan procesos IBMS externos
+  que no garantizan unicidad en Steelhead). Patrón análogo al `Map<key, single>` que
+  el audit ya había sufrido (ver `audit-incomplete-pns.md` §2026-05-23).
+- **`okSP++` sin verificar persistencia destruye la confianza del reporte**: el
+  xlsx Resumen "463 OK" mintió porque Call B aplicó cambios al PN equivocado —
+  el server respondió 200, pero el PN que el operador esperaba modificar no se
+  tocó. Pendiente derivado: el reporte debería incluir `targetPnId` por fila
+  para que el operador pueda verificar a-posteriori.
+- **El audit no es ground truth automáticamente**: el audit y bulk-upload usan
+  reglas de matching distintas. Si bulk-upload escoge un PN y audit otro, los
+  reportes son inconsistentes. Mantener ambos en sync con el mismo discriminador
+  es un invariante a defender.
+
+### Daño colateral pre-fix
+- ~22+ PNs homónimos en SCHNEIDER fueron "pisados": MODIFY-clean borró sus PNPs y
+  Call B reaplicó labels/specs/predictives. Como esos homónimos ya tenían los
+  mismos labels (ambos del mismo IBMS), el daño visible es mínimo en labels pero
+  podría haber alterado specs/predictives específicos del homónimo. Auditar
+  manualmente revisando los duplicados que el audit identificó.
+- PNs originales (los que el CSV realmente apuntaba) quedaron intactos — siguen
+  siendo el target correcto del re-recovery con 1.4.28.
+
+### Validación pendiente
+- [ ] Re-cargar el CSV recovery con 1.4.28 — debe resolver al 2867612 (etc.) y
+      aplicar labels/specs/predictives correctamente.
+- [ ] Re-audit del mismo CSV post-recovery — debería bajar incompletos de 412 a ~0.
+- [ ] Snippet de inventario: contar PNs SCHNEIDER con QuoteIBMS duplicado y
+      reportar pares (name, id) para que el operador decida si archivar duplicados
+      históricos.
+
+### Pendientes derivados
+- [ ] `dedupModifyTargets` (referenciado en línea 4 de la cabecera del archivo) usa
+      misma regla que `classifyOnePN` — verificar que también se actualice si hay
+      lógica similar.
+- [ ] Reporte xlsx: agregar columna `targetPnId` en `Decisiones` para que el
+      operador valide post-run que cada fila apuntó al PN esperado.
+- [ ] Sincronizar el discriminador entre bulk-upload, audit y portal-importer
+      (cualquier flujo que matchee PNs por QuoteIBMS).
 
 ## 1.4.27: migración localStorage → IndexedDB para resume (Fix GG, 2026-05-24)
 
