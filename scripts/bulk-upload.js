@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.25';
+  const VERSION = '1.4.27';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -254,6 +254,14 @@ const BulkUpload = (() => {
       // lo que el config sí define. Bug introducido en 1.4.3.
       nonFinishLabelNames: Array.isArray(d.nonFinishLabelNames) ? d.nonFinishLabelNames : [],
       metalEquivalents: Array.isArray(d.metalEquivalents) ? d.metalEquivalents : [],
+      // 1.4.27 (B): instrumentación opt-in para parser predictive. Cuando los
+      // huecos de `predictive` dominan los re-audits, prender el flag y re-
+      // correr una muestra para ver normalización (raw → dash | value). Sample
+      // limit evita inundar consola: solo loggea las primeras N rows del CSV.
+      debug: {
+        logPredictiveParse: !!(d.debug?.logPredictiveParse ?? false),
+        logPredictiveSampleRows: d.debug?.logPredictiveSampleRows ?? 20,
+      },
     };
   };
 
@@ -303,14 +311,102 @@ const BulkUpload = (() => {
   };
 
   // ── Fix 7: resume tras crash ──
-  // El plan original mencionaba chrome.storage.local, pero el applet vive en
-  // MAIN world (executeScript world:'MAIN') donde `chrome.*` no se expone de
-  // forma confiable. Otros applets del repo (paros-linea, invoice-auto-regen,
-  // bill-autofill) usan localStorage para persistencia: misma estrategia aquí.
-  // 5MB por origen alcanza de sobra (~9k PN keys ≈ 300KB JSON).
+  // 1.4.27 (2026-05-24): MIGRACIÓN a IndexedDB. localStorage tope ~5-10MB por
+  // origen, y los resumes de runs >3k PNs (Schneider Generales 4270 P1) llegan
+  // a 1-2MB c/u → tras 5-7 corridas el quota explota con
+  // `Failed to execute 'setItem' on 'Storage'`. IDB no tiene este límite (típico
+  // ~50% del disco). Mantengo la misma API externa (loadResumeStateByKey,
+  // saveResumeIndex, etc.) pero ahora async y respaldadas en IDB. Migración
+  // one-shot copia `sa_bulk_resume_*` de localStorage a IDB la primera vez.
   let resumeState = null;
   const RESUME_KEY_PREFIX = 'sa_bulk_resume_';
   const RESUME_INDEX_KEY = 'sa_bulk_resume_index';
+
+  // ── Wrapper IDB compartido (kv store) ────────────────────────────────────
+  // DB: 'sa_storage', store: 'kv'. API minimalista — get/set/del/keys. Cache la
+  // promise de open() para no re-abrir en cada llamada. Fallback silencioso si
+  // estamos en incognito o IDB no está disponible: las funciones lanzan y los
+  // call sites ya tienen try/catch.
+  const SA_IDB_DB = 'sa_storage';
+  const SA_IDB_STORE = 'kv';
+  let _saIdbPromise = null;
+  function saIdb() {
+    if (_saIdbPromise) return _saIdbPromise;
+    _saIdbPromise = new Promise((resolve, reject) => {
+      try {
+        const req = indexedDB.open(SA_IDB_DB, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(SA_IDB_STORE)) db.createObjectStore(SA_IDB_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('IDB open failed'));
+        req.onblocked = () => reject(new Error('IDB open blocked'));
+      } catch (e) { reject(e); }
+    });
+    return _saIdbPromise;
+  }
+  function saIdbReq(mode, op) {
+    return saIdb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(SA_IDB_STORE, mode);
+      const store = tx.objectStore(SA_IDB_STORE);
+      const req = op(store);
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('IDB tx abort'));
+    }));
+  }
+  const saIdbGet = (k) => saIdbReq('readonly', s => s.get(k));
+  const saIdbSet = (k, v) => saIdbReq('readwrite', s => s.put(v, k));
+  const saIdbDel = (k) => saIdbReq('readwrite', s => s.delete(k));
+  const saIdbKeys = () => saIdbReq('readonly', s => s.getAllKeys());
+
+  // Migración one-shot localStorage → IDB. Idempotente: si no hay claves en
+  // localStorage, no-op. Se invoca al cargar el applet (al final del IIFE).
+  // Best-effort: si IDB falla, deja localStorage intacto (compatibilidad
+  // hacia atrás — los helpers actuales siguen pudiendo leer de IDB Y localStorage
+  // si los abro con fallback). Por simplicidad NO hago fallback bidireccional —
+  // tras la migración los helpers escriben solo en IDB.
+  async function migrateLocalStorageToIdb() {
+    try {
+      const markerKey = 'sa_bulk_idb_migrated_v1';
+      if (await saIdbGet(markerKey)) return; // ya migrado
+      const lsKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k === RESUME_INDEX_KEY || (k && k.startsWith(RESUME_KEY_PREFIX))) lsKeys.push(k);
+      }
+      if (!lsKeys.length) {
+        await saIdbSet(markerKey, new Date().toISOString());
+        return;
+      }
+      let copied = 0;
+      for (const k of lsKeys) {
+        const v = localStorage.getItem(k);
+        if (v == null) continue;
+        try {
+          await saIdbSet(k, v);
+          localStorage.removeItem(k);
+          copied++;
+        } catch (e) {
+          console.warn('[bulk-upload] IDB migration: no se pudo copiar', k, e?.message || e);
+        }
+      }
+      await saIdbSet(markerKey, new Date().toISOString());
+      if (copied > 0) console.log(`[bulk-upload] IDB migration: ${copied}/${lsKeys.length} keys movidas de localStorage a IDB`);
+    } catch (e) {
+      console.warn('[bulk-upload] IDB migration falló:', e?.message || e);
+    }
+  }
+
+  // Fire-and-forget al cargar el script. Los helpers async (loadResumeIndex,
+  // loadResumeStateByKey, ...) viven dentro de execute(), que sólo corre por
+  // clic del usuario, así que para el primer execute() la migración ya está
+  // típicamente terminada. Si no, los helpers leerán IDB vacío y caerán por
+  // diseño al fast-path "no hay resume previo" — peor caso: el usuario empieza
+  // de cero un CSV que tenía resume pendiente. Aceptable porque (a) la migración
+  // tarda <100ms con <10 keys y (b) el quota error es peor.
+  migrateLocalStorageToIdb();
 
   // 1.2.0 R4: cache de specs por candidato (lazy fetch en preview Pase 3).
   // Vida del cache: el IIFE — sobrevive entre clics del usuario en distintas
@@ -323,33 +419,44 @@ const BulkUpload = (() => {
     return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  function loadResumeIndex() {
-    try { return JSON.parse(localStorage.getItem(RESUME_INDEX_KEY) || '[]'); } catch { return []; }
+  // 1.4.27: helpers respaldados en IDB. Mantienen los mismos nombres + payload
+  // (JSON.stringify del state) que la versión localStorage para compatibilidad
+  // del migrator (un valor copiado de LS a IDB sigue siendo el mismo string JSON).
+  // Cambian a async — los call sites del execute() awaitan; los fire-and-forget
+  // (persistResumeState().catch(()=>{})) ya estaban escritos así.
+  async function loadResumeIndex() {
+    try {
+      const raw = await saIdbGet(RESUME_INDEX_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
   }
-  function saveResumeIndex(idx) {
-    try { localStorage.setItem(RESUME_INDEX_KEY, JSON.stringify(idx)); } catch (_) {}
+  async function saveResumeIndex(idx) {
+    try { await saIdbSet(RESUME_INDEX_KEY, JSON.stringify(idx)); } catch (_) {}
   }
-  function loadResumeStateByKey(runKey) {
-    try { return JSON.parse(localStorage.getItem(RESUME_KEY_PREFIX + runKey) || 'null'); } catch { return null; }
+  async function loadResumeStateByKey(runKey) {
+    try {
+      const raw = await saIdbGet(RESUME_KEY_PREFIX + runKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
   }
-  function deleteResumeStateByKey(runKey) {
-    try { localStorage.removeItem(RESUME_KEY_PREFIX + runKey); } catch (_) {}
-    const idx = loadResumeIndex().filter(e => e.runKey !== runKey);
-    saveResumeIndex(idx);
+  async function deleteResumeStateByKey(runKey) {
+    try { await saIdbDel(RESUME_KEY_PREFIX + runKey); } catch (_) {}
+    const idx = (await loadResumeIndex()).filter(e => e.runKey !== runKey);
+    await saveResumeIndex(idx);
   }
 
-  function purgeOldResumeStates() {
+  async function purgeOldResumeStates() {
     try {
       const cfg = bulkCfg().resume;
       const maxAge = (cfg.purgeAgeDays || 7) * 24 * 60 * 60 * 1000;
       const maxEntries = cfg.maxEntries || 20;
       const now = Date.now();
-      const idx = loadResumeIndex();
+      const idx = await loadResumeIndex();
       const keep = [];
       for (const entry of idx) {
         const age = now - new Date(entry.lastUpdatedAt || 0).getTime();
         if (entry.phase === 'done' && age > maxAge) {
-          try { localStorage.removeItem(RESUME_KEY_PREFIX + entry.runKey); } catch (_) {}
+          try { await saIdbDel(RESUME_KEY_PREFIX + entry.runKey); } catch (_) {}
         } else {
           keep.push(entry);
         }
@@ -358,9 +465,11 @@ const BulkUpload = (() => {
       if (keep.length > maxEntries) {
         keep.sort((a, b) => new Date(b.lastUpdatedAt || 0) - new Date(a.lastUpdatedAt || 0));
         const drop = keep.splice(maxEntries);
-        for (const d of drop) try { localStorage.removeItem(RESUME_KEY_PREFIX + d.runKey); } catch (_) {}
+        for (const d of drop) {
+          try { await saIdbDel(RESUME_KEY_PREFIX + d.runKey); } catch (_) {}
+        }
       }
-      saveResumeIndex(keep);
+      await saveResumeIndex(keep);
     } catch (_) { /* persistencia es best-effort */ }
   }
 
@@ -368,13 +477,14 @@ const BulkUpload = (() => {
     if (!resumeState) return;
     resumeState.lastUpdatedAt = new Date().toISOString();
     try {
-      localStorage.setItem(RESUME_KEY_PREFIX + resumeState.runKey, JSON.stringify(resumeState));
-      const idx = loadResumeIndex().filter(e => e.runKey !== resumeState.runKey);
+      await saIdbSet(RESUME_KEY_PREFIX + resumeState.runKey, JSON.stringify(resumeState));
+      const idx = (await loadResumeIndex()).filter(e => e.runKey !== resumeState.runKey);
       idx.push({ runKey: resumeState.runKey, lastUpdatedAt: resumeState.lastUpdatedAt, phase: resumeState.phase });
-      saveResumeIndex(idx);
+      await saveResumeIndex(idx);
     } catch (e) {
-      // Si localStorage está lleno, deshabilitar resume en silencio para esta corrida.
-      console.warn('[bulk-upload] persistResumeState falló (storage lleno?):', e?.message || e);
+      // Si IDB está caído (incognito sin storage, quota insólita), deshabilitar
+      // resume en silencio para esta corrida.
+      console.warn('[bulk-upload] persistResumeState falló:', e?.message || e);
     }
   }
 
@@ -818,6 +928,14 @@ const BulkUpload = (() => {
     // BN=65 PiezasCarga | BO=66 CargasHora | BP=67 TiempoEntrega | BQ=68 Notas adicionales
     const header = {};
     const parts = [];
+    // 1.4.27 (B): instrumentación opt-in del parser predictive. Si el flag está
+    // ON, loggea normalización de cada celda BB..BJ por las primeras N rows con
+    // PN válido. Sirve para diagnosticar drift entre lo que el CSV manda y lo
+    // que el server termina recibiendo. Off por default — cero overhead.
+    const _predDbg = bulkCfg().debug;
+    const _predDbgOn = !!_predDbg.logPredictiveParse;
+    const _predDbgLimit = _predDbg.logPredictiveSampleRows || 20;
+    const _predDbgSamples = _predDbgOn ? [] : null;
     // V10 special case: Modo se exporta como valor pelado (sin label) en G1 / row 0 col 6
     // Buscar COTIZACIÓN+NP / SOLO_PN en las primeras 3 filas
     for (let r = 0; r < Math.min(rows.length, 3); r++) {
@@ -893,15 +1011,27 @@ const BulkUpload = (() => {
       // Antes (1.2.12-1.3.0) solo BB=`-` actuaba como wildcard "borrar todos" y `-` en otras
       // columnas se ignoraba porque gn() colapsa "-"→null igual que celda vacía. El wildcard
       // se quita: para borrar todos, pone `-` en cada columna que aplique.
+      const _dbgRow = (_predDbgOn && _predDbgSamples.length < _predDbgLimit) ? [] : null;
       for (const mat of PREDICTIVE_MATERIALS) {
         const raw = g(row, mat.col);
+        let outcome = 'skip';
+        let pushed = null;
         if (raw === '-') {
-          predictiveUsage.push({ inventoryItemId: mat.inventoryItemId, usagePerPart: '-', name: mat.name });
+          pushed = { inventoryItemId: mat.inventoryItemId, usagePerPart: '-', name: mat.name };
+          predictiveUsage.push(pushed);
+          outcome = 'dash';
         } else {
           const val = gn(row, mat.col);
           if (val !== null && val > 0) {
-            predictiveUsage.push({ inventoryItemId: mat.inventoryItemId, usagePerPart: String(val), name: mat.name });
+            pushed = { inventoryItemId: mat.inventoryItemId, usagePerPart: String(val), name: mat.name };
+            predictiveUsage.push(pushed);
+            outcome = 'value';
+          } else if (raw) {
+            outcome = `dropped(raw=${JSON.stringify(raw)}, gn=${val})`;
           }
+        }
+        if (_dbgRow && (raw || outcome !== 'skip')) {
+          _dbgRow.push({ material: mat.name, col: mat.col, raw, outcome, sent: pushed?.usagePerPart ?? null });
         }
       }
 
@@ -941,6 +1071,17 @@ const BulkUpload = (() => {
         tiempoEntrega: gn(row, 67),             // BP=67
         notasAdicionalesPN: g(row, 68),         // BQ=68
       });
+      if (_dbgRow && _dbgRow.length) {
+        _predDbgSamples.push({ pn, cliente: g(row, 4), entries: _dbgRow });
+      }
+    }
+    if (_predDbgOn && _predDbgSamples.length) {
+      console.groupCollapsed(`[bulk-upload] 🔬 Predictive parser debug — ${_predDbgSamples.length} rows sampled`);
+      for (const s of _predDbgSamples) {
+        console.log(`PN ${s.pn} (${s.cliente}):`);
+        console.table(s.entries);
+      }
+      console.groupEnd();
     }
     return { header, parts };
   }
@@ -2653,9 +2794,9 @@ const BulkUpload = (() => {
       // Si encuentro progreso previo de ESTE mismo CSV, ofrezco resume.
       // Si el usuario edita el CSV entre runs, el runKey cambia y se trata como
       // corrida nueva (intencional — el resume sólo cuadra con CSV idéntico).
-      purgeOldResumeStates();
+      await purgeOldResumeStates();
       const runKey = await computeRunKey(csvClean);
-      const prev = loadResumeStateByKey(runKey);
+      const prev = await loadResumeStateByKey(runKey);
       let resumeCompletedSet = new Set();
       // 1.4.11: identificadores ya commiteados (Call A del Split A/B) en corridas previas.
       let resumeIdentifierSet = new Set();
@@ -2674,7 +2815,7 @@ const BulkUpload = (() => {
           log(`Reanudando corrida previa — fase: ${prev.phase}, ${resumeCompletedSet.size} PNs ya completados, ${resumeIdentifierSet.size} con identificadores commiteados.`);
         } else {
           // 'fresh' — borrar progreso previo
-          deleteResumeStateByKey(runKey);
+          await deleteResumeStateByKey(runKey);
         }
       }
       if (!resumeState) {
