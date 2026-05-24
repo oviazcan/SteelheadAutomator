@@ -1,6 +1,55 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.28. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.29. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.29: sticky decision en showQuoteConflict — "aplicar a todas" (Fix II, 2026-05-24)
+
+### Motivación
+El modal de conflicto (`showQuoteConflict`) se dispara una vez por cada cotización
+existente detectada. En corridas grandes con muchas cotizaciones recurrentes
+(typical: re-carga de un CSV de recovery donde casi todas las cotizaciones ya
+existen), el operador acababa dándole clic 100+ veces seguidas a la misma opción
+("Modificar la existente"), bloqueando al applet a velocidad humana. El modal
+no permitía decir "para todas las que siguen, ya sabes qué quiero".
+
+### Fix
+1. **Modal devuelve objeto en vez de string** (`bulk-upload.js:2586`):
+   - Antes: `resolve('modify' | 'create' | 'skip')`.
+   - Ahora: `resolve({ action: 'modify'|'create'|'skip', applyToAll: boolean })`.
+   - Se agrega un checkbox debajo de los 3 botones:
+     `☐ Aplicar esta decisión a todas las siguientes cotizaciones existentes de esta corrida`.
+   - El estado del checkbox se lee al momento del clic del botón elegido y
+     viaja en el mismo resolve — no hay otro paso extra para el operador.
+
+2. **Caller mantiene decisión sticky en outer scope** (`bulk-upload.js:3814`):
+   - Antes del loop `for (const [cid, custParts] of partsByCustomer)` se declara
+     `let stickyQuoteAction = null;`.
+   - En cada choque de cotización existente:
+     - Si `stickyQuoteAction` está set → se reutiliza (log: `Aplicando decisión sticky: <action>`), no se muestra modal.
+     - Si no → se muestra modal. Si el resultado trae `applyToAll: true`, se persiste `stickyQuoteAction = action` para los siguientes.
+
+3. **Alcance del sticky**: vive en el run actual, atraviesa clientes y chunks.
+   No persiste a IDB — si el operador re-resume después de un crash, vuelve a
+   decidir desde cero (intencional: una decisión hecha hace 2 días contra el run
+   actual no necesariamente sigue válida; mejor preguntar de nuevo en la primera
+   colisión post-resume).
+
+### Lección
+- **UX de modales bloqueantes en batch**: cualquier modal que se dispare ≥3 veces
+  en loop debe ofrecer "aplicar a todas". Sin escape hatch, el operador termina
+  haciendo click-spam o abandonando el run a la mitad.
+- **Devolver objeto en vez de string-enum** se paga barato cuando el handler
+  necesita capturar metadata adicional al resolve (acá: `applyToAll`). Refactor
+  trivial porque hay un único caller del modal.
+- Mantener `stickyQuoteAction` en outer scope del loop completo (no por cliente)
+  es lo natural — el operador piensa en términos de "la decisión que tomé para
+  toda la corrida", no "por cliente".
+
+### Pendiente de validación
+- [ ] Probar en re-carga del CSV de recovery 1.4.28+ — marcar "modificar +
+      aplicar a todas" en la primera cotización SCHNEIDER existente y verificar
+      que las ~424 siguientes no muestran modal y se ejecutan automáticas con
+      acción `modify`.
 
 ## 1.4.28: classifyOnePN Pase 1 — discriminar homónimos con mismo QuoteIBMS (Fix HH, 2026-05-24)
 
