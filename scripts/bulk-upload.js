@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.27';
+  const VERSION = '1.4.28';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -5465,9 +5465,21 @@ const BulkUpload = (() => {
     const csvCompositeKey = buildCompositeKey(csvRow, nonFinishList, equivIndex);
 
     // ── Pase 1: QuoteIBMS autoritativo (1.2.12: incluye archivados) ──
+    // 1.4.28 fix homónimos: cuando hay 2+ PNs con mismo QuoteIBMS (caso confirmado
+    // en SCHNEIDER: 22 buckets con duplicados — un mismo IBMS recreado bajo dos
+    // PNs con nombres ligeramente distintos, p.ej. "1221-086412" vs
+    // "1221-086412 PROYECTO BARRAS"), el `find()` ciego escogía el primero del
+    // array (típicamente el de mayor ID por orden ID_DESC de AllPartNumbers) y
+    // resolvía al PN equivocado. El audit Phase 5.4b (post-fix-2026-05-23) sí
+    // discrimina; faltaba el mismo patrón aquí.
+    // Estrategia: (a) si hay match exacto name+IBMS, ganador claro; (b) si solo
+    // hay 1 PN con ese IBMS, aceptarlo aunque name no matchee (compat renombres);
+    // (c) si hay >1 PN con mismo IBMS y ninguno coincide en name, NO escogemos
+    // ciegamente — caemos a Pase 2 (composite) que es más estricto.
     if (csvIbms) {
-      const byIbms = allPns.find(p => (p.quoteIBMS || '') === csvIbms);
-      if (byIbms) {
+      const byIbmsAll = allPns.filter(p => (p.quoteIBMS || '') === csvIbms);
+      if (byIbmsAll.length === 1) {
+        const byIbms = byIbmsAll[0];
         const archSuffix = byIbms.archivedAt ? '-desarchiva' : '';
         return {
           classification: 'MODIFY',
@@ -5477,6 +5489,22 @@ const BulkUpload = (() => {
           wasArchived: !!byIbms.archivedAt,
           candidates: [],
         };
+      }
+      if (byIbmsAll.length > 1) {
+        const nameUpperCsv = (csvRow.name || '').toUpperCase().trim();
+        const byIbmsExactName = byIbmsAll.find(p => (p.name || '').toUpperCase().trim() === nameUpperCsv);
+        if (byIbmsExactName) {
+          const archSuffix = byIbmsExactName.archivedAt ? '-desarchiva' : '';
+          return {
+            classification: 'MODIFY',
+            pase: 1,
+            confidence: `ibms+name-exacto${archSuffix}`,
+            targetPnId: byIbmsExactName.id,
+            wasArchived: !!byIbmsExactName.archivedAt,
+            candidates: [],
+          };
+        }
+        // Ambigüedad IBMS sin desempate por name → caer a Pase 2.
       }
     }
 
