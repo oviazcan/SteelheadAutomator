@@ -22,6 +22,10 @@
 // El script NO modifica nada en Steelhead — solo hace queries de lectura.
 //
 // 2026-05-22 — Omar Viazcán + Claude (Opus 4.7)
+// 2026-05-23 — matching fix: pnByKey shape Array (no más colapso a max-ID) +
+//              discriminación por QuoteIBMS / composite key (metalBase+labels) +
+//              detección de duplicados server (DELETE manual) + modo standalone
+//              "Buscar duplicados QuoteIBMS sin CSV".
 
 (async () => {
   'use strict';
@@ -213,7 +217,7 @@
         state.memoryGuardrailFired = true;
         state.aborted = true;
         log(`🛑 GUARDRAIL OOM: memoria al ${pct}% del límite — abortando run. ` +
-            `Resume está persistido en localStorage; recarga la pestaña y reabre el modal para continuar.`);
+            `Resume está persistido en IndexedDB; recarga la pestaña y reabre el modal para continuar.`);
       }
     };
     tick();
@@ -223,10 +227,12 @@
     if (memoryGaugeTimer) { clearInterval(memoryGaugeTimer); memoryGaugeTimer = null; }
   }
 
-  // ─── Resume en localStorage ───────────────────────────────────────────────
+  // ─── Resume en IndexedDB (migrado de localStorage 2026-05-23) ──────────────
   // Hash simple del CSV (length + primeras 1000 chars) — suficiente para
   // distinguir CSVs distintos sin importar crypto. Si el usuario edita el CSV
   // entre corridas, el hash cambia → no se ofrece resume (corrida limpia).
+  // localStorage tope 5-10MB y los audits >3000 PNs llegan a 1-2MB c/u → tras
+  // 3-5 audits explota con QuotaExceeded. IDB ~50% del disco.
   function csvHashSimple(txt) {
     const sample = (txt || '').substring(0, 1000) + '|' + (txt?.length || 0);
     let h = 0;
@@ -234,7 +240,71 @@
     return Math.abs(h).toString(36);
   }
   function resumeKey() { return state.csvHash ? `sa-audit-resume:${state.csvHash}` : null; }
-  function saveResume(audit) {
+
+  // Wrapper IDB (mismo shape que bulk-upload — db 'sa_storage', store 'kv').
+  // Compartir la misma DB permite que si el usuario corre audits Y bulk-upload
+  // en la misma pestaña, ambos comparten el storage.
+  const SA_IDB_DB = 'sa_storage';
+  const SA_IDB_STORE = 'kv';
+  let _saIdbPromise = null;
+  function saIdb() {
+    if (_saIdbPromise) return _saIdbPromise;
+    _saIdbPromise = new Promise((resolve, reject) => {
+      try {
+        const req = indexedDB.open(SA_IDB_DB, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(SA_IDB_STORE)) db.createObjectStore(SA_IDB_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('IDB open failed'));
+      } catch (e) { reject(e); }
+    });
+    return _saIdbPromise;
+  }
+  function saIdbReq(mode, op) {
+    return saIdb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(SA_IDB_STORE, mode);
+      const store = tx.objectStore(SA_IDB_STORE);
+      const req = op(store);
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('IDB tx abort'));
+    }));
+  }
+  const saIdbGet = (k) => saIdbReq('readonly', s => s.get(k));
+  const saIdbSet = (k, v) => saIdbReq('readwrite', s => s.put(v, k));
+  const saIdbDel = (k) => saIdbReq('readwrite', s => s.delete(k));
+
+  // Migración one-shot: copia `sa-audit-resume:*` de localStorage a IDB.
+  async function migrateLocalStorageToIdb() {
+    try {
+      const markerKey = 'sa_audit_idb_migrated_v1';
+      if (await saIdbGet(markerKey)) return;
+      const lsKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('sa-audit-resume:')) lsKeys.push(k);
+      }
+      let copied = 0;
+      for (const k of lsKeys) {
+        const v = localStorage.getItem(k);
+        if (v == null) continue;
+        try {
+          await saIdbSet(k, v);
+          localStorage.removeItem(k);
+          copied++;
+        } catch (_) {}
+      }
+      await saIdbSet(markerKey, new Date().toISOString());
+      if (copied > 0) console.log(`[audit] IDB migration: ${copied}/${lsKeys.length} keys movidas`);
+    } catch (e) {
+      console.warn('[audit] IDB migration falló:', e?.message || e);
+    }
+  }
+  migrateLocalStorageToIdb();
+
+  async function saveResume(audit) {
     const k = resumeKey(); if (!k) return;
     try {
       // Guarda solo lo esencial — sin rawRow ni objetos pesados.
@@ -243,17 +313,16 @@
         pn: a.part?.pn, rowIdx: a.part?.rowIdx,
         issues: a.issues, complete: a.complete,
       }));
-      localStorage.setItem(k, JSON.stringify({ ts: Date.now(), count: slim.length, audit: slim }));
+      await saIdbSet(k, JSON.stringify({ ts: Date.now(), count: slim.length, audit: slim }));
     } catch (e) {
-      // QuotaExceeded → limpiar y reintentar una sola vez con resumen reducido.
-      try { localStorage.removeItem(k); } catch (_) {}
-      log(`⚠️ Resume no guardado (quota): ${String(e?.message || e).substring(0, 80)}`);
+      try { await saIdbDel(k); } catch (_) {}
+      log(`⚠️ Resume no guardado: ${String(e?.message || e).substring(0, 80)}`);
     }
   }
-  function loadResume() {
+  async function loadResume() {
     const k = resumeKey(); if (!k) return null;
     try {
-      const raw = localStorage.getItem(k); if (!raw) return null;
+      const raw = await saIdbGet(k); if (!raw) return null;
       const data = JSON.parse(raw);
       if (!Array.isArray(data?.audit)) return null;
       // Rehidratar shape — pero el `part` con rawRow viene del CSV recién parseado
@@ -272,9 +341,13 @@
         .filter(r => r.part?.rowIdx != null);
     } catch (_) { return null; }
   }
-  function clearResume() {
+  async function clearResume() {
     const k = resumeKey(); if (!k) return;
-    try { localStorage.removeItem(k); } catch (_) {}
+    try { await saIdbDel(k); } catch (_) {}
+  }
+  async function peekResumeRaw() {
+    const k = resumeKey(); if (!k) return null;
+    try { return await saIdbGet(k); } catch { return null; }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -501,6 +574,11 @@
         <button class="sa-audit-btn sa-audit-secondary" id="sa-audit-clear-resume" style="display:none">🗑 Limpiar resume</button>
         <button class="sa-audit-btn sa-audit-secondary" id="sa-audit-close">Cerrar</button>
       </div>
+      <div class="sa-audit-row" style="margin-top:6px;padding-top:8px;border-top:1px dashed #1e293b">
+        <label style="font-size:12px;color:#94a3b8">Cliente (sin CSV):</label>
+        <input id="sa-audit-dup-client" class="sa-audit-input" type="text" placeholder="Ej: SCHNEIDER ELECTRIC MEXICO" style="flex:1;min-width:200px">
+        <button class="sa-audit-btn sa-audit-secondary" id="sa-audit-dup-scan" title="Escanea TODOS los PNs activos del cliente y agrupa por QuoteIBMS — revela duplicados que requieren DELETE manual en Steelhead">🚨 Buscar duplicados QuoteIBMS</button>
+      </div>
       <div id="sa-audit-progress" style="display:none">
         <div class="sa-audit-phase" id="sa-audit-phase">Esperando...</div>
         <div class="sa-audit-sub" id="sa-audit-sub"></div>
@@ -525,13 +603,14 @@
     document.getElementById('sa-audit-file').onchange = onFile;
     document.getElementById('sa-audit-start').onclick = onStart;
     document.getElementById('sa-audit-stop').onclick = () => { state.aborted = true; log('⛔ Detención solicitada...'); };
-    document.getElementById('sa-audit-clear-resume').onclick = () => {
-      clearResume();
+    document.getElementById('sa-audit-clear-resume').onclick = async () => {
+      await clearResume();
       document.getElementById('sa-audit-clear-resume').style.display = 'none';
       log('🗑 Resume limpiado. Próximo ▶ Auditar empieza de cero.');
     };
     document.getElementById('sa-audit-dl-csv').onclick = downloadCsv;
     document.getElementById('sa-audit-dl-json').onclick = downloadJson;
+    document.getElementById('sa-audit-dup-scan').onclick = onStandaloneDupScan;
   }
 
   function closeModal() {
@@ -570,7 +649,7 @@
     log(`CSV cargado: ${state.csvRows.length} filas brutas, ${parts.length} PNs parseados, modo=${mode || '(sin modo)'}`);
     // Detectar resume disponible para este CSV.
     try {
-      const raw = localStorage.getItem(resumeKey());
+      const raw = await peekResumeRaw();
       if (raw) {
         const d = JSON.parse(raw);
         const ago = Math.round((Date.now() - (d.ts || 0)) / 60000);
@@ -656,8 +735,16 @@
     // un dominio con 30k. Patrón ahora idéntico a bulk-upload.js:1250-1289:
     // un AllPartNumbers con searchQuery=name por cada (PN, customerId) único,
     // dos pasadas (NO + YES) con dedup por activeIds.
+    //
+    // 2026-05-23 (matching fix): el shape pasó de Map<key, single> a
+    // Map<key, Array>. Antes colapsaba al PN de mayor ID y descartaba el resto
+    // → cuando el cliente tenía 2 PNs server con el mismo nombre, rows distintas
+    // del CSV terminaban auditadas contra el PN equivocado (falsos positivos
+    // masivos: ~290 en P3, ver bitácora). Ahora guardamos TODOS los candidatos
+    // que matchean exactamente el nombre, y la fase 5.4b discrimina por
+    // QuoteIBMS o composite key.
     setPhase('Buscando PNs por nombre (server-side)');
-    const pnByKey = new Map(); // `${customerId}|${nameUpper}` → { id, name, customerId, archivedAt }
+    const pnByKey = new Map(); // `${customerId}|${nameUpper}` → Array<{ id, name, customerId, archivedAt }>
     const pageSize = 200;
 
     // Dedup por (pn, customerId) — si el CSV trae el mismo PN 2 veces solo busca 1.
@@ -678,8 +765,9 @@
     await runPool(lookups, async ({ key, name, customerId }) => {
       if (state.aborted) return;
       setSub(`Buscando: ${name}`);
+      const nameUpper = name.toUpperCase().trim();
       const activeIds = new Set();
-      let chosen = null; // { id, name, customerId, archivedAt }
+      const cands = []; // todos los candidatos exactos para esta key
       // Pasada 1: activos
       try {
         let offset = 0;
@@ -694,18 +782,19 @@
             activeIds.add(n.id);
             const cid = n.customerByCustomerId?.id || n.customerId;
             if (cid !== customerId) continue;
-            if (!chosen || Number(n.id) > Number(chosen.id)) {
-              chosen = { id: n.id, name: n.name, customerId: cid, archivedAt: null };
-            }
+            // Match exacto del nombre — server hace ILIKE así que puede regresar
+            // "1221-086801A" cuando buscamos "1221-086801". Filtramos a EXACTO.
+            if (String(n.name).toUpperCase().trim() !== nameUpper) continue;
+            cands.push({ id: n.id, name: n.name, customerId: cid, archivedAt: null });
           }
           if (nodes.length < pageSize) break;
           offset += pageSize;
         }
       } catch (e) { log(`⚠️ AllPartNumbers (NO) "${name}" falló: ${e.message}`); }
-      // Pasada 2: archivados — solo si no encontramos activo. El persisted query
+      // Pasada 2: archivados — solo si no encontramos activos. El persisted query
       // no expone archivedAt en su selection set; si no estaba en activeIds del
       // step anterior, sintetizamos archivedAt = true.
-      if (!chosen) {
+      if (!cands.length) {
         try {
           let offset = 0;
           while (true) {
@@ -719,34 +808,175 @@
               if (activeIds.has(n.id)) continue;
               const cid = n.customerByCustomerId?.id || n.customerId;
               if (cid !== customerId) continue;
-              if (!chosen || Number(n.id) > Number(chosen.id)) {
-                chosen = { id: n.id, name: n.name, customerId: cid, archivedAt: true };
-              }
+              if (String(n.name).toUpperCase().trim() !== nameUpper) continue;
+              cands.push({ id: n.id, name: n.name, customerId: cid, archivedAt: true });
             }
             if (nodes.length < pageSize) break;
             offset += pageSize;
           }
         } catch (e) { log(`⚠️ AllPartNumbers (YES) "${name}" falló: ${e.message}`); }
       }
-      if (chosen) pnByKey.set(key, chosen);
+      // Orden estable: mayor ID primero (PN más reciente = más probable activo "canónico").
+      cands.sort((a, b) => Number(b.id) - Number(a.id));
+      if (cands.length) pnByKey.set(key, cands);
     }, concurrency, (done, total) => { lookupDone = done; setProgress(done, total); });
-    log(`Lookups completados: ${pnByKey.size}/${lookups.length} encontrados`);
+    const totalCands = [...pnByKey.values()].reduce((a, c) => a + c.length, 0);
+    const ambKeys = [...pnByKey.values()].filter(c => c.length >= 2).length;
+    log(`Lookups completados: ${pnByKey.size}/${lookups.length} keys con match (${totalCands} PNs server totales, ${ambKeys} keys con 2+ candidatos)`);
 
-    // ── 5.4 Resolver pnId por cada fila ──
+    // ── 5.4 Resolver pnId — claros vs ambiguos ──
     setPhase('Resolviendo PNs del CSV');
     const partsWithPn = [];
     const unresolved = [];
+    // Bucket por key — agrupa rows ambiguas que comparten los mismos candidatos
+    // para fetchear GetPartNumber UNA SOLA VEZ por candidato.
+    const ambiguousByCandidatesKey = new Map(); // key → { parts: [], cands: [], customer }
     for (const p of allParts) {
       const cust = customerByName.get(p.cliente.split(/\s*[—–]\s*|\s+[-]\s+/)[0].trim());
       if (!cust) { unresolved.push({ part: p, reason: 'cliente no resoluble' }); continue; }
       const key = `${cust.id}|${p.pn.toUpperCase()}`;
-      const hit = pnByKey.get(key);
-      if (!hit) { unresolved.push({ part: p, reason: 'PN no encontrado en Steelhead' }); continue; }
-      partsWithPn.push({ part: p, pnNode: hit, customer: cust });
+      const cands = pnByKey.get(key);
+      if (!cands || !cands.length) { unresolved.push({ part: p, reason: 'PN no encontrado en Steelhead' }); continue; }
+      if (cands.length === 1) {
+        partsWithPn.push({ part: p, pnNode: cands[0], customer: cust });
+        continue;
+      }
+      // Ambiguo: agrupar para procesarlo en fase 5.4b.
+      if (!ambiguousByCandidatesKey.has(key)) {
+        ambiguousByCandidatesKey.set(key, { parts: [], cands, customer: cust });
+      }
+      ambiguousByCandidatesKey.get(key).parts.push(p);
     }
-    log(`Resoluble: ${partsWithPn.length}/${allParts.length} (${unresolved.length} sin match)`);
-    // Cleanup: pnByKey ya no se vuelve a usar. Liberar memoria antes de la fase pesada.
+    const ambRowCount = [...ambiguousByCandidatesKey.values()].reduce((a, b) => a + b.parts.length, 0);
+    log(`Resolución directa: ${partsWithPn.length}/${allParts.length} | ambiguos: ${ambiguousByCandidatesKey.size} keys (${ambRowCount} rows) | unresolved: ${unresolved.length}`);
+    // pnByKey: liberar (ya lo tenemos copiado en ambiguousByCandidatesKey + partsWithPn).
     pnByKey.clear();
+
+    // ── 5.4b Discriminación de candidatos ambiguos por QuoteIBMS / composite key ──
+    // Para cada bucket ambiguo: fetch GetPartNumber a TODOS los candidatos en pool,
+    // extraer fingerprint (quoteIBMS + metalBase + labelsSorted), y matchear cada
+    // row del CSV contra el candidato correcto.
+    //
+    // Estrategia:
+    //   - Si csvPart.quoteIBMS != "" → buscar candidato con mismo quoteIBMS.
+    //   - Else → composite key: metalBase + labels (acabados 1-4) sorted.
+    //   - Si 1 match → resolver. Si 0 → unresolved "ambiguousMatch". Si ≥2 →
+    //     unresolved "duplicateQuoteIBMS/CompositeKey" + push a duplicatesRequiringDelete.
+    //
+    // Detección global: si en el mismo bucket 2+ candidatos comparten el mismo
+    // quoteIBMS (no vacío) → duplicado server real → requiere DELETE manual en
+    // Steelhead (no se puede solo archivar).
+    const duplicatesRequiringDelete = []; // [{ customer, customerId, pn, quoteIBMS, pnIds }]
+    const ambiguousResolutions = []; // [{ pn, row, via, pnId, quoteIBMS? }]
+    const candidateFullCache = new Map(); // pnId → pn (full) — solo durante esta fase
+    if (ambiguousByCandidatesKey.size) {
+      setPhase(`Discriminando ${ambiguousByCandidatesKey.size} keys ambiguos`);
+      const allAmbCands = [];
+      const seenAmbId = new Set();
+      for (const bucket of ambiguousByCandidatesKey.values()) {
+        for (const c of bucket.cands) {
+          if (seenAmbId.has(String(c.id))) continue;
+          seenAmbId.add(String(c.id));
+          allAmbCands.push(c);
+        }
+      }
+      setProgress(0, allAmbCands.length);
+      let dDone = 0;
+      await runPool(allAmbCands, async (c) => {
+        if (state.aborted) return;
+        setSub(`Discriminando: ${c.name} (id=${c.id})`);
+        try {
+          const d = await withRetry(() => gql('GetPartNumber', { partNumberId: c.id, usagesLimit: 1, usagesOffset: 0 }), `GetPartNumber disc ${c.id}`);
+          if (d?.partNumberById) candidateFullCache.set(String(c.id), d.partNumberById);
+        } catch (e) { log(`⚠️ GetPartNumber disc ${c.id} falló: ${e.message}`); }
+      }, concurrency, (done, total) => { dDone = done; setProgress(done, total); });
+
+      // Fingerprint helpers (solo para discriminación — comparePartNumber compara campo a campo aparte).
+      const fingerprintOf = (pn) => {
+        if (!pn) return { quoteIBMS: '', metalBase: '', labelsSorted: '' };
+        const ci = (typeof pn.customInputs === 'string')
+          ? (() => { try { return JSON.parse(pn.customInputs); } catch { return null; } })()
+          : (pn.customInputs || null);
+        const dCust = ci?.DatosAdicionalesNP || {};
+        const labelsServer = (pn.partNumberLabelsByPartNumberId?.nodes || [])
+          .map(x => x?.labelByLabelId?.name).filter(Boolean);
+        return {
+          quoteIBMS: String(dCust.QuoteIBMS || '').trim(),
+          metalBase: String(dCust.BaseMetal || '').trim().toUpperCase(),
+          labelsSorted: labelsServer.slice().sort().map(s => s.toUpperCase()).join('|'),
+        };
+      };
+      const csvFingerprint = (p) => ({
+        quoteIBMS: String(p.quoteIBMS || '').trim(),
+        metalBase: String(p.metalBase || '').trim().toUpperCase(),
+        labelsSorted: p.labels.filter(l => !isDash(l)).slice().sort().map(s => String(s).toUpperCase()).join('|'),
+      });
+
+      for (const [key, bucket] of ambiguousByCandidatesKey) {
+        const candFps = bucket.cands.map(c => ({ c, fp: fingerprintOf(candidateFullCache.get(String(c.id))) }));
+
+        // Detección server-side: 2+ candidatos comparten quoteIBMS (no vacío) → DUPLICADO REAL.
+        const byQuote = new Map();
+        for (const { c, fp } of candFps) {
+          if (!fp.quoteIBMS) continue;
+          if (!byQuote.has(fp.quoteIBMS)) byQuote.set(fp.quoteIBMS, []);
+          byQuote.get(fp.quoteIBMS).push(c);
+        }
+        for (const [qibms, cs] of byQuote) {
+          if (cs.length >= 2) {
+            duplicatesRequiringDelete.push({
+              customer: bucket.customer.name,
+              customerId: bucket.customer.id,
+              pn: bucket.cands[0].name,
+              quoteIBMS: qibms,
+              pnIds: cs.map(c => c.id),
+            });
+          }
+        }
+
+        // Discriminar cada row del CSV de este bucket
+        for (const p of bucket.parts) {
+          const want = csvFingerprint(p);
+          let chosen = null;
+          let via = null;
+          if (want.quoteIBMS) {
+            const matches = candFps.filter(x => x.fp.quoteIBMS && x.fp.quoteIBMS === want.quoteIBMS);
+            if (matches.length === 1) { chosen = matches[0].c; via = 'quoteIBMS'; }
+            else if (matches.length === 0) {
+              unresolved.push({ part: p, reason: `ambiguousMatch: CSV quoteIBMS=${want.quoteIBMS}, ningún PN server (${candFps.length} candidatos) lo tiene` });
+              continue;
+            } else {
+              unresolved.push({ part: p, reason: `duplicateQuoteIBMS: ${matches.length} PNs server con quoteIBMS=${want.quoteIBMS} — requiere DELETE manual (pnIds=${matches.map(m=>m.c.id).join(',')})` });
+              continue;
+            }
+          } else {
+            // Sin quoteIBMS (cargas directas SH) → composite key
+            const matches = candFps.filter(x => x.fp.metalBase === want.metalBase && x.fp.labelsSorted === want.labelsSorted);
+            if (matches.length === 1) { chosen = matches[0].c; via = 'composite'; }
+            else if (matches.length === 0) {
+              unresolved.push({ part: p, reason: `ambiguousMatch: sin quoteIBMS y ningún candidato coincide en composite (metalBase=${want.metalBase}, labels=${want.labelsSorted || '∅'})` });
+              continue;
+            } else {
+              unresolved.push({ part: p, reason: `ambiguousComposite: ${matches.length} PNs server con misma composite (metalBase+labels) — requiere quoteIBMS o más discriminadores (pnIds=${matches.map(m=>m.c.id).join(',')})` });
+              continue;
+            }
+          }
+          ambiguousResolutions.push({ pn: p.pn, row: p.rowIdx, via, pnId: chosen.id, quoteIBMS: want.quoteIBMS || null });
+          partsWithPn.push({ part: p, pnNode: chosen, customer: bucket.customer });
+        }
+      }
+      log(`Discriminación: ${ambiguousResolutions.length} resueltos | ${duplicatesRequiringDelete.length} buckets duplicados server`);
+      if (ambiguousResolutions.length) {
+        const byVia = ambiguousResolutions.reduce((a, r) => { a[r.via] = (a[r.via] || 0) + 1; return a; }, {});
+        log(`  Vías: ${Object.entries(byVia).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+      }
+      if (duplicatesRequiringDelete.length) {
+        const head = duplicatesRequiringDelete.slice(0, 5).map(d => `[${d.customer}] ${d.pn} qibms=${d.quoteIBMS} pnIds=${d.pnIds.join(',')}`).join(' | ');
+        log(`  🚨 Duplicados server (DELETE manual): ${head}${duplicatesRequiringDelete.length > 5 ? `, +${duplicatesRequiringDelete.length - 5}...` : ''}`);
+      }
+    }
+    candidateFullCache.clear();
+    log(`Resoluble total: ${partsWithPn.length}/${allParts.length} (${unresolved.length} sin match)`);
     if (unresolved.length) {
       const head = unresolved.slice(0, 5).map(u => `${u.part.pn} [${u.part.cliente}] (${u.reason})`).join(', ');
       log(`  Ejemplos sin match: ${head}${unresolved.length > 5 ? `, +${unresolved.length - 5}...` : ''}`);
@@ -754,7 +984,7 @@
 
     // ── 5.5 GetPartNumber + comparación por fila ──
     // Resume: si hay audit previo del mismo CSV, retomamos desde donde quedó.
-    const resumed = loadResume();
+    const resumed = await loadResume();
     const auditedKeys = new Set(); // `${pnId}` ya auditado en resume
     const audit = []; // { part, pnId, archivedAt, issues:[], complete:bool }
     if (resumed?.length) {
@@ -799,20 +1029,151 @@
       setProgress(auditDone, partsWithPn.length);
       // Persistir resume cada 50 PNs nuevos auditados.
       if (auditDone - lastPersist >= 50) {
-        saveResume(audit);
+        saveResume(audit).catch(() => {});
         lastPersist = auditDone;
       }
     });
     // Persist final.
-    saveResume(audit);
+    await saveResume(audit);
 
     // ── 5.6 Resultados ──
     const incomplete = audit.filter(a => !a.complete);
-    state.results = { audit, incomplete, unresolved, allParts, customerByName };
+    state.results = { audit, incomplete, unresolved, allParts, customerByName, duplicatesRequiringDelete, ambiguousResolutions };
 
     setPhase(`Auditoría ${state.aborted ? 'detenida' : 'completada'}`);
     setSub(`${audit.length} auditados, ${incomplete.length} incompletos`);
     showResults();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 5.b) STANDALONE — Scan de duplicados QuoteIBMS por cliente (sin CSV)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Pagina TODOS los PNs activos del cliente vía AllPartNumbers, extrae
+  // QuoteIBMS de customInputs (que AllPartNumbers SÍ devuelve, verificado en
+  // bulk-upload.js:1125 extractPNShape), agrupa por quoteIBMS, y reporta
+  // buckets con ≥2 PNs — esos requieren DELETE manual en Steelhead.
+  //
+  // NO usa GetPartNumber → barato incluso para 30k PNs (solo paginación).
+  async function onStandaloneDupScan() {
+    const input = document.getElementById('sa-audit-dup-client');
+    const clientName = (input?.value || '').trim();
+    if (!clientName) { alert('Escribe un cliente para escanear.'); return; }
+    const concurrency = parseInt(document.getElementById('sa-audit-conc').value, 10) || 4;
+    document.getElementById('sa-audit-progress').style.display = 'block';
+    document.getElementById('sa-audit-results').style.display = 'none';
+    document.getElementById('sa-audit-start').disabled = true;
+    document.getElementById('sa-audit-stop').style.display = 'inline-block';
+    state.aborted = false;
+    state.memoryGuardrailFired = false;
+    stopDatadogSessionReplay();
+    startMemoryGauge();
+    try {
+      log(`▶ Standalone dup-scan: cliente "${clientName}"`);
+      // 1. Resolver cliente
+      setPhase('Resolviendo cliente');
+      const cd = await withRetry(() => gql('CustomerSearchByName', { nameLike: `%${clientName}%`, orderBy: ['NAME_ASC'] }), 'CustomerSearchByName');
+      const nodes = cd?.searchCustomers?.nodes || cd?.pagedData?.nodes || cd?.allCustomers?.nodes || [];
+      const cust = nodes.find(c => c.name?.toUpperCase().includes(clientName.toUpperCase()));
+      if (!cust) { alert(`Cliente "${clientName}" no encontrado en Steelhead`); return; }
+      log(`Cliente: ${cust.name} (id=${cust.id})`);
+
+      // 2. Paginar AllPartNumbers (NO archived) filtrando client-side por customerId
+      setPhase('Escaneando PNs activos del dominio');
+      const pageSize = 200;
+      const maxPages = 500; // safeguard — 100k PNs máximo
+      const pnsByQuote = new Map(); // quoteIBMS → [{ id, name, archivedAt }]
+      const pnsNoQuote = []; // PNs activos sin quoteIBMS llenado (info)
+      let offset = 0;
+      let scanned = 0;
+      let keptForCustomer = 0;
+      for (let page = 0; page < maxPages; page++) {
+        if (state.aborted) break;
+        const d = await withRetry(
+          () => gql('AllPartNumbers', { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: '', includeArchived: 'NO' }),
+          `AllPartNumbers (NO) offset=${offset}`
+        );
+        const ns = d?.pagedData?.nodes || [];
+        scanned += ns.length;
+        for (const n of ns) {
+          const cid = n.customerByCustomerId?.id || n.customerId;
+          if (String(cid) !== String(cust.id)) continue;
+          keptForCustomer++;
+          const ci = (typeof n.customInputs === 'string')
+            ? (() => { try { return JSON.parse(n.customInputs); } catch { return null; } })()
+            : (n.customInputs || null);
+          const q = String(ci?.DatosAdicionalesNP?.QuoteIBMS || '').trim();
+          if (!q) { pnsNoQuote.push({ id: n.id, name: n.name }); continue; }
+          if (!pnsByQuote.has(q)) pnsByQuote.set(q, []);
+          pnsByQuote.get(q).push({ id: n.id, name: n.name });
+        }
+        setProgress(scanned, d?.pagedData?.totalCount || scanned);
+        setSub(`Escaneados ${scanned} · ${keptForCustomer} del cliente · ${pnsByQuote.size} QuoteIBMS únicos`);
+        if (ns.length < pageSize) break;
+        offset += pageSize;
+      }
+      log(`Scan completo: ${scanned} PNs escaneados, ${keptForCustomer} del cliente, ${pnsByQuote.size} QuoteIBMS únicos, ${pnsNoQuote.length} sin QuoteIBMS`);
+
+      // 3. Detectar buckets con ≥2 PNs (duplicados que requieren DELETE)
+      const dups = [];
+      for (const [q, pns] of pnsByQuote) {
+        if (pns.length >= 2) {
+          dups.push({ customer: cust.name, customerId: cust.id, quoteIBMS: q, count: pns.length, pns });
+        }
+      }
+      dups.sort((a, b) => b.count - a.count);
+      log(`🚨 Duplicados detectados: ${dups.length} QuoteIBMS con 2+ PNs (${dups.reduce((a, b) => a + b.count, 0)} PNs totales involucrados)`);
+
+      // 4. Render + ofrecer descarga
+      state.results = {
+        standaloneDup: true,
+        customer: cust,
+        scanned,
+        keptForCustomer,
+        uniqueQuoteIBMS: pnsByQuote.size,
+        pnsNoQuote,
+        duplicates: dups,
+        // Compatibilidad con showResults() y downloadJson() — shape mínimo
+        audit: [], incomplete: [], unresolved: [],
+        duplicatesRequiringDelete: dups.map(d => ({
+          customer: d.customer, customerId: d.customerId,
+          pn: d.pns[0].name, quoteIBMS: d.quoteIBMS,
+          pnIds: d.pns.map(p => p.id),
+        })),
+        ambiguousResolutions: [],
+      };
+      showStandaloneResults();
+    } catch (e) {
+      log('❌ Error en dup-scan: ' + (e.message || e));
+    } finally {
+      stopMemoryGauge();
+      document.getElementById('sa-audit-stop').style.display = 'none';
+      document.getElementById('sa-audit-start').disabled = !state.parts?.length;
+    }
+  }
+
+  function showStandaloneResults() {
+    const r = state.results; if (!r?.standaloneDup) return;
+    document.getElementById('sa-audit-results').style.display = 'block';
+    const dups = r.duplicates;
+    const totalDupPNs = dups.reduce((a, b) => a + b.count, 0);
+    const summary = document.getElementById('sa-audit-summary');
+    summary.innerHTML = `
+      <div>
+        <span class="sa-audit-stat sa-audit-stat-ok">${r.keptForCustomer} PNs del cliente "${String(r.customer.name).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}"</span>
+        <span class="sa-audit-stat">${r.uniqueQuoteIBMS} QuoteIBMS únicos</span>
+        <span class="sa-audit-stat" style="color:#fbbf24">${r.pnsNoQuote.length} sin QuoteIBMS</span>
+        ${dups.length ? `<span class="sa-audit-stat" style="color:#fca5a5">🚨 ${dups.length} duplicados (${totalDupPNs} PNs requieren DELETE)</span>` : `<span class="sa-audit-stat sa-audit-stat-ok">✓ Sin duplicados QuoteIBMS</span>`}
+      </div>
+      ${dups.length ? `
+      <h3 style="color:#fca5a5;margin-top:14px">🚨 PNs duplicados — DELETE manual en Steelhead</h3>
+      <div class="sa-audit-log" style="max-height:240px">${dups.slice(0, 50).map(d => {
+        const safeP = String(d.pns[0].name).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+        return `QuoteIBMS=${d.quoteIBMS} · ${safeP} · ${d.count} PNs · ids=[${d.pns.map(p => p.id).join(', ')}]`;
+      }).join('\n')}${dups.length > 50 ? `\n... +${dups.length - 50} más (ver JSON)` : ''}</div>` : ''}
+    `;
+    // El download CSV no tiene sentido para standalone (no hay CSV original).
+    const dlCsv = document.getElementById('sa-audit-dl-csv');
+    if (dlCsv) dlCsv.style.display = 'none';
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1028,7 +1389,11 @@
   // ═══════════════════════════════════════════════════════════════════════
   function showResults() {
     const r = state.results; if (!r) return;
+    if (r.standaloneDup) { showStandaloneResults(); return; }
     document.getElementById('sa-audit-results').style.display = 'block';
+    // Re-mostrar dl-csv por si un dup-scan previo lo ocultó
+    const dlCsv = document.getElementById('sa-audit-dl-csv');
+    if (dlCsv) dlCsv.style.display = '';
     const ok = r.audit.length - r.incomplete.length;
     // Conteo por tipo de issue
     const counts = {};
@@ -1038,16 +1403,27 @@
         counts[key] = (counts[key] || 0) + 1;
       }
     }
+    const dup = r.duplicatesRequiringDelete || [];
+    const ambRes = r.ambiguousResolutions || [];
     const summary = document.getElementById('sa-audit-summary');
     summary.innerHTML = `
       <div>
         <span class="sa-audit-stat sa-audit-stat-ok">${ok} OK</span>
         <span class="sa-audit-stat sa-audit-stat-bad">${r.incomplete.length} incompletos</span>
         <span class="sa-audit-stat">${r.unresolved.length} no resolubles</span>
+        ${ambRes.length ? `<span class="sa-audit-stat" style="color:#fbbf24">🔁 ${ambRes.length} resueltos por discriminador</span>` : ''}
+        ${dup.length ? `<span class="sa-audit-stat" style="color:#fca5a5">🚨 ${dup.length} duplicados (DELETE manual)</span>` : ''}
       </div>
       <div style="margin-top:8px">
         ${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="sa-audit-stat sa-audit-stat-bad">${k}: ${v}</span>`).join('')}
       </div>
+      ${dup.length ? `
+      <h3 style="color:#fca5a5;margin-top:14px">🚨 PNs duplicados — requieren DELETE en Steelhead</h3>
+      <div class="sa-audit-log" style="max-height:140px">${dup.slice(0, 20).map(d => {
+        const safeC = String(d.customer).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+        const safeP = String(d.pn).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+        return `[${safeC}] ${safeP} · QuoteIBMS=${d.quoteIBMS} · pnIds=[${d.pnIds.join(', ')}]`;
+      }).join('\n')}${dup.length > 20 ? `\n... +${dup.length - 20} más (ver JSON)` : ''}</div>` : ''}
     `;
   }
 
@@ -1097,7 +1473,7 @@
     log(`✅ CSV de recuperación descargado: ${dataRows.length} filas (de ${headerRows.length} cabecera + datos)`);
     // El usuario ya tiene el output — limpiar resume para que la próxima corrida
     // del mismo CSV no arrastre el audit anterior.
-    clearResume();
+    clearResume().catch(() => {});
     const btn = document.getElementById('sa-audit-clear-resume');
     if (btn) btn.style.display = 'none';
   }
@@ -1112,6 +1488,8 @@
         complete: r.audit.length - r.incomplete.length,
         incomplete: r.incomplete.length,
         unresolved: r.unresolved.length,
+        ambiguousResolutions: (r.ambiguousResolutions || []).length,
+        duplicatesRequiringDelete: (r.duplicatesRequiringDelete || []).length,
       },
       incomplete: r.incomplete.map(a => ({
         rowIdx: a.part.rowIdx,
@@ -1127,6 +1505,8 @@
         cliente: u.part.cliente,
         reason: u.reason,
       })),
+      duplicatesRequiringDelete: r.duplicatesRequiringDelete || [],
+      ambiguousResolutions: r.ambiguousResolutions || [],
     };
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

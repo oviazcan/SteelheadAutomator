@@ -1,6 +1,6 @@
 {
-  "version": "1.4.26",
-  "lastUpdated": "2026-05-23T13:25",
+  "version": "1.4.27",
+  "lastUpdated": "2026-05-24T01:15",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -354,6 +354,10 @@
         },
         "chunking": {
           "defaultChunkSize": 250
+        },
+        "debug": {
+          "logPredictiveParse": true,
+          "logPredictiveSampleRows": 20
         }
       }
     }

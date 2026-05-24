@@ -71,7 +71,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 
 | Applet | Versión actual | Bitácora |
 |---|---|---|
-| `bulk-upload` | 1.4.25 | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
+| `bulk-upload` | 1.4.27 | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
 | `process-deep-audit` | 0.8.0 | [`docs/applets/process-deep-audit.md`](docs/applets/process-deep-audit.md) |
 | `spec-params-bulk` | 0.9.0 | [`docs/applets/spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
 | `invoice-autofill` | 0.5.63+ | [`docs/applets/invoice-autofill.md`](docs/applets/invoice-autofill.md) |
@@ -83,6 +83,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `create-order-autofill` | 0.1.0 | [`docs/applets/create-order-autofill.md`](docs/applets/create-order-autofill.md) |
 | `process-canon` | varios | [`docs/processes-architecture.md`](docs/processes-architecture.md) (glosario §9) |
 | `hash-scanner` | 0.6.23 | [`docs/applets/hash-scanner.md`](docs/applets/hash-scanner.md) |
+| `audit-incomplete-pns` (DevTools, no extensión) | fix-2026-05-23 | [`docs/applets/audit-incomplete-pns.md`](docs/applets/audit-incomplete-pns.md) |
 | Power Tools `ordendeventa.ts` | n/a (low-code hook) | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
 | Power Tools `facturacion-pdf.ts` | n/a (low-code hook `getPdfCustomization`) | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |
 | Power Tools `facturacion.ts` | n/a (low-code hook `getInvoicePricing`) | [`docs/applets/powertools-facturacion.md`](docs/applets/powertools-facturacion.md) |

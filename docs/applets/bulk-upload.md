@@ -1,6 +1,79 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.25. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.27. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.27: migración localStorage → IndexedDB para resume (Fix GG, 2026-05-24)
+
+### Síntoma
+Operador reporta `Failed to execute 'setItem' on 'Storage'` tras 5-7 corridas de
+CSVs ≥ 3000 PNs (Schneider Generales 4270 P1). El resume per-CSV pesa 1-2 MB
+serializado (completedPNs, syncParamsCompletedPNs, identifierEnrichDone,
+archivedSentinelsPreQuote, classifications, etc.) y `localStorage` cubre
+~5-10 MB por origen → tope alcanzado.
+
+### Diagnóstico
+`localStorage` es síncrono, string-only y con quota estrecha por origen.
+Resume completo del Schneider Generales P1 (4270 PNs, 1.4.24): ~1.7 MB.
+Tras 3-4 corridas el quota explota — y como `persistResumeState` no era best-effort
+realmente (corre await), un bump fallido aborta el run en lugar de degradar
+silenciosamente.
+
+### Fix
+1. **Wrapper IDB compartido (`saIdb` / `saIdbGet/Set/Del/Keys`)**: db `sa_storage`,
+   store `kv`. API minimalista; abre lazy y cachea la promise. Lanza si IDB no
+   disponible (incognito), call sites ya tienen try/catch.
+2. **Helpers de resume async**: `loadResumeIndex`, `saveResumeIndex`,
+   `loadResumeStateByKey`, `deleteResumeStateByKey`, `purgeOldResumeStates`,
+   `persistResumeState` ahora regresan promesas. Payload sigue siendo
+   `JSON.stringify` del state (mismo shape que antes — copy directo del migrator).
+3. **Migración one-shot `migrateLocalStorageToIdb()`**: idempotente vía marker
+   `sa_bulk_idb_migrated_v1`. Copia keys `sa_bulk_resume_*` y `sa_bulk_resume_index`
+   a IDB y las borra de LS. Best-effort: si IDB falla, deja LS intacto y los
+   helpers se degradan en silencio.
+4. **3 call sites en `execute()` con await**: `purgeOldResumeStates`,
+   `loadResumeStateByKey`, `deleteResumeStateByKey`. Los fire-and-forget
+   (`persistResumeState().catch(()=>{})`) ya estaban escritos así.
+
+### Por qué IDB
+- **Cuota ~50% del disco** vs 5-10 MB de LS → ~3-4 órdenes de magnitud más.
+- **Async no bloquea el main thread**: el persist de 1.7 MB ya no congela el
+  panel ~50ms cada N=100 PNs.
+- **Compartible**: la misma db `sa_storage` está disponible para que otros
+  applets reúsen el wrapper (el audit tool ya lo duplicó).
+
+### Lección
+- **localStorage es trampa para state grande**: si vas a serializar >100 KB
+  por key, migra a IDB desde día 1. El error solo aparece bajo carga real (CSVs
+  grandes después de varias corridas), no en testing.
+- **Migración idempotente con marker key**: pattern simple — primer call
+  verifica `await saIdbGet(markerKey)`, si existe no-op; si no, copia + escribe
+  marker. Permite re-deploy sin perder estado y soporta usuarios viejos.
+- **API externa estable**: mantener los mismos nombres de función al migrar
+  sólo cambia el modificador (`function` → `async function`) — los call sites
+  se actualizan agregando `await`. No requirió refactor de la lógica del pipeline.
+
+### Pendiente
+- [ ] `sa_load_history` (línea 5227+, lista de 50 corridas) sigue en localStorage.
+  Es chico (~50 KB total con cap) pero por consistencia conviene migrarlo
+  también en una pasada futura.
+
+### B incluido (instrumentación predictive parser)
+También en 1.4.27 — para diagnosticar los `predictive: 437` huecos del re-audit
+P3, se agregó un debug opt-in al parser de `predictiveUsage` (parseRows). Cuando
+`bulkCfg().debug.logPredictiveParse === true` (default ON en config.json hasta
+diagnóstico cerrado), las primeras N rows con PN válido (default 20) emiten un
+`console.groupCollapsed` con tabla `{ material, col, raw, outcome, sent }` por
+cada celda BB..BJ. Esto permite ver si:
+- valores con coma decimal se interpretan correcto (gn parsea `0.0003` vs `0,0003`),
+- raw `-` se clasifica como dash (outcome `dash`),
+- raw número se normaliza a value (outcome `value`),
+- raw no-vacío se descarta silenciosamente (outcome `dropped(raw=..., gn=null)`)
+  — este caso es el sospechoso #1 para huecos legítimos.
+
+Apagar el flag (config.json) después de cerrar el diagnóstico para no inundar
+la consola en runs grandes.
+
+---
 
 ## 1.4.25: auditoría completa del modal — todos los pasos hablan (Fix FF, 2026-05-23)
 
