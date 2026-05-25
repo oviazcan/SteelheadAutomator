@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.30';
+  const VERSION = '1.4.31';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4166,6 +4166,12 @@ const BulkUpload = (() => {
       // 1.4.30 Fix JJ: ahora guarda { id, archivedAt } por item para que STEP 6a sepa
       // si un predictive existente está archivado y deba desarchivarse antes del update.
       const existingPredictedMap = new Map(); // pnId → Map(inventoryItemId → { id, archivedAt })
+      // 1.4.31 Fix KK: contadores diagnósticos para distinguir 3 escenarios cuando
+      // predictedUnarchives sale 0: (a) genuinamente no hay archivados,
+      // (b) GetPartNumber no expone archivedAt en su selection set,
+      // (c) extensión cargó script viejo (sin Fix JJ).
+      let predFetchTotalNodes = 0;
+      let predFetchArchivedNodes = 0;
       const predictedFetchTargets = [];
       const seenPredFetch = new Set();
       let predFetchSkippedByResume = 0;
@@ -4199,7 +4205,18 @@ const BulkUpload = (() => {
               const m = new Map();
               for (const ep of exPred) {
                 const itemId = ep.inventoryItemByInventoryItemId?.id || ep.inventoryItemId;
-                if (itemId && ep.id) m.set(String(itemId), { id: ep.id, archivedAt: ep.archivedAt || null });
+                if (itemId && ep.id) {
+                  predFetchTotalNodes++;
+                  if (ep.archivedAt) predFetchArchivedNodes++;
+                  // 1.4.31 Fix KK: si ya hay entrada para este itemId, preferir la NO archivada
+                  // (el archivado es el "viejo" que SavePartNumber ignoró por unique-constraint, el
+                  // activo es el recién creado). Si solo hay archivada, queda esa para que Fix JJ
+                  // la desarchive.
+                  const prev = m.get(String(itemId));
+                  if (!prev || (prev.archivedAt && !ep.archivedAt)) {
+                    m.set(String(itemId), { id: ep.id, archivedAt: ep.archivedAt || null });
+                  }
+                }
               }
               existingPredictedMap.set(target.pnId, m);
             } catch (_) {}
@@ -4210,7 +4227,9 @@ const BulkUpload = (() => {
         );
         bailIfStale(myRunId);
       }
-      if (existingPredictedMap.size) log(`  Pre-fetched predictivos existentes de ${existingPredictedMap.size} PNs`);
+      if (existingPredictedMap.size) {
+        log(`  Pre-fetched predictivos existentes de ${existingPredictedMap.size} PNs (${predFetchTotalNodes} nodos, ${predFetchArchivedNodes} archivados detectados)`);
+      }
 
       // FIX 1 (2026-05-18): pool concurrente (default 5) en lugar de loop secuencial.
       // 9k PNs × 0.5-1s sec → 75 min se vuelven 15-30 min con concurrency 5.
@@ -4630,8 +4649,11 @@ const BulkUpload = (() => {
       }
       // 1.4.30 Fix JJ: desarchivar PRIMERO. Si el update llega primero, modifica el valor
       // pero el predictive sigue archivado y el audit lo reporta como missing.
+      // 1.4.31 Fix KK: log incondicional (incluso 0) para diagnóstico — antes (1.4.30) el
+      // bloque entero era condicional y no se sabía si era "no hubo archivados" vs "Fix JJ
+      // no se ejecutó por cache viejo".
+      let unarchivedOk = 0;
       if (predictedUnarchives.length) {
-        let unarchivedOk = 0;
         await runPool(predictedUnarchives, async (exId) => {
           bailIfStale(myRunId);
           setPanelSubPhase(`Desarchivando predictivo id=${exId}`);
@@ -4649,7 +4671,9 @@ const BulkUpload = (() => {
         }, bulkCfg().concurrency.savePartNumber || 5,
           (done) => { setPanelProgress(done, predTotalOps); },
           myRunId);
-        log(`  Predictivos desarchivados: ${unarchivedOk}/${predictedUnarchives.length}`);
+      }
+      if (predTotalOps) {
+        log(`  Predictivos desarchivados: ${unarchivedOk}/${predictedUnarchives.length} (Fix JJ/KK 1.4.31)`);
       }
       if (predictedUpdates.length) {
         // Batches de 20 para no abusar del payload

@@ -1,6 +1,53 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.30. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.31. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.31: logging defensivo predictivos + preferencia activa en map (Fix KK, 2026-05-25)
+
+### Síntoma
+Tras deployar Fix JJ en 1.4.30, el log del run de recovery mostró
+`Predictivos actualizados: 842` pero **no apareció** la línea
+`Predictivos desarchivados: N/N` ni `Paso 6a/9: Predictivos (N unarchive / …)`.
+Imposible saber si era (a) cache de extensión cargando script viejo, (b)
+`GetPartNumber` no exponiendo `archivedAt` en su selection set, o (c)
+genuinamente 0 archivados detectados.
+
+### Fix
+1. **Log incondicional** (`bulk-upload.js:4659-4661`): la línea
+   `Predictivos desarchivados: X/Y (Fix JJ/KK 1.4.31)` ahora se emite siempre
+   que `predTotalOps > 0`, no solo cuando hay desarchivos. Confirma visualmente
+   que el código del Fix JJ está vivo.
+2. **Contadores diagnósticos** (`bulk-upload.js:4170-4174` + `4203-4218`):
+   `predFetchTotalNodes` y `predFetchArchivedNodes` se acumulan durante el
+   pre-fetch. El log `Pre-fetched predictivos existentes de N PNs (T nodos,
+   A archivados detectados)` distingue los 3 escenarios:
+   - `A > 0, unarchived = 0` → bug nuevo (detecta pero no procesa).
+   - `A = 0` → o no hay archivados (recovery limpia) o `GetPartNumber` no devuelve `archivedAt`.
+   - `T = 0` → query no devuelve nada útil.
+3. **Tie-break en mismo `itemId`** (`bulk-upload.js:4208-4215`): si el map ya
+   tiene una entrada para ese `inventoryItemId`, prefiere la NO archivada (el
+   archivado es el "viejo" que SavePartNumber ignoró por unique-constraint, el
+   activo es el recién creado por SavePartNumber). Si solo hay archivado, ese
+   queda y Fix JJ lo desarchiva. Sin este tie-break, el orden del array de
+   Steelhead decidía silenciosamente cuál entraba al map.
+
+### Lección
+- **Log incondicional en bloques condicionales** cuando hay un mecanismo nuevo:
+  ahorra una iteración entera de "¿se ejecutó el fix?" por una línea visible.
+- **`Map<key, single>` con keys naturalmente duplicables** (mismo
+  `inventoryItemId`, uno archivado + uno activo) necesita tie-break explícito.
+  Mismo patrón que `pnByKey` en audit-incomplete-pns 2026-05-23.
+
+### Pendiente de validación
+- [ ] Re-correr recovery del CSV reducido de 404 incompletos con 1.4.31. El log
+      debe mostrar `Pre-fetched predictivos existentes de 424 PNs (T nodos,
+      A archivados detectados)` con A > 0 si hay archivados, y
+      `Predictivos desarchivados: A/A (Fix JJ/KK 1.4.31)` aún cuando A=0.
+- [ ] Si A=0 con re-audit que vuelve a reportar predictive missing → confirmar
+      vía DevTools standalone (`gql('GetPartNumber', {partNumberId, usagesLimit:1, usagesOffset:0})`)
+      que `predictedInventoryUsagesByPartNumberId.nodes[].archivedAt` se devuelve.
+
+---
 
 ## 1.4.30: desarchivar predictives existentes en STEP 6a (Fix JJ, 2026-05-25)
 
