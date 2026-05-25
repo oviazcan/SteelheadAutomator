@@ -1,6 +1,86 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.29. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.30. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.30: desarchivar predictives existentes en STEP 6a (Fix JJ, 2026-05-25)
+
+### Síntoma
+Re-audit post-recovery 1.4.29 dejó **404 PNs incompletos**, casi todos por
+`predictive missing` concentrados en 5 materiales:
+
+| Material | PNs faltantes |
+|---|---|
+| Sterlingshield S (Antitarnish) | 236 |
+| Plata Fina | 159 |
+| Epoxy MT | 28 |
+| Epoxica BT | 6 |
+| Estaño Puro | 1 |
+
+Los otros 4 materiales del catálogo (Níquel Metálico, Zinc Metálico, Placa de
+Cobre, Epoxica MT Red) reportaban 0 faltantes — discriminación demasiado
+limpia para ser bug del CSV. Stats de la corrida reportaron `Predictivos
+actualizados: 849` sin errores, pero el server NO los tenía visibles.
+
+### Diagnóstico
+3 piezas conspiraron:
+
+1. **Pre-fetch (`bulk-upload.js:4198`)** lee `predictedInventoryUsagesByPartNumberId.nodes`
+   completo en `existingPredictedMap`. **Sin filtrar `archivedAt`**. Activos y
+   archivados quedan indistinguibles en el map.
+2. **SavePartNumber filter (`bulk-upload.js:4476`)** descarta cualquier item que ya esté
+   en el map para no crear duplicados. Bien para evitar unique-constraint, mal
+   para los archivados: no los crea como nuevos.
+3. **STEP 6a `UpdateInventoryItemPredictedUsage` (`bulk-upload.js:4624`)** modifica
+   `microQuantityPerPart` del registro existente — incluyendo archivados — pero
+   `UpdateInventoryItemPredictedUsage` **no toca `archivedAt`**. El record queda
+   con valor actualizado pero sigue archivado.
+4. El audit (`audit-incomplete-pns.js:1242`) filtra explícitamente `.filter(p => !p.archivedAt)`
+   antes de comparar, por eso reporta `missing`. Lo veía como inexistente cuando
+   en realidad estaba escondido en el server.
+
+Por qué solo esos 5 materiales: son los que en la carga ORIGINAL de P3 (y/o en
+algún recovery intermedio con 1.4.27 buggy) quedaron archivados — sea porque el
+CSV traía `-` para ese material en algún momento, sea porque el applet pre-Fix-Y
+los archivó incidentalmente. Los otros 4 materiales nunca habían sido archivados
+y por eso SavePartNumber los creó limpios.
+
+### Fix
+1. **Pre-fetch (`bulk-upload.js:4200`)** ahora guarda
+   `{ id, archivedAt }` por item en vez de solo `id`. El shape de
+   `existingPredictedMap` pasó de `Map<itemId, recordId>` a
+   `Map<itemId, { id, archivedAt }>`.
+2. **STEP 6a (`bulk-upload.js:4589-4619`)** agrega tercer bucket
+   `predictedUnarchives` con los IDs cuyo `archivedAt` está set y cuyo CSV trae
+   valor numérico. Bonus: si CSV trae `-` para un material ya archivado, no se
+   re-archiva (no-op).
+3. **Orden de ejecución (`bulk-upload.js:4632`)**: `unarchives → updates → archives`.
+   Desarchivar PRIMERO es crítico — si el update llega primero, el record sigue
+   archivado y el audit lo seguiría viendo missing.
+4. **Desarchivar** se hace vía el mismo endpoint `ArchivePredictedInventoryUsage`
+   con `archivedAt: null` (Steelhead acepta nullable; ya validado por el path
+   simétrico de archivar con timestamp). Pool concurrente igual al de
+   archive, con offset corregido en `setPanelProgress` para reflejar las 3 fases.
+
+### Lección
+- **Pre-fetch sin filtro `archivedAt` es un foot-gun clásico** cuando hay
+  endpoints que NO desarchivan implícitamente. Igual que el audit (que ya
+  filtraba), bulk-upload debe filtrar antes de razonar sobre "ya existe".
+- **`Update*` rara vez desarchiva** en Steelhead — son operaciones ortogonales.
+  Si hay `Archive*` separado del `Update*`, asumir que el archivedAt es estado
+  persistente que requiere transición explícita.
+- **Cluster de faltantes en N materiales específicos = bug de estado server**
+  (algunos records están en estado X que el applet no maneja), no bug de CSV
+  (que sería aleatorio o uniforme).
+- El stats `Predictivos actualizados: N` mentía: contaba ops exitosas pero no
+  verificaba que el item terminara visible. Las verificaciones post-write
+  (audit) son indispensables — confiar solo en HTTP 200 ocultó el bug por
+  ~3 versiones (1.4.27 → 1.4.29).
+
+### Pendiente de validación
+- [ ] Re-cargar CSV recovery 1.4.30 (o el original P3) — verificar log
+      `Predictivos desarchivados: N/N` y re-audit que `predictive missing`
+      baje a ~0 (solo deberían quedar los 22 buckets `duplicateQuoteIBMS`
+      que requieren DELETE manual + 1 ambiguousMatch).
 
 ## 1.4.29: sticky decision en showQuoteConflict — "aplicar a todas" (Fix II, 2026-05-24)
 

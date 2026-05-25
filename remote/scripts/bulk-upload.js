@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.29';
+  const VERSION = '1.4.30';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4163,7 +4163,9 @@ const BulkUpload = (() => {
       //      no se va a re-aplicar, así que ahorra el fetch).
       //   2) runPool concurrency = savePartNumber (8 por default) → 15-35 min → 2-5 min.
       //   3) setPanelPhase + setPanelSubPhase + setPanelProgress + bailIfStale.
-      const existingPredictedMap = new Map(); // pnId → Map(inventoryItemId → existingRecordId)
+      // 1.4.30 Fix JJ: ahora guarda { id, archivedAt } por item para que STEP 6a sepa
+      // si un predictive existente está archivado y deba desarchivarse antes del update.
+      const existingPredictedMap = new Map(); // pnId → Map(inventoryItemId → { id, archivedAt })
       const predictedFetchTargets = [];
       const seenPredFetch = new Set();
       let predFetchSkippedByResume = 0;
@@ -4197,7 +4199,7 @@ const BulkUpload = (() => {
               const m = new Map();
               for (const ep of exPred) {
                 const itemId = ep.inventoryItemByInventoryItemId?.id || ep.inventoryItemId;
-                if (itemId && ep.id) m.set(String(itemId), ep.id);
+                if (itemId && ep.id) m.set(String(itemId), { id: ep.id, archivedAt: ep.archivedAt || null });
               }
               existingPredictedMap.set(target.pnId, m);
             } catch (_) {}
@@ -4586,6 +4588,15 @@ const BulkUpload = (() => {
       // (batch 20), dash → ArchivePredictedInventoryUsage (singular, paralelo con pool).
       const predictedUpdates = [];
       const predictedArchives = []; // ids a archivar (dash granular)
+      // 1.4.30 Fix JJ: ids a desarchivar antes del update. Cuando un PN tiene un
+      // predictive previamente archivado y el CSV trae un valor numérico para ese
+      // mismo material, ese record sigue en server pero invisible (archivedAt set).
+      // Si solo hacemos UpdateInventoryItemPredictedUsage cambiamos el microQuantityPerPart
+      // pero NO desarchivamos — el audit lo sigue viendo como missing porque filtra
+      // por archivedAt. Antes (≤1.4.29) eso dejaba huecos sistemáticos (430 predictives
+      // missing en re-audit P3 post-recovery, concentrados en Sterlingshield S /
+      // Plata Fina / Epoxy MT / Epoxica BT / Estaño Puro).
+      const predictedUnarchives = [];
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
         if (status.status !== 'existing') continue;
@@ -4594,25 +4605,51 @@ const BulkUpload = (() => {
         const exMap = entry?.pn?.id ? existingPredictedMap.get(entry.pn.id) : null;
         if (!exMap || !exMap.size) continue;
         for (const pu of part.predictiveUsage) {
-          const exId = exMap.get(String(pu.inventoryItemId));
-          if (!exId) continue; // es uno nuevo, ya fue al SavePartNumber (o no existe en el PN)
+          const ex = exMap.get(String(pu.inventoryItemId));
+          if (!ex) continue; // es uno nuevo, ya fue al SavePartNumber (o no existe en el PN)
+          const exId = ex.id;
           if (isDash(String(pu.usagePerPart))) {
-            predictedArchives.push(exId);
+            // Si ya está archivado, no necesitamos volverlo a archivar.
+            if (!ex.archivedAt) predictedArchives.push(exId);
             continue;
           }
           const micro = Math.round(parseFloat(pu.usagePerPart) * 1e6);
           if (!Number.isFinite(micro)) continue;
+          if (ex.archivedAt) predictedUnarchives.push(exId);
           predictedUpdates.push({ id: exId, microQuantityPerPart: micro, inventoryUsageLowCodeId: null });
         }
       }
       // 1.4.25 Fix FF: setPanelPhase para STEP 6a (predictivos). Antes el modal
       // quedaba en "Paso 6/9: Enriqueciendo PNs..." durante esta fase, aunque
       // STEP 6 ya hubiera terminado.
-      const predTotalOps = predictedUpdates.length + predictedArchives.length;
+      const predTotalOps = predictedUpdates.length + predictedArchives.length + predictedUnarchives.length;
       if (predTotalOps) {
-        setPanelPhase(`Paso 6a/9: Predictivos (${predictedUpdates.length} update / ${predictedArchives.length} archive)`);
+        setPanelPhase(`Paso 6a/9: Predictivos (${predictedUnarchives.length} unarchive / ${predictedUpdates.length} update / ${predictedArchives.length} archive)`);
         setPanelProgress(0, predTotalOps);
         setProgressBar(75);
+      }
+      // 1.4.30 Fix JJ: desarchivar PRIMERO. Si el update llega primero, modifica el valor
+      // pero el predictive sigue archivado y el audit lo reporta como missing.
+      if (predictedUnarchives.length) {
+        let unarchivedOk = 0;
+        await runPool(predictedUnarchives, async (exId) => {
+          bailIfStale(myRunId);
+          setPanelSubPhase(`Desarchivando predictivo id=${exId}`);
+          try {
+            await withRetry(
+              () => api().query('ArchivePredictedInventoryUsage', { input: { id: exId, predictedInventoryUsagePatch: { archivedAt: null } } }, 'ArchivePredictedInventoryUsage'),
+              `UnarchivePredictedInventoryUsage(id=${exId})`,
+              myRunId
+            );
+            unarchivedOk++;
+          } catch (e) {
+            if (isBail(e)) throw e;
+            errors.push(`UnarchivePredictedInventoryUsage(id=${exId}): ${String(e).substring(0, 120)}`);
+          }
+        }, bulkCfg().concurrency.savePartNumber || 5,
+          (done) => { setPanelProgress(done, predTotalOps); },
+          myRunId);
+        log(`  Predictivos desarchivados: ${unarchivedOk}/${predictedUnarchives.length}`);
       }
       if (predictedUpdates.length) {
         // Batches de 20 para no abusar del payload
@@ -4626,7 +4663,7 @@ const BulkUpload = (() => {
             errors.push(`UpdatePredictedUsage batch ${Math.floor(i / 20) + 1}: ${String(e).substring(0, 120)}`);
           }
           predUpdDone += batch.length;
-          setPanelProgress(predUpdDone, predTotalOps);
+          setPanelProgress(predictedUnarchives.length + predUpdDone, predTotalOps);
         }
         log(`  Predictivos actualizados: ${predictedUpdates.length}`);
       }
@@ -4651,7 +4688,8 @@ const BulkUpload = (() => {
           }
         }, bulkCfg().concurrency.savePartNumber || 5,
           // 1.4.25 Fix FF: callback de progreso global (update + archive).
-          (done) => { setPanelProgress(predictedUpdates.length + done, predTotalOps); },
+          // 1.4.30 Fix JJ: offset incluye unarchives + updates ya hechos.
+          (done) => { setPanelProgress(predictedUnarchives.length + predictedUpdates.length + done, predTotalOps); },
           myRunId);
         log(`  Predictivos archivados: ${archivedOk}/${predictedArchives.length}`);
       }
