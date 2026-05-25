@@ -38,3 +38,5 @@ Diagnóstico: Steelhead distingue browser-Apollo vs cliente-externo para
 estas dos ops sensibles a sesión. La validación confiable de éstas es
 sólo vía `hash-scanner` en navegador, no este script.
 
+## 2026-05-25 08:35 — 0 rotado(s) (config v1.4.31)
+
