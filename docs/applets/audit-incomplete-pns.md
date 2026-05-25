@@ -5,6 +5,63 @@ de Steelhead contra el CSV original de bulk-upload y detecta huecos (labels,
 specs, racks, predictivos, custom inputs, precio, dimensiones, descripción,
 proceso) para emitir un CSV de recuperación + reporte JSON.
 
+## 2026-05-25 — Fix LL: `usagesLimit:1` → `100` (falsos positivos predictive missing)
+
+### Síntoma
+Tras correr Fix HH/JJ/KK del bulk-upload (1.4.28-1.4.31), el re-audit del CSV
+recovery de P3 (404 rows) seguía reportando **404 incompletos / 430 predictive
+missing** idéntico al pre-fix. El usuario verificó manualmente en Steelhead UI
+(PN 2867612): `Sterlingshield S (Antitarnish): 0.0063 LTS` (= valor del CSV).
+**Los predictives SÍ estaban aplicados, visibles, no archivados.**
+
+### Diagnóstico
+Query manual `GetPartNumber({partNumberId, usagesLimit:1, usagesOffset:0})`
+devolvió **solo 1 nodo** (`Plata Fina`). Misma query SIN `usagesLimit/usagesOffset`
+devolvió los 2 esperados (`Plata Fina` + `Sterlingshield S`).
+
+`usagesLimit` controla la paginación de `predictedInventoryUsagesByPartNumberId.nodes`,
+no solo de algún otro campo de "usages". Con `limit:1`:
+- El audit traía 1 predictive arbitrario por PN.
+- El primer match servía como "existe en server"; los demás se reportaban como missing.
+- Conteos perfectamente sesgados por nombre del primer predictive (Plata Fina cae
+  primero en muchos PNs → otros como Sterlingshield S quedan fuera y se ven missing
+  en 236 PNs, etc.).
+
+### Fix
+- `tools/audit-incomplete-pns.js:889` (discriminación de ambiguos)
+- `tools/audit-incomplete-pns.js:1017` (comparación principal por fila)
+
+Ambas llamadas cambian `usagesLimit: 1` → `usagesLimit: 100`.
+
+### Lección
+- **Cualquier parámetro de paginación en un persisted query es sospechoso por
+  default**. El comentario en `bulk-upload.js:1299` decía "usagesLimit=1 (mínimo
+  aceptado por el server, no usamos los usages)" — esa fue una falsa atribución:
+  el comentario era válido para `fetchCandidateSpecs` (donde NO se leen los usages)
+  pero al copiar el patrón a este audit, sí necesitábamos los usages.
+- **bulk-upload pre-fetch (línea 4197)** llama `GetPartNumber({partNumberId})` SIN
+  `usagesLimit` — por eso bulk-upload SÍ veía los predictives correctamente y los
+  actualizaba. Esa asimetría hizo que el problema pareciera ser de bulk-upload
+  durante 3 días de iteración (Fix JJ + Fix KK), cuando realmente vivía en el audit.
+- **`archivedAt` en `predictedInventoryUsagesByPartNumberId.nodes`** NO está expuesto
+  por el persisted query actual. La salida es siempre `undefined` (no `null`). El
+  filtro `.filter(p => !p.archivedAt)` en el audit y el `predictedUnarchives` en
+  bulk-upload (Fix JJ) quedan inertes — pero defensa en profundidad útil si Steelhead
+  algún día expone el field.
+- **Falsos positivos en clusters perfectos por nombre** indican bug de query/shape,
+  no comparator. Mismo patrón que el matching fix de 2026-05-23 (Map<key, single>).
+  Cuando un campo falla con conteo bimodal raro (236+159+28+6+1, todos de materiales
+  específicos, otros 4 materiales en 0), sospecha paginación o filtro de la query
+  antes que datos sucios.
+
+### Pendiente de validación
+- [ ] Re-correr audit (no recovery del CSV, no toca bulk-upload) sobre P3 con
+      `usagesLimit:100`. Incompletos esperados: bajar de 404 a ~5-15 (los reales:
+      el huérfano fila 99, los 21 duplicateQuoteIBMS pendientes de DELETE manual,
+      labels reales, etc.). Predictive missing: bajar de 430 a ~0.
+- [ ] Si bajan a ~0, marcar Fix JJ (bulk-upload 1.4.30) y Fix KK (1.4.31) como
+      "código inerte pero correcto" — no requieren revert.
+
 ## 2026-05-23 — Matching fix: discriminación de candidatos ambiguos + dup-scan standalone
 
 ### Síntoma

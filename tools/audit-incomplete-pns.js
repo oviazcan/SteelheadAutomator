@@ -886,7 +886,7 @@
         if (state.aborted) return;
         setSub(`Discriminando: ${c.name} (id=${c.id})`);
         try {
-          const d = await withRetry(() => gql('GetPartNumber', { partNumberId: c.id, usagesLimit: 1, usagesOffset: 0 }), `GetPartNumber disc ${c.id}`);
+          const d = await withRetry(() => gql('GetPartNumber', { partNumberId: c.id, usagesLimit: 100, usagesOffset: 0 }), `GetPartNumber disc ${c.id}`);
           if (d?.partNumberById) candidateFullCache.set(String(c.id), d.partNumberById);
         } catch (e) { log(`⚠️ GetPartNumber disc ${c.id} falló: ${e.message}`); }
       }, concurrency, (done, total) => { dDone = done; setProgress(done, total); });
@@ -1014,7 +1014,7 @@
         complete: false,
       };
       try {
-        const d = await withRetry(() => gql('GetPartNumber', { partNumberId: entry.pnNode.id, usagesLimit: 1, usagesOffset: 0 }), `GetPartNumber ${entry.part.pn}`);
+        const d = await withRetry(() => gql('GetPartNumber', { partNumberId: entry.pnNode.id, usagesLimit: 100, usagesOffset: 0 }), `GetPartNumber ${entry.part.pn}`);
         const pn = d?.partNumberById;
         if (!pn) { result.issues = ['GetPartNumber devolvió null']; audit.push(result); return; }
         result.issues = comparePartNumber(entry.part, pn, { labelByName, rackByName, processByName });
