@@ -119,9 +119,9 @@ const PNArchiver = (() => {
         `¿Reanudar? (Cancelar = empezar de cero)`
       );
       if (resume) {
-        log(`Archivador: reanudando — ${pending.length} pendientes`);
+        log(`Archivador: reanudando — ${pending.length} pendientes (de ${prevResume.selectedPNs.length} totales)`);
         showArchiverUI(`Reanudando archivado: ${pending.length} pendientes...`);
-        return await executeArchive(pending, prevResume.opts, prevResume.completed, results, DOMAIN);
+        return await executeArchive(prevResume.selectedPNs, prevResume.opts, prevResume.completed, results, DOMAIN);
       }
       clearResume();
     }
@@ -259,17 +259,20 @@ const PNArchiver = (() => {
   // ARCHIVE EXECUTION — runPool concurrencia 3 + resume
   // ═══════════════════════════════════════════
 
+  // selectedPNs = lista TOTAL original (no pre-filtrada). alreadyCompleted = IDs ya OK
+  // de reanudaciones previas. El loop salta los completed para evitar doble-archivado.
   async function executeArchive(selectedPNs, opts, alreadyCompleted, results, DOMAIN) {
     const completed = new Set(alreadyCompleted);
-    results.found = selectedPNs.length + alreadyCompleted.length;
+    const totalCount = selectedPNs.length;
+    results.found = totalCount;
     saveResume({ selectedPNs, opts, completed: [...completed] });
 
-    updateArchiverUI(`Archivando ${selectedPNs.length} PNs (concurrencia 3)...`);
+    const pendingCount = totalCount - completed.size;
+    updateArchiverUI(`Archivando ${pendingCount} PNs (concurrencia 3, ${completed.size} ya OK)...`);
 
-    let processed = 0;
     await runPool(selectedPNs, async (pn) => {
       if (stopped) return;
-      if (completed.has(pn.id)) return; // doble-safety
+      if (completed.has(pn.id)) return; // doble-safety — saltar ya archivados
 
       try {
         await withRetry(() => api().query('UpdatePartNumber', { id: pn.id, archivedAt: new Date().toISOString() }), `Archive ${pn.name}`);
@@ -299,17 +302,16 @@ const PNArchiver = (() => {
       }
 
       completed.add(pn.id);
-      processed++;
-      if (processed % 5 === 0 || processed === selectedPNs.length) {
-        updateArchiverUI(`Archivando ${processed}/${selectedPNs.length} — ${results.errors.length} errores`);
+      if (completed.size % 5 === 0 || completed.size === totalCount) {
+        updateArchiverUI(`Archivando ${completed.size}/${totalCount} — ${results.errors.length} errores`);
         saveResume({ selectedPNs, opts, completed: [...completed] });
       }
     }, 3);
 
     if (stopped) {
       saveResume({ selectedPNs, opts, completed: [...completed] });
-      log(`Archivador: detenido — ${results.archived}/${selectedPNs.length} completados, resume guardado`);
-      showArchiverResult(results, `Detenido. ${results.archived}/${selectedPNs.length} archivados. Re-ejecuta el applet para reanudar.`);
+      log(`Archivador: detenido — ${completed.size}/${totalCount} completados, resume guardado`);
+      showArchiverResult(results, `Detenido. ${completed.size}/${totalCount} archivados. Re-ejecuta el applet para reanudar.`);
       return { ...results, stopped: true };
     }
 
@@ -317,7 +319,7 @@ const PNArchiver = (() => {
     clearResume();
 
     log(`\n=== ARCHIVADOR RESULTADO ===`);
-    log(`Archivados: ${results.archived}/${selectedPNs.length}`);
+    log(`Archivados: ${results.archived}/${totalCount}`);
     if (opts.enableValidation) log(`Con validación: ${results.validated}`);
     if (results.errors.length) log(`Errores: ${results.errors.length}`);
 
