@@ -592,9 +592,10 @@
         <button class="sa-audit-btn sa-audit-secondary" id="sa-audit-close">Cerrar</button>
       </div>
       <div class="sa-audit-row" style="margin-top:6px;padding-top:8px;border-top:1px dashed #1e293b">
-        <label style="font-size:12px;color:#94a3b8">Cliente (sin CSV):</label>
+        <label style="font-size:12px;color:#94a3b8">Cliente (sin CSV, vacío = todo el dominio):</label>
         <input id="sa-audit-dup-client" class="sa-audit-input" type="text" placeholder="Ej: SCHNEIDER ELECTRIC MEXICO" style="flex:1;min-width:200px">
-        <button class="sa-audit-btn sa-audit-secondary" id="sa-audit-dup-scan" title="Escanea TODOS los PNs activos del cliente y agrupa por QuoteIBMS — revela duplicados que requieren DELETE manual en Steelhead">🚨 Buscar duplicados QuoteIBMS</button>
+        <label style="font-size:12px;color:#94a3b8"><input type="checkbox" id="sa-audit-tier-include-archived" checked> Incluir archivados</label>
+        <button class="sa-audit-btn sa-audit-secondary" id="sa-audit-tier-scan" title="Scan completo con 3 tiers de duplicados (DURO/MEDIO/SUAVE) usando SADuplicateTiers + acciones de archivado + CSV DELETE">🔍 Scan integridad (duro/medio/suave)</button>
       </div>
       <div id="sa-audit-progress" style="display:none">
         <div class="sa-audit-phase" id="sa-audit-phase">Esperando...</div>
@@ -627,7 +628,7 @@
     };
     document.getElementById('sa-audit-dl-csv').onclick = downloadCsv;
     document.getElementById('sa-audit-dl-json').onclick = downloadJson;
-    document.getElementById('sa-audit-dup-scan').onclick = onStandaloneDupScan;
+    document.getElementById('sa-audit-tier-scan').onclick = onTierScanIntegrity;
   }
 
   function closeModal() {
@@ -1074,19 +1075,12 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // 5.b) STANDALONE — Scan de duplicados QuoteIBMS por cliente (sin CSV)
+  // 5b) TIER SCAN INTEGRIDAD — 3 tiers (DURO/MEDIO/SUAVE) usando SADuplicateTiers
   // ═══════════════════════════════════════════════════════════════════════
-  // Pagina TODOS los PNs activos del cliente vía AllPartNumbers, extrae
-  // QuoteIBMS de customInputs (que AllPartNumbers SÍ devuelve, verificado en
-  // bulk-upload.js:1125 extractPNShape), agrupa por quoteIBMS, y reporta
-  // buckets con ≥2 PNs — esos requieren DELETE manual en Steelhead.
-  //
-  // NO usa GetPartNumber → barato incluso para 30k PNs (solo paginación).
-  async function onStandaloneDupScan() {
-    const input = document.getElementById('sa-audit-dup-client');
-    const clientName = (input?.value || '').trim();
-    if (!clientName) { alert('Escribe un cliente para escanear.'); return; }
-    const concurrency = parseInt(document.getElementById('sa-audit-conc').value, 10) || 4;
+
+  async function onTierScanIntegrity() {
+    const customerFilter = (document.getElementById('sa-audit-dup-client')?.value || '').trim();
+    const includeArchived = document.getElementById('sa-audit-tier-include-archived')?.checked !== false;
     document.getElementById('sa-audit-progress').style.display = 'block';
     document.getElementById('sa-audit-results').style.display = 'none';
     document.getElementById('sa-audit-start').disabled = true;
@@ -1096,82 +1090,15 @@
     stopDatadogSessionReplay();
     startMemoryGauge();
     try {
-      log(`▶ Standalone dup-scan: cliente "${clientName}"`);
-      // 1. Resolver cliente
-      setPhase('Resolviendo cliente');
-      const cd = await withRetry(() => gql('CustomerSearchByName', { nameLike: `%${clientName}%`, orderBy: ['NAME_ASC'] }), 'CustomerSearchByName');
-      const nodes = cd?.searchCustomers?.nodes || cd?.pagedData?.nodes || cd?.allCustomers?.nodes || [];
-      const cust = nodes.find(c => c.name?.toUpperCase().includes(clientName.toUpperCase()));
-      if (!cust) { alert(`Cliente "${clientName}" no encontrado en Steelhead`); return; }
-      log(`Cliente: ${cust.name} (id=${cust.id})`);
-
-      // 2. Paginar AllPartNumbers (NO archived) filtrando client-side por customerId
-      setPhase('Escaneando PNs activos del dominio');
-      const pageSize = 200;
-      const maxPages = 500; // safeguard — 100k PNs máximo
-      const pnsByQuote = new Map(); // quoteIBMS → [{ id, name, archivedAt }]
-      const pnsNoQuote = []; // PNs activos sin quoteIBMS llenado (info)
-      let offset = 0;
-      let scanned = 0;
-      let keptForCustomer = 0;
-      for (let page = 0; page < maxPages; page++) {
-        if (state.aborted) break;
-        const d = await withRetry(
-          () => gql('AllPartNumbers', { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: '', includeArchived: 'NO' }),
-          `AllPartNumbers (NO) offset=${offset}`
-        );
-        const ns = d?.pagedData?.nodes || [];
-        scanned += ns.length;
-        for (const n of ns) {
-          const cid = n.customerByCustomerId?.id || n.customerId;
-          if (String(cid) !== String(cust.id)) continue;
-          keptForCustomer++;
-          const ci = (typeof n.customInputs === 'string')
-            ? (() => { try { return JSON.parse(n.customInputs); } catch { return null; } })()
-            : (n.customInputs || null);
-          const q = String(ci?.DatosAdicionalesNP?.QuoteIBMS || '').trim();
-          if (!q) { pnsNoQuote.push({ id: n.id, name: n.name }); continue; }
-          if (!pnsByQuote.has(q)) pnsByQuote.set(q, []);
-          pnsByQuote.get(q).push({ id: n.id, name: n.name });
-        }
-        setProgress(scanned, d?.pagedData?.totalCount || scanned);
-        setSub(`Escaneados ${scanned} · ${keptForCustomer} del cliente · ${pnsByQuote.size} QuoteIBMS únicos`);
-        if (ns.length < pageSize) break;
-        offset += pageSize;
-      }
-      log(`Scan completo: ${scanned} PNs escaneados, ${keptForCustomer} del cliente, ${pnsByQuote.size} QuoteIBMS únicos, ${pnsNoQuote.length} sin QuoteIBMS`);
-
-      // 3. Detectar buckets con ≥2 PNs (duplicados que requieren DELETE)
-      const dups = [];
-      for (const [q, pns] of pnsByQuote) {
-        if (pns.length >= 2) {
-          dups.push({ customer: cust.name, customerId: cust.id, quoteIBMS: q, count: pns.length, pns });
-        }
-      }
-      dups.sort((a, b) => b.count - a.count);
-      log(`🚨 Duplicados detectados: ${dups.length} QuoteIBMS con 2+ PNs (${dups.reduce((a, b) => a + b.count, 0)} PNs totales involucrados)`);
-
-      // 4. Render + ofrecer descarga
-      state.results = {
-        standaloneDup: true,
-        customer: cust,
-        scanned,
-        keptForCustomer,
-        uniqueQuoteIBMS: pnsByQuote.size,
-        pnsNoQuote,
-        duplicates: dups,
-        // Compatibilidad con showResults() y downloadJson() — shape mínimo
-        audit: [], incomplete: [], unresolved: [],
-        duplicatesRequiringDelete: dups.map(d => ({
-          customer: d.customer, customerId: d.customerId,
-          pn: d.pns[0].name, quoteIBMS: d.quoteIBMS,
-          pnIds: d.pns.map(p => p.id),
-        })),
-        ambiguousResolutions: [],
-      };
-      showStandaloneResults();
+      log(`▶ Scan integridad: filtro="${customerFilter || '(todo el dominio)'}" includeArchived=${includeArchived}`);
+      const integrity = await runTierScan({ customerFilter, includeArchived });
+      if (!integrity) return; // aborted
+      window.__lastIntegrityScan = integrity;
+      log(`DURO: ${integrity.hardBuckets.length} · MEDIO: ${integrity.mediumBuckets.length} · SUAVE: ${integrity.softBuckets.length} buckets`);
+      log(`Inspecciona window.__lastIntegrityScan para detalles.`);
+      renderTierResultsInPanel(integrity);
     } catch (e) {
-      log('❌ Error en dup-scan: ' + (e.message || e));
+      log('❌ Error en tier-scan: ' + (e.message || e));
     } finally {
       stopMemoryGauge();
       document.getElementById('sa-audit-stop').style.display = 'none';
@@ -1179,29 +1106,322 @@
     }
   }
 
-  function showStandaloneResults() {
-    const r = state.results; if (!r?.standaloneDup) return;
-    document.getElementById('sa-audit-results').style.display = 'block';
-    const dups = r.duplicates;
-    const totalDupPNs = dups.reduce((a, b) => a + b.count, 0);
-    const summary = document.getElementById('sa-audit-summary');
-    summary.innerHTML = `
-      <div>
-        <span class="sa-audit-stat sa-audit-stat-ok">${r.keptForCustomer} PNs del cliente "${String(r.customer.name).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}"</span>
-        <span class="sa-audit-stat">${r.uniqueQuoteIBMS} QuoteIBMS únicos</span>
-        <span class="sa-audit-stat" style="color:#fbbf24">${r.pnsNoQuote.length} sin QuoteIBMS</span>
-        ${dups.length ? `<span class="sa-audit-stat" style="color:#fca5a5">🚨 ${dups.length} duplicados (${totalDupPNs} PNs requieren DELETE)</span>` : `<span class="sa-audit-stat sa-audit-stat-ok">✓ Sin duplicados QuoteIBMS</span>`}
+  function matchesCustomerFilter(pn, filter) {
+    if (!filter) return true;
+    const name = (pn.customerByCustomerId?.name || '').toUpperCase();
+    return name.includes(filter.toUpperCase());
+  }
+
+  async function runTierScan({ customerFilter, includeArchived }) {
+    const tiersMod = window.SADuplicateTiers;
+    if (!tiersMod) throw new Error('SADuplicateTiers no cargado');
+    const dom = config.steelhead?.domain || {};
+    const nonFinishList = dom.bulkUpload?.nonFinishLabelNames || [];
+    const metalEquiv = dom.bulkUpload?.metalEquivalents || [];
+
+    setPhase('Pase 1: cargando PNs');
+    const allPNs = [];
+    const seenIds = new Set();
+    const activeIds = new Set();
+    const pageSize = 500;
+
+    // Activos
+    let offset = 0;
+    while (!state.aborted) {
+      const d = await withRetry(
+        () => gql('AllPartNumbers', { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: '', includeArchived: 'NO' }),
+        `AllPartNumbers (NO) offset=${offset}`
+      );
+      const nodes = d?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        activeIds.add(n.id);
+        if (matchesCustomerFilter(n, customerFilter) && !seenIds.has(n.id)) {
+          seenIds.add(n.id);
+          allPNs.push({ ...n, archivedAt: null });
+        }
+      }
+      setSub(`Pase 1 (activos): ${allPNs.length}`);
+      if (nodes.length < pageSize) break;
+      offset += pageSize;
+    }
+    if (state.aborted) { log('⛔ Abortado'); return null; }
+
+    // Archivados
+    if (includeArchived) {
+      offset = 0;
+      while (!state.aborted) {
+        const d = await withRetry(
+          () => gql('AllPartNumbers', { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: '', includeArchived: 'YES' }),
+          `AllPartNumbers (YES) offset=${offset}`
+        );
+        const nodes = d?.pagedData?.nodes || [];
+        for (const n of nodes) {
+          if (activeIds.has(n.id)) continue;
+          if (matchesCustomerFilter(n, customerFilter) && !seenIds.has(n.id)) {
+            seenIds.add(n.id);
+            allPNs.push({ ...n, archivedAt: '__archived__' });
+          }
+        }
+        setSub(`Pase 1 (con archivados): ${allPNs.length}`);
+        if (nodes.length < pageSize) break;
+        offset += pageSize;
+      }
+    }
+    if (state.aborted) { log('⛔ Abortado'); return null; }
+
+    // Bucketización pase 1
+    const hard = tiersMod.hardBuckets(allPNs);
+    const usedIds = new Set();
+    for (const b of hard) for (const m of b.members) usedIds.add(m.id);
+    const medCands = tiersMod.mediumBucketsCandidates(allPNs.filter(p => !usedIds.has(p.id)));
+
+    // Pase 2: GetPartNumber sobre candidatos
+    const candidateIds = new Set();
+    for (const b of hard) for (const m of b.members) candidateIds.add(m.id);
+    for (const b of medCands) for (const m of b.members) candidateIds.add(m.id);
+    setPhase(`Pase 2: GetPartNumber ${candidateIds.size} candidatos`);
+    log(`Pase 2: ${candidateIds.size} candidatos`);
+
+    const detailsByPnId = {};
+    let processed = 0;
+    await runPool([...candidateIds], async (pnId) => {
+      if (state.aborted) return;
+      try {
+        const d = await withRetry(
+          () => gql('GetPartNumber', { partNumberId: pnId, usagesLimit: 100, usagesOffset: 0 }),
+          `GetPartNumber ${pnId}`
+        );
+        detailsByPnId[pnId] = d?.partNumberById || null;
+      } catch (e) { /* tolerated; scoreFor maneja null */ }
+      processed++;
+      if (processed % 20 === 0 || processed === candidateIds.size) {
+        setProgress(processed, candidateIds.size);
+        setSub(`Pase 2: ${processed}/${candidateIds.size}`);
+      }
+    }, 6);
+    if (state.aborted) { log('⛔ Abortado'); return null; }
+
+    // Build bucket helper: enriquece members con score + customer + flags
+    function buildBucket(rawBucket, tier) {
+      const members = rawBucket.members.map(pn => {
+        const det = detailsByPnId[pn.id];
+        const score = tiersMod.scoreFor(pn, det, { nonFinishLabelNames: nonFinishList });
+        let ci = {};
+        try { ci = typeof pn.customInputs === 'string' ? (JSON.parse(pn.customInputs) || {}) : (pn.customInputs || {}); } catch { ci = {}; }
+        return {
+          id: pn.id, name: pn.name,
+          customer: pn.customerByCustomerId?.name || '',
+          customerId: pn.customerByCustomerId?.id || null,
+          quoteIBMS: ci.DatosAdicionalesNP?.QuoteIBMS || '',
+          metalBase: ci.DatosAdicionalesNP?.BaseMetal || '',
+          createdAt: pn.createdAt,
+          archived: pn.archivedAt === '__archived__' || !!pn.archivedAt,
+          score, scoreParcial: !det,
+        };
+      });
+      const bucket = { tier, ...rawBucket, members };
+      bucket.winnerId = tiersMod.pickWinner(bucket);
+      bucket.deleteCandidates = tiersMod.computeDeleteCandidates(bucket);
+      return bucket;
+    }
+
+    setPhase('Refinamiento + scoring');
+    const hardBuckets = hard.map(b => buildBucket(b, 'DURO'));
+    const medium = tiersMod.refineMediumBuckets(medCands, detailsByPnId, { nonFinishLabelNames: nonFinishList, metalEquivalents: metalEquiv });
+    const mediumIds = new Set();
+    for (const b of medium) for (const m of b.members) mediumIds.add(m.id);
+    const mediumBuckets = medium.map(b => buildBucket(b, 'MEDIO'));
+    const softCands = medCands
+      .map(c => ({ ...c, members: c.members.filter(m => !mediumIds.has(m.id)) }))
+      .filter(c => c.members.length >= 2);
+    const soft = tiersMod.refineSoftBuckets(softCands, detailsByPnId, { nonFinishLabelNames: nonFinishList });
+    const softBuckets = soft.map(b => buildBucket(b, 'SUAVE'));
+
+    return { hardBuckets, mediumBuckets, softBuckets, totalPNs: allPNs.length };
+  }
+
+  // SYNCED WITH remote/scripts/auditor.js renderIntegrityResults v1 (2026-05-25)
+  // Si la divergencia visual entre applet y DevTools tool eventualmente duele,
+  // promover el renderer a duplicate-tiers-ui.js como single source.
+  function renderTierResultsInPanel(integrity) {
+    if (!integrity) return;
+    const tiers = [
+      { key: 'hardBuckets',   label: '🚨 DUROS (mismo QuoteIBMS)',                              color: '#fca5a5' },
+      { key: 'mediumBuckets', label: '⚠ MEDIOS (mismo metalBase + acabados + cliente)',         color: '#fde68a' },
+      { key: 'softBuckets',   label: 'ⓘ SUAVES (asimetría de acabados)',                        color: '#bae6fd' },
+    ];
+    let html = '';
+    for (const t of tiers) {
+      const buckets = integrity[t.key] || [];
+      if (!buckets.length) continue;
+      const totalPns = buckets.reduce((a, b) => a + b.members.length, 0);
+      html += `<details open style="margin-top:14px"><summary style="color:${t.color};cursor:pointer;font-weight:600">${t.label} — ${buckets.length} buckets · ${totalPns} PNs</summary>`;
+      for (const b of buckets) html += renderBucketCardDevtools(b);
+      html += '</details>';
+    }
+    if (!html) html = '<div style="color:#86efac;padding:12px 0">✓ Sin duplicados detectados.</div>';
+    const totalLosers = sumLosersDevtools(integrity);
+    const totalDelete = sumDeleteDevtools(integrity);
+    html += `<div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="sa-audit-btn" id="sa-int-archive-all" style="background:#16a34a;color:white">Archivar TODOS los descartados (${totalLosers})</button>
+      <button class="sa-audit-btn" id="sa-int-csv-delete" style="background:#dc2626;color:white">📋 CSV candidatos a DELETE (${totalDelete})</button>
+      <button class="sa-audit-btn" id="sa-int-json-full" style="background:#475569;color:white">💾 JSON audit</button>
+    </div>`;
+
+    const panel = document.getElementById('sa-audit-results');
+    panel.style.display = 'block';
+    document.getElementById('sa-audit-summary').innerHTML = html;
+    document.getElementById('sa-audit-dl-csv').style.display = 'none';
+    document.getElementById('sa-audit-dl-json').style.display = 'none';
+
+    document.getElementById('sa-int-archive-all')?.addEventListener('click', async () => {
+      const btn = document.getElementById('sa-int-archive-all');
+      btn.disabled = true; btn.textContent = 'Archivando...';
+      const r = await archiveLosersDevtools(integrity, (ok, skipped, failed, total) => {
+        btn.textContent = `Archivando... ${ok + skipped + failed}/${total}`;
+      });
+      btn.textContent = `✓ ${r.ok} archivados · ⏭ ${r.skipped} ya estaban · ✗ ${r.failed} fallaron`;
+      for (const sid of (r.succeededIds || [])) {
+        panel.querySelectorAll(`input[type=radio][value="${sid}"]`).forEach(input => {
+          const lbl = input.closest('label');
+          if (lbl) { lbl.style.textDecoration = 'line-through'; lbl.style.opacity = '0.55'; }
+        });
+      }
+      if (r.failures.length) console.warn('[audit] tier-archive fallos:', r.failures);
+    });
+
+    document.getElementById('sa-int-csv-delete')?.addEventListener('click', () => {
+      const csv = buildDeleteCSVDevtools(integrity);
+      downloadBlobDevtools(csv, `pn_delete_candidates_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+    });
+
+    document.getElementById('sa-int-json-full')?.addEventListener('click', () => {
+      const json = JSON.stringify({ timestamp: new Date().toISOString(), integrity }, null, 2);
+      downloadBlobDevtools(json, `audit_integridad_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+    });
+  }
+
+  function renderBucketCardDevtools(b) {
+    const bucketKey = bucketKeyForCSVDevtools(b);
+    const headerExtra = b.deleteCandidates && b.deleteCandidates.length
+      ? `<span style="color:#fca5a5">🚨 ${b.deleteCandidates.length} candidato(s) a DELETE</span>` : '';
+    const escAttr = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const rows = b.members.map(m => {
+      const isWinner = m.id === b.winnerId;
+      const ageDays = m.createdAt ? Math.floor((Date.now() - new Date(m.createdAt).getTime()) / 86400000) : '?';
+      const status = m.archived ? '<span style="color:#fca5a5">archivado</span>' : '<span style="color:#86efac">activo</span>';
+      const partial = m.scoreParcial ? '<span title="datos incompletos" style="color:#fde68a">⚠ parcial</span>' : '';
+      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:${isWinner ? '#1e293b' : 'transparent'};border-radius:4px">
+        <input type="radio" name="winner-${b.tier}-${escAttr(bucketKey)}" value="${m.id}" ${isWinner ? 'checked' : ''}>
+        <code style="color:#cbd5e1">PN-${m.id}</code>
+        <span>${escAttr(m.name)}</span>
+        <span style="color:#94a3b8">${escAttr(m.customer)}</span>
+        <span style="color:#a5b4fc">score ${m.score}</span>
+        ${status}
+        <span style="color:#94a3b8">${ageDays}d</span>
+        ${partial}
+      </label>`;
+    }).join('');
+    return `<div class="sa-int-bucket" data-bucket-key="${escAttr(bucketKey)}" data-tier="${b.tier}" style="border:1px solid #334155;border-radius:6px;padding:10px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="color:#e2e8f0"><b>${b.tier}</b> · ${escAttr(humanBucketKeyDevtools(b))} ${headerExtra}</div>
+        <label style="font-size:11px;color:#94a3b8"><input type="checkbox" class="sa-int-apply" checked> Aplicar acción</label>
       </div>
-      ${dups.length ? `
-      <h3 style="color:#fca5a5;margin-top:14px">🚨 PNs duplicados — DELETE manual en Steelhead</h3>
-      <div class="sa-audit-log" style="max-height:240px">${dups.slice(0, 50).map(d => {
-        const safeP = String(d.pns[0].name).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-        return `QuoteIBMS=${d.quoteIBMS} · ${safeP} · ${d.count} PNs · ids=[${d.pns.map(p => p.id).join(', ')}]`;
-      }).join('\n')}${dups.length > 50 ? `\n... +${dups.length - 50} más (ver JSON)` : ''}</div>` : ''}
-    `;
-    // El download CSV no tiene sentido para standalone (no hay CSV original).
-    const dlCsv = document.getElementById('sa-audit-dl-csv');
-    if (dlCsv) dlCsv.style.display = 'none';
+      ${rows}
+    </div>`;
+  }
+
+  function bucketKeyForCSVDevtools(b) {
+    if (b.tier === 'DURO') return 'quoteIBMS=' + b.quoteIBMS;
+    if (b.tier === 'MEDIO') return [b.name, b.customerId, b.metalBase, b.finishings].join('||');
+    return [b.name, b.customerId].join('||');
+  }
+  function humanBucketKeyDevtools(b) {
+    if (b.tier === 'DURO') return 'QuoteIBMS ' + b.quoteIBMS;
+    if (b.tier === 'MEDIO') return `${b.name} · cust ${b.customerId} · ${b.metalBase || '∅'} · [${b.finishings || '∅'}]`;
+    return `${b.name} · cust ${b.customerId}`;
+  }
+  function sumLosersDevtools(integ) {
+    return [...(integ.hardBuckets || []), ...(integ.mediumBuckets || []), ...(integ.softBuckets || [])]
+      .reduce((a, b) => a + b.members.filter(m => m.id !== b.winnerId).length, 0);
+  }
+  function sumDeleteDevtools(integ) {
+    return [...(integ.hardBuckets || []), ...(integ.mediumBuckets || []), ...(integ.softBuckets || [])]
+      .reduce((a, b) => a + ((b.deleteCandidates || []).length), 0);
+  }
+  function cssEscapeDevtools(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-z0-9_-]/gi, '\\$&'); }
+
+  async function archiveLosersDevtools(integrity, onProgress) {
+    const tasks = [];
+    for (const tierKey of ['hardBuckets', 'mediumBuckets', 'softBuckets']) {
+      for (const b of (integrity[tierKey] || [])) {
+        const card = document.querySelector(`.sa-int-bucket[data-bucket-key="${cssEscapeDevtools(bucketKeyForCSVDevtools(b))}"]`);
+        if (card && !card.querySelector('.sa-int-apply')?.checked) continue;
+        let winnerId = b.winnerId;
+        if (card) {
+          const chosen = Number(card.querySelector('input[type=radio]:checked')?.value);
+          if (!isNaN(chosen)) winnerId = chosen;
+        }
+        for (const m of b.members) {
+          if (m.id === winnerId) continue;
+          if (m.archived) { tasks.push({ id: m.id, name: m.name, skip: true }); continue; }
+          tasks.push({ id: m.id, name: m.name });
+        }
+      }
+    }
+    let ok = 0, skipped = 0, failed = 0;
+    const failures = [];
+    const succeededIds = [];
+    await runPool(tasks, async (t) => {
+      if (t.skip) { skipped++; onProgress && onProgress(ok, skipped, failed, tasks.length); return; }
+      try {
+        await withRetry(() => gql('UpdatePartNumber', { id: t.id, archivedAt: new Date().toISOString() }), `archive ${t.name}`);
+        ok++;
+        succeededIds.push(t.id);
+      } catch (e) {
+        failed++;
+        failures.push({ id: t.id, name: t.name, error: String(e?.message || e).substring(0, 120) });
+      }
+      onProgress && onProgress(ok, skipped, failed, tasks.length);
+    }, 5);
+    return { ok, skipped, failed, failures, succeededIds, totalAttempted: tasks.length };
+  }
+
+  function buildDeleteCSVDevtools(integrity) {
+    const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+    const rows = [[
+      'tier', 'bucketKey', 'pnId', 'pnName', 'customer', 'customerId',
+      'quoteIBMS', 'metalBase', 'finishings', 'status',
+      'createdAt', 'score', 'winnerPnId', 'razon'
+    ].join(',')];
+    for (const tierKey of ['hardBuckets', 'mediumBuckets', 'softBuckets']) {
+      for (const b of (integrity[tierKey] || [])) {
+        for (const id of (b.deleteCandidates || [])) {
+          const m = b.members.find(x => x.id === id);
+          if (!m) continue;
+          const razon = b.tier === 'DURO'
+            ? `DURO: comparte QuoteIBMS ${b.quoteIBMS}`
+            : `${b.tier} sin QuoteIBMS: bucket ${humanBucketKeyDevtools(b)}`;
+          const status = m.archived ? 'archived' : 'active';
+          rows.push([
+            b.tier, q(bucketKeyForCSVDevtools(b)), m.id, q(m.name), q(m.customer),
+            m.customerId ?? '', q(m.quoteIBMS || ''), q(m.metalBase || ''),
+            q(b.finishings || ''), status, q(m.createdAt || ''),
+            m.score, b.winnerId, q(razon),
+          ].join(','));
+        }
+      }
+    }
+    return rows.join('\n');
+  }
+
+  function downloadBlobDevtools(content, filename, mime) {
+    const blob = new Blob(['﻿' + content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1451,11 +1671,12 @@
   // ═══════════════════════════════════════════════════════════════════════
   function showResults() {
     const r = state.results; if (!r) return;
-    if (r.standaloneDup) { showStandaloneResults(); return; }
     document.getElementById('sa-audit-results').style.display = 'block';
-    // Re-mostrar dl-csv por si un dup-scan previo lo ocultó
+    // Re-mostrar dl-csv/dl-json por si un tier-scan previo los ocultó
     const dlCsv = document.getElementById('sa-audit-dl-csv');
     if (dlCsv) dlCsv.style.display = '';
+    const dlJson = document.getElementById('sa-audit-dl-json');
+    if (dlJson) dlJson.style.display = '';
     const ok = r.audit.length - r.incomplete.length;
     // Conteo por tipo de issue
     const counts = {};
