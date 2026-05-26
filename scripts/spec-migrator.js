@@ -2111,11 +2111,41 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.4)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.5)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
   //  (reversible con null).
+  //
+  //  0.5.5: memory hardening completo (EJE A + EJE B + mem monitor).
+  //    EJE A — propia del applet:
+  //      • Slim CSV: nullify del array de rows y csvText después del parse a
+  //        csvParts (ya slimmed a {pn, customer, quoteIBMS, specs[]}).
+  //      • Liberar maps locales por worker (liveBySpecField/liveBySpec/specGroups
+  //        viven en el closure de classifyPN — caen al return; detail=null al
+  //        salir del worker ya estaba en 0.5.3).
+  //      • Clear post-apply: csvItems/csvSelections/csvUnresolved/csvFetchErrors
+  //        se vacían tras render del resultado del apply (no esperar a closePanel).
+  //    EJE B — host SPA:
+  //      • Migración de dupStopHostJobs inline → window.SteelheadHostCleanup
+  //        del módulo compartido remote/scripts/host-cleanup-shared.js (importado
+  //        vía array scripts en config.json). Latches en window.__sa_dd_stopped
+  //        siguen idempotentes entre applets co-residentes.
+  //      • makePeriodicDrain(50) reemplaza el "if (done % 50 === 0)" del onProgress
+  //        — ese contaba por chunk de progress, no por PN procesado. El periodic
+  //        drain por worker garantiza un drain cada 50 GetPartNumber reales.
+  //      • createMemMonitor con warnPct=70 (re-aplica Datadog stop), critPct=85,
+  //        guardrailPct=88. UI: span [data-ctrl=dup-mem] en el header.
+  //      • onGuardrail @88%: persistir resume en localStorage (csvFileName +
+  //        processed pnIds + decisions), cancelRun y mostrar modal pidiendo
+  //        reload. No intentar continuar — checkpoint > crash.
+  //      • AbortController por worker: cancelRun aborta GetPartNumber/SavePartNumber
+  //        en vuelo en lugar de esperar a que terminen.
+  //      • Virtualización del preview DOM: 50 PNs visibles, lazy render del resto
+  //        vía IntersectionObserver al hacer scroll.
+  //
+  //  0.5.4: refactor del matching para resolver dos bugs del 0.5.3 (preferNull
+  //  entre matches con MISMO sfpName + wrongSfp ruidoso por hermanos del Spec).
   //
   //  0.5.0: modo CSV — el usuario carga el CSV de bulk-upload y el validator
   //  resuelve pnIds (multi-cliente + dedup QuoteIBMS), detecta issues por PN
@@ -2159,83 +2189,24 @@ const SpecMigrator = (() => {
   const dupSleep = (ms) => new Promise(r => setTimeout(r, ms));
   const dupRetryDelays = [1000, 2000, 4000];
 
-  // 0.5.3: host cleanup contra los jobs/handles laterales del SPA de Steelhead
-  // (Datadog RUM session replay grabando todo + Apollo InMemoryCache normalizando
-  // cada response por __typename+id). bulk-upload 1.4.20+ ya implementa el mismo
-  // patrón; el latch global window.__sa_dd_stopped lo hace idempotente entre applets.
-  // Si bulk-upload ya corrió antes en esta tab, este call entra al early-return y
-  // solo drena Apollo cache silenciosamente. TODO: extraer a helper compartido en
-  // remote/scripts/_steelhead-host-cleanup.js como parte del refactor global (#113).
+  // 0.5.5: host cleanup migrado al módulo compartido window.SteelheadHostCleanup
+  // (remote/scripts/host-cleanup-shared.js). El módulo se carga vía config.json
+  // antes que spec-migrator.js, así que window.SteelheadHostCleanup está disponible
+  // cuando este IIFE corre. Los latches window.__sa_dd_stopped / __sa_fetch_patched /
+  // __sa_xhr_patched son globales — comparten estado con bulk-upload, auditor y
+  // cualquier otro applet co-residente.
+  const HOST = (typeof window !== 'undefined' && window.SteelheadHostCleanup) || null;
   function dupApolloCacheDrain() {
-    try {
-      const candidates = [
-        window.__APOLLO_CLIENT__,
-        window.apolloClient,
-        window.__APOLLO__?.client,
-      ].filter(Boolean);
-      for (const client of candidates) {
-        try {
-          if (typeof client.clearStore === 'function') client.clearStore().catch(() => {});
-          else if (client.cache && typeof client.cache.reset === 'function') client.cache.reset();
-        } catch (_) { /* host no expone APIs esperadas: silencio */ }
-      }
-    } catch (_) { /* defensa total */ }
+    HOST?.apolloCacheDrain();
   }
-
   function dupStopHostJobs() {
-    if (window.__sa_dd_stopped) { dupApolloCacheDrain(); return; }
-    // Datadog RUM
-    try {
-      const dd = window.DD_RUM || window.datadogRum || window.__DD_RUM__;
-      if (dd) {
-        try { dd.stopSessionReplayRecording?.(); } catch (_) {}
-        try { dd.stopSession?.(); } catch (_) {}
-        try { dd.setTrackingConsent?.('not-granted'); } catch (_) {}
-        log('[SPM-dup] Datadog: stopSessionReplay + stopSession + consent revoked.');
-      }
-    } catch (_) {}
-    // Fetch/Beacon/XHR patches. Solo si no los aplicó otra applet antes.
-    if (!window.__sa_fetch_patched) {
-      try {
-        const origFetch = window.fetch;
-        window.fetch = function (input, init) {
-          const url = typeof input === 'string' ? input : (input?.url || '');
-          if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
-            return Promise.resolve(new Response('', { status: 204 }));
-          }
-          return origFetch.call(this, input, init);
-        };
-        if (navigator.sendBeacon) {
-          const origBeacon = navigator.sendBeacon.bind(navigator);
-          navigator.sendBeacon = function (url, data) {
-            if (/browser-intake-ddog-gov\.com|datadoghq\.com/i.test(url)) return true;
-            return origBeacon(url, data);
-          };
-        }
-        if (window.XMLHttpRequest && !window.__sa_xhr_patched) {
-          const origOpen = XMLHttpRequest.prototype.open;
-          XMLHttpRequest.prototype.open = function (method, url) {
-            this.__sa_url = url;
-            return origOpen.apply(this, arguments);
-          };
-          const origSend = XMLHttpRequest.prototype.send;
-          XMLHttpRequest.prototype.send = function (body) {
-            const url = this.__sa_url || '';
-            if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
-              try { this.abort(); } catch (_) {}
-              return;
-            }
-            return origSend.apply(this, arguments);
-          };
-          window.__sa_xhr_patched = true;
-        }
-        window.__sa_fetch_patched = true;
-        log('[SPM-dup] fetch+sendBeacon+XHR a Datadog patcheados.');
-      } catch (e) { warn(`[SPM-dup] Patch fetch falló: ${String(e?.message || e).substring(0, 80)}`); }
-    }
-    dupApolloCacheDrain();
-    window.__sa_dd_stopped = true;
+    if (!HOST) { warn('[SPM-dup] SteelheadHostCleanup no disponible — saltando host cleanup'); return; }
+    HOST.stopDatadogSessionReplay();
   }
+  // makePeriodicDrain(50): cada 50 invocaciones llama apolloCacheDrain. Lo usamos
+  // al final del worker del runPool (post-classifyPN) para que cuente PNs reales,
+  // no chunks de onProgress.
+  const dupPeriodicDrain = HOST ? HOST.makePeriodicDrain(50) : (() => {});
 
   async function dupWithRetry(fn, label) {
     let lastErr = null;
@@ -2327,6 +2298,10 @@ const SpecMigrator = (() => {
       .sa-specm-dup-overlay .dup-table tr.ignored .dup-radio-row { color:#9ca3af !important; }
       .sa-specm-dup-overlay .dup-table .dup-mini { font-size:10px; color:#cbd5e1; background:#1f2937;
         padding:1px 5px; border-radius:8px; margin-left:4px; }
+      .sa-specm-dup-overlay .dup-mem { font-size:10px; color:#9ca3af; background:#0f172a;
+        padding:2px 6px; border-radius:4px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+      .sa-specm-dup-overlay .dup-mem.sa-mem-warn { color:#fbbf24; background:#78350f33; }
+      .sa-specm-dup-overlay .dup-mem.sa-mem-crit { color:#fca5a5; background:#7f1d1d55; }
     `;
     document.head.appendChild(s);
   }
@@ -2339,11 +2314,35 @@ const SpecMigrator = (() => {
     specFilter: '',
     groups: [],
     decisions: new Map(),
+    // 0.5.5: AbortController activo del scan/apply en curso. cancelRun llama abort().
+    abortCtrl: null,
+    // 0.5.5: mem monitor handle (createMemMonitor del módulo compartido).
+    memMonitor: null,
   };
+
+  // 0.5.5: clave de localStorage para resume tras OOM/guardrail.
+  const DUP_RESUME_KEY = 'sa-specm-dup-resume-v1';
+  function dupSaveResume(payload) {
+    try { localStorage.setItem(DUP_RESUME_KEY, JSON.stringify(payload)); } catch (_) {}
+  }
+  function dupLoadResume() {
+    try {
+      const raw = localStorage.getItem(DUP_RESUME_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (_) { return null; }
+  }
+  function dupClearResume() {
+    try { localStorage.removeItem(DUP_RESUME_KEY); } catch (_) {}
+  }
 
   function dupClosePanel() {
     if (dupState.panelEl && dupState.panelEl.parentNode) dupState.panelEl.parentNode.removeChild(dupState.panelEl);
     dupState.panelEl = null;
+    // 0.5.5: detener mem monitor + abortar fetches en vuelo antes de soltar
+    // referencias. Sin esto el monitor sigue polleando sobre un DOM detached.
+    if (dupState.memMonitor) { try { dupState.memMonitor.stop(); } catch (_) {} dupState.memMonitor = null; }
+    if (dupState.abortCtrl) { try { dupState.abortCtrl.abort(); } catch (_) {} dupState.abortCtrl = null; }
     // 0.5.2: liberar referencias pesadas para que el GC pueda recolectar al
     // cerrar el panel. Sin esto, dupState.csvItems (con savePnSeed por PN +
     // issues) y dupState.groups (scan mode) se quedan vivos hasta que se vuelva
@@ -2365,7 +2364,10 @@ const SpecMigrator = (() => {
     el.innerHTML = `
       <div class="dup-hdr">
         <h3>${dupEscHtml(title)}</h3>
-        <button class="dup-btn dup-btn-ghost" data-act="dup-close">✕</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="dup-mem" data-ctrl="dup-mem"></span>
+          <button class="dup-btn dup-btn-ghost" data-act="dup-close">✕</button>
+        </div>
       </div>
       <div class="dup-body"></div>
       <div class="dup-ftr"></div>
@@ -2376,7 +2378,53 @@ const SpecMigrator = (() => {
       dupState.runId++;
       dupClosePanel();
     });
+    // 0.5.5: arrancar mem monitor desde que se abre el panel. El polling
+    // se detiene en dupClosePanel(). onGuardrail @88% persiste resume +
+    // cancela el run y muestra modal pidiendo reload del tab.
+    if (HOST && performance && performance.memory) {
+      dupState.memMonitor = HOST.createMemMonitor({
+        getElement: () => dupState.panelEl?.querySelector('[data-ctrl=dup-mem]') || null,
+        warnPct: 70,
+        critPct: 85,
+        guardrailPct: 88,
+        onGuardrail: (pct) => dupHandleGuardrail(pct),
+      });
+      try { dupState.memMonitor.start(); } catch (_) {}
+    }
     return el;
+  }
+
+  // 0.5.5: handler de guardrail a 88% heap. Persiste resume + cancela run +
+  // muestra modal. NO intentar continuar — checkpoint > crash.
+  function dupHandleGuardrail(pct) {
+    try {
+      // Snapshot mínimo: csvFileName + pnIds ya procesados (cabe en localStorage).
+      const processedIds = (dupState.csvItems || []).map(it => it.pnId);
+      dupSaveResume({
+        ts: Date.now(),
+        pct,
+        csvFileName: dupState.csvFileName || null,
+        customerFilter: dupState.customerFilter || '',
+        specFilter: dupState.specFilter || '',
+        processedCount: processedIds.length,
+        processedIds: processedIds.slice(0, 10000), // cap defensivo
+      });
+    } catch (_) {}
+    dupState.runId++; // cancela cualquier loop activo
+    if (dupState.abortCtrl) { try { dupState.abortCtrl.abort(); } catch (_) {} }
+    warn(`[SPM-dup] Guardrail ${pct}% — run cancelado + resume persistido.`);
+    if (dupState.panelEl) {
+      const body = dupState.panelEl.querySelector('.dup-body');
+      if (body) {
+        body.innerHTML = '';
+        const box = document.createElement('div');
+        box.className = 'dup-error';
+        box.innerHTML = `<b>Memoria del tab al ${pct}%.</b> Se canceló el run y se guardó checkpoint en localStorage (clave <code>${DUP_RESUME_KEY}</code>). Recarga el tab de Steelhead y vuelve a abrir el validador — detectará el checkpoint y ofrecerá reanudar.`;
+        body.appendChild(box);
+      }
+      dupSetFooter(`<button class="dup-btn" data-act="dup-guard-close">Cerrar panel</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-guard-close]')?.addEventListener('click', () => dupClosePanel());
+    }
   }
 
   function dupSetBody(html) {
@@ -2401,7 +2449,21 @@ const SpecMigrator = (() => {
   }
 
   function dupRenderFilterPanel(myRunId) {
+    // 0.5.5: si hay checkpoint persistido por un guardrail previo, mostrar banner
+    // con info + botón para descartar. La reanudación real (skip pnIds en
+    // resolve) se queda como pendiente derivado (#120 cuando aplique).
+    const resume = dupLoadResume();
+    const resumeBanner = resume ? `
+      <div style="background:#78350f33;border:1px solid #b45309;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#fcd34d">
+        <b>⚠ Checkpoint detectado.</b> Un run previo se canceló por presión de memoria al ${resume.pct || '?'}%
+        (CSV: <code>${dupEscHtml(resume.csvFileName || '?')}</code>, ${resume.processedCount || 0} PNs procesados,
+        hace ${Math.max(1, Math.round((Date.now() - (resume.ts || 0)) / 60000))} min).
+        <br><span style="color:#9ca3af">La reanudación automática aún no está implementada — re-corre el CSV completo o filtra a un cliente.</span>
+        <button class="dup-btn dup-btn-ghost" data-act="dup-clear-resume" style="margin-top:6px;font-size:10px;padding:3px 8px">Descartar checkpoint</button>
+      </div>
+    ` : '';
     dupSetBody(`
+      ${resumeBanner}
       <div style="font-size:12px;color:#cbd5e1;margin-bottom:8px">
         Escanea PNs activos y detecta &gt;1 param activo por (Spec, SpecField).
         Puedes filtrar por cliente, spec, ambos o ninguno (vacío = todos los PNs activos).
@@ -2437,6 +2499,10 @@ const SpecMigrator = (() => {
       </div>
     `);
     dupState.panelEl.querySelector('[data-act=dup-cancel]')?.addEventListener('click', () => dupClosePanel());
+    dupState.panelEl.querySelector('[data-act=dup-clear-resume]')?.addEventListener('click', () => {
+      dupClearResume();
+      dupRenderFilterPanel(myRunId);
+    });
 
     const csvInput = dupState.panelEl.querySelector('[data-ctrl=dup-csv-file]');
     const csvStatus = dupState.panelEl.querySelector('[data-ctrl=dup-csv-status]');
@@ -3186,10 +3252,12 @@ const SpecMigrator = (() => {
   // Orquesta: parse → resolve → GetPartNumber → clasificar → render.
   async function dupRunScanFromCsv(myRunId, csvText, fileName) {
     // 0.5.3: ANTES de empezar a martillar GraphQL, apagar Datadog session replay
-    // y drenar Apollo cache del SPA host. Sin esto, cada AllPartNumbers (paginado
-    // 500×N) y cada GetPartNumber (4270+ en CSVs grandes) inflan el InMemoryCache
-    // normalizado de Apollo + el ring buffer de Datadog → OOM lateral.
+    // y drenar Apollo cache del SPA host. 0.5.5: vía SteelheadHostCleanup.
     dupStopHostJobs();
+    // 0.5.5: AbortController para cancelar fetches en vuelo cuando el usuario
+    // cancela o el guardrail dispara. cancelRun llama .abort() y los retries
+    // de dupWithRetry propagan el error.
+    dupState.abortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     dupSetBody(`<div class="dup-progress">
       Modo CSV: <b>${dupEscHtml(fileName || 'archivo')}</b>
       <div data-ctrl="prog-msg">Parseando CSV…</div>
@@ -3198,6 +3266,7 @@ const SpecMigrator = (() => {
     dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-cancel-run">Cancelar</button>`);
     dupState.panelEl.querySelector('[data-act=dup-cancel-run]')?.addEventListener('click', () => {
       dupState.runId++;
+      if (dupState.abortCtrl) { try { dupState.abortCtrl.abort(); } catch (_) {} }
       dupClosePanel();
     });
     const progMsg = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
@@ -3208,8 +3277,14 @@ const SpecMigrator = (() => {
       if (progBar && total > 0) progBar.style.width = `${Math.min(100, (done / total) * 100)}%`;
     };
 
-    const rows = dupCsvParseCSV(csvText);
+    let rows = dupCsvParseCSV(csvText);
     const csvParts = dupCsvParseRows(rows);
+    // 0.5.5 mem: el array `rows` puede ser 4000 × 70 cells = 280k strings.
+    // csvParts ya es slim ({pn, customer, quoteIBMS, specs[]}). Nullear rows
+    // y csvText (variable local) para que el GC libere el array crudo y el
+    // string del CSV en lugar de retenerlos toda la corrida.
+    rows = null;
+    csvText = null;
     if (!csvParts.length) {
       dupSetBody(`<div class="dup-error">CSV no contiene filas válidas (¿formato V10 con columna F=PN?).</div>`);
       dupSetFooter(`<button class="dup-btn" data-act="dup-close-err">Cerrar</button>`);
@@ -3243,6 +3318,8 @@ const SpecMigrator = (() => {
 
     await dupRunPool(resolution.resolved, async (r) => {
       if (dupState.runId !== myRunId) return;
+      // 0.5.5: si el abortCtrl ya fue abortado (cancel/guardrail), no entrar al fetch.
+      if (dupState.abortCtrl?.signal?.aborted) return;
       let detail = null;
       try {
         const data = await dupWithRetry(
@@ -3262,11 +3339,11 @@ const SpecMigrator = (() => {
       // en classify. Sin esto, la closure del worker retiene la referencia hasta
       // que termine la promesa, multiplicado por concurrency=6 in-flight.
       detail = null;
+      // 0.5.5: periodic drain por PN procesado (no por chunk de onProgress).
+      // Garantiza un clearStore() de Apollo cada 50 GetPartNumber reales.
+      dupPeriodicDrain();
     }, 6, (done, total) => {
       setProg(`${done}/${total} PNs revisados — ${items.length} con issues`, done, total);
-      // 0.5.3: drenar Apollo cache cada 50 PNs procesados. clearStore() es
-      // silencioso (no log) y barato si no encuentra el client.
-      if (done % 50 === 0) dupApolloCacheDrain();
     });
 
     if (dupState.runId !== myRunId) return;
@@ -3535,7 +3612,15 @@ const SpecMigrator = (() => {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    for (const it of items) {
+
+    // 0.5.5: virtualización del preview — renderizamos por chunks de PAGE_SIZE
+    // filas. IntersectionObserver dispara el siguiente chunk cuando el sentinel
+    // entra al viewport del scroll. Para 4000 PNs con issues, esto evita crear
+    // ~20k nodos DOM upfront. Total nodos visibles tope ≈ PAGE_SIZE * 5 cells * 2 (avg).
+    const PAGE_SIZE = 50;
+    let renderedCount = 0;
+
+    function buildRow(it) {
       const tr = document.createElement('tr');
       tr.dataset.pnid = String(it.pnId);
 
@@ -3544,7 +3629,7 @@ const SpecMigrator = (() => {
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = dupState.csvSelections.get(it.pnId) !== false;
-      cb.disabled = it.issues.every(i => i.status === 'wrongSfp'); // wrongSfp puro → no aplicable
+      cb.disabled = it.issues.every(i => i.status === 'wrongSfp');
       if (cb.disabled) cb.checked = false;
       cb.addEventListener('change', () => {
         dupState.csvSelections.set(it.pnId, cb.checked);
@@ -3589,11 +3674,53 @@ const SpecMigrator = (() => {
       }).join('');
       tdPv.appendChild(preview);
       tr.appendChild(tdPv);
-
-      tbody.appendChild(tr);
+      return tr;
     }
+
+    function renderNextChunk() {
+      const end = Math.min(renderedCount + PAGE_SIZE, items.length);
+      const frag = document.createDocumentFragment();
+      for (let i = renderedCount; i < end; i++) frag.appendChild(buildRow(items[i]));
+      tbody.appendChild(frag);
+      renderedCount = end;
+    }
+
+    renderNextChunk();
     table.appendChild(tbody);
     wrap.appendChild(table);
+
+    if (items.length > PAGE_SIZE) {
+      const sentinel = document.createElement('div');
+      sentinel.style.cssText = 'padding:8px;text-align:center;color:#9ca3af;font-size:11px';
+      sentinel.textContent = `Mostrando ${PAGE_SIZE} de ${items.length} — desplázate para ver más`;
+      wrap.appendChild(sentinel);
+
+      const updateSentinel = () => {
+        if (renderedCount >= items.length) {
+          sentinel.remove();
+        } else {
+          sentinel.textContent = `Mostrando ${renderedCount} de ${items.length} — desplázate para ver más`;
+        }
+      };
+
+      if ('IntersectionObserver' in window) {
+        const io = new IntersectionObserver((entries) => {
+          if (entries.some(e => e.isIntersecting)) {
+            renderNextChunk();
+            updateSentinel();
+            if (renderedCount >= items.length) io.disconnect();
+          }
+        }, { root: wrap, threshold: 0.1, rootMargin: '200px' });
+        io.observe(sentinel);
+      } else {
+        // Fallback sin IO: botón manual.
+        sentinel.style.cursor = 'pointer';
+        sentinel.style.color = '#a78bfa';
+        sentinel.textContent = `Cargar siguientes ${PAGE_SIZE}…`;
+        sentinel.addEventListener('click', () => { renderNextChunk(); updateSentinel(); });
+      }
+    }
+
     body.appendChild(wrap);
 
     dupSetFooter(`
@@ -3676,8 +3803,11 @@ const SpecMigrator = (() => {
     dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Cancelar</button>`);
     dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
       dupState.runId++;
+      if (dupState.abortCtrl) { try { dupState.abortCtrl.abort(); } catch (_) {} }
       dupClosePanel();
     });
+    // 0.5.5: nuevo abortCtrl para la fase apply.
+    dupState.abortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
     const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
 
@@ -3687,6 +3817,7 @@ const SpecMigrator = (() => {
 
     await dupRunPool(tasks, async (t) => {
       if (dupState.runId !== myRunId) return;
+      if (dupState.abortCtrl?.signal?.aborted) return;
       // 0.5.2 mem: ahora consumimos el seed slimmed en classify, no el detail completo.
       const d = t.item.savePnSeed;
       const input = {
@@ -3728,9 +3859,23 @@ const SpecMigrator = (() => {
       processed++;
       if (pm) pm.textContent = `${processed}/${tasks.length} (${okRows.length} OK, ${errRows.length} err)`;
       if (pb) pb.style.width = `${(processed / tasks.length) * 100}%`;
+      // 0.5.5: periodic drain también en apply — SavePartNumber response también
+      // se normaliza en Apollo cache.
+      dupPeriodicDrain();
     }, 3);
 
     log(`[SPM-dup-csv] Apply: ${okRows.length} OK, ${errRows.length} errores`);
+    // 0.5.5: tras apply exitoso, limpiar resume (si lo había) y vaciar el state
+    // del CSV. El usuario ya tiene el resultado renderizado — no necesitamos
+    // retener csvItems/csvSelections/csvUnresolved en memoria hasta que cierre.
+    dupClearResume();
+    dupState.csvSelections = new Map();
+    dupState.csvUnresolved = null;
+    dupState.csvFetchErrors = null;
+    // csvItems se vacía aquí pero conservamos pnId/pnName/archived/inserted en
+    // okRows/errRows para el render final.
+    dupState.csvItems = null;
+    if (dupState.abortCtrl) { dupState.abortCtrl = null; }
 
     const body = dupState.panelEl.querySelector('.dup-body');
     body.innerHTML = '';
