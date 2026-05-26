@@ -5,6 +5,96 @@ de Steelhead contra el CSV original de bulk-upload y detecta huecos (labels,
 specs, racks, predictivos, custom inputs, precio, dimensiones, descripción,
 proceso) para emitir un CSV de recuperación + reporte JSON.
 
+## 2026-05-25 — Fix NN: criterio duplicate-params / paramProcessNode (alineación con bulk-upload 1.4.38)
+
+### Petición
+Cita usuario: "no nos faltaría actualizar el audit-incomplete para que considere un parámetro duplicado como error?"
+
+Con la regla nueva (bulk-upload 1.4.38 + spec-migrator 0.4.3), un PN cargado correctamente debe tener **1 row vivo por SpecField con `processNodeId=null`**. El auditor sólo flageaba "0 params" (línea 1231 pre-fix); cualquier duplicación o residuo con processNode pasaba como OK silenciosamente.
+
+### Fix
+`tools/audit-incomplete-pns.js:1234-1265` — tras el check de `linkedParams` vacío, agrupar los params vivos por `specFieldId` (vía `specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.specFieldBySpecFieldId.id`) y emitir 2 nuevos tipos de issue:
+
+| Issue | Trigger | Significado |
+|---|---|---|
+| `duplicateParams` | >1 row vivo en el mismo `specFieldId` | Hay que correr validate-duplicate-params (spec-migrator 0.4.3) o re-cargar con bulk-upload 1.4.38+. |
+| `paramProcessNode` | cualquier row vivo con `processNodeId !== null` | El row debería tener `processNodeId=null`. Bulk-upload 1.4.38+ re-pasará y lo reescribirá, o spec-migrator lo archiva. |
+
+Defensivo: si la query persistida `GetPartNumber` no resuelve el `specFieldId` nested, el param se ignora (no falla la auditoría). El validator dup-params en spec-migrator 0.4.1+ confirma que ese path SÍ se resuelve en la query actual.
+
+Output shape:
+```js
+{ field: 'duplicateParams', specField: 'Espesor', count: 2, rowIds: [12345, 12346] }
+{ field: 'paramProcessNode', specField: 'Adherencia', rowIds: [12347] }
+```
+
+Aparecen en el conteo por tipo de issue (línea 1413, `i.field + (i.key ? ':'+i.key : '')`) y bajan al CSV de recuperación + JSON como cualquier otro issue.
+
+### Lección
+- **Criterios de auditoría deben reflejar la regla actual de bulk-upload, no la histórica.** El check "PN sin params" cubría 1.4.0, no la regla 1.4.38. Cada vez que cambia la regla de bulk-upload, audit-incomplete-pns debe revisar criterios.
+- **Defensa por skip en lugar de assume**: si la query no resuelve un nested field, mejor saltar el param que crashear o emitir un falso positivo masivo.
+
+### Pendiente de validación
+- [ ] Correr audit sobre un lote conocido con duplicados (PNs pre-1.4.38) y verificar que `duplicateParams` aparezca en el summary y CSV. PN 3027938 / 3027939 son candidatos históricos.
+- [ ] Confirmar que post-recarga con bulk-upload 1.4.38, el conteo `duplicateParams: 0` y `paramProcessNode: 0`.
+
+---
+
+## 2026-05-25 — Fix MM: cache de fingerprint en fase 5.4b (OOM en P1)
+
+### Síntoma
+Auditando P1 (3692 filas / 2132 keys ambiguos / 6208 candidatos a discriminar),
+la pestaña se acercaba a OOM en mid-discriminación: `Mem 3199/4096 MB (78%)` con
+35% de progreso (2179/6208). La fase 5.4b no tiene resume — un crash significa
+re-correr 5.4b entera.
+
+### Diagnóstico
+`tools/audit-incomplete-pns.js:871` (pre-fix) declaraba `candidateFullCache =
+new Map()` y guardaba el `partNumberById` COMPLETO (labels, specs, racks,
+predictedInventoryUsages, customInputs) para los 6208 candidatos. Pero el único
+uso posterior (línea 916) extraía solo 3 strings vía `fingerprintOf(...)`:
+`quoteIBMS + metalBase + labelsSorted`.
+
+Cuenta: 6208 PNs × ~50 KB cada uno ≈ ~300 MB solo del cache. Sumado a
+`allParts` (3692 rawRow byte-exact), catálogos y `ambiguousByCandidatesKey`,
+llegaba al cap dinámico de Chrome tab.
+
+P3 (audit anterior) no lo expuso porque tenía muchísimos menos buckets ambiguos.
+P1 multiplicó por ~100x los candidatos.
+
+### Fix
+- `tools/audit-incomplete-pns.js:874` — rename `candidateFullCache` →
+  `candidateFpCache` con shape `Map<pnId, { quoteIBMS, metalBase, labelsSorted }>`.
+- `tools/audit-incomplete-pns.js:878-901` — `fingerprintOf` y `csvFingerprint`
+  movidos fuera del `if (ambiguousByCandidatesKey.size)` para estar en scope del
+  callback del runPool.
+- `tools/audit-incomplete-pns.js:919` — runPool callback extrae fingerprint inline
+  con `candidateFpCache.set(id, fingerprintOf(d.partNumberById))` y descarta el
+  PN completo al salir del scope (GC inmediato).
+- `tools/audit-incomplete-pns.js:925-928` — el loop de discriminación lee
+  fingerprint precomputado (no re-llama `fingerprintOf` por bucket).
+
+Memoria del cache: ~300 MB → ~500 KB (factor ~600x).
+
+### Lección
+- **Cachear lo que necesitas, no lo que recibes**. El persisted query de
+  GetPartNumber trae el universo del PN; si solo necesitas 3 strings de eso,
+  extrae-y-descarta en el callback async, no después.
+- **OOM en pool concurrente es acumulativo, no instantáneo**. Bajar `concurrency`
+  no ayuda — el cache crece linealmente con `allAmbCands.length`, no con
+  in-flight count. El fix tiene que ser el shape del cache.
+- **Falta de resume en fase 5.4b** es un agravante. Pendiente derivado:
+  persistir `ambiguousByCandidatesKey` + `candidateFpCache` cada N candidatos
+  para reanudar si crashea. Hoy un OOM = re-correr 5.4b completa.
+
+### Pendientes derivados
+- [ ] Resume de fase 5.4b (persistir cache + bucket progress cada 50 PNs).
+- [ ] Considerar collapsar 5.4b + 5.5 en single-pass: 1 fetch `GetPartNumber`,
+      extraer fingerprint para discriminar y comparar campo-a-campo para
+      auditoría. Ahorra 50% queries cuando hay muchos ambiguos. Requiere
+      reordenar el flujo (discriminación necesita TODOS los fingerprints del
+      bucket antes de elegir → no se puede hacer 100% streaming).
+
 ## 2026-05-25 — Fix LL: `usagesLimit:1` → `100` (falsos positivos predictive missing)
 
 ### Síntoma

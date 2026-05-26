@@ -868,7 +868,33 @@
     // Steelhead (no se puede solo archivar).
     const duplicatesRequiringDelete = []; // [{ customer, customerId, pn, quoteIBMS, pnIds }]
     const ambiguousResolutions = []; // [{ pn, row, via, pnId, quoteIBMS? }]
-    const candidateFullCache = new Map(); // pnId → pn (full) — solo durante esta fase
+    // 2026-05-25 — Fix MM: cache solo el fingerprint (~80 bytes/PN) en lugar del
+    // PN completo (~50 KB/PN). En P1 con 6208 candidatos ambiguos, el cache full
+    // explotaba a ~300 MB y disparaba OOM en mid-discriminación. Ahora ~500 KB.
+    const candidateFpCache = new Map(); // pnId → { quoteIBMS, metalBase, labelsSorted }
+
+    // Fingerprint helpers (solo para discriminación — comparePartNumber compara campo a campo aparte).
+    // Definidos fuera del if() para estar en scope del runPool callback.
+    const fingerprintOf = (pn) => {
+      if (!pn) return { quoteIBMS: '', metalBase: '', labelsSorted: '' };
+      const ci = (typeof pn.customInputs === 'string')
+        ? (() => { try { return JSON.parse(pn.customInputs); } catch { return null; } })()
+        : (pn.customInputs || null);
+      const dCust = ci?.DatosAdicionalesNP || {};
+      const labelsServer = (pn.partNumberLabelsByPartNumberId?.nodes || [])
+        .map(x => x?.labelByLabelId?.name).filter(Boolean);
+      return {
+        quoteIBMS: String(dCust.QuoteIBMS || '').trim(),
+        metalBase: String(dCust.BaseMetal || '').trim().toUpperCase(),
+        labelsSorted: labelsServer.slice().sort().map(s => s.toUpperCase()).join('|'),
+      };
+    };
+    const csvFingerprint = (p) => ({
+      quoteIBMS: String(p.quoteIBMS || '').trim(),
+      metalBase: String(p.metalBase || '').trim().toUpperCase(),
+      labelsSorted: p.labels.filter(l => !isDash(l)).slice().sort().map(s => String(s).toUpperCase()).join('|'),
+    });
+
     if (ambiguousByCandidatesKey.size) {
       setPhase(`Discriminando ${ambiguousByCandidatesKey.size} keys ambiguos`);
       const allAmbCands = [];
@@ -887,33 +913,18 @@
         setSub(`Discriminando: ${c.name} (id=${c.id})`);
         try {
           const d = await withRetry(() => gql('GetPartNumber', { partNumberId: c.id, usagesLimit: 100, usagesOffset: 0 }), `GetPartNumber disc ${c.id}`);
-          if (d?.partNumberById) candidateFullCache.set(String(c.id), d.partNumberById);
+          // Extraer fingerprint inline y descartar el PN completo. El PN no se
+          // reusa en fase 5.5 (comparePartNumber re-fetcha igual), así que no
+          // tiene sentido retenerlo aquí.
+          if (d?.partNumberById) candidateFpCache.set(String(c.id), fingerprintOf(d.partNumberById));
         } catch (e) { log(`⚠️ GetPartNumber disc ${c.id} falló: ${e.message}`); }
       }, concurrency, (done, total) => { dDone = done; setProgress(done, total); });
 
-      // Fingerprint helpers (solo para discriminación — comparePartNumber compara campo a campo aparte).
-      const fingerprintOf = (pn) => {
-        if (!pn) return { quoteIBMS: '', metalBase: '', labelsSorted: '' };
-        const ci = (typeof pn.customInputs === 'string')
-          ? (() => { try { return JSON.parse(pn.customInputs); } catch { return null; } })()
-          : (pn.customInputs || null);
-        const dCust = ci?.DatosAdicionalesNP || {};
-        const labelsServer = (pn.partNumberLabelsByPartNumberId?.nodes || [])
-          .map(x => x?.labelByLabelId?.name).filter(Boolean);
-        return {
-          quoteIBMS: String(dCust.QuoteIBMS || '').trim(),
-          metalBase: String(dCust.BaseMetal || '').trim().toUpperCase(),
-          labelsSorted: labelsServer.slice().sort().map(s => s.toUpperCase()).join('|'),
-        };
-      };
-      const csvFingerprint = (p) => ({
-        quoteIBMS: String(p.quoteIBMS || '').trim(),
-        metalBase: String(p.metalBase || '').trim().toUpperCase(),
-        labelsSorted: p.labels.filter(l => !isDash(l)).slice().sort().map(s => String(s).toUpperCase()).join('|'),
-      });
-
       for (const [key, bucket] of ambiguousByCandidatesKey) {
-        const candFps = bucket.cands.map(c => ({ c, fp: fingerprintOf(candidateFullCache.get(String(c.id))) }));
+        const candFps = bucket.cands.map(c => ({
+          c,
+          fp: candidateFpCache.get(String(c.id)) || { quoteIBMS: '', metalBase: '', labelsSorted: '' },
+        }));
 
         // Detección server-side: 2+ candidatos comparten quoteIBMS (no vacío) → DUPLICADO REAL.
         const byQuote = new Map();
@@ -975,7 +986,7 @@
         log(`  🚨 Duplicados server (DELETE manual): ${head}${duplicatesRequiringDelete.length > 5 ? `, +${duplicatesRequiringDelete.length - 5}...` : ''}`);
       }
     }
-    candidateFullCache.clear();
+    candidateFpCache.clear();
     log(`Resoluble total: ${partsWithPn.length}/${allParts.length} (${unresolved.length} sin match)`);
     if (unresolved.length) {
       const head = unresolved.slice(0, 5).map(u => `${u.part.pn} [${u.part.cliente}] (${u.reason})`).join(', ');
@@ -1219,6 +1230,40 @@
     // asumimos OK (confianza en que bulk-upload no terminó sin params).
     if (expectedSpecs.length && !linkedParams.length) {
       issues.push({ field: 'specParam', missing: 'PN sin params (esperaba ' + expectedSpecs.length + ' specs)' });
+    }
+    // 2026-05-25: regla bulk-upload 1.4.38 / spec-migrator 0.4.3 — 1 row vivo
+    // por SpecField, con processNodeId=null. Agrupamos por specFieldId y
+    // flagueamos: (a) duplicados (>1 row vivo en mismo SpecField); (b) cualquier
+    // row con processNodeId no nulo. Defensivo: si la query persistida no
+    // resuelve el specFieldId nested, sólo skipea ese param (no falla).
+    const paramsBySpecField = new Map();
+    for (const p of linkedParams) {
+      const sfp = p.specFieldParamBySpecFieldParamId;
+      const sfId = sfp?.specFieldSpecBySpecFieldSpecId?.specFieldBySpecFieldId?.id;
+      const sfName = sfp?.specFieldSpecBySpecFieldSpecId?.specFieldBySpecFieldId?.name
+                 || sfp?.specFieldBySpecFieldId?.name
+                 || null;
+      if (!sfId) continue;
+      if (!paramsBySpecField.has(sfId)) paramsBySpecField.set(sfId, { name: sfName, rows: [] });
+      paramsBySpecField.get(sfId).rows.push(p);
+    }
+    for (const [sfId, g] of paramsBySpecField) {
+      if (g.rows.length > 1) {
+        issues.push({
+          field: 'duplicateParams',
+          specField: g.name || `sfId#${sfId}`,
+          count: g.rows.length,
+          rowIds: g.rows.map(r => r.id)
+        });
+      }
+      const withProc = g.rows.filter(r => r.processNodeId);
+      if (withProc.length) {
+        issues.push({
+          field: 'paramProcessNode',
+          specField: g.name || `sfId#${sfId}`,
+          rowIds: withProc.map(r => r.id)
+        });
+      }
     }
 
     // ── Racks ──
