@@ -197,6 +197,37 @@ const PNAuditor = (() => {
     return cn.toUpperCase().includes(customerFilter.toUpperCase());
   }
 
+  // EJE A: shape slim del pase 1. Solo campos consumidos por duplicate-tiers.js
+  // y por el render. Parse-once de customInputs (módulo acepta string u objeto).
+  // Preserva labels en formato slim si vienen — el módulo los usa como fallback
+  // cuando no hay detail (run abortado / failed fetch).
+  function slimPass1Node(n, archivedAtOverride) {
+    const ci = (() => {
+      try { return typeof n.customInputs === 'string' ? JSON.parse(n.customInputs) : (n.customInputs || {}); }
+      catch { return {}; }
+    })();
+    const slim = {
+      id: n.id,
+      name: n.name,
+      customerByCustomerId: n.customerByCustomerId
+        ? { id: n.customerByCustomerId.id, name: n.customerByCustomerId.name }
+        : null,
+      customInputs: ci,
+      createdAt: n.createdAt,
+      archivedAt: archivedAtOverride !== undefined ? archivedAtOverride : (n.archivedAt || null),
+    };
+    // Fallback de labels que duplicate-tiers.js puede leer si falta el detail.
+    if (Array.isArray(n.labels)) slim.labels = n.labels.slice();
+    if (n.partNumberLabelsByPartNumberId && Array.isArray(n.partNumberLabelsByPartNumberId.nodes)) {
+      slim.partNumberLabelsByPartNumberId = {
+        nodes: n.partNumberLabelsByPartNumberId.nodes.map(node => ({
+          labelByLabelId: { name: (node && node.labelByLabelId && node.labelByLabelId.name) || '' },
+        })),
+      };
+    }
+    return slim;
+  }
+
   async function fetchAllPNsWithArchived(opts) {
     const { customerFilter, searchQuery, includeArchived, onProgress } = opts;
     const all = [];
@@ -213,7 +244,7 @@ const PNAuditor = (() => {
         activeIds.add(n.id);
         if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
           seenIds.add(n.id);
-          all.push({ ...n, archivedAt: null });
+          all.push(slimPass1Node(n, null));
         }
       }
       onProgress && onProgress(`Pase 1 (activos): ${all.length} PNs · offset ${offset}`);
@@ -232,7 +263,7 @@ const PNAuditor = (() => {
           if (activeIds.has(n.id)) continue;
           if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
             seenIds.add(n.id);
-            all.push({ ...n, archivedAt: ARCHIVED_SENTINEL });
+            all.push(slimPass1Node(n, ARCHIVED_SENTINEL));
           }
         }
         onProgress && onProgress(`Pase 1 (archivados): ${all.length} PNs · offset ${offset}`);
@@ -246,6 +277,45 @@ const PNAuditor = (() => {
   // ═══════════════════════════════════════════
   // INTEGRITY TIERS — pase 2 + scoring + winners
   // ═══════════════════════════════════════════
+
+  // Reduce el response de GetPartNumber a lo único que duplicate-tiers.js consume:
+  // ciInputs, defaultProcessNodeId, descriptionMarkdown, partNumberGroupId,
+  // dimensionCustomValueIds, label NAMES, isDefault de prices, y counts del resto.
+  // Esto pasa el detail de ~30-80KB a ~1-2KB por PN — diferencia entre 400MB y
+  // 10MB en runs de 5000 candidatos. Mantiene la shape nested para que el módulo
+  // siga leyendo .nodes.length / .nodes.map(...) sin cambios.
+  function slimDetail(raw) {
+    if (!raw) return null;
+    const ci = (() => {
+      try { return typeof raw.customInputs === 'string' ? JSON.parse(raw.customInputs) : (raw.customInputs || {}); }
+      catch { return {}; }
+    })();
+    const labelNodes = (raw.partNumberLabelsByPartNumberId && raw.partNumberLabelsByPartNumberId.nodes) || [];
+    const priceNodes = (raw.partNumberPricesByPartNumberId && raw.partNumberPricesByPartNumberId.nodes) || [];
+    const specsLen = ((raw.partNumberSpecsByPartNumberId && raw.partNumberSpecsByPartNumberId.nodes) || []).length;
+    const racksLen = ((raw.partNumberRackTypesByPartNumberId && raw.partNumberRackTypesByPartNumberId.nodes) || []).length;
+    const predUsagesLen = ((raw.inventoryPredictedUsagesByPartNumberId && raw.inventoryPredictedUsagesByPartNumberId.nodes) || []).length;
+    const unitConvsLen = ((raw.inventoryItemByPartNumberId && raw.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId && raw.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes) || []).length;
+    return {
+      customInputs: ci,
+      defaultProcessNodeId: raw.defaultProcessNodeId || null,
+      descriptionMarkdown: raw.descriptionMarkdown || '',
+      partNumberGroupId: raw.partNumberGroupId || null,
+      dimensionCustomValueIds: Array.isArray(raw.dimensionCustomValueIds) ? raw.dimensionCustomValueIds.slice() : [],
+      partNumberSpecsByPartNumberId: { nodes: new Array(specsLen) },
+      partNumberLabelsByPartNumberId: {
+        nodes: labelNodes.map(n => ({ labelByLabelId: { name: (n && n.labelByLabelId && n.labelByLabelId.name) || '' } })),
+      },
+      partNumberPricesByPartNumberId: {
+        nodes: priceNodes.map(n => ({ isDefault: !!(n && n.isDefault) })),
+      },
+      partNumberRackTypesByPartNumberId: { nodes: new Array(racksLen) },
+      inventoryPredictedUsagesByPartNumberId: { nodes: new Array(predUsagesLen) },
+      inventoryItemByPartNumberId: {
+        inventoryItemUnitConversionsByInventoryItemId: { nodes: new Array(unitConvsLen) },
+      },
+    };
+  }
 
   async function runIntegrityScan(options) {
     const { selectedTiers, customerFilter, searchQuery, includeArchived, config } = options;
@@ -285,6 +355,7 @@ const PNAuditor = (() => {
     const detailsByPnId = {};
     const failedIds = new Set();
     let processed = 0;
+    const totalCandidatesPass2 = candidateIds.size;
     const drainTier = hc()?.makePeriodicDrain(50) || (() => {});
     await runPool([...candidateIds], async (pnId) => {
       if (stopped) return;
@@ -293,7 +364,8 @@ const PNAuditor = (() => {
           () => api().query('GetPartNumber', { partNumberId: pnId, usagesLimit: 100, usagesOffset: 0 }),
           `audit-tier ${pnId}`
         );
-        detailsByPnId[pnId] = d?.partNumberById || null;
+        // EJE A: slim shape — ver `slimDetail`. Sin esto el Map retiene ~80KB×N.
+        detailsByPnId[pnId] = slimDetail(d?.partNumberById);
       } catch (e) {
         if (e?.message === '__sa_aborted__') return;
         failedIds.add(pnId);
@@ -305,7 +377,12 @@ const PNAuditor = (() => {
         updateAuditorUI(`Pase 2: ${processed}/${candidateIds.size} (${failedIds.size} fallaron)`, true);
       }
     }, 6);
-    if (stopped) return { stopped: true, partialDetails: detailsByPnId };
+    const processedInPass2 = processed;
+    const wasStoppedInPass2 = stopped;
+    // Cuando se aborta en pase 2, igual seguimos al refinamiento con los detalles
+    // que SÍ obtuvimos antes del abort. El módulo tolera detalles faltantes
+    // (fallback a pn.labels / pn.customInputs) y marca scoreParcial en el bucket.
+    // El caller decide qué hacer con `stopped: true` en el return.
 
     // ── Refinamiento + scoring + winners ──
     const allPnsById = {};
@@ -361,7 +438,14 @@ const PNAuditor = (() => {
     for (const k of Object.keys(detailsByPnId)) detailsByPnId[k] = null;
     candidateIds.clear();
 
-    return { hardBuckets, mediumBuckets, softBuckets, totalPNs: allPNs.length, failedIds: [...failedIds] };
+    return {
+      hardBuckets, mediumBuckets, softBuckets,
+      totalPNs: allPNs.length,
+      failedIds: [...failedIds],
+      stopped: wasStoppedInPass2,
+      processedInPass2,
+      totalCandidatesPass2,
+    };
   }
 
   // ═══════════════════════════════════════════
@@ -406,13 +490,18 @@ const PNAuditor = (() => {
       const nodes = data?.pagedData?.nodes || [];
       const active = nodes.filter(n => !n.archivedAt);
 
-      if (customerFilter) {
-        const filter = customerFilter.toUpperCase();
-        for (const n of active) {
-          if (n.customerByCustomerId?.name?.toUpperCase().includes(filter)) allPNs.push(n);
-        }
-      } else {
-        allPNs.push(...active);
+      // EJE A: slim node — solo {id, name, customerByCustomerId, name} se lee
+      // downstream para audit per-PN, duplicates y similar. Reduce 5x.
+      const filter = customerFilter ? customerFilter.toUpperCase() : null;
+      for (const n of active) {
+        if (filter && !(n.customerByCustomerId?.name?.toUpperCase().includes(filter))) continue;
+        allPNs.push({
+          id: n.id,
+          name: n.name,
+          customerByCustomerId: n.customerByCustomerId
+            ? { id: n.customerByCustomerId.id, name: n.customerByCustomerId.name }
+            : null,
+        });
       }
 
       updateAuditorUI(`Cargando PNs... ${allPNs.length}${customerFilter ? ` (cliente: ${customerFilter})` : ''}`);
@@ -486,11 +575,12 @@ const PNAuditor = (() => {
         includeArchived: options.includeArchived !== false, // default ON
         config,
       });
-      if (integrityResult?.stopped) {
-        try { memMonitor?.stop(); } catch (_) {}
-        return { ...results, stopped: true, integrity: integrityResult };
-      }
       results.integrity = integrityResult;
+      if (integrityResult?.stopped) {
+        // El integrity ya trae buckets parciales + processedInPass2/total. Marcamos
+        // results.stopped y dejamos que el caller renderice el panel parcial.
+        results.stopped = true;
+      }
       for (const c of selectedTierCrit) {
         const key = c === 'dup-hard' ? 'hardBuckets' : c === 'dup-medium' ? 'mediumBuckets' : 'softBuckets';
         const buckets = integrityResult[key] || [];
@@ -633,6 +723,22 @@ const PNAuditor = (() => {
       { key: 'mediumBuckets', label: '⚠ MEDIOS (mismo metalBase + acabados + cliente)',         color: '#fde68a' },
       { key: 'softBuckets',   label: 'ⓘ SUAVES (asimetría de acabados)',                        color: '#bae6fd' },
     ];
+
+    // Banner de estado del scan (parcial / completo / con fallos)
+    let banner = '';
+    const isPartial = !!integrity.stopped;
+    const processed = integrity.processedInPass2 ?? 0;
+    const totalCands = integrity.totalCandidatesPass2 ?? 0;
+    const failedCount = (integrity.failedIds || []).length;
+    if (isPartial) {
+      banner = `<div style="background:#7c2d12;color:#fed7aa;padding:10px 14px;border-radius:6px;margin-bottom:12px;border-left:4px solid #f59e0b">
+        ⏸ <b>Run abortado por memoria.</b> Procesados ${processed}/${totalCands} candidatos del pase 2 antes del abort. Los buckets de abajo son PARCIALES — pueden faltar duplicados que no alcanzamos a verificar. Recarga la tab y re-corre con filtro por cliente para reducir el alcance.
+      </div>`;
+    } else if (totalCands > 0) {
+      const failPart = failedCount > 0 ? ` · ${failedCount} con error de fetch` : '';
+      banner = `<div style="color:#94a3b8;font-size:12px;margin-bottom:10px">Pase 2 completo: ${processed}/${totalCands} candidatos enriquecidos${failPart}.</div>`;
+    }
+
     let html = '';
     for (const t of tiers) {
       const buckets = integrity[t.key] || [];
@@ -643,8 +749,12 @@ const PNAuditor = (() => {
       html += '</details>';
     }
     if (!html) {
-      html = '<div style="color:#86efac;padding:12px 0">✓ Sin duplicados detectados en los tiers seleccionados.</div>';
-      return html;
+      // Cuando hubo abort, NO afirmar "sin duplicados" — pudo haber duplicados
+      // en los candidatos que no alcanzamos a procesar.
+      if (isPartial) {
+        return banner + `<div style="color:#fed7aa;padding:12px 0">No se detectaron duplicados en los ${processed} candidatos procesados. <b>El resto quedó sin verificar</b> por el abort de memoria.</div>`;
+      }
+      return banner + '<div style="color:#86efac;padding:12px 0">✓ Sin duplicados detectados en los tiers seleccionados.</div>';
     }
     const totalLosers = sumLosers(integrity);
     const totalDelete = sumDelete(integrity);
@@ -653,7 +763,7 @@ const PNAuditor = (() => {
       <button class="sa-aud-btn" id="sa-int-csv-delete" style="background:#dc2626;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">📋 CSV candidatos a DELETE (${totalDelete})</button>
       <button class="sa-aud-btn" id="sa-int-json-full" style="background:#475569;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">💾 JSON audit</button>
     </div>`;
-    return html;
+    return banner + html;
   }
 
   function renderBucketCard(b) {
