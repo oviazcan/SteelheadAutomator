@@ -242,12 +242,126 @@ const PNAuditor = (() => {
   }
 
   // ═══════════════════════════════════════════
+  // INTEGRITY TIERS — pase 2 + scoring + winners
+  // ═══════════════════════════════════════════
+
+  async function runIntegrityScan(options) {
+    const { selectedTiers, customerFilter, searchQuery, includeArchived, config } = options;
+    const tiersMod = window.SADuplicateTiers;
+    if (!tiersMod) throw new Error('SADuplicateTiers no cargado');
+
+    const nonFinishList = config?.steelhead?.domain?.bulkUpload?.nonFinishLabelNames || [];
+    const metalEquiv = config?.steelhead?.domain?.bulkUpload?.metalEquivalents || [];
+
+    // ── Pase 1 ──
+    updateAuditorUI('Pase 1: cargando PNs (activos+archivados)...');
+    const allPNs = await fetchAllPNsWithArchived({
+      customerFilter, searchQuery, includeArchived,
+      onProgress: (msg) => updateAuditorUI(msg)
+    });
+    if (stopped) return { stopped: true };
+    log(`Pase 1: ${allPNs.length} PNs cargados`);
+
+    // ── Bucketización pase 1 ──
+    const hard = selectedTiers.includes('dup-hard') ? tiersMod.hardBuckets(allPNs) : [];
+    const usedIds = new Set();
+    for (const b of hard) for (const m of b.members) usedIds.add(m.id);
+
+    const remainingForMedSoft = allPNs.filter(p => !usedIds.has(p.id));
+    const medCands = (selectedTiers.includes('dup-medium') || selectedTiers.includes('dup-soft'))
+      ? tiersMod.mediumBucketsCandidates(remainingForMedSoft)
+      : [];
+
+    // ── Pase 2: GetPartNumber a candidatos únicos ──
+    const candidateIds = new Set();
+    for (const b of hard) for (const m of b.members) candidateIds.add(m.id);
+    for (const b of medCands) for (const m of b.members) candidateIds.add(m.id);
+
+    log(`Pase 2: ${candidateIds.size} candidatos a enriquecer (de ${allPNs.length} totales)`);
+    updateAuditorUI(`Pase 2: enriqueciendo ${candidateIds.size} candidatos...`, true);
+
+    const detailsByPnId = {};
+    const failedIds = new Set();
+    let processed = 0;
+    await runPool([...candidateIds], async (pnId) => {
+      if (stopped) return;
+      try {
+        const d = await withRetry(
+          () => api().query('GetPartNumber', { partNumberId: pnId, usagesLimit: 100, usagesOffset: 0 }),
+          `audit-tier ${pnId}`
+        );
+        detailsByPnId[pnId] = d?.partNumberById || null;
+      } catch (e) {
+        if (e?.message === '__sa_aborted__') return;
+        failedIds.add(pnId);
+        warn(`GetPartNumber ${pnId}: ${String(e).substring(0, 80)}`);
+      }
+      processed++;
+      if (processed % 10 === 0 || processed === candidateIds.size) {
+        updateAuditorUI(`Pase 2: ${processed}/${candidateIds.size} (${failedIds.size} fallaron)`, true);
+      }
+    }, 6);
+    if (stopped) return { stopped: true, partialDetails: detailsByPnId };
+
+    // ── Refinamiento + scoring + winners ──
+    const allPnsById = {};
+    for (const p of allPNs) allPnsById[p.id] = p;
+
+    function buildBucketWithScores(rawBucket, tier) {
+      const members = rawBucket.members.map(pn => {
+        const det = detailsByPnId[pn.id];
+        const score = tiersMod.scoreFor(pn, det, { nonFinishLabelNames: nonFinishList });
+        const ci = (() => { try { return typeof pn.customInputs === 'string' ? JSON.parse(pn.customInputs) : (pn.customInputs || {}); } catch { return {}; } })();
+        return {
+          id: pn.id,
+          name: pn.name,
+          customer: pn.customerByCustomerId?.name || '',
+          customerId: pn.customerByCustomerId?.id || null,
+          quoteIBMS: ci.DatosAdicionalesNP?.QuoteIBMS || '',
+          metalBase: ci.DatosAdicionalesNP?.BaseMetal || '',
+          createdAt: pn.createdAt,
+          archived: !!pn.archivedAt,
+          score,
+          scoreParcial: !det && failedIds.has(pn.id),
+          details: det,
+        };
+      });
+      const bucket = { tier, ...rawBucket, members };
+      bucket.winnerId = tiersMod.pickWinner(bucket);
+      bucket.deleteCandidates = tiersMod.computeDeleteCandidates(bucket);
+      return bucket;
+    }
+
+    const hardBuckets = hard.map(b => buildBucketWithScores(b, 'DURO'));
+
+    const medium = selectedTiers.includes('dup-medium')
+      ? tiersMod.refineMediumBuckets(medCands, detailsByPnId, { nonFinishLabelNames: nonFinishList, metalEquivalents: metalEquiv })
+      : [];
+    const mediumIds = new Set();
+    for (const b of medium) for (const m of b.members) mediumIds.add(m.id);
+    const mediumBuckets = medium.map(b => buildBucketWithScores(b, 'MEDIO'));
+
+    const softCandsRemaining = selectedTiers.includes('dup-soft')
+      ? medCands
+          .map(c => ({ ...c, members: c.members.filter(m => !mediumIds.has(m.id)) }))
+          .filter(c => c.members.length >= 2)
+      : [];
+    const softRefined = selectedTiers.includes('dup-soft')
+      ? tiersMod.refineSoftBuckets(softCandsRemaining, detailsByPnId, { nonFinishLabelNames: nonFinishList })
+      : [];
+    const softBuckets = softRefined.map(b => buildBucketWithScores(b, 'SUAVE'));
+
+    return { hardBuckets, mediumBuckets, softBuckets, totalPNs: allPNs.length, failedIds: [...failedIds] };
+  }
+
+  // ═══════════════════════════════════════════
   // MAIN AUDIT
   // ═══════════════════════════════════════════
 
   async function run(options) {
     const { selectedCriteria, searchQuery, customerFilter } = options;
     stopped = false;
+    const config = options.config || (typeof window !== 'undefined' ? window.REMOTE_CONFIG : null);
 
     const activeCriteria = CRITERIA.filter(c => selectedCriteria.includes(c.id));
     const results = { criteria: {}, pns: [], totalAudited: 0, totalIssues: 0 };
@@ -329,6 +443,30 @@ const PNAuditor = (() => {
           }
         }
         log(`Auditor: similitud comparó ${comparisons} pares (descartó ${skipped} por prefilter de longitud)`);
+      }
+    }
+
+    // Integrity tiers (dup-hard / dup-medium / dup-soft) — runIntegrityScan
+    const tierCriteria = ['dup-hard', 'dup-medium', 'dup-soft'];
+    const selectedTierCrit = selectedCriteria.filter(c => tierCriteria.includes(c));
+    let integrityResult = null;
+    if (selectedTierCrit.length > 0) {
+      integrityResult = await runIntegrityScan({
+        selectedTiers: selectedTierCrit,
+        customerFilter,
+        searchQuery,
+        includeArchived: options.includeArchived !== false, // default ON
+        config,
+      });
+      if (integrityResult?.stopped) {
+        return { ...results, stopped: true, integrity: integrityResult };
+      }
+      results.integrity = integrityResult;
+      for (const c of selectedTierCrit) {
+        const key = c === 'dup-hard' ? 'hardBuckets' : c === 'dup-medium' ? 'mediumBuckets' : 'softBuckets';
+        const buckets = integrityResult[key] || [];
+        results.criteria[c].count = buckets.reduce((acc, b) => acc + b.members.length, 0);
+        // tarjetas detalladas se renderizan separadas en Task 13; aquí solo el conteo
       }
     }
 
