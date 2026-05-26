@@ -25,10 +25,29 @@ const SADuplicateTiers = (() => {
   'use strict';
 
   // ─── helpers ───────────────────────────────────────────────────
-  // scaffolding: cuerpos se implementan en Task 2
-  function isNonFinishLabel(name, nonFinishList) { return false; }
-  function canonicalFinishings(labels, nonFinishList) { return ''; }
-  function canonicalMetal(metalBase, metalEquivalents) { return ''; }
+  function isNonFinishLabel(name, nonFinishList) {
+    if (!name) return false;
+    return Array.isArray(nonFinishList) && nonFinishList.includes(name);
+  }
+  function canonicalFinishings(labels, nonFinishList) {
+    if (!Array.isArray(labels)) return '';
+    const seen = new Set();
+    for (const l of labels) {
+      if (!l) continue;
+      if (isNonFinishLabel(l, nonFinishList)) continue;
+      seen.add(l);
+    }
+    return [...seen].sort().join('|');
+  }
+  function canonicalMetal(metalBase, metalEquivalents) {
+    if (!metalBase) return '';
+    if (!Array.isArray(metalEquivalents)) return metalBase;
+    for (const group of metalEquivalents) {
+      if (!Array.isArray(group) || group.length === 0) continue;
+      if (group.includes(metalBase)) return group[0];
+    }
+    return metalBase;
+  }
 
   // ─── scoring ───────────────────────────────────────────────────
   // scaffolding: cuerpos se implementan en Tasks 3-4
