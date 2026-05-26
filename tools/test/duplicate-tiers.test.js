@@ -388,4 +388,45 @@ test('refineMediumBuckets: subgrupa por metalBase canónico + acabados canónico
   assert.equal(ids[1], 2);
 });
 
+// ─── Task 7: softBucketsCandidates + refineSoftBuckets ───────────────────────
+
+test('softBucketsCandidates: misma agrupación que medium (customer + name)', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: 100, name: 'X' }),
+    pnWith({ id: 2, customerId: 100, name: 'X' }),
+  ];
+  const buckets = M.softBucketsCandidates(pns);
+  assert.equal(buckets.length, 1);
+  assert.equal(buckets[0].members.length, 2);
+});
+
+test('refineSoftBuckets: bucket asimétrico (uno con acabados, otro sin) ES candidato', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', labels: ['NIQ'] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'X', labels: [] });
+  const cands = [{ customerId: 100, name: 'X', members: [pn1, pn2] }];
+  const details = { 1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId }, 2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId } };
+  const refined = M.refineSoftBuckets(cands, details, { nonFinishLabelNames: NON_FINISH });
+  assert.equal(refined.length, 1);
+});
+
+test('refineSoftBuckets: todos con acabados (distintos) NO es candidato', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', labels: ['NIQ'] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'X', labels: ['EST'] });
+  const cands = [{ customerId: 100, name: 'X', members: [pn1, pn2] }];
+  const details = { 1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId }, 2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId } };
+  assert.equal(M.refineSoftBuckets(cands, details, { nonFinishLabelNames: NON_FINISH }).length, 0);
+});
+
+test('refineSoftBuckets: todos vacíos NO es candidato', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', labels: [] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'X', labels: ['SMY'] }); // SMY nonFinish → cuenta como vacío
+  const cands = [{ customerId: 100, name: 'X', members: [pn1, pn2] }];
+  const details = { 1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId }, 2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId } };
+  assert.equal(M.refineSoftBuckets(cands, details, { nonFinishLabelNames: NON_FINISH }).length, 0);
+});
+
 module.exports = { loadModule, pnWith };

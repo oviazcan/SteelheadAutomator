@@ -154,7 +154,10 @@ const SADuplicateTiers = (() => {
     }
     return [...byKey.values()].filter(b => b.members.length >= 2);
   }
-  function softBucketsCandidates(pns) { return []; }
+  function softBucketsCandidates(pns) {
+    // mismo agrupado que medium — la regla de asimetría se aplica en refine
+    return mediumBucketsCandidates(pns);
+  }
 
   // ─── refinamiento (pase 2) ─────────────────────────────────────
   function refineMediumBuckets(candidates, detailsByPnId, opts) {
@@ -182,7 +185,27 @@ const SADuplicateTiers = (() => {
     }
     return result;
   }
-  function refineSoftBuckets(candidates, detailsByPnId, opts) { return []; }
+  function refineSoftBuckets(candidates, detailsByPnId, opts) {
+    const nonFinishList = (opts && opts.nonFinishLabelNames) || [];
+    const result = [];
+    for (const cand of candidates || []) {
+      let withFin = 0, withoutFin = 0;
+      for (const pn of cand.members) {
+        const det = detailsByPnId && detailsByPnId[pn.id];
+        const labelNodes = (det && det.partNumberLabelsByPartNumberId && det.partNumberLabelsByPartNumberId.nodes)
+          || (pn.partNumberLabelsByPartNumberId && pn.partNumberLabelsByPartNumberId.nodes)
+          || [];
+        const labels = labelNodes.map(n => n && n.labelByLabelId && n.labelByLabelId.name).filter(Boolean);
+        const finishings = canonicalFinishings(labels, nonFinishList);
+        if (finishings) withFin++;
+        else withoutFin++;
+      }
+      if (withFin >= 1 && withoutFin >= 1) {
+        result.push({ customerId: cand.customerId, name: cand.name, members: cand.members });
+      }
+    }
+    return result;
+  }
 
   // ─── delete candidates ─────────────────────────────────────────
   // scaffolding: cuerpo se implementa en Task 9
