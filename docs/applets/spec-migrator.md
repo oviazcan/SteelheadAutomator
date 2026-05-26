@@ -11,7 +11,70 @@ Scripts: `steelhead-api.js` + `spec-migrator.js`. Sin VERSION constant exportado
 | `run-spec-migrator` (Migrar Specs) | `SpecMigrator.run` | original 2024 |
 | `assign-pending-params` (Asignar Params Pendientes) | `SpecMigrator.assignPendingParams` | original 2024 |
 | `resolve-conflicts` (Resolver Conflictos) | `SpecMigrator.resolveConflicts` | original 2024 |
-| `validate-duplicate-params` (Validar params duplicados) | `SpecMigrator.runDuplicateParamsValidator` | **0.4.3 — 2026-05-25, bump config 1.4.38** |
+| `validate-duplicate-params` (Validar params duplicados) | `SpecMigrator.runDuplicateParamsValidator` | **0.5.5 — 2026-05-26, bump config 1.5.4** |
+
+---
+
+# `validate-duplicate-params` 0.5.5 (2026-05-26, bump config 1.5.4) — Memory hardening completo (EJE A + B + mem monitor + virtualización)
+
+## Síntoma / petición
+
+Tras 0.5.4 (fix preferNull + wrongSfp) el validator funciona correcto pero seguía sin la red de seguridad completa del skill `memory-hardening-applets`:
+- **Sin mem monitor** — no había forma de ver el crecimiento del heap en runtime; el guardrail a 88% nunca podía dispararse porque no había trigger.
+- **Datadog/Apollo cleanup inline** — copia local del patrón rompía la idempotencia compartida con otros applets co-residentes (latches `window.__sa_dd_stopped` quedaban "huérfanos" si el orden de carga cambiaba).
+- **Periodic drain por chunk de onProgress** — no por PN procesado real, así que en runPool con concurrency=6 el drain se desfasaba.
+- **Sin AbortController** — al cancelar, los fetches en vuelo (hasta 6 GetPartNumber + sus retries) seguían martillando GraphQL durante segundos.
+- **Sin checkpoint / resume** — un OOM perdía toda la corrida; el usuario tenía que re-cargar el CSV completo desde cero.
+- **Sin virtualización del preview** — la tabla de issues con 500+ filas creaba ~5-15k nodos DOM upfront.
+- **CSV raw rows retenidos** — el array `rows` (4000 × 70 cells) vivía toda la corrida porque `csvText` y `rows` quedaban capturados en el closure de `dupRunScanFromCsv`.
+
+## Cambios
+
+### EJE A — memoria propia del applet
+
+| Item | Línea(s) | Cambio |
+|---|---|---|
+| Slim CSV + nullify rawArr/csvText | `dupRunScanFromCsv` | `rows = null; csvText = null` justo después del parse a `csvParts`. El GC libera el array crudo y el string del CSV en lugar de retenerlos los 3-30 min que dura el scan. |
+| Liberar `detail = null` por worker | scan + apply | (ya estaba en 0.5.3) — confirmado intacto. |
+| Clear post-apply | fin de `dupRunApplyCsv` | Tras render del resultado: `dupClearResume()` + `dupState.csvSelections = new Map()` + nullear `csvUnresolved/csvFetchErrors/csvItems`. No esperar a `closePanel`. |
+| Cleanup en closePanel | `dupClosePanel` | (ya estaba en 0.5.2) + ahora detiene `memMonitor` y aborta `abortCtrl` antes de soltar refs. |
+| Seed pattern previewByPN | `dupCsvClassifyPN` | (ya estaba en 0.5.2 con `savePnSeed`) — confirmado: el item solo retiene `{ pnId, pnName, customer, quoteIBMS, savePnSeed{8 fields}, issues[liteRows] }`, NO el `detail` completo. |
+
+### EJE B — memoria del host SPA
+
+| Item | Línea(s) | Cambio |
+|---|---|---|
+| Migración a `host-cleanup-shared.js` | `dupApolloCacheDrain`, `dupStopHostJobs` | Wrappers de 1 línea sobre `window.SteelheadHostCleanup.apolloCacheDrain()` / `.stopDatadogSessionReplay()`. Latches comparten estado real con bulk-upload, auditor y cualquier futuro applet co-residente. |
+| `host-cleanup-shared.js` en config | `remote/config.json` spec-migrator scripts | `["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator.js"]`. |
+| `makePeriodicDrain(50)` atómico | const `dupPeriodicDrain` | Reemplaza el `if (done % 50 === 0) dupApolloCacheDrain()` en onProgress (que contaba chunks) por una llamada al fin del worker (que cuenta PNs reales). Aplica a scan **y** apply. |
+| Mem monitor con guardrail | `dupEnsurePanel` | Crea `HOST.createMemMonitor({ warnPct:70, critPct:85, guardrailPct:88, onGuardrail: dupHandleGuardrail })`, arranca en `panel open` y para en `closePanel`. Pinta `Mem: XXMB/YYMB (NN%)` en span `[data-ctrl=dup-mem]` del header con clases `sa-mem-warn` / `sa-mem-crit`. |
+| `onGuardrail` con resume | `dupHandleGuardrail` | A 88%: persiste `{ ts, pct, csvFileName, customerFilter, specFilter, processedCount, processedIds }` a `localStorage[sa-specm-dup-resume-v1]`. Aborta `runId++` + `abortCtrl.abort()`. Renderiza modal con instrucción de reload. **NO intenta continuar.** |
+| `AbortController` por scan/apply | `dupState.abortCtrl` | Cada `dupRunScanFromCsv` / `dupRunApplyCsv` crea `new AbortController`. Cancel + guardrail llaman `.abort()`. Los workers checan `aborted` antes de entrar al fetch. (Retries de `dupWithRetry` propagan abort error sin loop.) |
+
+### #11 — Virtualización del preview DOM
+
+- Refactor de `dupRenderCsvResults`: extrae `buildRow(it)` + `renderNextChunk()`. Render inicial: primeras 50 filas. Sentinel debajo del `<table>` con `IntersectionObserver` (`root=wrap`, `rootMargin:200px`) — al entrar al viewport del scroll del panel, renderiza siguiente chunk. Fallback sin IO: click manual en el sentinel.
+- Resultado: 4000 PNs con issues = 50 nodos DOM iniciales (~250 cells) vs ~20k antes.
+
+### #checkpoint UX
+
+- Banner en `dupRenderFilterPanel` si hay `localStorage[sa-specm-dup-resume-v1]`: muestra `pct`, `csvFileName`, `processedCount` y minutos desde el evento. Botón "Descartar checkpoint" llama `dupClearResume()`.
+- **Reanudación real** (skip pnIds en `dupCsvResolvePnIds`): pendiente derivado — el banner solo informa. Implementar cuando el guardrail realmente dispare en un CSV real (no antes de tener evidencia).
+
+## Plan de validación
+
+- [ ] Recargar extensión, abrir validator → confirmar que el span `Mem: XXMB/YYMB (NN%)` aparece en el header del panel y se actualiza cada 2s.
+- [ ] Correr CSV de los 4 clientes → confirmar que la tabla de preview muestra "Mostrando 50 de N — desplázate para ver más" y al hacer scroll se cargan chunks adicionales.
+- [ ] Cancelar mid-scan → confirmar que el contador de PNs se congela inmediato (no sigue subiendo durante 5-10s como en 0.5.4).
+- [ ] Simular guardrail (devtools: `window.performance.memory` mock o forzar `dupHandleGuardrail(88)` desde consola) → confirmar que aparece el modal de reload, `localStorage[sa-specm-dup-resume-v1]` está poblado, y al reload aparece el banner.
+- [ ] Verificar que tras `Apply` exitoso el `localStorage[sa-specm-dup-resume-v1]` queda limpio.
+- [ ] Heap snapshot en DevTools antes y después de un scan de 4000 PNs → confirmar que el array de `rows` crudo del CSV (4000+ × 70 cells de string) NO aparece retenido.
+
+## Pendientes derivados
+
+- **Reanudación real** desde checkpoint (skip `processedIds` en `dupCsvResolvePnIds`). Solo cuando tengamos evidencia de OOM real.
+- **Aplicar el mismo hardening al scan mode no-CSV** (`dupRunScan`): hoy no llama `dupStopHostJobs` ni periodic drain — corre sobre un universo más chico (con filtros), pero si el usuario corre "sin filtros" entra al mismo régimen.
+- **#113 Audit memoria en todas las applets**: bulk-upload y auditor ya están migrados al módulo compartido; quedan pendientes los demás del índice.
 
 ---
 
