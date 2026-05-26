@@ -2109,7 +2109,706 @@ const SpecMigrator = (() => {
     return results;
   }
 
-  return { run, assignPendingParams, resolveConflicts };
+
+  // ════════════════════════════════════════════════════════
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.0)
+  //  Detecta PNs con >1 param activo por (partNumberSpecId, specFieldId),
+  //  permite elegir cuál conservar y archivar el resto vía
+  //  UpdatePartNumberSpecParam{archivedAt:ISO} (reversible con null).
+  //
+  //  Bundle: vive en spec-migrator (menú "Ajuste Masivo de Specs") porque es
+  //  validación + corrección de specs ya aplicadas, no edición de parámetros.
+  // ════════════════════════════════════════════════════════
+
+  // Helpers locales del validador (no colisionan con el resto del módulo)
+  const dupSleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const dupRetryDelays = [1000, 2000, 4000];
+
+  async function dupWithRetry(fn, label) {
+    let lastErr = null;
+    for (let i = 0; i <= dupRetryDelays.length; i++) {
+      try { return await fn(); }
+      catch (e) {
+        lastErr = e;
+        if (i === dupRetryDelays.length) throw e;
+        warn(`${label} falló intento ${i + 1}/${dupRetryDelays.length + 1}: ${e?.message || e}; retry en ${dupRetryDelays[i]}ms`);
+        await dupSleep(dupRetryDelays[i]);
+      }
+    }
+    throw lastErr;
+  }
+
+  async function dupRunPool(items, worker, concurrency, onProgress) {
+    const results = new Array(items.length);
+    let idx = 0, done = 0;
+    const workers = new Array(Math.min(concurrency, items.length || 1)).fill(0).map(async () => {
+      while (true) {
+        const i = idx++;
+        if (i >= items.length) return;
+        try { results[i] = await worker(items[i], i); }
+        catch (e) { results[i] = { __error: e?.message || String(e) }; }
+        done++;
+        if (onProgress) { try { onProgress(done, items.length); } catch (_) {} }
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  function dupEscHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function dupEnsureStyles() {
+    if (document.getElementById('sa-specm-dup-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'sa-specm-dup-styles';
+    s.textContent = `
+      .sa-specm-dup-overlay { position:fixed; right:18px; bottom:18px; width:880px; max-height:78vh;
+        background:#1f2937; color:#e5e7eb; border:1px solid #374151; border-radius:10px;
+        box-shadow:0 6px 24px rgba(0,0,0,0.4);
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        font-size:13px; z-index:2147483647; display:flex; flex-direction:column; }
+      .sa-specm-dup-overlay .dup-hdr { padding:10px 12px; background:#111827; border-bottom:1px solid #374151;
+        display:flex; align-items:center; justify-content:space-between; border-radius:10px 10px 0 0; }
+      .sa-specm-dup-overlay .dup-hdr h3 { margin:0; font-size:14px; color:#f9fafb; }
+      .sa-specm-dup-overlay .dup-body { padding:10px 12px; overflow-y:auto; flex:1; }
+      .sa-specm-dup-overlay .dup-ftr { padding:10px 12px; border-top:1px solid #374151; background:#111827;
+        border-radius:0 0 10px 10px; display:flex; gap:8px; align-items:center; justify-content:space-between; }
+      .sa-specm-dup-overlay .dup-btn { background:#8b5cf6; color:white; border:none; padding:6px 12px;
+        border-radius:6px; cursor:pointer; font-size:12px; }
+      .sa-specm-dup-overlay .dup-btn:hover:not(:disabled) { background:#7c3aed; }
+      .sa-specm-dup-overlay .dup-btn:disabled { background:#4b5563; cursor:not-allowed; opacity:0.6; }
+      .sa-specm-dup-overlay .dup-btn-ghost { background:transparent; color:#9ca3af; border:1px solid #374151; }
+      .sa-specm-dup-overlay .dup-btn-ghost:hover { color:#e5e7eb; border-color:#6b7280; }
+      .sa-specm-dup-overlay .dup-btn-danger { background:#dc2626; }
+      .sa-specm-dup-overlay .dup-btn-danger:hover:not(:disabled) { background:#b91c1c; }
+      .sa-specm-dup-overlay .dup-filter-row { display:flex; gap:10px; margin-bottom:8px; align-items:center; flex-wrap:wrap; }
+      .sa-specm-dup-overlay label { font-size:12px; color:#d1d5db; }
+      .sa-specm-dup-overlay input[type=text] { background:#0f172a; color:#e5e7eb; border:1px solid #334155;
+        padding:4px 8px; border-radius:4px; font-size:12px; flex:1; }
+      .sa-specm-dup-overlay input[type=text]:focus { outline:1px solid #8b5cf6; }
+      .sa-specm-dup-overlay .dup-counter { font-size:11px; color:#9ca3af; }
+      .sa-specm-dup-overlay .dup-progress { margin:8px 0; font-size:12px; color:#a78bfa; }
+      .sa-specm-dup-overlay .dup-bar { height:4px; background:#1f2937; border-radius:2px; overflow:hidden; margin-top:4px; }
+      .sa-specm-dup-overlay .dup-bar div { height:100%; background:#8b5cf6; transition:width 0.2s; }
+      .sa-specm-dup-overlay .dup-error { color:#f87171; font-size:12px; padding:6px; background:#7f1d1d33;
+        border:1px solid #7f1d1d; border-radius:4px; }
+      .sa-specm-dup-overlay .dup-success { color:#6ee7b7; font-size:12px; padding:6px; background:#14532d33;
+        border:1px solid #14532d; border-radius:4px; }
+      .sa-specm-dup-overlay .dup-stats { display:flex; gap:14px; font-size:11px; color:#cbd5e1;
+        background:#0f172a; padding:6px 10px; border-radius:6px; margin-bottom:8px; flex-wrap:wrap; }
+      .sa-specm-dup-overlay .dup-stats b { color:#f9fafb; }
+      .sa-specm-dup-overlay .dup-table { width:100%; border-collapse:collapse; font-size:11px; }
+      .sa-specm-dup-overlay .dup-table thead th { position:sticky; top:0; background:#111827;
+        z-index:1; padding:5px 6px; border:1px solid #374151; text-align:left; color:#f9fafb; font-size:11px; }
+      .sa-specm-dup-overlay .dup-table td { border:1px solid #1f2937; padding:5px 6px; vertical-align:top; }
+      .sa-specm-dup-overlay .dup-table .pname { color:#a78bfa; font-weight:600; }
+      .sa-specm-dup-overlay .dup-table .pmeta { font-size:10px; color:#9ca3af; }
+      .sa-specm-dup-overlay .dup-table .dup-radio-row { display:flex; align-items:center; gap:6px;
+        padding:2px 0; cursor:pointer; }
+      .sa-specm-dup-overlay .dup-table .dup-radio-row.winner { color:#6ee7b7; }
+      .sa-specm-dup-overlay .dup-table .dup-radio-row.loser { color:#fca5a5; }
+      .sa-specm-dup-overlay .dup-table tr.ignored td { opacity:0.45; }
+      .sa-specm-dup-overlay .dup-table tr.ignored .dup-radio-row { color:#9ca3af !important; }
+      .sa-specm-dup-overlay .dup-table .dup-mini { font-size:10px; color:#cbd5e1; background:#1f2937;
+        padding:1px 5px; border-radius:8px; margin-left:4px; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Estado del validador
+  const dupState = {
+    panelEl: null,
+    runId: 0,
+    customerFilter: '',
+    specFilter: '',
+    groups: [],
+    decisions: new Map(),
+  };
+
+  function dupClosePanel() {
+    if (dupState.panelEl && dupState.panelEl.parentNode) dupState.panelEl.parentNode.removeChild(dupState.panelEl);
+    dupState.panelEl = null;
+  }
+
+  function dupEnsurePanel(title) {
+    dupClosePanel();
+    dupEnsureStyles();
+    const el = document.createElement('div');
+    el.className = 'sa-specm-dup-overlay';
+    el.innerHTML = `
+      <div class="dup-hdr">
+        <h3>${dupEscHtml(title)}</h3>
+        <button class="dup-btn dup-btn-ghost" data-act="dup-close">✕</button>
+      </div>
+      <div class="dup-body"></div>
+      <div class="dup-ftr"></div>
+    `;
+    document.body.appendChild(el);
+    dupState.panelEl = el;
+    el.querySelector('[data-act=dup-close]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    return el;
+  }
+
+  function dupSetBody(html) {
+    if (!dupState.panelEl) return;
+    dupState.panelEl.querySelector('.dup-body').innerHTML = html;
+  }
+  function dupSetFooter(html) {
+    if (!dupState.panelEl) return;
+    dupState.panelEl.querySelector('.dup-ftr').innerHTML = html;
+  }
+
+  async function runDuplicateParamsValidator() {
+    const myRunId = ++dupState.runId;
+    dupEnsurePanel('Validar params duplicados por SpecField');
+
+    dupState.customerFilter = '';
+    dupState.specFilter = '';
+    dupState.groups = [];
+    dupState.decisions = new Map();
+
+    dupRenderFilterPanel(myRunId);
+  }
+
+  function dupRenderFilterPanel(myRunId) {
+    dupSetBody(`
+      <div style="font-size:12px;color:#cbd5e1;margin-bottom:8px">
+        Escanea PNs activos y detecta &gt;1 param activo por (Spec, SpecField).
+        Puedes filtrar por cliente, spec, ambos o ninguno (vacío = todos los PNs activos).
+      </div>
+      <div class="dup-filter-row">
+        <label style="flex:1">Cliente (contiene):
+          <input type="text" data-ctrl="dup-cust" placeholder="Ej. JABIL — vacío = todos" autocomplete="off">
+        </label>
+      </div>
+      <div class="dup-filter-row">
+        <label style="flex:1">Spec (nombre contiene):
+          <input type="text" data-ctrl="dup-spec" placeholder="Ej. NIQUEL — vacío = todas" autocomplete="off">
+        </label>
+      </div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:6px">
+        Aviso: escanear sin filtros revisa todos los PNs activos (puede tardar varios minutos).
+      </div>
+    `);
+    dupSetFooter(`
+      <span class="dup-counter">Listo</span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-cancel">Cerrar</button>
+        <button class="dup-btn" data-act="dup-start">Escanear</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-cancel]')?.addEventListener('click', () => dupClosePanel());
+    dupState.panelEl.querySelector('[data-act=dup-start]')?.addEventListener('click', async () => {
+      dupState.customerFilter = dupState.panelEl.querySelector('[data-ctrl=dup-cust]')?.value?.trim() || '';
+      dupState.specFilter = dupState.panelEl.querySelector('[data-ctrl=dup-spec]')?.value?.trim() || '';
+      try {
+        await dupRunScan(myRunId);
+      } catch (e) {
+        if (dupState.runId !== myRunId) return;
+        dupSetBody(`<div class="dup-error">Error en escaneo: ${dupEscHtml(e.message)}</div>`);
+        dupSetFooter(`<button class="dup-btn" data-act="dup-close-err">Cerrar</button>`);
+        dupState.panelEl.querySelector('[data-act=dup-close-err]')?.addEventListener('click', () => dupClosePanel());
+      }
+    });
+  }
+
+  async function dupRunScan(myRunId) {
+    dupSetBody(`<div class="dup-progress">
+      Fase 1/2: cargando PNs…
+      <div data-ctrl="prog-msg">Iniciando…</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-cancel-run">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-cancel-run]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const progMsg = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    // ── Fase 1: AllPartNumbers paginado, filtro cliente cliente-side
+    const allPNs = [];
+    let offset = 0;
+    const PAGE = 500;
+    const custFilter = dupState.customerFilter.toUpperCase();
+    while (true) {
+      if (dupState.runId !== myRunId) return;
+      const data = await dupWithRetry(
+        () => api().query('AllPartNumbers',
+          { orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: '' },
+          'AllPartNumbers'),
+        `AllPartNumbers offset=${offset}`
+      );
+      if (dupState.runId !== myRunId) return;
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        if (n.archivedAt) continue;
+        if (custFilter && !(n.customerByCustomerId?.name || '').toUpperCase().includes(custFilter)) continue;
+        allPNs.push(n);
+      }
+      if (progMsg) progMsg.textContent = `${allPNs.length} PNs cargados (offset ${offset})`;
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    if (!allPNs.length) {
+      dupSetBody(`<div class="dup-error">No se encontraron PNs activos${dupState.customerFilter ? ` para cliente "${dupEscHtml(dupState.customerFilter)}"` : ''}.</div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-empty">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-empty]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    log(`[SPM-dup] Fase 1 OK: ${allPNs.length} PNs activos${custFilter ? ` (cliente ${dupState.customerFilter})` : ''}`);
+
+    // ── Fase 2: GetPartNumber con runPool 6, detectar grupos
+    dupSetBody(`<div class="dup-progress">
+      Fase 2/2: revisando ${allPNs.length} PNs (concurrencia 6)…
+      <div data-ctrl="prog-msg">Iniciando…</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    const progMsg2 = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar2 = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const specFilterLow = dupState.specFilter.toLowerCase();
+    const groups = [];
+    const fetchErrors = [];
+
+    await dupRunPool(allPNs, async (pn) => {
+      if (dupState.runId !== myRunId) return;
+      let detail = null;
+      try {
+        const data = await dupWithRetry(
+          () => api().query('GetPartNumber', { partNumberId: pn.id, usagesLimit: 0, usagesOffset: 0 }),
+          `GetPartNumber ${pn.id}`
+        );
+        detail = data?.partNumberById;
+      } catch (e) {
+        fetchErrors.push({ pnId: pn.id, pnName: pn.name, error: e?.message || String(e) });
+        return;
+      }
+      if (!detail) return;
+
+      const pnSpecs = detail.partNumberSpecsByPartNumberId?.nodes || [];
+      const allParams = detail.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+
+      // Lookup: partNumberSpecId → { specId, specName, specIdInDomain }
+      const psMap = new Map();
+      for (const ps of pnSpecs) {
+        if (ps.archivedAt) continue;
+        const sp = ps.specBySpecId || {};
+        psMap.set(ps.id, {
+          specId: sp.id,
+          specName: sp.name || '',
+          specIdInDomain: sp.idInDomain || ps.id,
+        });
+      }
+
+      // Si hay filtro de spec, descartar PN si ninguna spec activa matchea
+      if (specFilterLow) {
+        const anyMatch = [...psMap.values()].some(s => (s.specName || '').toLowerCase().includes(specFilterLow));
+        if (!anyMatch) return;
+      }
+
+      // Agrupar params activos por (partNumberSpecId, specFieldId)
+      const buckets = new Map();
+      for (const p of allParams) {
+        if (p.archivedAt) continue;
+        if (!p.specFieldParamBySpecFieldParamId) continue;
+        const psId = p.partNumberSpecId;
+        const sfId = p.specFieldId;
+        if (!psId || !sfId) continue;
+        if (!psMap.has(psId)) continue;
+        const key = `${psId}|${sfId}`;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(p);
+      }
+
+      // Filtrar buckets con >1, además respetar filtro de spec en grupo
+      for (const [key, params] of buckets) {
+        if (params.length < 2) continue;
+        const [psIdStr, sfIdStr] = key.split('|');
+        const psInfo = psMap.get(Number(psIdStr));
+        if (specFilterLow && !(psInfo.specName || '').toLowerCase().includes(specFilterLow)) continue;
+
+        // Resolver nombre del SpecField vía el primer spec match en pnSpecs
+        let fieldName = '';
+        for (const ps of pnSpecs) {
+          if (ps.id !== Number(psIdStr)) continue;
+          const sfs = ps.specBySpecId?.specFieldSpecsBySpecId?.nodes || [];
+          const f = sfs.find(sf => sf.specFieldBySpecFieldId?.id === Number(sfIdStr));
+          if (f) { fieldName = f.specFieldBySpecFieldId?.name || ''; break; }
+        }
+
+        const sorted = [...params].sort((a, b) => Number(b.id) - Number(a.id));
+        const winnerRowId = sorted[0].id;
+
+        groups.push({
+          key: `${pn.id}-${key}`,
+          pnId: pn.id,
+          pnName: pn.name || '',
+          customer: pn.customerByCustomerId?.name || '',
+          partNumberSpecId: Number(psIdStr),
+          specName: psInfo.specName,
+          specIdInDomain: psInfo.specIdInDomain,
+          fieldId: Number(sfIdStr),
+          fieldName,
+          params: sorted.map(p => ({
+            rowId: p.id,
+            sfpId: p.specFieldParamBySpecFieldParamId?.id ?? null,
+            sfpName: p.specFieldParamBySpecFieldParamId?.name || '(sin nombre)',
+            processNodeId: p.processNodeId || null,
+          })),
+        });
+
+        dupState.decisions.set(`${pn.id}-${key}`, { winnerRowId, ignored: false });
+      }
+    }, 6, (done, total) => {
+      if (progMsg2) progMsg2.textContent = `${done}/${total} PNs revisados — ${groups.length} grupos duplicados`;
+      if (progBar2) progBar2.style.width = `${(done / total) * 100}%`;
+    });
+
+    if (dupState.runId !== myRunId) return;
+    dupState.groups = groups;
+
+    log(`[SPM-dup] Fase 2 OK: ${groups.length} grupos duplicados en ${new Set(groups.map(g => g.pnId)).size} PNs (${fetchErrors.length} errores fetch)`);
+
+    if (!groups.length) {
+      dupSetBody(`<div class="dup-success">
+        ✓ Sin duplicados detectados en ${allPNs.length} PNs revisados.
+        ${fetchErrors.length ? `<br><span style="color:#fbbf24">⚠ ${fetchErrors.length} PNs no pudieron consultarse</span>` : ''}
+      </div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-ok">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-ok]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    dupRenderTable(myRunId, allPNs.length, fetchErrors);
+  }
+
+  function dupRenderTable(myRunId, scannedCount, fetchErrors) {
+    const groups = dupState.groups;
+    const uniquePNs = new Set(groups.map(g => g.pnId)).size;
+    const losersCount = groups.reduce((s, g) => s + (g.params.length - 1), 0);
+
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+
+    const stats = document.createElement('div');
+    stats.className = 'dup-stats';
+    const mk = (lbl, val) => {
+      const span = document.createElement('span');
+      const b = document.createElement('b');
+      b.textContent = String(val);
+      span.appendChild(document.createTextNode(`${lbl}: `));
+      span.appendChild(b);
+      return span;
+    };
+    stats.appendChild(mk('PNs revisados', scannedCount));
+    stats.appendChild(mk('PNs con duplicados', uniquePNs));
+    stats.appendChild(mk('Grupos', groups.length));
+    stats.appendChild(mk('Params a archivar', losersCount));
+    if (fetchErrors.length) stats.appendChild(mk('Errores fetch', fetchErrors.length));
+    body.appendChild(stats);
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'max-height:55vh;overflow-y:auto;border:1px solid #374151;border-radius:6px';
+    const table = document.createElement('table');
+    table.className = 'dup-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['PN', 'Cliente', 'Spec', 'SpecField', 'Params (conservar)', 'Ignorar'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const g of groups) {
+      const tr = document.createElement('tr');
+      tr.dataset.key = g.key;
+
+      const tdPn = document.createElement('td');
+      const pname = document.createElement('div');
+      pname.className = 'pname';
+      pname.textContent = g.pnName;
+      const pmeta = document.createElement('div');
+      pmeta.className = 'pmeta';
+      pmeta.textContent = `#${g.pnId}`;
+      tdPn.appendChild(pname);
+      tdPn.appendChild(pmeta);
+      tr.appendChild(tdPn);
+
+      const tdCust = document.createElement('td');
+      tdCust.textContent = g.customer;
+      tr.appendChild(tdCust);
+
+      const tdSpec = document.createElement('td');
+      tdSpec.textContent = g.specName || `(spec ${g.specIdInDomain})`;
+      tr.appendChild(tdSpec);
+
+      const tdField = document.createElement('td');
+      tdField.textContent = g.fieldName || `(field ${g.fieldId})`;
+      tr.appendChild(tdField);
+
+      const tdParams = document.createElement('td');
+      const initialWinner = dupState.decisions.get(g.key)?.winnerRowId;
+      g.params.forEach((p, idx) => {
+        const lbl = document.createElement('label');
+        lbl.className = 'dup-radio-row';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = `dup-${g.key}`;
+        radio.value = String(p.rowId);
+        if (p.rowId === initialWinner) radio.checked = true;
+        radio.addEventListener('change', () => {
+          const dec = dupState.decisions.get(g.key) || {};
+          dec.winnerRowId = p.rowId;
+          dupState.decisions.set(g.key, dec);
+          dupRefreshRadioStyles(tr, g);
+          dupUpdateFooter();
+        });
+        lbl.appendChild(radio);
+        const txt = document.createElement('span');
+        txt.textContent = p.sfpName;
+        lbl.appendChild(txt);
+        const mini = document.createElement('span');
+        mini.className = 'dup-mini';
+        mini.textContent = `row#${p.rowId} · sfp#${p.sfpId}${p.processNodeId ? ` · pn#${p.processNodeId}` : ' · sin proceso'}${idx === 0 ? ' · más reciente' : ''}`;
+        lbl.appendChild(mini);
+        tdParams.appendChild(lbl);
+      });
+      tr.appendChild(tdParams);
+
+      const tdIgn = document.createElement('td');
+      tdIgn.style.textAlign = 'center';
+      const ignCb = document.createElement('input');
+      ignCb.type = 'checkbox';
+      ignCb.addEventListener('change', () => {
+        const dec = dupState.decisions.get(g.key) || {};
+        dec.ignored = ignCb.checked;
+        dupState.decisions.set(g.key, dec);
+        tr.classList.toggle('ignored', ignCb.checked);
+        dupUpdateFooter();
+      });
+      tdIgn.appendChild(ignCb);
+      tr.appendChild(tdIgn);
+
+      dupRefreshRadioStyles(tr, g);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+
+    dupSetFooter(`
+      <span class="dup-counter" data-ctrl="dup-foot-stats"></span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-back">← Filtros</button>
+        <button class="dup-btn dup-btn-ghost" data-act="dup-download-bit">Descargar XLSX</button>
+        <button class="dup-btn dup-btn-danger" data-act="dup-apply">Aplicar fix</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-back]')?.addEventListener('click', () => {
+      dupState.runId++;
+      runDuplicateParamsValidator();
+    });
+    dupState.panelEl.querySelector('[data-act=dup-download-bit]')?.addEventListener('click', () => {
+      dupBuildBitacora('preview', null);
+    });
+    dupState.panelEl.querySelector('[data-act=dup-apply]')?.addEventListener('click', async () => {
+      if (!confirm('Esto archivará los params no seleccionados (reversible vía UpdatePartNumberSpecParam con archivedAt:null). ¿Continuar?')) return;
+      await dupRunApply(myRunId);
+    });
+    dupUpdateFooter();
+  }
+
+  function dupRefreshRadioStyles(tr, g) {
+    const winnerRowId = dupState.decisions.get(g.key)?.winnerRowId;
+    tr.querySelectorAll('.dup-radio-row').forEach((lbl) => {
+      const rb = lbl.querySelector('input[type=radio]');
+      const isWin = Number(rb.value) === Number(winnerRowId);
+      lbl.classList.toggle('winner', isWin);
+      lbl.classList.toggle('loser', !isWin);
+    });
+  }
+
+  function dupUpdateFooter() {
+    const ftr = dupState.panelEl?.querySelector('[data-ctrl=dup-foot-stats]');
+    if (!ftr) return;
+    let toArchive = 0, ignored = 0;
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key);
+      if (!dec) continue;
+      if (dec.ignored) { ignored++; continue; }
+      toArchive += (g.params.length - 1);
+    }
+    ftr.textContent = `${toArchive} params a archivar — ${ignored} grupos ignorados`;
+  }
+
+  async function dupRunApply(parentRunId) {
+    const myRunId = ++dupState.runId;
+    void parentRunId;
+
+    const tasks = [];
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key);
+      if (!dec || dec.ignored) continue;
+      for (const p of g.params) {
+        if (p.rowId === dec.winnerRowId) continue;
+        tasks.push({ group: g, paramRowId: p.rowId, sfpName: p.sfpName });
+      }
+    }
+
+    if (!tasks.length) {
+      alert('No hay nada que archivar (todos los grupos están ignorados o solo tienen 1 param).');
+      return;
+    }
+
+    dupSetBody(`<div class="dup-progress">
+      Archivando ${tasks.length} params (concurrencia 3)…
+      <div data-ctrl="prog-msg">0/${tasks.length}</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const okRows = [];
+    const errRows = [];
+    let processed = 0;
+
+    await dupRunPool(tasks, async (t) => {
+      if (dupState.runId !== myRunId) return;
+      try {
+        await dupWithRetry(
+          () => api().query('UpdatePartNumberSpecParam',
+            { id: t.paramRowId, archivedAt: new Date().toISOString() },
+            'UpdatePartNumberSpecParam'),
+          `archiveParam ${t.paramRowId}`
+        );
+        okRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName });
+      } catch (e) {
+        errRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName, error: e?.message || String(e) });
+      }
+      processed++;
+      if (pm) pm.textContent = `${processed}/${tasks.length} (${okRows.length} OK, ${errRows.length} err)`;
+      if (pb) pb.style.width = `${(processed / tasks.length) * 100}%`;
+    }, 3);
+
+    log(`[SPM-dup] Fix aplicado: ${okRows.length} OK, ${errRows.length} errores`);
+
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+    const sum = document.createElement('div');
+    sum.className = okRows.length && !errRows.length ? 'dup-success' : 'dup-error';
+    sum.textContent = `Resultado: ${okRows.length} archivados, ${errRows.length} errores. Reversible vía UpdatePartNumberSpecParam con archivedAt:null (usa los rowId del XLSX).`;
+    body.appendChild(sum);
+
+    if (errRows.length) {
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'font-size:11px;color:#fca5a5;max-height:200px;overflow-y:auto;margin-top:8px';
+      for (const r of errRows.slice(0, 50)) {
+        const li = document.createElement('li');
+        li.textContent = `row#${r.paramRowId} (${r.sfpName}) — ${r.error}`;
+        ul.appendChild(li);
+      }
+      body.appendChild(ul);
+    }
+
+    dupSetFooter(`
+      <span class="dup-counter">${okRows.length} OK · ${errRows.length} errores</span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-download-final">Descargar XLSX</button>
+        <button class="dup-btn" data-act="dup-final-close">Cerrar</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-download-final]')?.addEventListener('click', () => {
+      dupBuildBitacora('applied', { okRows, errRows });
+    });
+    dupState.panelEl.querySelector('[data-act=dup-final-close]')?.addEventListener('click', () => dupClosePanel());
+
+    dupBuildBitacora('applied', { okRows, errRows });
+  }
+
+  function dupBuildBitacora(mode, applied) {
+    if (!window.XLSX) {
+      alert('XLSX (SheetJS) no cargado. Recarga la extensión.');
+      return;
+    }
+    const wb = window.XLSX.utils.book_new();
+    const now = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+    const detRows = [];
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key) || {};
+      for (const p of g.params) {
+        const isWinner = p.rowId === dec.winnerRowId;
+        detRows.push({
+          PNID: g.pnId, PNName: g.pnName, Cliente: g.customer,
+          SpecIdInDomain: g.specIdInDomain, SpecName: g.specName,
+          FieldID: g.fieldId, FieldName: g.fieldName,
+          ParamRowID: p.rowId, SpecFieldParamID: p.sfpId, ParamName: p.sfpName,
+          ProcessNodeID: p.processNodeId || '',
+          Decisión: dec.ignored ? 'IGNORADO' : (isWinner ? 'CONSERVAR' : 'ARCHIVAR'),
+        });
+      }
+    }
+    dupAddSheet(wb, 'Detectados', `Detectados · ${detRows.length} filas · ${now}`, detRows,
+      ['PNID','PNName','Cliente','SpecIdInDomain','SpecName','FieldID','FieldName',
+       'ParamRowID','SpecFieldParamID','ParamName','ProcessNodeID','Decisión']);
+
+    if (mode === 'applied' && applied) {
+      const okRows = (applied.okRows || []).map(r => ({
+        PNID: r.group.pnId, PNName: r.group.pnName,
+        SpecIdInDomain: r.group.specIdInDomain, SpecName: r.group.specName,
+        FieldName: r.group.fieldName,
+        ParamRowID: r.paramRowId, ParamName: r.sfpName,
+      }));
+      dupAddSheet(wb, 'Aplicadas', `Archivadas OK · ${okRows.length} · ${now}`, okRows,
+        ['PNID','PNName','SpecIdInDomain','SpecName','FieldName','ParamRowID','ParamName']);
+
+      const errRows = (applied.errRows || []).map(r => ({
+        PNID: r.group.pnId, PNName: r.group.pnName,
+        SpecIdInDomain: r.group.specIdInDomain, SpecName: r.group.specName,
+        FieldName: r.group.fieldName,
+        ParamRowID: r.paramRowId, ParamName: r.sfpName, Error: r.error,
+      }));
+      dupAddSheet(wb, 'Errores', `Errores · ${errRows.length} · ${now}`, errRows,
+        ['PNID','PNName','SpecIdInDomain','SpecName','FieldName','ParamRowID','ParamName','Error']);
+    }
+
+    const wbOut = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dup-params-${mode}-${now}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function dupAddSheet(wb, name, title, rows, headers) {
+    const data = rows.length ? rows.map(r => headers.map(h => r[h] ?? '')) : [headers.map(() => '')];
+    const aoa = [[title], headers, ...data];
+    const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+    window.XLSX.utils.book_append_sheet(wb, ws, name);
+  }
+
+
+  return { run, assignPendingParams, resolveConflicts, runDuplicateParamsValidator };
 })();
 
 if (typeof window !== 'undefined') window.SpecMigrator = SpecMigrator;
