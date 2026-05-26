@@ -890,6 +890,9 @@ async function handleMessage(message, sender) {
                 <button id="sa-aud-none" style="font-size:10px;padding:3px 8px;border:1px solid #475569;border-radius:4px;background:none;color:#94a3b8;cursor:pointer">Deseleccionar todos</button>
               </div>
               ${criteriaHTML}
+              <label style="display:block;margin-top:10px;padding:6px 8px;background:#0f172a;border-radius:4px;color:#94a3b8;font-size:12px;cursor:pointer">
+                <input type="checkbox" id="sa-int-include-archived" checked> Incluir archivados en el scan de integridad (más lento, pero detecta restauraciones)
+              </label>
               <div class="dl9-btnrow">
                 <button class="dl9-btn dl9-btn-cancel" id="sa-aud-cancel">CANCELAR</button>
                 <button class="dl9-btn" id="sa-aud-exec" style="background:#38bdf8;color:#0f172a">AUDITAR</button>
@@ -906,12 +909,13 @@ async function handleMessage(message, sender) {
               const selected = [...md.querySelectorAll('.sa-aud-crit:checked')].map(c => c.value);
               const customerFilter = document.getElementById('sa-aud-customer').value.trim();
               const searchQuery = document.getElementById('sa-aud-search').value.trim();
+              const includeArchived = document.getElementById('sa-int-include-archived')?.checked !== false;
               ov.parentNode.removeChild(ov);
 
               if (!selected.length) { resolve({ error: 'Selecciona al menos un criterio' }); return; }
 
               try {
-                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter });
+                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter, includeArchived });
                 window.PNAuditor.removeAuditorUI();
 
                 // Panel de bucket cards si hubo integrity scan
