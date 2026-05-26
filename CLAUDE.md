@@ -89,6 +89,13 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | Power Tools `received-order` (`ordendeventa`) | sync con `powertools/synced/received-order/received-order.ts` | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
 | Power Tools `pdf:INVOICE_TEMPLATE` (`facturacion-pdf`) | sync con `powertools/synced/pdf/INVOICE_TEMPLATE.ts` | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |
 | Power Tools `invoice` (`facturacion`) | sync con `powertools/synced/invoice/invoice.ts` | [`docs/applets/powertools-facturacion.md`](docs/applets/powertools-facturacion.md) |
+| Power Tools `schedule` | sync con `powertools/synced/schedule/schedule.ts` | [`docs/applets/powertools-schedule.md`](docs/applets/powertools-schedule.md) |
+| Power Tools `file-import:QUOTE_IMPORT` | sync con `powertools/synced/file-import/QUOTE_IMPORT.ts` | [`docs/applets/powertools-file-import-quote.md`](docs/applets/powertools-file-import-quote.md) |
+| Power Tools `pdf:CERTIFICATION_TEMPLATE` | sync con `powertools/synced/pdf/CERTIFICATION_TEMPLATE.ts` | [`docs/applets/powertools-pdf-certification.md`](docs/applets/powertools-pdf-certification.md) |
+| Power Tools `pdf:WORK_ORDER_PART_NUMBER_TEMPLATE` | sync con `powertools/synced/pdf/WORK_ORDER_PART_NUMBER_TEMPLATE.ts` | [`docs/applets/powertools-pdf-work-order-part-number.md`](docs/applets/powertools-pdf-work-order-part-number.md) |
+| Power Tools `pdf:RACK_TEMPLATE` | sync con `powertools/synced/pdf/RACK_TEMPLATE.ts` | [`docs/applets/powertools-pdf-rack.md`](docs/applets/powertools-pdf-rack.md) |
+| Power Tools `pdf:PACKING_SLIP_TEMPLATE` | sync con `powertools/synced/pdf/PACKING_SLIP_TEMPLATE.ts` | [`docs/applets/powertools-pdf-packing-slip.md`](docs/applets/powertools-pdf-packing-slip.md) |
+| Power Tools `pdf:PART_NUMBER_TEMPLATE` | sync con `powertools/synced/pdf/PART_NUMBER_TEMPLATE.ts` | [`docs/applets/powertools-pdf-part-number.md`](docs/applets/powertools-pdf-part-number.md) |
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).
