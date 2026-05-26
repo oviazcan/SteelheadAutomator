@@ -11,7 +11,61 @@ Scripts: `steelhead-api.js` + `spec-migrator.js`. Sin VERSION constant exportado
 | `run-spec-migrator` (Migrar Specs) | `SpecMigrator.run` | original 2024 |
 | `assign-pending-params` (Asignar Params Pendientes) | `SpecMigrator.assignPendingParams` | original 2024 |
 | `resolve-conflicts` (Resolver Conflictos) | `SpecMigrator.resolveConflicts` | original 2024 |
-| `validate-duplicate-params` (Validar params duplicados) | `SpecMigrator.runDuplicateParamsValidator` | **0.4.2 — 2026-05-26, bump config 1.4.37** |
+| `validate-duplicate-params` (Validar params duplicados) | `SpecMigrator.runDuplicateParamsValidator` | **0.4.3 — 2026-05-25, bump config 1.4.38** |
+
+---
+
+# `validate-duplicate-params` 0.4.3 (2026-05-25, bump config 1.4.38) — regla null-only por SpecField (alineación con bulk-upload 1.4.38)
+
+## Síntoma / petición
+Tras 0.4.2, el usuario probó el validator sobre PN 3027939 y observó que el toggle global "Archivar params con processNodeId = NULL" estaba al revés de la regla buena: bulk-upload 1.4.38 ahora exige que el row vivo de cada `SpecField` tenga `processNodeId=null`. El toggle hacía justo lo contrario.
+
+Adicionalmente, el usuario clarificó el modelo:
+> "debes pensar que los specfields 'agrupan' los parámetros… SOLO un parámetro por specfield, nunca más de uno"
+
+Y la regla para grupos con sfpIds distintos pero **mismo nombre**:
+> "si los dos parámetros se llaman igual, dejamos el que está null… para el manual, sí deben aparecer radios pues hay dos opciones DIFERENTES… el radio seleccionado default debe ser el que trae proceso (no para dejarle el proceso, sino porque es el que insertó bulk upload que está validado)"
+
+## Regla nueva (absoluta — sin toggle)
+Por cada grupo de duplicados bajo un `specFieldSpecId` único:
+
+| Caso | Clasificación | Acción |
+|---|---|---|
+| 1 sfpId, ≥1 NULL | `autoDecidable=true` | Conservar NULL más reciente; archivar el resto (otros NULLs + todos los con processNode). |
+| 2+ sfpIds con MISMO `paramName` | `autoDecidable=true` | Igual al caso 1 — el nombre repetido confirma duplicación pura. |
+| 2+ sfpIds con `paramName` DISTINTO | `autoDecidable=false` (manual) | Radios para elegir; **default = sfpId con processNode** (es el que bulk-upload acaba de validar contra el catálogo). El validator igualmente insertará el winner como NULL y archivará los rows con processNode. |
+| 1 sfpId, sin NULL | `autoDecidable=false` (manual) | El validator sólo archiva — no inserta. Bulk-upload re-pasará y dejará el NULL. |
+
+## Cambios de código
+- `spec-migrator.js:2114-2150` — header del bloque reescrito con casos arriba.
+- `spec-migrator.js:2469-2515` — `dupRunScan` calcula `sameName` (`mappedParams.every(p => p.sfpName === firstName)`) y `autoDecidable = (sameSfp || sameName) && hasNull`.
+- `spec-migrator.js:2558` — banner púrpura del toggle eliminado; reemplazado por nota informativa "Regla absoluta: 1 row vivo por SpecField con `processNodeId=null`. Sin toggle."
+- `spec-migrator.js:2725-2745` — `dupComputeAutoWinner(g)` simplificado:
+  ```js
+  function dupComputeAutoWinner(g) {
+    if (!g.autoDecidable) return g.params[0].rowId;
+    const nulls = g.params.filter(p => !p.processNodeId);
+    return (nulls.length ? nulls[0] : g.params[0]).rowId;
+  }
+  ```
+- `spec-migrator.js:2743-2755` — nuevo helper `dupManualDefaultWinner(g)`: default radio = primer param con `processNodeId !== null` (es el row "validado" por bulk-upload).
+- `dupState.archiveNullProcessNode` eliminado (default ON o OFF dejaron de tener sentido).
+
+## Bug encontrado durante validación con DevTools (tools/test-null-param-fix.js)
+El primer apply sobre PN 3027939 archivó correctamente pero el insert posterior falló:
+`Variable "$input" got invalid value "25611423" at "input.paramsToApply[0].specFieldParamId"; Int cannot represent non-integer value`
+
+Causa: al normalizar `sfpId` a String para matching de radio buttons, el insert payload mandaba String donde el schema exige `Int`. Fix en el script DevTools **y en el validator**: `Number(ins.specFieldId)` / `Number(ins.specFieldParamId)` antes de armar `paramsToApply`. (Recuperación del PN 3027939: el usuario lo arregló a mano en la UI de Steelhead.)
+
+## Lección
+- **SpecField es el contenedor**. Cualquier validador / dedup / cleanup que agrupe por `sfpId` está roto por construcción — agrupar siempre por `specFieldSpecBySpecFieldSpecId.specFieldBySpecFieldId.id`.
+- **`sameName` vs `sameSfp`** son dos formas de la misma duplicación: una es el mismo SpecFieldParam reinsertado, la otra es el catálogo redefinido con sfpId nuevo pero nombre idéntico. Ambas se resuelven igual.
+- **El radio default importa**. El usuario eligió "el que trae proceso" no porque quiera conservar el proceso, sino porque ese row es el que bulk-upload acaba de validar contra el CSV — es la fuente de verdad para sfpId.
+- **Coerce a Int en boundary del schema**. Si el código interno normaliza IDs a String para keys de Map o matching de UI, el insert payload debe `Number(...)` antes de mandar.
+
+## Pendiente
+- [ ] Feature CSV-mode (#110): permitir cargar el CSV de bulk-upload en el validator para que use `wantedSelections` del CSV en vez de "el más reciente" — así el validator puede corregir PNs cargados con bulk-upload viejo sin re-correr toda la carga.
+- [ ] audit-incomplete-pns (#111): añadir criterio `duplicate-params per SpecField` al reporte de PNs incompletos.
 
 ---
 

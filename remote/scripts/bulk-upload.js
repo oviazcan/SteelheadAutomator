@@ -4334,7 +4334,11 @@ const BulkUpload = (() => {
             else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : (errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`), params[0].id); }
             else pid = params[0].id;
             if (!pid) continue;
-            const sel = { defaultParamId: pid, processNodeId: part.processId || pn.defaultProcessNodeId || null, processNodeOccurrence: (part.processId || pn.defaultProcessNodeId) ? 1 : null, locationId: null, geometryTypeSpecFieldId: null };
+            // 1.4.38: regla nueva — SIEMPRE processNodeId=null. El param null es
+            // genérico (se aplica a cualquier proceso) y sobrevive cambios de
+            // proceso; con processNodeId específico habría que re-asignar manualmente
+            // cada vez que el PN cambia de proceso.
+            const sel = { defaultParamId: pid, processNodeId: null, processNodeOccurrence: null, locationId: null, geometryTypeSpecFieldId: null };
             if (sf.isGeneric) gS.push(sel); else dS.push(sel);
           }
           specsToApply.push({ specId: si.id, classificationSetId: null, classificationIds: [], defaultSelections: dS, genericSelections: gS });
@@ -4770,30 +4774,85 @@ const BulkUpload = (() => {
           const linkedSpecs = pnNode.partNumberSpecsByPartNumberId?.nodes || [];
           let allParams = pnNode.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
 
-          // 1.4.9 STEP 0 cleanup defensivo (idempotente): detectar params
-          // duplicados causados por bug 1.3.x-1.4.8 — STEP 6b insertaba con
-          // processNodeId: null mientras STEP 6 ponía processNodeId real. Si
-          // existe el par (mismo specFieldParamId con processNodeId null Y
-          // otro con processNodeId !== null), archivamos el null.
-          // Corre dentro del worker porque ya tenemos el GetPartNumber fresco
-          // — cero round-trips extra fuera del SavePartNumber del archive.
-          const paramsBySfpId = new Map();
+          // 1.4.38: refactor STEP 6b — regla nueva "1 param vivo por SpecField,
+          // con processNodeId=null, igual al wanted del CSV".
+          //   • El SpecField es el contenedor — sólo puede vivir 1 row por
+          //     specFieldId. Cualquier otro row del mismo SpecField (sfpId
+          //     distinto o processNodeId no-null) se archiva.
+          //   • Para el sfpId wanted del CSV:
+          //       - 0 NULLs vivos → insertar uno + archivar cualquier row con
+          //         processNode (mismo sfp).
+          //       - 1+ NULLs vivos → conservar el más reciente, archivar el
+          //         resto + los con processNode.
+          //   • Para sfpIds distintos al wanted en el mismo SpecField → archivar
+          //     TODOS sus rows (no son el param correcto según el CSV).
+          //   • Un solo SavePartNumber con partNumberSpecFieldParamsToArchive
+          //     antes de los AddParamsToPartNumber. Cero round-trips extra vs 1.4.37.
+          //
+          // Reemplaza:
+          //   - cleanup defensivo 1.4.9 (sólo archivaba pares null+processNode
+          //     reactivamente, no detectaba sfpIds distintos en el mismo SpecField).
+          //   - dedup-tuple 1.4.9 (causa raíz: distinguía sfp|null vs sfp|<X>
+          //     como rows separados — ahora 1 row total por SpecField).
+          const existingBySpecField = new Map();
           for (const p of allParams) {
             if (p.archivedAt || !p.specFieldParamBySpecFieldParamId) continue;
-            const sfpId = p.specFieldParamBySpecFieldParamId.id;
-            if (!paramsBySfpId.has(sfpId)) paramsBySfpId.set(sfpId, []);
-            paramsBySfpId.get(sfpId).push(p);
+            const sfp = p.specFieldParamBySpecFieldParamId;
+            const sfId = sfp.specFieldSpecBySpecFieldSpecId?.specFieldBySpecFieldId?.id;
+            if (!sfId) continue;
+            if (!existingBySpecField.has(sfId)) existingBySpecField.set(sfId, []);
+            existingBySpecField.get(sfId).push(p);
           }
-          const duplicateNullIdsToArchive = [];
-          for (const [, rows] of paramsBySfpId) {
-            if (rows.length < 2) continue;
-            const hasNonNull = rows.some(r => r.processNodeId);
-            if (!hasNonNull) continue;
-            for (const r of rows) {
-              if (!r.processNodeId) duplicateNullIdsToArchive.push(r.id);
+
+          const insertsBySpec = new Map();
+          const archiveSet = new Set();
+          const processedSpecFields = new Set();
+          for (const cs of part.specs) {
+            if (isDash(cs.name)) continue;
+            const si = specByName.get(cs.name); if (!si) continue;
+            const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
+            if (!linked) continue;
+            const sd = sfCache.get(si.id); if (!sd) continue;
+            const wantedSelections = [];
+            for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
+              const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
+              const fn = sf.specFieldBySpecFieldId?.name || '';
+              const isEsp = fn.toLowerCase().includes('espesor');
+              let pid;
+              if (params.length === 1) pid = params[0].id;
+              else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : params[0].id; }
+              else pid = params[0].id;
+              if (!pid) continue;
+              wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
             }
+            const adds = [];
+            for (const ws of wantedSelections) {
+              if (!ws.specFieldId || processedSpecFields.has(ws.specFieldId)) continue;
+              processedSpecFields.add(ws.specFieldId);
+              const allInSpecField = existingBySpecField.get(ws.specFieldId) || [];
+              const matching = allInSpecField.filter(p => p.specFieldParamBySpecFieldParamId.id === ws.specFieldParamId);
+              const nonMatching = allInSpecField.filter(p => p.specFieldParamBySpecFieldParamId.id !== ws.specFieldParamId);
+              // Archivar todos los rows con sfpId distinto al wanted (perdedores).
+              for (const p of nonMatching) archiveSet.add(p.id);
+              const matchingNulls = matching.filter(p => !p.processNodeId);
+              const matchingNonNulls = matching.filter(p => p.processNodeId);
+              if (matchingNulls.length === 0) {
+                adds.push({
+                  specFieldId: ws.specFieldId, specFieldParamId: ws.specFieldParamId, isGeneric: ws.isGeneric,
+                  geometryTypeSpecFieldId: null, processNodeId: null, processNodeOccurrence: null, locationId: null
+                });
+                for (const p of matchingNonNulls) archiveSet.add(p.id);
+              } else {
+                const sortedNulls = matchingNulls.slice().sort((a, b) => Number(b.id) - Number(a.id));
+                for (const p of sortedNulls.slice(1)) archiveSet.add(p.id);
+                for (const p of matchingNonNulls) archiveSet.add(p.id);
+              }
+            }
+            if (adds.length) insertsBySpec.set(cs.name, adds);
           }
-          if (duplicateNullIdsToArchive.length) {
+          const idsToArchive = Array.from(archiveSet);
+
+          if (idsToArchive.length) {
             const cleanupInput = {
               id: entry.pn.id,
               name: pnNode.name,
@@ -4813,7 +4872,7 @@ const BulkUpload = (() => {
               inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
               partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
               partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
-              partNumberSpecFieldParamsToArchive: duplicateNullIdsToArchive,
+              partNumberSpecFieldParamsToArchive: idsToArchive,
               partNumberSpecFieldParamsToUnarchive: [],
               partNumberSpecClassificationsToUpdate: [],
               partNumberSpecFieldParamUpdates: [], specFieldParamUpdates: []
@@ -4821,65 +4880,24 @@ const BulkUpload = (() => {
             try {
               await withRetry(
                 () => api().query('SavePartNumber', { input: [cleanupInput] }),
-                `SavePartNumber cleanup-dups "${pnNode.name}"`,
+                `SavePartNumber archive-dups "${pnNode.name}"`,
                 myRunIdLocal
               );
-              cleanupCounters.archived += duplicateNullIdsToArchive.length;
+              cleanupCounters.archived += idsToArchive.length;
               cleanupCounters.pnsTouched++;
-              log(`  PN "${part.pn}": cleanup ${duplicateNullIdsToArchive.length} params duplicados (processNodeId: null) archivados`);
-              // Reflejar en memoria: filtrar params recién archivados para que
-              // el dedup tuple del loop siguiente no los vea como existentes.
-              const archivedSet = new Set(duplicateNullIdsToArchive);
+              log(`  PN "${part.pn}": archive ${idsToArchive.length} params (regla 1.4.38: solo conservar processNodeId=null)`);
+              const archivedSet = new Set(idsToArchive);
               allParams = allParams.filter(p => !archivedSet.has(p.id));
-              // Invalidar cache para que cualquier consumidor posterior fetchee fresco.
               existingPnFullCache.delete(entry.pn.id);
             } catch (e) {
               if (isBail(e)) throw e;
-              errors.push(`Cleanup dups "${part.pn}": ${String(e).substring(0, 120)}`);
+              errors.push(`Archive dups "${part.pn}": ${String(e).substring(0, 120)}`);
             }
           }
 
-          for (const cs of part.specs) {
-            if (isDash(cs.name)) continue;
-            const si = specByName.get(cs.name); if (!si) continue;
-            const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
-            if (!linked) continue;
-            const sd = sfCache.get(si.id); if (!sd) continue;
-            const wantedSelections = [];
-            for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
-              const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
-              const fn = sf.specFieldBySpecFieldId?.name || '';
-              const isEsp = fn.toLowerCase().includes('espesor');
-              let pid;
-              if (params.length === 1) pid = params[0].id;
-              else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : params[0].id; }
-              else pid = params[0].id;
-              if (!pid) continue;
-              wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
-            }
-            // Fix 1.4.9: dedup por tuple (specFieldParamId, processNodeId).
-            // Antes (≤1.4.8) era solo por specFieldParamId — y `paramsToAdd` insertaba
-            // con processNodeId: null. Resultado: si STEP 6 (enrichWorker) ya había
-            // dejado un row con processNodeId real para el mismo param, STEP 6b lo
-            // duplicaba con processNodeId: null. El dedup tuple + asignar el mismo
-            // processNodeId que STEP 6 usaría (part.processId || pn.defaultProcessNodeId)
-            // resuelve ambos lados del bug.
-            const targetProcessNodeId = part.processId || pnNode.defaultProcessNodeId || null;
-            const targetOccurrence = targetProcessNodeId ? 1 : null;
-            const existingParamKeys = new Set(
-              allParams.filter(p => !p.archivedAt && p.specFieldParamBySpecFieldParamId)
-                       .map(p => `${p.specFieldParamBySpecFieldParamId.id}|${p.processNodeId || ''}`)
-            );
-            const missing = wantedSelections.filter(s =>
-              !existingParamKeys.has(`${s.specFieldParamId}|${targetProcessNodeId || ''}`)
-            );
-            if (!missing.length) continue;
-            const paramsToAdd = missing.map(m => ({
-              specFieldId: m.specFieldId, specFieldParamId: m.specFieldParamId, isGeneric: m.isGeneric,
-              geometryTypeSpecFieldId: null, processNodeId: targetProcessNodeId, processNodeOccurrence: targetOccurrence, locationId: null
-            }));
+          for (const [csName, adds] of insertsBySpec) {
             let added = 0;
-            for (const pa of paramsToAdd) {
+            for (const pa of adds) {
               if (isStale(myRunIdLocal)) return;
               try {
                 await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
@@ -4887,17 +4905,14 @@ const BulkUpload = (() => {
               } catch (e) {
                 const msg = String(e);
                 if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
-                  // Fix D 1.3.2: skip silencioso — antes (1.3.1) loggeábamos "ya presente, skip" por cada
-                  // param ya existente, lo que llenaba consola con N × M × PNs líneas inútiles. Con Fix I
-                  // (cache invalidado tras SavePartNumber) esto debería ser raro; cuando ocurre, queda solo
-                  // como contador implícito (added no incrementa).
+                  // Skip silencioso — ya presente (race con otro worker o un retry).
                 } else {
-                  errors.push(`AddParams "${part.pn}" spec "${cs.name}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
+                  errors.push(`AddParams "${part.pn}" spec "${csName}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
                 }
               }
             }
             syncCounters.synced += added;
-            if (added) log(`  PN "${part.pn}" spec "${cs.name}": ${added} params nuevos sincronizados`);
+            if (added) log(`  PN "${part.pn}" spec "${csName}": ${added} params nuevos sincronizados (processNodeId=null)`);
           }
         } catch (e) {
           if (isBail(e)) throw e;

@@ -1,6 +1,97 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.31. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.4.38. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.4.38: regla null-only por SpecField en STEP 6b (Fix MM, 2026-05-25)
+
+### Síntoma
+Tras la regla nueva de 1.4.37 (Fix L, sentinel pre-quote + `processNodeId=null`
+siempre), PNs cargados con CSV nuevo aún quedaban con **dos rows vivos** bajo
+un mismo `SpecField`:
+
+| SpecField | sfpId | Param name | processNodeId |
+|---|---|---|---|
+| Espesor | 250109 | "Espesor 5.8 - 8.89 µm (anterior)" | null |
+| Espesor | 256114 | "Espesor 7.62 - 15.24 µm" | 81739123 |
+
+El CSV pedía `7.62 - 15.24` pero el row con `processNodeId=null` venía de
+una carga previa con sfpId distinto (5.8 - 8.89). El cleanup defensivo 1.4.9
+sólo archivaba pares `null + processNode` del **mismo sfpId**, así que no
+detectaba sfpIds distintos en el mismo SpecField → ambos rows sobrevivían.
+
+### Causa raíz
+- **Modelo correcto**: el `SpecField` es el contenedor — sólo puede vivir 1
+  row por `specFieldId`, sin importar el sfpId. El cleanup 1.4.9 y el
+  dedup-tuple original asumían que el contenedor era el `SpecFieldParam`.
+- **Resultado**: cuando un PN cambiaba de sfpId entre cargas (típico cuando
+  el material genérico se redefinió y los rangos de espesor cambiaron de
+  catálogo), el row viejo sobrevivía como huérfano con `processNodeId=null`
+  y el nuevo entraba con `processNodeId=<proceso>` — duplicación silenciosa.
+
+### Fix
+Refactor de STEP 6b (`bulk-upload.js:4777-4853`):
+
+```js
+const existingBySpecField = new Map();
+for (const p of allParams) {
+  if (p.archivedAt || !p.specFieldParamBySpecFieldParamId) continue;
+  const sfp = p.specFieldParamBySpecFieldParamId;
+  const sfId = sfp.specFieldSpecBySpecFieldSpecId?.specFieldBySpecFieldId?.id;
+  if (!sfId) continue;
+  if (!existingBySpecField.has(sfId)) existingBySpecField.set(sfId, []);
+  existingBySpecField.get(sfId).push(p);
+}
+const processedSpecFields = new Set();
+for (const ws of wantedSelections) {
+  if (!ws.specFieldId || processedSpecFields.has(ws.specFieldId)) continue;
+  processedSpecFields.add(ws.specFieldId);
+  const allInSF = existingBySpecField.get(ws.specFieldId) || [];
+  const matching    = allInSF.filter(p => p.specFieldParamBySpecFieldParamId.id === ws.specFieldParamId);
+  const nonMatching = allInSF.filter(p => p.specFieldParamBySpecFieldParamId.id !== ws.specFieldParamId);
+  for (const p of nonMatching) archiveSet.add(p.id);          // sfpId perdedores
+  const matchingNulls    = matching.filter(p => !p.processNodeId);
+  const matchingNonNulls = matching.filter(p =>  p.processNodeId);
+  if (matchingNulls.length === 0) {
+    adds.push({ specFieldId: ws.specFieldId, specFieldParamId: ws.specFieldParamId, ...
+                processNodeId: null, processNodeOccurrence: null, locationId: null });
+    for (const p of matchingNonNulls) archiveSet.add(p.id);
+  } else {
+    const sortedNulls = matchingNulls.slice().sort((a,b) => Number(b.id) - Number(a.id));
+    for (const p of sortedNulls.slice(1)) archiveSet.add(p.id); // dejar 1 NULL vivo
+    for (const p of matchingNonNulls)     archiveSet.add(p.id);
+  }
+}
+```
+
+Un solo `SavePartNumber` con `partNumberSpecFieldParamsToArchive` antes de
+los `AddParamsToPartNumber`. Cero round-trips extra vs 1.4.37.
+
+### Lección
+- **SpecField agrupa, no SpecFieldParam**. El modelo de datos lo deja
+  ambiguo (cada row apunta a sfpId), pero la regla de negocio es: 1 row
+  vivo por SpecField. Cualquier dedup, validación o cleanup debe agrupar
+  por `specFieldSpecBySpecFieldSpecId.specFieldBySpecFieldId.id`.
+- **Cleanup defensivo no basta cuando el catálogo de sfpIds cambia**.
+  Necesita ser proactivo: archivar TODOS los sfpIds del SpecField que no
+  coincidan con el wanted del CSV, no solo reaccionar a `null + processNode`
+  del mismo sfp.
+
+### Validación previa al deploy
+Script DevTools standalone (`tools/test-null-param-fix.js`) probado en PN
+3027939 (CXC7807602-12, 12 rows). Dry-run + Apply confirman que la regla
+deja 1 row con `processNodeId=null` por SpecField y archiva el resto.
+**Bug encontrado y corregido durante la prueba**: el insert payload exige
+`Int` para `specFieldId/specFieldParamId`; el script (y el bulk-upload
+nuevo) hacen `Number(...)` antes de mandar.
+
+### Pendiente de validación
+- [ ] Re-correr una carga masiva real con CSV mixto (sfpId nuevo + sfpId
+      viejo en mismo SpecField) y confirmar via DevTools que el PN queda
+      con 1 sólo row por SpecField, todos `processNodeId=null`.
+- [ ] Validator dup-params 0.4.3 (spec-migrator) sobre lote post-carga
+      debe reportar 0 duplicados.
+
+---
 
 ## 1.4.31: logging defensivo predictivos + preferencia activa en map (Fix KK, 2026-05-25)
 

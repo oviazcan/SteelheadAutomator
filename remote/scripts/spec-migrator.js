@@ -2111,7 +2111,7 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.2)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.3)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
@@ -2124,9 +2124,26 @@ const SpecMigrator = (() => {
   //
   //  0.4.2: UX — auto-decisión para grupos "sameSfp" (todos los params comparten
   //  el mismo SpecFieldParam y difieren sólo por processNodeId null vs valor).
-  //  Toggle global "Archivar params con processNodeId=NULL" (default ON) decide
-  //  por estos sin radios manuales. Grupos con sfpId distintos (caso Espesor:
-  //  5.8-8.89 µm vs 7.62-15.24 µm) conservan radios manuales como antes.
+  //  Toggle global decide por estos sin radios manuales. Grupos con sfpId
+  //  distintos (caso Espesor: 5.8-8.89 µm vs 7.62-15.24 µm) conservan radios
+  //  manuales como antes.
+  //
+  //  0.4.3: regla alineada con bulk-upload 1.4.38 — el SpecField agrupa, no el
+  //  SpecFieldParam. Sólo puede vivir 1 row por SpecField y debe ser NULL.
+  //  Casos:
+  //    • 1 sfpId con ≥1 NULL → auto: conservar NULL más reciente, archivar resto
+  //      (incluyendo otros NULLs y todos los con processNode del mismo sfp).
+  //    • 2+ sfpIds con MISMO paramName (duplicación pura) → auto: igual al caso 1
+  //      tras consolidar bajo el sfpId que ya tenga un NULL.
+  //    • 2+ sfpIds con paramName DISTINTO → manual: radio buttons para elegir
+  //      el ganador. Default = sfpId que tiene rows con processNode más reciente
+  //      (es el que bulk-upload acaba de validar). El usuario puede cambiarlo.
+  //    • 1 sfpId con sólo processNode (sin NULL) → manual: el validator sólo
+  //      archive, no inserta. Quedará 1 row con processNode hasta que bulk-upload
+  //      vuelva a pasar y lo reescriba como NULL.
+  //
+  //  Eliminado en 0.4.3: toggle global keepNullProcessNode (no aplica — la regla
+  //  es absoluta).
   //
   //  Bundle: vive en spec-migrator (menú "Ajuste Masivo de Specs") porque es
   //  validación + corrección de specs ya aplicadas, no edición de parámetros.
@@ -2238,10 +2255,6 @@ const SpecMigrator = (() => {
     specFilter: '',
     groups: [],
     decisions: new Map(),
-    // 0.4.2: toggle global para grupos autoDecidable (mismo sfpId, difieren sólo
-    // por processNodeId null vs valor). Default true = archivar el null,
-    // conservar el que tiene processNodeId.
-    archiveNullProcessNode: true,
   };
 
   function dupClosePanel() {
@@ -2453,16 +2466,19 @@ const SpecMigrator = (() => {
           locationId: p.locationId || null,
         }));
 
-        // 0.4.2: clasificación para UX
-        // sameSfp: todos los params del bucket comparten el mismo SpecFieldParam
-        //   (= mismo valor, copia accidental).
-        // autoDecidable: además existe al menos uno con processNodeId y al menos
-        //   uno sin (null), de modo que el toggle global puede decidir.
+        // 0.4.3: clasificación por SpecField (no por sfpId)
+        // sameSfp: todos los params comparten el mismo SpecFieldParam (duplicación pura).
+        // sameName: todos comparten el mismo paramName (mismo valor con sfpId distinto
+        //   por copia accidental al recrear el SpecFieldParam — tratable como sameSfp).
+        // autoDecidable: sameSfp (o sameName) Y al menos un row tiene processNodeId=NULL.
+        //   Si ningún row tiene NULL queda manual: el validator sólo archive y no podemos
+        //   convertir un row con processNode en NULL (eso lo hace bulk-upload).
         const firstSfpId = mappedParams[0].sfpId;
+        const firstName = mappedParams[0].sfpName;
         const sameSfp = firstSfpId != null && mappedParams.every(p => p.sfpId === firstSfpId);
+        const sameName = mappedParams.every(p => p.sfpName === firstName);
         const hasNull = mappedParams.some(p => !p.processNodeId);
-        const hasProc = mappedParams.some(p => !!p.processNodeId);
-        const autoDecidable = sameSfp && hasNull && hasProc;
+        const autoDecidable = (sameSfp || sameName) && hasNull;
 
         const group = {
           key: `${pn.id}-${sfsId}`,
@@ -2477,13 +2493,14 @@ const SpecMigrator = (() => {
           fieldName: bucket.fieldName,
           params: mappedParams,
           sameSfp,
+          sameName,
           autoDecidable,
         };
         groups.push(group);
 
         const winnerRowId = autoDecidable
           ? dupComputeAutoWinner(group)
-          : sorted[0].id;
+          : dupManualDefaultWinner(group);
         dupState.decisions.set(group.key, { winnerRowId, ignored: false });
       }
     }, 6, (done, total) => {
@@ -2538,32 +2555,12 @@ const SpecMigrator = (() => {
     if (fetchErrors.length) stats.appendChild(mk('Errores fetch', fetchErrors.length));
     body.appendChild(stats);
 
-    // 0.4.2: toggle global para grupos autoDecidable (mismo sfpId, null vs proc)
+    // 0.4.3: nota informativa de la regla (sin toggle — la regla es absoluta).
     if (autoCount > 0) {
-      const tWrap = document.createElement('div');
-      tWrap.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px';
-      const tLbl = document.createElement('label');
-      tLbl.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;color:#e5e7eb';
-      const tCb = document.createElement('input');
-      tCb.type = 'checkbox';
-      tCb.checked = dupState.archiveNullProcessNode;
-      tLbl.appendChild(tCb);
-      const tTxt = document.createElement('span');
-      tTxt.innerHTML = `Archivar params con <b style="color:#a78bfa">processNodeId = NULL</b> en los <b>${autoCount}</b> grupos auto-decidibles (mismo SpecFieldParam, difieren sólo por proceso). Desmarcar archiva los que SÍ tienen processNodeId.`;
-      tLbl.appendChild(tTxt);
-      tWrap.appendChild(tLbl);
-      body.appendChild(tWrap);
-      tCb.addEventListener('change', () => {
-        dupState.archiveNullProcessNode = tCb.checked;
-        for (const g of dupState.groups) {
-          if (!g.autoDecidable) continue;
-          const dec = dupState.decisions.get(g.key) || {};
-          if (dec.ignored) continue;
-          dec.winnerRowId = dupComputeAutoWinner(g);
-          dupState.decisions.set(g.key, dec);
-        }
-        dupRenderTable(myRunId, scannedCount, fetchErrors);
-      });
+      const info = document.createElement('div');
+      info.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#cbd5e1';
+      info.innerHTML = `Regla: por SpecField sólo puede vivir 1 row con <b style="color:#a78bfa">processNodeId=NULL</b>. ${autoCount} grupos auto-decidibles (mismo param, conservar NULL más reciente). ${manualCount} grupos manuales (paramName distinto entre sfpIds o ningún NULL existente — elige el ganador con radios).`;
+      body.appendChild(info);
     }
 
     const wrap = document.createElement('div');
@@ -2734,18 +2731,20 @@ const SpecMigrator = (() => {
     ftr.textContent = `${toArchive} params a archivar — ${ignored} grupos ignorados`;
   }
 
-  // 0.4.2: calcula el winner según el toggle global para grupos autoDecidable.
-  // Regla: si toggle=true, conserva el de processNodeId no-null más reciente y
-  //   archiva los null (+ duplicados más viejos con proceso si los hubiera).
-  //   Si toggle=false, conserva el null más reciente y archiva los con proceso.
+  // 0.4.3: winner auto = NULL más reciente. Aplica a grupos autoDecidable
+  // (sameSfp/sameName con al menos 1 row NULL). Si no hay NULL queda manual.
+  // params ya vienen sort desc por rowId.
   function dupComputeAutoWinner(g) {
     if (!g.autoDecidable) return g.params[0].rowId;
+    const nulls = g.params.filter(p => !p.processNodeId);
+    return (nulls.length ? nulls[0] : g.params[0]).rowId;
+  }
+
+  // 0.4.3: default manual = row con processNode más reciente (es el último que
+  // bulk-upload validó/insertó). Si no hay con processNode, el más reciente.
+  function dupManualDefaultWinner(g) {
     const withProc = g.params.filter(p => !!p.processNodeId);
-    const withoutProc = g.params.filter(p => !p.processNodeId);
-    const pool = dupState.archiveNullProcessNode ? withProc : withoutProc;
-    // params ya vienen ordenados desc por rowId; el primero del pool es el más reciente
-    const candidate = pool.length ? pool[0] : g.params[0];
-    return candidate.rowId;
+    return (withProc.length ? withProc[0] : g.params[0]).rowId;
   }
 
   async function dupRunApply(parentRunId) {
