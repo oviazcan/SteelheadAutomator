@@ -1,3 +1,38 @@
+# `spec-params-bulk` 0.10.0: action `validate-duplicate-params` (2026-05-25, bump config 1.4.34)
+
+Tercera action del bundle (las dos primeras siguen vigentes sin cambios). Detecta y limpia PNs con >1 param activo para el mismo `(partNumberSpecId, specFieldId)` — el caso "espesor con 3 parámetros, uno con processNode default y dos sin" que aparece después de cargas masivas mal dedupeadas.
+
+**Flujo:**
+1. **Filtros opcionales** — `cliente` (substring uppercase, contra `customerByCustomerId.name`) y/o `spec` (substring lowercase, contra `specBySpecId.name`). Vacío = todos los PNs activos.
+2. **Fase 1: `AllPartNumbers` paginado** (`first:500`, `NAME_ASC`) con `withRetry`. Filtra archivedAt y aplica filtro cliente al vuelo.
+3. **Fase 2: `runPool(allPNs, GetPartNumber, 6)`** con `usagesLimit:0`. Por cada PN:
+   - Construye `psMap: partNumberSpecId → {specId, specName, specIdInDomain}` solo con specs activas.
+   - Si hay `specFilter` y ninguna spec activa matchea, descarta el PN.
+   - Agrupa `partNumberSpecFieldParamsByPartNumberId.nodes` activos por `(partNumberSpecId, specFieldId)`.
+   - Flagea grupos con `length >= 2`. Resuelve `fieldName` cruzando `pnSpecs[].specBySpecId.specFieldSpecsBySpecId.nodes`.
+   - Default winner = mayor `id` (más reciente). Persiste en `dupState.decisions` como `Map<groupKey, {winnerRowId, ignored}>`.
+4. **Tabla interactiva** (DOM API + `textContent`, cero `innerHTML` para datos) con stats bar: PNs revisados, PNs con duplicados, grupos, params a archivar.
+   - Por grupo: PN | Cliente | Spec | SpecField | Radios (1 por param, preselecciona winner, muestra `row#…·sfp#…·pn#…·más reciente`) | Checkbox **Ignorar**.
+   - Cambiar radio re-pinta loser/winner colors; toggle ignorar grisea fila y la excluye del contador del footer.
+5. **Aplicar fix** — `confirm()` defensivo, luego `runPool(tasks, UpdatePartNumberSpecParam{archivedAt:nowISO}, 3)` con `withRetry`. Bitácora XLSX descargable (hojas **Detectados** con decisión por fila, **Aplicadas**, **Errores**). También se puede descargar el snapshot pre-aplicación desde la tabla.
+
+**Decisiones del usuario (cerradas antes de implementar):**
+- Universo de escaneo: todos los PN activos + filtro cliente + filtro spec, ambos opcionales y combinables.
+- Default winner: mayor `id` (más reciente).
+- Modo fix: archivar (reversible) vía `UpdatePartNumberSpecParam{id, archivedAt: ISO}` — el mismo mecanismo del UI nativo, reversible con `archivedAt: null`.
+
+**Wiring:**
+- `extension/background.js:1013-1041` — case `validate-duplicate-params` agregado al switch existente; reusa la inyección de XLSX library + script bundle. Mode='validate' selecciona `SpecParamsBulk.runDuplicateParamsValidator`.
+- `remote/config.json:746` — tercera acción en el array de `spec-params-bulk` con label "🧹 Validar params duplicados".
+- `remote/scripts/spec-params-bulk.js` — `VERSION = '0.10.0'`, función exportada en el `return`.
+
+**Lecciones:**
+- **No reusar el dedup del migrator** — `spec-migrator.js:1348` colapsa con `new Set(activeParams.map(p => p.specFieldParamBySpecFieldParamId.id))`, lo que silenciosamente esconde duplicados que difieren por `processNodeId`. El validador NUEVO usa el shape correcto: `(partNumberSpecId, specFieldId)` como key, sin colapsar por sfpId — así un grupo de 3 espesores con processNode null/default/A se ve como 3 rows, no 1.
+- **`UpdatePartNumberSpecParam` es la mutation más simple para archivar un row individual** — el migrator ya usa este patrón en `archiveParam(paramId)` (line 130). Confirma que `archivedAt: ISOString` archiva, `archivedAt: null` revierte. Reversible operativamente.
+- **DOM API en lugar de `innerHTML` para tabla con datos del usuario.** Los nombres de PN/cliente/spec pueden venir con caracteres especiales. La tabla se arma con `createElement` + `textContent`. Es uno de los pendientes XSS del audit (#2 medio) — esta action lo hace bien desde el inicio.
+
+---
+
 # `spec-params-bulk` 0.9.0: MVP de carga masiva de SpecParam (2026-05-18, pushed `de9ce8d`/`9630dab`, validación en prod PENDIENTE)
 
 Applet nuevo con dos actions independientes que comparten el mismo bundle:
