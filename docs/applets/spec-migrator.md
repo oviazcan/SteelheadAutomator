@@ -287,3 +287,36 @@ La resolución es **obligatoria** en MVP porque los CSVs de bulk-upload mezclan 
 - [ ] Probar con CSV multi-cliente y verificar dedup por QuoteIBMS en al menos 1 PN con homónimos.
 - [ ] Generar caso `wrongSfp` artificial (PN con sfpName que no matchee el CSV) y verificar que queda como flag, no como apply.
 - [ ] Re-correr scan global (modo 0.4.x) sobre los mismos PNs después del apply y confirmar 0 duplicados.
+
+---
+
+# `validate-duplicate-params` 0.5.1 (2026-05-25, bump config 1.4.40) — Fix OO: customer con dirección fiscal
+
+**Síntoma:** primer test del modo CSV reportó `4270 unresolved. Primeros: BRAININ DE MEXICO — Dirección Fiscal, — Av. San Luis Tlatilc|50416-1 (no encontrado)`. **100% de los PNs unresolved** → problema sistémico de lookup, no de datos.
+
+**Root cause:** el CSV V10 trae el cliente concatenado con la dirección fiscal (`BRAININ DE MEXICO — Dirección Fiscal, — Av. San Luis Tlatilc`), pero `customerByCustomerId.name` del server es solo el nombre base (`BRAININ DE MEXICO`). Mi lookup hacía `customer.trim().toUpperCase()` literal en ambos lados → cero matches.
+
+**Por qué no lo cacé antes:** asumí que el customer en el CSV iba a venir "limpio" porque mi mental model decía "el CSV viene de un export y el campo cliente debería ser canónico". Si hubiera mirado **1 row real del CSV** antes de codear (no la spec abstracta), el problema se ve en 5 segundos.
+
+**Fix:** replicar la misma fórmula canónica que ya usa `bulk-upload.js:1620`:
+
+```js
+const dupCsvNormCustomer = (s) =>
+  (s || '').split(/\s*[—–]\s*|\s+[-]\s+/)[0].trim().toUpperCase();
+```
+
+Split por:
+- `\s*[—–]\s*` — em-dash (U+2014) o en-dash (U+2013) opcionalmente rodeado de espacios.
+- `\s+[-]\s+` — guion ASCII solo si tiene espacio a ambos lados (para no romper PNs como `50416-1`).
+
+Se aplica **a ambos lados** del lookup: tanto al `customerByCustomerId.name` del server (defensa por si server también tiene clientes con sufijo) como al `cp.customer` del CSV.
+
+**Wiring:**
+- `remote/scripts/spec-migrator.js:3027-3050` — `dupCsvNormCustomer` declarada dentro de `dupCsvResolvePnIds` (scope local); index del server y key de búsqueda usan la misma función.
+- Header del action: `0.5.0` → `0.5.1`.
+- `remote/config.json`: `1.4.39` → `1.4.40`.
+
+**Lecciones:**
+- **Mirar 1 row real del CSV antes de codear el parser.** Es 30 segundos vs 1 hora de debug + redeploy. Internalizar: para cualquier parser de archivo del usuario, **abrir el archivo** (o pedirle las primeras 3 filas) antes de escribir el primer split/regex.
+- **Reutilizar normalizadores existentes en lugar de re-inventar.** bulk-upload ya tenía la fórmula correcta porque se topó con este mismo problema antes. Un `grep customer.*split` habría llevado a la línea exacta sin pasar por el bug. (Lo hice DESPUÉS de ver el síntoma — debió ser ANTES de escribir mi primer lookup.)
+- **100% failure = systemic, no de datos.** Si el primer test dice "0 de 4270 resueltos", el bug NO es de datos malos en el CSV — es del mapping. Cuando ese ratio sea < 50% sí sería razonable culpar a los datos; cuando es 0% siempre es código.
