@@ -126,26 +126,18 @@ const SADuplicateTiers = (() => {
 
   // ─── bucketización (pase 1) ────────────────────────────────────
   function hardBuckets(pns) {
-    const safePns = pns || [];
-    const keyOrder = [];
-    const keySet = {};
-    for (let i = 0; i < safePns.length; i++) {
-      const pn = safePns[i];
+    const byKey = new Map();
+    for (const pn of pns || []) {
       const ci = parseCustomInputs(pn.customInputs);
       const qibms = ci.DatosAdicionalesNP && ci.DatosAdicionalesNP.QuoteIBMS;
       if (!qibms || !String(qibms).trim()) continue;
       const key = String(qibms).trim();
-      if (!keySet[key]) { keySet[key] = true; keyOrder.push(key); }
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(pn);
     }
     const result = [];
-    for (let k = 0; k < keyOrder.length; k++) {
-      const quoteIBMS = keyOrder[k];
-      const members = safePns.filter(function(pn) {
-        const ci = parseCustomInputs(pn.customInputs);
-        const qibms = ci.DatosAdicionalesNP && ci.DatosAdicionalesNP.QuoteIBMS;
-        return qibms && String(qibms).trim() === quoteIBMS;
-      });
-      if (members.length >= 2) result.push({ quoteIBMS: quoteIBMS, members: members });
+    for (const [quoteIBMS, members] of byKey) {
+      if (members.length >= 2) result.push({ quoteIBMS, members });
     }
     return result;
   }

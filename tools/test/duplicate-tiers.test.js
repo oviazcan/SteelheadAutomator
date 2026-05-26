@@ -280,7 +280,10 @@ test('hardBuckets: agrupa por QuoteIBMS no vacío, ignora vacíos', () => {
   const buckets = M.hardBuckets(pns);
   assert.equal(buckets.length, 1);
   assert.equal(buckets[0].quoteIBMS, '84531');
-  assert.deepEqual(buckets[0].members.map(m => m.id).sort(), [1, 2]);
+  const ids = buckets[0].members.map(m => m.id).sort();
+  assert.equal(ids.length, 2);
+  assert.equal(ids[0], 1);
+  assert.equal(ids[1], 2);
 });
 
 test('hardBuckets: cross-customer agrupa', () => {
