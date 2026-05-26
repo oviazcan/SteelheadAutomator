@@ -935,6 +935,62 @@ async function handleMessage(message, sender) {
                       document.getElementById('sa-int-close').onclick = () => {
                         ov2.parentNode.removeChild(ov2); intResolve();
                       };
+
+                      // Wire archive batch (Task 14)
+                      const archiveBtn = document.getElementById('sa-int-archive-all');
+                      if (archiveBtn) {
+                        archiveBtn.addEventListener('click', async () => {
+                          archiveBtn.disabled = true;
+                          archiveBtn.textContent = 'Archivando...';
+                          const r = await window.PNAuditor.archiveLosers(results.integrity, (ok, skipped, failed, total) => {
+                            archiveBtn.textContent = `Archivando... ${ok + skipped + failed}/${total}`;
+                          });
+                          archiveBtn.textContent = `✓ ${r.ok} archivados · ⏭ ${r.skipped} ya estaban · ✗ ${r.failed} fallaron`;
+                          // Rayar visualmente los archivados con éxito
+                          for (const sid of (r.succeededIds || [])) {
+                            md2.querySelectorAll(`input[type=radio][value="${sid}"]`).forEach(input => {
+                              const lbl = input.closest('label');
+                              if (lbl) lbl.style.textDecoration = 'line-through';
+                              if (lbl) lbl.style.opacity = '0.55';
+                            });
+                          }
+                          if (r.failures && r.failures.length) {
+                            console.warn('[SA] Archivo fallos:', r.failures);
+                            const retryBtn = document.createElement('button');
+                            retryBtn.textContent = `Reintentar ${r.failures.length} fallidos (re-correr scan)`;
+                            retryBtn.style.cssText = 'background:#f59e0b;color:#0f172a;padding:6px 12px;margin-left:8px;border:none;border-radius:6px;cursor:pointer;font-size:11px';
+                            retryBtn.onclick = () => {
+                              alert('Cierra este modal y re-corre el scan. Los archivados con éxito serán saltados por idempotencia.');
+                            };
+                            archiveBtn.parentNode.appendChild(retryBtn);
+                          }
+                        });
+                      }
+
+                      // Wire CSV delete (Task 15)
+                      const csvBtn = document.getElementById('sa-int-csv-delete');
+                      if (csvBtn) {
+                        csvBtn.addEventListener('click', () => {
+                          const csv = window.PNAuditor.buildDeleteCSV(results.integrity);
+                          const fname = `pn_delete_candidates_${new Date().toISOString().slice(0, 10)}.csv`;
+                          window.PNAuditor.downloadBlob(csv, fname, 'text/csv;charset=utf-8');
+                        });
+                      }
+
+                      // Wire JSON audit (Task 15)
+                      const jsonBtn = document.getElementById('sa-int-json-full');
+                      if (jsonBtn) {
+                        jsonBtn.addEventListener('click', () => {
+                          const json = JSON.stringify({
+                            timestamp: new Date().toISOString(),
+                            customerFilter,
+                            searchQuery,
+                            integrity: results.integrity,
+                          }, null, 2);
+                          const fname = `audit_integridad_${new Date().toISOString().slice(0, 10)}.json`;
+                          window.PNAuditor.downloadBlob(json, fname, 'application/json');
+                        });
+                      }
                     });
                   }
                 }

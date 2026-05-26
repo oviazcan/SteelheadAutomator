@@ -673,10 +673,110 @@ const PNAuditor = (() => {
   }
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   function escapeAttr(s) { return escapeHtml(s); }
+  function cssEscape(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-z0-9_-]/gi, '\\$&'); }
+
+  // ═══════════════════════════════════════════
+  // ARCHIVE LOSERS (Task 14)
+  // ═══════════════════════════════════════════
+
+  async function archiveLosers(integrity, onProgress) {
+    const tasks = [];
+    for (const tierKey of ['hardBuckets', 'mediumBuckets', 'softBuckets']) {
+      for (const b of (integrity[tierKey] || [])) {
+        // Lee selección actualizada del DOM si la tarjeta existe; si no, usa winnerId del bucket.
+        const card = document.querySelector(`.sa-int-bucket[data-bucket-key="${cssEscape(bucketKeyForCSV(b))}"]`);
+        if (card && !card.querySelector('.sa-int-apply')?.checked) continue;
+        let winnerId = b.winnerId;
+        if (card) {
+          const chosen = Number(card.querySelector('input[type=radio]:checked')?.value);
+          if (!isNaN(chosen)) winnerId = chosen;
+        }
+        for (const m of b.members) {
+          if (m.id === winnerId) continue;
+          if (m.archived) { tasks.push({ id: m.id, name: m.name, skip: true }); continue; }
+          tasks.push({ id: m.id, name: m.name });
+        }
+      }
+    }
+    let ok = 0, skipped = 0, failed = 0;
+    const failures = [];
+    const succeededIds = [];
+    await runPool(tasks, async (t) => {
+      if (t.skip) { skipped++; onProgress && onProgress(ok, skipped, failed, tasks.length); return; }
+      try {
+        await withRetry(
+          () => api().query('UpdatePartNumber', { id: t.id, archivedAt: new Date().toISOString() }),
+          `archive ${t.name}`
+        );
+        ok++;
+        succeededIds.push(t.id);
+      } catch (e) {
+        failed++;
+        failures.push({ id: t.id, name: t.name, error: String(e?.message || e).substring(0, 120) });
+      }
+      onProgress && onProgress(ok, skipped, failed, tasks.length);
+    }, 5);
+    return { ok, skipped, failed, failures, succeededIds, totalAttempted: tasks.length };
+  }
+
+  // ═══════════════════════════════════════════
+  // CSV/JSON EXPORT (Task 15)
+  // ═══════════════════════════════════════════
+
+  function buildDeleteCSV(integrity) {
+    const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+    const rows = [[
+      'tier', 'bucketKey', 'pnId', 'pnName', 'customer', 'customerId',
+      'quoteIBMS', 'metalBase', 'finishings', 'status',
+      'createdAt', 'score', 'winnerPnId', 'razon'
+    ].join(',')];
+    for (const tierKey of ['hardBuckets', 'mediumBuckets', 'softBuckets']) {
+      for (const b of (integrity[tierKey] || [])) {
+        for (const id of (b.deleteCandidates || [])) {
+          const m = b.members.find(x => x.id === id);
+          if (!m) continue;
+          const razon = b.tier === 'DURO'
+            ? `DURO: comparte QuoteIBMS ${b.quoteIBMS}`
+            : `${b.tier} sin QuoteIBMS: bucket ${humanBucketKey(b)}`;
+          const status = m.archived ? 'archived' : 'active';
+          rows.push([
+            b.tier,
+            q(bucketKeyForCSV(b)),
+            m.id,
+            q(m.name),
+            q(m.customer),
+            m.customerId ?? '',
+            q(m.quoteIBMS || ''),
+            q(m.metalBase || ''),
+            q(b.finishings || ''),
+            status,
+            q(m.createdAt || ''),
+            m.score,
+            b.winnerId,
+            q(razon),
+          ].join(','));
+        }
+      }
+    }
+    return rows.join('\n');
+  }
+
+  function downloadBlob(content, filename, mime) {
+    const blob = new Blob(['﻿' + content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   function getCriteria() { return CRITERIA; }
 
-  return { run, stop, exportCSV, getCriteria, removeAuditorUI, renderIntegrityResults };
+  return {
+    run, stop, exportCSV, getCriteria, removeAuditorUI,
+    renderIntegrityResults, archiveLosers, buildDeleteCSV, downloadBlob,
+    bucketKeyForCSV, cssEscape,
+  };
 })();
 
 if (typeof window !== 'undefined') window.PNAuditor = PNAuditor;
