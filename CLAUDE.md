@@ -92,7 +92,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `process-canon` | varios | [`docs/processes-architecture.md`](docs/processes-architecture.md) (glosario §9) |
 | `hash-scanner` | 0.6.23 | [`docs/applets/hash-scanner.md`](docs/applets/hash-scanner.md) |
 | `audit-incomplete-pns` (DevTools, no extensión) | fix-2026-05-25 (Fix MM) + tier scan 2026-05-26 | [`docs/applets/audit-incomplete-pns.md`](docs/applets/audit-incomplete-pns.md) |
-| `integrity-tiers` (módulo `duplicate-tiers.js` + UI en `auditor` + tier scan en DevTools tool) | 1.5.2 (módulo inicial, auditor 1.5.2 con hardening EJE A+B) | [`docs/applets/integrity-tiers.md`](docs/applets/integrity-tiers.md) |
+| `integrity-tiers` (módulo `duplicate-tiers.js` + UI en `auditor` + tier scan en DevTools tool) | 1.5.3 (hotfix: slim detail + buckets parciales + render stopped) | [`docs/applets/integrity-tiers.md`](docs/applets/integrity-tiers.md) |
 | Power Tools — catálogo completo (8 categorías, 17 slots TLC) | n/a (espejo `powertools/synced/`) | [`docs/applets/powertools-catalog.md`](docs/applets/powertools-catalog.md) |
 | Power Tools `received-order` (`ordendeventa`) | sync con `powertools/synced/received-order/received-order.ts` | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
 | Power Tools `pdf:INVOICE_TEMPLATE` (`facturacion-pdf`) | sync con `powertools/synced/pdf/INVOICE_TEMPLATE.ts` | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |

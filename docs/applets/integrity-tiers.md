@@ -117,3 +117,52 @@ Aplicado tras invocar el skill `memory-hardening-applets` antes del push.
 - `474a524` merge feat→main
 - `d4acc21` perf(auditor): memory hardening EJE A+B + bump 1.5.2
 - `f0d2048` deploy: gh-pages 1.5.2 con host-cleanup-shared.js
+
+## 2026-05-26 — Hotfix 1.5.3 (slim detail + buckets parciales + render stopped)
+
+### Síntoma reportado (test 1.5.2)
+
+> "se saturó la búsqueda y se bloqueó, pero aún así me dijo que no había
+> duplicados, esto no es correcto. Además no me dijo cuántos de cuántos
+> procesó. Por otro lado, si está deteniendo las sesiones datadog y apollo
+> no debería saturarse tanto!"
+
+3 bugs distintos saliendo del mismo run de prueba.
+
+### Diagnóstico (root cause de cada uno)
+
+| Bug | Causa | Fix |
+|---|---|---|
+| Falso "✓ Sin duplicados" al abortar | `runIntegrityScan` retornaba `{stopped, partialDetails}` sin armar buckets; `renderIntegrityResults` recibía `integrity = null` → cae al branch "sin duplicados" | Quitar early return: aunque `stopped=true`, refinar buckets con los details que sí se alcanzaron. Banner condicional en `renderIntegrityResults`. |
+| Summary no decía progreso pase 2 | `background.js` solo mostraba contadores de audit per-PN (`results.totalAudited`); el `processedInPass2` no se trackeaba | `runIntegrityScan` ahora retorna `processedInPass2 / totalCandidatesPass2`. `background.js` summary los muestra + flag `⏸ ABORTADO POR MEMORIA` cuando aplica. |
+| Saturación de memoria pese a stops | `detailsByPnId[pnId] = d?.partNumberById` retenía detail FULL (~30-80 KB × N candidatos = 150-400 MB). Apollo cache drain NO toca objetos JS plain — drena solo el store normalizado de Apollo | `slimDetail(raw)` extrae únicamente los ~12 fields que `duplicate-tiers.js` consume (customInputs, defaultProcessNodeId, descriptionMarkdown, partNumberGroupId, dimensionCustomValueIds, contadores `.nodes.length` y slim de `partNumberLabels` + `partNumberPrices`). ~1-2 KB por PN. `slimPass1Node(n)` análogo para `fetchAllPNsWithArchived`. |
+
+### Cambios en código
+
+- `auditor.js`:
+  - `slimDetail(raw)` — preserva la shape nested (`.nodes`, `.length`) sin retener el objeto completo del response.
+  - `slimPass1Node(n, archivedAtOverride)` — slim del pase 1 (sustituye `{...n, archivedAt}`, cierra deuda EJE A pendiente).
+  - Pase 2 worker: `detailsByPnId[pnId] = slimDetail(d?.partNumberById)`.
+  - Eliminado el early return en pase 2 cuando `stopped=true` — flujo continúa a refinement con detalles parciales.
+  - `runIntegrityScan` return: `{ ..., stopped: wasStoppedInPass2, processedInPass2, totalCandidatesPass2 }`.
+  - `run()` ya no early-returns en `integrityResult?.stopped`; setea `results.stopped` y continúa.
+  - `renderIntegrityResults`: banner naranja "⏸ Run abortado por memoria. Procesados X/Y" cuando `integrity.stopped=true`; cuando además no hay buckets, mensaje específico "El resto quedó sin verificar".
+  - Audit per-PN pase 1 slim (solo `{id, name, customerByCustomerId}`).
+
+- `background.js`:
+  - Summary diferenciado `Auditoría completada` vs `Auditoría DETENIDA (parcial)`.
+  - Línea adicional `Integridad — pase 2: X/Y candidatos enriquecidos` + flag `⏸ ABORTADO POR MEMORIA`.
+
+- `config.json`: bump `1.5.2 → 1.5.3`.
+
+### Validación
+
+- `node --check` sobre `auditor.js` y `background.js`: OK.
+- `node --test tools/test/duplicate-tiers.test.js`: 39/39 pass (contrato del módulo intacto — `slimDetail` mantiene la shape que el módulo lee).
+- `git diff HEAD:remote/scripts/auditor.js gh-pages:scripts/auditor.js`: vacío.
+- `git diff HEAD:remote/config.json gh-pages:config.json`: vacío.
+
+### Commits
+
+- `c9c452a` perf(auditor): 1.5.3 — slim detail + buckets parciales + render stopped
+- `9c5779a` deploy: auditor 1.5.3 slim detail + buckets parciales + bump 1.5.3
