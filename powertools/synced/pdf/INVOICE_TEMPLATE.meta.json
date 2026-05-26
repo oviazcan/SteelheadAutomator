@@ -1,0 +1,22 @@
+{
+  "category": "pdf",
+  "slug": "pdf:INVOICE_TEMPLATE",
+  "discriminator": "INVOICE_TEMPLATE",
+  "active_id": 10475,
+  "active_created_at": "2026-05-26T01:11:14.859801+00:00",
+  "active_creator": "OMAR FIDEL VIAZCAN GOMEZ",
+  "total_versions": 11,
+  "all_version_ids": [
+    10475,
+    10464,
+    10463,
+    10462,
+    10461,
+    9671,
+    9670,
+    9669,
+    7930,
+    7926,
+    7918
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "category": "pdf",
+  "slug": "pdf:CERTIFICATION_TEMPLATE",
+  "discriminator": "CERTIFICATION_TEMPLATE",
+  "active_id": 10490,
+  "active_created_at": "2026-05-26T01:24:45.867601+00:00",
+  "active_creator": "OMAR FIDEL VIAZCAN GOMEZ",
+  "total_versions": 10,
+  "all_version_ids": [
+    10490,
+    9284,
+    9283,
+    8701,
+    8700,
+    8699,
+    8698,
+    8697,
+    8696,
+    8348
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "category": "pdf",
+  "slug": "pdf:PACKING_SLIP_TEMPLATE",
+  "discriminator": "PACKING_SLIP_TEMPLATE",
+  "active_id": 10477,
+  "active_created_at": "2026-05-26T01:12:16.782583+00:00",
+  "active_creator": "OMAR FIDEL VIAZCAN GOMEZ",
+  "total_versions": 6,
+  "all_version_ids": [
+    10477,
+    10476,
+    8644,
+    7888,
+    7878,
+    7875
+  ]
+}
