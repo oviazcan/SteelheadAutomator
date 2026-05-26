@@ -1435,6 +1435,14 @@ const SpecMigrator = (() => {
       targetSpecName
     };
 
+    // Get source spec field IDs to correctly scope param archival
+    const sourceSpecDetail = await getSpecFields(sourceSpec.id);
+    const sourceFieldIds = new Set(
+      (sourceSpecDetail?.specFieldSpecsBySpecId?.nodes || [])
+        .map(f => f.specFieldBySpecFieldId?.id)
+        .filter(Boolean)
+    );
+
     showProgressUI(archiveOnly ? 'Archivando Specs' : 'Migrando Specs', 'Preparando...');
 
     // Phase 3: Migrate each PN
@@ -1457,12 +1465,11 @@ const SpecMigrator = (() => {
         );
 
         if (sourceSpecOnPN && !sourceSpecOnPN.archivedAt) {
-          // Archive the old spec at PN level — pass empty paramIds so the mutation
-          // archives only THIS spec (passing all PN params broke it for multi-spec PNs)
+          // Archive the old spec at PN level — only pass params that belong to the
+          // source spec's fields, not ALL active params (which would break multi-spec PNs)
           try {
-            // Get param IDs belonging to this source spec
             const sourceParamIds = pnAllParams
-              .filter(p => !p.archivedAt)
+              .filter(p => !p.archivedAt && sourceFieldIds.has(p.specFieldId))
               .map(p => p.id);
             await archiveSpecOnPN(sourceSpecOnPN.id, sourceParamIds);
             log(`  ${pnName}: spec archivada a nivel PN`);
@@ -1624,7 +1631,2077 @@ const SpecMigrator = (() => {
     return results;
   }
 
-  return { run, assignPendingParams };
+  // ══════════════════════════════════════════
+  // RESOLVE CONFLICTS — Scan
+  // ══════════════════════════════════════════
+
+  async function scanForConflicts() {
+    showProgressUI('Conflictos de Specs', 'Cargando specs externas...');
+    const specs = await fetchAllExternalSpecs((msg) => updateProgress(msg, 5));
+    log(`=== RESOLVER CONFLICTOS DE SPECS ===`);
+    log(`Specs externas: ${specs.length}`);
+
+    // Phase 1: For each spec, get its assigned PNs via GetSpec
+    const pnMap = {}; // pnId → { pnId, pnName, pnSpecs: [{ pnSpecId, specId, specName }] }
+    const BATCH = 10;
+
+    for (let i = 0; i < specs.length; i += BATCH) {
+      const batch = specs.slice(i, i + BATCH);
+      const batchResults = await Promise.all(batch.map(async (spec) => {
+        try {
+          const detail = await getSpec(spec.idInDomain, spec.revisionNumber);
+          if (!detail) return [];
+          const pnSpecs = detail.partNumberSpecsBySpecId?.nodes || [];
+          return pnSpecs
+            .filter(ps => !ps.archivedAt && ps.partNumberByPartNumberId?.isActive !== false)
+            .map(ps => ({
+              pnId: ps.partNumberId,
+              pnName: ps.partNumberByPartNumberId?.name || `PN ${ps.partNumberId}`,
+              pnSpecId: ps.id,
+              specId: spec.id,
+              specName: spec.name
+            }));
+        } catch (e) {
+          warn(`GetSpec ${spec.name}: ${String(e).substring(0, 120)}`);
+          return [];
+        }
+      }));
+
+      for (const entries of batchResults) {
+        for (const entry of entries) {
+          if (!pnMap[entry.pnId]) {
+            pnMap[entry.pnId] = { pnId: entry.pnId, pnName: entry.pnName, pnSpecs: [] };
+          }
+          pnMap[entry.pnId].pnSpecs.push({
+            pnSpecId: entry.pnSpecId,
+            specId: entry.specId,
+            specName: entry.specName
+          });
+        }
+      }
+
+      const pct = 10 + ((i + BATCH) / specs.length) * 30;
+      updateProgress(`Revisando PNs de ${Math.min(i + BATCH, specs.length)}/${specs.length} specs`, Math.min(pct, 40));
+    }
+
+    // Only PNs with 2+ specs are candidates
+    const candidates = Object.values(pnMap).filter(pn => pn.pnSpecs.length >= 2);
+    log(`PNs con 2+ specs externas: ${candidates.length}`);
+
+    if (!candidates.length) {
+      removeUI();
+      log('Sin conflictos detectados.');
+      return [];
+    }
+
+    // Phase 2: For each candidate, get spec fields and detect shared fields
+    const specFieldsCache = {}; // specId → [{ specFieldId, fieldName }]
+    const conflicts = [];
+
+    for (let i = 0; i < candidates.length; i += BATCH) {
+      const batch = candidates.slice(i, i + BATCH);
+      const batchResults = await Promise.all(batch.map(async (pn) => {
+        try {
+          // Get spec fields for each spec (cached)
+          for (const ps of pn.pnSpecs) {
+            if (!specFieldsCache[ps.specId]) {
+              const detail = await getSpecFields(ps.specId);
+              const fields = detail?.specFieldSpecsBySpecId?.nodes || [];
+              specFieldsCache[ps.specId] = fields.map(f => ({
+                specFieldId: f.specFieldBySpecFieldId?.id,
+                fieldName: f.specFieldBySpecFieldId?.name || '?'
+              }));
+            }
+          }
+
+          // Build map: specFieldId → specs that have it
+          const fieldToSpecs = {};
+          for (const ps of pn.pnSpecs) {
+            const fields = specFieldsCache[ps.specId] || [];
+            for (const f of fields) {
+              if (!f.specFieldId) continue;
+              if (!fieldToSpecs[f.specFieldId]) fieldToSpecs[f.specFieldId] = { fieldName: f.fieldName, specs: [] };
+              fieldToSpecs[f.specFieldId].specs.push(ps);
+            }
+          }
+
+          const sharedFields = Object.values(fieldToSpecs).filter(v => v.specs.length >= 2);
+          if (sharedFields.length === 0) return null;
+
+          // Collect unique specs involved in any conflict
+          const involvedSpecIds = new Set();
+          for (const sf of sharedFields) {
+            for (const s of sf.specs) involvedSpecIds.add(s.specId);
+          }
+          const involvedSpecs = pn.pnSpecs.filter(ps => involvedSpecIds.has(ps.specId));
+
+          return {
+            pnId: pn.pnId,
+            pnName: pn.pnName,
+            specs: involvedSpecs,
+            sharedFields: sharedFields.map(sf => sf.fieldName)
+          };
+        } catch (e) {
+          warn(`Conflict check ${pn.pnName}: ${String(e).substring(0, 120)}`);
+          return null;
+        }
+      }));
+
+      for (const r of batchResults) {
+        if (r) conflicts.push(r);
+      }
+
+      const pct = 40 + ((i + BATCH) / candidates.length) * 50;
+      updateProgress(`Detectando conflictos: ${Math.min(i + BATCH, candidates.length)}/${candidates.length} PNs`, Math.min(pct, 90));
+    }
+
+    log(`PNs con conflictos reales: ${conflicts.length}`);
+
+    if (conflicts.length === 0) {
+      removeUI();
+      return conflicts;
+    }
+
+    // Phase 3: Enrich conflict PNs with labels and process
+    updateProgress(`Cargando etiquetas y procesos...`, 92);
+    for (let i = 0; i < conflicts.length; i += BATCH) {
+      const batch = conflicts.slice(i, i + BATCH);
+      await Promise.all(batch.map(async (c) => {
+        try {
+          const detail = await getPNDetail(c.pnId);
+          c.labels = (detail?.partNumberLabelsByPartNumberId?.nodes || []).map(n => ({
+            name: n.labelByLabelId?.name || '?',
+            color: n.labelByLabelId?.color || '#475569'
+          }));
+          c.process = detail?.processNodeByDefaultProcessNodeId?.name || null;
+        } catch (e) {
+          c.labels = [];
+          c.process = null;
+        }
+      }));
+      updateProgress(`Etiquetas: ${Math.min(i + BATCH, conflicts.length)}/${conflicts.length}`, 92 + ((i + BATCH) / conflicts.length) * 8);
+    }
+
+    removeUI();
+    return { conflicts, specFieldsCache };
+  }
+
+  // ── Conflict Resolver Modal ──
+  function showConflictResolverModal(conflicts) {
+    return new Promise((resolve) => {
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-specm-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-specm-modal';
+      md.style.background = '#1a1a2e';
+      md.style.maxWidth = '800px';
+
+      // Build cards HTML
+      const cardsHTML = conflicts.map((c, idx) => {
+        const specsHTML = c.specs.map(s =>
+          `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer">
+            <input type="checkbox" class="sa-cr-spec" data-pn="${idx}" data-pnspecid="${s.pnSpecId}" data-specid="${s.specId}" data-specname="${s.specName}" checked>
+            <span style="color:#e2e8f0">${s.specName}</span>
+          </label>`
+        ).join('');
+
+        const labelsHTML = (c.labels || []).map(l =>
+          `<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${l.color};color:#fff;white-space:nowrap">${l.name}</span>`
+        ).join('');
+        const processHTML = c.process
+          ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Proceso: <span style="color:#cbd5e1">${c.process}</span></div>`
+          : '';
+
+        return `<div class="sa-cr-card" data-idx="${idx}" style="background:#0f172a;border-radius:8px;padding:14px 16px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:14px;font-weight:700;color:#e2e8f0">${c.pnName}</span>
+              <a href="https://app.gosteelhead.com/PartNumbers/${c.pnId}" target="_blank" style="color:#60a5fa;font-size:12px;text-decoration:none" title="Abrir en Steelhead">🔗</a>
+              ${labelsHTML}
+            </div>
+            <label style="font-size:11px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px">
+              <input type="checkbox" class="sa-cr-ignore" data-pn="${idx}"> Ignorar
+            </label>
+          </div>
+          ${processHTML}
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;margin-top:4px">Fields compartidos: ${c.sharedFields.join(', ')}</div>
+          <div class="sa-cr-specs-container" data-pn="${idx}">${specsHTML}</div>
+          <div class="sa-cr-archive-label" data-pn="${idx}" style="font-size:11px;color:#f59e0b;margin-top:6px"></div>
+        </div>`;
+      }).join('');
+
+      md.innerHTML = `
+        <h2 style="color:#f59e0b;font-size:18px">⚔️ Resolver Conflictos de Specs</h2>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:12px">
+          ${conflicts.length} PNs con specs en conflicto. Desmarca las specs que quieres archivar.
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+          <input type="text" id="sa-cr-search" class="sa-specm-input" placeholder="Buscar PN..." style="flex:1">
+          <label style="font-size:11px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap">
+            <input type="checkbox" id="sa-cr-ignoreall"> Ignorar todas
+          </label>
+        </div>
+        <div id="sa-cr-cards" style="max-height:55vh;overflow-y:auto">
+          ${cardsHTML}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+          <div id="sa-cr-status" style="font-size:12px;color:#94a3b8"></div>
+          <div class="sa-specm-btnrow" style="margin-top:0">
+            <button class="sa-specm-btn sa-specm-btn-cancel" id="sa-cr-cancel">CANCELAR</button>
+            <button class="sa-specm-btn sa-specm-btn-exec" id="sa-cr-exec" disabled>EJECUTAR</button>
+          </div>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const updateUI = () => {
+        let configured = 0;
+        let total = 0;
+
+        conflicts.forEach((c, idx) => {
+          const card = md.querySelector(`.sa-cr-card[data-idx="${idx}"]`);
+          const ignoreCb = md.querySelector(`.sa-cr-ignore[data-pn="${idx}"]`);
+          const specsContainer = md.querySelector(`.sa-cr-specs-container[data-pn="${idx}"]`);
+          const archiveLabel = md.querySelector(`.sa-cr-archive-label[data-pn="${idx}"]`);
+          const specCbs = md.querySelectorAll(`.sa-cr-spec[data-pn="${idx}"]`);
+
+          if (ignoreCb.checked) {
+            specsContainer.style.opacity = '0.3';
+            specsContainer.style.pointerEvents = 'none';
+            archiveLabel.textContent = '';
+            card.style.borderLeft = '3px solid #475569';
+            return;
+          }
+
+          specsContainer.style.opacity = '1';
+          specsContainer.style.pointerEvents = 'auto';
+          total++;
+
+          const checked = [...specCbs].filter(cb => cb.checked);
+          const unchecked = [...specCbs].filter(cb => !cb.checked);
+
+          // Must keep at least 1
+          if (checked.length <= 1) {
+            checked.forEach(cb => { cb.disabled = true; });
+          } else {
+            specCbs.forEach(cb => { cb.disabled = false; });
+          }
+
+          if (unchecked.length > 0) {
+            const names = unchecked.map(cb => cb.dataset.specname).join(', ');
+            archiveLabel.textContent = `Se archivará: ${names}`;
+            card.style.borderLeft = '3px solid #f59e0b';
+            configured++;
+          } else {
+            archiveLabel.textContent = '';
+            card.style.borderLeft = '3px solid transparent';
+          }
+        });
+
+        const statusEl = document.getElementById('sa-cr-status');
+        statusEl.textContent = `${configured} de ${total} PNs configurados`;
+
+        const execBtn = document.getElementById('sa-cr-exec');
+        execBtn.disabled = configured === 0;
+      };
+
+      // Search filter
+      document.getElementById('sa-cr-search').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        conflicts.forEach((c, idx) => {
+          const card = md.querySelector(`.sa-cr-card[data-idx="${idx}"]`);
+          card.style.display = c.pnName.toLowerCase().includes(q) ? '' : 'none';
+        });
+      });
+
+      // Ignore all toggle
+      document.getElementById('sa-cr-ignoreall').addEventListener('change', (e) => {
+        md.querySelectorAll('.sa-cr-ignore').forEach(cb => { cb.checked = e.target.checked; });
+        updateUI();
+      });
+
+      // Checkbox events
+      md.addEventListener('change', (e) => {
+        if (e.target.classList.contains('sa-cr-ignore') || e.target.classList.contains('sa-cr-spec')) {
+          updateUI();
+        }
+      });
+
+      updateUI();
+
+      // Cancel
+      document.getElementById('sa-cr-cancel').onclick = () => {
+        ov.parentNode.removeChild(ov);
+        resolve({ cancelled: true });
+      };
+
+      // Execute
+      document.getElementById('sa-cr-exec').onclick = () => {
+        const actions = [];
+        conflicts.forEach((c, idx) => {
+          const ignoreCb = md.querySelector(`.sa-cr-ignore[data-pn="${idx}"]`);
+          if (ignoreCb.checked) return;
+          const unchecked = [...md.querySelectorAll(`.sa-cr-spec[data-pn="${idx}"]`)]
+            .filter(cb => !cb.checked);
+          if (unchecked.length === 0) return;
+          actions.push({
+            pnId: c.pnId,
+            pnName: c.pnName,
+            toArchive: unchecked.map(cb => ({
+              pnSpecId: parseInt(cb.dataset.pnspecid),
+              specId: parseInt(cb.dataset.specid),
+              specName: cb.dataset.specname
+            }))
+          });
+        });
+        ov.parentNode.removeChild(ov);
+        resolve({ actions });
+      };
+    });
+  }
+
+  // ── Conflict Resolver Summary ──
+  function showConflictResolverSummary(results) {
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-specm-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-specm-modal';
+    md.style.background = '#1a1a2e';
+
+    const hasErrors = results.errors.length > 0;
+    const icon = hasErrors ? '⚠️' : '✅';
+    const iconColor = hasErrors ? '#f59e0b' : '#4ade80';
+
+    let errorsHTML = '';
+    if (results.errors.length > 0) {
+      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
+    }
+
+    md.innerHTML = `
+      <h2 style="color:${iconColor}">${icon} Conflictos Resueltos</h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0">
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#4ade80">${results.archived}</div>
+          <div style="font-size:11px;color:#94a3b8">Specs archivadas</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#94a3b8">${results.ignored}</div>
+          <div style="font-size:11px;color:#94a3b8">PNs ignorados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#ef4444">${results.errors.length}</div>
+          <div style="font-size:11px;color:#94a3b8">Errores</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px">
+        PNs procesados: ${results.processed} · Conflictos detectados: ${results.totalConflicts}
+      </div>
+      ${errorsHTML}
+      <div class="sa-specm-btnrow" style="margin-top:16px">
+        <button class="sa-specm-btn" id="sa-cr-copylog" style="background:#334155;color:#e2e8f0">📋 Copiar Log</button>
+        <button class="sa-specm-btn sa-specm-btn-exec" id="sa-cr-close">CERRAR</button>
+      </div>`;
+
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+
+    document.getElementById('sa-cr-close').onclick = () => ov.parentNode.removeChild(ov);
+    document.getElementById('sa-cr-copylog').onclick = () => {
+      const logText = api().getLog().join('\n');
+      navigator.clipboard.writeText(logText).then(() => {
+        const btn = document.getElementById('sa-cr-copylog');
+        btn.textContent = '✅ Copiado';
+        setTimeout(() => { btn.textContent = '📋 Copiar Log'; }, 2000);
+      });
+    };
+  }
+
+  // ══════════════════════════════════════════
+  // RESOLVE CONFLICTS — Orchestrator
+  // ══════════════════════════════════════════
+
+  async function resolveConflicts() {
+    // Phase 1: Scan
+    const scanResult = await scanForConflicts();
+    const conflicts = scanResult.conflicts;
+    const specFieldsCache = scanResult.specFieldsCache;
+
+    if (!conflicts.length) {
+      showConflictResolverSummary({ archived: 0, ignored: 0, processed: 0, totalConflicts: 0, errors: [] });
+      return { noConflicts: true };
+    }
+
+    // Phase 2: Show resolver modal
+    const choice = await showConflictResolverModal(conflicts);
+    if (choice.cancelled) return { cancelled: true };
+
+    const { actions } = choice;
+    const ignored = conflicts.length - actions.length;
+
+    log(`\nPNs a procesar: ${actions.length}, ignorados: ${ignored}`);
+
+    // Phase 3: Execute archives
+    const results = { archived: 0, ignored, processed: actions.length, totalConflicts: conflicts.length, errors: [] };
+
+    showProgressUI('Archivando specs', `0/${actions.length} PNs`);
+    const PBATCH = 10;
+
+    for (let i = 0; i < actions.length; i += PBATCH) {
+      const batch = actions.slice(i, i + PBATCH);
+      const pct = (i / actions.length) * 100;
+      updateProgress(`${i + 1}-${Math.min(i + PBATCH, actions.length)}/${actions.length} PNs`, pct);
+
+      await Promise.allSettled(batch.map(async (action) => {
+        // Collect specFieldIds from specs being archived (to clean up orphaned params)
+        const archivedFieldIds = new Set();
+        for (const spec of action.toArchive) {
+          const cached = specFieldsCache[spec.specId];
+          if (cached) {
+            for (const f of cached) if (f.specFieldId) archivedFieldIds.add(f.specFieldId);
+          }
+        }
+
+        for (const spec of action.toArchive) {
+          try {
+            await archiveSpecOnPN(spec.pnSpecId, []);
+            results.archived++;
+            log(`  ✓ ${action.pnName}: archivada ${spec.specName}`);
+          } catch (e) {
+            const errMsg = `${action.pnName}/${spec.specName}: ${String(e).substring(0, 120)}`;
+            results.errors.push(errMsg);
+            warn(`  ✗ ${errMsg}`);
+          }
+        }
+
+        // Archive orphaned params from the archived spec's fields
+        if (archivedFieldIds.size > 0) {
+          try {
+            const detail = await getPNDetail(action.pnId);
+            const params = detail?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+            const orphaned = params.filter(p => !p.archivedAt && archivedFieldIds.has(p.specFieldId));
+            for (const p of orphaned) {
+              await archiveParam(p.id);
+            }
+            if (orphaned.length > 0) {
+              log(`    🧹 ${action.pnName}: ${orphaned.length} params huérfanos archivados`);
+            }
+          } catch (e) {
+            warn(`    ⚠ ${action.pnName}: error limpiando params: ${String(e).substring(0, 100)}`);
+          }
+        }
+      }));
+    }
+
+    removeUI();
+
+    // Phase 4: Summary
+    log(`\n=== RESULTADO CONFLICTOS ===`);
+    log(`Specs archivadas: ${results.archived}`);
+    log(`PNs procesados: ${results.processed}`);
+    log(`PNs ignorados: ${results.ignored}`);
+    log(`Errores: ${results.errors.length}`);
+
+    showConflictResolverSummary(results);
+    return results;
+  }
+
+
+  // ════════════════════════════════════════════════════════
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.3)
+  //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
+  //  la misma Spec, sin importar processNode/location), permite elegir cuál
+  //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
+  //  (reversible con null).
+  //
+  //  0.5.0: modo CSV — el usuario carga el CSV de bulk-upload y el validator
+  //  resuelve pnIds (multi-cliente + dedup QuoteIBMS), detecta issues por PN
+  //  (duplicados + processNode no-null + sfp distinto al CSV) y aplica corrección
+  //  vía SavePartNumber (archive perdedores + insert NULL del wanted). Sin
+  //  re-correr toda la carga masiva.
+  //
+  //  0.4.1: agrupación corregida — el response de GetPartNumber NO expone
+  //  partNumberSpecId en partNumberSpecFieldParamsByPartNumberId.nodes[]; se
+  //  navega specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.id.
+  //  La key (partNumberSpecId, specFieldId) de 0.4.0 era undefined → 0 detecciones.
+  //
+  //  0.4.2: UX — auto-decisión para grupos "sameSfp" (todos los params comparten
+  //  el mismo SpecFieldParam y difieren sólo por processNodeId null vs valor).
+  //  Toggle global decide por estos sin radios manuales. Grupos con sfpId
+  //  distintos (caso Espesor: 5.8-8.89 µm vs 7.62-15.24 µm) conservan radios
+  //  manuales como antes.
+  //
+  //  0.4.3: regla alineada con bulk-upload 1.4.38 — el SpecField agrupa, no el
+  //  SpecFieldParam. Sólo puede vivir 1 row por SpecField y debe ser NULL.
+  //  Casos:
+  //    • 1 sfpId con ≥1 NULL → auto: conservar NULL más reciente, archivar resto
+  //      (incluyendo otros NULLs y todos los con processNode del mismo sfp).
+  //    • 2+ sfpIds con MISMO paramName (duplicación pura) → auto: igual al caso 1
+  //      tras consolidar bajo el sfpId que ya tenga un NULL.
+  //    • 2+ sfpIds con paramName DISTINTO → manual: radio buttons para elegir
+  //      el ganador. Default = sfpId que tiene rows con processNode más reciente
+  //      (es el que bulk-upload acaba de validar). El usuario puede cambiarlo.
+  //    • 1 sfpId con sólo processNode (sin NULL) → manual: el validator sólo
+  //      archive, no inserta. Quedará 1 row con processNode hasta que bulk-upload
+  //      vuelva a pasar y lo reescriba como NULL.
+  //
+  //  Eliminado en 0.4.3: toggle global keepNullProcessNode (no aplica — la regla
+  //  es absoluta).
+  //
+  //  Bundle: vive en spec-migrator (menú "Ajuste Masivo de Specs") porque es
+  //  validación + corrección de specs ya aplicadas, no edición de parámetros.
+  // ════════════════════════════════════════════════════════
+
+  // Helpers locales del validador (no colisionan con el resto del módulo)
+  const dupSleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const dupRetryDelays = [1000, 2000, 4000];
+
+  // 0.5.3: host cleanup contra los jobs/handles laterales del SPA de Steelhead
+  // (Datadog RUM session replay grabando todo + Apollo InMemoryCache normalizando
+  // cada response por __typename+id). bulk-upload 1.4.20+ ya implementa el mismo
+  // patrón; el latch global window.__sa_dd_stopped lo hace idempotente entre applets.
+  // Si bulk-upload ya corrió antes en esta tab, este call entra al early-return y
+  // solo drena Apollo cache silenciosamente. TODO: extraer a helper compartido en
+  // remote/scripts/_steelhead-host-cleanup.js como parte del refactor global (#113).
+  function dupApolloCacheDrain() {
+    try {
+      const candidates = [
+        window.__APOLLO_CLIENT__,
+        window.apolloClient,
+        window.__APOLLO__?.client,
+      ].filter(Boolean);
+      for (const client of candidates) {
+        try {
+          if (typeof client.clearStore === 'function') client.clearStore().catch(() => {});
+          else if (client.cache && typeof client.cache.reset === 'function') client.cache.reset();
+        } catch (_) { /* host no expone APIs esperadas: silencio */ }
+      }
+    } catch (_) { /* defensa total */ }
+  }
+
+  function dupStopHostJobs() {
+    if (window.__sa_dd_stopped) { dupApolloCacheDrain(); return; }
+    // Datadog RUM
+    try {
+      const dd = window.DD_RUM || window.datadogRum || window.__DD_RUM__;
+      if (dd) {
+        try { dd.stopSessionReplayRecording?.(); } catch (_) {}
+        try { dd.stopSession?.(); } catch (_) {}
+        try { dd.setTrackingConsent?.('not-granted'); } catch (_) {}
+        log('[SPM-dup] Datadog: stopSessionReplay + stopSession + consent revoked.');
+      }
+    } catch (_) {}
+    // Fetch/Beacon/XHR patches. Solo si no los aplicó otra applet antes.
+    if (!window.__sa_fetch_patched) {
+      try {
+        const origFetch = window.fetch;
+        window.fetch = function (input, init) {
+          const url = typeof input === 'string' ? input : (input?.url || '');
+          if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
+            return Promise.resolve(new Response('', { status: 204 }));
+          }
+          return origFetch.call(this, input, init);
+        };
+        if (navigator.sendBeacon) {
+          const origBeacon = navigator.sendBeacon.bind(navigator);
+          navigator.sendBeacon = function (url, data) {
+            if (/browser-intake-ddog-gov\.com|datadoghq\.com/i.test(url)) return true;
+            return origBeacon(url, data);
+          };
+        }
+        if (window.XMLHttpRequest && !window.__sa_xhr_patched) {
+          const origOpen = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function (method, url) {
+            this.__sa_url = url;
+            return origOpen.apply(this, arguments);
+          };
+          const origSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.send = function (body) {
+            const url = this.__sa_url || '';
+            if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
+              try { this.abort(); } catch (_) {}
+              return;
+            }
+            return origSend.apply(this, arguments);
+          };
+          window.__sa_xhr_patched = true;
+        }
+        window.__sa_fetch_patched = true;
+        log('[SPM-dup] fetch+sendBeacon+XHR a Datadog patcheados.');
+      } catch (e) { warn(`[SPM-dup] Patch fetch falló: ${String(e?.message || e).substring(0, 80)}`); }
+    }
+    dupApolloCacheDrain();
+    window.__sa_dd_stopped = true;
+  }
+
+  async function dupWithRetry(fn, label) {
+    let lastErr = null;
+    for (let i = 0; i <= dupRetryDelays.length; i++) {
+      try { return await fn(); }
+      catch (e) {
+        lastErr = e;
+        if (i === dupRetryDelays.length) throw e;
+        warn(`${label} falló intento ${i + 1}/${dupRetryDelays.length + 1}: ${e?.message || e}; retry en ${dupRetryDelays[i]}ms`);
+        await dupSleep(dupRetryDelays[i]);
+      }
+    }
+    throw lastErr;
+  }
+
+  async function dupRunPool(items, worker, concurrency, onProgress) {
+    const results = new Array(items.length);
+    let idx = 0, done = 0;
+    const workers = new Array(Math.min(concurrency, items.length || 1)).fill(0).map(async () => {
+      while (true) {
+        const i = idx++;
+        if (i >= items.length) return;
+        try { results[i] = await worker(items[i], i); }
+        catch (e) { results[i] = { __error: e?.message || String(e) }; }
+        done++;
+        if (onProgress) { try { onProgress(done, items.length); } catch (_) {} }
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  function dupEscHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function dupEnsureStyles() {
+    if (document.getElementById('sa-specm-dup-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'sa-specm-dup-styles';
+    s.textContent = `
+      .sa-specm-dup-overlay { position:fixed; right:18px; bottom:18px; width:880px; max-height:78vh;
+        background:#1f2937; color:#e5e7eb; border:1px solid #374151; border-radius:10px;
+        box-shadow:0 6px 24px rgba(0,0,0,0.4);
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        font-size:13px; z-index:2147483647; display:flex; flex-direction:column; }
+      .sa-specm-dup-overlay .dup-hdr { padding:10px 12px; background:#111827; border-bottom:1px solid #374151;
+        display:flex; align-items:center; justify-content:space-between; border-radius:10px 10px 0 0; }
+      .sa-specm-dup-overlay .dup-hdr h3 { margin:0; font-size:14px; color:#f9fafb; }
+      .sa-specm-dup-overlay .dup-body { padding:10px 12px; overflow-y:auto; flex:1; }
+      .sa-specm-dup-overlay .dup-ftr { padding:10px 12px; border-top:1px solid #374151; background:#111827;
+        border-radius:0 0 10px 10px; display:flex; gap:8px; align-items:center; justify-content:space-between; }
+      .sa-specm-dup-overlay .dup-btn { background:#8b5cf6; color:white; border:none; padding:6px 12px;
+        border-radius:6px; cursor:pointer; font-size:12px; }
+      .sa-specm-dup-overlay .dup-btn:hover:not(:disabled) { background:#7c3aed; }
+      .sa-specm-dup-overlay .dup-btn:disabled { background:#4b5563; cursor:not-allowed; opacity:0.6; }
+      .sa-specm-dup-overlay .dup-btn-ghost { background:transparent; color:#9ca3af; border:1px solid #374151; }
+      .sa-specm-dup-overlay .dup-btn-ghost:hover { color:#e5e7eb; border-color:#6b7280; }
+      .sa-specm-dup-overlay .dup-btn-danger { background:#dc2626; }
+      .sa-specm-dup-overlay .dup-btn-danger:hover:not(:disabled) { background:#b91c1c; }
+      .sa-specm-dup-overlay .dup-filter-row { display:flex; gap:10px; margin-bottom:8px; align-items:center; flex-wrap:wrap; }
+      .sa-specm-dup-overlay label { font-size:12px; color:#d1d5db; }
+      .sa-specm-dup-overlay input[type=text] { background:#0f172a; color:#e5e7eb; border:1px solid #334155;
+        padding:4px 8px; border-radius:4px; font-size:12px; flex:1; }
+      .sa-specm-dup-overlay input[type=text]:focus { outline:1px solid #8b5cf6; }
+      .sa-specm-dup-overlay .dup-counter { font-size:11px; color:#9ca3af; }
+      .sa-specm-dup-overlay .dup-progress { margin:8px 0; font-size:12px; color:#a78bfa; }
+      .sa-specm-dup-overlay .dup-bar { height:4px; background:#1f2937; border-radius:2px; overflow:hidden; margin-top:4px; }
+      .sa-specm-dup-overlay .dup-bar div { height:100%; background:#8b5cf6; transition:width 0.2s; }
+      .sa-specm-dup-overlay .dup-error { color:#f87171; font-size:12px; padding:6px; background:#7f1d1d33;
+        border:1px solid #7f1d1d; border-radius:4px; }
+      .sa-specm-dup-overlay .dup-success { color:#6ee7b7; font-size:12px; padding:6px; background:#14532d33;
+        border:1px solid #14532d; border-radius:4px; }
+      .sa-specm-dup-overlay .dup-stats { display:flex; gap:14px; font-size:11px; color:#cbd5e1;
+        background:#0f172a; padding:6px 10px; border-radius:6px; margin-bottom:8px; flex-wrap:wrap; }
+      .sa-specm-dup-overlay .dup-stats b { color:#f9fafb; }
+      .sa-specm-dup-overlay .dup-table { width:100%; border-collapse:collapse; font-size:11px; }
+      .sa-specm-dup-overlay .dup-table thead th { position:sticky; top:0; background:#111827;
+        z-index:1; padding:5px 6px; border:1px solid #374151; text-align:left; color:#f9fafb; font-size:11px; }
+      .sa-specm-dup-overlay .dup-table td { border:1px solid #1f2937; padding:5px 6px; vertical-align:top; }
+      .sa-specm-dup-overlay .dup-table .pname { color:#a78bfa; font-weight:600; }
+      .sa-specm-dup-overlay .dup-table .pmeta { font-size:10px; color:#9ca3af; }
+      .sa-specm-dup-overlay .dup-table .dup-radio-row { display:flex; align-items:center; gap:6px;
+        padding:2px 0; cursor:pointer; }
+      .sa-specm-dup-overlay .dup-table .dup-radio-row.winner { color:#6ee7b7; }
+      .sa-specm-dup-overlay .dup-table .dup-radio-row.loser { color:#fca5a5; }
+      .sa-specm-dup-overlay .dup-table tr.ignored td { opacity:0.45; }
+      .sa-specm-dup-overlay .dup-table tr.ignored .dup-radio-row { color:#9ca3af !important; }
+      .sa-specm-dup-overlay .dup-table .dup-mini { font-size:10px; color:#cbd5e1; background:#1f2937;
+        padding:1px 5px; border-radius:8px; margin-left:4px; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Estado del validador
+  const dupState = {
+    panelEl: null,
+    runId: 0,
+    customerFilter: '',
+    specFilter: '',
+    groups: [],
+    decisions: new Map(),
+  };
+
+  function dupClosePanel() {
+    if (dupState.panelEl && dupState.panelEl.parentNode) dupState.panelEl.parentNode.removeChild(dupState.panelEl);
+    dupState.panelEl = null;
+    // 0.5.2: liberar referencias pesadas para que el GC pueda recolectar al
+    // cerrar el panel. Sin esto, dupState.csvItems (con savePnSeed por PN +
+    // issues) y dupState.groups (scan mode) se quedan vivos hasta que se vuelva
+    // a abrir el panel y se sobrescriban.
+    dupState.groups = [];
+    dupState.decisions = new Map();
+    dupState.csvItems = null;
+    dupState.csvSelections = null;
+    dupState.csvUnresolved = null;
+    dupState.csvFetchErrors = null;
+    dupState.csvFileName = null;
+  }
+
+  function dupEnsurePanel(title) {
+    dupClosePanel();
+    dupEnsureStyles();
+    const el = document.createElement('div');
+    el.className = 'sa-specm-dup-overlay';
+    el.innerHTML = `
+      <div class="dup-hdr">
+        <h3>${dupEscHtml(title)}</h3>
+        <button class="dup-btn dup-btn-ghost" data-act="dup-close">✕</button>
+      </div>
+      <div class="dup-body"></div>
+      <div class="dup-ftr"></div>
+    `;
+    document.body.appendChild(el);
+    dupState.panelEl = el;
+    el.querySelector('[data-act=dup-close]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    return el;
+  }
+
+  function dupSetBody(html) {
+    if (!dupState.panelEl) return;
+    dupState.panelEl.querySelector('.dup-body').innerHTML = html;
+  }
+  function dupSetFooter(html) {
+    if (!dupState.panelEl) return;
+    dupState.panelEl.querySelector('.dup-ftr').innerHTML = html;
+  }
+
+  async function runDuplicateParamsValidator() {
+    const myRunId = ++dupState.runId;
+    dupEnsurePanel('Validar params duplicados por SpecField');
+
+    dupState.customerFilter = '';
+    dupState.specFilter = '';
+    dupState.groups = [];
+    dupState.decisions = new Map();
+
+    dupRenderFilterPanel(myRunId);
+  }
+
+  function dupRenderFilterPanel(myRunId) {
+    dupSetBody(`
+      <div style="font-size:12px;color:#cbd5e1;margin-bottom:8px">
+        Escanea PNs activos y detecta &gt;1 param activo por (Spec, SpecField).
+        Puedes filtrar por cliente, spec, ambos o ninguno (vacío = todos los PNs activos).
+      </div>
+      <div class="dup-filter-row">
+        <label style="flex:1">Cliente (contiene):
+          <input type="text" data-ctrl="dup-cust" placeholder="Ej. JABIL — vacío = todos" autocomplete="off">
+        </label>
+      </div>
+      <div class="dup-filter-row">
+        <label style="flex:1">Spec (nombre contiene):
+          <input type="text" data-ctrl="dup-spec" placeholder="Ej. NIQUEL — vacío = todas" autocomplete="off">
+        </label>
+      </div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:6px">
+        Aviso: escanear sin filtros revisa todos los PNs activos (puede tardar varios minutos).
+      </div>
+      <div style="background:#0f172a;border:1px dashed #334155;border-radius:6px;padding:8px 10px;margin-top:10px">
+        <div style="font-size:12px;color:#a78bfa;font-weight:600;margin-bottom:4px">⚡ Modo CSV (opcional)</div>
+        <div style="font-size:11px;color:#cbd5e1;margin-bottom:6px">
+          Carga el CSV de bulk-upload original. El validator resolverá los PNs (multi-cliente + dedup por QuoteIBMS), detectará issues vs CSV y corregirá vía SavePartNumber sin re-correr la carga masiva.
+          <br><span style="color:#9ca3af">Si cargas CSV, los filtros cliente/spec arriba se ignoran.</span>
+        </div>
+        <input type="file" data-ctrl="dup-csv-file" accept=".csv,text/csv" style="font-size:11px;color:#cbd5e1">
+        <div data-ctrl="dup-csv-status" style="font-size:11px;color:#9ca3af;margin-top:4px"></div>
+      </div>
+    `);
+    dupSetFooter(`
+      <span class="dup-counter">Listo</span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-cancel">Cerrar</button>
+        <button class="dup-btn" data-act="dup-start">Escanear</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-cancel]')?.addEventListener('click', () => dupClosePanel());
+
+    const csvInput = dupState.panelEl.querySelector('[data-ctrl=dup-csv-file]');
+    const csvStatus = dupState.panelEl.querySelector('[data-ctrl=dup-csv-status]');
+    let csvFile = null;
+    csvInput?.addEventListener('change', (ev) => {
+      csvFile = ev.target.files?.[0] || null;
+      if (csvStatus) {
+        csvStatus.textContent = csvFile
+          ? `✓ ${csvFile.name} (${Math.round(csvFile.size / 1024)} KB)`
+          : '';
+      }
+    });
+
+    dupState.panelEl.querySelector('[data-act=dup-start]')?.addEventListener('click', async () => {
+      dupState.customerFilter = dupState.panelEl.querySelector('[data-ctrl=dup-cust]')?.value?.trim() || '';
+      dupState.specFilter = dupState.panelEl.querySelector('[data-ctrl=dup-spec]')?.value?.trim() || '';
+      try {
+        if (csvFile) {
+          const csvText = await csvFile.text();
+          await dupRunScanFromCsv(myRunId, csvText, csvFile.name);
+        } else {
+          await dupRunScan(myRunId);
+        }
+      } catch (e) {
+        if (dupState.runId !== myRunId) return;
+        dupSetBody(`<div class="dup-error">Error en escaneo: ${dupEscHtml(e.message)}</div>`);
+        dupSetFooter(`<button class="dup-btn" data-act="dup-close-err">Cerrar</button>`);
+        dupState.panelEl.querySelector('[data-act=dup-close-err]')?.addEventListener('click', () => dupClosePanel());
+      }
+    });
+  }
+
+  async function dupRunScan(myRunId) {
+    dupSetBody(`<div class="dup-progress">
+      Fase 1/2: cargando PNs…
+      <div data-ctrl="prog-msg">Iniciando…</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-cancel-run">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-cancel-run]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const progMsg = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    // ── Fase 1: AllPartNumbers paginado, filtro cliente cliente-side
+    const allPNs = [];
+    let offset = 0;
+    const PAGE = 500;
+    const custFilter = dupState.customerFilter.toUpperCase();
+    while (true) {
+      if (dupState.runId !== myRunId) return;
+      const data = await dupWithRetry(
+        () => api().query('AllPartNumbers',
+          { orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: '' },
+          'AllPartNumbers'),
+        `AllPartNumbers offset=${offset}`
+      );
+      if (dupState.runId !== myRunId) return;
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        if (n.archivedAt) continue;
+        if (custFilter && !(n.customerByCustomerId?.name || '').toUpperCase().includes(custFilter)) continue;
+        allPNs.push(n);
+      }
+      if (progMsg) progMsg.textContent = `${allPNs.length} PNs cargados (offset ${offset})`;
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    if (!allPNs.length) {
+      dupSetBody(`<div class="dup-error">No se encontraron PNs activos${dupState.customerFilter ? ` para cliente "${dupEscHtml(dupState.customerFilter)}"` : ''}.</div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-empty">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-empty]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    log(`[SPM-dup] Fase 1 OK: ${allPNs.length} PNs activos${custFilter ? ` (cliente ${dupState.customerFilter})` : ''}`);
+
+    // ── Fase 2: GetPartNumber con runPool 6, detectar grupos
+    dupSetBody(`<div class="dup-progress">
+      Fase 2/2: revisando ${allPNs.length} PNs (concurrencia 6)…
+      <div data-ctrl="prog-msg">Iniciando…</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    const progMsg2 = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar2 = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const specFilterLow = dupState.specFilter.toLowerCase();
+    const groups = [];
+    const fetchErrors = [];
+
+    await dupRunPool(allPNs, async (pn) => {
+      if (dupState.runId !== myRunId) return;
+      let detail = null;
+      try {
+        const data = await dupWithRetry(
+          () => api().query('GetPartNumber', { partNumberId: pn.id }),
+          `GetPartNumber ${pn.id}`
+        );
+        detail = data?.partNumberById;
+      } catch (e) {
+        fetchErrors.push({ pnId: pn.id, pnName: pn.name, error: e?.message || String(e) });
+        return;
+      }
+      if (!detail) return;
+
+      const allParams = detail.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+
+      // Agrupar params activos por specFieldSpecId (= "este SpecField de esta Spec").
+      // El response NO expone partNumberSpecId en estos nodes, así que navegamos
+      // por specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.
+      const buckets = new Map();
+      for (const p of allParams) {
+        if (p.archivedAt) continue;
+        const sfp = p.specFieldParamBySpecFieldParamId;
+        if (!sfp) continue;
+        const sfs = sfp.specFieldSpecBySpecFieldSpecId;
+        if (!sfs?.id) continue;
+
+        const specName = sfs.specBySpecId?.name || '';
+        if (specFilterLow && !specName.toLowerCase().includes(specFilterLow)) continue;
+
+        const sfsId = sfs.id;
+        if (!buckets.has(sfsId)) {
+          buckets.set(sfsId, {
+            params: [],
+            specName,
+            specId: sfs.specBySpecId?.id || null,
+            specIdInDomain: sfs.specBySpecId?.idInDomain || null,
+            fieldName: sfs.specFieldBySpecFieldId?.name || '',
+            fieldId: sfs.specFieldBySpecFieldId?.id || p.specFieldId,
+          });
+        }
+        buckets.get(sfsId).params.push(p);
+      }
+
+      for (const [sfsId, bucket] of buckets) {
+        if (bucket.params.length < 2) continue;
+        const sorted = [...bucket.params].sort((a, b) => Number(b.id) - Number(a.id));
+
+        const mappedParams = sorted.map(p => ({
+          rowId: p.id,
+          sfpId: p.specFieldParamBySpecFieldParamId?.id ?? null,
+          sfpName: p.specFieldParamBySpecFieldParamId?.name || '(sin nombre)',
+          processNodeId: p.processNodeId || null,
+          processNodeOccurrence: p.processNodeOccurrence || null,
+          locationId: p.locationId || null,
+        }));
+
+        // 0.4.3: clasificación por SpecField (no por sfpId)
+        // sameSfp: todos los params comparten el mismo SpecFieldParam (duplicación pura).
+        // sameName: todos comparten el mismo paramName (mismo valor con sfpId distinto
+        //   por copia accidental al recrear el SpecFieldParam — tratable como sameSfp).
+        // autoDecidable: sameSfp (o sameName) Y al menos un row tiene processNodeId=NULL.
+        //   Si ningún row tiene NULL queda manual: el validator sólo archive y no podemos
+        //   convertir un row con processNode en NULL (eso lo hace bulk-upload).
+        const firstSfpId = mappedParams[0].sfpId;
+        const firstName = mappedParams[0].sfpName;
+        const sameSfp = firstSfpId != null && mappedParams.every(p => p.sfpId === firstSfpId);
+        const sameName = mappedParams.every(p => p.sfpName === firstName);
+        const hasNull = mappedParams.some(p => !p.processNodeId);
+        const autoDecidable = (sameSfp || sameName) && hasNull;
+
+        const group = {
+          key: `${pn.id}-${sfsId}`,
+          pnId: pn.id,
+          pnName: pn.name || '',
+          customer: pn.customerByCustomerId?.name || '',
+          specFieldSpecId: sfsId,
+          specName: bucket.specName,
+          specId: bucket.specId,
+          specIdInDomain: bucket.specIdInDomain,
+          fieldId: bucket.fieldId,
+          fieldName: bucket.fieldName,
+          params: mappedParams,
+          sameSfp,
+          sameName,
+          autoDecidable,
+        };
+        groups.push(group);
+
+        const winnerRowId = autoDecidable
+          ? dupComputeAutoWinner(group)
+          : dupManualDefaultWinner(group);
+        dupState.decisions.set(group.key, { winnerRowId, ignored: false });
+      }
+    }, 6, (done, total) => {
+      if (progMsg2) progMsg2.textContent = `${done}/${total} PNs revisados — ${groups.length} grupos duplicados`;
+      if (progBar2) progBar2.style.width = `${(done / total) * 100}%`;
+    });
+
+    if (dupState.runId !== myRunId) return;
+    dupState.groups = groups;
+
+    log(`[SPM-dup] Fase 2 OK: ${groups.length} grupos duplicados en ${new Set(groups.map(g => g.pnId)).size} PNs (${fetchErrors.length} errores fetch)`);
+
+    if (!groups.length) {
+      dupSetBody(`<div class="dup-success">
+        ✓ Sin duplicados detectados en ${allPNs.length} PNs revisados.
+        ${fetchErrors.length ? `<br><span style="color:#fbbf24">⚠ ${fetchErrors.length} PNs no pudieron consultarse</span>` : ''}
+      </div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-ok">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-ok]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    dupRenderTable(myRunId, allPNs.length, fetchErrors);
+  }
+
+  function dupRenderTable(myRunId, scannedCount, fetchErrors) {
+    const groups = dupState.groups;
+    const uniquePNs = new Set(groups.map(g => g.pnId)).size;
+    const losersCount = groups.reduce((s, g) => s + (g.params.length - 1), 0);
+    const autoCount = groups.filter(g => g.autoDecidable).length;
+    const manualCount = groups.length - autoCount;
+
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+
+    const stats = document.createElement('div');
+    stats.className = 'dup-stats';
+    const mk = (lbl, val) => {
+      const span = document.createElement('span');
+      const b = document.createElement('b');
+      b.textContent = String(val);
+      span.appendChild(document.createTextNode(`${lbl}: `));
+      span.appendChild(b);
+      return span;
+    };
+    stats.appendChild(mk('PNs revisados', scannedCount));
+    stats.appendChild(mk('PNs con duplicados', uniquePNs));
+    stats.appendChild(mk('Grupos', groups.length));
+    stats.appendChild(mk('Auto-decidibles', autoCount));
+    stats.appendChild(mk('Manuales', manualCount));
+    stats.appendChild(mk('Params a archivar', losersCount));
+    if (fetchErrors.length) stats.appendChild(mk('Errores fetch', fetchErrors.length));
+    body.appendChild(stats);
+
+    // 0.4.3: nota informativa de la regla (sin toggle — la regla es absoluta).
+    if (autoCount > 0) {
+      const info = document.createElement('div');
+      info.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#cbd5e1';
+      info.innerHTML = `Regla: por SpecField sólo puede vivir 1 row con <b style="color:#a78bfa">processNodeId=NULL</b>. ${autoCount} grupos auto-decidibles (mismo param, conservar NULL más reciente). ${manualCount} grupos manuales (paramName distinto entre sfpIds o ningún NULL existente — elige el ganador con radios).`;
+      body.appendChild(info);
+    }
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'max-height:48vh;overflow-y:auto;border:1px solid #374151;border-radius:6px';
+    const table = document.createElement('table');
+    table.className = 'dup-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['PN', 'Cliente', 'Spec', 'SpecField', 'Params (conservar)', 'Ignorar'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const g of groups) {
+      const tr = document.createElement('tr');
+      tr.dataset.key = g.key;
+
+      const tdPn = document.createElement('td');
+      const pname = document.createElement('div');
+      pname.className = 'pname';
+      pname.textContent = g.pnName;
+      const pmeta = document.createElement('div');
+      pmeta.className = 'pmeta';
+      pmeta.textContent = `#${g.pnId}`;
+      tdPn.appendChild(pname);
+      tdPn.appendChild(pmeta);
+      tr.appendChild(tdPn);
+
+      const tdCust = document.createElement('td');
+      tdCust.textContent = g.customer;
+      tr.appendChild(tdCust);
+
+      const tdSpec = document.createElement('td');
+      tdSpec.textContent = g.specName || `(spec ${g.specIdInDomain})`;
+      tr.appendChild(tdSpec);
+
+      const tdField = document.createElement('td');
+      tdField.textContent = g.fieldName || `(field ${g.fieldId})`;
+      tr.appendChild(tdField);
+
+      const tdParams = document.createElement('td');
+      const initialWinner = dupState.decisions.get(g.key)?.winnerRowId;
+
+      if (g.autoDecidable) {
+        // Auto: pill que muestra qué se conserva y qué se archiva, derivado del toggle
+        const pill = document.createElement('div');
+        pill.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-size:11px;color:#cbd5e1';
+        const tag = document.createElement('div');
+        tag.style.cssText = 'font-size:10px;color:#a78bfa;font-weight:600;margin-bottom:4px';
+        tag.textContent = '⚙ AUTO (mismo param, ' + g.params.length + ' filas)';
+        pill.appendChild(tag);
+        for (const p of g.params) {
+          const isWin = p.rowId === initialWinner;
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:6px;align-items:center;padding:1px 0;color:' + (isWin ? '#6ee7b7' : '#fca5a5');
+          const ic = document.createElement('span');
+          ic.textContent = isWin ? '✓ CONSERVA' : '✗ ARCHIVA';
+          ic.style.cssText = 'font-size:9px;font-weight:700;min-width:74px';
+          row.appendChild(ic);
+          const nm = document.createElement('span');
+          nm.textContent = p.sfpName;
+          row.appendChild(nm);
+          const mini = document.createElement('span');
+          mini.className = 'dup-mini';
+          mini.textContent = `row#${p.rowId}${p.processNodeId ? ` · pn#${p.processNodeId}` : ' · NULL'}`;
+          row.appendChild(mini);
+          pill.appendChild(row);
+        }
+        tdParams.appendChild(pill);
+      } else {
+        g.params.forEach((p, idx) => {
+          const lbl = document.createElement('label');
+          lbl.className = 'dup-radio-row';
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = `dup-${g.key}`;
+          radio.value = String(p.rowId);
+          if (p.rowId === initialWinner) radio.checked = true;
+          radio.addEventListener('change', () => {
+            const dec = dupState.decisions.get(g.key) || {};
+            dec.winnerRowId = p.rowId;
+            dupState.decisions.set(g.key, dec);
+            dupRefreshRadioStyles(tr, g);
+            dupUpdateFooter();
+          });
+          lbl.appendChild(radio);
+          const txt = document.createElement('span');
+          txt.textContent = p.sfpName;
+          lbl.appendChild(txt);
+          const mini = document.createElement('span');
+          mini.className = 'dup-mini';
+          mini.textContent = `row#${p.rowId} · sfp#${p.sfpId}${p.processNodeId ? ` · pn#${p.processNodeId}` : ' · sin proceso'}${idx === 0 ? ' · más reciente' : ''}`;
+          lbl.appendChild(mini);
+          tdParams.appendChild(lbl);
+        });
+      }
+      tr.appendChild(tdParams);
+
+      const tdIgn = document.createElement('td');
+      tdIgn.style.textAlign = 'center';
+      const ignCb = document.createElement('input');
+      ignCb.type = 'checkbox';
+      ignCb.checked = !!dupState.decisions.get(g.key)?.ignored;
+      tr.classList.toggle('ignored', ignCb.checked);
+      ignCb.addEventListener('change', () => {
+        const dec = dupState.decisions.get(g.key) || {};
+        dec.ignored = ignCb.checked;
+        dupState.decisions.set(g.key, dec);
+        tr.classList.toggle('ignored', ignCb.checked);
+        dupUpdateFooter();
+      });
+      tdIgn.appendChild(ignCb);
+      tr.appendChild(tdIgn);
+
+      if (!g.autoDecidable) dupRefreshRadioStyles(tr, g);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+
+    dupSetFooter(`
+      <span class="dup-counter" data-ctrl="dup-foot-stats"></span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-back">← Filtros</button>
+        <button class="dup-btn dup-btn-ghost" data-act="dup-download-bit">Descargar XLSX</button>
+        <button class="dup-btn dup-btn-danger" data-act="dup-apply">Aplicar fix</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-back]')?.addEventListener('click', () => {
+      dupState.runId++;
+      runDuplicateParamsValidator();
+    });
+    dupState.panelEl.querySelector('[data-act=dup-download-bit]')?.addEventListener('click', () => {
+      dupBuildBitacora('preview', null);
+    });
+    dupState.panelEl.querySelector('[data-act=dup-apply]')?.addEventListener('click', async () => {
+      if (!confirm('Esto archivará los params no seleccionados (reversible vía UpdatePartNumberSpecParam con archivedAt:null). ¿Continuar?')) return;
+      await dupRunApply(myRunId);
+    });
+    dupUpdateFooter();
+  }
+
+  function dupRefreshRadioStyles(tr, g) {
+    const winnerRowId = dupState.decisions.get(g.key)?.winnerRowId;
+    tr.querySelectorAll('.dup-radio-row').forEach((lbl) => {
+      const rb = lbl.querySelector('input[type=radio]');
+      const isWin = Number(rb.value) === Number(winnerRowId);
+      lbl.classList.toggle('winner', isWin);
+      lbl.classList.toggle('loser', !isWin);
+    });
+  }
+
+  function dupUpdateFooter() {
+    const ftr = dupState.panelEl?.querySelector('[data-ctrl=dup-foot-stats]');
+    if (!ftr) return;
+    let toArchive = 0, ignored = 0;
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key);
+      if (!dec) continue;
+      if (dec.ignored) { ignored++; continue; }
+      toArchive += (g.params.length - 1);
+    }
+    ftr.textContent = `${toArchive} params a archivar — ${ignored} grupos ignorados`;
+  }
+
+  // 0.4.3: winner auto = NULL más reciente. Aplica a grupos autoDecidable
+  // (sameSfp/sameName con al menos 1 row NULL). Si no hay NULL queda manual.
+  // params ya vienen sort desc por rowId.
+  function dupComputeAutoWinner(g) {
+    if (!g.autoDecidable) return g.params[0].rowId;
+    const nulls = g.params.filter(p => !p.processNodeId);
+    return (nulls.length ? nulls[0] : g.params[0]).rowId;
+  }
+
+  // 0.4.3: default manual = row con processNode más reciente (es el último que
+  // bulk-upload validó/insertó). Si no hay con processNode, el más reciente.
+  function dupManualDefaultWinner(g) {
+    const withProc = g.params.filter(p => !!p.processNodeId);
+    return (withProc.length ? withProc[0] : g.params[0]).rowId;
+  }
+
+  async function dupRunApply(parentRunId) {
+    const myRunId = ++dupState.runId;
+    void parentRunId;
+
+    const tasks = [];
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key);
+      if (!dec || dec.ignored) continue;
+      for (const p of g.params) {
+        if (p.rowId === dec.winnerRowId) continue;
+        tasks.push({ group: g, paramRowId: p.rowId, sfpName: p.sfpName });
+      }
+    }
+
+    if (!tasks.length) {
+      alert('No hay nada que archivar (todos los grupos están ignorados o solo tienen 1 param).');
+      return;
+    }
+
+    dupSetBody(`<div class="dup-progress">
+      Archivando ${tasks.length} params (concurrencia 3)…
+      <div data-ctrl="prog-msg">0/${tasks.length}</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const okRows = [];
+    const errRows = [];
+    let processed = 0;
+
+    await dupRunPool(tasks, async (t) => {
+      if (dupState.runId !== myRunId) return;
+      try {
+        await dupWithRetry(
+          () => api().query('UpdatePartNumberSpecParam',
+            { id: t.paramRowId, archivedAt: new Date().toISOString() },
+            'UpdatePartNumberSpecParam'),
+          `archiveParam ${t.paramRowId}`
+        );
+        okRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName });
+      } catch (e) {
+        errRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName, error: e?.message || String(e) });
+      }
+      processed++;
+      if (pm) pm.textContent = `${processed}/${tasks.length} (${okRows.length} OK, ${errRows.length} err)`;
+      if (pb) pb.style.width = `${(processed / tasks.length) * 100}%`;
+    }, 3);
+
+    log(`[SPM-dup] Fix aplicado: ${okRows.length} OK, ${errRows.length} errores`);
+
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+    const sum = document.createElement('div');
+    sum.className = okRows.length && !errRows.length ? 'dup-success' : 'dup-error';
+    sum.textContent = `Resultado: ${okRows.length} archivados, ${errRows.length} errores. Reversible vía UpdatePartNumberSpecParam con archivedAt:null (usa los rowId del XLSX).`;
+    body.appendChild(sum);
+
+    if (errRows.length) {
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'font-size:11px;color:#fca5a5;max-height:200px;overflow-y:auto;margin-top:8px';
+      for (const r of errRows.slice(0, 50)) {
+        const li = document.createElement('li');
+        li.textContent = `row#${r.paramRowId} (${r.sfpName}) — ${r.error}`;
+        ul.appendChild(li);
+      }
+      body.appendChild(ul);
+    }
+
+    dupSetFooter(`
+      <span class="dup-counter">${okRows.length} OK · ${errRows.length} errores</span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-download-final">Descargar XLSX</button>
+        <button class="dup-btn" data-act="dup-final-close">Cerrar</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-download-final]')?.addEventListener('click', () => {
+      dupBuildBitacora('applied', { okRows, errRows });
+    });
+    dupState.panelEl.querySelector('[data-act=dup-final-close]')?.addEventListener('click', () => dupClosePanel());
+
+    dupBuildBitacora('applied', { okRows, errRows });
+  }
+
+  function dupBuildBitacora(mode, applied) {
+    if (!window.XLSX) {
+      alert('XLSX (SheetJS) no cargado. Recarga la extensión.');
+      return;
+    }
+    const wb = window.XLSX.utils.book_new();
+    const now = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+    const detRows = [];
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key) || {};
+      for (const p of g.params) {
+        const isWinner = p.rowId === dec.winnerRowId;
+        detRows.push({
+          PNID: g.pnId, PNName: g.pnName, Cliente: g.customer,
+          SpecIdInDomain: g.specIdInDomain, SpecName: g.specName,
+          FieldID: g.fieldId, FieldName: g.fieldName,
+          ParamRowID: p.rowId, SpecFieldParamID: p.sfpId, ParamName: p.sfpName,
+          ProcessNodeID: p.processNodeId || '',
+          Modo: g.autoDecidable ? 'AUTO' : 'MANUAL',
+          Decisión: dec.ignored ? 'IGNORADO' : (isWinner ? 'CONSERVAR' : 'ARCHIVAR'),
+        });
+      }
+    }
+    dupAddSheet(wb, 'Detectados', `Detectados · ${detRows.length} filas · ${now}`, detRows,
+      ['PNID','PNName','Cliente','SpecIdInDomain','SpecName','FieldID','FieldName',
+       'ParamRowID','SpecFieldParamID','ParamName','ProcessNodeID','Modo','Decisión']);
+
+    if (mode === 'applied' && applied) {
+      const okRows = (applied.okRows || []).map(r => ({
+        PNID: r.group.pnId, PNName: r.group.pnName,
+        SpecIdInDomain: r.group.specIdInDomain, SpecName: r.group.specName,
+        FieldName: r.group.fieldName,
+        ParamRowID: r.paramRowId, ParamName: r.sfpName,
+      }));
+      dupAddSheet(wb, 'Aplicadas', `Archivadas OK · ${okRows.length} · ${now}`, okRows,
+        ['PNID','PNName','SpecIdInDomain','SpecName','FieldName','ParamRowID','ParamName']);
+
+      const errRows = (applied.errRows || []).map(r => ({
+        PNID: r.group.pnId, PNName: r.group.pnName,
+        SpecIdInDomain: r.group.specIdInDomain, SpecName: r.group.specName,
+        FieldName: r.group.fieldName,
+        ParamRowID: r.paramRowId, ParamName: r.sfpName, Error: r.error,
+      }));
+      dupAddSheet(wb, 'Errores', `Errores · ${errRows.length} · ${now}`, errRows,
+        ['PNID','PNName','SpecIdInDomain','SpecName','FieldName','ParamRowID','ParamName','Error']);
+    }
+
+    const wbOut = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dup-params-${mode}-${now}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function dupAddSheet(wb, name, title, rows, headers) {
+    const data = rows.length ? rows.map(r => headers.map(h => r[h] ?? '')) : [headers.map(() => '')];
+    const aoa = [[title], headers, ...data];
+    const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+    window.XLSX.utils.book_append_sheet(wb, ws, name);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CSV-MODE (0.5.0) — validar PNs contra CSV de bulk-upload
+  // ═══════════════════════════════════════════════════════════
+
+  // Parser idéntico a bulk-upload.parseCSV (RFC 4180-ish con escape ""/separador ,).
+  function dupCsvParseCSV(text) {
+    const rows = []; let i = 0;
+    while (i < text.length) {
+      const row = [];
+      while (i < text.length) {
+        if (text[i] === '"') {
+          i++; let v = '';
+          while (i < text.length) {
+            if (text[i] === '"') { if (text[i + 1] === '"') { v += '"'; i += 2; } else { i++; break; } }
+            else { v += text[i]; i++; }
+          }
+          row.push(v);
+        } else {
+          let v = '';
+          while (i < text.length && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') { v += text[i]; i++; }
+          row.push(v);
+        }
+        if (text[i] === ',') { i++; continue; } else break;
+      }
+      if (text[i] === '\r') i++;
+      if (text[i] === '\n') i++;
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  // Extrae solo lo que el validator necesita del V10: pn(F=5), customer(E=4),
+  // quoteIBMS(BK=62), specs (AH=33 + AJ=35 con " | " split).
+  function dupCsvParseRows(rows) {
+    const get = (row, idx) => (row[idx] || '').toString().trim();
+    const parts = [];
+    for (const row of rows) {
+      const colA = (row[0] || '').trim();
+      const colF = (row[5] || '').trim();
+      if (colA === 'PARÁMETROS' || colA === 'Archivado' || colA === 'V/F') continue;
+      if (colF === 'Texto' || colF.replace(/\s+/g, ' ').toLowerCase() === 'número de parte') continue;
+      const pn = get(row, 5);
+      if (!pn) continue;
+      const customer = get(row, 4);
+      const quoteIBMS = get(row, 62);
+      const specs = [];
+      for (const idx of [33, 35]) {
+        const raw = get(row, idx);
+        if (!raw) continue;
+        if (raw.includes(' | ')) {
+          const s = raw.indexOf(' | ');
+          specs.push({ name: raw.substring(0, s).trim(), param: raw.substring(s + 3).trim() });
+        } else {
+          specs.push({ name: raw, param: '' });
+        }
+      }
+      parts.push({ pn, customer, quoteIBMS, specs });
+    }
+    return parts;
+  }
+
+  // Resolución multi-cliente con dedup QuoteIBMS:
+  //   1. Fetch AllPartNumbers global (customer + name + customInputs en cada nodo).
+  //   2. Index por `customerUpper|pnUpper` → array de nodos.
+  //   3. Por cada csvPart: 0 candidates → unresolved; 1 → directo; 2+ → match
+  //      por QuoteIBMS del CSV vs customInputs.DatosAdicionalesNP.QuoteIBMS del server.
+  async function dupCsvResolvePnIds(csvParts, myRunId, onPhase) {
+    onPhase?.('Pre-fetch AllPartNumbers…', 0, 0);
+    // 0.5.2 mem: en lugar de retener los nodos completos (con customInputs JSON
+    // serializado que puede ser 5-20 KB cada uno × decenas de miles de PNs =
+    // cientos de MB), parseamos customInputs UNA VEZ aquí y solo guardamos lo
+    // mínimo necesario: id, name, customerName, quoteIBMS. Bajamos a ~200 bytes
+    // por nodo. El response completo de la página queda fuera de scope al pasar
+    // a la siguiente iteración del while → GC lo recoge.
+    const liteNodes = [];
+    let offset = 0;
+    const PAGE = 500;
+    while (true) {
+      if (dupState.runId !== myRunId) return null;
+      const data = await dupWithRetry(
+        () => api().query('AllPartNumbers',
+          { orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: '' },
+          'AllPartNumbers'),
+        `AllPartNumbers offset=${offset}`
+      );
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        if (n.archivedAt) continue;
+        let quoteIBMS = '';
+        const rawCi = n.customInputs;
+        if (rawCi) {
+          try {
+            const ci = (typeof rawCi === 'string') ? JSON.parse(rawCi) : rawCi;
+            quoteIBMS = (ci?.DatosAdicionalesNP?.QuoteIBMS || '').trim();
+          } catch { /* customInputs malformado: tratamos como sin QuoteIBMS */ }
+        }
+        liteNodes.push({
+          id: n.id,
+          name: n.name,
+          customerName: n.customerByCustomerId?.name || '',
+          quoteIBMS,
+        });
+      }
+      onPhase?.(`Pre-fetch AllPartNumbers (offset ${offset}, ${liteNodes.length} activos)…`, offset, 0);
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    // 0.5.1: el CSV trae el customer concatenado con dirección fiscal
+    // ("BRAININ DE MEXICO — Dirección Fiscal, — Av. San Luis Tlatilc"), pero
+    // el server solo guarda el nombre base ("BRAININ DE MEXICO"). bulk-upload.js:1620
+    // ya usa esta misma regla para deambiguar — split por em/en-dash o " - ", primer chunk.
+    const dupCsvNormCustomer = (s) => (s || '').split(/\s*[—–]\s*|\s+[-]\s+/)[0].trim().toUpperCase();
+
+    const index = new Map();
+    for (const n of liteNodes) {
+      const cust = dupCsvNormCustomer(n.customerName);
+      const name = (n.name || '').trim().toUpperCase();
+      if (!cust || !name) continue;
+      const k = `${cust}|${name}`;
+      if (!index.has(k)) index.set(k, []);
+      index.get(k).push(n);
+    }
+
+    const resolved = []; // { csvPart, pnNode (lite) }
+    const unresolved = []; // { csvPart, reason }
+    const ambiguousByQuote = []; // info-only
+    let i = 0;
+    for (const cp of csvParts) {
+      i++;
+      if (i % 200 === 0) onPhase?.(`Resolviendo pnIds (${i}/${csvParts.length})…`, i, csvParts.length);
+      const k = `${dupCsvNormCustomer(cp.customer)}|${cp.pn.trim().toUpperCase()}`;
+      const cands = index.get(k) || [];
+      if (cands.length === 0) { unresolved.push({ csvPart: cp, reason: 'no encontrado' }); continue; }
+      if (cands.length === 1) { resolved.push({ csvPart: cp, pnNode: cands[0] }); continue; }
+      // 2+ candidates: dedup por QuoteIBMS (ya pre-extraído en pre-fetch).
+      const csvQ = (cp.quoteIBMS || '').trim();
+      if (!csvQ) {
+        unresolved.push({ csvPart: cp, reason: `${cands.length} candidatos sin QuoteIBMS en CSV` });
+        continue;
+      }
+      const matches = cands.filter(n => n.quoteIBMS === csvQ);
+      if (matches.length === 1) {
+        resolved.push({ csvPart: cp, pnNode: matches[0] });
+        ambiguousByQuote.push({ pn: cp.pn, customer: cp.customer, quoteIBMS: csvQ, resolvedId: matches[0].id });
+      } else if (matches.length === 0) {
+        unresolved.push({ csvPart: cp, reason: `${cands.length} candidatos, ninguno con QuoteIBMS=${csvQ}` });
+      } else {
+        unresolved.push({ csvPart: cp, reason: `${matches.length} candidatos con mismo QuoteIBMS=${csvQ}` });
+      }
+    }
+    const totalNodes = liteNodes.length;
+    // 0.5.2 mem: liberar el index y los nodos lite que NO quedaron en `resolved`.
+    // `resolved` solo retiene los pnNode (lite) usados; el resto sale de scope.
+    index.clear();
+    liteNodes.length = 0;
+    return { resolved, unresolved, ambiguousByQuote, totalNodes };
+  }
+
+  // Orquesta: parse → resolve → GetPartNumber → clasificar → render.
+  async function dupRunScanFromCsv(myRunId, csvText, fileName) {
+    // 0.5.3: ANTES de empezar a martillar GraphQL, apagar Datadog session replay
+    // y drenar Apollo cache del SPA host. Sin esto, cada AllPartNumbers (paginado
+    // 500×N) y cada GetPartNumber (4270+ en CSVs grandes) inflan el InMemoryCache
+    // normalizado de Apollo + el ring buffer de Datadog → OOM lateral.
+    dupStopHostJobs();
+    dupSetBody(`<div class="dup-progress">
+      Modo CSV: <b>${dupEscHtml(fileName || 'archivo')}</b>
+      <div data-ctrl="prog-msg">Parseando CSV…</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-cancel-run">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-cancel-run]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const progMsg = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+    const setProg = (msg, done, total) => {
+      if (dupState.runId !== myRunId) return;
+      if (progMsg) progMsg.textContent = msg;
+      if (progBar && total > 0) progBar.style.width = `${Math.min(100, (done / total) * 100)}%`;
+    };
+
+    const rows = dupCsvParseCSV(csvText);
+    const csvParts = dupCsvParseRows(rows);
+    if (!csvParts.length) {
+      dupSetBody(`<div class="dup-error">CSV no contiene filas válidas (¿formato V10 con columna F=PN?).</div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-err">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-err]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+    log(`[SPM-dup-csv] CSV parsed: ${csvParts.length} PNs`);
+
+    setProg('Resolviendo pnIds…', 0, csvParts.length);
+    const resolution = await dupCsvResolvePnIds(csvParts, myRunId, (m, d, t) => setProg(m, d, t));
+    if (!resolution) return;
+    if (dupState.runId !== myRunId) return;
+    log(`[SPM-dup-csv] Resolución: ${resolution.resolved.length}/${csvParts.length} resueltos, ${resolution.unresolved.length} unresolved, ${resolution.ambiguousByQuote.length} dedup por QuoteIBMS, ${resolution.totalNodes} nodos activos en server`);
+
+    if (!resolution.resolved.length) {
+      dupSetBody(`<div class="dup-error">
+        Ningún PN del CSV pudo resolverse contra el server.<br>
+        ${resolution.unresolved.length} unresolved. Primeros: ${
+          resolution.unresolved.slice(0, 5).map(u => dupEscHtml(`${u.csvPart.customer}|${u.csvPart.pn} (${u.reason})`)).join(' · ')
+        }
+      </div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-err">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-err]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    // Fase 3: GetPartNumber por PN resuelto y clasificación.
+    setProg(`Revisando ${resolution.resolved.length} PNs (concurrencia 6)…`, 0, resolution.resolved.length);
+    const items = [];
+    const fetchErrors = [];
+
+    await dupRunPool(resolution.resolved, async (r) => {
+      if (dupState.runId !== myRunId) return;
+      let detail = null;
+      try {
+        const data = await dupWithRetry(
+          () => api().query('GetPartNumber', { partNumberId: r.pnNode.id }),
+          `GetPartNumber ${r.pnNode.id}`
+        );
+        detail = data?.partNumberById;
+      } catch (e) {
+        fetchErrors.push({ pnId: r.pnNode.id, pnName: r.pnNode.name, error: e?.message || String(e) });
+        return;
+      }
+      if (!detail) return;
+
+      const item = dupCsvClassifyPN(r.csvPart, r.pnNode, detail);
+      if (item) items.push(item);
+      // 0.5.3: liberar el detail completo inmediatamente; ya extrajimos savePnSeed
+      // en classify. Sin esto, la closure del worker retiene la referencia hasta
+      // que termine la promesa, multiplicado por concurrency=6 in-flight.
+      detail = null;
+    }, 6, (done, total) => {
+      setProg(`${done}/${total} PNs revisados — ${items.length} con issues`, done, total);
+      // 0.5.3: drenar Apollo cache cada 50 PNs procesados. clearStore() es
+      // silencioso (no log) y barato si no encuentra el client.
+      if (done % 50 === 0) dupApolloCacheDrain();
+    });
+
+    if (dupState.runId !== myRunId) return;
+    log(`[SPM-dup-csv] Scan OK: ${items.length} PNs con issues / ${resolution.resolved.length} resueltos`);
+
+    dupState.csvItems = items;
+    dupState.csvUnresolved = resolution.unresolved;
+    dupState.csvFetchErrors = fetchErrors;
+    dupState.csvFileName = fileName;
+    dupState.csvSelections = new Map();
+    for (const it of items) dupState.csvSelections.set(it.pnId, true);
+
+    // 0.5.2 mem: liberar el array `resolved` de la resolución — ya no se
+    // necesita después de poblar `items` y `dupState`. Los pnNode lite que
+    // referenciaba quedan sin referencias fuertes (los items solo guardan
+    // pnId, pnName, customer, quoteIBMS y savePnSeed extraídos). `resolution`
+    // es const, no se puede reasignar; al salir del scope de dupRunScanFromCsv
+    // queda sin referencias y el GC lo recoge.
+    resolution.resolved.length = 0;
+
+    dupRenderCsvResults(myRunId);
+  }
+
+  // Para un PN: agrupa rows vivos por specFieldId, matchea contra CSV y devuelve
+  // shape { pnId, pnName, customer, quoteIBMS, issues[] } o null si no hay issues.
+  function dupCsvClassifyPN(csvPart, pnNode, detail) {
+    const allParams = detail.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+    const liveBySpecField = new Map();
+    for (const p of allParams) {
+      if (p.archivedAt || !p.specFieldParamBySpecFieldParamId) continue;
+      const sfp = p.specFieldParamBySpecFieldParamId;
+      const sfs = sfp.specFieldSpecBySpecFieldSpecId;
+      const sfId = sfs?.specFieldBySpecFieldId?.id;
+      if (!sfId) continue;
+      const sfName = sfs.specFieldBySpecFieldId?.name || '';
+      const specName = sfs.specBySpecId?.name || '';
+      const specId = sfs.specBySpecId?.id || null;
+      if (!liveBySpecField.has(sfId)) liveBySpecField.set(sfId, { sfId, sfName, specName, specId, rows: [] });
+      liveBySpecField.get(sfId).rows.push({
+        rowId: p.id,
+        sfpId: sfp.id,
+        sfpName: sfp.name || '(sin nombre)',
+        processNodeId: p.processNodeId || null,
+      });
+    }
+
+    // Index CSV specs por nombre normalizado (case-insensitive, trim) para matchear
+    // contra fieldName/specName del live.
+    const csvSpecMap = new Map();
+    for (const cs of csvPart.specs) {
+      if (!cs.name || cs.name === '-') continue;
+      const k = cs.name.trim().toLowerCase();
+      csvSpecMap.set(k, cs);
+    }
+
+    const issues = [];
+    for (const [sfId, g] of liveBySpecField) {
+      const specKey = (g.specName || '').trim().toLowerCase();
+      const cs = csvSpecMap.get(specKey);
+      if (!cs) continue; // El CSV no menciona esta Spec → no podemos opinar.
+      const csvParam = (cs.param || '').trim();
+      const hasDup = g.rows.length > 1;
+      const hasProc = g.rows.some(r => r.processNodeId);
+
+      // Matchear el wanted del CSV contra los rows vivos (por sfpName, case-insensitive).
+      let wanted = null;
+      if (csvParam) {
+        const csvLow = csvParam.toLowerCase();
+        wanted = g.rows.find(r => (r.sfpName || '').trim().toLowerCase() === csvLow) || null;
+      } else {
+        // CSV sin param explícito (params.length===1 en el catálogo). Si hay 1 row vivo,
+        // ese es el wanted automáticamente; si hay 2+ es ambigüedad.
+        if (g.rows.length === 1) wanted = g.rows[0];
+      }
+
+      let status, toArchive = [], wantedNullSfp = null;
+      if (!wanted) {
+        // No matchea ningún sfpName del live: el sfp del CSV no está en BD.
+        // No podemos insertar sin conocer el sfpId del catálogo → solo flagear.
+        status = 'wrongSfp';
+      } else {
+        // El wanted está vivo. Archive perdedores (sfp distinto) + wanted-con-processNode.
+        for (const r of g.rows) {
+          if (r.rowId === wanted.rowId) continue;
+          toArchive.push(r);
+        }
+        // El wanted: si tiene processNode → archive + insert NULL.
+        if (wanted.processNodeId) {
+          toArchive.push(wanted);
+          wantedNullSfp = { sfpId: wanted.sfpId, sfpName: wanted.sfpName };
+          status = 'processNodeRewrite';
+        } else if (hasDup || hasProc) {
+          status = 'duplicateRemove';
+        } else {
+          status = 'ok';
+        }
+      }
+
+      if (status === 'ok') continue;
+      issues.push({
+        specFieldId: sfId,
+        specFieldName: g.sfName,
+        specName: g.specName,
+        csvParam: csvParam || '(default)',
+        liveRows: g.rows,
+        wanted,
+        toArchive,
+        wantedNullSfp, // {sfpId, sfpName} si necesitamos reinsertar NULL
+        status,
+      });
+    }
+
+    if (!issues.length) return null;
+    // 0.5.2 mem: en lugar de retener `detail` completo (response de GetPartNumber,
+    // típicamente 50-500 KB por PN con specs/params/dims/locations/predictives),
+    // extraemos AQUÍ el subset mínimo que SavePartNumber necesita en el apply.
+    // Reduce ~99% el peso retenido por item.
+    const savePnSeed = {
+      name: detail.name,
+      customerId: detail.customerId || detail.customerByCustomerId?.id || null,
+      defaultProcessNodeId: detail.defaultProcessNodeId || null,
+      inputSchemaId: detail.inputSchemaId || null,
+      customInputs: detail.customInputs || {},
+      geometryTypeId: detail.geometryTypeId || null,
+      partNumberGroupId: detail.partNumberGroupId || null,
+      descriptionMarkdown: detail.descriptionMarkdown || '',
+      customerFacingNotes: detail.customerFacingNotes || '',
+    };
+    return {
+      pnId: pnNode.id,
+      pnName: pnNode.name,
+      customer: pnNode.customerName || pnNode.customerByCustomerId?.name || csvPart.customer,
+      quoteIBMS: csvPart.quoteIBMS,
+      savePnSeed,
+      issues,
+    };
+  }
+
+  function dupRenderCsvResults(myRunId) {
+    const items = dupState.csvItems || [];
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+
+    const stats = document.createElement('div');
+    stats.className = 'dup-stats';
+    const totalIssues = items.reduce((s, it) => s + it.issues.length, 0);
+    const wrongSfp = items.reduce((s, it) => s + it.issues.filter(i => i.status === 'wrongSfp').length, 0);
+    const totalArchive = items.reduce((s, it) => s + it.issues.reduce((ss, i) => ss + i.toArchive.length, 0), 0);
+    const totalInsert = items.reduce((s, it) => s + it.issues.filter(i => i.wantedNullSfp).length, 0);
+    const mk = (lbl, val, color) => {
+      const span = document.createElement('span');
+      const b = document.createElement('b');
+      if (color) b.style.color = color;
+      b.textContent = String(val);
+      span.appendChild(document.createTextNode(`${lbl}: `));
+      span.appendChild(b);
+      return span;
+    };
+    stats.appendChild(mk('PNs con issues', items.length));
+    stats.appendChild(mk('Issues totales', totalIssues));
+    stats.appendChild(mk('Rows a archivar', totalArchive, '#fca5a5'));
+    stats.appendChild(mk('NULL a insertar', totalInsert, '#6ee7b7'));
+    if (wrongSfp) stats.appendChild(mk('wrongSfp (no aplicables)', wrongSfp, '#fbbf24'));
+    if (dupState.csvUnresolved?.length) stats.appendChild(mk('PNs unresolved', dupState.csvUnresolved.length, '#9ca3af'));
+    if (dupState.csvFetchErrors?.length) stats.appendChild(mk('Errores fetch', dupState.csvFetchErrors.length, '#fca5a5'));
+    body.appendChild(stats);
+
+    const info = document.createElement('div');
+    info.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#cbd5e1';
+    info.innerHTML = `Modo CSV: <b>${dupEscHtml(dupState.csvFileName || 'archivo')}</b>. El validator compara cada PN contra su fila del CSV y aplica corrección vía <code>SavePartNumber</code>. <span style="color:#fbbf24">wrongSfp</span> = el CSV pide un param que no está vivo en el PN (no se inserta sin re-correr bulk-upload). Deselecciona PNs específicos antes de Aplicar.`;
+    body.appendChild(info);
+
+    if (!items.length) {
+      const ok = document.createElement('div');
+      ok.className = 'dup-success';
+      ok.textContent = '✓ Ningún PN del CSV requiere corrección (todos cumplen la regla 1.4.38).';
+      body.appendChild(ok);
+      dupSetFooter(`
+        <span class="dup-counter">Listo</span>
+        <div style="display:flex;gap:6px">
+          <button class="dup-btn dup-btn-ghost" data-act="dup-back">← Filtros</button>
+          <button class="dup-btn" data-act="dup-close-ok">Cerrar</button>
+        </div>
+      `);
+      dupState.panelEl.querySelector('[data-act=dup-back]')?.addEventListener('click', () => {
+        dupState.runId++;
+        runDuplicateParamsValidator();
+      });
+      dupState.panelEl.querySelector('[data-act=dup-close-ok]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'max-height:48vh;overflow-y:auto;border:1px solid #374151;border-radius:6px';
+    const table = document.createElement('table');
+    table.className = 'dup-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Aplicar', 'PN', 'Cliente', 'Issues', 'Preview'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const it of items) {
+      const tr = document.createElement('tr');
+      tr.dataset.pnid = String(it.pnId);
+
+      const tdAp = document.createElement('td');
+      tdAp.style.textAlign = 'center';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = dupState.csvSelections.get(it.pnId) !== false;
+      cb.disabled = it.issues.every(i => i.status === 'wrongSfp'); // wrongSfp puro → no aplicable
+      if (cb.disabled) cb.checked = false;
+      cb.addEventListener('change', () => {
+        dupState.csvSelections.set(it.pnId, cb.checked);
+        dupUpdateCsvFooter();
+      });
+      tdAp.appendChild(cb);
+      tr.appendChild(tdAp);
+
+      const tdPn = document.createElement('td');
+      const pname = document.createElement('div');
+      pname.className = 'pname';
+      pname.textContent = it.pnName;
+      const pmeta = document.createElement('div');
+      pmeta.className = 'pmeta';
+      pmeta.textContent = `#${it.pnId}${it.quoteIBMS ? ` · Q=${it.quoteIBMS}` : ''}`;
+      tdPn.appendChild(pname);
+      tdPn.appendChild(pmeta);
+      tr.appendChild(tdPn);
+
+      const tdC = document.createElement('td');
+      tdC.textContent = it.customer;
+      tr.appendChild(tdC);
+
+      const tdIs = document.createElement('td');
+      const statusCounts = {};
+      for (const i of it.issues) statusCounts[i.status] = (statusCounts[i.status] || 0) + 1;
+      const statusLine = Object.entries(statusCounts).map(([k, v]) => {
+        const color = k === 'wrongSfp' ? '#fbbf24' : (k === 'processNodeRewrite' ? '#a78bfa' : '#fca5a5');
+        return `<span style="color:${color}">${k}: ${v}</span>`;
+      }).join(' · ');
+      tdIs.innerHTML = statusLine;
+      tr.appendChild(tdIs);
+
+      const tdPv = document.createElement('td');
+      const preview = document.createElement('div');
+      preview.style.cssText = 'font-size:10px;color:#cbd5e1;max-width:380px;line-height:1.4';
+      preview.innerHTML = it.issues.map(i => {
+        const label = i.status === 'wrongSfp'
+          ? `<span style="color:#fbbf24">⚠ wrongSfp</span>`
+          : `archive ${i.toArchive.length}${i.wantedNullSfp ? ' + insert NULL' : ''}`;
+        return `<div><b>${dupEscHtml(i.specName)} · ${dupEscHtml(i.specFieldName)}</b> → CSV pide "<i>${dupEscHtml(i.csvParam)}</i>" → ${label}</div>`;
+      }).join('');
+      tdPv.appendChild(preview);
+      tr.appendChild(tdPv);
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+
+    dupSetFooter(`
+      <span class="dup-counter" data-ctrl="dup-csv-foot"></span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-back">← Filtros</button>
+        <button class="dup-btn dup-btn-danger" data-act="dup-csv-apply">Aplicar a seleccionados</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-back]')?.addEventListener('click', () => {
+      dupState.runId++;
+      runDuplicateParamsValidator();
+    });
+    dupState.panelEl.querySelector('[data-act=dup-csv-apply]')?.addEventListener('click', async () => {
+      if (!confirm('Esto aplicará SavePartNumber a los PNs seleccionados (archive + insert NULL). ¿Continuar?')) return;
+      await dupRunApplyCsv(myRunId);
+    });
+    dupUpdateCsvFooter();
+  }
+
+  function dupUpdateCsvFooter() {
+    const ftr = dupState.panelEl?.querySelector('[data-ctrl=dup-csv-foot]');
+    if (!ftr) return;
+    let sel = 0, totalArch = 0, totalIns = 0;
+    for (const it of (dupState.csvItems || [])) {
+      if (dupState.csvSelections.get(it.pnId) === false) continue;
+      if (it.issues.every(i => i.status === 'wrongSfp')) continue;
+      sel++;
+      for (const i of it.issues) {
+        if (i.status === 'wrongSfp') continue;
+        totalArch += i.toArchive.length;
+        if (i.wantedNullSfp) totalIns++;
+      }
+    }
+    ftr.textContent = `${sel} PNs seleccionados · ${totalArch} archives · ${totalIns} inserts NULL`;
+  }
+
+  // Apply CSV-mode: 1 SavePartNumber por PN seleccionado, con paramsToApply
+  // (insert NULL del wantedNullSfp) + partNumberSpecFieldParamsToArchive
+  // agregados de TODOS sus issues. Mismo shape que bulk-upload STEP 6b.
+  async function dupRunApplyCsv(parentRunId) {
+    const myRunId = ++dupState.runId;
+    void parentRunId;
+
+    const tasks = [];
+    for (const it of (dupState.csvItems || [])) {
+      if (dupState.csvSelections.get(it.pnId) === false) continue;
+      if (it.issues.every(i => i.status === 'wrongSfp')) continue;
+      const archiveIds = [];
+      const paramsToApply = [];
+      for (const i of it.issues) {
+        if (i.status === 'wrongSfp') continue;
+        for (const r of i.toArchive) archiveIds.push(Number(r.rowId));
+        if (i.wantedNullSfp) {
+          paramsToApply.push({
+            specFieldId: Number(i.specFieldId),
+            specFieldParamId: Number(i.wantedNullSfp.sfpId),
+            isGeneric: false,
+            geometryTypeSpecFieldId: null,
+            processNodeId: null,
+            processNodeOccurrence: null,
+            locationId: null,
+          });
+        }
+      }
+      if (!archiveIds.length && !paramsToApply.length) continue;
+      tasks.push({ item: it, archiveIds, paramsToApply });
+    }
+
+    if (!tasks.length) {
+      alert('No hay nada que aplicar (todos los PNs seleccionados son wrongSfp o ya están OK).');
+      return;
+    }
+
+    dupSetBody(`<div class="dup-progress">
+      Aplicando SavePartNumber a ${tasks.length} PNs (concurrencia 3)…
+      <div data-ctrl="prog-msg">0/${tasks.length}</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const okRows = [];
+    const errRows = [];
+    let processed = 0;
+
+    await dupRunPool(tasks, async (t) => {
+      if (dupState.runId !== myRunId) return;
+      // 0.5.2 mem: ahora consumimos el seed slimmed en classify, no el detail completo.
+      const d = t.item.savePnSeed;
+      const input = {
+        id: t.item.pnId,
+        name: d.name,
+        customerId: d.customerId,
+        defaultProcessNodeId: d.defaultProcessNodeId || null,
+        inputSchemaId: d.inputSchemaId || null,
+        customInputs: d.customInputs || {},
+        geometryTypeId: d.geometryTypeId || null,
+        userFileName: null,
+        inventoryItemInput: null,
+        glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+        isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
+        partNumberGroupId: d.partNumberGroupId || null,
+        descriptionMarkdown: d.descriptionMarkdown || '',
+        customerFacingNotes: d.customerFacingNotes || '',
+        labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
+        inventoryPredictedUsages: [],
+        specsToApply: [],
+        paramsToApply: t.paramsToApply,
+        partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+        partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+        partNumberSpecFieldParamsToArchive: t.archiveIds,
+        partNumberSpecFieldParamsToUnarchive: [],
+        partNumberSpecClassificationsToUpdate: [],
+        partNumberSpecFieldParamUpdates: [],
+        specFieldParamUpdates: [],
+      };
+      try {
+        await dupWithRetry(
+          () => api().query('SavePartNumber', { input: [input] }, 'SavePartNumber'),
+          `SavePartNumber csv-fix ${t.item.pnId}`
+        );
+        okRows.push({ pnId: t.item.pnId, pnName: t.item.pnName, archived: t.archiveIds.length, inserted: t.paramsToApply.length });
+      } catch (e) {
+        errRows.push({ pnId: t.item.pnId, pnName: t.item.pnName, error: e?.message || String(e) });
+      }
+      processed++;
+      if (pm) pm.textContent = `${processed}/${tasks.length} (${okRows.length} OK, ${errRows.length} err)`;
+      if (pb) pb.style.width = `${(processed / tasks.length) * 100}%`;
+    }, 3);
+
+    log(`[SPM-dup-csv] Apply: ${okRows.length} OK, ${errRows.length} errores`);
+
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+    const sum = document.createElement('div');
+    sum.className = okRows.length && !errRows.length ? 'dup-success' : 'dup-error';
+    const totalArch = okRows.reduce((s, r) => s + r.archived, 0);
+    const totalIns = okRows.reduce((s, r) => s + r.inserted, 0);
+    sum.textContent = `Resultado: ${okRows.length} PNs OK (${totalArch} archived + ${totalIns} inserted NULL), ${errRows.length} errores.`;
+    body.appendChild(sum);
+
+    if (errRows.length) {
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'font-size:11px;color:#fca5a5;max-height:200px;overflow-y:auto;margin-top:8px';
+      for (const r of errRows.slice(0, 50)) {
+        const li = document.createElement('li');
+        li.textContent = `PN ${r.pnName} (#${r.pnId}) — ${r.error}`;
+        ul.appendChild(li);
+      }
+      body.appendChild(ul);
+    }
+
+    dupSetFooter(`
+      <span class="dup-counter">${okRows.length} OK · ${errRows.length} errores</span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn" data-act="dup-csv-final-close">Cerrar</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-csv-final-close]')?.addEventListener('click', () => dupClosePanel());
+  }
+
+
+  return { run, assignPendingParams, resolveConflicts, runDuplicateParamsValidator };
 })();
 
 if (typeof window !== 'undefined') window.SpecMigrator = SpecMigrator;
