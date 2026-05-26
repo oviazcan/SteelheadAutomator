@@ -323,4 +323,178 @@ test('hardBuckets: QuoteIBMS whitespace-only se ignora', () => {
   assert.equal(M.hardBuckets(pns).length, 0);
 });
 
+// ─── Task 6: mediumBucketsCandidates ──────────────────────────────────────────
+
+test('mediumBucketsCandidates: agrupa por (customerId, nameUpperTrim), excluye buckets de 1', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: 100, name: '  Tornillo 1/4  ' }),
+    pnWith({ id: 2, customerId: 100, name: 'TORNILLO 1/4' }),
+    pnWith({ id: 3, customerId: 100, name: 'Otro' }), // singleton, skip
+    pnWith({ id: 4, customerId: 200, name: 'Tornillo 1/4' }), // distinto cliente, mismo nombre — bucket aparte
+    pnWith({ id: 5, customerId: 200, name: 'Tornillo 1/4' }),
+  ];
+  const buckets = M.mediumBucketsCandidates(pns);
+  // Esperado: 2 buckets {customerId 100: [1,2]} y {customerId 200: [4,5]}
+  assert.equal(buckets.length, 2);
+  const sorted = buckets.sort((a, b) => a.customerId - b.customerId);
+  assert.equal(sorted[0].customerId, 100);
+  const ids0 = sorted[0].members.map(m => m.id).sort();
+  assert.equal(ids0.length, 2);
+  assert.equal(ids0[0], 1);
+  assert.equal(ids0[1], 2);
+  assert.equal(sorted[0].name, 'TORNILLO 1/4');
+  assert.equal(sorted[1].customerId, 200);
+  const ids1 = sorted[1].members.map(m => m.id).sort();
+  assert.equal(ids1.length, 2);
+  assert.equal(ids1[0], 4);
+  assert.equal(ids1[1], 5);
+});
+
+test('mediumBucketsCandidates: PNs sin customerId se excluyen', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: null, name: 'X' }),
+    pnWith({ id: 2, customerId: null, name: 'X' }),
+  ];
+  assert.equal(M.mediumBucketsCandidates(pns).length, 0);
+});
+
+// ─── Task 6: refineMediumBuckets ──────────────────────────────────────────────
+
+test('refineMediumBuckets: subgrupa por metalBase canónico + acabados canónicos', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'Tornillo', baseMetal: 'Cobre', labels: ['NIQ', 'EST'] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'Tornillo', baseMetal: 'Cobre', labels: ['NIQ', 'EST', 'SMY'] }); // SMY nonFinish, mismo acabado canónico
+  const pn3 = pnWith({ id: 3, customerId: 100, name: 'Tornillo', baseMetal: 'Cobre', labels: ['CRO'] }); // distinto
+  const pn4 = pnWith({ id: 4, customerId: 100, name: 'Tornillo', baseMetal: 'Estaño s/Aluminio', labels: ['NIQ', 'EST'] }); // metal distinto (canónico: Estaño)
+
+  const details = {
+    1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId, customInputs: pn1.customInputs },
+    2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId, customInputs: pn2.customInputs },
+    3: { partNumberLabelsByPartNumberId: pn3.partNumberLabelsByPartNumberId, customInputs: pn3.customInputs },
+    4: { partNumberLabelsByPartNumberId: pn4.partNumberLabelsByPartNumberId, customInputs: pn4.customInputs },
+  };
+  const candidates = [{ customerId: 100, name: 'TORNILLO', members: [pn1, pn2, pn3, pn4] }];
+  const refined = M.refineMediumBuckets(candidates, details, { nonFinishLabelNames: NON_FINISH, metalEquivalents: METAL_EQUIV });
+
+  // Esperado: 1 bucket (cobre + EST|NIQ con miembros 1,2). pn3 distinto acabado, pn4 distinto metal → singletons descartados.
+  assert.equal(refined.length, 1);
+  assert.equal(refined[0].metalBase, 'Cobre');
+  assert.equal(refined[0].finishings, 'EST|NIQ');
+  const ids = refined[0].members.map(m => m.id).sort();
+  assert.equal(ids.length, 2);
+  assert.equal(ids[0], 1);
+  assert.equal(ids[1], 2);
+});
+
+// ─── Task 7: softBucketsCandidates + refineSoftBuckets ───────────────────────
+
+test('softBucketsCandidates: misma agrupación que medium (customer + name)', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: 100, name: 'X' }),
+    pnWith({ id: 2, customerId: 100, name: 'X' }),
+  ];
+  const buckets = M.softBucketsCandidates(pns);
+  assert.equal(buckets.length, 1);
+  assert.equal(buckets[0].members.length, 2);
+});
+
+test('refineSoftBuckets: bucket asimétrico (uno con acabados, otro sin) ES candidato', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', labels: ['NIQ'] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'X', labels: [] });
+  const cands = [{ customerId: 100, name: 'X', members: [pn1, pn2] }];
+  const details = { 1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId }, 2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId } };
+  const refined = M.refineSoftBuckets(cands, details, { nonFinishLabelNames: NON_FINISH });
+  assert.equal(refined.length, 1);
+});
+
+test('refineSoftBuckets: todos con acabados (distintos) NO es candidato', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', labels: ['NIQ'] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'X', labels: ['EST'] });
+  const cands = [{ customerId: 100, name: 'X', members: [pn1, pn2] }];
+  const details = { 1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId }, 2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId } };
+  assert.equal(M.refineSoftBuckets(cands, details, { nonFinishLabelNames: NON_FINISH }).length, 0);
+});
+
+test('refineSoftBuckets: todos vacíos NO es candidato', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', labels: [] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'X', labels: ['SMY'] }); // SMY nonFinish → cuenta como vacío
+  const cands = [{ customerId: 100, name: 'X', members: [pn1, pn2] }];
+  const details = { 1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId }, 2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId } };
+  assert.equal(M.refineSoftBuckets(cands, details, { nonFinishLabelNames: NON_FINISH }).length, 0);
+});
+
+// ─── Task 8: precedencia + computeDeleteCandidates ────────────────────────────
+
+test('precedencia: PN clasificado DURO no aparece en MEDIO/SUAVE', () => {
+  const M = loadModule();
+  // pn1 y pn2 comparten QuoteIBMS — DURO
+  // pn1 y pn3 además comparten (customer, name, metalBase, finishings) — MEDIO si no fuera por precedencia
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', quoteIBMS: '84531', baseMetal: 'Cobre', labels: ['NIQ'] });
+  const pn2 = pnWith({ id: 2, customerId: 200, name: 'X', quoteIBMS: '84531', baseMetal: 'Plomo', labels: ['EST'] }); // duro cross-customer
+  const pn3 = pnWith({ id: 3, customerId: 100, name: 'X', quoteIBMS: '99999', baseMetal: 'Cobre', labels: ['NIQ'] }); // candidato medio con pn1
+  const pns = [pn1, pn2, pn3];
+
+  const hard = M.hardBuckets(pns);
+  assert.equal(hard.length, 1);
+  // gotcha cross-realm: element-by-element
+  const ids = hard[0].members.map(m => m.id).sort();
+  assert.equal(ids.length, 2);
+  assert.equal(ids[0], 1);
+  assert.equal(ids[1], 2);
+
+  // Excluir PNs ya en DURO
+  const usedIds = new Set();
+  for (const b of hard) for (const m of b.members) usedIds.add(m.id);
+  const remaining = pns.filter(p => !usedIds.has(p.id));
+  assert.deepEqual(remaining.map(p => p.id), [3]); // host-realm: deepEqual OK
+
+  const medCands = M.mediumBucketsCandidates(remaining);
+  // pn3 solo → no bucket
+  assert.equal(medCands.length, 0);
+});
+
+test('computeDeleteCandidates DURO: todos los perdedores van al CSV', () => {
+  const M = loadModule();
+  const bucket = { tier: 'DURO', members: [{ id: 1, quoteIBMS: '84531' }, { id: 2, quoteIBMS: '84531' }, { id: 3, quoteIBMS: '84531' }], winnerId: 2 };
+  const dc = M.computeDeleteCandidates(bucket).sort((a, b) => a - b);
+  // gotcha cross-realm: element-by-element
+  assert.equal(dc.length, 2);
+  assert.equal(dc[0], 1);
+  assert.equal(dc[1], 3);
+});
+
+test('computeDeleteCandidates MEDIO con ≥1 sin QuoteIBMS: perdedores van', () => {
+  const M = loadModule();
+  const bucket = { tier: 'MEDIO', members: [{ id: 1, quoteIBMS: '84531' }, { id: 2, quoteIBMS: '' }], winnerId: 1 };
+  const dc = M.computeDeleteCandidates(bucket);
+  // gotcha cross-realm: element-by-element
+  assert.equal(dc.length, 1);
+  assert.equal(dc[0], 2);
+});
+
+test('computeDeleteCandidates MEDIO con todos QuoteIBMS distinto no-vacío: vacío', () => {
+  const M = loadModule();
+  const bucket = { tier: 'MEDIO', members: [{ id: 1, quoteIBMS: '84531' }, { id: 2, quoteIBMS: '99999' }], winnerId: 1 };
+  const dc = M.computeDeleteCandidates(bucket);
+  // gotcha cross-realm: vacío → solo length
+  assert.equal(dc.length, 0);
+});
+
+test('computeDeleteCandidates SUAVE con todos vacíos: perdedores van', () => {
+  // SUAVE solo se crea con asimetría → al menos uno tiene finishings, no necesariamente quoteIBMS.
+  // Regla del CSV: si TODOS tienen quoteIBMS distinto no-vacío → vacío. Else → perdedores.
+  const M = loadModule();
+  const bucket = { tier: 'SUAVE', members: [{ id: 1, quoteIBMS: '' }, { id: 2, quoteIBMS: '' }], winnerId: 1 };
+  const dc = M.computeDeleteCandidates(bucket);
+  // gotcha cross-realm: element-by-element
+  assert.equal(dc.length, 1);
+  assert.equal(dc[0], 2);
+});
+
 module.exports = { loadModule, pnWith };

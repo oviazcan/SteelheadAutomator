@@ -99,10 +99,12 @@ const PNAuditor = (() => {
     { id: 'label-desarrollo', group: 'Etiquetas especiales', label: 'Con etiqueta "En desarrollo"', check: f => f.labels.some(l => l.includes('desarrollo')) },
     { id: 'label-desconocido', group: 'Etiquetas especiales', label: 'Con etiqueta "NP desconocido"', check: f => f.labels.some(l => l.includes('desconocido')) },
 
-    // Integridad
-    { id: 'duplicates', group: 'Integridad', label: 'PNs duplicados (nombre exacto)', check: null }, // handled separately
-    { id: 'similar', group: 'Integridad', label: 'PNs duplicados por similitud (~80%)', check: null }, // handled separately
+    // Integridad — tier-based duplicate detection (handled in runIntegrityScan)
+    { id: 'dup-hard',   group: 'Integridad', label: 'PNs duplicados — DUROS (mismo QuoteIBMS)', check: null },
+    { id: 'dup-medium', group: 'Integridad', label: 'PNs duplicados — MEDIOS (mismo metalBase + acabados + cliente)', check: null },
+    { id: 'dup-soft',   group: 'Integridad', label: 'PNs duplicados — SUAVES (mismo nombre + cliente, acabados asimétricos)', check: null },
     { id: 'no-customer', group: 'Integridad', label: 'Sin cliente asignado', check: f => !f.customerId },
+    { id: 'similar', group: 'Integridad', label: 'PNs por similitud de nombre (~80%)', check: null }, // ortogonal, conservado
   ];
 
   // ═══════════════════════════════════════════
@@ -182,12 +184,184 @@ const PNAuditor = (() => {
   }
 
   // ═══════════════════════════════════════════
+  // INTEGRITY TIERS — pase 1: AllPartNumbers paginado activos + archivados
+  // ═══════════════════════════════════════════
+
+  const ARCHIVED_SENTINEL = '__archived__';
+
+  function matchesCustomer(node, customerFilter) {
+    if (!customerFilter) return true;
+    const cn = node.customerByCustomerId?.name || '';
+    return cn.toUpperCase().includes(customerFilter.toUpperCase());
+  }
+
+  async function fetchAllPNsWithArchived(opts) {
+    const { customerFilter, searchQuery, includeArchived, onProgress } = opts;
+    const all = [];
+    const activeIds = new Set();
+    const seenIds = new Set();
+    const pageSize = 500;
+
+    let offset = 0;
+    while (!stopped) {
+      const vars = { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: searchQuery || '', includeArchived: 'NO' };
+      const data = await api().query('AllPartNumbers', vars, 'AllPartNumbers');
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        activeIds.add(n.id);
+        if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
+          seenIds.add(n.id);
+          all.push({ ...n, archivedAt: null });
+        }
+      }
+      onProgress && onProgress(`Pase 1 (activos): ${all.length} PNs · offset ${offset}`);
+      if (nodes.length < pageSize) break;
+      offset += pageSize;
+    }
+    if (stopped) return all;
+
+    if (includeArchived) {
+      offset = 0;
+      while (!stopped) {
+        const vars = { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: searchQuery || '', includeArchived: 'YES' };
+        const data = await api().query('AllPartNumbers', vars, 'AllPartNumbers');
+        const nodes = data?.pagedData?.nodes || [];
+        for (const n of nodes) {
+          if (activeIds.has(n.id)) continue;
+          if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
+            seenIds.add(n.id);
+            all.push({ ...n, archivedAt: ARCHIVED_SENTINEL });
+          }
+        }
+        onProgress && onProgress(`Pase 1 (archivados): ${all.length} PNs · offset ${offset}`);
+        if (nodes.length < pageSize) break;
+        offset += pageSize;
+      }
+    }
+    return all;
+  }
+
+  // ═══════════════════════════════════════════
+  // INTEGRITY TIERS — pase 2 + scoring + winners
+  // ═══════════════════════════════════════════
+
+  async function runIntegrityScan(options) {
+    const { selectedTiers, customerFilter, searchQuery, includeArchived, config } = options;
+    const tiersMod = window.SADuplicateTiers;
+    if (!tiersMod) throw new Error('SADuplicateTiers no cargado');
+
+    const nonFinishList = config?.steelhead?.domain?.bulkUpload?.nonFinishLabelNames || [];
+    const metalEquiv = config?.steelhead?.domain?.bulkUpload?.metalEquivalents || [];
+
+    // ── Pase 1 ──
+    updateAuditorUI('Pase 1: cargando PNs (activos+archivados)...');
+    const allPNs = await fetchAllPNsWithArchived({
+      customerFilter, searchQuery, includeArchived,
+      onProgress: (msg) => updateAuditorUI(msg)
+    });
+    if (stopped) return { stopped: true };
+    log(`Pase 1: ${allPNs.length} PNs cargados`);
+
+    // ── Bucketización pase 1 ──
+    const hard = selectedTiers.includes('dup-hard') ? tiersMod.hardBuckets(allPNs) : [];
+    const usedIds = new Set();
+    for (const b of hard) for (const m of b.members) usedIds.add(m.id);
+
+    const remainingForMedSoft = allPNs.filter(p => !usedIds.has(p.id));
+    const medCands = (selectedTiers.includes('dup-medium') || selectedTiers.includes('dup-soft'))
+      ? tiersMod.mediumBucketsCandidates(remainingForMedSoft)
+      : [];
+
+    // ── Pase 2: GetPartNumber a candidatos únicos ──
+    const candidateIds = new Set();
+    for (const b of hard) for (const m of b.members) candidateIds.add(m.id);
+    for (const b of medCands) for (const m of b.members) candidateIds.add(m.id);
+
+    log(`Pase 2: ${candidateIds.size} candidatos a enriquecer (de ${allPNs.length} totales)`);
+    updateAuditorUI(`Pase 2: enriqueciendo ${candidateIds.size} candidatos...`, true);
+
+    const detailsByPnId = {};
+    const failedIds = new Set();
+    let processed = 0;
+    await runPool([...candidateIds], async (pnId) => {
+      if (stopped) return;
+      try {
+        const d = await withRetry(
+          () => api().query('GetPartNumber', { partNumberId: pnId, usagesLimit: 100, usagesOffset: 0 }),
+          `audit-tier ${pnId}`
+        );
+        detailsByPnId[pnId] = d?.partNumberById || null;
+      } catch (e) {
+        if (e?.message === '__sa_aborted__') return;
+        failedIds.add(pnId);
+        warn(`GetPartNumber ${pnId}: ${String(e).substring(0, 80)}`);
+      }
+      processed++;
+      if (processed % 10 === 0 || processed === candidateIds.size) {
+        updateAuditorUI(`Pase 2: ${processed}/${candidateIds.size} (${failedIds.size} fallaron)`, true);
+      }
+    }, 6);
+    if (stopped) return { stopped: true, partialDetails: detailsByPnId };
+
+    // ── Refinamiento + scoring + winners ──
+    const allPnsById = {};
+    for (const p of allPNs) allPnsById[p.id] = p;
+
+    function buildBucketWithScores(rawBucket, tier) {
+      const members = rawBucket.members.map(pn => {
+        const det = detailsByPnId[pn.id];
+        const score = tiersMod.scoreFor(pn, det, { nonFinishLabelNames: nonFinishList });
+        const ci = (() => { try { return typeof pn.customInputs === 'string' ? JSON.parse(pn.customInputs) : (pn.customInputs || {}); } catch { return {}; } })();
+        return {
+          id: pn.id,
+          name: pn.name,
+          customer: pn.customerByCustomerId?.name || '',
+          customerId: pn.customerByCustomerId?.id || null,
+          quoteIBMS: ci.DatosAdicionalesNP?.QuoteIBMS || '',
+          metalBase: ci.DatosAdicionalesNP?.BaseMetal || '',
+          createdAt: pn.createdAt,
+          archived: !!pn.archivedAt,
+          score,
+          scoreParcial: !det && failedIds.has(pn.id),
+          details: det,
+        };
+      });
+      const bucket = { tier, ...rawBucket, members };
+      bucket.winnerId = tiersMod.pickWinner(bucket);
+      bucket.deleteCandidates = tiersMod.computeDeleteCandidates(bucket);
+      return bucket;
+    }
+
+    const hardBuckets = hard.map(b => buildBucketWithScores(b, 'DURO'));
+
+    const medium = selectedTiers.includes('dup-medium')
+      ? tiersMod.refineMediumBuckets(medCands, detailsByPnId, { nonFinishLabelNames: nonFinishList, metalEquivalents: metalEquiv })
+      : [];
+    const mediumIds = new Set();
+    for (const b of medium) for (const m of b.members) mediumIds.add(m.id);
+    const mediumBuckets = medium.map(b => buildBucketWithScores(b, 'MEDIO'));
+
+    const softCandsRemaining = selectedTiers.includes('dup-soft')
+      ? medCands
+          .map(c => ({ ...c, members: c.members.filter(m => !mediumIds.has(m.id)) }))
+          .filter(c => c.members.length >= 2)
+      : [];
+    const softRefined = selectedTiers.includes('dup-soft')
+      ? tiersMod.refineSoftBuckets(softCandsRemaining, detailsByPnId, { nonFinishLabelNames: nonFinishList })
+      : [];
+    const softBuckets = softRefined.map(b => buildBucketWithScores(b, 'SUAVE'));
+
+    return { hardBuckets, mediumBuckets, softBuckets, totalPNs: allPNs.length, failedIds: [...failedIds] };
+  }
+
+  // ═══════════════════════════════════════════
   // MAIN AUDIT
   // ═══════════════════════════════════════════
 
   async function run(options) {
     const { selectedCriteria, searchQuery, customerFilter } = options;
     stopped = false;
+    const config = options.config || (typeof window !== 'undefined' ? window.REMOTE_CONFIG : null);
 
     const activeCriteria = CRITERIA.filter(c => selectedCriteria.includes(c.id));
     const results = { criteria: {}, pns: [], totalAudited: 0, totalIssues: 0 };
@@ -269,6 +443,30 @@ const PNAuditor = (() => {
           }
         }
         log(`Auditor: similitud comparó ${comparisons} pares (descartó ${skipped} por prefilter de longitud)`);
+      }
+    }
+
+    // Integrity tiers (dup-hard / dup-medium / dup-soft) — runIntegrityScan
+    const tierCriteria = ['dup-hard', 'dup-medium', 'dup-soft'];
+    const selectedTierCrit = selectedCriteria.filter(c => tierCriteria.includes(c));
+    let integrityResult = null;
+    if (selectedTierCrit.length > 0) {
+      integrityResult = await runIntegrityScan({
+        selectedTiers: selectedTierCrit,
+        customerFilter,
+        searchQuery,
+        includeArchived: options.includeArchived !== false, // default ON
+        config,
+      });
+      if (integrityResult?.stopped) {
+        return { ...results, stopped: true, integrity: integrityResult };
+      }
+      results.integrity = integrityResult;
+      for (const c of selectedTierCrit) {
+        const key = c === 'dup-hard' ? 'hardBuckets' : c === 'dup-medium' ? 'mediumBuckets' : 'softBuckets';
+        const buckets = integrityResult[key] || [];
+        results.criteria[c].count = buckets.reduce((acc, b) => acc + b.members.length, 0);
+        // tarjetas detalladas se renderizan separadas en Task 13; aquí solo el conteo
       }
     }
 
@@ -389,9 +587,196 @@ const PNAuditor = (() => {
     if (ov) ov.parentNode.removeChild(ov);
   }
 
+  // ═══════════════════════════════════════════
+  // RENDER — bucket cards (Task 13)
+  // ═══════════════════════════════════════════
+
+  function renderIntegrityResults(integrity) {
+    if (!integrity) return '';
+    const tiers = [
+      { key: 'hardBuckets',   label: '🚨 DUROS (mismo QuoteIBMS)',                              color: '#fca5a5' },
+      { key: 'mediumBuckets', label: '⚠ MEDIOS (mismo metalBase + acabados + cliente)',         color: '#fde68a' },
+      { key: 'softBuckets',   label: 'ⓘ SUAVES (asimetría de acabados)',                        color: '#bae6fd' },
+    ];
+    let html = '';
+    for (const t of tiers) {
+      const buckets = integrity[t.key] || [];
+      if (!buckets.length) continue;
+      const totalPns = buckets.reduce((a, b) => a + b.members.length, 0);
+      html += `<details open style="margin-top:14px"><summary style="color:${t.color};cursor:pointer;font-weight:600">${t.label} — ${buckets.length} buckets · ${totalPns} PNs</summary>`;
+      for (const b of buckets) html += renderBucketCard(b);
+      html += '</details>';
+    }
+    if (!html) {
+      html = '<div style="color:#86efac;padding:12px 0">✓ Sin duplicados detectados en los tiers seleccionados.</div>';
+      return html;
+    }
+    const totalLosers = sumLosers(integrity);
+    const totalDelete = sumDelete(integrity);
+    html += `<div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="sa-aud-btn" id="sa-int-archive-all" style="background:#16a34a;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">Archivar TODOS los descartados (${totalLosers})</button>
+      <button class="sa-aud-btn" id="sa-int-csv-delete" style="background:#dc2626;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">📋 CSV candidatos a DELETE (${totalDelete})</button>
+      <button class="sa-aud-btn" id="sa-int-json-full" style="background:#475569;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">💾 JSON audit</button>
+    </div>`;
+    return html;
+  }
+
+  function renderBucketCard(b) {
+    const bucketKey = bucketKeyForCSV(b);
+    const headerExtra = b.deleteCandidates && b.deleteCandidates.length
+      ? `<span style="color:#fca5a5">🚨 ${b.deleteCandidates.length} candidato(s) a DELETE</span>` : '';
+    const rows = b.members.map(m => {
+      const isWinner = m.id === b.winnerId;
+      const ageDays = m.createdAt ? Math.floor((Date.now() - new Date(m.createdAt).getTime()) / 86400000) : '?';
+      const status = m.archived
+        ? '<span style="color:#fca5a5">archivado</span>'
+        : '<span style="color:#86efac">activo</span>';
+      const partial = m.scoreParcial
+        ? '<span title="datos incompletos (GetPartNumber falló)" style="color:#fde68a">⚠ parcial</span>' : '';
+      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:${isWinner ? '#1e293b' : 'transparent'};border-radius:4px">
+        <input type="radio" name="winner-${b.tier}-${escapeAttr(bucketKey)}" value="${m.id}" ${isWinner ? 'checked' : ''}>
+        <code style="color:#cbd5e1">PN-${m.id}</code>
+        <span>${escapeHtml(m.name)}</span>
+        <span style="color:#94a3b8">${escapeHtml(m.customer)}</span>
+        <span style="color:#a5b4fc">score ${m.score}</span>
+        ${status}
+        <span style="color:#94a3b8">${ageDays}d</span>
+        ${partial}
+      </label>`;
+    }).join('');
+    return `<div class="sa-int-bucket" data-bucket-key="${escapeAttr(bucketKey)}" data-tier="${b.tier}" style="border:1px solid #334155;border-radius:6px;padding:10px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="color:#e2e8f0"><b>${b.tier}</b> · ${escapeHtml(humanBucketKey(b))} ${headerExtra}</div>
+        <label style="font-size:11px;color:#94a3b8"><input type="checkbox" class="sa-int-apply" checked> Aplicar acción</label>
+      </div>
+      ${rows}
+    </div>`;
+  }
+
+  function bucketKeyForCSV(b) {
+    if (b.tier === 'DURO') return 'quoteIBMS=' + b.quoteIBMS;
+    if (b.tier === 'MEDIO') return [b.name, b.customerId, b.metalBase, b.finishings].join('||');
+    return [b.name, b.customerId].join('||');
+  }
+  function humanBucketKey(b) {
+    if (b.tier === 'DURO') return 'QuoteIBMS ' + b.quoteIBMS;
+    if (b.tier === 'MEDIO') return `${b.name} · cust ${b.customerId} · ${b.metalBase || '∅'} · [${b.finishings || '∅'}]`;
+    return `${b.name} · cust ${b.customerId}`;
+  }
+  function sumLosers(integ) {
+    return [...(integ.hardBuckets || []), ...(integ.mediumBuckets || []), ...(integ.softBuckets || [])]
+      .reduce((a, b) => a + b.members.filter(m => m.id !== b.winnerId).length, 0);
+  }
+  function sumDelete(integ) {
+    return [...(integ.hardBuckets || []), ...(integ.mediumBuckets || []), ...(integ.softBuckets || [])]
+      .reduce((a, b) => a + ((b.deleteCandidates || []).length), 0);
+  }
+  function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function escapeAttr(s) { return escapeHtml(s); }
+  function cssEscape(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-z0-9_-]/gi, '\\$&'); }
+
+  // ═══════════════════════════════════════════
+  // ARCHIVE LOSERS (Task 14)
+  // ═══════════════════════════════════════════
+
+  async function archiveLosers(integrity, onProgress) {
+    const tasks = [];
+    for (const tierKey of ['hardBuckets', 'mediumBuckets', 'softBuckets']) {
+      for (const b of (integrity[tierKey] || [])) {
+        // Lee selección actualizada del DOM si la tarjeta existe; si no, usa winnerId del bucket.
+        const card = document.querySelector(`.sa-int-bucket[data-bucket-key="${cssEscape(bucketKeyForCSV(b))}"]`);
+        if (card && !card.querySelector('.sa-int-apply')?.checked) continue;
+        let winnerId = b.winnerId;
+        if (card) {
+          const chosen = Number(card.querySelector('input[type=radio]:checked')?.value);
+          if (!isNaN(chosen)) winnerId = chosen;
+        }
+        for (const m of b.members) {
+          if (m.id === winnerId) continue;
+          if (m.archived) { tasks.push({ id: m.id, name: m.name, skip: true }); continue; }
+          tasks.push({ id: m.id, name: m.name });
+        }
+      }
+    }
+    let ok = 0, skipped = 0, failed = 0;
+    const failures = [];
+    const succeededIds = [];
+    await runPool(tasks, async (t) => {
+      if (t.skip) { skipped++; onProgress && onProgress(ok, skipped, failed, tasks.length); return; }
+      try {
+        await withRetry(
+          () => api().query('UpdatePartNumber', { id: t.id, archivedAt: new Date().toISOString() }),
+          `archive ${t.name}`
+        );
+        ok++;
+        succeededIds.push(t.id);
+      } catch (e) {
+        failed++;
+        failures.push({ id: t.id, name: t.name, error: String(e?.message || e).substring(0, 120) });
+      }
+      onProgress && onProgress(ok, skipped, failed, tasks.length);
+    }, 5);
+    return { ok, skipped, failed, failures, succeededIds, totalAttempted: tasks.length };
+  }
+
+  // ═══════════════════════════════════════════
+  // CSV/JSON EXPORT (Task 15)
+  // ═══════════════════════════════════════════
+
+  function buildDeleteCSV(integrity) {
+    const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+    const rows = [[
+      'tier', 'bucketKey', 'pnId', 'pnName', 'customer', 'customerId',
+      'quoteIBMS', 'metalBase', 'finishings', 'status',
+      'createdAt', 'score', 'winnerPnId', 'razon'
+    ].join(',')];
+    for (const tierKey of ['hardBuckets', 'mediumBuckets', 'softBuckets']) {
+      for (const b of (integrity[tierKey] || [])) {
+        for (const id of (b.deleteCandidates || [])) {
+          const m = b.members.find(x => x.id === id);
+          if (!m) continue;
+          const razon = b.tier === 'DURO'
+            ? `DURO: comparte QuoteIBMS ${b.quoteIBMS}`
+            : `${b.tier} sin QuoteIBMS: bucket ${humanBucketKey(b)}`;
+          const status = m.archived ? 'archived' : 'active';
+          rows.push([
+            b.tier,
+            q(bucketKeyForCSV(b)),
+            m.id,
+            q(m.name),
+            q(m.customer),
+            m.customerId ?? '',
+            q(m.quoteIBMS || ''),
+            q(m.metalBase || ''),
+            q(b.finishings || ''),
+            status,
+            q(m.createdAt || ''),
+            m.score,
+            b.winnerId,
+            q(razon),
+          ].join(','));
+        }
+      }
+    }
+    return rows.join('\n');
+  }
+
+  function downloadBlob(content, filename, mime) {
+    const blob = new Blob(['﻿' + content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function getCriteria() { return CRITERIA; }
 
-  return { run, stop, exportCSV, getCriteria, removeAuditorUI };
+  return {
+    run, stop, exportCSV, getCriteria, removeAuditorUI,
+    renderIntegrityResults, archiveLosers, buildDeleteCSV, downloadBlob,
+    bucketKeyForCSV, cssEscape,
+  };
 })();
 
 if (typeof window !== 'undefined') window.PNAuditor = PNAuditor;

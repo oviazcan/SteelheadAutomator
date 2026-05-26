@@ -71,7 +71,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/receiver-date-override.js': 'ReceiverDateOverride',
           'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill',
           'scripts/spec-shared.js': 'SpecShared',
-          'scripts/spec-params-bulk.js': 'SpecParamsBulk' };
+          'scripts/spec-params-bulk.js': 'SpecParamsBulk',
+          'scripts/duplicate-tiers.js': 'SADuplicateTiers' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
@@ -889,6 +890,9 @@ async function handleMessage(message, sender) {
                 <button id="sa-aud-none" style="font-size:10px;padding:3px 8px;border:1px solid #475569;border-radius:4px;background:none;color:#94a3b8;cursor:pointer">Deseleccionar todos</button>
               </div>
               ${criteriaHTML}
+              <label style="display:block;margin-top:10px;padding:6px 8px;background:#0f172a;border-radius:4px;color:#94a3b8;font-size:12px;cursor:pointer">
+                <input type="checkbox" id="sa-int-include-archived" checked> Incluir archivados en el scan de integridad (más lento, pero detecta restauraciones)
+              </label>
               <div class="dl9-btnrow">
                 <button class="dl9-btn dl9-btn-cancel" id="sa-aud-cancel">CANCELAR</button>
                 <button class="dl9-btn" id="sa-aud-exec" style="background:#38bdf8;color:#0f172a">AUDITAR</button>
@@ -905,13 +909,95 @@ async function handleMessage(message, sender) {
               const selected = [...md.querySelectorAll('.sa-aud-crit:checked')].map(c => c.value);
               const customerFilter = document.getElementById('sa-aud-customer').value.trim();
               const searchQuery = document.getElementById('sa-aud-search').value.trim();
+              const includeArchived = document.getElementById('sa-int-include-archived')?.checked !== false;
               ov.parentNode.removeChild(ov);
 
               if (!selected.length) { resolve({ error: 'Selecciona al menos un criterio' }); return; }
 
               try {
-                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter });
+                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter, includeArchived });
                 window.PNAuditor.removeAuditorUI();
+
+                // Panel de bucket cards si hubo integrity scan
+                if (results.integrity && typeof window.PNAuditor.renderIntegrityResults === 'function') {
+                  const integHtml = window.PNAuditor.renderIntegrityResults(results.integrity);
+                  if (integHtml) {
+                    await new Promise(intResolve => {
+                      const ov2 = document.createElement('div');
+                      ov2.className = 'dl9-overlay';
+                      const md2 = document.createElement('div');
+                      md2.className = 'dl9-modal';
+                      md2.style.cssText = 'background:#0f172a;max-width:900px;max-height:88vh;overflow-y:auto';
+                      md2.innerHTML = `
+                        <h2 style="color:#38bdf8;display:flex;align-items:center;justify-content:space-between">
+                          <span>🔎 Integridad — duplicados detectados</span>
+                          <button id="sa-int-close" style="padding:6px 12px;border:none;border-radius:6px;background:#475569;color:#e2e8f0;font-size:12px;cursor:pointer">Cerrar</button>
+                        </h2>
+                        <div id="sa-int-panel">${integHtml}</div>`;
+                      ov2.appendChild(md2);
+                      document.body.appendChild(ov2);
+                      document.getElementById('sa-int-close').onclick = () => {
+                        ov2.parentNode.removeChild(ov2); intResolve();
+                      };
+
+                      // Wire archive batch (Task 14)
+                      const archiveBtn = document.getElementById('sa-int-archive-all');
+                      if (archiveBtn) {
+                        archiveBtn.addEventListener('click', async () => {
+                          archiveBtn.disabled = true;
+                          archiveBtn.textContent = 'Archivando...';
+                          const r = await window.PNAuditor.archiveLosers(results.integrity, (ok, skipped, failed, total) => {
+                            archiveBtn.textContent = `Archivando... ${ok + skipped + failed}/${total}`;
+                          });
+                          archiveBtn.textContent = `✓ ${r.ok} archivados · ⏭ ${r.skipped} ya estaban · ✗ ${r.failed} fallaron`;
+                          // Rayar visualmente los archivados con éxito
+                          for (const sid of (r.succeededIds || [])) {
+                            md2.querySelectorAll(`input[type=radio][value="${sid}"]`).forEach(input => {
+                              const lbl = input.closest('label');
+                              if (lbl) lbl.style.textDecoration = 'line-through';
+                              if (lbl) lbl.style.opacity = '0.55';
+                            });
+                          }
+                          if (r.failures && r.failures.length) {
+                            console.warn('[SA] Archivo fallos:', r.failures);
+                            const retryBtn = document.createElement('button');
+                            retryBtn.textContent = `Reintentar ${r.failures.length} fallidos (re-correr scan)`;
+                            retryBtn.style.cssText = 'background:#f59e0b;color:#0f172a;padding:6px 12px;margin-left:8px;border:none;border-radius:6px;cursor:pointer;font-size:11px';
+                            retryBtn.onclick = () => {
+                              alert('Cierra este modal y re-corre el scan. Los archivados con éxito serán saltados por idempotencia.');
+                            };
+                            archiveBtn.parentNode.appendChild(retryBtn);
+                          }
+                        });
+                      }
+
+                      // Wire CSV delete (Task 15)
+                      const csvBtn = document.getElementById('sa-int-csv-delete');
+                      if (csvBtn) {
+                        csvBtn.addEventListener('click', () => {
+                          const csv = window.PNAuditor.buildDeleteCSV(results.integrity);
+                          const fname = `pn_delete_candidates_${new Date().toISOString().slice(0, 10)}.csv`;
+                          window.PNAuditor.downloadBlob(csv, fname, 'text/csv;charset=utf-8');
+                        });
+                      }
+
+                      // Wire JSON audit (Task 15)
+                      const jsonBtn = document.getElementById('sa-int-json-full');
+                      if (jsonBtn) {
+                        jsonBtn.addEventListener('click', () => {
+                          const json = JSON.stringify({
+                            timestamp: new Date().toISOString(),
+                            customerFilter,
+                            searchQuery,
+                            integrity: results.integrity,
+                          }, null, 2);
+                          const fname = `audit_integridad_${new Date().toISOString().slice(0, 10)}.json`;
+                          window.PNAuditor.downloadBlob(json, fname, 'application/json');
+                        });
+                      }
+                    });
+                  }
+                }
 
                 // Show summary
                 let summary = 'Auditoría completada:\\n\\n';
