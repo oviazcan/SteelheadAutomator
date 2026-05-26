@@ -323,4 +323,69 @@ test('hardBuckets: QuoteIBMS whitespace-only se ignora', () => {
   assert.equal(M.hardBuckets(pns).length, 0);
 });
 
+// ─── Task 6: mediumBucketsCandidates ──────────────────────────────────────────
+
+test('mediumBucketsCandidates: agrupa por (customerId, nameUpperTrim), excluye buckets de 1', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: 100, name: '  Tornillo 1/4  ' }),
+    pnWith({ id: 2, customerId: 100, name: 'TORNILLO 1/4' }),
+    pnWith({ id: 3, customerId: 100, name: 'Otro' }), // singleton, skip
+    pnWith({ id: 4, customerId: 200, name: 'Tornillo 1/4' }), // distinto cliente, mismo nombre — bucket aparte
+    pnWith({ id: 5, customerId: 200, name: 'Tornillo 1/4' }),
+  ];
+  const buckets = M.mediumBucketsCandidates(pns);
+  // Esperado: 2 buckets {customerId 100: [1,2]} y {customerId 200: [4,5]}
+  assert.equal(buckets.length, 2);
+  const sorted = buckets.sort((a, b) => a.customerId - b.customerId);
+  assert.equal(sorted[0].customerId, 100);
+  const ids0 = sorted[0].members.map(m => m.id).sort();
+  assert.equal(ids0.length, 2);
+  assert.equal(ids0[0], 1);
+  assert.equal(ids0[1], 2);
+  assert.equal(sorted[0].name, 'TORNILLO 1/4');
+  assert.equal(sorted[1].customerId, 200);
+  const ids1 = sorted[1].members.map(m => m.id).sort();
+  assert.equal(ids1.length, 2);
+  assert.equal(ids1[0], 4);
+  assert.equal(ids1[1], 5);
+});
+
+test('mediumBucketsCandidates: PNs sin customerId se excluyen', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: null, name: 'X' }),
+    pnWith({ id: 2, customerId: null, name: 'X' }),
+  ];
+  assert.equal(M.mediumBucketsCandidates(pns).length, 0);
+});
+
+// ─── Task 6: refineMediumBuckets ──────────────────────────────────────────────
+
+test('refineMediumBuckets: subgrupa por metalBase canónico + acabados canónicos', () => {
+  const M = loadModule();
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'Tornillo', baseMetal: 'Cobre', labels: ['NIQ', 'EST'] });
+  const pn2 = pnWith({ id: 2, customerId: 100, name: 'Tornillo', baseMetal: 'Cobre', labels: ['NIQ', 'EST', 'SMY'] }); // SMY nonFinish, mismo acabado canónico
+  const pn3 = pnWith({ id: 3, customerId: 100, name: 'Tornillo', baseMetal: 'Cobre', labels: ['CRO'] }); // distinto
+  const pn4 = pnWith({ id: 4, customerId: 100, name: 'Tornillo', baseMetal: 'Estaño s/Aluminio', labels: ['NIQ', 'EST'] }); // metal distinto (canónico: Estaño)
+
+  const details = {
+    1: { partNumberLabelsByPartNumberId: pn1.partNumberLabelsByPartNumberId, customInputs: pn1.customInputs },
+    2: { partNumberLabelsByPartNumberId: pn2.partNumberLabelsByPartNumberId, customInputs: pn2.customInputs },
+    3: { partNumberLabelsByPartNumberId: pn3.partNumberLabelsByPartNumberId, customInputs: pn3.customInputs },
+    4: { partNumberLabelsByPartNumberId: pn4.partNumberLabelsByPartNumberId, customInputs: pn4.customInputs },
+  };
+  const candidates = [{ customerId: 100, name: 'TORNILLO', members: [pn1, pn2, pn3, pn4] }];
+  const refined = M.refineMediumBuckets(candidates, details, { nonFinishLabelNames: NON_FINISH, metalEquivalents: METAL_EQUIV });
+
+  // Esperado: 1 bucket (cobre + EST|NIQ con miembros 1,2). pn3 distinto acabado, pn4 distinto metal → singletons descartados.
+  assert.equal(refined.length, 1);
+  assert.equal(refined[0].metalBase, 'Cobre');
+  assert.equal(refined[0].finishings, 'EST|NIQ');
+  const ids = refined[0].members.map(m => m.id).sort();
+  assert.equal(ids.length, 2);
+  assert.equal(ids[0], 1);
+  assert.equal(ids[1], 2);
+});
+
 module.exports = { loadModule, pnWith };

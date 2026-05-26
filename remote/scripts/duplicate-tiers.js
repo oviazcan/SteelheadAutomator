@@ -141,13 +141,47 @@ const SADuplicateTiers = (() => {
     }
     return result;
   }
-  // scaffolding: cuerpos se implementan en Tasks 6-7
-  function mediumBucketsCandidates(pns) { return []; }
+  function mediumBucketsCandidates(pns) {
+    const byKey = new Map();
+    for (const pn of pns || []) {
+      const cid = (pn.customerByCustomerId && pn.customerByCustomerId.id) || pn.customerId;
+      if (cid == null) continue;
+      const name = (pn.name || '').toUpperCase().trim();
+      if (!name) continue;
+      const key = cid + '||' + name;
+      if (!byKey.has(key)) byKey.set(key, { customerId: cid, name, members: [] });
+      byKey.get(key).members.push(pn);
+    }
+    return [...byKey.values()].filter(b => b.members.length >= 2);
+  }
   function softBucketsCandidates(pns) { return []; }
 
   // ─── refinamiento (pase 2) ─────────────────────────────────────
-  // scaffolding: cuerpos se implementan en Tasks 6-7
-  function refineMediumBuckets(candidates, detailsByPnId, opts) { return []; }
+  function refineMediumBuckets(candidates, detailsByPnId, opts) {
+    const nonFinishList = (opts && opts.nonFinishLabelNames) || [];
+    const metalEquiv = (opts && opts.metalEquivalents) || [];
+    const result = [];
+    for (const cand of candidates || []) {
+      const subByKey = new Map();
+      for (const pn of cand.members) {
+        const det = detailsByPnId && detailsByPnId[pn.id];
+        const ciSrc = (det && det.customInputs) || pn.customInputs;
+        const ci = parseCustomInputs(ciSrc);
+        const metalRaw = (ci.DatosAdicionalesNP && ci.DatosAdicionalesNP.BaseMetal) || '';
+        const metalCanon = canonicalMetal(metalRaw, metalEquiv);
+        const labelNodes = (det && det.partNumberLabelsByPartNumberId && det.partNumberLabelsByPartNumberId.nodes)
+          || (pn.partNumberLabelsByPartNumberId && pn.partNumberLabelsByPartNumberId.nodes)
+          || [];
+        const labels = labelNodes.map(n => n && n.labelByLabelId && n.labelByLabelId.name).filter(Boolean);
+        const finishings = canonicalFinishings(labels, nonFinishList);
+        const subKey = metalCanon + '||' + finishings;
+        if (!subByKey.has(subKey)) subByKey.set(subKey, { customerId: cand.customerId, name: cand.name, metalBase: metalCanon, finishings, members: [] });
+        subByKey.get(subKey).members.push(pn);
+      }
+      for (const b of subByKey.values()) if (b.members.length >= 2) result.push(b);
+    }
+    return result;
+  }
   function refineSoftBuckets(candidates, detailsByPnId, opts) { return []; }
 
   // ─── delete candidates ─────────────────────────────────────────
