@@ -74,7 +74,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `bulk-upload` | 1.4.31 | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
 | `process-deep-audit` | 0.8.0 | [`docs/applets/process-deep-audit.md`](docs/applets/process-deep-audit.md) |
 | `spec-params-bulk` | 0.9.0 | [`docs/applets/spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
-| `spec-migrator` (bundle Ajuste Masivo) | original + `validate-duplicate-params` 0.4.0 | [`docs/applets/spec-migrator.md`](docs/applets/spec-migrator.md) |
+| `spec-migrator` (bundle Ajuste Masivo) | original + `validate-duplicate-params` 0.4.1 | [`docs/applets/spec-migrator.md`](docs/applets/spec-migrator.md) |
 | `invoice-autofill` | 0.5.63+ | [`docs/applets/invoice-autofill.md`](docs/applets/invoice-autofill.md) |
 | `invoice-auto-regen` | 0.5.37 | [`docs/applets/invoice-auto-regen.md`](docs/applets/invoice-auto-regen.md) |
 | `sensor-status-autofill` | 0.5.58 | [`docs/applets/sensor-status-autofill.md`](docs/applets/sensor-status-autofill.md) |
@@ -88,6 +88,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | Power Tools `ordendeventa.ts` | n/a (low-code hook) | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
 | Power Tools `facturacion-pdf.ts` | n/a (low-code hook `getPdfCustomization`) | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |
 | Power Tools `facturacion.ts` | n/a (low-code hook `getInvoicePricing`) | [`docs/applets/powertools-facturacion.md`](docs/applets/powertools-facturacion.md) |
+| Power Tools — catálogo completo (8 categorías) | n/a (inventario GraphQL API) | [`docs/applets/powertools-catalog.md`](docs/applets/powertools-catalog.md) |
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).
