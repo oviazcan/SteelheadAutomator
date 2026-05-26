@@ -2111,7 +2111,7 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.0)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.1)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
@@ -3024,9 +3024,15 @@ const SpecMigrator = (() => {
       offset += PAGE;
     }
 
+    // 0.5.1: el CSV trae el customer concatenado con dirección fiscal
+    // ("BRAININ DE MEXICO — Dirección Fiscal, — Av. San Luis Tlatilc"), pero
+    // el server solo guarda el nombre base ("BRAININ DE MEXICO"). bulk-upload.js:1620
+    // ya usa esta misma regla para deambiguar — split por em/en-dash o " - ", primer chunk.
+    const dupCsvNormCustomer = (s) => (s || '').split(/\s*[—–]\s*|\s+[-]\s+/)[0].trim().toUpperCase();
+
     const index = new Map();
     for (const n of allNodes) {
-      const cust = (n.customerByCustomerId?.name || '').trim().toUpperCase();
+      const cust = dupCsvNormCustomer(n.customerByCustomerId?.name || '');
       const name = (n.name || '').trim().toUpperCase();
       if (!cust || !name) continue;
       const k = `${cust}|${name}`;
@@ -3041,7 +3047,7 @@ const SpecMigrator = (() => {
     for (const cp of csvParts) {
       i++;
       if (i % 200 === 0) onPhase?.(`Resolviendo pnIds (${i}/${csvParts.length})…`, i, csvParts.length);
-      const k = `${cp.customer.trim().toUpperCase()}|${cp.pn.trim().toUpperCase()}`;
+      const k = `${dupCsvNormCustomer(cp.customer)}|${cp.pn.trim().toUpperCase()}`;
       const cands = index.get(k) || [];
       if (cands.length === 0) { unresolved.push({ csvPart: cp, reason: 'no encontrado' }); continue; }
       if (cands.length === 1) { resolved.push({ csvPart: cp, pnNode: cands[0] }); continue; }
