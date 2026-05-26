@@ -2111,7 +2111,7 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.3)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.4)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
@@ -3292,6 +3292,17 @@ const SpecMigrator = (() => {
 
   // Para un PN: agrupa rows vivos por specFieldId, matchea contra CSV y devuelve
   // shape { pnId, pnName, customer, quoteIBMS, issues[] } o null si no hay issues.
+  // 0.5.4: refactor del matching para resolver dos bugs del 0.5.3:
+  //   (Bug #1) Cuando hay 2 rows con el MISMO sfpName matcheando el csvParam — uno
+  //     con processNode, otro NULL — el .find() original tomaba el primero (potencialmente
+  //     el de processNode), planeando archive+insert NULL al row correcto. Fix: entre
+  //     matches preferir el row con !processNodeId (ya cumple el contrato del modelo).
+  //   (Bug #2) csvSpecMap indexaba por Spec pero el loop iteraba por SpecField; cada
+  //     hermano del Spec del CSV heredaba el mismo csvParam aunque ese SpecField no
+  //     fuera el target (ej: Spec "RC Ni (Níquel)" con csvParam "10-13 µm" se aplicaba
+  //     a Adherencia/Aspecto Visual/etc → wrongSfp falso × N). Fix: resolver el
+  //     SpecField target = el que tiene csvParam en sfpNames vivos. Hermanos se validan
+  //     como "sin param explícito" (caso default), sin heredar ruido.
   function dupCsvClassifyPN(csvPart, pnNode, detail) {
     const allParams = detail.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
     const liveBySpecField = new Map();
@@ -3313,70 +3324,120 @@ const SpecMigrator = (() => {
       });
     }
 
-    // Index CSV specs por nombre normalizado (case-insensitive, trim) para matchear
-    // contra fieldName/specName del live.
-    const csvSpecMap = new Map();
-    for (const cs of csvPart.specs) {
-      if (!cs.name || cs.name === '-') continue;
-      const k = cs.name.trim().toLowerCase();
-      csvSpecMap.set(k, cs);
+    // 0.5.4: agrupar SpecFields del live por su Spec padre (key = specName lowercased).
+    // El CSV V10 usa Spec como granularidad ("RC Ni (Níquel) | 10-13 µm") y solo
+    // especifica param para el SpecField que tiene múltiples opciones (típico: Espesor);
+    // los demás SpecFields del Spec (BOOLEAN, single-option) son implícitos.
+    const liveBySpec = new Map();
+    for (const g of liveBySpecField.values()) {
+      const k = (g.specName || '').trim().toLowerCase();
+      if (!k) continue;
+      if (!liveBySpec.has(k)) liveBySpec.set(k, []);
+      liveBySpec.get(k).push(g);
     }
 
     const issues = [];
-    for (const [sfId, g] of liveBySpecField) {
-      const specKey = (g.specName || '').trim().toLowerCase();
-      const cs = csvSpecMap.get(specKey);
-      if (!cs) continue; // El CSV no menciona esta Spec → no podemos opinar.
+    for (const cs of csvPart.specs) {
+      if (!cs.name || cs.name === '-') continue;
+      const specKey = cs.name.trim().toLowerCase();
+      const specGroups = liveBySpec.get(specKey);
+      if (!specGroups) continue; // El live no tiene este Spec → no podemos opinar.
       const csvParam = (cs.param || '').trim();
-      const hasDup = g.rows.length > 1;
-      const hasProc = g.rows.some(r => r.processNodeId);
+      const csvLow = csvParam.toLowerCase();
 
-      // Matchear el wanted del CSV contra los rows vivos (por sfpName, case-insensitive).
-      let wanted = null;
+      // 0.5.4 (Bug #2): identificar el SpecField target del Spec — el único que tiene
+      // csvParam entre los sfpNames de sus rows vivos. Si csvParam vacío, no hay target
+      // (todos los SpecFields del Spec se procesan como hermanos sin param explícito).
+      let targetSfId = null;
       if (csvParam) {
-        const csvLow = csvParam.toLowerCase();
-        wanted = g.rows.find(r => (r.sfpName || '').trim().toLowerCase() === csvLow) || null;
-      } else {
-        // CSV sin param explícito (params.length===1 en el catálogo). Si hay 1 row vivo,
-        // ese es el wanted automáticamente; si hay 2+ es ambigüedad.
-        if (g.rows.length === 1) wanted = g.rows[0];
+        for (const g of specGroups) {
+          if (g.rows.some(r => (r.sfpName || '').trim().toLowerCase() === csvLow)) {
+            targetSfId = g.sfId;
+            break;
+          }
+        }
+        if (!targetSfId) {
+          // wrongSfp REAL: ningún SpecField del Spec tiene el csvParam vivo.
+          // Reportar una sola vez por Spec (no por cada SpecField hermano).
+          const g = specGroups[0];
+          issues.push({
+            specFieldId: g.sfId,
+            specFieldName: g.sfName,
+            specName: g.specName,
+            csvParam,
+            liveRows: g.rows,
+            wanted: null,
+            toArchive: [],
+            wantedNullSfp: null,
+            status: 'wrongSfp',
+          });
+          continue;
+        }
       }
 
-      let status, toArchive = [], wantedNullSfp = null;
-      if (!wanted) {
-        // No matchea ningún sfpName del live: el sfp del CSV no está en BD.
-        // No podemos insertar sin conocer el sfpId del catálogo → solo flagear.
-        status = 'wrongSfp';
-      } else {
-        // El wanted está vivo. Archive perdedores (sfp distinto) + wanted-con-processNode.
+      // Procesar cada SpecField del Spec.
+      for (const g of specGroups) {
+        const isTarget = csvParam && g.sfId === targetSfId;
+        const effParam = isTarget ? csvParam : '';
+        const effLow = effParam.toLowerCase();
+        const hasDup = g.rows.length > 1;
+        const hasProc = g.rows.some(r => r.processNodeId);
+
+        // 0.5.4 (Bug #1): entre matches por sfpName, preferir el row con
+        // !processNodeId — ya cumple el contrato del modelo (1 alive null por
+        // SpecField). Evita archive+insert NULL redundante.
+        let wanted = null;
+        if (effParam) {
+          const matches = g.rows.filter(r => (r.sfpName || '').trim().toLowerCase() === effLow);
+          wanted = matches.find(r => !r.processNodeId) || matches[0] || null;
+        } else if (g.rows.length === 1) {
+          // Hermano del Spec target con 1 sfp default vivo: ese es wanted automáticamente.
+          wanted = g.rows[0];
+        } else if (g.rows.length > 1) {
+          // Hermano con duplicados: solo opinar si TODOS los rows comparten sfpName
+          // (caso típico BOOLEAN/single-option duplicado por processNode). Preferir null.
+          const sfpNames = new Set(g.rows.map(r => (r.sfpName || '').trim().toLowerCase()));
+          if (sfpNames.size === 1) {
+            wanted = g.rows.find(r => !r.processNodeId) || g.rows[0];
+          }
+          // sfpNames distintos en un hermano sin param explícito: no podemos elegir;
+          // queda como "sin opinión" (no se reporta, vs antes que entraba a wrongSfp ruidoso).
+        }
+
+        if (!wanted) continue; // sin opinión sólida — no inflar wrongSfp
+
+        const toArchive = [];
+        let wantedNullSfp = null;
+        let status;
         for (const r of g.rows) {
           if (r.rowId === wanted.rowId) continue;
           toArchive.push(r);
         }
-        // El wanted: si tiene processNode → archive + insert NULL.
         if (wanted.processNodeId) {
+          // wanted con processNode → archive + insert NULL (necesario porque no hay
+          // null vivo de ese sfp).
           toArchive.push(wanted);
           wantedNullSfp = { sfpId: wanted.sfpId, sfpName: wanted.sfpName };
           status = 'processNodeRewrite';
         } else if (hasDup || hasProc) {
+          // wanted null vivo + hermanos a archivar. Sin insert (el null ya existe).
           status = 'duplicateRemove';
         } else {
           status = 'ok';
         }
+        if (status === 'ok') continue;
+        issues.push({
+          specFieldId: g.sfId,
+          specFieldName: g.sfName,
+          specName: g.specName,
+          csvParam: effParam || '(default)',
+          liveRows: g.rows,
+          wanted,
+          toArchive,
+          wantedNullSfp,
+          status,
+        });
       }
-
-      if (status === 'ok') continue;
-      issues.push({
-        specFieldId: sfId,
-        specFieldName: g.sfName,
-        specName: g.specName,
-        csvParam: csvParam || '(default)',
-        liveRows: g.rows,
-        wanted,
-        toArchive,
-        wantedNullSfp, // {sfpId, sfpName} si necesitamos reinsertar NULL
-        status,
-      });
     }
 
     if (!issues.length) return null;
