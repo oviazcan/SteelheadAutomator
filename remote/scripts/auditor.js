@@ -234,6 +234,8 @@ const PNAuditor = (() => {
     const activeIds = new Set();
     const seenIds = new Set();
     const pageSize = 500;
+    const HARD_CAP = 8000;
+    const drainPage = hc()?.apolloCacheDrain || (() => {});
 
     let offset = 0;
     while (!stopped) {
@@ -247,7 +249,14 @@ const PNAuditor = (() => {
           all.push(slimPass1Node(n, null));
         }
       }
+      // EJE B: drain Apollo entre páginas — sin esto los normalized records suman MBs.
+      try { drainPage(); } catch (_) {}
       onProgress && onProgress(`Pase 1 (activos): ${all.length} PNs · offset ${offset}`);
+      if (!customerFilter && all.length >= HARD_CAP) {
+        stopped = true;
+        try { alert(`⚠ Demasiados PNs (${all.length}+). Filtra por cliente antes del scan — sin filtro satura memoria.`); } catch (_) {}
+        return all;
+      }
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
@@ -266,7 +275,13 @@ const PNAuditor = (() => {
             all.push(slimPass1Node(n, ARCHIVED_SENTINEL));
           }
         }
+        try { drainPage(); } catch (_) {}
         onProgress && onProgress(`Pase 1 (archivados): ${all.length} PNs · offset ${offset}`);
+        if (!customerFilter && all.length >= HARD_CAP) {
+          stopped = true;
+          try { alert(`⚠ Demasiados PNs (${all.length}+, con archivados). Filtra por cliente antes del scan.`); } catch (_) {}
+          return all;
+        }
         if (nodes.length < pageSize) break;
         offset += pageSize;
       }
@@ -331,7 +346,13 @@ const PNAuditor = (() => {
       customerFilter, searchQuery, includeArchived,
       onProgress: (msg) => updateAuditorUI(msg)
     });
-    if (stopped) return { stopped: true };
+    if (stopped) return {
+      stopped: true,
+      hardBuckets: [], mediumBuckets: [], softBuckets: [],
+      totalPNs: allPNs.length, failedIds: [],
+      processedInPass2: 0, totalCandidatesPass2: 0,
+      abortedInPass: 1,
+    };
     log(`Pase 1: ${allPNs.length} PNs cargados`);
 
     // ── Bucketización pase 1 ──
@@ -481,32 +502,55 @@ const PNAuditor = (() => {
       try { memMonitor.start(); } catch (_) {}
     }
 
-    // Fetch PNs (paginación)
+    // EJE A: skip del fetch global cuando solo hay tier criteria. runIntegrityScan
+    // pagina su propio set (con archivados), así que esto era DOBLE paginación de
+    // miles de PNs — la causa raíz del OOM en 1.5.3. Si seleccionaste solo
+    // dup-hard/medium/soft, allPNs queda vacío y el flujo se va directo al
+    // bloque de Integrity tiers más abajo.
+    const TIER_ONLY = new Set(['dup-hard', 'dup-medium', 'dup-soft']);
+    const needsGlobalPNs = selectedCriteria.some(c => !TIER_ONLY.has(c));
+
     const allPNs = [];
-    let offset = 0;
-    while (!stopped) {
-      const vars = { orderBy: ['NAME_ASC'], offset, first: 500, searchQuery: searchQuery || '' };
-      const data = await api().query('AllPartNumbers', vars, 'AllPartNumbers');
-      const nodes = data?.pagedData?.nodes || [];
-      const active = nodes.filter(n => !n.archivedAt);
+    if (needsGlobalPNs) {
+      const PAGE_HARD_CAP = 8000; // sin filter, si supera esto pedimos al usuario filtrar
+      const drainPage = hc()?.apolloCacheDrain || (() => {});
+      let offset = 0;
+      while (!stopped) {
+        const vars = { orderBy: ['NAME_ASC'], offset, first: 500, searchQuery: searchQuery || '' };
+        const data = await api().query('AllPartNumbers', vars, 'AllPartNumbers');
+        const nodes = data?.pagedData?.nodes || [];
+        const active = nodes.filter(n => !n.archivedAt);
 
-      // EJE A: slim node — solo {id, name, customerByCustomerId, name} se lee
-      // downstream para audit per-PN, duplicates y similar. Reduce 5x.
-      const filter = customerFilter ? customerFilter.toUpperCase() : null;
-      for (const n of active) {
-        if (filter && !(n.customerByCustomerId?.name?.toUpperCase().includes(filter))) continue;
-        allPNs.push({
-          id: n.id,
-          name: n.name,
-          customerByCustomerId: n.customerByCustomerId
-            ? { id: n.customerByCustomerId.id, name: n.customerByCustomerId.name }
-            : null,
-        });
+        // EJE A: slim node — solo {id, name, customerByCustomerId} se lee downstream.
+        const filter = customerFilter ? customerFilter.toUpperCase() : null;
+        for (const n of active) {
+          if (filter && !(n.customerByCustomerId?.name?.toUpperCase().includes(filter))) continue;
+          allPNs.push({
+            id: n.id,
+            name: n.name,
+            customerByCustomerId: n.customerByCustomerId
+              ? { id: n.customerByCustomerId.id, name: n.customerByCustomerId.name }
+              : null,
+          });
+        }
+
+        // EJE B: drenar Apollo cache cada página — sin esto, los normalized records
+        // de cada AllPartNumbers persisten en window.__APOLLO_CLIENT__ y suman MBs.
+        try { drainPage(); } catch (_) {}
+
+        updateAuditorUI(`Cargando PNs... ${allPNs.length}${customerFilter ? ` (cliente: ${customerFilter})` : ''}`);
+
+        // Cap defensivo: sin filter, si pasa 8k PNs casi seguro revienta memoria.
+        if (!customerFilter && allPNs.length >= PAGE_HARD_CAP) {
+          stopped = true;
+          try { memMonitor?.stop(); } catch (_) {}
+          try { alert(`⚠ Demasiados PNs (${allPNs.length}+). Filtra por cliente antes de auditar — el run sin filtro satura memoria.`); } catch (_) {}
+          return { ...results, stopped: true, totalAudited: 0, abortReason: 'too-many-pns' };
+        }
+
+        if (nodes.length < 500) break;
+        offset += 500;
       }
-
-      updateAuditorUI(`Cargando PNs... ${allPNs.length}${customerFilter ? ` (cliente: ${customerFilter})` : ''}`);
-      if (nodes.length < 500) break;
-      offset += 500;
     }
 
     if (stopped) { try { memMonitor?.stop(); } catch (_) {} return { ...results, stopped: true, totalAudited: 0 }; }
@@ -731,8 +775,11 @@ const PNAuditor = (() => {
     const totalCands = integrity.totalCandidatesPass2 ?? 0;
     const failedCount = (integrity.failedIds || []).length;
     if (isPartial) {
+      const where = integrity.abortedInPass === 1
+        ? 'durante la carga inicial (pase 1) — ningún candidato alcanzó a enriquecerse'
+        : `después de procesar ${processed}/${totalCands} candidatos del pase 2`;
       banner = `<div style="background:#7c2d12;color:#fed7aa;padding:10px 14px;border-radius:6px;margin-bottom:12px;border-left:4px solid #f59e0b">
-        ⏸ <b>Run abortado por memoria.</b> Procesados ${processed}/${totalCands} candidatos del pase 2 antes del abort. Los buckets de abajo son PARCIALES — pueden faltar duplicados que no alcanzamos a verificar. Recarga la tab y re-corre con filtro por cliente para reducir el alcance.
+        ⏸ <b>Run abortado por memoria</b> ${where}. Los buckets de abajo (si hay) son PARCIALES — pueden faltar duplicados sin verificar. Recarga la tab y re-corre con filtro por cliente para reducir el alcance.
       </div>`;
     } else if (totalCands > 0) {
       const failPart = failedCount > 0 ? ` · ${failedCount} con error de fetch` : '';
