@@ -54,6 +54,23 @@
       return;
     }
   }
+
+  // Cargar módulo SADuplicateTiers desde gh-pages (single source of truth para
+  // bucketización + scoring + delete candidates). Si ya está cargado por la
+  // extensión (window.SADuplicateTiers), no re-fetcha.
+  if (!window.SADuplicateTiers) {
+    const tiersUrl = `https://oviazcan.github.io/SteelheadAutomator/scripts/duplicate-tiers.js?v=${config.version || Date.now()}`;
+    try {
+      const tr = await fetch(tiersUrl, { cache: 'no-cache' });
+      if (!tr.ok) throw new Error('HTTP ' + tr.status);
+      const tiersCode = await tr.text();
+      new Function(tiersCode)();
+      if (!window.SADuplicateTiers) throw new Error('SADuplicateTiers no se expuso');
+    } catch (e) {
+      alert('No se pudo cargar duplicate-tiers.js: ' + e.message);
+      return;
+    }
+  }
   const hashes = {
     ...(config.steelhead?.hashes?.queries || {}),
     ...(config.steelhead?.hashes?.mutations || {}),
