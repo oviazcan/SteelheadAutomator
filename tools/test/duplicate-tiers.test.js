@@ -256,4 +256,68 @@ test('pickWinner: bucket vacío retorna null', () => {
   assert.equal(M.pickWinner({ members: [] }), null);
 });
 
-module.exports = { loadModule };
+function pnWith({ id, customerId, name, quoteIBMS, baseMetal, labels, createdAt }) {
+  return {
+    id,
+    name: name || 'PN-X',
+    customerByCustomerId: customerId != null ? { id: customerId, name: 'Cust-' + customerId } : null,
+    customerId,
+    createdAt: createdAt || '2026-01-01T00:00:00Z',
+    customInputs: { DatosAdicionalesNP: { QuoteIBMS: quoteIBMS || '', BaseMetal: baseMetal || '' } },
+    partNumberLabelsByPartNumberId: { nodes: (labels || []).map(n => ({ labelByLabelId: { name: n } })) },
+  };
+}
+
+test('hardBuckets: agrupa por QuoteIBMS no vacío, ignora vacíos', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: 100, quoteIBMS: '84531' }),
+    pnWith({ id: 2, customerId: 100, quoteIBMS: '84531' }),
+    pnWith({ id: 3, customerId: 100, quoteIBMS: '99999' }), // single
+    pnWith({ id: 4, customerId: 100, quoteIBMS: '' }),       // empty -> ignored
+    pnWith({ id: 5, customerId: 100 }),                       // null -> ignored
+  ];
+  const buckets = M.hardBuckets(pns);
+  assert.equal(buckets.length, 1);
+  assert.equal(buckets[0].quoteIBMS, '84531');
+  assert.deepEqual(buckets[0].members.map(m => m.id).sort(), [1, 2]);
+});
+
+test('hardBuckets: cross-customer agrupa', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: 100, quoteIBMS: '84531' }),
+    pnWith({ id: 2, customerId: 200, quoteIBMS: '84531' }), // distinto cliente
+  ];
+  const buckets = M.hardBuckets(pns);
+  assert.equal(buckets.length, 1);
+  assert.equal(buckets[0].members.length, 2);
+});
+
+test('hardBuckets: bucket de 1 miembro NO se reporta', () => {
+  const M = loadModule();
+  const pns = [pnWith({ id: 1, customerId: 100, quoteIBMS: '84531' })];
+  const buckets = M.hardBuckets(pns);
+  assert.equal(buckets.length, 0);
+});
+
+test('hardBuckets: maneja customInputs como string JSON', () => {
+  const M = loadModule();
+  const pn = pnWith({ id: 1, customerId: 100, quoteIBMS: '84531' });
+  pn.customInputs = JSON.stringify(pn.customInputs); // string en vez de objeto
+  const pns = [pn, pnWith({ id: 2, customerId: 100, quoteIBMS: '84531' })];
+  const buckets = M.hardBuckets(pns);
+  assert.equal(buckets.length, 1);
+  assert.equal(buckets[0].members.length, 2);
+});
+
+test('hardBuckets: QuoteIBMS whitespace-only se ignora', () => {
+  const M = loadModule();
+  const pns = [
+    pnWith({ id: 1, customerId: 100, quoteIBMS: '   ' }),
+    pnWith({ id: 2, customerId: 100, quoteIBMS: '   ' }),
+  ];
+  assert.equal(M.hardBuckets(pns).length, 0);
+});
+
+module.exports = { loadModule, pnWith };
