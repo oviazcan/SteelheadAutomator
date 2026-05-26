@@ -71,4 +71,143 @@ test('canonicalMetal: colapsa equivalentes al primero del grupo', () => {
   assert.equal(M.canonicalMetal('Estaño', []), 'Estaño'); // sin equivalents
 });
 
+// Fixtures
+function pnEmpty() {
+  return { id: 1, name: 'PN-1', customerId: 100, createdAt: '2026-01-01T00:00:00Z', customInputs: {} };
+}
+function detailsEmpty() {
+  return {
+    defaultProcessNodeId: null,
+    partNumberSpecsByPartNumberId: { nodes: [] },
+    partNumberRackTypesByPartNumberId: { nodes: [] },
+    inventoryPredictedUsagesByPartNumberId: { nodes: [] },
+    inventoryItemByPartNumberId: { inventoryItemUnitConversionsByInventoryItemId: { nodes: [] } },
+    descriptionMarkdown: '',
+    partNumberGroupId: null,
+    dimensionCustomValueIds: [],
+    partNumberPricesByPartNumberId: { nodes: [] },
+    customInputs: {},
+    partNumberLabelsByPartNumberId: { nodes: [] },
+  };
+}
+
+test('scoreFor: PN totalmente vacío puntúa 0', () => {
+  const M = loadModule();
+  assert.equal(M.scoreFor(pnEmpty(), detailsEmpty(), { nonFinishLabelNames: NON_FINISH }), 0);
+});
+
+test('scoreFor: hasProcess vale 5', () => {
+  const M = loadModule();
+  const d = detailsEmpty();
+  d.defaultProcessNodeId = 'proc-1';
+  assert.equal(M.scoreFor(pnEmpty(), d, { nonFinishLabelNames: NON_FINISH }), 5);
+});
+
+test('scoreFor: specsCount > 0 vale 5 baseline + 1 por spec', () => {
+  const M = loadModule();
+  const d = detailsEmpty();
+  d.partNumberSpecsByPartNumberId.nodes = [{}, {}, {}]; // 3 specs
+  assert.equal(M.scoreFor(pnEmpty(), d, { nonFinishLabelNames: NON_FINISH }), 5 + 3);
+});
+
+test('scoreFor: hasQuoteIBMS vale 2', () => {
+  const M = loadModule();
+  const pn = pnEmpty();
+  pn.customInputs = { DatosAdicionalesNP: { QuoteIBMS: '84531' } };
+  assert.equal(M.scoreFor(pn, detailsEmpty(), { nonFinishLabelNames: NON_FINISH }), 2);
+});
+
+test('scoreFor: hasQuoteIBMS string vacío NO suma', () => {
+  const M = loadModule();
+  const pn = pnEmpty();
+  pn.customInputs = { DatosAdicionalesNP: { QuoteIBMS: '' } };
+  assert.equal(M.scoreFor(pn, detailsEmpty(), { nonFinishLabelNames: NON_FINISH }), 0);
+});
+
+test('scoreFor: hasDefaultPrice vale 2', () => {
+  const M = loadModule();
+  const d = detailsEmpty();
+  d.partNumberPricesByPartNumberId.nodes = [{ isDefault: false }, { isDefault: true }];
+  assert.equal(M.scoreFor(pnEmpty(), d, { nonFinishLabelNames: NON_FINISH }), 2);
+});
+
+test('scoreFor: hasNotasAdicionalesIBMS vale 2', () => {
+  const M = loadModule();
+  const pn = pnEmpty();
+  pn.customInputs = { NotasAdicionales: 'Texto largo de IBMS' };
+  assert.equal(M.scoreFor(pn, detailsEmpty(), { nonFinishLabelNames: NON_FINISH }), 2);
+});
+
+test('scoreFor: finishingsCount filtra nonFinish y suma 1 por finishing', () => {
+  const M = loadModule();
+  const d = detailsEmpty();
+  d.partNumberLabelsByPartNumberId.nodes = [
+    { labelByLabelId: { name: 'NIQ' } },
+    { labelByLabelId: { name: 'EST' } },
+    { labelByLabelId: { name: 'SMY' } }, // nonFinish, no cuenta
+  ];
+  assert.equal(M.scoreFor(pnEmpty(), d, { nonFinishLabelNames: NON_FINISH }), 2);
+});
+
+test('scoreFor: hasMetalBase vale 1', () => {
+  const M = loadModule();
+  const pn = pnEmpty();
+  pn.customInputs = { DatosAdicionalesNP: { BaseMetal: 'Cobre' } };
+  assert.equal(M.scoreFor(pn, detailsEmpty(), { nonFinishLabelNames: NON_FINISH }), 1);
+});
+
+test('scoreFor: hasSat vale 1', () => {
+  const M = loadModule();
+  const pn = pnEmpty();
+  pn.customInputs = { DatosFacturacion: { CodigoSAT: '25171802' } };
+  assert.equal(M.scoreFor(pn, detailsEmpty(), { nonFinishLabelNames: NON_FINISH }), 1);
+});
+
+test('scoreFor: hasDescription, hasGroup, racks/predictives/unitConversions/dimCustomValues cuentan', () => {
+  const M = loadModule();
+  const d = detailsEmpty();
+  d.descriptionMarkdown = '  Algo  ';
+  d.partNumberGroupId = 'g-1';
+  d.partNumberRackTypesByPartNumberId.nodes = [{}];
+  d.inventoryPredictedUsagesByPartNumberId.nodes = [{}, {}];
+  d.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes = [{}];
+  d.dimensionCustomValueIds = ['lin-1', 'lin-2'];
+  // 1 desc + 1 group + 1 rack + 2 predict + 1 uc + 2 dim = 8
+  assert.equal(M.scoreFor(pnEmpty(), d, { nonFinishLabelNames: NON_FINISH }), 8);
+});
+
+test('scoreFor: PN enriquecido completo puntúa ~30+', () => {
+  const M = loadModule();
+  const pn = pnEmpty();
+  pn.customInputs = {
+    DatosAdicionalesNP: { QuoteIBMS: '84531', BaseMetal: 'Cobre' },
+    DatosFacturacion: { CodigoSAT: '25171802' },
+    NotasAdicionales: 'IBMS',
+  };
+  const d = detailsEmpty();
+  d.defaultProcessNodeId = 'proc-1';
+  d.partNumberSpecsByPartNumberId.nodes = [{}, {}];
+  d.partNumberRackTypesByPartNumberId.nodes = [{}];
+  d.inventoryPredictedUsagesByPartNumberId.nodes = [{}];
+  d.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes = [{}, {}];
+  d.partNumberPricesByPartNumberId.nodes = [{ isDefault: true }];
+  d.descriptionMarkdown = 'desc';
+  d.partNumberGroupId = 'g-1';
+  d.dimensionCustomValueIds = ['lin-1'];
+  d.partNumberLabelsByPartNumberId.nodes = [{ labelByLabelId: { name: 'NIQ' } }, { labelByLabelId: { name: 'EST' } }];
+  // 5 proc + 5 specs(baseline) + 2 specs(count) + 2 quoteibms + 2 defaultPrice + 2 notas
+  // + 2 finishings + 1 racks + 1 predict + 2 uc + 1 dim + 1 desc + 1 group + 1 metal + 1 sat
+  // = 29
+  assert.equal(M.scoreFor(pn, d, { nonFinishLabelNames: NON_FINISH }), 29);
+});
+
+test('scoreFor: tolera details null (score parcial con solo AllPartNumbers data)', () => {
+  const M = loadModule();
+  const pn = pnEmpty();
+  pn.customInputs = { DatosAdicionalesNP: { QuoteIBMS: '84531' }, NotasAdicionales: 'IBMS' };
+  pn.labels = ['NIQ', 'EST']; // viene de AllPartNumbers
+  // Sin details: solo 2 + 2 + 2 finishings = 6
+  assert.equal(M.scoreFor(pn, null, { nonFinishLabelNames: NON_FINISH }), 6);
+});
+
 module.exports = { loadModule };

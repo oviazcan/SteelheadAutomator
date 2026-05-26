@@ -50,8 +50,56 @@ const SADuplicateTiers = (() => {
   }
 
   // ─── scoring ───────────────────────────────────────────────────
-  // scaffolding: cuerpos se implementan en Tasks 3-4
-  function scoreFor(pn, details) { return 0; }
+  function scoreFor(pn, details, opts) {
+    const nonFinishList = (opts && opts.nonFinishLabelNames) || [];
+    const ci = pn && pn.customInputs || {};
+    const da = ci.DatosAdicionalesNP || {};
+    const df = ci.DatosFacturacion || {};
+
+    let score = 0;
+
+    // Críticos (5)
+    const hasProcess = !!(details && details.defaultProcessNodeId);
+    if (hasProcess) score += 5;
+
+    const specsArr = (details && details.partNumberSpecsByPartNumberId && details.partNumberSpecsByPartNumberId.nodes) || [];
+    if (specsArr.length > 0) score += 5;
+
+    // Enriquecimiento confiable (2)
+    if (da.QuoteIBMS && String(da.QuoteIBMS).trim()) score += 2;
+
+    const prices = (details && details.partNumberPricesByPartNumberId && details.partNumberPricesByPartNumberId.nodes) || [];
+    if (prices.some(p => p && p.isDefault)) score += 2;
+
+    if (ci.NotasAdicionales && String(ci.NotasAdicionales).trim()) score += 2;
+
+    // Por cantidad (1 por item)
+    // Finishings: prefer details.partNumberLabelsByPartNumberId; fallback a pn.labels (AllPartNumbers shape).
+    let labelNames = [];
+    if (details && details.partNumberLabelsByPartNumberId && Array.isArray(details.partNumberLabelsByPartNumberId.nodes)) {
+      labelNames = details.partNumberLabelsByPartNumberId.nodes.map(n => n && n.labelByLabelId && n.labelByLabelId.name).filter(Boolean);
+    } else if (Array.isArray(pn.labels)) {
+      labelNames = pn.labels;
+    }
+    const finishings = labelNames.filter(l => !isNonFinishLabel(l, nonFinishList));
+    score += finishings.length;
+
+    score += specsArr.length;
+    score += ((details && details.partNumberRackTypesByPartNumberId && details.partNumberRackTypesByPartNumberId.nodes) || []).length;
+    score += ((details && details.inventoryPredictedUsagesByPartNumberId && details.inventoryPredictedUsagesByPartNumberId.nodes) || []).length;
+    score += ((details && details.inventoryItemByPartNumberId && details.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId && details.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes) || []).length;
+    score += ((details && details.dimensionCustomValueIds) || []).length;
+
+    // Otros (1)
+    if (details && details.descriptionMarkdown && String(details.descriptionMarkdown).trim()) score += 1;
+    if (details && details.partNumberGroupId) score += 1;
+    if (da.BaseMetal && String(da.BaseMetal).trim()) score += 1;
+    if (df.CodigoSAT && String(df.CodigoSAT).trim()) score += 1;
+
+    return score;
+  }
+
+  // scaffolding: cuerpo se implementa en Task 4
   function pickWinner(bucket) { return null; }
 
   // ─── bucketización (pase 1) ────────────────────────────────────
