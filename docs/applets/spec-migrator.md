@@ -215,3 +215,75 @@ Detecta y limpia PNs con >1 param activo para el mismo `(partNumberSpecId, specF
 - [ ] Aplicar fix sobre un grupo controlado (PN de prueba), confirmar que el row queda archivado en Steelhead UI.
 - [ ] Re-correr scan y confirmar que el grupo ya no aparece.
 - [ ] Revertir manualmente con `UpdatePartNumberSpecParam{id, archivedAt:null}` para confirmar reversibilidad.
+
+---
+
+# `validate-duplicate-params` 0.5.0 (2026-05-25, bump config 1.4.39) — Modo CSV multi-cliente
+
+Segundo modo de la acción: en lugar de escanear todo el catálogo, se carga **un CSV de bulk-upload V10** y solo se revisan los PNs listados ahí. Pensado para corregir PNs que se crearon con duplicados en cargas previas (antes del fix 1.4.38), sin re-correr la carga masiva.
+
+**Por qué existe (no es estética):**
+Después del fix 1.4.38, una **carga nueva** ya no genera duplicados. Pero los PNs creados antes siguen sucios. El modo "scan global" (0.4.x) los encuentra, pero no sabe **cuál es el wanted** según el CSV original — solo sabe que hay >1 row vivo por SpecField. El modo CSV resuelve: el wanted es el `sfpName` que el CSV pide, lo demás se archiva.
+
+**Flujo (file picker en el panel de filtros existente):**
+
+1. **Parse CSV** (`dupCsvParseCSV` RFC 4180-ish + `dupCsvParseRows`):
+   - Salta filas header (`PARÁMETROS` / `Archivado` / `V/F` / `Texto` / `Número de Parte`).
+   - Extrae `{ pn (F=5), customer (E=4), quoteIBMS (BK=62), specs[{name,param}] }`.
+   - Specs vienen en columnas `AH=33` y `AJ=35`, split por `" | "` → `{ name, param }`. Si no hay separador, el param queda vacío (caso "spec con 1 solo param en catálogo").
+
+2. **Resolución multi-cliente con dedup QuoteIBMS** (`dupCsvResolvePnIds`):
+   - Pre-fetch global `AllPartNumbers` paginado (`first:500`), filtrado archivedAt.
+   - Index `Map<"CUSTOMER|PN_UPPERCASE", node[]>`.
+   - Por cada `csvPart`:
+     - **0 candidatos** → `unresolved` con reason `no encontrado`.
+     - **1 candidato** → directo.
+     - **2+ candidatos** → match por `customInputs.DatosAdicionalesNP.QuoteIBMS` (parseo defensivo: `customInputs` puede venir como string o como objeto, dependiendo del schema). Match único → resuelve; 0 match → unresolved; 2+ match → unresolved (homónimos con misma QuoteIBMS, requiere intervención manual).
+   - Devuelve `{ resolved, unresolved, ambiguousByQuote (info-only), totalNodes }`.
+
+3. **Fetch detalle + clasificación** (`dupRunPool(resolved, GetPartNumber, 6)` + `dupCsvClassifyPN`):
+   - Por PN: agrupa rows vivos por `specFieldId` (regla 1.4.38 = 1 row vivo por SpecField, processNodeId=null).
+   - Index del CSV: `Map<specName_lowercase, {name,param}>`.
+   - Por cada SpecField del live: si el CSV menciona esa Spec, mira el `csvParam` y busca el sfpName que coincida case-insensitive contra el live. Resultado por SpecField:
+
+   | status | Significado | Acción al aplicar |
+   |---|---|---|
+   | `ok` | wanted vivo + sin processNode + sin duplicados | (omitido) |
+   | `duplicateRemove` | wanted vivo NULL + hay losers o procesNode en otros | archive losers |
+   | `processNodeRewrite` | wanted vivo PERO con processNodeId ≠ null | archive wanted + losers + insert NULL del mismo sfp |
+   | `wrongSfp` | el sfpName del CSV no está vivo en el PN | flag, no se aplica (no se resuelve sfpId desde catálogo en MVP) |
+
+4. **Render** (`dupRenderCsvResults`): tabla por PN con checkbox **Aplicar**, contador de issues por status (color codes), preview de qué se va a archivar / qué NULL se va a insertar. Stats bar con totales. PNs cuyos issues son **todos** `wrongSfp` quedan con checkbox deshabilitado (no aplicable).
+
+5. **Apply** (`dupRunApplyCsv`, pool 3): 1 `SavePartNumber` por PN seleccionado. El input combina **en la misma mutation**:
+   - `paramsToApply[]` con `{ specFieldId, specFieldParamId, processNodeId:null, ... }` para todos los `wantedNullSfp` (insert NULL del sfp correcto).
+   - `partNumberSpecFieldParamsToArchive[]` con todos los `archiveIds` (losers + wanted-con-processNode).
+   - Mismo shape exacto que STEP 6b de bulk-upload 1.4.38.
+   - **Casts obligatorios:** `Number(specFieldId)` y `Number(specFieldParamId)` — el schema exige `Int`, no `String`.
+
+**Decisiones cerradas con el usuario antes de codear:**
+- File picker se inserta en el panel de filtros actual (no en una pestaña aparte), con UI púrpura punteada para diferenciarlo del scan global.
+- Confirmación se hace **por PN problemático** vía el checkbox individual (no 1 confirm masivo) — el `confirm()` solo es defensivo antes de la batch.
+- Si el wanted está vivo pero tiene `processNodeId`, se **re-escribe como NULL** (archive + insert NULL), no se intenta `UpdatePartNumberSpecParam{processNodeId:null}` (Steelhead no permite mutar el processNodeId de un row existente).
+- `wrongSfp` queda como **flag**, no se resuelve. Requeriría fetchear el catálogo de specFieldParams del SpecField para encontrar el sfp correcto por nombre; queda como mejora futura (volver a re-correr bulk-upload limpio es alternativa válida).
+
+**Multicliente + QuoteIBMS:**
+La resolución es **obligatoria** en MVP porque los CSVs de bulk-upload mezclan clientes (un solo CSV puede traer PNs de múltiples clientes). El index `customerUpper|pnUpper` lo aísla; QuoteIBMS dedupea los homónimos legítimos (mismo cliente + mismo PN, distintos quotes). La info `ambiguousByQuote` se loguea pero no bloquea el flujo.
+
+**Wiring:**
+- `remote/scripts/spec-migrator.js:2114` — header del validator a `0.5.0`.
+- `dupRenderFilterPanel` — file picker púrpura punteado + handler `change` que llama `dupRunScanFromCsv`.
+- `dupCsvParseCSV`, `dupCsvParseRows`, `dupCsvResolvePnIds`, `dupRunScanFromCsv`, `dupCsvClassifyPN`, `dupRenderCsvResults`, `dupUpdateCsvFooter`, `dupRunApplyCsv` — bloque nuevo ~450 líneas antes del `return { run, ... }`.
+- No requiere cambios en `extension/background.js` ni en `config.json` más allá del bump.
+
+**Lecciones:**
+- **Decidir el wanted requiere intención externa.** El scan global solo puede adivinar (default = mayor id). El CSV es la fuente de verdad para los PNs que ya cargaste; usarlo evita que el operador tenga que tomar 50 decisiones manuales en la tabla.
+- **`customInputs` viene como string o como objeto.** Depende del query y del schema. Parseo defensivo con try/catch es obligatorio cuando lo lees vía `AllPartNumbers` (lo trae como string serializado).
+- **Multi-cliente NO es opcional para CSVs reales de bulk-upload.** Asumir 1 cliente por CSV rompe en producción — los archivos generados por el wizard mezclan clientes desde el primer día.
+- **Wrap-up combinado en 1 mutation por PN > 2 mutations separadas.** STEP 6b de 1.4.38 ya demostró que `SavePartNumber` acepta `paramsToApply + partNumberSpecFieldParamsToArchive` en la misma call sin race conditions internas. Replicar el shape exacto evita inventar.
+
+**Plan de validación pendiente:**
+- [ ] Probar con un CSV real chico (5-10 PNs de 1 solo cliente) y verificar resolution, classify y apply contra Steelhead UI.
+- [ ] Probar con CSV multi-cliente y verificar dedup por QuoteIBMS en al menos 1 PN con homónimos.
+- [ ] Generar caso `wrongSfp` artificial (PN con sfpName que no matchee el CSV) y verificar que queda como flag, no como apply.
+- [ ] Re-correr scan global (modo 0.4.x) sobre los mismos PNs después del apply y confirmar 0 duplicados.
