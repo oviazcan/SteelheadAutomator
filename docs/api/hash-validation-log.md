@@ -40,3 +40,5 @@ sólo vía `hash-scanner` en navegador, no este script.
 
 ## 2026-05-25 08:35 — 0 rotado(s) (config v1.4.31)
 
+## 2026-05-26 08:41 — 0 rotado(s) (config v1.5.4)
+
