@@ -406,3 +406,104 @@ La función está **copiada inline** en spec-migrator. El refactor correcto es e
 - [ ] Confirmar en console del browser que aparece `[SPM-dup] Datadog: stopSessionReplay …` solo UNA vez (latch idempotente).
 - [ ] Probar el CSV después de un run de bulk-upload en la misma tab: el log Datadog NO debe aparecer (entró al early-return); el Apollo drain sí debe seguir.
 - [ ] Comparar heap snapshot pre vs post scan: las entries `Station`/`WorkboardsConnection`/`PartNumber__typename` no deben crecer monotónicamente.
+
+---
+
+# `validate-duplicate-params` 0.5.4 (2026-05-26, bump config 1.4.43) — Fix preferNull en duplicados + wrongSfp ruidoso por hermanos del Spec
+
+**Síntoma reportado durante validación 0.5.3 con CSV real:**
+
+Ejemplo PN 50416-1 (BRAININ DE MEXICO, Q=3879), Spec **RC Ni (Níquel)**:
+
+- **Espesor** (2 rows en server, ambos sfp `"10-13 µm"` — uno con processNode T109, otro NULL). CSV pide `"10-13 µm"`.
+  - Resultado 0.5.3: `archive 2 + insert NULL` ← INCORRECTO (archivaba el row NULL existente y reinsertaba un nuevo NULL).
+  - Esperado: `archive 1` (solo el row con processNode); el NULL ya existe.
+- **Adherencia / Aspecto Visual / Primeras Piezas / Instrumento de Medición** (BOOLEAN/single-option, sfp default).
+  - Resultado 0.5.3: `CSV pide "10-13 µm" → ⚠ wrongSfp` × 4 ← FALSO. El CSV nunca pretendió tocar esos SpecFields; el `wrongSfp: 4` inflaba el contador y mostraba ruido en preview.
+
+**Root cause — 2 bugs distintos en `dupCsvClassifyPN` (spec-migrator.js:3295-3406, ahora 3295-3458):**
+
+**Bug #1 — `.find()` no preferenciaba el row null entre matches por sfpName.**
+La línea original:
+```js
+wanted = g.rows.find(r => (r.sfpName || '').trim().toLowerCase() === csvLow) || null;
+```
+Cuando había 2 rows con el mismo sfpName (uno con processNode, otro NULL), `.find()` retornaba el primero según orden del response (típicamente el con processNode). Luego:
+```js
+for (const r of g.rows) {
+  if (r.rowId === wanted.rowId) continue;
+  toArchive.push(r);   // ← archiva el row NULL "como perdedor"
+}
+if (wanted.processNodeId) {
+  toArchive.push(wanted);                                  // archiva el row con processNode
+  wantedNullSfp = { sfpId: wanted.sfpId, ... };             // reinserta un NULL nuevo idéntico
+  status = 'processNodeRewrite';
+}
+```
+→ Acción: `archive [NULL viejo, processNode]` + insert NULL nuevo. El NULL deseado se destruye y se recrea, doblando el trabajo y el riesgo.
+
+**Bug #2 — `csvSpecMap` indexa por Spec pero el loop itera por SpecField.**
+El CSV V10 trae specs como `"NombreSpec | ParamValue"` en columnas AH(33)/AJ(35) — granularidad **Spec**, no SpecField. bulk-upload solo especifica param para el SpecField que tiene múltiples opciones (típicamente Espesor); los hermanos del Spec (BOOLEAN, single-option) son implícitos. El loop original:
+```js
+for (const [sfId, g] of liveBySpecField) {
+  const specKey = (g.specName || '').trim().toLowerCase();   // ← match por Spec
+  const cs = csvSpecMap.get(specKey);
+  if (!cs) continue;
+  const csvParam = (cs.param || '').trim();                  // todos heredan "10-13 µm"
+  ...
+  if (!wanted) status = 'wrongSfp';
+}
+```
+Todos los SpecFields del Spec "RC Ni (Níquel)" heredaban el mismo csvParam `"10-13 µm"`. Adherencia es BOOLEAN ("Sí o No"), no matcheaba → `wrongSfp` falso × N hermanos. Costo: ruido visual + trabajo extra cuando el aplicador filtra por `wrongSfp`.
+
+**Fix — refactor de `dupCsvClassifyPN`:**
+
+1. **`liveBySpec`** = nuevo Map agrupando SpecFields del live por su Spec padre.
+2. **Loop principal por entries del CSV** (no por SpecField del live).
+3. **Identificación de target dentro del Spec**: por cada `cs`, encontrar el único SpecField del Spec cuyo catalog vivo (sfpNames) contenga el csvParam. Ese es el target.
+   - Si **ninguno** contiene el csvParam → `wrongSfp` REAL, reportado **una sola vez por Spec** (no por cada hermano).
+   - Si **uno** contiene el csvParam → ese es target; los demás SpecFields del Spec se procesan como hermanos con `effParam=''`.
+4. **Selección de wanted** (Bug #1 fix): entre matches por sfpName, preferir el row con `!processNodeId`:
+   ```js
+   wanted = matches.find(r => !r.processNodeId) || matches[0] || null;
+   ```
+5. **Hermanos del Spec** (Bug #2 fix): se validan con `effParam=''`:
+   - 1 row vivo → ese es wanted (caso default).
+   - 2+ rows con sfpName idéntico (BOOLEAN duplicado por processNode) → preferir NULL.
+   - 2+ rows con sfpNames distintos sin param explícito → **sin opinión sólida, no se reporta** (vs antes que entraba a `wrongSfp` ruidoso).
+
+**Trace del caso PN 50416-1 post-fix:**
+
+| SpecField | Rows vivos | Es target? | Acción nueva |
+|---|---|---|---|
+| Espesor | A "10-13 µm" + T109; B "10-13 µm" + null | Sí | `wanted=B`, toArchive=[A], `duplicateRemove` (1 archive, sin insert) |
+| Adherencia (1 row null) | "Sí o No" null | No | `wanted=row`, status='ok' → no reportado |
+| Adherencia (2 rows dup) | "Sí o No"+T109, "Sí o No"+null | No | sfpNames size=1 → wanted=null, archive [T109], `duplicateRemove` |
+| Aspecto Visual / Primeras Piezas / Instrumento | similar | No | igual a Adherencia |
+
+Eliminados los 4 `wrongSfp` falsos del caso original. Para Espesor, la acción pasa de `archive 2 + insert NULL` a `archive 1` (el correcto).
+
+**Cambios:**
+
+- `remote/scripts/spec-migrator.js:3293-3458` — refactor completo de `dupCsvClassifyPN`. Nuevo `liveBySpec` Map. Loop principal por `csvPart.specs` (no por SpecField). Resolución de `targetSfId` por catalog match. PreferNULL en `wanted`. Hermanos sin opinión sólida ya no se reportan.
+- Header del action: `0.5.3` → `0.5.4`.
+- `remote/config.json`: `1.4.42` → `1.4.43`.
+
+**Lecciones:**
+
+- **`.find()` con criterio incompleto = bug latente.** Cualquier vez que filtres rows del modelo "1 alive null por SpecField", la regla canónica es **preferir el null** explícitamente. Hay que checar otros validators (audit-incomplete-pns, dupAutoWinner) con la misma regla.
+- **CSV Spec vs Live SpecField son granularidades distintas.** El CSV V10 viene en "Spec | param" y el modelo de Steelhead tiene Spec → SpecField → SpecFieldParam. Cualquier matcher que cruce esos niveles debe **resolver el target en una pasada** y validar los hermanos con criterios distintos, no heredar ciegamente el param.
+- **`wrongSfp` debe ser real, no ruido.** Cuando el counter dice `wrongSfp: 4` debe significar "el CSV pide 4 cosas imposibles", no "4 SpecFields ajenos heredaron mal el param del CSV". Inflar el counter hace que el operador pierda confianza en el preview.
+- **Status `duplicateRemove` no inserta NULL.** Ya era así desde 0.5.0 (línea 3589: `if (i.wantedNullSfp) paramsToApply.push(...)`), pero el bug #1 lo evitaba al forzar `processNodeRewrite`. El fix simplemente devuelve el control a la rama correcta.
+
+**Plan de validación pendiente:**
+
+- [ ] Re-correr el mismo CSV que produjo el caso 50416-1. En el preview, debe aparecer solo Espesor con `duplicateRemove: archive 1` y nada de wrongSfp ruidoso.
+- [ ] Confirmar que el counter de `wrongSfp` baja drásticamente (los wrongSfp reportados ahora deben ser casos reales: csvParam que no existe en ningún SpecField del Spec).
+- [ ] Comparar el preview total: el número de `archives` debe bajar (no más doble-archive del row null correcto) y el número de `inserts NULL` también (no más insert redundante).
+- [ ] Aplicar a un PN de prueba y verificar en UI Steelhead que el row null sigue intacto (no fue archivado y reemplazado).
+
+**Pendientes derivados:**
+
+- Auditar `dupComputeAutoWinner` (modo no-CSV) por la misma regla preferNull entre matches con sfpName igual.
+- Si en validación encuentran que hermanos del Spec con `csvParam` heredado SÍ tenían que limpiarse (caso no contemplado): re-evaluar la condición `if (!effParam && sfpNames.size !== 1)` que hoy queda en "sin opinión".
