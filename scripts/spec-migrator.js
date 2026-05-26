@@ -2111,10 +2111,16 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.0)
-  //  Detecta PNs con >1 param activo por (partNumberSpecId, specFieldId),
-  //  permite elegir cuál conservar y archivar el resto vía
-  //  UpdatePartNumberSpecParam{archivedAt:ISO} (reversible con null).
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.1)
+  //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
+  //  la misma Spec, sin importar processNode/location), permite elegir cuál
+  //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
+  //  (reversible con null).
+  //
+  //  0.4.1: agrupación corregida — el response de GetPartNumber NO expone
+  //  partNumberSpecId en partNumberSpecFieldParamsByPartNumberId.nodes[]; se
+  //  navega specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.id.
+  //  La key (partNumberSpecId, specFieldId) de 0.4.0 era undefined → 0 detecciones.
   //
   //  Bundle: vive en spec-migrator (menú "Ajuste Masivo de Specs") porque es
   //  validación + corrección de specs ya aplicadas, no edición de parámetros.
@@ -2384,7 +2390,7 @@ const SpecMigrator = (() => {
       let detail = null;
       try {
         const data = await dupWithRetry(
-          () => api().query('GetPartNumber', { partNumberId: pn.id, usagesLimit: 0, usagesOffset: 0 }),
+          () => api().query('GetPartNumber', { partNumberId: pn.id }),
           `GetPartNumber ${pn.id}`
         );
         detail = data?.partNumberById;
@@ -2394,79 +2400,63 @@ const SpecMigrator = (() => {
       }
       if (!detail) return;
 
-      const pnSpecs = detail.partNumberSpecsByPartNumberId?.nodes || [];
       const allParams = detail.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
 
-      // Lookup: partNumberSpecId → { specId, specName, specIdInDomain }
-      const psMap = new Map();
-      for (const ps of pnSpecs) {
-        if (ps.archivedAt) continue;
-        const sp = ps.specBySpecId || {};
-        psMap.set(ps.id, {
-          specId: sp.id,
-          specName: sp.name || '',
-          specIdInDomain: sp.idInDomain || ps.id,
-        });
-      }
-
-      // Si hay filtro de spec, descartar PN si ninguna spec activa matchea
-      if (specFilterLow) {
-        const anyMatch = [...psMap.values()].some(s => (s.specName || '').toLowerCase().includes(specFilterLow));
-        if (!anyMatch) return;
-      }
-
-      // Agrupar params activos por (partNumberSpecId, specFieldId)
+      // Agrupar params activos por specFieldSpecId (= "este SpecField de esta Spec").
+      // El response NO expone partNumberSpecId en estos nodes, así que navegamos
+      // por specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.
       const buckets = new Map();
       for (const p of allParams) {
         if (p.archivedAt) continue;
-        if (!p.specFieldParamBySpecFieldParamId) continue;
-        const psId = p.partNumberSpecId;
-        const sfId = p.specFieldId;
-        if (!psId || !sfId) continue;
-        if (!psMap.has(psId)) continue;
-        const key = `${psId}|${sfId}`;
-        if (!buckets.has(key)) buckets.set(key, []);
-        buckets.get(key).push(p);
+        const sfp = p.specFieldParamBySpecFieldParamId;
+        if (!sfp) continue;
+        const sfs = sfp.specFieldSpecBySpecFieldSpecId;
+        if (!sfs?.id) continue;
+
+        const specName = sfs.specBySpecId?.name || '';
+        if (specFilterLow && !specName.toLowerCase().includes(specFilterLow)) continue;
+
+        const sfsId = sfs.id;
+        if (!buckets.has(sfsId)) {
+          buckets.set(sfsId, {
+            params: [],
+            specName,
+            specId: sfs.specBySpecId?.id || null,
+            specIdInDomain: sfs.specBySpecId?.idInDomain || null,
+            fieldName: sfs.specFieldBySpecFieldId?.name || '',
+            fieldId: sfs.specFieldBySpecFieldId?.id || p.specFieldId,
+          });
+        }
+        buckets.get(sfsId).params.push(p);
       }
 
-      // Filtrar buckets con >1, además respetar filtro de spec en grupo
-      for (const [key, params] of buckets) {
-        if (params.length < 2) continue;
-        const [psIdStr, sfIdStr] = key.split('|');
-        const psInfo = psMap.get(Number(psIdStr));
-        if (specFilterLow && !(psInfo.specName || '').toLowerCase().includes(specFilterLow)) continue;
-
-        // Resolver nombre del SpecField vía el primer spec match en pnSpecs
-        let fieldName = '';
-        for (const ps of pnSpecs) {
-          if (ps.id !== Number(psIdStr)) continue;
-          const sfs = ps.specBySpecId?.specFieldSpecsBySpecId?.nodes || [];
-          const f = sfs.find(sf => sf.specFieldBySpecFieldId?.id === Number(sfIdStr));
-          if (f) { fieldName = f.specFieldBySpecFieldId?.name || ''; break; }
-        }
-
-        const sorted = [...params].sort((a, b) => Number(b.id) - Number(a.id));
+      for (const [sfsId, bucket] of buckets) {
+        if (bucket.params.length < 2) continue;
+        const sorted = [...bucket.params].sort((a, b) => Number(b.id) - Number(a.id));
         const winnerRowId = sorted[0].id;
 
         groups.push({
-          key: `${pn.id}-${key}`,
+          key: `${pn.id}-${sfsId}`,
           pnId: pn.id,
           pnName: pn.name || '',
           customer: pn.customerByCustomerId?.name || '',
-          partNumberSpecId: Number(psIdStr),
-          specName: psInfo.specName,
-          specIdInDomain: psInfo.specIdInDomain,
-          fieldId: Number(sfIdStr),
-          fieldName,
+          specFieldSpecId: sfsId,
+          specName: bucket.specName,
+          specId: bucket.specId,
+          specIdInDomain: bucket.specIdInDomain,
+          fieldId: bucket.fieldId,
+          fieldName: bucket.fieldName,
           params: sorted.map(p => ({
             rowId: p.id,
             sfpId: p.specFieldParamBySpecFieldParamId?.id ?? null,
             sfpName: p.specFieldParamBySpecFieldParamId?.name || '(sin nombre)',
             processNodeId: p.processNodeId || null,
+            processNodeOccurrence: p.processNodeOccurrence || null,
+            locationId: p.locationId || null,
           })),
         });
 
-        dupState.decisions.set(`${pn.id}-${key}`, { winnerRowId, ignored: false });
+        dupState.decisions.set(`${pn.id}-${sfsId}`, { winnerRowId, ignored: false });
       }
     }, 6, (done, total) => {
       if (progMsg2) progMsg2.textContent = `${done}/${total} PNs revisados — ${groups.length} grupos duplicados`;
