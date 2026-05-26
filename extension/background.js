@@ -71,7 +71,8 @@ async function injectAppScripts(tabId, appId) {
           'scripts/receiver-date-override.js': 'ReceiverDateOverride',
           'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill',
           'scripts/spec-shared.js': 'SpecShared',
-          'scripts/spec-params-bulk.js': 'SpecParamsBulk' };
+          'scripts/spec-params-bulk.js': 'SpecParamsBulk',
+          'scripts/duplicate-tiers.js': 'SADuplicateTiers' };
         const globalName = globals[path];
         // Skip si ya está cargado CON la misma version
         if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
