@@ -2111,11 +2111,17 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.3)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.0)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
   //  (reversible con null).
+  //
+  //  0.5.0: modo CSV — el usuario carga el CSV de bulk-upload y el validator
+  //  resuelve pnIds (multi-cliente + dedup QuoteIBMS), detecta issues por PN
+  //  (duplicados + processNode no-null + sfp distinto al CSV) y aplica corrección
+  //  vía SavePartNumber (archive perdedores + insert NULL del wanted). Sin
+  //  re-correr toda la carga masiva.
   //
   //  0.4.1: agrupación corregida — el response de GetPartNumber NO expone
   //  partNumberSpecId en partNumberSpecFieldParamsByPartNumberId.nodes[]; se
@@ -2324,6 +2330,15 @@ const SpecMigrator = (() => {
       <div style="font-size:11px;color:#9ca3af;margin-top:6px">
         Aviso: escanear sin filtros revisa todos los PNs activos (puede tardar varios minutos).
       </div>
+      <div style="background:#0f172a;border:1px dashed #334155;border-radius:6px;padding:8px 10px;margin-top:10px">
+        <div style="font-size:12px;color:#a78bfa;font-weight:600;margin-bottom:4px">⚡ Modo CSV (opcional)</div>
+        <div style="font-size:11px;color:#cbd5e1;margin-bottom:6px">
+          Carga el CSV de bulk-upload original. El validator resolverá los PNs (multi-cliente + dedup por QuoteIBMS), detectará issues vs CSV y corregirá vía SavePartNumber sin re-correr la carga masiva.
+          <br><span style="color:#9ca3af">Si cargas CSV, los filtros cliente/spec arriba se ignoran.</span>
+        </div>
+        <input type="file" data-ctrl="dup-csv-file" accept=".csv,text/csv" style="font-size:11px;color:#cbd5e1">
+        <div data-ctrl="dup-csv-status" style="font-size:11px;color:#9ca3af;margin-top:4px"></div>
+      </div>
     `);
     dupSetFooter(`
       <span class="dup-counter">Listo</span>
@@ -2333,11 +2348,29 @@ const SpecMigrator = (() => {
       </div>
     `);
     dupState.panelEl.querySelector('[data-act=dup-cancel]')?.addEventListener('click', () => dupClosePanel());
+
+    const csvInput = dupState.panelEl.querySelector('[data-ctrl=dup-csv-file]');
+    const csvStatus = dupState.panelEl.querySelector('[data-ctrl=dup-csv-status]');
+    let csvFile = null;
+    csvInput?.addEventListener('change', (ev) => {
+      csvFile = ev.target.files?.[0] || null;
+      if (csvStatus) {
+        csvStatus.textContent = csvFile
+          ? `✓ ${csvFile.name} (${Math.round(csvFile.size / 1024)} KB)`
+          : '';
+      }
+    });
+
     dupState.panelEl.querySelector('[data-act=dup-start]')?.addEventListener('click', async () => {
       dupState.customerFilter = dupState.panelEl.querySelector('[data-ctrl=dup-cust]')?.value?.trim() || '';
       dupState.specFilter = dupState.panelEl.querySelector('[data-ctrl=dup-spec]')?.value?.trim() || '';
       try {
-        await dupRunScan(myRunId);
+        if (csvFile) {
+          const csvText = await csvFile.text();
+          await dupRunScanFromCsv(myRunId, csvText, csvFile.name);
+        } else {
+          await dupRunScan(myRunId);
+        }
       } catch (e) {
         if (dupState.runId !== myRunId) return;
         dupSetBody(`<div class="dup-error">Error en escaneo: ${dupEscHtml(e.message)}</div>`);
@@ -2900,6 +2933,622 @@ const SpecMigrator = (() => {
     const ws = window.XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
     window.XLSX.utils.book_append_sheet(wb, ws, name);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CSV-MODE (0.5.0) — validar PNs contra CSV de bulk-upload
+  // ═══════════════════════════════════════════════════════════
+
+  // Parser idéntico a bulk-upload.parseCSV (RFC 4180-ish con escape ""/separador ,).
+  function dupCsvParseCSV(text) {
+    const rows = []; let i = 0;
+    while (i < text.length) {
+      const row = [];
+      while (i < text.length) {
+        if (text[i] === '"') {
+          i++; let v = '';
+          while (i < text.length) {
+            if (text[i] === '"') { if (text[i + 1] === '"') { v += '"'; i += 2; } else { i++; break; } }
+            else { v += text[i]; i++; }
+          }
+          row.push(v);
+        } else {
+          let v = '';
+          while (i < text.length && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') { v += text[i]; i++; }
+          row.push(v);
+        }
+        if (text[i] === ',') { i++; continue; } else break;
+      }
+      if (text[i] === '\r') i++;
+      if (text[i] === '\n') i++;
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  // Extrae solo lo que el validator necesita del V10: pn(F=5), customer(E=4),
+  // quoteIBMS(BK=62), specs (AH=33 + AJ=35 con " | " split).
+  function dupCsvParseRows(rows) {
+    const get = (row, idx) => (row[idx] || '').toString().trim();
+    const parts = [];
+    for (const row of rows) {
+      const colA = (row[0] || '').trim();
+      const colF = (row[5] || '').trim();
+      if (colA === 'PARÁMETROS' || colA === 'Archivado' || colA === 'V/F') continue;
+      if (colF === 'Texto' || colF.replace(/\s+/g, ' ').toLowerCase() === 'número de parte') continue;
+      const pn = get(row, 5);
+      if (!pn) continue;
+      const customer = get(row, 4);
+      const quoteIBMS = get(row, 62);
+      const specs = [];
+      for (const idx of [33, 35]) {
+        const raw = get(row, idx);
+        if (!raw) continue;
+        if (raw.includes(' | ')) {
+          const s = raw.indexOf(' | ');
+          specs.push({ name: raw.substring(0, s).trim(), param: raw.substring(s + 3).trim() });
+        } else {
+          specs.push({ name: raw, param: '' });
+        }
+      }
+      parts.push({ pn, customer, quoteIBMS, specs });
+    }
+    return parts;
+  }
+
+  // Resolución multi-cliente con dedup QuoteIBMS:
+  //   1. Fetch AllPartNumbers global (customer + name + customInputs en cada nodo).
+  //   2. Index por `customerUpper|pnUpper` → array de nodos.
+  //   3. Por cada csvPart: 0 candidates → unresolved; 1 → directo; 2+ → match
+  //      por QuoteIBMS del CSV vs customInputs.DatosAdicionalesNP.QuoteIBMS del server.
+  async function dupCsvResolvePnIds(csvParts, myRunId, onPhase) {
+    onPhase?.('Pre-fetch AllPartNumbers…', 0, 0);
+    const allNodes = [];
+    let offset = 0;
+    const PAGE = 500;
+    while (true) {
+      if (dupState.runId !== myRunId) return null;
+      const data = await dupWithRetry(
+        () => api().query('AllPartNumbers',
+          { orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: '' },
+          'AllPartNumbers'),
+        `AllPartNumbers offset=${offset}`
+      );
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        if (n.archivedAt) continue;
+        allNodes.push(n);
+      }
+      onPhase?.(`Pre-fetch AllPartNumbers (offset ${offset}, ${allNodes.length} activos)…`, offset, 0);
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    const index = new Map();
+    for (const n of allNodes) {
+      const cust = (n.customerByCustomerId?.name || '').trim().toUpperCase();
+      const name = (n.name || '').trim().toUpperCase();
+      if (!cust || !name) continue;
+      const k = `${cust}|${name}`;
+      if (!index.has(k)) index.set(k, []);
+      index.get(k).push(n);
+    }
+
+    const resolved = []; // { csvPart, pnNode }
+    const unresolved = []; // { csvPart, reason }
+    const ambiguousByQuote = []; // info-only
+    let i = 0;
+    for (const cp of csvParts) {
+      i++;
+      if (i % 200 === 0) onPhase?.(`Resolviendo pnIds (${i}/${csvParts.length})…`, i, csvParts.length);
+      const k = `${cp.customer.trim().toUpperCase()}|${cp.pn.trim().toUpperCase()}`;
+      const cands = index.get(k) || [];
+      if (cands.length === 0) { unresolved.push({ csvPart: cp, reason: 'no encontrado' }); continue; }
+      if (cands.length === 1) { resolved.push({ csvPart: cp, pnNode: cands[0] }); continue; }
+      // 2+ candidates: dedup por QuoteIBMS
+      const csvQ = (cp.quoteIBMS || '').trim();
+      if (!csvQ) {
+        unresolved.push({ csvPart: cp, reason: `${cands.length} candidatos sin QuoteIBMS en CSV` });
+        continue;
+      }
+      const matches = cands.filter(n => {
+        const ci = (typeof n.customInputs === 'string')
+          ? (() => { try { return JSON.parse(n.customInputs); } catch { return null; } })()
+          : (n.customInputs || null);
+        const srvQ = (ci?.DatosAdicionalesNP?.QuoteIBMS || '').trim();
+        return srvQ === csvQ;
+      });
+      if (matches.length === 1) {
+        resolved.push({ csvPart: cp, pnNode: matches[0] });
+        ambiguousByQuote.push({ pn: cp.pn, customer: cp.customer, quoteIBMS: csvQ, resolvedId: matches[0].id });
+      } else if (matches.length === 0) {
+        unresolved.push({ csvPart: cp, reason: `${cands.length} candidatos, ninguno con QuoteIBMS=${csvQ}` });
+      } else {
+        unresolved.push({ csvPart: cp, reason: `${matches.length} candidatos con mismo QuoteIBMS=${csvQ}` });
+      }
+    }
+    return { resolved, unresolved, ambiguousByQuote, totalNodes: allNodes.length };
+  }
+
+  // Orquesta: parse → resolve → GetPartNumber → clasificar → render.
+  async function dupRunScanFromCsv(myRunId, csvText, fileName) {
+    dupSetBody(`<div class="dup-progress">
+      Modo CSV: <b>${dupEscHtml(fileName || 'archivo')}</b>
+      <div data-ctrl="prog-msg">Parseando CSV…</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-cancel-run">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-cancel-run]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const progMsg = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+    const setProg = (msg, done, total) => {
+      if (dupState.runId !== myRunId) return;
+      if (progMsg) progMsg.textContent = msg;
+      if (progBar && total > 0) progBar.style.width = `${Math.min(100, (done / total) * 100)}%`;
+    };
+
+    const rows = dupCsvParseCSV(csvText);
+    const csvParts = dupCsvParseRows(rows);
+    if (!csvParts.length) {
+      dupSetBody(`<div class="dup-error">CSV no contiene filas válidas (¿formato V10 con columna F=PN?).</div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-err">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-err]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+    log(`[SPM-dup-csv] CSV parsed: ${csvParts.length} PNs`);
+
+    setProg('Resolviendo pnIds…', 0, csvParts.length);
+    const resolution = await dupCsvResolvePnIds(csvParts, myRunId, (m, d, t) => setProg(m, d, t));
+    if (!resolution) return;
+    if (dupState.runId !== myRunId) return;
+    log(`[SPM-dup-csv] Resolución: ${resolution.resolved.length}/${csvParts.length} resueltos, ${resolution.unresolved.length} unresolved, ${resolution.ambiguousByQuote.length} dedup por QuoteIBMS, ${resolution.totalNodes} nodos activos en server`);
+
+    if (!resolution.resolved.length) {
+      dupSetBody(`<div class="dup-error">
+        Ningún PN del CSV pudo resolverse contra el server.<br>
+        ${resolution.unresolved.length} unresolved. Primeros: ${
+          resolution.unresolved.slice(0, 5).map(u => dupEscHtml(`${u.csvPart.customer}|${u.csvPart.pn} (${u.reason})`)).join(' · ')
+        }
+      </div>`);
+      dupSetFooter(`<button class="dup-btn" data-act="dup-close-err">Cerrar</button>`);
+      dupState.panelEl.querySelector('[data-act=dup-close-err]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    // Fase 3: GetPartNumber por PN resuelto y clasificación.
+    setProg(`Revisando ${resolution.resolved.length} PNs (concurrencia 6)…`, 0, resolution.resolved.length);
+    const items = [];
+    const fetchErrors = [];
+
+    await dupRunPool(resolution.resolved, async (r) => {
+      if (dupState.runId !== myRunId) return;
+      let detail = null;
+      try {
+        const data = await dupWithRetry(
+          () => api().query('GetPartNumber', { partNumberId: r.pnNode.id }),
+          `GetPartNumber ${r.pnNode.id}`
+        );
+        detail = data?.partNumberById;
+      } catch (e) {
+        fetchErrors.push({ pnId: r.pnNode.id, pnName: r.pnNode.name, error: e?.message || String(e) });
+        return;
+      }
+      if (!detail) return;
+
+      const item = dupCsvClassifyPN(r.csvPart, r.pnNode, detail);
+      if (item) items.push(item);
+    }, 6, (done, total) => {
+      setProg(`${done}/${total} PNs revisados — ${items.length} con issues`, done, total);
+    });
+
+    if (dupState.runId !== myRunId) return;
+    log(`[SPM-dup-csv] Scan OK: ${items.length} PNs con issues / ${resolution.resolved.length} resueltos`);
+
+    dupState.csvItems = items;
+    dupState.csvUnresolved = resolution.unresolved;
+    dupState.csvFetchErrors = fetchErrors;
+    dupState.csvFileName = fileName;
+    dupState.csvSelections = new Map();
+    for (const it of items) dupState.csvSelections.set(it.pnId, true);
+
+    dupRenderCsvResults(myRunId);
+  }
+
+  // Para un PN: agrupa rows vivos por specFieldId, matchea contra CSV y devuelve
+  // shape { pnId, pnName, customer, quoteIBMS, issues[] } o null si no hay issues.
+  function dupCsvClassifyPN(csvPart, pnNode, detail) {
+    const allParams = detail.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+    const liveBySpecField = new Map();
+    for (const p of allParams) {
+      if (p.archivedAt || !p.specFieldParamBySpecFieldParamId) continue;
+      const sfp = p.specFieldParamBySpecFieldParamId;
+      const sfs = sfp.specFieldSpecBySpecFieldSpecId;
+      const sfId = sfs?.specFieldBySpecFieldId?.id;
+      if (!sfId) continue;
+      const sfName = sfs.specFieldBySpecFieldId?.name || '';
+      const specName = sfs.specBySpecId?.name || '';
+      const specId = sfs.specBySpecId?.id || null;
+      if (!liveBySpecField.has(sfId)) liveBySpecField.set(sfId, { sfId, sfName, specName, specId, rows: [] });
+      liveBySpecField.get(sfId).rows.push({
+        rowId: p.id,
+        sfpId: sfp.id,
+        sfpName: sfp.name || '(sin nombre)',
+        processNodeId: p.processNodeId || null,
+      });
+    }
+
+    // Index CSV specs por nombre normalizado (case-insensitive, trim) para matchear
+    // contra fieldName/specName del live.
+    const csvSpecMap = new Map();
+    for (const cs of csvPart.specs) {
+      if (!cs.name || cs.name === '-') continue;
+      const k = cs.name.trim().toLowerCase();
+      csvSpecMap.set(k, cs);
+    }
+
+    const issues = [];
+    for (const [sfId, g] of liveBySpecField) {
+      const specKey = (g.specName || '').trim().toLowerCase();
+      const cs = csvSpecMap.get(specKey);
+      if (!cs) continue; // El CSV no menciona esta Spec → no podemos opinar.
+      const csvParam = (cs.param || '').trim();
+      const hasDup = g.rows.length > 1;
+      const hasProc = g.rows.some(r => r.processNodeId);
+
+      // Matchear el wanted del CSV contra los rows vivos (por sfpName, case-insensitive).
+      let wanted = null;
+      if (csvParam) {
+        const csvLow = csvParam.toLowerCase();
+        wanted = g.rows.find(r => (r.sfpName || '').trim().toLowerCase() === csvLow) || null;
+      } else {
+        // CSV sin param explícito (params.length===1 en el catálogo). Si hay 1 row vivo,
+        // ese es el wanted automáticamente; si hay 2+ es ambigüedad.
+        if (g.rows.length === 1) wanted = g.rows[0];
+      }
+
+      let status, toArchive = [], wantedNullSfp = null;
+      if (!wanted) {
+        // No matchea ningún sfpName del live: el sfp del CSV no está en BD.
+        // No podemos insertar sin conocer el sfpId del catálogo → solo flagear.
+        status = 'wrongSfp';
+      } else {
+        // El wanted está vivo. Archive perdedores (sfp distinto) + wanted-con-processNode.
+        for (const r of g.rows) {
+          if (r.rowId === wanted.rowId) continue;
+          toArchive.push(r);
+        }
+        // El wanted: si tiene processNode → archive + insert NULL.
+        if (wanted.processNodeId) {
+          toArchive.push(wanted);
+          wantedNullSfp = { sfpId: wanted.sfpId, sfpName: wanted.sfpName };
+          status = 'processNodeRewrite';
+        } else if (hasDup || hasProc) {
+          status = 'duplicateRemove';
+        } else {
+          status = 'ok';
+        }
+      }
+
+      if (status === 'ok') continue;
+      issues.push({
+        specFieldId: sfId,
+        specFieldName: g.sfName,
+        specName: g.specName,
+        csvParam: csvParam || '(default)',
+        liveRows: g.rows,
+        wanted,
+        toArchive,
+        wantedNullSfp, // {sfpId, sfpName} si necesitamos reinsertar NULL
+        status,
+      });
+    }
+
+    if (!issues.length) return null;
+    return {
+      pnId: pnNode.id,
+      pnName: pnNode.name,
+      customer: pnNode.customerByCustomerId?.name || csvPart.customer,
+      quoteIBMS: csvPart.quoteIBMS,
+      detail, // referencia para SavePartNumber
+      issues,
+    };
+  }
+
+  function dupRenderCsvResults(myRunId) {
+    const items = dupState.csvItems || [];
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+
+    const stats = document.createElement('div');
+    stats.className = 'dup-stats';
+    const totalIssues = items.reduce((s, it) => s + it.issues.length, 0);
+    const wrongSfp = items.reduce((s, it) => s + it.issues.filter(i => i.status === 'wrongSfp').length, 0);
+    const totalArchive = items.reduce((s, it) => s + it.issues.reduce((ss, i) => ss + i.toArchive.length, 0), 0);
+    const totalInsert = items.reduce((s, it) => s + it.issues.filter(i => i.wantedNullSfp).length, 0);
+    const mk = (lbl, val, color) => {
+      const span = document.createElement('span');
+      const b = document.createElement('b');
+      if (color) b.style.color = color;
+      b.textContent = String(val);
+      span.appendChild(document.createTextNode(`${lbl}: `));
+      span.appendChild(b);
+      return span;
+    };
+    stats.appendChild(mk('PNs con issues', items.length));
+    stats.appendChild(mk('Issues totales', totalIssues));
+    stats.appendChild(mk('Rows a archivar', totalArchive, '#fca5a5'));
+    stats.appendChild(mk('NULL a insertar', totalInsert, '#6ee7b7'));
+    if (wrongSfp) stats.appendChild(mk('wrongSfp (no aplicables)', wrongSfp, '#fbbf24'));
+    if (dupState.csvUnresolved?.length) stats.appendChild(mk('PNs unresolved', dupState.csvUnresolved.length, '#9ca3af'));
+    if (dupState.csvFetchErrors?.length) stats.appendChild(mk('Errores fetch', dupState.csvFetchErrors.length, '#fca5a5'));
+    body.appendChild(stats);
+
+    const info = document.createElement('div');
+    info.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#cbd5e1';
+    info.innerHTML = `Modo CSV: <b>${dupEscHtml(dupState.csvFileName || 'archivo')}</b>. El validator compara cada PN contra su fila del CSV y aplica corrección vía <code>SavePartNumber</code>. <span style="color:#fbbf24">wrongSfp</span> = el CSV pide un param que no está vivo en el PN (no se inserta sin re-correr bulk-upload). Deselecciona PNs específicos antes de Aplicar.`;
+    body.appendChild(info);
+
+    if (!items.length) {
+      const ok = document.createElement('div');
+      ok.className = 'dup-success';
+      ok.textContent = '✓ Ningún PN del CSV requiere corrección (todos cumplen la regla 1.4.38).';
+      body.appendChild(ok);
+      dupSetFooter(`
+        <span class="dup-counter">Listo</span>
+        <div style="display:flex;gap:6px">
+          <button class="dup-btn dup-btn-ghost" data-act="dup-back">← Filtros</button>
+          <button class="dup-btn" data-act="dup-close-ok">Cerrar</button>
+        </div>
+      `);
+      dupState.panelEl.querySelector('[data-act=dup-back]')?.addEventListener('click', () => {
+        dupState.runId++;
+        runDuplicateParamsValidator();
+      });
+      dupState.panelEl.querySelector('[data-act=dup-close-ok]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'max-height:48vh;overflow-y:auto;border:1px solid #374151;border-radius:6px';
+    const table = document.createElement('table');
+    table.className = 'dup-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Aplicar', 'PN', 'Cliente', 'Issues', 'Preview'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const it of items) {
+      const tr = document.createElement('tr');
+      tr.dataset.pnid = String(it.pnId);
+
+      const tdAp = document.createElement('td');
+      tdAp.style.textAlign = 'center';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = dupState.csvSelections.get(it.pnId) !== false;
+      cb.disabled = it.issues.every(i => i.status === 'wrongSfp'); // wrongSfp puro → no aplicable
+      if (cb.disabled) cb.checked = false;
+      cb.addEventListener('change', () => {
+        dupState.csvSelections.set(it.pnId, cb.checked);
+        dupUpdateCsvFooter();
+      });
+      tdAp.appendChild(cb);
+      tr.appendChild(tdAp);
+
+      const tdPn = document.createElement('td');
+      const pname = document.createElement('div');
+      pname.className = 'pname';
+      pname.textContent = it.pnName;
+      const pmeta = document.createElement('div');
+      pmeta.className = 'pmeta';
+      pmeta.textContent = `#${it.pnId}${it.quoteIBMS ? ` · Q=${it.quoteIBMS}` : ''}`;
+      tdPn.appendChild(pname);
+      tdPn.appendChild(pmeta);
+      tr.appendChild(tdPn);
+
+      const tdC = document.createElement('td');
+      tdC.textContent = it.customer;
+      tr.appendChild(tdC);
+
+      const tdIs = document.createElement('td');
+      const statusCounts = {};
+      for (const i of it.issues) statusCounts[i.status] = (statusCounts[i.status] || 0) + 1;
+      const statusLine = Object.entries(statusCounts).map(([k, v]) => {
+        const color = k === 'wrongSfp' ? '#fbbf24' : (k === 'processNodeRewrite' ? '#a78bfa' : '#fca5a5');
+        return `<span style="color:${color}">${k}: ${v}</span>`;
+      }).join(' · ');
+      tdIs.innerHTML = statusLine;
+      tr.appendChild(tdIs);
+
+      const tdPv = document.createElement('td');
+      const preview = document.createElement('div');
+      preview.style.cssText = 'font-size:10px;color:#cbd5e1;max-width:380px;line-height:1.4';
+      preview.innerHTML = it.issues.map(i => {
+        const label = i.status === 'wrongSfp'
+          ? `<span style="color:#fbbf24">⚠ wrongSfp</span>`
+          : `archive ${i.toArchive.length}${i.wantedNullSfp ? ' + insert NULL' : ''}`;
+        return `<div><b>${dupEscHtml(i.specName)} · ${dupEscHtml(i.specFieldName)}</b> → CSV pide "<i>${dupEscHtml(i.csvParam)}</i>" → ${label}</div>`;
+      }).join('');
+      tdPv.appendChild(preview);
+      tr.appendChild(tdPv);
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+
+    dupSetFooter(`
+      <span class="dup-counter" data-ctrl="dup-csv-foot"></span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn dup-btn-ghost" data-act="dup-back">← Filtros</button>
+        <button class="dup-btn dup-btn-danger" data-act="dup-csv-apply">Aplicar a seleccionados</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-back]')?.addEventListener('click', () => {
+      dupState.runId++;
+      runDuplicateParamsValidator();
+    });
+    dupState.panelEl.querySelector('[data-act=dup-csv-apply]')?.addEventListener('click', async () => {
+      if (!confirm('Esto aplicará SavePartNumber a los PNs seleccionados (archive + insert NULL). ¿Continuar?')) return;
+      await dupRunApplyCsv(myRunId);
+    });
+    dupUpdateCsvFooter();
+  }
+
+  function dupUpdateCsvFooter() {
+    const ftr = dupState.panelEl?.querySelector('[data-ctrl=dup-csv-foot]');
+    if (!ftr) return;
+    let sel = 0, totalArch = 0, totalIns = 0;
+    for (const it of (dupState.csvItems || [])) {
+      if (dupState.csvSelections.get(it.pnId) === false) continue;
+      if (it.issues.every(i => i.status === 'wrongSfp')) continue;
+      sel++;
+      for (const i of it.issues) {
+        if (i.status === 'wrongSfp') continue;
+        totalArch += i.toArchive.length;
+        if (i.wantedNullSfp) totalIns++;
+      }
+    }
+    ftr.textContent = `${sel} PNs seleccionados · ${totalArch} archives · ${totalIns} inserts NULL`;
+  }
+
+  // Apply CSV-mode: 1 SavePartNumber por PN seleccionado, con paramsToApply
+  // (insert NULL del wantedNullSfp) + partNumberSpecFieldParamsToArchive
+  // agregados de TODOS sus issues. Mismo shape que bulk-upload STEP 6b.
+  async function dupRunApplyCsv(parentRunId) {
+    const myRunId = ++dupState.runId;
+    void parentRunId;
+
+    const tasks = [];
+    for (const it of (dupState.csvItems || [])) {
+      if (dupState.csvSelections.get(it.pnId) === false) continue;
+      if (it.issues.every(i => i.status === 'wrongSfp')) continue;
+      const archiveIds = [];
+      const paramsToApply = [];
+      for (const i of it.issues) {
+        if (i.status === 'wrongSfp') continue;
+        for (const r of i.toArchive) archiveIds.push(Number(r.rowId));
+        if (i.wantedNullSfp) {
+          paramsToApply.push({
+            specFieldId: Number(i.specFieldId),
+            specFieldParamId: Number(i.wantedNullSfp.sfpId),
+            isGeneric: false,
+            geometryTypeSpecFieldId: null,
+            processNodeId: null,
+            processNodeOccurrence: null,
+            locationId: null,
+          });
+        }
+      }
+      if (!archiveIds.length && !paramsToApply.length) continue;
+      tasks.push({ item: it, archiveIds, paramsToApply });
+    }
+
+    if (!tasks.length) {
+      alert('No hay nada que aplicar (todos los PNs seleccionados son wrongSfp o ya están OK).');
+      return;
+    }
+
+    dupSetBody(`<div class="dup-progress">
+      Aplicando SavePartNumber a ${tasks.length} PNs (concurrencia 3)…
+      <div data-ctrl="prog-msg">0/${tasks.length}</div>
+      <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Cancelar</button>`);
+    dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
+      dupState.runId++;
+      dupClosePanel();
+    });
+    const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const okRows = [];
+    const errRows = [];
+    let processed = 0;
+
+    await dupRunPool(tasks, async (t) => {
+      if (dupState.runId !== myRunId) return;
+      const d = t.item.detail;
+      const input = {
+        id: t.item.pnId,
+        name: d.name,
+        customerId: d.customerId || d.customerByCustomerId?.id,
+        defaultProcessNodeId: d.defaultProcessNodeId || null,
+        inputSchemaId: d.inputSchemaId || null,
+        customInputs: d.customInputs || {},
+        geometryTypeId: d.geometryTypeId || null,
+        userFileName: null,
+        inventoryItemInput: null,
+        glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
+        isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
+        partNumberGroupId: d.partNumberGroupId || null,
+        descriptionMarkdown: d.descriptionMarkdown || '',
+        customerFacingNotes: d.customerFacingNotes || '',
+        labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
+        inventoryPredictedUsages: [],
+        specsToApply: [],
+        paramsToApply: t.paramsToApply,
+        partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+        partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+        partNumberSpecFieldParamsToArchive: t.archiveIds,
+        partNumberSpecFieldParamsToUnarchive: [],
+        partNumberSpecClassificationsToUpdate: [],
+        partNumberSpecFieldParamUpdates: [],
+        specFieldParamUpdates: [],
+      };
+      try {
+        await dupWithRetry(
+          () => api().query('SavePartNumber', { input: [input] }, 'SavePartNumber'),
+          `SavePartNumber csv-fix ${t.item.pnId}`
+        );
+        okRows.push({ pnId: t.item.pnId, pnName: t.item.pnName, archived: t.archiveIds.length, inserted: t.paramsToApply.length });
+      } catch (e) {
+        errRows.push({ pnId: t.item.pnId, pnName: t.item.pnName, error: e?.message || String(e) });
+      }
+      processed++;
+      if (pm) pm.textContent = `${processed}/${tasks.length} (${okRows.length} OK, ${errRows.length} err)`;
+      if (pb) pb.style.width = `${(processed / tasks.length) * 100}%`;
+    }, 3);
+
+    log(`[SPM-dup-csv] Apply: ${okRows.length} OK, ${errRows.length} errores`);
+
+    const body = dupState.panelEl.querySelector('.dup-body');
+    body.innerHTML = '';
+    const sum = document.createElement('div');
+    sum.className = okRows.length && !errRows.length ? 'dup-success' : 'dup-error';
+    const totalArch = okRows.reduce((s, r) => s + r.archived, 0);
+    const totalIns = okRows.reduce((s, r) => s + r.inserted, 0);
+    sum.textContent = `Resultado: ${okRows.length} PNs OK (${totalArch} archived + ${totalIns} inserted NULL), ${errRows.length} errores.`;
+    body.appendChild(sum);
+
+    if (errRows.length) {
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'font-size:11px;color:#fca5a5;max-height:200px;overflow-y:auto;margin-top:8px';
+      for (const r of errRows.slice(0, 50)) {
+        const li = document.createElement('li');
+        li.textContent = `PN ${r.pnName} (#${r.pnId}) — ${r.error}`;
+        ul.appendChild(li);
+      }
+      body.appendChild(ul);
+    }
+
+    dupSetFooter(`
+      <span class="dup-counter">${okRows.length} OK · ${errRows.length} errores</span>
+      <div style="display:flex;gap:6px">
+        <button class="dup-btn" data-act="dup-csv-final-close">Cerrar</button>
+      </div>
+    `);
+    dupState.panelEl.querySelector('[data-act=dup-csv-final-close]')?.addEventListener('click', () => dupClosePanel());
   }
 
 
