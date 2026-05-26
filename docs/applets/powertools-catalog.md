@@ -168,14 +168,51 @@ Implementado y verificado contra TLC el 2026-05-25:
 
 | Comando | Estado | Notas |
 |---|---|---|
-| `list [--category X]` | ✅ | Cruzando `GetAllLowCodeConfigs` con multi-slot enums (12 PDF + 2 FileImport + 1 CSV) descubrió los 17 slots. |
-| `pull [--category X]` | ✅ | Escribe `.ts` + `.meta.json` (id, createdAt, createdBy, chars, hash) por slot en `powertools/synced/<categoria>/`. |
-| `pull --all-versions` | ✅ | Trae historial completo (no sólo el activo). |
-| `diff <archivo.ts>` | ✅ | Diff unified vs el activo en servidor. |
-| `show <slot>` | ✅ | Imprime el código actual sin escribirlo. |
-| **`push <archivo.ts>`** | ❌ pendiente | Bloqueado por: (a) generar `compiled` JS desde `code` TS con `tsc --target es2017`, (b) `CreateCsvLowCode` falta (no urgente). |
+| `list [--category X]` | ✅ | Cruzando enums multi-slot (12 PDF + 2 FileImport + 1 CSV) descubrió los 17 slots. |
+| `pull [--category X]` | ✅ | Escribe `.ts` + `.meta.json` (id, createdAt, createdBy, hashes) por slot en `powertools/synced/<categoria>/`. |
+| `pull --all-versions` | ✅ | Trae historial completo (escribe en `.versions/<slot>/<id>.ts`). |
+| `diff <slug>` | ✅ | Diff unified vs el activo en servidor. |
+| `show <slug>` | ✅ | Imprime el código actual sin escribirlo. |
+| **`push <archivo> <slug> [--dry-run]`** | ✅ | Compila TS→JS con `npx tsc --target es2017 --alwaysStrict`, llama `Create*LowCode`, re-fetcha y reporta id nuevo. |
 
 Bridge reusa `SteelheadClient` de `~/Projects/Ecoplating/Reportes SH/scripts/steelhead_client.py` vía `sys.path` injection (mismo patrón que `tools/validate-hashes.py`). Hashes en `PERSISTED_QUERIES_LOWCODE` dentro del propio script (no en `remote/config.json` — son sólo para uso local de mantenimiento, no para la extensión).
+
+## Convención de espejo único (2026-05-25)
+
+**`powertools/synced/` es la única fuente de verdad local.** Coincide byte-a-byte con el código activo en el server de Steelhead. No hay carpeta de "WIP" — si quieres trabajar en una versión sin desplegar, simplemente edita y NO corras `push`. El editor de Steelhead seguirá ejecutando la última versión pusheada.
+
+Workflow:
+
+```bash
+# 1. Sincronizar local con producción (cualquier momento, sobre todo si alguien editó por UI)
+python3 tools/lowcode_sync.py pull
+
+# 2. Editar el hook que toque
+$EDITOR powertools/synced/invoice/invoice.ts
+
+# 3. Compilar sin pushear para validar (opcional)
+python3 tools/lowcode_sync.py push powertools/synced/invoice/invoice.ts invoice --dry-run
+
+# 4. Desplegar
+python3 tools/lowcode_sync.py push powertools/synced/invoice/invoice.ts invoice
+
+# 5. Validar en UI de Steelhead (editor + flujo real). Si rompe, recuperar versión anterior:
+python3 tools/lowcode_sync.py pull --all-versions
+cp powertools/synced/invoice/.versions/invoice/<id_viejo>.ts /tmp/rollback.ts
+python3 tools/lowcode_sync.py push /tmp/rollback.ts invoice
+```
+
+Migración histórica: las copias manuales `powertools/{ordendeventa,facturacion,facturacion-pdf}.ts` (que vivían en el raíz) se borraron el 2026-05-25 tras verificar paridad triple manual=server=synced. Los WIP locales de `facturacion.ts` (consolidación Schneider) y `facturacion-pdf.ts` (tabla por Producto) se pushearon como ids `5276` y `10499` respectivamente.
+
+## Verificación de la compilación tsc local vs Steelhead
+
+El compiler de Steelhead emite output similar pero no idéntico al de `tsc --target es2017`:
+
+- Server **preserva comentarios** (no usa `removeComments`).
+- Server **emite `"use strict";`** al inicio (forzar con `--alwaysStrict`).
+- Diferencias menores en cómo declara `var _a, _b, ...` (Steelhead inline vs tsc agrupa al inicio del scope). Funcionalmente equivalentes.
+
+El push pone el `compiled` que generamos localmente; Steelhead lo acepta sin re-transpilar. Verificado 2026-05-25 con `invoice id=5276` y `pdf:INVOICE_TEMPLATE id=10499` — ambos cargaron y ejecutaron sin error en la UI.
 
 ## Lecciones del scan grande (2026-05-25)
 
@@ -193,8 +230,7 @@ Completado:
 4. ✅ Catálogo enriquecido con clasificación LIVE vs SOLO-TYPEDEFS + oportunidades.
 
 Pendientes:
-1. **Bridge `push`**: implementar compilación local (`tsc --target es2017`) + `Create*LowCode`. Sin esto, todo edit sigue siendo copy-paste manual al editor de Steelhead.
-2. **Sub-bitácoras**: arrancar con los 6 PDFs LIVE menos documentados (`CERTIFICATION_TEMPLATE`, `RACK_TEMPLATE`, `PART_NUMBER_TEMPLATE`, `PACKING_SLIP_TEMPLATE`, `WORK_ORDER_PART_NUMBER_TEMPLATE`, `INVOICE_TEMPLATE`). El user decide orden según prioridad operativa.
-3. **Implementar oportunidades**: en orden de mayor impacto, abrir el hook vacío `inventory-usage` (predicción consumos químicos) o externalizar `priorityAccountIds` del `schedule`.
-4. **Cron de drift**: `lowcode_sync.py list --remote-only` comparado con local cada semana, alertar si llegó nueva versión `deployment` con `code` distinto.
-5. **`CreateCsvLowCode`**: capturar cuando aparezca caso real (no urgente — categoría sin uso operativo).
+1. **Sub-bitácoras**: arrancar con los 6 PDFs LIVE menos documentados (`CERTIFICATION_TEMPLATE`, `RACK_TEMPLATE`, `PART_NUMBER_TEMPLATE`, `PACKING_SLIP_TEMPLATE`, `WORK_ORDER_PART_NUMBER_TEMPLATE`, `INVOICE_TEMPLATE`). El user decide orden según prioridad operativa.
+2. **Implementar oportunidades**: en orden de mayor impacto, abrir el hook vacío `inventory-usage` (predicción consumos químicos) o externalizar `priorityAccountIds` del `schedule`.
+3. **Cron de drift**: `lowcode_sync.py pull` automático cada semana + git diff — alerta si llegó nueva versión `deployment` con `code` distinto al espejo.
+4. **`CreateCsvLowCode`**: capturar cuando aparezca caso real (no urgente — categoría sin uso operativo).

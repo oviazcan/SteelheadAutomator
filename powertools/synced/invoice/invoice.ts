@@ -8,7 +8,7 @@ type PartNumberWorkOrder = Inputs['salesOrders'][number]['salesOrderLines'][numb
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTRUCTOR DE DESCRIPCIÓN CFDI
-// Implementa la lógica de ConstruirDescripcionCFDI del spec v2.
+// Implementa la lógica de ConstruirDescripcionCFDI del spec v2
 // ─────────────────────────────────────────────────────────────────────────────
 
 type DatosFacturaFlags = {
@@ -189,6 +189,30 @@ const getInvoicePricing = (
     MostrarPS:            datosFactura.MostrarPS            ?? true,
   }
 
+  // --- Flag de consolidación por Producto+Unidad (caso Schneider Rojo Gómez) ---
+  // El flag vive en customInputs de LA ORDEN DE VENTA, no de la factura ni del
+  // cliente:
+  //  - customer.customInputs sobre-dispara (un mismo cliente tiene varias plantas).
+  //  - invoiceMetaData.customInputs no se lee como input al hook (solo write desde
+  //    el lado del hook — verificado con dump 2026-05-22, viene null aunque el
+  //    operador marque algo).
+  //  - shipToAddress no está expuesto en este hook (sí en facturacion-pdf.ts).
+  // Por eso: el operador (o `ordendeventa.ts` automatizando por shipTo) marca
+  // `ConsolidarPorProducto: true` en customInputs de cada OV de Rojo Gómez.
+  // Regla: solo consolida si TODAS las OVs de la factura traen el flag. Si
+  // mezcla, no consolida + warning para que el operador separe la factura.
+  const sos = inputs.salesOrders ?? []
+  const sosConFlag = sos.filter(
+    so => (so.customInputs as any)?.ConsolidarPorProducto === true
+  ).length
+  const consolidarPorProducto = sos.length > 0 && sosConFlag === sos.length
+  if (sosConFlag > 0 && sosConFlag < sos.length) {
+    helpers.addErrorMessage({
+      severity: 'warning',
+      message: `Factura mezcla OVs con y sin ConsolidarPorProducto (${sosConFlag}/${sos.length}) — no se consolida. Separa la factura por planta.`,
+    })
+  }
+
   // --- Validación: ninguna línea marcada ---
   if (inputs.uiInvoiceLineItems.length === 0) {
     helpers.addErrorMessage({
@@ -198,6 +222,25 @@ const getInvoicePricing = (
   }
 
   // --- Loop principal sobre líneas de factura ---
+  // Metadata paralela para consolidación por Producto+Unidad (Opción B).
+  // Cada entry referencia su línea en result.lowCodeDefaultInvoiceLineItems
+  // por índice. Si !consolidarPorProducto, se ignora.
+  type LineMetadata = {
+    index: number
+    productId: number | null
+    productName: string | null
+    lineUnit: number | undefined
+    taxCodeId: number | null
+    partNumberNames: string[]
+    acabados: string[]
+    nombresLotes: string[]
+    packingSlips: string[]
+    workOrderIdsInDomain: string[]
+    salesOrderNames: string[]
+    loteMinimoCargado: boolean
+  }
+  const lineMetadata: LineMetadata[] = []
+
   let lineasConLoteMinimo = 0
   inputs.uiInvoiceLineItems.forEach(uiLine => {
     if (!uiLine.salesOrderLineItemId || !uiLine.productId) return
@@ -371,6 +414,22 @@ const getInvoicePricing = (
       productId: uiLine.productId,
       description: uiLine.description,
     })
+
+    // Metadata para consolidación (solo útil si consolidarPorProducto al final)
+    lineMetadata.push({
+      index: result.lowCodeDefaultInvoiceLineItems.length - 1,
+      productId: uiLine.productId,
+      productName: nombreProducto,
+      lineUnit,
+      taxCodeId: uiLine.taxCodeId ?? null,
+      partNumberNames: partNumberName ? [partNumberName] : [],
+      acabados,
+      nombresLotes,
+      packingSlips,
+      workOrderIdsInDomain: workOrderStr ? [workOrderStr] : [],
+      salesOrderNames: salesOrderName ? [salesOrderName] : [],
+      loteMinimoCargado,
+    })
   })
 
   // --- Aviso: líneas con cargo de lote mínimo aplicado ---
@@ -379,6 +438,123 @@ const getInvoicePricing = (
       severity: 'warning',
       message: `${lineasConLoteMinimo} línea(s) con cargo de lote mínimo aplicado`,
     })
+  }
+
+  // --- Consolidación por Producto+Unidad (caso Schneider Rojo Gómez, Opción B) ---
+  // Colapsa las líneas reales de Steelhead por (productId + lineUnit + taxCodeId).
+  // Las líneas de lote mínimo NO se consolidan (su rate ya está re-escalado).
+  // Riesgo conocido: cada grupo conserva UN solo salesOrderLineItemId
+  // representativo (el primero); los demás SOLIs del grupo quedan sin línea
+  // de factura asociada. Steelhead puede marcarlos como "no facturados" en su UI.
+  if (consolidarPorProducto && lineMetadata.length > 0) {
+    const dedupArr = (arr: string[]) => [
+      ...new Set(arr.filter(s => s != null && s.trim() !== '')),
+    ]
+
+    const noConsolidables: LineMetadata[] = []
+    const grupos = new Map<string, LineMetadata[]>()
+    for (const m of lineMetadata) {
+      if (m.loteMinimoCargado || m.productId == null) {
+        noConsolidables.push(m)
+        continue
+      }
+      const key = `${m.productId}||${m.lineUnit ?? 'none'}||${m.taxCodeId ?? 'none'}`
+      if (!grupos.has(key)) grupos.set(key, [])
+      grupos.get(key)!.push(m)
+    }
+
+    const nuevasLineas: typeof result.lowCodeDefaultInvoiceLineItems = []
+
+    for (const m of noConsolidables) {
+      nuevasLineas.push(result.lowCodeDefaultInvoiceLineItems[m.index])
+    }
+
+    let gruposColapsados = 0
+    let solisHuerfanos = 0
+    for (const [, grupo] of grupos) {
+      if (grupo.length === 1) {
+        nuevasLineas.push(result.lowCodeDefaultInvoiceLineItems[grupo[0].index])
+        continue
+      }
+
+      const originales = grupo.map(m => result.lowCodeDefaultInvoiceLineItems[m.index])
+      let totalQty = 0
+      let totalAmount = 0
+      let nullRateOrQty = false
+      for (const o of originales) {
+        const q = o.quantity ?? 0
+        const r = o.rate ?? 0
+        if (o.quantity == null || o.rate == null) nullRateOrQty = true
+        totalQty += q
+        totalAmount += q * r
+      }
+      const rateConsolidado = totalQty > 0 ? totalAmount / totalQty : 0
+
+      const productName = grupo[0].productName
+      const allPNs = dedupArr(grupo.flatMap(m => m.partNumberNames))
+      const allAcabados = dedupArr(grupo.flatMap(m => m.acabados))
+      const allOVs = dedupArr(grupo.flatMap(m => m.salesOrderNames))
+      const allOTs = dedupArr(grupo.flatMap(m => m.workOrderIdsInDomain))
+      const allLotes = dedupArr(grupo.flatMap(m => m.nombresLotes))
+      const allPS = dedupArr(grupo.flatMap(m => m.packingSlips))
+
+      const partes: string[] = []
+      if (flags.MostrarProducto && productName) {
+        partes.push(`Producto: ${productName}`)
+      }
+      if (flags.MostrarNP && allPNs.length > 0) {
+        partes.push(`NPs (${allPNs.length}): ${allPNs.join(', ')}`)
+      }
+      if (flags.MostrarAcabado && allAcabados.length > 0) {
+        partes.push(`Acabado: ${allAcabados.join(', ')}`)
+      }
+      if (flags.MostrarPO && allOVs.length > 0) {
+        partes.push(`OC: ${allOVs.join(', ')}`)
+      }
+      if (flags.MostrarOT && allOTs.length > 0) {
+        const label = allOTs.length === 1 ? 'OT' : 'OTs'
+        partes.push(`${label}: ${allOTs.join(', ')}`)
+      }
+      if (flags.MostrarLote && allLotes.length > 0) {
+        const label = allLotes.length === 1 ? 'Lote' : 'Lotes'
+        let bloque = `${label}: ${allLotes.join(', ')}`
+        if (flags.MostrarPS && allPS.length > 0) {
+          bloque += ` PS: ${allPS.join(', ')}`
+        }
+        partes.push(bloque)
+      }
+      let descConsolidada = partes.join('. ').trim()
+      if (descConsolidada.length > 1000) descConsolidada = descConsolidada.slice(0, 997) + '...'
+
+      const repOriginal = result.lowCodeDefaultInvoiceLineItems[grupo[0].index]
+      nuevasLineas.push({
+        salesOrderLineItemId: repOriginal.salesOrderLineItemId,
+        taxCodeId: grupo[0].taxCodeId,
+        quantity: totalQty,
+        rate: rateConsolidado,
+        productId: grupo[0].productId,
+        description: descConsolidada,
+      })
+
+      gruposColapsados++
+      solisHuerfanos += grupo.length - 1
+
+      if (nullRateOrQty) {
+        helpers.addErrorMessage({
+          severity: 'warning',
+          message: `Consolidación "${productName ?? 'producto'}": alguna línea original tenía cantidad o precio nulo`,
+        })
+      }
+    }
+
+    result.lowCodeDefaultInvoiceLineItems = nuevasLineas
+
+    if (gruposColapsados > 0) {
+      helpers.addErrorMessage({
+        severity: 'info',
+        message: `Consolidación por Producto: ${lineMetadata.length} líneas → ${nuevasLineas.length} (${gruposColapsados} grupo(s) consolidado(s), ${solisHuerfanos} SOLI(s) sin línea propia)`,
+      })
+    }
   }
 
   // --- Validación: líneas con cantidad o precio cero ---

@@ -301,6 +301,115 @@ def cmd_diff(args) -> int:
     return 1
 
 
+CREATE_MUTATIONS: dict[str, tuple[str, Optional[str]]] = {
+    # category → (mutation, discriminator-var)
+    "received-order":  ("CreateReceivedOrderLowCode",  None),
+    "invoice":         ("CreateInvoiceLowCode",        None),
+    "inventory-usage": ("CreateInventoryUsageLowCode", None),
+    "schedule":        ("CreateScheduleLowCode",       None),
+    "pdf":             ("CreatePdfLowCode",            "pdfType"),
+    "file-import":     ("CreateFileImportLowCode",     "fileImportType"),
+    # csv: CreateCsvLowCode pendiente de capturar (no urgente).
+}
+
+
+def _compile_ts(code: str) -> str:
+    """TS → JS con tsc ES2017 (matchea el target del runtime de Steelhead).
+
+    Preserva comentarios + fuerza 'use strict' porque ese es el output que el
+    server-side emite (verificado contra compiled de INVOICE_TEMPLATE id=10475).
+    """
+    import subprocess, tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "hook.ts"
+        src.write_text(code, encoding="utf-8")
+        out_dir = Path(tmp) / "out"
+        cmd = [
+            "npx", "--yes", "-p", "typescript", "tsc",
+            str(src),
+            "--target", "es2017",
+            "--alwaysStrict",
+            "--skipLibCheck",
+            "--ignoreDeprecations", "6.0",
+            "--outDir", str(out_dir),
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode not in (0, 2):  # 2 = type warnings, no fatal
+            raise RuntimeError(f"tsc falló (rc={proc.returncode}): {proc.stderr or proc.stdout}")
+        out_file = out_dir / "hook.js"
+        if not out_file.exists():
+            raise RuntimeError(f"tsc no emitió output: {proc.stdout}")
+        return out_file.read_text(encoding="utf-8")
+
+
+def cmd_push(args) -> int:
+    """Sube un .ts local como nueva versión activa del slot."""
+    target = args.slug
+    cat = target.split(":")[0] if ":" in target else target
+    file_path = Path(args.file)
+    if not file_path.is_absolute():
+        file_path = (REPO_ROOT / file_path).resolve()
+    if not file_path.exists():
+        print(f"FATAL: no existe {file_path}", file=sys.stderr)
+        return 2
+    if cat not in CREATE_MUTATIONS:
+        print(f"FATAL: categoría desconocida {cat}. Disponibles: {list(CREATE_MUTATIONS)}", file=sys.stderr)
+        return 2
+    mutation, disc_var = CREATE_MUTATIONS[cat]
+
+    code = file_path.read_text(encoding="utf-8")
+    print(f"  compilando {file_path.relative_to(REPO_ROOT)} ({len(code)} chars TS)...")
+    try:
+        compiled = _compile_ts(code)
+    except Exception as e:
+        print(f"FATAL: compilación falló: {e}", file=sys.stderr)
+        return 2
+    print(f"  compilado: {len(compiled)} chars JS")
+
+    if args.dry_run:
+        print(f"\n--- DRY RUN — NO se llama {mutation} ---")
+        print(f"  mutation: {mutation}")
+        if disc_var:
+            disc = target.split(":", 1)[1]
+            print(f"  {disc_var}: {disc}")
+        print(f"  primeras 200 chars del compiled:\n{compiled[:200]}")
+        return 0
+
+    vars_ = {"code": code, "compiled": compiled}
+    if disc_var:
+        if ":" not in target:
+            print(f"FATAL: {cat} requiere discriminador, usa slug tipo {cat}:VALUE", file=sys.stderr)
+            return 2
+        vars_[disc_var] = target.split(":", 1)[1]
+
+    client = _import_client()(do_keep_alive=True)
+    print(f"  push → {mutation} {vars_.get(disc_var) if disc_var else ''}...")
+    try:
+        resp = client.call(mutation, vars_)
+    except Exception as e:
+        print(f"FATAL: mutation falló: {e}", file=sys.stderr)
+        return 2
+
+    # La respuesta varía: {createReceivedOrderLowCode: {receivedOrderLowCode: {id, ...}}}.
+    # Hacemos un fetch del slot fresco para reportar el id nuevo y confirmar visibilidad.
+    if cat in [c for c, _, _ in SINGLE_SLOTS]:
+        op = next(op for c, op, _ in SINGLE_SLOTS if c == cat)
+        slot = _fetch_single_slot(client, op, cat, cat)
+    else:
+        op, var_name, _ = next((op, vn, enums) for c, op, vn, enums in MULTI_SLOTS if c == cat)
+        disc = target.split(":", 1)[1]
+        slot = _fetch_single_slot(client, op, cat, target, {var_name: disc})
+
+    if slot:
+        print(f"\n  ✓ nueva versión activa: id={slot.active_id}  ({slot.active_created_at})  by {slot.active_creator}")
+        print(f"    total versiones del slot: {len(slot.all_versions)}")
+        print(f"\n  Validación: abre el editor de Steelhead y verifica que el código cargue + el flujo funcione.")
+        print(f"  Si algo se rompe, la versión anterior queda en historial — usa 'pull --all-versions' para recuperarla.")
+    else:
+        print(f"\n  ⚠ mutation respondió pero no pude re-fetchar el slot. Respuesta cruda:\n  {resp}")
+    return 0
+
+
 def cmd_show(args) -> int:
     """Vuelca el .ts activo del servidor (sin escribir disco)."""
     client = _import_client()(do_keep_alive=True)
@@ -344,6 +453,13 @@ def main() -> int:
     sp = sub.add_parser("show", help="Vuelca el .ts activo del servidor a stdout")
     sp.add_argument("slug", help="ej. received-order, pdf:INVOICE_TEMPLATE")
     sp.set_defaults(func=cmd_show)
+
+    sp = sub.add_parser("push", help="Compila + sube .ts local como nueva versión activa")
+    sp.add_argument("file", help="path al .ts local (ej. powertools/facturacion.ts)")
+    sp.add_argument("slug", help="ej. invoice, pdf:INVOICE_TEMPLATE")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="Compila pero no llama mutation")
+    sp.set_defaults(func=cmd_push)
 
     args = p.parse_args()
     return args.func(args)

@@ -16,7 +16,7 @@
 //   3) Lotes y PackingSlip por línea de factura: join one-to-many entre
 //      `partAccounts[]` y `invoiceLines[]` por `invoiceLineNumbers[].line`.
 //      Expone tanto un array enriquecido como un map por lineNumber para
-//      flexibilidad del template..
+//      flexibilidad del template.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult => {
@@ -224,6 +224,18 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
 
     const customerName = inputs?.billToAddress?.customer?.name ?? "";
     const isSchneider = customerName.substring(0, 3) === "SCH";
+
+    // Sugerencia para que el template decida si renderiza la tabla
+    // consolidada en lugar de la tabla por línea. NO se usa como gating
+    // en el TS (siempre exponemos ambas formas); el template hace el switch.
+    // Tolerante a "Gómez"/"Gomez" (con/sin tilde) en case-insensitive.
+    const customerNameLower = customerName.toLowerCase();
+    const shipToLower = (
+      inputs?.shipToAddress?.address ?? ""
+    ).toLowerCase();
+    const isSchneiderRojoGomez =
+      customerNameLower.includes("schneider") &&
+      (shipToLower.includes("rojo gómez") || shipToLower.includes("rojo gomez"));
 
     // Mensaje fallback cuando el cliente no tiene DatosFactura configurado.
     // Se inyecta como `descripcionHtml` en TODAS las líneas y también como
@@ -495,12 +507,205 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       };
     });
 
-    // ── 4️⃣ Payload final hacia el template ───────────────────────────────
+    // ── 4️⃣ Tabla consolidada por Producto (caso Schneider Rojo Gómez) ────
+    // Agrupa las líneas por (productName, rateUnits) para clientes que
+    // facturan "por producto" en lugar de "por NP". Cada grupo trae una
+    // sub-tabla de NPs (los partAccounts que contribuyeron) con conversión
+    // de piezas → unidad del producto cuando el PN tiene la conversión.
+    //
+    // Se expone SIEMPRE, en paralelo a invoiceLinesConLotes. El template
+    // decide qué tabla renderizar usando el flag `isSchneiderRojoGomez`
+    // (o cualquier otra condición que quiera).
+
+    type SubrowNp = {
+      partAccountId: number;
+      partNumberId: number | null;
+      partNumberName: string | null;
+      partNumberDescription: string | null;
+      cantidadPiezas: number;
+      cantidadEnUnidadProducto: number | null; // null si no hay conversión al rateUnits del grupo
+      unidadProducto: string;
+      lotes: LoteResumen[];
+      lotesNombresStr: string;
+      packingSlipsStr: string;
+      acabados: string[];
+    };
+
+    type LineaConsolidada = {
+      productName: string;
+      unidadProducto: string;
+      cantidadTotal: number;       // suma de invoiceLineItem.quantity (fuente fiable)
+      cantidadTotalPiezas: number; // suma de maxInvoicedPartCount de los PAs únicos
+      subtotalTotal: number;       // suma de invoiceLineItem.subtotal
+      rate: number | null;         // promedio ponderado por cantidad
+      npCount: number;
+      nps: SubrowNp[];
+    };
+
+    // Index PA por id para poder dedupear cuando un mismo PA aparezca vía
+    // distintas líneas dentro del mismo grupo (no contar dos veces las piezas).
+    type GrupoAcc = {
+      productName: string;
+      unidadProducto: string;
+      cantidadTotal: number;
+      subtotalTotal: number;
+      // suma ponderada de (rate × quantity) para promedio ponderado al cierre.
+      rateWeightedSum: number;
+      lineNumbers: Set<number>;
+    };
+    const gruposMap = new Map<string, GrupoAcc>(); // key = `${productName}||${rateUnits}`
+
+    for (const il of inputs.invoiceLines ?? []) {
+      const ln = il?.invoiceLine?.lineNumber;
+      if (ln == null) continue;
+      for (const item of il.invoiceLine?.invoiceLineItems ?? []) {
+        const productName =
+          item?.product?.name ??
+          item?.salesOrderLineItem?.product?.name ??
+          null;
+        const rateUnits = item?.rateUnits ?? null;
+        if (!productName || !rateUnits) continue; // sin producto o sin unidad no agrupable
+
+        const key = `${productName}||${rateUnits}`;
+        if (!gruposMap.has(key)) {
+          gruposMap.set(key, {
+            productName,
+            unidadProducto: rateUnits,
+            cantidadTotal: 0,
+            subtotalTotal: 0,
+            rateWeightedSum: 0,
+            lineNumbers: new Set(),
+          });
+        }
+        const g = gruposMap.get(key)!;
+        const qty = Number(item?.quantity ?? 0);
+        const sub = Number(item?.subtotal ?? 0);
+        const r = Number(item?.rate ?? 0);
+        g.cantidadTotal += qty;
+        g.subtotalTotal += sub;
+        g.rateWeightedSum += r * qty;
+        g.lineNumbers.add(ln);
+      }
+    }
+
+    // Helper: factor de conversión de piezas a `unidadTarget` para un PN.
+    // unitConversions[].factor = unidades target POR pieza (1 PZ = factor target).
+    // Por convención (ver ordendeventa.ts), match exacto del unit.name.
+    function factorPiezasA(
+      pn: any,
+      unidadTarget: string
+    ): number | null {
+      for (const uc of pn?.unitConversions ?? []) {
+        if (uc?.unit?.name === unidadTarget) {
+          const f = Number(uc.factor);
+          if (!isNaN(f) && f !== 0) return f;
+        }
+      }
+      return null;
+    }
+
+    const lineasConsolidadasPorProducto: LineaConsolidada[] = [];
+
+    for (const g of gruposMap.values()) {
+      // PAs asociados al grupo: los que apuntan a alguna lineNumber del grupo.
+      const pasDelGrupo: any[] = [];
+      const seenPaIds = new Set<number>();
+      for (const ln of g.lineNumbers) {
+        for (const pa of (paPorLineaMap.get(ln) as any) ?? []) {
+          if (pa?.id != null && !seenPaIds.has(pa.id)) {
+            seenPaIds.add(pa.id);
+            pasDelGrupo.push(pa);
+          }
+        }
+      }
+
+      // Subrows: una por PA del grupo.
+      const nps: SubrowNp[] = pasDelGrupo.map((pa) => {
+        const pn = pa?.partNumber;
+        const piezas = Number(pa?.maxInvoicedPartCount ?? 0);
+        const factor = pn ? factorPiezasA(pn, g.unidadProducto) : null;
+        const cantidadEnUnidad =
+          factor != null ? Math.round(piezas * factor * 10000) / 10000 : null;
+
+        // Lotes / PS de este PA (sin filtrar por línea; aquí es agregado
+        // por producto). Reusa la misma extracción que el join principal.
+        const lotesPa: LoteResumen[] = [];
+        const seenBatchIds = new Set<number>();
+        for (const batch of pa?.receivedBatches ?? []) {
+          if (!batch || seenBatchIds.has(batch.id)) continue;
+          seenBatchIds.add(batch.id);
+          lotesPa.push({
+            batchId: batch.id,
+            name: batch.name ?? null,
+            packingSlip:
+              (batch.customInputs as any)?.DatosRecibo?.PackingSlip ?? null,
+            descriptionMarkdown: batch.descriptionMarkdown ?? null,
+          });
+        }
+
+        // Acabados (labels) del PN. Sin tipo en el typedef → cast a any.
+        const acabados: string[] = [];
+        const seenLbl = new Set<string>();
+        for (const lbl of (pn as any)?.labels ?? []) {
+          const key = String(lbl?.id ?? lbl?.name ?? "");
+          if (!key || seenLbl.has(key)) continue;
+          seenLbl.add(key);
+          if (lbl?.name) acabados.push(lbl.name);
+        }
+
+        return {
+          partAccountId: pa?.id ?? 0,
+          partNumberId: pn?.id ?? null,
+          partNumberName: pn?.name ?? null,
+          partNumberDescription: pn?.description ?? null,
+          cantidadPiezas: piezas,
+          cantidadEnUnidadProducto: cantidadEnUnidad,
+          unidadProducto: g.unidadProducto,
+          lotes: lotesPa,
+          lotesNombresStr: formatLotesConPs(lotesPa),
+          packingSlipsStr: Array.from(
+            new Set(
+              lotesPa
+                .map((l) => l.packingSlip)
+                .filter((p) => p != null && p !== "")
+                .map((p) => String(p))
+            )
+          ).join(", "),
+          acabados,
+        };
+      });
+
+      const cantidadTotalPiezas = nps.reduce(
+        (acc, n) => acc + (n.cantidadPiezas || 0),
+        0
+      );
+      const rateAvg =
+        g.cantidadTotal > 0
+          ? Math.round((g.rateWeightedSum / g.cantidadTotal) * 10000) / 10000
+          : null;
+
+      lineasConsolidadasPorProducto.push({
+        productName: g.productName,
+        unidadProducto: g.unidadProducto,
+        cantidadTotal: Math.round(g.cantidadTotal * 10000) / 10000,
+        cantidadTotalPiezas,
+        subtotalTotal: Math.round(g.subtotalTotal * 100) / 100,
+        rate: rateAvg,
+        npCount: nps.length,
+        nps,
+      });
+    }
+
+    // ── 5️⃣ Payload final hacia el template ───────────────────────────────
     result.additionalPayload = {
       zipCode,
       xmlDecodificado,
       lotesPorLinea,
       invoiceLinesConLotes,
+      // Tabla consolidada y flag de sugerencia (no es gating — el template
+      // decide). Ambas tablas siempre se exponen en paralelo.
+      lineasConsolidadasPorProducto,
+      isSchneiderRojoGomez,
       // Flags útiles para que el template decida si renderiza un banner en
       // el header en lugar de (o además de) mostrar el mensaje en cada fila.
       datosFacturaConfigurado: datosFacturaPresente,
@@ -512,6 +717,9 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
     helpers.log(
       `Lotes asignados a ${lotesPorLineaMap.size} líneas de factura ` +
         `(de ${inputs.invoiceLines?.length ?? 0} totales).`
+    );
+    helpers.log(
+      `Tabla consolidada: ${lineasConsolidadasPorProducto.length} grupos por (producto, unidad). isSchneiderRojoGomez=${isSchneiderRojoGomez}.`
     );
   } catch (error) {
     helpers.addErrorMessage({

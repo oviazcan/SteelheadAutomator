@@ -2,11 +2,12 @@
   "category": "invoice",
   "slug": "invoice",
   "discriminator": null,
-  "active_id": 5275,
-  "active_created_at": "2026-05-26T02:00:36.524076+00:00",
+  "active_id": 5276,
+  "active_created_at": "2026-05-26T02:42:16.681209+00:00",
   "active_creator": "OMAR FIDEL VIAZCAN GOMEZ",
   "total_versions": 50,
   "all_version_ids": [
+    5276,
     5275,
     5253,
     5240,
@@ -55,7 +56,6 @@
     5001,
     5000,
     4999,
-    4998,
-    4997
+    4998
   ]
 }

@@ -85,10 +85,10 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `process-canon` | varios | [`docs/processes-architecture.md`](docs/processes-architecture.md) (glosario §9) |
 | `hash-scanner` | 0.6.23 | [`docs/applets/hash-scanner.md`](docs/applets/hash-scanner.md) |
 | `audit-incomplete-pns` (DevTools, no extensión) | fix-2026-05-25 (Fix MM) | [`docs/applets/audit-incomplete-pns.md`](docs/applets/audit-incomplete-pns.md) |
-| Power Tools `ordendeventa.ts` | n/a (low-code hook) | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
-| Power Tools `facturacion-pdf.ts` | n/a (low-code hook `getPdfCustomization`) | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |
-| Power Tools `facturacion.ts` | n/a (low-code hook `getInvoicePricing`) | [`docs/applets/powertools-facturacion.md`](docs/applets/powertools-facturacion.md) |
-| Power Tools — catálogo completo (8 categorías) | n/a (inventario GraphQL API) | [`docs/applets/powertools-catalog.md`](docs/applets/powertools-catalog.md) |
+| Power Tools — catálogo completo (8 categorías, 17 slots TLC) | n/a (espejo `powertools/synced/`) | [`docs/applets/powertools-catalog.md`](docs/applets/powertools-catalog.md) |
+| Power Tools `received-order` (`ordendeventa`) | sync con `powertools/synced/received-order/received-order.ts` | [`docs/applets/powertools-ordendeventa.md`](docs/applets/powertools-ordendeventa.md) |
+| Power Tools `pdf:INVOICE_TEMPLATE` (`facturacion-pdf`) | sync con `powertools/synced/pdf/INVOICE_TEMPLATE.ts` | [`docs/applets/powertools-facturacion-pdf.md`](docs/applets/powertools-facturacion-pdf.md) |
+| Power Tools `invoice` (`facturacion`) | sync con `powertools/synced/invoice/invoice.ts` | [`docs/applets/powertools-facturacion.md`](docs/applets/powertools-facturacion.md) |
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).
