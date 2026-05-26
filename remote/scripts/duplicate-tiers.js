@@ -99,8 +99,23 @@ const SADuplicateTiers = (() => {
     return score;
   }
 
-  // scaffolding: cuerpo se implementa en Task 4
-  function pickWinner(bucket) { return null; }
+  function pickWinner(bucket) {
+    const members = (bucket && bucket.members) || [];
+    if (!members.length) return null;
+    // Orden: score DESC, createdAt DESC, id DESC.
+    let winner = members[0];
+    for (let i = 1; i < members.length; i++) {
+      const m = members[i];
+      if (m.score > winner.score) winner = m;
+      else if (m.score === winner.score) {
+        const t1 = new Date(m.createdAt || 0).getTime();
+        const t2 = new Date(winner.createdAt || 0).getTime();
+        if (t1 > t2) winner = m;
+        else if (t1 === t2 && Number(m.id) > Number(winner.id)) winner = m;
+      }
+    }
+    return winner.id;
+  }
 
   // ─── bucketización (pase 1) ────────────────────────────────────
   // scaffolding: cuerpos se implementan en Tasks 5-7

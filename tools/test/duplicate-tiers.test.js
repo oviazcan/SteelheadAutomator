@@ -210,4 +210,50 @@ test('scoreFor: tolera details null (score parcial con solo AllPartNumbers data)
   assert.equal(M.scoreFor(pn, null, { nonFinishLabelNames: NON_FINISH }), 6);
 });
 
+test('pickWinner: gana el de mayor score', () => {
+  const M = loadModule();
+  const bucket = {
+    members: [
+      { id: 10, score: 5, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 20, score: 8, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 30, score: 3, createdAt: '2026-01-01T00:00:00Z' },
+    ],
+  };
+  assert.equal(M.pickWinner(bucket), 20);
+});
+
+test('pickWinner: tiebreak por createdAt más reciente', () => {
+  const M = loadModule();
+  const bucket = {
+    members: [
+      { id: 10, score: 5, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 20, score: 5, createdAt: '2026-05-01T00:00:00Z' }, // más reciente
+      { id: 30, score: 5, createdAt: '2026-03-01T00:00:00Z' },
+    ],
+  };
+  assert.equal(M.pickWinner(bucket), 20);
+});
+
+test('pickWinner: tiebreak final por id mayor (más reciente)', () => {
+  const M = loadModule();
+  const bucket = {
+    members: [
+      { id: 10, score: 5, createdAt: '2026-05-01T00:00:00Z' },
+      { id: 99, score: 5, createdAt: '2026-05-01T00:00:00Z' },
+      { id: 50, score: 5, createdAt: '2026-05-01T00:00:00Z' },
+    ],
+  };
+  assert.equal(M.pickWinner(bucket), 99);
+});
+
+test('pickWinner: bucket con un solo miembro retorna ese id', () => {
+  const M = loadModule();
+  assert.equal(M.pickWinner({ members: [{ id: 7, score: 0, createdAt: '2026-01-01' }] }), 7);
+});
+
+test('pickWinner: bucket vacío retorna null', () => {
+  const M = loadModule();
+  assert.equal(M.pickWinner({ members: [] }), null);
+});
+
 module.exports = { loadModule };
