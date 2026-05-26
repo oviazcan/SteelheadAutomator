@@ -429,4 +429,72 @@ test('refineSoftBuckets: todos vacíos NO es candidato', () => {
   assert.equal(M.refineSoftBuckets(cands, details, { nonFinishLabelNames: NON_FINISH }).length, 0);
 });
 
+// ─── Task 8: precedencia + computeDeleteCandidates ────────────────────────────
+
+test('precedencia: PN clasificado DURO no aparece en MEDIO/SUAVE', () => {
+  const M = loadModule();
+  // pn1 y pn2 comparten QuoteIBMS — DURO
+  // pn1 y pn3 además comparten (customer, name, metalBase, finishings) — MEDIO si no fuera por precedencia
+  const pn1 = pnWith({ id: 1, customerId: 100, name: 'X', quoteIBMS: '84531', baseMetal: 'Cobre', labels: ['NIQ'] });
+  const pn2 = pnWith({ id: 2, customerId: 200, name: 'X', quoteIBMS: '84531', baseMetal: 'Plomo', labels: ['EST'] }); // duro cross-customer
+  const pn3 = pnWith({ id: 3, customerId: 100, name: 'X', quoteIBMS: '99999', baseMetal: 'Cobre', labels: ['NIQ'] }); // candidato medio con pn1
+  const pns = [pn1, pn2, pn3];
+
+  const hard = M.hardBuckets(pns);
+  assert.equal(hard.length, 1);
+  // gotcha cross-realm: element-by-element
+  const ids = hard[0].members.map(m => m.id).sort();
+  assert.equal(ids.length, 2);
+  assert.equal(ids[0], 1);
+  assert.equal(ids[1], 2);
+
+  // Excluir PNs ya en DURO
+  const usedIds = new Set();
+  for (const b of hard) for (const m of b.members) usedIds.add(m.id);
+  const remaining = pns.filter(p => !usedIds.has(p.id));
+  assert.deepEqual(remaining.map(p => p.id), [3]); // host-realm: deepEqual OK
+
+  const medCands = M.mediumBucketsCandidates(remaining);
+  // pn3 solo → no bucket
+  assert.equal(medCands.length, 0);
+});
+
+test('computeDeleteCandidates DURO: todos los perdedores van al CSV', () => {
+  const M = loadModule();
+  const bucket = { tier: 'DURO', members: [{ id: 1, quoteIBMS: '84531' }, { id: 2, quoteIBMS: '84531' }, { id: 3, quoteIBMS: '84531' }], winnerId: 2 };
+  const dc = M.computeDeleteCandidates(bucket).sort((a, b) => a - b);
+  // gotcha cross-realm: element-by-element
+  assert.equal(dc.length, 2);
+  assert.equal(dc[0], 1);
+  assert.equal(dc[1], 3);
+});
+
+test('computeDeleteCandidates MEDIO con ≥1 sin QuoteIBMS: perdedores van', () => {
+  const M = loadModule();
+  const bucket = { tier: 'MEDIO', members: [{ id: 1, quoteIBMS: '84531' }, { id: 2, quoteIBMS: '' }], winnerId: 1 };
+  const dc = M.computeDeleteCandidates(bucket);
+  // gotcha cross-realm: element-by-element
+  assert.equal(dc.length, 1);
+  assert.equal(dc[0], 2);
+});
+
+test('computeDeleteCandidates MEDIO con todos QuoteIBMS distinto no-vacío: vacío', () => {
+  const M = loadModule();
+  const bucket = { tier: 'MEDIO', members: [{ id: 1, quoteIBMS: '84531' }, { id: 2, quoteIBMS: '99999' }], winnerId: 1 };
+  const dc = M.computeDeleteCandidates(bucket);
+  // gotcha cross-realm: vacío → solo length
+  assert.equal(dc.length, 0);
+});
+
+test('computeDeleteCandidates SUAVE con todos vacíos: perdedores van', () => {
+  // SUAVE solo se crea con asimetría → al menos uno tiene finishings, no necesariamente quoteIBMS.
+  // Regla del CSV: si TODOS tienen quoteIBMS distinto no-vacío → vacío. Else → perdedores.
+  const M = loadModule();
+  const bucket = { tier: 'SUAVE', members: [{ id: 1, quoteIBMS: '' }, { id: 2, quoteIBMS: '' }], winnerId: 1 };
+  const dc = M.computeDeleteCandidates(bucket);
+  // gotcha cross-realm: element-by-element
+  assert.equal(dc.length, 1);
+  assert.equal(dc[0], 2);
+});
+
 module.exports = { loadModule, pnWith };

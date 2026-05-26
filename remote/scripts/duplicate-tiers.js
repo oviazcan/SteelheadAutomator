@@ -208,8 +208,20 @@ const SADuplicateTiers = (() => {
   }
 
   // ─── delete candidates ─────────────────────────────────────────
-  // scaffolding: cuerpo se implementa en Task 9
-  function computeDeleteCandidates(bucket) { return []; }
+  function computeDeleteCandidates(bucket) {
+    if (!bucket || !Array.isArray(bucket.members)) return [];
+    const members = bucket.members;
+    const winnerId = bucket.winnerId;
+    const losers = members.filter(m => m.id !== winnerId).map(m => m.id);
+    if (bucket.tier === 'DURO') return losers;
+    // MEDIO/SUAVE: vacío si todos tienen quoteIBMS distinto no-vacío
+    const quotes = members.map(m => (m.quoteIBMS || '').trim()).filter(Boolean);
+    if (quotes.length === members.length) {
+      const allDistinct = new Set(quotes).size === quotes.length;
+      if (allDistinct) return [];
+    }
+    return losers;
+  }
 
   return {
     hardBuckets, mediumBucketsCandidates, softBucketsCandidates,
