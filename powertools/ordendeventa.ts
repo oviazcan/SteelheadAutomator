@@ -1,4 +1,9 @@
 const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult => {
+  // El frontend de Steelhead REQUIERE el shape completo del LowCodeResult
+  // (las 6 keys, aunque sean arrays vacíos). Si devuelves `{}`, el frontend
+  // descarta silenciosamente TODOS los addErrorMessage del hook — Test Panel
+  // SÍ los muestra (porque imprime el output crudo), pero el UI de operación
+  // los ignora. Probado y reproducido 2026-05-25. No omitir las keys.
   const result: LowCodeResult = {
     stationRouting: [],
     treatmentTimes: [],
@@ -310,6 +315,22 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
     helpers.addErrorMessage({
       severity: "info",
       message: `Spec — ${infoChips.join(" · ")}`,
+    });
+  }
+
+  // Feedback positivo: dispara solo cuando los buckets BLOQUEANTES están
+  // vacíos. Spec (info), Lote mínimo (regla comercial normal) y Sin Rack
+  // (false positives para procesos por pieza — antitarnish, fibrado, etc.)
+  // pueden coexistir con el verde porque no son problema real para la OV.
+  // NP Desconocido (error) y los 2 warnings de precio sí suprimen el verde.
+  if (
+    errorChips.length === 0 &&
+    sinPrecioChips.length === 0 &&
+    schneiderChips.length === 0
+  ) {
+    helpers.addErrorMessage({
+      severity: "success",
+      message: "Todo en Orden",
     });
   }
 
