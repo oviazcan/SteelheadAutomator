@@ -1,6 +1,6 @@
 {
-  "version": "1.4.33",
-  "lastUpdated": "2026-05-25T20:15",
+  "version": "1.4.34",
+  "lastUpdated": "2026-05-25T22:30",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -742,7 +742,8 @@
       "requiredPermissions": [],
       "actions": [
         { "id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params" },
-        { "id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params" }
+        { "id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params" },
+        { "id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param por SpecField y archiva el sobrante", "icon": "🧹", "type": "secondary", "handler": "message", "message": "validate-duplicate-params" }
       ]
     },
     {

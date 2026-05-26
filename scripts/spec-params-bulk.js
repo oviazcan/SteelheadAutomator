@@ -13,7 +13,7 @@
 const SpecParamsBulk = (() => {
   'use strict';
 
-  const VERSION = '0.9.0';
+  const VERSION = '0.10.0';
   const PANEL_ID = 'sa-spb-panel';
   const STYLE_ID = 'sa-spb-style';
 
@@ -140,6 +140,25 @@ const SpecParamsBulk = (() => {
         border: 1px solid #14532d; border-radius: 4px; }
       #${PANEL_ID} .spb-diff-old { color: #fca5a5; text-decoration: line-through; }
       #${PANEL_ID} .spb-diff-new { color: #6ee7b7; }
+      /* Duplicate-params validator */
+      #${PANEL_ID}.spb-wide { width: 880px; }
+      #${PANEL_ID} .spb-dup-stats { display:flex; gap:14px; font-size:11px; color:#cbd5e1;
+        background:#0f172a; padding:6px 10px; border-radius:6px; margin-bottom:8px; flex-wrap:wrap; }
+      #${PANEL_ID} .spb-dup-stats b { color:#f9fafb; }
+      #${PANEL_ID} .spb-dup-table { width:100%; border-collapse:collapse; font-size:11px; }
+      #${PANEL_ID} .spb-dup-table thead th { position:sticky; top:0; background:#111827;
+        z-index:1; padding:5px 6px; border:1px solid #374151; text-align:left; color:#f9fafb; font-size:11px; }
+      #${PANEL_ID} .spb-dup-table td { border:1px solid #1f2937; padding:5px 6px; vertical-align:top; }
+      #${PANEL_ID} .spb-dup-table .pname { color:#93c5fd; font-weight:600; }
+      #${PANEL_ID} .spb-dup-table .pmeta { font-size:10px; color:#9ca3af; }
+      #${PANEL_ID} .spb-dup-table .spb-radio-row { display:flex; align-items:center; gap:6px;
+        padding:2px 0; cursor:pointer; }
+      #${PANEL_ID} .spb-dup-table .spb-radio-row.winner { color:#6ee7b7; }
+      #${PANEL_ID} .spb-dup-table .spb-radio-row.loser { color:#fca5a5; }
+      #${PANEL_ID} .spb-dup-table tr.ignored td { opacity:0.45; }
+      #${PANEL_ID} .spb-dup-table tr.ignored .spb-radio-row { color:#9ca3af !important; }
+      #${PANEL_ID} .spb-dup-table .spb-mini { font-size:10px; color:#cbd5e1; background:#1f2937;
+        padding:1px 5px; border-radius:8px; margin-left:4px; }
     `;
     document.head.appendChild(s);
   }
@@ -1021,7 +1040,582 @@ const SpecParamsBulk = (() => {
     window.XLSX.utils.book_append_sheet(wb, ws, name);
   }
 
-  return { VERSION, runDownload, runUpload };
+  // ════════════════════════════════════════════════════════
+  //  DUPLICATE-PARAMS VALIDATOR
+  //  Detecta PNs con >1 param activo por (Spec, SpecField), permite elegir
+  //  cuál conservar y archivar el resto vía UpdatePartNumberSpecParam.
+  // ════════════════════════════════════════════════════════
+
+  // Estado del validador
+  const dupState = {
+    customerFilter: '',
+    specFilter: '',
+    groups: [],            // [{ key, pnId, pnName, customer, specName, specIdInDomain, fieldName, fieldId, partNumberSpecId, params: [{id,name,sfpId,sfpName,processNodeId,isWinner,...}] }]
+    decisions: new Map(),  // key → { winnerParamRowId, ignored: bool }
+  };
+
+  async function runDuplicateParamsValidator() {
+    const myRunId = nextRunId();
+    ensurePanel('Validar params duplicados por SpecField');
+    state.panelEl?.classList.add('spb-wide');
+
+    dupState.customerFilter = '';
+    dupState.specFilter = '';
+    dupState.groups = [];
+    dupState.decisions = new Map();
+
+    renderDupFilterPanel(myRunId);
+  }
+
+  function renderDupFilterPanel(myRunId) {
+    setBody(`
+      <div style="font-size:12px;color:#cbd5e1;margin-bottom:8px">
+        Escanea PNs activos y detecta &gt;1 param activo por (Spec, SpecField).
+        Puedes filtrar por cliente, spec, ambos o ninguno (vacío = todos los PNs activos).
+      </div>
+      <div class="spb-filter-row">
+        <label style="flex:1">Cliente (contiene):
+          <input type="text" data-ctrl="dup-cust" placeholder="Ej. JABIL — vacío = todos" autocomplete="off">
+        </label>
+      </div>
+      <div class="spb-filter-row">
+        <label style="flex:1">Spec (nombre contiene):
+          <input type="text" data-ctrl="dup-spec" placeholder="Ej. NIQUEL — vacío = todas" autocomplete="off">
+        </label>
+      </div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:6px">
+        Aviso: escanear sin filtros revisa todos los PNs activos (puede tardar varios minutos).
+      </div>
+    `);
+    setFooter(`
+      <span class="spb-counter">Listo</span>
+      <div style="display:flex;gap:6px">
+        <button class="spb-btn spb-btn-ghost" data-act="dup-cancel">Cerrar</button>
+        <button class="spb-btn" data-act="dup-start">Escanear</button>
+      </div>
+    `);
+    state.panelEl.querySelector('[data-act=dup-cancel]')?.addEventListener('click', () => closePanel());
+    state.panelEl.querySelector('[data-act=dup-start]')?.addEventListener('click', async () => {
+      dupState.customerFilter = state.panelEl.querySelector('[data-ctrl=dup-cust]')?.value?.trim() || '';
+      dupState.specFilter = state.panelEl.querySelector('[data-ctrl=dup-spec]')?.value?.trim() || '';
+      try {
+        await runDupScan(myRunId);
+      } catch (e) {
+        if (e?.message === 'Run cancelado') return;
+        setBody(`<div class="spb-error">Error en escaneo: ${escHtml(e.message)}</div>`);
+        setFooter(`<button class="spb-btn" data-act="dup-close-err">Cerrar</button>`);
+        state.panelEl.querySelector('[data-act=dup-close-err]')?.addEventListener('click', () => closePanel());
+      }
+    });
+  }
+
+  async function runDupScan(myRunId) {
+    setBody(`<div class="spb-progress">
+      Fase 1/2: cargando PNs…
+      <div data-ctrl="prog-msg">Iniciando…</div>
+      <div class="spb-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    setFooter(`<button class="spb-btn spb-btn-danger" data-act="dup-cancel-run">Cancelar</button>`);
+    state.panelEl.querySelector('[data-act=dup-cancel-run]')?.addEventListener('click', () => {
+      nextRunId();
+      closePanel();
+    });
+    const progMsg = state.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar = state.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    // ── Fase 1: AllPartNumbers paginado, filtro cliente cliente-side
+    const allPNs = [];
+    let offset = 0;
+    const PAGE = 500;
+    const custFilter = dupState.customerFilter.toUpperCase();
+    while (true) {
+      bailIfStale(myRunId);
+      const data = await withRetry(
+        () => api().query('AllPartNumbers',
+          { orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: '' },
+          'AllPartNumbers'),
+        `AllPartNumbers offset=${offset}`, myRunId
+      );
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        if (n.archivedAt) continue;
+        if (custFilter && !(n.customerByCustomerId?.name || '').toUpperCase().includes(custFilter)) continue;
+        allPNs.push(n);
+      }
+      if (progMsg) progMsg.textContent = `${allPNs.length} PNs cargados (offset ${offset})`;
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    if (!allPNs.length) {
+      setBody(`<div class="spb-error">No se encontraron PNs activos${dupState.customerFilter ? ` para cliente "${escHtml(dupState.customerFilter)}"` : ''}.</div>`);
+      setFooter(`<button class="spb-btn" data-act="dup-close-empty">Cerrar</button>`);
+      state.panelEl.querySelector('[data-act=dup-close-empty]')?.addEventListener('click', () => closePanel());
+      return;
+    }
+
+    log(`[SPB-dup] Fase 1 OK: ${allPNs.length} PNs activos${custFilter ? ` (cliente ${dupState.customerFilter})` : ''}`);
+
+    // ── Fase 2: GetPartNumber con runPool 6, detectar grupos
+    setBody(`<div class="spb-progress">
+      Fase 2/2: revisando ${allPNs.length} PNs (concurrencia 6)…
+      <div data-ctrl="prog-msg">Iniciando…</div>
+      <div class="spb-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    const progMsg2 = state.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const progBar2 = state.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const specFilterLow = dupState.specFilter.toLowerCase();
+    const groups = [];
+    const fetchErrors = [];
+
+    await runPool(allPNs, async (pn) => {
+      let detail = null;
+      try {
+        const data = await withRetry(
+          () => api().query('GetPartNumber', { partNumberId: pn.id, usagesLimit: 0, usagesOffset: 0 }),
+          `GetPartNumber ${pn.id}`, myRunId
+        );
+        detail = data?.partNumberById;
+      } catch (e) {
+        fetchErrors.push({ pnId: pn.id, pnName: pn.name, error: e?.message || String(e) });
+        return;
+      }
+      if (!detail) return;
+
+      const pnSpecs = detail.partNumberSpecsByPartNumberId?.nodes || [];
+      const allParams = detail.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+
+      // Lookup: partNumberSpecId → { specId, specName, specIdInDomain }
+      const psMap = new Map();
+      for (const ps of pnSpecs) {
+        if (ps.archivedAt) continue;
+        const sp = ps.specBySpecId || {};
+        psMap.set(ps.id, {
+          specId: sp.id,
+          specName: sp.name || '',
+          specIdInDomain: sp.idInDomain || ps.id,
+        });
+      }
+
+      // Si hay filtro de spec, descartar PN si ninguna spec activa matchea
+      if (specFilterLow) {
+        const anyMatch = [...psMap.values()].some(s => (s.specName || '').toLowerCase().includes(specFilterLow));
+        if (!anyMatch) return;
+      }
+
+      // Agrupar params activos por (partNumberSpecId, specFieldId)
+      const buckets = new Map();
+      for (const p of allParams) {
+        if (p.archivedAt) continue;
+        if (!p.specFieldParamBySpecFieldParamId) continue;
+        const psId = p.partNumberSpecId;
+        const sfId = p.specFieldId;
+        if (!psId || !sfId) continue;
+        // Solo grupos pertenecientes a una spec ACTIVA del PN
+        if (!psMap.has(psId)) continue;
+        const key = `${psId}|${sfId}`;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(p);
+      }
+
+      // Filtrar buckets con >1, además respetar filtro de spec en grupo
+      for (const [key, params] of buckets) {
+        if (params.length < 2) continue;
+        const [psIdStr, sfIdStr] = key.split('|');
+        const psInfo = psMap.get(Number(psIdStr));
+        if (specFilterLow && !(psInfo.specName || '').toLowerCase().includes(specFilterLow)) continue;
+
+        // Resolver nombre del SpecField vía el primer spec match en pnSpecs
+        let fieldName = '';
+        for (const ps of pnSpecs) {
+          if (ps.id !== Number(psIdStr)) continue;
+          const sfs = ps.specBySpecId?.specFieldSpecsBySpecId?.nodes || [];
+          const f = sfs.find(sf => sf.specFieldBySpecFieldId?.id === Number(sfIdStr));
+          if (f) { fieldName = f.specFieldBySpecFieldId?.name || ''; break; }
+        }
+
+        // Ordenar params por id desc (winner default = mayor id = más reciente)
+        const sorted = [...params].sort((a, b) => Number(b.id) - Number(a.id));
+        const winnerRowId = sorted[0].id;
+
+        groups.push({
+          key: `${pn.id}-${key}`,
+          pnId: pn.id,
+          pnName: pn.name || '',
+          customer: pn.customerByCustomerId?.name || '',
+          partNumberSpecId: Number(psIdStr),
+          specName: psInfo.specName,
+          specIdInDomain: psInfo.specIdInDomain,
+          fieldId: Number(sfIdStr),
+          fieldName,
+          params: sorted.map(p => ({
+            rowId: p.id,
+            sfpId: p.specFieldParamBySpecFieldParamId?.id ?? null,
+            sfpName: p.specFieldParamBySpecFieldParamId?.name || '(sin nombre)',
+            processNodeId: p.processNodeId || null,
+          })),
+        });
+
+        dupState.decisions.set(`${pn.id}-${key}`, {
+          winnerRowId,
+          ignored: false,
+        });
+      }
+    }, 6, (done, total) => {
+      if (progMsg2) progMsg2.textContent = `${done}/${total} PNs revisados — ${groups.length} grupos duplicados`;
+      if (progBar2) progBar2.style.width = `${(done / total) * 100}%`;
+    }, myRunId);
+
+    bailIfStale(myRunId);
+    dupState.groups = groups;
+
+    log(`[SPB-dup] Fase 2 OK: ${groups.length} grupos duplicados en ${new Set(groups.map(g => g.pnId)).size} PNs (${fetchErrors.length} errores de fetch)`);
+
+    if (!groups.length) {
+      setBody(`<div class="spb-success">
+        ✓ Sin duplicados detectados en ${allPNs.length} PNs revisados.
+        ${fetchErrors.length ? `<br><span style="color:#fbbf24">⚠ ${fetchErrors.length} PNs no pudieron consultarse</span>` : ''}
+      </div>`);
+      setFooter(`<button class="spb-btn" data-act="dup-close-ok">Cerrar</button>`);
+      state.panelEl.querySelector('[data-act=dup-close-ok]')?.addEventListener('click', () => closePanel());
+      return;
+    }
+
+    renderDupTable(myRunId, allPNs.length, fetchErrors);
+  }
+
+  function renderDupTable(myRunId, scannedCount, fetchErrors) {
+    const groups = dupState.groups;
+    const uniquePNs = new Set(groups.map(g => g.pnId)).size;
+    const totalParams = groups.reduce((s, g) => s + g.params.length, 0);
+    const losersCount = groups.reduce((s, g) => s + (g.params.length - 1), 0);
+
+    // Construir DOM (textContent, sin innerHTML para datos)
+    const body = state.panelEl.querySelector('.spb-body');
+    body.innerHTML = '';
+
+    // Stats bar
+    const stats = document.createElement('div');
+    stats.className = 'spb-dup-stats';
+    const mk = (lbl, val) => {
+      const span = document.createElement('span');
+      const b = document.createElement('b');
+      b.textContent = String(val);
+      span.appendChild(document.createTextNode(`${lbl}: `));
+      span.appendChild(b);
+      return span;
+    };
+    stats.appendChild(mk('PNs revisados', scannedCount));
+    stats.appendChild(mk('PNs con duplicados', uniquePNs));
+    stats.appendChild(mk('Grupos', groups.length));
+    stats.appendChild(mk('Params a archivar', losersCount));
+    if (fetchErrors.length) stats.appendChild(mk('Errores fetch', fetchErrors.length));
+    body.appendChild(stats);
+
+    // Tabla
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'max-height:55vh;overflow-y:auto;border:1px solid #374151;border-radius:6px';
+    const table = document.createElement('table');
+    table.className = 'spb-dup-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['PN', 'Cliente', 'Spec', 'SpecField', 'Params (conservar)', 'Ignorar'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const g of groups) {
+      const tr = document.createElement('tr');
+      tr.dataset.key = g.key;
+
+      const tdPn = document.createElement('td');
+      const pname = document.createElement('div');
+      pname.className = 'pname';
+      pname.textContent = g.pnName;
+      const pmeta = document.createElement('div');
+      pmeta.className = 'pmeta';
+      pmeta.textContent = `#${g.pnId}`;
+      tdPn.appendChild(pname);
+      tdPn.appendChild(pmeta);
+      tr.appendChild(tdPn);
+
+      const tdCust = document.createElement('td');
+      tdCust.textContent = g.customer;
+      tr.appendChild(tdCust);
+
+      const tdSpec = document.createElement('td');
+      tdSpec.textContent = g.specName || `(spec ${g.specIdInDomain})`;
+      tr.appendChild(tdSpec);
+
+      const tdField = document.createElement('td');
+      tdField.textContent = g.fieldName || `(field ${g.fieldId})`;
+      tr.appendChild(tdField);
+
+      const tdParams = document.createElement('td');
+      const initialWinner = dupState.decisions.get(g.key)?.winnerRowId;
+      g.params.forEach((p, idx) => {
+        const lbl = document.createElement('label');
+        lbl.className = 'spb-radio-row';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = `dup-${g.key}`;
+        radio.value = String(p.rowId);
+        if (p.rowId === initialWinner) radio.checked = true;
+        radio.addEventListener('change', () => {
+          const dec = dupState.decisions.get(g.key) || {};
+          dec.winnerRowId = p.rowId;
+          dupState.decisions.set(g.key, dec);
+          refreshRadioStyles(tr, g);
+          updateDupFooter();
+        });
+        lbl.appendChild(radio);
+        const txt = document.createElement('span');
+        txt.textContent = p.sfpName;
+        lbl.appendChild(txt);
+        const mini = document.createElement('span');
+        mini.className = 'spb-mini';
+        mini.textContent = `row#${p.rowId} · sfp#${p.sfpId}${p.processNodeId ? ` · pn#${p.processNodeId}` : ' · sin proceso'}${idx === 0 ? ' · más reciente' : ''}`;
+        lbl.appendChild(mini);
+        tdParams.appendChild(lbl);
+      });
+      tr.appendChild(tdParams);
+
+      const tdIgn = document.createElement('td');
+      tdIgn.style.textAlign = 'center';
+      const ignCb = document.createElement('input');
+      ignCb.type = 'checkbox';
+      ignCb.addEventListener('change', () => {
+        const dec = dupState.decisions.get(g.key) || {};
+        dec.ignored = ignCb.checked;
+        dupState.decisions.set(g.key, dec);
+        tr.classList.toggle('ignored', ignCb.checked);
+        updateDupFooter();
+      });
+      tdIgn.appendChild(ignCb);
+      tr.appendChild(tdIgn);
+
+      refreshRadioStyles(tr, g);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+
+    // Footer
+    setFooter(`
+      <span class="spb-counter" data-ctrl="dup-foot-stats"></span>
+      <div style="display:flex;gap:6px">
+        <button class="spb-btn spb-btn-ghost" data-act="dup-back">← Filtros</button>
+        <button class="spb-btn spb-btn-ghost" data-act="dup-download-bit">Descargar XLSX</button>
+        <button class="spb-btn spb-btn-danger" data-act="dup-apply">Aplicar fix</button>
+      </div>
+    `);
+    state.panelEl.querySelector('[data-act=dup-back]')?.addEventListener('click', () => {
+      nextRunId();
+      runDuplicateParamsValidator();
+    });
+    state.panelEl.querySelector('[data-act=dup-download-bit]')?.addEventListener('click', () => {
+      buildAndDownloadDupBitacora('preview', null);
+    });
+    state.panelEl.querySelector('[data-act=dup-apply]')?.addEventListener('click', async () => {
+      if (!confirm('Esto archivará los params no seleccionados (reversible vía UpdatePartNumberSpecParam con archivedAt:null). ¿Continuar?')) return;
+      await runDupApply(myRunId);
+    });
+    updateDupFooter();
+  }
+
+  function refreshRadioStyles(tr, g) {
+    const winnerRowId = dupState.decisions.get(g.key)?.winnerRowId;
+    tr.querySelectorAll('.spb-radio-row').forEach((lbl) => {
+      const rb = lbl.querySelector('input[type=radio]');
+      const isWin = Number(rb.value) === Number(winnerRowId);
+      lbl.classList.toggle('winner', isWin);
+      lbl.classList.toggle('loser', !isWin);
+    });
+  }
+
+  function updateDupFooter() {
+    const ftr = state.panelEl?.querySelector('[data-ctrl=dup-foot-stats]');
+    if (!ftr) return;
+    let toArchive = 0, ignored = 0;
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key);
+      if (!dec) continue;
+      if (dec.ignored) { ignored++; continue; }
+      toArchive += (g.params.length - 1);
+    }
+    ftr.textContent = `${toArchive} params a archivar — ${ignored} grupos ignorados`;
+  }
+
+  async function runDupApply(parentRunId) {
+    const myRunId = nextRunId();
+    void parentRunId;
+
+    // Construir lista de archivos a ejecutar
+    const tasks = [];
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key);
+      if (!dec || dec.ignored) continue;
+      for (const p of g.params) {
+        if (p.rowId === dec.winnerRowId) continue;
+        tasks.push({
+          group: g,
+          paramRowId: p.rowId,
+          sfpName: p.sfpName,
+        });
+      }
+    }
+
+    if (!tasks.length) {
+      alert('No hay nada que archivar (todos los grupos están ignorados o solo tienen 1 param).');
+      return;
+    }
+
+    setBody(`<div class="spb-progress">
+      Archivando ${tasks.length} params (concurrencia 3)…
+      <div data-ctrl="prog-msg">0/${tasks.length}</div>
+      <div class="spb-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+    </div>`);
+    setFooter(`<button class="spb-btn spb-btn-danger" data-act="dup-stop">Cancelar</button>`);
+    state.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
+      nextRunId();
+      closePanel();
+    });
+    const pm = state.panelEl.querySelector('[data-ctrl=prog-msg]');
+    const pb = state.panelEl.querySelector('[data-ctrl=prog-bar]');
+
+    const okRows = [];
+    const errRows = [];
+    let processed = 0;
+
+    await runPool(tasks, async (t) => {
+      try {
+        await withRetry(
+          () => api().query('UpdatePartNumberSpecParam',
+            { id: t.paramRowId, archivedAt: new Date().toISOString() },
+            'UpdatePartNumberSpecParam'),
+          `archiveParam ${t.paramRowId}`, myRunId
+        );
+        okRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName });
+      } catch (e) {
+        errRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName, error: e?.message || String(e) });
+      }
+      processed++;
+      if (pm) pm.textContent = `${processed}/${tasks.length} (${okRows.length} OK, ${errRows.length} err)`;
+      if (pb) pb.style.width = `${(processed / tasks.length) * 100}%`;
+    }, 3, null, myRunId);
+
+    log(`[SPB-dup] Fix aplicado: ${okRows.length} OK, ${errRows.length} errores`);
+
+    // Resumen
+    const body = state.panelEl.querySelector('.spb-body');
+    body.innerHTML = '';
+    const sum = document.createElement('div');
+    sum.className = okRows.length && !errRows.length ? 'spb-success' : 'spb-error';
+    sum.textContent = `Resultado: ${okRows.length} archivados, ${errRows.length} errores. Reversible vía UpdatePartNumberSpecParam con archivedAt:null (usa los rowId del XLSX).`;
+    body.appendChild(sum);
+
+    if (errRows.length) {
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'font-size:11px;color:#fca5a5;max-height:200px;overflow-y:auto;margin-top:8px';
+      for (const r of errRows.slice(0, 50)) {
+        const li = document.createElement('li');
+        li.textContent = `row#${r.paramRowId} (${r.sfpName}) — ${r.error}`;
+        ul.appendChild(li);
+      }
+      body.appendChild(ul);
+    }
+
+    setFooter(`
+      <span class="spb-counter">${okRows.length} OK · ${errRows.length} errores</span>
+      <div style="display:flex;gap:6px">
+        <button class="spb-btn spb-btn-ghost" data-act="dup-download-final">Descargar XLSX</button>
+        <button class="spb-btn" data-act="dup-final-close">Cerrar</button>
+      </div>
+    `);
+    state.panelEl.querySelector('[data-act=dup-download-final]')?.addEventListener('click', () => {
+      buildAndDownloadDupBitacora('applied', { okRows, errRows });
+    });
+    state.panelEl.querySelector('[data-act=dup-final-close]')?.addEventListener('click', () => closePanel());
+
+    // Auto-descargar bitácora al terminar
+    buildAndDownloadDupBitacora('applied', { okRows, errRows });
+  }
+
+  // mode = 'preview' (sin aplicar) | 'applied' (post-fix con okRows/errRows)
+  function buildAndDownloadDupBitacora(mode, applied) {
+    if (!window.XLSX) {
+      alert('XLSX (SheetJS) no cargado.');
+      return;
+    }
+    const wb = window.XLSX.utils.book_new();
+    const now = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+    // Hoja 1: Detected (todos los grupos detectados + decisión)
+    const detRows = [];
+    for (const g of dupState.groups) {
+      const dec = dupState.decisions.get(g.key) || {};
+      for (const p of g.params) {
+        const isWinner = p.rowId === dec.winnerRowId;
+        detRows.push({
+          PNID: g.pnId,
+          PNName: g.pnName,
+          Cliente: g.customer,
+          SpecIdInDomain: g.specIdInDomain,
+          SpecName: g.specName,
+          FieldID: g.fieldId,
+          FieldName: g.fieldName,
+          ParamRowID: p.rowId,
+          SpecFieldParamID: p.sfpId,
+          ParamName: p.sfpName,
+          ProcessNodeID: p.processNodeId || '',
+          Decisión: dec.ignored ? 'IGNORADO' : (isWinner ? 'CONSERVAR' : 'ARCHIVAR'),
+        });
+      }
+    }
+    addSheetGeneric(wb, 'Detectados', `Detectados · ${detRows.length} filas · ${now}`,
+      detRows,
+      ['PNID','PNName','Cliente','SpecIdInDomain','SpecName','FieldID','FieldName',
+       'ParamRowID','SpecFieldParamID','ParamName','ProcessNodeID','Decisión']);
+
+    if (mode === 'applied' && applied) {
+      const okRows = (applied.okRows || []).map(r => ({
+        PNID: r.group.pnId, PNName: r.group.pnName,
+        SpecIdInDomain: r.group.specIdInDomain, SpecName: r.group.specName,
+        FieldName: r.group.fieldName,
+        ParamRowID: r.paramRowId, ParamName: r.sfpName,
+      }));
+      addSheetGeneric(wb, 'Aplicadas', `Archivadas OK · ${okRows.length} · ${now}`,
+        okRows,
+        ['PNID','PNName','SpecIdInDomain','SpecName','FieldName','ParamRowID','ParamName']);
+
+      const errRows = (applied.errRows || []).map(r => ({
+        PNID: r.group.pnId, PNName: r.group.pnName,
+        SpecIdInDomain: r.group.specIdInDomain, SpecName: r.group.specName,
+        FieldName: r.group.fieldName,
+        ParamRowID: r.paramRowId, ParamName: r.sfpName, Error: r.error,
+      }));
+      addSheetGeneric(wb, 'Errores', `Errores · ${errRows.length} · ${now}`,
+        errRows,
+        ['PNID','PNName','SpecIdInDomain','SpecName','FieldName','ParamRowID','ParamName','Error']);
+    }
+
+    const wbOut = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dup-params-${mode}-${now}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  return { VERSION, runDownload, runUpload, runDuplicateParamsValidator };
 })();
 
 if (typeof window !== 'undefined') window.SpecParamsBulk = SpecParamsBulk;
