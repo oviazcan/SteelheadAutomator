@@ -99,10 +99,12 @@ const PNAuditor = (() => {
     { id: 'label-desarrollo', group: 'Etiquetas especiales', label: 'Con etiqueta "En desarrollo"', check: f => f.labels.some(l => l.includes('desarrollo')) },
     { id: 'label-desconocido', group: 'Etiquetas especiales', label: 'Con etiqueta "NP desconocido"', check: f => f.labels.some(l => l.includes('desconocido')) },
 
-    // Integridad
-    { id: 'duplicates', group: 'Integridad', label: 'PNs duplicados (nombre exacto)', check: null }, // handled separately
-    { id: 'similar', group: 'Integridad', label: 'PNs duplicados por similitud (~80%)', check: null }, // handled separately
+    // Integridad — tier-based duplicate detection (handled in runIntegrityScan)
+    { id: 'dup-hard',   group: 'Integridad', label: 'PNs duplicados — DUROS (mismo QuoteIBMS)', check: null },
+    { id: 'dup-medium', group: 'Integridad', label: 'PNs duplicados — MEDIOS (mismo metalBase + acabados + cliente)', check: null },
+    { id: 'dup-soft',   group: 'Integridad', label: 'PNs duplicados — SUAVES (mismo nombre + cliente, acabados asimétricos)', check: null },
     { id: 'no-customer', group: 'Integridad', label: 'Sin cliente asignado', check: f => !f.customerId },
+    { id: 'similar', group: 'Integridad', label: 'PNs por similitud de nombre (~80%)', check: null }, // ortogonal, conservado
   ];
 
   // ═══════════════════════════════════════════
