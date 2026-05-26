@@ -2111,7 +2111,7 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.2)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.3)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
@@ -2158,6 +2158,84 @@ const SpecMigrator = (() => {
   // Helpers locales del validador (no colisionan con el resto del módulo)
   const dupSleep = (ms) => new Promise(r => setTimeout(r, ms));
   const dupRetryDelays = [1000, 2000, 4000];
+
+  // 0.5.3: host cleanup contra los jobs/handles laterales del SPA de Steelhead
+  // (Datadog RUM session replay grabando todo + Apollo InMemoryCache normalizando
+  // cada response por __typename+id). bulk-upload 1.4.20+ ya implementa el mismo
+  // patrón; el latch global window.__sa_dd_stopped lo hace idempotente entre applets.
+  // Si bulk-upload ya corrió antes en esta tab, este call entra al early-return y
+  // solo drena Apollo cache silenciosamente. TODO: extraer a helper compartido en
+  // remote/scripts/_steelhead-host-cleanup.js como parte del refactor global (#113).
+  function dupApolloCacheDrain() {
+    try {
+      const candidates = [
+        window.__APOLLO_CLIENT__,
+        window.apolloClient,
+        window.__APOLLO__?.client,
+      ].filter(Boolean);
+      for (const client of candidates) {
+        try {
+          if (typeof client.clearStore === 'function') client.clearStore().catch(() => {});
+          else if (client.cache && typeof client.cache.reset === 'function') client.cache.reset();
+        } catch (_) { /* host no expone APIs esperadas: silencio */ }
+      }
+    } catch (_) { /* defensa total */ }
+  }
+
+  function dupStopHostJobs() {
+    if (window.__sa_dd_stopped) { dupApolloCacheDrain(); return; }
+    // Datadog RUM
+    try {
+      const dd = window.DD_RUM || window.datadogRum || window.__DD_RUM__;
+      if (dd) {
+        try { dd.stopSessionReplayRecording?.(); } catch (_) {}
+        try { dd.stopSession?.(); } catch (_) {}
+        try { dd.setTrackingConsent?.('not-granted'); } catch (_) {}
+        log('[SPM-dup] Datadog: stopSessionReplay + stopSession + consent revoked.');
+      }
+    } catch (_) {}
+    // Fetch/Beacon/XHR patches. Solo si no los aplicó otra applet antes.
+    if (!window.__sa_fetch_patched) {
+      try {
+        const origFetch = window.fetch;
+        window.fetch = function (input, init) {
+          const url = typeof input === 'string' ? input : (input?.url || '');
+          if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
+            return Promise.resolve(new Response('', { status: 204 }));
+          }
+          return origFetch.call(this, input, init);
+        };
+        if (navigator.sendBeacon) {
+          const origBeacon = navigator.sendBeacon.bind(navigator);
+          navigator.sendBeacon = function (url, data) {
+            if (/browser-intake-ddog-gov\.com|datadoghq\.com/i.test(url)) return true;
+            return origBeacon(url, data);
+          };
+        }
+        if (window.XMLHttpRequest && !window.__sa_xhr_patched) {
+          const origOpen = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function (method, url) {
+            this.__sa_url = url;
+            return origOpen.apply(this, arguments);
+          };
+          const origSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.send = function (body) {
+            const url = this.__sa_url || '';
+            if (/browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i.test(url)) {
+              try { this.abort(); } catch (_) {}
+              return;
+            }
+            return origSend.apply(this, arguments);
+          };
+          window.__sa_xhr_patched = true;
+        }
+        window.__sa_fetch_patched = true;
+        log('[SPM-dup] fetch+sendBeacon+XHR a Datadog patcheados.');
+      } catch (e) { warn(`[SPM-dup] Patch fetch falló: ${String(e?.message || e).substring(0, 80)}`); }
+    }
+    dupApolloCacheDrain();
+    window.__sa_dd_stopped = true;
+  }
 
   async function dupWithRetry(fn, label) {
     let lastErr = null;
@@ -3107,6 +3185,11 @@ const SpecMigrator = (() => {
 
   // Orquesta: parse → resolve → GetPartNumber → clasificar → render.
   async function dupRunScanFromCsv(myRunId, csvText, fileName) {
+    // 0.5.3: ANTES de empezar a martillar GraphQL, apagar Datadog session replay
+    // y drenar Apollo cache del SPA host. Sin esto, cada AllPartNumbers (paginado
+    // 500×N) y cada GetPartNumber (4270+ en CSVs grandes) inflan el InMemoryCache
+    // normalizado de Apollo + el ring buffer de Datadog → OOM lateral.
+    dupStopHostJobs();
     dupSetBody(`<div class="dup-progress">
       Modo CSV: <b>${dupEscHtml(fileName || 'archivo')}</b>
       <div data-ctrl="prog-msg">Parseando CSV…</div>
@@ -3175,8 +3258,15 @@ const SpecMigrator = (() => {
 
       const item = dupCsvClassifyPN(r.csvPart, r.pnNode, detail);
       if (item) items.push(item);
+      // 0.5.3: liberar el detail completo inmediatamente; ya extrajimos savePnSeed
+      // en classify. Sin esto, la closure del worker retiene la referencia hasta
+      // que termine la promesa, multiplicado por concurrency=6 in-flight.
+      detail = null;
     }, 6, (done, total) => {
       setProg(`${done}/${total} PNs revisados — ${items.length} con issues`, done, total);
+      // 0.5.3: drenar Apollo cache cada 50 PNs procesados. clearStore() es
+      // silencioso (no log) y barato si no encuentra el client.
+      if (done % 50 === 0) dupApolloCacheDrain();
     });
 
     if (dupState.runId !== myRunId) return;
