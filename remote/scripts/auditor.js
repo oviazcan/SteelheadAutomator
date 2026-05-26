@@ -184,6 +184,64 @@ const PNAuditor = (() => {
   }
 
   // ═══════════════════════════════════════════
+  // INTEGRITY TIERS — pase 1: AllPartNumbers paginado activos + archivados
+  // ═══════════════════════════════════════════
+
+  const ARCHIVED_SENTINEL = '__archived__';
+
+  function matchesCustomer(node, customerFilter) {
+    if (!customerFilter) return true;
+    const cn = node.customerByCustomerId?.name || '';
+    return cn.toUpperCase().includes(customerFilter.toUpperCase());
+  }
+
+  async function fetchAllPNsWithArchived(opts) {
+    const { customerFilter, searchQuery, includeArchived, onProgress } = opts;
+    const all = [];
+    const activeIds = new Set();
+    const seenIds = new Set();
+    const pageSize = 500;
+
+    let offset = 0;
+    while (!stopped) {
+      const vars = { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: searchQuery || '', includeArchived: 'NO' };
+      const data = await api().query('AllPartNumbers', vars, 'AllPartNumbers');
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) {
+        activeIds.add(n.id);
+        if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
+          seenIds.add(n.id);
+          all.push({ ...n, archivedAt: null });
+        }
+      }
+      onProgress && onProgress(`Pase 1 (activos): ${all.length} PNs · offset ${offset}`);
+      if (nodes.length < pageSize) break;
+      offset += pageSize;
+    }
+    if (stopped) return all;
+
+    if (includeArchived) {
+      offset = 0;
+      while (!stopped) {
+        const vars = { orderBy: ['ID_DESC'], offset, first: pageSize, searchQuery: searchQuery || '', includeArchived: 'YES' };
+        const data = await api().query('AllPartNumbers', vars, 'AllPartNumbers');
+        const nodes = data?.pagedData?.nodes || [];
+        for (const n of nodes) {
+          if (activeIds.has(n.id)) continue;
+          if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
+            seenIds.add(n.id);
+            all.push({ ...n, archivedAt: ARCHIVED_SENTINEL });
+          }
+        }
+        onProgress && onProgress(`Pase 1 (archivados): ${all.length} PNs · offset ${offset}`);
+        if (nodes.length < pageSize) break;
+        offset += pageSize;
+      }
+    }
+    return all;
+  }
+
+  // ═══════════════════════════════════════════
   // MAIN AUDIT
   // ═══════════════════════════════════════════
 
