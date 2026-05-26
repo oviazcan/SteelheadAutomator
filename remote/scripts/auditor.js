@@ -587,9 +587,96 @@ const PNAuditor = (() => {
     if (ov) ov.parentNode.removeChild(ov);
   }
 
+  // ═══════════════════════════════════════════
+  // RENDER — bucket cards (Task 13)
+  // ═══════════════════════════════════════════
+
+  function renderIntegrityResults(integrity) {
+    if (!integrity) return '';
+    const tiers = [
+      { key: 'hardBuckets',   label: '🚨 DUROS (mismo QuoteIBMS)',                              color: '#fca5a5' },
+      { key: 'mediumBuckets', label: '⚠ MEDIOS (mismo metalBase + acabados + cliente)',         color: '#fde68a' },
+      { key: 'softBuckets',   label: 'ⓘ SUAVES (asimetría de acabados)',                        color: '#bae6fd' },
+    ];
+    let html = '';
+    for (const t of tiers) {
+      const buckets = integrity[t.key] || [];
+      if (!buckets.length) continue;
+      const totalPns = buckets.reduce((a, b) => a + b.members.length, 0);
+      html += `<details open style="margin-top:14px"><summary style="color:${t.color};cursor:pointer;font-weight:600">${t.label} — ${buckets.length} buckets · ${totalPns} PNs</summary>`;
+      for (const b of buckets) html += renderBucketCard(b);
+      html += '</details>';
+    }
+    if (!html) {
+      html = '<div style="color:#86efac;padding:12px 0">✓ Sin duplicados detectados en los tiers seleccionados.</div>';
+      return html;
+    }
+    const totalLosers = sumLosers(integrity);
+    const totalDelete = sumDelete(integrity);
+    html += `<div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="sa-aud-btn" id="sa-int-archive-all" style="background:#16a34a;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">Archivar TODOS los descartados (${totalLosers})</button>
+      <button class="sa-aud-btn" id="sa-int-csv-delete" style="background:#dc2626;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">📋 CSV candidatos a DELETE (${totalDelete})</button>
+      <button class="sa-aud-btn" id="sa-int-json-full" style="background:#475569;color:white;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">💾 JSON audit</button>
+    </div>`;
+    return html;
+  }
+
+  function renderBucketCard(b) {
+    const bucketKey = bucketKeyForCSV(b);
+    const headerExtra = b.deleteCandidates && b.deleteCandidates.length
+      ? `<span style="color:#fca5a5">🚨 ${b.deleteCandidates.length} candidato(s) a DELETE</span>` : '';
+    const rows = b.members.map(m => {
+      const isWinner = m.id === b.winnerId;
+      const ageDays = m.createdAt ? Math.floor((Date.now() - new Date(m.createdAt).getTime()) / 86400000) : '?';
+      const status = m.archived
+        ? '<span style="color:#fca5a5">archivado</span>'
+        : '<span style="color:#86efac">activo</span>';
+      const partial = m.scoreParcial
+        ? '<span title="datos incompletos (GetPartNumber falló)" style="color:#fde68a">⚠ parcial</span>' : '';
+      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:${isWinner ? '#1e293b' : 'transparent'};border-radius:4px">
+        <input type="radio" name="winner-${b.tier}-${escapeAttr(bucketKey)}" value="${m.id}" ${isWinner ? 'checked' : ''}>
+        <code style="color:#cbd5e1">PN-${m.id}</code>
+        <span>${escapeHtml(m.name)}</span>
+        <span style="color:#94a3b8">${escapeHtml(m.customer)}</span>
+        <span style="color:#a5b4fc">score ${m.score}</span>
+        ${status}
+        <span style="color:#94a3b8">${ageDays}d</span>
+        ${partial}
+      </label>`;
+    }).join('');
+    return `<div class="sa-int-bucket" data-bucket-key="${escapeAttr(bucketKey)}" data-tier="${b.tier}" style="border:1px solid #334155;border-radius:6px;padding:10px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="color:#e2e8f0"><b>${b.tier}</b> · ${escapeHtml(humanBucketKey(b))} ${headerExtra}</div>
+        <label style="font-size:11px;color:#94a3b8"><input type="checkbox" class="sa-int-apply" checked> Aplicar acción</label>
+      </div>
+      ${rows}
+    </div>`;
+  }
+
+  function bucketKeyForCSV(b) {
+    if (b.tier === 'DURO') return 'quoteIBMS=' + b.quoteIBMS;
+    if (b.tier === 'MEDIO') return [b.name, b.customerId, b.metalBase, b.finishings].join('||');
+    return [b.name, b.customerId].join('||');
+  }
+  function humanBucketKey(b) {
+    if (b.tier === 'DURO') return 'QuoteIBMS ' + b.quoteIBMS;
+    if (b.tier === 'MEDIO') return `${b.name} · cust ${b.customerId} · ${b.metalBase || '∅'} · [${b.finishings || '∅'}]`;
+    return `${b.name} · cust ${b.customerId}`;
+  }
+  function sumLosers(integ) {
+    return [...(integ.hardBuckets || []), ...(integ.mediumBuckets || []), ...(integ.softBuckets || [])]
+      .reduce((a, b) => a + b.members.filter(m => m.id !== b.winnerId).length, 0);
+  }
+  function sumDelete(integ) {
+    return [...(integ.hardBuckets || []), ...(integ.mediumBuckets || []), ...(integ.softBuckets || [])]
+      .reduce((a, b) => a + ((b.deleteCandidates || []).length), 0);
+  }
+  function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function escapeAttr(s) { return escapeHtml(s); }
+
   function getCriteria() { return CRITERIA; }
 
-  return { run, stop, exportCSV, getCriteria, removeAuditorUI };
+  return { run, stop, exportCSV, getCriteria, removeAuditorUI, renderIntegrityResults };
 })();
 
 if (typeof window !== 'undefined') window.PNAuditor = PNAuditor;

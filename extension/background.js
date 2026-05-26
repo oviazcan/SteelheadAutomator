@@ -914,6 +914,31 @@ async function handleMessage(message, sender) {
                 const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter });
                 window.PNAuditor.removeAuditorUI();
 
+                // Panel de bucket cards si hubo integrity scan
+                if (results.integrity && typeof window.PNAuditor.renderIntegrityResults === 'function') {
+                  const integHtml = window.PNAuditor.renderIntegrityResults(results.integrity);
+                  if (integHtml) {
+                    await new Promise(intResolve => {
+                      const ov2 = document.createElement('div');
+                      ov2.className = 'dl9-overlay';
+                      const md2 = document.createElement('div');
+                      md2.className = 'dl9-modal';
+                      md2.style.cssText = 'background:#0f172a;max-width:900px;max-height:88vh;overflow-y:auto';
+                      md2.innerHTML = `
+                        <h2 style="color:#38bdf8;display:flex;align-items:center;justify-content:space-between">
+                          <span>🔎 Integridad — duplicados detectados</span>
+                          <button id="sa-int-close" style="padding:6px 12px;border:none;border-radius:6px;background:#475569;color:#e2e8f0;font-size:12px;cursor:pointer">Cerrar</button>
+                        </h2>
+                        <div id="sa-int-panel">${integHtml}</div>`;
+                      ov2.appendChild(md2);
+                      document.body.appendChild(ov2);
+                      document.getElementById('sa-int-close').onclick = () => {
+                        ov2.parentNode.removeChild(ov2); intResolve();
+                      };
+                    });
+                  }
+                }
+
                 // Show summary
                 let summary = 'Auditoría completada:\\n\\n';
                 for (const [id, data] of Object.entries(results.criteria)) {
