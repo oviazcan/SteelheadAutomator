@@ -364,3 +364,45 @@ Se aplica **a ambos lados** del lookup: tanto al `customerByCustomerId.name` del
 - [ ] Medir DevTools → Performance → Memory antes y después del scan para confirmar el delta (esperado: pico de 100-500 MB → 5-20 MB).
 - [ ] Confirmar que apply (SavePartNumber por PN seleccionado) sigue funcionando con el seed slim en lugar del detail completo.
 - [ ] Cerrar y reabrir el panel: confirmar que el segundo run empieza con dupState limpio (no acumula `csvItems` del primero).
+
+---
+
+# `validate-duplicate-params` 0.5.3 (2026-05-26, bump config 1.4.42) — Host cleanup (Datadog + Apollo)
+
+**Síntoma:** después de 0.5.2 (slim de estructuras propias) el applet seguía botando con CSVs grandes. El leak no era nuestro; era **lateral del SPA host de Steelhead**.
+
+**Root cause — 2 fuentes laterales que NO estaba apagando:**
+
+1. **Datadog RUM session replay** sigue activo y graba CADA request/response/DOM mutation que disparamos. En un scan de 4270 `GetPartNumber` + paginado `AllPartNumbers`, el ring buffer del SDK crece sin tope hasta OOM o hasta que el flush a `browser-intake-ddog-gov.com` falle por throttling. bulk-upload 1.4.20 ya documentó este patrón con `memory snapshot 3.5× growth`.
+2. **Apollo Client `InMemoryCache`** del SPA host normaliza CADA response GraphQL por `__typename + id`. Cada PartNumber/SpecField/SpecFieldParam que tocamos se queda en el cache aunque no lo volvamos a leer. 4270 PNs × ~10-20 entities por PN = 40-80K entries normalizadas retenidas hasta el reload de la tab.
+
+**Fix — copy del patrón canónico de bulk-upload 1.4.20+:**
+
+- `dupStopHostJobs()` — apaga `DD_RUM`/`datadogRum`/`__DD_RUM__` (`stopSessionReplayRecording`, `stopSession`, `setTrackingConsent('not-granted')`), monkey-patchea `fetch`, `sendBeacon` y `XMLHttpRequest` para abortar requests a `browser-intake-ddog-gov.com`/`datadoghq.com`. Latch global `window.__sa_dd_stopped` cross-applet: si bulk-upload ya lo seteó en esta tab, este call entra al early-return y solo drena Apollo cache silenciosamente.
+- `dupApolloCacheDrain()` — busca el cliente Apollo en `window.__APOLLO_CLIENT__`/`window.apolloClient`/`window.__APOLLO__.client` y llama `clearStore()` o `cache.reset()`. Defensa total (try/catch ancha) porque el cliente puede no estar expuesto en el build de prod.
+- Se llama:
+  - **1×** al inicio de `dupRunScanFromCsv` (antes del primer fetch).
+  - **Cada 50 PNs** dentro del progreso del pool `GetPartNumber` (drain silencioso del cache).
+- Además: `detail = null` después de `dupCsvClassifyPN` para que la closure del worker no retenga la referencia in-flight (multiplicado × concurrency=6).
+
+**Decisión de arquitectura:**
+La función está **copiada inline** en spec-migrator. El refactor correcto es extraerla a `remote/scripts/_steelhead-host-cleanup.js` y que tanto bulk-upload como spec-migrator (y las demás applets que vayan a hacer cargas masivas) la consuman desde ahí. Se queda como **task #113** del refactor global porque requiere tocar `extension/background.js` para inyectar el helper antes de cada applet — superficie más grande de lo justificado para el fix-now.
+
+**Cambios:**
+- `remote/scripts/spec-migrator.js:2159-2240` — `dupApolloCacheDrain` + `dupStopHostJobs` (copia inline del patrón).
+- `dupRunScanFromCsv:3187` — llamada inicial.
+- Pool `GetPartNumber` — drain cada 50 PNs + `detail = null` al final del worker.
+- Header del action: `0.5.2` → `0.5.3`.
+- `remote/config.json`: `1.4.41` → `1.4.42`.
+
+**Lecciones (extender #113):**
+- **Memoria "propia" vs memoria "del host" son ejes distintos.** Slim estructuras propias (0.5.2) ataca lo nuestro; stop Datadog + Apollo drain (0.5.3) ataca lo lateral. Las dos hay que aplicarlas a cualquier applet que haga >1000 queries en una sesión.
+- **Latch global cross-applet es la unidad correcta.** `window.__sa_dd_stopped` y `window.__sa_fetch_patched` viven a nivel tab. Si bulk-upload ya patcheó, spec-migrator entra al early-return y no duplica monkey-patches. Esto solo funciona si TODAS las applets usan el mismo nombre de latch.
+- **`AllPartNumbers` paginado y `GetPartNumber` masivo son los firsts a auditar en cada applet.** Cualquier query con N rounds = N entries en Apollo cache. Drain periódico es obligatorio.
+- **El idea correcto (TODO #113):** extraer a `_steelhead-host-cleanup.js` con un solo export `installHostCleanup({ drainEveryN })` para que cada applet lo invoque una vez y no haya copy-paste drift entre bulk-upload, spec-migrator, etc.
+
+**Plan de validación pendiente:**
+- [ ] Probar el CSV de 4270 PNs en tab fresca (sin bulk-upload previo en la sesión): debe completar el scan sin crash.
+- [ ] Confirmar en console del browser que aparece `[SPM-dup] Datadog: stopSessionReplay …` solo UNA vez (latch idempotente).
+- [ ] Probar el CSV después de un run de bulk-upload en la misma tab: el log Datadog NO debe aparecer (entró al early-return); el Apollo drain sí debe seguir.
+- [ ] Comparar heap snapshot pre vs post scan: las entries `Station`/`WorkboardsConnection`/`PartNumber__typename` no deben crecer monotónicamente.
