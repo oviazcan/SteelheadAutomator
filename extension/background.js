@@ -1011,35 +1011,46 @@ async function handleMessage(message, sender) {
     }
 
     case 'download-spec-params':
-    case 'upload-spec-params':
-    case 'validate-duplicate-params': {
+    case 'upload-spec-params': {
       const tab = await getSteelheadTab();
-      // XLSX library: los tres flujos (download/upload/validate) la necesitan.
       const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
       await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
         func: (c) => { if (!window.XLSX) new Function(c)(); }, args: [xlsxCode]
       });
       await injectAppScripts(tab.id, 'spec-params-bulk');
-      const mode = message.action === 'download-spec-params' ? 'download'
-        : message.action === 'upload-spec-params' ? 'upload'
-        : 'validate';
+      const mode = message.action === 'download-spec-params' ? 'download' : 'upload';
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
         func: (m) => {
           if (!window.SpecParamsBulk) return { error: 'SpecParamsBulk no disponible' };
-          const fn = m === 'download' ? window.SpecParamsBulk.runDownload
-            : m === 'upload' ? window.SpecParamsBulk.runUpload
-            : window.SpecParamsBulk.runDuplicateParamsValidator;
+          const fn = m === 'download' ? window.SpecParamsBulk.runDownload : window.SpecParamsBulk.runUpload;
           if (!fn) return { error: `Función ${m} no expuesta` };
           fn().then(r => console.log('[SA] SpecParamsBulk:', r)).catch(e => console.error('[SA]', e));
           return { started: true, message: m === 'download'
             ? 'Selector de specs abierto. Revisa el panel en Steelhead.'
-            : m === 'upload'
-              ? 'Cargador de XLSX abierto. Revisa el panel en Steelhead.'
-              : 'Validador de params duplicados abierto. Revisa el panel en Steelhead.' };
+            : 'Cargador de XLSX abierto. Revisa el panel en Steelhead.' };
         },
         args: [mode]
+      });
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
+    case 'validate-duplicate-params': {
+      const tab = await getSteelheadTab();
+      const xlsxCode = await fetchScriptCode('scripts/lib/xlsx.full.min.js');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: (c) => { if (!window.XLSX) new Function(c)(); }, args: [xlsxCode]
+      });
+      await injectAppScripts(tab.id, 'spec-migrator');
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          if (!window.SpecMigrator?.runDuplicateParamsValidator) return { error: 'SpecMigrator.runDuplicateParamsValidator no disponible' };
+          window.SpecMigrator.runDuplicateParamsValidator().then(r => console.log('[SA] DupParamsValidator:', r)).catch(e => console.error('[SA]', e));
+          return { started: true, message: 'Validador de params duplicados abierto. Revisa el panel en Steelhead.' };
+        }
       });
       return results?.[0]?.result || { error: 'Sin resultado' };
     }

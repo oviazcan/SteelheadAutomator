@@ -1,6 +1,6 @@
 {
-  "version": "1.4.34",
-  "lastUpdated": "2026-05-25T22:30",
+  "version": "1.4.35",
+  "lastUpdated": "2026-05-25T23:30",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -491,7 +491,8 @@
       "actions": [
         { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run" },
         { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams" },
-        { "id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts" }
+        { "id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts" },
+        { "id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator" }
       ]
     },
     {
@@ -742,8 +743,7 @@
       "requiredPermissions": [],
       "actions": [
         { "id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params" },
-        { "id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params" },
-        { "id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param por SpecField y archiva el sobrante", "icon": "🧹", "type": "secondary", "handler": "message", "message": "validate-duplicate-params" }
+        { "id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params" }
       ]
     },
     {
