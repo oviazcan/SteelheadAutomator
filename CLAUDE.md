@@ -60,6 +60,13 @@ La extensión es un cascarón: en runtime fetchea scripts y `config.json` desde 
 
 Patrones específicos (label-driven extractors, react-select, MUI X DatePicker, modal injection, auto-fill con cancellation tokens, etc.) en [`docs/architecture/dom-patterns.md`](docs/architecture/dom-patterns.md).
 
+## Reglas de memoria en applets de larga duración
+**ANTES de tocar cualquier applet que procese >200 items, mantenga panel abierto, corra `runPool`, o se ejecute por minutos — invoca el skill `memory-hardening-applets`** (`~/.claude/skills/memory-hardening-applets/SKILL.md`). Cubre los dos ejes: memoria propia del applet (slim responses, parse once, clear Maps, closePanel cleanup, seed pattern) y memoria del SPA host (Datadog RUM stop, Apollo cache drain, mem monitor con guardrail a 88%).
+
+Helpers compartidos en [`remote/scripts/host-cleanup-shared.js`](remote/scripts/host-cleanup-shared.js) → `window.SteelheadHostCleanup` (`stopDatadogSessionReplay`, `apolloCacheDrain`, `createMemMonitor`, `makePeriodicDrain`). Importar via array `scripts` del applet en `config.json`. NO copiar el patrón inline — cada copia rompe los latches `window.__sa_dd_stopped` y la idempotencia entre applets co-residentes.
+
+Estado de adopción y anti-patrones en el skill. Audit pendiente por applet: task #113.
+
 ## Procesos: construcción, ordenamiento y control
 Toda la documentación del modelo de procesos en Steelhead vive en [`docs/processes-architecture.md`](docs/processes-architecture.md): tipos de nodos, esquema GraphQL, canon de 9 nodos top-level, construcción del árbol para `ProcureTree`, discovery por tag, glosario de versiones de `process-canon`.
 
