@@ -11,10 +11,12 @@ const PNAuditor = (() => {
   'use strict';
 
   const api = () => window.SteelheadAPI;
+  const hc  = () => window.SteelheadHostCleanup || null;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
   let stopped = false;
+  let memMonitor = null;
 
   // ═══════════════════════════════════════════
   // POOL + RETRY (patrón de process-deep-audit.js)
@@ -283,6 +285,7 @@ const PNAuditor = (() => {
     const detailsByPnId = {};
     const failedIds = new Set();
     let processed = 0;
+    const drainTier = hc()?.makePeriodicDrain(50) || (() => {});
     await runPool([...candidateIds], async (pnId) => {
       if (stopped) return;
       try {
@@ -297,6 +300,7 @@ const PNAuditor = (() => {
         warn(`GetPartNumber ${pnId}: ${String(e).substring(0, 80)}`);
       }
       processed++;
+      try { drainTier(); } catch (_) {}
       if (processed % 10 === 0 || processed === candidateIds.size) {
         updateAuditorUI(`Pase 2: ${processed}/${candidateIds.size} (${failedIds.size} fallaron)`, true);
       }
@@ -323,7 +327,8 @@ const PNAuditor = (() => {
           archived: !!pn.archivedAt,
           score,
           scoreParcial: !det && failedIds.has(pn.id),
-          details: det,
+          // EJE A: no retener `det` — el render no lo necesita y el detail completo de
+          // GetPartNumber (relations + processNodes anidados) pesa MB en buckets grandes.
         };
       });
       const bucket = { tier, ...rawBucket, members };
@@ -351,6 +356,11 @@ const PNAuditor = (() => {
       : [];
     const softBuckets = softRefined.map(b => buildBucketWithScores(b, 'SUAVE'));
 
+    // EJE A: liberar mapas grandes ya consumidos (refineMedium/Soft + buildBucket
+    // ya extrajeron lo slim). Los buckets retornados no referencian detailsByPnId.
+    for (const k of Object.keys(detailsByPnId)) detailsByPnId[k] = null;
+    candidateIds.clear();
+
     return { hardBuckets, mediumBuckets, softBuckets, totalPNs: allPNs.length, failedIds: [...failedIds] };
   }
 
@@ -368,6 +378,24 @@ const PNAuditor = (() => {
     for (const c of activeCriteria) results.criteria[c.id] = { label: c.label, count: 0, pns: [] };
 
     showAuditorUI('Cargando números de parte...');
+
+    // ─── EJE B: Host memory hardening ────────────────────────────
+    // Datadog RUM + Apollo cache acumulan cientos de MB en runs largos.
+    // Disparamos stop UNA vez al iniciar trabajo real (no al cargar el applet).
+    if (hc()) {
+      try { hc().stopDatadogSessionReplay(); } catch (_) { /* defensa */ }
+      if (!memMonitor) {
+        memMonitor = hc().createMemMonitor({
+          getElement: () => document.getElementById('sa-aud-mem'),
+          onGuardrail: (pct) => {
+            warn(`Memoria al ${pct}% — abortando run y pidiendo reload de la tab`);
+            stopped = true;
+            try { alert(`⚠ Memoria del navegador al ${pct}%. El auditor se detuvo para evitar crash. Recarga la pestaña antes de la próxima corrida.`); } catch (_) {}
+          },
+        });
+      }
+      try { memMonitor.start(); } catch (_) {}
+    }
 
     // Fetch PNs (paginación)
     const allPNs = [];
@@ -392,7 +420,7 @@ const PNAuditor = (() => {
       offset += 500;
     }
 
-    if (stopped) return { ...results, stopped: true, totalAudited: 0 };
+    if (stopped) { try { memMonitor?.stop(); } catch (_) {} return { ...results, stopped: true, totalAudited: 0 }; }
 
     log(`Auditor: ${allPNs.length} PNs a auditar, ${activeCriteria.length} criterios`);
     updateAuditorUI(`${allPNs.length} PNs. Auditando (concurrencia 6)...`);
@@ -459,6 +487,7 @@ const PNAuditor = (() => {
         config,
       });
       if (integrityResult?.stopped) {
+        try { memMonitor?.stop(); } catch (_) {}
         return { ...results, stopped: true, integrity: integrityResult };
       }
       results.integrity = integrityResult;
@@ -474,6 +503,7 @@ const PNAuditor = (() => {
     const perPNCriteria = activeCriteria.filter(c => c.check && c.id !== 'duplicates' && c.id !== 'similar');
     if (perPNCriteria.length > 0 && !stopped) {
       let processed = 0;
+      const drainPerPN = hc()?.makePeriodicDrain(50) || (() => {});
       await runPool(allPNs, async (pn) => {
         if (stopped) return;
         try {
@@ -500,6 +530,7 @@ const PNAuditor = (() => {
         }
         processed++;
         results.totalAudited = processed;
+        try { drainPerPN(); } catch (_) {}
         if (processed % 10 === 0 || processed === allPNs.length) {
           const pct = Math.round((processed / allPNs.length) * 100);
           updateAuditorUI(`Auditando ${processed}/${allPNs.length} (${pct}%) — ${results.totalIssues} problemas | ⏹ para detener`, true);
@@ -508,10 +539,14 @@ const PNAuditor = (() => {
     }
 
     log(`Auditor: ${results.totalAudited} auditados, ${results.totalIssues} problemas`);
+    try { memMonitor?.stop(); } catch (_) {}
     return results;
   }
 
-  function stop() { stopped = true; }
+  function stop() {
+    stopped = true;
+    try { memMonitor?.stop(); } catch (_) {}
+  }
 
   // ═══════════════════════════════════════════
   // EXPORT CSV
@@ -559,7 +594,7 @@ const PNAuditor = (() => {
       ov = document.createElement('div');
       ov.id = 'sa-auditor-overlay';
       ov.className = 'dl9-overlay';
-      ov.innerHTML = `<div class="dl9-modal" style="background:#1a1a2e"><h2 style="color:#38bdf8">Auditor de PNs</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="sa-aud-bar" style="background:#38bdf8"></div></div><div class="dl9-progress" id="sa-aud-text"></div></div>`;
+      ov.innerHTML = `<div class="dl9-modal" style="background:#1a1a2e"><h2 style="color:#38bdf8">Auditor de PNs</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="sa-aud-bar" style="background:#38bdf8"></div></div><div class="dl9-progress" id="sa-aud-text"></div><div id="sa-aud-mem" style="margin-top:8px;font-family:ui-monospace,monospace;font-size:11px;color:#94a3b8"></div><style>#sa-aud-mem.sa-mem-warn{color:#fde68a}#sa-aud-mem.sa-mem-crit{color:#fca5a5;font-weight:600}</style></div>`;
       document.body.appendChild(ov);
     }
     document.getElementById('sa-aud-text').textContent = msg;
@@ -701,6 +736,7 @@ const PNAuditor = (() => {
     let ok = 0, skipped = 0, failed = 0;
     const failures = [];
     const succeededIds = [];
+    const drainArchive = hc()?.makePeriodicDrain(50) || (() => {});
     await runPool(tasks, async (t) => {
       if (t.skip) { skipped++; onProgress && onProgress(ok, skipped, failed, tasks.length); return; }
       try {
@@ -714,6 +750,7 @@ const PNAuditor = (() => {
         failed++;
         failures.push({ id: t.id, name: t.name, error: String(e?.message || e).substring(0, 120) });
       }
+      try { drainArchive(); } catch (_) {}
       onProgress && onProgress(ok, skipped, failed, tasks.length);
     }, 5);
     return { ok, skipped, failed, failures, succeededIds, totalAttempted: tasks.length };
