@@ -2111,7 +2111,7 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.1)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.5.2)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
@@ -2266,6 +2266,17 @@ const SpecMigrator = (() => {
   function dupClosePanel() {
     if (dupState.panelEl && dupState.panelEl.parentNode) dupState.panelEl.parentNode.removeChild(dupState.panelEl);
     dupState.panelEl = null;
+    // 0.5.2: liberar referencias pesadas para que el GC pueda recolectar al
+    // cerrar el panel. Sin esto, dupState.csvItems (con savePnSeed por PN +
+    // issues) y dupState.groups (scan mode) se quedan vivos hasta que se vuelva
+    // a abrir el panel y se sobrescriban.
+    dupState.groups = [];
+    dupState.decisions = new Map();
+    dupState.csvItems = null;
+    dupState.csvSelections = null;
+    dupState.csvUnresolved = null;
+    dupState.csvFetchErrors = null;
+    dupState.csvFileName = null;
   }
 
   function dupEnsurePanel(title) {
@@ -3003,7 +3014,13 @@ const SpecMigrator = (() => {
   //      por QuoteIBMS del CSV vs customInputs.DatosAdicionalesNP.QuoteIBMS del server.
   async function dupCsvResolvePnIds(csvParts, myRunId, onPhase) {
     onPhase?.('Pre-fetch AllPartNumbers…', 0, 0);
-    const allNodes = [];
+    // 0.5.2 mem: en lugar de retener los nodos completos (con customInputs JSON
+    // serializado que puede ser 5-20 KB cada uno × decenas de miles de PNs =
+    // cientos de MB), parseamos customInputs UNA VEZ aquí y solo guardamos lo
+    // mínimo necesario: id, name, customerName, quoteIBMS. Bajamos a ~200 bytes
+    // por nodo. El response completo de la página queda fuera de scope al pasar
+    // a la siguiente iteración del while → GC lo recoge.
+    const liteNodes = [];
     let offset = 0;
     const PAGE = 500;
     while (true) {
@@ -3017,9 +3034,22 @@ const SpecMigrator = (() => {
       const nodes = data?.pagedData?.nodes || [];
       for (const n of nodes) {
         if (n.archivedAt) continue;
-        allNodes.push(n);
+        let quoteIBMS = '';
+        const rawCi = n.customInputs;
+        if (rawCi) {
+          try {
+            const ci = (typeof rawCi === 'string') ? JSON.parse(rawCi) : rawCi;
+            quoteIBMS = (ci?.DatosAdicionalesNP?.QuoteIBMS || '').trim();
+          } catch { /* customInputs malformado: tratamos como sin QuoteIBMS */ }
+        }
+        liteNodes.push({
+          id: n.id,
+          name: n.name,
+          customerName: n.customerByCustomerId?.name || '',
+          quoteIBMS,
+        });
       }
-      onPhase?.(`Pre-fetch AllPartNumbers (offset ${offset}, ${allNodes.length} activos)…`, offset, 0);
+      onPhase?.(`Pre-fetch AllPartNumbers (offset ${offset}, ${liteNodes.length} activos)…`, offset, 0);
       if (nodes.length < PAGE) break;
       offset += PAGE;
     }
@@ -3031,8 +3061,8 @@ const SpecMigrator = (() => {
     const dupCsvNormCustomer = (s) => (s || '').split(/\s*[—–]\s*|\s+[-]\s+/)[0].trim().toUpperCase();
 
     const index = new Map();
-    for (const n of allNodes) {
-      const cust = dupCsvNormCustomer(n.customerByCustomerId?.name || '');
+    for (const n of liteNodes) {
+      const cust = dupCsvNormCustomer(n.customerName);
       const name = (n.name || '').trim().toUpperCase();
       if (!cust || !name) continue;
       const k = `${cust}|${name}`;
@@ -3040,7 +3070,7 @@ const SpecMigrator = (() => {
       index.get(k).push(n);
     }
 
-    const resolved = []; // { csvPart, pnNode }
+    const resolved = []; // { csvPart, pnNode (lite) }
     const unresolved = []; // { csvPart, reason }
     const ambiguousByQuote = []; // info-only
     let i = 0;
@@ -3051,19 +3081,13 @@ const SpecMigrator = (() => {
       const cands = index.get(k) || [];
       if (cands.length === 0) { unresolved.push({ csvPart: cp, reason: 'no encontrado' }); continue; }
       if (cands.length === 1) { resolved.push({ csvPart: cp, pnNode: cands[0] }); continue; }
-      // 2+ candidates: dedup por QuoteIBMS
+      // 2+ candidates: dedup por QuoteIBMS (ya pre-extraído en pre-fetch).
       const csvQ = (cp.quoteIBMS || '').trim();
       if (!csvQ) {
         unresolved.push({ csvPart: cp, reason: `${cands.length} candidatos sin QuoteIBMS en CSV` });
         continue;
       }
-      const matches = cands.filter(n => {
-        const ci = (typeof n.customInputs === 'string')
-          ? (() => { try { return JSON.parse(n.customInputs); } catch { return null; } })()
-          : (n.customInputs || null);
-        const srvQ = (ci?.DatosAdicionalesNP?.QuoteIBMS || '').trim();
-        return srvQ === csvQ;
-      });
+      const matches = cands.filter(n => n.quoteIBMS === csvQ);
       if (matches.length === 1) {
         resolved.push({ csvPart: cp, pnNode: matches[0] });
         ambiguousByQuote.push({ pn: cp.pn, customer: cp.customer, quoteIBMS: csvQ, resolvedId: matches[0].id });
@@ -3073,7 +3097,12 @@ const SpecMigrator = (() => {
         unresolved.push({ csvPart: cp, reason: `${matches.length} candidatos con mismo QuoteIBMS=${csvQ}` });
       }
     }
-    return { resolved, unresolved, ambiguousByQuote, totalNodes: allNodes.length };
+    const totalNodes = liteNodes.length;
+    // 0.5.2 mem: liberar el index y los nodos lite que NO quedaron en `resolved`.
+    // `resolved` solo retiene los pnNode (lite) usados; el resto sale de scope.
+    index.clear();
+    liteNodes.length = 0;
+    return { resolved, unresolved, ambiguousByQuote, totalNodes };
   }
 
   // Orquesta: parse → resolve → GetPartNumber → clasificar → render.
@@ -3159,6 +3188,14 @@ const SpecMigrator = (() => {
     dupState.csvFileName = fileName;
     dupState.csvSelections = new Map();
     for (const it of items) dupState.csvSelections.set(it.pnId, true);
+
+    // 0.5.2 mem: liberar el array `resolved` de la resolución — ya no se
+    // necesita después de poblar `items` y `dupState`. Los pnNode lite que
+    // referenciaba quedan sin referencias fuertes (los items solo guardan
+    // pnId, pnName, customer, quoteIBMS y savePnSeed extraídos). `resolution`
+    // es const, no se puede reasignar; al salir del scope de dupRunScanFromCsv
+    // queda sin referencias y el GC lo recoge.
+    resolution.resolved.length = 0;
 
     dupRenderCsvResults(myRunId);
   }
@@ -3253,12 +3290,27 @@ const SpecMigrator = (() => {
     }
 
     if (!issues.length) return null;
+    // 0.5.2 mem: en lugar de retener `detail` completo (response de GetPartNumber,
+    // típicamente 50-500 KB por PN con specs/params/dims/locations/predictives),
+    // extraemos AQUÍ el subset mínimo que SavePartNumber necesita en el apply.
+    // Reduce ~99% el peso retenido por item.
+    const savePnSeed = {
+      name: detail.name,
+      customerId: detail.customerId || detail.customerByCustomerId?.id || null,
+      defaultProcessNodeId: detail.defaultProcessNodeId || null,
+      inputSchemaId: detail.inputSchemaId || null,
+      customInputs: detail.customInputs || {},
+      geometryTypeId: detail.geometryTypeId || null,
+      partNumberGroupId: detail.partNumberGroupId || null,
+      descriptionMarkdown: detail.descriptionMarkdown || '',
+      customerFacingNotes: detail.customerFacingNotes || '',
+    };
     return {
       pnId: pnNode.id,
       pnName: pnNode.name,
-      customer: pnNode.customerByCustomerId?.name || csvPart.customer,
+      customer: pnNode.customerName || pnNode.customerByCustomerId?.name || csvPart.customer,
       quoteIBMS: csvPart.quoteIBMS,
-      detail, // referencia para SavePartNumber
+      savePnSeed,
       issues,
     };
   }
@@ -3484,11 +3536,12 @@ const SpecMigrator = (() => {
 
     await dupRunPool(tasks, async (t) => {
       if (dupState.runId !== myRunId) return;
-      const d = t.item.detail;
+      // 0.5.2 mem: ahora consumimos el seed slimmed en classify, no el detail completo.
+      const d = t.item.savePnSeed;
       const input = {
         id: t.item.pnId,
         name: d.name,
-        customerId: d.customerId || d.customerByCustomerId?.id,
+        customerId: d.customerId,
         defaultProcessNodeId: d.defaultProcessNodeId || null,
         inputSchemaId: d.inputSchemaId || null,
         customInputs: d.customInputs || {},

@@ -320,3 +320,47 @@ Se aplica **a ambos lados** del lookup: tanto al `customerByCustomerId.name` del
 - **Mirar 1 row real del CSV antes de codear el parser.** Es 30 segundos vs 1 hora de debug + redeploy. Internalizar: para cualquier parser de archivo del usuario, **abrir el archivo** (o pedirle las primeras 3 filas) antes de escribir el primer split/regex.
 - **Reutilizar normalizadores existentes en lugar de re-inventar.** bulk-upload ya tenía la fórmula correcta porque se topó con este mismo problema antes. Un `grep customer.*split` habría llevado a la línea exacta sin pasar por el bug. (Lo hice DESPUÉS de ver el síntoma — debió ser ANTES de escribir mi primer lookup.)
 - **100% failure = systemic, no de datos.** Si el primer test dice "0 de 4270 resueltos", el bug NO es de datos malos en el CSV — es del mapping. Cuando ese ratio sea < 50% sí sería razonable culpar a los datos; cuando es 0% siempre es código.
+
+---
+
+# `validate-duplicate-params` 0.5.2 (2026-05-26, bump config 1.4.41) — Memory hardening
+
+**Síntoma:** después del Fix OO, el modo CSV resolvió bien los PNs pero **la pestaña crasheó por memoria** antes de terminar el scan completo (~4270 PNs). El validador retenía estructuras grandes que no debía.
+
+**Root cause (3 leaks acumulados):**
+
+1. **`AllPartNumbers` full nodes.** El pre-fetch global empujaba el nodo completo a `allNodes[]`, incluyendo `customInputs` como string JSON serializado de 5-20 KB por PN. Con decenas de miles de PNs activos en server, eso son fácil 100-500 MB retenidos solo en el array, repetidos vía el `Map` index.
+2. **`GetPartNumber` detail completo retenido por PN.** Cada `item.detail` guardaba el response entero (specs, params, dimensions, locations, predictives, history) — típicamente 50-500 KB por PN. Para PNs con issues, eso vive en `dupState.csvItems` hasta cerrar el panel.
+3. **`dupClosePanel` no liberaba `csvItems`/`groups`/`decisions`.** Reabrir el panel sin un page reload acumulaba el estado del run anterior encima del nuevo.
+
+**Fix — 5 cambios de slim/cleanup:**
+
+| # | Dónde | Cambio | Ganancia |
+|---|---|---|---|
+| 1 | `dupCsvResolvePnIds` pre-fetch | Por cada nodo del response, parsear `customInputs` UNA VEZ in-place y empujar solo `{ id, name, customerName, quoteIBMS }` al array. El response de la página queda fuera de scope al siguiente loop iteration → GC. | De ~5-20 KB/nodo a ~200 bytes (~100×). |
+| 2 | `dupCsvResolvePnIds` cleanup post-resolve | `index.clear()` y `liteNodes.length = 0` antes del return. `resolved` retiene solo los pnNode lite usados. | Libera el ~99% restante de los nodos no resueltos + el Map. |
+| 3 | `dupCsvClassifyPN` return shape | En lugar de `{ ..., detail }` retornar `{ ..., savePnSeed }` con solo los 9 campos que SavePartNumber consume (`name`, `customerId`, `defaultProcessNodeId`, `inputSchemaId`, `customInputs`, `geometryTypeId`, `partNumberGroupId`, `descriptionMarkdown`, `customerFacingNotes`). | De ~50-500 KB/item a ~1-2 KB (~99% reducción). |
+| 4 | `dupRunScanFromCsv` post-populate | `resolution.resolved.length = 0` después de poblar `dupState.csvItems`. | Libera los pnNode lite del `resolved`; el GC los recoge al salir del scope de la función. |
+| 5 | `dupClosePanel` cleanup | Limpiar `csvItems`/`csvSelections`/`csvUnresolved`/`csvFetchErrors`/`csvFileName`/`groups`/`decisions` al cerrar el panel. | Evita acumulación entre runs. |
+
+**Wiring:**
+- `remote/scripts/spec-migrator.js` — los 5 puntos arriba con comentarios `// 0.5.2 mem:` para trazabilidad.
+- Header del action: `0.5.1` → `0.5.2`.
+- `remote/config.json`: `1.4.40` → `1.4.41`.
+
+**Cambio API interno (breaking dentro del scope del action):**
+- `item.detail` → `item.savePnSeed`. Solo lo consumía `dupRunApplyCsv:3531`, ya migrado.
+- `item.customer` ahora prefiere `pnNode.customerName` (campo lite) sobre el `customerByCustomerId.name` que tenía el nodo completo.
+
+**Lecciones (para anotar como pendiente global #113):**
+- **Slim responses GraphQL en pre-fetch, no en el consumer.** Si el response trae 50 campos y el código solo usa 4, no retengas los 50. Extrae los 4 al momento de leer la página y deja que el response salga de scope.
+- **Parse JSON serializado UNA VEZ, no por cada lookup.** `customInputs` venía como string en cada nodo y mi código original lo parseaba en cada filter de candidates ambiguos. Parsearlo en el pre-fetch y guardar solo el QuoteIBMS extraído evita N parses redundantes Y reduce el peso del nodo.
+- **Liberar Maps/arrays intermedios explícitamente.** `Map.clear()` y `array.length = 0` ayudan al GC antes de que la función retorne, especialmente útil cuando el caller va a hacer más trabajo pesado después (como render de 4270 filas + apply).
+- **Cleanup en closePanel = parte del contrato del módulo.** Cualquier estado pesado del módulo debe vivir en algo que el closePanel pueda limpiar. Esto es análogo a un destructor — no lo olvides.
+- **Seed pattern para mutations futuras.** Si necesitas el response solo para construir un input de mutation N pasos después, extrae el seed mínimo al momento del fetch en lugar de retener el response completo. Patrón replicable en bulk-upload, spec-params-bulk, portal-importer.
+
+**Plan de validación pendiente:**
+- [ ] Probar nuevamente con el CSV de 4270 PNs (el que crasheó). Debe completar sin crash.
+- [ ] Medir DevTools → Performance → Memory antes y después del scan para confirmar el delta (esperado: pico de 100-500 MB → 5-20 MB).
+- [ ] Confirmar que apply (SavePartNumber por PN seleccionado) sigue funcionando con el seed slim en lugar del detail completo.
+- [ ] Cerrar y reabrir el panel: confirmar que el segundo run empieza con dupState limpio (no acumula `csvItems` del primero).
