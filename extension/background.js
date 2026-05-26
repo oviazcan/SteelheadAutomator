@@ -1000,12 +1000,19 @@ async function handleMessage(message, sender) {
                 }
 
                 // Show summary
-                let summary = 'Auditoría completada:\\n\\n';
+                let summary = (results.stopped ? '⏸ Auditoría DETENIDA (parcial):\\n\\n' : 'Auditoría completada:\\n\\n');
                 for (const [id, data] of Object.entries(results.criteria)) {
                   if (data.count > 0) summary += `${data.count} — ${data.label}\\n`;
                 }
                 summary += `\\nTotal auditados: ${results.totalAudited}\\nTotal problemas: ${results.totalIssues}`;
-                summary += results.stopped ? '\\n\\n(Resultados parciales — auditoría detenida)' : '';
+                if (results.integrity) {
+                  const proc = results.integrity.processedInPass2 ?? 0;
+                  const tot  = results.integrity.totalCandidatesPass2 ?? 0;
+                  const fail = (results.integrity.failedIds || []).length;
+                  summary += `\\n\\nIntegridad — pase 2: ${proc}/${tot} candidatos enriquecidos${fail ? ` · ${fail} con error` : ''}`;
+                  if (results.integrity.stopped) summary += ' ⏸ ABORTADO POR MEMORIA';
+                }
+                summary += results.stopped ? '\\n\\n(Resultados parciales — recarga la tab antes de re-correr)' : '';
                 summary += '\\n\\n¿Descargar CSV de corrección?';
 
                 if (confirm(summary)) {
