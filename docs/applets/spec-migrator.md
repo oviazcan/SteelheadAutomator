@@ -11,7 +11,52 @@ Scripts: `steelhead-api.js` + `spec-migrator.js`. Sin VERSION constant exportado
 | `run-spec-migrator` (Migrar Specs) | `SpecMigrator.run` | original 2024 |
 | `assign-pending-params` (Asignar Params Pendientes) | `SpecMigrator.assignPendingParams` | original 2024 |
 | `resolve-conflicts` (Resolver Conflictos) | `SpecMigrator.resolveConflicts` | original 2024 |
-| `validate-duplicate-params` (Validar params duplicados) | `SpecMigrator.runDuplicateParamsValidator` | **0.4.1 — 2026-05-25, bump config 1.4.36** |
+| `validate-duplicate-params` (Validar params duplicados) | `SpecMigrator.runDuplicateParamsValidator` | **0.4.2 — 2026-05-26, bump config 1.4.37** |
+
+---
+
+# `validate-duplicate-params` 0.4.2 (2026-05-26, bump config 1.4.37) — UX auto-decision toggle
+
+## Síntoma / petición
+Después del fix 0.4.1, el usuario vio la tabla de PN 3027938 (10 params activos → 5 grupos duplicados). Observación: 4 de los 5 grupos eran **el MISMO `SpecFieldParam`** repetido (mismo `sfpId`, mismo nombre "Sí o No" / "Elección") y sólo diferían por `processNodeId` (uno `null`, otro `223469`). Sólo 1 grupo (Espesor) tenía sfpIds distintos ("5.8 - 8.89 µm" vs "7.62 - 15.24 µm").
+
+Cita del usuario:
+> "cuando el parámetro es igual, no me pregunte cuál quiero dejar uno a uno, si son iguales, pues que ni me pregunte, si uno tiene processNodeId y otro no, que sea un toggle global: Archivar el processIDNull o algo así si no se marca se archiva el otro. Obvio para los que los parámetros son diferentes como en este caso el espesor, SÍ debo de seleccionar yo cuál dejar."
+
+## Clasificación de grupos (nueva)
+Cada grupo ahora incluye 2 flags computados en `dupRunScan`:
+
+- `sameSfp` — todos los params del bucket comparten `sfpId` (caso "copia accidental con/sin proceso").
+- `autoDecidable` — `sameSfp === true` AND existe ≥1 param con `processNodeId` AND ≥1 sin (`null`). Sólo en este caso el toggle global decide; si todos son null o todos tienen processNode (raro), cae a "manual" para evitar ambigüedad.
+
+## UI
+- **Stats bar**: agrega `Auto-decidibles` y `Manuales`.
+- **Toggle global** (sólo si hay auto-decidibles): banner púrpura con checkbox `Archivar params con processNodeId = NULL en los N grupos auto-decidibles…`. Default **ON**. Al togglear, recomputa el `winnerRowId` de todos los autoDecidable y re-renderiza la tabla.
+- **Pill por grupo autoDecidable**: reemplaza los radios con un panel `⚙ AUTO (mismo param, N filas)` y filas `✓ CONSERVA` / `✗ ARCHIVA` con `row#` + `pn#` (o `· NULL`). El usuario no escoge nada manualmente — la decisión sigue al toggle.
+- **Radios manuales**: persisten sin cambios para grupos con `autoDecidable === false` (caso Espesor).
+- **Ignorar**: se mantiene en autoDecidable también (el usuario puede excluir un grupo auto del fix si lo ve raro).
+
+## Wiring
+- `remote/scripts/spec-migrator.js:2228` — agrega `dupState.archiveNullProcessNode: true`.
+- `spec-migrator.js:2438-2484` — clasificación `sameSfp` / `autoDecidable` + winner inicial.
+- `spec-migrator.js:2659-2675` — nuevo helper `dupComputeAutoWinner(g)` (regla: si toggle=true, pool=params con processNodeId; el más reciente gana).
+- `spec-migrator.js:2503-2545` — banner toggle global + handler que recomputa winners y re-renderiza.
+- `spec-migrator.js:2581-2614` — branch `if (g.autoDecidable)` que pinta pill en vez de radios.
+- `spec-migrator.js:2776` — XLSX agrega columna `Modo` (AUTO/MANUAL) en la hoja Detectados.
+
+## Por qué `autoDecidable` y no sólo `sameSfp`
+Si los dos params son del mismo sfp PERO los dos tienen processNodeId distinto (o ambos null), el toggle no puede decidir qué archivar sin pedirle al usuario. Mejor caer a radios manuales que tomar una decisión silenciosa basada en `max(rowId)` que el usuario no vio venir.
+
+## Pendiente derivado (importante, ya en backlog #105)
+**RCA de cómo aparecen estos duplicados**: el usuario apunta a bulk-upload. La hipótesis es que al recargar un PN, el flujo no archiva los params previos antes de crear los nuevos. Ver `docs/applets/bulk-upload.md` cuando se aborde — si se confirma, fix en el script de origen evita seguir generando basura mientras este validator la limpia.
+
+## Plan de validación 0.4.2
+- [ ] Correr scan en PN 3027938: 5 grupos, banner muestra "Auto-decidibles: 4 · Manuales: 1".
+- [ ] Default ON: pills muestran CONSERVA = `pn#223469`, ARCHIVA = `NULL` en los 4 auto.
+- [ ] Desmarcar toggle: pills invierten (CONSERVA = NULL, ARCHIVA = `pn#223469`). Re-marcar revierte.
+- [ ] Grupo Espesor sigue mostrando radios manuales — confirmar selección persiste al togglear el banner.
+- [ ] Aplicar fix con toggle ON → 4 NULLs archivados + 1 manual aplicado.
+- [ ] XLSX bitácora "Detectados" tiene columna `Modo` con `AUTO`/`MANUAL` correctas.
 
 ---
 

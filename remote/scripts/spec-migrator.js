@@ -2111,7 +2111,7 @@ const SpecMigrator = (() => {
 
 
   // ════════════════════════════════════════════════════════
-  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.1)
+  //  DUPLICATE-PARAMS VALIDATOR (action 0.4.2)
   //  Detecta PNs con >1 param activo por specFieldSpecId (= mismo SpecField de
   //  la misma Spec, sin importar processNode/location), permite elegir cuál
   //  conservar y archivar el resto vía UpdatePartNumberSpecParam{archivedAt:ISO}
@@ -2121,6 +2121,12 @@ const SpecMigrator = (() => {
   //  partNumberSpecId en partNumberSpecFieldParamsByPartNumberId.nodes[]; se
   //  navega specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.id.
   //  La key (partNumberSpecId, specFieldId) de 0.4.0 era undefined → 0 detecciones.
+  //
+  //  0.4.2: UX — auto-decisión para grupos "sameSfp" (todos los params comparten
+  //  el mismo SpecFieldParam y difieren sólo por processNodeId null vs valor).
+  //  Toggle global "Archivar params con processNodeId=NULL" (default ON) decide
+  //  por estos sin radios manuales. Grupos con sfpId distintos (caso Espesor:
+  //  5.8-8.89 µm vs 7.62-15.24 µm) conservan radios manuales como antes.
   //
   //  Bundle: vive en spec-migrator (menú "Ajuste Masivo de Specs") porque es
   //  validación + corrección de specs ya aplicadas, no edición de parámetros.
@@ -2232,6 +2238,10 @@ const SpecMigrator = (() => {
     specFilter: '',
     groups: [],
     decisions: new Map(),
+    // 0.4.2: toggle global para grupos autoDecidable (mismo sfpId, difieren sólo
+    // por processNodeId null vs valor). Default true = archivar el null,
+    // conservar el que tiene processNodeId.
+    archiveNullProcessNode: true,
   };
 
   function dupClosePanel() {
@@ -2433,9 +2443,28 @@ const SpecMigrator = (() => {
       for (const [sfsId, bucket] of buckets) {
         if (bucket.params.length < 2) continue;
         const sorted = [...bucket.params].sort((a, b) => Number(b.id) - Number(a.id));
-        const winnerRowId = sorted[0].id;
 
-        groups.push({
+        const mappedParams = sorted.map(p => ({
+          rowId: p.id,
+          sfpId: p.specFieldParamBySpecFieldParamId?.id ?? null,
+          sfpName: p.specFieldParamBySpecFieldParamId?.name || '(sin nombre)',
+          processNodeId: p.processNodeId || null,
+          processNodeOccurrence: p.processNodeOccurrence || null,
+          locationId: p.locationId || null,
+        }));
+
+        // 0.4.2: clasificación para UX
+        // sameSfp: todos los params del bucket comparten el mismo SpecFieldParam
+        //   (= mismo valor, copia accidental).
+        // autoDecidable: además existe al menos uno con processNodeId y al menos
+        //   uno sin (null), de modo que el toggle global puede decidir.
+        const firstSfpId = mappedParams[0].sfpId;
+        const sameSfp = firstSfpId != null && mappedParams.every(p => p.sfpId === firstSfpId);
+        const hasNull = mappedParams.some(p => !p.processNodeId);
+        const hasProc = mappedParams.some(p => !!p.processNodeId);
+        const autoDecidable = sameSfp && hasNull && hasProc;
+
+        const group = {
           key: `${pn.id}-${sfsId}`,
           pnId: pn.id,
           pnName: pn.name || '',
@@ -2446,17 +2475,16 @@ const SpecMigrator = (() => {
           specIdInDomain: bucket.specIdInDomain,
           fieldId: bucket.fieldId,
           fieldName: bucket.fieldName,
-          params: sorted.map(p => ({
-            rowId: p.id,
-            sfpId: p.specFieldParamBySpecFieldParamId?.id ?? null,
-            sfpName: p.specFieldParamBySpecFieldParamId?.name || '(sin nombre)',
-            processNodeId: p.processNodeId || null,
-            processNodeOccurrence: p.processNodeOccurrence || null,
-            locationId: p.locationId || null,
-          })),
-        });
+          params: mappedParams,
+          sameSfp,
+          autoDecidable,
+        };
+        groups.push(group);
 
-        dupState.decisions.set(`${pn.id}-${sfsId}`, { winnerRowId, ignored: false });
+        const winnerRowId = autoDecidable
+          ? dupComputeAutoWinner(group)
+          : sorted[0].id;
+        dupState.decisions.set(group.key, { winnerRowId, ignored: false });
       }
     }, 6, (done, total) => {
       if (progMsg2) progMsg2.textContent = `${done}/${total} PNs revisados — ${groups.length} grupos duplicados`;
@@ -2485,6 +2513,8 @@ const SpecMigrator = (() => {
     const groups = dupState.groups;
     const uniquePNs = new Set(groups.map(g => g.pnId)).size;
     const losersCount = groups.reduce((s, g) => s + (g.params.length - 1), 0);
+    const autoCount = groups.filter(g => g.autoDecidable).length;
+    const manualCount = groups.length - autoCount;
 
     const body = dupState.panelEl.querySelector('.dup-body');
     body.innerHTML = '';
@@ -2502,12 +2532,42 @@ const SpecMigrator = (() => {
     stats.appendChild(mk('PNs revisados', scannedCount));
     stats.appendChild(mk('PNs con duplicados', uniquePNs));
     stats.appendChild(mk('Grupos', groups.length));
+    stats.appendChild(mk('Auto-decidibles', autoCount));
+    stats.appendChild(mk('Manuales', manualCount));
     stats.appendChild(mk('Params a archivar', losersCount));
     if (fetchErrors.length) stats.appendChild(mk('Errores fetch', fetchErrors.length));
     body.appendChild(stats);
 
+    // 0.4.2: toggle global para grupos autoDecidable (mismo sfpId, null vs proc)
+    if (autoCount > 0) {
+      const tWrap = document.createElement('div');
+      tWrap.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px';
+      const tLbl = document.createElement('label');
+      tLbl.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;color:#e5e7eb';
+      const tCb = document.createElement('input');
+      tCb.type = 'checkbox';
+      tCb.checked = dupState.archiveNullProcessNode;
+      tLbl.appendChild(tCb);
+      const tTxt = document.createElement('span');
+      tTxt.innerHTML = `Archivar params con <b style="color:#a78bfa">processNodeId = NULL</b> en los <b>${autoCount}</b> grupos auto-decidibles (mismo SpecFieldParam, difieren sólo por proceso). Desmarcar archiva los que SÍ tienen processNodeId.`;
+      tLbl.appendChild(tTxt);
+      tWrap.appendChild(tLbl);
+      body.appendChild(tWrap);
+      tCb.addEventListener('change', () => {
+        dupState.archiveNullProcessNode = tCb.checked;
+        for (const g of dupState.groups) {
+          if (!g.autoDecidable) continue;
+          const dec = dupState.decisions.get(g.key) || {};
+          if (dec.ignored) continue;
+          dec.winnerRowId = dupComputeAutoWinner(g);
+          dupState.decisions.set(g.key, dec);
+        }
+        dupRenderTable(myRunId, scannedCount, fetchErrors);
+      });
+    }
+
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'max-height:55vh;overflow-y:auto;border:1px solid #374151;border-radius:6px';
+    wrap.style.cssText = 'max-height:48vh;overflow-y:auto;border:1px solid #374151;border-radius:6px';
     const table = document.createElement('table');
     table.className = 'dup-table';
     const thead = document.createElement('thead');
@@ -2550,37 +2610,68 @@ const SpecMigrator = (() => {
 
       const tdParams = document.createElement('td');
       const initialWinner = dupState.decisions.get(g.key)?.winnerRowId;
-      g.params.forEach((p, idx) => {
-        const lbl = document.createElement('label');
-        lbl.className = 'dup-radio-row';
-        const radio = document.createElement('input');
-        radio.type = 'radio';
-        radio.name = `dup-${g.key}`;
-        radio.value = String(p.rowId);
-        if (p.rowId === initialWinner) radio.checked = true;
-        radio.addEventListener('change', () => {
-          const dec = dupState.decisions.get(g.key) || {};
-          dec.winnerRowId = p.rowId;
-          dupState.decisions.set(g.key, dec);
-          dupRefreshRadioStyles(tr, g);
-          dupUpdateFooter();
+
+      if (g.autoDecidable) {
+        // Auto: pill que muestra qué se conserva y qué se archiva, derivado del toggle
+        const pill = document.createElement('div');
+        pill.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-size:11px;color:#cbd5e1';
+        const tag = document.createElement('div');
+        tag.style.cssText = 'font-size:10px;color:#a78bfa;font-weight:600;margin-bottom:4px';
+        tag.textContent = '⚙ AUTO (mismo param, ' + g.params.length + ' filas)';
+        pill.appendChild(tag);
+        for (const p of g.params) {
+          const isWin = p.rowId === initialWinner;
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:6px;align-items:center;padding:1px 0;color:' + (isWin ? '#6ee7b7' : '#fca5a5');
+          const ic = document.createElement('span');
+          ic.textContent = isWin ? '✓ CONSERVA' : '✗ ARCHIVA';
+          ic.style.cssText = 'font-size:9px;font-weight:700;min-width:74px';
+          row.appendChild(ic);
+          const nm = document.createElement('span');
+          nm.textContent = p.sfpName;
+          row.appendChild(nm);
+          const mini = document.createElement('span');
+          mini.className = 'dup-mini';
+          mini.textContent = `row#${p.rowId}${p.processNodeId ? ` · pn#${p.processNodeId}` : ' · NULL'}`;
+          row.appendChild(mini);
+          pill.appendChild(row);
+        }
+        tdParams.appendChild(pill);
+      } else {
+        g.params.forEach((p, idx) => {
+          const lbl = document.createElement('label');
+          lbl.className = 'dup-radio-row';
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = `dup-${g.key}`;
+          radio.value = String(p.rowId);
+          if (p.rowId === initialWinner) radio.checked = true;
+          radio.addEventListener('change', () => {
+            const dec = dupState.decisions.get(g.key) || {};
+            dec.winnerRowId = p.rowId;
+            dupState.decisions.set(g.key, dec);
+            dupRefreshRadioStyles(tr, g);
+            dupUpdateFooter();
+          });
+          lbl.appendChild(radio);
+          const txt = document.createElement('span');
+          txt.textContent = p.sfpName;
+          lbl.appendChild(txt);
+          const mini = document.createElement('span');
+          mini.className = 'dup-mini';
+          mini.textContent = `row#${p.rowId} · sfp#${p.sfpId}${p.processNodeId ? ` · pn#${p.processNodeId}` : ' · sin proceso'}${idx === 0 ? ' · más reciente' : ''}`;
+          lbl.appendChild(mini);
+          tdParams.appendChild(lbl);
         });
-        lbl.appendChild(radio);
-        const txt = document.createElement('span');
-        txt.textContent = p.sfpName;
-        lbl.appendChild(txt);
-        const mini = document.createElement('span');
-        mini.className = 'dup-mini';
-        mini.textContent = `row#${p.rowId} · sfp#${p.sfpId}${p.processNodeId ? ` · pn#${p.processNodeId}` : ' · sin proceso'}${idx === 0 ? ' · más reciente' : ''}`;
-        lbl.appendChild(mini);
-        tdParams.appendChild(lbl);
-      });
+      }
       tr.appendChild(tdParams);
 
       const tdIgn = document.createElement('td');
       tdIgn.style.textAlign = 'center';
       const ignCb = document.createElement('input');
       ignCb.type = 'checkbox';
+      ignCb.checked = !!dupState.decisions.get(g.key)?.ignored;
+      tr.classList.toggle('ignored', ignCb.checked);
       ignCb.addEventListener('change', () => {
         const dec = dupState.decisions.get(g.key) || {};
         dec.ignored = ignCb.checked;
@@ -2591,7 +2682,7 @@ const SpecMigrator = (() => {
       tdIgn.appendChild(ignCb);
       tr.appendChild(tdIgn);
 
-      dupRefreshRadioStyles(tr, g);
+      if (!g.autoDecidable) dupRefreshRadioStyles(tr, g);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -2641,6 +2732,20 @@ const SpecMigrator = (() => {
       toArchive += (g.params.length - 1);
     }
     ftr.textContent = `${toArchive} params a archivar — ${ignored} grupos ignorados`;
+  }
+
+  // 0.4.2: calcula el winner según el toggle global para grupos autoDecidable.
+  // Regla: si toggle=true, conserva el de processNodeId no-null más reciente y
+  //   archiva los null (+ duplicados más viejos con proceso si los hubiera).
+  //   Si toggle=false, conserva el null más reciente y archiva los con proceso.
+  function dupComputeAutoWinner(g) {
+    if (!g.autoDecidable) return g.params[0].rowId;
+    const withProc = g.params.filter(p => !!p.processNodeId);
+    const withoutProc = g.params.filter(p => !p.processNodeId);
+    const pool = dupState.archiveNullProcessNode ? withProc : withoutProc;
+    // params ya vienen ordenados desc por rowId; el primero del pool es el más reciente
+    const candidate = pool.length ? pool[0] : g.params[0];
+    return candidate.rowId;
   }
 
   async function dupRunApply(parentRunId) {
@@ -2751,13 +2856,14 @@ const SpecMigrator = (() => {
           FieldID: g.fieldId, FieldName: g.fieldName,
           ParamRowID: p.rowId, SpecFieldParamID: p.sfpId, ParamName: p.sfpName,
           ProcessNodeID: p.processNodeId || '',
+          Modo: g.autoDecidable ? 'AUTO' : 'MANUAL',
           Decisión: dec.ignored ? 'IGNORADO' : (isWinner ? 'CONSERVAR' : 'ARCHIVAR'),
         });
       }
     }
     dupAddSheet(wb, 'Detectados', `Detectados · ${detRows.length} filas · ${now}`, detRows,
       ['PNID','PNName','Cliente','SpecIdInDomain','SpecName','FieldID','FieldName',
-       'ParamRowID','SpecFieldParamID','ParamName','ProcessNodeID','Decisión']);
+       'ParamRowID','SpecFieldParamID','ParamName','ProcessNodeID','Modo','Decisión']);
 
     if (mode === 'applied' && applied) {
       const okRows = (applied.okRows || []).map(r => ({
