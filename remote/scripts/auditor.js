@@ -191,10 +191,15 @@ const PNAuditor = (() => {
 
   const ARCHIVED_SENTINEL = '__archived__';
 
-  function matchesCustomer(node, customerFilter) {
+  function matchesCustomer(node, customerFilter, excludeCustomers) {
+    const cn = (node.customerByCustomerId?.name || '').toUpperCase();
+    if (excludeCustomers && excludeCustomers.length) {
+      for (const ex of excludeCustomers) {
+        if (ex && cn.includes(ex.toUpperCase())) return false;
+      }
+    }
     if (!customerFilter) return true;
-    const cn = node.customerByCustomerId?.name || '';
-    return cn.toUpperCase().includes(customerFilter.toUpperCase());
+    return cn.includes(customerFilter.toUpperCase());
   }
 
   // EJE A: shape slim del pase 1. Solo campos consumidos por duplicate-tiers.js
@@ -229,12 +234,12 @@ const PNAuditor = (() => {
   }
 
   async function fetchAllPNsWithArchived(opts) {
-    const { customerFilter, searchQuery, includeArchived, onProgress } = opts;
+    const { customerFilter, excludeCustomers, searchQuery, includeArchived, onProgress, hardCap } = opts;
     const all = [];
     const activeIds = new Set();
     const seenIds = new Set();
     const pageSize = 500;
-    const HARD_CAP = 8000;
+    const HARD_CAP = hardCap || 8000;
     const drainPage = hc()?.apolloCacheDrain || (() => {});
 
     let offset = 0;
@@ -244,7 +249,7 @@ const PNAuditor = (() => {
       const nodes = data?.pagedData?.nodes || [];
       for (const n of nodes) {
         activeIds.add(n.id);
-        if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
+        if (matchesCustomer(n, customerFilter, excludeCustomers) && !seenIds.has(n.id)) {
           seenIds.add(n.id);
           all.push(slimPass1Node(n, null));
         }
@@ -270,7 +275,7 @@ const PNAuditor = (() => {
         const nodes = data?.pagedData?.nodes || [];
         for (const n of nodes) {
           if (activeIds.has(n.id)) continue;
-          if (matchesCustomer(n, customerFilter) && !seenIds.has(n.id)) {
+          if (matchesCustomer(n, customerFilter, excludeCustomers) && !seenIds.has(n.id)) {
             seenIds.add(n.id);
             all.push(slimPass1Node(n, ARCHIVED_SENTINEL));
           }
@@ -333,7 +338,7 @@ const PNAuditor = (() => {
   }
 
   async function runIntegrityScan(options) {
-    const { selectedTiers, customerFilter, searchQuery, includeArchived, config } = options;
+    const { selectedTiers, customerFilter, excludeCustomers, searchQuery, includeArchived, config, hardCap } = options;
     const tiersMod = window.SADuplicateTiers;
     if (!tiersMod) throw new Error('SADuplicateTiers no cargado');
 
@@ -343,7 +348,7 @@ const PNAuditor = (() => {
     // ── Pase 1 ──
     updateAuditorUI('Pase 1: cargando PNs (activos+archivados)...');
     const allPNs = await fetchAllPNsWithArchived({
-      customerFilter, searchQuery, includeArchived,
+      customerFilter, excludeCustomers, searchQuery, includeArchived, hardCap,
       onProgress: (msg) => updateAuditorUI(msg)
     });
     if (stopped) return {
@@ -474,9 +479,13 @@ const PNAuditor = (() => {
   // ═══════════════════════════════════════════
 
   async function run(options) {
-    const { selectedCriteria, searchQuery, customerFilter } = options;
+    const { selectedCriteria, searchQuery, customerFilter, excludeCustomers } = options;
     stopped = false;
     const config = options.config || (typeof window !== 'undefined' ? window.REMOTE_CONFIG : null);
+    const auditorCfg = config?.steelhead?.domain?.auditor || {};
+    const hardCap = (excludeCustomers && excludeCustomers.length)
+      ? (auditorCfg.hardCapWithExclusions || 15000)
+      : (auditorCfg.hardCapPns || 8000);
 
     const activeCriteria = CRITERIA.filter(c => selectedCriteria.includes(c.id));
     const results = { criteria: {}, pns: [], totalAudited: 0, totalIssues: 0 };
@@ -512,7 +521,6 @@ const PNAuditor = (() => {
 
     const allPNs = [];
     if (needsGlobalPNs) {
-      const PAGE_HARD_CAP = 8000; // sin filter, si supera esto pedimos al usuario filtrar
       const drainPage = hc()?.apolloCacheDrain || (() => {});
       let offset = 0;
       while (!stopped) {
@@ -522,9 +530,8 @@ const PNAuditor = (() => {
         const active = nodes.filter(n => !n.archivedAt);
 
         // EJE A: slim node — solo {id, name, customerByCustomerId} se lee downstream.
-        const filter = customerFilter ? customerFilter.toUpperCase() : null;
         for (const n of active) {
-          if (filter && !(n.customerByCustomerId?.name?.toUpperCase().includes(filter))) continue;
+          if (!matchesCustomer(n, customerFilter, excludeCustomers)) continue;
           allPNs.push({
             id: n.id,
             name: n.name,
@@ -538,13 +545,16 @@ const PNAuditor = (() => {
         // de cada AllPartNumbers persisten en window.__APOLLO_CLIENT__ y suman MBs.
         try { drainPage(); } catch (_) {}
 
-        updateAuditorUI(`Cargando PNs... ${allPNs.length}${customerFilter ? ` (cliente: ${customerFilter})` : ''}`);
+        const filterTxt = customerFilter ? ` (cliente: ${customerFilter})` : '';
+        const exclTxt = (excludeCustomers && excludeCustomers.length) ? ` (excluyendo ${excludeCustomers.length})` : '';
+        updateAuditorUI(`Cargando PNs... ${allPNs.length}${filterTxt}${exclTxt}`);
 
-        // Cap defensivo: sin filter, si pasa 8k PNs casi seguro revienta memoria.
-        if (!customerFilter && allPNs.length >= PAGE_HARD_CAP) {
+        // Cap defensivo: sin filter, si pasa el hardCap dinámico casi seguro revienta memoria.
+        // hardCap sube a 15000 si hay excludeCustomers (porque ya descontaste al cliente gordo).
+        if (!customerFilter && allPNs.length >= hardCap) {
           stopped = true;
           try { memMonitor?.stop(); } catch (_) {}
-          try { alert(`⚠ Demasiados PNs (${allPNs.length}+). Filtra por cliente antes de auditar — el run sin filtro satura memoria.`); } catch (_) {}
+          try { alert(`⚠ Demasiados PNs (${allPNs.length}+, cap=${hardCap}). Filtra por cliente o agrega más exclusiones — sin filtro satura memoria.`); } catch (_) {}
           return { ...results, stopped: true, totalAudited: 0, abortReason: 'too-many-pns' };
         }
 
@@ -615,9 +625,11 @@ const PNAuditor = (() => {
       integrityResult = await runIntegrityScan({
         selectedTiers: selectedTierCrit,
         customerFilter,
+        excludeCustomers,
         searchQuery,
         includeArchived: options.includeArchived !== false, // default ON
         config,
+        hardCap,
       });
       results.integrity = integrityResult;
       if (integrityResult?.stopped) {

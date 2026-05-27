@@ -841,6 +841,7 @@ async function handleMessage(message, sender) {
         func: () => {
           if (!window.PNAuditor) return { error: 'PNAuditor no disponible' };
           const criteria = window.PNAuditor.getCriteria();
+          const largeCustomers = (window.REMOTE_CONFIG?.steelhead?.domain?.auditor?.largeCustomers) || [];
 
           return new Promise(resolve => {
             // Build criteria form
@@ -890,6 +891,10 @@ async function handleMessage(message, sender) {
                 <button id="sa-aud-none" style="font-size:10px;padding:3px 8px;border:1px solid #475569;border-radius:4px;background:none;color:#94a3b8;cursor:pointer">Deseleccionar todos</button>
               </div>
               ${criteriaHTML}
+              ${largeCustomers.length ? `<div style="margin-top:10px;padding:8px 10px;background:#0f172a;border-radius:4px">
+                <div style="font-size:11px;color:#f97316;font-weight:600;margin-bottom:4px">Excluir clientes grandes (libera memoria + sube cap a 15k PNs):</div>
+                ${largeCustomers.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#e2e8f0;padding:2px 0;cursor:pointer"><input type="checkbox" class="sa-aud-excl" value="${c.name.replace(/"/g, '&quot;')}"> ${c.name} (~${c.estimatedPns.toLocaleString()} PNs)</label>`).join('')}
+              </div>` : ''}
               <label style="display:block;margin-top:10px;padding:6px 8px;background:#0f172a;border-radius:4px;color:#94a3b8;font-size:12px;cursor:pointer">
                 <input type="checkbox" id="sa-int-include-archived" checked> Incluir archivados en el scan de integridad (más lento, pero detecta restauraciones)
               </label>
@@ -910,12 +915,13 @@ async function handleMessage(message, sender) {
               const customerFilter = document.getElementById('sa-aud-customer').value.trim();
               const searchQuery = document.getElementById('sa-aud-search').value.trim();
               const includeArchived = document.getElementById('sa-int-include-archived')?.checked !== false;
+              const excludeCustomers = [...md.querySelectorAll('.sa-aud-excl:checked')].map(c => c.value);
               ov.parentNode.removeChild(ov);
 
               if (!selected.length) { resolve({ error: 'Selecciona al menos un criterio' }); return; }
 
               try {
-                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter, includeArchived });
+                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter, excludeCustomers, includeArchived });
                 window.PNAuditor.removeAuditorUI();
 
                 // Panel de bucket cards si hubo integrity scan
