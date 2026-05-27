@@ -6,9 +6,19 @@
 //   * runPool concurrencia 6 para GetPartNumber (antes serial)
 //   * extractAuditFlags slim shape (booleans/lengths) — antes retenía nodos completos
 //   * Similitud: prefilter por diferencia de longitud (descarta antes de Levenshtein)
+//
+// 2026-05-26 — 0.1.42:
+//   * Quita caps por count (HARD_CAP=8000/15000). El bloqueo es solo por memoria.
+//   * Checkpoint en chrome.storage.local: al terminar pase 1, snapshot compacto
+//     de PNs slim (~150 bytes/PN). Si guardrail dispara en pase 2, el resume
+//     salta el paginado y retoma pase 2 con memoria limpia post-reload.
 
 const PNAuditor = (() => {
   'use strict';
+
+  const VERSION = '0.1.42';
+  const RESUME_KEY = 'sa_auditor_resume';
+  const RESUME_VERSION = 2; // bump si cambia la shape del snapshot
 
   const api = () => window.SteelheadAPI;
   const hc  = () => window.SteelheadHostCleanup || null;
@@ -17,6 +27,105 @@ const PNAuditor = (() => {
 
   let stopped = false;
   let memMonitor = null;
+
+  // _runState lo lee onGuardrail (closure) y lo actualizan run() + runIntegrityScan
+  // a medida que avanzan. Cuando guardrail dispara, serializamos lo que esté listo.
+  let _runState = null;
+
+  // ═══════════════════════════════════════════
+  // CHECKPOINT — localStorage del origin de Steelhead (cap ~5-10 MB)
+  // El applet corre en world:'MAIN' (sin chrome.storage). localStorage persiste
+  // cross-reload del tab, scoped al origin app.gosteelhead.com.
+  // Compacto: PNs en tuples [id, name, custId, custName, archived(0/1), ciJSON,
+  // labelsJSON, createdAt] → ~150 bytes/PN. 10k PNs ≈ 1.5 MB. Cabe holgado.
+  // ═══════════════════════════════════════════
+
+  function _hasStorage() {
+    try { return typeof localStorage !== 'undefined' && !!localStorage; }
+    catch { return false; }
+  }
+
+  function loadCheckpoint() {
+    if (!_hasStorage()) return null;
+    try {
+      const raw = localStorage.getItem(RESUME_KEY);
+      if (!raw) return null;
+      const cp = JSON.parse(raw);
+      if (!cp || cp.v !== RESUME_VERSION) return null;
+      return cp;
+    } catch (e) {
+      warn(`checkpoint load: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  function saveCheckpoint(state) {
+    if (!_hasStorage()) return false;
+    try {
+      localStorage.setItem(RESUME_KEY, JSON.stringify(state));
+      return true;
+    } catch (e) {
+      // QuotaExceededError si el JSON pasa de ~5 MB → degradamos guardando
+      // solo metadata (sin snapshot del pase 1).
+      warn(`checkpoint save (probable cuota): ${e?.message || e}. Degradando a metadata.`);
+      try {
+        const lite = { ...state, pass1Compact: null, _degraded: true };
+        localStorage.setItem(RESUME_KEY, JSON.stringify(lite));
+        return true;
+      } catch (e2) {
+        warn(`checkpoint save lite también falló: ${e2?.message || e2}`);
+        return false;
+      }
+    }
+  }
+
+  function clearCheckpoint() {
+    if (!_hasStorage()) return;
+    try { localStorage.removeItem(RESUME_KEY); }
+    catch (e) { warn(`checkpoint clear: ${e?.message || e}`); }
+  }
+
+  function compactPN(p) {
+    // Tupla mínima para resume. customInputs como JSON string (el módulo lo re-parsea
+    // o lo lee como objeto; expandPN lo deja como objeto al rehidratar).
+    const cust = p.customerByCustomerId;
+    let ciStr = '';
+    try { ciStr = JSON.stringify(p.customInputs || {}); } catch { ciStr = '{}'; }
+    let labelNames = [];
+    const lbNodes = p.partNumberLabelsByPartNumberId && p.partNumberLabelsByPartNumberId.nodes;
+    if (Array.isArray(lbNodes)) {
+      labelNames = lbNodes.map(n => (n && n.labelByLabelId && n.labelByLabelId.name) || '').filter(Boolean);
+    }
+    return [
+      p.id,
+      p.name || '',
+      cust ? cust.id : null,
+      cust ? (cust.name || '') : '',
+      p.archivedAt ? (p.archivedAt === ARCHIVED_SENTINEL ? 'S' : String(p.archivedAt)) : 0,
+      ciStr,
+      labelNames,
+      p.createdAt || null,
+    ];
+  }
+
+  function expandPN(t) {
+    let ci = {};
+    try { ci = JSON.parse(t[5] || '{}') || {}; } catch { ci = {}; }
+    const slim = {
+      id: t[0],
+      name: t[1] || '',
+      customerByCustomerId: t[2] != null ? { id: t[2], name: t[3] || '' } : null,
+      archivedAt: t[4] === 'S' ? ARCHIVED_SENTINEL : (t[4] || null),
+      customInputs: ci,
+      createdAt: t[7] || null,
+    };
+    if (Array.isArray(t[6]) && t[6].length) {
+      slim.partNumberLabelsByPartNumberId = {
+        nodes: t[6].map(name => ({ labelByLabelId: { name } })),
+      };
+    }
+    return slim;
+  }
 
   // ═══════════════════════════════════════════
   // POOL + RETRY (patrón de process-deep-audit.js)
@@ -234,12 +343,11 @@ const PNAuditor = (() => {
   }
 
   async function fetchAllPNsWithArchived(opts) {
-    const { customerFilter, excludeCustomers, searchQuery, includeArchived, onProgress, hardCap } = opts;
+    const { customerFilter, excludeCustomers, searchQuery, includeArchived, onProgress } = opts;
     const all = [];
     const activeIds = new Set();
     const seenIds = new Set();
     const pageSize = 500;
-    const HARD_CAP = hardCap || 8000;
     const drainPage = hc()?.apolloCacheDrain || (() => {});
 
     let offset = 0;
@@ -257,11 +365,7 @@ const PNAuditor = (() => {
       // EJE B: drain Apollo entre páginas — sin esto los normalized records suman MBs.
       try { drainPage(); } catch (_) {}
       onProgress && onProgress(`Pase 1 (activos): ${all.length} PNs · offset ${offset}`);
-      if (!customerFilter && all.length >= HARD_CAP) {
-        stopped = true;
-        try { alert(`⚠ Demasiados PNs (${all.length}+). Filtra por cliente antes del scan — sin filtro satura memoria.`); } catch (_) {}
-        return all;
-      }
+      // Sin cap por count — el guardrail de memoria es el único stop legítimo.
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
@@ -282,11 +386,6 @@ const PNAuditor = (() => {
         }
         try { drainPage(); } catch (_) {}
         onProgress && onProgress(`Pase 1 (archivados): ${all.length} PNs · offset ${offset}`);
-        if (!customerFilter && all.length >= HARD_CAP) {
-          stopped = true;
-          try { alert(`⚠ Demasiados PNs (${all.length}+, con archivados). Filtra por cliente antes del scan.`); } catch (_) {}
-          return all;
-        }
         if (nodes.length < pageSize) break;
         offset += pageSize;
       }
@@ -338,27 +437,39 @@ const PNAuditor = (() => {
   }
 
   async function runIntegrityScan(options) {
-    const { selectedTiers, customerFilter, excludeCustomers, searchQuery, includeArchived, config, hardCap } = options;
+    const { selectedTiers, customerFilter, excludeCustomers, searchQuery, includeArchived, config, resumePass1Snapshot } = options;
     const tiersMod = window.SADuplicateTiers;
     if (!tiersMod) throw new Error('SADuplicateTiers no cargado');
 
     const nonFinishList = config?.steelhead?.domain?.bulkUpload?.nonFinishLabelNames || [];
     const metalEquiv = config?.steelhead?.domain?.bulkUpload?.metalEquivalents || [];
 
-    // ── Pase 1 ──
-    updateAuditorUI('Pase 1: cargando PNs (activos+archivados)...');
-    const allPNs = await fetchAllPNsWithArchived({
-      customerFilter, excludeCustomers, searchQuery, includeArchived, hardCap,
-      onProgress: (msg) => updateAuditorUI(msg)
-    });
-    if (stopped) return {
-      stopped: true,
-      hardBuckets: [], mediumBuckets: [], softBuckets: [],
-      totalPNs: allPNs.length, failedIds: [],
-      processedInPass2: 0, totalCandidatesPass2: 0,
-      abortedInPass: 1,
-    };
-    log(`Pase 1: ${allPNs.length} PNs cargados`);
+    // ── Pase 1 — desde snapshot si hay resume, si no fetch en vivo ──
+    let allPNs;
+    if (resumePass1Snapshot && Array.isArray(resumePass1Snapshot) && resumePass1Snapshot.length) {
+      updateAuditorUI(`Pase 1: rehidratando ${resumePass1Snapshot.length} PNs del checkpoint...`);
+      allPNs = resumePass1Snapshot.map(expandPN);
+      log(`Pase 1 (resume): ${allPNs.length} PNs rehidratados`);
+    } else {
+      updateAuditorUI('Pase 1: cargando PNs (activos+archivados)...');
+      allPNs = await fetchAllPNsWithArchived({
+        customerFilter, excludeCustomers, searchQuery, includeArchived,
+        onProgress: (msg) => updateAuditorUI(msg)
+      });
+      if (stopped) return {
+        stopped: true,
+        hardBuckets: [], mediumBuckets: [], softBuckets: [],
+        totalPNs: allPNs.length, failedIds: [],
+        processedInPass2: 0, totalCandidatesPass2: 0,
+        abortedInPass: 1,
+      };
+      log(`Pase 1: ${allPNs.length} PNs cargados`);
+      // Snapshot listo para checkpoint si el guardrail dispara durante pase 2.
+      if (_runState) {
+        _runState.pass1Compact = allPNs.map(compactPN);
+        _runState.phase = 'pass1-done';
+      }
+    }
 
     // ── Bucketización pase 1 ──
     const hard = selectedTiers.includes('dup-hard') ? tiersMod.hardBuckets(allPNs) : [];
@@ -377,6 +488,7 @@ const PNAuditor = (() => {
 
     log(`Pase 2: ${candidateIds.size} candidatos a enriquecer (de ${allPNs.length} totales)`);
     updateAuditorUI(`Pase 2: enriqueciendo ${candidateIds.size} candidatos...`, true);
+    if (_runState) _runState.phase = 'pass2';
 
     const detailsByPnId = {};
     const failedIds = new Set();
@@ -482,16 +594,37 @@ const PNAuditor = (() => {
     const { selectedCriteria, searchQuery, customerFilter, excludeCustomers } = options;
     stopped = false;
     const config = options.config || (typeof window !== 'undefined' ? window.REMOTE_CONFIG : null);
-    const auditorCfg = config?.steelhead?.domain?.auditor || {};
-    const hardCap = (excludeCustomers && excludeCustomers.length)
-      ? (auditorCfg.hardCapWithExclusions || 15000)
-      : (auditorCfg.hardCapPns || 8000);
 
     const activeCriteria = CRITERIA.filter(c => selectedCriteria.includes(c.id));
     const results = { criteria: {}, pns: [], totalAudited: 0, totalIssues: 0 };
     for (const c of activeCriteria) results.criteria[c.id] = { label: c.label, count: 0, pns: [] };
 
     showAuditorUI('Cargando números de parte...');
+
+    // Resume desde checkpoint si el caller lo pidió. resumePass1Snapshot llega
+    // como array compacto desde background.js (ya leído de chrome.storage.local).
+    const resumePass1Snapshot = Array.isArray(options.resumePass1Snapshot)
+      ? options.resumePass1Snapshot
+      : null;
+    if (resumePass1Snapshot) {
+      log(`Resume detectado: ${resumePass1Snapshot.length} PNs en snapshot`);
+    }
+
+    // _runState: lo lee onGuardrail por closure. Mantiene la metadata del run y
+    // el snapshot del pase 1 una vez termina, para persistir si hay guardrail.
+    _runState = {
+      v: RESUME_VERSION,
+      ts: Date.now(),
+      options: {
+        selectedCriteria: [...selectedCriteria],
+        searchQuery: searchQuery || '',
+        customerFilter: customerFilter || '',
+        excludeCustomers: excludeCustomers ? [...excludeCustomers] : [],
+        includeArchived: options.includeArchived !== false,
+      },
+      phase: 'pass1', // 'pass1' | 'pass1-done' | 'pass2' | 'done'
+      pass1Compact: null,
+    };
 
     // ─── EJE B: Host memory hardening ────────────────────────────
     // Datadog RUM + Apollo cache acumulan cientos de MB en runs largos.
@@ -502,9 +635,29 @@ const PNAuditor = (() => {
         memMonitor = hc().createMemMonitor({
           getElement: () => document.getElementById('sa-aud-mem'),
           onGuardrail: (pct) => {
-            warn(`Memoria al ${pct}% — abortando run y pidiendo reload de la tab`);
+            warn(`Memoria al ${pct}% — persistiendo avance y abortando`);
             stopped = true;
-            try { alert(`⚠ Memoria del navegador al ${pct}%. El auditor se detuvo para evitar crash. Recarga la pestaña antes de la próxima corrida.`); } catch (_) {}
+            // Persistir checkpoint con lo que esté disponible. Si pase 1 terminó,
+            // guardamos el snapshot compacto. Si no, solo opciones (al menos
+            // se restauran las selecciones del modal).
+            try {
+              if (_runState) {
+                saveCheckpoint({
+                  v: _runState.v,
+                  ts: _runState.ts,
+                  abortedAt: Date.now(),
+                  abortPct: pct,
+                  phase: _runState.phase,
+                  options: _runState.options,
+                  pass1Compact: _runState.pass1Compact || null,
+                });
+              }
+            } catch (e) { warn(`save checkpoint: ${e?.message || e}`); }
+            const hasSnapshot = !!(_runState && _runState.pass1Compact && _runState.pass1Compact.length);
+            const msg = hasSnapshot
+              ? `⚠ Memoria al ${pct}%. El auditor guardó el snapshot del pase 1 (${_runState.pass1Compact.length} PNs). Recarga la pestaña y vuelve a abrir el auditor para reanudar.`
+              : `⚠ Memoria al ${pct}%. El auditor abortó durante el pase 1; tus selecciones quedaron guardadas. Recarga la pestaña y abre el auditor para retomar.`;
+            try { alert(msg); } catch (_) {}
           },
         });
       }
@@ -549,15 +702,7 @@ const PNAuditor = (() => {
         const exclTxt = (excludeCustomers && excludeCustomers.length) ? ` (excluyendo ${excludeCustomers.length})` : '';
         updateAuditorUI(`Cargando PNs... ${allPNs.length}${filterTxt}${exclTxt}`);
 
-        // Cap defensivo: sin filter, si pasa el hardCap dinámico casi seguro revienta memoria.
-        // hardCap sube a 15000 si hay excludeCustomers (porque ya descontaste al cliente gordo).
-        if (!customerFilter && allPNs.length >= hardCap) {
-          stopped = true;
-          try { memMonitor?.stop(); } catch (_) {}
-          try { alert(`⚠ Demasiados PNs (${allPNs.length}+, cap=${hardCap}). Filtra por cliente o agrega más exclusiones — sin filtro satura memoria.`); } catch (_) {}
-          return { ...results, stopped: true, totalAudited: 0, abortReason: 'too-many-pns' };
-        }
-
+        // Sin cap por count — el bloqueo es solo por guardrail de memoria.
         if (nodes.length < 500) break;
         offset += 500;
       }
@@ -629,7 +774,7 @@ const PNAuditor = (() => {
         searchQuery,
         includeArchived: options.includeArchived !== false, // default ON
         config,
-        hardCap,
+        resumePass1Snapshot,
       });
       results.integrity = integrityResult;
       if (integrityResult?.stopped) {
@@ -686,6 +831,11 @@ const PNAuditor = (() => {
 
     log(`Auditor: ${results.totalAudited} auditados, ${results.totalIssues} problemas`);
     try { memMonitor?.stop(); } catch (_) {}
+    // Run terminó sin abort por memoria → checkpoint ya no aplica.
+    if (!results.stopped) {
+      try { clearCheckpoint(); } catch (_) {}
+      if (_runState) _runState.phase = 'done';
+    }
     return results;
   }
 
@@ -979,9 +1129,11 @@ const PNAuditor = (() => {
   function getCriteria() { return CRITERIA; }
 
   return {
+    VERSION,
     run, stop, exportCSV, getCriteria, removeAuditorUI,
     renderIntegrityResults, archiveLosers, buildDeleteCSV, downloadBlob,
     bucketKeyForCSV, cssEscape,
+    loadCheckpoint, clearCheckpoint, expandPN,
   };
 })();
 

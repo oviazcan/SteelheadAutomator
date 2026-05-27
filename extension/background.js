@@ -842,6 +842,9 @@ async function handleMessage(message, sender) {
           if (!window.PNAuditor) return { error: 'PNAuditor no disponible' };
           const criteria = window.PNAuditor.getCriteria();
           const largeCustomers = (window.REMOTE_CONFIG?.steelhead?.domain?.auditor?.largeCustomers) || [];
+          // Checkpoint del último run abortado por memoria (si existe).
+          let checkpoint = null;
+          try { checkpoint = window.PNAuditor.loadCheckpoint?.() || null; } catch (_) {}
 
           return new Promise(resolve => {
             // Build criteria form
@@ -873,8 +876,29 @@ async function handleMessage(message, sender) {
               criteriaHTML += '</div>';
             }
 
+            // Banner de checkpoint (si hay run abortado por memoria pendiente).
+            let resumeBanner = '';
+            if (checkpoint) {
+              const minsAgo = Math.round((Date.now() - (checkpoint.abortedAt || checkpoint.ts || 0)) / 60000);
+              const cpOpts = checkpoint.options || {};
+              const snapshotCount = (checkpoint.pass1Compact && checkpoint.pass1Compact.length) || 0;
+              const critTxt = Array.isArray(cpOpts.selectedCriteria) ? cpOpts.selectedCriteria.join(', ') : '';
+              const phaseTxt = checkpoint.phase === 'pass1' ? 'durante carga inicial' : (checkpoint.phase === 'pass2' ? 'durante enriquecimiento (pase 2)' : 'al terminar pase 1');
+              resumeBanner = `
+                <div id="sa-aud-resume-banner" style="margin-bottom:14px;padding:10px 12px;background:#7c2d12;border-radius:6px;border:1px solid #f97316">
+                  <div style="font-size:12px;color:#fed7aa;font-weight:600;margin-bottom:4px">⏸ Corrida anterior abortada por memoria (${checkpoint.abortPct || '?'}%) hace ${minsAgo} min — ${phaseTxt}</div>
+                  <div style="font-size:11px;color:#fdba74;margin-bottom:6px">Criterios: ${critTxt || '—'}${cpOpts.customerFilter ? ' · cliente: ' + cpOpts.customerFilter : ''}${(cpOpts.excludeCustomers && cpOpts.excludeCustomers.length) ? ' · excluyendo: ' + cpOpts.excludeCustomers.join(', ') : ''}</div>
+                  <div style="font-size:11px;color:#fdba74;margin-bottom:8px">${snapshotCount > 0 ? `📦 Snapshot del pase 1 disponible (${snapshotCount} PNs) — reanudar salta el paginado y va directo al pase 2.` : '⚠ Sin snapshot del pase 1 (abortó antes de terminarlo) — solo restauramos tus selecciones.'}</div>
+                  <div style="display:flex;gap:8px">
+                    <button id="sa-aud-resume" style="font-size:11px;padding:5px 12px;border:none;border-radius:4px;background:#f97316;color:#0f172a;font-weight:600;cursor:pointer">${snapshotCount > 0 ? 'REANUDAR' : 'RESTAURAR SELECCIÓN'}</button>
+                    <button id="sa-aud-discard" style="font-size:11px;padding:5px 12px;border:1px solid #f97316;border-radius:4px;background:transparent;color:#fed7aa;cursor:pointer">Empezar de cero</button>
+                  </div>
+                </div>`;
+            }
+
             md.innerHTML = `
               <h2 style="color:#38bdf8">🔎 Auditor de Números de Parte</h2>
+              ${resumeBanner}
               <div style="margin-bottom:12px;display:flex;gap:8px">
                 <div style="flex:1">
                   <label style="font-size:11px;color:#94a3b8">Filtrar por cliente (opcional):</label>
@@ -892,7 +916,7 @@ async function handleMessage(message, sender) {
               </div>
               ${criteriaHTML}
               ${largeCustomers.length ? `<div style="margin-top:10px;padding:8px 10px;background:#0f172a;border-radius:4px">
-                <div style="font-size:11px;color:#f97316;font-weight:600;margin-bottom:4px">Excluir clientes grandes (libera memoria + sube cap a 15k PNs):</div>
+                <div style="font-size:11px;color:#f97316;font-weight:600;margin-bottom:4px">Excluir clientes grandes (acota el universo y baja el riesgo de guardrail):</div>
                 ${largeCustomers.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#e2e8f0;padding:2px 0;cursor:pointer"><input type="checkbox" class="sa-aud-excl" value="${c.name.replace(/"/g, '&quot;')}"> ${c.name} (~${c.estimatedPns.toLocaleString()} PNs)</label>`).join('')}
               </div>` : ''}
               <label style="display:block;margin-top:10px;padding:6px 8px;background:#0f172a;border-radius:4px;color:#94a3b8;font-size:12px;cursor:pointer">
@@ -909,6 +933,50 @@ async function handleMessage(message, sender) {
             document.getElementById('sa-aud-all').onclick = () => md.querySelectorAll('.sa-aud-crit').forEach(c => c.checked = true);
             document.getElementById('sa-aud-none').onclick = () => md.querySelectorAll('.sa-aud-crit').forEach(c => c.checked = false);
 
+            // Estado del resume: si el user da REANUDAR, el snapshot viaja a run() vía closure.
+            let resumeSnapshotForRun = null;
+
+            // Helper para pre-llenar el modal con las opciones del checkpoint.
+            function applyCheckpointToForm(cp) {
+              if (!cp || !cp.options) return;
+              const opts = cp.options;
+              if (Array.isArray(opts.selectedCriteria)) {
+                const set = new Set(opts.selectedCriteria);
+                md.querySelectorAll('.sa-aud-crit').forEach(c => { c.checked = set.has(c.value); });
+              }
+              if (typeof opts.customerFilter === 'string') {
+                const el = document.getElementById('sa-aud-customer');
+                if (el) el.value = opts.customerFilter;
+              }
+              if (typeof opts.searchQuery === 'string') {
+                const el = document.getElementById('sa-aud-search');
+                if (el) el.value = opts.searchQuery;
+              }
+              if (Array.isArray(opts.excludeCustomers) && opts.excludeCustomers.length) {
+                const set = new Set(opts.excludeCustomers);
+                md.querySelectorAll('.sa-aud-excl').forEach(c => { c.checked = set.has(c.value); });
+              }
+              const archEl = document.getElementById('sa-int-include-archived');
+              if (archEl) archEl.checked = opts.includeArchived !== false;
+            }
+
+            // Handlers del banner de resume (solo si existe el checkpoint).
+            if (checkpoint) {
+              document.getElementById('sa-aud-resume')?.addEventListener('click', () => {
+                applyCheckpointToForm(checkpoint);
+                if (checkpoint.pass1Compact && checkpoint.pass1Compact.length) {
+                  resumeSnapshotForRun = checkpoint.pass1Compact;
+                }
+                const banner = document.getElementById('sa-aud-resume-banner');
+                if (banner) banner.style.display = 'none';
+              });
+              document.getElementById('sa-aud-discard')?.addEventListener('click', () => {
+                try { window.PNAuditor.clearCheckpoint?.(); } catch (_) {}
+                const banner = document.getElementById('sa-aud-resume-banner');
+                if (banner) banner.style.display = 'none';
+              });
+            }
+
             document.getElementById('sa-aud-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve({ cancelled: true }); };
             document.getElementById('sa-aud-exec').onclick = async () => {
               const selected = [...md.querySelectorAll('.sa-aud-crit:checked')].map(c => c.value);
@@ -921,7 +989,7 @@ async function handleMessage(message, sender) {
               if (!selected.length) { resolve({ error: 'Selecciona al menos un criterio' }); return; }
 
               try {
-                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter, excludeCustomers, includeArchived });
+                const results = await window.PNAuditor.run({ selectedCriteria: selected, searchQuery, customerFilter, excludeCustomers, includeArchived, resumePass1Snapshot: resumeSnapshotForRun });
                 window.PNAuditor.removeAuditorUI();
 
                 // Panel de bucket cards si hubo integrity scan

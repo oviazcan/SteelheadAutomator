@@ -166,3 +166,128 @@ Aplicado tras invocar el skill `memory-hardening-applets` antes del push.
 
 - `c9c452a` perf(auditor): 1.5.3 — slim detail + buckets parciales + render stopped
 - `9c5779a` deploy: auditor 1.5.3 slim detail + buckets parciales + bump 1.5.3
+
+## 2026-05-26 — Hotfix 1.5.5 (skip doble fetch + cap por tamaño + drain entre páginas)
+
+### Síntoma reportado (test 1.5.3)
+
+> "sigue tronando la memoria, hay algo que no está correcto"
+
+Screenshot: alert "Memoria del navegador al 88%. El auditor se detuvo para
+evitar crash" superpuesto al panel "✓ Sin duplicados detectados en los tiers
+seleccionados". El run terminó normal, pero la memoria ya estaba colgada
+post-run y el guardrail disparó tarde.
+
+### Diagnóstico (root cause)
+
+Aún con `slimDetail` + Datadog stop + Apollo drain, la memoria saturaba en
+runs grandes (~5k PNs). Tres factores se combinaban:
+
+| Factor | Detalle | Impacto |
+|---|---|---|
+| **Doble paginated fetch** | `run()` (líneas 484-510) paginaba `AllPartNumbers` para el conteo global de criterios non-tier. Luego `runIntegrityScan` re-paginaba para el tier scan vía `fetchAllPNsWithArchived`. Doble respuesta GraphQL completa retenida en Apollo. | 2× la carga normal del Apollo store. |
+| **Cero drain entre páginas** | Apollo cache normalizaba 500 PNs por página; el drain solo corría al final. En runs de 10+ páginas, el store crecía sin tope durante el fetch. | Pico de memoria mid-fetch antes de cualquier oportunidad de drain. |
+| **Sin tope hard** | `fetchAllPNsWithArchived` no tenía cap. Si la query devolvía 12k+ PNs (cliente grande, sin filtro), el array slim seguía creciendo aunque cada nodo fuera ~1 KB. | OOM determinístico arriba de ~10k PNs. |
+
+### Cambios en código
+
+- `auditor.js` (`fetchAllPNsWithArchived`):
+  - `apolloCacheDrain()` invocado al final de **cada página** (no solo al cierre del fetch).
+  - `HARD_CAP = opts.hardCap || 8000` — abort temprano con alert si se rebasa.
+  - Retorna shape extendido `{ nodes, hitHardCap, capUsed }` para que `run()` pueda flagear el truncamiento en UI.
+
+- `auditor.js` (`run`):
+  - **Skip global fetch** cuando todos los criterios seleccionados son tier-only (`dup-hard`/`dup-medium`/`dup-soft`):
+    ```js
+    const TIER_ONLY = new Set(['dup-hard', 'dup-medium', 'dup-soft']);
+    const needsGlobalPNs = selectedCriteria.some(c => !TIER_ONLY.has(c));
+    if (!needsGlobalPNs) { /* skip paginated fetch */ }
+    ```
+  - Para criterios mixtos, el global fetch se conserva pero **comparte** el resultado con `runIntegrityScan` (pendiente DRY en 1.5.x).
+
+- `config.json`: bump `1.5.3 → 1.5.5` (1.5.4 lo consumió spec-migrator 0.5.5).
+
+### Validación
+
+- `node --check` sobre `auditor.js`: OK.
+- `git diff HEAD:remote/scripts/auditor.js gh-pages:scripts/auditor.js`: vacío.
+- `git diff HEAD:remote/config.json gh-pages:config.json`: vacío.
+
+### Commits
+
+- `3a8b1fe` perf(auditor): 1.5.5 — skip doble fetch + cap por tamaño + drain entre páginas
+- `2af62fd` deploy: auditor 1.5.5 skip doble fetch + cap + drain + bump 1.5.5
+
+## 2026-05-26 — Feature 1.5.6 (toggle excluir clientes grandes + cap dinámico)
+
+### Solicitud del usuario
+
+> "Podemos agregar un Check que diga: Todos los clientes menos SCHNEIDER
+> ELECTRIC MEXICO? es que de ese cliente nada más son 12 mil NP, y está
+> corriendo bien, me gustaría que ahí no me limite a los 8 mil, sino que
+> me deje correr todos los demás clientes de un jalón."
+
+El cap de 8k de 1.5.5 era seguro pero estorboso: bloqueaba runs globales
+legítimos cuando un solo cliente grande inflaba el universo.
+
+### Diseño
+
+- **Lista configurable en `config.json`** (`steelhead.domain.auditor.largeCustomers`):
+  ```json
+  "auditor": {
+    "largeCustomers": [
+      { "name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000 }
+    ],
+    "hardCapPns": 8000,
+    "hardCapWithExclusions": 15000
+  }
+  ```
+  Futuros clientes grandes se agregan sin cambios de código.
+
+- **UI**: bloque naranja en el modal del auditor, debajo de criterios. Renderiza un checkbox por cada cliente en `largeCustomers` con su `estimatedPns` formateado.
+
+- **Cap dinámico**:
+  - Sin exclusiones: `hardCapPns` (8k).
+  - Con al menos una exclusión: `hardCapWithExclusions` (15k).
+
+- **Filtro server-friendly**: la exclusión se aplica en cliente vía `matchesCustomer(node, customerFilter, excludeCustomers)` durante el paginado, así no se pagan páginas adicionales del cliente excluido — se desestiman al recibirlas.
+
+### Cambios en código
+
+- `auditor.js`:
+  - `matchesCustomer(node, customerFilter, excludeCustomers)` — nueva firma; exclusion check antes del include check, ambos case-insensitive vía `.toUpperCase().includes(...)`.
+  - `fetchAllPNsWithArchived(opts)` — acepta `excludeCustomers, hardCap`. `HARD_CAP = hardCap || 8000` (override desde caller).
+  - `runIntegrityScan(options)` — acepta `excludeCustomers, hardCap`, los propaga.
+  - `run(options)` — acepta `excludeCustomers`. Cap dinámico:
+    ```js
+    const auditorCfg = config?.steelhead?.domain?.auditor || {};
+    const hardCap = (excludeCustomers && excludeCustomers.length)
+      ? (auditorCfg.hardCapWithExclusions || 15000)
+      : (auditorCfg.hardCapPns || 8000);
+    ```
+
+- `background.js` (modal del auditor, ~línea 843):
+  - Lee `largeCustomers` desde `window.REMOTE_CONFIG.steelhead.domain.auditor`.
+  - Renderiza bloque condicional con checkboxes `.sa-aud-excl`.
+  - Recolecta valores marcados y los pasa a `PNAuditor.run({ ..., excludeCustomers })`.
+
+- `config.json`:
+  - Bloque nuevo `steelhead.domain.auditor` con `largeCustomers + hardCapPns + hardCapWithExclusions`.
+  - Bump `1.5.5 → 1.5.6` (deploy); coexistió brevemente con WIP del usuario en `1.6.0` (resuelto en stash pop).
+
+### Validación
+
+- `node --check` sobre `auditor.js` y `background.js`: OK.
+- `git diff HEAD:remote/scripts/auditor.js gh-pages:scripts/auditor.js`: vacío.
+- `git diff HEAD:remote/config.json gh-pages:config.json`: vacío en el bloque auditor (config global subió luego a 1.6.0 por WIP paralelo del usuario).
+
+### Commits
+
+- `39487e5` feat(auditor): 1.5.6 toggle excluir clientes grandes + cap dinámico 15k
+- `605f809` deploy: auditor 1.5.6 — toggle excluir clientes grandes + cap dinámico
+
+### Deuda derivada
+
+- **DRY del global fetch**: cuando hay criterios mixtos (tier + non-tier), `run()` aún pagina dos veces. Pendiente compartir el `allPNs` entre `run()` y `runIntegrityScan` para no duplicar tráfico ni memoria.
+- **Versionado interno**: el `const VERSION` de `auditor.js` sigue desalineado del `config.version` (debería estar en `0.1.4x`, no en `1.5.x`). El siguiente bump del applet usará `0.1.4x`; no se retro-modifica (decisión del usuario).
+- **`largeCustomers` crowdsourced**: si crece la lista (>3 clientes), evaluar si conviene una pre-query `AllCustomers` con count para auto-poblar el bloque, en vez de mantenerlo a mano.
