@@ -26,7 +26,6 @@ type DatosFacturaFlags = {
 
 const construirDescripcionCFDI = (p: {
   partNumberName: string | null
-  notasAdicionales: string | null
   acabados: string[]
   nombreProducto: string | null
   salesOrderName: string
@@ -42,10 +41,9 @@ const construirDescripcionCFDI = (p: {
   const partes: string[] = []
   const { flags } = p
 
-  // ── BLOQUE 1: NP + descripción de parte + acabados ──
+  // ── BLOQUE 1: NP + acabados ──
   if (flags.MostrarNP && p.partNumberName) {
     let bloque = p.partNumberName
-    if (p.notasAdicionales) bloque += ` - ${p.notasAdicionales}`
     if (flags.MostrarAcabado && p.acabados.length > 0) {
       bloque += `, Acabado: ${p.acabados.join(', ')}`
     }
@@ -342,8 +340,6 @@ const getInvoicePricing = (
     // --- 4.5️⃣ Recopilar datos para descripción CFDI ---
     const firstPnwo = partNumbersOnThisLine[0]
     const partNumberName = firstPnwo?.partNumber?.name ?? null
-    const notasAdicionales =
-      (firstPnwo?.partNumber?.customInputs?.NotasAdicionales as string | undefined) ?? null
 
     // Acabados: labels del work order (no treatments — esos son pasos de proceso)
     const acabados = [
@@ -391,7 +387,6 @@ const getInvoicePricing = (
     // --- 6️⃣ Construir descripción CFDI ---
     uiLine.description = construirDescripcionCFDI({
       partNumberName,
-      notasAdicionales,
       acabados,
       nombreProducto,
       salesOrderName,
