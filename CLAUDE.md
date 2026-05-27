@@ -55,6 +55,33 @@ La extensión es un cascarón: en runtime fetchea scripts y `config.json` desde 
 - Constantes de dominio (IDs, schemas) van en `config.json`, no hardcodeadas
 - Batching de PNs en grupos de 20 para SaveManyPNP
 
+## Trabajo paralelo (dos instancias de Claude)
+Para correr dos sesiones de Claude sobre este repo sin pisarse, usa **git worktrees**. Cada worktree es un directorio aislado en su propia rama; los commits no chocan hasta que mergees.
+
+**Crear worktree:**
+```bash
+tools/new-worktree.sh <feature-name> [branch-base]
+# ejemplo: tools/new-worktree.sh dup-validator-tier4
+# resultado: ../SteelheadAutomator-dup-validator-tier4 en rama wt/dup-validator-tier4
+```
+
+**Hot files que NO se deben editar en paralelo** (causan merge conflict casi seguro):
+- `remote/config.json` (version bump + hashes compartidos)
+- `CLAUDE.md` (índice de applets + reglas globales)
+- rama `gh-pages` (deploy mirror — solo una sesión deploya a la vez)
+
+**Reglas:**
+1. Solo UNA sesión bumpea `remote/config.json` y deploya a `gh-pages` por vez.
+2. Si vas a editar `config.json` o `CLAUDE.md`, hazlo en pasadas cortas (read → edit → commit → push) sin dejarlo WIP largo.
+3. Para deploys: la sesión que está deployando hace `git stash` del WIP propio antes de `checkout gh-pages`. Nunca toca el directorio del otro worktree.
+4. Idealmente UN applet por sesión. Si tocan dos applets que comparten helpers (`host-cleanup-shared.js`, `process-canon.js`), coordinar.
+
+**Limpiar al terminar:**
+```bash
+git worktree remove ../SteelheadAutomator-<feature-name>
+git branch -D wt/<feature-name>   # si ya mergeaste o descartaste
+```
+
 ## Trabajo con UI / DOM de Steelhead
 **ANTES de escribir selectores o autollenadores DOM, pídele al usuario el wrapper HTML completo del bloque relevante** (el padre cercano que contiene tanto los labels visibles como los inputs/comboboxes). NO adivines la estructura iterando deploys — una sola inspección del wrapper resuelve todo en un commit.
 
