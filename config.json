@@ -1,6 +1,6 @@
 {
-  "version": "1.5.5",
-  "lastUpdated": "2026-05-26T07:30",
+  "version": "1.5.6",
+  "lastUpdated": "2026-05-26T08:00",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -359,6 +359,13 @@
           "logPredictiveParse": true,
           "logPredictiveSampleRows": 20
         }
+      },
+      "auditor": {
+        "largeCustomers": [
+          { "name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000 }
+        ],
+        "hardCapPns": 8000,
+        "hardCapWithExclusions": 15000
       }
     }
   },
