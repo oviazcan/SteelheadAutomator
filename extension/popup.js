@@ -262,7 +262,6 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'open-url': {
         const url = action.url === 'templateUrl' ? config?.templateUrl : action.url;
         if (!url) { alert('URL no configurada.'); break; }
-        chrome.tabs.create({ url });
         if (action.afterMessage) {
           try {
             showProgress('Generando catálogos…', 30);
@@ -279,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         if (action.notice) alert(action.notice);
+        chrome.tabs.create({ url });
         break;
       }
 
