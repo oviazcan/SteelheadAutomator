@@ -1,5 +1,19 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.7 (2026-05-28): Call A resuelve partNumberGroupId del CSV (no del pn cacheado)
+//   - Bug confirmado en piloto 50 PNs (post-1.5.6): 3 PNs Resortes y Partes
+//     (2934-D5/D6/X4) con `Grupo = "Aleta de Tiburón"` en el CSV se quedaron
+//     con partNumberGroupId=null en SH. Causa: en SOLO_PN, pnLookup construye
+//     un `pn` sintético con `partNumberGroupId: null` hardcoded (línea 4487).
+//     Call A mandaba ese null. Call B sí resolvía con resolveGroupId(part.pnGroup),
+//     pero por alguna razón (silent ignore de SH en algunos paths o race con
+//     STEP 5) el grupo no quedaba aplicado. Fix preventivo: ambos calls usan
+//     el mismo pnGroupId resuelto desde part.pnGroup ANTES de Call A.
+//   - Log diagnóstico: cuando pnGroupId cambia (vs el cacheado), emitir log
+//     "Group → set/change" para detectar runtime si vuelve a pasar.
+//   - El log de catálogo en línea 3312 (`${n} groups`) ya existe — no se
+//     toca; sirve para detectar groupByName empty si llegara a fallar.
+//
 // VERSION 1.5.6 (2026-05-28): preservar labels/dims en STEP 5 + STEP 6b
 //   - Bug confirmado en piloto 50 PNs (restore_v6): aunque Call A y Call B
 //     de 1.5.5 preservaban labels/dims, dos SavePartNumber adicionales que
@@ -97,7 +111,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.6';
+  const VERSION = '1.5.7';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -3489,6 +3503,49 @@ const BulkUpload = (() => {
         }
       }
 
+      // 1.5.7: Preflight de colisiones intra-CSV (specs en la misma fila que
+      // comparten specFieldId). SH tiene unique constraint en
+      // partNumberSpecFieldParam(pn_id, specFieldId) — si dos specs de una
+      // misma fila reclaman el mismo specField, Call B rollbackea
+      // silenciosamente y solo una spec queda linkeada (la primera/ganadora
+      // determinada por orden de SH). Aquí solo se avisa al panel; el split
+      // quirúrgico per-PN del enrichWorker hace el rescate enviando las specs
+      // perdedoras en SavePartNumber individuales para que el error de SH se
+      // vuelva visible en errors[] en vez de silencioso.
+      function _sfIdsForSpec(specId) {
+        const sd = sfCache.get(specId); if (!sd) return [];
+        const out = [];
+        for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
+          const sfId = sf.specFieldBySpecFieldId?.id;
+          const sfName = sf.specFieldBySpecFieldId?.name || '';
+          if (sfId) out.push({ sfId, sfName });
+        }
+        return out;
+      }
+      const intraCsvCollisions = [];
+      for (let i = 0; i < parts.length; i++) {
+        const sfMap = new Map(); // sfId → { sfName, specNames: [] }
+        for (const cs of (parts[i].specs || [])) {
+          if (isDash(cs.name)) continue;
+          const si = specByName.get(cs.name); if (!si) continue;
+          for (const { sfId, sfName } of _sfIdsForSpec(si.id)) {
+            if (!sfMap.has(sfId)) sfMap.set(sfId, { sfName, specNames: [] });
+            sfMap.get(sfId).specNames.push(cs.name);
+          }
+        }
+        for (const [sfId, { sfName, specNames }] of sfMap) {
+          if (specNames.length > 1) intraCsvCollisions.push({ rowIdx: i, pn: parts[i].pn, sfId, sfName, specNames });
+        }
+      }
+      if (intraCsvCollisions.length) {
+        const sample = intraCsvCollisions.slice(0, 3)
+          .map(c => `"${c.pn}" specField "${c.sfName}" (${c.specNames.join(' + ')})`)
+          .join(' | ');
+        const more = intraCsvCollisions.length > 3 ? ` (+${intraCsvCollisions.length - 3} más)` : '';
+        warn(`⚠ ${intraCsvCollisions.length} colisión(es) intra-CSV de specField — SH solo acepta una spec por specField. ${sample}${more}. Se intentará rescate via SavePartNumber individual por spec.`);
+        addPanelLog(`⚠ ${intraCsvCollisions.length} colisiones de specField intra-CSV (revisar log).`);
+      }
+
       // ── PN existence check ──
       bailIfStale(myRunId);
       // 1.4.21 Fix CC v3 (opción B): si tenemos resumeState con classifications
@@ -4077,6 +4134,11 @@ const BulkUpload = (() => {
               const sentExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
                 .filter(d => !d.archivedAt)
                 .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+              // 1.5.7: STEP 5 también resuelve grupo del CSV (no del cache).
+              // Asegura que si SOLO Call B fallara, STEP 5 ya dejó el grupo aplicado.
+              const sentinelPnGroupId = isDash(target.part.pnGroup)
+                ? null
+                : (target.part.pnGroup ? (await resolveGroupId(target.part.pnGroup)) : (pnNode.partNumberGroupId || null));
               const minInput = {
                 id: target.pnId,
                 name: pnNode.name,
@@ -4088,8 +4150,7 @@ const BulkUpload = (() => {
                 userFileName: null,
                 inventoryItemInput: null,
                 glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
-                isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
-                partNumberGroupId: pnNode.partNumberGroupId || null,
+                partNumberGroupId: sentinelPnGroupId,
                 descriptionMarkdown: pnNode.descriptionMarkdown || '',
                 customerFacingNotes: pnNode.customerFacingNotes || '',
                 labelIds: sentExistingLabelIds, ownerIds: [], defaults: [], optInOuts: [],
@@ -4779,11 +4840,15 @@ const BulkUpload = (() => {
         // del registro link (partNumberSpec.id), no del Spec mismo.
         const hasArchiveSentinel = part.specs.length > 0 && part.specs.some(s => isDash(s.name));
         const wantedSpecIds = new Set(); // si.id de las specs no-dash del CSV
+        // 1.5.7: mapa paralelo para que el split de specs colisionantes pueda
+        // loggear nombres legibles sin tener que invertir specByName.
+        const specNameById = new Map();
         const specsToApply = [];
         for (const cs of part.specs) {
           if (isDash(cs.name)) continue; // "-" mezclado o solo: no se aplica (archive sentinel maneja el resto)
           const si = specByName.get(cs.name); if (!si) { errors.push(`Spec "${cs.name}" no encontrada.`); continue; }
           wantedSpecIds.add(si.id);
+          specNameById.set(si.id, cs.name);
           const sd = sfCache.get(si.id); if (!sd) continue;
           const dS = [], gS = [];
           for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
@@ -4847,19 +4912,64 @@ const BulkUpload = (() => {
         // re-aplicar como INSERT. En su lugar se desarchivan via partNumberSpecsToUnarchive.
         // Sin esto los Bimetales (Lavado archivado de corrida previa) fallan con duplicate_key
         // → strip1 deja specsToApply=[] → Lavado se queda archivado y la nueva spec nunca aplica.
+        // 1.5.7: split quirúrgico para colisión de specField. SH también tiene
+        // unique constraint en partNumberSpecFieldParam(pn_id, specFieldId): si
+        // ≥2 specs (CSV+CSV o CSV+linked-activa) reclaman el mismo specField,
+        // Call B rollbackea silenciosamente la perdedora — se observó en piloto
+        // 1.5.6: PNs Schneider con Bimetales+Lavado-Termico-Bimetales sólo
+        // quedaba la segunda; PN 2911289 con RC Lavado archivada nunca
+        // desarchivó. Estrategia: primera spec del CSV en orden "reserva" su
+        // specField; las que choquen contra una reservada (linked activa o
+        // otra spec del CSV anterior) se sacan a `conflictingExtras` y se
+        // mandan en SavePartNumber individuales DESPUÉS del Call B. Eso aísla
+        // el rollback (la perdedora no arrastra al resto) y el error de SH se
+        // vuelve visible en errors[] en vez de silencioso.
+        const _claimedSfIds = new Map(); // sfId → { kind: 'linked'|'csv', specId, sfName }
+        for (const linkedSid of alreadyLinkedSpecIds) {
+          for (const { sfId, sfName } of _sfIdsForSpec(linkedSid)) {
+            if (!_claimedSfIds.has(sfId)) _claimedSfIds.set(sfId, { kind: 'linked', specId: linkedSid, sfName });
+          }
+        }
+        const _winnersSet = new Set();
+        const _losersInfo = new Map(); // specId → { sfName, claimerKind, claimerSpecId }
+        for (const s of specsToApply) {
+          if (alreadyLinkedSpecIds.has(s.specId)) continue; // no-op, skip claim eval
+          const sfs = _sfIdsForSpec(s.specId);
+          const hit = sfs.find(({ sfId }) => _claimedSfIds.has(sfId));
+          if (!hit) {
+            _winnersSet.add(s.specId);
+            for (const { sfId, sfName } of sfs) if (!_claimedSfIds.has(sfId)) _claimedSfIds.set(sfId, { kind: 'csv', specId: s.specId, sfName });
+          } else {
+            const c = _claimedSfIds.get(hit.sfId);
+            _losersInfo.set(s.specId, { sfName: hit.sfName, claimerKind: c.kind, claimerSpecId: c.specId });
+          }
+        }
+
         const partNumberSpecsToUnarchiveIds = [];
         const specsToApplyFiltered = [];
+        const conflictingExtras = []; // { entry, unarchiveLinkId, specName, sfName, claimerKind, claimerSpecId }
         for (const s of specsToApply) {
           if (alreadyLinkedSpecIds.has(s.specId)) continue;
-          if (archivedSpecLinkBySpecId.has(s.specId)) {
-            partNumberSpecsToUnarchiveIds.push(archivedSpecLinkBySpecId.get(s.specId));
-            continue;
+          const archiveLinkId = archivedSpecLinkBySpecId.get(s.specId) || null;
+          const specName = specNameById.get(s.specId) || `#${s.specId}`;
+          if (_winnersSet.has(s.specId)) {
+            if (archiveLinkId) partNumberSpecsToUnarchiveIds.push(archiveLinkId);
+            else specsToApplyFiltered.push(s);
+          } else {
+            const info = _losersInfo.get(s.specId) || {};
+            conflictingExtras.push({
+              entry: s, unarchiveLinkId: archiveLinkId, specName,
+              sfName: info.sfName || '?', claimerKind: info.claimerKind || '?', claimerSpecId: info.claimerSpecId || null,
+            });
           }
-          specsToApplyFiltered.push(s);
         }
         if (partNumberSpecsToUnarchiveIds.length) {
           stats.specsUnarchived = (stats.specsUnarchived || 0) + partNumberSpecsToUnarchiveIds.length;
           log(`  "${pn.name}": ${partNumberSpecsToUnarchiveIds.length} spec(s) archivadas → desarchivar (en lugar de re-create)`);
+        }
+        if (conflictingExtras.length) {
+          stats.specsCollisionExtraCalls = (stats.specsCollisionExtraCalls || 0) + conflictingExtras.length;
+          log(`  "${pn.name}": ${conflictingExtras.length} spec(s) colisionante(s) → calls dedicados (${conflictingExtras.map(c => `"${c.specName}" ⊥ "${c.sfName}"`).join(', ')})`);
         }
 
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
@@ -4887,6 +4997,19 @@ const BulkUpload = (() => {
         //
         // Coste por PN: +1 round-trip SavePartNumber (~0.3-0.5s) — compensado
         // por el bump de concurrency 5→8 en este mismo release.
+        // 1.5.7: resolver pnGroupId UNA SOLA VEZ aquí — antes (≤1.5.6) Call A
+        // mandaba pn.partNumberGroupId (que en SOLO_PN es hardcoded null vía
+        // pnLookup sintético) y dejaba la asignación de grupo dependiendo de
+        // Call B. Si Call B fallaba o se saltaba, el grupo se quedaba null.
+        // Ahora Call A y Call B usan el MISMO pnGroupId derivado del CSV.
+        const pnGroupIdEarly = isDash(part.pnGroup)
+          ? null
+          : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : (existingPnNode?.partNumberGroupId ?? pn.partNumberGroupId ?? null));
+        const prevGroupForLog = existingPnNode?.partNumberGroupId ?? pn.partNumberGroupId ?? null;
+        if (pnGroupIdEarly !== prevGroupForLog) {
+          log(`  "${part.pn}": Group → ${prevGroupForLog || 'null'} a ${pnGroupIdEarly || 'null'} (csv="${part.pnGroup || ''}")`);
+        }
+
         const identifierKey = `${idx}|${part.pn}|${part.customerId}`;
         if (!resumeIdentifierSet.has(identifierKey)) {
           const identifierInput = {
@@ -4896,7 +5019,7 @@ const BulkUpload = (() => {
             customInputs: mergedCI || pn.customInputs || {},
             inputSchemaId: DOMAIN.inputSchemaId_PN,
             labelIds: labelIdsToSend,
-            partNumberGroupId: pn.partNumberGroupId || null,
+            partNumberGroupId: pnGroupIdEarly,
             // Heavy fields explícitamente vacíos — Steelhead acepta el shape mínimo
             // como un upsert idempotente de identificadores.
             // 1.5.5: dimensionCustomValueIds usa el mismo *ToSend que Call B para no
@@ -4979,8 +5102,8 @@ const BulkUpload = (() => {
           stats.validacionSet++;
         }
 
-        // Grupo — "-" = quitar grupo
-        const pnGroupId = isDash(part.pnGroup) ? null : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : pn.partNumberGroupId || null);
+        // Grupo — 1.5.7: ya resuelto antes de Call A (pnGroupIdEarly). Mismo valor en A y B.
+        const pnGroupId = pnGroupIdEarly;
 
         // labelIdsToSend y dimValueIdsToSend ya fueron resueltos arriba (1.5.5).
         const pnProcessId = part.processId;
@@ -5065,6 +5188,59 @@ const BulkUpload = (() => {
           // STEP 6b vuelve a fetchear fresh via GetPartNumber si necesita el pnNode.
           // Mismo patrón que Fix Z aplicó al STEP 5 (línea 3332).
           if (pn.id) existingPnFullCache.delete(pn.id);
+        }
+
+        // 1.5.7: Calls dedicados para specs colisionantes detectadas en la
+        // segmentación winners/losers. SH tiene unique constraint en
+        // partNumberSpecFieldParam(pn_id, specFieldId); cuando varias specs de
+        // un mismo SavePartNumber reclaman el mismo specField, SH rollbackea
+        // las perdedoras EN SILENCIO (no dispara duplicateKeyError ni strip1).
+        // Antes de 1.5.7 esto producía specs faltantes sin error visible
+        // (Bug A del pilot 1.5.6: 8 PNs Schneider con Bimetales perdiendo
+        // contra Lavado-Tratamiento-Térmico-Bimetales en specFields 19445 y
+        // 22067). Estrategia: aislar cada loser en su propio SavePartNumber
+        // con specsToApply=[entry] o partNumberSpecsToUnarchive=[linkId]. Si
+        // SH lo acepta, queda registrado; si lo rechaza, el error sí es
+        // visible y cae a errors[].
+        if (pnSucceeded && conflictingExtras.length) {
+          const baseInput = {
+            id: pn.id, name: pnInput.name, customerId: pnInput.customerId,
+            defaultProcessNodeId: pnInput.defaultProcessNodeId,
+            descriptionMarkdown: pnInput.descriptionMarkdown,
+            customerFacingNotes: pnInput.customerFacingNotes,
+            customInputs: pnInput.customInputs, inputSchemaId: pnInput.inputSchemaId,
+            labelIds: pnInput.labelIds, partNumberGroupId: pnInput.partNumberGroupId,
+            geometryTypeId: pnInput.geometryTypeId,
+            inventoryItemInput: null, inventoryPredictedUsages: [], paramsToApply: [],
+            isCoupon: false, isOneOff: false, isTemplatePartNumber: false,
+            optInOuts: [], ownerIds: [], defaults: [],
+            dimensionCustomValueIds: pnInput.dimensionCustomValueIds,
+            partNumberDimensions: pnInput.partNumberDimensions, partNumberLocations: [],
+            partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [],
+            partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+            partNumberSpecsToArchive: [], specFieldParamUpdates: [],
+            glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
+          };
+          for (const cx of conflictingExtras) {
+            try {
+              await withRetry(
+                () => api().query('SavePartNumber', {
+                  input: [{
+                    ...baseInput,
+                    specsToApply: cx.unarchiveLinkId ? [] : [cx.entry],
+                    partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : []
+                  }]
+                }),
+                `SavePartNumber colisión "${pnInput.name}/${cx.specName}"`,
+                myRunId
+              );
+              log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+            } catch (eExtra) {
+              if (isBail(eExtra)) throw eExtra;
+              errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}" reclamado por ${cx.claimerKind === 'linked' ? 'spec ya linkeada' : 'otra spec del CSV'}): ${String(eExtra).substring(0, 120)}`);
+              state.counters.errors++;
+            }
+          }
         }
 
         // Persistencia incremental para resume (Fix 7) — cada 50 PNs procesados.
@@ -5362,6 +5538,11 @@ const BulkUpload = (() => {
             const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
               .filter(d => !d.archivedAt)
               .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+            // 1.5.7: STEP 6b también resuelve grupo del CSV (no del cache).
+            // Si Call B fallara silently con partNumberGroupId, este cleanup re-aplica.
+            const cleanupPnGroupId = isDash(part.pnGroup)
+              ? null
+              : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : (pnNode.partNumberGroupId || null));
             const cleanupInput = {
               id: entry.pn.id,
               name: pnNode.name,
@@ -5374,7 +5555,7 @@ const BulkUpload = (() => {
               inventoryItemInput: null,
               glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
               isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
-              partNumberGroupId: pnNode.partNumberGroupId || null,
+              partNumberGroupId: cleanupPnGroupId,
               descriptionMarkdown: pnNode.descriptionMarkdown || '',
               customerFacingNotes: pnNode.customerFacingNotes || '',
               labelIds: cleanupExistingLabelIds, ownerIds: [], defaults: [], optInOuts: [],
