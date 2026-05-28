@@ -1,6 +1,37 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.0. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.2. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.2 (2026-05-27) — Fix log cosmético "Precios: N PNs procesados"
+
+### Síntoma
+Operador subió 1 PN en SOLO_PN. El panel mostró `1/1 OK: 1` (correcto) pero el log
+de progreso decía `Precios: 20 PNs procesados`.
+
+### Causa
+En el loop de precios standalone (línea 4427), el log usaba `batchNum * 20` literal,
+asumiendo que cada batch siempre va lleno (lote de 20). Con 1 PN → 1 batch
+→ `1 * 20 = 20` reportado, aunque el batch real era de 1.
+
+### Fix
+```js
+addPanelLog(`Precios: ${Math.min(batchNum * 20, pnpWithPrice.length)} PNs procesados`);
+```
+Clamp al total real de PNs con precio en la fase, no al tamaño nominal del batch.
+
+### Lección
+Logs de progreso por batch deben usar el **count acumulado real**, no el `batchNum × pageSize`.
+La diferencia solo se nota en el último batch (que puede ser parcial) o en runs chicos.
+No afecta funcionalidad — fue solo cosmético — pero confunde al operador y disparó esta
+sesión de debug.
+
+### Validación
+Prueba en producción con 1 NP confirmó: ahora reporta `Precios: 1 PNs procesados`.
+
+### BU_VERSION
+1.5.1 → 1.5.2
+
+---
 
 ## 1.5.1 (2026-05-26) — Notas adicionales movida + Id SH como pivote alternativo
 
