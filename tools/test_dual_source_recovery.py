@@ -10,6 +10,7 @@ from tools.dual_source_recovery import (
     main,
     make_fingerprint,
     norm,
+    read_header_map,
 )
 
 
@@ -101,3 +102,60 @@ class TestMakeFingerprint:
     def test_no_metal(self):
         fp = make_fingerprint(metal_base="", labels=["PLATA"])
         assert fp == "|PLATA"
+
+
+class TestReadHeaderMap:
+    def test_maps_headers_to_indices(self, tmp_path):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Test"
+        ws["A1"] = "Cliente"
+        ws["B1"] = "Número de parte"
+        ws["C1"] = "Etiqueta 1"
+        path = tmp_path / "test.xlsx"
+        wb.save(path)
+
+        wb2 = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        ws2 = wb2["Test"]
+        m = read_header_map(ws2, header_row=1)
+        assert m == {"Cliente": 1, "Número de parte": 2, "Etiqueta 1": 3}
+
+    def test_normalizes_newlines_in_headers(self, tmp_path):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws["A1"] = "Validación\n1er recibo"
+        ws["B1"] = "Esp. Spec 1\n(µm)"
+        path = tmp_path / "test.xlsx"
+        wb.save(path)
+
+        wb2 = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        m = read_header_map(wb2.active, header_row=1)
+        assert m == {"Validación 1er recibo": 1, "Esp. Spec 1 (µm)": 2}
+
+    def test_skips_empty_columns(self, tmp_path):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws["A1"] = "Cliente"
+        ws["C1"] = "Proceso"  # B1 empty
+        path = tmp_path / "test.xlsx"
+        wb.save(path)
+
+        wb2 = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        m = read_header_map(wb2.active, header_row=1)
+        assert m == {"Cliente": 1, "Proceso": 3}
+
+    def test_header_row_param(self, tmp_path):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws["A7"] = "Cliente"
+        ws["B7"] = "Proceso"
+        path = tmp_path / "test.xlsx"
+        wb.save(path)
+
+        wb2 = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        m = read_header_map(wb2.active, header_row=7)
+        assert m == {"Cliente": 1, "Proceso": 2}

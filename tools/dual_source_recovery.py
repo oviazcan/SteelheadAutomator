@@ -73,6 +73,48 @@ def make_fingerprint(metal_base: str | None, labels: Iterable[str | None]) -> st
     return f"{metal}|{','.join(labels_clean)}"
 
 
+def read_header_map(ws, header_row: int) -> dict[str, int]:
+    """Devuelve {header_name → col_index (1-based)} leyendo la fila indicada.
+
+    Normaliza headers: reemplaza '\\n' por espacio y colapsa whitespaces.
+    """
+    headers: dict[str, int] = {}
+    for row in ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True):
+        for idx, val in enumerate(row, start=1):
+            if val is None or str(val).strip() == "":
+                continue
+            key = re.sub(r"\s+", " ", str(val).replace("\n", " ").strip())
+            headers[key] = idx
+        break
+    return headers
+
+
+@dataclass
+class PartNumberRow:
+    """Una fila de PN normalizada — fuente puede ser xlsm o reporte SH."""
+    source: str  # 'xlsm_srg' | 'xlsm_cg' | 'sh_report'
+    source_row: int  # fila 1-based del archivo origen (debug)
+    id_sh: str  # vacío en xlsm; numérico-string en SH report
+    cliente: str
+    pn: str
+    descripcion: str
+    quote_ibms: str
+    est_ibms: str
+    notas: str
+    metal_base: str
+    labels: list[str]  # 5 elementos, "" para vacíos
+    proceso: str
+    spec1: str
+    spec1_um: str
+    spec2: str
+    spec2_um: str
+    # campos numéricos / sobreescribir
+    raw: dict[str, object] = field(default_factory=dict)  # acceso por header_name → valor crudo
+
+    def get(self, header: str):
+        return self.raw.get(header)
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 
