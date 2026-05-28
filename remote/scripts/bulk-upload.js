@@ -1,5 +1,21 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.5 (2026-05-28): merge MODIFY — preserve-on-missing para labels y dims
+//   - Bug confirmado en piloto string-only (PN 3028297): el CSV no traía Línea/Depto
+//     y los labels venían parcialmente desconocidos. SavePartNumber hace REPLACE en
+//     `labelIds` y `dimensionCustomValueIds`, entonces mandar [] borraba todos los
+//     valores existentes. Causa: la lógica del bulk-upload calculaba estos arrays
+//     desde el CSV sin distinguir "vacío = no tocar" de "vacío = borrar".
+//   - Fix: pre-extraer existingLabelIds + existingDimCustomValueIds del existingPnNode,
+//     y calcular labelIdsToSend / dimValueIdsToSend ANTES de Call A (identifier-enrich)
+//     con la regla:
+//        * vacío en CSV          → preservar existing
+//        * '-' explícito         → [] (borrar intencional)
+//        * lookup roto sin hits  → preservar existing (+ warn)
+//        * datos válidos         → enviar lookup (REPLACE intencional)
+//   - Tanto Call A como Call B usan ahora estos *ToSend. customInputs ya hacía merge
+//     correcto (mergeCustomInputs en 1.3.x), no se tocó.
+//
 // VERSION 1.5.4 (2026-05-28): partNumberSpecsToUnarchive en lugar de re-create
 //   - Bug Bimetales: specs archivadas (Lavado en run previa) golpeaban la
 //     unique_constraint partNumberSpec(pn_id, spec_id) cuando specsToApply
@@ -63,7 +79,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.4';
+  const VERSION = '1.5.5';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4611,6 +4627,14 @@ const BulkUpload = (() => {
           errors.push(`Etiqueta(s) no encontrada(s) en Steelhead para "${part.pn}": ${unknownLabels.join(', ')}`);
         }
         if (labelIds.length) stats.labelsSet += labelIds.length;
+        // 1.5.5: decisión de labelIds a enviar (REPLACE de SH).
+        //   labelsAreDash      → [] (borrar todo, sentinel explícito)
+        //   CSV vacío          → existingLabelIds (preservar)
+        //   CSV traía nombres pero todos unknown → existingLabelIds (preservar +
+        //     error queda registrado en errors[] para visibilidad)
+        //   CSV con al menos un id válido → labelIds (REPLACE intencional)
+        // Sin esto, el caso "todos unknown" mandaba [] y borraba etiquetas reales (bug
+        // confirmado en piloto: PN 3028297 tenía Pavonado/Aceitado y quedó en 0 labels).
 
         // Fix C 1.3.2: pre-fetch del PN existente para poder filtrar specsToApply y NO
         // gatillar unique_constraint en la link table. Antes (≤1.3.1) este fetch solo se
@@ -4641,12 +4665,74 @@ const BulkUpload = (() => {
         // 1.5.4: indexar también las linked rows archivadas para poder unarchive en lugar
         // de re-create (la unique_constraint pn_id+spec_id aplica también a archivadas).
         const archivedSpecLinkBySpecId = new Map();
+        // 1.5.5: extraer labelIds y dimensionCustomValueIds existentes para preservar-on-missing.
+        // SavePartNumber hace REPLACE en estos arrays, entonces si el CSV no trae nada (o si
+        // el lookup falla en tiempo de ejecución) y mandamos [], SH borra los existentes.
+        // Para evitarlo guardamos los IDs vigentes y los reusamos como fallback.
+        const existingLabelIds = [];
+        const existingDimCustomValueIds = [];
         if (existingPnNode) {
           for (const ls of (existingPnNode.partNumberSpecsByPartNumberId?.nodes || [])) {
             const sid = ls.specBySpecId?.id; if (!sid) continue;
             if (ls.archivedAt) { archivedSpecLinkBySpecId.set(sid, ls.id); continue; }
             alreadyLinkedSpecIds.add(sid);
           }
+          for (const ln of (existingPnNode.partNumberLabelsByPartNumberId?.nodes || [])) {
+            if (ln.archivedAt) continue;
+            const id = ln.labelByLabelId?.id; if (id) existingLabelIds.push(id);
+          }
+          for (const sel of (existingPnNode.acctPnDimensionValueSelectionsByPartNumberId?.nodes || [])) {
+            const id = sel.dimensionCustomValueId; if (id) existingDimCustomValueIds.push(id);
+          }
+        }
+
+        // 1.5.5 — Preserve-on-missing para campos que SH trata como REPLACE.
+        // Antes (≤1.5.4) tanto Call A como Call B mandaban labelIds y dimensionCustomValueIds
+        // calculados desde el CSV; si el CSV no traía esos campos, o el lookup contra los
+        // catálogos fallaba, se enviaba [] y SH borraba los valores existentes (bug
+        // confirmado en piloto string-only: PN 3028297 perdió Línea/Depto/Etiquetas).
+        // Ahora ambos calls usan estos *ToSend y caen al snapshot del PN existente cuando
+        // el CSV no tiene intención de cambiar.
+        // Decisión dimensionCustomValueIds:
+        //   * Ambos campos vacíos en CSV  → preservar existing
+        //   * Ambos '-' (dash)            → [] (borrar explícito)
+        //   * Mezcla con dash             → enviar lookup (al menos un value-ok)
+        //   * Lookup roto sin value-ok    → preservar (no borrar por typo)
+        const dimValueIds = [];
+        let lineaIntent = 'none';   // 'none' | 'dash' | 'value-ok' | 'value-missing'
+        let deptoIntent = 'none';
+        if (part.linea) {
+          if (isDash(part.linea)) lineaIntent = 'dash';
+          else { const id = dimValueMap.get(part.linea); if (id) { dimValueIds.push(id); lineaIntent = 'value-ok'; } else { lineaIntent = 'value-missing'; warn(`Línea "${part.linea}" no encontrada en dimensiones`); } }
+        }
+        if (part.departamento) {
+          if (isDash(part.departamento)) deptoIntent = 'dash';
+          else { const id = dimValueMap.get(part.departamento); if (id) { dimValueIds.push(id); deptoIntent = 'value-ok'; } else { deptoIntent = 'value-missing'; warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); } }
+        }
+        let dimValueIdsToSend;
+        if (lineaIntent === 'none' && deptoIntent === 'none') {
+          dimValueIdsToSend = existingDimCustomValueIds;
+        } else if ((lineaIntent === 'value-missing' || lineaIntent === 'none') &&
+                   (deptoIntent === 'value-missing' || deptoIntent === 'none') &&
+                   dimValueIds.length === 0) {
+          dimValueIdsToSend = existingDimCustomValueIds;
+          warn(`"${pn.name}": Línea/Depto lookup falló → preservando ${existingDimCustomValueIds.length} dimSel existentes`);
+        } else {
+          dimValueIdsToSend = dimValueIds;
+        }
+        // Labels: misma lógica de preservación.
+        const csvHadLabels = !labelsAreDash && part.labels.length > 0;
+        const allLabelsUnknown = csvHadLabels && labelIds.length === 0 && unknownLabels.length === part.labels.length;
+        let labelIdsToSend;
+        if (labelsAreDash) {
+          labelIdsToSend = [];
+        } else if (!csvHadLabels) {
+          labelIdsToSend = existingLabelIds;
+        } else if (allLabelsUnknown) {
+          labelIdsToSend = existingLabelIds;
+          warn(`"${pn.name}": todos los labels CSV (${part.labels.join(',')}) son desconocidos → preservando ${existingLabelIds.length} existentes`);
+        } else {
+          labelIdsToSend = labelIds;
         }
 
         // Specs — semántica del guión:
@@ -4775,15 +4861,17 @@ const BulkUpload = (() => {
             customerFacingNotes: pn.customerFacingNotes || '',
             customInputs: mergedCI || pn.customInputs || {},
             inputSchemaId: DOMAIN.inputSchemaId_PN,
-            labelIds: labelsAreDash ? [] : labelIds,
+            labelIds: labelIdsToSend,
             partNumberGroupId: pn.partNumberGroupId || null,
             // Heavy fields explícitamente vacíos — Steelhead acepta el shape mínimo
             // como un upsert idempotente de identificadores.
+            // 1.5.5: dimensionCustomValueIds usa el mismo *ToSend que Call B para no
+            // borrar Línea/Depto cuando el CSV no los trae o cuando el lookup falla.
             defaultProcessNodeId: pn.defaultProcessNodeId || null,
             geometryTypeId: pn.geometryTypeId || null,
             inventoryItemInput: null, inventoryPredictedUsages: [],
             specsToApply: [], paramsToApply: [], partNumberDimensions: [],
-            partNumberLocations: [], dimensionCustomValueIds: [],
+            partNumberLocations: [], dimensionCustomValueIds: dimValueIdsToSend,
             isCoupon: false, isOneOff: false, isTemplatePartNumber: false,
             optInOuts: [], ownerIds: [], defaults: [],
             partNumberSpecClassificationsToUpdate: [],
@@ -4860,16 +4948,13 @@ const BulkUpload = (() => {
         // Grupo — "-" = quitar grupo
         const pnGroupId = isDash(part.pnGroup) ? null : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : pn.partNumberGroupId || null);
 
-        // Dimension custom value IDs (Línea/Departamento)
-        const dimValueIds = [];
-        if (part.linea && !isDash(part.linea)) { const id = dimValueMap.get(part.linea); if (id) dimValueIds.push(id); else warn(`Línea "${part.linea}" no encontrada en dimensiones`); }
-        if (part.departamento && !isDash(part.departamento)) { const id = dimValueMap.get(part.departamento); if (id) dimValueIds.push(id); else warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); }
+        // labelIdsToSend y dimValueIdsToSend ya fueron resueltos arriba (1.5.5).
         const pnProcessId = part.processId;
 
         const pnInput = {
           id: pn.id, name: resolvedPnName, customerId: pn.customerId || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, pn.descriptionMarkdown || ''), customerFacingNotes: pn.customerFacingNotes || '',
-          customInputs: mergedCI || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds,
+          customInputs: mergedCI || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds: labelIdsToSend,
           partNumberGroupId: pnGroupId,
           geometryTypeId: resolvedGeometryTypeId,
           inventoryItemInput: ucs.length ? { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] } : null,
@@ -4877,7 +4962,7 @@ const BulkUpload = (() => {
             .filter(pu => !existingPredictedMap.get(pn.id)?.has(String(pu.inventoryItemId)))
             .map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
           specsToApply: specsToApplyFiltered, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
-          dimensionCustomValueIds: dimValueIds,
+          dimensionCustomValueIds: dimValueIdsToSend,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
           partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
           partNumberSpecsToArchive: partNumberSpecsToArchiveIds, partNumberSpecsToUnarchive: partNumberSpecsToUnarchiveIds, specFieldParamUpdates: [],
