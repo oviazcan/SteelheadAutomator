@@ -30,6 +30,14 @@ from typing import Iterable
 import openpyxl
 
 
+def norm(value) -> str:
+    """Normaliza una celda para comparación: cast a str, lower, strip, colapsa whitespace."""
+    if value is None or value == "":
+        return ""
+    s = str(value)
+    return re.sub(r"\s+", " ", s.strip().lower())
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 
