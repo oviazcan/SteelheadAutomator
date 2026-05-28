@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.4.31';
+  const VERSION = '1.5.1';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -722,6 +722,7 @@ const BulkUpload = (() => {
         <div class="sa-log" id="sa-bu-log"></div>
       </div>
       <div class="sa-actions">
+        <button class="sa-btn" id="sa-bu-dl-v11" style="background:#0d9488;color:white;margin-right:auto" title="Descarga la plantilla v11 y genera el archivo de catálogos vigente">&#x1F4E5; Plantilla v11 + catálogos</button>
         <button class="sa-btn sa-btn-stop" id="sa-bu-stop">Detener</button>
         <button class="sa-btn sa-btn-close" id="sa-bu-close" style="display:none">Cerrar</button>
       </div>`;
@@ -732,6 +733,48 @@ const BulkUpload = (() => {
       }
     };
     p.querySelector('#sa-bu-close').onclick = () => hidePanel();
+
+    // Botón: Descargar plantilla v11 + catálogos en una sola acción.
+    // URL de la plantilla: misma base que templateUrl de config.json, apuntando a v11.
+    // NOTA: la ruta /templates/Plantilla_Cotizaciones_v11.xlsm debe existir en gh-pages
+    // antes de que este botón funcione (Agent E la publica junto con este deploy).
+    p.querySelector('#sa-bu-dl-v11').onclick = async function () {
+      const btn = this;
+      btn.disabled = true;
+      const origText = btn.textContent;
+      try {
+        // 1) Descarga la plantilla v11 desde GitHub Pages
+        btn.textContent = 'Descargando plantilla...';
+        const cfg = window.REMOTE_CONFIG || {};
+        // Derive v11 URL from the existing templateUrl in config, or fall back to known path.
+        const existingUrl = cfg.templateUrl || 'https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_Cotizaciones_v10.xlsm';
+        const templateV11Url = existingUrl.replace('Plantilla_Cotizaciones_v10.xlsm', 'Plantilla_Cotizaciones_v11.xlsm');
+        const resp = await fetch(templateV11Url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status + ' al descargar plantilla v11');
+        const blob = await resp.blob();
+        const dlLink = document.createElement('a');
+        dlLink.href = URL.createObjectURL(blob);
+        dlLink.download = 'Plantilla_Cotizaciones_v11.xlsm';
+        document.body.appendChild(dlLink);
+        dlLink.click();
+        document.body.removeChild(dlLink);
+        URL.revokeObjectURL(dlLink.href);
+
+        // 2) Genera y descarga los catálogos vigentes (incluye TiposGeometria v11)
+        btn.textContent = 'Generando catalogos...';
+        if (!window.CatalogFetcher) throw new Error('CatalogFetcher no disponible — verifica que catalog-fetcher.js este cargado');
+        await window.CatalogFetcher.generateCatalogsFile();
+
+        // 3) Aviso final con instrucciones para el usuario
+        alert('Plantilla y catalogos descargados. Abre la plantilla y ejecuta primero Refrescar Listas apuntando al archivo Catalogos_Steelhead_*.xlsx antes de cargar datos.');
+      } catch (err) {
+        alert('Error al descargar: ' + (err.message || String(err)));
+      } finally {
+        btn.textContent = origText;
+        btn.disabled = false;
+      }
+    };
+
     return p;
   }
 
@@ -911,21 +954,140 @@ const BulkUpload = (() => {
   }
 
   function parseRows(rows) {
-    // V10 column indices (0-indexed)
-    // A=0 Archivado | B=1 Validación | C=2 Forzar | D=3 Archivar
-    // E=4 Cliente | F=5 PN | G=6 Descripción | H=7 PN alterno | I=8 Grupo
+    // Dual-layout parser: v10 (69 cols A..BQ) y v11 (71 cols A..BS)
+    // La version se detecta leyendo la row de headers (col A = "Archivado"), col E:
+    //   v11: E = "Id SH"   (nueva columna, corre todo +1 o +2 desde E)
+    //   v10: E = "Cliente" (legacy, sin Id SH ni Tipo Geometria)
+    //
+    // V10 column indices (0-indexed, 69 cols A..BQ):
+    // A=0 Archivado | B=1 Validacion | C=2 Forzar | D=3 Archivar
+    // E=4 Cliente | F=5 PN | G=6 Descripcion | H=7 PN alterno | I=8 Grupo
     // J=9 Cantidad | K=10 Precio | L=11 Unidad precio | M=12 Divisa | N=13 Precio default
     // O=14 Metal base | P=15 Etq1 | Q=16 Etq2 | R=17 Etq3 | S=18 Etq4 | T=19 Etq5
     // U=20 Proceso | V=21 Prod1 | W=22 Pre1 | X=23 Cnt1 | Y=24 Uni1
     // Z=25 Prod2 | AA=26 Pre2 | AB=27 Cnt2 | AC=28 Uni2
     // AD=29 Prod3 | AE=30 Pre3 | AF=31 Cnt3 | AG=32 Uni3
-    // AH=33 Spec1 | AI=34 Esp1 µm | AJ=35 Spec2 | AK=36 Esp2 µm
+    // AH=33 Spec1 | AI=34 Esp1 um | AJ=35 Spec2 | AK=36 Esp2 um
     // AL=37 KGM | AM=38 CMK | AN=39 LM | AO=40 MinPzasLote
-    // AP=41 Rack Línea | AQ=42 Pzas R.L. | AR=43 Rack Sec | AS=44 Pzas R.S.
+    // AP=41 Rack Linea | AQ=42 Pzas R.L. | AR=43 Rack Sec | AS=44 Pzas R.S.
     // AT=45 Long | AU=46 Ancho | AV=47 Alto | AW=48 D.Ext | AX=49 D.Int
-    // AY=50 Línea | AZ=51 Departamento | BA=52 Código SAT
+    // AY=50 Linea | AZ=51 Departamento | BA=52 Codigo SAT
     // BB-BJ=53-61 Predictivos | BK=62 QuoteIBMS | BL=63 EstacionIBMS | BM=64 Plano
     // BN=65 PiezasCarga | BO=66 CargasHora | BP=67 TiempoEntrega | BQ=68 Notas adicionales
+    //
+    // V11 column indices (0-indexed, 71 cols A..BS):
+    // A=0 Archivado | B=1 Validacion | C=2 Forzar | D=3 Archivar
+    // E=4 Id SH (NUEVO) | F=5 Cliente | G=6 PN | H=7 Descripcion | I=8 PN alterno | J=9 Grupo
+    // K=10 Cantidad | L=11 Precio | M=12 Unidad precio | N=13 Divisa | O=14 Precio default
+    // P=15 Linea (movida desde AY) | Q=16 Metal base
+    // R=17 Etq1 | S=18 Etq2 | T=19 Etq3 | U=20 Etq4 | V=21 Etq5
+    // W=22 Proceso | X=23 Prod1 | Y=24 Pre1 | Z=25 Cnt1 | AA=26 Uni1
+    // AB=27 Prod2 | AC=28 Pre2 | AD=29 Cnt2 | AE=30 Uni2
+    // AF=31 Prod3 | AG=32 Pre3 | AH=33 Cnt3 | AI=34 Uni3
+    // AJ=35 Spec1 | AK=36 Esp1 um | AL=37 Spec2 | AM=38 Esp2 um
+    // AN=39 KGM | AO=40 CMK | AP=41 LM | AQ=42 MinPzasLote
+    // AR=43 Rack Linea | AS=44 Pzas R.L. | AT=45 Rack Sec | AU=46 Pzas R.S.
+    // AV=47 Tipo Geometria (NUEVO) | AW=48 Long | AX=49 Ancho | AY=50 Alto | AZ=51 D.Ext | BA=52 D.Int
+    // BB=53 Departamento | BC=54 Codigo SAT
+    // BD-BL=55-63 Predictivos | BM=64 QuoteIBMS | BN=65 EstacionIBMS | BO=66 Plano
+    // BP=67 PiezasCarga | BQ=68 CargasHora | BR=69 TiempoEntrega | BS=70 Notas adicionales
+
+    // === v10 (legacy, 69 cols A..BQ) ===
+    const V10_COLS = {
+      archivado: 0, validacion: 1, forzar: 2, archivar: 3,
+      idSh: -1,            // no existe
+      cliente: 4, pn: 5, descripcion: 6, pnAlterno: 7, pnGroup: 8,
+      qty: 9, precio: 10, unidadPrecio: 11, divisa: 12, precioDefault: 13,
+      metalBase: 14,
+      labels: [15, 16, 17, 18, 19],           // P-T
+      proceso: 20,
+      prods: [[21, 22, 23, 24], [25, 26, 27, 28], [29, 30, 31, 32]],  // [name,price,qty,unit] x3
+      specs: [[33, 34], [35, 36]],
+      kgm: 37, cmk: 38, lm: 39, minPzasLote: 40,
+      rackLinea: [41, 42], rackSec: [43, 44],
+      tipoGeometria: -1,   // no existe
+      dims: { length: 45, width: 46, height: 47, outerDiam: 48, innerDiam: 49 },
+      linea: 50,           // AY
+      departamento: 51,
+      codigoSAT: 52,
+      predictives: [        // BB..BJ = 53..61, mismos 9 materiales
+        { col: 53, name: 'Plata' },
+        { col: 54, name: 'Estano' },
+        { col: 55, name: 'Niquel' },
+        { col: 56, name: 'Zinc' },
+        { col: 57, name: 'Cobre' },
+        { col: 58, name: 'Antitarnish' },
+        { col: 59, name: 'Epox. MT' },
+        { col: 60, name: 'Epox. BT' },
+        { col: 61, name: 'Epox. MTR' },
+      ],
+      quoteIBMS: 62, estacionIBMS: 63, plano: 64,
+      piezasCarga: 65, cargasHora: 66, tiempoEntrega: 67, notas: 68,
+    };
+
+    // === v11 (71 cols A..BS) ===
+    const V11_COLS = {
+      archivado: 0, validacion: 1, forzar: 2, archivar: 3,
+      idSh: 4,             // NUEVO (E, Texto opcional)
+      cliente: 5,          // F (corrido +1)
+      pn: 6, descripcion: 7, pnAlterno: 8, pnGroup: 9,
+      qty: 10, precio: 11, unidadPrecio: 12, divisa: 13, precioDefault: 14,
+      linea: 15,           // P (movida desde AY=50)
+      metalBase: 16,       // Q (corrido +2 vs v10)
+      labels: [17, 18, 19, 20, 21],           // R-V
+      proceso: 22,
+      prods: [[23, 24, 25, 26], [27, 28, 29, 30], [31, 32, 33, 34]],
+      specs: [[35, 36], [37, 38]],
+      kgm: 39, cmk: 40, lm: 41, minPzasLote: 42,
+      rackLinea: [43, 44], rackSec: [45, 46],
+      tipoGeometria: 47,   // NUEVO (AV, Hybrid lista+free)
+      dims: { length: 48, width: 49, height: 50, outerDiam: 51, innerDiam: 52 },
+      departamento: 53, codigoSAT: 54,
+      predictives: [        // BD..BL = 55..63
+        { col: 55, name: 'Plata' },
+        { col: 56, name: 'Estano' },
+        { col: 57, name: 'Niquel' },
+        { col: 58, name: 'Zinc' },
+        { col: 59, name: 'Cobre' },
+        { col: 60, name: 'Antitarnish' },
+        { col: 61, name: 'Epox. MT' },
+        { col: 62, name: 'Epox. BT' },
+        { col: 63, name: 'Epox. MTR' },
+      ],
+      notas: 64,
+      quoteIBMS: 65, estacionIBMS: 66, plano: 67,
+      piezasCarga: 68, cargasHora: 69, tiempoEntrega: 70,
+    };
+
+    // Detectar esquema leyendo la row de headers (col A = "Archivado"), col E.
+    // Se hace en un primer pass sobre las primeras 15 filas antes de procesar datos.
+    let COLS = V11_COLS; // default
+    let schemaVersion = 'v11';
+    for (let r = 0; r < Math.min(rows.length, 15); r++) {
+      const rowA = (rows[r][0] || '').trim();
+      if (rowA === 'Archivado') {
+        const rowE = (rows[r][4] || '').trim();
+        if (rowE === 'Id SH') {
+          COLS = V11_COLS; schemaVersion = 'v11';
+        } else if (rowE === 'Cliente') {
+          COLS = V10_COLS; schemaVersion = 'v10';
+        } else {
+          warn('parseRows: schema indeterminado (col E de la fila Archivado no es "Id SH" ni "Cliente"), asumiendo v11');
+          COLS = V11_COLS; schemaVersion = 'v11';
+        }
+        break;
+      }
+    }
+
+    // PREDICTIVE_MATERIALS derivados del schema detectado.
+    // Los inventoryItemIds son constantes del dominio (independientes del layout).
+    const PRED_INV_IDS = [364506, 397490, 412305, 412805, 412479, 412723, 702767, 702769, 702768];
+    const schemaPredictiveMaterials = COLS.predictives.map((p, i) => ({
+      col: p.col,
+      inventoryItemId: PRED_INV_IDS[i],
+      name: PREDICTIVE_MATERIALS[i] ? PREDICTIVE_MATERIALS[i].name : p.name,
+    }));
+
     const header = {};
     const parts = [];
     // 1.4.27 (B): instrumentación opt-in del parser predictive. Si el flag está
@@ -967,30 +1129,26 @@ const BulkUpload = (() => {
       }
       if (isHeaderRow) continue;
 
-      // V10: Skip section/column-header/type-indicator rows
-      // Row 6: section headers ("PARÁMETROS", "IDENTIFICACIÓN", "PRECIO", etc.) — col A is non-empty
-      // Row 7: column headers ("Archivado", "Cliente", "Número de\nparte", etc.) — col A = "Archivado"
-      // Row 8: type indicators ("V/F", "Texto", "#", "$", "Desp.")  — col A = "V/F"
+      // Skip section/column-header/type-indicator rows
       const colA = (row[0] || '').trim();
-      const colF = (row[5] || '').trim();
       if (colA === 'PARÁMETROS' || colA === 'Archivado' || colA === 'V/F') continue;
-      // Also skip if col F is a literal column-header text (e.g. "Número de\nparte" or "Texto")
-      if (colF === 'Texto' || colF.replace(/\s+/g, ' ').toLowerCase() === 'número de parte') continue;
+      // Skip si la col PN contiene texto de encabezado
+      const colPN_val = (row[COLS.pn] || '').trim();
+      if (colPN_val === 'Texto' || colPN_val.replace(/\s+/g, ' ').toLowerCase() === 'número de parte') continue;
 
-      const pn = g(row, 5); // F=5
-      const qty = gn(row, 9); // J=9
-      if (!pn) continue;
+      const pn = g(row, COLS.pn);
+      const idShEarly = COLS.idSh >= 0 ? g(row, COLS.idSh) : null;
+      const qty = gn(row, COLS.qty);
+      if (!pn && !idShEarly) continue;
 
       const products = [];
-      // V=21(P1), Z=25(P2), AD=29(P3); each followed by Price, Qty, Unit
-      for (const b of [21, 25, 29]) {
-        const nm = g(row, b);
-        if (nm) products.push({ name: nm, price: gn(row, b + 1) || 0, qty: gn(row, b + 2) || 1, unit: g(row, b + 3) });
+      for (const [nb, nprice, nqty, nunit] of COLS.prods) {
+        const nm = g(row, nb);
+        if (nm) products.push({ name: nm, price: gn(row, nprice) || 0, qty: gn(row, nqty) || 1, unit: g(row, nunit) });
       }
 
       const specs = [];
-      // AH=33(Spec1) AI=34(Esp1) ; AJ=35(Spec2) AK=36(Esp2)
-      for (const [specIdx /*, espIdx */] of [[33, 34], [35, 36]]) {
+      for (const [specIdx] of COLS.specs) {
         const raw = g(row, specIdx);
         if (!raw) continue;
         if (raw.includes(' | ')) { const s = raw.indexOf(' | '); specs.push({ name: raw.substring(0, s).trim(), param: raw.substring(s + 3).trim() }); }
@@ -998,21 +1156,19 @@ const BulkUpload = (() => {
       }
 
       const racks = [];
-      // AP=41 Rack Línea, AQ=42 Pzas; AR=43 Rack Sec, AS=44 Pzas
-      if (g(row, 41)) racks.push({ name: g(row, 41), ppr: gn(row, 42) });
-      if (g(row, 43)) racks.push({ name: g(row, 43), ppr: gn(row, 44) });
+      if (g(row, COLS.rackLinea[0])) racks.push({ name: g(row, COLS.rackLinea[0]), ppr: gn(row, COLS.rackLinea[1]) });
+      if (g(row, COLS.rackSec[0])) racks.push({ name: g(row, COLS.rackSec[0]), ppr: gn(row, COLS.rackSec[1]) });
 
       const predictiveUsage = [];
-      // 1.3.1: sentinel "-" granular por material. Cada celda BB..BJ se evalúa en crudo:
+      // 1.3.1: sentinel "-" granular por material. Cada celda se evalúa en crudo:
       //   * "-" → placeholder usagePerPart='-' (STEP 6a lo manda con microQuantityPerPart=0
-      //     vía UpdateInventoryItemPredictedUsage para "archivar" ese predictivo individual)
-      //   * número > 0 → upsert ese predictivo
-      //   * vacío → no tocar
-      // Antes (1.2.12-1.3.0) solo BB=`-` actuaba como wildcard "borrar todos" y `-` en otras
-      // columnas se ignoraba porque gn() colapsa "-"→null igual que celda vacía. El wildcard
-      // se quita: para borrar todos, pone `-` en cada columna que aplique.
+      //     via UpdateInventoryItemPredictedUsage para "archivar" ese predictivo individual)
+      //   * numero > 0 → upsert ese predictivo
+      //   * vacio → no tocar
+      // NOTA: se usa schemaPredictiveMaterials (derivado del COLS detectado) para
+      // que el col sea correcto para v10 y v11. Los inventoryItemIds son constantes.
       const _dbgRow = (_predDbgOn && _predDbgSamples.length < _predDbgLimit) ? [] : null;
-      for (const mat of PREDICTIVE_MATERIALS) {
+      for (const mat of schemaPredictiveMaterials) {
         const raw = g(row, mat.col);
         let outcome = 'skip';
         let pushed = null;
@@ -1035,54 +1191,71 @@ const BulkUpload = (() => {
         }
       }
 
+      // idSh: solo v11 (COLS.idSh >= 0). Parsear a string o null.
+      const idShRaw = COLS.idSh >= 0 ? g(row, COLS.idSh) : null;
+      const idSh = (idShRaw && idShRaw !== '-') ? idShRaw.trim() : null;
+
+      // tipoGeometria: solo v11 (COLS.tipoGeometria >= 0).
+      const tipoGeometria = COLS.tipoGeometria >= 0 ? (g(row, COLS.tipoGeometria) || null) : null;
+
       parts.push({
         pn, qty,
-        cliente: g(row, 4),                     // E=4 NEW per-line customer
-        precio: gn(row, 10),                    // K=10
-        unidadPrecio: g(row, 11).toUpperCase(), // L=11
-        // 1.2.6: VBA exporta '-' como sentinel "borrar / default". `-` es truthy,
-        // así que `|| 'USD'` no aplica y se enviaba `Divisa: '-'` al server, que
-        // falla la enum ["USD","MXN"] y el campo queda vacío en el PN.
-        divisa: (() => { const v = g(row, 12); return (v && v !== '-') ? v.toUpperCase() : 'USD'; })(), // M=12
-        precioDefault: toBool(g(row, 13)),      // N=13
-        descripcion: g(row, 6),                 // G=6
-        pnAlterno: g(row, 7),                   // H=7
-        pnGroup: g(row, 8),                     // I=8
-        metalBase: g(row, 14),                  // O=14
-        labels: [g(row, 15), g(row, 16), g(row, 17), g(row, 18), g(row, 19)].filter(Boolean), // P-T (5 labels)
-        procesoOverride: g(row, 20),            // U=20 NOW REQUIRED (no header default)
+        cliente: g(row, COLS.cliente),
+        precio: gn(row, COLS.precio),
+        unidadPrecio: g(row, COLS.unidadPrecio).toUpperCase(),
+        // VBA exporta '-' como sentinel "borrar / default". `-` es truthy,
+        // asi que `|| 'USD'` no aplica y se enviaba `Divisa: '-'` al server.
+        divisa: (() => { const v = g(row, COLS.divisa); return (v && v !== '-') ? v.toUpperCase() : 'USD'; })(),
+        precioDefault: toBool(g(row, COLS.precioDefault)),
+        descripcion: g(row, COLS.descripcion),
+        pnAlterno: g(row, COLS.pnAlterno),
+        pnGroup: g(row, COLS.pnGroup),
+        metalBase: g(row, COLS.metalBase),
+        labels: COLS.labels.map(c => g(row, c)).filter(Boolean),
+        procesoOverride: g(row, COLS.proceso),
         products, specs,
-        unitConv: { kgm: gn(row, 37), cmk: gn(row, 38), lm: gn(row, 39), minPzasLote: gn(row, 40) }, // AL-AO
+        unitConv: { kgm: gn(row, COLS.kgm), cmk: gn(row, COLS.cmk), lm: gn(row, COLS.lm), minPzasLote: gn(row, COLS.minPzasLote) },
         racks,
-        dims: { length: gn(row, 45), width: gn(row, 46), height: gn(row, 47), outerDiam: gn(row, 48), innerDiam: gn(row, 49) }, // AT-AX
-        linea: g(row, 50),                      // AY=50
-        departamento: g(row, 51),               // AZ=51
-        codigoSAT: g(row, 52),                  // BA=52
-        archivado: toBool(g(row, 0)),
-        forzarDuplicado: toBool(g(row, 2)),
-        archivarAnterior: toBool(g(row, 3)),
-        validacion1er: toBool(g(row, 1)),
+        dims: {
+          length: gn(row, COLS.dims.length),
+          width: gn(row, COLS.dims.width),
+          height: gn(row, COLS.dims.height),
+          outerDiam: gn(row, COLS.dims.outerDiam),
+          innerDiam: gn(row, COLS.dims.innerDiam),
+        },
+        linea: g(row, COLS.linea),
+        departamento: g(row, COLS.departamento),
+        codigoSAT: g(row, COLS.codigoSAT),
+        archivado: toBool(g(row, COLS.archivado)),
+        forzarDuplicado: toBool(g(row, COLS.forzar)),
+        archivarAnterior: toBool(g(row, COLS.archivar)),
+        validacion1er: toBool(g(row, COLS.validacion)),
         predictiveUsage,
-        quoteIBMS: g(row, 62),                  // BK=62
-        estacionIBMS: g(row, 63),               // BL=63
-        plano: g(row, 64),                      // BM=64
-        piezasCarga: gn(row, 65),               // BN=65
-        cargasHora: g(row, 66),                 // BO=66
-        tiempoEntrega: gn(row, 67),             // BP=67
-        notasAdicionalesPN: g(row, 68),         // BQ=68
+        quoteIBMS: g(row, COLS.quoteIBMS),
+        estacionIBMS: g(row, COLS.estacionIBMS),
+        plano: g(row, COLS.plano),
+        piezasCarga: gn(row, COLS.piezasCarga),
+        cargasHora: g(row, COLS.cargasHora),
+        tiempoEntrega: gn(row, COLS.tiempoEntrega),
+        notasAdicionalesPN: g(row, COLS.notas),
+        // v11-only fields (null en v10)
+        idSh,
+        tipoGeometria,
+        schemaVersion,
       });
       if (_dbgRow && _dbgRow.length) {
-        _predDbgSamples.push({ pn, cliente: g(row, 4), entries: _dbgRow });
+        _predDbgSamples.push({ pn, cliente: g(row, COLS.cliente), entries: _dbgRow });
       }
     }
     if (_predDbgOn && _predDbgSamples.length) {
-      console.groupCollapsed(`[bulk-upload] 🔬 Predictive parser debug — ${_predDbgSamples.length} rows sampled`);
+      console.groupCollapsed(`[bulk-upload] Predictive parser debug (${schemaVersion}) — ${_predDbgSamples.length} rows sampled`);
       for (const s of _predDbgSamples) {
         console.log(`PN ${s.pn} (${s.cliente}):`);
         console.table(s.entries);
       }
       console.groupEnd();
     }
+    log(`parseRows: ${parts.length} filas leidas, schema=${schemaVersion}`);
     return { header, parts };
   }
 
@@ -1349,8 +1522,37 @@ const BulkUpload = (() => {
     const customerIds = [...new Set(parts.map(p => p.customerId).filter(x => x != null))];
     const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId);
 
+    // v11: construir indice por id numerico para lookup rapido por idSh.
+    const pnById = new Map();
+    for (const [, nodes] of pnsByCustomer) {
+      for (const n of nodes) { if (n.id != null) pnById.set(String(n.id), n); }
+    }
+
     setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
-    const out = parts.map(p => buildClassifiedRow(p, pnsByCustomer.get(p.customerId) || [], nonFinishList, equivIndex));
+    const out = parts.map(p => {
+      // v11: si la fila tiene idSh, intentar match directo antes del clasificador.
+      if (p.idSh) {
+        const directNode = pnById.get(String(parseInt(p.idSh, 10)));
+        if (directNode) {
+          // MODIFY-by-id: usar solo ese nodo como candidato.
+          if (p.pn && directNode.name.toUpperCase() !== p.pn.toUpperCase()) {
+            warn(`Id SH ${p.idSh} matchea node con nombre "${directNode.name}", no "${p.pn}" — se modificará "${directNode.name}"`);
+          }
+          return buildClassifiedRow(p, [directNode], nonFinishList, equivIndex);
+        } else if (!p.pn) {
+          // idSh presente pero inválido y sin pn: error irrecuperable.
+          return { pn: null, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `__idsh:${p.idSh}|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: `Id SH '${p.idSh}' no encontrado y sin PN para fallback` };
+        } else {
+          // idSh inválido pero pn presente: abortar fila (no silenciar con fallback).
+          return { pn: p.pn, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `${p.pn.toUpperCase()}|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: `Id SH '${p.idSh}' inválido (no existe en Steelhead) y PN '${p.pn}' parece nuevo — corrige el Id SH o elimínalo si quieres crear PN nuevo` };
+        }
+      }
+      if (!p.pn) {
+        // Sin pn ni idSh: defense in depth (parseRows ya debería filtrar esto).
+        return { pn: null, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `__nopn|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: 'Sin PN ni Id SH' };
+      }
+      return buildClassifiedRow(p, pnsByCustomer.get(p.customerId) || [], nonFinishList, equivIndex);
+    });
     const dedup = dedupModifyTargets(out, nonFinishList, equivIndex);
     if (dedup.reassigned || dedup.demoted) {
       log(`Dedup MODIFY targets: ${dedup.reassigned} re-asignaciones, ${dedup.demoted} demotadas a NEW por conflicto`);
@@ -1371,8 +1573,10 @@ const BulkUpload = (() => {
     const maxResults = cfg.paging?.allPartNumbers?.maxResults || cfg.paging?.allPartNumbersMaxResults || 1000;
 
     // Deduplicar por (PN|customerId) para no buscar dos veces el mismo lookup
+    // Filas sin pn (solo idSh) se saltean — se resolverán por pnByIdOnDemand más abajo.
     const uniq = new Map();
     for (const p of parts) {
+      if (!p.pn) continue;
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
       if (!uniq.has(key)) uniq.set(key, { name: p.pn, customerId: p.customerId });
     }
@@ -1471,8 +1675,32 @@ const BulkUpload = (() => {
       setPanelProgress(progress, uniq.size);
     }
 
+    // v11: construir indice por id para lookup por idSh en el modo on-demand.
+    const pnByIdOnDemand = new Map();
+    for (const [, nodes] of candidatesByKey) {
+      for (const n of nodes) { if (n.id != null) pnByIdOnDemand.set(String(n.id), n); }
+    }
+
     setPanelPhase(`Clasificación: evaluando ${parts.length} filas`);
     const out = parts.map(p => {
+      // v11: si la fila tiene idSh, intentar match directo antes del clasificador.
+      if (p.idSh) {
+        const directNode = pnByIdOnDemand.get(String(parseInt(p.idSh, 10)));
+        if (directNode) {
+          // MODIFY-by-id: usar solo ese nodo como candidato.
+          if (p.pn && directNode.name.toUpperCase() !== p.pn.toUpperCase()) {
+            warn(`Id SH ${p.idSh} matchea node con nombre "${directNode.name}", no "${p.pn}" — se modificará "${directNode.name}"`);
+          }
+          return buildClassifiedRow(p, [directNode], nonFinishList, equivIndex);
+        } else if (!p.pn) {
+          return { pn: null, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `__idsh:${p.idSh}|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: `Id SH '${p.idSh}' no encontrado y sin PN para fallback` };
+        } else {
+          return { pn: p.pn, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `${p.pn.toUpperCase()}|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: `Id SH '${p.idSh}' inválido (no existe en Steelhead) y PN '${p.pn}' parece nuevo — corrige el Id SH o elimínalo si quieres crear PN nuevo` };
+        }
+      }
+      if (!p.pn) {
+        return { pn: null, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `__nopn|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: 'Sin PN ni Id SH' };
+      }
       const key = `${p.pn.toUpperCase()}|${p.customerId}`;
       const pnsForCustomer = candidatesByKey.get(key) || [];
       return buildClassifiedRow(p, pnsForCustomer, nonFinishList, equivIndex);
@@ -1544,7 +1772,7 @@ const BulkUpload = (() => {
       userDecided: false,
       targetPnId: cls.targetPnId,
       wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado por Pase 1/2 estaba archivado
-      csvRowKey: `${p.pn.toUpperCase()}|${p.customerId}`,
+      csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
       // 1.2.11: snapshot del CSV para que dedupModifyTargets pueda evaluar
       // strict-match de alternates con la misma lógica de classifyOnePN.
       csvLabels: p.labels || [],
@@ -3001,6 +3229,67 @@ const BulkUpload = (() => {
       if (groupsD) { const gn2 = groupsD?.allPartNumberGroups?.nodes || groupsD?.pagedData?.nodes || groupsD?.partNumberGroups?.nodes || []; for (const gg of gn2) groupByName.set(gg.name, gg.id); }
       log(`  ${labelByName.size} labels, ${specByName.size} specs, ${rackTypeByName.size} racks, ${unitNodes.length} units, ${productByName.size} products, ${groupByName.size} groups`);
 
+      // v11: Catalogo de Tipos de Geometria (AllGeometryTypes) — paginado.
+      // Solo se usa en v11 (tipoGeometria != null); en v10 todas las filas quedan null
+      // y el fallback a DOMAIN.geometryGenericaId sigue activo si hay dimensiones.
+      async function fetchAllGeometryTypes() {
+        const all = [];
+        const PAGE = 100;
+        let offset = 0;
+        while (true) {
+          bailIfStale(myRunId);
+          const data = await api().query('AllGeometryTypes', {
+            orderBy: ['ID_DESC'], offset, first: PAGE, searchQuery: ''
+          }, 'AllGeometryTypes').catch(e => { warn(`AllGeometryTypes offset ${offset}: ${e}`); return null; });
+          if (!data) break;
+          const nodes = data?.pagedData?.nodes || [];
+          for (const n of nodes) if (n.id && n.name) all.push({ id: n.id, name: n.name });
+          if (nodes.length < PAGE) break;
+          offset += PAGE;
+          if (offset > 5000) { warn('AllGeometryTypes: limite 5k'); break; }
+        }
+        return all;
+      }
+      const geometryTypes = await fetchAllGeometryTypes();
+      // Map de nombre (lowercase trim) → id para lookup rapido.
+      const geometryByNameLc = new Map(geometryTypes.map(gt => [gt.name.toLowerCase().trim(), gt.id]));
+      log(`  ${geometryTypes.length} tipos de geometria cargados`);
+
+      // resolveGeometryTypeId: busca en catalogo o crea si no existe.
+      // Las promesas pendientes se guardan en geometryByNameLc para evitar race
+      // en creacion concurrente (si dos PNs piden el mismo nombre nuevo).
+      async function resolveGeometryTypeId(name) {
+        if (!name) return null;
+        const key = name.toLowerCase().trim();
+        if (geometryByNameLc.has(key)) return geometryByNameLc.get(key);
+        // Crear nuevo tipo de geometria
+        log(`Creando Tipo de Geometria: "${name}"`);
+        const result = await api().query('SaveGeometryType', {
+          input: {
+            id: null,
+            name: name.trim(),
+            descriptionMarkdown: '',
+            userFileName: null,
+            dimensionTypes: ['LENGTH', 'WIDTH', 'HEIGHT', 'OUTER_DIAMETER', 'INNER_DIAMETER']
+          }
+        }, 'SaveGeometryType');
+        const newId = result?.saveGeometryType?.id;
+        if (!newId) throw new Error(`No se pudo crear Tipo de Geometria "${name}"`);
+        geometryByNameLc.set(key, newId);
+        return newId;
+      }
+
+      // Pre-resolve nombres unicos de tipoGeometria antes del runPool para evitar
+      // race conditions en creacion concurrente del mismo tipo nuevo.
+      const uniqueGeometryNames = [...new Set(parts.map(p => p.tipoGeometria).filter(Boolean))];
+      if (uniqueGeometryNames.length) {
+        log(`  Pre-resolviendo ${uniqueGeometryNames.length} tipos de geometria unicos del CSV`);
+        for (const gname of uniqueGeometryNames) {
+          try { await resolveGeometryTypeId(gname); }
+          catch (e) { warn(`Pre-resolve tipoGeometria "${gname}": ${String(e).substring(0, 100)}`); }
+        }
+      }
+
       // V10: Resolve all per-line processes to IDs (with cache)
       // Vacío y "-" se saltan aquí; se resuelven en post-process tras el existence check.
       const processCache = new Map(); // name → id
@@ -4388,6 +4677,8 @@ const BulkUpload = (() => {
 
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
+        // MODIFY-by-id sin pn: fallback al name del node existente
+        const resolvedPnName = pn.name || (existingPnNode && existingPnNode.name) || (() => { throw new Error(`SavePartNumber sin name resuelto para id=${pn.id}`); })();
 
         // 1.4.11: Call A del Split A/B — identifier-enrich.
         // Antes (≤1.4.10) el único SavePartNumber por PN mandaba TODO de una vez:
@@ -4412,7 +4703,7 @@ const BulkUpload = (() => {
         const identifierKey = `${idx}|${part.pn}|${part.customerId}`;
         if (!resumeIdentifierSet.has(identifierKey)) {
           const identifierInput = {
-            id: pn.id, name: pn.name, customerId: pn.customerId || part.customerId,
+            id: pn.id, name: resolvedPnName, customerId: pn.customerId || part.customerId,
             descriptionMarkdown: pn.descriptionMarkdown || '',
             customerFacingNotes: pn.customerFacingNotes || '',
             customInputs: mergedCI || pn.customInputs || {},
@@ -4465,6 +4756,24 @@ const BulkUpload = (() => {
         const dims = dimsAreDash ? [] : buildDimensions(part.dims, DOMAIN);
         const hasDims = dims.length > 0; if (hasDims) stats.dimsSet++;
 
+        // v11: resolver tipoGeometria → geometryTypeId.
+        // Si la fila trae tipoGeometria (v11), usarlo (auto-create si no existe).
+        // Si no trae tipoGeometria y hay dimensiones, usar fallback DOMAIN.geometryGenericaId (v10).
+        // Si no hay geometria ni dims, heredar del PN existente o null.
+        let resolvedGeometryTypeId;
+        if (part.tipoGeometria) {
+          try {
+            resolvedGeometryTypeId = await resolveGeometryTypeId(part.tipoGeometria);
+          } catch (eGeo) {
+            warn(`resolveGeometryTypeId "${part.tipoGeometria}" para "${part.pn}": ${String(eGeo).substring(0, 100)}`);
+            resolvedGeometryTypeId = hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null);
+          }
+        } else if (hasDims) {
+          resolvedGeometryTypeId = DOMAIN.geometryGenericaId;
+        } else {
+          resolvedGeometryTypeId = pn.geometryTypeId || null;
+        }
+
         // Predictive — 1.3.1: dash granular por material. SavePartNumber.inventoryPredictedUsages
         // solo lleva los predictivos con valor numérico (los nuevos para el PN). Los con
         // usagePerPart='-' los archiva STEP 6a vía UpdateInventoryItemPredictedUsage(microQuantityPerPart=0).
@@ -4491,11 +4800,11 @@ const BulkUpload = (() => {
         const pnProcessId = part.processId;
 
         const pnInput = {
-          id: pn.id, name: pn.name, customerId: pn.customerId || part.customerId, defaultProcessNodeId: pnProcessId,
+          id: pn.id, name: resolvedPnName, customerId: pn.customerId || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, pn.descriptionMarkdown || ''), customerFacingNotes: pn.customerFacingNotes || '',
           customInputs: mergedCI || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds,
           partNumberGroupId: pnGroupId,
-          geometryTypeId: hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null),
+          geometryTypeId: resolvedGeometryTypeId,
           inventoryItemInput: ucs.length ? { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] } : null,
           inventoryPredictedUsages: finalPredictive
             .filter(pu => !existingPredictedMap.get(pn.id)?.has(String(pu.inventoryItemId)))
@@ -5829,8 +6138,9 @@ const BulkUpload = (() => {
     const groups = new Map(); // key → [idx]
     for (let i = 0; i < parts.length; i++) {
       const p = parts[i];
-      if (!p.pn || p.customerId == null) continue;
-      const key = `${String(p.pn).toUpperCase()}|${p.customerId}`;
+      if (!p.pn && !p.idSh) continue;
+      if (p.customerId == null) continue;
+      const key = (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? '');
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(i);
     }
