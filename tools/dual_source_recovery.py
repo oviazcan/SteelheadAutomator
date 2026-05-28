@@ -390,7 +390,11 @@ def _to_float_or_none(v) -> float | None:
 
 
 def compare_values(xlsm_val, sh_val, type_: str) -> bool:
-    """True si son equivalentes según el tipo."""
+    """True si son equivalentes según el tipo.
+
+    NOTA: TYPE_LABEL_SET se maneja en compute_field_diffs (Task 12) antes
+    de llegar aquí. Si llega, es un bug y explotamos.
+    """
     if type_ == TYPE_NUMBER:
         fx = _to_float_or_none(xlsm_val)
         fs = _to_float_or_none(sh_val)
@@ -400,8 +404,9 @@ def compare_values(xlsm_val, sh_val, type_: str) -> bool:
             # uno vacío, otro número → distintos (incluso si el número es 0)
             return False
         return abs(fx - fs) <= NUMERIC_TOLERANCE
-    # string
-    return norm(xlsm_val) == norm(sh_val)
+    if type_ == TYPE_STRING:
+        return norm(xlsm_val) == norm(sh_val)
+    raise ValueError(f"Unknown type_ in compare_values: {type_!r}")
 
 
 def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:

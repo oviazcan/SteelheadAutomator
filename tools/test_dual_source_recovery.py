@@ -525,3 +525,12 @@ class TestCompareValues:
     def test_number_invalid_string_falls_to_string_compare(self):
         # si no parsea, comparar como string
         assert compare_values("N/A", "n/a", TYPE_NUMBER) is True
+
+    def test_label_set_raises(self):
+        # _labels_ se intercepta en Task 12; aquí debe explotar
+        with pytest.raises(ValueError, match="Unknown type_"):
+            compare_values("A | B", "B | A", "label_set")
+
+    def test_unknown_type_raises(self):
+        with pytest.raises(ValueError, match="Unknown type_"):
+            compare_values("x", "x", "bogus_type")
