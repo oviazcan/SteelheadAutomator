@@ -1,0 +1,61 @@
+' === MACRO: SombrearModoSoloPN (v12) ===
+' Sombrea en gris las columnas que NO aplican según el modo.
+' Se ejecuta automáticamente al cambiar H1 (Modo).
+'
+' V12 (2026-05-27): H3 (nombre del layout) permanece viva en modo SOLO_PN.
+'   - Sombrea A3:T4 y luego restaura H3 al color base.
+' V11 (2026-05-26): adaptado al spreadsheet layout v11 (71 cols A..BS)
+'   - Lee modo de H1 (antes G1 en v10)
+'   - Header strip (SOLO_PN): A3:T4 (antes A3:R4; T cubre Notas Internas merged)
+'   - Cantidad: col K=11 (antes J=10). Rango K9:K508
+'   - Productos block: cols X..AI (=24..35), antes V..AG (=22..33). Rango X9:AI508
+' V10: Lee G1. Header A3:R4. Cantidad J9. Productos V9:AG508.
+'
+' Target: spreadsheet v11 layout, 71 cols A..BS, datos fila 9+
+
+Sub SombrearModoSoloPN()
+    Dim wsUp As Worksheet
+    Set wsUp = ThisWorkbook.Sheets("Upload")
+
+    ' V11: el modo está en H1 (antes G1 en v10)
+    Dim modo As String
+    modo = UCase(Trim(wsUp.Range("H1").Value))
+
+    Dim grisClaro As Long
+    grisClaro = RGB(125, 125, 125)
+
+    Dim verdeClaro As Long
+    verdeClaro = RGB(232, 245, 233)
+
+    ' V11 layout: header en filas 3-4, datos desde fila 9
+    ' Reset: pintar todo a verde (estado COTIZACIÓN+NP)
+    ' Header de cotización: A3:T4 (cubre hasta Notas Internas merged en cols R3:T4)
+    wsUp.Range("A3:T4").Interior.Color = verdeClaro
+    ' Datos: CANTIDAD (K=11) y PRODUCTOS A COTIZAR (X..AI = 24..35)
+    wsUp.Range("K9:K508").Interior.Color = verdeClaro
+    wsUp.Range("X9:AI508").Interior.Color = verdeClaro
+
+    If InStr(modo, "SOLO") > 0 Then
+        ' SOLO_PN: Sombrear lo que NO aplica
+        ' Header: Asignado (H4), Notas Externas (K3:N4), Notas Internas (R3:T4)
+        ' Se sombrea el bloque completo A3:T4 y luego se restaura H3 (nombre del
+        ' layout, siempre aplica) al color base.
+        wsUp.Range("A3:T4").Interior.Color = grisClaro
+        wsUp.Range("H3").Interior.Color = verdeClaro
+
+        ' Cantidad (K=11): no aplica en SOLO_PN (sin cotización, sin cantidad)
+        wsUp.Range("K9:K508").Interior.Color = grisClaro
+
+        ' Productos a cotizar (X..AI = 24..35): no aplican sin cotización
+        wsUp.Range("X9:AI508").Interior.Color = grisClaro
+
+        MsgBox "Modo S" & ChrW(243) & "lo N" & ChrW(250) & "meros de Parte:" & vbCrLf & _
+               "- Header de cotizaci" & ChrW(243) & "n sombreado (H3 viva)" & vbCrLf & _
+               "- Cantidad sombreada (no aplica)" & vbCrLf & _
+               "- Productos sombreados (no aplican)", vbInformation, "Modo SOLO_PN"
+    Else
+        ' COTIZACIÓN+NP: todo verde (ya restaurado arriba)
+        MsgBox "Modo Cotizaci" & ChrW(243) & "n + N" & ChrW(250) & "meros de Parte: todos los campos habilitados.", _
+               vbInformation, "Modo COTIZACI" & ChrW(211) & "N+NP"
+    End If
+End Sub
