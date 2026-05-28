@@ -131,6 +131,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | Power Tools `pdf:RACK_TEMPLATE` | sync con `powertools/synced/pdf/RACK_TEMPLATE.ts` | [`docs/applets/powertools-pdf-rack.md`](docs/applets/powertools-pdf-rack.md) |
 | Power Tools `pdf:PACKING_SLIP_TEMPLATE` | sync con `powertools/synced/pdf/PACKING_SLIP_TEMPLATE.ts` | [`docs/applets/powertools-pdf-packing-slip.md`](docs/applets/powertools-pdf-packing-slip.md) |
 | Power Tools `pdf:PART_NUMBER_TEMPLATE` | sync con `powertools/synced/pdf/PART_NUMBER_TEMPLATE.ts` | [`docs/applets/powertools-pdf-part-number.md`](docs/applets/powertools-pdf-part-number.md) |
+| `dual-source-recovery` (tool standalone, no extensión) | 1.0.0 | [`docs/applets/dual-source-recovery.md`](docs/applets/dual-source-recovery.md) |
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).
