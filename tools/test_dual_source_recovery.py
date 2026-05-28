@@ -6,7 +6,10 @@ import pytest
 
 from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
+    TYPE_NUMBER,
+    TYPE_STRING,
     PartNumberRow,
+    compare_values,
     filter_round,
     is_round_marker,
     load_sh_report,
@@ -493,3 +496,32 @@ class TestValidateNotas:
         x = _mk_row(notas="")
         s = _mk_row(notas="F1: PLATA | SPECS: PLATA")
         assert validate_notas(x, s) == "ok"
+
+
+class TestCompareValues:
+    def test_strings_equal_normalized(self):
+        assert compare_values("PLATA", "plata", TYPE_STRING) is True
+        assert compare_values("  PLATA  ", "plata", TYPE_STRING) is True
+
+    def test_strings_different(self):
+        assert compare_values("PLATA", "ZINC", TYPE_STRING) is False
+
+    def test_numbers_within_tolerance(self):
+        assert compare_values(0.500001, 0.5, TYPE_NUMBER) is True
+        assert compare_values("0.5", 0.5, TYPE_NUMBER) is True
+
+    def test_numbers_different(self):
+        assert compare_values(0.5, 0.6, TYPE_NUMBER) is False
+
+    def test_one_empty(self):
+        assert compare_values("", "PLATA", TYPE_STRING) is False
+        assert compare_values("PLATA", "", TYPE_STRING) is False
+        assert compare_values("", "", TYPE_STRING) is True
+
+    def test_number_empty_vs_zero(self):
+        # vacío != 0 (cuidado con falsos positivos)
+        assert compare_values("", 0, TYPE_NUMBER) is False
+
+    def test_number_invalid_string_falls_to_string_compare(self):
+        # si no parsea, comparar como string
+        assert compare_values("N/A", "n/a", TYPE_NUMBER) is True

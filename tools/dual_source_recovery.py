@@ -316,6 +316,94 @@ def match_xlsm_to_sh(xlsm_rows: list[PartNumberRow], sh_round: list[PartNumberRo
     return result
 
 
+# Acciones permitidas por columna
+ACTION_NEVER = "never"
+ACTION_CONSERVATIVE = "conservative"  # escribir solo si SH vacío
+ACTION_OVERWRITE = "overwrite"        # escribir si difiere
+
+# Tipos de comparación
+TYPE_STRING = "string"
+TYPE_NUMBER = "number"
+TYPE_LABEL_SET = "label_set"  # cols 1-5 como set
+
+FIELD_RULES: list[dict] = [
+    # (header_name, action, type)
+    {"header": "Descripción",                 "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "PN alterno",                  "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Grupo",                       "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Línea",                       "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Metal base",                  "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "_labels_",                    "action": ACTION_OVERWRITE,    "type": TYPE_LABEL_SET},  # especial: cols 1-5
+    {"header": "Proceso",                     "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
+    {"header": "Spec 1",                      "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
+    {"header": "Esp. Spec 1 (µm)",            "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Spec 2",                      "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
+    {"header": "Esp. Spec 2 (µm)",            "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "KGM (kg/pza)",                "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "CMK (cm²/pza)",               "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "LM (m/pza)",                  "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Mín Pzas Lote",               "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Rack Flybar o Barril (Carga)","action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Pzas/Rack Línea",             "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Rack Específico",             "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Pzas/Rack Sec.",              "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Tipo de Geometría",           "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Longitud (m)",                "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Ancho (m)",                   "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Alto (m)",                    "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Diám.Ext (m)",                "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Diám.Int (m)",                "action": ACTION_CONSERVATIVE, "type": TYPE_NUMBER},
+    {"header": "Departamento",                "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Código SAT",                  "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    {"header": "Plata (kg/pza)",              "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Estaño (kg/pza)",             "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Níquel (kg/pza)",             "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Zinc (kg/pza)",               "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Cobre (kg/pza)",              "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Antitarnish (L/pza)",         "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Epóx. MT (lb/pza)",           "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Epóx. BT (lb/pza)",           "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Epóx. MTR (lb/pza)",          "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "QuoteIBMS",                   "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
+    {"header": "EstIBMS",                     "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
+    {"header": "Plano",                       "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
+    {"header": "Piezas por Carga",            "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Cargas por Hora",             "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    {"header": "Tiempo de Entrega",           "action": ACTION_OVERWRITE,    "type": TYPE_NUMBER},
+    # Notas adicionales: NUNCA se escribe (es validador)
+    # Cliente, Número de parte: NUNCA (llaves; van como referencia visual fuera de FIELD_RULES)
+    # Cantidad, Precio, Unidad precio, Divisa, Precio default, Productos 1-3: NUNCA (sensibles)
+]
+
+NUMERIC_TOLERANCE = 1e-5
+
+
+def _to_float_or_none(v) -> float | None:
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return float(str(v).replace(",", "").strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def compare_values(xlsm_val, sh_val, type_: str) -> bool:
+    """True si son equivalentes según el tipo."""
+    if type_ == TYPE_NUMBER:
+        fx = _to_float_or_none(xlsm_val)
+        fs = _to_float_or_none(sh_val)
+        if fx is None and fs is None:
+            return norm(xlsm_val) == norm(sh_val)
+        if fx is None or fs is None:
+            # uno vacío, otro número → distintos (incluso si el número es 0)
+            return False
+        return abs(fx - fs) <= NUMERIC_TOLERANCE
+    # string
+    return norm(xlsm_val) == norm(sh_val)
+
+
 def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
     """Validador único del match.
 
