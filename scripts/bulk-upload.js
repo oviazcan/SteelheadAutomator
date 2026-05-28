@@ -1,5 +1,23 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.6 (2026-05-28): preservar labels/dims en STEP 5 + STEP 6b
+//   - Bug confirmado en piloto 50 PNs (restore_v6): aunque Call A y Call B
+//     de 1.5.5 preservaban labels/dims, dos SavePartNumber adicionales que
+//     rodean enrichWorker los re-vaciaban con literales [].
+//      * STEP 5 "pre-archive sentinels" (línea ~4046): manda labelIds:[] y
+//        dimensionCustomValueIds:[] ANTES del enrichWorker. Como SH hace
+//        REPLACE en estos arrays, borra labels/dims antes de que Call A
+//        pueda capturarlos. Cuando Call A re-fetchea, ya los ve vacíos y
+//        preserva el vacío.
+//      * STEP 6b "archive-dups cleanup" (línea ~5317): manda los mismos
+//        literales DESPUÉS de Call B. Resultado: aunque Call A/B pusieron
+//        los labels bien, este cleanup los re-vacía.
+//   - Fix: ambas llamadas ahora derivan existingLabelIds y
+//     existingDimCustomValueIds del pnNode ya cacheado (cero round-trips
+//     extra) y mandan esos arrays en lugar de []. Mismo patrón que Call A/B
+//     en 1.5.5. partNumberDimensions y partNumberLocations también se
+//     pasan desde pnNode para no borrar dims/locations existentes.
+//
 // VERSION 1.5.5 (2026-05-28): merge MODIFY — preserve-on-missing para labels y dims
 //   - Bug confirmado en piloto string-only (PN 3028297): el CSV no traía Línea/Depto
 //     y los labels venían parcialmente desconocidos. SavePartNumber hace REPLACE en
@@ -79,7 +97,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.5';
+  const VERSION = '1.5.6';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4043,6 +4061,22 @@ const BulkUpload = (() => {
                 sentinelArchivedBuffer.push(target.pnId);
                 return;
               }
+              // 1.5.6: derivar arrays existentes del pnNode ya cacheado para no
+              // borrar labels/dims/locations al archivar specs. Antes (≤1.5.5)
+              // este SavePartNumber mandaba [] literales y SH (REPLACE-semantics)
+              // borraba todo. Preserve-on-missing de Call A/B llegaba tarde:
+              // existingPnFullCache se invalida abajo y el enrichWorker
+              // re-fetcheaba un PN ya vaciado.
+              const sentExistingLabelIds = (pnNode.partNumberLabelsByPartNumberId?.nodes || [])
+                .filter(ln => !ln.archivedAt)
+                .map(ln => ln.labelByLabelId?.id)
+                .filter(Boolean);
+              const sentExistingDimCustomValueIds = (pnNode.acctPnDimensionValueSelectionsByPartNumberId?.nodes || [])
+                .map(sel => sel.dimensionCustomValueId)
+                .filter(Boolean);
+              const sentExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
+                .filter(d => !d.archivedAt)
+                .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
               const minInput = {
                 id: target.pnId,
                 name: pnNode.name,
@@ -4058,9 +4092,9 @@ const BulkUpload = (() => {
                 partNumberGroupId: pnNode.partNumberGroupId || null,
                 descriptionMarkdown: pnNode.descriptionMarkdown || '',
                 customerFacingNotes: pnNode.customerFacingNotes || '',
-                labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
+                labelIds: sentExistingLabelIds, ownerIds: [], defaults: [], optInOuts: [],
                 inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
-                partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+                partNumberDimensions: sentExistingDims, partNumberLocations: [], dimensionCustomValueIds: sentExistingDimCustomValueIds,
                 partNumberSpecsToArchive: archiveIds,
                 partNumberSpecsToUnarchive: [],
                 partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
@@ -5314,6 +5348,20 @@ const BulkUpload = (() => {
           const idsToArchive = Array.from(archiveSet);
 
           if (idsToArchive.length) {
+            // 1.5.6: derivar arrays existentes del pnNode (ya fetcheado arriba)
+            // para no borrar labels/dims/locations al archivar specFieldParams
+            // duplicados. Antes (≤1.5.5) este SavePartNumber mandaba [] literales
+            // y SH (REPLACE-semantics) borraba lo que Call A/B acababan de poner.
+            const cleanupExistingLabelIds = (pnNode.partNumberLabelsByPartNumberId?.nodes || [])
+              .filter(ln => !ln.archivedAt)
+              .map(ln => ln.labelByLabelId?.id)
+              .filter(Boolean);
+            const cleanupExistingDimCustomValueIds = (pnNode.acctPnDimensionValueSelectionsByPartNumberId?.nodes || [])
+              .map(sel => sel.dimensionCustomValueId)
+              .filter(Boolean);
+            const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
+              .filter(d => !d.archivedAt)
+              .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
             const cleanupInput = {
               id: entry.pn.id,
               name: pnNode.name,
@@ -5329,9 +5377,9 @@ const BulkUpload = (() => {
               partNumberGroupId: pnNode.partNumberGroupId || null,
               descriptionMarkdown: pnNode.descriptionMarkdown || '',
               customerFacingNotes: pnNode.customerFacingNotes || '',
-              labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
+              labelIds: cleanupExistingLabelIds, ownerIds: [], defaults: [], optInOuts: [],
               inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
-              partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
+              partNumberDimensions: cleanupExistingDims, partNumberLocations: [], dimensionCustomValueIds: cleanupExistingDimCustomValueIds,
               partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
               partNumberSpecFieldParamsToArchive: idsToArchive,
               partNumberSpecFieldParamsToUnarchive: [],
