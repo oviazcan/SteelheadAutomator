@@ -6,6 +6,7 @@ import pytest
 
 from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
+    filter_round,
     is_round_marker,
     load_sh_report,
     load_xlsm_originals,
@@ -349,3 +350,19 @@ class TestLoadXlsmOriginals:
         ])
         rows = load_xlsm_originals([(path, "xlsm_test")])
         assert len(rows) == 1
+
+
+class TestFilterRound:
+    def test_filters_by_marker(self, tmp_path):
+        path = _make_sh_report(tmp_path, [
+            {"Id SH": 1, "Cliente": "C", "Número de parte": "A",
+             "Notas adicionales": "F1: X | F2: Y | SPECS: Z | DEPT: 1 | METAL: M"},
+            {"Id SH": 2, "Cliente": "C", "Número de parte": "B",
+             "Notas adicionales": "EMPAQUE CON PAPEL SILVER SAVER"},
+            {"Id SH": 3, "Cliente": "C", "Número de parte": "C",
+             "Notas adicionales": ""},
+        ])
+        rows = load_sh_report(path)
+        filtered = filter_round(rows)
+        assert len(filtered) == 1
+        assert filtered[0].id_sh == "1"

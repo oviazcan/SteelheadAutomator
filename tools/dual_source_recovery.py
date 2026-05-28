@@ -216,6 +216,11 @@ def load_xlsm_originals(sources: list[tuple[str | Path, str]]) -> list[PartNumbe
     return all_rows
 
 
+def filter_round(rows: list[PartNumberRow]) -> list[PartNumberRow]:
+    """Filtra rows que tienen la marca estructurada de 'esta ronda' en Notas adicionales."""
+    return [r for r in rows if is_round_marker(r.notas)]
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 
