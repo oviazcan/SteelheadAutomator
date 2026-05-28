@@ -46,7 +46,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.1';
+  const VERSION = '1.5.2';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4424,7 +4424,7 @@ const BulkUpload = (() => {
                 const batchNum = Math.floor(i / 20) + 1;
                 const totalBatches = Math.ceil(pnpWithPrice.length / 20);
                 setPanelSubPhase(`Precios batch ${batchNum}/${totalBatches} (${batch.length} PNs)`);
-                if (batchNum % 10 === 0 || batchNum === totalBatches) addPanelLog(`Precios: ${batchNum * 20} PNs procesados`);
+                if (batchNum % 10 === 0 || batchNum === totalBatches) addPanelLog(`Precios: ${Math.min(batchNum * 20, pnpWithPrice.length)} PNs procesados`);
               }
             } catch (e) {
               errors.push(`Precios standalone: ${String(e).substring(0, 120)}`);
