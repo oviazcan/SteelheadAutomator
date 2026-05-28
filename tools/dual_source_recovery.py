@@ -572,8 +572,112 @@ def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
     return "ok"
 
 
+def _summarize_corrections(matched: list) -> tuple[list[dict], dict[str, int]]:
+    """Aplica compute_field_diffs a cada match y genera (corrections[], field_counts)."""
+    corrections: list[dict] = []
+    field_counts: dict[str, int] = defaultdict(int)
+    for pair in matched:
+        diffs = compute_field_diffs(pair.xlsm_row, pair.sh_row)
+        if not diffs:
+            continue
+        for d in diffs:
+            field_counts[d["field"]] += 1
+        corrections.append({
+            "idSH": pair.sh_row.id_sh,
+            "customer": pair.sh_row.cliente,
+            "pn": pair.sh_row.pn,
+            "tier": pair.tier,
+            "diffs": diffs,
+        })
+    corrections.sort(key=lambda c: (c["customer"], c["pn"]))
+    return corrections, dict(field_counts)
+
+
 def main(argv: list[str] | None = None) -> int:
-    raise NotImplementedError("se implementa en Task 13")
+    parser = argparse.ArgumentParser(description="Dual-source offline recovery for Steelhead bulk-upload.")
+    parser.add_argument("--srg-xlsm", required=True)
+    parser.add_argument("--cg-xlsm", required=True)
+    parser.add_argument("--sh-report", required=True)
+    parser.add_argument("--template", required=True)
+    parser.add_argument("--out-xlsx", required=True)
+    parser.add_argument("--report-json", required=True)
+    args = parser.parse_args(argv)
+
+    print("Loading xlsm originals...", file=sys.stderr)
+    xlsm_rows = load_xlsm_originals([
+        (args.srg_xlsm, "xlsm_srg"),
+        (args.cg_xlsm, "xlsm_cg"),
+    ])
+    print(f"  xlsm rows total: {len(xlsm_rows)}", file=sys.stderr)
+
+    print("Loading SH report...", file=sys.stderr)
+    sh_rows = load_sh_report(args.sh_report)
+    print(f"  sh rows total: {len(sh_rows)}", file=sys.stderr)
+
+    sh_round = filter_round(sh_rows)
+    print(f"  sh rows in round: {len(sh_round)}", file=sys.stderr)
+
+    coverage = len(sh_round) / max(1, len(xlsm_rows))
+    if coverage < 0.9:
+        print(f"WARN: cobertura xlsm→sh_round={coverage:.0%} < 90%. Revisar regex de marker.", file=sys.stderr)
+
+    print("Matching...", file=sys.stderr)
+    match_result = match_xlsm_to_sh(xlsm_rows, sh_round)
+    print(f"  matched: {len(match_result.matched)}", file=sys.stderr)
+    print(f"  unmatched_xlsm: {len(match_result.unmatched_xlsm)}", file=sys.stderr)
+    print(f"  unmatched_sh_in_round: {len(match_result.unmatched_sh_in_round)}", file=sys.stderr)
+    print(f"  duplicate_quoteibms: {len(match_result.duplicate_quoteibms)}", file=sys.stderr)
+
+    valid_matches: list = []
+    suspicious: list[dict] = []
+    for pair in match_result.matched:
+        status = validate_notas(pair.xlsm_row, pair.sh_row)
+        if status == "suspicious":
+            suspicious.append({
+                "idSH": pair.sh_row.id_sh,
+                "customer": pair.sh_row.cliente,
+                "pn": pair.sh_row.pn,
+                "tier": pair.tier,
+                "notas_xlsm": pair.xlsm_row.notas[:300],
+                "notas_sh": pair.sh_row.notas[:300],
+            })
+        else:
+            valid_matches.append(pair)
+    print(f"  suspicious_matches: {len(suspicious)}", file=sys.stderr)
+
+    print("Computing field diffs...", file=sys.stderr)
+    corrections, field_counts = _summarize_corrections(valid_matches)
+    print(f"  corrections_emitted: {len(corrections)}", file=sys.stderr)
+
+    print(f"Writing xlsx → {args.out_xlsx}", file=sys.stderr)
+    emit_v11_xlsx(template_path=args.template, corrections=corrections, out_path=args.out_xlsx)
+
+    print(f"Writing json → {args.report_json}", file=sys.stderr)
+    counts = {
+        "xlsm_rows_total": len(xlsm_rows),
+        "sh_rows_total": len(sh_rows),
+        "sh_rows_in_round": len(sh_round),
+        "matched": len(match_result.matched),
+        "suspicious_matches": len(suspicious),
+        "unmatched_xlsm": len(match_result.unmatched_xlsm),
+        "unmatched_sh_in_round": len(match_result.unmatched_sh_in_round),
+        "duplicate_quoteibms_buckets": len(match_result.duplicate_quoteibms),
+        "corrections_emitted": len(corrections),
+    }
+    emit_json_report(
+        out_path=args.report_json,
+        inputs={"srg_xlsm": args.srg_xlsm, "cg_xlsm": args.cg_xlsm, "sh_report": args.sh_report},
+        counts=counts,
+        field_correction_counts=field_counts,
+        corrections=corrections,
+        suspicious_matches=suspicious,
+        unmatched_xlsm=match_result.unmatched_xlsm,
+        unmatched_sh_in_round=match_result.unmatched_sh_in_round,
+        duplicate_quoteibms=match_result.duplicate_quoteibms,
+    )
+
+    print(json.dumps(counts, indent=2))
+    return 0
 
 
 if __name__ == "__main__":

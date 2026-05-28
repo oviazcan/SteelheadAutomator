@@ -699,3 +699,51 @@ class TestEmitJsonReport:
         assert "generated_at" in data
         assert data["inputs"]["srg_xlsm"] == "a.xlsm"
         assert isinstance(data["corrections"], list)
+
+
+class TestMainSmoke:
+    def test_runs_end_to_end(self, tmp_path):
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+
+        xlsm_srg = _make_xlsm(tmp_path, "srg.xlsm", [
+            {"Cliente": "SCHNEIDER", "Número de parte": "ABC-001",
+             "Metal base": "COBRE", "Etiqueta 1": "PLATA",
+             "Proceso": "PLATA SELECTIVA",
+             "Notas adicionales": "F1: PLATA | SPECS: PLATA | DEPT: 16 | METAL: COBRE | PROC: PLATA",
+             "QuoteIBMS": "Q-001",
+             "Plata (kg/pza)": 0.5},
+        ])
+        xlsm_cg = _make_xlsm(tmp_path, "cg.xlsm", [])
+
+        sh = _make_sh_report(tmp_path, [
+            {"Id SH": 12345, "Cliente": "SCHNEIDER", "Número de parte": "ABC-001",
+             "Metal base": "COBRE", "Etiqueta 1": "PLATA",
+             "Proceso": "",
+             "Notas adicionales": "F1: PLATA | SPECS: PLATA | DEPT: 16 | METAL: COBRE | PROC: PLATA",
+             "QuoteIBMS": "Q-001",
+             "Plata (kg/pza)": ""},
+        ])
+
+        out_xlsx = tmp_path / "out.xlsm"
+        out_json = tmp_path / "out.json"
+
+        rc = main([
+            "--srg-xlsm", str(xlsm_srg),
+            "--cg-xlsm",  str(xlsm_cg),
+            "--sh-report", str(sh),
+            "--template", template,
+            "--out-xlsx", str(out_xlsx),
+            "--report-json", str(out_json),
+        ])
+        assert rc == 0
+
+        data = json.loads(out_json.read_text())
+        assert data["counts"]["matched"] == 1
+        assert data["counts"]["corrections_emitted"] == 1
+        fields_corrected = {d["field"] for d in data["corrections"][0]["diffs"]}
+        assert "Proceso" in fields_corrected
+        assert "Plata (kg/pza)" in fields_corrected
+
+        wb = _openpyxl.load_workbook(out_xlsx, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        assert ws.cell(row=9, column=5).value in ("12345", 12345)
