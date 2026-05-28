@@ -412,13 +412,13 @@ def compare_values(xlsm_val, sh_val, type_: str) -> bool:
 def _norm_labels(labels: list[str]) -> list[str]:
     """Normaliza labels: cada uno upper+strip; conserva las 5 posiciones."""
     out: list[str] = []
-    for l in (labels + ["", "", "", "", ""])[:5]:
-        out.append(str(l or "").strip().upper())
+    for lbl in (labels + ["", "", "", "", ""])[:5]:
+        out.append(str(lbl or "").strip().upper())
     return out
 
 
 def _label_set(labels: list[str]) -> set[str]:
-    return {l for l in _norm_labels(labels) if l != ""}
+    return {lbl for lbl in _norm_labels(labels) if lbl != ""}
 
 
 def compute_field_diffs(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> list[dict]:
