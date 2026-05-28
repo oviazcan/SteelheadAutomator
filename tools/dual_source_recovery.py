@@ -531,6 +531,32 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
         wb.close()
 
 
+def emit_json_report(
+    out_path: str | Path,
+    inputs: dict,
+    counts: dict,
+    field_correction_counts: dict,
+    corrections: list,
+    suspicious_matches: list,
+    unmatched_xlsm: list,
+    unmatched_sh_in_round: list,
+    duplicate_quoteibms: list,
+) -> None:
+    from datetime import datetime, timezone
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "inputs": inputs,
+        "counts": counts,
+        "field_correction_counts": field_correction_counts,
+        "corrections": corrections,
+        "suspicious_matches": suspicious_matches,
+        "unmatched_xlsm": unmatched_xlsm,
+        "unmatched_sh_in_round": unmatched_sh_in_round,
+        "duplicate_quoteibms": duplicate_quoteibms,
+    }
+    Path(out_path).write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
 def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
     """Validador único del match.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pytest
 
 import openpyxl as _openpyxl
@@ -17,6 +18,7 @@ from tools.dual_source_recovery import (
     filter_round,
     is_round_marker,
     load_sh_report,
+    emit_json_report,
     load_xlsm_originals,
     main,
     match_xlsm_to_sh,
@@ -666,3 +668,34 @@ class TestEmitV11Xlsx:
         wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
         ws = wb["Upload"]
         assert ws.cell(row=9, column=5).value in (None, "")
+
+
+class TestEmitJsonReport:
+    def test_full_structure(self, tmp_path):
+        out = tmp_path / "report.json"
+        emit_json_report(
+            out_path=out,
+            inputs={"srg_xlsm": "a.xlsm", "cg_xlsm": "b.xlsm", "sh_report": "r.xlsx"},
+            counts={
+                "xlsm_rows_total": 100,
+                "sh_rows_total": 200,
+                "sh_rows_in_round": 110,
+                "matched": 95,
+                "suspicious_matches": 5,
+                "unmatched_xlsm": 5,
+                "unmatched_sh_in_round": 15,
+                "duplicate_quoteibms_buckets": 2,
+                "corrections_emitted": 80,
+            },
+            field_correction_counts={"Proceso": 10, "_labels_": 25},
+            corrections=[{"idSH": "1", "customer": "C", "pn": "P", "tier": "quoteIBMS", "diffs": []}],
+            suspicious_matches=[],
+            unmatched_xlsm=[],
+            unmatched_sh_in_round=[],
+            duplicate_quoteibms=[],
+        )
+        data = json.loads(out.read_text())
+        assert data["counts"]["matched"] == 95
+        assert "generated_at" in data
+        assert data["inputs"]["srg_xlsm"] == "a.xlsm"
+        assert isinstance(data["corrections"], list)
