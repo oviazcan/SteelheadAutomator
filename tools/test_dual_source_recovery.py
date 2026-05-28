@@ -688,6 +688,81 @@ class TestEmitV11Xlsx:
         ws = wb["Upload"]
         assert ws.cell(row=9, column=5).value in (None, "")
 
+    def test_preserves_label_casing(self, tmp_path):
+        """Output debe escribir etiquetas con su casing original (Title Case),
+        no en upper. El applet bulk-upload v11 hace match case-sensitive contra
+        catálogo de Steelhead que está en Title Case (`Plata`, `Estaño`)."""
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+        corrections = [{
+            "idSH": "999",
+            "customer": "TEST",
+            "pn": "PN-LBL-CASE",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "_labels_",
+                 "xlsm_labels": ["Plata", "Cromato Claro Azul (Iridiscente)", "", "", ""],
+                 "sh_labels": ["", "", "", "", ""], "sh_extra": [], "action": "overwrite"},
+            ],
+        }]
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=out)
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        # Columnas Etiqueta 1-5: 18-22
+        assert ws.cell(row=9, column=18).value == "Plata"
+        assert ws.cell(row=9, column=19).value == "Cromato Claro Azul (Iridiscente)"
+        wb.close()
+
+    def test_clears_seleccione_placeholder_in_empty_slots(self, tmp_path):
+        """La plantilla v11 pre-llena Etiqueta 1-5 con '(seleccione)'. Cuando
+        xlsm_labels tiene huecos intermedios (e.g., pos 4 vacía pero pos 5
+        poblada), las celdas vacías deben quedar en blanco — no con '(seleccione)'."""
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+        corrections = [{
+            "idSH": "1000",
+            "customer": "TEST",
+            "pn": "PN-SPARSE",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "_labels_",
+                 "xlsm_labels": ["Lavado de Bimetales", "Tratamiento Térmico", "Estaño", "", "STX"],
+                 "sh_labels": ["", "", "", "", ""], "sh_extra": [], "action": "overwrite"},
+            ],
+        }]
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=out)
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        assert ws.cell(row=9, column=18).value == "Lavado de Bimetales"
+        assert ws.cell(row=9, column=19).value == "Tratamiento Térmico"
+        assert ws.cell(row=9, column=20).value == "Estaño"
+        # Pos 4 (col 21) debe estar VACÍO, no '(seleccione)'
+        assert ws.cell(row=9, column=21).value in (None, "")
+        assert ws.cell(row=9, column=22).value == "STX"
+        wb.close()
+
+    def test_clears_label_cells_when_correction_has_no_labels_diff(self, tmp_path):
+        """Si una correction NO trae diff de '_labels_', las celdas de Etiqueta
+        1-5 deben quedar limpias (sin '(seleccione)' residual de la plantilla)."""
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+        corrections = [{
+            "idSH": "2000",
+            "customer": "TEST",
+            "pn": "PN-NO-LBL",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "Proceso", "xlsm": "ALGO", "sh": "", "action": "fill"},
+            ],
+        }]
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=out)
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        for col in range(18, 23):
+            assert ws.cell(row=9, column=col).value in (None, ""), \
+                f"col{col} debe ser blanco, fue {ws.cell(row=9, column=col).value!r}"
+        wb.close()
+
 
 class TestEmitJsonReport:
     def test_full_structure(self, tmp_path):

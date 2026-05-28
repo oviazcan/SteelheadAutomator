@@ -411,15 +411,22 @@ def compare_values(xlsm_val, sh_val, type_: str) -> bool:
 
 
 def _norm_labels(labels: list[str]) -> list[str]:
-    """Normaliza labels: cada uno upper+strip; conserva las 5 posiciones."""
+    """Limpia labels: strip por slot, preserva casing original y las 5 posiciones.
+
+    No aplica `.upper()` — el bulk-upload v11 hace match case-sensitive contra el
+    catálogo de Steelhead (`labelByName.has(name)`), que está en Title Case
+    (`Plata`, `Estaño`, `Cromato Claro Azul (Iridiscente)`). Para comparaciones
+    semánticas usar `_label_set` que sí normaliza a upper.
+    """
     out: list[str] = []
     for lbl in (labels + ["", "", "", "", ""])[:5]:
-        out.append(str(lbl or "").strip().upper())
+        out.append(str(lbl or "").strip())
     return out
 
 
 def _label_set(labels: list[str]) -> set[str]:
-    return {lbl for lbl in _norm_labels(labels) if lbl != ""}
+    """Set normalizado a upper para comparación case-insensitive."""
+    return {lbl.upper() for lbl in _norm_labels(labels) if lbl}
 
 
 def compute_field_diffs(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> list[dict]:
@@ -512,6 +519,11 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
             ws.cell(row=r, column=headers["Id SH"], value=corr["idSH"])
             ws.cell(row=r, column=headers["Cliente"], value=corr["customer"])
             ws.cell(row=r, column=headers["Número de parte"], value=corr["pn"])
+            # Limpiar columnas de etiqueta SIEMPRE: la plantilla v11 pre-llena
+            # las celdas con '(seleccione)' y openpyxl no las sobreescribe cuando
+            # value=None pasa por slots intermedios vacíos.
+            for col in label_cols:
+                ws.cell(row=r, column=col).value = None
 
             for d in corr["diffs"]:
                 if d["field"] == "_labels_":
@@ -520,7 +532,8 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
                         if i >= 5:
                             break
                         col = label_cols[i]
-                        ws.cell(row=r, column=col, value=lab if lab else None)
+                        if lab:
+                            ws.cell(row=r, column=col, value=lab)
                     continue
                 col = headers.get(d["field"])
                 if col is None:

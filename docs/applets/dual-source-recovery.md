@@ -4,6 +4,76 @@ Tool standalone (`tools/dual_source_recovery.py`) que cruza los xlsm
 originales de bulk-upload contra el reporte oficial de Steelhead y emite un
 xlsx v11 de recovery donde cada PN se identifica por **Id SH** (pivote directo).
 
+## 1.0.2 — 2026-05-28 — Preservar casing de etiquetas + limpiar `(seleccione)`
+
+### Motivación
+Piloto string-only (50 PNs) cargado vía bulk-upload 1.5.3 falló en TODAS las
+etiquetas. Log del applet:
+```
+[SA] WARN: ⚠️ 20 etiqueta(s) en el CSV no existen en el catálogo de Steelhead:
+    NÍQUEL SULFAMATO, PLATA, ESTAÑO, BRIGHT DIP, ZINC, ...
+[SA] ERRORES: 50
+```
+
+Investigación reveló dos bugs separados en el tool:
+
+**Bug A — Casing destruido**: `_norm_labels()` aplicaba `.upper()` sobre cada
+etiqueta. El xlsm fuente las tiene en **Title Case** (`Plata`, `Estaño`, `Zinc`,
+`Cromato Claro Azul (Iridiscente)`, `Lavado de Bimetales`, `Tratamiento Térmico`)
+y el catálogo de Steelhead (`AllLabels`) también está en Title Case. El applet
+hace `labelByName.has(name)` **case-sensitive** → `labelByName.has("PLATA")`
+retorna `false` aunque exista `"Plata"`. Resultado: 20 etiquetas únicas
+rechazadas en los 50 PNs.
+
+**Bug B — `(seleccione)` residual**: la plantilla v11 viene con `'(seleccione)'`
+literal en todas las celdas de `Etiqueta 1-5` (placeholder visual). Mi código
+hacía `ws.cell(row=r, column=col, value=lab if lab else None)`, pero cuando
+`lab == ""` y el slot intermedio queda en `None`, **openpyxl no sobreescribe en
+ese caso** y `(seleccione)` persiste. Caso concreto observado: PN `48000-004-01`
+con `xlsm_labels = ['Lavado de Bimetales', 'Tratamiento Térmico', 'Estaño', '', 'STX']`
+quedó con pos 4 = `'(seleccione)'` (literal cargado al applet).
+
+### Cambios
+- `_norm_labels()` ya NO aplica `.upper()`. Solo strip por slot, preserva
+  casing original. Docstring actualizado explicando por qué.
+- `_label_set()` ahora aplica `.upper()` internamente para comparación
+  case-insensitive (la responsabilidad se movió de `_norm_labels`).
+- `emit_v11_xlsx()` limpia las 5 columnas de etiqueta SIEMPRE antes de
+  escribir (línea por línea): `ws.cell(row=r, column=col).value = None`.
+  Luego escribe solo los slots con valor real.
+- 3 tests nuevos en `TestEmitV11Xlsx`:
+  - `test_preserves_label_casing`: input `'Plata'` → output `'Plata'` (no `'PLATA'`).
+  - `test_clears_seleccione_placeholder_in_empty_slots`: caso con hueco
+    intermedio (`['A', 'B', 'C', '', 'STX']`), pos 4 debe quedar vacía.
+  - `test_clears_label_cells_when_correction_has_no_labels_diff`: correction
+    sin `_labels_` diff, las 5 columnas deben quedar limpias.
+- 77/77 tests passing.
+
+### Regeneración piloto
+Counts del reporte 1.0.2 idénticos a 1.0.1 (16,491 corrections, 12 suspicious)
+— el cambio es de *output*, no de *decisión*. Inspección del nuevo
+`recovery_pilot_50_v102.xlsm`:
+- r9: `['Lavado de Bimetales', 'Tratamiento Térmico', 'Estaño', None, 'STX']` ✓
+- r10: `['Plata', None, None, None, None]` ✓
+- r16: `['Zinc', 'Cromato Claro Azul (Iridiscente)', None, None, None]` ✓
+
+### Plan de validación
+1. Recargar nuevamente `~/Downloads/recovery_pilot_50_v102.xlsm` con
+   bulk-upload 1.5.3 ya deployado.
+2. Verificar log: `⚠️ N etiqueta(s) en el CSV no existen` → debe bajar de 20 a 0
+   (o cerca, si quedan típos legítimos).
+3. Verificar log: `ERRORES: 50 → 0` (o cerca).
+4. Verificar panel: 50 MODIFY directos, 0 decisiones pendientes (regresión
+   anti-1.5.3).
+5. Spot-check 3 PNs post-carga en SH → etiquetas deben quedar aplicadas.
+
+### Pendientes derivados (heredados, no urgentes)
+- [ ] Tolerancia relativa por campo en numéricos predictivos (1.0.3?).
+- [ ] Normalizar `DEPT: N.0` → `DEPT: N` en `_notas_canon` para bajar de 12
+  suspicious a 1.
+
+---
+
 ## 1.0.1 — 2026-05-28 — Validador de notas realista + reporte sin truncamiento
 
 ### Motivación
