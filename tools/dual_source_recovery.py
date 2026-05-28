@@ -487,45 +487,48 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
     El template tiene macros (.xlsm). Usamos keep_vba=True para preservarlos.
     """
     wb = openpyxl.load_workbook(template_path, keep_vba=True, data_only=False)
-    if "Upload" not in wb.sheetnames:
-        raise ValueError(f"template no tiene hoja 'Upload': {template_path}")
-    ws = wb["Upload"]
-    headers = read_header_map(ws, header_row=7)
+    try:
+        if "Upload" not in wb.sheetnames:
+            raise ValueError(f"template no tiene hoja 'Upload': {template_path}")
+        ws = wb["Upload"]
+        headers = read_header_map(ws, header_row=7)
 
-    required_v11 = ("Id SH", "Cliente", "Número de parte", "Proceso", "Notas adicionales")
-    for r in required_v11:
-        if r not in headers:
-            raise ValueError(f"template v11: header esperado no encontrado: {r!r}")
+        required_v11 = ("Id SH", "Cliente", "Número de parte", "Proceso", "Notas adicionales")
+        for r in required_v11:
+            if r not in headers:
+                raise ValueError(f"template v11: header esperado no encontrado: {r!r}")
 
-    label_cols = [headers.get(f"Etiqueta {i}") for i in range(1, 6)]
-    if any(c is None for c in label_cols):
-        raise ValueError("template v11: Etiqueta 1-5 no resueltos")
+        label_cols = [headers.get(f"Etiqueta {i}") for i in range(1, 6)]
+        if any(c is None for c in label_cols):
+            raise ValueError("template v11: Etiqueta 1-5 no resueltos")
 
-    start_row = 9
-    for offset, corr in enumerate(corrections):
-        r = start_row + offset
-        ws.cell(row=r, column=headers["Id SH"], value=corr["idSH"])
-        ws.cell(row=r, column=headers["Cliente"], value=corr["customer"])
-        ws.cell(row=r, column=headers["Número de parte"], value=corr["pn"])
+        start_row = 9
+        for offset, corr in enumerate(corrections):
+            r = start_row + offset
+            ws.cell(row=r, column=headers["Id SH"], value=corr["idSH"])
+            ws.cell(row=r, column=headers["Cliente"], value=corr["customer"])
+            ws.cell(row=r, column=headers["Número de parte"], value=corr["pn"])
 
-        for d in corr["diffs"]:
-            if d["field"] == "_labels_":
-                xlsm_labels = d["xlsm_labels"]
-                for i, lab in enumerate(xlsm_labels, start=0):
-                    if i >= 5:
-                        break
-                    col = label_cols[i]
-                    ws.cell(row=r, column=col, value=lab if lab else None)
-                continue
-            col = headers.get(d["field"])
-            if col is None:
-                print(f"WARN: campo {d['field']!r} no existe en template v11, ignorado", file=sys.stderr)
-                continue
-            value = d["xlsm"] if d["action"] != "delete" else "-"
-            ws.cell(row=r, column=col, value=value)
+            for d in corr["diffs"]:
+                if d["field"] == "_labels_":
+                    xlsm_labels = d["xlsm_labels"]
+                    for i, lab in enumerate(xlsm_labels, start=0):
+                        if i >= 5:
+                            break
+                        col = label_cols[i]
+                        ws.cell(row=r, column=col, value=lab if lab else None)
+                    continue
+                col = headers.get(d["field"])
+                if col is None:
+                    print(f"WARN: campo {d['field']!r} no existe en template v11, ignorado", file=sys.stderr)
+                    continue
+                value = d["xlsm"] if d["action"] != "delete" else "-"
+                ws.cell(row=r, column=col, value=value)
 
-    out_path = Path(out_path)
-    wb.save(out_path)
+        out_path = Path(out_path)
+        wb.save(out_path)
+    finally:
+        wb.close()
 
 
 def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
