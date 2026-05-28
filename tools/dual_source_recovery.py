@@ -316,6 +316,19 @@ def match_xlsm_to_sh(xlsm_rows: list[PartNumberRow], sh_round: list[PartNumberRo
     return result
 
 
+def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
+    """Validador único del match.
+
+    Retorna 'ok' o 'suspicious'.
+    'suspicious' SOLO si ambos lados tienen notas no vacías y difieren.
+    """
+    nx = norm(xlsm_row.notas)
+    ns = norm(sh_row.notas)
+    if nx and ns and nx != ns:
+        return "suspicious"
+    return "ok"
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 

@@ -16,6 +16,7 @@ from tools.dual_source_recovery import (
     make_fingerprint,
     norm,
     read_header_map,
+    validate_notas,
 )
 
 
@@ -458,3 +459,37 @@ class TestMatchXlsmToSh:
         result = match_xlsm_to_sh(xlsm, sh)
         assert len(result.unmatched_sh_in_round) == 1
         assert result.unmatched_sh_in_round[0]["idSH"] == "200"
+
+
+class TestValidateNotas:
+    def test_both_empty_returns_ok(self):
+        x = _mk_row(notas="")
+        s = _mk_row(notas="")
+        assert validate_notas(x, s) == "ok"
+
+    def test_both_equal_returns_ok(self):
+        x = _mk_row(notas="F1: PLATA | SPECS: PLATA | DEPT: 16")
+        s = _mk_row(notas="F1: PLATA | SPECS: PLATA | DEPT: 16")
+        assert validate_notas(x, s) == "ok"
+
+    def test_normalizes_whitespace(self):
+        x = _mk_row(notas="F1: PLATA  |  SPECS: PLATA")
+        s = _mk_row(notas="f1:    plata | specs: plata")
+        assert validate_notas(x, s) == "ok"
+
+    def test_sh_empty_xlsm_full_returns_ok(self):
+        # carga parcial: el PN se creó sin notas pero el match es válido
+        x = _mk_row(notas="F1: PLATA | SPECS: PLATA")
+        s = _mk_row(notas="")
+        assert validate_notas(x, s) == "ok"
+
+    def test_both_full_but_different_returns_suspicious(self):
+        x = _mk_row(notas="F1: PLATA | SPECS: PLATA | DEPT: 16")
+        s = _mk_row(notas="F1: ZINC | SPECS: ZINC | DEPT: 7")
+        assert validate_notas(x, s) == "suspicious"
+
+    def test_xlsm_empty_sh_full_returns_ok(self):
+        # xlsm sin notas: no podemos validar, confiar en el tier
+        x = _mk_row(notas="")
+        s = _mk_row(notas="F1: PLATA | SPECS: PLATA")
+        assert validate_notas(x, s) == "ok"
