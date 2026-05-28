@@ -126,25 +126,28 @@ REQUIRED_SH_HEADERS = (
 def load_sh_report(path: str | Path) -> list[PartNumberRow]:
     """Lee el reporte oficial de SH (xlsx, hoja única, headers row 1)."""
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    ws = wb[wb.sheetnames[0]]
-    headers = read_header_map(ws, header_row=1)
+    try:
+        ws = wb[wb.sheetnames[0]]
+        headers = read_header_map(ws, header_row=1)
 
-    for req in REQUIRED_SH_HEADERS:
-        if req not in headers:
-            raise ValueError(f"header esperado en reporte SH no encontrado: {req!r}")
+        for req in REQUIRED_SH_HEADERS:
+            if req not in headers:
+                raise ValueError(f"header esperado en reporte SH no encontrado: {req!r}")
 
-    rows: list[PartNumberRow] = []
-    for r_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        # skip filas completamente vacías
-        if all(c is None or str(c).strip() == "" for c in row):
-            continue
-        raw = {h: row[i - 1] if i - 1 < len(row) else None for h, i in headers.items()}
-        pn_row = _row_from_raw(source="sh_report", source_row=r_idx, raw=raw)
-        # skip si no tiene id ni pn (row con ruido)
-        if not pn_row.id_sh and not pn_row.pn:
-            continue
-        rows.append(pn_row)
-    return rows
+        rows: list[PartNumberRow] = []
+        for r_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            # skip filas completamente vacías
+            if all(c is None or str(c).strip() == "" for c in row):
+                continue
+            raw = {h: row[i - 1] if i - 1 < len(row) else None for h, i in headers.items()}
+            pn_row = _row_from_raw(source="sh_report", source_row=r_idx, raw=raw)
+            # skip si no tiene id ni pn (row con ruido)
+            if not pn_row.id_sh and not pn_row.pn:
+                continue
+            rows.append(pn_row)
+        return rows
+    finally:
+        wb.close()
 
 
 def _row_from_raw(source: str, source_row: int, raw: dict) -> PartNumberRow:
