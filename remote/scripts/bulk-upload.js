@@ -1,5 +1,13 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.3 (2026-05-28): match-by-id directo bypassea classifyOnePN
+//   - Cuando una fila trae Id SH explícito y matchea un nodo, devolver shape
+//     directo con pase=0, confidence='idsh-direct', userDecided=true. Antes
+//     (1.5.2) el match-by-id solo preseleccionaba al directNode pero seguía
+//     pasando por classifyOnePN, que caía en Pase 3 ('name+blank-candidate')
+//     si SH tenía etiquetas vacías y el xlsm las traía pobladas — pidiendo
+//     validación humana redundante. El Id SH es decisión del operador.
+//
 // VERSION 1.2.11 (2026-05-20): Dedup strict-match en alternates + chips CSV con color catálogo
 //   - F1: dedupModifyTargets ahora respeta la misma regla que classifyOnePN al elegir
 //     alternates (Pase 3): nivel 1 strict-match (acabados ordenados iguales al CSV),
@@ -46,7 +54,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.2';
+  const VERSION = '1.5.3';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -1538,7 +1546,7 @@ const BulkUpload = (() => {
           if (p.pn && directNode.name.toUpperCase() !== p.pn.toUpperCase()) {
             warn(`Id SH ${p.idSh} matchea node con nombre "${directNode.name}", no "${p.pn}" — se modificará "${directNode.name}"`);
           }
-          return buildClassifiedRow(p, [directNode], nonFinishList, equivIndex);
+          return buildClassifiedRow(p, [directNode], nonFinishList, equivIndex, true);
         } else if (!p.pn) {
           // idSh presente pero inválido y sin pn: error irrecuperable.
           return { pn: null, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `__idsh:${p.idSh}|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: `Id SH '${p.idSh}' no encontrado y sin PN para fallback` };
@@ -1691,7 +1699,7 @@ const BulkUpload = (() => {
           if (p.pn && directNode.name.toUpperCase() !== p.pn.toUpperCase()) {
             warn(`Id SH ${p.idSh} matchea node con nombre "${directNode.name}", no "${p.pn}" — se modificará "${directNode.name}"`);
           }
-          return buildClassifiedRow(p, [directNode], nonFinishList, equivIndex);
+          return buildClassifiedRow(p, [directNode], nonFinishList, equivIndex, true);
         } else if (!p.pn) {
           return { pn: null, status: 'error', existingId: null, existingProcessId: null, qty: p.qty, precio: p.precio, customerId: p.customerId, classification: 'ERROR', pase: null, confidence: 0, candidates: [], userOverride: null, userDecided: false, targetPnId: null, wasArchived: false, csvRowKey: `__idsh:${p.idSh}|${p.customerId ?? ''}`, csvLabels: p.labels || [], csvMetalBase: p.metalBase || '', _errorMsg: `Id SH '${p.idSh}' no encontrado y sin PN para fallback` };
         } else {
@@ -1731,7 +1739,36 @@ const BulkUpload = (() => {
   // Builder común: construye el objeto pnStatus retro-compatible + nuevos
   // campos del refactor. Centraliza el mapping classification → status para
   // que ambos modos (masivo y día) emitan el mismo shape.
-  function buildClassifiedRow(p, pnsForCustomer, nonFinishList, equivIndex) {
+  function buildClassifiedRow(p, pnsForCustomer, nonFinishList, equivIndex, directIdMatch = false) {
+    // 1.5.3: match-by-id directo bypassea classifyOnePN. Cuando el xlsm trae
+    // Id SH explícito, el operador YA decidió cuál es el nodo destino — no
+    // tiene sentido pasarlo por el clasificador heurístico (que cae en Pase 3
+    // si el SH tiene etiquetas vacías, pidiendo validación humana redundante).
+    if (directIdMatch && pnsForCustomer.length === 1) {
+      const node = pnsForCustomer[0];
+      const status = p.forzarDuplicado ? 'forceDup' : 'existing';
+      return {
+        pn: p.pn || node.name,
+        status,
+        existingId: node.id,
+        existingProcessId: node.defaultProcessNodeId || null,
+        qty: p.qty,
+        precio: p.precio,
+        customerId: p.customerId,
+        classification: 'MODIFY',
+        pase: 0,
+        confidence: 'idsh-direct',
+        candidates: [],
+        userOverride: null,
+        userDecided: true,
+        targetPnId: node.id,
+        wasArchived: !!node.archivedAt,
+        csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
+        csvLabels: p.labels || [],
+        csvMetalBase: p.metalBase || '',
+      };
+    }
+
     const csvRow = {
       customerId: p.customerId,
       name: p.pn,
@@ -1781,11 +1818,12 @@ const BulkUpload = (() => {
   }
 
   function logClassificationSummary(out) {
+    const p0 = out.filter(s => s.pase === 0).length;
     const p1 = out.filter(s => s.pase === 1).length;
     const p2 = out.filter(s => s.pase === 2).length;
     const p3 = out.filter(s => s.pase === 3).length;
     const newClean = out.filter(s => s.pase === null).length;
-    log(`Clasificación: P1=${p1} P2=${p2} P3=${p3} NEW=${newClean} (total ${out.length})`);
+    log(`Clasificación: P0=${p0} (idsh-direct) P1=${p1} P2=${p2} P3=${p3} NEW=${newClean} (total ${out.length})`);
   }
 
   // Alias retro-compat: el callsite (~línea 1389) sigue invocando checkPNExistence.
@@ -2866,6 +2904,7 @@ const BulkUpload = (() => {
     const counts = {
       total: pnStatus.length,
       newClean: pnStatus.filter(s => s.classification === 'NEW' && s.pase == null).length,
+      pase0: pnStatus.filter(s => s.pase === 0).length,
       pase1: pnStatus.filter(s => s.pase === 1).length,
       pase2: pnStatus.filter(s => s.pase === 2).length,
       // 1.2.1: Pase 3 ahora tiene 2 defaults distintos.
