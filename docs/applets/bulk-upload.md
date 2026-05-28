@@ -1,6 +1,69 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.2. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.2 (+ extensión 1.6.0 → 1.6.2). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## Extensión 1.6.2 (2026-05-27) — Descargar Plantilla + Catálogos + aviso Refrescar Listas
+
+### Cambio de comportamiento
+El action `download-template` ahora hace tres cosas con un click:
+1. Dispara `update-catalogs` (genera y descarga `Catalogos_Steelhead_*.xlsx`)
+2. Muestra alert: "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."
+3. Abre la URL de descarga del `.xlsm` (Plantilla_Cotizaciones_v11.xlsm)
+
+### Schema extendido en `config.json`
+Action `download-template` ahora soporta props opcionales:
+- `afterMessage`: string — mensaje a enviar al background después de abrir URL
+- `notice`: string — texto del alert al usuario
+
+```json
+{ "id": "download-template", "label": "Descargar Plantilla + Catálogos",
+  "handler": "open-url", "url": "templateUrl",
+  "afterMessage": "update-catalogs",
+  "notice": "Plantilla descargada. Recuerda..." }
+```
+
+Los campos son **opcionales y forward-compatible**: extensiones viejas que no entienden `afterMessage`/`notice` los ignoran y solo abren la URL.
+
+### Lección — orden importa cuando hay `chrome.tabs.create`
+**1.6.1 (deploy fallido)**: implementé `chrome.tabs.create({url})` primero y `await sendToBackground('update-catalogs')` después. Falló porque:
+1. La nueva tab roba foco → Chrome cierra el popup → el `await` muere
+2. `getSteelheadTab()` en `background.js:127` consulta `{ active: true, currentWindow: true }` — necesita Steelhead como tab activa al momento del mensaje
+
+**1.6.2 (fix)**: invertir orden en `popup.js` handler `open-url`:
+```js
+case 'open-url': {
+  const url = action.url === 'templateUrl' ? config?.templateUrl : action.url;
+  if (!url) { alert('URL no configurada.'); break; }
+  if (action.afterMessage) {
+    const result = await sendToBackground(action.afterMessage);  // ← Steelhead activo, popup vivo
+    if (result?.error) alert('Catálogos: ' + result.error);
+  }
+  if (action.notice) alert(action.notice);  // ← popup vivo, modal se muestra
+  chrome.tabs.create({ url });  // ← al final; popup puede morir libremente
+  break;
+}
+```
+
+**Regla general**: si vas a abrir una tab que robe foco, déjalo para el **último paso** del handler. Todo lo demás (awaits, alerts, sendMessage) debe ir antes.
+
+### Bug v10 paralelo
+`remote/config.json:templateUrl` apuntaba a `Plantilla_Cotizaciones_v10.xlsm` aunque el `.xlsm` y todo el código ya estaban en v11. Corregido a v11. Este fix **no requiere update de extensión** — solo recarga config (la extensión lee `templateUrl` dinámicamente).
+
+### Pre-requisito de uso
+- Tab de Steelhead **abierta y activa** al hacer click. `getSteelheadTab` falla con "Abre Steelhead primero" si no.
+- Si falla la generación de catálogos, el flujo aún abre la descarga del `.xlsm` (priorizamos la plantilla).
+
+### Versiones
+- `extension/manifest.json`: 1.6.0 → 1.6.1 (deploy fallido) → 1.6.2 (fix order)
+- `config.extensionVersion`: 1.6.0 → 1.6.2
+- `config.version`: 1.6.4 → 1.6.5 → 1.6.6
+- Distribución: `steelhead-automator.zip` regenerado en gh-pages
+
+### Commits
+- main: `de7bf17` (1.6.1) · `c4bd3b6` (1.6.2)
+- gh-pages: `7e18e8c` (deploy 1.6.5) · `1458b87` (deploy 1.6.6)
+
+---
 
 ## 1.5.2 (2026-05-27) — Fix log cosmético "Precios: N PNs procesados"
 
