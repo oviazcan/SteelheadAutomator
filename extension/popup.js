@@ -261,8 +261,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
       case 'open-url': {
         const url = action.url === 'templateUrl' ? config?.templateUrl : action.url;
-        if (url) chrome.tabs.create({ url });
-        else alert('URL no configurada.');
+        if (!url) { alert('URL no configurada.'); break; }
+        chrome.tabs.create({ url });
+        if (action.afterMessage) {
+          try {
+            showProgress('Generando catálogos…', 30);
+            const result = await sendToBackground(action.afterMessage);
+            if (result?.error) {
+              alert('Catálogos: ' + result.error);
+              hideProgress();
+            } else {
+              showProgress('Catálogos generados.', 100);
+            }
+          } catch (err) {
+            alert('Catálogos: ' + err.message);
+            hideProgress();
+          }
+        }
+        if (action.notice) alert(action.notice);
         break;
       }
 
