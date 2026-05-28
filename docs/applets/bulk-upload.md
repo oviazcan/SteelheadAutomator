@@ -1,6 +1,69 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.2 (+ extensión 1.6.0 → 1.6.2). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.3 (+ extensión 1.6.0 → 1.6.2). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.3 (2026-05-28) — Match-by-id bypassea `classifyOnePN` (Pase 0 directo)
+
+### Síntoma
+Operador subió 50 PNs del piloto string-only generado por `dual-source-recovery`.
+Todos llevaban `Id SH` poblado (pivote directo). Esperado: el applet detectaba
+match-by-id y marcaba `MODIFY` sin pedir intervención. Real: panel mostró
+**"50 decisiones pendientes"**, contradiciendo la promesa del flujo Id SH.
+
+### Causa
+`classifyPNsMassive` (líneas ~1530-1545) hacía match-by-id correctamente
+(`pnsForCustomer = [node]` cuando `idSh` apunta a un PN existente), pero después
+llamaba a `buildClassifiedRow` que invocaba a `classifyOnePN` SIN saber que ya
+había match directo por Id. `classifyOnePN` tiene 3 pases:
+- Pase 1: match por IBMS → fallaba (sin IBMS en el row).
+- Pase 2: composite (metalBase + labels) → fallaba (etiquetas vacías en SH para muchos PNs cargados parcialmente).
+- Pase 3: blank-candidate → caía aquí con `confidence: 'blank-candidate'` y
+  `userDecided: false` → UI lo trataba como "necesita decisión humana".
+
+El usuario fue claro: *"si ya entró con Id SH porqué no sólo me dijo: modificar?"*
+
+### Fix
+Agregado parámetro `directIdMatch = false` a `buildClassifiedRow`. Cuando es
+`true` (lo pasan los 2 call sites del match-by-id, líneas 1541 y 1694), la
+función devuelve directamente un shape:
+```js
+{
+  status: 'existing' (o 'forceDup'),
+  classification: 'MODIFY',
+  pase: 0,
+  confidence: 'idsh-direct',
+  userDecided: true,        // ← clave: UI no pregunta
+  targetPnId: node.id,
+  wasArchived: !!node.archivedAt,
+  // ...
+}
+```
+sin pasar nunca por `classifyOnePN`.
+
+Telemetry: `logClassificationSummary` ahora reporta `P0=N (idsh-direct)` y los
+counts incluyen `pase0: N`.
+
+### Versiones
+- `BU_VERSION`: 1.5.2 → 1.5.3
+- `config.version`: 1.6.6 → 1.6.7
+- Commits: main `1f0e9b4`, gh-pages `5c5e93f` (deploy 1.6.7)
+
+### Plan de validación
+1. Recargar extensión.
+2. Re-subir `~/Downloads/recovery_pilot_50_string_only.xlsm`.
+3. Verificar log: `P0=50 (idsh-direct) P1=0 P2=0 P3=0 NEW=0 (total 50)`.
+4. Verificar panel: **0 decisiones pendientes**, todas MODIFY directas.
+5. Spot-check 3 PNs post-carga: las correcciones string (Línea, Departamento,
+   Proceso, _labels_, Spec 1, Spec 2, Plano) deben quedar aplicadas en SH.
+
+### Pendientes derivados
+- [ ] Doc en `dom-patterns.md`: pattern de bypass para matches confirmados
+  (cuando la fuente externa ya garantiza identidad, saltar heurística).
+- [ ] Considerar exponer `directIdMatch` también en CSV de bulk-upload, no solo
+  en xlsm (si alguna vez se reactiva el path CSV).
+
+---
+
 
 ## Extensión 1.6.2 (2026-05-27) — Descargar Plantilla + Catálogos + aviso Refrescar Listas
 
