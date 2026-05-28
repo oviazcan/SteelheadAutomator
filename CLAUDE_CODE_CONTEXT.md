@@ -513,8 +513,7 @@ Con `chrome.webRequest.onBeforeRequest` la extensión puede capturar todos los r
 | `dataLoader_v84.js` | Bookmarklet principal, 580 líneas | ACTIVO |
 | `instalar_bookmarklet_v84.html` | Installer HTML con TextDecoder para UTF-8 | ACTIVO |
 | `Plantilla_Cotizaciones_y_NP_v84.xlsx` | Template Excel, 61 cols, sin macros | ACTIVO |
-| `VBA_Module1_v84.txt` | ExportarCSV (61 cols) — pegar en Excel | ACTIVO |
-| `VBA_Module2_RefrescarListas.bas` | RefrescarListas — importar en Excel | ACTIVO |
+| `vbas/Module*.txt` + `vbas/Sheet_Upload.txt` | Fuentes VBA de Plantilla_Cotizaciones_v11.xlsm. Versión vigente sin sufijo (`Module1.txt`=v13, `Module2.txt`=v12, `Module4.txt`=v12, `Module5.txt`=v13, `Sheet_Upload.txt`=v11); versiones anteriores en `vbas/legacy/`. Copiar/importar en VBE de Excel. | ACTIVO |
 | `SPEC_v8_DataLoader.md` | Spec original del proyecto | Referencia |
 | `steelhead-quote-api-reference.md` | API reference Quotes | Referencia |
 | `steelhead-pn-api-reference.md` | API reference Part Numbers | Referencia |
