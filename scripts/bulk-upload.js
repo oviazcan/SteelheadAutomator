@@ -111,7 +111,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.7';
+  const VERSION = '1.5.8';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -1457,6 +1457,15 @@ const BulkUpload = (() => {
       }
       const totalCount = d?.pagedData?.totalCount || 0;
       setPanelProgress(scanned, Math.min(totalCount || maxResults, maxResults));
+      // 1.5.8: cede al event loop tras cada página + drena Apollo cache de la
+      // SPA host cada 5 páginas. Sin esto, ~250 round trips serial sin pausa
+      // mantienen al renderer ocupado, evitan GC de los Response objects y el
+      // browser process acumula buffers hasta forzar swap del sistema.
+      // stopDatadogSessionReplay es idempotente (latch); pasada la primera
+      // invocación solo dispara Apollo clearStore() silencioso.
+      const pageIdxNo = (offset / pageSize) | 0;
+      if (pageIdxNo > 0 && pageIdxNo % 5 === 0) stopDatadogSessionReplay();
+      await new Promise(r => setTimeout(r, 0));
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
@@ -1490,6 +1499,10 @@ const BulkUpload = (() => {
       }
       const totalCount = d?.pagedData?.totalCount || 0;
       setPanelProgress(scannedArch, Math.min(totalCount || maxResults, maxResults));
+      // 1.5.8: yield + drain periódico (mismo patrón que pasada NO).
+      const pageIdxYes = (offset / pageSize) | 0;
+      if (pageIdxYes > 0 && pageIdxYes % 5 === 0) stopDatadogSessionReplay();
+      await new Promise(r => setTimeout(r, 0));
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
@@ -1738,6 +1751,12 @@ const BulkUpload = (() => {
       if (otherHits.length) otherCustomerHits.set(key, otherHits);
       progress++;
       setPanelProgress(progress, uniq.size);
+      // 1.5.8: yield + drain periódico por PN único. Aunque OnDemand procesa
+      // menos PNs que MASSIVE (CSV ≤ 1000), una corrida de ~500 PNs sin pausa
+      // también puede tumbar al renderer. Drain cada 25 PNs (más espaciado
+      // que prefetch porque inner loop hace muy pocas páginas por PN).
+      if (progress > 0 && progress % 25 === 0) stopDatadogSessionReplay();
+      await new Promise(r => setTimeout(r, 0));
     }
 
     // v11: construir indice por id para lookup por idSh en el modo on-demand.
@@ -3089,11 +3108,12 @@ const BulkUpload = (() => {
     // y completedPNs en memoria aunque localStorage esté limpio — el bloque
     // `if (!resumeState)` de línea 2271 nunca entra y el state queda con datos viejos.
     resumeState = null;
-    try { showPanel(); } catch (_) {}
-    // 1.4.19: cortar Datadog session replay antes de empezar — su sample_rate=100
-    // graba toda respuesta GraphQL y satura el heap en runs > 1000 PNs (root cause
-    // del OOM nocturno verificado con heap snapshots 2026-05-23).
+    // 1.5.8: cortar Datadog ANTES de showPanel — la creación del DOM del panel
+    // (gauge, log, modales) también queda grabada por Session Replay si el SDK
+    // sigue activo. Mover stop acá ahorra el primer pico de buffer pre-prefetch
+    // y reduce el footprint del browser process antes del primer fetch.
     stopDatadogSessionReplay();
+    try { showPanel(); } catch (_) {}
     setPanelPhase('Iniciando...');
     setPanelProgress(0, 0);
     setPanelCounters();
