@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+import openpyxl as _openpyxl
+
 from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
     TYPE_NUMBER,
@@ -11,6 +13,7 @@ from tools.dual_source_recovery import (
     PartNumberRow,
     compare_values,
     compute_field_diffs,
+    emit_v11_xlsx,
     filter_round,
     is_round_marker,
     load_sh_report,
@@ -627,3 +630,39 @@ class TestComputeFieldDiffs:
         x, s = self._pair({"Plata (kg/pza)": 0.5000001}, {"Plata (kg/pza)": 0.5})
         diffs = compute_field_diffs(x, s)
         assert all(d["field"] != "Plata (kg/pza)" for d in diffs)
+
+
+class TestEmitV11Xlsx:
+    def test_emits_one_row_per_correction(self, tmp_path):
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+
+        corrections = [{
+            "idSH": "12345",
+            "customer": "SCHNEIDER",
+            "pn": "ABC-001",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "Proceso", "xlsm": "PLATA SELECTIVA", "sh": "", "action": "fill"},
+                {"field": "_labels_", "xlsm_labels": ["PLATA", "ANTITARNISH", "", "", ""],
+                 "sh_labels": ["PLATA", "", "", "", ""], "sh_extra": [], "action": "overwrite"},
+                {"field": "Plata (kg/pza)", "xlsm": "0.5", "sh": "", "action": "fill"},
+            ],
+        }]
+
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=out)
+
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        assert ws.cell(row=9, column=5).value in ("12345", 12345)
+        assert ws.cell(row=9, column=6).value == "SCHNEIDER"
+        assert ws.cell(row=9, column=7).value == "ABC-001"
+
+    def test_omits_pns_without_diffs(self, tmp_path):
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+        emit_v11_xlsx(template_path=template, corrections=[], out_path=out)
+
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        assert ws.cell(row=9, column=5).value in (None, "")
