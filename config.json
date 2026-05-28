@@ -1,7 +1,7 @@
 {
-  "version": "1.6.4",
-  "lastUpdated": "2026-05-27T20:30",
-  "extensionVersion": "1.6.0",
+  "version": "1.6.5",
+  "lastUpdated": "2026-05-27T21:30",
+  "extensionVersion": "1.6.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
@@ -421,7 +421,7 @@
       "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"],
       "actions": [
         { "id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker" },
-        { "id": "download-template", "label": "Descargar Plantilla", "sublabel": "Excel base con formato y macros", "icon": "📥", "handler": "open-url", "url": "templateUrl" },
+        { "id": "download-template", "label": "Descargar Plantilla + Catálogos", "sublabel": "Excel base v11 + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "templateUrl", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos." },
         { "id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs" },
         { "id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history" }
       ]
@@ -910,5 +910,5 @@
     "scripts/bulk-upload.js",
     "scripts/catalog-fetcher.js"
   ],
-  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_Cotizaciones_v10.xlsm"
+  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_Cotizaciones_v11.xlsm"
 }
