@@ -1,7 +1,7 @@
 {
-  "version": "1.6.5",
-  "lastUpdated": "2026-05-27T21:30",
-  "extensionVersion": "1.6.1",
+  "version": "1.6.6",
+  "lastUpdated": "2026-05-27T22:00",
+  "extensionVersion": "1.6.2",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
