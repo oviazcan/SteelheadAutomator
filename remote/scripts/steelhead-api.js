@@ -7,6 +7,16 @@ const SteelheadAPI = (() => {
 
   let config = null;
   const _log = [];
+  // 1.5.8: cap del _log + debounce del persist.
+  // Pre-1.5.8: _log era unbounded y _persist() escribía el array completo a
+  // localStorage SÍNCRONO en cada log()/warn(). En runs largos (1000+ logs):
+  //   - JSON.stringify de un array de N entradas es O(N²) por call.
+  //   - Cada localStorage.setItem bloquea el main thread por ms.
+  //   - sa_last_log crecía hasta el límite de localStorage (5-10 MB) y luego
+  //     fallaba silenciosamente, perdiendo el log final justo cuando importa.
+  // Ring buffer + debounce arregla los 3.
+  const _LOG_MAX = 500;
+  let _persistTimer = null;
 
   function init(remoteConfig) {
     config = remoteConfig;
@@ -36,11 +46,21 @@ const SteelheadAPI = (() => {
     return { message: `Log copiado (${lines.length} líneas)` };
   }
 
-  function log(msg)  { const s = `[SA] ${msg}`; console.log(s); _log.push(s); _persist(); }
-  function warn(msg) { const s = `[SA] WARN: ${msg}`; console.warn(s); _log.push(s); _persist(); }
+  function log(msg)  { const s = `[SA] ${msg}`; console.log(s); _pushLog(s); }
+  function warn(msg) { const s = `[SA] WARN: ${msg}`; console.warn(s); _pushLog(s); }
 
-  function _persist() {
-    try { localStorage.setItem('sa_last_log', JSON.stringify(_log)); } catch (_) {}
+  function _pushLog(s) {
+    _log.push(s);
+    if (_log.length > _LOG_MAX) _log.splice(0, _log.length - _LOG_MAX);
+    _schedulePersist();
+  }
+
+  function _schedulePersist() {
+    if (_persistTimer) return;
+    _persistTimer = setTimeout(() => {
+      _persistTimer = null;
+      try { localStorage.setItem('sa_last_log', JSON.stringify(_log)); } catch (_) {}
+    }, 200);
   }
 
   // Core GraphQL call using Apollo Persisted Queries

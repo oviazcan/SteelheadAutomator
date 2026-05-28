@@ -1,6 +1,116 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.3 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.8 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.8 (2026-05-28) — Hot-patch anti-freeze del prefetch (yield + drain + cap log)
+
+### Síntoma
+Operador reportó que en runs masivos (CSV > 3000 filas) Edge se "pasma" durante
+la fase **"Prefetch PNs activos"** y se lleva entre las patas otras
+aplicaciones del sistema. El gauge del panel se mantenía estable en ~370 MB de
+JS heap. **Nunca llegaba a la pantalla de preview** (decisiones / MODIFY). La
+queja literal: "antes del refactor de corrección de bugs ya funcionaba de
+manera confiable" — el usuario podía dejarlo corriendo desatendido.
+
+### Diagnóstico
+El comentario del Fix CC v3 en `bulk-upload.js:3553` ya tenía la pista:
+*"prefetch global de ~22k PNs activos + 24k archivados, ~1.7GB baseline"*.
+
+El JS heap reportaba 370 MB porque `performance.memory.usedJSHeapSize` es
+**solo el heap del renderer del tab**. El freeze sistémico viene de la suma de
+buffers fuera de ese número:
+
+| Fuente | Vive en | Visible en `performance.memory`? |
+|---|---|---|
+| Apollo `InMemoryCache` de la SPA host | JS heap del renderer | sí (parcial) |
+| Response objects pendientes de GC | Network process de Edge | **no** |
+| Datadog Session Replay buffer + DOM observers | Worker + GPU process | **no** |
+| `sa_last_log` (localStorage growth) | Browser process | **no** |
+| DOM/CSS del panel + log textContent | Compositor / GPU | **no** |
+
+Cuando `prefetchPNsByCustomer` ejecuta 250-500 round-trips en serie sin ceder
+al event loop:
+
+1. **Datadog seguía grabando** los primeros segundos — `stopDatadogSessionReplay()`
+   se invocaba DESPUÉS de `showPanel()` (líneas 3092 vs 3096), así que la
+   creación del DOM del panel + el primer pico de fetches quedaba en el buffer
+   del SDK.
+2. **El loop no respiraba**: no había un solo `await new Promise(r => setTimeout(r, 0))`
+   en las pasadas NO + YES. El renderer no podía GC los Response parseados ni
+   repintar el progress bar entre páginas.
+3. **El Apollo drain solo se disparaba a ≥70% del JS heap** (vía `startMemoryGauge.tick`).
+   Con runs que mantenían el heap del renderer chico (370 MB) pero saturaban
+   los procesos auxiliares, el drain **nunca corría** durante el prefetch.
+4. **`_log` en `steelhead-api.js` era unbounded**: cada `log()/warn()` empujaba
+   al array y disparaba `_persist()` síncrono — `JSON.stringify` del array
+   completo + `localStorage.setItem` bloqueando main thread. O(n²) en runs
+   largos.
+5. **`massiveMaxResults` defaulteaba a 100,000** — techo arbitrario alto que
+   permitía iterar bloques fantasma si la paginación devolvía continuidad.
+
+### Fix
+
+**1. Mover `stopDatadogSessionReplay()` antes de `showPanel()`** (línea ~3091)
+
+Ahorra el primer pico de buffer mientras se construye el DOM del panel.
+
+**2. Yield + drain periódico en `prefetchPNsByCustomer`** (líneas ~1438 NO y ~1469 YES)
+
+Tras cada página:
+```js
+const pageIdxNo = (offset / pageSize) | 0;
+if (pageIdxNo > 0 && pageIdxNo % 5 === 0) stopDatadogSessionReplay();
+await new Promise(r => setTimeout(r, 0));
+```
+
+El `stopDatadogSessionReplay` después del primer call queda idempotente (latch
+`window.__sa_dd_stopped`) y solo dispara Apollo `clearStore()` silencioso — es
+el drain periódico que faltaba.
+
+**3. Mismo tratamiento en `classifyPNsOnDemand`** (loop por PN único, línea ~1740)
+
+Cada 25 PNs único: drain + yield. Más espaciado porque inner page loop suele
+ser 1-2 páginas, no necesita drain per-página.
+
+**4. Cap `_log` a 500 entradas + debounce `_persist` a 200ms** (`steelhead-api.js`)
+
+Ring buffer evita growth O(n²). Debounce evita N writes síncronos por segundo.
+
+**5. `massiveMaxResults: 50000`** en `config.json`
+
+Cubre Ecoplating con headroom (~46k catálogo histórico) y elimina el techo
+fantasma de 100k.
+
+### Versiones
+- `BU_VERSION`: 1.5.7 → 1.5.8
+- `config.version`: 1.6.12 → 1.6.13
+- Commits: pendientes (deploy en curso)
+
+### Plan de validación
+1. Recargar extensión (chrome://extensions → reload).
+2. Re-subir el CSV de >3000 filas que estaba congelando.
+3. Verificar:
+   - Panel debe avanzar página por página en "Prefetch PNs activos" SIN congelarse.
+   - Edge debe permanecer responsivo (otras tabs y otras apps no se cuelgan).
+   - JS heap puede subir más allá de 370 MB ahora que el flow respira — eso es
+     esperado y bueno (síntoma de que NO está limitado por system swap).
+   - La pantalla de preview/decisiones debe aparecer al final del prefetch.
+
+### Pendientes derivados
+- [ ] **Task #8**: documentar bulk-upload end-to-end + plan de refactor de
+      optimización. Hay deuda grande de arquitectura (prefetch global del dominio,
+      log unbounded, mem monitor por %, inline Datadog stop, falta migrar a
+      `host-cleanup-shared.js`). El hot-patch arregla los síntomas; el refactor
+      atacará la arquitectura.
+- [ ] Migrar `bulk-upload.js` a `host-cleanup-shared.js` (skill `memory-hardening-applets`
+      lo lista como deuda explícita).
+- [ ] Considerar mem monitor con umbral ABSOLUTO en MB además del %, para que
+      el guardrail dispare aún cuando el heap del renderer se mantenga bajo
+      pero el browser process esté saturado.
+- [ ] Evaluar prefetch targeted por customerId (en vez de barrer todo el
+      dominio) — requiere análisis de hashes disponibles.
+
+---
 
 ## VBA Module1 v14 (2026-05-28) — Predictivos sin truncar en el CSV
 
