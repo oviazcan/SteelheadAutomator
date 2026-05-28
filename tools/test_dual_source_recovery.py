@@ -7,6 +7,7 @@ import pytest
 from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
     is_round_marker,
+    load_sh_report,
     main,
     make_fingerprint,
     norm,
@@ -159,3 +160,101 @@ class TestReadHeaderMap:
         wb2 = openpyxl.load_workbook(path, read_only=True, data_only=True)
         m = read_header_map(wb2.active, header_row=7)
         assert m == {"Cliente": 1, "Proceso": 2}
+
+
+def _make_sh_report(tmp_path, rows):
+    """Crea un xlsx tipo 'reporte SH' con headers en row 1 y rows desde row 2.
+    `rows` es lista de dicts {header → value}.
+    """
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "ING. Validación de Carga Masiva"
+    headers = [
+        "Archivado", "Validación\n1er recibo", "Forzar\nduplicar", "Archivar\nanterior",
+        "Id SH", "Cliente", "Número de\nparte", "Descripción", "PN alterno", "Grupo",
+        "Cantidad", "Precio", "Unidad\nprecio", "Divisa", "Precio\ndefault",
+        "Línea", "Metal base",
+        "Etiqueta 1", "Etiqueta 2", "Etiqueta 3", "Etiqueta 4", "Etiqueta 5",
+        "Proceso",
+        "Producto 1", "Precio P1", "Cant P1", "Unidad P1",
+        "Producto 2", "Precio P2", "Cant P2", "Unidad P2",
+        "Producto 3", "Precio P3", "Cant P3", "Unidad P3",
+        "Spec 1", "Esp. Spec 1\n(µm)", "Spec 2", "Esp. Spec 2\n(µm)",
+        "KGM\n(kg/pza)", "CMK\n(cm²/pza)", "LM\n(m/pza)", "Mín Pzas\nLote",
+        "Rack Flybar o Barril (Carga)", "Pzas/Rack\nLínea", "Rack Específico", "Pzas/Rack\nSec.",
+        "Tipo de Geometría", "Longitud\n(m)", "Ancho\n(m)", "Alto\n(m)", "Diám.Ext\n(m)", "Diám.Int\n(m)",
+        "Departamento", "Código SAT",
+        "Plata\n(kg/pza)", "Estaño\n(kg/pza)", "Níquel\n(kg/pza)", "Zinc\n(kg/pza)", "Cobre\n(kg/pza)",
+        "Antitarnish\n(L/pza)", "Epóx. MT\n(lb/pza)", "Epóx. BT\n(lb/pza)", "Epóx. MTR\n(lb/pza)",
+        "Notas adicionales", "QuoteIBMS", "EstIBMS", "Plano",
+        "Piezas por Carga", "Cargas por Hora", "Tiempo de Entrega",
+    ]
+    for i, h in enumerate(headers, start=1):
+        ws.cell(row=1, column=i, value=h)
+    # normalizar cada dict de row contra los headers limpios (sin \n)
+    import re as _re
+    clean = {_re.sub(r"\s+", " ", h.replace("\n", " ").strip()): i for i, h in enumerate(headers, start=1)}
+    for r_idx, row_dict in enumerate(rows, start=2):
+        for key, val in row_dict.items():
+            col = clean.get(key)
+            if col:
+                ws.cell(row=r_idx, column=col, value=val)
+    path = tmp_path / "sh_report.xlsx"
+    wb.save(path)
+    return path
+
+
+class TestLoadShReport:
+    def test_loads_basic_row(self, tmp_path):
+        path = _make_sh_report(tmp_path, [
+            {"Id SH": 12345, "Cliente": "SCHNEIDER", "Número de parte": "ABC-001",
+             "Descripción": "TEST", "Metal base": "COBRE",
+             "Etiqueta 1": "PLATA", "Etiqueta 2": "ANTITARNISH",
+             "Proceso": "PLATA SELECTIVA",
+             "Notas adicionales": "F1: PLATA | F2: ANTITARNISH | SPECS: PLATA | DEPT: 16 | METAL: COBRE | PROC: PLATA",
+             "QuoteIBMS": "Q-001"},
+        ])
+        rows = load_sh_report(path)
+        assert len(rows) == 1
+        r = rows[0]
+        assert r.id_sh == "12345"
+        assert r.cliente == "SCHNEIDER"
+        assert r.pn == "ABC-001"
+        assert r.metal_base == "COBRE"
+        assert r.labels == ["PLATA", "ANTITARNISH", "", "", ""]
+        assert r.proceso == "PLATA SELECTIVA"
+        assert r.quote_ibms == "Q-001"
+        assert r.source == "sh_report"
+        assert r.source_row == 2
+
+    def test_skips_completely_empty_rows(self, tmp_path):
+        path = _make_sh_report(tmp_path, [
+            {"Id SH": 1, "Cliente": "X", "Número de parte": "A"},
+            {},  # empty row
+            {"Id SH": 2, "Cliente": "Y", "Número de parte": "B"},
+        ])
+        rows = load_sh_report(path)
+        assert len(rows) == 2
+        assert {r.pn for r in rows} == {"A", "B"}
+
+    def test_raw_dict_includes_all_headers(self, tmp_path):
+        path = _make_sh_report(tmp_path, [
+            {"Id SH": 1, "Cliente": "X", "Número de parte": "A",
+             "Plata (kg/pza)": 0.5, "Notas adicionales": "F1: X | F2: Y | SPECS: Z"},
+        ])
+        rows = load_sh_report(path)
+        assert rows[0].raw["Plata (kg/pza)"] == 0.5
+        assert rows[0].raw["Notas adicionales"] == "F1: X | F2: Y | SPECS: Z"
+
+    def test_aborts_if_required_header_missing(self, tmp_path):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "ING. Validación de Carga Masiva"
+        ws["A1"] = "Cliente"  # falta Id SH, Número de parte, etc.
+        path = tmp_path / "bad.xlsx"
+        wb.save(path)
+
+        with pytest.raises(ValueError, match="header esperado"):
+            load_sh_report(path)

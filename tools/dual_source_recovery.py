@@ -115,6 +115,68 @@ class PartNumberRow:
         return self.raw.get(header)
 
 
+# Headers requeridos en el reporte SH (los que el script lee SIEMPRE)
+REQUIRED_SH_HEADERS = (
+    "Id SH", "Cliente", "Número de parte", "Descripción",
+    "Metal base", "Etiqueta 1", "Etiqueta 2", "Etiqueta 3", "Etiqueta 4", "Etiqueta 5",
+    "Proceso", "Spec 1", "Spec 2", "Notas adicionales", "QuoteIBMS",
+)
+
+
+def load_sh_report(path: str | Path) -> list[PartNumberRow]:
+    """Lee el reporte oficial de SH (xlsx, hoja única, headers row 1)."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    headers = read_header_map(ws, header_row=1)
+
+    for req in REQUIRED_SH_HEADERS:
+        if req not in headers:
+            raise ValueError(f"header esperado en reporte SH no encontrado: {req!r}")
+
+    rows: list[PartNumberRow] = []
+    for r_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        # skip filas completamente vacías
+        if all(c is None or str(c).strip() == "" for c in row):
+            continue
+        raw = {h: row[i - 1] if i - 1 < len(row) else None for h, i in headers.items()}
+        pn_row = _row_from_raw(source="sh_report", source_row=r_idx, raw=raw)
+        # skip si no tiene id ni pn (row con ruido)
+        if not pn_row.id_sh and not pn_row.pn:
+            continue
+        rows.append(pn_row)
+    return rows
+
+
+def _row_from_raw(source: str, source_row: int, raw: dict) -> PartNumberRow:
+    """Construye un PartNumberRow desde un dict {header → valor}."""
+    def s(key: str) -> str:
+        v = raw.get(key)
+        if v is None:
+            return ""
+        return str(v).strip()
+
+    labels = [s(f"Etiqueta {i}") for i in range(1, 6)]
+    return PartNumberRow(
+        source=source,
+        source_row=source_row,
+        id_sh=s("Id SH"),
+        cliente=s("Cliente"),
+        pn=s("Número de parte"),
+        descripcion=s("Descripción"),
+        quote_ibms=s("QuoteIBMS"),
+        est_ibms=s("EstIBMS"),
+        notas=s("Notas adicionales"),
+        metal_base=s("Metal base"),
+        labels=labels,
+        proceso=s("Proceso"),
+        spec1=s("Spec 1"),
+        spec1_um=s("Esp. Spec 1 (µm)"),
+        spec2=s("Spec 2"),
+        spec2_um=s("Esp. Spec 2 (µm)"),
+        raw=raw,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 
