@@ -180,6 +180,42 @@ def _row_from_raw(source: str, source_row: int, raw: dict) -> PartNumberRow:
     )
 
 
+REQUIRED_XLSM_HEADERS = (
+    "Cliente", "Número de parte", "Metal base", "Proceso",
+    "Etiqueta 1", "Etiqueta 2", "Etiqueta 3", "Etiqueta 4", "Etiqueta 5",
+    "Spec 1", "Spec 2", "Notas adicionales", "QuoteIBMS",
+)
+
+
+def load_xlsm_originals(sources: list[tuple[str | Path, str]]) -> list[PartNumberRow]:
+    """Lee uno o más xlsm de bulk-upload (hoja 'Upload', headers row 7, datos row 9+).
+
+    `sources` es lista de (path, source_label).
+    """
+    all_rows: list[PartNumberRow] = []
+    for path, source_label in sources:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True, keep_links=False)
+        try:
+            if "Upload" not in wb.sheetnames:
+                raise ValueError(f"{path}: hoja 'Upload' no encontrada")
+            ws = wb["Upload"]
+            headers = read_header_map(ws, header_row=7)
+            for req in REQUIRED_XLSM_HEADERS:
+                if req not in headers:
+                    raise ValueError(f"{path}: header esperado no encontrado: {req!r}")
+            for r_idx, row in enumerate(ws.iter_rows(min_row=9, values_only=True), start=9):
+                if all(c is None or str(c).strip() == "" for c in row):
+                    continue
+                raw = {h: row[i - 1] if i - 1 < len(row) else None for h, i in headers.items()}
+                pn_row = _row_from_raw(source=source_label, source_row=r_idx, raw=raw)
+                if not pn_row.pn:
+                    continue
+                all_rows.append(pn_row)
+        finally:
+            wb.close()
+    return all_rows
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 

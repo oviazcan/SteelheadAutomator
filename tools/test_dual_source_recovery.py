@@ -8,6 +8,7 @@ from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
     is_round_marker,
     load_sh_report,
+    load_xlsm_originals,
     main,
     make_fingerprint,
     norm,
@@ -258,3 +259,93 @@ class TestLoadShReport:
 
         with pytest.raises(ValueError, match="header esperado"):
             load_sh_report(path)
+
+
+def _make_xlsm(tmp_path, name, rows):
+    """Crea un xlsm tipo 'BD Numeros de Parte' con headers en row 7 + datos desde row 9.
+
+    `rows` es lista de dicts {header → value}.
+    """
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Upload"
+    # Row 7 headers (subset suficiente para tests)
+    headers = [
+        "Archivado", "Validación\n1er recibo", "Forzar\nduplicar", "Archivar\nanterior",
+        "Cliente", "Número de\nparte", "Descripción", "PN alterno", "Grupo",
+        "Cantidad", "Precio", "Unidad\nprecio", "Divisa", "Precio\ndefault",
+        "Metal base",
+        "Etiqueta 1", "Etiqueta 2", "Etiqueta 3", "Etiqueta 4", "Etiqueta 5",
+        "Proceso",
+        "Producto 1", "Precio P1", "Cant P1", "Unidad P1",
+        "Producto 2", "Precio P2", "Cant P2", "Unidad P2",
+        "Producto 3", "Precio P3", "Cant P3", "Unidad P3",
+        "Spec 1", "Esp. Spec 1\n(µm)", "Spec 2", "Esp. Spec 2\n(µm)",
+        "KGM\n(kg/pza)", "CMK\n(cm²/pza)", "LM\n(m/pza)", "Mín Pzas\nLote",
+        "Rack Flybar o Barril (Carga)", "Pzas/Rack\nLínea", "Rack Específico", "Pzas/Rack\nSec.",
+        "Longitud\n(m)", "Ancho\n(m)", "Alto\n(m)", "Diám.Ext\n(m)", "Diám.Int\n(m)",
+        "Línea", "Departamento", "Código SAT",
+        "Plata\n(kg/pza)", "Estaño\n(kg/pza)", "Níquel\n(kg/pza)", "Zinc\n(kg/pza)", "Cobre\n(kg/pza)",
+        "Antitarnish\n(L/pza)", "Epóx. MT\n(lb/pza)", "Epóx. BT\n(lb/pza)", "Epóx. MTR\n(lb/pza)",
+        "Notas adicionales", "QuoteIBMS", "EstIBMS", "Plano",
+        "Piezas por Carga", "Cargas por Hora", "Tiempo de Entrega",
+    ]
+    for i, h in enumerate(headers, start=1):
+        ws.cell(row=7, column=i, value=h)
+    # row 8 subheaders (V/F, Texto, etc.) — el script los ignora
+    ws.cell(row=8, column=1, value="V/F")
+    import re as _re
+    clean = {_re.sub(r"\s+", " ", h.replace("\n", " ").strip()): i for i, h in enumerate(headers, start=1)}
+    for r_idx, row_dict in enumerate(rows, start=9):
+        for key, val in row_dict.items():
+            col = clean.get(key)
+            if col:
+                ws.cell(row=r_idx, column=col, value=val)
+    path = tmp_path / name
+    wb.save(path)
+    return path
+
+
+class TestLoadXlsmOriginals:
+    def test_loads_basic_row(self, tmp_path):
+        path = _make_xlsm(tmp_path, "test.xlsm", [
+            {"Cliente": "SCHNEIDER", "Número de parte": "ABC-001",
+             "Metal base": "COBRE", "Etiqueta 1": "PLATA",
+             "Proceso": "PLATA SELECTIVA",
+             "Notas adicionales": "F1: PLATA | SPECS: PLATA | DEPT: 16 | METAL: COBRE | PROC: PLATA",
+             "QuoteIBMS": "Q-001"},
+        ])
+        rows = load_xlsm_originals([(path, "xlsm_test")])
+        assert len(rows) == 1
+        r = rows[0]
+        assert r.cliente == "SCHNEIDER"
+        assert r.pn == "ABC-001"
+        assert r.metal_base == "COBRE"
+        assert r.labels[0] == "PLATA"
+        assert r.proceso == "PLATA SELECTIVA"
+        assert r.quote_ibms == "Q-001"
+        assert r.source == "xlsm_test"
+        assert r.id_sh == ""  # xlsm no tiene Id SH
+
+    def test_multiple_files_concatenates(self, tmp_path):
+        p1 = _make_xlsm(tmp_path, "a.xlsm", [
+            {"Cliente": "C1", "Número de parte": "PN1"},
+        ])
+        p2 = _make_xlsm(tmp_path, "b.xlsm", [
+            {"Cliente": "C2", "Número de parte": "PN2"},
+            {"Cliente": "C3", "Número de parte": "PN3"},
+        ])
+        rows = load_xlsm_originals([(p1, "xlsm_srg"), (p2, "xlsm_cg")])
+        assert len(rows) == 3
+        assert [r.source for r in rows].count("xlsm_srg") == 1
+        assert [r.source for r in rows].count("xlsm_cg") == 2
+
+    def test_skips_rows_without_pn(self, tmp_path):
+        path = _make_xlsm(tmp_path, "test.xlsm", [
+            {"Cliente": "C1", "Número de parte": "PN1"},
+            {"Cliente": "C2"},  # no PN
+            {},  # vacío
+        ])
+        rows = load_xlsm_originals([(path, "xlsm_test")])
+        assert len(rows) == 1
