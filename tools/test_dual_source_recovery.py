@@ -6,11 +6,13 @@ import pytest
 
 from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
+    PartNumberRow,
     filter_round,
     is_round_marker,
     load_sh_report,
     load_xlsm_originals,
     main,
+    match_xlsm_to_sh,
     make_fingerprint,
     norm,
     read_header_map,
@@ -366,3 +368,93 @@ class TestFilterRound:
         filtered = filter_round(rows)
         assert len(filtered) == 1
         assert filtered[0].id_sh == "1"
+
+
+def _mk_row(source="sh_report", id_sh="", cliente="C", pn="P", quote_ibms="",
+            metal_base="", labels=None, notas=""):
+    return PartNumberRow(
+        source=source, source_row=2, id_sh=id_sh, cliente=cliente, pn=pn,
+        descripcion="", quote_ibms=quote_ibms, est_ibms="", notas=notas,
+        metal_base=metal_base, labels=labels or ["", "", "", "", ""],
+        proceso="", spec1="", spec1_um="", spec2="", spec2_um="", raw={},
+    )
+
+
+class TestMatchXlsmToSh:
+    def test_tier1_quoteibms(self):
+        xlsm = [_mk_row(source="xlsm", quote_ibms="Q-001", cliente="C1", pn="A")]
+        sh = [_mk_row(id_sh="100", quote_ibms="Q-001", cliente="C1", pn="A")]
+        result = match_xlsm_to_sh(xlsm, sh)
+        assert len(result.matched) == 1
+        assert result.matched[0].tier == "quoteIBMS"
+        assert result.matched[0].sh_row.id_sh == "100"
+        assert result.unmatched_xlsm == []
+        assert result.duplicate_quoteibms == []
+
+    def test_tier1_duplicate_quoteibms_falls_to_tier2(self):
+        xlsm = [_mk_row(source="xlsm", quote_ibms="Q-001", cliente="C1", pn="A")]
+        sh = [
+            _mk_row(id_sh="100", quote_ibms="Q-001", cliente="C1", pn="A"),
+            _mk_row(id_sh="200", quote_ibms="Q-001", cliente="C2", pn="B"),
+        ]
+        result = match_xlsm_to_sh(xlsm, sh)
+        # 2 candidatos por QuoteIBMS → duplicate bucket + cae a tier 2
+        assert len(result.duplicate_quoteibms) == 1
+        assert result.duplicate_quoteibms[0]["quoteIBMS"] == "Q-001"
+        # tier 2 resuelve por (C1, A) único → match con id_sh=100
+        assert len(result.matched) == 1
+        assert result.matched[0].tier == "composite_unique"
+        assert result.matched[0].sh_row.id_sh == "100"
+
+    def test_tier2_composite_unique(self):
+        xlsm = [_mk_row(source="xlsm", cliente="C1", pn="A")]
+        sh = [_mk_row(id_sh="100", cliente="C1", pn="A")]
+        result = match_xlsm_to_sh(xlsm, sh)
+        assert len(result.matched) == 1
+        assert result.matched[0].tier == "composite_unique"
+
+    def test_tier3_fingerprint(self):
+        xlsm = [_mk_row(source="xlsm", cliente="C1", pn="A",
+                        metal_base="COBRE", labels=["PLATA", "", "", "", ""])]
+        sh = [
+            _mk_row(id_sh="100", cliente="C1", pn="A",
+                    metal_base="COBRE", labels=["PLATA", "", "", "", ""]),
+            _mk_row(id_sh="200", cliente="C1", pn="A",
+                    metal_base="ACERO", labels=["ZINC", "", "", "", ""]),
+        ]
+        result = match_xlsm_to_sh(xlsm, sh)
+        assert len(result.matched) == 1
+        assert result.matched[0].tier == "fingerprint"
+        assert result.matched[0].sh_row.id_sh == "100"
+
+    def test_unmatched_no_pn_in_sh_round(self):
+        xlsm = [_mk_row(source="xlsm", cliente="C1", pn="A")]
+        sh = [_mk_row(id_sh="100", cliente="OTHER", pn="OTHER")]
+        result = match_xlsm_to_sh(xlsm, sh)
+        assert result.matched == []
+        assert len(result.unmatched_xlsm) == 1
+        assert result.unmatched_xlsm[0]["reason"] == "no_pn_in_sh_round"
+
+    def test_unmatched_ambiguous_fingerprint(self):
+        xlsm = [_mk_row(source="xlsm", cliente="C1", pn="A",
+                        metal_base="COBRE", labels=["PLATA", "", "", "", ""])]
+        sh = [
+            _mk_row(id_sh="100", cliente="C1", pn="A",
+                    metal_base="COBRE", labels=["PLATA", "", "", "", ""]),
+            _mk_row(id_sh="200", cliente="C1", pn="A",
+                    metal_base="COBRE", labels=["PLATA", "", "", "", ""]),
+        ]
+        result = match_xlsm_to_sh(xlsm, sh)
+        assert result.matched == []
+        assert len(result.unmatched_xlsm) == 1
+        assert result.unmatched_xlsm[0]["reason"] == "ambiguous_fingerprint"
+
+    def test_unmatched_sh_in_round(self):
+        xlsm = [_mk_row(source="xlsm", cliente="C1", pn="A")]
+        sh = [
+            _mk_row(id_sh="100", cliente="C1", pn="A"),
+            _mk_row(id_sh="200", cliente="C2", pn="B"),
+        ]
+        result = match_xlsm_to_sh(xlsm, sh)
+        assert len(result.unmatched_sh_in_round) == 1
+        assert result.unmatched_sh_in_round[0]["idSH"] == "200"

@@ -221,6 +221,101 @@ def filter_round(rows: list[PartNumberRow]) -> list[PartNumberRow]:
     return [r for r in rows if is_round_marker(r.notas)]
 
 
+@dataclass
+class MatchedPair:
+    xlsm_row: PartNumberRow
+    sh_row: PartNumberRow
+    tier: str  # 'quoteIBMS' | 'composite_unique' | 'fingerprint'
+
+
+@dataclass
+class MatchResult:
+    matched: list[MatchedPair] = field(default_factory=list)
+    unmatched_xlsm: list[dict] = field(default_factory=list)
+    unmatched_sh_in_round: list[dict] = field(default_factory=list)
+    duplicate_quoteibms: list[dict] = field(default_factory=list)
+
+
+def _key_composite(row: PartNumberRow) -> tuple[str, str]:
+    return (row.cliente.strip().upper(), row.pn.strip().upper())
+
+
+def match_xlsm_to_sh(xlsm_rows: list[PartNumberRow], sh_round: list[PartNumberRow]) -> MatchResult:
+    # Index sh_round por QuoteIBMS y por (cliente, pn)
+    by_quote: dict[str, list[PartNumberRow]] = defaultdict(list)
+    by_key: dict[tuple[str, str], list[PartNumberRow]] = defaultdict(list)
+    for sh in sh_round:
+        if sh.quote_ibms:
+            by_quote[sh.quote_ibms.strip().upper()].append(sh)
+        by_key[_key_composite(sh)].append(sh)
+
+    # Detectar duplicate_quoteibms buckets (≥2 candidatos)
+    dup_qibms: list[dict] = []
+    for q, cands in by_quote.items():
+        if len(cands) >= 2:
+            dup_qibms.append({
+                "quoteIBMS": q,
+                "candidates": [
+                    {"idSH": c.id_sh, "pn": c.pn, "customer": c.cliente}
+                    for c in cands
+                ],
+            })
+
+    result = MatchResult(duplicate_quoteibms=dup_qibms)
+    matched_sh_ids: set[str] = set()
+
+    for x in xlsm_rows:
+        # Tier 1: QuoteIBMS único
+        if x.quote_ibms:
+            q = x.quote_ibms.strip().upper()
+            cands = by_quote.get(q, [])
+            if len(cands) == 1:
+                sh_match = cands[0]
+                result.matched.append(MatchedPair(xlsm_row=x, sh_row=sh_match, tier="quoteIBMS"))
+                matched_sh_ids.add(sh_match.id_sh)
+                continue
+            # 0 o ≥2 candidatos → cae a Tier 2 (ya registrado en dup_qibms si ≥2)
+
+        # Tier 2: (cliente, pn) único
+        key = _key_composite(x)
+        cands = by_key.get(key, [])
+        if len(cands) == 0:
+            result.unmatched_xlsm.append({
+                "pn": x.pn, "customer": x.cliente, "quoteIBMS": x.quote_ibms,
+                "source": x.source, "source_row": x.source_row,
+                "reason": "no_pn_in_sh_round",
+            })
+            continue
+        if len(cands) == 1:
+            result.matched.append(MatchedPair(xlsm_row=x, sh_row=cands[0], tier="composite_unique"))
+            matched_sh_ids.add(cands[0].id_sh)
+            continue
+
+        # Tier 3: fingerprint
+        x_fp = make_fingerprint(x.metal_base, x.labels)
+        fp_matches = [c for c in cands if make_fingerprint(c.metal_base, c.labels) == x_fp]
+        if len(fp_matches) == 1:
+            result.matched.append(MatchedPair(xlsm_row=x, sh_row=fp_matches[0], tier="fingerprint"))
+            matched_sh_ids.add(fp_matches[0].id_sh)
+        else:
+            result.unmatched_xlsm.append({
+                "pn": x.pn, "customer": x.cliente, "quoteIBMS": x.quote_ibms,
+                "source": x.source, "source_row": x.source_row,
+                "reason": "ambiguous_fingerprint",
+                "candidates": [{"idSH": c.id_sh, "fingerprint": make_fingerprint(c.metal_base, c.labels)} for c in cands],
+            })
+
+    # PNs en sh_round que no quedaron matcheados
+    for sh in sh_round:
+        if sh.id_sh not in matched_sh_ids:
+            result.unmatched_sh_in_round.append({
+                "idSH": sh.id_sh, "pn": sh.pn, "customer": sh.cliente,
+                "notas": sh.notas[:200],
+            })
+
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 
