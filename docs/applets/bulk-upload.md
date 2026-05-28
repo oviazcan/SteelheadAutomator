@@ -1,6 +1,58 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.3 (+ extensión 1.6.0 → 1.6.2). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.3 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## VBA Module1 v14 (2026-05-28) — Predictivos sin truncar en el CSV
+
+### Síntoma
+Validación piloto (50 PNs) detectó que los consumos predictivos en SH llegaban
+truncados a 4 decimales (`0.0001`, `0.0023`, ...). La plantilla viva tenía los
+valores raw correctos (ej. `0.00012345`), pero el bulk-upload los recibía ya
+redondeados desde el CSV. El parser `predictiveUsage` (`Math.round(usagePerPart * 1e6)`)
+multiplicaba ese valor truncado por 1e6, así que el `microQuantityPerPart`
+guardado en SH quedaba a una resolución de `0.0001 = 100 microQ/pza`. Para
+predictivos como Antitarnish (consumos del orden 1e-5 L/pza) el truncamiento
+borraba toda la señal.
+
+### Causa
+`ExportarCSV` (`vbas/Module1.txt`) hace:
+```vb
+tmpWb.SaveAs fileName:=savePath, FileFormat:=62  ' CSV UTF-8 nativo Excel
+```
+`FileFormat:=62` exporta el **valor mostrado** según el `NumberFormat` de cada
+celda — no el `Value2` raw. La plantilla v11 tiene las cols predictivas
+BD:BL (55..63: Plata, Estaño, Níquel, Zinc, Cobre, Antitarnish, Epox MT/BT/MTR)
+con formato display de 4 decimales para legibilidad. Resultado: CSV truncado.
+
+### Fix
+En el libro temporal (no en la plantilla viva — el usuario sigue viendo 4
+decimales para legibilidad), forzar `NumberFormat = "General"` en cols 55..63
+justo antes del `SaveAs`. Excel exporta entonces hasta 15 dígitos significativos.
+
+```vb
+Dim predCol As Long
+For predCol = 55 To 63
+    tmpWs.Columns(predCol).NumberFormat = "General"
+Next predCol
+```
+
+### Archivos
+- `vbas/Module1.txt` bump v13 → v14
+- Header del módulo documenta el bug + fix
+
+### Deploy
+Paste manual al `.xlsm`: abrir `Plantilla_Cotizaciones_v11.xlsm` → Alt+F11 →
+Module1 → reemplazar contenido con `vbas/Module1.txt` → guardar. Sin deploy a
+`gh-pages` (el `.xlsm` no se sirve desde GitHub Pages — la extensión sólo lo
+ofrece para descarga como recurso estático). Sin bump de `BU_VERSION` ni de
+`remote/config.json`.
+
+### Validación pendiente
+Cargar un PN del piloto cuyo predictivo originalmente vino truncado, exportar
+CSV con el VBA v14, validar via `pilot_validate.py` que el `microQuantityPerPart`
+en SH ahora coincide con el `Value2` del xlsm fuente.
+
+---
 
 ## 1.5.3 (2026-05-28) — Match-by-id bypassea `classifyOnePN` (Pase 0 directo)
 

@@ -1,4 +1,12 @@
-' === MACRO 1: ExportarCSV (v13) ===
+' === MACRO 1: ExportarCSV (v14) ===
+' V14 (2026-05-28): predictive cols BD..BL (55..63) a NumberFormat "General"
+'   en el libro temporal antes del SaveAs.
+'   Bug origen: la plantilla muestra 4 decimales (legible para el usuario),
+'   pero SaveAs FileFormat:=62 exporta el VALOR MOSTRADO, no el valor raw.
+'   Con formato display "0.0000" el CSV salía con valores truncados y el
+'   parser predictive de bulk-upload veía consumos demasiado bajos.
+'   Forzar "General" en la copia temporal preserva precisión completa (hasta
+'   15 dígitos significativos de Excel) sin tocar la UI visible al usuario.
 ' V13 (2026-05-26): lastRow considera col G (PN) y col E (Id SH) — toma el máximo
 '   - Permite filas con solo Id SH (col E) al final del rango sin PN en col G
 ' V12 (2026-05-26): adaptado al spreadsheet layout v11 (71 cols, +Id SH, +Tipo de Geometría, Línea movida a col P)
@@ -188,6 +196,15 @@ Sub ExportarCSV()
             .Apply
         End With
     End If
+
+    ' V14: predictive cols BD..BL (55..63) → "General" en el libro temporal
+    ' para que el CSV UTF-8 conserve la precisión completa. La plantilla viva
+    ' sigue mostrando 4 decimales al usuario (legibilidad), pero el snapshot
+    ' que exportamos lleva el Value2 sin truncar.
+    Dim predCol As Long
+    For predCol = 55 To 63
+        tmpWs.Columns(predCol).NumberFormat = "General"
+    Next predCol
 
     ' Guardar como CSV UTF-8 (formato 62)
     Application.DisplayAlerts = False
