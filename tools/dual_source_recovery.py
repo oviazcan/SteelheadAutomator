@@ -38,6 +38,28 @@ def norm(value) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
+ROUND_MARKER_TOKENS = (
+    "F1:", "F2:", "F3:", "F4:", "F5:",
+    "MPO:", "SPECS:", "DEPT:", "METAL:", "PROC:",
+    "LSPEC1:", "USPEC1:", "LSPEC2:", "USPEC2:",
+    "SPECIALREQ:",
+)
+
+
+def is_round_marker(notas) -> bool:
+    """True si las Notas adicionales contienen al menos 3 tokens estructurados
+    de esta ronda, separados por ` | `."""
+    if not notas:
+        return False
+    text = str(notas).upper()
+    # contar tokens (case-insensitive)
+    count = sum(1 for tok in ROUND_MARKER_TOKENS if tok in text)
+    if count < 3:
+        return False
+    # exigir separador ` | ` al menos una vez (descarta freeform que tenga colons)
+    return " | " in text
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 

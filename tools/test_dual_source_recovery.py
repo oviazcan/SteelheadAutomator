@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from tools.dual_source_recovery import main
+from tools.dual_source_recovery import (
+    ROUND_MARKER_TOKENS,
+    is_round_marker,
+    main,
+    norm,
+)
 
 
 def test_module_imports():
     """El módulo debe importarse sin errores."""
     from tools import dual_source_recovery as m
     assert callable(m.main)
-
-
-from tools.dual_source_recovery import norm
 
 
 class TestNorm:
@@ -39,3 +41,39 @@ class TestNorm:
     def test_non_string_to_empty(self):
         assert norm(123) == "123"  # cast a string primero
         assert norm(0) == "0"
+
+
+class TestIsRoundMarker:
+    def test_empty_returns_false(self):
+        assert is_round_marker("") is False
+        assert is_round_marker(None) is False
+
+    def test_pattern_with_5_tokens(self):
+        notas = "F1: PLATA | F2: ANTITARNISH | SPECS: PLATA COLGADO | DEPT: 16.3 | METAL: COBRE | PROC: PLATA SELECTIVA"
+        assert is_round_marker(notas) is True
+
+    def test_pattern_with_mpo(self):
+        notas = "F1: Decapado | F2: ESTAÑO | MPO: DECAPADO ESTAÑADO"
+        assert is_round_marker(notas) is True  # F1, F2, MPO = 3 tokens
+
+    def test_only_2_tokens_returns_false(self):
+        notas = "F1: PLATA | F2: ANTITARNISH"
+        assert is_round_marker(notas) is False  # menos de 3
+
+    def test_no_pipe_separator_returns_false(self):
+        notas = "F1 PLATA SPECS COBRE DEPT 16.3"
+        assert is_round_marker(notas) is False
+
+    def test_freeform_text_returns_false(self):
+        assert is_round_marker("EMPAQUE CON PAPEL SILVER SAVER") is False
+        assert is_round_marker("Plata Flash Conector") is False
+
+    def test_case_insensitive_tokens(self):
+        # los tokens son case-sensitive en SH (F1:, no f1:), pero la robustez no estorba
+        notas = "f1: plata | specs: plata | dept: 16 | metal: cobre"
+        assert is_round_marker(notas) is True
+
+    def test_tokens_constant_exists(self):
+        assert "F1:" in ROUND_MARKER_TOKENS
+        assert "MPO:" in ROUND_MARKER_TOKENS
+        assert "SPECS:" in ROUND_MARKER_TOKENS
