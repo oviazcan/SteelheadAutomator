@@ -10,6 +10,7 @@ from tools.dual_source_recovery import (
     TYPE_STRING,
     PartNumberRow,
     compare_values,
+    compute_field_diffs,
     filter_round,
     is_round_marker,
     load_sh_report,
@@ -534,3 +535,95 @@ class TestCompareValues:
     def test_unknown_type_raises(self):
         with pytest.raises(ValueError, match="Unknown type_"):
             compare_values("x", "x", "bogus_type")
+
+
+class TestComputeFieldDiffs:
+    def _pair(self, xlsm_raw, sh_raw, xlsm_labels=None, sh_labels=None):
+        x = _mk_row(source="xlsm", labels=xlsm_labels or ["", "", "", "", ""])
+        s = _mk_row(id_sh="100", labels=sh_labels or ["", "", "", "", ""])
+        x.raw = xlsm_raw
+        s.raw = sh_raw
+        return x, s
+
+    def test_overwrite_when_different(self):
+        x, s = self._pair({"Proceso": "PLATA"}, {"Proceso": "ZINC"})
+        x.proceso = "PLATA"
+        s.proceso = "ZINC"
+        diffs = compute_field_diffs(x, s)
+        assert {"field": "Proceso", "xlsm": "PLATA", "sh": "ZINC", "action": "overwrite"} in diffs
+
+    def test_overwrite_when_sh_empty(self):
+        x, s = self._pair({"Proceso": "PLATA"}, {"Proceso": ""})
+        x.proceso = "PLATA"
+        diffs = compute_field_diffs(x, s)
+        assert any(d["field"] == "Proceso" for d in diffs)
+
+    def test_no_diff_when_equal(self):
+        x, s = self._pair({"Proceso": "PLATA"}, {"Proceso": "plata"})
+        x.proceso = "PLATA"
+        s.proceso = "plata"
+        diffs = compute_field_diffs(x, s)
+        assert all(d["field"] != "Proceso" for d in diffs)
+
+    def test_conservative_does_not_overwrite(self):
+        x, s = self._pair({"Descripción": "DESC X"}, {"Descripción": "DESC Y"})
+        x.descripcion = "DESC X"
+        s.descripcion = "DESC Y"
+        diffs = compute_field_diffs(x, s)
+        assert all(d["field"] != "Descripción" for d in diffs)
+
+    def test_conservative_writes_when_sh_empty(self):
+        x, s = self._pair({"Descripción": "DESC X"}, {"Descripción": ""})
+        x.descripcion = "DESC X"
+        diffs = compute_field_diffs(x, s)
+        assert {"field": "Descripción", "xlsm": "DESC X", "sh": "", "action": "fill"} in diffs
+
+    def test_empty_xlsm_never_writes(self):
+        x, s = self._pair({"Proceso": ""}, {"Proceso": "ZINC"})
+        diffs = compute_field_diffs(x, s)
+        assert all(d["field"] != "Proceso" for d in diffs)
+
+    def test_dash_propagates_for_overwrite(self):
+        x, s = self._pair({"Proceso": "-"}, {"Proceso": "ZINC"})
+        x.proceso = "-"
+        s.proceso = "ZINC"
+        diffs = compute_field_diffs(x, s)
+        assert {"field": "Proceso", "xlsm": "-", "sh": "ZINC", "action": "delete"} in diffs
+
+    def test_dash_in_conservative_does_not_propagate(self):
+        x, s = self._pair({"Descripción": "-"}, {"Descripción": "DESC Y"})
+        x.descripcion = "-"
+        s.descripcion = "DESC Y"
+        diffs = compute_field_diffs(x, s)
+        assert all(d["field"] != "Descripción" for d in diffs)
+
+    def test_labels_set_equal_no_diff(self):
+        x, s = self._pair({}, {},
+                          xlsm_labels=["PLATA", "ANTITARNISH", "", "", ""],
+                          sh_labels=["ANTITARNISH", "PLATA", "", "", ""])
+        diffs = compute_field_diffs(x, s)
+        assert all(d["field"] != "_labels_" for d in diffs)
+
+    def test_labels_set_xlsm_has_extra(self):
+        x, s = self._pair({}, {},
+                          xlsm_labels=["PLATA", "ANTITARNISH", "", "", ""],
+                          sh_labels=["PLATA", "", "", "", ""])
+        diffs = compute_field_diffs(x, s)
+        label_diffs = [d for d in diffs if d["field"] == "_labels_"]
+        assert len(label_diffs) == 1
+        assert label_diffs[0]["xlsm_labels"] == ["PLATA", "ANTITARNISH", "", "", ""]
+        assert label_diffs[0]["sh_extra"] == []
+
+    def test_labels_set_sh_has_extra(self):
+        x, s = self._pair({}, {},
+                          xlsm_labels=["PLATA", "", "", "", ""],
+                          sh_labels=["PLATA", "ZINC", "", "", ""])
+        diffs = compute_field_diffs(x, s)
+        label_diffs = [d for d in diffs if d["field"] == "_labels_"]
+        assert len(label_diffs) == 1
+        assert "ZINC" in label_diffs[0]["sh_extra"]
+
+    def test_number_within_tolerance_no_diff(self):
+        x, s = self._pair({"Plata (kg/pza)": 0.5000001}, {"Plata (kg/pza)": 0.5})
+        diffs = compute_field_diffs(x, s)
+        assert all(d["field"] != "Plata (kg/pza)" for d in diffs)

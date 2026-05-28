@@ -409,6 +409,78 @@ def compare_values(xlsm_val, sh_val, type_: str) -> bool:
     raise ValueError(f"Unknown type_ in compare_values: {type_!r}")
 
 
+def _norm_labels(labels: list[str]) -> list[str]:
+    """Normaliza labels: cada uno upper+strip; conserva las 5 posiciones."""
+    out: list[str] = []
+    for l in (labels + ["", "", "", "", ""])[:5]:
+        out.append(str(l or "").strip().upper())
+    return out
+
+
+def _label_set(labels: list[str]) -> set[str]:
+    return {l for l in _norm_labels(labels) if l != ""}
+
+
+def compute_field_diffs(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> list[dict]:
+    """Genera la lista de campos a escribir según FIELD_RULES.
+
+    Cada diff: {field, xlsm, sh, action}
+      action ∈ {fill, overwrite, delete}
+    Para labels: {field='_labels_', xlsm_labels:[...], sh_labels:[...], sh_extra:[...], action='overwrite'}
+    """
+    diffs: list[dict] = []
+
+    for rule in FIELD_RULES:
+        h = rule["header"]
+        action = rule["action"]
+        type_ = rule["type"]
+
+        if h == "_labels_":
+            x_labels = _norm_labels(xlsm_row.labels)
+            s_labels = _norm_labels(sh_row.labels)
+            x_set = _label_set(x_labels)
+            s_set = _label_set(s_labels)
+            if x_set == s_set:
+                continue
+            sh_extra = sorted(s_set - x_set)
+            diffs.append({
+                "field": "_labels_",
+                "xlsm_labels": x_labels,
+                "sh_labels": s_labels,
+                "sh_extra": sh_extra,
+                "action": "overwrite",
+            })
+            continue
+
+        x_raw = xlsm_row.raw.get(h)
+        s_raw = sh_row.raw.get(h)
+        x_str = "" if x_raw is None else str(x_raw).strip()
+        s_str = "" if s_raw is None else str(s_raw).strip()
+
+        if x_str == "":
+            continue
+
+        if x_str == "-":
+            if action == ACTION_OVERWRITE and s_str != "":
+                diffs.append({"field": h, "xlsm": "-", "sh": s_str, "action": "delete"})
+            continue
+
+        equal = compare_values(x_raw, s_raw, type_)
+
+        if action == ACTION_NEVER:
+            continue
+        if action == ACTION_CONSERVATIVE:
+            if s_str == "":
+                diffs.append({"field": h, "xlsm": x_str, "sh": "", "action": "fill"})
+            continue
+        if action == ACTION_OVERWRITE:
+            if not equal:
+                act = "overwrite" if s_str != "" else "fill"
+                diffs.append({"field": h, "xlsm": x_str, "sh": s_str, "action": act})
+
+    return diffs
+
+
 def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
     """Validador único del match.
 
