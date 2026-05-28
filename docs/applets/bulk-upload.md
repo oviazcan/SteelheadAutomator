@@ -1,6 +1,97 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.4.38. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.0. Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.1 (2026-05-26) — Notas adicionales movida + Id SH como pivote alternativo
+
+### Cambio de layout v11 (sólo cols 65-71)
+- "Notas adicionales" se movió de BS (71, última) a **BM (65)** — único campo IBMS que sobrevivirá tras dejar IBMS
+- Las 6 cols que la seguían se corrieron una posición adelante (QuoteIBMS, EstacionIBMS → EstIBMS rename ligero, Plano, Piezas por Carga, Cargas por Hora, Tiempo de Entrega)
+- Cols 1-64 (A..BL) **idénticas** a la v11 previa. Predictives BD..BL no se movieron.
+
+### `V11_COLS` actualizado en `bulk-upload.js`
+- `notasAdicionales` 70 → 64
+- `quoteIBMS` 64 → 65
+- `estacionIBMS` 65 → 66 (header pasó a "EstIBMS")
+- `plano` 66 → 67
+- `piezasPorCarga` 67 → 68
+- `cargasPorHora` 68 → 69
+- `tiempoEntrega` 69 → 70
+
+### Fila válida = NP **o** Id SH
+- `parseRows`: gate cambió de `!pn` a `!pn && !idSh` → admite filas con solo Id SH para modificación masiva
+- `classifyPNsMassive`/`OnDemand`:
+  - Si `idSh` matchea node existente: **MODIFY-by-id directo**. Si `pn` presente y `node.name ≠ pn` → warn (id gana) pero proceder
+  - Si `idSh` presente pero NO matchea + `pn` presente nuevo → **abort** fila ("Id SH X inválido — corrige o elimínalo si quieres crear PN nuevo")
+  - Si solo `idSh` sin `pn` e `idSh` no matchea → **abort** ("Id SH no encontrado y sin PN para fallback")
+  - Si solo `pn` sin `idSh` → comportamiento existente (name match con dedup)
+- `SavePartNumber` payload: cuando MODIFY-by-id y `part.pn` null, usa `node.name` como fallback
+- `csvRowKey` y `detectCsvDuplicates`: dedup key alternativo `__idsh:<id>|<customerId>` cuando `pn` es null
+
+### VBAs (paste manual al .xlsm)
+- `VBA_Module1_v13.txt` — ExportarCSV: `lastRow = MAX(col G End(xlUp), col E End(xlUp))` para capturar filas trailing con solo Id SH
+- `VBA_Module5_v12.txt` — LimpiarDatos + LimpiarEspacios: mismo cambio de gate
+- `VBA_Module2_v12.txt` y `VBA_Module4_v11.txt` no requieren cambios (no usan PN para gate de fila)
+
+### Plantilla
+- `remote/templates/Plantilla_Cotizaciones_v11.xlsm` actualizado (525K, sin cambio de nombre — sigue siendo v11)
+
+### BU_VERSION
+1.5.0 → 1.5.1
+
+### Pendientes
+- [ ] Validación end-to-end con .xlsm v11 mezclando: (a) fila solo PN, (b) fila solo Id SH válido, (c) fila solo Id SH inválido, (d) fila PN nuevo + Id SH inválido (debe abortar), (e) fila Id SH matchea pero `node.name ≠ pn` (debe warn)
+- [ ] Deploy a gh-pages (requiere autorización)
+
+---
+
+## 1.5.0 (2026-05-26) — Schema v11: Id SH, Tipo de Geometría, Línea movida
+
+### Cambios de plantilla (Plantilla_Cotizaciones_v11.xlsm)
+- 71 columnas (antes 69)
+- Nuevas columnas: **Id SH** (E, opcional — fuerza match por ID interno), **Tipo de Geometría** (Q, lista con auto-creación)
+- **Línea** movida antes de **Metal base**
+- **Usar y archivar** descartado (probado: sólo funciona al crear NP desde OT, no en carga masiva)
+- Header row 7 marca la versión: col E = `"Cliente"` → v10, col E = `"Id SH"` → v11
+
+### Parser dual-layout (`bulk-upload.js`)
+- `parseRows()` detecta versión leyendo row 7 col E y elige `V10_COLS` o `V11_COLS`
+- `schemaPredictiveMaterials` derivado de `COLS.predictives` (v10: BB..BJ = 53..61, v11: BD..BL = 55..63)
+- Output incluye `part.idSh`, `part.tipoGeometria`, `part.schemaVersion`
+- Backwards-compatible: plantillas v10 siguen funcionando sin cambios
+
+### Match por Id SH
+- `classifyPNsMassive`/`classifyPNsOnDemand` construyen `pnById: Map<string(id), node>`
+- Si `part.idSh` matchea un node existente, se usa directo (sin name-lookup)
+- Si NO matchea: warn + fallback a name-match con dedup (preserva comportamiento previo, NO marca error)
+
+### Tipo de Geometría (auto-create)
+- `fetchAllGeometryTypes()` paginado al inicio del flujo
+- `resolveGeometryTypeId(name)` busca por nombre; si no existe, dispara mutation `SaveGeometryType`
+- Pre-resolve de nombres únicos ANTES de `runPool` evita race conditions
+- Fallback a `DOMAIN.geometryGenericaId` (831) si falla la creación
+- Nuevos hashes en `config.json`: `AllGeometryTypes` y `SaveGeometryType`
+
+### `catalog-fetcher.js`
+- Nuevo `fetchGeometryTypes()` paginado
+- Nuevo sheet **TiposGeometria** en el archivo `Catalogos_Steelhead_*.xlsx`
+
+### VBAs actualizadas (paste manual en el .xlsm)
+- `VBA_Module1_v12.txt` — ExportarCSV adaptado a v11 (lee modo de H1, Cliente=F, PN=G, ordena por F9 y G9)
+- `VBA_Module2_v12.txt` — **bugfix crítico** de RefrescarListas: removido `Range(...).Insert Shift:=xlDown` que empujaba contenido +2 filas y heredaba formato de header. Ahora escribe placeholders directo en row 2-3 e items desde row 4 (`i + 3`). Soporta TiposGeometria (col 14)
+- `VBA_Module4_v11.txt` — SombrearModoSoloPN: lee modo de H1, Cantidad K9:K508, Productos X9:AI508
+- `VBA_Module5_v11.txt` — LimpiarDatos + LimpiarEspacios: loop a col 71, boolCols=[1,2,3,4,15], preserveCols=[54,55], divisa default USD en col 14
+
+### Distribución de la plantilla
+- Nuevo botón en panel del applet **"Descargar plantilla v11 + catálogos"** que descarga `Plantilla_Cotizaciones_v11.xlsm` desde gh-pages + dispara flujo existente de Actualizar Catálogos + muestra aviso "Ejecuta Refrescar Listas primero"
+- Plantilla servida desde `remote/templates/Plantilla_Cotizaciones_v11.xlsm` (sincronizada a gh-pages como `templates/Plantilla_Cotizaciones_v11.xlsm`)
+
+### Pendientes
+- [ ] Deploy a gh-pages (requiere autorización explícita del usuario)
+- [ ] Verificar byte-exact con `tools/check-deploy.sh bulk-upload.js` y `tools/check-deploy.sh catalog-fetcher.js`
+- [ ] Validación end-to-end con un .xlsm v11 real: Id SH mezclado (algunos válidos, algunos inválidos, algunos vacíos) y Tipo de Geometría con valores que no existan en el catálogo
+
+---
 
 ## 1.4.38: regla null-only por SpecField en STEP 6b (Fix MM, 2026-05-25)
 

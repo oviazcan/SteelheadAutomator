@@ -15,7 +15,7 @@ const CatalogFetcher = (() => {
 
   async function fetchAll() {
     log('Catálogos dinámicos: consultando API...');
-    const [customers, processes, products, labels, specs, racks, users, groups, pnInputSchema] = await Promise.all([
+    const [customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes] = await Promise.all([
       fetchCustomers(),
       fetchProcesses(),
       fetchProducts(),
@@ -24,13 +24,15 @@ const CatalogFetcher = (() => {
       fetchRacks(),
       fetchUsers(),
       fetchGroups(),
-      fetchPNInputSchema()
+      fetchPNInputSchema(),
+      fetchGeometryTypes()
     ]);
     log(`  ${customers.length} clientes, ${processes.length} procesos, ${products.length} productos`);
     log(`  ${labels.length} etiquetas, ${specs.length} specs, ${racks.linea.length}/${racks.all.length} racks`);
     log(`  ${users.length} usuarios, ${groups.length} grupos`);
     log(`  Input schema: ${pnInputSchema.metalBase.length} metales, ${pnInputSchema.codigoSAT.length} códigos SAT`);
-    return { customers, processes, products, labels, specs, racks, users, groups, pnInputSchema };
+    log(`  ${geometryTypes.length} tipos de geometría`);
+    return { customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes };
   }
 
   // V10: fetch metalBase + codigoSAT enums directly from PartNumber input schema
@@ -340,6 +342,37 @@ const CatalogFetcher = (() => {
     return result;
   }
 
+  async function fetchGeometryTypes() {
+    const all = [];
+    const PAGE = 200;
+    let offset = 0;
+    while (true) {
+      let data;
+      try {
+        data = await api().query('AllGeometryTypes', {
+          orderBy: ['ID_DESC'], offset, first: PAGE, searchQuery: ''
+        });
+      } catch (e) {
+        warn(`AllGeometryTypes offset ${offset}: ${String(e).substring(0, 120)}`);
+        break;
+      }
+      const nodes = data?.pagedData?.nodes || [];
+      for (const n of nodes) if (n.name) all.push(n.name);
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 5000) { warn('AllGeometryTypes: límite 5k'); break; }
+    }
+    const seen = new Set();
+    const dedup = [];
+    for (const n of all) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      dedup.push(n);
+    }
+    dedup.sort((a, b) => a.localeCompare(b));
+    return dedup;
+  }
+
   // ═══════════════════════════════════════════
   // GENERATE CATALOGS-ONLY FILE (preserves template formatting)
   // ═══════════════════════════════════════════
@@ -442,6 +475,11 @@ const CatalogFetcher = (() => {
     for (const g of catalogs.groups) groupRows.push([g]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(groupRows), 'Grupos');
 
+    // TiposGeometria sheet (V11: nuevo)
+    const geomRows = [['Nombre']];
+    for (const g of catalogs.geometryTypes) geomRows.push([g]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(geomRows), 'TiposGeometria');
+
     // V10: MetalBase + CodigoSAT desde el input schema (no más hardcoded)
     const mbRows = [['MetalBase']];
     for (const m of catalogs.pnInputSchema.metalBase) mbRows.push([m]);
@@ -465,7 +503,8 @@ const CatalogFetcher = (() => {
       usuarios: catalogs.users.length,
       grupos: catalogs.groups.length,
       metalBase: catalogs.pnInputSchema.metalBase.length,
-      codigoSAT: catalogs.pnInputSchema.codigoSAT.length
+      codigoSAT: catalogs.pnInputSchema.codigoSAT.length,
+      tiposGeometria: catalogs.geometryTypes.length
     };
     const resumenRows = [
       ['Catálogos Steelhead — ' + new Date().toLocaleDateString('es-MX')],
@@ -484,6 +523,7 @@ const CatalogFetcher = (() => {
       ['Grupos PN', counts.grupos],
       ['Metal Base', counts.metalBase],
       ['Código SAT', counts.codigoSAT],
+      ['Tipos de Geometría', counts.tiposGeometria],
       [],
       ['Instrucciones:'],
       ['1. Abre tu Plantilla de Cotizaciones (.xlsm)'],
@@ -522,7 +562,8 @@ const CatalogFetcher = (() => {
       `${counts.lineas} líneas\n` +
       `${counts.departamentos} departamentos\n` +
       `${counts.usuarios} usuarios\n` +
-      `${counts.grupos} grupos PN\n\n` +
+      `${counts.grupos} grupos PN\n` +
+      `${counts.tiposGeometria} tipos de geometría\n\n` +
       `Archivo descargado: Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx\n\n` +
       `Siguiente paso: Abre tu plantilla y ejecuta "RefrescarListas".\n` +
       `La macro detectará el archivo automáticamente.`);

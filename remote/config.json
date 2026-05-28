@@ -1,6 +1,6 @@
 {
-  "version": "1.6.1",
-  "lastUpdated": "2026-05-26T20:00",
+  "version": "1.6.2",
+  "lastUpdated": "2026-05-27T18:00",
   "extensionVersion": "1.6.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -70,7 +70,8 @@
         "UpdateProcessNode": "adeb744d67289a790ee80fba102d280b162167f8301bde4d326c54025e46ff32",
         "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928",
         "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec",
-        "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3"
+        "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3",
+        "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f"
       },
       "queries": {
         "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
@@ -168,7 +169,8 @@
         "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2",
         "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec",
         "AllSensorDashboards": "432339f25bae0153d88fff64302df0bea1769987af20812c312748eb2babeedf",
-        "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a"
+        "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a",
+        "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705"
       }
     },
     "domain": {
