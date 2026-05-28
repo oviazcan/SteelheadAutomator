@@ -1,5 +1,14 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.4 (2026-05-28): partNumberSpecsToUnarchive en lugar de re-create
+//   - Bug Bimetales: specs archivadas (Lavado en run previa) golpeaban la
+//     unique_constraint partNumberSpec(pn_id, spec_id) cuando specsToApply
+//     intentaba re-crearlas. SaveB caía a duplicate_key → strip1 las quitaba
+//     → la spec se quedaba archivada y la nueva nunca aplicaba. Fix: indexar
+//     linked rows archivadas (archivedSpecLinkBySpecId) y pasarlas vía
+//     partNumberSpecsToUnarchive en lugar de specsToApply. API validada
+//     directamente con SH (PN 2860561, link 842923, archivedAt → null).
+//
 // VERSION 1.5.3 (2026-05-28): match-by-id directo bypassea classifyOnePN
 //   - Cuando una fila trae Id SH explícito y matchea un nodo, devolver shape
 //     directo con pase=0, confidence='idsh-direct', userDecided=true. Antes
@@ -54,7 +63,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.3';
+  const VERSION = '1.5.4';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4629,10 +4638,14 @@ const BulkUpload = (() => {
           }
         }
         const alreadyLinkedSpecIds = new Set();
+        // 1.5.4: indexar también las linked rows archivadas para poder unarchive en lugar
+        // de re-create (la unique_constraint pn_id+spec_id aplica también a archivadas).
+        const archivedSpecLinkBySpecId = new Map();
         if (existingPnNode) {
           for (const ls of (existingPnNode.partNumberSpecsByPartNumberId?.nodes || [])) {
-            if (ls.archivedAt) continue;
-            const sid = ls.specBySpecId?.id; if (sid) alreadyLinkedSpecIds.add(sid);
+            const sid = ls.specBySpecId?.id; if (!sid) continue;
+            if (ls.archivedAt) { archivedSpecLinkBySpecId.set(sid, ls.id); continue; }
+            alreadyLinkedSpecIds.add(sid);
           }
         }
 
@@ -4710,9 +4723,24 @@ const BulkUpload = (() => {
 
         // Fix C 1.3.2: para PNs existing, las specs ya linkeadas no se reenvían — Steelhead
         // las trata como unique_constraint en partNumberSpec (pnId, specId).
-        const specsToApplyFiltered = alreadyLinkedSpecIds.size
-          ? specsToApply.filter(s => !alreadyLinkedSpecIds.has(s.specId))
-          : specsToApply;
+        // 1.5.4: las specs archivadas también golpean la unique_constraint si se intentan
+        // re-aplicar como INSERT. En su lugar se desarchivan via partNumberSpecsToUnarchive.
+        // Sin esto los Bimetales (Lavado archivado de corrida previa) fallan con duplicate_key
+        // → strip1 deja specsToApply=[] → Lavado se queda archivado y la nueva spec nunca aplica.
+        const partNumberSpecsToUnarchiveIds = [];
+        const specsToApplyFiltered = [];
+        for (const s of specsToApply) {
+          if (alreadyLinkedSpecIds.has(s.specId)) continue;
+          if (archivedSpecLinkBySpecId.has(s.specId)) {
+            partNumberSpecsToUnarchiveIds.push(archivedSpecLinkBySpecId.get(s.specId));
+            continue;
+          }
+          specsToApplyFiltered.push(s);
+        }
+        if (partNumberSpecsToUnarchiveIds.length) {
+          stats.specsUnarchived = (stats.specsUnarchived || 0) + partNumberSpecsToUnarchiveIds.length;
+          log(`  "${pn.name}": ${partNumberSpecsToUnarchiveIds.length} spec(s) archivadas → desarchivar (en lugar de re-create)`);
+        }
 
         const mergedCI = mergeCustomInputs(pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
@@ -4852,7 +4880,7 @@ const BulkUpload = (() => {
           dimensionCustomValueIds: dimValueIds,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
           partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
-          partNumberSpecsToArchive: partNumberSpecsToArchiveIds, partNumberSpecsToUnarchive: [], specFieldParamUpdates: [],
+          partNumberSpecsToArchive: partNumberSpecsToArchiveIds, partNumberSpecsToUnarchive: partNumberSpecsToUnarchiveIds, specFieldParamUpdates: [],
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
         };
 
