@@ -503,6 +503,9 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
         if any(c is None for c in label_cols):
             raise ValueError("template v11: Etiqueta 1-5 no resueltos")
 
+        # Metadata row 3: Nombre Cotización/Layout (col 8) — facilita auditoría posterior
+        ws.cell(row=3, column=8, value=f"Recovery dual-source {datetime.now(timezone.utc).strftime('%Y-%m-%d')}")
+
         start_row = 9
         for offset, corr in enumerate(corrections):
             r = start_row + offset
