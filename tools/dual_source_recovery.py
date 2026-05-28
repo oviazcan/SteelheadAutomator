@@ -60,6 +60,19 @@ def is_round_marker(notas) -> bool:
     return " | " in text
 
 
+def make_fingerprint(metal_base: str | None, labels: Iterable[str | None]) -> str:
+    """Fingerprint estable para discriminar PNs con mismo (cliente, nombre).
+
+    Usa metalBase + labels normalizados y ordenados. Mismo formato que usa
+    `audit-incomplete-pns.js` fase 5.4b para que los resultados sean comparables.
+    """
+    metal = (str(metal_base) if metal_base else "").strip().upper()
+    labels_clean = sorted({
+        str(l).strip().upper() for l in labels if l is not None and str(l).strip() != ""
+    })
+    return f"{metal}|{','.join(labels_clean)}"
+
+
 def main(argv: list[str] | None = None) -> int:
     raise NotImplementedError("se implementa en Task 13")
 

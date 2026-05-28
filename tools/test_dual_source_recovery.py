@@ -8,6 +8,7 @@ from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
     is_round_marker,
     main,
+    make_fingerprint,
     norm,
 )
 
@@ -77,3 +78,26 @@ class TestIsRoundMarker:
         assert "F1:" in ROUND_MARKER_TOKENS
         assert "MPO:" in ROUND_MARKER_TOKENS
         assert "SPECS:" in ROUND_MARKER_TOKENS
+
+
+class TestMakeFingerprint:
+    def test_basic(self):
+        fp = make_fingerprint(metal_base="COBRE", labels=["PLATA", "ANTITARNISH"])
+        assert fp == "COBRE|ANTITARNISH,PLATA"  # labels sorted
+
+    def test_normalizes_case_and_spaces(self):
+        fp1 = make_fingerprint(metal_base="cobre", labels=[" PLATA ", "antitarnish"])
+        fp2 = make_fingerprint(metal_base="COBRE", labels=["ANTITARNISH", "PLATA"])
+        assert fp1 == fp2
+
+    def test_drops_empty_labels(self):
+        fp = make_fingerprint(metal_base="COBRE", labels=["PLATA", "", None, "ANTITARNISH"])
+        assert fp == "COBRE|ANTITARNISH,PLATA"
+
+    def test_no_labels(self):
+        fp = make_fingerprint(metal_base="ACERO", labels=[])
+        assert fp == "ACERO|"
+
+    def test_no_metal(self):
+        fp = make_fingerprint(metal_base="", labels=["PLATA"])
+        assert fp == "|PLATA"
