@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from collections import defaultdict
@@ -256,12 +257,56 @@ def _summarize_expected(src_rows: list, customer: str) -> dict:
     }
 
 
-def _diff_summary(exp: dict, sh: dict) -> list[str]:
-    """Lista de diferencias campo-a-campo. Cada string es una observación."""
+# Normaliza Plano: SH colapsa CRLF/Alt+Enter del CSV a single-space al
+# guardar. El validador comparaba str(exp).strip() vs str(sh).strip() y
+# disparaba "diff" por puro ruido de whitespace. Esta función reemplaza
+# `_x000D_`, `\r`, `\n`, tabs y runs de espacio por un solo espacio para
+# que ambos lados queden equivalentes.
+_WS_NORMALIZE_RE = re.compile(r'(?:_x000D_|\s)+')
+
+
+def _normalize_plano(s) -> str:
+    if s is None:
+        return ""
+    return _WS_NORMALIZE_RE.sub(' ', str(s)).strip()
+
+
+# Discrepancias XLSM-vs-CSV conocidas que NO son bugs del applet. El
+# validador compara contra el XLSM original (fuente esperada), pero el
+# CSV restore final puede haber actualizado lo correcto. Cuando confirmamos
+# que SH refleja la realidad operativa (no el XLSM), agregamos el PN aquí.
+#
+# Llave: (pn_name, idSH_str). Valores:
+#   - 'specs_missing': specs que el XLSM espera activas pero el CSV no pide
+#     (se ignoran del set FALTANTES).
+#   - 'specs_archived_expected': specs que el XLSM espera activas y están
+#     archivadas en SH; el CSV correctamente no las pide (se ignoran).
+EXPECTED_DISCREPANCIES: dict[tuple[str, str], dict[str, set[str]]] = {
+    # PN 48000-004-04 (Schneider Electric): el XLSM original traía
+    # 'RC Lavado' pero el correcto es 'Lavado - Tratamiento Térmico -
+    # Bimetales' que ya está activo en SH. Confirmado por Omar 2026-05-28.
+    ('48000-004-04', '3615096'): {
+        'specs_missing': {'RC Lavado'},
+        'specs_archived_expected': set(),
+    },
+    ('48000-004-04', '2911289'): {
+        'specs_missing': {'RC Lavado'},
+        'specs_archived_expected': {'RC Lavado'},
+    },
+}
+
+
+def _diff_summary(exp: dict, sh: dict, pn_key: tuple[str, str] | None = None) -> list[str]:
+    """Lista de diferencias campo-a-campo. Cada string es una observación.
+
+    `pn_key=(pn_name, idSH_str)` se usa para consultar EXPECTED_DISCREPANCIES
+    y filtrar diffs conocidos no-bug.
+    """
     out: list[str] = []
     if not exp:
         out.append("SKIP: no expected (sin filas xlsm)")
         return out
+    whitelist = EXPECTED_DISCREPANCIES.get(pn_key or ('', ''), {})
 
     # Identidad básica
     if sh.get("archivedAt"):
@@ -269,17 +314,22 @@ def _diff_summary(exp: dict, sh: dict) -> list[str]:
 
     ci = sh.get("customInputs") or {}
 
-    # Comparaciones string-safe
+    # Comparaciones string-safe. Plano usa normalize de whitespace porque
+    # SH colapsa CRLF/Alt+Enter del CSV al guardar (ruido conocido, no bug).
     pairs = [
-        ("BaseMetal", exp.get("baseMetal"), ci.get("BaseMetal")),
-        ("QuoteIBMS", exp.get("quoteIBMS"), ci.get("QuoteIBMS")),
-        ("EstIBMS", exp.get("estIBMS"), ci.get("EstacionIBMS")),
-        ("Plano", exp.get("plano"), ci.get("Plano")),
-        ("Group", exp.get("group"), sh.get("group")),
+        ("BaseMetal", exp.get("baseMetal"), ci.get("BaseMetal"), False),
+        ("QuoteIBMS", exp.get("quoteIBMS"), ci.get("QuoteIBMS"), False),
+        ("EstIBMS", exp.get("estIBMS"), ci.get("EstacionIBMS"), False),
+        ("Plano", exp.get("plano"), ci.get("Plano"), True),
+        ("Group", exp.get("group"), sh.get("group"), False),
     ]
-    for label, e, s in pairs:
-        e_n = (str(e).strip() if e is not None else "")
-        s_n = (str(s).strip() if s is not None else "")
+    for label, e, s, normalize_ws in pairs:
+        if normalize_ws:
+            e_n = _normalize_plano(e)
+            s_n = _normalize_plano(s)
+        else:
+            e_n = (str(e).strip() if e is not None else "")
+            s_n = (str(s).strip() if s is not None else "")
         if e_n != s_n:
             out.append(f"{label}: esperado={e_n!r} sh={s_n!r}")
 
@@ -303,13 +353,17 @@ def _diff_summary(exp: dict, sh: dict) -> list[str]:
         elif ef is not None and sf is not None and abs(ef - sf) > 1e-9:
             out.append(f"{label}: esperado={e!r} sh={s!r}")
 
-    # Specs: comparar nombres del set
+    # Specs: comparar nombres del set. Aplicamos whitelist
+    # (EXPECTED_DISCREPANCIES) para silenciar mismatches XLSM-vs-CSV
+    # confirmados (no son bugs del applet).
     exp_specs = {s["name"] for s in (exp.get("specs") or [])}
     sh_active = {s["name"] for s in (sh.get("specsActive") or [])}
     sh_arch = {s["name"] for s in (sh.get("specsArchived") or [])}
-    missing = exp_specs - sh_active
+    ws_missing = whitelist.get('specs_missing', set())
+    ws_arch_expected = whitelist.get('specs_archived_expected', set())
+    missing = (exp_specs - sh_active) - ws_missing
     extra = sh_active - exp_specs
-    arch_was_expected = exp_specs & sh_arch
+    arch_was_expected = (exp_specs & sh_arch) - ws_arch_expected
     if missing:
         out.append(f"Specs FALTANTES activas (esperadas, no en SH): {sorted(missing)}")
     if arch_was_expected:
@@ -328,7 +382,10 @@ def _diff_summary(exp: dict, sh: dict) -> list[str]:
         # Solo informativo, no es bug
         out.append(f"Labels EXTRA en SH (informativo): {sorted(extra_l)}")
 
-    # Predictivos: por nombre
+    # Predictivos: por nombre. SH almacena microQuantityPerPart como entero
+    # (round(usagePerPart * 1e6)). El XLSM trae el float de alta precisión.
+    # El diff se mide en micro-units redondeados; tolerancia ±1 micro cubre
+    # ambigüedad de redondeo (13.398 µg/pza → 13 ó 14 µg según floor/round).
     exp_pred = {p["name"].split(" ")[0].lower(): p["usagePerPart"]
                 for p in (exp.get("predictives") or [])}
     sh_pred: dict[str, float] = {}
@@ -340,9 +397,15 @@ def _diff_summary(exp: dict, sh: dict) -> list[str]:
         sv = sh_pred.get(k)
         if sv is None:
             out.append(f"Predictivo FALTANTE {k!r}: esperado={ev}")
-        elif abs(float(ev) - float(sv)) / max(abs(float(ev)), 1e-12) > 0.01:
-            # diff > 1% relativo
-            out.append(f"Predictivo {k!r}: esperado={ev} sh={sv}")
+            continue
+        try:
+            ev_micro = round(float(ev) * 1e6)
+            sv_micro = round(float(sv) * 1e6)
+        except (TypeError, ValueError):
+            out.append(f"Predictivo {k!r}: esperado={ev} sh={sv} (parse error)")
+            continue
+        if abs(ev_micro - sv_micro) > 1:
+            out.append(f"Predictivo {k!r}: esperado={ev} sh={sv} (Δmicro={ev_micro - sv_micro})")
     for k, sv in sh_pred.items():
         if k not in exp_pred:
             out.append(f"Predictivo EXTRA en SH (informativo) {k!r}={sv}")
@@ -427,7 +490,7 @@ def main(argv: list[str] | None = None) -> int:
                 src_rows = filtered if filtered else list(candidates)
         exp_sum = _summarize_expected(src_rows, p["customer"])
 
-        diffs = _diff_summary(exp_sum, sh_sum)
+        diffs = _diff_summary(exp_sum, sh_sum, pn_key=(p["pn"], str(pn_id)))
 
         out.append({
             "idSH": p["idSH"],
