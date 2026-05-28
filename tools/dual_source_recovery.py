@@ -24,6 +24,7 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -542,7 +543,6 @@ def emit_json_report(
     unmatched_sh_in_round: list,
     duplicate_quoteibms: list,
 ) -> None:
-    from datetime import datetime, timezone
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "inputs": inputs,
@@ -554,7 +554,9 @@ def emit_json_report(
         "unmatched_sh_in_round": unmatched_sh_in_round,
         "duplicate_quoteibms": duplicate_quoteibms,
     }
-    Path(out_path).write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+    out_p = Path(out_path)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    out_p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
