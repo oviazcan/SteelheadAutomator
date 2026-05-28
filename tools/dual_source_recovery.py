@@ -562,17 +562,29 @@ def emit_json_report(
     out_p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+_X000D_RE = re.compile(r"_x000D_", flags=re.IGNORECASE)
+
+
+def _notas_canon(value) -> str:
+    """Canónico para comparar notas: norm() + quitar artifact `_x000D_` de Excel."""
+    return norm(_X000D_RE.sub("", str(value or "")))
+
+
 def validate_notas(xlsm_row: PartNumberRow, sh_row: PartNumberRow) -> str:
     """Validador único del match.
 
     Retorna 'ok' o 'suspicious'.
-    'suspicious' SOLO si ambos lados tienen notas no vacías y difieren.
+    'suspicious' SOLO si ambos lados tienen notas no vacías, no son idénticas
+    tras `_notas_canon`, y NINGUNA es prefijo de la otra (cap distinto de Notas
+    adicionales entre xlsm y SH no cuenta como discrepancia real).
     """
-    nx = norm(xlsm_row.notas)
-    ns = norm(sh_row.notas)
-    if nx and ns and nx != ns:
-        return "suspicious"
-    return "ok"
+    nx = _notas_canon(xlsm_row.notas)
+    ns = _notas_canon(sh_row.notas)
+    if not nx or not ns or nx == ns:
+        return "ok"
+    if nx.startswith(ns) or ns.startswith(nx):
+        return "ok"
+    return "suspicious"
 
 
 def _summarize_corrections(matched: list) -> tuple[list[dict], dict[str, int]]:
@@ -641,8 +653,8 @@ def main(argv: list[str] | None = None) -> int:
                 "customer": pair.sh_row.cliente,
                 "pn": pair.sh_row.pn,
                 "tier": pair.tier,
-                "notas_xlsm": pair.xlsm_row.notas[:300],
-                "notas_sh": pair.sh_row.notas[:300],
+                "notas_xlsm": pair.xlsm_row.notas[:2000],
+                "notas_sh": pair.sh_row.notas[:2000],
             })
         else:
             valid_matches.append(pair)

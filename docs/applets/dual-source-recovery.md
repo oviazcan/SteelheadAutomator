@@ -4,6 +4,60 @@ Tool standalone (`tools/dual_source_recovery.py`) que cruza los xlsm
 originales de bulk-upload contra el reporte oficial de Steelhead y emite un
 xlsx v11 de recovery donde cada PN se identifica por **Id SH** (pivote directo).
 
+## 1.0.1 — 2026-05-28 — Validador de notas realista + reporte sin truncamiento
+
+### Motivación
+El smoke 1.0.0 reportó 11,263 `suspicious_matches`. Auditoría posterior mostró
+que el 99.7% eran **ruido técnico**, no discrepancias semánticas:
+- 87.3% `_x000D_\n` artifact de Excel multilínea que SH no preserva.
+- 9.8% truncamiento por longitud distinto del campo Notas adicionales (la nota
+  es la misma, solo cortada en distinto punto).
+- 2.5% **artefacto del propio reporte**: `emit_json_report` truncaba
+  `notas_xlsm`/`notas_sh` a 300 chars, lo que hacía que el análisis posterior
+  pensara que faltaban claves (`LSPEC1`, `USPEC1`, etc.) cuando solo estaban
+  más allá del cap. El validador interno sí usaba notas completas; era un bug
+  de evidencia, no de decisión.
+
+### Cambios
+- `_notas_canon()` nueva helper: aplica `norm()` + quita `_x000D_` (regex case-insensitive).
+- `validate_notas()` ahora marca `suspicious` solo si tras `_notas_canon` los
+  dos strings difieren **y** ninguno es prefijo del otro.
+- `emit_json_report` ya no trunca a 300 chars; ahora corta a 2000 (suficiente
+  para preservar la estructura completa de `F1..F5 | MPO | SPECS | DEPT | METAL
+  | PROC | LSPEC* | USPEC* | SPECIALREQ`).
+- 3 tests nuevos en `TestValidateNotas`: `test_x000d_artifact_returns_ok`,
+  `test_prefix_truncation_returns_ok`, `test_genuine_difference_after_canon_returns_suspicious`. 74/74 passing.
+
+### Smoke run 2026-05-28
+Mismos inputs que 1.0.0.
+
+| Métrica | 1.0.0 | 1.0.1 | Δ |
+|---|---:|---:|---:|
+| `suspicious_matches` | 11,263 | **12** | −99.9% |
+| `corrections_emitted` | 5,868 | **16,491** | +181% |
+
+El salto en `corrections_emitted` es esperado: los ~10,600 matches que antes
+caían en `suspicious` (y por tanto no aportaban diffs) ahora pasan el
+validador y aportan sus correcciones reales. Es decir, **el validador previo
+estaba bloqueando ~10k correcciones legítimas**.
+
+### Los 12 suspicious restantes
+- **1 genuino**: `PN=80247-667-01` (SCHNEIDER MEX) — SH tiene `F2: DESHIDROGENADO`
+  que el xlsm no incluye. Revisar a mano antes de carga masiva.
+- **11 ruido nuevo**: el campo `DEPT` viene como entero en el xlsm (`DEPT: 10`,
+  `DEPT: 14`) pero SH lo persiste como float string (`DEPT: 10.0`, `DEPT: 14.0`).
+  Las notas son funcionalmente iguales pero rompen el prefijo. Pendiente
+  derivado: normalizar tokens numéricos en `_notas_canon`
+  (`\d+\.0(?=\s|\||$)` → `\d+`), o aceptar como ruido tolerable.
+
+### Pendientes derivados (nuevos)
+- [ ] Normalizar `DEPT: N.0 ` → `DEPT: N ` en `_notas_canon` para bajar de 12 a 1.
+- [ ] Decidir si los 16,491 corrections necesitan re-pasar por la tolerancia
+  relativa por campo (pendiente heredado de 1.0.0) antes de carga masiva.
+  Probable que la tasa de ruido IEEE 754 en numéricos haya crecido proporcionalmente.
+
+---
+
 ## 1.0.0 — 2026-05-27 — Implementación inicial
 
 ### Diseño

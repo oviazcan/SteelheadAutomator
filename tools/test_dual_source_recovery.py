@@ -503,6 +503,25 @@ class TestValidateNotas:
         s = _mk_row(notas="F1: PLATA | SPECS: PLATA")
         assert validate_notas(x, s) == "ok"
 
+    def test_x000d_artifact_returns_ok(self):
+        # Excel preserva _x000D_\n al final de celdas multilínea; SH no.
+        x = _mk_row(notas="F1: PLATA | SPECS: PLATA_x000D_\n_x000D_\n | DEPT: 16")
+        s = _mk_row(notas="F1: PLATA | SPECS: PLATA | DEPT: 16")
+        assert validate_notas(x, s) == "ok"
+
+    def test_prefix_truncation_returns_ok(self):
+        # Notas adicionales puede truncar a distintas longitudes; si una es
+        # prefijo de la otra, no es discrepancia semántica.
+        x = _mk_row(notas="F1: PLATA | SPECIALREQ: lorem ipsum dolor sit amet, consect")
+        s = _mk_row(notas="F1: PLATA | SPECIALREQ: lorem ipsum dolor sit amet, consectetur adipiscing")
+        assert validate_notas(x, s) == "ok"
+
+    def test_genuine_difference_after_canon_returns_suspicious(self):
+        # Tras quitar _x000D_ y descartar prefijos, una divergencia real sigue marcando.
+        x = _mk_row(notas="F1: PLATA_x000D_\n | DEPT: 16")
+        s = _mk_row(notas="F1: ZINC | DEPT: 7")
+        assert validate_notas(x, s) == "suspicious"
+
 
 class TestCompareValues:
     def test_strings_equal_normalized(self):
