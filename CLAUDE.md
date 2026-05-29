@@ -105,7 +105,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 
 | Applet | Versión actual | Bitácora |
 |---|---|---|
-| `bulk-upload` | 1.5.10 (FIX: STEP 6b `cleanupExistingDims` filtra dims con `dimensionId`/`unitId` nulos → resuelve `Archive dups HTTP 400` que tumbó 21 PNs en v104 y 9/10 en pilot v159) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
+| `bulk-upload` | 1.5.11 (enrich-orphan visible: STEP 6 `enrichWorker` reporta a `errors[]` cuando un PN no tiene entry en `pnLookup` por `SaveManyPNP` rechazado → resuelve blanqueo silente de 27 NEW Pase 3 con quote lockeada por factura) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
 | `process-deep-audit` | 0.8.0 | [`docs/applets/process-deep-audit.md`](docs/applets/process-deep-audit.md) |
 | `spec-params-bulk` | 0.9.0 | [`docs/applets/spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
 | `spec-migrator` (bundle Ajuste Masivo) | original + `validate-duplicate-params` 0.5.5 (CSV multi-cliente + memory hardening completo: mem monitor + guardrail @88% + resume + virtualización preview + host-cleanup-shared) | [`docs/applets/spec-migrator.md`](docs/applets/spec-migrator.md) |

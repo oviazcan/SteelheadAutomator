@@ -1,5 +1,19 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.11 (2026-05-28): enrich-orphan visible — reportar PNs sin entry en pnLookup
+//   - Bug confirmado en corrida 139b77b8 cliente 166246 quote 197 (factura
+//     asociada bloqueaba SaveManyPartNumberPrices): 27 NEW Pase 3 quedaron en
+//     SH con customInputs={}, labelIds=[], dims=[] (shape mínimo de STEP 2a),
+//     sin reporte en errors[]. enrichWorker hacía `if (!entry) return;` silente
+//     cuando pnLookup no traía qpnp para ese idx, así que el operador no veía
+//     nada en el log y descubría el blanqueo abriendo PNs uno por uno en SH.
+//   - Fix: registrar el PN en errors[] con el motivo probable (SaveManyPNP
+//     rechazado en su quote) y contar como error si era NEW. Si era existing,
+//     no contamos en counters porque ya no perdió nada — el PN sigue como
+//     estaba antes; solo registramos el aviso para visibilidad.
+//   - Mitigación operativa cuando aparece este error: desbloquear la quote
+//     (tools/check-quote-lock.js) y re-correr el CSV-slice de los PNs afectados.
+//
 // VERSION 1.5.10 (2026-05-28): fix archive-dups HTTP 400 con dims malformados
 //   - Bug confirmado en recovery v104 (21 PNs erroraron) Y en pilot 10 con 1.5.9
 //     (mismos 9 PNs erroraron de nuevo): STEP 6b cleanup mandaba dim entries
@@ -4773,7 +4787,22 @@ const BulkUpload = (() => {
           return;
         }
         const entry = pnLookup.get(idx);
-        if (!entry) return;
+        if (!entry) {
+          // 1.5.11: antes (≤1.5.10) este return era silencioso. Cuando
+          // SaveManyPartNumberPrices fallaba (quote lockeada por factura,
+          // descuento, revisión), el qpnp del PN nunca entraba al pnLookup
+          // y los NEW de ese cliente quedaban en SH con el shape mínimo de
+          // STEP 2a (customInputs:{}, labelIds:[], dims:[]) sin reporte en
+          // errors[]. Repro: corrida 139b77b8 cliente 166246 quote 197, 27
+          // NEW Pase 3 sin labels/línea/depto/customInputs (los 18 MODIFY del
+          // mismo cliente conservaron lo previo y por eso no se notaron).
+          // Ahora cualquier PN sin entry → error explícito en el reporte.
+          const stMiss = pnStatus[idx];
+          const kind = stMiss?.status === 'new' || stMiss?.status === 'forceDup' ? 'NEW' : 'existing';
+          errors.push(`Enrich "${part.pn}" (cust:${part.customerId}) omitido: ${kind} sin entry en pnLookup — probable SaveManyPNP rechazado en su quote. Re-correr este PN solo.`);
+          if (kind === 'NEW') state.counters.errors++;
+          return;
+        }
         const pn = entry.pn;
         setPanelSubPhase(`Enriqueciendo: ${part.pn}`);
 

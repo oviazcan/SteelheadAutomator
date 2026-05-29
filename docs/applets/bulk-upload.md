@@ -1,6 +1,101 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.10 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.11 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.11 (2026-05-29) — enrich-orphan visible: reportar PNs sin entry en pnLookup
+
+### Síntoma
+Corrida `bulk-upload-report-139b77b8` (cliente 166246, 121 PNs procesados).
+La quote 197 tenía factura asociada y los chunks de `SaveManyPartNumberPrices`
+del cliente 166246 rebotaron 7 veces con:
+```
+Cannot modify quote - part number prices are referenced by ...
+```
+Resultado en SH: **27 PNs nuevos (NEW Pase 3, todos `46004-XXX-XX`, Cobre,
+IBMS 62109-62XXX)** quedaron con `customInputs={}`, `labelIds=[]`,
+`partNumberDimensions=[]`, **sin línea, sin depto, sin specs**. Pero **el log
+nunca lo reportó** — solo aparecían los 7 errores de `SaveManyPNP` y los 12
+errores totales del run. El operador descubrió el blanqueo abriendo PNs uno
+por uno en la UI de SH.
+
+Los 18 MODIFY Pase 3 del mismo cliente NO se notaron afectados porque ya
+existían en SH y conservaron lo previo — el problema solo es visible cuando
+el PN nace en esta corrida.
+
+### Diagnóstico
+
+`enrichWorker` (línea 4775 antes de 1.5.11):
+```js
+const entry = pnLookup.get(idx);
+if (!entry) return;
+```
+
+Cadena:
+1. **STEP 2a** crea los PNs nuevos con payload mínimo (`customInputs:{}`,
+   `labelIds:[]`, `dims:[]`, `specsToApply:[]`) — por diseño: solo reserva
+   el `id` para que STEP 4/6 hagan el enrich.
+2. **STEP 4** (`SaveManyPartNumberPrices`) falla → los `qpnp` de esos PNs
+   nunca quedan en la quote.
+3. El bloque que construye `pnLookup` (línea 4540-4548) itera sobre
+   `qpnp.partNumberPriceByPartNumberPriceId` de la quote — si el `qpnp`
+   no se commiteó, el PN nunca entra al lookup.
+4. **STEP 6 `enrichWorker`** llega para ese `idx`, hace `pnLookup.get(idx)`
+   → `undefined` → `return` silencioso. **Ni Call A (labels + customInputs)
+   ni Call B (specs + dims + línea/depto + predictivos) se ejecutan.**
+5. El operador no ve nada en el log porque el `return` no warneaba ni
+   empujaba a `errors[]`.
+
+### Fix
+
+Reemplazar el `return` silencioso por un error explícito que cubra ambos
+casos (NEW y existing huérfanos):
+
+```diff
+ const entry = pnLookup.get(idx);
+-if (!entry) return;
++if (!entry) {
++  const stMiss = pnStatus[idx];
++  const kind = stMiss?.status === 'new' || stMiss?.status === 'forceDup' ? 'NEW' : 'existing';
++  errors.push(`Enrich "${part.pn}" (cust:${part.customerId}) omitido: ${kind} sin entry en pnLookup — probable SaveManyPNP rechazado en su quote. Re-correr este PN solo.`);
++  if (kind === 'NEW') state.counters.errors++;
++  return;
++}
+```
+
+Decisión:
+- **NEW sin entry** → cuenta como error porque el PN quedó incompleto en SH.
+- **existing sin entry** → solo aviso (el PN ya estaba enriched en SH desde
+  antes; el run no perdió nada — pero el operador debe saber que esa fila
+  CSV no aplicó).
+
+### Mitigación operativa cuando aparece
+
+1. Identificar la quote bloqueada (mismo cliente que el PN huérfano).
+2. Validar con `tools/check-quote-lock.js` (DevTools script — busca refs a
+   invoice en el response de GetQuote).
+3. Desbloquear: cancelar/borrar el invoiceLineItem que la traba, o usar
+   una quote nueva.
+4. Re-correr el CSV-slice de los PNs afectados. Como ya tienen id en SH,
+   bulk-upload los clasifica como **Pase 1 IBMS = MODIFY existing** y el
+   enrichWorker corre normal (no depende del flow de quote para existing).
+
+### Plan de validación
+
+1. Pilot: re-correr los 27 PNs del cliente 166246 con quote 197 ya
+   desbloqueada → confirmar que ahora todos tienen labels/línea/depto/
+   customInputs/specs en SH.
+2. Estrés sintético: forzar otra quote a estar lockeada y validar que el
+   reporte XLSX trae los `Enrich "..." omitido: NEW sin entry` en la hoja
+   Errores.
+
+### Pendientes derivados
+
+- Plan de "auto-mitigación": detectar `Cannot modify quote` durante STEP 4
+  y degradar a SOLO_PN para ese chunk — los PNs se enrichen igual pero
+  sin quote attachment. Requiere validar que la cotización viva no quede
+  en estado inconsistente.
+
+---
 
 ## 1.5.10 (2026-05-28) — FIX: archive-dups HTTP 400 con dims malformados
 
