@@ -1,5 +1,38 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.9 (2026-05-28): FIX CRÍTICO — preservar customInputs en MODIFY
+//   - Bug confirmado en post-mortem del recovery dual-source v104 (samp 50 PNs):
+//     ~80% de PNs procesados perdieron QuoteIBMS, BaseMetal, DatosFacturacion,
+//     DatosPlanificacion y NotasAdicionales en `customInputs`. Daño estimado a
+//     escala: ~13,000 PNs blanqueados + ~3,000 con merge parcial (solo lo que
+//     el CSV traía sobrevivió).
+//   - Root cause: `extractPNShape(n)` (línea 1517) construye el shape mínimo
+//     que alimenta a classifyPNs y enrichWorker. NUNCA guardaba `customInputs`
+//     en el shape — derivaba `metalBase` y `quoteIBMS` como strings de
+//     conveniencia y tiraba el resto. En STEP 6 (línea 4995):
+//        `const mergedCI = mergeCustomInputs(pn.customInputs, part);`
+//     recibía `undefined` como `existing` → mergeCustomInputs arrancaba con
+//     `{}` vacío. Si el CSV no traía cols de customInputs (diff-mode del
+//     dual_source_recovery), devolvía null → el fallback
+//        `customInputs: mergedCI || pn.customInputs || {}`
+//     bajaba a `{}` → SH (REPLACE-semantics) borraba todo `customInputs` del
+//     PN. Si el CSV traía SOLO BaseMetal, mergeCustomInputs devolvía
+//     `{DatosAdicionalesNP:{BaseMetal:...}}` SIN preservar QuoteIBMS,
+//     EstacionIBMS, Plano, DatosFacturacion, DatosPlanificacion, etc.
+//   - Fix one-liner: agregar `customInputs: ci || null` al return de
+//     extractPNShape. mergeCustomInputs ya hace deep clone de `existing` y
+//     overlay del CSV — con `ci` poblado, el merge preserva campos no
+//     tocados por el CSV correctamente.
+//   - El STEP 6b cleanup (línea 5572) ya usaba `pnNode.customInputs` desde
+//     GetPartNumber (full fetch), no afectado por este bug.
+//   - CRITICAL: cualquier corrida MODIFY en ≤1.5.8 con CSV en diff-mode
+//     repite el daño. Bloquea re-ejecución del recovery hasta deploy.
+//
+// VERSION 1.5.8 (2026-05-28): hot-patch anti-freeze
+//   - yield + Apollo drain periódico en prefetch
+//   - cap _log + debounce _persist
+//   - Datadog stop antes de showPanel
+//
 // VERSION 1.5.7 (2026-05-28): Call A resuelve partNumberGroupId del CSV (no del pn cacheado)
 //   - Bug confirmado en piloto 50 PNs (post-1.5.6): 3 PNs Resortes y Partes
 //     (2934-D5/D6/X4) con `Grupo = "Aleta de Tiburón"` en el CSV se quedaron
@@ -111,7 +144,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.8';
+  const VERSION = '1.5.9';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -1514,6 +1547,13 @@ const BulkUpload = (() => {
   // customInputs viene como objeto JS en AllPartNumbers (verificado en scan
   // 2026-05-20); el branch del JSON.parse queda como defensa por si Steelhead
   // cambia el shape en el futuro.
+  // 1.5.9 FIX CRÍTICO: ANTES (≤1.5.8) este shape NO guardaba `customInputs`.
+  // En STEP 6, `mergeCustomInputs(pn.customInputs, part)` recibía `undefined`
+  // → arrancaba con `{}` vacío → cuando el CSV no traía cols de customInputs
+  // (diff-mode), devolvía null → el fallback `mergedCI || pn.customInputs || {}`
+  // bajaba a `{}` → SH (REPLACE-semantics) blanqueaba QuoteIBMS, BaseMetal,
+  // DatosFacturacion, DatosPlanificacion, NotasAdicionales del PN.
+  // Daño confirmado: ~80% de PNs procesados en recovery dual-source v104.
   function extractPNShape(n) {
     let ci = null;
     if (typeof n.customInputs === 'string') {
@@ -1538,6 +1578,7 @@ const BulkUpload = (() => {
       customerId: n.customerByCustomerId?.id || n.customerId,
       metalBase,
       quoteIBMS,
+      customInputs: ci || null,
       labels,
       labelObjs,
       archivedAt: n.archivedAt || null,

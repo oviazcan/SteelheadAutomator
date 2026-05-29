@@ -1,6 +1,113 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.8 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.9 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.9 (2026-05-28) — FIX CRÍTICO: preservar `customInputs` en MODIFY
+
+### Síntoma
+Post-mortem del recovery dual-source v104 (corrida `bulk-upload-report-82432bc9`,
+~16,343 PNs procesados). El operador reportó que los 21 PNs que fallaron con
+`Archive dups HTTP 400` no tenían `customInputs` — específicamente `QuoteIBMS`.
+Al inspeccionar más a fondo:
+
+- **Sample estratificado de 50 PNs** (script `inspect-ci-damage-sample.js`):
+  - 40/50 (**80%**) tenían `customInputs` **totalmente vacío**.
+  - 40/50 (**80%**) tenían `DatosAdicionalesNP` vacío.
+  - 0/50 conservaban `QuoteIBMS`.
+  - 2/50 conservaban `BaseMetal`.
+  - 0/50 conservaban `DatosPlanificacion` o `NotasAdicionales`.
+
+Daño estimado a escala completa: **~13,000 PNs blanqueados totales** + **~3,000
+con merge parcial** (solo lo que el CSV traía sobrevivió, el resto se borró).
+
+### Diagnóstico
+
+`extractPNShape(n)` (línea 1517) construye el shape mínimo que alimenta a
+`classifyPNs` y `enrichWorker`. Hasta 1.5.8 NUNCA guardaba el objeto
+`customInputs` en el shape — derivaba dos strings de conveniencia (`metalBase`,
+`quoteIBMS`) y descartaba el resto.
+
+En STEP 6 (`enrichWorker`, línea 4995):
+```js
+const mergedCI = mergeCustomInputs(pn.customInputs, part);
+```
+recibía `existing = undefined` → `mergeCustomInputs` arrancaba con `{}` vacío.
+Dos paths de daño:
+
+1. **CSV vacío en customInputs (diff-mode del dual_source_recovery):**
+   `mergeCustomInputs` no agrega nada → devuelve `null` (por
+   `Object.keys(ci).length > 0 ? ci : null`) → el fallback en Call A/B
+   ```js
+   customInputs: mergedCI || pn.customInputs || {}
+   ```
+   bajaba a `{}` → SH (REPLACE-semantics) borraba todo el `customInputs` del PN.
+
+2. **CSV con SOLO algunos campos:** mergeCustomInputs devolvía únicamente esos
+   campos (ej. `{DatosAdicionalesNP:{BaseMetal:...}}`) → SH borraba todo lo
+   demás (`QuoteIBMS`, `EstacionIBMS`, `Plano`, `DatosFacturacion`, etc).
+
+El STEP 6b cleanup (línea 5572) **no fue afectado** — usa `pnNode.customInputs`
+desde `GetPartNumber` (full fetch).
+
+### Fix
+
+One-liner en `extractPNShape` — agregar `customInputs: ci || null` al return.
+`ci` ya estaba poblado dentro de la función desde el parsing existente del
+nodo de `AllPartNumbers`. Con `existing` correctamente poblado,
+`mergeCustomInputs` hace deep clone + overlay del CSV preservando los campos
+no tocados.
+
+```diff
+   return {
+     id: n.id,
+     name: n.name,
+     customerId: n.customerByCustomerId?.id || n.customerId,
+     metalBase,
+     quoteIBMS,
++    customInputs: ci || null,
+     labels,
+     labelObjs,
+     archivedAt: n.archivedAt || null,
+     defaultProcessNodeId: ...,
+     processName: ...,
+   };
+```
+
+### Por qué el bug pasó tan tiempo desapercibido
+
+- En cargas de cotización **legacy** (`v9`, `v10` template), el CSV traía
+  típicamente `BaseMetal`, `QuoteIBMS`, `CodigoSAT`, etc. en cada fila, así que
+  `mergeCustomInputs` reconstruía un payload "completo enough" desde el CSV
+  → el blanqueo era cosmético (perdías sólo `NotasAdicionales` y campos no
+  contemplados en el template).
+- El **diff-mode** del `dual_source_recovery.py` v1.0.3+ rompe esa premisa:
+  intencionalmente emite columnas vacías cuando la BD coincide con SH (para
+  minimizar payload). El bug latente se volvió daño masivo.
+
+### Versiones
+- `BU_VERSION`: 1.5.8 → 1.5.9
+- `config.version`: 1.6.13 → 1.6.14
+- Commits: pendientes de approval del usuario antes de commit/deploy
+
+### Plan de validación
+1. **Pre-deploy**: smoke test local con un CSV de 5 PNs en diff-mode (CSV sin
+   cols de customInputs). Inspeccionar `customInputs` post-run en SH para los
+   5 vs el snapshot pre-run — debe quedar **byte-exact**.
+2. **Pre-deploy**: smoke test con CSV trayendo SOLO `BaseMetal`. Inspeccionar
+   que `QuoteIBMS`, `EstacionIBMS`, etc. **se preserven** del PN existente.
+3. **Post-deploy**: reanudar plan de recovery (#18) SOLO después de #23
+   (inventario) + #24 (restauración del daño previo).
+
+### Pendientes derivados
+- #23: inventariar los 16,343 PNs del recovery v104 contra BD original para
+  saber exactamente cuántos quedaron blank vs parcial.
+- #24: armar script de restauración que repinte `customInputs` desde BD
+  (TLC + MTY) para los PNs afectados.
+- Caso adicional a investigar (no bloqueante): el campo
+  `partNumberLocations` también se manda como `[]` literal en Call A/B,
+  mismo patrón de pérdida potencial — verificar en próximo audit.
+
+---
 
 ## 1.5.8 (2026-05-28) — Hot-patch anti-freeze del prefetch (yield + drain + cap log)
 
