@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoC PDF Rendering Blank — Root Cause &amp; Resolution</title>
+<style>
+  :root{--ink:#1a2230;--muted:#5b6573;--line:#e3e8ef;--bg:#f6f8fb;--accent:#0b6bcb;--bad:#c0392b;--good:#1e8e5a;--warn:#b7791f}
+  *{box-sizing:border-box}
+  body{margin:0;font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a2230;background:#f6f8fb;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:40px 24px 80px}
+  header.head{border-bottom:3px solid #0b6bcb;padding-bottom:18px;margin-bottom:8px}
+  .eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#0b6bcb;font-weight:700;margin:0}
+  h1{font-size:28px;line-height:1.25;margin:6px 0 10px}
+  .meta{font-size:13px;color:#5b6573;display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:8px}
+  .meta b{color:#1a2230;font-weight:600}
+  h2{font-size:19px;margin:34px 0 10px;padding-bottom:6px;border-bottom:1px solid #e3e8ef}
+  h3{font-size:15px;margin:22px 0 6px;color:#243047}
+  p{margin:10px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px;background:#eef2f7;padding:1.5px 6px;border-radius:5px;color:#1a2230}
+  pre{background:#0f1729;color:#e6edf3;padding:16px 18px;border-radius:10px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.55}
+  pre .c{color:#7d8aa3}
+  pre .k{color:#79c0ff}
+  pre .s{color:#a5d6ff}
+  pre .r{color:#ff7b72}
+  .callout{border-left:4px solid #0b6bcb;background:#eef4fc;padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0}
+  .callout.bad{border-color:#c0392b;background:#fdeeec}
+  .callout.good{border-color:#1e8e5a;background:#eaf6f0}
+  .callout.warn{border-color:#b7791f;background:#fbf3e2}
+  .callout p{margin:4px 0}
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14px}
+  th,td{border:1px solid #e3e8ef;padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:#eef2f7;font-weight:600}
+  td.ok{color:#1e8e5a;font-weight:600}
+  td.no{color:#c0392b;font-weight:600}
+  ol,ul{margin:10px 0;padding-left:22px}
+  li{margin:6px 0}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 9px;border-radius:20px;text-transform:uppercase}
+  .tag.bad{background:#fdeeec;color:#c0392b}
+  .tag.good{background:#eaf6f0;color:#1e8e5a}
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid #e3e8ef;font-size:12.5px;color:#5b6573}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="head">
+  <p class="eyebrow">Steelhead ERP · Bug Report &amp; Resolution</p>
+  <h1>Certificate of Conformance PDF renders blank when a spec parameter has no recorded measurement</h1>
+  <div class="meta">
+    <span><b>Template:</b> <code>pdfType = CERTIFICATION_TEMPLATE</code> (pdfTemplateId 1294239)</span>
+    <span><b>Domain:</b> Ecoplating (TLC)</span>
+    <span><b>Date:</b> 2026-05-29</span>
+    <span><b>Status:</b> <span class="tag good">Worked around client-side</span></span>
+  </div>
+</header>
+
+<h2>1. Summary</h2>
+<p>
+  Some Certificates of Conformance (CoC) were generated <strong>blank</strong>: the PDF kept the header and
+  footer but the <em>entire body</em> (Related Documents, Production Data, and the measurements table) was
+  missing. We traced this to the <strong>PDFGeneratorAPI certification template</strong>: it does not guard
+  against a <code>null</code> <code>value</code> on spec parameters that were defined but never measured.
+  Accessing a property of that <code>null</code> throws during render and drops the whole per-part body block.
+  We deployed a workaround in the low-code <code>getPdfCustomization</code> hook, but the underlying fragility
+  lives in the template and would be best fixed on the Steelhead side.
+</p>
+
+<h2>2. Symptom</h2>
+<p>
+  Operators reported that certificates <strong>#38</strong> and <strong>#39</strong> printed blank, while
+  <strong>#35</strong> and <strong>#37</strong> printed correctly. "Blank" did <em>not</em> mean a zero-byte file —
+  the PDFs were 200&ndash;280&nbsp;KB and rendered the company header, customer block, the certification
+  statement, and the "Certified by" footer. What was missing was the body:
+</p>
+<ul>
+  <li><strong>Related Documents</strong> (PO, Work Order, Lot)</li>
+  <li><strong>Production Data</strong> (Part Number, Quantity, Weight)</li>
+  <li>The <strong>measurements table</strong> (attribute / unit / min / max / measurement / inspector)</li>
+</ul>
+
+<h2>3. Investigation</h2>
+<p>We ruled out the obvious suspects with direct evidence:</p>
+<ul>
+  <li><strong>Not an empty parts list.</strong> Cert&nbsp;#38 genuinely has 0 associated parts (an expected
+      empty case). But cert&nbsp;#39 had <strong>9 measurements linked to parts transfer accounts</strong> and
+      still rendered blank.</li>
+  <li><strong>Not the low-code hook.</strong> The hook produced a valid <code>additionalPayload</code> for
+      cert&nbsp;#39: a one-element <code>partsTransferAccounts</code> with
+      <code>quantityWithConversion = "Cantidad: 550 Peso: 16.56 KGM"</code>. The hook ran without throwing.</li>
+  <li><strong>The differentiator.</strong> A structural diff of cert #37 (renders) vs cert #39 (blank) surfaced
+      one decisive divergence: in cert&nbsp;#39, several <code>specs[].specFields[].valuesAndParams[]</code>
+      entries had <code>value: null</code> — parameters that were <em>defined but never measured</em>. Cert #37
+      had none.</li>
+</ul>
+
+<table>
+  <thead><tr><th>Certificate</th><th>Parameters with <code>value: null</code></th><th>Body renders?</th></tr></thead>
+  <tbody>
+    <tr><td>#35, #37</td><td>0</td><td class="ok">Yes — full body</td></tr>
+    <tr><td>#39</td><td>5 (e.g. "Aspecto Visual" / Visual Appearance: 0 of 2 measured)</td><td class="no">No — body disappears</td></tr>
+    <tr><td>#38</td><td>n/a — 0 parts associated</td><td class="no">Empty by design (data, not a bug)</td></tr>
+  </tbody>
+</table>
+
+<h3>Confirmation (without altering the certificate)</h3>
+<p>
+  We replayed <code>GetPdfTemplateOutputToUserFile</code> with cert #39's real payload:
+</p>
+<table>
+  <thead><tr><th>Payload</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td>As-is (control)</td><td class="no">1 page — empty body (reproduces the bug)</td></tr>
+    <tr><td>With <code>value: null</code> entries removed</td><td class="ok">3 pages — full body (Weight 16.56 KGM + measurements table)</td></tr>
+  </tbody>
+</table>
+
+<h2>4. Root Cause</h2>
+<div class="callout bad">
+  <p>
+    The certification template iterates <code>specs[].specFields[].valuesAndParams[]</code> and reads fields
+    off each entry's <code>value</code> object (e.g. <code>value.recordedValueAsString</code>,
+    <code>value.passed</code>). For a parameter that was defined but never measured, <code>value</code> is
+    <code>null</code>. Reading a property of <code>null</code> throws during rendering, and because the entire
+    per-part body section is built inside that same iteration, the <strong>whole body block fails to render</strong>.
+    The header and footer live outside that block, which is why they still appear.
+  </p>
+</div>
+<p>
+  In other words: a single unmeasured parameter is enough to blank the entire body of an otherwise valid
+  certificate.
+</p>
+
+<h2>5. Our workaround (low-code hook)</h2>
+<p>
+  Because we cannot edit the PDFGeneratorAPI template directly, we hardened the low-code
+  <code>getPdfCustomization</code> hook (<code>pdfType = CERTIFICATION_TEMPLATE</code>) to strip unmeasured
+  entries before they reach the template:
+</p>
+<pre><span class="c">// Drop measurement entries that were never recorded (value === null),</span>
+<span class="c">// which otherwise blank the entire certificate body.</span>
+<span class="k">const</span> hasValue = (entry) =&gt; !!entry &amp;&amp; entry.value != <span class="r">null</span>;
+
+partsTransferAccounts.forEach((pta) =&gt; {
+  (pta.specs ?? []).forEach((spec) =&gt;
+    (spec.specFields ?? []).forEach((sf) =&gt; {
+      sf.valuesAndParams      = (sf.valuesAndParams ?? []).filter(hasValue);
+      sf.couponValueAndParams = (sf.couponValueAndParams ?? []).filter(hasValue);
+    }));
+  (pta.partAccountAncestors ?? []).forEach((anc) =&gt; {
+    anc.specValuePartsTransferAccounts =
+      (anc.specValuePartsTransferAccounts ?? []).filter(hasValue);
+  });
+});</pre>
+<div class="callout warn">
+  <p><strong>Trade-off:</strong> unmeasured parameters no longer print on the certificate (same behavior as a
+  fully-measured certificate, which only shows recorded rows). Nothing is fabricated — we simply stop the
+  document from blanking entirely.</p>
+</div>
+<p>Deployed as the active <code>CERTIFICATION_TEMPLATE</code> low-code version <code>id = 10542</code> and verified against the real cert #39 payload.</p>
+
+<h2>6. Recommendation for Steelhead</h2>
+<div class="callout good">
+  <p>
+    The durable fix belongs in the <strong>PDFGeneratorAPI certification template</strong>: null-guard every
+    access to a parameter's <code>value</code> (e.g. only render the measurement cell when
+    <code>value</code> is present, otherwise leave it empty). That way a parameter defined but not yet measured
+    renders as a blank cell instead of crashing the whole document body.
+  </p>
+</div>
+<p>This would also help any other tenant whose certificates include not-yet-measured spec parameters, and would let unmeasured rows still appear on the CoC (which our hook-side workaround currently drops).</p>
+
+<h2>7. Reproduction notes</h2>
+<ol>
+  <li>Create a CoC whose spec has at least one parameter with no recorded measurement (<code>value: null</code>).</li>
+  <li>Generate the certificate PDF.</li>
+  <li><strong>Observed:</strong> header + footer render; the body (Related Documents, Production Data, measurements table) is missing.</li>
+  <li><strong>Expected:</strong> body renders, with the unmeasured parameter shown as an empty/blank measurement cell.</li>
+</ol>
+
+<footer>
+  Prepared by the Ecoplating integration team · Steelhead domain TLC · 2026-05-29.<br>
+  Active workaround: low-code <code>CERTIFICATION_TEMPLATE</code> version 10542. Underlying fix requested in the PDFGeneratorAPI template.
+</footer>
+
+</div>
+</body>
+</html>
