@@ -7,8 +7,17 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
     maximumFractionDigits: 2,
   });
 
+  // Saneado anti-blanqueo: la plantilla de PDFGeneratorAPI accede a campos de
+  // `value` al armar la tabla de mediciones. Un parámetro definido pero SIN
+  // medición registrada llega con `value: null` y truena el render, lo que
+  // blanquea el CUERPO COMPLETO del certificado (encabezado y pie sobreviven).
+  // Visto en certs cuyas piezas ya se embarcaron antes de capturar todas las
+  // mediciones (ej. cert 39: "Aspecto Visual" 0/2 medidos). Descartar esas
+  // entradas hace que el cert renderice con las mediciones que SÍ existen.
+  const hasValue = (entry: any): boolean => !!entry && entry.value != null;
+
   try {
-    result.additionalPayload = inputs.partsTransferAccounts.map((pta) => {
+    result.additionalPayload = (inputs.partsTransferAccounts ?? []).map((pta) => {
       const qty = pta.quantity ?? 0;
 
       // Safely get the first valid conversion.
@@ -24,6 +33,19 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
         const unitName = conversion.unit!.name!.replace(/\bKilogramo\b/gi, "");
         quantityWithConversion = `Cantidad: ${nf2.format(qty)} Peso: ${nf2.format(convertedValue)} ${unitName}`;
       }
+
+      // Quitar mediciones con value === null (parámetros nunca medidos).
+      (pta.specs ?? []).forEach((spec) => {
+        (spec.specFields ?? []).forEach((sf) => {
+          if (sf.valuesAndParams) sf.valuesAndParams = sf.valuesAndParams.filter(hasValue);
+          if (sf.couponValueAndParams) sf.couponValueAndParams = sf.couponValueAndParams.filter(hasValue);
+        });
+      });
+      (pta.partAccountAncestors ?? []).forEach((anc) => {
+        if (anc.specValuePartsTransferAccounts) {
+          anc.specValuePartsTransferAccounts = anc.specValuePartsTransferAccounts.filter(hasValue);
+        }
+      });
 
       return {
         ...pta,
