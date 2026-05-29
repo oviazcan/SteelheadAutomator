@@ -1,6 +1,63 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.9 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.10 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.10 (2026-05-28) — FIX: archive-dups HTTP 400 con dims malformados
+
+### Síntoma
+Pilot run de 10 PNs con 1.5.9 (`bulk-upload-report-eb242ade`) — 9/10 fallaron con:
+```
+Archive dups <NP> HTTP 400: Variable "$input" got invalid value {} at "input[0].partNumberDimensions[0]"; Field "dimensionId" of required type "Int!" was not provided.
+```
+Mismo síntoma que los 21 PNs que erroraron en la corrida v104 (bug #17 de la
+post-mortem). El cleanup de la regla 1.4.38 (STEP 6b — archive de
+specFieldParams duplicados) construye un `UpdatePartNumber` mínimo que incluye
+`partNumberDimensions` rebroadcasteado tal cual viene de `GetPartNumber` —
+y para estos PNs SH devuelve filas con `dimensionId=null`, `unitId=null`.
+Cuando esos `null` se serializan a JSON, GraphQL los ve como `{}` y rechaza
+el input.
+
+### Diagnóstico
+
+`cleanupExistingDims` (línea 5599 — STEP 6b) hacía:
+```js
+const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
+  .filter(d => !d.archivedAt)
+  .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+```
+Filtraba solo por `archivedAt`. Para los PNs afectados, SH devolvía rows
+"huérfanos" con todos los campos nulos (legacy data o corrupción histórica).
+El mapper las pasaba al payload → HTTP 400 → cleanup no se ejecutaba →
+specFieldParams duplicados quedaban vivos en el PN.
+
+### Fix
+
+One-liner — filtrar también `dimensionId` y `unitId` no-null antes del map:
+```diff
+ const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
+-  .filter(d => !d.archivedAt)
++  .filter(d => !d.archivedAt && d.dimensionId && d.unitId != null)
+   .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+```
+
+Resultado: dims malformados se ignoran silenciosamente — el cleanup procede
+con dims válidos (o ninguno) y el archive-dups completa el commit en SH.
+
+### Plan de validación
+
+1. Re-generar CSV pilot de 10 PNs con `customInputs` poblados (ver tools).
+2. Verificar 0 errores `Archive dups HTTP 400` en el report.
+3. Validar snapshot BEFORE/AFTER de `customInputs` para confirmar que 1.5.9
+   no fue regresionado (preservación intacta).
+
+### Pendientes derivados
+
+- Aplicar la misma defensa en el resto de payloads de `UpdatePartNumber` /
+  `SavePartNumber` que rebroadcasten dims del fetch (Call A/B, STEP 5).
+- Investigar de dónde salen los rows `{dimensionId:null, unitId:null}` en SH
+  — probablemente legacy de un import antiguo. Worth auditar y archivar.
+
+---
 
 ## 1.5.9 (2026-05-28) — FIX CRÍTICO: preservar `customInputs` en MODIFY
 
