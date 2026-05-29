@@ -1,5 +1,18 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.10 (2026-05-28): fix archive-dups HTTP 400 con dims malformados
+//   - Bug confirmado en recovery v104 (21 PNs erroraron) Y en pilot 10 con 1.5.9
+//     (mismos 9 PNs erroraron de nuevo): STEP 6b cleanup mandaba dim entries
+//     `{dimensionId:undefined,microQuantity:undefined,unitId:undefined}` cuando
+//     el pnNode tenía partNumberDimensions rows con dimensionId=null o unitId=null
+//     (residuo histórico). JSON.stringify omitía los 3 fields → SH veía
+//     `partNumberDimensions:[{}]` → HTTP 400 → archive-dups quedaba sin completar.
+//   - Fix one-liner: `.filter(d => d.dimensionId && d.unitId != null)` antes del
+//     map. Dims malformados se omiten del cleanupInput; si todos los dims del PN
+//     son basura, el array queda vacío → SH borra dims malformados (lo deseado).
+//   - customInputs NO fue afectado por este bug (Call A/B son mutations
+//     separates; el archive-dups solo afecta specFieldParams).
+//
 // VERSION 1.5.9 (2026-05-28): FIX CRÍTICO — preservar customInputs en MODIFY
 //   - Bug confirmado en post-mortem del recovery dual-source v104 (samp 50 PNs):
 //     ~80% de PNs procesados perdieron QuoteIBMS, BaseMetal, DatosFacturacion,
@@ -144,7 +157,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.9';
+  const VERSION = '1.5.10';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -5596,8 +5609,18 @@ const BulkUpload = (() => {
             const cleanupExistingDimCustomValueIds = (pnNode.acctPnDimensionValueSelectionsByPartNumberId?.nodes || [])
               .map(sel => sel.dimensionCustomValueId)
               .filter(Boolean);
+            // 1.5.10: filtrar dims malformados (dimensionId=null o unitId=null) ANTES
+            // del map. Antes (≤1.5.9) si el PN tenía dim rows con dimensionId=null o
+            // unitId=null (residuo histórico — los 21 PNs de FEDERAL-MOGUL/SCHNEIDER/
+            // FISHER del recovery v104), el map producía {dimensionId:undefined,
+            // microQuantity:undefined, unitId:undefined} → JSON.stringify omitía los 3
+            // → SH veía partNumberDimensions:[{},{},{}] → HTTP 400 `Variable "$input"
+            // got invalid value {} at "input[0].partNumberDimensions[0]"`. El error
+            // mataba la mutación atómica del cleanup → specFieldParams duplicados nunca
+            // se archivaban → regla 1.4.38 quedaba sin completar. customInputs y demás
+            // NO se vieron afectados porque eran de SavePartNumber Call A/B (separate).
             const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
-              .filter(d => !d.archivedAt)
+              .filter(d => !d.archivedAt && d.dimensionId && d.unitId != null)
               .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
             // 1.5.7: STEP 6b también resuelve grupo del CSV (no del cache).
             // Si Call B fallara silently con partNumberGroupId, este cleanup re-aplica.
