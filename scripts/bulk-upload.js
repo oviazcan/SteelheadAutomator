@@ -1,5 +1,19 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.12 (2026-05-30): combinación no existente — modal blocking en
+//   resolución de procesos. En vez de throw inmediato cuando un nombre de
+//   proceso del CSV no existe en el catálogo de Steelhead (caso típico:
+//   fórmula que resuelve "Combinación no existente" o equivalente), acumular
+//   los nombres unresolved y al final del loop preguntar al usuario qué hacer:
+//     - Preservar: vaciar `procesoOverride` de las filas afectadas → caen en
+//       la lógica existente de "vacío = heredar del PN existente" (línea 3766+).
+//       PNs NUEVOS sin proceso heredable → error controlado en errors[] y skip
+//       (no abort de toda la corrida).
+//     - Cancelar: throw como antes, corrida abortada para corregir el CSV.
+//   Helper confirmUnresolvedProcesses() reutiliza dl9-overlay/modal.
+//   Semántica de "-" (DASH) y "" (vacío) sin cambios — el dash sigue borrando
+//   el default process, el vacío sigue heredando.
+//
 // VERSION 1.5.11 (2026-05-28): enrich-orphan visible — reportar PNs sin entry en pnLookup
 //   - Bug confirmado en corrida 139b77b8 cliente 166246 quote 197 (factura
 //     asociada bloqueaba SaveManyPartNumberPrices): 27 NEW Pase 3 quedaron en
@@ -2002,6 +2016,37 @@ const BulkUpload = (() => {
   function createOverlay() { const ov = document.createElement('div'); ov.className = 'dl9-overlay'; const md = document.createElement('div'); md.className = 'dl9-modal'; ov.appendChild(md); document.body.appendChild(ov); return { overlay: ov, modal: md }; }
   function removeOverlay(ov) { if (ov?.parentNode) ov.parentNode.removeChild(ov); }
 
+  // 1.5.12: modal blocking cuando hay nombres de proceso que no existen en el
+  // catálogo de Steelhead (típicamente fórmulas como "Combinación no existente").
+  // Resuelve con 'preserve' (tratar esos nombres como vacío → heredar proceso
+  // actual del PN) o 'abort' (cancelar el run). No se invoca uno por uno; se
+  // invoca una sola vez con la lista de nombres únicos no resueltos.
+  function confirmUnresolvedProcesses(names) {
+    return new Promise(resolve => {
+      injectStyles();
+      const { overlay, modal } = createOverlay();
+      const safe = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const list = names.map(n => `<li><code>${safe(n)}</code></li>`).join('');
+      modal.innerHTML = `
+        <h2>Procesos no encontrados en catálogo</h2>
+        <p class="dl9-sub">Los siguientes <b>${names.length}</b> nombre(s) de proceso aparecen en el CSV pero NO existen en el catálogo de Steelhead:</p>
+        <ul style="margin:8px 0 12px 24px;line-height:1.6;font-family:monospace;font-size:13px;color:#fbbf24;max-height:240px;overflow-y:auto">${list}</ul>
+        <p class="dl9-sub" style="color:#cbd5e1">Pueden ser fórmulas que no resolvieron (ej. <i>"Combinación no existente"</i>) o procesos aún no creados.</p>
+        <p class="dl9-sub" style="margin-top:12px;color:#e2e8f0"><b>¿Qué quieres hacer con las filas afectadas?</b></p>
+        <ul style="margin:4px 0 12px 24px;line-height:1.6;font-size:13px;color:#e2e8f0">
+          <li><b>Preservar:</b> conservar el proceso ya cargado en cada PN (equivale a dejar la celda <i>vacía</i>). PNs NUEVOS sin proceso heredable serán marcados como error y omitidos.</li>
+          <li><b>Cancelar:</b> abortar la corrida para corregir el CSV.</li>
+        </ul>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-unproc-abort">Cancelar corrida</button>
+          <button class="dl9-btn dl9-btn-exec" id="dl9-unproc-preserve">Preservar proceso actual</button>
+        </div>`;
+      const finish = (choice) => { removeOverlay(overlay); resolve(choice); };
+      modal.querySelector('#dl9-unproc-abort').addEventListener('click', () => finish('abort'));
+      modal.querySelector('#dl9-unproc-preserve').addEventListener('click', () => finish('preserve'));
+    });
+  }
+
   function showPreview(header, parts, pnStatus, info, isSoloPN) {
     return new Promise(resolve => {
       injectStyles(); const { overlay, modal } = createOverlay();
@@ -3484,6 +3529,10 @@ const BulkUpload = (() => {
         setPanelPhase(`Resolviendo procesos (${uniqueProcessNames.length})`);
         setPanelProgress(0, uniqueProcessNames.length);
       }
+      // 1.5.12: acumular nombres no resueltos en vez de throw inmediato. Al
+      // final del loop, si hay nombres unresolved, modal blocking pregunta al
+      // usuario si preservar (tratar como vacío → heredar del PN) o abortar.
+      const unresolvedNames = new Set();
       {
         let procDone = 0;
         for (const pname of uniqueProcessNames) {
@@ -3492,11 +3541,34 @@ const BulkUpload = (() => {
           const pd = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: `%${pname}%`, first: 50 });
           const pn2 = pd?.allProcessNodes?.nodes || pd?.pagedData?.nodes || [];
           const pr = pn2.find(p => p.name?.toUpperCase() === pname.toUpperCase()) || pn2.find(p => p.name?.toUpperCase().includes(pname.toUpperCase()));
-          if (!pr) throw new Error(`Proceso "${pname}" no encontrado en Steelhead.`);
-          processCache.set(pname, pr.id);
+          if (!pr) {
+            unresolvedNames.add(pname);
+          } else {
+            processCache.set(pname, pr.id);
+          }
           procDone++;
           setPanelProgress(procDone, uniqueProcessNames.length);
         }
+      }
+      if (unresolvedNames.size) {
+        const sample = [...unresolvedNames].slice(0, 5).join(', ');
+        log(`⚠ ${unresolvedNames.size} proceso(s) NO existen en catálogo de Steelhead: ${sample}${unresolvedNames.size > 5 ? '…' : ''}`);
+        const affectedRows = parts.filter(p => p.procesoOverride && unresolvedNames.has(p.procesoOverride)).length;
+        log(`  Filas afectadas: ${affectedRows}. Esperando decisión del usuario…`);
+        const choice = await confirmUnresolvedProcesses([...unresolvedNames]);
+        if (choice === 'abort') {
+          throw new Error(`Cancelado por usuario: ${unresolvedNames.size} proceso(s) no encontrado(s) en catálogo (${sample}${unresolvedNames.size > 5 ? '…' : ''}). Corrige el CSV y reintenta.`);
+        }
+        // 'preserve': los nombres unresolved pasan a tratarse como VACÍO (heredar
+        // del PN existente). El post-process tras pnStatus (~línea 3753) los
+        // resuelve: PN existente → hereda existingProcessId; PN NUEVO → error
+        // controlado en errors[] y omitido (no throw).
+        for (const p of parts) {
+          if (p.procesoOverride && unresolvedNames.has(p.procesoOverride)) {
+            p.procesoOverride = '';
+          }
+        }
+        log(`  Preservar: ${affectedRows} fila(s) heredarán proceso del PN existente (o error si NEW sin proceso).`);
       }
       // Annotate each part with its resolved processId and customerId
       for (const p of parts) {
