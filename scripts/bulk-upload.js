@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.12';
+  const VERSION = '1.5.13';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -1368,7 +1368,10 @@ const BulkUpload = (() => {
         archivado: toBool(g(row, COLS.archivado)),
         forzarDuplicado: toBool(g(row, COLS.forzar)),
         archivarAnterior: toBool(g(row, COLS.archivar)),
-        validacion1er: toBool(g(row, COLS.validacion)),
+        // 1.5.13: tri-state. CSV vacío → null (preserve existing optInOuts); explícito → bool.
+        // Antes (≤1.5.12) toBool('') devolvía false → optInOuts:[] desactivaba la validación 1er
+        // artículo en PNs que la tenían activa cuando la columna venía vacía intencionalmente.
+        validacion1er: (() => { const v = g(row, COLS.validacion); return v ? toBool(v) : null; })(),
         predictiveUsage,
         quoteIBMS: g(row, COLS.quoteIBMS),
         estacionIBMS: g(row, COLS.estacionIBMS),
@@ -3816,11 +3819,18 @@ const BulkUpload = (() => {
         await persistResumeState();
       }
 
-      // V10: Resolver proceso vacío / "-" según existence:
-      //   "-"   → set null (borrar default process)
-      //   ""    → copiar del PN existente; si es nuevo → error y skip
+      // 1.5.13: Resolver proceso vacío / "-" según existence (sin skip silencioso):
+      //   "-"   → set null + clearDefaultProcess=true (borrar default process)
+      //   ""    → heredar del PN existente; si no hay (NEW o existing sin proceso),
+      //            dejar processId=null y procesar igualmente (NO descartar la fila).
       //   name  → ya está resuelto desde processCache
-      const partsToSkip = new Set();
+      //
+      // Antes (≤1.5.12) un CSV con Proceso vacío descartaba silenciosamente la fila
+      // si el PN era NEW o si el PN existente no tenía defaultProcessNodeId. Resultado
+      // visible reportado por el usuario: CSV de 981 NPs → solo 1 llegó al modal de
+      // preview, las otras 980 desaparecieron sin warning visible. La regla de negocio
+      // correcta es "celda vacía = no-touch" → el PN se procesa con processId=null
+      // (SH acepta crear/modificar sin proceso default).
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i];
         const raw = p.procesoOverride;
@@ -3837,23 +3847,17 @@ const BulkUpload = (() => {
         // Vacío
         const st = pnStatus[i];
         if (st.status === 'new') {
-          errors.push(`PN "${p.pn}": Proceso vacío en PN NUEVO (no hay de dónde copiar). Ignorado.`);
-          partsToSkip.add(i);
+          p.processId = null;
+          warn(`PN "${p.pn}": Proceso vacío en PN NUEVO — se creará sin proceso default`);
           continue;
         }
         if (!st.existingProcessId) {
-          errors.push(`PN "${p.pn}": Proceso vacío y el PN existente no tiene defaultProcessNodeId. Ignorado.`);
-          partsToSkip.add(i);
+          p.processId = null;
+          warn(`PN "${p.pn}": Proceso vacío y existente sin defaultProcessNodeId — queda sin proceso`);
           continue;
         }
         p.processId = st.existingProcessId;
         log(`  PN "${p.pn}": Proceso heredado del PN existente (id:${st.existingProcessId})`);
-      }
-      if (partsToSkip.size) {
-        const filtered = parts.filter((_, i) => !partsToSkip.has(i));
-        const filteredStatus = pnStatus.filter((_, i) => !partsToSkip.has(i));
-        parts.length = 0; parts.push(...filtered);
-        pnStatus.length = 0; pnStatus.push(...filteredStatus);
       }
 
       // ── Metal Base validation ──
@@ -5147,7 +5151,12 @@ const BulkUpload = (() => {
           log(`  "${pn.name}": ${conflictingExtras.length} spec(s) colisionante(s) → calls dedicados (${conflictingExtras.map(c => `"${c.specName}" ⊥ "${c.sfName}"`).join(', ')})`);
         }
 
-        const mergedCI = mergeCustomInputs(pn.customInputs, part);
+        // 1.5.13: preserve-on-missing para customInputs. En modo SOLO_PN el pnLookup
+        // sintético tiene `customInputs: {}` (línea 4708) — sin este fallback al
+        // existingPnNode, mergeCustomInputs arrancaba desde {} y borraba todo lo que
+        // el CSV no traía (mismo mecanismo que el bug de 1.5.8 que vació 13k PNs,
+        // pero por el path SOLO_PN que el fix 1.5.9 no cubrió).
+        const mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
         // MODIFY-by-id sin pn: fallback al name del node existente
         const resolvedPnName = pn.name || (existingPnNode && existingPnNode.name) || (() => { throw new Error(`SavePartNumber sin name resuelto para id=${pn.id}`); })();
@@ -5187,11 +5196,16 @@ const BulkUpload = (() => {
 
         const identifierKey = `${idx}|${part.pn}|${part.customerId}`;
         if (!resumeIdentifierSet.has(identifierKey)) {
+          // 1.5.13: preserve-on-missing en Call A para descriptionMarkdown,
+          // customerFacingNotes, customInputs y geometryTypeId. En SOLO_PN el
+          // pn sintético tiene esos campos en '' o null hardcodeados (línea 4708);
+          // sin el fallback al existingPnNode, Call A borraba descripciones, notas
+          // externas, customInputs y tipo de geometría de PNs existentes.
           const identifierInput = {
             id: pn.id, name: resolvedPnName, customerId: pn.customerId || part.customerId,
-            descriptionMarkdown: pn.descriptionMarkdown || '',
-            customerFacingNotes: pn.customerFacingNotes || '',
-            customInputs: mergedCI || pn.customInputs || {},
+            descriptionMarkdown: existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? '',
+            customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
+            customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {},
             inputSchemaId: DOMAIN.inputSchemaId_PN,
             labelIds: labelIdsToSend,
             partNumberGroupId: pnGroupIdEarly,
@@ -5199,8 +5213,8 @@ const BulkUpload = (() => {
             // como un upsert idempotente de identificadores.
             // 1.5.5: dimensionCustomValueIds usa el mismo *ToSend que Call B para no
             // borrar Línea/Depto cuando el CSV no los trae o cuando el lookup falla.
-            defaultProcessNodeId: pn.defaultProcessNodeId || null,
-            geometryTypeId: pn.geometryTypeId || null,
+            defaultProcessNodeId: pn.defaultProcessNodeId ?? existingPnNode?.defaultProcessNodeId ?? null,
+            geometryTypeId: existingPnNode?.geometryTypeId ?? pn.geometryTypeId ?? null,
             inventoryItemInput: null, inventoryPredictedUsages: [],
             specsToApply: [], paramsToApply: [], partNumberDimensions: [],
             partNumberLocations: [], dimensionCustomValueIds: dimValueIdsToSend,
@@ -5239,26 +5253,43 @@ const BulkUpload = (() => {
         }
 
         // Dims — "-" en longitud = borrar dimensiones
+        // 1.5.13: preserve-on-missing para partNumberDimensions. SH hace REPLACE en
+        // este array — sin esto, un CSV sin columnas de dimensiones (long/ancho/alto/
+        // diámetros vacíos) mandaba [] y borraba los dims físicos del PN existente.
+        // Reusa el filtro de dims malformados del fix 1.5.10 (dimensionId/unitId null).
         const dimsAreDash = typeof part.dims.length === 'string' && isDash(part.dims.length);
-        const dims = dimsAreDash ? [] : buildDimensions(part.dims, DOMAIN);
-        const hasDims = dims.length > 0; if (hasDims) stats.dimsSet++;
+        const csvDims = dimsAreDash ? [] : buildDimensions(part.dims, DOMAIN);
+        const csvHasDims = csvDims.length > 0;
+        let dims;
+        if (dimsAreDash) {
+          dims = []; // explicit clear via sentinel
+        } else if (csvHasDims) {
+          dims = csvDims;
+        } else {
+          dims = (existingPnNode?.partNumberDimensionsByPartNumberId?.nodes || [])
+            .filter(d => !d.archivedAt && d.dimensionId && d.unitId != null)
+            .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+        }
+        const hasDims = csvHasDims; if (hasDims) stats.dimsSet++;
 
         // v11: resolver tipoGeometria → geometryTypeId.
         // Si la fila trae tipoGeometria (v11), usarlo (auto-create si no existe).
         // Si no trae tipoGeometria y hay dimensiones, usar fallback DOMAIN.geometryGenericaId (v10).
         // Si no hay geometria ni dims, heredar del PN existente o null.
+        // 1.5.13: cuando se hereda, usar existingPnNode (fuente de verdad) antes del
+        // pn sintético del pnLookup SOLO_PN (que tiene geometryTypeId: null hardcoded).
         let resolvedGeometryTypeId;
         if (part.tipoGeometria) {
           try {
             resolvedGeometryTypeId = await resolveGeometryTypeId(part.tipoGeometria);
           } catch (eGeo) {
             warn(`resolveGeometryTypeId "${part.tipoGeometria}" para "${part.pn}": ${String(eGeo).substring(0, 100)}`);
-            resolvedGeometryTypeId = hasDims ? DOMAIN.geometryGenericaId : (pn.geometryTypeId || null);
+            resolvedGeometryTypeId = hasDims ? DOMAIN.geometryGenericaId : (existingPnNode?.geometryTypeId ?? pn.geometryTypeId ?? null);
           }
         } else if (hasDims) {
           resolvedGeometryTypeId = DOMAIN.geometryGenericaId;
         } else {
-          resolvedGeometryTypeId = pn.geometryTypeId || null;
+          resolvedGeometryTypeId = existingPnNode?.geometryTypeId ?? pn.geometryTypeId ?? null;
         }
 
         // Predictive — 1.3.1: dash granular por material. SavePartNumber.inventoryPredictedUsages
@@ -5267,14 +5298,59 @@ const BulkUpload = (() => {
         const finalPredictive = part.predictiveUsage.filter(pu => !isDash(String(pu.usagePerPart)));
         if (finalPredictive.length) stats.predictiveSet++;
 
-        // OptIn: TRUE = activar, FALSE = desactivar (enviar [])
-        const optInOuts = [];
-        if (part.validacion1er) {
+        // OptIn — 1.5.13 tri-state:
+        //   true  → activar (push del/los processNodeId del dominio)
+        //   false → desactivar explícito (enviar [])
+        //   null  → CSV vacío → preserve existing (rebuild desde existingPnNode)
+        // Antes (≤1.5.12) toBool('') devolvía false y se enviaba [] silenciosamente,
+        // desactivando la validación 1er artículo en cualquier PN cuyo CSV no trajera
+        // la columna explícita.
+        let optInOuts = [];
+        if (part.validacion1er === true) {
           const nodeIds = DOMAIN.validacionProcessNodeIds || [DOMAIN.validacionProcessNodeId];
           for (const nodeId of nodeIds) {
             optInOuts.push({ processNodeId: nodeId, processNodeOccurrence: 1, cancelOthers: false });
           }
           stats.validacionSet++;
+        } else if (part.validacion1er === null) {
+          const exOpts = existingPnNode?.processNodePartNumberOptInoutsByPartNumberId?.nodes || [];
+          optInOuts = exOpts
+            .map(o => ({
+              processNodeId: o.processNodeId,
+              processNodeOccurrence: o.processNodeOccurrence ?? 1,
+              cancelOthers: o.cancelOthers ?? false,
+            }))
+            .filter(o => o.processNodeId != null);
+        }
+
+        // 1.5.13: preserve-on-missing para inventoryItemInput (unit conversions).
+        // SH trata null como "borrar inventoryItem" → un CSV sin KGM/CMK/LM borraba
+        // las conversiones existentes. Solo enviamos null cuando el usuario explícitamente
+        // usó dash en alguno de los campos uc. Si CSV vacío sin dash, reconstruimos el
+        // input desde existingPnNode.inventoryItemByPartNumberId.
+        let inventoryItemInputToSend;
+        if (ucDash) {
+          inventoryItemInputToSend = null; // explicit clear
+        } else if (ucs.length) {
+          inventoryItemInputToSend = { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] };
+        } else {
+          const exInv = existingPnNode?.inventoryItemByPartNumberId;
+          if (exInv) {
+            const existingUcs = (exInv.inventoryItemUnitConversionsByInventoryItemId?.nodes || [])
+              .map(n => ({ unitId: n.unitByUnitId?.id, factor: n.factor }))
+              .filter(u => u.unitId != null && u.factor != null);
+            inventoryItemInputToSend = {
+              materialId: exInv.materialByMaterialId?.id ?? null,
+              purchasable: false,
+              sourceMaterialConversionType: exInv.sourceMaterialConversionType ?? null,
+              providedMaterialConversionType: exInv.providedMaterialConversionType ?? null,
+              defaultLeadTime: exInv.defaultLeadTime ?? null,
+              unitConversions: existingUcs,
+              inventoryItemVendors: []
+            };
+          } else {
+            inventoryItemInputToSend = null;
+          }
         }
 
         // Grupo — 1.5.7: ya resuelto antes de Call A (pnGroupIdEarly). Mismo valor en A y B.
@@ -5283,13 +5359,19 @@ const BulkUpload = (() => {
         // labelIdsToSend y dimValueIdsToSend ya fueron resueltos arriba (1.5.5).
         const pnProcessId = part.processId;
 
+        // 1.5.13: preserve-on-missing en Call B para descripción, notas externas,
+        // customInputs e inventoryItemInput. descriptionMarkdown/customerFacingNotes
+        // ahora caen al existingPnNode antes que al pn sintético (que en SOLO_PN es '').
+        // customInputs reusa el mismo fallback que Call A. inventoryItemInput usa la
+        // variable inventoryItemInputToSend ya resuelta arriba con preserve-on-missing.
         const pnInput = {
           id: pn.id, name: resolvedPnName, customerId: pn.customerId || part.customerId, defaultProcessNodeId: pnProcessId,
-          descriptionMarkdown: resolveStr(part.descripcion, pn.descriptionMarkdown || ''), customerFacingNotes: pn.customerFacingNotes || '',
-          customInputs: mergedCI || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds: labelIdsToSend,
+          descriptionMarkdown: resolveStr(part.descripcion, existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? ''),
+          customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
+          customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds: labelIdsToSend,
           partNumberGroupId: pnGroupId,
           geometryTypeId: resolvedGeometryTypeId,
-          inventoryItemInput: ucs.length ? { materialId: null, purchasable: false, sourceMaterialConversionType: null, providedMaterialConversionType: null, defaultLeadTime: null, unitConversions: ucs, inventoryItemVendors: [] } : null,
+          inventoryItemInput: inventoryItemInputToSend,
           inventoryPredictedUsages: finalPredictive
             .filter(pu => !existingPredictedMap.get(pn.id)?.has(String(pu.inventoryItemId)))
             .map(pu => ({ inventoryItemId: pu.inventoryItemId, usagePerPart: pu.usagePerPart, lowCodeId: null })),
@@ -5378,6 +5460,11 @@ const BulkUpload = (() => {
         // SH lo acepta, queda registrado; si lo rechaza, el error sí es
         // visible y cae a errors[].
         if (pnSucceeded && conflictingExtras.length) {
+          // 1.5.13: preserve-on-missing también en este call dedicado. Antes
+          // hardcodeaba inventoryItemInput:null y optInOuts:[] — si el PN tenía
+          // unitConversions o validación 1er artículo activa y se disparaba este
+          // path por specs colisionantes, ambas se borraban en silencio. Reusamos
+          // los valores ya resueltos de pnInput.
           const baseInput = {
             id: pn.id, name: pnInput.name, customerId: pnInput.customerId,
             defaultProcessNodeId: pnInput.defaultProcessNodeId,
@@ -5386,9 +5473,9 @@ const BulkUpload = (() => {
             customInputs: pnInput.customInputs, inputSchemaId: pnInput.inputSchemaId,
             labelIds: pnInput.labelIds, partNumberGroupId: pnInput.partNumberGroupId,
             geometryTypeId: pnInput.geometryTypeId,
-            inventoryItemInput: null, inventoryPredictedUsages: [], paramsToApply: [],
+            inventoryItemInput: pnInput.inventoryItemInput, inventoryPredictedUsages: [], paramsToApply: [],
             isCoupon: false, isOneOff: false, isTemplatePartNumber: false,
-            optInOuts: [], ownerIds: [], defaults: [],
+            optInOuts: pnInput.optInOuts, ownerIds: [], defaults: [],
             dimensionCustomValueIds: pnInput.dimensionCustomValueIds,
             partNumberDimensions: pnInput.partNumberDimensions, partNumberLocations: [],
             partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [],
