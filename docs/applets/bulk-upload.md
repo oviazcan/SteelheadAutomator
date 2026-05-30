@@ -1,6 +1,74 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.11 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.12 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.12 (2026-05-30) — Proceso no encontrado: modal blocking (preserve vs abort)
+
+### Síntoma
+La fórmula del Excel que genera la columna `Proceso` resuelve a un texto literal
+(ej. `"Combinación no existente"`) cuando no encuentra match contra la matriz
+de acabados/metales. Hasta 1.5.11, ese texto llegaba al script y el resolver
+de procesos hacía `throw new Error("Proceso \"X\" no encontrado en Steelhead.")`
+**abortando toda la corrida** — incluso si el operador en realidad quería
+preservar el proceso ya cargado en el PN (es decir, no tocarlo).
+
+### Diagnóstico
+- `bulk-upload.js:3495` (antes del fix) hacía `throw` síncrono dentro del loop
+  `for (const pname of uniqueProcessNames)`.
+- El post-process en `~líneas 3753-3779` ya soportaba 3 semánticas para el
+  CSV: nombre válido = set ese proceso; `-` = BORRAR default; `""` = heredar
+  del PN existente (con error y skip si NEW sin default).
+- El path "heredar" (vacío) era exactamente lo que el operador quería para los
+  nombres unresolved, pero no había forma de llegar ahí sin re-editar el CSV.
+
+### Fix
+Dos cambios en `remote/scripts/bulk-upload.js`:
+
+1. **Nuevo helper `confirmUnresolvedProcesses(names)`** (~línea 2010): modal
+   blocking que lista los nombres únicos no encontrados y devuelve
+   `Promise<'preserve' | 'abort'>`. Reutiliza `createOverlay` y `injectStyles`
+   del patrón existente. El texto explica explícitamente la equivalencia
+   "preservar = vacío = heredar".
+
+2. **Loop de resolución refactor** (`~líneas 3521-3559`):
+   - Acumular nombres unresolved en `unresolvedNames = new Set()` en vez de
+     throw inmediato.
+   - Al terminar el loop, si `unresolvedNames.size > 0`:
+     - Log de cuántos nombres y cuántas filas afectadas.
+     - `await confirmUnresolvedProcesses([...unresolvedNames])`.
+     - `'abort'` → `throw new Error(...)` como antes, corrida cancelada con
+       mensaje legible.
+     - `'preserve'` → `for (const p of parts) if (unresolvedNames.has(p.procesoOverride)) p.procesoOverride = '';`
+       — esto los manda al path "vacío" del post-process existente; no hay que
+       tocar más código aguas abajo.
+
+### Semántica final del CSV (sin cambios para los otros 3 casos)
+
+| Valor en CSV | Comportamiento |
+|---|---|
+| nombre válido | Set ese proceso como default del PN |
+| `-` (dash) | BORRAR el default del PN (queda null) |
+| `""` (vacío) | Heredar del PN existente; si NEW → error y skip |
+| **nombre inválido + Preservar (NUEVO)** | **Equivale a vacío** → heredar; si NEW → error y skip |
+| nombre inválido + Cancelar | Aborta la corrida con mensaje legible |
+
+### Por qué este shape de modal y no per-nombre
+La fórmula del Excel típicamente produce 1-3 valores literales distintos
+(`"Combinación no existente"`, `"#N/A"`, etc.) repetidos en muchas filas. Un
+solo prompt con la lista de únicos es suficiente; per-nombre sería tedioso
+sin ganancia real.
+
+### Plan de validación pendiente
+- [ ] Probar con CSV que tenga 1 nombre inválido en N filas → modal aparece →
+      "Preservar" → verificar que las N filas conservan el proceso del PN.
+- [ ] Probar con CSV que tenga el nombre inválido en 1 PN NEW → "Preservar" →
+      verificar que aparece en `errors[]` con "Proceso vacío en PN NUEVO" y se
+      skipea (resto de la corrida continúa).
+- [ ] Probar "Cancelar" → verificar que el run aborta con mensaje claro.
+
+### Archivos afectados
+- `remote/scripts/bulk-upload.js` — helper + loop refactor + header comment
+- `remote/config.json` — version `1.6.17` → `1.6.18`, `lastUpdated`
 
 ## 1.5.11 (2026-05-29) — enrich-orphan visible: reportar PNs sin entry en pnLookup
 
