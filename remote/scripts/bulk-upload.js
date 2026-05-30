@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.11';
+  const VERSION = '1.5.12';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
