@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.13';
+  const VERSION = '1.5.14';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -5256,7 +5256,10 @@ const BulkUpload = (() => {
         // 1.5.13: preserve-on-missing para partNumberDimensions. SH hace REPLACE en
         // este array — sin esto, un CSV sin columnas de dimensiones (long/ancho/alto/
         // diámetros vacíos) mandaba [] y borraba los dims físicos del PN existente.
-        // Reusa el filtro de dims malformados del fix 1.5.10 (dimensionId/unitId null).
+        // 1.5.14: fix de field names. La respuesta de GetPartNumber usa
+        // {geometryTypeDimensionTypeId, dimensionValue, unitByUnitId{id}} — no
+        // {dimensionId, microQuantity, unitId}. La shape del input SavePartNumber
+        // es {geometryTypeDimensionTypeId, unitId, dimensionValue} (ver buildDimensions).
         const dimsAreDash = typeof part.dims.length === 'string' && isDash(part.dims.length);
         const csvDims = dimsAreDash ? [] : buildDimensions(part.dims, DOMAIN);
         const csvHasDims = csvDims.length > 0;
@@ -5267,8 +5270,12 @@ const BulkUpload = (() => {
           dims = csvDims;
         } else {
           dims = (existingPnNode?.partNumberDimensionsByPartNumberId?.nodes || [])
-            .filter(d => !d.archivedAt && d.dimensionId && d.unitId != null)
-            .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+            .filter(d => !d.archivedAt && d.geometryTypeDimensionTypeId && (d.unitByUnitId?.id ?? d.unitId) != null)
+            .map(d => ({
+              geometryTypeDimensionTypeId: d.geometryTypeDimensionTypeId,
+              dimensionValue: d.dimensionValue,
+              unitId: d.unitByUnitId?.id ?? d.unitId,
+            }));
         }
         const hasDims = csvHasDims; if (hasDims) stats.dimsSet++;
 

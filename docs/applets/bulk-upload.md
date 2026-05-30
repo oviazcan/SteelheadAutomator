@@ -1,6 +1,74 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.12 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.14 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.14 (2026-05-30) — Fix Bug 7 v2: field names correctos en preserve dims
+
+### Síntoma
+En el piloto de 1.5.13 (3 PNs SCHNEIDER, modo COTIZACIÓN+NP, solo Precio+
+Unidad), el PN `7348022125` (idsh 2843345) perdió sus 3
+`partNumberDimensions` (3 → 0). Los otros 2 PNs no tenían dims así que no
+hubo señal, pero el blanqueo en el único PN con dims era 100% reproducible.
+
+### Root cause
+El fix 1.5.13 del Bug 7 (preserve-on-missing para `partNumberDimensions`)
+usaba field names equivocados al reconstruir desde `existingPnNode`:
+
+```js
+// 1.5.13 — INCORRECTO:
+dims = (existingPnNode?.partNumberDimensionsByPartNumberId?.nodes || [])
+  .filter(d => !d.archivedAt && d.dimensionId && d.unitId != null)
+  .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+```
+
+- La respuesta de `GetPartNumber` usa
+  `{geometryTypeDimensionTypeId, dimensionValue, unitByUnitId{id}}`.
+- El filter `d.dimensionId` siempre devolvía falsy → rechazaba todos los
+  nodos → `dims = []` → SH REPLACE blanqueaba los 3 dims existentes.
+- El map también estaba mal: la shape del input `SavePartNumber.partNumberDimensions`
+  es `{geometryTypeDimensionTypeId, unitId, dimensionValue}` (ver
+  `buildDimensions` ~línea 1420).
+
+Confirmado con snapshot pre del piloto (`pilot_pre_2026-05-30.json`):
+```json
+{"geometryTypeDimensionTypeId": 755, "dimensionValue": 120, "unitId": 4685}
+```
+
+### Fix
+`bulk-upload.js:5269-5275`:
+
+```js
+// 1.5.14 — CORRECTO:
+dims = (existingPnNode?.partNumberDimensionsByPartNumberId?.nodes || [])
+  .filter(d => !d.archivedAt && d.geometryTypeDimensionTypeId && (d.unitByUnitId?.id ?? d.unitId) != null)
+  .map(d => ({
+    geometryTypeDimensionTypeId: d.geometryTypeDimensionTypeId,
+    dimensionValue: d.dimensionValue,
+    unitId: d.unitByUnitId?.id ?? d.unitId,
+  }));
+```
+
+### Restore del PN afectado por 1.5.13
+PN 2843345 restaurado vía `SavePartNumber` single-call con los 3 dims del
+snapshot pre + `inventoryItemInput` reconstruido para preservar las 2 UCs
+que sí estaban bien. Script: `/tmp/restore_pn_c_dims.py --exec`.
+Verificación live: 3 dims + 2 UCs.
+
+### Validación 1.5.13 (resumen)
+Lo que SÍ funcionó del 1.5.13 (no tocar): preserve-on-missing en
+`customInputs` (Bug 5), `descriptionMarkdown`/`customerFacingNotes` (Bug 5b),
+`inventoryItemInput` (Bug 8), `optInOuts` tri-state (Bug 3), no-skip
+silencioso de proceso vacío (Bug 1).
+
+### Nota sobre `customInputs.DatosPlanificacion.montoMinimoUSD`
+En el piloto se vio que `montoMinimoUSD` se blanquea — **esto es
+intencional**, no bug. El monto mínimo ahora se valida en la UC del lote
+del inventory item, no en el customInput. `mergeCustomInputs` deja
+explícitamente fuera ese campo.
+
+### Deploy
+- `remote/config.json`: version 1.6.19 → 1.6.20, `lastUpdated` 2026-05-30T16:00.
+- `bulk-upload.js`: `VERSION = '1.5.14'`.
 
 ## 1.5.12 (2026-05-30) — Proceso no encontrado: modal blocking (preserve vs abort)
 
