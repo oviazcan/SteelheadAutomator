@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.14';
+  const VERSION = '1.5.15';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -5804,19 +5804,22 @@ const BulkUpload = (() => {
             const cleanupExistingDimCustomValueIds = (pnNode.acctPnDimensionValueSelectionsByPartNumberId?.nodes || [])
               .map(sel => sel.dimensionCustomValueId)
               .filter(Boolean);
-            // 1.5.10: filtrar dims malformados (dimensionId=null o unitId=null) ANTES
-            // del map. Antes (≤1.5.9) si el PN tenía dim rows con dimensionId=null o
-            // unitId=null (residuo histórico — los 21 PNs de FEDERAL-MOGUL/SCHNEIDER/
-            // FISHER del recovery v104), el map producía {dimensionId:undefined,
-            // microQuantity:undefined, unitId:undefined} → JSON.stringify omitía los 3
-            // → SH veía partNumberDimensions:[{},{},{}] → HTTP 400 `Variable "$input"
-            // got invalid value {} at "input[0].partNumberDimensions[0]"`. El error
-            // mataba la mutación atómica del cleanup → specFieldParams duplicados nunca
-            // se archivaban → regla 1.4.38 quedaba sin completar. customInputs y demás
-            // NO se vieron afectados porque eran de SavePartNumber Call A/B (separate).
+            // 1.5.15: corregir field names del filter+map. El response de GetPartNumber
+            // trae `geometryTypeDimensionTypeId / dimensionValue / unitByUnitId.id`
+            // (no `dimensionId / microQuantity / unitId`). Antes (1.5.10..1.5.14) el
+            // filter siempre retornaba [] porque `d.dimensionId` era undefined → el
+            // cleanup mandaba partNumberDimensions:[] → SH (REPLACE-semantics)
+            // borraba los dims que Call B acababa de aplicar. Síntoma observado en
+            // el piloto Fisher 2026-05-30: los 3 PNs perdieron todos sus dims físicos
+            // post-aplicación cuando idsToArchive > 0 (regla 1.4.38 disparó STEP 6b).
+            // Mismo fix que ya se aplicó en Call B para 1.5.14.
             const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
-              .filter(d => !d.archivedAt && d.dimensionId && d.unitId != null)
-              .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+              .filter(d => !d.archivedAt && d.geometryTypeDimensionTypeId && (d.unitByUnitId?.id ?? d.unitId) != null)
+              .map(d => ({
+                geometryTypeDimensionTypeId: d.geometryTypeDimensionTypeId,
+                dimensionValue: d.dimensionValue,
+                unitId: d.unitByUnitId?.id ?? d.unitId,
+              }));
             // 1.5.7: STEP 6b también resuelve grupo del CSV (no del cache).
             // Si Call B fallara silently con partNumberGroupId, este cleanup re-aplica.
             const cleanupPnGroupId = isDash(part.pnGroup)
