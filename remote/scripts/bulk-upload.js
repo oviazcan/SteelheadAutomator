@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.15';
+  const VERSION = '1.5.16';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4300,17 +4300,24 @@ const BulkUpload = (() => {
                 .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
               // 1.5.7: STEP 5 también resuelve grupo del CSV (no del cache).
               // Asegura que si SOLO Call B fallara, STEP 5 ya dejó el grupo aplicado.
+              // 1.5.16: leer FK relacional como fuente primaria. El query persistido
+              // GetPartNumber retorna los scalars (customerId, defaultProcessNodeId,
+              // geometryTypeId, partNumberGroupId) siempre null en TODOS los PNs
+              // (Fisher, Cuprum, etc.). Las FK (customerByCustomerId.id, etc.) sí
+              // traen los valores reales. Sin este fallback, este minInput enviaba
+              // null en los 4 campos a SH → REPLACE-semantics blanqueaba el state
+              // que ya estaba aplicado. Mismo fix abajo en STEP 6b.
               const sentinelPnGroupId = isDash(target.part.pnGroup)
                 ? null
-                : (target.part.pnGroup ? (await resolveGroupId(target.part.pnGroup)) : (pnNode.partNumberGroupId || null));
+                : (target.part.pnGroup ? (await resolveGroupId(target.part.pnGroup)) : ((pnNode.partNumberGroupByPartNumberGroupId?.id ?? pnNode.partNumberGroupId) || null));
               const minInput = {
                 id: target.pnId,
                 name: pnNode.name,
-                customerId: pnNode.customerId || target.part.customerId,
-                defaultProcessNodeId: pnNode.defaultProcessNodeId || target.part.processId,
+                customerId: (pnNode.customerByCustomerId?.id ?? pnNode.customerId) || target.part.customerId,
+                defaultProcessNodeId: (pnNode.processNodeByDefaultProcessNodeId?.id ?? pnNode.defaultProcessNodeId) || target.part.processId,
                 inputSchemaId: DOMAIN.inputSchemaId_PN,
                 customInputs: pnNode.customInputs || {},
-                geometryTypeId: pnNode.geometryTypeId || null,
+                geometryTypeId: (pnNode.geometryTypeByGeometryTypeId?.id ?? pnNode.geometryTypeId) || null,
                 userFileName: null,
                 inventoryItemInput: null,
                 glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
@@ -5186,10 +5193,11 @@ const BulkUpload = (() => {
         // pnLookup sintético) y dejaba la asignación de grupo dependiendo de
         // Call B. Si Call B fallaba o se saltaba, el grupo se quedaba null.
         // Ahora Call A y Call B usan el MISMO pnGroupId derivado del CSV.
+        // 1.5.16: FK fallback (scalar bugged). Ver nota en línea ~4305.
         const pnGroupIdEarly = isDash(part.pnGroup)
           ? null
-          : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : (existingPnNode?.partNumberGroupId ?? pn.partNumberGroupId ?? null));
-        const prevGroupForLog = existingPnNode?.partNumberGroupId ?? pn.partNumberGroupId ?? null;
+          : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : ((existingPnNode?.partNumberGroupByPartNumberGroupId?.id ?? existingPnNode?.partNumberGroupId) ?? (pn.partNumberGroupByPartNumberGroupId?.id ?? pn.partNumberGroupId) ?? null));
+        const prevGroupForLog = (existingPnNode?.partNumberGroupByPartNumberGroupId?.id ?? existingPnNode?.partNumberGroupId) ?? (pn.partNumberGroupByPartNumberGroupId?.id ?? pn.partNumberGroupId) ?? null;
         if (pnGroupIdEarly !== prevGroupForLog) {
           log(`  "${part.pn}": Group → ${prevGroupForLog || 'null'} a ${pnGroupIdEarly || 'null'} (csv="${part.pnGroup || ''}")`);
         }
@@ -5201,8 +5209,9 @@ const BulkUpload = (() => {
           // pn sintético tiene esos campos en '' o null hardcodeados (línea 4708);
           // sin el fallback al existingPnNode, Call A borraba descripciones, notas
           // externas, customInputs y tipo de geometría de PNs existentes.
+          // 1.5.16: FK fallback (scalar bugged). Ver nota en línea ~4305.
           const identifierInput = {
-            id: pn.id, name: resolvedPnName, customerId: pn.customerId || part.customerId,
+            id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId,
             descriptionMarkdown: existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? '',
             customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
             customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {},
@@ -5213,8 +5222,8 @@ const BulkUpload = (() => {
             // como un upsert idempotente de identificadores.
             // 1.5.5: dimensionCustomValueIds usa el mismo *ToSend que Call B para no
             // borrar Línea/Depto cuando el CSV no los trae o cuando el lookup falla.
-            defaultProcessNodeId: pn.defaultProcessNodeId ?? existingPnNode?.defaultProcessNodeId ?? null,
-            geometryTypeId: existingPnNode?.geometryTypeId ?? pn.geometryTypeId ?? null,
+            defaultProcessNodeId: (pn.processNodeByDefaultProcessNodeId?.id ?? pn.defaultProcessNodeId) ?? (existingPnNode?.processNodeByDefaultProcessNodeId?.id ?? existingPnNode?.defaultProcessNodeId) ?? null,
+            geometryTypeId: (existingPnNode?.geometryTypeByGeometryTypeId?.id ?? existingPnNode?.geometryTypeId) ?? (pn.geometryTypeByGeometryTypeId?.id ?? pn.geometryTypeId) ?? null,
             inventoryItemInput: null, inventoryPredictedUsages: [],
             specsToApply: [], paramsToApply: [], partNumberDimensions: [],
             partNumberLocations: [], dimensionCustomValueIds: dimValueIdsToSend,
@@ -5285,18 +5294,19 @@ const BulkUpload = (() => {
         // Si no hay geometria ni dims, heredar del PN existente o null.
         // 1.5.13: cuando se hereda, usar existingPnNode (fuente de verdad) antes del
         // pn sintético del pnLookup SOLO_PN (que tiene geometryTypeId: null hardcoded).
+        // 1.5.16: FK fallback (scalar bugged). Ver nota en línea ~4305.
         let resolvedGeometryTypeId;
         if (part.tipoGeometria) {
           try {
             resolvedGeometryTypeId = await resolveGeometryTypeId(part.tipoGeometria);
           } catch (eGeo) {
             warn(`resolveGeometryTypeId "${part.tipoGeometria}" para "${part.pn}": ${String(eGeo).substring(0, 100)}`);
-            resolvedGeometryTypeId = hasDims ? DOMAIN.geometryGenericaId : (existingPnNode?.geometryTypeId ?? pn.geometryTypeId ?? null);
+            resolvedGeometryTypeId = hasDims ? DOMAIN.geometryGenericaId : ((existingPnNode?.geometryTypeByGeometryTypeId?.id ?? existingPnNode?.geometryTypeId) ?? (pn.geometryTypeByGeometryTypeId?.id ?? pn.geometryTypeId) ?? null);
           }
         } else if (hasDims) {
           resolvedGeometryTypeId = DOMAIN.geometryGenericaId;
         } else {
-          resolvedGeometryTypeId = existingPnNode?.geometryTypeId ?? pn.geometryTypeId ?? null;
+          resolvedGeometryTypeId = (existingPnNode?.geometryTypeByGeometryTypeId?.id ?? existingPnNode?.geometryTypeId) ?? (pn.geometryTypeByGeometryTypeId?.id ?? pn.geometryTypeId) ?? null;
         }
 
         // Predictive — 1.3.1: dash granular por material. SavePartNumber.inventoryPredictedUsages
@@ -5371,8 +5381,9 @@ const BulkUpload = (() => {
         // ahora caen al existingPnNode antes que al pn sintético (que en SOLO_PN es '').
         // customInputs reusa el mismo fallback que Call A. inventoryItemInput usa la
         // variable inventoryItemInputToSend ya resuelta arriba con preserve-on-missing.
+        // 1.5.16: FK fallback en customerId (scalar bugged). Ver nota en línea ~4305.
         const pnInput = {
-          id: pn.id, name: resolvedPnName, customerId: pn.customerId || part.customerId, defaultProcessNodeId: pnProcessId,
+          id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? ''),
           customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
           customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds: labelIdsToSend,
@@ -5822,17 +5833,27 @@ const BulkUpload = (() => {
               }));
             // 1.5.7: STEP 6b también resuelve grupo del CSV (no del cache).
             // Si Call B fallara silently con partNumberGroupId, este cleanup re-aplica.
+            // 1.5.16: FK fallback (scalar bugged). El query persistido
+            // GetPartNumber retorna scalars customerId/defaultProcessNodeId/
+            // geometryTypeId/partNumberGroupId siempre null en TODOS los PNs.
+            // Las FK relacionales (customerByCustomerId.id, etc.) sí traen los
+            // valores reales. Sin este fallback, este cleanupInput enviaba null
+            // en los 4 campos → SH REPLACE-semantics blanqueaba el state que
+            // Call B acababa de aplicar (síntoma observado piloto v2 Fisher:
+            // geometryTypeId=null tras corrida exitosa). defaultProcessNodeId
+            // se salvaba porque tenía `|| part.processId` como fallback, pero
+            // geometryTypeId/partNumberGroupId/customerId no tenían ese rescate.
             const cleanupPnGroupId = isDash(part.pnGroup)
               ? null
-              : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : (pnNode.partNumberGroupId || null));
+              : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : ((pnNode.partNumberGroupByPartNumberGroupId?.id ?? pnNode.partNumberGroupId) || null));
             const cleanupInput = {
               id: entry.pn.id,
               name: pnNode.name,
-              customerId: pnNode.customerId || part.customerId,
-              defaultProcessNodeId: pnNode.defaultProcessNodeId || part.processId,
+              customerId: (pnNode.customerByCustomerId?.id ?? pnNode.customerId) || part.customerId,
+              defaultProcessNodeId: (pnNode.processNodeByDefaultProcessNodeId?.id ?? pnNode.defaultProcessNodeId) || part.processId,
               inputSchemaId: DOMAIN.inputSchemaId_PN,
               customInputs: pnNode.customInputs || {},
-              geometryTypeId: pnNode.geometryTypeId || null,
+              geometryTypeId: (pnNode.geometryTypeByGeometryTypeId?.id ?? pnNode.geometryTypeId) || null,
               userFileName: null,
               inventoryItemInput: null,
               glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
