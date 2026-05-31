@@ -1,6 +1,106 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.14 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.15 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.15 (2026-05-30) — Fix STEP 6b cleanup: field names para preserve dims
+
+### Síntoma
+En el piloto Fisher 2026-05-30 (3 PNs en modo SOLO_PN: `S12B7026A1` /
+`S14B8644A1` / `S16A1367A1`), Call A y Call B ambos reportaron éxito
+(`SavePartNumber: 3 OK, 0 retry`) y los specs/params se sincronizaron
+correctamente, pero el verify post-piloto mostró que los 3 PNs quedaron
+sin `partNumberDimensions` (0 dims activos) y sin `defaultProcessNodeId`,
+a pesar de que el CSV traía dims completos (L=0.115 / W=0.115 / H=0.017)
+y proceso resuelto. `customInputs` sí persistieron (PiezasCarga / Notas
+con artefactos `_x000D_` y PN alterno `12B7026X013` aparecieron en SH),
+confirmando que SavePartNumber sí ejecutó.
+
+### Root cause
+El cleanup de duplicados de `specFieldParams` (regla 1.4.38, líneas
+5795-5865) tiene el mismo bug de field names que ya se corrigió en Call B
+para 1.5.14, pero el fix no se propagó a este bloque:
+
+```js
+// 1.5.10..1.5.14 — INCORRECTO (líneas 5817-5819):
+const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
+  .filter(d => !d.archivedAt && d.dimensionId && d.unitId != null)
+  .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+```
+
+`GetPartNumber` devuelve `geometryTypeDimensionTypeId / dimensionValue /
+unitByUnitId.id`. El filter siempre retornaba `[]` → el cleanup mandaba
+`partNumberDimensions: []` → SH (REPLACE-semantics) borraba los dims que
+Call B acababa de aplicar. El path solo se dispara cuando
+`idsToArchive.length > 0` (PNs con specs duplicados por la regla 1.4.38)
+— por eso no se vio en piloto SCHNEIDER de 1.5.14 (sin spec params
+duplicados) y sí se vio en piloto Fisher (10/5/3 params a archivar por PN).
+
+### Evidencia (panel log piloto Fisher)
+```
+[SA] Procesos únicos en layout: 2          ← resolver OK, sin modal
+[SA] Clasificación: P0=0 P1=3 P2=0 P3=0 NEW=0
+[SA] SavePartNumber: 3 OK, 0 retry         ← Call A + Call B OK
+[SA] PN "S12B7026A1": archive 10 params (regla 1.4.38)  ← dispara STEP 6b
+[SA] PN "S14B8644A1": archive 3 params
+[SA] PN "S16A1367A1": archive 5 params
+[SA] Spec params sync: 13 params agregados
+[SA] Cleanup duplicados (1.4.9): 18 params null archivados en 3 PNs
+```
+
+Verify post-piloto live: `defaultProcessNodeId=null`, `optInOuts=[]`,
+`partNumberDimensions=0 active`, `customInputs` cambiados.
+
+### Fix
+`bulk-upload.js:5807-5822`:
+
+```js
+// 1.5.15 — CORRECTO:
+const cleanupExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
+  .filter(d => !d.archivedAt && d.geometryTypeDimensionTypeId && (d.unitByUnitId?.id ?? d.unitId) != null)
+  .map(d => ({
+    geometryTypeDimensionTypeId: d.geometryTypeDimensionTypeId,
+    dimensionValue: d.dimensionValue,
+    unitId: d.unitByUnitId?.id ?? d.unitId,
+  }));
+```
+
+Mismo patrón que 1.5.14 aplicó en Call B.
+
+### Por qué `defaultProcessNodeId` también quedó null
+La línea 5829 hace `pnNode.defaultProcessNodeId || part.processId`. Como
+el cache (`existingPnFullCache`) se invalida en finally tras Call B
+(línea 5454), el `pnNode` en STEP 6b se trae fresco vía `GetPartNumber`
+con el estado POST-Call B. Hipótesis: SH desacopla `defaultProcessNodeId`
+cuando se hace REPLACE con `partNumberDimensions:[]` (side-effect
+servidor), o el pnNode no trajo el processId aplicado por alguna razón
+de timing. Pendiente verificar post-fix: si tras corregir dims el
+processId también persiste, queda resuelto. Si no, será otra investigación.
+
+### Plan de validación pendiente
+- Restore manual de los 3 PNs Fisher del piloto desde snapshot pre
+  (`/tmp/fisher_snapshot_pre_2026-05-30.json`) para volverlos al estado
+  pre-1.5.14: sin Proceso, sin Val1, sin dims, pero con CI original.
+- Re-correr el mismo CSV piloto (`/Users/oviazcan/Downloads/fisher_pilot_v23.csv`)
+  con 1.5.15.
+- Verificar que post-corrida los 3 PNs queden con: dims poblados (L/W/H),
+  defaultProcessNodeId set, optInOuts vacíos (CSV='F'), spec params
+  archivados según regla 1.4.38, customInputs preservados.
+
+### Pendientes derivados
+- Latent bug en línea 5840: `optInOuts: []` también es REPLACE. Si Call B
+  aplicó optInOuts (CSV='T'), este cleanup los borra. En piloto Fisher
+  no afectó porque CSV='F' → []==[]. Aplicar preserve-from-pnNode en
+  próximo fix.
+- Latent bug en línea 5834: `inventoryItemInput: null` — si Call B aplicó
+  UCs, este cleanup las borra. Mismo tratamiento.
+- Línea 5841: `inventoryPredictedUsages: []` — idem.
+- Auditar si más bloques con `SavePartNumber` usan los field names viejos
+  (búsqueda `dimensionId` literal en bulk-upload.js).
+
+### Deploy
+- `remote/config.json`: version 1.6.20 → 1.6.21, `lastUpdated` 2026-05-30T19:00.
+- `bulk-upload.js`: `VERSION = '1.5.15'`.
+- Commit main: `16fd33e`. Commit gh-pages: `8927852`. Verificado byte-exact.
 
 ## 1.5.14 (2026-05-30) — Fix Bug 7 v2: field names correctos en preserve dims
 
