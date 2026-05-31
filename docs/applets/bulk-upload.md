@@ -1,6 +1,111 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.15 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.16 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.16 (2026-05-30) — Fix FK fallback para scalars bugged (`defaultProcessNodeId` / `geometryTypeId` / `customerId` / `partNumberGroupId`)
+
+### Síntoma
+Tras 1.5.15 corregir el blanqueo de dims, el piloto v2 (3 PNs Fisher
+NUEVOS: `S2J3328A01` / `S18A6432A1` / `SGH14832A2`) mostró que **los
+dims SÍ persistieron**, pero `defaultProcessNodeId` quedó null en 3/3
+y `geometryTypeId` quedó null en 3/3 al leer con `GetPartNumber` desde
+el verify post.
+
+Bandera roja: el panel de SH muestra el proceso aplicado (UI dice
+"Proceso: T100 (PUL)-T103 (CRD)-..." con valor) pero `GetPartNumber`
+escalar dice `defaultProcessNodeId: null`.
+
+### Root cause real (investigación empírica con `test_direct_save_processgeo.py`)
+**Doble bug encadenado**:
+
+1. **El persisted query `GetPartNumber`** (hash
+   `60bee2e1bf45e3fba1e763994ab9f2691d7de0f44809434bd1e810b5219436c2`)
+   tiene los campos escalares `customerId / defaultProcessNodeId /
+   geometryTypeId / partNumberGroupId` siempre `null` en la respuesta,
+   pero las relaciones FK sí están pobladas:
+   `customerByCustomerId.id`, `processNodeByDefaultProcessNodeId.id`,
+   `geometryTypeByGeometryTypeId.id`, `partNumberGroupByPartNumberGroupId.id`.
+   Bug del persisted query, no del backend.
+
+2. **bulk-upload leía esos escalares bugged en 4 lugares** y los
+   reenviaba a `SavePartNumber`. Como SavePartNumber tiene
+   REPLACE-semantics, mandar `defaultProcessNodeId: null` o
+   `geometryTypeId: null` desvinculaba esos campos en SH **aun cuando
+   Call B sí los aplicó correctamente**.
+
+   El cleanup STEP 6b (regla 1.4.38, líneas 5807-5870) era el culpable
+   principal: corre 50ms después de Call B, refetchea el PN, lee
+   `pnNode.defaultProcessNodeId` (= null por el bug) y manda
+   `SavePartNumber({ defaultProcessNodeId: null, geometryTypeId: null,
+   customerId: null, partNumberGroupId: null, ...})` con todo lo demás
+   "preservado", borrando los 4 scalars.
+
+   `defaultProcessNodeId` se salvó parcialmente en algunos PNs porque la
+   línea 5832 ya tenía fallback a `part.processId` desde el CSV. Pero
+   `geometryTypeId` no tenía rescue → se perdió en 3/3.
+
+### Evidencia (test empírico aislado)
+`test_direct_save_processgeo.py` sobre PN 3017049 (`S2J3328A01`):
+1. `AllProcesses` resuelve el proceso del CSV → `processNodeId=171633`.
+2. `GetPartNumber(3017049)` → `defaultProcessNodeId: null` (escalar) pero
+   `processNodeByDefaultProcessNodeId.id: null` también (post-piloto)
+   y dims=2 activos.
+3. `SavePartNumber({ defaultProcessNodeId: 171633, geometryTypeId: 831, customerId: <FK>, ...preserve })`.
+4. Re-fetch → SH ahora persiste los 2 campos en la FK (`processNodeByDefaultProcessNodeId.id=171633`).
+
+**Verdict**: SH acepta el payload; el bug está en bulk-upload leyendo
+escalares bugged.
+
+### Fix
+Patrón aplicado en 7 puntos del archivo: `pnNode.X` → `(pnNode.YByY?.id ?? pnNode.X)` con fallback final al CSV cuando hay valor:
+
+```js
+// 1.5.16 — Patrón FK-first:
+customerId:           (pnNode.customerByCustomerId?.id           ?? pnNode.customerId)           || part.customerId,
+defaultProcessNodeId: (pnNode.processNodeByDefaultProcessNodeId?.id ?? pnNode.defaultProcessNodeId) || part.processId,
+geometryTypeId:       (pnNode.geometryTypeByGeometryTypeId?.id    ?? pnNode.geometryTypeId)        || null,
+partNumberGroupId:    (pnNode.partNumberGroupByPartNumberGroupId?.id ?? pnNode.partNumberGroupId) || null,
+```
+
+Edits aplicados en `bulk-upload.js`:
+1. `VERSION` línea 188 → `'1.5.16'`.
+2. `enrichWorker` minInput (≈4305-4313) — 4 scalars con FK fallback.
+3. Call A `pnGroup` resolution (≈5189-5192) — FK fallback.
+4. Call A `identifierInput` (≈5204-5217) — `customerId` / `defaultProcessNodeId` / `geometryTypeId` con FK fallback.
+5. Call B `resolvedGeometryTypeId` (≈5288-5300) — FK fallback en ambos paths fallback.
+6. Call B `pnInput.customerId` (≈5374-5375) — FK fallback.
+7. STEP 6b `cleanupInput` (≈5827-5835) — los 4 scalars con FK fallback. **Era el blanqueador principal**.
+
+### Plan de validación pendiente
+- Recargar extensión y re-correr el CSV piloto v2
+  (`/Users/oviazcan/Downloads/fisher_pilot_v2_v23.csv`) sobre los 3 PNs
+  Fisher (`S2J3328A01` / `S18A6432A1` / `SGH14832A2`).
+- Verificar con `verify_pilot_v2.py` (ya actualizado para leer FK relacional):
+  - `processNodeByDefaultProcessNodeId.id` poblado en 3/3.
+  - `geometryTypeByGeometryTypeId.id == 831` (TLC genérica) en 3/3.
+  - `customerByCustomerId.id == 185639` (Fisher) preservado en 3/3.
+  - Dims activos (2 o 3) en 3/3.
+  - Labels intactos.
+  - `customInputs` solo cambios CSV-driven.
+
+### Pendientes derivados
+- **Auditar otros applets que usen `GetPartNumber`** y lean
+  `defaultProcessNodeId / geometryTypeId / customerId / partNumberGroupId`
+  escalares directos: `archiver`, `auditor`, `spec-migrator`. Si alguno
+  los reenvía a `SavePartNumber`, tiene el mismo bug latente.
+- **Levantar issue a SH backend / persisted queries**: corregir el bug
+  del query o regenerar el hash con un query que sí devuelva los
+  escalares. Pendiente comunicar a Steelhead.
+- Limpiar el cache `existingPnFullCache` se invalida en finally tras
+  Call B (línea 5454). Considerar invalidar solo cuando se sepa que el
+  PN cambió, no en todos los casos, para reducir re-fetches en STEP 6b.
+
+### Deploy
+- `remote/scripts/bulk-upload.js` → 1.5.16
+- `remote/config.json` → 1.6.22, lastUpdated `2026-05-30T22:00`
+- gh-pages sync byte-exact pendiente
+
+---
 
 ## 1.5.15 (2026-05-30) — Fix STEP 6b cleanup: field names para preserve dims
 

@@ -105,7 +105,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 
 | Applet | Versión actual | Bitácora |
 |---|---|---|
-| `bulk-upload` | 1.5.15 (propaga fix de 1.5.14 al STEP 6b cleanup de regla 1.4.38 — antes el cleanup leía dims con field names viejos `dimensionId/unitId/microQuantity`, retornaba `[]` y SH borraba los dims que Call B aplicó cuando había spec params duplicados a archivar; observado en piloto Fisher 2026-05-30) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
+| `bulk-upload` | 1.5.16 (FK-fallback para scalars bugged del persisted query `GetPartNumber` — los escalares `defaultProcessNodeId / geometryTypeId / customerId / partNumberGroupId` llegan `null` pero las FK relacionales están pobladas; bulk-upload los reenviaba a SavePartNumber y por REPLACE-semantics SH desvinculaba campos, en especial el STEP 6b cleanup tras Call B; observado en piloto Fisher v2 2026-05-30) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
 | `process-deep-audit` | 0.8.0 | [`docs/applets/process-deep-audit.md`](docs/applets/process-deep-audit.md) |
 | `spec-params-bulk` | 0.9.0 | [`docs/applets/spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
 | `spec-migrator` (bundle Ajuste Masivo) | original + `validate-duplicate-params` 0.5.5 (CSV multi-cliente + memory hardening completo: mem monitor + guardrail @88% + resume + virtualización preview + host-cleanup-shared) | [`docs/applets/spec-migrator.md`](docs/applets/spec-migrator.md) |
