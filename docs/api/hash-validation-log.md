@@ -46,3 +46,25 @@ sólo vía `hash-scanner` en navegador, no este script.
 
 ## 2026-05-28 08:35 — 0 rotado(s) (config v1.6.11)
 
+## 2026-06-01 13:30 — 1 stale + 3 reparados en sesión (config v1.6.23)
+
+**Corrida**: manual, disparada junto al deploy del applet `wo-mover`.
+
+**Resultado validador**: 155 ok / 1 stale / 2 skipped / 0 unknown / 0 auth (~99s).
+
+### Rotaciones reparadas en esta sesión (capturadas vía hash-scanner del flujo wo-mover)
+
+| Operación | Hash viejo | Hash nuevo | Nota |
+|---|---|---|---|
+| `GetReceivedOrder` | `a286ac8f…f743b8dd5` | `4fa89e55…17a7f2bc` | el nuevo query trae workOrders + partTransforms + partAccountsNotAssignedToReceivedOrder en una pasada; ya no requiere Pass 2 (`GetAddPartsReceivedOrder`) |
+| `ActiveReceivedOrders` | `4f06f3cb…03aec54b1d` | `495ddfd6…47914890` | **CAMBIÓ variables**: sin `domainId`; ahora `includeArchived`/`receivedOrderStatusFilter`/`searchQuery`. Root key `pagedData`. Actualizado en `po-reconciler.js` + `ov-operations.js` |
+| `AllLabels` | `2b16b142…4aa3073c` | `4323ade0…05bef94e` | variables compatibles, solo hash |
+
+Nuevas queries registradas: `WorkOrderDialogQuery`, `GetPartsTransferAccountAssociationData` (flujo de mover OT / asociar partes).
+
+### STALE pendiente de captura
+
+| Operación | Usado por | Acción |
+|---|---|---|
+| `GetDomain` | `bill-autofill`, `invoice-autofill` (tipo de cambio: `customInputs.TipoCambio` / `currentExchangeRate`) | Correr hash-scanner en la pantalla de facturación que dispare `GetDomain`, capturar el hash nuevo, actualizar `config.json` + redeploy. **Mientras tanto, el tipo de cambio en facturación puede fallar.** |
+
