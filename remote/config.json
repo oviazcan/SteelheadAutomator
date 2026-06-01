@@ -1,6 +1,6 @@
 {
-  "version": "1.6.23",
-  "lastUpdated": "2026-06-01T13:30",
+  "version": "1.6.24",
+  "lastUpdated": "2026-06-01T15:35",
   "extensionVersion": "1.6.2",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -147,7 +147,7 @@
         "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de",
         "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0",
         "GetPurchaseOrder": "6d8626794b0b81e885f621fac214f825c3078931ad030ddd2299d227e530bcf6",
-        "GetDomain": "3362d61859940bb317ad278153229afc60d637320f3a5d595f9a5cb5245e6706",
+        "GetDomain": "774f1f0f6ac70b7c94dce1df32570a9e37fe725f164b3f1762985f4f9a905337",
         "SearchAccounts": "90022de3792ff91b9eda329b310aaf27d3945d2c501152a5c7e713933a49b1a8",
         "GetAccountDataForBill": "62fbb91b31a603c8d61f3f362d8550dd986c5fd82c39ee95cd60582eb40304e9",
         "GetBillByIdInDomain": "70a29e6593f240964218669349704b7f1cd1dbf88498c9bc50e3f471bcfdae04",
