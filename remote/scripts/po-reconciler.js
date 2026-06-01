@@ -1269,13 +1269,18 @@ const POReconciler = (() => {
   // Root key real: `pagedData` (Postgraphile-style con totalCount + nodes).
   async function fetchActiveOrdersPage({ first = 200, offset = 0 } = {}, label) {
     const domainId = api().getDomain().id || 344;
+    // ActiveReceivedOrders rotó 2026-06-01 → nuevo shape de variables (sin domainId,
+    // con includeArchived/receivedOrderStatusFilter/searchQuery). Root key: pagedData.
     const variables = {
-      domainId,
-      first,
-      offset,
-      orderBy: ['ID_IN_DOMAIN_DESC'],
+      includeArchived: 'NO',
       computeMargins: false,
       showInvoicedSubtotal: false,
+      isBlanketOrder: false,
+      orderBy: ['ID_IN_DOMAIN_DESC'],
+      offset,
+      first,
+      receivedOrderStatusFilter: ['OPEN'],
+      searchQuery: '',
     };
     const diag = { label, variables, domainId, raw: null, rawKeys: [], rootKey: null, sampleNode: null, totalCount: null, error: null };
     try {

@@ -87,17 +87,22 @@ const OVOperations = (() => {
 
     log('Buscando OVs candidatas del cliente...');
 
+    // ActiveReceivedOrders rotó 2026-06-01 → nuevo shape (sin domainId/customerId;
+    // root key pagedData). El server no filtra por cliente → se compara PN abajo.
     const data = await api().query('ActiveReceivedOrders', {
-      domainId: api().getDomain().id || 344,
-      customerId: parseInt(customerId, 10),
-      first: 100,
-      offset: 0,
-      orderBy: ['ID_IN_DOMAIN_DESC'],
+      includeArchived: 'NO',
       computeMargins: false,
-      showInvoicedSubtotal: false
+      showInvoicedSubtotal: false,
+      isBlanketOrder: false,
+      orderBy: ['ID_IN_DOMAIN_DESC'],
+      offset: 0,
+      first: 100,
+      receivedOrderStatusFilter: ['OPEN'],
+      searchQuery: ''
     });
 
-    const orders = data?.receivedOrders?.nodes ||
+    const orders = data?.pagedData?.nodes ||
+                   data?.receivedOrders?.nodes ||
                    data?.allReceivedOrders?.nodes ||
                    data?.activeReceivedOrders?.nodes || [];
 

@@ -1,6 +1,6 @@
 {
-  "version": "1.6.22",
-  "lastUpdated": "2026-05-30T22:00",
+  "version": "1.6.23",
+  "lastUpdated": "2026-06-01T13:30",
   "extensionVersion": "1.6.2",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -74,7 +74,7 @@
         "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f"
       },
       "queries": {
-        "ActiveReceivedOrders": "4f06f3cb1ba4eabb9c044512b0e54fc8cd29a9630c6004065d38e103aec54b1d",
+        "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890",
         "GetQuote_v8": "28ea8b40e659a812bd53ffb0c2faff561643258a357bfa8fd2661fb8952470f2",
         "GetQuote_v71": "28ea8b40e659a812bd53ffb0c2faff561643258a357bfa8fd2661fb8952470f2",
         "GetQuoteRelatedData": "04cc75ea43a2860a31e3f5043bb00e83d4c67a8b49b1d86c59cf65b72583f480",
@@ -84,7 +84,7 @@
         "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3",
         "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a",
         "AllProcesses": "b66651f7c159e7fdef35d67fe27048ea68f1f206531a31256fc8663f52707092",
-        "AllLabels": "2b16b142d01daddf7cf4b29efc7754161a414afdd22630daa6494d894aa3073c",
+        "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e",
         "SearchSpecsForSelect": "8e7723b3a4cf3e7b692999e45d20b7299952253089c7bf146d36ff2872507e2b",
         "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea",
         "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3",
@@ -113,8 +113,10 @@
         "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14",
         "CreateEditInventoryBatchDialogQuery": "25c91344eb1e8c12c47da2e65dea36b743a5af2f614fb514b4f12e84894f5b81",
         "SearchLocationsOnPath": "65e13310e4b971aba5dce7a130c6e9259f9e1f556b79543ca5a1e414f593e29f",
-        "GetReceivedOrder": "a286ac8f7f6aa3a220b89912df635071459042e8d18b887d2292d02f743b8dd5",
+        "GetReceivedOrder": "4fa89e55bb8e6cd554362b3e52d650204d1035eac283598f981ac6cf17a7f2bc",
         "GetAddPartsReceivedOrder": "f42b08f42cc6ecc096d6d5698a8b5bef714e3a34e60a2a774b6376742134ac9f",
+        "WorkOrderDialogQuery": "4d745ead94ba8abe4395818ff118cb168d0bb91c2eb6c2cce00d627a11958829",
+        "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686",
         "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8",
         "GetReceivedOrderDocuments": "c2df1330d49c30a52ac64fd5d7ad345f3f2d2b30411315e3311acd7ddba80cdc",
         "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156",
@@ -552,6 +554,19 @@
       "requiredPermissions": ["READ_WORK_ORDER"],
       "actions": [
         { "id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
+      ]
+    },
+    {
+      "id": "wo-mover",
+      "name": "Mover OTs entre OVs",
+      "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV",
+      "icon": "↔️",
+      "category": "Órdenes de Trabajo",
+      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"],
+      "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"],
+      "autoInject": true,
+      "actions": [
+        { "id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover" }
       ]
     },
     {
