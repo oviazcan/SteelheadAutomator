@@ -7,17 +7,17 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   // ──────────────────────────────────────────────────────────────
   // Config
   // ──────────────────────────────────────────────────────────────
-  // Key del customInput "PS" dentro de receivedBatch.customInputs.
-  // AJUSTAR si en Steelhead se llama distinto. Se prueba match exacto
-  // contra PS_KEYS y, de respaldo, cualquier key que sea /^ps$/i.
-  const PS_KEYS = ["PS"];
+  // El "PS" del cliente vive ANIDADO en el batch como
+  // customInputs.DatosRecibo.PackingSlip (confirmado en scans 2026-05;
+  // el mismo objeto DatosRecibo trae PesoCliente y numeroContenedores).
+  // Fallbacks por si el schema cambia: PackingSlip plano, o key /^(ps|packingslip)$/i.
   const readPS = (ci: { [x: string]: any } | null | undefined): any => {
     if (!ci) return null;
-    for (const k of PS_KEYS) {
-      if (ci[k] !== undefined && ci[k] !== null) return ci[k];
-    }
-    const hit = Object.keys(ci).find(k => /^ps$/i.test(String(k).trim()));
-    return hit ? ci[hit] : null;
+    const dr = ci.DatosRecibo;
+    if (dr && dr.PackingSlip != null && dr.PackingSlip !== "") return dr.PackingSlip;
+    if (ci.PackingSlip != null && ci.PackingSlip !== "") return ci.PackingSlip;
+    const hit = Object.keys(ci).find(k => /^(ps|packingslip)$/i.test(String(k).trim()));
+    return (hit && ci[hit] !== "") ? ci[hit] : null;
   };
 
   // Fecha de embarque: ideal la que se coloca en el packing slip
