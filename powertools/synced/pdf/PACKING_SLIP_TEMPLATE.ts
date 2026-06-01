@@ -1,31 +1,163 @@
 const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult => {
   const result: LowCodeResult = { additionalPayload: {} };
 
-  // Step 1: Group items by partNumber.id + receivedBatch.id
-  const groups: Record<string, typeof inputs.packingSlip.items> = {};
+  const ps = inputs.packingSlip;
+  if (!ps || !Array.isArray(ps.items)) return result;
 
-  inputs.packingSlip.items.forEach(item => {
-    item.partsTransferAccounts.forEach((part) => {
-      if (!part.partNumber?.id || !part.receivedBatches?.length) return;
+  // ──────────────────────────────────────────────────────────────
+  // Config
+  // ──────────────────────────────────────────────────────────────
+  // Key del customInput "PS" dentro de receivedBatch.customInputs.
+  // AJUSTAR si en Steelhead se llama distinto. Se prueba match exacto
+  // contra PS_KEYS y, de respaldo, cualquier key que sea /^ps$/i.
+  const PS_KEYS = ["PS"];
+  const readPS = (ci: { [x: string]: any } | null | undefined): any => {
+    if (!ci) return null;
+    for (const k of PS_KEYS) {
+      if (ci[k] !== undefined && ci[k] !== null) return ci[k];
+    }
+    const hit = Object.keys(ci).find(k => /^ps$/i.test(String(k).trim()));
+    return hit ? ci[hit] : null;
+  };
 
-      part.receivedBatches.forEach(batch => {
-        if (!batch.id) return;
+  // Fecha de embarque: ideal la que se coloca en el packing slip
+  // (shippingDate); fallback shippedAt. NOTA: el Input NO expone un
+  // createdAt del packing slip, así que el fallback disponible es shippedAt.
+  const shippingDate = ps.shippingDate != null ? ps.shippingDate
+    : (ps.shippedAt != null ? ps.shippedAt : null);
+  const shippingDateSource = ps.shippingDate != null ? "shippingDate"
+    : (ps.shippedAt != null ? "shippedAt" : null);
 
-        const key = `${part.partNumber.id}-${batch.id}`;
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(item);
+  // ──────────────────────────────────────────────────────────────
+  // Paso 1: aplanar a filas de etiqueta (item × partTransferAccount × batch).
+  // Cada `item` del packing slip es un contenedor/bulto físico.
+  // ──────────────────────────────────────────────────────────────
+  const rows: any[] = [];
+  ps.items.forEach(item => {
+    (item.partsTransferAccounts || []).forEach((part: any) => {
+      const pn = part.partNumber;
+      if (!pn || pn.id == null) return;
+      const batches = (part.receivedBatches && part.receivedBatches.length)
+        ? part.receivedBatches
+        : [null];
+      batches.forEach((batch: any) => {
+        rows.push({ item, part, pn, batch });
       });
-    })
-  });
-
-  // Step 2: Sort each group by original item index and assign container index.
-  Object.values(groups).forEach(group => {
-    const total = group.length;
-    group.sort((a, b) => a.index - b.index); // Sort by original item index
-    group.forEach((item, idx) => {
-      (item as any).containerIndex = `${idx + 1}/${total}`;
     });
   });
+
+  // ──────────────────────────────────────────────────────────────
+  // Paso 2: "Contenedor x de y" — agrupar por PN + batch, contar
+  // contenedores (items) distintos y ordenar por item.index.
+  // Se preserva la mutación item.containerIndex que la plantilla de
+  // remisión ya leía (compatibilidad hacia atrás).
+  // ──────────────────────────────────────────────────────────────
+  const groups: Record<string, any[]> = {};
+  rows.forEach(r => {
+    const batchKey = (r.batch && r.batch.id != null) ? r.batch.id : "nobatch";
+    const key = `${r.pn.id}-${batchKey}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  });
+  Object.keys(groups).forEach(key => {
+    const group = groups[key];
+    group.sort((a, b) => (a.item.index || 0) - (b.item.index || 0));
+    const total = group.length;
+    group.forEach((r, idx) => {
+      r.containerNum = idx + 1;
+      r.containerTotal = total;
+      (r.item as any).containerIndex = `${idx + 1}/${total}`;
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // Paso 3: construir las etiquetas + diagnóstico.
+  // ──────────────────────────────────────────────────────────────
+  let missingPS = 0, missingName = 0, missingWeight = 0, multiPart = 0;
+
+  const labels = rows.map(r => {
+    const item = r.item, part = r.part, pn = r.pn, batch = r.batch;
+    const weight = item.weight || null;
+
+    // Nombre del contenedor: contenarización (rack) o agrupación de
+    // partes (partGroup). El usuario confirmó que pueden usarse ambos,
+    // así que se prioriza rack y se cae a partGroup.
+    const rackName = (part.rack && part.rack.name) ? part.rack.name : null;
+    const groupName = (part.partGroup && part.partGroup.name) ? part.partGroup.name : null;
+    const containerName = rackName != null ? rackName : (groupName != null ? groupName : null);
+    const containerNameSource = rackName != null ? "rack"
+      : (groupName != null ? "partGroup" : null);
+
+    // Unidad declarada en partGroup (aplica al peso del contenedor/tara).
+    // El item.weight viene numérico sin unidad explícita en el Input.
+    const containerWeightUnit = (part.partGroup && part.partGroup.containerWeightUnit && part.partGroup.containerWeightUnit.name)
+      ? part.partGroup.containerWeightUnit.name : null;
+
+    const psValue = readPS(batch ? batch.customInputs : null);
+
+    // Diagnóstico
+    if (psValue == null) missingPS++;
+    if (containerName == null) missingName++;
+    if (!weight || (weight.gross == null && weight.net == null)) missingWeight++;
+    if ((item.partsTransferAccounts || []).length > 1) multiPart++;
+
+    return {
+      // — Etiqueta base (8 campos) —
+      partNumber: pn.name != null ? pn.name : null,
+      description: pn.descriptionMarkdown != null ? pn.descriptionMarkdown : null,
+      piecesPerContainer: item.partCount != null ? item.partCount
+        : (part.partCount != null ? part.partCount : null),
+      ps: psValue,
+      batchName: (batch && batch.name != null) ? batch.name : null,
+      workOrder: (part.workOrder && part.workOrder.name != null) ? part.workOrder.name : null,
+      workOrderId: (part.workOrder && part.workOrder.idInDomain != null) ? part.workOrder.idInDomain : null,
+      shippingDate,
+      shippingDateSource,
+      containerIndex: `${r.containerNum}/${r.containerTotal}`,
+      containerNum: r.containerNum,
+      containerTotal: r.containerTotal,
+
+      // — Etiqueta 2 (extras): peso bruto/neto + nombre de contenedor —
+      grossWeight: (weight && weight.gross != null) ? weight.gross : null,
+      netWeight: (weight && weight.net != null) ? weight.net : null,
+      tareWeight: (weight && weight.tare != null) ? weight.tare : null,
+      containerWeightUnit,
+      containerName,
+      containerNameSource,
+    };
+  });
+
+  result.additionalPayload = {
+    labels,
+    totalLabels: labels.length,
+    shippingDate,
+    shippingDateSource,
+  };
+
+  helpers.log(
+    `🏷️ ${labels.length} etiqueta(s). ` +
+    `Sin PS: ${missingPS} · sin nombre contenedor: ${missingName} · ` +
+    `sin peso: ${missingWeight} · items multi-parte: ${multiPart}.`
+  );
+
+  if (missingPS > 0) {
+    helpers.addErrorMessage({
+      severity: "warning",
+      message: `⚠️ ${missingPS} etiqueta(s) sin customInput "PS" en el batch — revisa la key (PS_KEYS) o captura el dato.`,
+    });
+  }
+  if (missingName > 0) {
+    helpers.addErrorMessage({
+      severity: "warning",
+      message: `⚠️ ${missingName} etiqueta(s) sin nombre de contenedor (ni rack ni partGroup).`,
+    });
+  }
+  if (multiPart > 0) {
+    helpers.addErrorMessage({
+      severity: "info",
+      message: `ℹ️ ${multiPart} contenedor(es) con más de una parte: el peso bruto/neto es del bulto completo, no por parte.`,
+    });
+  }
 
   return result;
 };
