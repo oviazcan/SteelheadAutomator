@@ -98,15 +98,18 @@ const CatalogFetcher = (() => {
     }
     log(`  Clientes: ${uniqueCustomers.length} únicos, obteniendo direcciones...`);
 
-    // 2. For each customer, get addresses via GetCustomerInfoForReceivedOrder (by numeric id)
-    // Esta query devuelve useForShipping/useForBilling por dirección; la query Customer no los expone.
+    // 2. For each customer, get addresses via GetQuoteRelatedData (by numeric id).
+    // 1.6.28: GetCustomerInfoForReceivedOrder deprecada. GetQuoteRelatedData toma
+    // el mismo input {customerId} y devuelve el mismo path customerById.customerAddressesByCustomerId.nodes[]
+    // con useForShipping/useForBilling. Bug colateral: ya no incluye customerLabelsByCustomerId
+    // (AllCustomers tampoco). Labels saldrán vacíos hasta refactor en 1.6.29.
     // Process in batches of 20 (Steelhead aguanta concurrencia, ya validado con specs)
     const result = [];
     for (let i = 0; i < uniqueCustomers.length; i += 20) {
       const batch = uniqueCustomers.slice(i, i + 20);
       const details = await Promise.all(batch.map(async (c) => {
         try {
-          const d = await api().query('GetCustomerInfoForReceivedOrder', { customerId: parseInt(c.id, 10) });
+          const d = await api().query('GetQuoteRelatedData', { customerId: parseInt(c.id, 10) });
           return { customer: c, detail: d?.customerById };
         } catch (e) {
           warn(`Cliente ${c.name}: ${String(e).substring(0, 80)}`);

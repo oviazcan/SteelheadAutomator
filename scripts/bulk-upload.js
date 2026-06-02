@@ -1300,8 +1300,8 @@ const BulkUpload = (() => {
 
       const predictiveUsage = [];
       // 1.3.1: sentinel "-" granular por material. Cada celda se evalúa en crudo:
-      //   * "-" → placeholder usagePerPart='-' (STEP 6a lo manda con microQuantityPerPart=0
-      //     via UpdateInventoryItemPredictedUsage para "archivar" ese predictivo individual)
+      //   * "-" → placeholder usagePerPart='-' (1.6.28: STEP 6a archiva real vía
+      //     ChangePredictedInventoryUsagesWithRecipeNodeCascade.toArchive)
       //   * numero > 0 → upsert ese predictivo
       //   * vacio → no tocar
       // NOTA: se usa schemaPredictiveMaterials (derivado del COLS detectado) para
@@ -5311,7 +5311,7 @@ const BulkUpload = (() => {
 
         // Predictive — 1.3.1: dash granular por material. SavePartNumber.inventoryPredictedUsages
         // solo lleva los predictivos con valor numérico (los nuevos para el PN). Los con
-        // usagePerPart='-' los archiva STEP 6a vía UpdateInventoryItemPredictedUsage(microQuantityPerPart=0).
+        // usagePerPart='-' los archiva STEP 6a (1.6.28: ChangePredictedInventoryUsagesWithRecipeNodeCascade.toArchive).
         const finalPredictive = part.predictiveUsage.filter(pu => !isDash(String(pu.usagePerPart)));
         if (finalPredictive.length) stats.predictiveSet++;
 
@@ -5553,124 +5553,106 @@ const BulkUpload = (() => {
       // GetPartNumber on-demand (líneas ~4222 con cache miss).
       existingPnFullCache.clear();
 
-      // STEP 6a: Actualizar predictivos existentes vía UpdateInventoryItemPredictedUsage.
-      // Steelhead almacena en microQuantityPerPart (kg/pza × 1e6 redondeado).
-      // 1.3.3: dash granular por material AHORA archiva real vía ArchivePredictedInventoryUsage
-      // (input singular {id, predictedInventoryUsagePatch:{archivedAt}}). Antes (1.3.1-1.3.2) se
-      // mandaba microQuantityPerPart=0 — los dejaba inertes pero seguían listados en Predicted
-      // Inventory Usage. Se separan dos buckets: numérico → UpdateInventoryItemPredictedUsage
-      // (batch 20), dash → ArchivePredictedInventoryUsage (singular, paralelo con pool).
-      const predictedUpdates = [];
-      const predictedArchives = []; // ids a archivar (dash granular)
-      // 1.4.30 Fix JJ: ids a desarchivar antes del update. Cuando un PN tiene un
-      // predictive previamente archivado y el CSV trae un valor numérico para ese
-      // mismo material, ese record sigue en server pero invisible (archivedAt set).
-      // Si solo hacemos UpdateInventoryItemPredictedUsage cambiamos el microQuantityPerPart
-      // pero NO desarchivamos — el audit lo sigue viendo como missing porque filtra
-      // por archivedAt. Antes (≤1.4.29) eso dejaba huecos sistemáticos (430 predictives
-      // missing en re-audit P3 post-recovery, concentrados en Sterlingshield S /
-      // Plata Fina / Epoxy MT / Epoxica BT / Estaño Puro).
-      const predictedUnarchives = [];
+      // STEP 6a: Actualizar predictivos existentes vía ChangePredictedInventoryUsagesWithRecipeNodeCascade.
+      // Steelhead almacena en microQuantityPerPart (kg/pza × 1e6 redondeado, enviado como string).
+      // 1.6.28: refactor a mutación consolidada. Reemplaza el trío:
+      //   - UpdateInventoryItemPredictedUsage (batch 20) → numéricos
+      //   - ArchivePredictedInventoryUsage(archivedAt:null) → unarchive previo (Fix JJ 1.4.30)
+      //   - ArchivePredictedInventoryUsage(archivedAt:ISO)  → dash granular (Fix K1 1.3.3)
+      // El nuevo endpoint usa input {toCreate, toArchiveAndReplace, toArchive, cascadePairs}.
+      // toArchiveAndReplace archiva el id existente y crea un nuevo activo en un round-trip,
+      // por lo que cubre tanto Update simple como Unarchive+Update.
+      // Histórico de bugs que originaron el flujo anterior (preservar contexto):
+      //   - 1.3.1-1.3.2: microQuantityPerPart=0 dejaba inerte pero visible (Sterlingshield S 2728.8 LTS).
+      //   - 1.3.3 Fix K1: introdujo Archive real.
+      //   - 1.4.30 Fix JJ: si CSV traía numérico para predictive previamente archivado,
+      //     el update no desarchivaba → audit lo veía como missing (430 huecos: Sterlingshield S,
+      //     Plata Fina, Epoxy MT, Epoxica BT, Estaño Puro).
+      //   - 1.4.31 Fix KK: contadores diagnósticos (predFetchTotalNodes/predFetchArchivedNodes).
+      const predToArchive = []; // [{archiveId}] dash granular sobre records activos
+      const predToArchiveAndReplace = []; // [{archiveId, inventoryItemId, partNumberId, microQuantityPerPart}]
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
         if (status.status !== 'existing') continue;
         if (!part.predictiveUsage.length) continue;
         const entry = pnLookup.get(i);
-        const exMap = entry?.pn?.id ? existingPredictedMap.get(entry.pn.id) : null;
+        const pnId = entry?.pn?.id;
+        const exMap = pnId ? existingPredictedMap.get(pnId) : null;
         if (!exMap || !exMap.size) continue;
         for (const pu of part.predictiveUsage) {
           const ex = exMap.get(String(pu.inventoryItemId));
           if (!ex) continue; // es uno nuevo, ya fue al SavePartNumber (o no existe en el PN)
           const exId = ex.id;
           if (isDash(String(pu.usagePerPart))) {
-            // Si ya está archivado, no necesitamos volverlo a archivar.
-            if (!ex.archivedAt) predictedArchives.push(exId);
+            // Si ya está archivado, no hace falta volverlo a archivar.
+            if (!ex.archivedAt) predToArchive.push({ archiveId: exId });
             continue;
           }
           const micro = Math.round(parseFloat(pu.usagePerPart) * 1e6);
           if (!Number.isFinite(micro)) continue;
-          if (ex.archivedAt) predictedUnarchives.push(exId);
-          predictedUpdates.push({ id: exId, microQuantityPerPart: micro, inventoryUsageLowCodeId: null });
+          predToArchiveAndReplace.push({
+            archiveId: exId,
+            inventoryItemId: parseInt(pu.inventoryItemId, 10),
+            partNumberId: parseInt(pnId, 10),
+            microQuantityPerPart: String(micro),
+          });
         }
       }
       // 1.4.25 Fix FF: setPanelPhase para STEP 6a (predictivos). Antes el modal
       // quedaba en "Paso 6/9: Enriqueciendo PNs..." durante esta fase, aunque
       // STEP 6 ya hubiera terminado.
-      const predTotalOps = predictedUpdates.length + predictedArchives.length + predictedUnarchives.length;
+      const predTotalOps = predToArchive.length + predToArchiveAndReplace.length;
       if (predTotalOps) {
-        setPanelPhase(`Paso 6a/9: Predictivos (${predictedUnarchives.length} unarchive / ${predictedUpdates.length} update / ${predictedArchives.length} archive)`);
+        setPanelPhase(`Paso 6a/9: Predictivos (${predToArchiveAndReplace.length} replace / ${predToArchive.length} archive)`);
         setPanelProgress(0, predTotalOps);
         setProgressBar(75);
-      }
-      // 1.4.30 Fix JJ: desarchivar PRIMERO. Si el update llega primero, modifica el valor
-      // pero el predictive sigue archivado y el audit lo reporta como missing.
-      // 1.4.31 Fix KK: log incondicional (incluso 0) para diagnóstico — antes (1.4.30) el
-      // bloque entero era condicional y no se sabía si era "no hubo archivados" vs "Fix JJ
-      // no se ejecutó por cache viejo".
-      let unarchivedOk = 0;
-      if (predictedUnarchives.length) {
-        await runPool(predictedUnarchives, async (exId) => {
+        // Chunks de 50 por payload (sample tipico del scan: 1-2 items; subir para batchear).
+        const CHUNK = 50;
+        let replaceOk = 0;
+        let archiveOk = 0;
+        let processed = 0;
+        const callCascade = async (label, payload) => {
+          await withRetry(
+            () => api().query(
+              'ChangePredictedInventoryUsagesWithRecipeNodeCascade',
+              { input: { toCreate: [], toArchiveAndReplace: payload.toArchiveAndReplace || [], toArchive: payload.toArchive || [], cascadePairs: [] } },
+              'ChangePredictedInventoryUsagesWithRecipeNodeCascade'
+            ),
+            label,
+            myRunId
+          );
+        };
+        for (let i = 0; i < predToArchiveAndReplace.length; i += CHUNK) {
           bailIfStale(myRunId);
-          setPanelSubPhase(`Desarchivando predictivo id=${exId}`);
+          const batch = predToArchiveAndReplace.slice(i, i + CHUNK);
+          const lbl = `PredCascade replace batch ${Math.floor(i / CHUNK) + 1} (${batch.length})`;
+          setPanelSubPhase(lbl);
           try {
-            await withRetry(
-              () => api().query('ArchivePredictedInventoryUsage', { input: { id: exId, predictedInventoryUsagePatch: { archivedAt: null } } }, 'ArchivePredictedInventoryUsage'),
-              `UnarchivePredictedInventoryUsage(id=${exId})`,
-              myRunId
-            );
-            unarchivedOk++;
+            await callCascade(lbl, { toArchiveAndReplace: batch });
+            replaceOk += batch.length;
           } catch (e) {
             if (isBail(e)) throw e;
-            errors.push(`UnarchivePredictedInventoryUsage(id=${exId}): ${String(e).substring(0, 120)}`);
+            errors.push(`${lbl}: ${String(e).substring(0, 120)}`);
           }
-        }, bulkCfg().concurrency.savePartNumber || 5,
-          (done) => { setPanelProgress(done, predTotalOps); },
-          myRunId);
-      }
-      if (predTotalOps) {
-        log(`  Predictivos desarchivados: ${unarchivedOk}/${predictedUnarchives.length} (Fix JJ/KK 1.4.31)`);
-      }
-      if (predictedUpdates.length) {
-        // Batches de 20 para no abusar del payload
-        let predUpdDone = 0;
-        for (let i = 0; i < predictedUpdates.length; i += 20) {
-          const batch = predictedUpdates.slice(i, i + 20);
-          setPanelSubPhase(`Predictivos: batch ${Math.floor(i / 20) + 1} (${batch.length} items)`);
-          try {
-            await api().query('UpdateInventoryItemPredictedUsage', { mnPredictedInventoryUsagePatch: batch }, 'UpdateInventoryItemPredictedUsage');
-          } catch (e) {
-            errors.push(`UpdatePredictedUsage batch ${Math.floor(i / 20) + 1}: ${String(e).substring(0, 120)}`);
-          }
-          predUpdDone += batch.length;
-          setPanelProgress(predictedUnarchives.length + predUpdDone, predTotalOps);
+          processed += batch.length;
+          setPanelProgress(processed, predTotalOps);
         }
-        log(`  Predictivos actualizados: ${predictedUpdates.length}`);
-      }
-      if (predictedArchives.length) {
-        // ArchivePredictedInventoryUsage es input singular {input:{id, predictedInventoryUsagePatch:{archivedAt}}}.
-        // Pool concurrente para no serializar — 1 round-trip por predictivo a archivar.
-        const archivedAt = new Date().toISOString();
-        let archivedOk = 0;
-        await runPool(predictedArchives, async (exId) => {
+        for (let i = 0; i < predToArchive.length; i += CHUNK) {
           bailIfStale(myRunId);
-          setPanelSubPhase(`Archivando predictivo id=${exId}`);
+          const batch = predToArchive.slice(i, i + CHUNK);
+          const lbl = `PredCascade archive batch ${Math.floor(i / CHUNK) + 1} (${batch.length})`;
+          setPanelSubPhase(lbl);
           try {
-            await withRetry(
-              () => api().query('ArchivePredictedInventoryUsage', { input: { id: exId, predictedInventoryUsagePatch: { archivedAt } } }, 'ArchivePredictedInventoryUsage'),
-              `ArchivePredictedInventoryUsage(id=${exId})`,
-              myRunId
-            );
-            archivedOk++;
+            await callCascade(lbl, { toArchive: batch });
+            archiveOk += batch.length;
           } catch (e) {
             if (isBail(e)) throw e;
-            errors.push(`ArchivePredictedInventoryUsage(id=${exId}): ${String(e).substring(0, 120)}`);
+            errors.push(`${lbl}: ${String(e).substring(0, 120)}`);
           }
-        }, bulkCfg().concurrency.savePartNumber || 5,
-          // 1.4.25 Fix FF: callback de progreso global (update + archive).
-          // 1.4.30 Fix JJ: offset incluye unarchives + updates ya hechos.
-          (done) => { setPanelProgress(predictedUnarchives.length + predictedUpdates.length + done, predTotalOps); },
-          myRunId);
-        log(`  Predictivos archivados: ${archivedOk}/${predictedArchives.length}`);
+          processed += batch.length;
+          setPanelProgress(processed, predTotalOps);
+        }
+        log(`  Predictivos (cascade 1.6.28): ${replaceOk}/${predToArchiveAndReplace.length} replace + ${archiveOk}/${predToArchive.length} archive`);
       }
 
       // STEP 6b: Sync params on existing PNs whose specs were already linked.
