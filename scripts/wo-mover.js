@@ -1,17 +1,17 @@
 // WO Mover — Mover OTs (work orders) entre OVs (received orders)
-// Mecanismo: editar el ENCABEZADO de la OT para reasignar su receivedOrderId
-//            (conserva la misma OT). v1 = OT completa; v2 = cantidad parcial.
+// Mecanismo: editar el ENCABEZADO de la OT (CreateUpdateWorkOrdersChecked con id
+//            poblado + receivedOrderId nuevo). Conserva la misma OT.
+// ALCANCE v0.2: SOLO reasigna el encabezado. La parte (ReceivedOrderPartTransform /
+//            línea de OV) queda en la OV origen y se asocia a mano en Steelhead
+//            (la UI no expone esa asociación por API — ver docs/applets/wo-mover.md).
+//            v2 futura: cantidad parcial.
 // Depende de: SteelheadAPI, OVOperations (window.OVOperations), SteelheadHostCleanup.
 // Plan: ~/.claude/plans/necesito-hacer-un-applet-staged-lightning.md
-//
-// NOTA Fase 0: las mutaciones reassignWOHeader() y associatePartsToDestLine()
-// quedan como STUBS hasta validar sus payloads reales con el hash-scanner.
-// Mientras tanto el botón "Ejecutar" está deshabilitado.
 
 const WOMover = (() => {
   'use strict';
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
 
   const api = () => window.SteelheadAPI;
   const ovops = () => window.OVOperations;
@@ -25,6 +25,11 @@ const WOMover = (() => {
 
   const CANDIDATE_CAP = 100;   // tope de OVs candidatas cargadas (memory hardening)
   const DRAIN_EVERY = 10;      // drenar Apollo cache cada N OVs cargadas
+
+  // Advertencia base: este applet SOLO reasigna el encabezado de la OT. La parte
+  // (ReceivedOrderPartTransform / línea) queda en la OV origen y debe asociarse a
+  // mano en Steelhead (la UI no expone esa asociación por API — ver bitácora).
+  const NOTE_BASE = '⚠️ Solo reasigna el encabezado de la OT. La parte se asocia a la línea de la OV destino manualmente en Steelhead.';
 
   // ── Estado (se reinicia entero en closePanel) ──
   let state = freshState();
@@ -392,7 +397,7 @@ const WOMover = (() => {
           <div class="sa-wm-placeholder">Cargando órdenes de trabajo…</div>
         </div>
         <div class="sa-wm-footer">
-          <span class="sa-wm-note" id="sa-wm-note">Pendiente validación de mutaciones (Fase 0).</span>
+          <span class="sa-wm-note" id="sa-wm-note">${NOTE_BASE}</span>
           <div>
             <button class="sa-wm-btn" id="sa-wm-cancel">Cerrar</button>
             <button class="sa-wm-btn primary" id="sa-wm-exec" disabled>Ejecutar (0)</button>
@@ -476,25 +481,31 @@ const WOMover = (() => {
     const n = state.rows.filter(r => r.selected).length;
     const ready = state.rows.filter(r => r.selected && r.destOvId && r.destOvId !== '').length;
     const exec = document.getElementById('sa-wm-exec');
-    if (exec) {
+    if (exec && !state.busy) {
       exec.textContent = `Ejecutar (${n})`;
-      // Fase 0 pendiente: el botón permanece deshabilitado hasta implementar la
-      // ejecución validada por escaneo. Ver onExecuteClick().
-      exec.disabled = true;
+      exec.disabled = !(n > 0 && ready === n);   // habilita si todas las marcadas tienen destino
     }
     document.querySelectorAll('.sa-wm-table tbody tr').forEach((tr) => {
       const i = +tr.dataset.i;
       tr.classList.toggle('sel', !!state.rows[i]?.selected);
     });
     const note = document.getElementById('sa-wm-note');
-    if (note && n && ready < n) note.textContent = `${n - ready} fila(s) seleccionada(s) sin destino.`;
+    if (note && !state.busy) {
+      if (n && ready < n) note.textContent = `${n - ready} fila(s) seleccionada(s) sin destino.`;
+      else note.innerHTML = NOTE_BASE;
+    }
   }
 
   function onExecuteClick() {
-    // El botón sigue deshabilitado hasta capturar la mutación de "Asociar partes".
-    // reassignWOHeader() ya está validado (scan 2026-06-01); falta associate+reconcile.
-    alert('Ejecución pendiente: falta capturar la mutación de "Asociar partes" (Fase 0). '
-        + 'El movimiento de encabezado ya está validado; en cuanto tengamos la asociación, se habilita.');
+    if (state.busy) return;
+    const rows = state.rows.filter(r => r.selected && r.destOvId && r.destOvId !== '');
+    if (!rows.length) return;
+    const msg = `Vas a reasignar el encabezado de ${rows.length} OT(s) a su OV destino.\n\n`
+      + `IMPORTANTE: esto mueve la orden de trabajo, pero la PARTE (demanda/línea) se queda en `
+      + `la OV origen. Después tendrás que ASOCIAR la parte a una línea de la OV destino manualmente `
+      + `en Steelhead.\n\n¿Continuar?`;
+    if (!confirm(msg)) return;
+    executeSelectedRows();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -539,18 +550,73 @@ const WOMover = (() => {
     return data;
   }
 
-  // STUB Fase 0: "Asociar partes" = asignar el partsTransferAccount (que quedó en
-  // partAccountsNotAssignedToReceivedOrder de la OV destino) a una línea de OV
-  // (nueva o existente). El scan 2026-06-01 SOLO capturó la query del modal
-  // (GetPartsTransferAccountAssociationData), no el guardado. Pendiente recaptura.
-  async function associatePartsToDestLine(/* ot, destOv */) {
-    throw new Error('associatePartsToDestLine: pendiente recaptura de la mutación de "Asociar partes".');
+  // Crea una OV nueva como destino reusando el wizard de OVOperations.
+  // Devuelve el id INTERNO de la OV creada, o null si se canceló.
+  // NOTA: createNewOV devuelve idInDomain; resolvemos el id interno con loadOVDetails.
+  async function createDestinationOV() {
+    const ops = ovops();
+    if (!ops?.showCreationWizard || !ops?.fetchCreationData || !ops?.createNewOV) {
+      alert('No está disponible el módulo de creación de OV (OVOperations).');
+      return null;
+    }
+    const customerId = state.sourceOV.customerId;
+    const creationData = await ops.fetchCreationData(customerId);
+    const sourceData = { currency: '', customer: state.sourceOV.customerName || '', lines: [], poNumber: '' };
+    const formData = await ops.showCreationWizard(sourceData, creationData, customerId);
+    if (!formData) return null;   // el usuario canceló el wizard
+    const newIdInDomain = await ops.createNewOV(formData, sourceData, null);
+    if (!newIdInDomain) throw new Error('createNewOV no devolvió id');
+    const detail = await loadOVDetails(newIdInDomain);
+    // Registrar en candidatas para reuso en otras filas + refrescar dropdowns.
+    state.candidateOVs.unshift({ id: detail.id, idInDomain: detail.idInDomain, name: detail.name, pnSet: new Set() });
+    renderTable();
+    return detail.id;
   }
 
-  // STUB Fase 0: reducir/cerrar la línea de la OV origen tras mover la OT.
-  // Se define junto con el flujo de asociación (depende de cómo quede el PT origen).
-  async function reconcileSourceOVLines(/* sourceIdInDomain */) {
-    throw new Error('reconcileSourceOVLines: pendiente Fase 3.');
+  // Ejecuta una fila: (crea OV destino si "__new__") + reasigna el encabezado de
+  // la OT. NO asocia la parte ni reconcilia — eso queda manual (decisión del
+  // usuario: la UI de Steelhead no permite asociar por API con lo capturado).
+  async function executeMoveRow(row) {
+    let destInternalId = row.destOvId;
+    if (destInternalId === '__new__') {
+      destInternalId = await createDestinationOV();
+      if (!destInternalId) return { skipped: true };
+      row.destOvId = destInternalId;
+    }
+    await reassignWOHeader(row.ot.id, destInternalId);
+    return { ok: true, destInternalId };
+  }
+
+  // Itera las filas seleccionadas con destino, secuencialmente, y lleva bitácora.
+  async function executeSelectedRows() {
+    const rows = state.rows.filter(r => r.selected && r.destOvId && r.destOvId !== '');
+    if (!rows.length) return;
+    state.busy = true;
+    const exec = document.getElementById('sa-wm-exec');
+    if (exec) { exec.disabled = true; exec.textContent = 'Ejecutando…'; }
+    let okCount = 0, errCount = 0;
+    for (const row of rows) {
+      row.status = 'running'; renderTable();
+      try {
+        const res = await executeMoveRow(row);
+        if (res.skipped) { row.status = 'pending'; renderTable(); continue; }
+        row.status = 'ok'; okCount++;
+        state.auditLog.push({ woId: row.ot.id, woName: row.ot.name, pn: row.ot.partNumber,
+          sourceOv: state.sourceOV.idInDomain, destOvInternal: res.destInternalId,
+          partCount: row.ot.partCount, status: 'ok' });
+        log(`OT ${row.ot.name} (${row.ot.partNumber}) → OV interna ${res.destInternalId}: encabezado reasignado`);
+      } catch (e) {
+        row.status = 'error'; row.error = e.message; errCount++;
+        state.auditLog.push({ woId: row.ot.id, pn: row.ot.partNumber, status: 'error', error: e.message });
+        warn(`OT ${row.ot.name}: ${e.message}`);
+      }
+      renderTable();
+    }
+    state.busy = false;
+    const note = document.getElementById('sa-wm-note');
+    if (note) note.innerHTML = `✅ ${okCount} OT(s) movida(s)${errCount ? `, ❌ ${errCount} con error` : ''}. ` +
+      `<strong>Falta asociar la parte a la línea de la OV destino en Steelhead (manual).</strong>`;
+    refreshSelectionUI();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
