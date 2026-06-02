@@ -199,27 +199,29 @@ Reglas:
     log(`Verificando documentos adjuntos de OV ${receivedOrderId}...`);
 
     try {
-      const data = await api().query('GetReceivedOrderDocuments', {
-        idInDomain: parseInt(receivedOrderId, 10),
-        revisionNumber: 1
+      // 1.6.28: GetReceivedOrderDocuments deprecada. Reemplazada por GetReceivedOrder
+      // que trae los archivos en receivedOrderUserFilesByReceivedOrderId.nodes[].userFileByUserFileName.
+      const data = await api().query('GetReceivedOrder', {
+        idInDomain: parseInt(receivedOrderId, 10)
       });
 
-      const docs = data?.receivedOrder?.documents?.nodes ||
-                   data?.receivedOrder?.documents ||
-                   data?.receivedOrder?.userFiles?.nodes ||
-                   [];
+      const files = data?.receivedOrderByIdInDomain?.receivedOrderUserFilesByReceivedOrderId?.nodes || [];
 
-      const pdfs = docs.filter(d => {
-        const name = (d.originalName || d.name || '').toLowerCase();
+      const pdfs = files.filter(f => {
+        const uf = f?.userFileByUserFileName || {};
+        const name = (uf.originalName || uf.name || '').toLowerCase();
         return name.endsWith('.pdf');
       });
 
       log(`Documentos PDF adjuntos: ${pdfs.length}`);
-      return pdfs.map(d => ({
-        name: d.name,
-        originalName: d.originalName || d.name,
-        url: d.url || d.downloadUrl || null
-      }));
+      return pdfs.map(f => {
+        const uf = f?.userFileByUserFileName || {};
+        return {
+          name: uf.name,
+          originalName: uf.originalName || uf.name,
+          url: null
+        };
+      });
     } catch (e) {
       warn(`Error cargando documentos: ${e.message}`);
       return [];
