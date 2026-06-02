@@ -2,6 +2,52 @@
 
 Versiones documentadas: 1.0.0 → 1.5.16 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
+## STEP 6a refactor (config 1.6.28, 2026-06-01) — `ChangePredictedInventoryUsagesWithRecipeNodeCascade`
+
+### Contexto
+Rotación masiva 2026-06-01 deprecó `UpdateInventoryItemPredictedUsage` y `ArchivePredictedInventoryUsage` (los hashes anteriores devolvían HTTP 400 `"Must provide a query string."`). El reemplazo es **una sola mutación** que consolida los 3 paths previos del STEP 6a:
+
+| Path previo | Caso | Reemplazo en cascade |
+|---|---|---|
+| `ArchivePredictedInventoryUsage` (pre-update) | unarchive de PIU previamente archivado | `toArchiveAndReplace` con `archiveId` del archivado |
+| `UpdateInventoryItemPredictedUsage` batch-20 | update simple de PIU activo | `toArchiveAndReplace` con `archiveId` del PIU vigente |
+| `ArchivePredictedInventoryUsage` pool (dash sentinel `—`) | borrar PIU porque el material salió del recipe | `toArchive` con `archiveId` |
+
+### Input shape
+```js
+{
+  input: {
+    toCreate: [],                  // no usado por STEP 6a (los creates van en Call B vía SavePartNumberRecipeNode)
+    toArchiveAndReplace: [{ archiveId, inventoryItemId, partNumberId, microQuantityPerPart: "<string>" }],
+    toArchive: [{ archiveId }],
+    cascadePairs: []
+  }
+}
+```
+
+**Gotcha crítico**: `microQuantityPerPart` se serializa como **STRING** (no número), confirmado en sample variables del scan. JS `String(value)` antes de mandar.
+
+### Beneficios
+- 1 mutación atómica vs 3 con interleaving frágil
+- Sin "batch-20 update + pool concurrent archives" (ambos competían contra mismo PN)
+- Chunks de 50 PIUs por call
+
+### Comportamiento preservado
+- Fix JJ 1.4.30 (skip-stale-dash si PIU ya está archivado)
+- Fix KK 1.4.31 (no re-archivar PIUs ya archivados)
+- Fix K1 1.3.3 (numérico-a-numérico solo si difiere)
+- Sterlingshield S 2728.8 LTS bug (Plata Fina / Epoxy MT / Epoxica BT / Estaño Puro) — sigue cubierto por toArchiveAndReplace
+
+### Pendiente
+**Validación piloto (3-5 PNs con `predictiveUsage` real + 1 PN con dash sentinel `—`)** — la mutación nunca se ha disparado en producción. Antes de bulk run grande, correr piloto y verificar:
+- PIU se crea/actualiza correctamente (numérico)
+- PIU se archiva correctamente (dash)
+- archived PIUs no se duplican
+
+### Archivos tocados
+- `remote/scripts/bulk-upload.js` STEP 6a (~líneas 5556-5660): 3-phase block → 2-bucket build + cascade calls
+- `remote/config.json` 1.6.27 → **1.6.28**, +1 hash `ChangePredictedInventoryUsagesWithRecipeNodeCascade`, conserva `ArchivePredictedInventoryUsage` para `tools/archive-predictive-dash.js`
+
 ## 1.5.16 (2026-05-30) — Fix FK fallback para scalars bugged (`defaultProcessNodeId` / `geometryTypeId` / `customerId` / `partNumberGroupId`)
 
 ### Síntoma
