@@ -116,6 +116,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `warehouse-location-prefill` | 0.5.80 | [`docs/applets/warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
 | `weight-quick-entry` | 0.5.81 | [`docs/applets/weight-quick-entry.md`](docs/applets/weight-quick-entry.md) |
 | `create-order-autofill` | 0.1.0 | [`docs/applets/create-order-autofill.md`](docs/applets/create-order-autofill.md) |
+| `wo-mover` (mover OTs entre OVs) | 0.2.0 (solo reasigna encabezado vía `CreateUpdateWorkOrdersChecked`; la parte/PT queda en la OV origen y se asocia manual — la UI no expone la asociación por API) | [`docs/applets/wo-mover.md`](docs/applets/wo-mover.md) |
 | `process-canon` | varios | [`docs/processes-architecture.md`](docs/processes-architecture.md) (glosario §9) |
 | `hash-scanner` | 0.6.23 | [`docs/applets/hash-scanner.md`](docs/applets/hash-scanner.md) |
 | `audit-incomplete-pns` (DevTools, no extensión) | fix-2026-05-25 (Fix MM) + tier scan 2026-05-26 | [`docs/applets/audit-incomplete-pns.md`](docs/applets/audit-incomplete-pns.md) |
