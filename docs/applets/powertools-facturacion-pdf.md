@@ -136,6 +136,14 @@ Aplicado una sola vez por línea (no por lote), igual que el expression original
 
 Si alguna de estas decisiones rompe el output esperado en producción, son los puntos a revertir primero.
 
+**2026-06-03 — Fusión PO/Lote/PS.** Cuando `salesOrder.name` (PO), los nombres de
+lote y los packing slips de la línea comparten el mismo valor base, los bloques
+"OC (OV)" y "Lote+PS" se fusionan en un solo `<b>PO/Lote/PS: </b>{base} {sufijo}`.
+El sufijo del PS (ej. la descripción del NP, "ZAPATA") se anexa. Si solo coinciden
+PO y Lote, se emite `PO/Lote: {base}` y el PS se muestra aparte. Si no hay
+coincidencia, render separado como antes. El `(OV)` interno no participa en la
+comparación. Lógica pura en `tools/pdf_description_fusion.{mjs,test.mjs}`.
+
 ## Lecciones (pendientes de validar al subir al editor de Power Tools)
 
 - `helpers.log` puede no imprimir en el panel "Test" según el flujo (igual que en `ordendeventa.ts`). Si no salen los logs, dumpear a `addErrorMessage({severity:'info', message: JSON.stringify(...)})` temporalmente.
@@ -157,3 +165,21 @@ Si alguna de estas decisiones rompe el output esperado en producción, son los p
 
 - Confirmar que el PackingSlip a mostrar es `receivedBatches[].customInputs.DatosRecibo.PackingSlip` y no `partAccounts[].packingSlip.idInDomain` (el PA también tiene un objeto `packingSlip` con `idInDomain`; semánticamente distinto — uno es el PS del lote físico recibido, el otro es el PS de embarque generado al facturar). En esta primera versión usamos el del lote (como en `facturacion.ts`).
 - Si más adelante hay que mostrar también `idInDomain` del PS de embarque, agregar un campo paralelo en `LoteResumen`.
+
+## Fecha de recibo del lote — NO viaja en el payload del INVOICE (investigado 2026-05-29)
+
+**Pregunta de negocio:** mostrar en la factura la fecha de recibo del lote (la que en otros documentos —Job Tag— se navega como `{receivedBatches::receivers::receivedDate}`). Aproximación aceptable: la fecha de creación del batch (`createdAt`).
+
+**Conclusión: el documento INVOICE no expone esa fecha por ningún lado.** Validado con 3 dumps independientes en el panel Test (vía `helpers.addErrorMessage({severity:'info', ...})`, porque `helpers.log` no siempre imprime):
+
+1. `Object.keys(receivedBatch)` → `["id","name","descriptionMarkdown","customInputs","partNumberOnBatch"]`. Sin `createdAt`, `receivers`, `receivedDate` ni `receivedAt`.
+2. `JSON.stringify(receivedBatch)` completo → confirma que no hay campo escondido (una respuesta GraphQL es data plana y enumerable; si viniera, `JSON.stringify` la sacaría). El `customInputs.DatosRecibo` es folder gestionado por el cliente (`TipoVale`, `PackingSlip`, `numeroContenedores`) y **no** maneja fecha.
+3. `Object.keys(inputs)` top-level → `idInDomain, invoiceTerms, terms, createdAt, createWriteResult, voidWriteResult, domain, paymentLinkUrl, shipDate(+AsDate), shipVia, notes, location, totalPriceUSD, invoicedAt(+AsDate), dueAt(+AsDate), paid, openBalance, salesTax, taxRates, salesTaxUSD, customerContact, completedPartsTransfers, customInputs, logoUrl, timezone, billToAddress, shipToAddress, dropShipToAddress, partAccounts, invoiceLines`. **No hay nodo `receivers`/`receivedOrders`/`batches` suelto** que se pueda cruzar por `batchId`. Los únicos nodos con datos de lote son `partAccounts` (sin fecha en el batch) y `completedPartsTransfers` (sin fecha de recibo ni `batchId`).
+
+**Por qué el truco del Job Tag no aplica:** dos resolvers distintos.
+- El expression nativo de Steelhead (`{a::b::c}`) navega el grafo del modelo en runtime — por eso el Job Tag llega a `{receivedBatches::receivers::receivedDate}`.
+- El INVOICE-PDF usa **PDFGeneratorAPI** con `additionalPayload` precomputado por este hook. El hook solo ve lo que la query GraphQL del INVOICE trae (el objeto `Inputs`, ya resuelto y serializado). No hay forma de "forzar" un campo que la query no pidió, ni de lanzar una query extra: `Helpers` no expone red, y el sandbox no da `fetch`/auth/hash de persisted query.
+
+**Workaround vigente (decisión del usuario):** usar `partAccounts[].workOrder.createdAt` (fecha de OT) como aproximación de la fecha de recibo. Ya implementado en la plantilla por el usuario; **no** se agregó al `LoteResumen` del hook. Cuidado: NO usar `packingSlip.createdAt` ni `billOfLading.createdAt` — son fechas de embarque/salida, no de recibo.
+
+**Pendiente con Steelhead (ticket abierto por el usuario):** agregar `receivedBatches { createdAt }` o el join `receivers { receivedDate }` a la query del documento INVOICE PDF. El modelo de datos ya lo soporta (el Job Tag lo navega); es solo cuestión de que la query del INVOICE lo pida. Cuando llegue, aparecerá en el dump y se engancha al `LoteResumen` en dos líneas (sustituyendo el proxy de OT).

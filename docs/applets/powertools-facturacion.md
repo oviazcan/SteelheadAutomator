@@ -9,6 +9,17 @@ Hook low-code que genera las líneas reales de factura de Steelhead (`lowCodeDef
 3. **Cantidad efectiva** sumando `partAccounts[].quantity × conversionFactor(lineUnit)` sobre todos los `partNumberWorkOrders` de la línea.
 4. **Cargo de lote mínimo** detectado por conversión `LO Lote` (unit id `5348`). Si `piezasPedidas ≤ piezasPorLote`, re-escala `rate = piezasPorLote × rateUnitario` y fuerza `quantity = 1`. La descripción incluye la subcadena `"Cargo de lote mínimo aplicado"` que el integrador SAT detecta para reconvertir la unidad a Lote oficial.
 5. **Descripción CFDI** construida con `construirDescripcionCFDI` respetando los flags `DatosFactura` del cliente (`MostrarNP`, `MostrarAcabado`, `MostrarProducto`, `MostrarPO`, `MostrarOV`, `MostrarOT`, `MostrarLote`, `MostrarPS`, `MultiplicadorLineaOC`). Trunca a 1000 chars (límite SAT). **2026-05-27**: se removió `NotasAdicionales` del bloque 1 — ya no se concatena `" - <NotasAdicionales>"` después del nombre del NP. El campo sigue existiendo en `partNumber.customInputs.NotasAdicionales`, simplemente no se incluye en la descripción de factura.
+
+   **2026-06-03 — Descripción compacta para el SAT (≤60).** `construirDescripcionCFDI`
+   se reescribió para el límite de 60 chars del SAT: se quitó el NP (ya viaja en
+   `Name`/`NoIdentificacion`), labels comprimidos (`OC `/`OT `/`Ac `/`L `, sin
+   `Producto: `), separador de un espacio, colapso de `Lote==OC`, y el PS del cliente
+   ya NO va en la descripción del SAT. No se trunca a 60 (la interfaz comparte el
+   campo); en su lugar se emite un warning resumido cuando alguna línea supera
+   `PRESUPUESTO_AVISO` (≈40, reservando la remisión que Steelhead anexa). El caso
+   "Cargo de lote mínimo aplicado" preserva esa subcadena intacta. El path
+   consolidado (Schneider) usa el mismo estilo; el listado `NPs(N) …` se conserva.
+   Lógica pura verificada en `tools/invoice_description.{mjs,test.mjs}`.
 6. **Consolidación Schneider Rojo Gómez** (ver sección dedicada abajo).
 
 ## Inputs / Outputs
