@@ -68,3 +68,33 @@ Nuevas queries registradas: `WorkOrderDialogQuery`, `GetPartsTransferAccountAsso
 |---|---|---|
 | `GetDomain` | `bill-autofill`, `invoice-autofill` (tipo de cambio: `customInputs.TipoCambio` / `currentExchangeRate`) | Correr hash-scanner en la pantalla de facturación que dispare `GetDomain`, capturar el hash nuevo, actualizar `config.json` + redeploy. **Mientras tanto, el tipo de cambio en facturación puede fallar.** |
 
+---
+
+## 2026-06-03 12:00 — 5 rotado(s) (config v1.6.29)
+
+**Corrida**: manual (pre-carga masiva de 500 NP; validar que `bulk-upload` no use hashes rotados).
+
+**Resultado**: 148 ok / 5 stale / 2 skipped / 0 unknown / 0 auth. Elapsed 111s.
+
+### Hashes rotados detectados
+
+| Operación | Tipo | Usado por | ¿Afecta bulk-upload? |
+|---|---|---|---|
+| `GetReceivedOrder` | query | wo-mover, po-comparator, po-reconciler, portal-importer, ov-operations | **No** |
+| `GetReceivedOrderDocuments` | query | po-comparator (ya deprecado internamente → usa `GetReceivedOrder`) | **No** |
+| `GetReceivedOrdersWithReceivedOrderLineItems` | query | invoice-autofill | **No** |
+| `UpdateInventoryItemPredictedUsage` | mutation | nadie en runtime (solo comentarios en bulk-upload; reemplazado por cascade 1.6.28) | **No** |
+| `ArchivePredictedInventoryUsage` | mutation | `tools/archive-predictive-dash.js` (tool DevTools standalone) | **No** |
+
+### Diagnóstico
+
+- **`bulk-upload` está limpio**: ninguno de los 5 stale se invoca en runtime de la carga masiva. `ChangePredictedInventoryUsagesWithRecipeNodeCascade` (el que usa STEP 6a) salió **ok** → vigente. La carga de 500 NP no tronará por hashes.
+- **`GetReceivedOrder` rotó OTRA VEZ** (el `4fa89e55…` capturado el 2026-06-01 ya está stale). Afecta wo-mover / facturación / OV — **deuda separada**, requiere hash-scanner en navegador para capturar el nuevo.
+- Los 2 hashes de predictivos (`Update…`/`Archive…`) estaban deprecados desde la rotación 2026-06-01; su staleness es **esperada**. `archive-predictive-dash.js` (DevTools) tronaría si se corre — pendiente migrarlo al cascade.
+
+### Pendiente de captura (no bloquea bulk-upload)
+
+| Operación | Acción |
+|---|---|
+| `GetReceivedOrder` | hash-scanner en pantalla de OV → actualizar config + redeploy (afecta varios applets de OV/facturación) |
+
