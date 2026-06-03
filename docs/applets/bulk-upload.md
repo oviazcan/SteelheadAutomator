@@ -40,12 +40,33 @@ alimenta tanto `existingPnNode` de Call B como `pnNode` de STEP 6b) trae
 `inventoryItemUnitConversionsByInventoryItemId`, `materialByMaterialId`,
 `sourceMaterialConversionType`.
 
-### Plan de validación pendiente
-- Piloto con ≥1 PN que tenga UCs (KGM/CMK/LM) + validación 1er artículo
-  activa + specFieldParams duplicados (para forzar el STEP 6b). Verificar
-  post-corrida que UCs y optInOuts sobreviven.
-- Confirmar empíricamente que `inventoryPredictedUsages: []` no toca los
-  predictivos (snapshot BEFORE/AFTER de un PN con predictivo + STEP 6b).
+### Validación 2026-06-03 — ✅ APROBADA (piloto MODIFY, clientes generales)
+Piloto SOLO_PN de 5 PNs (3 existentes modificados) sobre clientes generales.
+Evidencia (snapshot BEFORE/AFTER vía `GetPartNumber` con el cliente de Reportes SH):
+- **Cascade STEP 6a** (primera ejecución real en prod): `73295-023-01`
+  Estaño 843→900, `40515-291-01` Zinc 138→100. Replace correcto, **sin
+  duplicar** (1 predictivo por PN tras la corrida).
+- **Fix 1.5.17 (este)**: STEP 6b disparó en `40515-291-01` y `CEDAR 03`
+  (archive 5 params c/u por regla 1.4.38) y las **UCs quedaron 6→6, NO se
+  blanquearon**. Sin el fix habrían quedado en `[]`. optInOuts vacíos en los
+  3 (nada que preservar, pero el path no rompió).
+- Sin duplicación (`0 dup`), customInputs/params intactos, los 2 PNs viejos
+  (`#3016998`, `#3027553`) no se tocaron al crear 2 nuevos (acabado distinto).
+- `73295-023-01` tuvo HTTP 500 → retry strip1 (sin specs/optIn); se recuperó
+  con predictivo/UCs/params correctos.
+
+**Gotcha confirmado — predictivo en `0` vs `-`**: el parser trata un valor
+predictivo `0`/`0.0` como "sin valor / no tocar" (lo excluye de
+`part.predictiveUsage`), NO como "poner en cero". `CEDAR 03` traía Zinc=0.0
+y su predictivo se quedó en 15 (no cambió). Para **anular/borrar** un
+predictivo existente hay que usar guión `-` (cascade `toArchive`); un `0`
+deja el valor viejo. Comportamiento seguro (no borra), pero hay que saberlo.
+
+**Nota de clasificación**: en ambos pilotos (Schneider y clientes generales)
+los existentes salieron `P3` (decisión pendiente). El matcher pre-selecciona
+⭐ "Modificar #id" cuando reconoce (mismo metal+labels+proceso) y "crear
+nuevo" cuando el acabado difiere — comportamiento correcto, pero implica
+revisar/confirmar cada fila P3 antes de ejecutar (en cargas grandes, muchas).
 
 ### Deploy
 - `bulk-upload.js`: `VERSION = '1.5.17'`.
