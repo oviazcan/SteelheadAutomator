@@ -24,6 +24,13 @@ type DatosFacturaFlags = {
   MostrarPS: boolean
 }
 
+// Presupuesto SAT. El XML corta la descripción a LIMITE_SAT. Steelhead anexa la
+// remisión de embarque (", Packing Slip: nnnn") al final porque no está expuesta
+// a este hook; por eso el aviso se dispara reservando ese margen.
+const LIMITE_SAT = 60
+const RESERVA_REMISION_SH = 20
+const PRESUPUESTO_AVISO = LIMITE_SAT - RESERVA_REMISION_SH // ≈ 40
+
 const construirDescripcionCFDI = (p: {
   partNumberName: string | null
   acabados: string[]
@@ -38,74 +45,60 @@ const construirDescripcionCFDI = (p: {
   piezasLoteMinimo: number | null   // tamaño del lote en piezas (para sufijo de la cadena corta)
   flags: DatosFacturaFlags
 }): string => {
-  const partes: string[] = []
   const { flags } = p
 
-  // ── BLOQUE 1: NP + acabados ──
-  if (flags.MostrarNP && p.partNumberName) {
-    let bloque = p.partNumberName
-    if (flags.MostrarAcabado && p.acabados.length > 0) {
-      bloque += `, Acabado: ${p.acabados.join(', ')}`
-    }
-    partes.push(bloque)
-  }
-
-  // Caso especial: cargo de lote mínimo aplicado — descripción corta.
-  // El integrador SAT identifica la subcadena "Cargo de lote mínimo aplicado"
-  // para reconvertir la unidad a Lote oficial del SAT.
+  // Caso especial: lote mínimo. Se preserva intacta la subcadena
+  // "Cargo de lote mínimo aplicado" (el integrador SAT la parsea).
   if (p.loteMinimoCargado) {
-    const piezasFmt =
-      p.piezasLoteMinimo != null && p.piezasLoteMinimo > 0
-        ? String(Math.round(p.piezasLoteMinimo * 100) / 100)
-        : null
-    partes.push(
-      piezasFmt
-        ? `Cargo de lote mínimo aplicado (${piezasFmt} piezas)`
-        : 'Cargo de lote mínimo aplicado'
-    )
-    return partes.join('. ').trim()
+    const partesLM: string[] = []
+    if (flags.MostrarProducto && p.nombreProducto) partesLM.push(p.nombreProducto)
+    partesLM.push('Cargo de lote mínimo aplicado')
+    return partesLM.join(' ').trim()
   }
 
-  // ── BLOQUE 2: Producto ──
+  const partes: string[] = []
+
+  // BLOQUE 1: Producto (valor directo, sin label)
   if (flags.MostrarProducto && p.nombreProducto) {
-    partes.push(`Producto: ${p.nombreProducto}`)
+    partes.push(p.nombreProducto)
   }
 
-  // ── BLOQUE 3: Remisión ──
-  // El PS de embarque de Steelhead no está expuesto en el schema del Power Invoicing.
-  // Steelhead lo agrega automáticamente al pie de la descripción en la UI.
-  // Pendiente: feature request a Steelhead para exponer packing_slip_id en partAccounts.
-  // if (flags.MostrarRemision && p.packingSlips.length > 0) { ... }
-
-  // ── BLOQUE 4: OC (OV) ──
+  // BLOQUE 2: OC
   if (flags.MostrarPO && p.salesOrderName) {
-    let bloqueOC = `OC: ${p.salesOrderName}`
+    let oc = `OC ${p.salesOrderName}`
     if (flags.MultiplicadorLineaOC > 0 && p.salesOrderLineNumber != null) {
-      bloqueOC += `-${p.salesOrderLineNumber * flags.MultiplicadorLineaOC}`
+      oc += `-${p.salesOrderLineNumber * flags.MultiplicadorLineaOC}`
     }
     if (flags.MostrarOV && p.salesOrderIdInDomain) {
-      bloqueOC += ` (${p.salesOrderIdInDomain})`
+      oc += ` (${p.salesOrderIdInDomain})`
     }
-    partes.push(bloqueOC)
+    partes.push(oc)
   }
 
-  // ── BLOQUE 5: Orden de Trabajo ──
-  if (flags.MostrarOT && p.workOrderIdInDomain) {
-    partes.push(`OT: ${p.workOrderIdInDomain}`)
-  }
-
-  // ── BLOQUE 6: Lotes + PS — leídos de partAccounts[].receivedBatch ──
+  // BLOQUE 3: Lote — solo los nombres que difieran del OC (colapso de repetidos)
   if (flags.MostrarLote && p.nombresLotes.length > 0) {
-    const label = p.nombresLotes.length === 1 ? 'Lote' : 'Lotes'
-    let bloqueLote = `${label}: ${p.nombresLotes.join(', ')}`
-    if (flags.MostrarPS && p.packingSlips.length > 0) {
-      bloqueLote += ` PS: ${p.packingSlips.join(', ')}`
+    const lotesDistintos = p.nombresLotes.filter((l) => l !== p.salesOrderName)
+    if (lotesDistintos.length > 0) {
+      partes.push(`L ${lotesDistintos.join(', ')}`)
     }
-    partes.push(bloqueLote)
   }
 
-  const resultado = partes.join('. ').trim()
-  // SAT: máximo 1,000 caracteres en Descripcion
+  // BLOQUE 4: Acabado
+  if (flags.MostrarAcabado && p.acabados.length > 0) {
+    partes.push(`Ac ${p.acabados.join(', ')}`)
+  }
+
+  // BLOQUE 5: OT
+  if (flags.MostrarOT && p.workOrderIdInDomain) {
+    partes.push(`OT ${p.workOrderIdInDomain}`)
+  }
+
+  // PS del cliente: NO se incluye en la descripción del SAT (redundante con OC;
+  // su sufijo es la descripción del NP, no prioritaria). Se conserva en el PDF.
+
+  const resultado = partes.join(' ').trim()
+  // Red de seguridad absoluta (el SAT permite hasta 1000). El aviso de 60 lo
+  // emite el caller; aquí NO truncamos a 60 para no mutilar la interfaz.
   return resultado.length > 1000 ? resultado.slice(0, 997) + '...' : resultado
 }
 
