@@ -233,7 +233,6 @@ const getInvoicePricing = (
   const lineMetadata: LineMetadata[] = []
 
   let lineasConLoteMinimo = 0
-  let lineasQueExcedenSat = 0
   inputs.uiInvoiceLineItems.forEach(uiLine => {
     if (!uiLine.salesOrderLineItemId || !uiLine.productId) return
 
@@ -394,10 +393,6 @@ const getInvoicePricing = (
       flags,
     })
 
-    if ((uiLine.description?.length ?? 0) > PRESUPUESTO_AVISO) {
-      lineasQueExcedenSat++
-    }
-
     // --- 7️⃣ Push línea al resultado ---
     result.lowCodeDefaultInvoiceLineItems.push({
       salesOrderLineItemId: uiLine.salesOrderLineItemId,
@@ -430,13 +425,6 @@ const getInvoicePricing = (
     helpers.addErrorMessage({
       severity: 'warning',
       message: `${lineasConLoteMinimo} línea(s) con cargo de lote mínimo aplicado`,
-    })
-  }
-
-  if (lineasQueExcedenSat > 0) {
-    helpers.addErrorMessage({
-      severity: 'warning',
-      message: `${lineasQueExcedenSat} línea(s) con descripción larga (+ remisión de Steelhead) — el XML del SAT las cortará a ${LIMITE_SAT} caracteres.`,
     })
   }
 
@@ -520,7 +508,6 @@ const getInvoicePricing = (
       }
       let descConsolidada = partes.join(' ').trim()
       if (descConsolidada.length > 1000) descConsolidada = descConsolidada.slice(0, 997) + '...'
-      if (descConsolidada.length > PRESUPUESTO_AVISO) lineasQueExcedenSat++
 
       const repOriginal = result.lowCodeDefaultInvoiceLineItems[grupo[0].index]
       nuevasLineas.push({
@@ -561,6 +548,19 @@ const getInvoicePricing = (
     helpers.addErrorMessage({
       severity: 'error',
       message: `${lineasConProblema.length} línea(s) con cantidad o precio en cero — revisar antes de guardar`,
+    })
+  }
+
+  // Aviso de descripción larga: se cuenta sobre las descripciones FINALES
+  // (después de la consolidación, que reemplaza las descripciones por línea),
+  // así no hay doble conteo ni dependencia del orden de los bloques.
+  const lineasQueExcedenSat = result.lowCodeDefaultInvoiceLineItems.filter(
+    line => (line.description?.length ?? 0) > PRESUPUESTO_AVISO
+  ).length
+  if (lineasQueExcedenSat > 0) {
+    helpers.addErrorMessage({
+      severity: 'warning',
+      message: `${lineasQueExcedenSat} línea(s) con descripción larga (+ remisión de Steelhead) — el XML del SAT las cortará a ${LIMITE_SAT} caracteres.`,
     })
   }
 
