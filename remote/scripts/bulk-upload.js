@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.16';
+  const VERSION = '1.5.17';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -5828,6 +5828,37 @@ const BulkUpload = (() => {
             const cleanupPnGroupId = isDash(part.pnGroup)
               ? null
               : (part.pnGroup ? (await resolveGroupId(part.pnGroup)) : ((pnNode.partNumberGroupByPartNumberGroupId?.id ?? pnNode.partNumberGroupId) || null));
+            // 1.5.17: preserve optInOuts + inventoryItemInput (UCs) en el cleanup.
+            // Antes (≤1.5.16) este SavePartNumber mandaba `optInOuts: []` e
+            // `inventoryItemInput: null` literales; SH (REPLACE-semantics) borraba la
+            // validación 1er artículo y las unit conversions que Call B acababa de
+            // aplicar, cada vez que idsToArchive>0 (PN con specFieldParams duplicados,
+            // regla 1.4.38 — frecuente en re-cargas). Mismo patrón preserve-on-missing
+            // que Call B (líneas ~5334 y ~5354). El pnNode aquí es fresco post Call
+            // A/B/6a, así que refleja el estado ya aplicado.
+            const cleanupOptInOuts = (pnNode.processNodePartNumberOptInoutsByPartNumberId?.nodes || [])
+              .map(o => ({
+                processNodeId: o.processNodeId,
+                processNodeOccurrence: o.processNodeOccurrence ?? 1,
+                cancelOthers: o.cancelOthers ?? false,
+              }))
+              .filter(o => o.processNodeId != null);
+            let cleanupInventoryItemInput = null;
+            const cleanupExInv = pnNode.inventoryItemByPartNumberId;
+            if (cleanupExInv) {
+              const cleanupExistingUcs = (cleanupExInv.inventoryItemUnitConversionsByInventoryItemId?.nodes || [])
+                .map(n => ({ unitId: n.unitByUnitId?.id, factor: n.factor }))
+                .filter(u => u.unitId != null && u.factor != null);
+              cleanupInventoryItemInput = {
+                materialId: cleanupExInv.materialByMaterialId?.id ?? null,
+                purchasable: false,
+                sourceMaterialConversionType: cleanupExInv.sourceMaterialConversionType ?? null,
+                providedMaterialConversionType: cleanupExInv.providedMaterialConversionType ?? null,
+                defaultLeadTime: cleanupExInv.defaultLeadTime ?? null,
+                unitConversions: cleanupExistingUcs,
+                inventoryItemVendors: []
+              };
+            }
             const cleanupInput = {
               id: entry.pn.id,
               name: pnNode.name,
@@ -5837,13 +5868,18 @@ const BulkUpload = (() => {
               customInputs: pnNode.customInputs || {},
               geometryTypeId: (pnNode.geometryTypeByGeometryTypeId?.id ?? pnNode.geometryTypeId) || null,
               userFileName: null,
-              inventoryItemInput: null,
+              inventoryItemInput: cleanupInventoryItemInput,
               glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
               isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
               partNumberGroupId: cleanupPnGroupId,
               descriptionMarkdown: pnNode.descriptionMarkdown || '',
               customerFacingNotes: pnNode.customerFacingNotes || '',
-              labelIds: cleanupExistingLabelIds, ownerIds: [], defaults: [], optInOuts: [],
+              labelIds: cleanupExistingLabelIds, ownerIds: [], defaults: [], optInOuts: cleanupOptInOuts,
+              // 1.5.17: inventoryPredictedUsages queda [] a propósito — el campo es
+              // additive/create-only (Call B ~5394 filtra existentes para no duplicar;
+              // los updates/archives de predictivos los hace STEP 6a vía cascade).
+              // Mandar [] NO borra los predictivos del PN; reconstruirlos aquí los
+              // DUPLICARÍA. Cierra el "pendiente derivado" de 1.5.15 (línea ~247).
               inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
               partNumberDimensions: cleanupExistingDims, partNumberLocations: [], dimensionCustomValueIds: cleanupExistingDimCustomValueIds,
               partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],

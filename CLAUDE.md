@@ -105,7 +105,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 
 | Applet | Versión actual | Bitácora |
 |---|---|---|
-| `bulk-upload` | 1.5.16 + config 1.6.28 (STEP 6a refactor 2026-06-01 a `ChangePredictedInventoryUsagesWithRecipeNodeCascade` — 3-phase consolidado a 1 mutación con buckets `toArchiveAndReplace` numéricos + `toArchive` dash; **pendiente validación piloto**) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
+| `bulk-upload` | 1.5.17 + config 1.6.29 (fix latentes STEP 6b: preserve `optInOuts` + `inventoryItemInput`/UCs cuando dispara el cleanup de params duplicados; `inventoryPredictedUsages:[]` se deja a propósito = additive. STEP 6a cascade 1.6.28 **sigue pendiente validación piloto**) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
 | `process-deep-audit` | 0.8.0 | [`docs/applets/process-deep-audit.md`](docs/applets/process-deep-audit.md) |
 | `spec-params-bulk` | 0.9.0 | [`docs/applets/spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
 | `spec-migrator` (bundle Ajuste Masivo) | original + `validate-duplicate-params` 0.5.5 (CSV multi-cliente + memory hardening completo: mem monitor + guardrail @88% + resume + virtualización preview + host-cleanup-shared) | [`docs/applets/spec-migrator.md`](docs/applets/spec-migrator.md) |
@@ -133,6 +133,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | Power Tools `pdf:PACKING_SLIP_TEMPLATE` | sync con `powertools/synced/pdf/PACKING_SLIP_TEMPLATE.ts` | [`docs/applets/powertools-pdf-packing-slip.md`](docs/applets/powertools-pdf-packing-slip.md) |
 | Power Tools `pdf:PART_NUMBER_TEMPLATE` | sync con `powertools/synced/pdf/PART_NUMBER_TEMPLATE.ts` | [`docs/applets/powertools-pdf-part-number.md`](docs/applets/powertools-pdf-part-number.md) |
 | `dual-source-recovery` (tool standalone, no extensión) | 1.0.2 (preservar casing Title Case + limpiar `(seleccione)` residual) | [`docs/applets/dual-source-recovery.md`](docs/applets/dual-source-recovery.md) |
+| `wb-produccion-access` (tool standalone DevTools, no extensión) | 1.0.0 (panel inyectado: pega nombres → unión con acceso actual → `updateWorkboardLabelUsers` a labelId 9746; solo toca WB Producción, match por nombre, **pendiente run real**) | [`docs/applets/wb-produccion-access.md`](docs/applets/wb-produccion-access.md) |
 
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).

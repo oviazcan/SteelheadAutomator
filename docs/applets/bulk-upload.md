@@ -1,6 +1,57 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.16 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.17 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.17 (config 1.6.29, 2026-06-03) — Fix latentes STEP 6b: preserve `optInOuts` + `inventoryItemInput` (UCs)
+
+### Contexto
+Cierre de los "pendientes derivados" documentados en 1.5.15 (líneas 244-247).
+El cleanup de specFieldParams duplicados (regla 1.4.38) dispara un
+`SavePartNumber` cuando `idsToArchive.length > 0` — frecuente en re-cargas
+de PNs que ya tienen params. Ese payload preservaba labels/dims/customInputs/
+proceso/geometría (fixes 1.5.6/1.5.15/1.5.16) pero **seguía mandando
+`optInOuts: []` e `inventoryItemInput: null` literales** → SH (REPLACE-
+semantics) borraba la validación 1er artículo y las unit conversions que
+Call B acababa de aplicar. No se había visto en pilotos previos porque
+los CSV de prueba no traían UCs ni validación 1er artículo activa.
+
+### Diagnóstico de los 3 latentes (1.5.15 los marcó como pendientes)
+| Campo (cleanupInput) | Semántica SH | ¿Borra? | Acción 1.5.17 |
+|---|---|---|---|
+| `inventoryItemInput: null` | REPLACE (null = borrar inventoryItem, ver 1.5.13) | **SÍ** borra UCs | **Corregido**: reconstruir desde `pnNode` |
+| `optInOuts: []` | REPLACE (ver 1.5.13) | **SÍ** borra validación 1er art. | **Corregido**: reconstruir desde `pnNode` |
+| `inventoryPredictedUsages: []` | **additive/create-only** | **NO** borra | **Dejado en `[]` a propósito** |
+
+**Por qué `inventoryPredictedUsages` NO es bug** (corrige la suposición de 1.5.15):
+el campo solo CREA predictivos nuevos — Call B (línea ~5394) filtra los
+existentes "para no crear duplicados", y los updates/archives de predictivos
+los maneja STEP 6a vía `ChangePredictedInventoryUsagesWithRecipeNodeCascade`
+(endpoint dedicado). La post-mortem v104 (16k PNs) reportó blanqueo de
+`customInputs` pero **nunca de predictivos**. Reconstruir el campo aquí
+los **DUPLICARÍA** — por eso se deja en `[]`.
+
+### Fix
+`bulk-upload.js` STEP 6b (antes de `const cleanupInput`): se reconstruyen
+`cleanupOptInOuts` y `cleanupInventoryItemInput` desde el `pnNode` fresco
+(post Call A/B/6a), con el mismo patrón preserve-on-missing de Call B
+(líneas ~5334 y ~5354). Verificado que `GetPartNumber` (mismo query que
+alimenta tanto `existingPnNode` de Call B como `pnNode` de STEP 6b) trae
+`processNodePartNumberOptInoutsByPartNumberId`, `inventoryItemByPartNumberId`,
+`inventoryItemUnitConversionsByInventoryItemId`, `materialByMaterialId`,
+`sourceMaterialConversionType`.
+
+### Plan de validación pendiente
+- Piloto con ≥1 PN que tenga UCs (KGM/CMK/LM) + validación 1er artículo
+  activa + specFieldParams duplicados (para forzar el STEP 6b). Verificar
+  post-corrida que UCs y optInOuts sobreviven.
+- Confirmar empíricamente que `inventoryPredictedUsages: []` no toca los
+  predictivos (snapshot BEFORE/AFTER de un PN con predictivo + STEP 6b).
+
+### Deploy
+- `bulk-upload.js`: `VERSION = '1.5.17'`.
+- `config.json`: `1.6.28` → `1.6.29`, `lastUpdated` 2026-06-03T12:00.
+
+---
 
 ## STEP 6a refactor (config 1.6.28, 2026-06-01) — `ChangePredictedInventoryUsagesWithRecipeNodeCascade`
 
