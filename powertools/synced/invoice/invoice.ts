@@ -500,31 +500,27 @@ const getInvoicePricing = (
 
       const partes: string[] = []
       if (flags.MostrarProducto && productName) {
-        partes.push(`Producto: ${productName}`)
+        partes.push(productName)
       }
       if (flags.MostrarNP && allPNs.length > 0) {
-        partes.push(`NPs (${allPNs.length}): ${allPNs.join(', ')}`)
-      }
-      if (flags.MostrarAcabado && allAcabados.length > 0) {
-        partes.push(`Acabado: ${allAcabados.join(', ')}`)
+        partes.push(`NPs(${allPNs.length}) ${allPNs.join(', ')}`)
       }
       if (flags.MostrarPO && allOVs.length > 0) {
-        partes.push(`OC: ${allOVs.join(', ')}`)
-      }
-      if (flags.MostrarOT && allOTs.length > 0) {
-        const label = allOTs.length === 1 ? 'OT' : 'OTs'
-        partes.push(`${label}: ${allOTs.join(', ')}`)
+        partes.push(`OC ${allOVs.join(', ')}`)
       }
       if (flags.MostrarLote && allLotes.length > 0) {
-        const label = allLotes.length === 1 ? 'Lote' : 'Lotes'
-        let bloque = `${label}: ${allLotes.join(', ')}`
-        if (flags.MostrarPS && allPS.length > 0) {
-          bloque += ` PS: ${allPS.join(', ')}`
-        }
-        partes.push(bloque)
+        const lotesDistintos = allLotes.filter((l) => !allOVs.includes(l))
+        if (lotesDistintos.length > 0) partes.push(`L ${lotesDistintos.join(', ')}`)
       }
-      let descConsolidada = partes.join('. ').trim()
+      if (flags.MostrarAcabado && allAcabados.length > 0) {
+        partes.push(`Ac ${allAcabados.join(', ')}`)
+      }
+      if (flags.MostrarOT && allOTs.length > 0) {
+        partes.push(`OT ${allOTs.join(', ')}`)
+      }
+      let descConsolidada = partes.join(' ').trim()
       if (descConsolidada.length > 1000) descConsolidada = descConsolidada.slice(0, 997) + '...'
+      if (descConsolidada.length > PRESUPUESTO_AVISO) lineasQueExcedenSat++
 
       const repOriginal = result.lowCodeDefaultInvoiceLineItems[grupo[0].index]
       nuevasLineas.push({
