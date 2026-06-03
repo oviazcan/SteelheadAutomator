@@ -283,6 +283,36 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
 
       const partes: string[] = [];
 
+      // Helper de fusión PO/Lote/PS (espejo de tools/pdf_description_fusion.mjs).
+      const fusionarPoLotePs = (po: string | null, loteNames: string[], psVals: string[]) => {
+        const noFusion = { fusionado: false, label: '', valor: '', psRestantes: psVals }
+        if (!po || loteNames.length === 0) return noFusion
+        if (!loteNames.every((n) => n === po)) return noFusion
+        const prefijo = po + ' '
+        const psCoincide =
+          psVals.length > 0 && psVals.every((ps) => ps === po || ps.startsWith(prefijo))
+        if (psCoincide) {
+          const sufijos = [
+            ...new Set(psVals.map((ps) => (ps === po ? '' : ps.slice(prefijo.length))).filter(Boolean)),
+          ]
+          const valor = sufijos.length > 0 ? `${po} ${sufijos.join(', ')}` : po
+          return { fusionado: true, label: 'PO/Lote/PS', valor, psRestantes: [] as string[] }
+        }
+        return { fusionado: true, label: 'PO/Lote', valor: po, psRestantes: psVals }
+      }
+
+      const poName = item0?.salesOrderLineItem?.salesOrder?.name ?? null
+      const loteNamesLinea = lotesDeLinea
+        .map((l) => l.name)
+        .filter((n): n is string => !!n)
+      const psValsLinea = lotesDeLinea
+        .map((l) => (l.packingSlip != null && l.packingSlip !== '' ? String(l.packingSlip) : null))
+        .filter((p): p is string => !!p)
+      const fusion =
+        flags.MostrarPO && flags.MostrarLote
+          ? fusionarPoLotePs(poName, loteNamesLinea, flags.MostrarPS ? psValsLinea : [])
+          : { fusionado: false, label: '', valor: '', psRestantes: psValsLinea }
+
       // ── Bloque 1: Producto ────────────────────────────────────────────
       if (flags.MostrarProducto) {
         const productName =
@@ -312,8 +342,21 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
         }
       }
 
-      // ── Bloque 3: OC (OV) ─────────────────────────────────────────────
-      if (flags.MostrarPO) {
+      // ── Bloque 3: OC (OV) — o fusión PO/Lote/PS ──────────────────────
+      if (fusion.fusionado) {
+        const so = item0?.salesOrderLineItem?.salesOrder
+        const lineaPO = flags.MostrarLineaPO
+          ? `-${Number(line.salesOrderLineNumber ?? 0) * flags.MultiplicadorLineaOC}`
+          : ''
+        const ov = flags.MostrarOV ? ` (${so?.idInDomain ?? ''})` : ''
+        const isPending = /pen/i.test(poName ?? '') || poName === '.'
+        const cuerpo = `<b>${fusion.label}: </b>${fusion.valor}${lineaPO}${ov}`
+        partes.push(
+          isPending
+            ? `<span style="color:red; font-size:14pt;">${cuerpo}</span><br>`
+            : `${cuerpo}<br>`
+        )
+      } else if (flags.MostrarPO) {
         const so = item0?.salesOrderLineItem?.salesOrder;
         const soName = so?.name ?? null;
         if (soName) {
@@ -357,7 +400,9 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       // ── Bloque 5: Lote + PS ───────────────────────────────────────────
       // Por línea, usando el join. Sin parsear "Batch: X" del description.
       // Sufijo Schneider (VM/VE) según el primer lote.
-      if (flags.MostrarLote && lotesDeLinea.length > 0) {
+      const fusionConsumioLote = fusion.fusionado
+      const psParaMostrar = fusion.fusionado ? fusion.psRestantes : psValsLinea
+      if (flags.MostrarLote && lotesDeLinea.length > 0 && !fusionConsumioLote) {
         const nombresLote = lotesDeLinea
           .map((l) => l.name)
           .filter((n): n is string => !!n);
@@ -376,14 +421,9 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
             // nombre del lote (regla "PS===Lote → no repetir").
             const psDistintos = Array.from(
               new Set(
-                lotesDeLinea
-                  .filter(
-                    (l) =>
-                      l.packingSlip != null &&
-                      l.packingSlip !== "" &&
-                      String(l.packingSlip) !== (l.name ?? "")
-                  )
-                  .map((l) => String(l.packingSlip))
+                psParaMostrar.filter(
+                  (ps) => ps !== (nombresLote[0] ?? '')
+                )
               )
             );
             if (psDistintos.length > 0) {
@@ -402,6 +442,8 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
 
           partes.push(bloque);
         }
+      } else if (fusionConsumioLote && psParaMostrar.length > 0) {
+        partes.push(`<b>PS: </b>${Array.from(new Set(psParaMostrar)).join(', ')}`)
       } else if (!flags.MostrarLote) {
         // Si Mostrar Lote está apagado: fallback al description original
         // (replica el `else` del expression).
