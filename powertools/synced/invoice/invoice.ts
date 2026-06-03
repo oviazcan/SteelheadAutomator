@@ -233,6 +233,7 @@ const getInvoicePricing = (
   const lineMetadata: LineMetadata[] = []
 
   let lineasConLoteMinimo = 0
+  let lineasQueExcedenSat = 0
   inputs.uiInvoiceLineItems.forEach(uiLine => {
     if (!uiLine.salesOrderLineItemId || !uiLine.productId) return
 
@@ -393,6 +394,10 @@ const getInvoicePricing = (
       flags,
     })
 
+    if ((uiLine.description?.length ?? 0) > PRESUPUESTO_AVISO) {
+      lineasQueExcedenSat++
+    }
+
     // --- 7️⃣ Push línea al resultado ---
     result.lowCodeDefaultInvoiceLineItems.push({
       salesOrderLineItemId: uiLine.salesOrderLineItemId,
@@ -425,6 +430,13 @@ const getInvoicePricing = (
     helpers.addErrorMessage({
       severity: 'warning',
       message: `${lineasConLoteMinimo} línea(s) con cargo de lote mínimo aplicado`,
+    })
+  }
+
+  if (lineasQueExcedenSat > 0) {
+    helpers.addErrorMessage({
+      severity: 'warning',
+      message: `${lineasQueExcedenSat} línea(s) con descripción larga (+ remisión de Steelhead) — el XML del SAT las cortará a ${LIMITE_SAT} caracteres.`,
     })
   }
 
