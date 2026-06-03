@@ -109,6 +109,16 @@ Mitigación pendiente: investigar si Steelhead acepta `salesOrderLineItemIds: nu
 - [ ] Probar factura **mixta** (algunas OVs con flag, otras sin) — debe emitir warning y NO consolidar.
 - [ ] Probar con líneas mixtas: algunas en KG (consolidables), una con lote mínimo (no consolidable) — confirmar que la de lote mínimo sale aparte.
 
+### Descripción compacta para el SAT (2026-06-03) — validación en sandbox
+
+Los hooks `.ts` no se prueban localmente; la lógica pura de strings está cubierta por `tools/invoice_description.{mjs,test.mjs}` (8 casos verde). Falta validar en el editor de Power Tools:
+
+- [ ] Pegar `invoice.ts` (`getInvoicePricing`) y correr Test con la factura del ejemplo (NP `02104484`, OC `4507414828-10`) → `description == "Estañado OC 4507414828-10 OT 5086"`.
+- [ ] Caso con `Lote ≠ OC` → aparece el bloque `L …`.
+- [ ] Caso lote mínimo → la subcadena `"Cargo de lote mínimo aplicado"` está completa y el integrador SAT la reconoce.
+- [ ] Factura con líneas largas → se emite **un** warning resumido y la `description` **no** sale truncada a 60 (la corta el XML).
+- [ ] Factura consolidada (Schneider) → el warning cuenta las descripciones finales (post-consolidación), sin doble conteo.
+
 ## Pendientes derivados
 
 - Considerar exponer un mensaje al operador listando los SOLIs huérfanos para que decida qué hacer con ellos.

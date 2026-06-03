@@ -161,10 +161,20 @@ comparación. Lógica pura en `tools/pdf_description_fusion.{mjs,test.mjs}`.
    - `additionalPayload.invoiceLinesConLotes[0].lotesNombresStr` muestra los nombres concatenados.
 4. Actualizar la plantilla de PDFGeneratorAPI para consumir `lotesPorLinea` o `invoiceLinesConLotes`.
 
+### Fusión PO/Lote/PS (2026-06-03) — validación en sandbox
+
+Lógica pura cubierta por `tools/pdf_description_fusion.{mjs,test.mjs}` (7 casos verde). Falta validar en el editor:
+
+- [ ] Factura del ejemplo (PO = Lote = `4507414828-10`, PS `4507414828-10 ZAPATA`) → un renglón `PO/Lote/PS: 4507414828-10 ZAPATA` (en vez de OC + Lote separados).
+- [ ] PS distinto del PO → `PO/Lote: …` fusionado + `PS: …` aparte.
+- [ ] Sin coincidencia → bloques separados (sin regresión).
+- [ ] Cliente Schneider → sufijo VM/VE intacto (los lotes `RG-M…` nunca == OC, así que la fusión no se dispara y el VM/VE sigue saliendo por el path normal).
+
 ## Pendientes derivados
 
 - Confirmar que el PackingSlip a mostrar es `receivedBatches[].customInputs.DatosRecibo.PackingSlip` y no `partAccounts[].packingSlip.idInDomain` (el PA también tiene un objeto `packingSlip` con `idInDomain`; semánticamente distinto — uno es el PS del lote físico recibido, el otro es el PS de embarque generado al facturar). En esta primera versión usamos el del lote (como en `facturacion.ts`).
 - Si más adelante hay que mostrar también `idInDomain` del PS de embarque, agregar un campo paralelo en `LoteResumen`.
+- **Limitación conocida de la fusión PO/Lote/PS (2026-06-03):** si un cliente usa `MostrarLineaPO` **y** se dispara la fusión con sufijo de PS, el `-N` de la línea queda mal posicionado (`PO/Lote/PS: {base} {sufijo}-N` en vez de `{base}-N {sufijo}`). Solo afecta el PDF (cosmético) y el caso es raro. El fix requiere que `fusionarPoLotePs` devuelva `base` y `sufijo` por separado para insertar el `-N` entre ambos.
 
 ## Fecha de recibo del lote — NO viaja en el payload del INVOICE (investigado 2026-05-29)
 
