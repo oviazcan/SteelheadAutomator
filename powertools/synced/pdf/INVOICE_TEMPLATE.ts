@@ -419,11 +419,18 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
           if (flags.MostrarPS) {
             // Solo agregamos sección PS si hay al menos un PS distinto del
             // nombre del lote (regla "PS===Lote → no repetir").
+            // Caso NO fusionado: comportamiento original per-lote (cada PS se
+            // compara contra el name de SU propio lote — "PS===Lote → no repetir").
             const psDistintos = Array.from(
               new Set(
-                psParaMostrar.filter(
-                  (ps) => ps !== (nombresLote[0] ?? '')
-                )
+                lotesDeLinea
+                  .filter(
+                    (l) =>
+                      l.packingSlip != null &&
+                      l.packingSlip !== "" &&
+                      String(l.packingSlip) !== (l.name ?? "")
+                  )
+                  .map((l) => String(l.packingSlip))
               )
             );
             if (psDistintos.length > 0) {
