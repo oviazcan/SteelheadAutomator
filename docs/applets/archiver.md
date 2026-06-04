@@ -11,6 +11,15 @@ Flujo (3 pantallas): **config** (modo + fecha opcional + validación) → **scan
 ## Versión actual
 1.0.0 — filtro por etiquetas (AND/OR) + archivar/desarchivar + fecha opcional + form mudado al script remoto.
 
+## Estado de deploy (2026-06-04)
+- **Desplegado a `gh-pages`** (byte-exact verificado). `remote/config.json` `version` **1.6.34**, `extensionVersion` **1.6.3**.
+  - La `1.6.30` que se había bumpeado chocó con un avance paralelo de `main` (que ya había usado 1.6.30 y subió a 1.6.33 con 10 hashes recapturados + bill-autofill). Se reintegró `main` **preservando esos 10 hashes** y se re-bumpeó a 1.6.34.
+- Commits: `main` → `8bde8ab`; deploy `gh-pages` → `024bb51`.
+- Tests al cierre: `node --test tools/test/archiver.test.js` → **10/10**.
+- **Pendiente de Omar antes de uso productivo (no bloquea el deploy del script):**
+  1. **Recargar la extensión** (`chrome://extensions` → reload; carga el nuevo `background.js`). Hasta entonces, el `background.js` viejo llama `PNArchiver.run()` con args sin `mode`/`useDate` → el nuevo `run()` default a `mode=archive`, `useDate=false` (ignora la fecha pero el preview sigue siendo gate; sin riesgo de datos). Si se distribuye por `.zip`: bump `manifest.json` a 1.6.3 + repackage + subir `steelhead-automator.zip`.
+  2. **Piloto / smoke test** (ver abajo).
+
 ## Arquitectura
 - Form + filtros + preview + ejecución viven en `remote/scripts/archiver.js` vía el entry point `openConfigAndRun()`.
 - `extension/background.js` case `run-archiver` solo inyecta scripts y llama `window.PNArchiver.openConfigAndRun()` (cambio único en la extensión; de aquí en más los filtros se cambian por deploy a gh-pages).
@@ -28,11 +37,13 @@ Flujo (3 pantallas): **config** (modo + fecha opcional + validación) → **scan
 - `AllPartNumbers` trae etiquetas en `partNumberLabelsByPartNumberId.nodes[].labelByLabelId.{id,name}`.
 - Grupo (`partNumberGroupByPartNumberGroupId`) y proceso (`processNodeDescriptions`) vienen **vacíos** en el listado → fase 2.
 
-## Plan de validación (pendiente en prod)
-- [ ] **M1**: confirmar que `AllPartNumbers` devuelve archivados (necesario para el modo desarchivar).
-- [ ] **M2**: confirmar que `UpdatePartNumber {archivedAt:null}` desarchiva de verdad.
-- [ ] **M3**: confirmar el nombre exacto de la etiqueta `SQ1` (en la muestra solo aparece `SQ2`).
-- [ ] **Piloto**: archivar un subconjunto chico de PNs con `SQ1` + `Antitarnish` (AND) y verificar que el conteo en vivo coincide.
+## Plan de validación (pendiente — piloto de Omar en sesión autenticada)
+Un solo piloto valida los tres checkpoints:
+- [ ] **Archivar**, sin fecha, elegir **SQ1 + Antitarnish** en **AND** → ver el **conteo en vivo** y archivar un subconjunto chico.
+  - Valida **M3**: si la etiqueta no se llama exactamente `SQ1` (en la muestra solo aparecía `SQ2`), se verá con su nombre real en la lista descubierta → autocorrige.
+- [ ] **Desarchivar** (mismo flujo) →
+  - Valida **M1**: que `AllPartNumbers` devuelva los archivados (si la lista sale vacía, hay que ver `includeArchived`).
+  - Valida **M2**: que `UpdatePartNumber {archivedAt:null}` los reactive de verdad.
 
 ## Issues conocidos (pre-existentes, heredados; no introducidos por 1.0.0)
 - **`dateType=modificacion` filtra por `createdAt`**: `slimPN` solo trae `createdAt`, así que la opción "Fecha de modificación" del form en realidad filtra por creación. Decidir en fase 2: traer `modifiedAt` al slim y diferenciarlo en `applyFilters`, o quitar la opción del form. ("creación" y "última utilización" sí funcionan bien.)
