@@ -287,7 +287,7 @@ const PNArchiver = (() => {
     const reasonBase = mode === 'unarchive' ? 'Desarchivar' : 'Archivar';
     const toArchive = picked.selected.map(p => ({
       id: p.id, name: p.name, createdAt: p.createdAt, customer: p.customer,
-      reason: reasonBase, selected: true,
+      archivedAt: p.archivedAt, reason: reasonBase, selected: true,
     }));
     results.found = toArchive.length;
     if (!toArchive.length) { showArchiverResult(results, 'Ningún PN tras el filtro de etiquetas.'); return results; }
@@ -311,22 +311,29 @@ const PNArchiver = (() => {
     results.found = totalCount;
     saveResume({ selectedPNs, opts, completed: [...completed] });
 
+    const isUnarchive = opts.mode === 'unarchive';
+    const gerundio = isUnarchive ? 'Desarchivando' : 'Archivando';
+    const verbo = isUnarchive ? 'Desarchivar' : 'Archivar';
+    const participio = isUnarchive ? 'desarchivados' : 'archivados';
     const pendingCount = totalCount - completed.size;
-    updateArchiverUI(`Archivando ${pendingCount} PNs (concurrencia 3, ${completed.size} ya OK)...`);
+    updateArchiverUI(`${gerundio} ${pendingCount} PNs (concurrencia 3, ${completed.size} ya OK)...`);
 
     await runPool(selectedPNs, async (pn) => {
       if (stopped) return;
-      if (completed.has(pn.id)) return; // doble-safety — saltar ya archivados
+      if (completed.has(pn.id)) return; // doble-safety — saltar ya procesados
+      // Idempotencia: si el PN ya está en el estado destino, no re-mutar.
+      if (isInTargetState(pn, opts.mode)) { completed.add(pn.id); return; }
 
       try {
-        await withRetry(() => api().query('UpdatePartNumber', { id: pn.id, archivedAt: new Date().toISOString() }), `Archive ${pn.name}`);
+        const newArchivedAt = isUnarchive ? null : new Date().toISOString();
+        await withRetry(() => api().query('UpdatePartNumber', { id: pn.id, archivedAt: newArchivedAt }), `${verbo} ${pn.name}`);
         results.archived++;
       } catch (e) {
-        results.errors.push(`Archivar "${pn.name}": ${String(e?.message || e).substring(0, 80)}`);
+        results.errors.push(`${verbo} "${pn.name}": ${String(e?.message || e).substring(0, 80)}`);
         return;
       }
 
-      if (opts.enableValidation) {
+      if (opts.enableValidation && !isUnarchive) {
         try {
           const nodeIds = DOMAIN.validacionProcessNodeIds || [];
           const optInOuts = nodeIds.map(id => ({ processNodeId: id, processNodeOccurrence: 1, cancelOthers: false }));
@@ -347,7 +354,7 @@ const PNArchiver = (() => {
 
       completed.add(pn.id);
       if (completed.size % 5 === 0 || completed.size === totalCount) {
-        updateArchiverUI(`Archivando ${completed.size}/${totalCount} — ${results.errors.length} errores`);
+        updateArchiverUI(`${gerundio} ${completed.size}/${totalCount} — ${results.errors.length} errores`);
         saveResume({ selectedPNs, opts, completed: [...completed] });
       }
     }, 3);
@@ -355,7 +362,7 @@ const PNArchiver = (() => {
     if (stopped) {
       saveResume({ selectedPNs, opts, completed: [...completed] });
       log(`Archivador: detenido — ${completed.size}/${totalCount} completados, resume guardado`);
-      showArchiverResult(results, `Detenido. ${completed.size}/${totalCount} archivados. Re-ejecuta el applet para reanudar.`);
+      showArchiverResult(results, `Detenido. ${completed.size}/${totalCount} ${participio}. Re-ejecuta el applet para reanudar.`);
       return { ...results, stopped: true };
     }
 
@@ -363,7 +370,7 @@ const PNArchiver = (() => {
     clearResume();
 
     log(`\n=== ARCHIVADOR RESULTADO ===`);
-    log(`Archivados: ${results.archived}/${totalCount}`);
+    log(`${isUnarchive ? 'Desarchivados' : 'Archivados'}: ${results.archived}/${totalCount}`);
     if (opts.enableValidation) log(`Con validación: ${results.validated}`);
     if (results.errors.length) log(`Errores: ${results.errors.length}`);
 
@@ -439,6 +446,7 @@ const PNArchiver = (() => {
       md.querySelectorAll('input[name="sa-mode"]').forEach(r => r.onchange = () => {
         valBox.style.display = md.querySelector('input[name="sa-mode"]:checked').value === 'archive' ? 'flex' : 'none';
       });
+      valBox.style.display = md.querySelector('input[name="sa-mode"]:checked').value === 'archive' ? 'flex' : 'none';
 
       md.querySelector('#sa-arch-form-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve(null); };
       md.querySelector('#sa-arch-form-exec').onclick = () => {
