@@ -11,6 +11,11 @@
       "operation": "GetPurchaseOrder",
       "reason": "Mismo patrón: hash idéntico en config y scan con 12 invocaciones exitosas en pantalla Bills, pero responde 'Must provide a query string' desde scripts externos.",
       "verifiedOn": "2026-05-23"
+    },
+    {
+      "operation": "GetAccountDataForBill",
+      "reason": "Mismo patrón sesión-sensible: hash idéntico en config y scan-de-navegador con scanCount 75 en pantalla Bills (2026-06-04), pero responde 'Must provide a query string' desde scripts externos. El hash es válido; bill-autofill lo usa OK.",
+      "verifiedOn": "2026-06-04"
     }
   ]
 }

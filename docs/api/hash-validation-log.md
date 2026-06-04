@@ -138,3 +138,24 @@ Nuevas queries registradas: `WorkOrderDialogQuery`, `GetPartsTransferAccountAsso
 | `paros-linea` | Diálogo de mantenimiento de nodo |
 | OV/facturación | Pantalla de OV (Received Order) |
 
+### Reparación (config 1.6.31, mismo día) — hash-scanner navegador
+
+Capturados nuevos del scan `2026-06-04_102353` → 12 stale ⇒ **6 stale**:
+
+| Operación | viejo → nuevo |
+|---|---|
+| `GetReceivedOrder` | `4fa89e55…` → `499103ff…` |
+| `OperatorMaintenanceNodeDialogQuery` | `b4dcc10b…` → `916178b4…` |
+| `GetBillByIdInDomain` | `9a870417…` → `404d9326…` |
+| `SearchPurchaseOrdersForBill` | `e29e1afc…` → `37fa487a…` |
+| `GetPurchaseOrdersDataForBill` | `6faed5d5…` → `87987ec9…` |
+| `CreateMaintenanceNodeEvent` | `6aaef93e…` → `930aa9f6…` |
+
+**`paros-linea` reparado** (2/2). **`bill-autofill`** reparado 3/5 (`GetBillByIdInDomain`, `SearchPurchaseOrdersForBill`, `GetPurchaseOrdersDataForBill`); `GetAccountDataForBill` → **whitelist** (falso positivo, scanCount 75 OK en navegador). `GetReceivedOrder` reparado (OV/wo-mover/po-comparator).
+
+**Siguen stale (no reparados):**
+- `CreateUpdateBill` (mutation) — bill-autofill no podrá **guardar** bills; no se disparó en el scan (hay que guardar un bill con el scanner activo).
+- `GetReceivedOrdersWithReceivedOrderLineItems` — invoice-autofill; no se disparó.
+- `GetReceivedOrderDocuments` — sin uso runtime.
+- `UpdateInventoryItemPredictedUsage` / `ArchivePredictedInventoryUsage` — deprecados (cascade 1.6.28 los reemplazó); sin uso runtime.
+
