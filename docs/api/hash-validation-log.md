@@ -158,5 +158,7 @@ Capturados nuevos del scan `2026-06-04_102353` → 12 stale ⇒ **6 stale**:
 - `GetReceivedOrdersWithReceivedOrderLineItems` — **reparado en config 1.6.32** (`cff4549f…`→`2e98d28d…`, scan `104237`, invoice-autofill).
 - `CreateUpdateBill` → **RENOMBRADO por SH a `UpdateBillChecked`** (descubierto 2026-06-04 al guardar un bill; misma shape `billPayload.customInputs.DatosContables`). Reparado en **config 1.6.33** (key+hash `1f3b253a…`) + **`bill-autofill.js`** (el interceptor ahora acepta `UpdateBillChecked` además de `CreateUpdateBill`). bill-autofill **vuelve a inyectar Divisa/TC** al guardar bills.
 - `GetReceivedOrderDocuments` — sin uso runtime.
-- `UpdateInventoryItemPredictedUsage` / `ArchivePredictedInventoryUsage` — deprecados (cascade 1.6.28 los reemplazó); sin uso runtime.
+- `UpdateInventoryItemPredictedUsage` / `ArchivePredictedInventoryUsage` — **REMOVIDOS del config en 1.6.35** (deprecados desde el cascade 1.6.28; sin uso runtime). `tools/archive-predictive-dash.js` pendiente de migrar al cascade.
+
+**Estado final de la jornada 2026-06-04: 149 ok / 1 stale / 3 whitelist.** Único stale restante: `GetReceivedOrderDocuments` (deprecado en 1.6.28, reemplazado por `GetReceivedOrder` en po-comparator; sin uso runtime — candidato a remover).
 
