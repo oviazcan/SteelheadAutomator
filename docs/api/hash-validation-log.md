@@ -155,7 +155,8 @@ Capturados nuevos del scan `2026-06-04_102353` → 12 stale ⇒ **6 stale**:
 
 **Siguen stale (no reparados):**
 - `CreateUpdateBill` (mutation) — bill-autofill no podrá **guardar** bills; no se disparó en el scan (hay que guardar un bill con el scanner activo).
-- `GetReceivedOrdersWithReceivedOrderLineItems` — invoice-autofill; no se disparó.
+- `GetReceivedOrdersWithReceivedOrderLineItems` — **reparado en config 1.6.32** (`cff4549f…`→`2e98d28d…`, scan `104237`, invoice-autofill).
+- `CreateUpdateBill` — **sigue pendiente** tras 2º scan: no se disparó (hay que **guardar** un bill con el scanner activo).
 - `GetReceivedOrderDocuments` — sin uso runtime.
 - `UpdateInventoryItemPredictedUsage` / `ArchivePredictedInventoryUsage` — deprecados (cascade 1.6.28 los reemplazó); sin uso runtime.
 
