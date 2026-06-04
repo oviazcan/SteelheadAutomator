@@ -165,7 +165,7 @@
     The Power Tools <em>Invoicing</em> hook (<code>getInvoicePricing</code>, which produces
     <code>lowCodeDefaultInvoiceLineItems</code>) cannot read the <strong>outbound packing slip /
     shipment ("remisión")</strong> for the parts being invoiced. We'd like that object exposed in the
-    hook's Input so we can validate it — and ideally control how it appears on each invoice line —
+    hook's Input so we can validate it and write it onto each invoice line ourselves,
     <strong>before the invoice is saved</strong>.
   </p>
 
@@ -179,8 +179,11 @@
       <strong>already exists</strong> at invoice time.</li>
     <li>Today, <strong>after</strong> the invoice is saved, Steelhead automatically appends the
       outbound packing slip number to each line's description
-      (e.g. <code>, Packing Slip: 1469</code>). The hook runs <em>before</em> save and never sees this
-      value, so we cannot validate it or influence its formatting/placement.</li>
+      (e.g. <code>, Packing Slip: 1469</code>). That auto-append is configurable and we can turn it
+      off — but the hook runs <em>before</em> save and never sees the packing slip value, so disabling
+      the auto-append would make the remisión <strong>disappear entirely</strong> (the hook has
+      nothing to write in its place). That is the blocker: we can't replace the raw append with a
+      validated, properly formatted value because the value isn't exposed to the hook.</li>
   </ul>
 
   <h2>What's currently exposed (evidence)</h2>
@@ -223,36 +226,31 @@ recipeNode, partGroup, rack, receivedBatch, measurement</code></pre>
   <h2>Request</h2>
 
   <div class="callout primary">
-    <span class="tag">Primary</span>
+    <span class="tag">Request</span>
     <p>Add the outbound packing slip to the part accounts already returned by the
       <code>getInvoicePricing</code> query — minimally:</p>
     <pre><code>partAccounts {
   ...existing fields...
   packingSlip { idInDomain }   // outbound shipment / remisión
 }</code></pre>
-    <p>This alone lets the hook <strong>read the remisión and surface a pre-save validation
-      message</strong> to the operator (e.g. <em>"This invoice will carry remisión(es): 1469, 1470 —
-      confirm before saving"</em>), catching a wrong or missing remisión before the invoice is
-      committed.</p>
-  </div>
-
-  <div class="callout secondary">
-    <span class="tag">Secondary · desirable</span>
-    <p>A way for the hook to <strong>control Steelhead's automatic append</strong> of the outbound
-      packing slip to the line description — e.g. a flag to suppress the auto-append when the hook has
-      already included the remisión itself, or a documented field on
-      <code>lowCodeDefaultInvoiceLineItems</code> that governs it.</p>
-    <p>Without this, a hook that writes the remisión into the description would produce a
-      <strong>duplicate</strong> (hook's copy + Steelhead's appended copy). With it, we can format and
-      place the remisión exactly within the SAT-constrained description instead of having it appended
-      raw.</p>
+    <p>With the field exposed, the hook can:</p>
+    <ul>
+      <li><strong>Validate before save</strong> — surface a pre-save message to the operator
+        (e.g. <em>"This invoice will carry remisión(es): 1469, 1470 — confirm before saving"</em>),
+        catching a wrong or missing remisión before the invoice is committed.</li>
+      <li><strong>Write the remisión itself</strong> — with the correct format and placement —
+        after we disable Steelhead's auto-append (already configurable on our side). The auto-append
+        exists today only because the hook has no way to add the remisión; exposing the field removes
+        that dependency, with no risk of a duplicate.</li>
+    </ul>
   </div>
 
   <h2>Why it matters</h2>
   <p>
-    CFDI descriptions are length-limited and customer-sensitive. Being able to <strong>validate</strong>
-    the remisión before save (primary) prevents bad invoices; <strong>controlling its placement</strong>
-    (secondary) lets us keep descriptions within SAT limits and consistent with the PDF.
+    CFDI descriptions are length-limited and customer-sensitive. Exposing the packing slip lets us
+    <strong>validate</strong> the remisión before save (preventing bad invoices) and
+    <strong>write it into the description ourselves</strong> — within SAT limits and consistent with
+    the PDF — instead of relying on a raw, uncontrolled append.
   </p>
 
   <footer class="doc">
