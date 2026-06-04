@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature Request — Expose Outbound Packing Slip to the Invoicing Hook</title>
+<style>
+  :root {
+    --ink: #1b1f24;
+    --muted: #5b6671;
+    --line: #e3e8ee;
+    --code-bg: #f6f8fa;
+    --code-ink: #24292f;
+    --accent: #1f6feb;
+    --accent-soft: #ddeaff;
+    --warn: #b7791f;
+    --warn-soft: #fff4dd;
+    --ok: #1a7f37;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: #fafbfc;
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap {
+    max-width: 840px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  header.doc {
+    border-bottom: 2px solid var(--line);
+    padding-bottom: 24px;
+    margin-bottom: 8px;
+  }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    margin: 0 0 8px;
+  }
+  h1 {
+    font-size: 28px;
+    line-height: 1.25;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+  }
+  .meta {
+    color: var(--muted);
+    font-size: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+  h2 {
+    font-size: 20px;
+    margin: 40px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  p { margin: 12px 0; }
+  ul { margin: 12px 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.875em;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 2px 6px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 14px 0;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--code-ink);
+    white-space: pre;
+  }
+  .callout {
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--muted);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin: 18px 0;
+    background: #fff;
+  }
+  .callout .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+  }
+  .callout.primary { border-left-color: var(--accent); background: #fbfdff; }
+  .callout.primary .tag { background: var(--accent-soft); color: var(--accent); }
+  .callout.secondary { border-left-color: var(--warn); background: #fffdf8; }
+  .callout.secondary .tag { background: var(--warn-soft); color: var(--warn); }
+  .callout p:first-of-type { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th { background: var(--code-bg); font-weight: 600; }
+  td code { font-size: 12.5px; }
+  .check { color: var(--ok); font-weight: 700; }
+  .cross { color: #cf222e; font-weight: 700; }
+  footer.doc {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  @media (max-width: 600px) {
+    .wrap { padding: 32px 16px 64px; }
+    h1 { font-size: 23px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <p class="eyebrow">Steelhead · Power Tools · Feature Request</p>
+    <h1>Expose the outbound packing slip (remisión) to the Invoicing low-code hook</h1>
+    <div class="meta">
+      <span><b>Hook:</b> <code>getInvoicePricing</code></span>
+      <span><b>Area:</b> Power Tools — Invoicing</span>
+      <span><b>Date:</b> 2026-06-04</span>
+      <span><b>Submitted by:</b> Ecoplating</span>
+    </div>
+  </header>
+
+  <h2>Summary</h2>
+  <p>
+    The Power Tools <em>Invoicing</em> hook (<code>getInvoicePricing</code>, which produces
+    <code>lowCodeDefaultInvoiceLineItems</code>) cannot read the <strong>outbound packing slip /
+    shipment ("remisión")</strong> for the parts being invoiced. We'd like that object exposed in the
+    hook's Input so we can validate it — and ideally control how it appears on each invoice line —
+    <strong>before the invoice is saved</strong>.
+  </p>
+
+  <h2>Context</h2>
+  <ul>
+    <li>We use <code>getInvoicePricing</code> to build CFDI (Mexican tax) invoice line descriptions.
+      The description field is tightly space-constrained and its exact content matters for the
+      customer and the SAT integrator.</li>
+    <li>We ship parts <strong>before</strong> invoicing — the parts are already at the
+      <code>Embarcando</code> recipe node when the invoice is built — so the outbound packing slip
+      <strong>already exists</strong> at invoice time.</li>
+    <li>Today, <strong>after</strong> the invoice is saved, Steelhead automatically appends the
+      outbound packing slip number to each line's description
+      (e.g. <code>, Packing Slip: 1469</code>). The hook runs <em>before</em> save and never sees this
+      value, so we cannot validate it or influence its formatting/placement.</li>
+  </ul>
+
+  <h2>What's currently exposed (evidence)</h2>
+  <p>A dump of a <code>partAccount</code> from the <code>getInvoicePricing</code> Input shows these
+    keys only:</p>
+  <pre><code>id, certReport, station, locationId, locationPath, quantity,
+recipeNode, partGroup, rack, receivedBatch, measurement</code></pre>
+  <p>The only "packing slip"-like field is
+    <code>receivedBatch.customInputs.DatosRecibo.PackingSlip</code> — that is the
+    <strong>inbound (receiving) PS</strong> entered by the customer, not the outbound shipment.
+    There is <strong>no</strong> outbound <code>packingSlip</code> object anywhere in this Input.</p>
+
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Meaning</th><th>In <code>getInvoicePricing</code>?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>receivedBatch…DatosRecibo.PackingSlip</code></td>
+        <td>Inbound PS — entered at receiving (customer's slip)</td>
+        <td><span class="check">Yes</span></td>
+      </tr>
+      <tr>
+        <td><code>partAccounts[].packingSlip.idInDomain</code></td>
+        <td>Outbound shipment / remisión — what we need</td>
+        <td><span class="cross">No</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>The model already supports it</h2>
+  <p>The Invoice PDF hook (<code>getPdfCustomization</code> / <code>INVOICE_TEMPLATE</code>) already
+    exposes the outbound shipment on its part accounts:</p>
+  <pre><code>lineItem.referencedPartAccounts[].packingSlip {
+  idInDomain, createdAt, shipVia, shipMethod, trackingNumber, shipToAddress
+}</code></pre>
+  <p>So the data is in the graph and already resolved for a sibling hook — this is purely a matter of
+    the <code>getInvoicePricing</code> query requesting it.</p>
+
+  <h2>Request</h2>
+
+  <div class="callout primary">
+    <span class="tag">Primary</span>
+    <p>Add the outbound packing slip to the part accounts already returned by the
+      <code>getInvoicePricing</code> query — minimally:</p>
+    <pre><code>partAccounts {
+  ...existing fields...
+  packingSlip { idInDomain }   // outbound shipment / remisión
+}</code></pre>
+    <p>This alone lets the hook <strong>read the remisión and surface a pre-save validation
+      message</strong> to the operator (e.g. <em>"This invoice will carry remisión(es): 1469, 1470 —
+      confirm before saving"</em>), catching a wrong or missing remisión before the invoice is
+      committed.</p>
+  </div>
+
+  <div class="callout secondary">
+    <span class="tag">Secondary · desirable</span>
+    <p>A way for the hook to <strong>control Steelhead's automatic append</strong> of the outbound
+      packing slip to the line description — e.g. a flag to suppress the auto-append when the hook has
+      already included the remisión itself, or a documented field on
+      <code>lowCodeDefaultInvoiceLineItems</code> that governs it.</p>
+    <p>Without this, a hook that writes the remisión into the description would produce a
+      <strong>duplicate</strong> (hook's copy + Steelhead's appended copy). With it, we can format and
+      place the remisión exactly within the SAT-constrained description instead of having it appended
+      raw.</p>
+  </div>
+
+  <h2>Why it matters</h2>
+  <p>
+    CFDI descriptions are length-limited and customer-sensitive. Being able to <strong>validate</strong>
+    the remisión before save (primary) prevents bad invoices; <strong>controlling its placement</strong>
+    (secondary) lets us keep descriptions within SAT limits and consistent with the PDF.
+  </p>
+
+  <footer class="doc">
+    Steelhead Automator · Ecoplating — Power Tools Invoicing pipeline
+    (<code>getInvoicePricing</code> → <code>getPdfCustomization</code>). Prepared 2026-06-04.
+  </footer>
+
+</div>
+</body>
+</html>
