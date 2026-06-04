@@ -371,10 +371,10 @@ const PNArchiver = (() => {
 
     log(`\n=== ARCHIVADOR RESULTADO ===`);
     log(`${isUnarchive ? 'Desarchivados' : 'Archivados'}: ${results.archived}/${totalCount}`);
-    if (opts.enableValidation) log(`Con validación: ${results.validated}`);
+    if (opts.enableValidation && !isUnarchive) log(`Con validación: ${results.validated}`);
     if (results.errors.length) log(`Errores: ${results.errors.length}`);
 
-    showArchiverResult(results);
+    showArchiverResult(results, null, isUnarchive);
     return results;
   }
 
@@ -647,7 +647,7 @@ const PNArchiver = (() => {
     });
   }
 
-  function showArchiverResult(results, msg) {
+  function showArchiverResult(results, msg, isUnarchive = false) {
     removeArchiverUI();
     ensureStyles();
     const ov = document.createElement('div');
@@ -660,7 +660,7 @@ const PNArchiver = (() => {
     const summary = msg || (
       `<div style="font-size:13px;color:#cbd5e1;line-height:1.7">` +
       `<b>PNs encontrados:</b> ${results.found}<br>` +
-      `<b>Archivados:</b> ${results.archived}<br>` +
+      `<b>${isUnarchive ? 'Desarchivados' : 'Archivados'}:</b> ${results.archived}<br>` +
       (results.validated ? `<b>Con validación:</b> ${results.validated}<br>` : '') +
       (hasErrors ? `<b style="color:#fca5a5">Errores:</b> ${results.errors.length}` : '') +
       `</div>` +
@@ -668,7 +668,7 @@ const PNArchiver = (() => {
     );
 
     md.innerHTML = `
-      <h2 style="color:#4ade80">📦 Archivador completado</h2>
+      <h2 style="color:#4ade80">📦 ${isUnarchive ? 'Desarchivado' : 'Archivado'} completado</h2>
       ${summary}
       <div class="dl9-btnrow">
         <button class="dl9-btn" id="sa-arch-close" style="background:#475569;color:#e2e8f0">CERRAR</button>
