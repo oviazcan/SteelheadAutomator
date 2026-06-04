@@ -98,3 +98,43 @@ Nuevas queries registradas: `WorkOrderDialogQuery`, `GetPartsTransferAccountAsso
 |---|---|
 | `GetReceivedOrder` | hash-scanner en pantalla de OV → actualizar config + redeploy (afecta varios applets de OV/facturación) |
 
+---
+
+## 2026-06-04 — 12 rotado(s) (config v1.6.30)
+
+**Corrida**: manual (revisión diaria). 141 ok / 12 stale / 2 skipped / 0 unknown / 0 auth. Elapsed 108s.
+
+**Otra rotación de Steelhead** (7 nuevos vs el 2026-06-03), concentrada en **Bills (CxP)** y **Mantenimiento**.
+
+### Hashes rotados + impacto
+
+| Operación | Tipo | Applet afectado | ¿bulk-upload? |
+|---|---|---|---|
+| `GetAccountDataForBill` | query | `bill-autofill` | No |
+| `GetBillByIdInDomain` | query | `bill-autofill` | No |
+| `SearchPurchaseOrdersForBill` | query | `bill-autofill` | No |
+| `GetPurchaseOrdersDataForBill` | query | `bill-autofill` | No |
+| `CreateUpdateBill` | mutation | `bill-autofill` | No |
+| `OperatorMaintenanceNodeDialogQuery` | query | `paros-linea` | No |
+| `CreateMaintenanceNodeEvent` | mutation | `paros-linea` | No |
+| `GetReceivedOrder` | query | ov-operations, po-comparator, po-reconciler, portal-importer, wo-mover | No |
+| `GetReceivedOrderDocuments` | query | (sin uso runtime) | No |
+| `GetReceivedOrdersWithReceivedOrderLineItems` | query | invoice-autofill | No |
+| `UpdateInventoryItemPredictedUsage` | mutation | (sin uso runtime — cascade 1.6.28 lo reemplazó) | No |
+| `ArchivePredictedInventoryUsage` | mutation | `tools/archive-predictive-dash.js` (DevTools) | No |
+
+### Diagnóstico
+
+- **`bulk-upload` limpio** (cargas masivas no afectadas; sigue en 1.5.18/1.6.30).
+- **`bill-autofill` (CxP) roto**: 5 hashes → no podrá buscar/leer/crear bills hasta recapturar.
+- **`paros-linea` roto**: 2 hashes (diálogo de mantenimiento + crear evento de nodo).
+- OV/facturación: `GetReceivedOrder` + `GetReceivedOrdersWith…` siguen stale del 2026-06-03.
+
+### Pendiente de captura (prioridad alta: bill-autofill)
+
+| Aplet | Pantalla para hash-scanner |
+|---|---|
+| `bill-autofill` | Pantalla de Bills/CxP (buscar PO, abrir bill, guardar) → captura los 5 hashes |
+| `paros-linea` | Diálogo de mantenimiento de nodo |
+| OV/facturación | Pantalla de OV (Received Order) |
+
