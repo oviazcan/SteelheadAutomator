@@ -156,7 +156,7 @@ Capturados nuevos del scan `2026-06-04_102353` → 12 stale ⇒ **6 stale**:
 **Siguen stale (no reparados):**
 - `CreateUpdateBill` (mutation) — bill-autofill no podrá **guardar** bills; no se disparó en el scan (hay que guardar un bill con el scanner activo).
 - `GetReceivedOrdersWithReceivedOrderLineItems` — **reparado en config 1.6.32** (`cff4549f…`→`2e98d28d…`, scan `104237`, invoice-autofill).
-- `CreateUpdateBill` — **sigue pendiente** tras 2º scan: no se disparó (hay que **guardar** un bill con el scanner activo).
+- `CreateUpdateBill` → **RENOMBRADO por SH a `UpdateBillChecked`** (descubierto 2026-06-04 al guardar un bill; misma shape `billPayload.customInputs.DatosContables`). Reparado en **config 1.6.33** (key+hash `1f3b253a…`) + **`bill-autofill.js`** (el interceptor ahora acepta `UpdateBillChecked` además de `CreateUpdateBill`). bill-autofill **vuelve a inyectar Divisa/TC** al guardar bills.
 - `GetReceivedOrderDocuments` — sin uso runtime.
 - `UpdateInventoryItemPredictedUsage` / `ArchivePredictedInventoryUsage` — deprecados (cascade 1.6.28 los reemplazó); sin uso runtime.
 
