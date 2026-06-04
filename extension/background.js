@@ -706,79 +706,12 @@ async function handleMessage(message, sender) {
       const tab = await getSteelheadTab();
       await injectAppScripts(tab.id, 'archiver');
 
-      // Show config form in Steelhead page, then run
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
-        func: () => {
-          if (!window.PNArchiver) return { error: 'PNArchiver no disponible' };
-
-          // Show configuration form as modal
-          return new Promise(resolve => {
-            if (!document.getElementById('dl9-styles')) {
-              const s = document.createElement('style'); s.id = 'dl9-styles';
-              s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:500px;width:92%;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 12px}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#ef4444;color:white}`;
-              document.head.appendChild(s);
-            }
-
-            const ov = document.createElement('div');
-            ov.className = 'dl9-overlay';
-            const md = document.createElement('div');
-            md.className = 'dl9-modal';
-            md.style.background = '#1a2e1a';
-            md.innerHTML = `
-              <h2 style="color:#4ade80">📦 Archivador Masivo de PNs</h2>
-              <div style="margin-bottom:16px">
-                <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Fecha de corte:</label>
-                <input type="date" id="sa-arch-date" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px" value="${new Date().toLocaleDateString('en-CA')}">
-              </div>
-              <div style="margin-bottom:16px;display:flex;gap:8px">
-                <div style="flex:1">
-                  <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Dirección:</label>
-                  <select id="sa-arch-direction" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
-                    <option value="before" selected>Antes de la fecha</option>
-                    <option value="after">Después de la fecha</option>
-                  </select>
-                </div>
-                <div style="flex:1">
-                  <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:4px">Tipo de fecha:</label>
-                  <select id="sa-arch-type" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
-                    <option value="utilizacion" selected>Última utilización</option>
-                    <option value="creacion">Fecha de creación</option>
-                    <option value="modificacion">Fecha de modificación</option>
-                  </select>
-                </div>
-              </div>
-              <div style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
-                <input type="checkbox" id="sa-arch-validation" checked>
-                <label for="sa-arch-validation" style="font-size:13px;color:#e2e8f0">Activar validación de ingeniería al primer recibo</label>
-              </div>
-              <p style="font-size:11px;color:#64748b;margin-bottom:8px">Se archivarán todos los PNs activos cuya fecha seleccionada sea anterior a la fecha de corte. Podrás revisar y deseleccionar antes de ejecutar.</p>
-              <div class="dl9-btnrow">
-                <button class="dl9-btn dl9-btn-cancel" id="sa-arch-form-cancel">CANCELAR</button>
-                <button class="dl9-btn" id="sa-arch-form-exec" style="background:#4ade80;color:#0f172a">BUSCAR PNs</button>
-              </div>`;
-            ov.appendChild(md);
-            document.body.appendChild(ov);
-
-            document.getElementById('sa-arch-form-cancel').onclick = () => {
-              ov.parentNode.removeChild(ov);
-              resolve({ cancelled: true });
-            };
-            document.getElementById('sa-arch-form-exec').onclick = async () => {
-              const cutoffDate = document.getElementById('sa-arch-date').value;
-              const dateType = document.getElementById('sa-arch-type').value;
-              const direction = document.getElementById('sa-arch-direction').value;
-              const enableValidation = document.getElementById('sa-arch-validation').checked;
-              ov.parentNode.removeChild(ov);
-
-              try {
-                const result = await window.PNArchiver.run({ cutoffDate, dateType, direction, enableValidation });
-                resolve(result);
-              } catch (e) {
-                resolve({ error: e.message });
-              }
-            };
-          });
+        func: async () => {
+          if (!window.PNArchiver?.openConfigAndRun) return { error: 'PNArchiver no disponible' };
+          try { return await window.PNArchiver.openConfigAndRun(); }
+          catch (e) { return { error: e.message }; }
         }
       });
 
