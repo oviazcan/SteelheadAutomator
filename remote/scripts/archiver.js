@@ -1,11 +1,13 @@
 // Steelhead Part Number Archiver
-// Archives PNs based on inactivity date criteria
+// Archiva/desarchiva PNs por criterios combinables: fecha (opcional), etiquetas (AND/OR), modo.
 // Depends on: SteelheadAPI
 //
-// 2026-05-25 — refactor:
-//   * runPool concurrencia 6 (fallback GetPartNumber) y 3 (archive UpdatePartNumber)
-//   * Resume del archive loop via localStorage (sa_archiver_resume_v1)
-//   * Preview limita a 500 filas en DOM (resto se ve por CSV / "mostrar todo")
+// 2026-06-03 — feat: filtro por etiquetas + modo archivar/desarchivar:
+//   * Scan SLIM mode-aware (fetchPNsForMode): archive→activos, unarchive→archivados
+//   * Pantalla de filtros por etiqueta (AND/OR) con conteo en vivo antes del preview
+//   * Cruce de utilización extraído a filterByUnused (WO+recibos); sin fallback per-PN
+//   * runPool concurrencia 3 (UpdatePartNumber); resume via localStorage (sa_archiver_resume_v1), por modo
+//   * Preview limita a 500 filas en DOM (resto se procesa al confirmar)
 
 const PNArchiver = (() => {
   'use strict';
@@ -175,7 +177,7 @@ const PNArchiver = (() => {
   }
 
   // Cruza candidatos vs PNs con OT/recibos; devuelve los SIN uso. Solo modo archive.
-  async function filterByUnused(candidates, DOMAIN) {
+  async function filterByUnused(candidates) {
     updateArchiverUI(`Cargando órdenes de trabajo...`);
     const usedPNIds = new Set();
     let woOffset = 0;
@@ -217,6 +219,7 @@ const PNArchiver = (() => {
       } catch (e) { warn(`AllReceivers ${recOffset}: ${String(e).substring(0, 60)}`); break; }
     }
     log(`  ${usedPNIds.size} PNs con OT/recibos`);
+    if (usedPNIds.size === 0) warn('filterByUnused: 0 PNs con OT/recibos — el cruce de utilización podría no estar filtrando; revisa el conteo en el preview antes de confirmar');
     return candidates.filter(pn => !usedPNIds.has(pn.id));
   }
 
@@ -269,7 +272,7 @@ const PNArchiver = (() => {
 
     // 3. Cruce de utilización (solo modo archive + dateType utilizacion)
     if (mode === 'archive' && useDate && dateType === 'utilizacion') {
-      slimPNs = await filterByUnused(slimPNs, DOMAIN);
+      slimPNs = await filterByUnused(slimPNs);
       if (stopped) return { ...results, stopped: true };
     }
 
@@ -382,6 +385,7 @@ const PNArchiver = (() => {
   }
 
   function showArchiverUI(msg) {
+    ensureStyles();
     let ov = document.getElementById('sa-archiver-overlay');
     if (!ov) {
       ov = document.createElement('div');
