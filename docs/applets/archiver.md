@@ -34,6 +34,10 @@ Flujo (3 pantallas): **config** (modo + fecha opcional + validación) → **scan
 - [ ] **M3**: confirmar el nombre exacto de la etiqueta `SQ1` (en la muestra solo aparece `SQ2`).
 - [ ] **Piloto**: archivar un subconjunto chico de PNs con `SQ1` + `Antitarnish` (AND) y verificar que el conteo en vivo coincide.
 
+## Issues conocidos (pre-existentes, heredados; no introducidos por 1.0.0)
+- **`dateType=modificacion` filtra por `createdAt`**: `slimPN` solo trae `createdAt`, así que la opción "Fecha de modificación" del form en realidad filtra por creación. Decidir en fase 2: traer `modifiedAt` al slim y diferenciarlo en `applyFilters`, o quitar la opción del form. ("creación" y "última utilización" sí funcionan bien.)
+- **Checkbox huérfano en el `<thead>` del preview** (`#sa-arch-th-check`): no tiene handler; el select-all real es `#sa-arch-selectall` arriba de la tabla. Conectar o eliminar.
+
 ## Fase 2 (pendiente)
 - Filtro por **grupo de partes**, **línea** y **departamento** (dimensiones contables personalizables; cada PN tiene ambas), y **proceso**. Requieren investigar la fuente del dato (vienen vacíos en el listado; probablemente `GetPartNumber` por PN). Definir costo/memoria antes de integrarlos.
 

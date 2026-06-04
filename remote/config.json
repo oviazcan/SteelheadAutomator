@@ -444,13 +444,13 @@
     {
       "id": "archiver",
       "name": "Archivador de PNs",
-      "subtitle": "Por fecha de inactividad",
+      "subtitle": "Por etiquetas, fecha y modo",
       "icon": "📦",
       "category": "Números de Parte",
       "scripts": ["scripts/steelhead-api.js", "scripts/archiver.js"],
       "requiredPermissions": ["READ_PART_NUMBERS"],
       "actions": [
-        { "id": "run-archiver", "label": "Archivar PNs", "sublabel": "Configurar fecha y criterios", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver" }
+        { "id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver" }
       ]
     },
     {
