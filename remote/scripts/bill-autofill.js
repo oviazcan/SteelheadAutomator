@@ -275,8 +275,11 @@ const BillAutofill = (() => {
 
       const opName = bodyObj?.operationName;
 
-      // Intercept outgoing CreateUpdateBill — inject missing accounting data
-      if (opName === 'CreateUpdateBill' && state.ready) {
+      // Intercept outgoing UpdateBillChecked — inject missing accounting data.
+      // 2026-06-04: SH renombró la mutación de guardar bill CreateUpdateBill →
+      // UpdateBillChecked (misma shape: variables.billPayload.customInputs.DatosContables).
+      // Aceptamos ambos por compatibilidad.
+      if ((opName === 'UpdateBillChecked' || opName === 'CreateUpdateBill') && state.ready) {
         try {
           const bill = bodyObj.variables?.billPayload || bodyObj.variables?.input || bodyObj.variables;
           if (bill) {
@@ -293,7 +296,7 @@ const BillAutofill = (() => {
             }
           }
         } catch (err) {
-          warn('Error modificando CreateUpdateBill: ' + err.message);
+          warn('Error modificando UpdateBillChecked: ' + err.message);
         }
       }
 
@@ -353,7 +356,7 @@ const BillAutofill = (() => {
     }
 
     // Learn from successful bill saves — use the SENT payload, not the response
-    if (opName === 'CreateUpdateBill' && !json.errors) {
+    if ((opName === 'UpdateBillChecked' || opName === 'CreateUpdateBill') && !json.errors) {
       learnFromSave(bodyObj);
     }
   }

@@ -98,3 +98,65 @@ Nuevas queries registradas: `WorkOrderDialogQuery`, `GetPartsTransferAccountAsso
 |---|---|
 | `GetReceivedOrder` | hash-scanner en pantalla de OV → actualizar config + redeploy (afecta varios applets de OV/facturación) |
 
+---
+
+## 2026-06-04 — 12 rotado(s) (config v1.6.30)
+
+**Corrida**: manual (revisión diaria). 141 ok / 12 stale / 2 skipped / 0 unknown / 0 auth. Elapsed 108s.
+
+**Otra rotación de Steelhead** (7 nuevos vs el 2026-06-03), concentrada en **Bills (CxP)** y **Mantenimiento**.
+
+### Hashes rotados + impacto
+
+| Operación | Tipo | Applet afectado | ¿bulk-upload? |
+|---|---|---|---|
+| `GetAccountDataForBill` | query | `bill-autofill` | No |
+| `GetBillByIdInDomain` | query | `bill-autofill` | No |
+| `SearchPurchaseOrdersForBill` | query | `bill-autofill` | No |
+| `GetPurchaseOrdersDataForBill` | query | `bill-autofill` | No |
+| `CreateUpdateBill` | mutation | `bill-autofill` | No |
+| `OperatorMaintenanceNodeDialogQuery` | query | `paros-linea` | No |
+| `CreateMaintenanceNodeEvent` | mutation | `paros-linea` | No |
+| `GetReceivedOrder` | query | ov-operations, po-comparator, po-reconciler, portal-importer, wo-mover | No |
+| `GetReceivedOrderDocuments` | query | (sin uso runtime) | No |
+| `GetReceivedOrdersWithReceivedOrderLineItems` | query | invoice-autofill | No |
+| `UpdateInventoryItemPredictedUsage` | mutation | (sin uso runtime — cascade 1.6.28 lo reemplazó) | No |
+| `ArchivePredictedInventoryUsage` | mutation | `tools/archive-predictive-dash.js` (DevTools) | No |
+
+### Diagnóstico
+
+- **`bulk-upload` limpio** (cargas masivas no afectadas; sigue en 1.5.18/1.6.30).
+- **`bill-autofill` (CxP) roto**: 5 hashes → no podrá buscar/leer/crear bills hasta recapturar.
+- **`paros-linea` roto**: 2 hashes (diálogo de mantenimiento + crear evento de nodo).
+- OV/facturación: `GetReceivedOrder` + `GetReceivedOrdersWith…` siguen stale del 2026-06-03.
+
+### Pendiente de captura (prioridad alta: bill-autofill)
+
+| Aplet | Pantalla para hash-scanner |
+|---|---|
+| `bill-autofill` | Pantalla de Bills/CxP (buscar PO, abrir bill, guardar) → captura los 5 hashes |
+| `paros-linea` | Diálogo de mantenimiento de nodo |
+| OV/facturación | Pantalla de OV (Received Order) |
+
+### Reparación (config 1.6.31, mismo día) — hash-scanner navegador
+
+Capturados nuevos del scan `2026-06-04_102353` → 12 stale ⇒ **6 stale**:
+
+| Operación | viejo → nuevo |
+|---|---|
+| `GetReceivedOrder` | `4fa89e55…` → `499103ff…` |
+| `OperatorMaintenanceNodeDialogQuery` | `b4dcc10b…` → `916178b4…` |
+| `GetBillByIdInDomain` | `9a870417…` → `404d9326…` |
+| `SearchPurchaseOrdersForBill` | `e29e1afc…` → `37fa487a…` |
+| `GetPurchaseOrdersDataForBill` | `6faed5d5…` → `87987ec9…` |
+| `CreateMaintenanceNodeEvent` | `6aaef93e…` → `930aa9f6…` |
+
+**`paros-linea` reparado** (2/2). **`bill-autofill`** reparado 3/5 (`GetBillByIdInDomain`, `SearchPurchaseOrdersForBill`, `GetPurchaseOrdersDataForBill`); `GetAccountDataForBill` → **whitelist** (falso positivo, scanCount 75 OK en navegador). `GetReceivedOrder` reparado (OV/wo-mover/po-comparator).
+
+**Siguen stale (no reparados):**
+- `CreateUpdateBill` (mutation) — bill-autofill no podrá **guardar** bills; no se disparó en el scan (hay que guardar un bill con el scanner activo).
+- `GetReceivedOrdersWithReceivedOrderLineItems` — **reparado en config 1.6.32** (`cff4549f…`→`2e98d28d…`, scan `104237`, invoice-autofill).
+- `CreateUpdateBill` → **RENOMBRADO por SH a `UpdateBillChecked`** (descubierto 2026-06-04 al guardar un bill; misma shape `billPayload.customInputs.DatosContables`). Reparado en **config 1.6.33** (key+hash `1f3b253a…`) + **`bill-autofill.js`** (el interceptor ahora acepta `UpdateBillChecked` además de `CreateUpdateBill`). bill-autofill **vuelve a inyectar Divisa/TC** al guardar bills.
+- `GetReceivedOrderDocuments` — sin uso runtime.
+- `UpdateInventoryItemPredictedUsage` / `ArchivePredictedInventoryUsage` — deprecados (cascade 1.6.28 los reemplazó); sin uso runtime.
+

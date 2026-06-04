@@ -105,7 +105,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 
 | Applet | Versión actual | Bitácora |
 |---|---|---|
-| `bulk-upload` | 1.5.17 + config 1.6.29 (fix latentes STEP 6b: preserve `optInOuts` + `inventoryItemInput`/UCs cuando dispara el cleanup de params duplicados; `inventoryPredictedUsages:[]` = additive. **STEP 6a cascade + fix 1.5.17 VALIDADOS en prod 2026-06-03** vía piloto MODIFY: replace sin duplicar + UCs preservadas. Gotcha: predictivo en `0` no cambia el valor viejo, usar `-` para borrar) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
+| `bulk-upload` | 1.5.18 + config 1.6.30 (**fix CRÍTICO: "Preservar proceso" borraba `defaultProcessNodeId`** — Call B heredaba el scalar bugged=null; ahora FK-fallback + distingue heredar vs `-`/borrar. Incidente Tipsa/TROQUELADOS: 17 PNs recuperados de snapshot. Previo: STEP 6b preserve `optInOuts`/UCs validado; cascade STEP 6a validado; gotcha predictivo `0` no borra, usar `-`) (+ ext 1.6.2) | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
 | `process-deep-audit` | 0.8.0 | [`docs/applets/process-deep-audit.md`](docs/applets/process-deep-audit.md) |
 | `spec-params-bulk` | 0.9.0 | [`docs/applets/spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
 | `spec-migrator` (bundle Ajuste Masivo) | original + `validate-duplicate-params` 0.5.5 (CSV multi-cliente + memory hardening completo: mem monitor + guardrail @88% + resume + virtualización preview + host-cleanup-shared) | [`docs/applets/spec-migrator.md`](docs/applets/spec-migrator.md) |
