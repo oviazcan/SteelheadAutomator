@@ -75,6 +75,76 @@ const PNArchiver = (() => {
   }
 
   // ═══════════════════════════════════════════
+  // HELPERS PUROS DE FILTRADO (testeables)
+  // ═══════════════════════════════════════════
+
+  // Reduce un nodo pesado de AllPartNumbers a lo mínimo necesario (memoria).
+  function slimPN(node) {
+    const labels = (node.partNumberLabelsByPartNumberId?.nodes || [])
+      .map(n => n.labelByLabelId)
+      .filter(Boolean)
+      .map(l => ({ id: l.id, name: l.name }));
+    return {
+      id: node.id,
+      name: node.name,
+      createdAt: node.createdAt || null,
+      archivedAt: node.archivedAt || null,
+      customer: node.customerByCustomerId?.name || '',
+      labels,
+    };
+  }
+
+  // Catálogo de etiquetas descubiertas con conteo, ordenado por nombre.
+  // slimPNs: [{labels:[{id,name}]}] → [{name, count}]
+  function discoverLabels(slimPNs) {
+    const counts = new Map();
+    for (const pn of slimPNs) {
+      for (const l of pn.labels || []) {
+        if (!l.name) continue;
+        counts.set(l.name, (counts.get(l.name) || 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }
+
+  // ¿El PN cumple el filtro de etiquetas? mode: 'AND' | 'OR'.
+  // selectedNames vacío => no filtra (true). Case-insensitive por name.
+  function matchesLabels(pn, selectedNames, mode) {
+    if (!selectedNames || selectedNames.length === 0) return true;
+    const have = new Set((pn.labels || []).map(l => String(l.name || '').toUpperCase()));
+    const want = selectedNames.map(s => String(s).toUpperCase());
+    return mode === 'OR'
+      ? want.some(w => have.has(w))
+      : want.every(w => have.has(w));
+  }
+
+  // Aplica todos los filtros opcionales (intersección AND entre criterios).
+  // filters: { selectedLabels:[name], labelMode:'AND'|'OR',
+  //            dateFilter?: { cutoffISO, direction:'before'|'after' } }
+  // Devuelve el subconjunto que pasa TODOS los filtros activos.
+  function applyFilters(slimPNs, filters) {
+    const { selectedLabels = [], labelMode = 'AND', dateFilter = null } = filters || {};
+    return slimPNs.filter(pn => {
+      if (!matchesLabels(pn, selectedLabels, labelMode)) return false;
+      if (dateFilter && dateFilter.cutoffISO) {
+        if (!pn.createdAt) return false;
+        const d = new Date(pn.createdAt);
+        const cut = new Date(dateFilter.cutoffISO);
+        if (dateFilter.direction === 'after' ? !(d > cut) : !(d < cut)) return false;
+      }
+      return true;
+    });
+  }
+
+  // Idempotencia: ¿el PN ya está en el estado destino para el modo dado?
+  // mode 'archive': ya archivado. mode 'unarchive': ya activo.
+  function isInTargetState(pn, mode) {
+    return mode === 'unarchive' ? pn.archivedAt == null : pn.archivedAt != null;
+  }
+
+  // ═══════════════════════════════════════════
   // PAGINACIÓN PNs ACTIVOS
   // ═══════════════════════════════════════════
 
@@ -504,7 +574,13 @@ const PNArchiver = (() => {
     };
   }
 
-  return { run, stop };
+  return {
+    run, stop,
+    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState },
+  };
 })();
 
-if (typeof window !== 'undefined') window.PNArchiver = PNArchiver;
+if (typeof window !== 'undefined') {
+  window.PNArchiver = PNArchiver;
+  window.__SAArchiver = PNArchiver._internals;
+}
