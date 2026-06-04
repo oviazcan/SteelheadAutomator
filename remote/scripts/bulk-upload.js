@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.17';
+  const VERSION = '1.5.18';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -3852,8 +3852,12 @@ const BulkUpload = (() => {
           continue;
         }
         if (!st.existingProcessId) {
+          // 1.5.18: existingProcessId puede venir null por el scalar `defaultProcessNodeId`
+          // bugged (siempre null en el persisted query, ver 1.5.16). NO tratar como borrar:
+          // dejar processId=null SIN clearDefaultProcess → Call B hereda el proceso ACTUAL
+          // del PN vía FK relacional (existingPnNode.processNodeByDefaultProcessNodeId.id).
           p.processId = null;
-          warn(`PN "${p.pn}": Proceso vacío y existente sin defaultProcessNodeId — queda sin proceso`);
+          log(`  PN "${p.pn}": Proceso vacío → se heredará el del PN existente en Call B (FK)`);
           continue;
         }
         p.processId = st.existingProcessId;
@@ -5374,7 +5378,21 @@ const BulkUpload = (() => {
         const pnGroupId = pnGroupIdEarly;
 
         // labelIdsToSend y dimValueIdsToSend ya fueron resueltos arriba (1.5.5).
-        const pnProcessId = part.processId;
+        // 1.5.18 FIX CRÍTICO: el path "vacío = heredar proceso" (incl. modal
+        // "Preservar" de procesos no resueltos) ponía part.processId=null cuando
+        // existingProcessId venía null — y existingProcessId se leía del scalar
+        // `defaultProcessNodeId`, que el persisted query devuelve SIEMPRE null
+        // (bug documentado en 1.5.16). Call B mandaba ese null como
+        // defaultProcessNodeId → SavePartNumber (REPLACE) BORRABA el proceso del
+        // PN existente. Caso real: carga Tipsa 2026-06-03, 17 PNs de TROQUELADOS
+        // perdieron su proceso al elegir "Preservar".
+        // Fix: distinguir heredar (sin clearDefaultProcess) de borrar ("-",
+        // clearDefaultProcess=true). Para heredar, caer al proceso ACTUAL del PN
+        // vía FK relacional (existingPnNode/pn, que GetPartNumber sí trae bien).
+        const pnProcessId = (part.processId == null && !part.clearDefaultProcess)
+          ? ((existingPnNode?.processNodeByDefaultProcessNodeId?.id ?? existingPnNode?.defaultProcessNodeId)
+             ?? (pn.processNodeByDefaultProcessNodeId?.id ?? pn.defaultProcessNodeId) ?? null)
+          : part.processId;
 
         // 1.5.13: preserve-on-missing en Call B para descripción, notas externas,
         // customInputs e inventoryItemInput. descriptionMarkdown/customerFacingNotes

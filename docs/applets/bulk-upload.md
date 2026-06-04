@@ -1,6 +1,66 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.17 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.18 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.18 (config 1.6.30, 2026-06-03) — Fix CRÍTICO: "Preservar proceso" borraba el proceso del PN existente
+
+### Síntoma (incidente real)
+Carga **Tipsa Anual** (cliente TROQUELADOS INDUSTRIALES DE PRECISION, 17 PNs
+existentes, COTIZACIÓN+NP). La columna Proceso del Excel resolvió a
+`"Combinación no existente"` en los 17. El operador eligió **"Preservar"** en
+el modal de procesos no resueltos (1.5.12) — esperando heredar el proceso
+actual. Resultado: los **17 PNs perdieron `defaultProcessNodeId` (→ null)**.
+Verificado con snapshot pre-carga: solo el proceso se borró; todo lo demás
+(customInputs, labels, specs, dims, UCs, predictivos, geometría) quedó intacto.
+
+### Root cause
+Cadena de 3 eslabones:
+1. `bulk-upload.js:3579` colapsa **"vacío" (heredar)** y **"-" (borrar)** al mismo
+   `p.processId = null`. El dash además marca `clearDefaultProcess=true` (3842);
+   el vacío no.
+2. El post-process (≈3847-3860) resuelve el "vacío" heredando
+   `st.existingProcessId`. Pero `existingProcessId` se lee del **scalar
+   `defaultProcessNodeId`** (líneas 1915/1956/2752/6815), que el persisted query
+   devuelve **siempre null** (mismo bug del scalar que motivó el FK-fallback de
+   1.5.16). Con `existingProcessId` null, el post-process cae a 3854-3857 →
+   `p.processId = null` (sin `clearDefaultProcess`).
+3. **Call B** (`defaultProcessNodeId: pnProcessId`, 5386) — `pnProcessId =
+   part.processId` (null) — lo mandaba como null. SavePartNumber (REPLACE)
+   **borraba** el proceso. (Call A en 5225 sí tenía FK-fallback y lo preservaba,
+   pero Call B lo pisaba después.)
+
+De todos los `defaultProcessNodeId:` en inputs, **solo Call B carecía** del
+FK-fallback que 1.5.16 puso en 4317/5225/5866.
+
+### Fix
+`bulk-upload.js` Call B (≈5377): distinguir heredar de borrar usando
+`clearDefaultProcess`, y para heredar caer al proceso ACTUAL vía FK relacional
+(`existingPnNode`/`pn`, que `GetPartNumber` sí trae bien):
+```js
+const pnProcessId = (part.processId == null && !part.clearDefaultProcess)
+  ? ((existingPnNode?.processNodeByDefaultProcessNodeId?.id ?? existingPnNode?.defaultProcessNodeId)
+     ?? (pn.processNodeByDefaultProcessNodeId?.id ?? pn.defaultProcessNodeId) ?? null)
+  : part.processId;
+```
+Más ajuste de log en 3854-3857 (ya no warnea "queda sin proceso"; indica que
+Call B heredará vía FK). El `-` (dash) sigue borrando (clearDefaultProcess=true).
+
+### Recuperación del incidente
+Los 17 PNs se restauraron desde `snapshot_TROQUELADOS_2026-06-03.json` (backup
+pre-carga) con `SavePartNumber` preservando todo + `defaultProcessNodeId`
+original. 17/17 OK, 0 daño colateral (script `tools/restore_process.py` patrón
+cleanupInput STEP 6b).
+
+### Plan de validación pendiente
+- Re-correr una carga con proceso vacío/"Combinación no existente" + "Preservar"
+  sobre un PN existente con proceso → verificar que el proceso se conserva.
+- Verificar que `-` (dash) sigue borrando el proceso correctamente.
+
+### Deploy
+- `bulk-upload.js`: `VERSION = '1.5.18'`.
+- `config.json`: `1.6.29` → `1.6.30`, `lastUpdated` 2026-06-03T20:30.
+
+---
 
 ## 1.5.17 (config 1.6.29, 2026-06-03) — Fix latentes STEP 6b: preserve `optInOuts` + `inventoryItemInput` (UCs)
 
