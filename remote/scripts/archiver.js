@@ -101,6 +101,10 @@ const PNArchiver = (() => {
     for (const pn of slimPNs) {
       for (const l of pn.labels || []) {
         if (!l.name) continue;
+        // NOTE: dedup por NOMBRE, no por id. Si dos labels distintos comparten
+        // nombre, se colapsan en una entrada. matchesLabels también compara por
+        // nombre, así que ambos siguen empatando. Si algún día se hace match por
+        // id, actualizar AMBAS funciones juntas.
         counts.set(l.name, (counts.get(l.name) || 0) + 1);
       }
     }

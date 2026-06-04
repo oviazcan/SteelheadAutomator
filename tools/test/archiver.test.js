@@ -95,3 +95,20 @@ test('isInTargetState idempotencia por modo', () => {
   assert.equal(A.isInTargetState(active, 'unarchive'), true);
   assert.equal(A.isInTargetState(arch, 'unarchive'), false);
 });
+
+test('applyFilters excluye PNs sin createdAt cuando dateFilter está activo', () => {
+  const a = A.slimPN(node({ id: 1, createdAt: null }));
+  const out = A.applyFilters([a], {
+    selectedLabels: [], labelMode: 'AND',
+    dateFilter: { cutoffISO: '2026-01-01T00:00:00Z', direction: 'before' },
+  });
+  assert.deepEqual(out, []);
+});
+
+test('applyFilters: fecha exactamente en el corte se excluye (límite estricto)', () => {
+  const onCutoff = A.slimPN(node({ id: 3, createdAt: '2026-01-01T00:00:00Z' }));
+  const before = A.applyFilters([onCutoff], { dateFilter: { cutoffISO: '2026-01-01T00:00:00Z', direction: 'before' } });
+  const after = A.applyFilters([onCutoff], { dateFilter: { cutoffISO: '2026-01-01T00:00:00Z', direction: 'after' } });
+  assert.equal(before.length, 0);
+  assert.equal(after.length, 0);
+});
