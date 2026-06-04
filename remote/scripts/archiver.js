@@ -384,6 +384,86 @@ const PNArchiver = (() => {
     document.head.appendChild(s);
   }
 
+  // Modal de configuración (mudado desde extension/background.js). Devuelve
+  // Promise<options | null>. options: {mode, useDate, cutoffDate, dateType, direction, enableValidation}
+  function showConfigForm() {
+    return new Promise(resolve => {
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'dl9-overlay';
+      const md = document.createElement('div');
+      md.className = 'dl9-modal';
+      md.style.background = '#1a2e1a';
+      md.innerHTML = `
+        <h2 style="color:#4ade80">📦 Archivador Masivo de PNs</h2>
+        <div style="margin-bottom:14px;display:flex;gap:8px">
+          <label style="flex:1;font-size:13px;color:#e2e8f0"><input type="radio" name="sa-mode" value="archive" checked> Archivar</label>
+          <label style="flex:1;font-size:13px;color:#e2e8f0"><input type="radio" name="sa-mode" value="unarchive"> Desarchivar</label>
+        </div>
+        <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="sa-arch-usedate">
+          <label for="sa-arch-usedate" style="font-size:13px;color:#e2e8f0">Usar fecha de corte</label>
+        </div>
+        <div id="sa-arch-datebox" style="display:none">
+          <div style="margin-bottom:12px">
+            <input type="date" id="sa-arch-date" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px" value="${new Date().toLocaleDateString('en-CA')}">
+          </div>
+          <div style="margin-bottom:12px;display:flex;gap:8px">
+            <select id="sa-arch-direction" style="flex:1;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
+              <option value="before" selected>Antes de la fecha</option>
+              <option value="after">Después de la fecha</option>
+            </select>
+            <select id="sa-arch-type" style="flex:1;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
+              <option value="utilizacion" selected>Última utilización</option>
+              <option value="creacion">Fecha de creación</option>
+              <option value="modificacion">Fecha de modificación</option>
+            </select>
+          </div>
+        </div>
+        <div id="sa-arch-valbox" style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="sa-arch-validation">
+          <label for="sa-arch-validation" style="font-size:13px;color:#e2e8f0">Activar validación de ingeniería (solo archivar)</label>
+        </div>
+        <p style="font-size:11px;color:#64748b;margin-bottom:8px">Tras buscar, podrás filtrar por etiquetas y ver el conteo antes de confirmar.</p>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="sa-arch-form-cancel">CANCELAR</button>
+          <button class="dl9-btn" id="sa-arch-form-exec" style="background:#4ade80;color:#0f172a">BUSCAR PNs</button>
+        </div>`;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const useDateCb = md.querySelector('#sa-arch-usedate');
+      const dateBox = md.querySelector('#sa-arch-datebox');
+      useDateCb.onchange = () => { dateBox.style.display = useDateCb.checked ? 'block' : 'none'; };
+      const valBox = md.querySelector('#sa-arch-valbox');
+      md.querySelectorAll('input[name="sa-mode"]').forEach(r => r.onchange = () => {
+        valBox.style.display = md.querySelector('input[name="sa-mode"]:checked').value === 'archive' ? 'flex' : 'none';
+      });
+
+      md.querySelector('#sa-arch-form-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve(null); };
+      md.querySelector('#sa-arch-form-exec').onclick = () => {
+        const opts = {
+          mode: md.querySelector('input[name="sa-mode"]:checked').value,
+          useDate: useDateCb.checked,
+          cutoffDate: md.querySelector('#sa-arch-date').value,
+          dateType: md.querySelector('#sa-arch-type').value,
+          direction: md.querySelector('#sa-arch-direction').value,
+          enableValidation: md.querySelector('#sa-arch-validation').checked,
+        };
+        ov.parentNode.removeChild(ov);
+        resolve(opts);
+      };
+    });
+  }
+
+  // Entry point único llamado desde la extensión.
+  async function openConfigAndRun() {
+    const opts = await showConfigForm();
+    if (!opts) return { cancelled: true };
+    try { return await run(opts); }
+    catch (e) { return { error: e.message }; }
+  }
+
   function showArchiverUI(msg) {
     ensureStyles();
     let ov = document.getElementById('sa-archiver-overlay');
@@ -609,7 +689,7 @@ const PNArchiver = (() => {
   }
 
   return {
-    run, stop,
+    run, stop, openConfigAndRun,
     _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState },
   };
 })();
