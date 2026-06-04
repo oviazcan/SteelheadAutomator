@@ -149,23 +149,75 @@ const PNArchiver = (() => {
   }
 
   // ═══════════════════════════════════════════
-  // PAGINACIÓN PNs ACTIVOS
+  // PAGINACIÓN PNs POR MODO
   // ═══════════════════════════════════════════
 
-  async function fetchAllActivePNs(onProgress, pageSize = 500) {
-    const allPNs = [];
+  // Pagina AllPartNumbers en SLIM. mode 'archive' → conserva activos;
+  // 'unarchive' → conserva archivados. Acumula slimPNs (no nodos pesados).
+  async function fetchPNsForMode(mode, onProgress, pageSize = 500) {
+    const slimPNs = [];
     let offset = 0;
     while (!stopped) {
       const data = await api().query('AllPartNumbers', {
         orderBy: ['ID_ASC'], offset, first: pageSize, searchQuery: ''
       }, 'AllPartNumbers');
       const nodes = data?.pagedData?.nodes || [];
-      for (const n of nodes) if (!n.archivedAt) allPNs.push(n);
-      if (onProgress) onProgress(`Cargando PNs... ${allPNs.length}`);
+      for (const n of nodes) {
+        const isArchived = !!n.archivedAt;
+        const keep = mode === 'unarchive' ? isArchived : !isArchived;
+        if (keep) slimPNs.push(slimPN(n));   // SLIM: no guardar nodo pesado
+      }
+      if (onProgress) onProgress(`Cargando PNs... ${slimPNs.length}`);
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
-    return allPNs;
+    return slimPNs;
+  }
+
+  // Cruza candidatos vs PNs con OT/recibos; devuelve los SIN uso. Solo modo archive.
+  async function filterByUnused(candidates, DOMAIN) {
+    updateArchiverUI(`Cargando órdenes de trabajo...`);
+    const usedPNIds = new Set();
+    let woOffset = 0;
+    while (!stopped) {
+      try {
+        const woData = await withRetry(() => api().query('AllWorkOrders', {
+          status: null, includeArchived: 'YES', couponWorkOrders: null, computeMargins: false,
+          orderBy: ['ID_DESC'], offset: woOffset, first: 500, searchQuery: ''
+        }, 'AllWorkOrders'), `AllWorkOrders ${woOffset}`);
+        const woNodes = woData?.pagedData?.nodes || [];
+        if (!woNodes.length) break;
+        for (const wo of woNodes) for (const pnWO of (wo.partNumberWorkOrdersByWorkOrderId?.nodes || [])) {
+          const pnId = pnWO.partNumberId || pnWO.partNumberByPartNumberId?.id;
+          if (pnId) usedPNIds.add(pnId);
+        }
+        updateArchiverUI(`OTs: página ${Math.floor(woOffset / 500) + 1}, ${usedPNIds.size} PNs con OT`);
+        if (woNodes.length < 500) break;
+        woOffset += 500;
+      } catch (e) { warn(`AllWorkOrders ${woOffset}: ${String(e).substring(0, 60)}`); break; }
+    }
+    if (stopped) return candidates;
+
+    updateArchiverUI(`Cargando recibos...`);
+    let recOffset = 0;
+    while (!stopped) {
+      try {
+        const recData = await withRetry(() => api().query('AllReceivers', {
+          orderBy: ['CREATED_AT_DESC'], offset: recOffset, first: 500, searchQuery: ''
+        }, 'AllReceivers'), `AllReceivers ${recOffset}`);
+        const recNodes = recData?.pagedData?.nodes || [];
+        if (!recNodes.length) break;
+        for (const rec of recNodes) for (const item of (rec.receiverBomItemsByReceiverId?.nodes || [])) {
+          const pnId = item.partNumberId || item.partNumberByPartNumberId?.id;
+          if (pnId) usedPNIds.add(pnId);
+        }
+        updateArchiverUI(`Recibos: página ${Math.floor(recOffset / 500) + 1}, ${usedPNIds.size} PNs con actividad`);
+        if (recNodes.length < 500) break;
+        recOffset += 500;
+      } catch (e) { warn(`AllReceivers ${recOffset}: ${String(e).substring(0, 60)}`); break; }
+    }
+    log(`  ${usedPNIds.size} PNs con OT/recibos`);
+    return candidates.filter(pn => !usedPNIds.has(pn.id));
   }
 
   // ═══════════════════════════════════════════
@@ -174,158 +226,73 @@ const PNArchiver = (() => {
 
   async function run(options) {
     stopped = false;
-    const { cutoffDate, dateType, direction = 'before', enableValidation } = options;
+    const {
+      mode = 'archive',
+      useDate = false, cutoffDate = null, dateType = 'creacion', direction = 'before',
+      enableValidation = false,
+    } = options;
     const DOMAIN = api().getDomain();
-    const cutoff = new Date(cutoffDate);
-    const isBefore = direction === 'before';
-    const compareDate = (d) => isBefore ? new Date(d) < cutoff : new Date(d) > cutoff;
-    const dirLabel = isBefore ? 'antes de' : 'después de';
     const results = { found: 0, archived: 0, validated: 0, errors: [] };
 
-    // ── Resume previo? ──
+    // ── Resume previo (solo si coincide el modo) ──
     const prevResume = loadResume();
-    if (prevResume?.selectedPNs?.length) {
+    if (prevResume?.selectedPNs?.length && prevResume.opts?.mode === mode) {
       const pending = prevResume.selectedPNs.filter(p => !prevResume.completed.includes(p.id));
       const resume = confirm(
-        `Hay un archivado previo pendiente:\n` +
-        `  ${prevResume.completed.length} ya archivados\n` +
-        `  ${pending.length} pendientes\n\n` +
+        `Hay un ${mode === 'unarchive' ? 'desarchivado' : 'archivado'} previo pendiente:\n` +
+        `  ${prevResume.completed.length} ya hechos\n  ${pending.length} pendientes\n\n` +
         `¿Reanudar? (Cancelar = empezar de cero)`
       );
       if (resume) {
-        log(`Archivador: reanudando — ${pending.length} pendientes (de ${prevResume.selectedPNs.length} totales)`);
-        showArchiverUI(`Reanudando archivado: ${pending.length} pendientes...`);
+        showArchiverUI(`Reanudando: ${pending.length} pendientes...`);
         return await executeArchive(prevResume.selectedPNs, prevResume.opts, prevResume.completed, results, DOMAIN);
       }
       clearResume();
     }
 
-    log(`Archivador: ${dirLabel} ${cutoffDate}, tipo: ${dateType}, validación: ${enableValidation}`);
-    showArchiverUI('Buscando números de parte activos...');
+    log(`Archivador: modo=${mode}, useDate=${useDate}${useDate ? ` (${dateType} ${direction} ${cutoffDate})` : ''}, validación=${enableValidation}`);
+    showArchiverUI(`Buscando números de parte (${mode === 'unarchive' ? 'archivados' : 'activos'})...`);
 
-    // Fetch all active PNs
-    const allPNs = await fetchAllActivePNs((msg) => updateArchiverUI(msg), 500);
+    // 1. Scan slim por modo
+    let slimPNs = await fetchPNsForMode(mode, (msg) => updateArchiverUI(msg), 500);
     if (stopped) return { ...results, stopped: true };
-    log(`  ${allPNs.length} PNs activos encontrados`);
-    updateArchiverUI(`${allPNs.length} PNs activos. Analizando actividad...`);
+    log(`  ${slimPNs.length} PNs ${mode === 'unarchive' ? 'archivados' : 'activos'}`);
 
-    // Pre-filter por fecha
-    const candidates = [];
-    for (const pn of allPNs) {
-      if (pn.createdAt && compareDate(pn.createdAt)) candidates.push(pn);
-    }
-    log(`  ${candidates.length} PNs creados ${dirLabel} ${cutoffDate}`);
-
-    const toArchive = [];
-
-    if (dateType === 'utilizacion') {
-      // Batch: WO + REC. Extraer solo pnIds (no acumular nodos)
-      updateArchiverUI(`Cargando órdenes de trabajo...`);
-      const woPNIds = new Set();
-      let woOffset = 0;
-      while (!stopped) {
-        try {
-          const woData = await withRetry(() => api().query('AllWorkOrders', {
-            status: null, includeArchived: 'YES', couponWorkOrders: null, computeMargins: false,
-            orderBy: ['ID_DESC'], offset: woOffset, first: 500, searchQuery: ''
-          }, 'AllWorkOrders'), `AllWorkOrders ${woOffset}`);
-          const woNodes = woData?.pagedData?.nodes || [];
-          if (!woNodes.length) break;
-          for (const wo of woNodes) {
-            const pnWOs = wo.partNumberWorkOrdersByWorkOrderId?.nodes || [];
-            for (const pnWO of pnWOs) {
-              const pnId = pnWO.partNumberId || pnWO.partNumberByPartNumberId?.id;
-              if (pnId) woPNIds.add(pnId);
-            }
-          }
-          updateArchiverUI(`OTs: página ${Math.floor(woOffset / 500) + 1}, ${woPNIds.size} PNs con OT encontrados`);
-          if (woNodes.length < 500) break;
-          woOffset += 500;
-        } catch (e) { warn(`AllWorkOrders offset ${woOffset}: ${String(e).substring(0, 60)}`); break; }
-      }
-      log(`  ${woPNIds.size} PNs con órdenes de trabajo`);
-
-      if (stopped) return { ...results, stopped: true };
-
-      updateArchiverUI(`Cargando recibos...`);
-      const recPNIds = new Set();
-      let recOffset = 0;
-      while (!stopped) {
-        try {
-          const recData = await withRetry(() => api().query('AllReceivers', {
-            orderBy: ['CREATED_AT_DESC'], offset: recOffset, first: 500, searchQuery: ''
-          }, 'AllReceivers'), `AllReceivers ${recOffset}`);
-          const recNodes = recData?.pagedData?.nodes || [];
-          if (!recNodes.length) break;
-          for (const rec of recNodes) {
-            const bomItems = rec.receiverBomItemsByReceiverId?.nodes || [];
-            for (const item of bomItems) {
-              const pnId = item.partNumberId || item.partNumberByPartNumberId?.id;
-              if (pnId) recPNIds.add(pnId);
-            }
-          }
-          updateArchiverUI(`Recibos: página ${Math.floor(recOffset / 500) + 1}, ${recPNIds.size} PNs con recibos`);
-          if (recNodes.length < 500) break;
-          recOffset += 500;
-        } catch (e) { warn(`AllReceivers offset ${recOffset}: ${String(e).substring(0, 60)}`); break; }
-      }
-      log(`  ${recPNIds.size} PNs con recibos`);
-
-      if (stopped) return { ...results, stopped: true };
-
-      const usedPNIds = new Set([...woPNIds, ...recPNIds]);
-
-      if (usedPNIds.size === 0 && candidates.length > 0) {
-        // Fallback: GetPartNumber por PN en pool concurrente
-        log('  WARN: Batch approach returned 0 PNs used — fallback runPool concurrencia 6');
-        updateArchiverUI(`Verificación individual (batch no disponible)...`);
-        let processed = 0;
-        await runPool(candidates, async (pn) => {
-          if (stopped) return;
-          try {
-            const detail = await withRetry(() => api().query('GetPartNumber', { partNumberId: pn.id, usagesLimit: 1, usagesOffset: 0 }), `GetPartNumber ${pn.name}`);
-            const pnData = detail?.partNumberById;
-            if (!pnData) return;
-            const hasWO = (pnData.workOrderPartNumberTreatmentStationsByPartNumberId?.nodes?.length || 0) > 0;
-            if (!hasWO) {
-              toArchive.push({ id: pn.id, name: pn.name, createdAt: pn.createdAt, customer: pn.customerByCustomerId?.name || '', reason: 'Sin OTs ni recibos', selected: true });
-            }
-          } catch (_) {}
-          processed++;
-          if (processed % 10 === 0 || processed === candidates.length) {
-            const pct = Math.round((processed / candidates.length) * 100);
-            updateArchiverUI(`Verificando ${processed}/${candidates.length} (${pct}%) — ${toArchive.length} sin uso`);
-          }
-        }, 6);
-      } else {
-        updateArchiverUI(`Cruzando datos: ${candidates.length} candidatos vs ${usedPNIds.size} PNs con actividad...`);
-        for (const pn of candidates) {
-          if (!usedPNIds.has(pn.id)) {
-            toArchive.push({ id: pn.id, name: pn.name, createdAt: pn.createdAt, customer: pn.customerByCustomerId?.name || '', reason: 'Sin OTs ni recibos', selected: true });
-          }
-        }
-      }
-    } else {
-      for (const pn of candidates) {
-        toArchive.push({ id: pn.id, name: pn.name, createdAt: pn.createdAt, customer: pn.customerByCustomerId?.name || '',
-          reason: dateType === 'creacion' ? `Creado ${dirLabel} ${cutoffDate}` : `${dirLabel} ${cutoffDate}`, selected: true });
-      }
+    // 2. Pre-filtro por fecha (opcional)
+    const dateFilter = useDate && cutoffDate
+      ? { cutoffISO: new Date(cutoffDate).toISOString(), direction }
+      : null;
+    if (dateFilter) {
+      slimPNs = applyFilters(slimPNs, { dateFilter });
+      log(`  ${slimPNs.length} tras filtro de fecha`);
     }
 
-    if (stopped) return { ...results, stopped: true };
+    // 3. Cruce de utilización (solo modo archive + dateType utilizacion)
+    if (mode === 'archive' && useDate && dateType === 'utilizacion') {
+      slimPNs = await filterByUnused(slimPNs, DOMAIN);
+      if (stopped) return { ...results, stopped: true };
+    }
 
-    log(`  ${toArchive.length} PNs para archivar (de ${candidates.length} candidatos)`);
+    if (!slimPNs.length) { showArchiverResult(results, 'No hay PNs que cumplan los criterios base.'); return results; }
+
+    // 4. Pantalla de filtros por etiqueta + conteo en vivo
+    const labelCatalog = discoverLabels(slimPNs);
+    const picked = await showFilterScreen(slimPNs, mode, labelCatalog);
+    if (!picked) { log('Cancelado.'); return { cancelled: true }; }
+
+    // 5. Construir lista para preview (slimPN ya trae name/customer/createdAt)
+    const reasonBase = mode === 'unarchive' ? 'Desarchivar' : 'Archivar';
+    const toArchive = picked.selected.map(p => ({
+      id: p.id, name: p.name, createdAt: p.createdAt, customer: p.customer,
+      reason: reasonBase, selected: true,
+    }));
     results.found = toArchive.length;
+    if (!toArchive.length) { showArchiverResult(results, 'Ningún PN tras el filtro de etiquetas.'); return results; }
 
-    if (!toArchive.length) {
-      showArchiverResult(results, 'No se encontraron PNs para archivar.');
-      return results;
-    }
-
-    const selectedPNs = await showArchiverPreview(toArchive, cutoffDate, dateType, direction, enableValidation);
+    const selectedPNs = await showArchiverPreview(toArchive, mode);
     if (!selectedPNs) { log('Cancelado.'); return { cancelled: true }; }
 
-    const opts = { cutoffDate, dateType, direction, enableValidation };
+    const opts = { mode, useDate, cutoffDate, dateType, direction, enableValidation };
     return await executeArchive(selectedPNs, opts, [], results, DOMAIN);
   }
 
@@ -407,6 +374,13 @@ const PNArchiver = (() => {
   // UI
   // ═══════════════════════════════════════════
 
+  function ensureStyles() {
+    if (document.getElementById('dl9-styles')) return;
+    const s = document.createElement('style'); s.id = 'dl9-styles';
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#ef4444;color:white}`;
+    document.head.appendChild(s);
+  }
+
   function showArchiverUI(msg) {
     let ov = document.getElementById('sa-archiver-overlay');
     if (!ov) {
@@ -430,18 +404,78 @@ const PNArchiver = (() => {
     if (ov) ov.parentNode.removeChild(ov);
   }
 
-  function showArchiverPreview(pns, cutoffDate, dateType, direction, enableValidation) {
-    const isBefore = direction === 'before';
+  // Pantalla de filtros: multiselect de etiquetas descubiertas + AND/OR + conteo en vivo.
+  // slimPNs: lista ya filtrada por fecha (si aplicaba). Devuelve Promise<{selected:[slimPN]} | null>.
+  function showFilterScreen(slimPNs, mode, labelCatalog) {
+    const verbo = mode === 'unarchive' ? 'desarchivarán' : 'archivarán';
+    return new Promise(resolve => {
+      removeArchiverUI();
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'dl9-overlay';
+      const md = document.createElement('div');
+      md.className = 'dl9-modal';
+      md.style.background = '#1a2e1a';
+      md.innerHTML = `
+        <h2 style="color:#4ade80">📦 Filtrar por etiquetas</h2>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:8px">
+          ${slimPNs.length} PNs en el conjunto base. Elegí etiquetas para acotar (opcional).
+        </p>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+          <label style="font-size:12px;color:#e2e8f0">Modo:</label>
+          <label style="font-size:12px;color:#e2e8f0"><input type="radio" name="sa-lblmode" value="AND" checked> Todas (AND)</label>
+          <label style="font-size:12px;color:#e2e8f0"><input type="radio" name="sa-lblmode" value="OR"> Cualquiera (OR)</label>
+        </div>
+        <div id="sa-lbl-list" style="max-height:240px;overflow-y:auto;background:#0f172a;border-radius:6px;padding:8px;margin-bottom:12px"></div>
+        <div style="font-size:15px;color:#4ade80;margin-bottom:12px">
+          <b id="sa-lbl-count">${slimPNs.length}</b> partes se ${verbo}
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="sa-lbl-cancel">CANCELAR</button>
+          <button class="dl9-btn" id="sa-lbl-next" style="background:#4ade80;color:#0f172a">CONTINUAR</button>
+        </div>`;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      // Lista de etiquetas con checkbox (textContent — XSS-safe)
+      const listEl = md.querySelector('#sa-lbl-list');
+      labelCatalog.forEach((l) => {
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;color:#e2e8f0;cursor:pointer';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className = 'sa-lbl-cb'; cb.dataset.name = l.name;
+        const txt = document.createElement('span');
+        txt.textContent = `${l.name} (${l.count})`;
+        row.append(cb, txt);
+        listEl.appendChild(row);
+      });
+
+      const getSelected = () => [...md.querySelectorAll('.sa-lbl-cb:checked')].map(cb => cb.dataset.name);
+      const getMode = () => md.querySelector('input[name="sa-lblmode"]:checked').value;
+      const recount = () => {
+        const filtered = applyFilters(slimPNs, { selectedLabels: getSelected(), labelMode: getMode() });
+        md.querySelector('#sa-lbl-count').textContent = filtered.length;
+        return filtered;
+      };
+      md.querySelectorAll('.sa-lbl-cb').forEach(cb => cb.onchange = recount);
+      md.querySelectorAll('input[name="sa-lblmode"]').forEach(r => r.onchange = recount);
+
+      md.querySelector('#sa-lbl-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve(null); };
+      md.querySelector('#sa-lbl-next').onclick = () => {
+        const filtered = recount();
+        ov.parentNode.removeChild(ov);
+        resolve({ selected: filtered });
+      };
+    });
+  }
+
+  function showArchiverPreview(pns, mode) {
     const MAX_ROWS = 500;
     const trimmed = pns.length > MAX_ROWS;
     const displayed = trimmed ? pns.slice(0, MAX_ROWS) : pns;
     return new Promise(resolve => {
       removeArchiverUI();
-      if (!document.getElementById('dl9-styles')) {
-        const s = document.createElement('style'); s.id = 'dl9-styles';
-        s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#ef4444;color:white}`;
-        document.head.appendChild(s);
-      }
+      ensureStyles();
 
       const ov = document.createElement('div');
       ov.className = 'dl9-overlay';
@@ -449,16 +483,12 @@ const PNArchiver = (() => {
       md.className = 'dl9-modal';
       md.style.background = '#1a2e1a';
 
-      const dateLabel = dateType === 'creacion' ? 'creación' : dateType === 'modificacion' ? 'modificación' : 'utilización';
-
       // Construir tabla con DOM API (no innerHTML masivo) — más eficiente y seguro
+      const accion = mode === 'unarchive' ? 'Desarchivar' : 'Archivar';
       md.innerHTML = `
-        <h2 style="color:#4ade80">Archivador Masivo — Preview</h2>
-        <p style="color:#94a3b8;font-size:13px;margin-bottom:12px">
-          ${pns.length} PNs con fecha de ${dateLabel} ${isBefore ? 'anterior' : 'posterior'} a ${cutoffDate}
-          ${enableValidation ? ' + activar validación de ingeniería' : ''}
-        </p>
-        ${trimmed ? `<p style="color:#fbbf24;font-size:12px;margin-bottom:8px">⚠ Mostrando primeros ${MAX_ROWS} de ${pns.length}. Todos serán archivados al confirmar.</p>` : ''}
+        <h2 style="color:#4ade80">📦 ${accion} — Preview</h2>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:12px">${pns.length} PNs seleccionados.</p>
+        ${trimmed ? `<p style="color:#fbbf24;font-size:12px;margin-bottom:8px">⚠ Mostrando primeros ${MAX_ROWS} de ${pns.length}. Todos se procesan al confirmar.</p>` : ''}
         <div style="display:flex;gap:8px;margin-bottom:12px">
           <input type="checkbox" checked id="sa-arch-selectall">
           <label for="sa-arch-selectall" style="font-size:12px;color:#94a3b8">Seleccionar todos los visibles</label>
@@ -466,13 +496,13 @@ const PNArchiver = (() => {
         </div>
         <div style="max-height:300px;overflow-y:auto">
           <table id="sa-arch-tbl" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead><tr style="color:#94a3b8;border-bottom:1px solid #334155"><th style="text-align:left;padding:4px"><input type="checkbox" checked id="sa-arch-th-check"></th><th style="text-align:left;padding:4px">PN</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Creado</th><th style="text-align:left;padding:4px">Razón</th></tr></thead>
+            <thead><tr style="color:#94a3b8;border-bottom:1px solid #334155"><th style="text-align:left;padding:4px"><input type="checkbox" checked id="sa-arch-th-check"></th><th style="text-align:left;padding:4px">PN</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Creado</th><th style="text-align:left;padding:4px">Acción</th></tr></thead>
             <tbody id="sa-arch-tbody"></tbody>
           </table>
         </div>
         <div class="dl9-btnrow">
           <button class="dl9-btn dl9-btn-cancel" id="sa-arch-cancel">CANCELAR</button>
-          <button class="dl9-btn dl9-btn-exec" id="sa-arch-exec">ARCHIVAR (<span id="sa-arch-exec-count">${pns.length}</span>)</button>
+          <button class="dl9-btn dl9-btn-exec" id="sa-arch-exec">${accion.toUpperCase()} (<span id="sa-arch-exec-count">${pns.length}</span>)</button>
         </div>`;
 
       ov.appendChild(md);
@@ -527,11 +557,7 @@ const PNArchiver = (() => {
 
   function showArchiverResult(results, msg) {
     removeArchiverUI();
-    if (!document.getElementById('dl9-styles')) {
-      const s = document.createElement('style'); s.id = 'dl9-styles';
-      s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:520px;width:92%;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 12px}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}`;
-      document.head.appendChild(s);
-    }
+    ensureStyles();
     const ov = document.createElement('div');
     ov.className = 'dl9-overlay';
     const md = document.createElement('div');
