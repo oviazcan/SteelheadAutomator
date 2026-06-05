@@ -150,6 +150,25 @@ const PNArchiver = (() => {
     return mode === 'unarchive' ? pn.archivedAt == null : pn.archivedAt != null;
   }
 
+  // Formatea enteros con separador de miles (determinista, sin depender de ICU).
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  // Progreso de la fase de carga (scan). total falsy ⇒ indeterminado (fraction null).
+  function computeLoadProgress({ processed, total, kept }) {
+    if (total && total > 0) {
+      const fraction = Math.min(processed / total, 1);
+      return { fraction, text: `Cargando PNs... ${fmt(processed)}/${fmt(total)} (${fmt(kept)} del modo)` };
+    }
+    return { fraction: null, text: `Cargando PNs... ${fmt(kept)}` };
+  }
+
+  // Progreso de la fase de ejecución. gerundio = 'Archivando' | 'Desarchivando'.
+  function computeExecProgress({ done, total, errors, gerundio }) {
+    const fraction = total > 0 ? Math.min(done / total, 1) : 0;
+    const errPart = errors > 0 ? ` — ${errors} ${errors === 1 ? 'error' : 'errores'}` : '';
+    return { fraction, text: `${gerundio} ${fmt(done)}/${fmt(total)}${errPart}` };
+  }
+
   // ═══════════════════════════════════════════
   // PAGINACIÓN PNs POR MODO
   // ═══════════════════════════════════════════
@@ -698,7 +717,7 @@ const PNArchiver = (() => {
 
   return {
     run, stop, openConfigAndRun,
-    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState },
+    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState, computeLoadProgress, computeExecProgress },
   };
 })();
 

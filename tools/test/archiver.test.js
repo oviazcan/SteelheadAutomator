@@ -112,3 +112,39 @@ test('applyFilters: fecha exactamente en el corte se excluye (límite estricto)'
   assert.equal(before.length, 0);
   assert.equal(after.length, 0);
 });
+
+test('computeLoadProgress con total → fracción y texto procesados/total', () => {
+  const r = A.computeLoadProgress({ processed: 1800, total: 3750, kept: 320 });
+  assert.equal(r.fraction, 1800 / 3750);
+  assert.equal(r.text, 'Cargando PNs... 1,800/3,750 (320 del modo)');
+});
+
+test('computeLoadProgress sin total → fracción null y conteo de encontrados', () => {
+  const r = A.computeLoadProgress({ processed: 500, total: null, kept: 320 });
+  assert.equal(r.fraction, null);
+  assert.equal(r.text, 'Cargando PNs... 320');
+});
+
+test('computeLoadProgress clamp processed>total a 1', () => {
+  const r = A.computeLoadProgress({ processed: 4000, total: 3750, kept: 100 });
+  assert.equal(r.fraction, 1);
+});
+
+test('computeExecProgress fracción done/total + errores plural', () => {
+  const r = A.computeExecProgress({ done: 140, total: 512, errors: 2, gerundio: 'Archivando' });
+  assert.equal(r.fraction, 140 / 512);
+  assert.equal(r.text, 'Archivando 140/512 — 2 errores');
+});
+
+test('computeExecProgress sin errores omite sufijo; singular y mode-aware', () => {
+  assert.equal(
+    A.computeExecProgress({ done: 1, total: 10, errors: 0, gerundio: 'Desarchivando' }).text,
+    'Desarchivando 1/10');
+  assert.equal(
+    A.computeExecProgress({ done: 5, total: 10, errors: 1, gerundio: 'Archivando' }).text,
+    'Archivando 5/10 — 1 error');
+});
+
+test('computeExecProgress total=0 → fracción 0 (no NaN)', () => {
+  assert.equal(A.computeExecProgress({ done: 0, total: 0, errors: 0, gerundio: 'Archivando' }).fraction, 0);
+});
