@@ -5189,7 +5189,7 @@ const BulkUpload = (() => {
         // existingPnNode, mergeCustomInputs arrancaba desde {} y borraba todo lo que
         // el CSV no traía (mismo mecanismo que el bug de 1.5.8 que vació 13k PNs,
         // pero por el path SOLO_PN que el fix 1.5.9 no cubrió).
-        const mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part);
+        let mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
         // MODIFY-by-id sin pn: fallback al name del node existente
         const resolvedPnName = pn.name || (existingPnNode && existingPnNode.name) || (() => { throw new Error(`SavePartNumber sin name resuelto para id=${pn.id}`); })();
@@ -5421,6 +5421,39 @@ const BulkUpload = (() => {
         // ahora caen al existingPnNode antes que al pn sintético (que en SOLO_PN es '').
         // customInputs reusa el mismo fallback que Call A. inventoryItemInput usa la
         // variable inventoryItemInputToSend ya resuelta arriba con preserve-on-missing.
+        // 1.5.20 (Feature B): footprint en customInputs.ControlCambios. Se engancha
+        // ACÁ (no en el mergeCustomInputs inicial) porque specsToApplyFiltered/dims/
+        // labelIdsToSend/pnProcessId ya están resueltos. Solo se appendea si hubo
+        // cambio real. mergedCI se modifica por referencia → Call B (pnInput, abajo)
+        // lo lleva.
+        if (typeof window !== 'undefined' && window.SteelheadBulkCC) {
+          // typeof-guards: estas variables se definen más arriba en enrichWorker,
+          // pero el guard evita un ReferenceError si alguna rama no las hubiera
+          // declarado en este punto. part.* es siempre seguro (part siempre existe).
+          const ccIsNew = !existingPnNode;
+          const ccHasPrice = part.precio != null && !isDash(part.precio);
+          const ccEnrichFields = [];
+          if (typeof specsToApplyFiltered !== 'undefined' && specsToApplyFiltered && specsToApplyFiltered.length) ccEnrichFields.push('specs');
+          if (typeof dims !== 'undefined' && dims && dims.length) ccEnrichFields.push('dims');
+          if (typeof labelIdsToSend !== 'undefined' && labelIdsToSend && labelIdsToSend.length) ccEnrichFields.push('labels');
+          if (part.metalBase && !isDash(part.metalBase)) ccEnrichFields.push('metal');
+          if (typeof pnProcessId !== 'undefined' && pnProcessId) ccEnrichFields.push('proceso');
+          const ccAccion = window.SteelheadBulkCC.computeAccion({
+            isNew: ccIsNew, hasPrice: ccHasPrice, hasEnrich: ccEnrichFields.length > 0,
+          });
+          if (ccAccion) {
+            if (!mergedCI) mergedCI = {};
+            const ccDetalle = window.SteelheadBulkCC.buildDetalle({
+              accion: ccAccion, precioAnterior: null, precioNuevo: part.precio,
+              divisa: part.divisa, enrichFields: ccEnrichFields,
+            });
+            const ccEntry = window.SteelheadBulkCC.buildControlCambiosEntry({
+              accion: ccAccion, detalle: ccDetalle, usuario: currentUserName,
+              version: bulkCfg().version || VERSION, nowIso: new Date().toISOString(),
+            });
+            window.SteelheadBulkCC.appendControlCambios(mergedCI, ccEntry);
+          }
+        }
         // 1.5.16: FK fallback en customerId (scalar bugged). Ver nota en línea ~4305.
         const pnInput = {
           id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId, defaultProcessNodeId: pnProcessId,
