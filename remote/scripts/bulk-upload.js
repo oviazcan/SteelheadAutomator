@@ -5458,7 +5458,7 @@ const BulkUpload = (() => {
             });
             const ccEntry = window.SteelheadBulkCC.buildControlCambiosEntry({
               accion: ccAccion, detalle: ccDetalle, usuario: currentUserName,
-              version: bulkCfg().version || VERSION, nowIso: new Date().toISOString(),
+              version: (window.REMOTE_CONFIG && window.REMOTE_CONFIG.version) || VERSION, nowIso: new Date().toISOString(),
             });
             window.SteelheadBulkCC.appendControlCambios(mergedCI, ccEntry);
           }
@@ -6753,22 +6753,13 @@ const BulkUpload = (() => {
       // 1.4.3: comparación canonical para que "Estaño" vs "Estaño s/Cobre" o
       // mismo acabado con casing/espacios distintos cuenten como labelsMatchFull.
       const csvAcabados = acabadosCanonicos(csvRow.labels || [], nonFinishList, equivIndex);
-      const topAcabados = acabadosCanonicos(ranked[0].labels || [], nonFinishList, equivIndex);
-      const labelsMatchFull = csvAcabados === topAcabados;
-      if (labelsMatchFull) {
-        return {
-          classification: 'MODIFY',
-          pase: 3,
-          confidence: 'name+labels-match',
-          targetPnId: ranked[0].id,
-          wasArchived: false,
-          candidates: ranked,
-        };
-      }
       // 1.5.20 (Feature A): si el upload NO trae acabados (csvAcabados === ''),
       // no es señal de "quiero nuevo" — defaultear a MODIFICAR el PN activo más
-      // reciente. Auto si hay 1 candidato; requiere confirmar si hay 2+. Si el
-      // upload trae acabados no vacíos que difieren, NO entra acá (sigue a NEW).
+      // reciente. Auto si hay 1 candidato; requiere confirmar si hay 2+. Va ANTES
+      // de labelsMatchFull/blankCandidate para cubrir también el caso (común en TLC)
+      // de CSV sin acabados + candidato sin acabados, que si no caería en
+      // 'name+labels-match' sin auto-decidir. Si el upload trae acabados no vacíos,
+      // NO entra acá (csvAcabados !== '') y sigue el flujo normal (labels-match/NEW).
       if (csvAcabados === '' && typeof window !== 'undefined' && window.SteelheadBulkCC) {
         const decision = window.SteelheadBulkCC.decideBlankAcabados(nameCandidates);
         if (decision) {
@@ -6782,6 +6773,18 @@ const BulkUpload = (() => {
             autoDecided: decision.autoDecided,
           };
         }
+      }
+      const topAcabados = acabadosCanonicos(ranked[0].labels || [], nonFinishList, equivIndex);
+      const labelsMatchFull = csvAcabados === topAcabados;
+      if (labelsMatchFull) {
+        return {
+          classification: 'MODIFY',
+          pase: 3,
+          confidence: 'name+labels-match',
+          targetPnId: ranked[0].id,
+          wasArchived: false,
+          candidates: ranked,
+        };
       }
       // 1.2.9: fallback a candidato sin-etiqueta si existe.
       const blankCandidate = ranked.find(c => acabadosCanonicos(c.labels || [], nonFinishList, equivIndex) === '');
@@ -6849,6 +6852,7 @@ const BulkUpload = (() => {
       'composite-exacto-csv-sin-ibms': 1,
       'name+labels-match': 2,
       'name+blank-candidate': 3,
+      'name+blank-csv-recent': 3,
     };
     const claimers = [];
     for (let i = 0; i < pnStatus.length; i++) {

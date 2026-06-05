@@ -24,6 +24,7 @@
   function decideBlankAcabados(nameCandidates) {
     if (!Array.isArray(nameCandidates) || nameCandidates.length === 0) return null;
     const recent = pickMostRecent(nameCandidates);
+    if (!recent || recent.id == null) return null;
     return { targetPnId: recent.id, autoDecided: nameCandidates.length === 1 };
   }
 
@@ -45,10 +46,13 @@
       const div = ((opts && opts.divisa) || '').trim();
       const nuevo = opts.precioNuevo;
       const ant = opts.precioAnterior;
-      if (ant != null && ant !== '') {
-        segs.push(`${ant} → ${nuevo} ${div}`.trim());
-      } else {
-        segs.push(`${nuevo} ${div}`.trim());
+      // Guard: no estampar "undefined USD" si el caller marcó PRECIO pero no pasó precio.
+      if (nuevo != null) {
+        if (ant != null && ant !== '') {
+          segs.push(`${ant} → ${nuevo} ${div}`.trim());
+        } else {
+          segs.push(`${nuevo} ${div}`.trim());
+        }
       }
     }
     if (accion.indexOf('ENRIQUECIMIENTO') !== -1) {

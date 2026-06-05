@@ -79,6 +79,21 @@ test('buildDetalle: accion vacía → string vacío', () => {
   assert.strictEqual(CC.buildDetalle({ accion: '' }), '');
 });
 
+test('buildDetalle: PRECIO con precioNuevo null/undefined no estampa "undefined USD"', () => {
+  assert.strictEqual(CC.buildDetalle({ accion: 'PRECIO', precioNuevo: null, divisa: 'USD' }), '');
+  assert.strictEqual(CC.buildDetalle({ accion: 'PRECIO', divisa: 'USD' }), '');
+  // combinado: si no hay precio, solo queda el segmento de enriquecimiento
+  assert.strictEqual(
+    CC.buildDetalle({ accion: 'PRECIO, ENRIQUECIMIENTO', precioNuevo: null, enrichFields: ['specs'] }),
+    'Enriquecimiento: specs'
+  );
+});
+
+test('decideBlankAcabados: candidatos sin id válido → null (no rompe)', () => {
+  assert.strictEqual(CC.decideBlankAcabados([{ name: 'x' }]), null);
+  assert.strictEqual(CC.decideBlankAcabados([null]), null);
+});
+
 // ── Task 3: buildControlCambiosEntry + appendControlCambios ──
 
 test('buildControlCambiosEntry: nombres exactos del schema', () => {
