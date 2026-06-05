@@ -178,17 +178,23 @@ const PNArchiver = (() => {
   async function fetchPNsForMode(mode, onProgress, pageSize = 500) {
     const slimPNs = [];
     let offset = 0;
+    let total = null;
     while (!stopped) {
       const data = await api().query('AllPartNumbers', {
         orderBy: ['ID_ASC'], offset, first: pageSize, searchQuery: ''
       }, 'AllPartNumbers');
       const nodes = data?.pagedData?.nodes || [];
+      if (total == null) {
+        const tc = data?.pagedData?.totalCount;
+        total = (typeof tc === 'number' && tc > 0) ? tc : null;
+      }
       for (const n of nodes) {
         const isArchived = !!n.archivedAt;
         const keep = mode === 'unarchive' ? isArchived : !isArchived;
         if (keep) slimPNs.push(slimPN(n));   // SLIM: no guardar nodo pesado
       }
-      if (onProgress) onProgress(`Cargando PNs... ${slimPNs.length}`);
+      const processed = offset + nodes.length;
+      if (onProgress) onProgress({ processed, total, kept: slimPNs.length });
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
@@ -273,10 +279,13 @@ const PNArchiver = (() => {
     }
 
     log(`Archivador: modo=${mode}, useDate=${useDate}${useDate ? ` (${dateType} ${direction} ${cutoffDate})` : ''}, validación=${enableValidation}`);
-    showArchiverUI(`Buscando números de parte (${mode === 'unarchive' ? 'archivados' : 'activos'})...`);
+    setProgress(null, `Buscando números de parte (${mode === 'unarchive' ? 'archivados' : 'activos'})...`);
 
     // 1. Scan slim por modo
-    let slimPNs = await fetchPNsForMode(mode, (msg) => updateArchiverUI(msg), 500);
+    let slimPNs = await fetchPNsForMode(mode, (p) => {
+      const r = computeLoadProgress(p);
+      setProgress(r.fraction, r.text);
+    }, 500);
     if (stopped) return { ...results, stopped: true };
     log(`  ${slimPNs.length} PNs ${mode === 'unarchive' ? 'archivados' : 'activos'}`);
 
