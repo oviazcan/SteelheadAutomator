@@ -510,6 +510,22 @@ const PNArchiver = (() => {
     if (el) el.textContent = msg;
   }
 
+  // Pinta progreso reusando el overlay idempotente (showArchiverUI). fraction en
+  // [0,1] → barra determinada; fraction null → barra animada (clase 'indet').
+  function setProgress(fraction, text) {
+    showArchiverUI(text);                 // asegura overlay + setea #sa-arch-text
+    const bar = document.getElementById('sa-arch-bar');
+    if (!bar) return;
+    if (fraction == null) {
+      bar.classList.add('indet');
+      bar.style.width = '';               // deja que la clase 'indet' controle el ancho
+    } else {
+      bar.classList.remove('indet');
+      const pct = Math.round(Math.min(Math.max(fraction, 0), 1) * 100);
+      bar.style.width = `${pct}%`;
+    }
+  }
+
   function removeArchiverUI() {
     const ov = document.getElementById('sa-archiver-overlay');
     if (ov) ov.parentNode.removeChild(ov);
