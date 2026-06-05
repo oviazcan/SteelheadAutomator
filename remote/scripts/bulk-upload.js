@@ -3213,6 +3213,9 @@ const BulkUpload = (() => {
 
   async function execute(csvText) {
     const DOMAIN = api().getDomain();
+    // 1.5.20: inputSchemaId vigente del dominio (3932 en TLC). Default al hardcoded
+    // de config; se sobreescribe con latestSchema.id tras GetPartNumbersInputSchema.
+    let runtimeInputSchemaId = DOMAIN.inputSchemaId_PN;
     const errors = [];
     const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
@@ -3873,10 +3876,11 @@ const BulkUpload = (() => {
         const schemaNodes = schemaData?.allPartNumberInputSchemas?.nodes || [];
         const latestSchema = schemaNodes.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
         if (latestSchema) {
+          if (latestSchema.id) runtimeInputSchemaId = latestSchema.id;
           const schemaProps = latestSchema.inputSchema?.properties || {};
           metalBaseEnum = schemaProps.DatosAdicionalesNP?.properties?.BaseMetal?.enum || [];
           satEnum = schemaProps.DatosFacturacion?.properties?.CodigoSAT?.enum || [];
-          log(`  Schema loaded: ${metalBaseEnum.length} metales, ${satEnum.length} SAT`);
+          log(`  Schema loaded: id=${runtimeInputSchemaId}, ${metalBaseEnum.length} metales, ${satEnum.length} SAT`);
         }
       } catch (e) {
         warn(`GetPartNumbersInputSchema falló: ${String(e).substring(0, 100)}. Usando fallback hardcoded.`);
@@ -4078,7 +4082,7 @@ const BulkUpload = (() => {
         const groupId = await resolveGroupId(part.pnGroup);
         const minInput = {
           id: null, name: part.pn, customerId: part.customerId, defaultProcessNodeId: processId,
-          inputSchemaId: DOMAIN.inputSchemaId_PN, customInputs: {},
+          inputSchemaId: runtimeInputSchemaId, customInputs: {},
           geometryTypeId: null, userFileName: null, inventoryItemInput: null,
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
           isOneOff: false, isTemplatePartNumber: false, isCoupon: false, partNumberGroupId: groupId,
@@ -4319,7 +4323,7 @@ const BulkUpload = (() => {
                 name: pnNode.name,
                 customerId: (pnNode.customerByCustomerId?.id ?? pnNode.customerId) || target.part.customerId,
                 defaultProcessNodeId: (pnNode.processNodeByDefaultProcessNodeId?.id ?? pnNode.defaultProcessNodeId) || target.part.processId,
-                inputSchemaId: DOMAIN.inputSchemaId_PN,
+                inputSchemaId: runtimeInputSchemaId,
                 customInputs: pnNode.customInputs || {},
                 geometryTypeId: (pnNode.geometryTypeByGeometryTypeId?.id ?? pnNode.geometryTypeId) || null,
                 userFileName: null,
@@ -5228,7 +5232,7 @@ const BulkUpload = (() => {
             descriptionMarkdown: existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? '',
             customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
             customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {},
-            inputSchemaId: DOMAIN.inputSchemaId_PN,
+            inputSchemaId: runtimeInputSchemaId,
             labelIds: labelIdsToSend,
             partNumberGroupId: pnGroupIdEarly,
             // Heavy fields explícitamente vacíos — Steelhead acepta el shape mínimo
@@ -5413,7 +5417,7 @@ const BulkUpload = (() => {
           id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? ''),
           customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
-          customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds: labelIdsToSend,
+          customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: runtimeInputSchemaId, labelIds: labelIdsToSend,
           partNumberGroupId: pnGroupId,
           geometryTypeId: resolvedGeometryTypeId,
           inventoryItemInput: inventoryItemInputToSend,
@@ -5891,7 +5895,7 @@ const BulkUpload = (() => {
               name: pnNode.name,
               customerId: (pnNode.customerByCustomerId?.id ?? pnNode.customerId) || part.customerId,
               defaultProcessNodeId: (pnNode.processNodeByDefaultProcessNodeId?.id ?? pnNode.defaultProcessNodeId) || part.processId,
-              inputSchemaId: DOMAIN.inputSchemaId_PN,
+              inputSchemaId: runtimeInputSchemaId,
               customInputs: pnNode.customInputs || {},
               geometryTypeId: (pnNode.geometryTypeByGeometryTypeId?.id ?? pnNode.geometryTypeId) || null,
               userFileName: null,
