@@ -28,6 +28,39 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   const shippingDateSource = ps.shippingDate != null ? "shippingDate"
     : (ps.shippedAt != null ? "shippedAt" : null);
 
+  // Empacador = usuario actual que genera el PDF/etiqueta. Es constante para
+  // todo el embarque (no depende del contenedor), así que se calcula una vez.
+  const packedBy = (inputs.currentUser && inputs.currentUser.name != null)
+    ? inputs.currentUser.name : null;
+
+  // Fecha de embarque ya formateada (d/m/Y H:i, 24 h) en la zona horaria del
+  // Input. Se entrega lista para que la plantilla imprima `{shippingDateFmt}`
+  // directo, SIN la función date() de Twig (que truena con "array given" al
+  // recibir el binding del label). Constante para todo el embarque.
+  const fmtDate = (iso: string | null, tz: string | null): string => {
+    if (iso == null || iso === "") return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    try {
+      const parts = new Intl.DateTimeFormat("es-MX", {
+        timeZone: (tz != null && tz !== "") ? tz : "America/Mexico_City",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      }).formatToParts(d);
+      const get = (t: string): string => {
+        const p = parts.find(x => x.type === t);
+        return p ? p.value : "";
+      };
+      const hh = get("hour") === "24" ? "00" : get("hour"); // ICU a veces da 24
+      return `${get("day")}/${get("month")}/${get("year")} ${hh}:${get("minute")}`;
+    } catch (e) {
+      // Fallback sin zona horaria: reformatea la parte de fecha/hora del ISO.
+      const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : "";
+    }
+  };
+  const shippingDateFmt = fmtDate(shippingDate, inputs.timezone);
+
   // ──────────────────────────────────────────────────────────────
   // Paso 1: aplanar a filas de etiqueta (item × partTransferAccount × batch).
   // Cada `item` del packing slip es un contenedor/bulto físico.
@@ -73,7 +106,7 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   // ──────────────────────────────────────────────────────────────
   // Paso 3: construir las etiquetas + diagnóstico.
   // ──────────────────────────────────────────────────────────────
-  let missingPS = 0, missingName = 0, missingWeight = 0, multiPart = 0;
+  let missingPS = 0, missingName = 0, missingWeight = 0, multiPart = 0, missingSO = 0;
 
   const labels = rows.map(r => {
     const item = r.item, part = r.part, pn = r.pn, batch = r.batch;
@@ -95,13 +128,20 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
 
     const psValue = readPS(batch ? batch.customInputs : null);
 
+    // Orden de venta (received_order = OV en Steelhead) de la OT de esta parte.
+    const receivedOrder = (part.workOrder && part.workOrder.receivedOrder)
+      ? part.workOrder.receivedOrder : null;
+    const salesOrder = (receivedOrder && receivedOrder.name != null) ? receivedOrder.name : null;
+    const salesOrderId = (receivedOrder && receivedOrder.idInDomain != null) ? receivedOrder.idInDomain : null;
+
     // Diagnóstico
     if (psValue == null) missingPS++;
     if (containerName == null) missingName++;
     if (!weight || (weight.gross == null && weight.net == null)) missingWeight++;
     if ((item.partsTransferAccounts || []).length > 1) multiPart++;
+    if (salesOrder == null && salesOrderId == null) missingSO++;
 
-    return {
+    const label: any = {
       // — Etiqueta base (8 campos) —
       partNumber: pn.name != null ? pn.name : null,
       description: pn.descriptionMarkdown != null ? pn.descriptionMarkdown : null,
@@ -111,8 +151,14 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       batchName: (batch && batch.name != null) ? batch.name : null,
       workOrder: (part.workOrder && part.workOrder.name != null) ? part.workOrder.name : null,
       workOrderId: (part.workOrder && part.workOrder.idInDomain != null) ? part.workOrder.idInDomain : null,
+      // — Orden de venta (received_order) de la OT de esta parte —
+      salesOrder,
+      salesOrderId,
+      // — Empacador: usuario actual que genera la remisión/etiqueta —
+      packedBy,
       shippingDate,
       shippingDateSource,
+      shippingDateFmt,
       containerIndex: `${r.containerNum}/${r.containerTotal}`,
       containerNum: r.containerNum,
       containerTotal: r.containerTotal,
@@ -125,20 +171,36 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       containerName,
       containerNameSource,
     };
+    // Toda rama debe EXISTIR en el árbol de PDFGeneratorAPI aunque el dato
+    // falte en todas las etiquetas de la muestra (ej. nombre de contenedor
+    // antes de contenarizar): null/undefined → "" para que el campo siempre
+    // tenga un nodo colocable en la plantilla.
+    Object.keys(label).forEach(k => { if (label[k] == null) label[k] = ""; });
+    return label;
   });
 
   result.additionalPayload = {
     labels,
     totalLabels: labels.length,
-    shippingDate,
-    shippingDateSource,
+    shippingDate: shippingDate != null ? shippingDate : "",
+    shippingDateSource: shippingDateSource != null ? shippingDateSource : "",
+    shippingDateFmt,
+    packedBy: packedBy != null ? packedBy : "",
   };
 
   helpers.log(
-    `🏷️ ${labels.length} etiqueta(s). ` +
+    `🏷️ ${labels.length} etiqueta(s)` +
+    (packedBy != null ? ` · empacador: ${packedBy}` : ` · sin empacador`) + `. ` +
     `Sin PS: ${missingPS} · sin nombre contenedor: ${missingName} · ` +
-    `sin peso: ${missingWeight} · items multi-parte: ${multiPart}.`
+    `sin peso: ${missingWeight} · sin OV: ${missingSO} · items multi-parte: ${multiPart}.`
   );
+
+  if (missingSO > 0) {
+    helpers.addErrorMessage({
+      severity: "warning",
+      message: `⚠️ ${missingSO} etiqueta(s) sin orden de venta (la OT no trae receivedOrder).`,
+    });
+  }
 
   if (missingPS > 0) {
     helpers.addErrorMessage({
