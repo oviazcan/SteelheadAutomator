@@ -203,7 +203,7 @@ const PNArchiver = (() => {
 
   // Cruza candidatos vs PNs con OT/recibos; devuelve los SIN uso. Solo modo archive.
   async function filterByUnused(candidates) {
-    updateArchiverUI(`Cargando órdenes de trabajo...`);
+    setProgress(null, `Cargando órdenes de trabajo...`);
     const usedPNIds = new Set();
     let woOffset = 0;
     while (!stopped) {
@@ -218,14 +218,14 @@ const PNArchiver = (() => {
           const pnId = pnWO.partNumberId || pnWO.partNumberByPartNumberId?.id;
           if (pnId) usedPNIds.add(pnId);
         }
-        updateArchiverUI(`OTs: página ${Math.floor(woOffset / 500) + 1}, ${usedPNIds.size} PNs con OT`);
+        setProgress(null, `OTs: página ${Math.floor(woOffset / 500) + 1}, ${usedPNIds.size} PNs con OT`);
         if (woNodes.length < 500) break;
         woOffset += 500;
       } catch (e) { warn(`AllWorkOrders ${woOffset}: ${String(e).substring(0, 60)}`); break; }
     }
     if (stopped) return candidates;
 
-    updateArchiverUI(`Cargando recibos...`);
+    setProgress(null, `Cargando recibos...`);
     let recOffset = 0;
     while (!stopped) {
       try {
@@ -238,7 +238,7 @@ const PNArchiver = (() => {
           const pnId = item.partNumberId || item.partNumberByPartNumberId?.id;
           if (pnId) usedPNIds.add(pnId);
         }
-        updateArchiverUI(`Recibos: página ${Math.floor(recOffset / 500) + 1}, ${usedPNIds.size} PNs con actividad`);
+        setProgress(null, `Recibos: página ${Math.floor(recOffset / 500) + 1}, ${usedPNIds.size} PNs con actividad`);
         if (recNodes.length < 500) break;
         recOffset += 500;
       } catch (e) { warn(`AllReceivers ${recOffset}: ${String(e).substring(0, 60)}`); break; }
