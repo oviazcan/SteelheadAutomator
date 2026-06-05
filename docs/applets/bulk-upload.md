@@ -1,6 +1,73 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.18 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.19 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+## 1.5.19 (config 1.6.36, 2026-06-04) — Fix: la LÍNEA de cotización nacía sin proceso (distinto del default del PN)
+
+### Síntoma (incidente real)
+Cargas **Tipsa Anual** (cliente TROQUELADOS/TIPSA): cotización **233** "Tipsa
+Anual 5/26" (22 PNs) y **235** "Tipsa Anual 8/26" (5 PNs). El operador notó que
+"ningún NP trae proceso" en las cotizaciones. Verificado con la API:
+- El **proceso default del PN** (`defaultProcessNodeId`) quedó **INTACTO** en
+  los 39 PNs (snapshot pre-carga == estado actual, vía FK). El fix 1.5.18 cumplió.
+- El **proceso de la LÍNEA de cotización** (`partNumberPrice.processNodeByProcessId`)
+  quedó **VACÍO** en las 27 líneas. El 92% del dominio sí lo trae (Schneider
+  250/250); Tipsa 0%. Las cotizaciones son **nuevas** (rev 1) → nacieron sin él,
+  no hubo borrado.
+
+### Root cause (dos "procesos" distintos + un agujero)
+El "proceso" vive en dos campos: (a) `defaultProcessNodeId` del PN y (b)
+`processId` de cada línea de precio (`partNumberPrice`). La línea de cotización
+se arma en STEP 4 (`SaveManyPartNumberPrices`) con `processId: part.processId`
+(líneas ~4604 y ~4737) **sin** el FK-fallback que 1.5.18 puso en Call B (~5392).
+
+`part.processId` llegó **null/undefined** en esas corridas. Escenario consistente
+con toda la evidencia (MODIFY con default intacto + línea vacía + NEW `145608`
+sin proceso): **processCache miss** — el CSV traía nombre de proceso pero
+`processCache.get(nombre)` devolvió `undefined`; como `procesoOverride` no estaba
+vacío, el part **no** entró al path "heredar" del post-process (que sí habría
+usado `existingProcessId`). Resultado: la línea recibió `undefined`, mientras
+Call B salvó el default del PN heredando por FK (`part.processId == null`).
+
+Confirmado empíricamente:
+- Captura DevTools real de `SaveManyPartNumberPrices`: `processId` ES el campo
+  correcto y SH lo persiste (HTTP 200) → la mutación no es el problema.
+- `GetQuote_v71` (hash vigente `41d76b06…`) usa variables `{idInDomain,
+  revisionNumber}` (NO `quoteId`) — anotado para no perder tiempo de nuevo.
+- `main` == `gh-pages` (1.5.18) durante las corridas → no fue versión vieja.
+
+### Fix
+Red de seguridad en los **dos** puntos de creación del `partNumberPrice`
+(cotización ~4604 y SOLO_PN ~4737):
+```js
+processId: part.clearDefaultProcess ? null : (part.processId ?? status.existingProcessId ?? null),
+```
+Si `part.processId` quedó null/undefined (processCache miss, heredar, etc.) y NO
+es borrado explícito (`-`/clearDefaultProcess), la línea cae al proceso default
+ACTUAL del PN (`existingProcessId`, poblado vía FK en `extractPNShape:1629`). El
+dash sigue borrando. No cambia el caso normal (proceso resuelto).
+
+### Recuperación de las cotizaciones 233/235 — NO ejecutada (decisión)
+Las 27 líneas están ligadas a una OV recibida (`receivedOrderPartTransforms=1`).
+Revertir/editar por API arriesga romper ese vínculo; el impacto de la cotización
+sin proceso es bajo. Decisión del usuario: **dejarlas así**. Si se recuperan a
+futuro: editar el proceso de la línea desde la UI (update in-place que preserva
+id+orden), o capturar ese shape de update antes de tocar por API.
+
+### Plan de validación pendiente
+- Carga piloto con PN existente cuyo default ≠ vacío, forzando que la línea de
+  cotización quede con el proceso default (verificar `processNodeByProcessId`
+  poblado post-carga).
+- Verificar que `-` (dash) deja la línea sin proceso (clearDefaultProcess).
+- Investigar la causa raíz del processCache miss (¿resume sin reconstruir cache?,
+  ¿normalización de nombres?) — la red de seguridad cubre el síntoma; la causa
+  del miss sigue abierta.
+
+### Deploy
+- `bulk-upload.js`: `VERSION = '1.5.19'`.
+- `config.json`: `1.6.35` → `1.6.36`, `lastUpdated` 2026-06-04T20:30.
+
+---
 
 ## 1.5.18 (config 1.6.30, 2026-06-03) — Fix CRÍTICO: "Preservar proceso" borraba el proceso del PN existente
 

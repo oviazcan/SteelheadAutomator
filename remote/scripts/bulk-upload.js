@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.18';
+  const VERSION = '1.5.19';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -4601,7 +4601,15 @@ const BulkUpload = (() => {
             else { partNumberId = newPnIds.get(origIdx); if (!partNumberId) { errors.push(`PN "${part.pn}" (row ${origIdx}) no fue creado, omitido de quote.`); continue; } }
             lineNumberToOrigIdx.set(lineNum, origIdx);
             pnpItems.push({
-              partNumberId, processId: part.processId,
+              partNumberId,
+              // 1.5.19: red de seguridad para el proceso de la LÍNEA de cotización.
+              // Si part.processId quedó null/undefined (p.ej. processCache miss: el CSV
+              // traía nombre de proceso pero no se cacheó → undefined; como procesoOverride
+              // no es vacío, nunca entra al path "heredar" del post-process), caer al proceso
+              // default ACTUAL del PN existente (status.existingProcessId, vía extractPNShape
+              // FK). El dash (clearDefaultProcess) sigue borrando. Antes: la línea quedaba sin
+              // proceso aunque el PN sí lo tuviera (incidente cotizaciones Tipsa 233/235).
+              processId: part.clearDefaultProcess ? null : (part.processId ?? status.existingProcessId ?? null),
               customInputs: { DatosPrecio: { Divisa: (part.divisa && !isDash(part.divisa)) ? part.divisa : 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
               partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
               usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
@@ -4734,7 +4742,8 @@ const BulkUpload = (() => {
           const entry = pnLookup.get(i); if (!entry) continue;
           pnpWithPrice.push({
             partNumberId: entry.pn.id,
-            processId: part.processId,
+            // 1.5.19: misma red de seguridad que el path cotización (ver ~línea 4604).
+            processId: part.clearDefaultProcess ? null : (part.processId ?? pnStatus[i]?.existingProcessId ?? null),
             customInputs: { DatosPrecio: { Divisa: (part.divisa && !isDash(part.divisa)) ? part.divisa : 'USD' } }, inputSchema: DIVISA_SCHEMA, uiSchema: DIVISA_UI,
             partNumberPriceLineItems: [{ title: '', price: part.precio || 0, productId: null, quoteInventoryItemId: null }],
             usePartNumberDescription: true, treatmentSelections: [], priceBuilders: [], informationalPriceDisplayItems: [], priceTiers: [],
