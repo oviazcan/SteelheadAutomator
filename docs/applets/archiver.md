@@ -9,10 +9,11 @@ Archiva/desarchiva números de parte en bloque por criterios combinables (inters
 Flujo (3 pantallas): **config** (modo + fecha opcional + validación) → **scan slim** (mode-aware) → **pantalla de filtros con conteo en vivo** → **preview/tabla** → ejecutar.
 
 ## Versión actual
-1.0.0 — filtro por etiquetas (AND/OR) + archivar/desarchivar + fecha opcional + form mudado al script remoto.
+1.1.0 — **feedback de progreso** (barra en carga + ejecución): % real si `AllPartNumbers.pagedData.totalCount` está disponible, animada si no; el overlay se re-asegura en `executeArchive` (antes desaparecía en el flujo normal → no se veía nada al ejecutar). Previo 1.0.0 — filtro por etiquetas (AND/OR) + archivar/desarchivar + fecha opcional + form mudado al script remoto.
 
 ## Estado de deploy (2026-06-04)
-- **Desplegado a `gh-pages`** (byte-exact verificado). `remote/config.json` `version` **1.6.34**, `extensionVersion` **1.6.3**.
+- **Feedback de progreso (1.1.0) desplegado a `gh-pages`** (byte-exact verificado, propagado). `remote/config.json` `version` **1.6.37**. Spec/plan en `docs/superpowers/{specs,plans}/2026-06-04-archiver-progress-feedback*`. Tests `node --test tools/test/archiver.test.js` → **16/16**. Pendiente: piloto DOM (recargar extensión → ver barra en carga y al ejecutar).
+- Deploy previo (filtro etiquetas) byte-exact. `version` **1.6.34**, `extensionVersion` **1.6.3**.
   - La `1.6.30` que se había bumpeado chocó con un avance paralelo de `main` (que ya había usado 1.6.30 y subió a 1.6.33 con 10 hashes recapturados + bill-autofill). Se reintegró `main` **preservando esos 10 hashes** y se re-bumpeó a 1.6.34.
 - Commits: `main` → `8bde8ab`; deploy `gh-pages` → `024bb51`.
 - Tests al cierre: `node --test tools/test/archiver.test.js` → **10/10**.
@@ -26,6 +27,7 @@ Flujo (3 pantallas): **config** (modo + fecha opcional + validación) → **scan
 - Helpers puros (`slimPN`, `discoverLabels`, `matchesLabels`, `applyFilters`, `isInTargetState`) testeados en `tools/test/archiver.test.js` (`node --test`, sandbox vm), expuestos vía `window.__SAArchiver`.
 
 ## Lecciones / notas de implementación
+- **Feedback de progreso (1.1.0)**: la barra (`dl9-bar`) existía en el markup pero **sin CSS** (invisible) y **sin updates de width** (estática); y en el flujo normal `showFilterScreen`/`showArchiverPreview` removían el overlay y `executeArchive` **no lo re-mostraba** → cero feedback al ejecutar (solo el path de *resume* lo mostraba). Fix: helper `setProgress(fraction,text)` que reusa `showArchiverUI` (idempotente → re-asegura overlay) + CSS de barra (determinada/animada con `.indet`) + `tick()` que avanza también al saltar por idempotencia. Cálculo en funciones puras `computeLoadProgress`/`computeExecProgress` (testeadas en `tools/test/archiver.test.js`). Carga: % real solo si `pagedData.totalCount` viene en la 1ª página, si no animada.
 - **Scan SLIM**: `fetchPNsForMode(mode,...)` pagina `AllPartNumbers` y guarda solo `{id,name,createdAt,archivedAt,customer,labels[]}` (no el nodo pesado). archive→activos, unarchive→archivados.
 - **Idempotencia doble**: el scan pre-filtra por estado (archive=activos, unarchive=archivados) y, como cinturón, `executeArchive` salta cualquier PN ya en el estado destino vía `isInTargetState`.
 - **Resume por modo**: la llave `sa_archiver_resume_v1` guarda `opts.mode`; al reanudar solo ofrece continuar si el modo coincide (no mezcla archive/unarchive).
