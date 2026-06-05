@@ -343,17 +343,28 @@ const PNArchiver = (() => {
     const gerundio = isUnarchive ? 'Desarchivando' : 'Archivando';
     const verbo = isUnarchive ? 'Desarchivar' : 'Archivar';
     const participio = isUnarchive ? 'desarchivados' : 'archivados';
-    const pendingCount = totalCount - completed.size;
     {
       const p0 = computeExecProgress({ done: completed.size, total: totalCount, errors: 0, gerundio });
       setProgress(p0.fraction, p0.text);
     }
 
+    // Actualiza barra + persiste cada 5. Se llama al completar una mutación y al
+    // saltar un PN ya en estado destino (idempotencia), para que la barra avance
+    // en ambos casos y no parezca estancada.
+    const tick = () => {
+      const done = completed.size;
+      const p = computeExecProgress({ done, total: totalCount, errors: results.errors.length, gerundio });
+      setProgress(p.fraction, p.text);
+      if (done % 5 === 0 || done === totalCount) {
+        saveResume({ selectedPNs, opts, completed: [...completed] });
+      }
+    };
+
     await runPool(selectedPNs, async (pn) => {
       if (stopped) return;
       if (completed.has(pn.id)) return; // doble-safety — saltar ya procesados
       // Idempotencia: si el PN ya está en el estado destino, no re-mutar.
-      if (isInTargetState(pn, opts.mode)) { completed.add(pn.id); return; }
+      if (isInTargetState(pn, opts.mode)) { completed.add(pn.id); tick(); return; }
 
       try {
         const newArchivedAt = isUnarchive ? null : new Date().toISOString();
@@ -384,12 +395,7 @@ const PNArchiver = (() => {
       }
 
       completed.add(pn.id);
-      const done = completed.size;
-      const p = computeExecProgress({ done, total: totalCount, errors: results.errors.length, gerundio });
-      setProgress(p.fraction, p.text);
-      if (done % 5 === 0 || done === totalCount) {
-        saveResume({ selectedPNs, opts, completed: [...completed] });
-      }
+      tick();
     }, 3);
 
     if (stopped) {
@@ -517,11 +523,6 @@ const PNArchiver = (() => {
       document.getElementById('sa-arch-stop').onclick = () => { stopped = true; const b = document.getElementById('sa-arch-stop'); if (b) { b.textContent = 'Deteniendo...'; b.disabled = true; } };
     }
     document.getElementById('sa-arch-text').textContent = msg;
-  }
-
-  function updateArchiverUI(msg) {
-    const el = document.getElementById('sa-arch-text');
-    if (el) el.textContent = msg;
   }
 
   // Pinta progreso reusando el overlay idempotente (showArchiverUI). fraction en
