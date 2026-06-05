@@ -344,7 +344,10 @@ const PNArchiver = (() => {
     const verbo = isUnarchive ? 'Desarchivar' : 'Archivar';
     const participio = isUnarchive ? 'desarchivados' : 'archivados';
     const pendingCount = totalCount - completed.size;
-    updateArchiverUI(`${gerundio} ${pendingCount} PNs (concurrencia 3, ${completed.size} ya OK)...`);
+    {
+      const p0 = computeExecProgress({ done: completed.size, total: totalCount, errors: 0, gerundio });
+      setProgress(p0.fraction, p0.text);
+    }
 
     await runPool(selectedPNs, async (pn) => {
       if (stopped) return;
@@ -381,8 +384,10 @@ const PNArchiver = (() => {
       }
 
       completed.add(pn.id);
-      if (completed.size % 5 === 0 || completed.size === totalCount) {
-        updateArchiverUI(`${gerundio} ${completed.size}/${totalCount} — ${results.errors.length} errores`);
+      const done = completed.size;
+      const p = computeExecProgress({ done, total: totalCount, errors: results.errors.length, gerundio });
+      setProgress(p.fraction, p.text);
+      if (done % 5 === 0 || done === totalCount) {
         saveResume({ selectedPNs, opts, completed: [...completed] });
       }
     }, 3);
