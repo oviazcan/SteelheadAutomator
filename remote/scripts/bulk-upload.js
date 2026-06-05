@@ -1967,7 +1967,9 @@ const BulkUpload = (() => {
       // algo distinto al default". Antes usábamos userOverride!=null para ambos,
       // pero re-seleccionar el default propuesto resetea userOverride a null y la
       // fila vuelve a aparecer como pendiente — UX confusa.
-      userDecided: false,
+      // 1.5.20: blank-acabados con 1 candidato auto-valida (cls.autoDecided===true);
+      // con 2+ queda en false para que el operador confirme en el dropdown.
+      userDecided: cls.autoDecided === true,
       targetPnId: cls.targetPnId,
       wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado por Pase 1/2 estaba archivado
       csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
@@ -6720,6 +6722,24 @@ const BulkUpload = (() => {
           wasArchived: false,
           candidates: ranked,
         };
+      }
+      // 1.5.20 (Feature A): si el upload NO trae acabados (csvAcabados === ''),
+      // no es señal de "quiero nuevo" — defaultear a MODIFICAR el PN activo más
+      // reciente. Auto si hay 1 candidato; requiere confirmar si hay 2+. Si el
+      // upload trae acabados no vacíos que difieren, NO entra acá (sigue a NEW).
+      if (csvAcabados === '' && typeof window !== 'undefined' && window.SteelheadBulkCC) {
+        const decision = window.SteelheadBulkCC.decideBlankAcabados(nameCandidates);
+        if (decision) {
+          return {
+            classification: 'MODIFY',
+            pase: 3,
+            confidence: 'name+blank-csv-recent',
+            targetPnId: decision.targetPnId,
+            wasArchived: false,
+            candidates: ranked,
+            autoDecided: decision.autoDecided,
+          };
+        }
       }
       // 1.2.9: fallback a candidato sin-etiqueta si existe.
       const blankCandidate = ranked.find(c => acabadosCanonicos(c.labels || [], nonFinishList, equivIndex) === '');
