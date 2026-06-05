@@ -61,6 +61,38 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   };
   const shippingDateFmt = fmtDate(shippingDate, inputs.timezone);
 
+  // Unidad de peso del cliente. Steelhead entrega `item.weight` SIEMPRE en KG;
+  // si el cliente captura en libras (customInput UnidadMedidaPeso = true, mismo
+  // criterio recursivo que weight-quick-entry.js) convertimos kg→lb para la
+  // etiqueta. Constante para todo el embarque (depende del cliente del PS).
+  const KG_TO_LB = 2.2046226218;
+  const isLbCustomer = (obj: any): boolean => {
+    if (!obj || typeof obj !== "object") return false;
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const k = String(key).toLowerCase();
+      const val = obj[key];
+      if (k.indexOf("lbs") >= 0 || k === "unidadmedidapeso" ||
+          (k.indexOf("usar") >= 0 && k.indexOf("lb") >= 0)) {
+        if (val === true || val === "true") return true;
+      }
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        if (isLbCustomer(val)) return true;
+      }
+    }
+    return false;
+  };
+  const customerCI = (ps.customer && ps.customer.customInputs) ? ps.customer.customInputs : null;
+  const weightInLb = isLbCustomer(customerCI);
+  const weightUnit = weightInLb ? "LB" : "KG";
+  // Convierte un peso (kg en el Input) a la unidad del cliente. KG → sin tocar
+  // (sin ruido de float); LB → ×factor y redondeo a 2 decimales.
+  const conv = (v: number | null): number | null => {
+    if (v == null) return null;
+    return weightInLb ? Math.round(v * KG_TO_LB * 100) / 100 : v;
+  };
+
   // ──────────────────────────────────────────────────────────────
   // Paso 1: aplanar a filas de etiqueta (item × partTransferAccount × batch).
   // Cada `item` del packing slip es un contenedor/bulto físico.
@@ -164,9 +196,10 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       containerTotal: r.containerTotal,
 
       // — Etiqueta 2 (extras): peso bruto/neto + nombre de contenedor —
-      grossWeight: (weight && weight.gross != null) ? weight.gross : null,
-      netWeight: (weight && weight.net != null) ? weight.net : null,
-      tareWeight: (weight && weight.tare != null) ? weight.tare : null,
+      grossWeight: conv((weight && weight.gross != null) ? weight.gross : null),
+      netWeight: conv((weight && weight.net != null) ? weight.net : null),
+      tareWeight: conv((weight && weight.tare != null) ? weight.tare : null),
+      weightUnit,
       containerWeightUnit,
       containerName,
       containerNameSource,
@@ -186,10 +219,11 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
     shippingDateSource: shippingDateSource != null ? shippingDateSource : "",
     shippingDateFmt,
     packedBy: packedBy != null ? packedBy : "",
+    weightUnit,
   };
 
   helpers.log(
-    `🏷️ ${labels.length} etiqueta(s)` +
+    `🏷️ ${labels.length} etiqueta(s) · peso en ${weightUnit}` +
     (packedBy != null ? ` · empacador: ${packedBy}` : ` · sin empacador`) + `. ` +
     `Sin PS: ${missingPS} · sin nombre contenedor: ${missingName} · ` +
     `sin peso: ${missingWeight} · sin OV: ${missingSO} · items multi-parte: ${multiPart}.`
