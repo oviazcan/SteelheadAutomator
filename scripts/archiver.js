@@ -150,6 +150,25 @@ const PNArchiver = (() => {
     return mode === 'unarchive' ? pn.archivedAt == null : pn.archivedAt != null;
   }
 
+  // Formatea enteros con separador de miles (determinista, sin depender de ICU).
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  // Progreso de la fase de carga (scan). total falsy ⇒ indeterminado (fraction null).
+  function computeLoadProgress({ processed, total, kept }) {
+    if (total && total > 0) {
+      const fraction = Math.min(processed / total, 1);
+      return { fraction, text: `Cargando PNs... ${fmt(processed)}/${fmt(total)} (${fmt(kept)} del modo)` };
+    }
+    return { fraction: null, text: `Cargando PNs... ${fmt(kept)}` };
+  }
+
+  // Progreso de la fase de ejecución. gerundio = 'Archivando' | 'Desarchivando'.
+  function computeExecProgress({ done, total, errors, gerundio }) {
+    const fraction = total > 0 ? Math.min(done / total, 1) : 0;
+    const errPart = errors > 0 ? ` — ${errors} ${errors === 1 ? 'error' : 'errores'}` : '';
+    return { fraction, text: `${gerundio} ${fmt(done)}/${fmt(total)}${errPart}` };
+  }
+
   // ═══════════════════════════════════════════
   // PAGINACIÓN PNs POR MODO
   // ═══════════════════════════════════════════
@@ -159,17 +178,23 @@ const PNArchiver = (() => {
   async function fetchPNsForMode(mode, onProgress, pageSize = 500) {
     const slimPNs = [];
     let offset = 0;
+    let total = null;
     while (!stopped) {
       const data = await api().query('AllPartNumbers', {
         orderBy: ['ID_ASC'], offset, first: pageSize, searchQuery: ''
       }, 'AllPartNumbers');
       const nodes = data?.pagedData?.nodes || [];
+      if (total == null) {
+        const tc = data?.pagedData?.totalCount;
+        total = (typeof tc === 'number' && tc > 0) ? tc : null;
+      }
       for (const n of nodes) {
         const isArchived = !!n.archivedAt;
         const keep = mode === 'unarchive' ? isArchived : !isArchived;
         if (keep) slimPNs.push(slimPN(n));   // SLIM: no guardar nodo pesado
       }
-      if (onProgress) onProgress(`Cargando PNs... ${slimPNs.length}`);
+      const processed = offset + nodes.length;
+      if (onProgress) onProgress({ processed, total, kept: slimPNs.length });
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
@@ -178,7 +203,7 @@ const PNArchiver = (() => {
 
   // Cruza candidatos vs PNs con OT/recibos; devuelve los SIN uso. Solo modo archive.
   async function filterByUnused(candidates) {
-    updateArchiverUI(`Cargando órdenes de trabajo...`);
+    setProgress(null, `Cargando órdenes de trabajo...`);
     const usedPNIds = new Set();
     let woOffset = 0;
     while (!stopped) {
@@ -193,14 +218,14 @@ const PNArchiver = (() => {
           const pnId = pnWO.partNumberId || pnWO.partNumberByPartNumberId?.id;
           if (pnId) usedPNIds.add(pnId);
         }
-        updateArchiverUI(`OTs: página ${Math.floor(woOffset / 500) + 1}, ${usedPNIds.size} PNs con OT`);
+        setProgress(null, `OTs: página ${Math.floor(woOffset / 500) + 1}, ${usedPNIds.size} PNs con OT`);
         if (woNodes.length < 500) break;
         woOffset += 500;
       } catch (e) { warn(`AllWorkOrders ${woOffset}: ${String(e).substring(0, 60)}`); break; }
     }
     if (stopped) return candidates;
 
-    updateArchiverUI(`Cargando recibos...`);
+    setProgress(null, `Cargando recibos...`);
     let recOffset = 0;
     while (!stopped) {
       try {
@@ -213,7 +238,7 @@ const PNArchiver = (() => {
           const pnId = item.partNumberId || item.partNumberByPartNumberId?.id;
           if (pnId) usedPNIds.add(pnId);
         }
-        updateArchiverUI(`Recibos: página ${Math.floor(recOffset / 500) + 1}, ${usedPNIds.size} PNs con actividad`);
+        setProgress(null, `Recibos: página ${Math.floor(recOffset / 500) + 1}, ${usedPNIds.size} PNs con actividad`);
         if (recNodes.length < 500) break;
         recOffset += 500;
       } catch (e) { warn(`AllReceivers ${recOffset}: ${String(e).substring(0, 60)}`); break; }
@@ -254,10 +279,13 @@ const PNArchiver = (() => {
     }
 
     log(`Archivador: modo=${mode}, useDate=${useDate}${useDate ? ` (${dateType} ${direction} ${cutoffDate})` : ''}, validación=${enableValidation}`);
-    showArchiverUI(`Buscando números de parte (${mode === 'unarchive' ? 'archivados' : 'activos'})...`);
+    setProgress(null, `Buscando números de parte (${mode === 'unarchive' ? 'archivados' : 'activos'})...`);
 
     // 1. Scan slim por modo
-    let slimPNs = await fetchPNsForMode(mode, (msg) => updateArchiverUI(msg), 500);
+    let slimPNs = await fetchPNsForMode(mode, (p) => {
+      const r = computeLoadProgress(p);
+      setProgress(r.fraction, r.text);
+    }, 500);
     if (stopped) return { ...results, stopped: true };
     log(`  ${slimPNs.length} PNs ${mode === 'unarchive' ? 'archivados' : 'activos'}`);
 
@@ -315,14 +343,28 @@ const PNArchiver = (() => {
     const gerundio = isUnarchive ? 'Desarchivando' : 'Archivando';
     const verbo = isUnarchive ? 'Desarchivar' : 'Archivar';
     const participio = isUnarchive ? 'desarchivados' : 'archivados';
-    const pendingCount = totalCount - completed.size;
-    updateArchiverUI(`${gerundio} ${pendingCount} PNs (concurrencia 3, ${completed.size} ya OK)...`);
+    {
+      const p0 = computeExecProgress({ done: completed.size, total: totalCount, errors: 0, gerundio });
+      setProgress(p0.fraction, p0.text);
+    }
+
+    // Actualiza barra + persiste cada 5. Se llama al completar una mutación y al
+    // saltar un PN ya en estado destino (idempotencia), para que la barra avance
+    // en ambos casos y no parezca estancada.
+    const tick = () => {
+      const done = completed.size;
+      const p = computeExecProgress({ done, total: totalCount, errors: results.errors.length, gerundio });
+      setProgress(p.fraction, p.text);
+      if (done % 5 === 0 || done === totalCount) {
+        saveResume({ selectedPNs, opts, completed: [...completed] });
+      }
+    };
 
     await runPool(selectedPNs, async (pn) => {
       if (stopped) return;
       if (completed.has(pn.id)) return; // doble-safety — saltar ya procesados
       // Idempotencia: si el PN ya está en el estado destino, no re-mutar.
-      if (isInTargetState(pn, opts.mode)) { completed.add(pn.id); return; }
+      if (isInTargetState(pn, opts.mode)) { completed.add(pn.id); tick(); return; }
 
       try {
         const newArchivedAt = isUnarchive ? null : new Date().toISOString();
@@ -353,10 +395,7 @@ const PNArchiver = (() => {
       }
 
       completed.add(pn.id);
-      if (completed.size % 5 === 0 || completed.size === totalCount) {
-        updateArchiverUI(`${gerundio} ${completed.size}/${totalCount} — ${results.errors.length} errores`);
-        saveResume({ selectedPNs, opts, completed: [...completed] });
-      }
+      tick();
     }, 3);
 
     if (stopped) {
@@ -387,7 +426,7 @@ const PNArchiver = (() => {
   function ensureStyles() {
     if (document.getElementById('dl9-styles')) return;
     const s = document.createElement('style'); s.id = 'dl9-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#ef4444;color:white}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#ef4444;color:white}.dl9-bar{height:10px;background:#0f291a;border-radius:6px;overflow:hidden;margin:14px 0 10px}.dl9-bar-fill{height:100%;width:0;background:#4ade80;border-radius:6px;transition:width .2s ease}.dl9-bar-fill.indet{width:40%;animation:dl9slide 1.1s infinite ease-in-out}@keyframes dl9slide{0%{margin-left:-40%}100%{margin-left:100%}}.dl9-progress{font-size:13px;color:#cbd5e1}`;
     document.head.appendChild(s);
   }
 
@@ -486,9 +525,20 @@ const PNArchiver = (() => {
     document.getElementById('sa-arch-text').textContent = msg;
   }
 
-  function updateArchiverUI(msg) {
-    const el = document.getElementById('sa-arch-text');
-    if (el) el.textContent = msg;
+  // Pinta progreso reusando el overlay idempotente (showArchiverUI). fraction en
+  // [0,1] → barra determinada; fraction null → barra animada (clase 'indet').
+  function setProgress(fraction, text) {
+    showArchiverUI(text);                 // asegura overlay + setea #sa-arch-text
+    const bar = document.getElementById('sa-arch-bar');
+    if (!bar) return;
+    if (fraction == null) {
+      bar.classList.add('indet');
+      bar.style.width = '';               // deja que la clase 'indet' controle el ancho
+    } else {
+      bar.classList.remove('indet');
+      const pct = Math.round(Math.min(Math.max(fraction, 0), 1) * 100);
+      bar.style.width = `${pct}%`;
+    }
   }
 
   function removeArchiverUI() {
@@ -698,7 +748,7 @@ const PNArchiver = (() => {
 
   return {
     run, stop, openConfigAndRun,
-    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState },
+    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState, computeLoadProgress, computeExecProgress },
   };
 })();
 
