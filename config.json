@@ -1,6 +1,6 @@
 {
-  "version": "1.6.37",
-  "lastUpdated": "2026-06-04T22:45",
+  "version": "1.6.38",
+  "lastUpdated": "2026-06-05T00:30",
   "extensionVersion": "1.6.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -173,7 +173,7 @@
     "domain": {
       "id": 344,
       "dimensionIds": { "linea": 349, "departamento": 586 },
-      "inputSchemaId_PN": 3456,
+      "inputSchemaId_PN": 3932,
       "inputSchemaId_Quote": 659,
       "inputSchemaId_Bill": 27,
       "stagesRevisionId": 306,
@@ -415,7 +415,7 @@
       "subtitle": "Cotizaciones y NP",
       "icon": "📊",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"],
       "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"],
       "actions": [
         { "id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker" },
@@ -916,6 +916,7 @@
   },
   "scripts": [
     "scripts/steelhead-api.js",
+    "scripts/bulk-upload-cc.js",
     "scripts/bulk-upload.js",
     "scripts/catalog-fetcher.js"
   ],
