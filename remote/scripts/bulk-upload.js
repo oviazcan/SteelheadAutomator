@@ -3216,6 +3216,13 @@ const BulkUpload = (() => {
     // 1.5.20: inputSchemaId vigente del dominio (3932 en TLC). Default al hardcoded
     // de config; se sobreescribe con latestSchema.id tras GetPartNumbersInputSchema.
     let runtimeInputSchemaId = DOMAIN.inputSchemaId_PN;
+    // 1.5.20: identidad para el footprint de ControlCambios. Best-effort: si falla,
+    // se estampa "(desconocido)" y la corrida continúa.
+    let currentUserName = '(desconocido)';
+    try {
+      const cuData = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
+      currentUserName = cuData?.currentSession?.userByUserId?.name || '(desconocido)';
+    } catch (_) {}
     const errors = [];
     const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
