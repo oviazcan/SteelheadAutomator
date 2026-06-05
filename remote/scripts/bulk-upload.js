@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.19';
+  const VERSION = '1.5.20';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -2375,6 +2375,15 @@ const BulkUpload = (() => {
           const pnNameSpan = document.createElement('span');
           pnNameSpan.textContent = r.pn;
           tdPN.appendChild(pnNameSpan);
+          // 1.5.20 (Feature A): badge para filas defaulteadas al PN más reciente por
+          // acabados vacíos. Estilo inline para no depender de clases CSS.
+          if (r.confidence === 'name+blank-csv-recent') {
+            const ccChip = document.createElement('span');
+            ccChip.textContent = 'auto: NP más reciente';
+            ccChip.title = 'Acabados vacíos en el upload → se defaulteó al PN activo más reciente. Puedes cambiarlo en el dropdown.';
+            ccChip.style.cssText = 'margin-left:6px;padding:1px 6px;border-radius:8px;background:#1e3a5f;color:#7dd3fc;font-size:10px;font-family:sans-serif;white-space:nowrap;';
+            tdPN.appendChild(ccChip);
+          }
           // 1.2.11 H5: chip "🔄 DUP n/m" cuando el CSV tiene 2+ filas con el
           // mismo (name, customerId). Informativo — el classifier maneja cada
           // fila por separado; el chip avisa al operador para que verifique
