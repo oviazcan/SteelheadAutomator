@@ -419,7 +419,6 @@
       "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"],
       "actions": [
         { "id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker" },
-        { "id": "download-template", "label": "Descargar Plantilla + Catálogos", "sublabel": "Excel base v11 + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "templateUrl", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos." },
         { "id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs" },
         { "id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history" }
       ]
