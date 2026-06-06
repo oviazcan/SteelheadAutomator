@@ -28,6 +28,73 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   const shippingDateSource = ps.shippingDate != null ? "shippingDate"
     : (ps.shippedAt != null ? "shippedAt" : null);
 
+  // Empacador = usuario actual que genera el PDF/etiqueta. Es constante para
+  // todo el embarque (no depende del contenedor), así que se calcula una vez.
+  const packedBy = (inputs.currentUser && inputs.currentUser.name != null)
+    ? inputs.currentUser.name : null;
+
+  // Fecha de embarque ya formateada (d/m/Y H:i, 24 h) en la zona horaria del
+  // Input. Se entrega lista para que la plantilla imprima `{shippingDateFmt}`
+  // directo, SIN la función date() de Twig (que truena con "array given" al
+  // recibir el binding del label). Constante para todo el embarque.
+  const fmtDate = (iso: string | null, tz: string | null): string => {
+    if (iso == null || iso === "") return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    try {
+      const parts = new Intl.DateTimeFormat("es-MX", {
+        timeZone: (tz != null && tz !== "") ? tz : "America/Mexico_City",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      }).formatToParts(d);
+      const get = (t: string): string => {
+        const p = parts.find(x => x.type === t);
+        return p ? p.value : "";
+      };
+      const hh = get("hour") === "24" ? "00" : get("hour"); // ICU a veces da 24
+      return `${get("day")}/${get("month")}/${get("year")} ${hh}:${get("minute")}`;
+    } catch (e) {
+      // Fallback sin zona horaria: reformatea la parte de fecha/hora del ISO.
+      const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : "";
+    }
+  };
+  const shippingDateFmt = fmtDate(shippingDate, inputs.timezone);
+
+  // Unidad de peso del cliente. Steelhead entrega `item.weight` SIEMPRE en KG;
+  // si el cliente captura en libras (customInput UnidadMedidaPeso = true, mismo
+  // criterio recursivo que weight-quick-entry.js) convertimos kg→lb para la
+  // etiqueta. Constante para todo el embarque (depende del cliente del PS).
+  const KG_TO_LB = 2.2046226218;
+  const isLbCustomer = (obj: any): boolean => {
+    if (!obj || typeof obj !== "object") return false;
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const k = String(key).toLowerCase();
+      const val = obj[key];
+      if (k.indexOf("lbs") >= 0 || k === "unidadmedidapeso" ||
+          (k.indexOf("usar") >= 0 && k.indexOf("lb") >= 0)) {
+        if (val === true || val === "true") return true;
+      }
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        if (isLbCustomer(val)) return true;
+      }
+    }
+    return false;
+  };
+  const customerCI = (ps.customer && ps.customer.customInputs) ? ps.customer.customInputs : null;
+  const weightInLb = isLbCustomer(customerCI);
+  const weightUnit = weightInLb ? "LB" : "KG";
+  // Convierte un peso (kg en el Input) a la unidad del cliente y redondea a 2
+  // decimales (LB → ×factor; KG → tal cual). El redondeo aplica siempre porque
+  // el reparto proporcional por grupo genera decimales largos.
+  const conv = (v: number | null): number | null => {
+    if (v == null) return null;
+    const inUnit = weightInLb ? v * KG_TO_LB : v;
+    return Math.round(inUnit * 100) / 100;
+  };
+
   // ──────────────────────────────────────────────────────────────
   // Paso 1: aplanar a filas de etiqueta (item × partTransferAccount × batch).
   // Cada `item` del packing slip es un contenedor/bulto físico.
@@ -70,14 +137,39 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
     });
   });
 
+  // Etiquetas (filas) por item — para repartir la TARA igual entre los grupos
+  // del mismo item (el empaque/tara no escala con las piezas).
+  const itemRowCount: Record<string, number> = {};
+  rows.forEach(r => {
+    const iid = (r.item && r.item.id != null) ? String(r.item.id) : "noitem";
+    itemRowCount[iid] = (itemRowCount[iid] || 0) + 1;
+  });
+
   // ──────────────────────────────────────────────────────────────
   // Paso 3: construir las etiquetas + diagnóstico.
   // ──────────────────────────────────────────────────────────────
-  let missingPS = 0, missingName = 0, missingWeight = 0, multiPart = 0;
+  let missingPS = 0, missingName = 0, missingWeight = 0, multiPart = 0, missingSO = 0;
 
   const labels = rows.map(r => {
     const item = r.item, part = r.part, pn = r.pn, batch = r.batch;
     const weight = item.weight || null;
+
+    // Peso por grupo: el Input solo trae `item.weight` (TOTAL del item); con
+    // grupos de partes hay N PTAs en 1 item y Steelhead no expone peso por grupo
+    // (partGroup.containerWeight = null). Reparto:
+    //   • NETO  → proporcional a las piezas del grupo (PN uniforme).
+    //   • TARA  → IGUAL entre los grupos del item (el empaque no escala con piezas).
+    //   • BRUTO → neto (proporcional) + tara (igual).
+    // Para contenedores físicos (1 PTA por item) wFrac=1 e itemGroups=1 → íntegro.
+    // La suma de los grupos del item reconstituye el total (gross = net + tare).
+    const itemPieces = (item.partCount != null && item.partCount > 0) ? item.partCount : null;
+    const wFrac = (itemPieces != null && part.partCount != null) ? part.partCount / itemPieces : 1;
+    const itemGroups = itemRowCount[(item.id != null) ? String(item.id) : "noitem"] || 1;
+    const netKg = (weight && weight.net != null) ? weight.net * wFrac : null;
+    const tareKg = (weight && weight.tare != null) ? weight.tare / itemGroups : null;
+    const grossKg = (netKg != null && tareKg != null)
+      ? netKg + tareKg
+      : ((weight && weight.gross != null) ? weight.gross * wFrac : null);
 
     // Nombre del contenedor: contenarización (rack) o agrupación de
     // partes (partGroup). El usuario confirmó que pueden usarse ambos,
@@ -95,50 +187,84 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
 
     const psValue = readPS(batch ? batch.customInputs : null);
 
+    // Orden de venta (received_order = OV en Steelhead) de la OT de esta parte.
+    const receivedOrder = (part.workOrder && part.workOrder.receivedOrder)
+      ? part.workOrder.receivedOrder : null;
+    const salesOrder = (receivedOrder && receivedOrder.name != null) ? receivedOrder.name : null;
+    const salesOrderId = (receivedOrder && receivedOrder.idInDomain != null) ? receivedOrder.idInDomain : null;
+
     // Diagnóstico
     if (psValue == null) missingPS++;
     if (containerName == null) missingName++;
     if (!weight || (weight.gross == null && weight.net == null)) missingWeight++;
     if ((item.partsTransferAccounts || []).length > 1) multiPart++;
+    if (salesOrder == null && salesOrderId == null) missingSO++;
 
-    return {
+    const label: any = {
       // — Etiqueta base (8 campos) —
       partNumber: pn.name != null ? pn.name : null,
       description: pn.descriptionMarkdown != null ? pn.descriptionMarkdown : null,
-      piecesPerContainer: item.partCount != null ? item.partCount
-        : (part.partCount != null ? part.partCount : null),
+      // Piezas de ESTA etiqueta = del PTA/grupo (part.partCount), NO del item:
+      // con grupos de partes hay 1 item con N PTAs y item.partCount es el TOTAL
+      // (mostraba el 100% en cada etiqueta). part.partCount es por grupo/contenedor.
+      piecesPerContainer: part.partCount != null ? part.partCount
+        : (item.partCount != null ? item.partCount : null),
       ps: psValue,
       batchName: (batch && batch.name != null) ? batch.name : null,
       workOrder: (part.workOrder && part.workOrder.name != null) ? part.workOrder.name : null,
       workOrderId: (part.workOrder && part.workOrder.idInDomain != null) ? part.workOrder.idInDomain : null,
+      // — Orden de venta (received_order) de la OT de esta parte —
+      salesOrder,
+      salesOrderId,
+      // — Empacador: usuario actual que genera la remisión/etiqueta —
+      packedBy,
       shippingDate,
       shippingDateSource,
+      shippingDateFmt,
       containerIndex: `${r.containerNum}/${r.containerTotal}`,
       containerNum: r.containerNum,
       containerTotal: r.containerTotal,
 
       // — Etiqueta 2 (extras): peso bruto/neto + nombre de contenedor —
-      grossWeight: (weight && weight.gross != null) ? weight.gross : null,
-      netWeight: (weight && weight.net != null) ? weight.net : null,
-      tareWeight: (weight && weight.tare != null) ? weight.tare : null,
+      grossWeight: conv(grossKg),
+      netWeight: conv(netKg),
+      tareWeight: conv(tareKg),
+      weightUnit,
       containerWeightUnit,
       containerName,
       containerNameSource,
     };
+    // Toda rama debe EXISTIR en el árbol de PDFGeneratorAPI aunque el dato
+    // falte en todas las etiquetas de la muestra (ej. nombre de contenedor
+    // antes de contenarizar): null/undefined → "" para que el campo siempre
+    // tenga un nodo colocable en la plantilla.
+    Object.keys(label).forEach(k => { if (label[k] == null) label[k] = ""; });
+    return label;
   });
 
   result.additionalPayload = {
     labels,
     totalLabels: labels.length,
-    shippingDate,
-    shippingDateSource,
+    shippingDate: shippingDate != null ? shippingDate : "",
+    shippingDateSource: shippingDateSource != null ? shippingDateSource : "",
+    shippingDateFmt,
+    packedBy: packedBy != null ? packedBy : "",
+    weightUnit,
   };
 
   helpers.log(
-    `🏷️ ${labels.length} etiqueta(s). ` +
+    `🏷️ ${labels.length} etiqueta(s) · peso en ${weightUnit}` +
+    (packedBy != null ? ` · empacador: ${packedBy}` : ` · sin empacador`) + `. ` +
     `Sin PS: ${missingPS} · sin nombre contenedor: ${missingName} · ` +
-    `sin peso: ${missingWeight} · items multi-parte: ${multiPart}.`
+    `sin peso: ${missingWeight} · sin OV: ${missingSO} · items multi-parte: ${multiPart}.`
   );
+
+  if (missingSO > 0) {
+    helpers.addErrorMessage({
+      severity: "warning",
+      message: `⚠️ ${missingSO} etiqueta(s) sin orden de venta (la OT no trae receivedOrder).`,
+    });
+  }
 
   if (missingPS > 0) {
     helpers.addErrorMessage({
@@ -155,7 +281,7 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   if (multiPart > 0) {
     helpers.addErrorMessage({
       severity: "info",
-      message: `ℹ️ ${multiPart} contenedor(es) con más de una parte: el peso bruto/neto es del bulto completo, no por parte.`,
+      message: `ℹ️ ${multiPart} contenedor(es) con más de una parte: el peso se reparte proporcional a las piezas (Steelhead no expone peso por parte/grupo).`,
     });
   }
 

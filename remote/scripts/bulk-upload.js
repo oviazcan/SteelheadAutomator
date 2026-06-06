@@ -185,7 +185,7 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.19';
+  const VERSION = '1.5.20';
   const api = () => window.SteelheadAPI;
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -1967,7 +1967,9 @@ const BulkUpload = (() => {
       // algo distinto al default". Antes usábamos userOverride!=null para ambos,
       // pero re-seleccionar el default propuesto resetea userOverride a null y la
       // fila vuelve a aparecer como pendiente — UX confusa.
-      userDecided: false,
+      // 1.5.20: blank-acabados con 1 candidato auto-valida (cls.autoDecided===true);
+      // con 2+ queda en false para que el operador confirme en el dropdown.
+      userDecided: cls.autoDecided === true,
       targetPnId: cls.targetPnId,
       wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado por Pase 1/2 estaba archivado
       csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
@@ -2373,6 +2375,15 @@ const BulkUpload = (() => {
           const pnNameSpan = document.createElement('span');
           pnNameSpan.textContent = r.pn;
           tdPN.appendChild(pnNameSpan);
+          // 1.5.20 (Feature A): badge para filas defaulteadas al PN más reciente por
+          // acabados vacíos. Estilo inline para no depender de clases CSS.
+          if (r.confidence === 'name+blank-csv-recent') {
+            const ccChip = document.createElement('span');
+            ccChip.textContent = 'auto: NP más reciente';
+            ccChip.title = 'Acabados vacíos en el upload → se defaulteó al PN activo más reciente. Puedes cambiarlo en el dropdown.';
+            ccChip.style.cssText = 'margin-left:6px;padding:1px 6px;border-radius:8px;background:#1e3a5f;color:#7dd3fc;font-size:10px;font-family:sans-serif;white-space:nowrap;';
+            tdPN.appendChild(ccChip);
+          }
           // 1.2.11 H5: chip "🔄 DUP n/m" cuando el CSV tiene 2+ filas con el
           // mismo (name, customerId). Informativo — el classifier maneja cada
           // fila por separado; el chip avisa al operador para que verifique
@@ -3213,6 +3224,16 @@ const BulkUpload = (() => {
 
   async function execute(csvText) {
     const DOMAIN = api().getDomain();
+    // 1.5.20: inputSchemaId vigente del dominio (3932 en TLC). Default al hardcoded
+    // de config; se sobreescribe con latestSchema.id tras GetPartNumbersInputSchema.
+    let runtimeInputSchemaId = DOMAIN.inputSchemaId_PN;
+    // 1.5.20: identidad para el footprint de ControlCambios. Best-effort: si falla,
+    // se estampa "(desconocido)" y la corrida continúa.
+    let currentUserName = '(desconocido)';
+    try {
+      const cuData = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
+      currentUserName = cuData?.currentSession?.userByUserId?.name || '(desconocido)';
+    } catch (_) {}
     const errors = [];
     const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
@@ -3873,10 +3894,11 @@ const BulkUpload = (() => {
         const schemaNodes = schemaData?.allPartNumberInputSchemas?.nodes || [];
         const latestSchema = schemaNodes.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
         if (latestSchema) {
+          if (latestSchema.id) runtimeInputSchemaId = latestSchema.id;
           const schemaProps = latestSchema.inputSchema?.properties || {};
           metalBaseEnum = schemaProps.DatosAdicionalesNP?.properties?.BaseMetal?.enum || [];
           satEnum = schemaProps.DatosFacturacion?.properties?.CodigoSAT?.enum || [];
-          log(`  Schema loaded: ${metalBaseEnum.length} metales, ${satEnum.length} SAT`);
+          log(`  Schema loaded: id=${runtimeInputSchemaId}, ${metalBaseEnum.length} metales, ${satEnum.length} SAT`);
         }
       } catch (e) {
         warn(`GetPartNumbersInputSchema falló: ${String(e).substring(0, 100)}. Usando fallback hardcoded.`);
@@ -4078,7 +4100,7 @@ const BulkUpload = (() => {
         const groupId = await resolveGroupId(part.pnGroup);
         const minInput = {
           id: null, name: part.pn, customerId: part.customerId, defaultProcessNodeId: processId,
-          inputSchemaId: DOMAIN.inputSchemaId_PN, customInputs: {},
+          inputSchemaId: runtimeInputSchemaId, customInputs: {},
           geometryTypeId: null, userFileName: null, inventoryItemInput: null,
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
           isOneOff: false, isTemplatePartNumber: false, isCoupon: false, partNumberGroupId: groupId,
@@ -4319,7 +4341,7 @@ const BulkUpload = (() => {
                 name: pnNode.name,
                 customerId: (pnNode.customerByCustomerId?.id ?? pnNode.customerId) || target.part.customerId,
                 defaultProcessNodeId: (pnNode.processNodeByDefaultProcessNodeId?.id ?? pnNode.defaultProcessNodeId) || target.part.processId,
-                inputSchemaId: DOMAIN.inputSchemaId_PN,
+                inputSchemaId: runtimeInputSchemaId,
                 customInputs: pnNode.customInputs || {},
                 geometryTypeId: (pnNode.geometryTypeByGeometryTypeId?.id ?? pnNode.geometryTypeId) || null,
                 userFileName: null,
@@ -5176,7 +5198,7 @@ const BulkUpload = (() => {
         // existingPnNode, mergeCustomInputs arrancaba desde {} y borraba todo lo que
         // el CSV no traía (mismo mecanismo que el bug de 1.5.8 que vació 13k PNs,
         // pero por el path SOLO_PN que el fix 1.5.9 no cubrió).
-        const mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part);
+        let mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part);
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
         // MODIFY-by-id sin pn: fallback al name del node existente
         const resolvedPnName = pn.name || (existingPnNode && existingPnNode.name) || (() => { throw new Error(`SavePartNumber sin name resuelto para id=${pn.id}`); })();
@@ -5228,7 +5250,7 @@ const BulkUpload = (() => {
             descriptionMarkdown: existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? '',
             customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
             customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {},
-            inputSchemaId: DOMAIN.inputSchemaId_PN,
+            inputSchemaId: runtimeInputSchemaId,
             labelIds: labelIdsToSend,
             partNumberGroupId: pnGroupIdEarly,
             // Heavy fields explícitamente vacíos — Steelhead acepta el shape mínimo
@@ -5408,12 +5430,45 @@ const BulkUpload = (() => {
         // ahora caen al existingPnNode antes que al pn sintético (que en SOLO_PN es '').
         // customInputs reusa el mismo fallback que Call A. inventoryItemInput usa la
         // variable inventoryItemInputToSend ya resuelta arriba con preserve-on-missing.
+        // 1.5.20 (Feature B): footprint en customInputs.ControlCambios. Se engancha
+        // ACÁ (no en el mergeCustomInputs inicial) porque specsToApplyFiltered/dims/
+        // labelIdsToSend/pnProcessId ya están resueltos. Solo se appendea si hubo
+        // cambio real. mergedCI se modifica por referencia → Call B (pnInput, abajo)
+        // lo lleva.
+        if (typeof window !== 'undefined' && window.SteelheadBulkCC) {
+          // typeof-guards: estas variables se definen más arriba en enrichWorker,
+          // pero el guard evita un ReferenceError si alguna rama no las hubiera
+          // declarado en este punto. part.* es siempre seguro (part siempre existe).
+          const ccIsNew = !existingPnNode;
+          const ccHasPrice = part.precio != null && !isDash(part.precio);
+          const ccEnrichFields = [];
+          if (typeof specsToApplyFiltered !== 'undefined' && specsToApplyFiltered && specsToApplyFiltered.length) ccEnrichFields.push('specs');
+          if (typeof dims !== 'undefined' && dims && dims.length) ccEnrichFields.push('dims');
+          if (typeof labelIdsToSend !== 'undefined' && labelIdsToSend && labelIdsToSend.length) ccEnrichFields.push('labels');
+          if (part.metalBase && !isDash(part.metalBase)) ccEnrichFields.push('metal');
+          if (typeof pnProcessId !== 'undefined' && pnProcessId) ccEnrichFields.push('proceso');
+          const ccAccion = window.SteelheadBulkCC.computeAccion({
+            isNew: ccIsNew, hasPrice: ccHasPrice, hasEnrich: ccEnrichFields.length > 0,
+          });
+          if (ccAccion) {
+            if (!mergedCI) mergedCI = {};
+            const ccDetalle = window.SteelheadBulkCC.buildDetalle({
+              accion: ccAccion, precioAnterior: null, precioNuevo: part.precio,
+              divisa: part.divisa, enrichFields: ccEnrichFields,
+            });
+            const ccEntry = window.SteelheadBulkCC.buildControlCambiosEntry({
+              accion: ccAccion, detalle: ccDetalle, usuario: currentUserName,
+              version: (window.REMOTE_CONFIG && window.REMOTE_CONFIG.version) || VERSION, nowIso: new Date().toISOString(),
+            });
+            window.SteelheadBulkCC.appendControlCambios(mergedCI, ccEntry);
+          }
+        }
         // 1.5.16: FK fallback en customerId (scalar bugged). Ver nota en línea ~4305.
         const pnInput = {
           id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? ''),
           customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
-          customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: DOMAIN.inputSchemaId_PN, labelIds: labelIdsToSend,
+          customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: runtimeInputSchemaId, labelIds: labelIdsToSend,
           partNumberGroupId: pnGroupId,
           geometryTypeId: resolvedGeometryTypeId,
           inventoryItemInput: inventoryItemInputToSend,
@@ -5891,7 +5946,7 @@ const BulkUpload = (() => {
               name: pnNode.name,
               customerId: (pnNode.customerByCustomerId?.id ?? pnNode.customerId) || part.customerId,
               defaultProcessNodeId: (pnNode.processNodeByDefaultProcessNodeId?.id ?? pnNode.defaultProcessNodeId) || part.processId,
-              inputSchemaId: DOMAIN.inputSchemaId_PN,
+              inputSchemaId: runtimeInputSchemaId,
               customInputs: pnNode.customInputs || {},
               geometryTypeId: (pnNode.geometryTypeByGeometryTypeId?.id ?? pnNode.geometryTypeId) || null,
               userFileName: null,
@@ -6698,6 +6753,27 @@ const BulkUpload = (() => {
       // 1.4.3: comparación canonical para que "Estaño" vs "Estaño s/Cobre" o
       // mismo acabado con casing/espacios distintos cuenten como labelsMatchFull.
       const csvAcabados = acabadosCanonicos(csvRow.labels || [], nonFinishList, equivIndex);
+      // 1.5.20 (Feature A): si el upload NO trae acabados (csvAcabados === ''),
+      // no es señal de "quiero nuevo" — defaultear a MODIFICAR el PN activo más
+      // reciente. Auto si hay 1 candidato; requiere confirmar si hay 2+. Va ANTES
+      // de labelsMatchFull/blankCandidate para cubrir también el caso (común en TLC)
+      // de CSV sin acabados + candidato sin acabados, que si no caería en
+      // 'name+labels-match' sin auto-decidir. Si el upload trae acabados no vacíos,
+      // NO entra acá (csvAcabados !== '') y sigue el flujo normal (labels-match/NEW).
+      if (csvAcabados === '' && typeof window !== 'undefined' && window.SteelheadBulkCC) {
+        const decision = window.SteelheadBulkCC.decideBlankAcabados(nameCandidates);
+        if (decision) {
+          return {
+            classification: 'MODIFY',
+            pase: 3,
+            confidence: 'name+blank-csv-recent',
+            targetPnId: decision.targetPnId,
+            wasArchived: false,
+            candidates: ranked,
+            autoDecided: decision.autoDecided,
+          };
+        }
+      }
       const topAcabados = acabadosCanonicos(ranked[0].labels || [], nonFinishList, equivIndex);
       const labelsMatchFull = csvAcabados === topAcabados;
       if (labelsMatchFull) {
@@ -6776,6 +6852,7 @@ const BulkUpload = (() => {
       'composite-exacto-csv-sin-ibms': 1,
       'name+labels-match': 2,
       'name+blank-candidate': 3,
+      'name+blank-csv-recent': 3,
     };
     const claimers = [];
     for (let i = 0; i < pnStatus.length; i++) {
