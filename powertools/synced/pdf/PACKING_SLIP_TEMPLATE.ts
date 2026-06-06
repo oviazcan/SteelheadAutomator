@@ -61,11 +61,19 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   };
   const shippingDateFmt = fmtDate(shippingDate, inputs.timezone);
 
-  // Unidad de peso del cliente. Steelhead entrega `item.weight` SIEMPRE en KG;
-  // si el cliente captura en libras (customInput UnidadMedidaPeso = true, mismo
-  // criterio recursivo que weight-quick-entry.js) convertimos kg→lb para la
-  // etiqueta. Constante para todo el embarque (depende del cliente del PS).
+  // ── Unidad de peso: DOS ejes independientes ───────────────────────────────
+  //   • DESTINO (display): la unidad que el cliente quiere ver en la etiqueta.
+  //     Wieland captura en libras (customInput UnidadMedidaPeso=true, criterio
+  //     recursivo igual que weight-quick-entry.js) → "LB"; el resto "KG".
+  //   • ORIGEN (source): la unidad REAL en que Steelhead entrega `item.weight`.
+  //     ¡NO siempre es KG! El input la trae explícita en `item.unit` /
+  //     `packingSlip.unit` (id 3972 = LBR/libras, 3969 = KGM/kilos). Asumir kg
+  //     a ciegas DUPLICABA el peso de clientes LB cuando el dato ya venía en lb
+  //     (bug remisión #1090, 2026-06-06).
+  // La lógica pura (unitIsLb/convertWeight) es ESPEJO de
+  // tools/packing_slip_weight.mjs (+ tests node:test). Mantener idénticas.
   const KG_TO_LB = 2.2046226218;
+  const LBR_UNIT_ID = 3972;
   const isLbCustomer = (obj: any): boolean => {
     if (!obj || typeof obj !== "object") return false;
     const keys = Object.keys(obj);
@@ -83,16 +91,32 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
     }
     return false;
   };
+  // ¿La unidad de ORIGEN que entrega Steelhead es libras? id 3972 autoritativo;
+  // nombre ("LBR Libra") de respaldo. Default KG (false).
+  const unitIsLb = (unit: any): boolean => {
+    if (!unit || typeof unit !== "object") return false;
+    if (unit.id != null && Number(unit.id) === LBR_UNIT_ID) return true;
+    const n = unit.name != null ? String(unit.name).toLowerCase() : "";
+    return n.indexOf("lbr") >= 0 || n.indexOf("libra") >= 0 || n.indexOf("lb") >= 0;
+  };
   const customerCI = (ps.customer && ps.customer.customInputs) ? ps.customer.customInputs : null;
-  const weightInLb = isLbCustomer(customerCI);
-  const weightUnit = weightInLb ? "LB" : "KG";
-  // Convierte un peso (kg en el Input) a la unidad del cliente y redondea a 2
-  // decimales (LB → ×factor; KG → tal cual). El redondeo aplica siempre porque
-  // el reparto proporcional por grupo genera decimales largos.
-  const conv = (v: number | null): number | null => {
+  const displayInLb = isLbCustomer(customerCI);
+  const weightUnit = displayInLb ? "LB" : "KG";
+  // Unidad de origen a nivel embarque (el PS trae una sola `unit`); se prioriza
+  // la del item dentro del map por si difiriera.
+  const psUnitIsLb = unitIsLb(ps.unit);
+  // Convierte un peso desde su unidad de ORIGEN (sourceIsLb) a la de DESTINO
+  // (displayInLb) y redondea a 2 decimales (el reparto proporcional por grupo
+  // genera decimales largos).
+  const convertWeight = (v: number | null, sourceIsLb: boolean): number | null => {
     if (v == null) return null;
-    const inUnit = weightInLb ? v * KG_TO_LB : v;
-    return Math.round(inUnit * 100) / 100;
+    let out: number;
+    if (displayInLb) {
+      out = sourceIsLb ? v : v * KG_TO_LB;
+    } else {
+      out = sourceIsLb ? v / KG_TO_LB : v;
+    }
+    return Math.round(out * 100) / 100;
   };
 
   // ──────────────────────────────────────────────────────────────
@@ -165,10 +189,13 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
     const itemPieces = (item.partCount != null && item.partCount > 0) ? item.partCount : null;
     const wFrac = (itemPieces != null && part.partCount != null) ? part.partCount / itemPieces : 1;
     const itemGroups = itemRowCount[(item.id != null) ? String(item.id) : "noitem"] || 1;
-    const netKg = (weight && weight.net != null) ? weight.net * wFrac : null;
-    const tareKg = (weight && weight.tare != null) ? weight.tare / itemGroups : null;
-    const grossKg = (netKg != null && tareKg != null)
-      ? netKg + tareKg
+    // Unidad de ORIGEN del peso de ESTE item (item.unit) → fallback al PS.
+    // El peso reparte EN su unidad de origen; convertWeight lo lleva al destino.
+    const sourceIsLb = unitIsLb(item.unit) || psUnitIsLb;
+    const netSrc = (weight && weight.net != null) ? weight.net * wFrac : null;
+    const tareSrc = (weight && weight.tare != null) ? weight.tare / itemGroups : null;
+    const grossSrc = (netSrc != null && tareSrc != null)
+      ? netSrc + tareSrc
       : ((weight && weight.gross != null) ? weight.gross * wFrac : null);
 
     // Nombre del contenedor: contenarización (rack) o agrupación de
@@ -226,9 +253,9 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       containerTotal: r.containerTotal,
 
       // — Etiqueta 2 (extras): peso bruto/neto + nombre de contenedor —
-      grossWeight: conv(grossKg),
-      netWeight: conv(netKg),
-      tareWeight: conv(tareKg),
+      grossWeight: convertWeight(grossSrc, sourceIsLb),
+      netWeight: convertWeight(netSrc, sourceIsLb),
+      tareWeight: convertWeight(tareSrc, sourceIsLb),
       weightUnit,
       containerWeightUnit,
       containerName,
@@ -362,6 +389,10 @@ interface Inputs {
         gross: number;
         tare: number;
         net: number;
+      } | null;
+      unit: {
+        id: number;
+        name: string;
       } | null;
       partsTransferAccounts: {
         id: number;
