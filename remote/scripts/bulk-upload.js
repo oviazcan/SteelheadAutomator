@@ -2020,8 +2020,25 @@ const BulkUpload = (() => {
     document.head.appendChild(s);
   }
 
-  function createOverlay() { const ov = document.createElement('div'); ov.className = 'dl9-overlay'; const md = document.createElement('div'); md.className = 'dl9-modal'; ov.appendChild(md); document.body.appendChild(ov); return { overlay: ov, modal: md }; }
-  function removeOverlay(ov) { if (ov?.parentNode) ov.parentNode.removeChild(ov); }
+  // F3: un solo modal visible a la vez. El panel de progreso (#sa-bu-panel) se muestra
+  // ANTES del preview (showPanel corre antes que showPreview), así que se traslapaban.
+  // Mientras haya un overlay abierto, ocultamos el panel; lo restauramos al cerrar el último.
+  function createOverlay() {
+    const panel = document.getElementById('sa-bu-panel');
+    if (panel) panel.style.display = 'none';
+    const ov = document.createElement('div'); ov.className = 'dl9-overlay';
+    const md = document.createElement('div'); md.className = 'dl9-modal';
+    ov.appendChild(md); document.body.appendChild(ov);
+    return { overlay: ov, modal: md };
+  }
+  function removeOverlay(ov) {
+    if (ov?.parentNode) ov.parentNode.removeChild(ov);
+    // Restaurar el panel solo si ya no queda ningún overlay abierto (ej. confirmación sobre preview).
+    if (!document.querySelector('.dl9-overlay')) {
+      const panel = document.getElementById('sa-bu-panel');
+      if (panel) panel.style.display = 'flex';
+    }
+  }
 
   // 1.5.12: modal blocking cuando hay nombres de proceso que no existen en el
   // catálogo de Steelhead (típicamente fórmulas como "Combinación no existente").
