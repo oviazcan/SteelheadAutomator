@@ -11,9 +11,9 @@ Hook low-code de la **remisión**. Hace **dos cosas** desde la v2 (id=10561):
 
 | Campo | Valor |
 |---|---|
-| `active_id` | **10626** (2026-06-05) |
-| versión previa (rollback) | **10624** (ramas no nulas + fecha fmt, pre-conversión peso) · 10623 (OV+empacador) · 10564 (pre-etiquetas-v2) |
-| total versiones del slot | 11 |
+| `active_id` | **10629** (2026-06-06) |
+| versión previa (rollback) | **10628** (reparto peso, tara proporcional) · 10627 (fix piezas-grupo) · 10626 (conversión peso) |
+| total versiones del slot | 14 |
 | deploy | `lowcode_sync.py push ... pdf:PACKING_SLIP_TEMPLATE` (CreatePdfLowCode) |
 
 ## Campos de `additionalPayload.labels[]`
@@ -31,8 +31,10 @@ Hook low-code de la **remisión**. Hace **dos cosas** desde la v2 (id=10561):
 | Fecha de embarque | `shippingDate` (+ `shippingDateSource`) | `packingSlip.shippingDate` → fallback `shippedAt` |
 | **Fecha embarque formateada** | `shippingDateFmt` | `shippingDate` → `d/m/Y H:i` (24 h) en `inputs.timezone` vía `Intl.DateTimeFormat`. Imprimir directo `{shippingDateFmt}` (sin `date()` de Twig) |
 | Contenedor x de y | `containerIndex` (+ `containerNum`/`containerTotal`) | grupo PN+batch, ordenado por `item.index` |
-| **Peso bruto** | `grossWeight` | `item.weight.gross` (convertido a la unidad del cliente) |
-| **Peso neto** | `netWeight` (+ `tareWeight`) | `item.weight.net` / `.tare` (convertidos) |
+| **Peso bruto** | `grossWeight` | `netWeight + tareWeight` (neto proporcional + tara igual) → unidad del cliente |
+| **Peso neto** | `netWeight` | `item.weight.net × wFrac` (proporcional a piezas del grupo) |
+| **Peso tara** | `tareWeight` | `item.weight.tare / itemGroups` (igual entre grupos del item) |
+| **Pzas × grupo/caja** | `piecesPerContainer` | `part.partCount` (del grupo) ?? `item.partCount` |
 | **Unidad de peso** | `weightUnit` | `"LB"` si el cliente captura en libras (`UnidadMedidaPeso`), si no `"KG"`. También en la raíz |
 | **Nombre del contenedor** | `containerName` (+ `containerNameSource`) | `rack.name` → fallback `partGroup.name` |
 
@@ -53,7 +55,8 @@ También: `containerWeightUnit` (de `partGroup.containerWeightUnit.name`, inform
 | **Fecha → "array given"** | formatear en el hook | `{% date({shippingDate},...) %}` de Twig truena con `DateTime::__construct(): Argument #1 must be string, array given` (el binding del campo dentro del loop de `labels` llega como arreglo). Solución: el hook emite `shippingDateFmt` ya formateado (`Intl.DateTimeFormat` con `inputs.timezone`); la plantilla imprime el string directo. |
 | **Unidad del peso (KG vs LB)** | `item.weight` SIEMPRE llega en KG; convertir | **Confirmado vía DB:** Wieland captura en LBR (tabla `measurement.unit_id=3972`, con `tare`); Steelhead entrega `item.weight` al hook **ya convertido a KG**. Ej. 1054: báscula 15/2 lb → hook recibe 6.80/0.91 kg. El cliente declara su unidad en `customer.custom_input.DatosLogisticos.UnidadMedidaPeso` (bool camelCase: `true`=LB, `false`/null=KG; default **KG**). En TLC+MTY **solo WIELAND** usa LB. **v6**: el hook detecta LB (recursivo, igual que `weight-quick-entry.js`) y convierte `grossWeight`/`netWeight`/`tareWeight` kg→lb (×2.2046226218, redondeo 2 dec) + emite `weightUnit`. Clientes KG: sin cambio. |
 | **gross/net/tare convencionales** | gross = total, net = piezas, tare = contenedor | Validado con la 1054: gross 15 lb = net 13 + tare 2. El binding cruzado en la plantilla (no el hook) hacía ver bruto↔neto invertidos. El mapeo del hook (`grossWeight`←`weight.gross`, etc.) es correcto. |
-| **Contenarización (nombre)** | `rack.name` | Trazado en DB (WO 5122): el nombre del contenedor vive en `parts_transfer_account.rack_id` → `rack.name` (ej. `T109-BA01-001`, tipo `T109-BA01`); `super_rack_id` y `part_group` venían null. El hook lee `part.rack.name` → fallback `partGroup.name`. **Validar tras contenarizar un embarque real** que el GraphQL pueble `part.rack` (podría filtrarlo por `rackType.isContainer`). |
+| **Contenarización (nombre)** | `rack.name` | Trazado en DB (WO 5122): el nombre del contenedor vive en `parts_transfer_account.rack_id` → `rack.name` (ej. `T109-BA01-001`, tipo `T109-BA01`); `super_rack_id` y `part_group` venían null. El hook lee `part.rack.name` → fallback `partGroup.name`. Validado: con **grupos de partes** `containerNameSource="partGroup"` y `partGroup.name` (ej. `03-1694355`). |
+| **Grupos de partes vs contenedores físicos** | estructura del Input distinta | **Contenedores (rack):** cada contenedor es un `item` separado con su propio `item.partCount` e `item.weight` → piezas/peso por etiqueta directos. **Grupos de partes (partGroup):** Steelhead manda **1 solo `item`** con N `partsTransferAccounts` (1 por grupo); `item.partCount`/`item.weight` son el **TOTAL**. Por eso: (1) piezas → usar `part.partCount` (por grupo), NO `item.partCount`; (2) peso → `partGroup.containerWeight` viene **null**, solo existe `item.weight` (total) → se **reparte proporcional a piezas** (v8). Confirmado en Test Panel 2026-06-06. |
 
 ## Paginación de la remisión con etiquetas append (PDFGeneratorAPI)
 
@@ -94,6 +97,9 @@ python3 tools/lowcode_sync.py push <ruta a 10477.ts en .versions/> pdf:PACKING_S
 
 ## Changelog
 
+- **v9 (2026-06-06, id=10629)**: **tara igual entre grupos** (decisión del usuario). El empaque no escala con piezas → la **tara** se reparte igual entre los grupos del item (`item.weight.tare / itemGroups`, `itemGroups` = filas por item); el **neto** sigue proporcional a piezas (`× wFrac`); el **bruto** = neto + tara. Suma de grupos reconstituye el total. Verificado: tara 13 kg → 5.73 LB igual en los 5 grupos; suma cuadra. `shareW` eliminado.
+- **v8 (2026-06-06, id=10628)**: **reparto proporcional del peso por grupo** — confirmado en Test Panel que con grupos de partes Steelhead manda 1 `item` con N PTAs, `partGroup.containerWeight` viene **null** y solo hay `item.weight` (total). Se reparte el peso del item entre los grupos proporcional a `part.partCount` (`wFrac = part.partCount / item.partCount`); válido porque el PN es uniforme. Para contenedores físicos (1 PTA/item) `wFrac=1` → sin cambio. `conv` ahora redondea siempre a 2 dec. Verificado: 948/935/13 kg → grupos 440/550/… LB, suma cuadra con el total. Chip multi-parte actualizado.
+- **v7 (2026-06-06, id=10627)**: **fix piezas con grupos de partes** — `piecesPerContainer` ahora prioriza `part.partCount` (piezas del PTA/grupo) sobre `item.partCount` (total del item). Con flujo de **grupos de partes** (no contenedores físicos) Steelhead manda 1 `item` con N PTAs, y `item.partCount` es el total → mostraba el 100% en cada etiqueta. **Pendiente:** peso por grupo (`item.weight` es del item completo; el Input no desglosa bruto/neto/tara por grupo, solo `partGroup.containerWeight` 1 número).
 - **v6 (2026-06-05, id=10626)**: **conversión de peso por cliente** — `item.weight` llega en KG; si el cliente captura en libras (`UnidadMedidaPeso`, detección recursiva igual que `weight-quick-entry.js`) se convierte `grossWeight`/`netWeight`/`tareWeight` kg→lb (×2.2046226218, 2 dec) y se emite `weightUnit` (`"LB"`/`"KG"`, también en raíz). Clientes KG sin cambio. Verificado: 6.80/5.90/0.91 kg → 15/13/2 LB. Confirmado en DB que Wieland captura en LBR y el mapeo gross/net/tare del hook es convencional (el cruce que veía el usuario era binding de plantilla). Typecheck es2017 verde.
 - **v5 (2026-06-05, id=10624)**: (1) **null → "" en todas las ramas** del label (y raíz) — PDFGeneratorAPI **no crea nodo** para campos `null` en toda la muestra, así que `containerName`/`containerNameSource`/`containerWeightUnit` (vacíos hasta contenarizar) no se podían colocar en la plantilla. Coerción `Object.keys(label).forEach(k => if null → "")`. (2) + `shippingDateFmt`: fecha de embarque ya formateada `d/m/Y H:i` (24 h) en `inputs.timezone` (`Intl.DateTimeFormat`, fallback regex sin TZ) — la plantilla imprime `{shippingDateFmt}` sin la función `date()` de Twig (que tronaba con `DateTime::__construct(): array given`). Verificado en Node: `2026-06-05T20:36:03+00:00` → `05/06/2026 14:36`. Typecheck es2017 verde.
 - **v4 (2026-06-05, id=10623)**: + `salesOrder`/`salesOrderId` por etiqueta (de `workOrder.receivedOrder.name`/`.idInDomain` = OV) y `packedBy` (de `inputs.currentUser.name`, también en la raíz del payload). Nuevo diagnóstico `missingSO` (chip warning) + empacador en el `log`. Typecheck `tsc --target es2017 --strict --alwaysStrict` en verde. **Aditivo**: no toca campos previos ni la remisión.

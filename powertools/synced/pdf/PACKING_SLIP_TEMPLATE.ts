@@ -86,11 +86,13 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   const customerCI = (ps.customer && ps.customer.customInputs) ? ps.customer.customInputs : null;
   const weightInLb = isLbCustomer(customerCI);
   const weightUnit = weightInLb ? "LB" : "KG";
-  // Convierte un peso (kg en el Input) a la unidad del cliente. KG → sin tocar
-  // (sin ruido de float); LB → ×factor y redondeo a 2 decimales.
+  // Convierte un peso (kg en el Input) a la unidad del cliente y redondea a 2
+  // decimales (LB → ×factor; KG → tal cual). El redondeo aplica siempre porque
+  // el reparto proporcional por grupo genera decimales largos.
   const conv = (v: number | null): number | null => {
     if (v == null) return null;
-    return weightInLb ? Math.round(v * KG_TO_LB * 100) / 100 : v;
+    const inUnit = weightInLb ? v * KG_TO_LB : v;
+    return Math.round(inUnit * 100) / 100;
   };
 
   // ──────────────────────────────────────────────────────────────
@@ -135,6 +137,14 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
     });
   });
 
+  // Etiquetas (filas) por item — para repartir la TARA igual entre los grupos
+  // del mismo item (el empaque/tara no escala con las piezas).
+  const itemRowCount: Record<string, number> = {};
+  rows.forEach(r => {
+    const iid = (r.item && r.item.id != null) ? String(r.item.id) : "noitem";
+    itemRowCount[iid] = (itemRowCount[iid] || 0) + 1;
+  });
+
   // ──────────────────────────────────────────────────────────────
   // Paso 3: construir las etiquetas + diagnóstico.
   // ──────────────────────────────────────────────────────────────
@@ -143,6 +153,23 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   const labels = rows.map(r => {
     const item = r.item, part = r.part, pn = r.pn, batch = r.batch;
     const weight = item.weight || null;
+
+    // Peso por grupo: el Input solo trae `item.weight` (TOTAL del item); con
+    // grupos de partes hay N PTAs en 1 item y Steelhead no expone peso por grupo
+    // (partGroup.containerWeight = null). Reparto:
+    //   • NETO  → proporcional a las piezas del grupo (PN uniforme).
+    //   • TARA  → IGUAL entre los grupos del item (el empaque no escala con piezas).
+    //   • BRUTO → neto (proporcional) + tara (igual).
+    // Para contenedores físicos (1 PTA por item) wFrac=1 e itemGroups=1 → íntegro.
+    // La suma de los grupos del item reconstituye el total (gross = net + tare).
+    const itemPieces = (item.partCount != null && item.partCount > 0) ? item.partCount : null;
+    const wFrac = (itemPieces != null && part.partCount != null) ? part.partCount / itemPieces : 1;
+    const itemGroups = itemRowCount[(item.id != null) ? String(item.id) : "noitem"] || 1;
+    const netKg = (weight && weight.net != null) ? weight.net * wFrac : null;
+    const tareKg = (weight && weight.tare != null) ? weight.tare / itemGroups : null;
+    const grossKg = (netKg != null && tareKg != null)
+      ? netKg + tareKg
+      : ((weight && weight.gross != null) ? weight.gross * wFrac : null);
 
     // Nombre del contenedor: contenarización (rack) o agrupación de
     // partes (partGroup). El usuario confirmó que pueden usarse ambos,
@@ -177,8 +204,11 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       // — Etiqueta base (8 campos) —
       partNumber: pn.name != null ? pn.name : null,
       description: pn.descriptionMarkdown != null ? pn.descriptionMarkdown : null,
-      piecesPerContainer: item.partCount != null ? item.partCount
-        : (part.partCount != null ? part.partCount : null),
+      // Piezas de ESTA etiqueta = del PTA/grupo (part.partCount), NO del item:
+      // con grupos de partes hay 1 item con N PTAs y item.partCount es el TOTAL
+      // (mostraba el 100% en cada etiqueta). part.partCount es por grupo/contenedor.
+      piecesPerContainer: part.partCount != null ? part.partCount
+        : (item.partCount != null ? item.partCount : null),
       ps: psValue,
       batchName: (batch && batch.name != null) ? batch.name : null,
       workOrder: (part.workOrder && part.workOrder.name != null) ? part.workOrder.name : null,
@@ -196,9 +226,9 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       containerTotal: r.containerTotal,
 
       // — Etiqueta 2 (extras): peso bruto/neto + nombre de contenedor —
-      grossWeight: conv((weight && weight.gross != null) ? weight.gross : null),
-      netWeight: conv((weight && weight.net != null) ? weight.net : null),
-      tareWeight: conv((weight && weight.tare != null) ? weight.tare : null),
+      grossWeight: conv(grossKg),
+      netWeight: conv(netKg),
+      tareWeight: conv(tareKg),
       weightUnit,
       containerWeightUnit,
       containerName,
@@ -251,7 +281,7 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
   if (multiPart > 0) {
     helpers.addErrorMessage({
       severity: "info",
-      message: `ℹ️ ${multiPart} contenedor(es) con más de una parte: el peso bruto/neto es del bulto completo, no por parte.`,
+      message: `ℹ️ ${multiPart} contenedor(es) con más de una parte: el peso se reparte proporcional a las piezas (Steelhead no expone peso por parte/grupo).`,
     });
   }
 
