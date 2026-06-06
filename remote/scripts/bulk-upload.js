@@ -762,7 +762,9 @@ const BulkUpload = (() => {
         const more = attempt < delays.length && isRetryable(err);
         if (!more) throw err;
         state.counters.retried++;
-        const delay = delays[attempt];
+        // F2: jitter ±25% para que los 8 workers concurrentes que fallan al mismo
+        // tiempo no reintenten en el mismo milisegundo exacto (thundering herd).
+        const delay = Math.round(delays[attempt] * (0.75 + Math.random() * 0.5));
         warn(`${label}: intento ${attempt + 1} falló (${String(err).substring(0, 80)}), reintentando en ${delay}ms`);
         if (myRunId != null) bailIfStale(myRunId);
         await sleep(delay);
@@ -2786,7 +2788,7 @@ const BulkUpload = (() => {
                 const chip = document.createElement('span');
                 chip.className = 'dl9-saved-chip';
                 chip.textContent = '✓ validada';
-                chip.title = 'Decisión persistida en localStorage; al recargar y elegir REANUDAR vuelve aplicada.';
+                chip.title = 'Decisión persistida en IndexedDB; al recargar y elegir REANUDAR vuelve aplicada.';
                 savedChipSlot.appendChild(chip);
               } else {
                 const chip = document.createElement('span');
