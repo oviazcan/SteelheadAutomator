@@ -409,7 +409,7 @@ Cada NP de una OV Schneider (`customerName.includes("schneider")`, cubre razón 
 - **2 direcciones trampa** (fiscales Laredo/Roselle Illinois) no resuelven a planta → caen en error "ship-to no identificado" (correcto, no son plantas de entrega).
 - **Veredicto por NP:** lee `partNumber.partNumberLabels[].name` (solo lectura); `missing` (sin etiqueta SXX) / `mismatch` (otra planta) / `ok` (multi-planta pasa si la esperada está entre sus etiquetas). Dedup por `partNumber.id`.
 - **Severidades (decisión usuario):** missing, mismatch y ship-to-no-resoluble = error rojo. Los 3 buckets nuevos suprimen el "Todo en Orden" verde.
-- **Phase-0 verificada:** `partNumber.partNumberLabels` SÍ se puebla como input en "Add Parts to Sales Order" (confirmado en Test panel). Si algún día deja de venir, mover la validación a un applet de extensión con GraphQL.
+- **Phase-0 (rellenar tras verificar):** confirmar en el Test panel que `partNumber.partNumberLabels` se puebla como input en "Add Parts to Sales Order". Si viniera vacío, mover la validación a un applet de extensión con GraphQL.
 ```
 
 - [ ] **Step 2: Commit**
