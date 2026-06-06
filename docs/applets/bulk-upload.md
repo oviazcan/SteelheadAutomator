@@ -4,6 +4,25 @@ Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Mod
 
 > **Spec y plan de la 1.5.20:** [`docs/superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md`](../superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md) · [`docs/superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md`](../superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md)
 
+## Refactor completo (en curso) — F1 (config 1.6.40, 2026-06-06) — Módulos puros + golden tests
+
+**Spec/plan del refactor:** [`docs/superpowers/specs/2026-06-06-bulk-upload-refactor-design.md`](../superpowers/specs/2026-06-06-bulk-upload-refactor-design.md) · [`docs/superpowers/plans/2026-06-06-bulk-upload-refactor-F1.md`](../superpowers/plans/2026-06-06-bulk-upload-refactor-F1.md)
+
+Refactor en 5 fases (F1 extracción/tests · F2 memory+storage · F3 UI panel único + 2 barras · F4 pipeline consolidado worker per-PN · F5 intención + fast-path SOLO_PRECIO).
+
+**F1 — refactor estructural sin cambio de comportamiento (deployado, validado por usuario "se ve igual"):**
+- Extraídas las funciones PURAS a módulos testeables (`node --test`):
+  - `bulk-upload-parse.js` — `toBool/isDash/resolveStr/resolveNum/cell/cellNum/parseCSV/buildDimensions` + constantes (`PRICE_UNIT_MAP`, `PREDICTIVE_MATERIALS`, `HEADER_KEYS`).
+  - `bulk-upload-classify.js` — 15 funciones (equivalencias, matching IBMS/composite/near, dedup, chunking), copia byte-fiel de L6525-6984. Dep externa: `window.SteelheadBulkCC`.
+- `bulk-upload.js` consume vía destructuring con nombres idénticos (0 call sites tocados); −510 líneas. `resolveUnitId`/`parseRows` NO extraídos (closure).
+- **42 golden tests** congelan invariantes blank/dash/data (#1), equivalencias de metales, blank-acabados (#7), fix homónimos 1.4.28.
+- `config.json`: parse+classify agregados al array `scripts` (carga-masiva + global) ANTES de `bulk-upload.js`; version 1.6.40.
+- `tools/steelhead_probe.py` — lecturas no destructivas vía SteelheadClient de Reportes SH + hashes de config. **Shapes confirmados:** FK escalares (`customerId`, `defaultProcessNodeId`, `geometryTypeId`, `partNumberGroupId`) **no se piden** en GetPartNumber — solo relacionales (`customerByCustomerId.id`); el FK-fallback es la única fuente. Detail completo de 1 PN ≈ **14.8 MB** → valida el seed slim para F4.
+
+**Observaciones de UI del usuario (capturadas para F3):**
+- Siguen 3 capas que se traslapan: menú del Automator (arriba-der) + preview grande ("v10 — COTIZACIÓN + NP") + modal `confirmUnresolvedProcesses` (overlay aparte). F3 las unifica en panel derecho expandible + confirmaciones internas + 2 barras.
+- El menú mezcla **"Descargar Plantilla + Catálogos"** y **"Actualizar Catálogos"** (solapados); la plantilla Excel es setup, no operación → revisar/separar en F3.
+
 ## 1.5.20 (config 1.6.38, 2026-06-05) — Actualización de precios: matching con acabados vacíos + footprint ControlCambios + inputSchemaId dinámico
 
 **Objetivo:** habilitar bulk-upload para **actualizar precios** de PNs existentes,
