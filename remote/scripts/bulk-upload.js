@@ -6016,24 +6016,36 @@ const BulkUpload = (() => {
             }
           }
 
-          for (const [csName, adds] of insertsBySpec) {
-            let added = 0;
-            for (const pa of adds) {
-              if (isStale(myRunIdLocal)) return;
-              try {
-                await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
-                added++;
-              } catch (e) {
-                const msg = String(e);
-                if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
-                  // Skip silencioso — ya presente (race con otro worker o un retry).
-                } else {
-                  errors.push(`AddParams "${part.pn}" spec "${csName}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
+          // F4: batch — acumular TODOS los params nuevos del PN en UNA llamada AddParamsToPartNumber.
+          // Antes: 1 round-trip por param (N specs × M params c/u). Ahora: 1 por PN en el caso común.
+          // Fallback uno-por-uno SOLO si el batch falla (ej. exclusion-constraint de un param ya
+          // presente por race/retry) → mismo resultado que el camino viejo, sin riesgo.
+          const allAdds = [];
+          for (const [csName, adds] of insertsBySpec) for (const pa of adds) allAdds.push({ csName, pa });
+          if (allAdds.length) {
+            if (isStale(myRunIdLocal)) return;
+            try {
+              await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: allAdds.map(a => a.pa) } }, 'AddParamsToPartNumber');
+              syncCounters.synced += allAdds.length;
+              log(`  PN "${part.pn}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
+            } catch (eBatch) {
+              if (isBail(eBatch)) throw eBatch;
+              warn(`AddParams batch "${part.pn}" falló (${String(eBatch).substring(0, 80)}) — fallback uno-por-uno`);
+              for (const { csName, pa } of allAdds) {
+                if (isStale(myRunIdLocal)) return;
+                try {
+                  await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
+                  syncCounters.synced++;
+                } catch (e) {
+                  const msg = String(e);
+                  if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
+                    // Skip silencioso — ya presente (race con otro worker o un retry).
+                  } else {
+                    errors.push(`AddParams "${part.pn}" spec "${csName}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
+                  }
                 }
               }
             }
-            syncCounters.synced += added;
-            if (added) log(`  PN "${part.pn}" spec "${csName}": ${added} params nuevos sincronizados (processNodeId=null)`);
           }
         } catch (e) {
           if (isBail(e)) throw e;

@@ -24,7 +24,8 @@
     existingLabelIds = existingLabelIds || [];
     const labelsAreDash = csvLabels.length === 1 && isDash(csvLabels[0]);
     if (labelsAreDash) {
-      return { labelIdsToSend: [], unknownLabels: [], decision: 'clear' };
+      // matchedLabelIds:[] → stats.labelsSet no incrementa (igual que el inline).
+      return { labelIdsToSend: [], unknownLabels: [], matchedLabelIds: [], decision: 'clear' };
     }
     const labelIds = [];
     const unknownLabels = [];
@@ -38,7 +39,9 @@
     if (!csvHadLabels) { labelIdsToSend = existingLabelIds; decision = 'preserve-empty'; }
     else if (allLabelsUnknown) { labelIdsToSend = existingLabelIds; decision = 'preserve-allunknown'; }
     else { labelIdsToSend = labelIds; decision = 'replace'; }
-    return { labelIdsToSend, unknownLabels, decision };
+    // matchedLabelIds = los ids realmente encontrados en el catálogo (para stats.labelsSet,
+    // que el inline incrementa con labelIds.length ANTES de decidir labelIdsToSend).
+    return { labelIdsToSend, unknownLabels, matchedLabelIds: labelIds, decision };
   }
 
   // decideDimValueIds — qué dimensionCustomValueIds (Línea/Departamento) enviar.
