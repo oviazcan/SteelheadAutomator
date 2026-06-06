@@ -204,6 +204,13 @@ const BulkUpload = (() => {
     chunkParts, makeChunkQuoteName,
   } = Classify || {};
 
+  // F2: memory hardening compartido (host-cleanup-shared.js, cargado ANTES vía config).
+  // Si está, delegamos (DRY — comparte los mismos latches __sa_dd_stopped que el inline);
+  // si no (transición/fallback), cae al inline. makePeriodicDrain drena el Apollo cache
+  // del host cada 50 PNs en el pool de enrich (antes NO se drenaba periódicamente ahí).
+  const HostCleanup = window.SteelheadHostCleanup || null;
+  const periodicDrain = HostCleanup ? HostCleanup.makePeriodicDrain(50) : () => {};
+
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
   // stopSessionReplayRecording() pero en runs largos (3692 PNs) la memoria
   // seguía creciendo ~43 MB/min — el SDK mantiene observers de DOM activos
@@ -213,7 +220,12 @@ const BulkUpload = (() => {
   //   3) Monkey-patchea fetch para descartar requests al endpoint Datadog
   //      (cierra el loop: aunque el SDK acumule buffer, no logra enviarlo
   //       y los retries no inflan más el heap)
+  // F2: delega al módulo compartido si está cargado; si no, usa el inline (fallback de transición).
   function stopDatadogSessionReplay() {
+    if (HostCleanup) return HostCleanup.stopDatadogSessionReplay();
+    return _inlineStopDatadog();
+  }
+  function _inlineStopDatadog() {
     // 1.4.24 Fix EE: latch. La invocación desde startMemoryGauge.tick() corre
     // cada 2s mientras pct >= 70 — antes (1.4.20-1.4.23) eso ejecutaba todo el
     // bloque cada tick y, peor, llamaba log() cada vez. El log() de steelhead-api
@@ -5520,6 +5532,7 @@ const BulkUpload = (() => {
           // STEP 6b vuelve a fetchear fresh via GetPartNumber si necesita el pnNode.
           // Mismo patrón que Fix Z aplicó al STEP 5 (línea 3332).
           if (pn.id) existingPnFullCache.delete(pn.id);
+          periodicDrain(); // F2: drena el Apollo cache del host cada 50 PNs en el pool de enrich
         }
 
         // 1.5.7: Calls dedicados para specs colisionantes detectadas en la
