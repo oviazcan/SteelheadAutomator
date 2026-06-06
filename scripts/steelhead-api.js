@@ -79,12 +79,28 @@ const SteelheadAPI = (() => {
     };
 
     const url = `${getBaseUrl()}${config?.steelhead?.graphqlEndpoint || '/graphql'}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(body)
-    });
+    // F2: AbortController por llamada. Default generoso (90s) — captura llamadas colgadas
+    // (SH sin responder por minutos, que dejaban el slot del runPool bloqueado) sin abortar
+    // queries lentas legítimas (<30s típico). Configurable vía config.steelhead.fetchTimeoutMs.
+    // El mensaje 'timeout' es retryable en bulk-upload (RETRYABLE_PATTERNS).
+    const timeoutMs = config?.steelhead?.fetchTimeoutMs || 90000;
+    const _ctrl = new AbortController();
+    const _timer = setTimeout(() => _ctrl.abort(), timeoutMs);
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+        signal: _ctrl.signal
+      });
+    } catch (e) {
+      if (e?.name === 'AbortError') throw new Error(`Request timeout (${timeoutMs}ms) en ${operationName}`);
+      throw e;
+    } finally {
+      clearTimeout(_timer);
+    }
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
