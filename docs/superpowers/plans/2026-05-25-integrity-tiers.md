@@ -184,7 +184,7 @@ git commit -m "feat(duplicate-tiers): esqueleto del módulo + test harness"
 Añade a `tools/test/duplicate-tiers.test.js`:
 
 ```js
-const NON_FINISH = ['SMY', 'STX', 'SXC', 'SRG', 'SCM', 'SQR', 'SQ2', 'NP desconocido', 'En desarrollo', 'Muestras', 'Lote', 'Obsoleto'];
+const NON_FINISH = ['SMY', 'STX', 'SXC', 'SRG', 'SCM', 'SQ1', 'SQ2', 'NP desconocido', 'En desarrollo', 'Muestras', 'Lote', 'Obsoleto'];
 
 test('isNonFinishLabel: matchea exact case-sensitive', () => {
   const M = loadModule();

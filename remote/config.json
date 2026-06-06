@@ -1,6 +1,6 @@
 {
-  "version": "1.6.37",
-  "lastUpdated": "2026-06-04T22:45",
+  "version": "1.6.38",
+  "lastUpdated": "2026-06-06T12:03",
   "extensionVersion": "1.6.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -342,7 +342,7 @@
           "purgeAgeDays": 7
         },
         "nonFinishLabelNames": [
-          "SMY", "STX", "SXC", "SRG", "SCM", "SQR", "SQ2",
+          "SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2",
           "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"
         ],
         "metalEquivalents": [

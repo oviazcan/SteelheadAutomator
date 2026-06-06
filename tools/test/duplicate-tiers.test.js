@@ -32,7 +32,7 @@ test('harness boots and exports SADuplicateTiers', () => {
   assert.equal(typeof M.scoreFor, 'function');
 });
 
-const NON_FINISH = ['SMY', 'STX', 'SXC', 'SRG', 'SCM', 'SQR', 'SQ2', 'NP desconocido', 'En desarrollo', 'Muestras', 'Lote', 'Obsoleto'];
+const NON_FINISH = ['SMY', 'STX', 'SXC', 'SRG', 'SCM', 'SQ1', 'SQ2', 'NP desconocido', 'En desarrollo', 'Muestras', 'Lote', 'Obsoleto'];
 
 test('isNonFinishLabel: matchea exact case-sensitive', () => {
   const M = loadModule();

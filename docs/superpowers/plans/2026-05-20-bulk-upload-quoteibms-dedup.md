@@ -205,7 +205,7 @@ Agregar al final de `tools/test/bulk-upload-helpers.test.js`:
 ```js
 test('isNonFinishLabel matches blacklist exactly', () => {
   const H = loadHelpers();
-  const NON_FINISH = ['SMY', 'STX', 'SXC', 'SRG', 'SCM', 'SQR', 'SQ2', 'NP desconocido', 'En desarrollo', 'Muestras', 'Lote', 'Obsoleto'];
+  const NON_FINISH = ['SMY', 'STX', 'SXC', 'SRG', 'SCM', 'SQ1', 'SQ2', 'NP desconocido', 'En desarrollo', 'Muestras', 'Lote', 'Obsoleto'];
   assert.equal(H.isNonFinishLabel('SMY', NON_FINISH), true);
   assert.equal(H.isNonFinishLabel('NP desconocido', NON_FINISH), true);
   assert.equal(H.isNonFinishLabel('NIQ', NON_FINISH), false);
@@ -746,7 +746,7 @@ Edit `remote/config.json`: dentro de `steelhead.domain.bulkUpload`, agregar al f
 ```json
 ,
 "nonFinishLabelNames": [
-  "SMY", "STX", "SXC", "SRG", "SCM", "SQR", "SQ2",
+  "SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2",
   "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"
 ]
 ```

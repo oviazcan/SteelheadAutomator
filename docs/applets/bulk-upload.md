@@ -2584,7 +2584,7 @@ El `log` completo de la corrida ya se persiste en el XLSX de reporte (`bulk-uplo
 
 ### Causa raíz (5 bugs interconectados)
 
-**Bug 1 — `isNonFinishLabel` case+space-sensitive.** Línea 4164 usaba `nonFinishList.some(nf => nf.toUpperCase() === String(name).toUpperCase())` que NO trimea espacios. Si Steelhead devolvía `"SRG "` (con trailing space) o `"srg"` (lowercase, edge no observado pero posible), las 7 plantas (`SCM/SMY/SQR/SQ2/SRG/STX/SXC`) escapaban al filtro y contaban como acabados → "Decapado + STX" se comparaba contra "Decapado" del CSV y fallaba.
+**Bug 1 — `isNonFinishLabel` case+space-sensitive.** Línea 4164 usaba `nonFinishList.some(nf => nf.toUpperCase() === String(name).toUpperCase())` que NO trimea espacios. Si Steelhead devolvía `"SRG "` (con trailing space) o `"srg"` (lowercase, edge no observado pero posible), las 7 plantas (`SCM/SMY/SQ1/SQ2/SRG/STX/SXC`) escapaban al filtro y contaban como acabados → "Decapado + STX" se comparaba contra "Decapado" del CSV y fallaba.
 
 **Bug 2 — Chips en modal no aplicaban `isNonFinishLabel`.** El render de chips CSV vs candidato (1737-1748 y 1753-1756) iteraba `r.csvLabels` y `candObjs` raw, sin filtrar nonFinish. Aunque el matcher SÍ los filtraba para clasificar, el operador veía chip "STX" o "SCM" pintado como `miss` en pantalla y dudaba si la fila debía ser match.
 
@@ -3050,7 +3050,7 @@ Refactor mayor del applet `bulk-upload.js` (1,709 → 2,427 LOC, +844 / –104).
 - **Pase 1 (autoritativo):** match por `customInputs.DatosAdicionalesNP.QuoteIBMS`. Resuelve renombres del PN (mismo IBMS, nombre nuevo → MODIFY al PN viejo).
 - **Pase 2 (composite):** `(customerId, name, metalBase, acabadosOrdenados)` con regla anti-colisión: si ambos IBMS no-vacíos y distintos, cae a Pase 3 en vez de MODIFY ciego.
 - **Pase 3 (near-match):** hasta 3 candidatos por nombre exacto, ordenados por matchScore (acabados compartidos + metalBase + IBMS preference + id asc). El usuario decide con dropdown.
-- **Blacklist de acabados:** `SMY, STX, SXC, SRG, SCM, SQR, SQ2, NP desconocido, En desarrollo, Muestras, Lote, Obsoleto` se ignoran al construir el composite (etiquetas operativas, no acabados químicos).
+- **Blacklist de acabados:** `SMY, STX, SXC, SRG, SCM, SQ1, SQ2, NP desconocido, En desarrollo, Muestras, Lote, Obsoleto` se ignoran al construir el composite (etiquetas operativas, no acabados químicos).
 - **MODIFY overwrites everything** desde el CSV (no merge). Esto es por diseño del flujo de "actualización masiva" de Schneider.
 - **Auto-detect dual-mode:** `parts.length > massiveThreshold` (default 1000) → modo masivo (prefetch global de PNs del cliente, ~250 queries); ≤1000 → modo día (on-demand AllPartNumbers searchQuery por PN).
 - **Reporte XLSX** con 3 hojas: Resumen (stats por pase), Decisiones Pase 3 (auditoría línea por línea), Errores.

@@ -108,7 +108,7 @@ Se agrega a `remote/config.json` en `steelhead.domain.bulkUpload`:
 
 ```json
 "nonFinishLabelNames": [
-  "SMY", "STX", "SXC", "SRG", "SCM", "SQR", "SQ2",
+  "SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2",
   "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"
 ]
 ```
