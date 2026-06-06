@@ -48,6 +48,8 @@ Verificado: la etiqueta `Lote` aparece en la WO 2503 recién creada al guardar.
 
 ## Validación de etiqueta de planta Schneider vs ship-to (2026-06-06)
 
+> **Estado (2026-06-06):** el hook está en `main` (espejo `powertools/synced/received-order/received-order.ts`) pero **NO pegado en el Power Tool de Steelhead todavía** — el ERP sigue corriendo el código viejo. Para activarlo: pegar el `.ts` en el editor low-code + Save (ver T3 en `docs/superpowers/plans/2026-06-06-received-order-schneider-plant-label-validation.md`). Phase-0 (confirmar que `partNumber.partNumberLabels` llega poblado) sin verificar aún. Nota: el fix de config `SQR→SQ1` SÍ está live (gh-pages 1.6.39); esto es independiente.
+
 Cada NP de una OV Schneider (`customerName.includes("schneider")`, cubre razón social MEXICO y USA INC) debe traer la etiqueta de su planta (`SXX`) y coincidir con la planta del `shipToAddress`. Si no → chip rojo (`severity:'error'`), patrón advisory igual a "NP Desconocido" (no bloquea el Save por API; guía al operador a no agregar el NP).
 
 - **Resolución de planta** desde `shipToAddress.address` por substrings discriminantes (no por dirección completa, que cambia). Mapa código→substrings y lógica en `tools/lib/schneider-plants.js` (canónico, probado en `tools/test/received-order-plant.test.js`); el hook lo **transcribe** inline (los Power Tools no importan).
