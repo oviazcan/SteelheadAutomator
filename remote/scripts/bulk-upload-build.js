@@ -108,8 +108,46 @@
                       [pn, 'partNumberGroupByPartNumberGroupId', 'partNumberGroupId']], null);
   }
 
+  // decideDims — partNumberDimensions físicas con preserve-on-missing (REPLACE de SH).
+  // Réplica fiel de bulk-upload.js L5334-5350.
+  //   dimsAreDash             → []                         (borrar explícito)
+  //   csvDims (no vacío)      → csvDims                    (reemplazar)
+  //   CSV sin dims            → reconstruir de existingPnNode (preservar físicas)
+  // csvDims: resultado de buildDimensions(part.dims, DOMAIN) ya calculado por el caller.
+  function decideDims(csvDims, dimsAreDash, existingPnNode) {
+    if (dimsAreDash) return [];
+    if (csvDims && csvDims.length) return csvDims;
+    return (existingPnNode && existingPnNode.partNumberDimensionsByPartNumberId
+      ? existingPnNode.partNumberDimensionsByPartNumberId.nodes || [] : [])
+      .filter(d => !d.archivedAt && d.geometryTypeDimensionTypeId && ((d.unitByUnitId && d.unitByUnitId.id) ?? d.unitId) != null)
+      .map(d => ({
+        geometryTypeDimensionTypeId: d.geometryTypeDimensionTypeId,
+        dimensionValue: d.dimensionValue,
+        unitId: (d.unitByUnitId && d.unitByUnitId.id) ?? d.unitId,
+      }));
+  }
+
+  // decideOptInOuts — validación 1er artículo, TRI-STATE (fix 1.5.13: toBool('')=false borraba).
+  // Réplica fiel de bulk-upload.js L5387-5403.
+  //   true  → activar (un optInOut por cada domainNodeId)
+  //   null  → CSV vacío → preservar los existentes (rebuild de existingPnNode)
+  //   false → desactivar explícito → []
+  function decideOptInOuts(validacion1er, domainNodeIds, existingPnNode) {
+    if (validacion1er === true) {
+      return (domainNodeIds || []).map(nodeId => ({ processNodeId: nodeId, processNodeOccurrence: 1, cancelOthers: false }));
+    }
+    if (validacion1er === null) {
+      const exOpts = (existingPnNode && existingPnNode.processNodePartNumberOptInoutsByPartNumberId
+        ? existingPnNode.processNodePartNumberOptInoutsByPartNumberId.nodes || [] : []);
+      return exOpts
+        .map(o => ({ processNodeId: o.processNodeId, processNodeOccurrence: o.processNodeOccurrence ?? 1, cancelOthers: o.cancelOthers ?? false }))
+        .filter(o => o.processNodeId != null);
+    }
+    return []; // false → desactivar explícito
+  }
+
   const api = {
-    isDash, decideLabelIds, decideDimValueIds, resolveFk,
+    isDash, decideLabelIds, decideDimValueIds, decideDims, decideOptInOuts, resolveFk,
     resolveCustomerId, resolveDefaultProcessNodeId, resolveGeometryTypeId, resolveGroupIdFallback,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

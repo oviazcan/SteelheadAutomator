@@ -100,3 +100,48 @@ test('resolveGeometryTypeId / resolveGroupIdFallback: existingPnNode primero, lu
   assert.strictEqual(B.resolveGroupIdFallback(exG, pnG), 8);
   assert.strictEqual(B.resolveGroupIdFallback({}, pnG), 9);
 });
+
+// ─── decideDims (dimensiones físicas, preserve-on-missing) ───
+test('decideDims: dash → []', () => {
+  assert.deepStrictEqual(B.decideDims([{ geometryTypeDimensionTypeId: 1 }], true, {}), []);
+});
+
+test('decideDims: csvDims no vacío → csvDims', () => {
+  const csv = [{ geometryTypeDimensionTypeId: 1, dimensionValue: 10, unitId: 99 }];
+  assert.deepStrictEqual(B.decideDims(csv, false, {}), csv);
+});
+
+test('decideDims: CSV vacío → reconstruye de existingPnNode (filtra archivadas, usa unitByUnitId.id)', () => {
+  const ex = { partNumberDimensionsByPartNumberId: { nodes: [
+    { geometryTypeDimensionTypeId: 1, dimensionValue: 10, unitByUnitId: { id: 99 } },
+    { geometryTypeDimensionTypeId: 2, dimensionValue: 20, unitByUnitId: { id: 99 }, archivedAt: '2026-01-01' }, // archivada → fuera
+  ] } };
+  const r = B.decideDims([], false, ex);
+  assert.deepStrictEqual(r, [{ geometryTypeDimensionTypeId: 1, dimensionValue: 10, unitId: 99 }]);
+});
+
+test('decideDims: CSV vacío sin existingPnNode → []', () => {
+  assert.deepStrictEqual(B.decideDims([], false, null), []);
+});
+
+// ─── decideOptInOuts (validación 1er artículo, TRI-STATE — fix 1.5.13) ───
+test('decideOptInOuts: true → activa con domainNodeIds', () => {
+  const r = B.decideOptInOuts(true, [501, 502], {});
+  assert.deepStrictEqual(r, [
+    { processNodeId: 501, processNodeOccurrence: 1, cancelOthers: false },
+    { processNodeId: 502, processNodeOccurrence: 1, cancelOthers: false },
+  ]);
+});
+
+test('decideOptInOuts: null (CSV vacío) → preserva los existentes', () => {
+  const ex = { processNodePartNumberOptInoutsByPartNumberId: { nodes: [
+    { processNodeId: 700, processNodeOccurrence: 2, cancelOthers: true },
+    { processNodeId: null }, // se filtra
+  ] } };
+  const r = B.decideOptInOuts(null, [501], ex);
+  assert.deepStrictEqual(r, [{ processNodeId: 700, processNodeOccurrence: 2, cancelOthers: true }]);
+});
+
+test('decideOptInOuts: false → [] (desactivar explícito)', () => {
+  assert.deepStrictEqual(B.decideOptInOuts(false, [501], { processNodePartNumberOptInoutsByPartNumberId: { nodes: [{ processNodeId: 700 }] } }), []);
+});
