@@ -1,6 +1,98 @@
 # `bulk-upload` — bitácora completa
 
-Versiones documentadas: 1.0.0 → 1.5.19 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
+
+> **Spec y plan de la 1.5.20:** [`docs/superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md`](../superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md) · [`docs/superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md`](../superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md)
+
+## 1.5.20 (config 1.6.38, 2026-06-05) — Actualización de precios: matching con acabados vacíos + footprint ControlCambios + inputSchemaId dinámico
+
+**Objetivo:** habilitar bulk-upload para **actualizar precios** de PNs existentes,
+donde el upload trae NP + precio pero **sin etiquetas de acabado** (el operador no
+las conoce ni le importan para un cambio de precio). Validado en piloto ("ya quedó",
+confirmado por el usuario). Deployado a gh-pages.
+
+### Feature A — *blank-acabados fallback* en `classifyOnePN`
+Cuando el upload **no trae acabados** (`csvAcabados === ''`, ya con las labels de
+planta `nonFinishLabelNames` filtradas) y hay ≥1 PN activo con ese nombre+cliente:
+- **1 candidato** → MODIFICA ese PN, **corre directo** (`autoDecided: true` →
+  `userDecided: true`), badge **"auto: NP más reciente"** en el preview.
+- **2+ candidatos** → preselecciona el **más reciente** (id más alto) en el dropdown
+  de Pase 3, exige confirmar.
+- `confidence` nuevo: `'name+blank-csv-recent'`. La rama va **ANTES** de
+  `labelsMatchFull`/`blankCandidate` (fix del review — ver abajo) para cubrir también
+  el caso común CSV-sin-acabados + candidato-sin-acabados.
+- **Regla preservada:** solo dispara con acabados vacíos. Si el upload trae acabados
+  **no vacíos** que difieren → sigue el comportamiento previo (default `NEW`).
+- "Más reciente" = id más alto (los ids de Steelhead son autoincrement). El helper
+  `decideBlankAcabados` ignora el ranking por metal/acabados a propósito: sin acabados
+  que comparar, el criterio es recencia, según pidió el usuario.
+
+### Feature B — footprint en `customInputs.ControlCambios`
+El usuario creó del lado de Steelhead el **schema `inputSchemaId 3932`** (dominio TLC),
+que ya incluye el campo **`ControlCambios`** (array de "Evento" con
+`{ Fecha, Usuario, Accion, Detalle, Version }`, `ui:order` al final de la ficha). Como
+vive **dentro del schema**, la UI de Steelhead lo preserva y renderiza — **sin la
+fragilidad** de un key fuera de schema.
+- Se appendea **una entrada por corrida por PN, solo si hubo cambio real**
+  (`computeAccion` devuelve vacío → no se loguea).
+- `Accion` (cortos, combinables por coma): `ALTA` (PN nuevo) · `PRECIO` (trae precio) ·
+  `ENRIQUECIMIENTO` (specs/dims/labels/metal/proceso).
+- `Usuario` = `CurrentUserDetails` → `currentSession.userByUserId.name` (1 llamada
+  cacheada al inicio de `execute`; fallback `"(desconocido)"`, no aborta).
+- `Version` = **versión del config** (`window.REMOTE_CONFIG.version`, NO `bulkCfg()`
+  que no la expone — ver fix del review).
+- `Fecha` = `new Date().toISOString()`. `Detalle` = best-effort; **`precioAnterior`
+  queda `null`** por ahora (muestra solo el precio nuevo, no el delta — mejora futura).
+- **Enganche:** en `enrichWorker`, justo **antes de `const pnInput`** (Call B), donde
+  `specsToApplyFiltered`/`dims`/`labelIdsToSend`/`pnProcessId` ya están resueltos.
+  `mergedCI` pasó de `const` a `let` (se inicializa a `{}` si era null) y se modifica
+  por referencia → Call B lo lleva. Append no-destructivo (preserva historial previo).
+  Sin cap de entradas (audit completo).
+
+### Fix clave — `inputSchemaId` dinámico (deja de degradar PNs a 3456)
+bulk-upload hardcodeaba `DOMAIN.inputSchemaId_PN` (= 3456, obsoleto) en los 5 payloads
+de `SavePartNumber`. Eso degradaba cualquier PN tocado al schema viejo y tiraba
+`ControlCambios` fuera de schema. **Fix:** capturar `latestSchema.id` (que bulk-upload
+ya calculaba en el bloque de enums) en `runtimeInputSchemaId` y usarlo en STEP 2a,
+STEP 5, Call A, Call B y cleanup.
+- **A prueba de futuro y multi-dominio:** cada dominio devuelve su schema vigente vía
+  `GetPartNumbersInputSchema` (TLC → 3932, MTY → el suyo). No hay que parametrizar
+  config por dominio.
+- **Migra PNs viejos 3456 → 3932 al tocarlos** (3932 es superset: mismos campos +
+  ControlCambios). El backend tolera `required: ['BaseMetal']` (validación solo UI/RJSF).
+- Fallback `config.inputSchemaId_PN` bumpeado **3456 → 3932** por si la query falla.
+
+### Módulo nuevo `bulk-upload-cc.js`
+Helpers puros con dual-export (`window.SteelheadBulkCC` + `module.exports`), cargado
+ANTES de `bulk-upload.js` en el array `scripts` (applet `carga-masiva` + top-level):
+`pickMostRecent`, `decideBlankAcabados`, `computeAccion`, `buildDetalle`,
+`buildControlCambiosEntry`, `appendControlCambios`. Tests con `node --test` en
+`tools/test_bulk_upload_cc.js` (**19 pasando**). Degradación segura: si el módulo no
+cargó, Feature A cae al comportamiento previo y Feature B no escribe (sin romper).
+
+### Correcciones del code-review (3 reales, pre-deploy)
+1. **Versión del footprint equivocada:** `bulkCfg()` arma su objeto desde
+   `steelhead.domain.bulkUpload` y **no propaga `.version`** → estampaba el `VERSION`
+   del applet (`1.5.20`) en vez del config. Fix: `window.REMOTE_CONFIG.version`.
+2. **Gap en Feature A:** la rama estaba *después* de `labelsMatchFull`, así que el caso
+   común (CSV sin acabados + candidato sin acabados, `''==='' → true`) caía en
+   `name+labels-match` **sin auto-decidir**. Se movió antes de `labelsMatchFull`.
+3. **`dedupModifyTargets`:** se agregó `'name+blank-csv-recent'` al `confRank` (rank 3).
+   Hardening: `buildDetalle` no produce `"undefined USD"` si falta precio;
+   `decideBlankAcabados` null-safe si el candidato no tiene id.
+
+### Gotcha de coordinación — colisión de versión con el archiver
+La sesión paralela del `archiver` ya había publicado **`1.6.37`** en gh-pages. Esta
+sesión también había bumpeado a `1.6.37` independientemente → se subió a **`1.6.38`**
+para que el cache-bust dispare el reload. Lección: **una sola sesión bumpea config y
+deploya a gh-pages por vez** (regla del CLAUDE.md). Deploy hecho vía **worktree
+temporal de gh-pages** (`/tmp/sa-ghpages`) para no tocar el WIP de `main`; solo se
+escribieron `bulk-upload-cc.js` (nuevo), `bulk-upload.js` y `config.json` —
+`scripts/archiver.js` quedó intacto. Byte-exact verificado con `tools/check-deploy.sh`.
+
+### Pendientes derivados
+- `precioAnterior` real en el `Detalle` (leerlo de `existingPnNode.partNumberPricesByPartNumberId`) para mostrar el delta `ant → nvo`.
+- Evaluar cap de entradas de `ControlCambios` si crece de más en PNs muy tocados.
 
 ## 1.5.19 (config 1.6.36, 2026-06-04) — Fix: la LÍNEA de cotización nacía sin proceso (distinto del default del PN)
 
