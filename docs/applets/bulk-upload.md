@@ -21,7 +21,16 @@ Refactor en 5 fases (F1 extracción/tests · F2 memory+storage · F3 UI panel ú
 
 **Observaciones de UI del usuario (capturadas para F3):**
 - Siguen 3 capas que se traslapan: menú del Automator (arriba-der) + preview grande ("v10 — COTIZACIÓN + NP") + modal `confirmUnresolvedProcesses` (overlay aparte). F3 las unifica en panel derecho expandible + confirmaciones internas + 2 barras.
-- El menú mezcla **"Descargar Plantilla + Catálogos"** y **"Actualizar Catálogos"** (solapados); la plantilla Excel es setup, no operación → revisar/separar en F3.
+- El menú mezcla **"Descargar Plantilla + Catálogos"** y **"Actualizar Catálogos"** (solapados); la plantilla Excel es setup, no operación. **Decisión usuario: quitar "Descargar Plantilla" del menú de operación en F3.**
+
+**F2 — memory hardening compartido + robustez (config 1.6.41, 2026-06-06, deployado; validación de usuario pendiente):**
+- Adoptado `host-cleanup-shared.js` (en el array `scripts` de carga-masiva + global, antes de `bulk-upload.js`). `stopDatadogSessionReplay` delega a `window.SteelheadHostCleanup` (DRY; mismos latches `__sa_dd_stopped` que el inline, que queda como `_inlineStopDatadog` fallback de transición). Verificado: carga con y sin host-cleanup.
+- **`makePeriodicDrain(50)`** ahora SÍ drena el Apollo cache del host en el `finally` del `enrichWorker` (antes ese pool no drenaba → crecimiento sin tope en corridas largas).
+- **jitter ±25%** en `withRetry` (anti thundering-herd de los 8 workers concurrentes).
+- **`AbortController`** por llamada en `steelhead-api.js` `query()` (default 90s configurable vía `config.steelhead.fetchTimeoutMs`; libera el slot del runPool cuando SH cuelga; `AbortError`→'timeout' retryable). Default generoso porque steelhead-api es compartido por 25 usos.
+- Fix tooltip del chip "validada": dice IndexedDB (no localStorage; el resume migró en 1.4.27).
+- **Correcciones de mapeo:** `clearDefaultProcess` NO es flag muerto (lo lee el builder en L4607/4741/5396) — no se tocó.
+- **Diferido a F3:** `sa_load_history` → IndexedDB. Razón: lo lee `extension/background.js` (`view-load-history`, `download-load-csv` vía `executeScript` world MAIN en la tab); migrar requiere cambiar background.js + republicar el `.zip`, que ya pasa en F3 (UI toca extension/). Plan: `bulk-upload.js` escribe `saIdbSet` + expone `getLoadHistory()`; `background.js` usa `window.BulkUpload.getLoadHistory()`.
 
 ## 1.5.20 (config 1.6.38, 2026-06-05) — Actualización de precios: matching con acabados vacíos + footprint ControlCambios + inputSchemaId dinámico
 
