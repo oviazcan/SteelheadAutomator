@@ -851,6 +851,16 @@ const BulkUpload = (() => {
       #sa-bu-panel .sa-stats span b{color:#38bdf8;font-weight:600}
       #sa-bu-panel .sa-bar{height:6px;background:#0f172a;border-radius:3px;overflow:hidden;margin-bottom:10px}
       #sa-bu-panel .sa-bar-fill{height:100%;background:linear-gradient(90deg,#2563eb,#38bdf8);width:0%;transition:width 0.25s}
+      /* F3: dos barras (global del pipeline + paso actual del pool), antes pisaban la misma */
+      #sa-bu-panel .sa-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+      #sa-bu-panel .sa-bar-row .sa-bar{flex:1;margin-bottom:0}
+      #sa-bu-panel .sa-bar-label{font-size:10px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;min-width:104px;white-space:nowrap;text-align:right}
+      #sa-bu-panel .sa-bar-step{background:linear-gradient(90deg,#0d9488,#5eead4)}
+      /* F3: panel único que crece (preview) y se encoge (ejecución) por data-phase */
+      #sa-bu-panel{transition:width .25s ease}
+      #sa-bu-panel[data-phase="preview"]{width:min(80vw,1500px)}
+      #sa-bu-panel[data-phase="confirm"]{width:540px}
+      #sa-bu-panel[data-phase="running"],#sa-bu-panel[data-phase="done"]{width:480px}
       #sa-bu-panel .sa-log{max-height:200px;overflow-y:auto;font-size:11px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0f172a;border-radius:6px;padding:8px 10px;white-space:pre-wrap;line-height:1.5}
       #sa-bu-panel .sa-actions{padding:10px 18px;border-top:1px solid #334155;display:flex;justify-content:flex-end;gap:8px}
       #sa-bu-panel .sa-btn{padding:7px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity 0.2s}
@@ -887,7 +897,8 @@ const BulkUpload = (() => {
           <span>Reintentos: <b id="sa-bu-retried">0</b></span>
           <span>Errores: <b id="sa-bu-errors">0</b></span>
         </div>
-        <div class="sa-bar"><div class="sa-bar-fill" id="sa-bu-bar"></div></div>
+        <div class="sa-bar-row"><span class="sa-bar-label" id="sa-bu-global-label">Paso —/10</span><div class="sa-bar"><div class="sa-bar-fill" id="sa-bu-bar-global"></div></div></div>
+        <div class="sa-bar-row"><span class="sa-bar-label" id="sa-bu-step-label"></span><div class="sa-bar"><div class="sa-bar-fill sa-bar-step" id="sa-bu-bar-step"></div></div></div>
         <div class="sa-log" id="sa-bu-log"></div>
       </div>
       <div class="sa-actions">
@@ -997,6 +1008,8 @@ const BulkUpload = (() => {
   function setPanelPhase(text) {
     state.phase = text;
     const el = document.getElementById('sa-bu-phase'); if (el) el.textContent = text;
+    // F3: refleja la fase como label de la barra global (evita "Paso —/10" estático).
+    const gl = document.getElementById('sa-bu-global-label'); if (gl) gl.textContent = text;
     // 1.4.10: limpiar sub-fase cuando cambia la fase principal (la sub-fase es
     // propia del step actual y no debe arrastrarse al siguiente).
     setPanelSubPhase('');
@@ -1013,10 +1026,12 @@ const BulkUpload = (() => {
     state.progress.total = total;
     const c = document.getElementById('sa-bu-current');
     const t = document.getElementById('sa-bu-total');
-    const bar = document.getElementById('sa-bu-bar');
+    const bar = document.getElementById('sa-bu-bar-step'); // F3: barra del PASO actual (pool)
     if (c) c.textContent = String(current);
     if (t) t.textContent = String(total);
     if (bar) bar.style.width = (total ? Math.round((current / total) * 100) : 0) + '%';
+    const sl = document.getElementById('sa-bu-step-label');
+    if (sl) sl.textContent = total ? `${current}/${total}` : '';
   }
   function setPanelCounters() {
     const o = document.getElementById('sa-bu-ok'); if (o) o.textContent = String(state.counters.ok);
@@ -2005,8 +2020,25 @@ const BulkUpload = (() => {
     document.head.appendChild(s);
   }
 
-  function createOverlay() { const ov = document.createElement('div'); ov.className = 'dl9-overlay'; const md = document.createElement('div'); md.className = 'dl9-modal'; ov.appendChild(md); document.body.appendChild(ov); return { overlay: ov, modal: md }; }
-  function removeOverlay(ov) { if (ov?.parentNode) ov.parentNode.removeChild(ov); }
+  // F3: un solo modal visible a la vez. El panel de progreso (#sa-bu-panel) se muestra
+  // ANTES del preview (showPanel corre antes que showPreview), así que se traslapaban.
+  // Mientras haya un overlay abierto, ocultamos el panel; lo restauramos al cerrar el último.
+  function createOverlay() {
+    const panel = document.getElementById('sa-bu-panel');
+    if (panel) panel.style.display = 'none';
+    const ov = document.createElement('div'); ov.className = 'dl9-overlay';
+    const md = document.createElement('div'); md.className = 'dl9-modal';
+    ov.appendChild(md); document.body.appendChild(ov);
+    return { overlay: ov, modal: md };
+  }
+  function removeOverlay(ov) {
+    if (ov?.parentNode) ov.parentNode.removeChild(ov);
+    // Restaurar el panel solo si ya no queda ningún overlay abierto (ej. confirmación sobre preview).
+    if (!document.querySelector('.dl9-overlay')) {
+      const panel = document.getElementById('sa-bu-panel');
+      if (panel) panel.style.display = 'flex';
+    }
+  }
 
   // 1.5.12: modal blocking cuando hay nombres de proceso que no existen en el
   // catálogo de Steelhead (típicamente fórmulas como "Combinación no existente").
@@ -3019,7 +3051,15 @@ const BulkUpload = (() => {
   // duplicaba info, además de acumular textContent sin recorte (causa raíz del
   // OOM de la pestaña en runs de 4k+ PNs). Mantenemos la firma porcentual para
   // no romper los call-sites que pasan 5/10/30/55/78/85/100.
-  function setProgressBar(p) { const b = document.getElementById('sa-bu-bar'); if (b) b.style.width = p + '%'; }
+  // F3: barra GLOBAL del pipeline (separada de la barra del paso/pool, que vive en setPanelProgress).
+  function setProgressBar(p) { const b = document.getElementById('sa-bu-bar-global'); if (b) b.style.width = p + '%'; }
+  // F3: helper de stepper — actualiza barra global + label "Paso N/total · etiqueta".
+  function setGlobalStep(n, total, label) {
+    const b = document.getElementById('sa-bu-bar-global');
+    if (b) b.style.width = (total ? Math.round((n / total) * 100) : 0) + '%';
+    const gl = document.getElementById('sa-bu-global-label');
+    if (gl) gl.textContent = label ? `Paso ${n}/${total} · ${label}` : `Paso ${n}/${total}`;
+  }
 
   // V10: search for existing quotes by customer + name
   async function findExistingQuote(customerId, name) {
