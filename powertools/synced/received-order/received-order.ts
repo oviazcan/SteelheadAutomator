@@ -24,6 +24,21 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
   const LOTE_UNIT_ID = 5348;
   const LOTE_LABEL_NAME = "Lote";
 
+  // ── Plantas Schneider: código de etiqueta SXX → substrings que la identifican
+  // dentro de shipToAddress.address (lowercased). Fuente de verdad/lógica:
+  // tools/lib/schneider-plants.js (probado en tools/test/received-order-plant.test.js).
+  // Esto es transcripción para el runtime low-code. SQR fue renombrada a SQ1 (sin alias).
+  const SCHNEIDER_PLANTS: { code: string; name: string; needles: string[] }[] = [
+    { code: "STX", name: "Tlaxcala", needles: ["acuamanala", "santa ana", "90860"] },
+    { code: "SXC", name: "Xicohténcatl", needles: ["ocotitla", "90434"] },
+    { code: "SMY", name: "Monterrey", needles: ["apodaca", "escobedo 317", "66627"] },
+    { code: "SQ1", name: "Querétaro 1", needles: ["vesta", "vpq07", "76294"] },
+    { code: "SQ2", name: "Querétaro 2", needles: ["parque industrial aeropuerto", "lote 56", "76295"] },
+    { code: "SCM", name: "CDMX", needles: ["michoacán 20", "michoacan 20", "complejo industrial tecnológico", "09208"] },
+    { code: "SRG", name: "Rojo Gómez", needles: ["rojo gómez", "rojo gomez", "09300"] },
+  ];
+  const SCHNEIDER_PLANT_CODES = new Set(SCHNEIDER_PLANTS.map((p) => p.code));
+
   const loteLabel = inputs.allLabels.find((l) => l.name === LOTE_LABEL_NAME);
   const divisa =
     (inputs.receivedOrder?.customInputs?.Divisa as string | undefined) ?? "USD";
@@ -39,6 +54,14 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
     customerName.includes("schneider") &&
     customerName.includes("mexico") &&
     shipToAddr.includes("javier rojo");
+
+  // Planta esperada de la OV (solo aplica a clientes Schneider). `shipToAddr` ya
+  // viene lowercased. `expectedPlant` null si no resuelve → se reporta como error.
+  const isSchneider = customerName.includes("schneider");
+  const expectedPlant = isSchneider
+    ? SCHNEIDER_PLANTS.find((p) => p.needles.some((n) => shipToAddr.includes(n))) ?? null
+    : null;
+  const shipToPlantUnresolved = isSchneider && expectedPlant == null;
 
   if (!inputs.rowData?.length) return result;
 
@@ -69,6 +92,10 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
   const sinRackChips: string[] = [];
   const loteChips: string[] = [];
   const infoChips: string[] = [];
+  // Etiqueta de planta Schneider vs ship-to (dedup por partNumber.id).
+  const plantCheckedSet = new Set<number>();
+  const plantMissingChips: string[] = [];
+  const plantMismatchChips: string[] = [];
 
   for (const row of inputs.rowData) {
     const partNumber = row.partNumber;
@@ -91,6 +118,22 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
       // No hay canal en LowCodeResult para escribir partNumberLabels
       // (probado 2026-05-15 con varias formas casteadas, ninguna aplicó).
       // El operador etiqueta el PN manual; el mensaje de error lo guía.
+    }
+
+    // ── Etiqueta de planta Schneider vs ship-to ──
+    // Cada NP de una OV Schneider debe traer la etiqueta de su planta (SXX) y debe
+    // coincidir con expectedPlant. Pasa si alguna etiqueta de planta del NP == esperada
+    // (cubre NPs multi-planta). partNumberLabels es de solo lectura (input del runtime).
+    if (isSchneider && expectedPlant && !plantCheckedSet.has(partNumber.id)) {
+      plantCheckedSet.add(partNumber.id);
+      const plantLabels = (partNumber.partNumberLabels ?? [])
+        .map((l) => l?.name)
+        .filter((n): n is string => !!n && SCHNEIDER_PLANT_CODES.has(n));
+      if (plantLabels.length === 0) {
+        plantMissingChips.push(`'${partNumber.name}'`);
+      } else if (plantLabels.indexOf(expectedPlant.code) === -1) {
+        plantMismatchChips.push(`'${partNumber.name}' [${plantLabels.join("/")}]`);
+      }
     }
 
     // ── Info: nombre del Spec + rango de Espesor ──
@@ -284,6 +327,26 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
       message: `NP Desconocido — ${errorChips.join(" · ")}. Cancela esta OV, etiqueta cada NP con 'NP Desconocido' y avisa a Ingeniería.`,
     });
   }
+  // ── Etiqueta de planta Schneider (error rojo, su propia row) ──
+  if (shipToPlantUnresolved) {
+    const addr = inputs.receivedOrder?.shipToAddress?.address ?? "(sin dirección)";
+    helpers.addErrorMessage({
+      severity: "error",
+      message: `Planta Schneider no identificada — el ship-to «${addr}» no corresponde a ninguna de las 7 plantas (STX/SXC/SMY/SQ1/SQ2/SCM/SRG). Corrige la dirección de entrega de la OV; no validé etiquetas de planta.`,
+    });
+  } else if (plantMissingChips.length > 0 || plantMismatchChips.length > 0) {
+    const partes: string[] = [];
+    if (plantMissingChips.length > 0) {
+      partes.push(`Sin etiqueta de planta: ${plantMissingChips.join(", ")}`);
+    }
+    if (plantMismatchChips.length > 0) {
+      partes.push(`Etiqueta equivocada: ${plantMismatchChips.join(", ")}`);
+    }
+    helpers.addErrorMessage({
+      severity: "error",
+      message: `Etiqueta de planta ≠ ship-to (${expectedPlant!.code} ${expectedPlant!.name}) — ${partes.join(". ")}. No agregues estos NP a la OV/OT hasta corregir su etiqueta de planta SXX.`,
+    });
+  }
   const warningParts: string[] = [];
   if (sinPrecioChips.length > 0) {
     warningParts.push(`Sin precio default: ${sinPrecioChips.join(", ")}`);
@@ -326,7 +389,10 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
   if (
     errorChips.length === 0 &&
     sinPrecioChips.length === 0 &&
-    schneiderChips.length === 0
+    schneiderChips.length === 0 &&
+    plantMissingChips.length === 0 &&
+    plantMismatchChips.length === 0 &&
+    !shipToPlantUnresolved
   ) {
     helpers.addErrorMessage({
       severity: "success",
