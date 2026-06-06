@@ -335,17 +335,22 @@ const getReceivedOrderCustomization = (inputs: Inputs, helpers: Helpers): LowCod
       message: `Planta Schneider no identificada — el ship-to «${addr}» no corresponde a ninguna de las 7 plantas (STX/SXC/SMY/SQ1/SQ2/SCM/SRG). Corrige la dirección de entrega de la OV; no validé etiquetas de planta.`,
     });
   } else if (plantMissingChips.length > 0 || plantMismatchChips.length > 0) {
-    const partes: string[] = [];
+    // Planta de la OV resuelta. Dos chips rojos independientes:
+    //   missing  → NP sin ninguna etiqueta de planta SXX
+    //   mismatch → NP con etiqueta de OTRA planta distinta a la de la OV
+    const ovPlant = `${expectedPlant!.code} (${expectedPlant!.name})`;
     if (plantMissingChips.length > 0) {
-      partes.push(`Sin etiqueta de planta: ${plantMissingChips.join(", ")}`);
+      helpers.addErrorMessage({
+        severity: "error",
+        message: `NP sin etiqueta de planta — ${plantMissingChips.join(", ")}. Asígnale la etiqueta de la OV: ${ovPlant}. Valida OV asignada.`,
+      });
     }
     if (plantMismatchChips.length > 0) {
-      partes.push(`Etiqueta equivocada: ${plantMismatchChips.join(", ")}`);
+      helpers.addErrorMessage({
+        severity: "error",
+        message: `Etiqueta de NP pertenece a otra Planta distinta — ${plantMismatchChips.join(", ")} vs Planta de la OV: ${ovPlant}. Valida OV asignada.`,
+      });
     }
-    helpers.addErrorMessage({
-      severity: "error",
-      message: `Etiqueta de planta ≠ ship-to (${expectedPlant!.code} ${expectedPlant!.name}) — ${partes.join(". ")}. No agregues estos NP a la OV/OT hasta corregir su etiqueta de planta SXX.`,
-    });
   }
   const warningParts: string[] = [];
   if (sinPrecioChips.length > 0) {
