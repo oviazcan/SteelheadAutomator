@@ -106,8 +106,42 @@
     return out;
   }
 
+  // F5: detección de intención de la corrida (para badge en preview + fast-path SOLO_PRECIO).
+  // Opera sobre los `parts` ya parseados (no sobre rows/COLS) — más robusto al layout v10/v11.
+  // partHasEnrich = el part trae CUALQUIER columna de enriquecimiento con dato O dash (ambos son
+  // intención de cambio de línea; solo el vacío no cuenta). El criterio espeja el de showPreview.
+  function partHasEnrich(p) {
+    if (!p) return false;
+    const arr = (a) => Array.isArray(a) && a.length > 0;
+    const dimsHave = p.dims && Object.values(p.dims).some(v => v != null);
+    const uc = p.unitConv || {};
+    const ucHave = uc.kgm != null || uc.cmk != null || uc.lm != null || uc.minPzasLote != null;
+    return arr(p.labels) || arr(p.specs) || arr(p.racks) || arr(p.predictiveUsage) || arr(p.products)
+      || dimsHave || ucHave
+      || !!p.metalBase || !!p.pnAlterno || !!p.codigoSAT || !!p.procesoOverride
+      || (p.validacion1er !== null && p.validacion1er !== undefined);
+  }
+
+  // classifyRunIntent — clasifica la corrida completa.
+  //   SOLO_PRECIO    : trae precio, NINGÚN enriquecimiento, y todos los PN ya existen → habilita fast-path
+  //   AJUSTE_LINEA   : trae enriquecimiento pero NO precio
+  //   ENRIQUECIMIENTO: trae enriquecimiento (con o sin precio)
+  //   ALTA           : ni precio ni enriquecimiento (típico de PN nuevos sin datos)
+  function classifyRunIntent(parts, allExisting) {
+    let hasPrice = false, hasEnrich = false;
+    for (const p of (parts || [])) {
+      if (p && p.precio != null) hasPrice = true;
+      if (partHasEnrich(p)) hasEnrich = true;
+    }
+    if (hasPrice && !hasEnrich && allExisting) return 'SOLO_PRECIO';
+    if (hasEnrich && !hasPrice) return 'AJUSTE_LINEA';
+    if (hasEnrich) return 'ENRIQUECIMIENTO';
+    return 'ALTA';
+  }
+
   const api = {
     toBool, isDash, resolveStr, resolveNum, cell, cellNum, parseCSV, buildDimensions,
+    partHasEnrich, classifyRunIntent,
     PRICE_UNIT_MAP, PREDICTIVE_MATERIALS, HEADER_KEYS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

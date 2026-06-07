@@ -84,3 +84,44 @@ test('constantes de dominio intactas', () => {
   assert.strictEqual(P.HEADER_KEYS['notas externas'], 'notasExternas');
   assert.strictEqual(P.HEADER_KEYS['válida hasta (días)'], 'validaDias');
 });
+
+// ─── F5: detección de intención de la corrida ───
+const emptyPart = () => ({ precio: null, labels: [], specs: [], racks: [], dims: {}, unitConv: {}, predictiveUsage: [], products: [], metalBase: '', pnAlterno: '', codigoSAT: '', procesoOverride: '', validacion1er: null });
+
+test('partHasEnrich: detecta cualquier columna de enriquecimiento (dato O dash)', () => {
+  assert.strictEqual(P.partHasEnrich(emptyPart()), false);
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), labels: ['Estaño'] }), true);
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), labels: ['-'] }), true); // dash = intención (borrar)
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), dims: { length: 10 } }), true);
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), unitConv: { kgm: 0.5 } }), true);
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), metalBase: 'Cobre' }), true);
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), procesoOverride: 'T301' }), true);
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), validacion1er: false }), true);  // desactivar = intención
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), validacion1er: null }), false);  // no especificado
+  assert.strictEqual(P.partHasEnrich({ ...emptyPart(), specs: [{ name: 'X' }] }), true);
+});
+
+test('classifyRunIntent: SOLO_PRECIO requiere precio + sin enrich + todos existentes', () => {
+  const soloPrecio = [{ ...emptyPart(), precio: 13.8 }, { ...emptyPart(), precio: 9.5 }];
+  assert.strictEqual(P.classifyRunIntent(soloPrecio, true), 'SOLO_PRECIO');
+  assert.strictEqual(P.classifyRunIntent(soloPrecio, false), 'ALTA'); // hay PN nuevos → no fast-path (precio sin enrich, no existentes)
+});
+
+test('classifyRunIntent: AJUSTE_LINEA = enrich sin precio', () => {
+  const ajuste = [{ ...emptyPart(), labels: ['Estaño'] }];
+  assert.strictEqual(P.classifyRunIntent(ajuste, true), 'AJUSTE_LINEA');
+});
+
+test('classifyRunIntent: ENRIQUECIMIENTO = enrich con precio', () => {
+  const enriq = [{ ...emptyPart(), precio: 5, labels: ['Estaño'] }];
+  assert.strictEqual(P.classifyRunIntent(enriq, true), 'ENRIQUECIMIENTO');
+});
+
+test('classifyRunIntent: ALTA = ni precio ni enrich', () => {
+  assert.strictEqual(P.classifyRunIntent([emptyPart()], false), 'ALTA');
+});
+
+test('classifyRunIntent: una sola fila con enrich basta para NO ser SOLO_PRECIO', () => {
+  const mixed = [{ ...emptyPart(), precio: 5 }, { ...emptyPart(), precio: 6, dims: { length: 3 } }];
+  assert.strictEqual(P.classifyRunIntent(mixed, true), 'ENRIQUECIMIENTO');
+});
