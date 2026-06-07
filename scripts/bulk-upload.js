@@ -382,6 +382,29 @@ const BulkUpload = (() => {
   let onProgress = () => {};
   function setProgressCallback(fn) { onProgress = fn; }
 
+  // F4: instrumentación de tiempos por fase. Mide qué fase domina el wall-clock real
+  // (clasificación/scan vs enrich vs cotización...) para optimizar con datos, no a ciegas.
+  // Se alimenta desde setPanelPhase (cada transición) y se vuelca en dumpPhaseTimings al final.
+  let _phaseT0 = 0;
+  let _phaseTimings = [];
+  function resetPhaseTimings() { _phaseT0 = Date.now(); _phaseTimings = []; }
+  function dumpPhaseTimings() {
+    try {
+      const now = Date.now();
+      if (_phaseT0 && state.phase) _phaseTimings.push({ phase: state.phase, ms: now - _phaseT0 });
+      if (!_phaseTimings.length) return;
+      const total = _phaseTimings.reduce((s, t) => s + t.ms, 0) || 1;
+      const top = [..._phaseTimings].sort((a, b) => b.ms - a.ms).slice(0, 8);
+      log('⏱️ Tiempos por fase (mayor a menor):');
+      for (const t of top) {
+        const s = (t.ms / 1000).toFixed(1);
+        const pct = Math.round((t.ms / total) * 100);
+        log(`    ${s}s (${pct}%) — ${t.phase}`);
+      }
+      log(`    Total medido: ${(total / 1000).toFixed(1)}s`);
+    } catch (_) { /* la telemetría nunca rompe la corrida */ }
+  }
+
   // ═══════════════════════════════════════════
   // CONFIG ACCESS (con defaults sanos si config no provee)
   // ═══════════════════════════════════════════
@@ -1006,6 +1029,10 @@ const BulkUpload = (() => {
   const PANEL_LOG_MAX = 200;
 
   function setPanelPhase(text) {
+    // F4: registrar cuánto duró la fase anterior antes de cambiar.
+    const _now = Date.now();
+    if (_phaseT0 && state.phase) _phaseTimings.push({ phase: state.phase, ms: _now - _phaseT0 });
+    _phaseT0 = _now;
     state.phase = text;
     const el = document.getElementById('sa-bu-phase'); if (el) el.textContent = text;
     // F3: refleja la fase como label de la barra global (evita "Paso —/10" estático).
@@ -3250,6 +3277,7 @@ const BulkUpload = (() => {
   // ═══════════════════════════════════════════
 
   async function execute(csvText) {
+    resetPhaseTimings(); // F4: arranca la medición de tiempos por fase
     const DOMAIN = api().getDomain();
     // 1.5.20: inputSchemaId vigente del dominio (3932 en TLC). Default al hardcoded
     // de config; se sobreescribe con latestSchema.id tras GetPartNumbersInputSchema.
@@ -6016,24 +6044,36 @@ const BulkUpload = (() => {
             }
           }
 
-          for (const [csName, adds] of insertsBySpec) {
-            let added = 0;
-            for (const pa of adds) {
-              if (isStale(myRunIdLocal)) return;
-              try {
-                await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
-                added++;
-              } catch (e) {
-                const msg = String(e);
-                if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
-                  // Skip silencioso — ya presente (race con otro worker o un retry).
-                } else {
-                  errors.push(`AddParams "${part.pn}" spec "${csName}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
+          // F4: batch — acumular TODOS los params nuevos del PN en UNA llamada AddParamsToPartNumber.
+          // Antes: 1 round-trip por param (N specs × M params c/u). Ahora: 1 por PN en el caso común.
+          // Fallback uno-por-uno SOLO si el batch falla (ej. exclusion-constraint de un param ya
+          // presente por race/retry) → mismo resultado que el camino viejo, sin riesgo.
+          const allAdds = [];
+          for (const [csName, adds] of insertsBySpec) for (const pa of adds) allAdds.push({ csName, pa });
+          if (allAdds.length) {
+            if (isStale(myRunIdLocal)) return;
+            try {
+              await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: allAdds.map(a => a.pa) } }, 'AddParamsToPartNumber');
+              syncCounters.synced += allAdds.length;
+              log(`  PN "${part.pn}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
+            } catch (eBatch) {
+              if (isBail(eBatch)) throw eBatch;
+              warn(`AddParams batch "${part.pn}" falló (${String(eBatch).substring(0, 80)}) — fallback uno-por-uno`);
+              for (const { csName, pa } of allAdds) {
+                if (isStale(myRunIdLocal)) return;
+                try {
+                  await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
+                  syncCounters.synced++;
+                } catch (e) {
+                  const msg = String(e);
+                  if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
+                    // Skip silencioso — ya presente (race con otro worker o un retry).
+                  } else {
+                    errors.push(`AddParams "${part.pn}" spec "${csName}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
+                  }
                 }
               }
             }
-            syncCounters.synced += added;
-            if (added) log(`  PN "${part.pn}" spec "${csName}": ${added} params nuevos sincronizados (processNodeId=null)`);
           }
         } catch (e) {
           if (isBail(e)) throw e;
@@ -6319,10 +6359,13 @@ const BulkUpload = (() => {
                   const sorted = [...prices].sort((a, b) => Number(b.id) - Number(a.id));
                   const newest = sorted[0];
                   if (newest) priceIdsForDefault.push(newest.id);
-                  const oldDefault = prices.find(p => p.isDefault && p.id !== newest.id);
+                  // F4 fix: el campo real es isDefaultPartNumberPrice (verificado contra shape de SH).
+                  // Antes leía p.isDefault (siempre undefined) → el unset-default nunca corría y el PN
+                  // podía quedar con 2 defaults.
+                  const oldDefault = prices.find(p => p.isDefaultPartNumberPrice && p.id !== newest.id);
                   if (oldDefault) priceIdsToUnsetDefault.push(oldDefault.id);
                 } else {
-                  const defaultPrice = prices.find(p => p.isDefault);
+                  const defaultPrice = prices.find(p => p.isDefaultPartNumberPrice);
                   if (defaultPrice) priceIdsToUnsetDefault.push(defaultPrice.id);
                 }
               } catch (e) {
@@ -6517,6 +6560,7 @@ const BulkUpload = (() => {
         await persistResumeState();
       }
       try { markPanelDone(errors.length === 0); } catch (_) {}
+      dumpPhaseTimings(); // F4: volcar el desglose de tiempos por fase al log
 
       try {
         generateRunReport(state, pnStatus, parts, stats, errors);
