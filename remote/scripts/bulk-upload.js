@@ -382,6 +382,29 @@ const BulkUpload = (() => {
   let onProgress = () => {};
   function setProgressCallback(fn) { onProgress = fn; }
 
+  // F4: instrumentación de tiempos por fase. Mide qué fase domina el wall-clock real
+  // (clasificación/scan vs enrich vs cotización...) para optimizar con datos, no a ciegas.
+  // Se alimenta desde setPanelPhase (cada transición) y se vuelca en dumpPhaseTimings al final.
+  let _phaseT0 = 0;
+  let _phaseTimings = [];
+  function resetPhaseTimings() { _phaseT0 = Date.now(); _phaseTimings = []; }
+  function dumpPhaseTimings() {
+    try {
+      const now = Date.now();
+      if (_phaseT0 && state.phase) _phaseTimings.push({ phase: state.phase, ms: now - _phaseT0 });
+      if (!_phaseTimings.length) return;
+      const total = _phaseTimings.reduce((s, t) => s + t.ms, 0) || 1;
+      const top = [..._phaseTimings].sort((a, b) => b.ms - a.ms).slice(0, 8);
+      log('⏱️ Tiempos por fase (mayor a menor):');
+      for (const t of top) {
+        const s = (t.ms / 1000).toFixed(1);
+        const pct = Math.round((t.ms / total) * 100);
+        log(`    ${s}s (${pct}%) — ${t.phase}`);
+      }
+      log(`    Total medido: ${(total / 1000).toFixed(1)}s`);
+    } catch (_) { /* la telemetría nunca rompe la corrida */ }
+  }
+
   // ═══════════════════════════════════════════
   // CONFIG ACCESS (con defaults sanos si config no provee)
   // ═══════════════════════════════════════════
@@ -1006,6 +1029,10 @@ const BulkUpload = (() => {
   const PANEL_LOG_MAX = 200;
 
   function setPanelPhase(text) {
+    // F4: registrar cuánto duró la fase anterior antes de cambiar.
+    const _now = Date.now();
+    if (_phaseT0 && state.phase) _phaseTimings.push({ phase: state.phase, ms: _now - _phaseT0 });
+    _phaseT0 = _now;
     state.phase = text;
     const el = document.getElementById('sa-bu-phase'); if (el) el.textContent = text;
     // F3: refleja la fase como label de la barra global (evita "Paso —/10" estático).
@@ -3250,6 +3277,7 @@ const BulkUpload = (() => {
   // ═══════════════════════════════════════════
 
   async function execute(csvText) {
+    resetPhaseTimings(); // F4: arranca la medición de tiempos por fase
     const DOMAIN = api().getDomain();
     // 1.5.20: inputSchemaId vigente del dominio (3932 en TLC). Default al hardcoded
     // de config; se sobreescribe con latestSchema.id tras GetPartNumbersInputSchema.
@@ -6331,10 +6359,13 @@ const BulkUpload = (() => {
                   const sorted = [...prices].sort((a, b) => Number(b.id) - Number(a.id));
                   const newest = sorted[0];
                   if (newest) priceIdsForDefault.push(newest.id);
-                  const oldDefault = prices.find(p => p.isDefault && p.id !== newest.id);
+                  // F4 fix: el campo real es isDefaultPartNumberPrice (verificado contra shape de SH).
+                  // Antes leía p.isDefault (siempre undefined) → el unset-default nunca corría y el PN
+                  // podía quedar con 2 defaults.
+                  const oldDefault = prices.find(p => p.isDefaultPartNumberPrice && p.id !== newest.id);
                   if (oldDefault) priceIdsToUnsetDefault.push(oldDefault.id);
                 } else {
-                  const defaultPrice = prices.find(p => p.isDefault);
+                  const defaultPrice = prices.find(p => p.isDefaultPartNumberPrice);
                   if (defaultPrice) priceIdsToUnsetDefault.push(defaultPrice.id);
                 }
               } catch (e) {
@@ -6529,6 +6560,7 @@ const BulkUpload = (() => {
         await persistResumeState();
       }
       try { markPanelDone(errors.length === 0); } catch (_) {}
+      dumpPhaseTimings(); // F4: volcar el desglose de tiempos por fase al log
 
       try {
         generateRunReport(state, pnStatus, parts, stats, errors);
