@@ -559,8 +559,20 @@ const BulkUpload = (() => {
   // tras la migración los helpers escriben solo en IDB.
   async function migrateLocalStorageToIdb() {
     try {
+      // sa_load_history: migración one-shot localStorage (JSON string) → IDB (objeto array).
+      // Check propio, independiente del marker de resume (usuarios que ya migraron resume en 1.4.27
+      // tienen el marker y harían early-return sin esto). Idempotente: solo migra si está en LS y no en IDB.
+      try {
+        const _lh = localStorage.getItem('sa_load_history');
+        if (_lh != null && (await saIdbGet('sa_load_history')) == null) {
+          await saIdbSet('sa_load_history', JSON.parse(_lh));
+          localStorage.removeItem('sa_load_history');
+          console.log('[bulk-upload] sa_load_history migrado de localStorage a IndexedDB');
+        }
+      } catch (e) { console.warn('[bulk-upload] migración sa_load_history falló:', e?.message || e); }
+
       const markerKey = 'sa_bulk_idb_migrated_v1';
-      if (await saIdbGet(markerKey)) return; // ya migrado
+      if (await saIdbGet(markerKey)) return; // ya migrado (resume)
       const lsKeys = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -6571,27 +6583,16 @@ const BulkUpload = (() => {
             forzarDuplicado: p.forzarDuplicado, archivarAnterior: p.archivarAnterior
           }))
         };
-        const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
+        // sa_load_history → IndexedDB (antes localStorage: reventaba la cuota ~5MB con corridas
+        // de 1500+ PNs y perdía el historial silenciosamente). IDB no tiene ese tope; guardamos
+        // el objeto directo (structured clone), sin JSON.stringify ni workaround de QuotaExceeded.
+        // El cap de 20 entradas se mantiene por higiene. LECTURA: window.BulkUpload.getLoadHistory()
+        // (lo usa extension/background.js para el Historial de Cargas y Descargar CSV).
+        const history = (await saIdbGet('sa_load_history')) || [];
         history.unshift(loadLog);
-        // Fix 1.4.4: cap reducido 50→20 + auto-prune ante QuotaExceededError.
-        // Una corrida de 1500 PNs serializa ~1MB en parts[]; con cap=50 podía intentar
-        // guardar 50MB y reventar el cuota de localStorage (~5MB en Chrome).
         if (history.length > 20) history.length = 20;
-        try {
-          localStorage.setItem('sa_load_history', JSON.stringify(history));
-        } catch (quotaErr) {
-          let attempts = 0;
-          while (history.length > 1 && attempts < 6) {
-            attempts++;
-            history.length = Math.floor(history.length / 2) || 1;
-            try {
-              localStorage.setItem('sa_load_history', JSON.stringify(history));
-              warn(`sa_load_history: cuota excedida, recortado a ${history.length} entradas`);
-              break;
-            } catch (_) { /* sigue recortando */ }
-          }
-        }
-        log('  Log guardado en historial');
+        await saIdbSet('sa_load_history', history);
+        log('  Log guardado en historial (IndexedDB)');
       } catch (e) { warn('Error guardando log: ' + e.message); }
 
       // Fix 7: marcar la corrida como completa para que el próximo run con el
@@ -6637,7 +6638,14 @@ const BulkUpload = (() => {
 
   // 1.2.12: getter para que window.BulkUpload.__state apunte siempre al state actual
   // (state se reasigna en nextRunId() así que un snapshot quedaría stale).
-  return { execute, setProgressCallback, parseCSV, parseRows, __helpers, get __state() { return state; } };
+  // sa_load_history vive en IndexedDB: lectura asíncrona para extension/background.js
+  // (Historial de Cargas y Descargar CSV) — reemplaza el localStorage.getItem directo del bg.
+  async function getLoadHistory() {
+    try { return (await saIdbGet('sa_load_history')) || []; }
+    catch (_) { return []; }
+  }
+
+  return { execute, setProgressCallback, parseCSV, parseRows, getLoadHistory, __helpers, get __state() { return state; } };
 })();
 
 if (typeof window !== 'undefined') {

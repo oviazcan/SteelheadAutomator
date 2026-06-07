@@ -348,9 +348,22 @@ async function handleMessage(message, sender) {
       const tab = await getSteelheadTab();
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
-        func: () => {
-          const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
-          return { operations: history };
+        // sa_load_history migró a IndexedDB (sa_storage/kv). Leemos de IDB con fallback a
+        // localStorage (usuarios pre-migración). No depende de cargar los scripts del applet.
+        func: async () => {
+          function idbGet(key) {
+            return new Promise((resolve) => {
+              try {
+                const req = indexedDB.open('sa_storage', 1);
+                req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv'); };
+                req.onsuccess = () => { try { const g = req.result.transaction('kv', 'readonly').objectStore('kv').get(key); g.onsuccess = () => resolve(g.result); g.onerror = () => resolve(undefined); } catch (_) { resolve(undefined); } };
+                req.onerror = () => resolve(undefined);
+              } catch (_) { resolve(undefined); }
+            });
+          }
+          let history = await idbGet('sa_load_history');
+          if (!Array.isArray(history)) { try { history = JSON.parse(localStorage.getItem('sa_load_history') || '[]'); } catch (_) { history = []; } }
+          return { operations: history || [] };
         }
       });
       return results?.[0]?.result || { operations: [] };
@@ -363,8 +376,20 @@ async function handleMessage(message, sender) {
       const loadId = message.loadId;
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
-        func: (id) => {
-          const history = JSON.parse(localStorage.getItem('sa_load_history') || '[]');
+        func: async (id) => {
+          // sa_load_history en IndexedDB (sa_storage/kv) con fallback a localStorage (pre-migración).
+          function idbGet(key) {
+            return new Promise((resolve) => {
+              try {
+                const req = indexedDB.open('sa_storage', 1);
+                req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv'); };
+                req.onsuccess = () => { try { const g = req.result.transaction('kv', 'readonly').objectStore('kv').get(key); g.onsuccess = () => resolve(g.result); g.onerror = () => resolve(undefined); } catch (_) { resolve(undefined); } };
+                req.onerror = () => resolve(undefined);
+              } catch (_) { resolve(undefined); }
+            });
+          }
+          let history = await idbGet('sa_load_history');
+          if (!Array.isArray(history)) { try { history = JSON.parse(localStorage.getItem('sa_load_history') || '[]'); } catch (_) { history = []; } }
           const load = history.find(h => h.id === id);
           if (!load) return { error: 'Carga no encontrada' };
           const parts = load.parts || [];
