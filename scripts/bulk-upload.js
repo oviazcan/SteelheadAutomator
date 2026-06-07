@@ -5537,8 +5537,19 @@ const BulkUpload = (() => {
           });
           if (ccAccion) {
             if (!mergedCI) mergedCI = {};
+            // F5: precioAnterior REAL (default vigente del PN) para el delta en el Detalle.
+            // El campo es priceMicrodollars (verificado contra shape de SH); el default es
+            // isDefaultPartNumberPrice, con fallback al precio de mayor id. Cierra el pendiente
+            // 1.5.20 (buildDetalle recibía precioAnterior:null → no había flecha de cambio).
+            let _precioAnterior = null;
+            try {
+              const _exPrices = existingPnNode?.partNumberPricesByPartNumberId?.nodes || [];
+              const _exDef = _exPrices.find(p => p.isDefaultPartNumberPrice)
+                || [..._exPrices].sort((a, b) => Number(b.id) - Number(a.id))[0];
+              if (_exDef && _exDef.priceMicrodollars != null) _precioAnterior = Number(_exDef.priceMicrodollars) / 1e6;
+            } catch (_) { /* sin precio anterior → buildDetalle muestra solo el nuevo */ }
             const ccDetalle = window.SteelheadBulkCC.buildDetalle({
-              accion: ccAccion, precioAnterior: null, precioNuevo: part.precio,
+              accion: ccAccion, precioAnterior: _precioAnterior, precioNuevo: part.precio,
               divisa: part.divisa, enrichFields: ccEnrichFields,
             });
             const ccEntry = window.SteelheadBulkCC.buildControlCambiosEntry({
