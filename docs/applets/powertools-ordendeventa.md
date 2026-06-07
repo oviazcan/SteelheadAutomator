@@ -48,7 +48,12 @@ Verificado: la etiqueta `Lote` aparece en la WO 2503 recién creada al guardar.
 
 ## Validación de etiqueta de planta Schneider vs ship-to (2026-06-06)
 
-> **Estado (2026-06-06):** el hook está en `main` (espejo `powertools/synced/received-order/received-order.ts`) pero **NO pegado en el Power Tool de Steelhead todavía** — el ERP sigue corriendo el código viejo. Para activarlo: pegar el `.ts` en el editor low-code + Save (ver T3 en `docs/superpowers/plans/2026-06-06-received-order-schneider-plant-label-validation.md`). Phase-0 (confirmar que `partNumber.partNumberLabels` llega poblado) sin verificar aún. Nota: el fix de config `SQR→SQ1` SÍ está live (gh-pages 1.6.39); esto es independiente.
+> **Estado (2026-06-06):** ✅ **LIVE en Steelhead** — pusheado vía `tools/lowcode_sync.py push received-order` (mutation `CreateReceivedOrderLowCode`). Versión activa **`id=1874`** (2026-06-06T21:12Z) con el copy afinado tras validación del usuario; `id=1873` fue el primer push (wording viejo) y `1857` el código pre-validación — ambos en historial. Rollback = `lowcode_sync.py pull --all-versions` + re-push del `.ts` deseado. Verificado byte-exacto con `lowcode_sync.py diff received-order` → "OK — local == server activo (id=1874)". Phase-0 confirmada por el usuario (probó en productivo; `partNumberLabels` SÍ llega poblado). Nota: el fix de config `SQR→SQ1` también está live (gh-pages 1.6.39); independiente de este push.
+>
+> **Copy de los chips rojos (afinado 2026-06-06, decisión usuario):** scope = **solo clientes Schneider** (`customerName.includes("schneider")`, cubre ambas razones sociales MEXICO/USA INC; cualquier otro cliente NO dispara validación de planta). Mensajes (planta de la OV = `SXX (Nombre)`):
+> - **mismatch:** `Etiqueta de NP pertenece a otra Planta distinta — 'NP' [SMY] vs Planta de la OV: STX (Tlaxcala). Valida OV asignada.`
+> - **missing:** `NP sin etiqueta de planta — 'NP'. Asígnale la etiqueta de la OV: STX (Tlaxcala). Valida OV asignada.`
+> - **ship-to no resoluble:** sin cambio (`Planta Schneider no identificada — …`). Los dos primeros ahora salen en chips rojos **separados** (antes iban combinados en uno).
 
 Cada NP de una OV Schneider (`customerName.includes("schneider")`, cubre razón social MEXICO y USA INC) debe traer la etiqueta de su planta (`SXX`) y coincidir con la planta del `shipToAddress`. Si no → chip rojo (`severity:'error'`), patrón advisory igual a "NP Desconocido" (no bloquea el Save por API; guía al operador a no agregar el NP).
 
