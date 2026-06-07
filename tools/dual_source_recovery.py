@@ -11,6 +11,7 @@ Uso:
         --sh-report report.xlsx \\
         --template remote/templates/Plantilla_Cotizaciones_v11.xlsm \\
         --out-xlsx recovery.xlsm \\
+        --out-csv  recovery.csv      # opcional (v1.0.4): CSV directo para bulk-upload
         --report-json report.json
 
 Spec: docs/superpowers/specs/2026-05-27-dual-source-offline-recovery-design.md
@@ -333,7 +334,12 @@ FIELD_RULES: list[dict] = [
     {"header": "PN alterno",                  "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
     {"header": "Grupo",                       "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
     {"header": "Línea",                       "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
-    {"header": "Metal base",                  "action": ACTION_CONSERVATIVE, "type": TYPE_STRING},
+    # v1.0.3: Metal base es ACTION_OVERWRITE — el template v11 pre-llena la
+    # celda con '(seleccione o escriba)'. Si la regla era CONSERVATIVE y SH ya
+    # tenía Metal base, recovery no emitía nada → la celda quedaba con el
+    # placeholder, lo que rompía la fórmula CNE del template al abrir en Excel.
+    # BD es la fuente de verdad para Metal base (el usuario lo validó manualmente).
+    {"header": "Metal base",                  "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
     {"header": "_labels_",                    "action": ACTION_OVERWRITE,    "type": TYPE_LABEL_SET},  # especial: cols 1-5
     {"header": "Proceso",                     "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
     {"header": "Spec 1",                      "action": ACTION_OVERWRITE,    "type": TYPE_STRING},
@@ -509,6 +515,24 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
         label_cols = [headers.get(f"Etiqueta {i}") for i in range(1, 6)]
         if any(c is None for c in label_cols):
             raise ValueError("template v11: Etiqueta 1-5 no resueltos")
+        metal_base_col = headers.get("Metal base")
+        if metal_base_col is None:
+            raise ValueError("template v11: 'Metal base' no resuelto")
+        # v1.0.5: PARÁMETROS (col A..D) del template traen V/F boilerplate en
+        # las primeras ~500 filas (A='F', B='V', C='F', D='F'). En modo diff
+        # NO queremos emitir estos toggles — bulk-upload los interpreta como
+        # instrucciones explícitas. Incidente 2026-05-28: "F" en col Archivado
+        # disparó STEP 8 unarchive masivo (10,842 PNs desarchivados sin
+        # intención). Limpiar SIEMPRE.
+        param_cols = []
+        for name in ("Archivado", "Validación\n1er recibo", "Forzar\nduplicar", "Archivar\nanterior"):
+            col = headers.get(name)
+            if col is None:
+                # Header con salto de línea puede venir como "Validación 1er recibo" según extractor; intentar fallback
+                col = headers.get(name.replace("\n", " "))
+            if col is None:
+                raise ValueError(f"template v11: '{name}' (PARÁMETROS) no resuelto")
+            param_cols.append(col)
 
         # Metadata row 3: Nombre Cotización/Layout (col 8) — facilita auditoría posterior
         ws.cell(row=3, column=8, value=f"Recovery dual-source {datetime.now(timezone.utc).strftime('%Y-%m-%d')}")
@@ -523,6 +547,15 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
             # las celdas con '(seleccione)' y openpyxl no las sobreescribe cuando
             # value=None pasa por slots intermedios vacíos.
             for col in label_cols:
+                ws.cell(row=r, column=col).value = None
+            # v1.0.3: igual que las etiquetas, Metal base trae '(seleccione o escriba)'
+            # como default — limpiar SIEMPRE para que sólo quede el valor del diff
+            # (si lo hay) y para que las filas sin diff de Metal base no rompan
+            # la fórmula CNE en Excel.
+            ws.cell(row=r, column=metal_base_col).value = None
+            # v1.0.5: limpiar PARÁMETROS A..D (Archivado, Validación 1er recibo,
+            # Forzar duplicar, Archivar anterior). Ver comentario arriba.
+            for col in param_cols:
                 ws.cell(row=r, column=col).value = None
 
             for d in corr["diffs"]:
@@ -546,6 +579,74 @@ def emit_v11_xlsx(template_path: str | Path, corrections: list[dict], out_path: 
         wb.save(out_path)
     finally:
         wb.close()
+
+
+_CSV_PLACEHOLDERS = {"(seleccione)", "(seleccione o escriba)", "seleccione", "seleccione o escriba"}
+
+
+def _cell_to_csv(value) -> str:
+    """Convierte un valor de celda openpyxl a string CSV.
+
+    - None / placeholders → ''
+    - floats integrales → 'N' (sin .0) para no romper QuoteIBMS u otros enteros.
+    - strings → strip + drop placeholder.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        s = value.strip()
+        if s.lower() in _CSV_PLACEHOLDERS:
+            return ""
+        return s
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return repr(value)
+    return str(value)
+
+
+def emit_v11_csv(xlsm_path: str | Path, out_csv_path: str | Path) -> dict:
+    """Convierte un v11.xlsm ya emitido a CSV listo para bulk-upload v11.
+
+    Formato:
+      - utf-8, separador ',', quote '"', CRLF (idéntico a Excel "Save As CSV").
+      - Conserva las filas 1-8 de metadata/headers: bulk-upload's parseRows las
+        salta sola via detección por strings ('PARÁMETROS', 'Archivado', 'V/F',
+        'Texto', 'Número de parte').
+      - Limpia placeholders '(seleccione)' / '(seleccione o escriba)' → '' (defensa
+        en profundidad; emit_v11_xlsx ya los limpia en Etq 1-5 y Metal base).
+
+    Devuelve {rows_written, data_rows} para logging del caller.
+    """
+    import csv  # local import: módulo stdlib, evita costo si no se usa CSV
+
+    wb = openpyxl.load_workbook(xlsm_path, data_only=True, keep_vba=False)
+    try:
+        if "Upload" not in wb.sheetnames:
+            raise ValueError(f"xlsm no tiene hoja 'Upload': {xlsm_path}")
+        ws = wb["Upload"]
+        out_p = Path(out_csv_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+
+        rows_written = 0
+        data_rows = 0
+        with open(out_p, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f, quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+            for row in ws.iter_rows(values_only=True):
+                out = [_cell_to_csv(v) for v in row]
+                while out and out[-1] == "":
+                    out.pop()
+                w.writerow(out)
+                rows_written += 1
+                # heurística data row: col F (PN, índice 5) tiene valor y no es header
+                if len(out) > 6 and out[6] and out[6] not in ("Texto", "Número de parte", "PN"):
+                    pn_cell = out[6].strip()
+                    if pn_cell:
+                        data_rows += 1
+    finally:
+        wb.close()
+
+    return {"rows_written": rows_written, "data_rows": data_rows}
 
 
 def emit_json_report(
@@ -628,6 +729,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sh-report", required=True)
     parser.add_argument("--template", required=True)
     parser.add_argument("--out-xlsx", required=True)
+    parser.add_argument(
+        "--out-csv",
+        required=False,
+        default=None,
+        help="Si se pasa, emite también un CSV listo para bulk-upload v11 "
+             "(carga directa, sin pasar por Excel).",
+    )
     parser.add_argument("--report-json", required=True)
     args = parser.parse_args(argv)
 
@@ -679,6 +787,11 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Writing xlsx → {args.out_xlsx}", file=sys.stderr)
     emit_v11_xlsx(template_path=args.template, corrections=corrections, out_path=args.out_xlsx)
+
+    if args.out_csv:
+        print(f"Writing csv → {args.out_csv}", file=sys.stderr)
+        csv_stats = emit_v11_csv(xlsm_path=args.out_xlsx, out_csv_path=args.out_csv)
+        print(f"  csv rows_written: {csv_stats['rows_written']} | data_rows: {csv_stats['data_rows']}", file=sys.stderr)
 
     print(f"Writing json → {args.report_json}", file=sys.stderr)
     counts = {

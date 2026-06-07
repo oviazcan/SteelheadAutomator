@@ -4,6 +4,203 @@ Tool standalone (`tools/dual_source_recovery.py`) que cruza los xlsm
 originales de bulk-upload contra el reporte oficial de Steelhead y emite un
 xlsx v11 de recovery donde cada PN se identifica por **Id SH** (pivote directo).
 
+## 1.0.5 — 2026-05-28 — Limpiar PARÁMETROS A..D (no emitir toggles V/F)
+
+### Causa root (incidente 2026-05-28, post-mortem de la corrida del recovery)
+La corrida de `recovery_dualsource_v104.csv` aplicó correctamente las
+correcciones de Proceso/Metal base/specs, **pero** desarchivó masivamente
+**10,842 PNs** sin que el CSV lo pidiera. La cadena de causa fue:
+
+1. `Plantilla_Cotizaciones_v11.xlsm` trae las primeras ~500 filas de data con
+   los 4 toggles PARÁMETROS pre-poblados: `A='F'` (Archivado=No), `B='V'`
+   (Validación 1er recibo), `C='F'` (Forzar duplicar), `D='F'` (Archivar
+   anterior).
+2. `emit_v11_xlsx` (≤ v1.0.4) sólo escribía las llaves (Id SH/Cliente/PN) y
+   los campos de `FIELD_RULES`; **no limpiaba col A..D**. Las primeras 351
+   filas del v104.xlsm quedaron con `Archivado='F'` heredado del template
+   (las demás filas — más allá de ~500 — quedaron vacías porque el template
+   no las pre-llena).
+3. `emit_v11_csv` propagó esas 351 "F" + 15,991 vacíos al CSV.
+4. **bulk-upload v11** (`bulk-upload.js:5841-5848` STEP 8) interpreta tanto
+   "F" como **vacío** del mismo modo: `if (!part.archivado && status ==
+   'existing') pnsToUnarchive.push(...)`. Es decir, **cualquier fila** del
+   CSV con un PN existing entró a la lista de desarchivar. La corrida marcó
+   "16,342 desarchivar" en STEP 8 y completó 10,842 (los que efectivamente
+   estaban archivados pre-run en SH).
+
+El bug del v11 template/bulk-upload (tratar "Archivado vacío" como "F
+explícito") es real y debería arreglarse por separado, pero la mitigación
+inmediata es del lado del recovery: **no emitir nunca esos 4 toggles en modo
+diff**. El recovery no quiere instruir archivado/validación/dup — sólo
+corregir Proceso/Metal base/etc.
+
+### Cambios
+- `emit_v11_xlsx`: resolver columnas de PARÁMETROS por header (`Archivado`,
+  `Validación\n1er recibo`, `Forzar\nduplicar`, `Archivar\nanterior`, con
+  fallback sin `\n` por si algún extractor normaliza) y limpiarlas a `None`
+  en cada data row, igual que ya se hace con Etq 1-5 y Metal base.
+- Fail-fast: si algún header no se resuelve, levanta `ValueError`.
+- 1 test nuevo: `test_clears_parametros_cols_a_to_d_when_no_diff` — corrida
+  E2E que crea una correction con un único diff de Proceso y valida que
+  col 1..4 de la fila emitida quedan en blanco.
+- 81/81 tests passing (80 previos + 1 nuevo).
+
+### Notas operativas
+- El `v104.csv` ya subido **NO se regenera** — los 16,342 desarchivados ya
+  están aplicados; la mitigación es por DevTools selectivo (re-archivar
+  según col `Archivado=V` de los XMLs originales).
+- Para la próxima corrida (si hay otra), regenerar el recovery con v1.0.5
+  para garantizar que el CSV no traiga toggles.
+- Pendiente independiente: ¿debe `bulk-upload v11` distinguir "Archivado
+  vacío" (no tocar) de "Archivado=F" (desarchivar)? Hoy los trata igual.
+  Cambiarlo requiere bump de schema y migración del template.
+
+## 1.0.4 — 2026-05-28 — Emisión nativa de CSV (`--out-csv`)
+
+### Motivación
+Bulk-upload v11 come CSV. El usuario no quería el paso intermedio "abrir xlsm
+en Excel → Save As CSV" para cada recovery; quería que el script emitiera CSV
+directo. Además ya teníamos el conversor ad-hoc `/tmp/v104_to_csv.py` que
+funcionaba — sólo había que portarlo al script.
+
+### Cambios
+- `emit_v11_csv(xlsm_path, out_csv_path) -> {rows_written, data_rows}`: toma
+  el xlsm ya emitido por `emit_v11_xlsx` y lo serializa a CSV.
+  - utf-8, `,` separador, `"` quote, CRLF line terminator (idéntico al export
+    "Save As CSV" de Excel — formato que bulk-upload espera).
+  - Conserva filas 1-8 de metadata/headers; `parseRows()` de bulk-upload las
+    salta sola por strings reservados (`PARÁMETROS`, `Archivado`, `V/F`,
+    `Texto`, `Número de parte`).
+  - Defensa en profundidad: re-limpia `(seleccione)` / `(seleccione o escriba)`
+    a `''` (emit_v11_xlsx ya los limpia en Etq 1-5 y Metal base; este chequeo
+    cubre cualquier columna futura).
+  - Trunca trailing empties de cada fila para no escribir 70 comas vacías.
+  - Floats integrales se escriben sin `.0` (importante para QuoteIBMS y otros
+    IDs enteros camuflados como `float`).
+- `_cell_to_csv(value)`: helper puro, sin estado, testeable independientemente.
+- CLI: nuevo flag opcional `--out-csv PATH`. Si se pasa, el script emite CSV
+  además del xlsm en la misma corrida.
+- 1 test nuevo en `TestEmitV11Xlsx`:
+  - `test_emit_v11_csv_writes_data_and_skips_placeholders`: corrida E2E
+    (xlsx → csv) con una correction que tiene `Metal base` + `Proceso`, valida
+    que la fila CSV en col 16/22 trae los valores correctos y que ningún
+    placeholder se filtró en ninguna columna.
+- 80/80 tests passing (79 previos + 1 nuevo).
+
+### Uso
+```bash
+python3 tools/dual_source_recovery.py \
+    --srg-xlsm SRG.xlsm \
+    --cg-xlsm  CG.xlsm \
+    --sh-report report.xlsx \
+    --template remote/templates/Plantilla_Cotizaciones_v11.xlsm \
+    --out-xlsx recovery.xlsm \
+    --out-csv  recovery.csv \
+    --report-json report.json
+```
+
+### Plan de validación
+1. Re-run completo con `--out-csv` → comparar byte-a-byte el CSV emitido contra
+   el output de `/tmp/v104_to_csv.py` sobre el mismo xlsm: deben ser idénticos.
+2. Cargar el CSV directo en bulk-upload 1.5.7+ → verificar parse sin errores y
+   data_rows reportadas coinciden con `corrections_emitted` del report JSON.
+3. Confirmar que las filas 1-8 de metadata no rompen `parseRows()` (ya lo
+   manejan, pero verificar en run real con 16k filas).
+
+### Pendientes derivados
+- [ ] Considerar flag opcional `--csv-only` (no emitir xlsm si solo se necesita
+  CSV) — para corridas muy grandes el xlsm es ~1.3MB y el csv ~3.7MB, no es
+  problema ahorrar el xlsm pero sería más rápido y consume menos disco.
+- [ ] Validar que el CSV abre limpio en Excel también (algunos users prefieren
+  inspeccionarlo antes de cargar) — caracteres con tildes en UTF-8 sin BOM
+  pueden mostrarse mojibake en Excel for Windows; considerar BOM opcional.
+
+---
+
+## 1.0.3 — 2026-05-28 — Metal base ACTION_OVERWRITE + limpiar `(seleccione o escriba)`
+
+### Motivación
+Al abrir `recovery_dualsource_v103.xlsm` (output de 1.0.2 sobre el run completo
+de 16,491 corrections) en Excel, la columna `Proceso` mostraba **149 celdas
+con "Combinación no existente"**. El usuario reportó: *"ya habíamos dejado 0
+combinaciones no existentes"* en sus BD, así que el CNE no podía venir del dato.
+
+Investigación reveló el flujo real:
+
+1. Las dos BD xlsm (SRG + Generales) tienen CERO CNE en sus filas de datos
+   (`Upload!A9:end`). El único string "Combinación no existente" vive en
+   `Upload!U3` y `Upload!W3` como **token marcador** que usa la fórmula LAMBDA
+   del template para decidir qué mostrar cuando la tripleta
+   `(Metal base, Etiquetas, Línea)` no resuelve contra `CAT_Procesos`.
+2. v103.xlsm tampoco tenía CNE como valor estático en `Proceso` — la columna
+   son strings simples (sin fórmulas; verificado scaneo).
+3. **Los 149 CNE se calculan en tiempo de apertura de Excel** por la fórmula
+   LAMBDA + VBA del template. Cuando `Metal base = '(seleccione o escriba)'`,
+   la fórmula no resuelve la tripleta → output = token CNE.
+4. Diff v103 vs BD (matcher PN+cliente tokens) mostró que **351 filas** tenían
+   `Metal base = '(seleccione o escriba)'` literal. Esas 351 son superset de
+   los 149 CNE — el resto (~202) la fórmula sí resolvió de otra forma o no
+   se evaluó (e.g., labels también vacías).
+
+Root cause: la regla `FIELD_RULES["Metal base"] = ACTION_CONSERVATIVE` sólo
+emitía un diff cuando SH tenía Metal base vacío. Cuando SH ya tenía valor
+(la mayoría), recovery dejaba la celda intacta → el template pre-llena con
+`(seleccione o escriba)` → openpyxl no la sobreescribe → la fórmula CNE
+dispara al abrir. Mismo patrón que el Bug B de las etiquetas en 1.0.2, pero
+en otra columna y con otra regla.
+
+### Cambios
+- `FIELD_RULES`: `Metal base` cambia de `ACTION_CONSERVATIVE` a
+  `ACTION_OVERWRITE`. Justificación documentada inline: **BD es la fuente de
+  verdad para Metal base** (el usuario valida manualmente las dos BD; si SH
+  trae un Metal base distinto al de BD, gana BD). Esta decisión es coherente
+  con el resto de campos críticos (`Proceso`, `Spec 1`, `Spec 2`, KGM, CMK, LM,
+  componentes de baño) que ya eran OVERWRITE.
+- `emit_v11_xlsx`: resuelve `metal_base_col = headers.get("Metal base")` y
+  limpia esa celda con `value = None` SIEMPRE, antes del loop de diffs —
+  análogo al patrón de etiquetas. Si el diff tiene Metal base, se vuelve a
+  llenar con el valor BD; si no, queda en `None` y la fórmula del template
+  recibirá string vacío en vez del placeholder.
+- Tests pendientes a agregar en `TestEmitV11Xlsx`:
+  - `test_clears_metal_base_placeholder_when_no_diff`: correction sin diff de
+    Metal base, columna Q debe quedar limpia (no `(seleccione o escriba)`).
+  - `test_writes_metal_base_when_diff_present`: correction con diff
+    `{field:"Metal base", xlsm:"Cobre", action:"overwrite"}` → columna Q debe
+    quedar en `"Cobre"`.
+
+### Hot-fix retroactivo v103 → v104
+Mientras este parche se valida con un re-run completo, se generó v104 in-place
+con `/tmp/patch_v103_to_v104.py`:
+- Carga ambas BD por (QuoteIBMS) y (PN, tokens cliente).
+- Recorre v103 fila a fila; para cada fila con `Metal base` placeholder, busca
+  primero por QuoteIBMS (matcher de tier-1 idéntico al script); si no, fallback
+  por PN + token overlap del cliente.
+- Resultado del run: 351/351 placeholders resueltos vía tier-2 (PN+tokens) —
+  tier-1 hit 0 porque las 351 filas en v103 no traían QuoteIBMS poblado en la
+  columna correspondiente (efecto del mismo bug de template intermedio).
+- v104 preserva VBA (`keep_vba=True`). Plan: el usuario abre v104 en Excel y
+  cuenta CNE → debería bajar de 149 a 0 (o cerca, si quedan filas con labels
+  faltantes).
+
+### Plan de validación
+1. Re-run completo con script v1.0.3: `recovery_dualsource_v104_full.xlsm`.
+2. Abrir en Excel, contar CNE en columna `Proceso` → esperado 0.
+3. Comparar field_correction_counts vs 1.0.2: `Metal base` debe pasar de
+   skip-cuando-SH-no-vacío a contar diffs reales cuando BD != SH.
+4. Cargar por bulk-upload 1.5.7+ → verificar logs sin warnings de Metal base.
+5. Spot-check 5 PNs post-carga: Metal base en SH = valor de BD.
+
+### Pendientes derivados
+- [ ] Agregar 2 tests nuevos en `TestEmitV11Xlsx` (Metal base preservación y
+  limpieza).
+- [ ] Considerar mover Línea y Departamento a ACTION_OVERWRITE también — son
+  campos donde BD debería ganar y mismo patrón de template default podría
+  estar latente.
+- [ ] Hash visual rápido en el output del script: contar celdas con
+  `(seleccione*)` literal después de save y warning si > 0.
+
+---
+
 ## 1.0.2 — 2026-05-28 — Preservar casing de etiquetas + limpiar `(seleccione)`
 
 ### Motivación

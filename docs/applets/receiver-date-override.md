@@ -10,3 +10,29 @@ Applet que inyecta un campo "Fecha real de recibido:" + selector de hora (defaul
 - **Flag bilingüe del título del modal vs flag bilingüe del label interno.** El regex del título (`HEADING_SELECTOR`) ya era bilingüe desde 0.5.64; el del label interno (`Receiver Comments`) no, y por eso 0.5.66 fue una iteración extra. Cuando crees un applet de modal-injection, audita TODOS los regex de DOM lookup para que sean bilingües desde el principio.
 - **`response.clone()` antes de parsear.** Si haces `response.json()` directo, consumes el body y el caller no puede leerlo (Steelhead falla). Siempre clonar antes: `const json = await response.clone().json();`.
 
+## 🐞 Bug abierto: el override de fecha "a veces no jala" (intermitente) — investigación 2026-06-03
+
+**Síntoma reportado:** al usar el campo "Fecha real de recibido:" en el modal de Receive Parts, a veces la fecha se modifica y a veces el receiver queda con la fecha del día actual (NOW del server). Sin patrón identificado por el usuario. **No reproducido aún** — esta sesión cerró sin lograr replicar; la siguiente debe arrancar con el protocolo de reproducción de abajo.
+
+### Descartado con evidencia estática (NO son la causa)
+- **Hash rotado de `UpdateReceiver`:** el hash hardcodeado en `receiver-date-override.js:93` (`005653bae…`) coincide byte-a-byte con `config.json` (key `UpdateReceiver`). Si estuviera rotado el follow-up fallaría *siempre*, no "a veces". (⚠️ riesgo latente aparte: el hash está **hardcodeado** en el script en vez de leerse de `config.json` — si SH lo rota, el follow-up se rompe en silencio y nadie lo nota porque es fire-and-forget. Mover a lookup de config es un pendiente.)
+- **Drift de fecha/TZ:** el ISO se arma a mediodía local (`:125`); un bug de zona horaria dejaría la fecha *corrida un día*, no en *hoy*. El síntoma es "se queda en hoy" → no es drift.
+
+### Origen arquitectónico de la intermitencia
+El follow-up `UpdateReceiver` (`:177-190`) se dispara **fire-and-forget (no se awaitea)** para no bloquear el UI. Ese patrón es donde nace la intermitencia. 4 hipótesis vivas, cada una con firma distinta en consola (el applet **ya loguea lo suficiente para distinguirlas** — filtrar por `[RDO]`):
+
+| Línea `[RDO]` tras un Save | Causa raíz implicada |
+|---|---|
+| **Ninguna** línea de follow-up | Intent no capturado: `userTouched=false` o `querySelector('[data-sa-rdo-attached="true"]')` (`:118`) agarró un modal **stale** (devuelve el PRIMER attached; si el host oculta en vez de desmontar el modal previo, o en el 2º/3er recibo seguido sin recargar, apunta al viejo cuyo `userTouched` ya es `false`). |
+| `UpdateReceiver follow-up falló` (catch) | Fetch **cancelado por navegación**. **Sospecha #1:** ocurre con **"Save and Add Parts to WO"** / **"Save and Print all"** (navegan/abren vista y matan el request en vuelo), pero NO con "Save" a secas. |
+| `UpdateReceiver follow-up con errors` | Server rechazó el update (receivedAt bloqueado por estado del receiver, payload, etc.). |
+| `follow-up OK …` **pero la fecha sigue en hoy** | Server aceptó pero algo *posterior* lo sobrescribió, o se apuntó al receiver equivocado. |
+
+### Protocolo de reproducción (arrancar aquí la próxima sesión)
+1. DevTools → Console → filtro `[RDO]`.
+2. **Activar "Preserve log"** (crítico: si la causa es navegación, sin esto el log se borra justo cuando perderías la evidencia).
+3. Hacer **un recibo que FALLE** y **uno que SÍ JALE**, anotando para cada uno: (a) qué botón de Save se usó, (b) si fue el 1er recibo de la sesión o ya iban varios sin recargar, (c) las líneas `[RDO]` exactas.
+4. Mapear la firma observada contra la tabla → caer a la causa raíz → recién ahí proponer fix mínimo (candidatos probables: awaitear/`keepalive:true` el follow-up para sobrevivir navegación; o re-resolver el modal activo en vez de `querySelector` del primer attached).
+
+**Regla:** no shippear fix sin la firma de consola del caso que falla. La intermitencia exige evidencia de reproducción, no parche a ciegas.
+

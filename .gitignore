@@ -29,3 +29,22 @@ Plantilla_Cotizaciones_y_NP_v84_2.xlsm
 
 # Scratch payloads locales (samples de GraphQL/factura, etc.)
 /json
+
+# Estado de herramientas (Claude Code, plugin superpowers) — nunca versionar
+.claude/
+.superpowers/
+
+# config.json en la RAÍZ es una copia stale; el config real vive en remote/config.json
+/config.json
+
+# Insumos de análisis sueltos en la raíz (no son código del proyecto).
+# NOTA: NO usar *.xlsm/*.xlsx global — eso ignoraría remote/templates/Plantilla_Cotizaciones_v11.xlsm (plantilla oficial).
+/1._Proceso - Tratamientos Genericos.xlsx
+/Problema de negocio*
+
+# Payloads de API capturados desde DevTools (referencia local, no versionar)
+docs/api/Payload: *.txt
+
+# Datos efímeros de corridas de recuperación de CustomInputs
+/tools/27_*.json
+/tools/snapshot_ci_*.json

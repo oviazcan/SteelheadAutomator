@@ -14,6 +14,7 @@ from tools.dual_source_recovery import (
     PartNumberRow,
     compare_values,
     compute_field_diffs,
+    emit_v11_csv,
     emit_v11_xlsx,
     filter_round,
     is_round_marker,
@@ -759,6 +760,113 @@ class TestEmitV11Xlsx:
         wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
         ws = wb["Upload"]
         for col in range(18, 23):
+            assert ws.cell(row=9, column=col).value in (None, ""), \
+                f"col{col} debe ser blanco, fue {ws.cell(row=9, column=col).value!r}"
+        wb.close()
+
+    def test_clears_metal_base_placeholder_when_no_diff(self, tmp_path):
+        """v1.0.3: si una correction NO trae diff de 'Metal base', la celda
+        debe quedar limpia (sin '(seleccione o escriba)' residual). El
+        placeholder del template rompe la fórmula CNE al abrir en Excel."""
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+        corrections = [{
+            "idSH": "3000",
+            "customer": "TEST",
+            "pn": "PN-NO-MB",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "Proceso", "xlsm": "ALGO", "sh": "", "action": "fill"},
+            ],
+        }]
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=out)
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        # Columna Metal base = 17
+        assert ws.cell(row=9, column=17).value in (None, ""), \
+            f"col17 (Metal base) debe ser blanco, fue {ws.cell(row=9, column=17).value!r}"
+        wb.close()
+
+    def test_emit_v11_csv_writes_data_and_skips_placeholders(self, tmp_path):
+        """v1.0.4: emit_v11_csv toma el xlsm ya emitido y produce un CSV con
+        la misma data, limpiando placeholders residuales y preservando filas
+        de metadata (bulk-upload las salta sola)."""
+        import csv as _csv
+
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        xlsm_out = tmp_path / "out.xlsm"
+        csv_out = tmp_path / "out.csv"
+        corrections = [{
+            "idSH": "9001",
+            "customer": "TEST CSV",
+            "pn": "PN-CSV-1",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "Metal base", "xlsm": "Cobre", "sh": "", "action": "fill"},
+                {"field": "Proceso", "xlsm": "T101 (TST)-CU-GRANEL (1.0)", "sh": "", "action": "fill"},
+            ],
+        }]
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=xlsm_out)
+        stats = emit_v11_csv(xlsm_path=xlsm_out, out_csv_path=csv_out)
+
+        assert stats["rows_written"] > 0
+        assert stats["data_rows"] >= 1
+
+        with open(csv_out, encoding="utf-8") as f:
+            rows = list(_csv.reader(f))
+        # Buscar la fila de data por PN en col F (índice 6 = "Número de parte")
+        data_rows = [r for r in rows if len(r) > 6 and r[6] == "PN-CSV-1"]
+        assert len(data_rows) == 1
+        dr = data_rows[0]
+        # col Metal base = 16 (Q), Proceso = 22 (W) en CSV v11
+        assert dr[16] == "Cobre"
+        assert dr[22] == "T101 (TST)-CU-GRANEL (1.0)"
+        # ningún placeholder residual en cualquier columna
+        for cell in dr:
+            assert cell.lower() not in ("(seleccione)", "(seleccione o escriba)"), \
+                f"placeholder leaked: {cell!r}"
+
+    def test_writes_metal_base_when_diff_present(self, tmp_path):
+        """v1.0.3: si la correction trae diff de 'Metal base' con action
+        overwrite/fill, el valor de xlsm debe quedar en la celda."""
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+        corrections = [{
+            "idSH": "3001",
+            "customer": "TEST",
+            "pn": "PN-MB-DIFF",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "Metal base", "xlsm": "Cobre", "sh": "Acero", "action": "overwrite"},
+            ],
+        }]
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=out)
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        assert ws.cell(row=9, column=17).value == "Cobre"
+        wb.close()
+
+    def test_clears_parametros_cols_a_to_d_when_no_diff(self, tmp_path):
+        """v1.0.5: el template v11 trae A='F', B='V', C='F', D='F' pre-poblado
+        en las primeras ~500 filas de data. En modo diff NO queremos emitir
+        ningún toggle — bulk-upload v11 los interpreta como instrucciones
+        explícitas. Incidente 2026-05-28: "F" en col Archivado disparó STEP 8
+        unarchive masivo (10,842 PNs desarchivados sin intención)."""
+        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        out = tmp_path / "out.xlsm"
+        corrections = [{
+            "idSH": "3002",
+            "customer": "TEST",
+            "pn": "PN-CLEAN-PARAMS",
+            "tier": "quoteIBMS",
+            "diffs": [
+                {"field": "Proceso", "xlsm": "X", "sh": "", "action": "fill"},
+            ],
+        }]
+        emit_v11_xlsx(template_path=template, corrections=corrections, out_path=out)
+        wb = _openpyxl.load_workbook(out, read_only=True, data_only=True, keep_vba=True)
+        ws = wb["Upload"]
+        for col in (1, 2, 3, 4):  # Archivado, Validación 1er recibo, Forzar duplicar, Archivar anterior
             assert ws.cell(row=9, column=col).value in (None, ""), \
                 f"col{col} debe ser blanco, fue {ws.cell(row=9, column=col).value!r}"
         wb.close()
