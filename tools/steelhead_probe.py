@@ -28,7 +28,7 @@ READ_ONLY = {
     "GetQuote_v8", "GetQuote_v71", "GetQuoteRelatedData", "CurrentUserDetails",
     "GetPartNumbersInputSchema", "AllLabels", "AllRackTypes", "AllProcesses",
     "PNGroupSelect", "SearchPartNumberPrices", "CustomerSearchByName",
-    "GetDimension",
+    "GetDimension", "SearchLocationsOnPath",
 }
 
 

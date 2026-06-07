@@ -1,0 +1,427 @@
+{
+ "callSites": [
+  {
+   "callSite": "CS1-predictivos-prefetch",
+   "lineApprox": "4884 (dentro de runPool ~4878–4908)",
+   "purpose": "Pre-fetch masivo (runPool concurrencia 8) de predictedInventoryUsagesByPartNumberId para PNs existentes que traen predictivos en el CSV. Construye existingPredictedMap (pnId → Map(inventoryItemId → {id, archivedAt})). Tiene dos consumidores: (1) STEP 6 enrichWorker línea 5503 — filtra inventoryPredictedUsages para enviar SOLO los nuevos (los que no tienen id existente), evitando unique-constraint en (pn, inventoryItem); (2) STEP 6a línea 5690 — itera el mapa para armar predToArchive y predToArchiveAndReplace que van a ChangePredictedInventoryUsagesWithRecipeNodeCascade.",
+   "fieldsUsed": [
+    "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].id",
+    "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].archivedAt",
+    "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].inventoryItemByInventoryItemId.id",
+    "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].inventoryItemId"
+   ],
+   "stalenessRisks": [
+    {
+     "field": "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].id",
+     "mutatedByStep": "Ningún step anterior al prefetch crea predicted usages. El prefetch corre ANTES de STEP 6 enrichWorker. STEP 6 SavePartNumber agrega NUEVOS predicted usages (inventoryPredictedUsages filtrados); esos nuevos no estaban en el mapa original y no colisionan. El mapa solo debe cubrir los ya existentes al momento del fetch.",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].archivedAt",
+     "mutatedByStep": "Ningún step anterior al prefetch archiva predictivos. El mapa se usa en STEP 6a que ES el primer archivador. No hay mutación previa.",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].inventoryItemByInventoryItemId.id",
+     "mutatedByStep": "Ningún step modifica el inventoryItem asociado. Es FK estática en el registro del predicted usage.",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.predictedInventoryUsagesByPartNumberId.nodes[].inventoryItemId",
+     "mutatedByStep": "Ningún step modifica el inventoryItem asociado. Es FK estática en el registro del predicted usage.",
+     "risk": "none"
+    }
+   ],
+   "consolidatable": false,
+   "seedFields": [
+    "predictedInventoryUsagesByPartNumberId.nodes[].id",
+    "predictedInventoryUsagesByPartNumberId.nodes[].archivedAt",
+    "predictedInventoryUsagesByPartNumberId.nodes[].inventoryItemId"
+   ],
+   "notes": "NO consolidatable desde el GetPartNumber del enrichWorker (STEP 6). Razón estructural: este prefetch ocurre ANTES del enrichWorker pool, mientras que el GetPartNumber del enrichWorker (CS2, línea ~4994) corre DENTRO del pool — i.e., concurrentemente con otros PNs. Si se quisiera usar el mismo fetch, habría que garantizar que el enrichWorker devuelva predictedInventoryUsagesByPartNumberId en su selection set Y que el seed esté disponible antes de que el pool de STEP 6a arranque. Actualmente el enrichWorker GetPartNumber (existingPnFullCache) se limpia (existingPnFullCache.clear() línea 5664) ANTES de STEP 6a, lo que descarta esos datos. Para consolidar habría que: (1) expandir la selection set del enrichWorker GetPartNumber para incluir predictedInventoryUsagesByPartNumberId, (2) separar el seed de predictivos del cache limpiado, (3) asegurarse de que el prefetch-predictivos resulte un no-op (o se elimine). Dado que los campos en cuestión son solo 3 escalares ligeros (id, archivedAt, inventoryItemId) y que el flujo actual del pool ya es concurrente, el win de consolidación sería marginal y el riesgo de regresión al tocar existingPnFullCache.clear() es real. Recomendación: mantener como prefetch independiente o bien ampliar el seed del enrichWorker GetPartNumber con estos 3 campos y alimentar un segundo mapa que sobreviva al clear(). Los campos de riesgo 'none' implican que si se consolidara, el seed nunca estaría stale para este call site específico."
+  },
+  {
+   "callSite": "CS2-enrichWorker",
+   "lineApprox": "~4991-5000 (dentro de enrichWorker, línea 4923)",
+   "purpose": "Pre-fetch completo del PN existente al inicio de enrichWorker (STEP 6). Sirve como fuente de verdad para todos los campos que SavePartNumber trata como REPLACE: specs vinculadas (activas y archivadas), labels actuales, dimensionCustomValueIds, customInputs, descriptionMarkdown, customerFacingNotes, process FK, geometryTypeId, partNumberGroupId, optInOuts (validación 1er artículo), inventoryItem (unit conversions) y dims físicas. Sin este fetch, cualquiera de esos campos que el CSV no traiga explícitamente se borraría en SavePartNumber. También se reutiliza en STEP 6a (archive sentinel de specs) y en STEP 6b via existingPnFullCache antes de que el finally lo invalide.",
+   "fieldsUsed": [
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].id",
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].specBySpecId.id",
+    "partNumberById.partNumberLabelsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberLabelsByPartNumberId.nodes[].labelByLabelId.id",
+    "partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes[].dimensionCustomValueId",
+    "partNumberById.customInputs",
+    "partNumberById.name",
+    "partNumberById.descriptionMarkdown",
+    "partNumberById.customerFacingNotes",
+    "partNumberById.processNodeByDefaultProcessNodeId.id",
+    "partNumberById.defaultProcessNodeId",
+    "partNumberById.geometryTypeByGeometryTypeId.id",
+    "partNumberById.geometryTypeId",
+    "partNumberById.partNumberGroupByPartNumberGroupId.id",
+    "partNumberById.partNumberGroupId",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].processNodeId",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].processNodeOccurrence",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].cancelOthers",
+    "partNumberById.inventoryItemByPartNumberId.materialByMaterialId.id",
+    "partNumberById.inventoryItemByPartNumberId.sourceMaterialConversionType",
+    "partNumberById.inventoryItemByPartNumberId.providedMaterialConversionType",
+    "partNumberById.inventoryItemByPartNumberId.defaultLeadTime",
+    "partNumberById.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes[].unitByUnitId.id",
+    "partNumberById.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes[].factor",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].geometryTypeDimensionTypeId",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].dimensionValue",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].unitByUnitId.id",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].unitId"
+   ],
+   "stalenessRisks": [
+    {
+     "field": "partNumberById.partNumberSpecsByPartNumberId.nodes[]",
+     "mutatedByStep": "STEP 6 SavePartNumber (Call A y Call B del propio enrichWorker) agrega/archiva specs; STEP 6b AddParams puede agregar parámetros a specs ya vinculadas",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberById.partNumberLabelsByPartNumberId.nodes[]",
+     "mutatedByStep": "STEP 6 SavePartNumber-A (identifier enrich) reemplaza labelIds; ningún step posterior los modifica",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes[].dimensionCustomValueId",
+     "mutatedByStep": "STEP 6 SavePartNumber-A reemplaza dimensionCustomValueIds; ningún step posterior los modifica",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberById.customInputs",
+     "mutatedByStep": "STEP 6 SavePartNumber-A y Call B escriben customInputs (incluyendo ControlCambios de Feature B 1.5.20); ningún step anterior al fetch los cambia",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.name",
+     "mutatedByStep": "Ningún step del pipeline cambia el name del PN; se lee del pnLookup que viene del catálogo pre-cargado",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.descriptionMarkdown",
+     "mutatedByStep": "Ningún step anterior a enrichWorker lo modifica",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.customerFacingNotes",
+     "mutatedByStep": "Ningún step anterior a enrichWorker lo modifica",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.processNodeByDefaultProcessNodeId.id",
+     "mutatedByStep": "Ningún step anterior modifica el proceso; STEP 6 Call B lo puede cambiar después del fetch, pero el fetch ocurre ANTES de Call A/B dentro del mismo enrichWorker",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.geometryTypeByGeometryTypeId.id",
+     "mutatedByStep": "Ningún step anterior modifica el geometryType; se usa solo en el fallback preserve-on-missing",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.partNumberGroupByPartNumberGroupId.id",
+     "mutatedByStep": "Ningún step anterior modifica el group",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[]",
+     "mutatedByStep": "Ningún step anterior modifica optInOuts",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.inventoryItemByPartNumberId (todos los sub-campos)",
+     "mutatedByStep": "Ningún step anterior a enrichWorker modifica el inventoryItem; STEP 6 Call B puede reescribirlo",
+     "risk": "none"
+    },
+    {
+     "field": "partNumberById.partNumberDimensionsByPartNumberId.nodes[]",
+     "mutatedByStep": "Ningún step anterior modifica dims; STEP 6 Call B puede reemplazarlas",
+     "risk": "none"
+    }
+   ],
+   "consolidatable": false,
+   "seedFields": [
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].id",
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].specBySpecId.id",
+    "partNumberById.partNumberLabelsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberLabelsByPartNumberId.nodes[].labelByLabelId.id",
+    "partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes[].dimensionCustomValueId",
+    "partNumberById.customInputs",
+    "partNumberById.name",
+    "partNumberById.descriptionMarkdown",
+    "partNumberById.customerFacingNotes",
+    "partNumberById.processNodeByDefaultProcessNodeId.id",
+    "partNumberById.geometryTypeByGeometryTypeId.id",
+    "partNumberById.partNumberGroupByPartNumberGroupId.id",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].processNodeId",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].processNodeOccurrence",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].cancelOthers",
+    "partNumberById.inventoryItemByPartNumberId.materialByMaterialId.id",
+    "partNumberById.inventoryItemByPartNumberId.sourceMaterialConversionType",
+    "partNumberById.inventoryItemByPartNumberId.providedMaterialConversionType",
+    "partNumberById.inventoryItemByPartNumberId.defaultLeadTime",
+    "partNumberById.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes[].unitByUnitId.id",
+    "partNumberById.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes[].factor",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].geometryTypeDimensionTypeId",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].dimensionValue",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].unitByUnitId.id"
+   ],
+   "notes": "CS2 NO es consolidatable. Este fetch ocurre DENTRO del mismo STEP 6 que lo consume: el código lo hace al inicio de enrichWorker para que Call A y Call B del SavePartNumber tengan los datos pre-fetch. Consolidar requeriría que el seed estuviera poblado ANTES de STEP 6, lo cual significa un fetch en STEP 5 o anterior. El problema es que los datos del seed serían inmediatamente stale después de Call A: Call A reemplaza labelIds y dimensionCustomValueIds; si hubiera un segundo PN que leyera el seed de un tercero que ya pasó por Call A, los IDs del seed serían los PRE-Call A. Dado que el pool de concurrencia es 8 PNs simultáneos, distintos PNs del pool no se bloquean entre sí y el seed de PN-X no lo lee PN-Y (cada worker usa su propio existingPnNode). La consolidación factible es: si en un paso anterior (ej. STEP 5 archive-sentinels) ya se fetched el mismo partNumberId, reutilizar ese fetch guardado en existingPnFullCache — que es exactamente lo que hace el código actual en las líneas 4990-5000 con existingPnFullCache.get(pn.id) antes de hacer el GetPartNumber. El riesgo ALTO en specs/labels/dims aplica al escenario de re-uso del seed ENTRE steps distintos (si un step posterior intentara reutilizar el resultado de CS2 que fue guardado ANTES de que Call A o Call B mutaran esos campos). El finally de enrichWorker (línea 5574) invalida explícitamente existingPnFullCache.delete(pn.id) para forzar re-fetch fresco en STEP 6b."
+  },
+  {
+   "callSite": "step6bWorker — STEP 6b sync params",
+   "lineApprox": "5807–5815",
+   "purpose": "Obtener el estado post-STEP-6 del PN para (a) decidir qué partNumberSpecFieldParams archivar (duplicados / processNodeId no-null, regla 1.4.38) y (b) preservar labels, dims, customInputs, optInOuts, inventoryItem e IDs de FK en el SavePartNumber de cleanup, evitando que SH (REPLACE-semantics) borre lo que Call A/B acaban de escribir. Es un fetch deliberadamente post-enrich: enrichWorker invalida la cache de forma explícita en su finally, por lo que cualquier hit en existingPnFullCache aquí implica que el PN NO pasó por enrich (PN nuevo o ya procesado en corrida anterior resumida).",
+   "fieldsUsed": [
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].specBySpecId.id",
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].id",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].processNodeId",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].specFieldParamBySpecFieldParamId.id",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.specFieldBySpecFieldId.id",
+    "partNumberById.partNumberLabelsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberLabelsByPartNumberId.nodes[].labelByLabelId.id",
+    "partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes[].dimensionCustomValueId",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].geometryTypeDimensionTypeId",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].dimensionValue",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].unitByUnitId.id",
+    "partNumberById.partNumberDimensionsByPartNumberId.nodes[].unitId",
+    "partNumberById.partNumberGroupByPartNumberGroupId.id",
+    "partNumberById.partNumberGroupId",
+    "partNumberById.name",
+    "partNumberById.customerByCustomerId.id",
+    "partNumberById.customerId",
+    "partNumberById.processNodeByDefaultProcessNodeId.id",
+    "partNumberById.defaultProcessNodeId",
+    "partNumberById.customInputs",
+    "partNumberById.geometryTypeByGeometryTypeId.id",
+    "partNumberById.geometryTypeId",
+    "partNumberById.descriptionMarkdown",
+    "partNumberById.customerFacingNotes",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].processNodeId",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].processNodeOccurrence",
+    "partNumberById.processNodePartNumberOptInoutsByPartNumberId.nodes[].cancelOthers",
+    "partNumberById.inventoryItemByPartNumberId.materialByMaterialId.id",
+    "partNumberById.inventoryItemByPartNumberId.sourceMaterialConversionType",
+    "partNumberById.inventoryItemByPartNumberId.providedMaterialConversionType",
+    "partNumberById.inventoryItemByPartNumberId.defaultLeadTime",
+    "partNumberById.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes[].unitByUnitId.id",
+    "partNumberById.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes[].factor"
+   ],
+   "stalenessRisks": [
+    {
+     "field": "partNumberSpecFieldParamsByPartNumberId.nodes",
+     "mutatedByStep": "STEP 6 enrichWorker (SavePartNumber Call A / Call B aplica paramsToApply y puede archivar via partNumberSpecFieldParamsToArchive)",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberSpecsByPartNumberId.nodes",
+     "mutatedByStep": "STEP 5 sentinels (archiva specs no-wanted via partNumberSpecsToArchive) y STEP 6 enrichWorker (specsToApply + partNumberSpecsToArchive + partNumberSpecsToUnarchive)",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberLabelsByPartNumberId.nodes",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B escribe labelIds via REPLACE-semantics)",
+     "risk": "high"
+    },
+    {
+     "field": "acctPnDimensionValueSelectionsByPartNumberId.nodes",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B escribe dimensionCustomValueIds via REPLACE-semantics)",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberDimensionsByPartNumberId.nodes",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B escribe partNumberDimensions via REPLACE-semantics; bug 1.5.14/1.5.15 fue precisamente esto)",
+     "risk": "high"
+    },
+    {
+     "field": "customInputs",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B merge de customInputs incluyendo ControlCambios — fix crítico 1.5.9); STEP 6a no toca customInputs",
+     "risk": "high"
+    },
+    {
+     "field": "processNodePartNumberOptInoutsByPartNumberId.nodes",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B escribe optInOuts via REPLACE-semantics — fix 1.5.17)",
+     "risk": "high"
+    },
+    {
+     "field": "inventoryItemByPartNumberId (UCs)",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B escribe inventoryItemInput con unitConversions via REPLACE-semantics — fix 1.5.17)",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberGroupByPartNumberGroupId.id / partNumberGroupId",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B escribe partNumberGroupId — FK bugged, fix 1.5.16)",
+     "risk": "high"
+    },
+    {
+     "field": "customerByCustomerId.id / customerId",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B — FK bugged, fix 1.5.16)",
+     "risk": "med"
+    },
+    {
+     "field": "processNodeByDefaultProcessNodeId.id / defaultProcessNodeId",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B — FK bugged, fix 1.5.16)",
+     "risk": "high"
+    },
+    {
+     "field": "geometryTypeByGeometryTypeId.id / geometryTypeId",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B — FK bugged, fix 1.5.16; piloto Fisher perdía geometryTypeId=null)",
+     "risk": "high"
+    },
+    {
+     "field": "name",
+     "mutatedByStep": "STEP 2a (CreatePartNumber establece name) — no cambia en STEP 3-6b para PNs existing",
+     "risk": "none"
+    },
+    {
+     "field": "descriptionMarkdown",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B puede actualizar descriptionMarkdown si CSV lo trae)",
+     "risk": "low"
+    },
+    {
+     "field": "customerFacingNotes",
+     "mutatedByStep": "STEP 6 enrichWorker (Call B puede actualizar customerFacingNotes)",
+     "risk": "low"
+    }
+   ],
+   "consolidatable": false,
+   "seedFields": [
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].id",
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].specBySpecId.id",
+    "partNumberById.partNumberSpecsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].id",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].archivedAt",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].processNodeId",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].specFieldParamBySpecFieldParamId.id",
+    "partNumberById.partNumberSpecFieldParamsByPartNumberId.nodes[].specFieldParamBySpecFieldParamId.specFieldSpecBySpecFieldSpecId.specFieldBySpecFieldId.id"
+   ],
+   "notes": "Este call site NO es consolidatable desde el seed del enrichWorker (STEP 6). La razón es estructural: enrichWorker llama explícitamente a `existingPnFullCache.delete(pn.id)` en su bloque finally (línea 5574) y el pipeline hace `existingPnFullCache.clear()` al terminar el pool (línea 5664) precisamente para que step6bWorker reciba el estado POST-enrich. El seed de STEP 6 captura el PN ANTES de que SavePartNumber Call A/B escriban labels, dims, customInputs, optInOuts, specFieldParams y UCs — los mismos campos que step6bWorker necesita reflejar fielmente para no borrarlos en el SavePartNumber de cleanup (regla REPLACE-semantics de SH). Toda la serie de fixes 1.5.x (1.5.6 dims, 1.5.9 customInputs, 1.5.14/1.5.15 dims field names, 1.5.16 FK scalars, 1.5.17 optInOuts+UCs) existe precisamente porque reusar datos stale aquí causa pérdida silenciosa de datos en PNs. Un re-fetch parcial post-STEP-6 de sólo specs+params podría consolidarse para evitar repetir la carga de dims/labels/etc., pero requeriría que el seed sea poblado DESPUÉS de enrichWorker (no durante su prefetch), lo cual lo convierte en un fetch adicional de cualquier forma. Conclusión: el fetch de step6bWorker es correcto y necesario tal como está; consolidar requeriría un seed post-STEP-6 que todavía no existe en el pipeline."
+  },
+  {
+   "callSite": "CS4-racks-step7",
+   "lineApprox": "L6143",
+   "purpose": "STEP 7 delete-racks branch: cuando el CSV trae un guión (\"-\") en la columna de rack para un PN, se hace GetPartNumber para obtener los IDs de las asociaciones rack-PN actualmente persistidas en el servidor, y luego se llama DeletePartNumberRackType por cada una. Sin este fetch no hay forma de conocer los IDs de las filas de partNumberRackTypesByPartNumberId que hay que borrar.",
+   "fieldsUsed": [
+    "partNumberById.partNumberRackTypesByPartNumberId.nodes[].id"
+   ],
+   "stalenessRisks": [
+    {
+     "field": "partNumberById.partNumberRackTypesByPartNumberId.nodes[].id",
+     "mutatedByStep": "Ningún step anterior del pipeline toca rack associations. STEP 2a crea el PN (sin racks). STEP 3 agrega precios. STEP 4 crea línea de cotización. STEP 4.5 unarchive. STEP 5 sentinels. STEP 6 enrich (SavePartNumber) solo toca labels/dims/specs/customInputs/proceso — no envía rackTypeIds. STEP 6a predictivos cascade. STEP 6b AddParams. STEP 7 es el primer y único paso que modifica rack associations.",
+     "risk": "none"
+    }
+   ],
+   "consolidatable": true,
+   "seedFields": [
+    "partNumberRackTypesByPartNumberId.nodes[].id"
+   ],
+   "notes": "El call solo se dispara para PNs cuya columna CSV de rack contiene un guión (racksToDelete Set). El enrichWorker de STEP 6 ya fetcha GetPartNumber sobre los mismos pnIds — si el seed guarda nodes[].id de partNumberRackTypesByPartNumberId, STEP 7 puede leer del seed sin re-fetch. Riesgo de staleness es none porque ningún step entre STEP 6 y STEP 7 llama SavePartNumberRackTypes ni DeletePartNumberRackType. Nota adicional: el cache existingPnFullCache se limpia explícitamente en L6096 antes de STEP 7 (Fix Y 1.4.15), lo que hoy fuerza el re-fetch — al consolidar con seed habría que alimentar el seed desde el enrichWorker y no depender de existingPnFullCache que ya fue cleared."
+  },
+  {
+   "callSite": "CS5-deleteprices-step7b",
+   "lineApprox": "6238",
+   "purpose": "Obtener todos los IDs de precios existentes en el PN para borrarlos uno por uno vía DeletePartNumberPrice. Se invoca solo cuando la columna \"precio\" del CSV contiene un guión (\"-\"), indicando que el usuario quiere dejar el PN sin precios. El fetch obtiene el snapshot actual de precios en Steelhead para iterar sobre cada price.id.",
+   "fieldsUsed": [
+    "partNumberById.partNumberPricesByPartNumberId.nodes[].id"
+   ],
+   "stalenessRisks": [
+    {
+     "field": "partNumberById.partNumberPricesByPartNumberId.nodes[].id",
+     "mutatedByStep": "STEP 3 SaveManyPartNumberPrices agrega nuevos precios al PN (quote mode y solo-PN). Un seed tomado ANTES de STEP 3 carecería de los price IDs recién creados y STEP 7b no los borraría. Un seed tomado en STEP 6 (enrichWorker) ya es post-STEP-3, por lo que incluye todos los precios que existen en el momento en que 7b necesita borrarlos.",
+     "risk": "high"
+    }
+   ],
+   "consolidatable": true,
+   "seedFields": [
+    "partNumberById.partNumberPricesByPartNumberId.nodes[].id"
+   ],
+   "notes": "El call site es trivial en cuanto a campos: solo consume price.id, nada más del response de GetPartNumber. La condición de consolidabilidad depende exclusivamente del orden temporal: el seed del enrichWorker (STEP 6) se puebla DESPUÉS de STEP 3 (que agrega precios) y ANTES de STEP 7b (que los borra), por lo que refleja el estado correcto. Ningún step entre STEP 6 y STEP 7b (STEP 6a predictivos, STEP 6b AddParams, STEP 7 racks) toca partNumberPricesByPartNumberId. Por tanto, el seed de STEP 6 es seguro para 7b SIN re-fetch. El seed slim solo necesita guardar el array de IDs: [ { id } ] por PN. No hay riesgo de datos faltantes siempre que el seed se actualice justo al finalizar STEP 6 (no antes de STEP 3). Advertencia: si en el futuro se introduce algún step entre 6 y 7b que modifique precios, este análisis caducaría."
+  },
+  {
+   "callSite": "CS6-defaultprice-step8",
+   "lineApprox": "6323-6327 (dentro de runPool en el bloque isSoloPN)",
+   "purpose": "En modo SOLO_PN (alta/actualización de NPs sin cotización), SaveManyPartNumberPrices no devuelve los IDs de los precios recién creados. Por eso STEP 8 re-fetchea el PN para obtener la lista actual de precios, identifica el más reciente por id numérico mayor (el recién creado en STEP 3) y lo acumula en priceIdsForDefault para llamar SetPartNumberPricesAsDefaultPrice. Si el PN ya tenía otro precio marcado como default (campo isDefault), lo acumula en priceIdsToUnsetDefault para UnsetPartNumberPriceAsDefaultPrice. El fetch corre en runPool concurrente (concurrency.savePartNumber, default 5) para no serializar miles de PNs.",
+   "fieldsUsed": [
+    "partNumberById.partNumberPricesByPartNumberId.nodes[].id",
+    "partNumberById.partNumberPricesByPartNumberId.nodes[].isDefault"
+   ],
+   "stalenessRisks": [
+    {
+     "field": "partNumberById.partNumberPricesByPartNumberId.nodes[].id",
+     "mutatedByStep": "STEP 3 SaveManyPartNumberPrices agrega precios (IDs nuevos no conocidos); STEP 7b DeletePartNumberPrice borra TODOS los precios del PN cuando la columna precio es guión",
+     "risk": "high"
+    },
+    {
+     "field": "partNumberById.partNumberPricesByPartNumberId.nodes[].isDefault",
+     "mutatedByStep": "STEP 3 puede crear precio con isDefault implícito; STEP 7b borra el precio que era default (el nodo desaparece, ya no es default). Nota: hay un bug latente — el código lee p.isDefault pero el campo real del API es isDefaultPartNumberPrice; en la práctica p.isDefault siempre es undefined y el unset nunca se ejecuta.",
+     "risk": "high"
+    }
+   ],
+   "consolidatable": false,
+   "seedFields": [],
+   "notes": "No consolidatable. El seed del enrichWorker (STEP 6) captura los precios ANTES de STEP 7b. STEP 7b (DeletePartNumberPrice) puede borrar algunos o todos los precios del PN (cuando precio=guión). Si el seed incluyera los nodes de precios de STEP 6, en STEP 8 el sort por id mayor apuntaría a un precio ya eliminado, y SetPartNumberPricesAsDefaultPrice fallaría o marcaría un ghost id. El re-fetch es correcto y necesario aquí. El único campo que se necesita es id (para sort desc y para push a priceIdsForDefault) e isDefault (para unset del previo) — ambos dependen del estado post-STEP-7b. Adicionalmente: el campo que el código lee (p.isDefault) es incorrecto — el API devuelve isDefaultPartNumberPrice; esto es un bug silencioso independiente de la consolidación. Corrección recomendada: p.isDefaultPartNumberPrice."
+  }
+ ],
+ "synthesis": {
+  "seedDesign": [
+   {
+    "field": "partNumberRackTypesByPartNumberId.nodes[].id",
+    "source": "CS2-enrichWorker GetPartNumber (STEP 6) — añadir al selection set del enrichWorker fetch",
+    "servesSteps": "CS4 STEP 7 delete-racks (racksToDelete loop, línea 6143)",
+    "slim": true
+   },
+   {
+    "field": "partNumberPricesByPartNumberId.nodes[].id",
+    "source": "CS2-enrichWorker GetPartNumber (STEP 6) — añadir al selection set del enrichWorker fetch",
+    "servesSteps": "CS5 STEP 7b delete-prices (pricesToDelete loop, línea 6238). El seed de STEP 6 ya es post-STEP-3 (SaveManyPartNumberPrices) por lo que incluye los price IDs recién creados.",
+    "slim": true
+   }
+  ],
+  "temporalConstraints": [
+   "PRECIOS (CS5): El seed de precios SOLO es válido si se puebla en el enrichWorker DESPUÉS de que STEP 3 (SaveManyPartNumberPrices) ya corrió. Un seed tomado en STEP 5 (sentinels) o antes carecería de los IDs de precios recién creados por STEP 3. El enrichWorker (STEP 6) cumple esta condición: corre post-STEP-3. NO reutilizar el seed de precios en CS6 (STEP 8 default-price): STEP 7b (DeletePartNumberPrice) puede borrar todos los precios del PN entre STEP 6 y STEP 8, dejando el seed stale. CS6 DEBE re-fetchear siempre post-STEP-7b.",
+   "RACKS (CS4): El seed de rackTypes es válido porque ningún step entre STEP 6 y STEP 7 toca partNumberRackTypesByPartNumberId. Sin embargo, el clear() de existingPnFullCache en L6096 (antes de STEP 7) actualmente fuerza re-fetch. Al consolidar, el seed debe vivir en un Map separado (pnSeedMap) que NO se limpie con existingPnFullCache, para que sobreviva el clear().",
+   "SPEC FIELD PARAMS (CS3/step6bWorker): Los specFieldParams SON mutados por el propio STEP 6 enrichWorker (Call A y B de SavePartNumber aplican paramsToApply y pueden archivar via partNumberSpecFieldParamsToArchive). El cache invalidation explícita en el finally del enrichWorker (línea 5574: existingPnFullCache.delete) y el existingPnFullCache.clear() post-STEP-6 (línea 5664) garantizan que step6bWorker recibe datos frescos post-mutation. NUNCA seedear specFieldParams desde CS2 para consumo en CS3.",
+   "LABELS, DIMS, CUSTOM_INPUTS, OPT_IN_OUTS (CS3/step6bWorker): Todos mutados por STEP 6 enrichWorker (Call A/B REPLACE-semantics). Los fixes 1.5.6–1.5.17 existen precisamente para evitar usar datos pre-STEP-6 en step6bWorker. NUNCA seedear estos campos desde CS2 para consumo en CS3.",
+   "PREDICTIVOS (CS1): El prefetch de predictivos (CS1) corre ANTES del enrichWorker pool y puebla existingPredictedMap. Este mapa NO debe consolidarse con el seed del enrichWorker porque el prefetch es deliberadamente anterior al pool (los fields son 'none' risk porque ningún step previo los muta). Si se quisiera consolidar, habría que expandir el selection set del enrichWorker para incluir predictedInventoryUsagesByPartNumberId Y mantener los datos en un Map separado que sobreviva al existingPnFullCache.clear(). El win es marginal (3 campos ligeros) y el riesgo de tocar existingPnFullCache.clear() es real — mantener como prefetch independiente.",
+   "SEED LIFECYCLE — REGLA CLAVE: El seed slim (pnSeedMap) debe ser un Map pnId → { rackTypeIds: [], priceIds: [] } poblado dentro del enrichWorker después del GetPartNumber fetch (líneas 5000-5006), que persista más allá de existingPnFullCache.delete (finally línea 5574) y de existingPnFullCache.clear() (líneas 5664, 6096). Debe limpiarse al inicio del run (antes del pool de STEP 6) y al final del run completo. Su footprint es mínimo: solo arrays de IDs numéricos, estimado <2KB por PN × 9K PNs = <18MB máximo, muy por debajo del guardrail 88%."
+  ],
+  "consolidationPlan": [
+   {
+    "change": "Consolidar CS4 (STEP 7 delete-racks): Ampliar el selection set del enrichWorker GetPartNumber para incluir `partNumberRackTypesByPartNumberId { nodes { id } }`. Al finalizar el fetch en enrichWorker (línea 5000), además de existingPnFullCache.set, poblar pnSeedMap.get(pn.id).rackTypeIds con los IDs obtenidos. En STEP 7 (líneas 6136-6151), para cada pnId en racksToDelete, leer del pnSeedMap en lugar de hacer GetPartNumber. Fallback: si pnId no está en pnSeedMap (PN nuevo, sin enrichWorker ejecutado), hacer el GetPartNumber como hoy. Eliminar el GetPartNumber de línea 6143 para PNs que pasaron por enrichWorker.",
+    "eliminatesFetch": "1 GetPartNumber por PN con racks a borrar (solo PNs con guión en columna rack). Frecuencia: baja (casos especiales de borrado de racks).",
+    "risk": "low",
+    "validation": "1) Sandbox: corrida con 3 PNs existentes con racks, columna rack = guión. Verificar que los racks se borran correctamente. 2) Log comparativo: imprimir IDs leídos del seed vs IDs que devolvería el GetPartNumber (modo dual antes de eliminar el fetch). 3) Corrida con PN nuevo (status=new, sin enrichWorker ejecutado) con guión en racks: verificar fallback a GetPartNumber."
+   },
+   {
+    "change": "Consolidar CS5 (STEP 7b delete-prices): Ampliar el selection set del enrichWorker GetPartNumber para incluir `partNumberPricesByPartNumberId { nodes { id } }`. Al finalizar el fetch en enrichWorker (línea 5000), poblar pnSeedMap.get(pn.id).priceIds con los IDs obtenidos. En STEP 7b (líneas 6236-6244), para cada pnId en pricesToDelete, leer del pnSeedMap en lugar de hacer GetPartNumber. Fallback: si pnId no está en pnSeedMap, hacer el GetPartNumber como hoy. Eliminar el GetPartNumber de línea 6238 para PNs que pasaron por enrichWorker. ADVERTENCIA: asegurarse de que el pnSeedMap se puebla DESPUÉS de que STEP 3 haya corrido — el enrichWorker ya corre post-STEP-3 por diseño, así que esta condición se cumple sin cambios en el orden de pasos.",
+    "eliminatesFetch": "1 GetPartNumber por PN con precio = guión (pricesToDelete). Frecuencia: moderada en corridas de limpieza de precios.",
+    "risk": "low",
+    "validation": "1) Sandbox: corrida con 3 PNs existentes con precios, columna precio = guión. Verificar que todos los precios se borran (incluidos los creados en STEP 3 de la misma corrida). 2) Corrida con PN que tiene 2 precios pre-existentes + 1 creado en STEP 3 de esta corrida: verificar que el seed incluye los 3 (post-STEP-3). 3) Corrida con PN nuevo: verificar fallback."
+   },
+   {
+    "change": "Implementar pnSeedMap como infraestructura: Declarar `const pnSeedMap = new Map()` cerca de existingPnFullCache (o justo antes del STEP 6 pool). Estructura: pnSeedMap.set(pnId, { rackTypeIds: [], priceIds: [] }). El seed se puebla en enrichWorker al hacer existingPnFullCache.set(pn.id, existingPnNode) — agregar inmediatamente después la llamada de llenado del pnSeedMap. NO limpiar pnSeedMap en el finally del enrichWorker ni en los existingPnFullCache.clear() de líneas 5664 y 6096 — el seed debe sobrevivir hasta el final de STEP 7b. Limpiar al inicio del siguiente run (o dejarlo al GC junto con el closure del run).",
+    "eliminatesFetch": "Infraestructura base para CS4 y CS5. No elimina fetches por sí solo pero es el prerequisito.",
+    "risk": "low",
+    "validation": "Unit test en Node: poblar el mapa con 5 PNs ficticios, verificar que persiste después de llamar al equivalente del clear() de existingPnFullCache. Revisar que el footprint estimado (<18MB para 9K PNs con 5 precios promedio) está dentro del guardrail del monitor de heap."
+   }
+  ],
+  "risks": [
+   "RIESGO PRINCIPAL — seed stale por orden de pasos: Si en el futuro se introduce un step entre STEP 6 y STEP 7b que modifique precios (ej. un 'STEP 6c update-prices'), el seed de precios quedaría stale. El código debe incluir un comentario de advertencia explícito en el llenado del pnSeedMap indicando esta dependencia de orden temporal.",
+   "RIESGO — PNs nuevos sin enrichWorker: Los PNs con status=new o forceDup no pasan por el GetPartNumber de CS2 (la guarda es `if (statusEarly?.status === 'existing' && pn.id)`). Si un PN nuevo tiene guión en rack o precio, el pnSeedMap no tendrá entrada y el código debe hacer fallback a GetPartNumber. Sin fallback, racksToDelete o pricesToDelete con PNs nuevos fallarían silenciosamente.",
+   "RIESGO — PNs con enrichWorker fallido: Si enrichWorker falla (BailError, retry exhausted), el finally invalida existingPnFullCache pero el seed podría no estar poblado (si el GetPartNumber inicial falló). El fallback a GetPartNumber en STEP 7/7b cubre este caso, pero hay que verificar que el seed se puebla SOLO si el GetPartNumber tuvo éxito (línea 5000: ya condicionado a `if (existingPnNode)`).",
+   "RIESGO — bug silencioso en CS6 (isDefault): El campo que el código lee en STEP 8 es `p.isDefault` pero el API devuelve `isDefaultPartNumberPrice`. Este bug existe hoy e impide que el unset-default funcione (p.isDefault siempre undefined). Es independiente de la consolidación pero debería corregirse junto con ella para no perpetuar un bug latente. La consolidación de CS5 no afecta este bug.",
+   "RIESGO — NO consolidar CS1 (predictivos): Intentar consolidar el prefetch de predictivos con el enrichWorker requeriría tocar existingPnFullCache.clear() y crear un segundo Map que sobreviva el clear(). El beneficio es mínimo (3 campos ligeros, corridas con predictivos son la minoría) y el riesgo de regresión es real. Mantener CS1 como prefetch independiente es la decisión correcta.",
+   "RIESGO — NO consolidar CS3 (step6bWorker) ni CS2 (enrichWorker mismo): Ambos requieren datos post-mutation de STEP 6. Toda la serie de fixes 1.5.x existe para proteger este invariante. Cualquier intento de seedear labels/dims/customInputs/optInOuts/specFieldParams para step6bWorker desde un fetch anterior a STEP 6 reproducirá los bugs corregidos por esos fixes.",
+   "RIESGO — NO consolidar CS6 (STEP 8 default-price isSoloPN): STEP 7b puede borrar precios entre STEP 6 y STEP 8. El seed de STEP 6 quedaría stale. El re-fetch en STEP 8 es correcto y necesario."
+  ],
+  "recommendation": "Consolidar PRIMERO CS5 (delete-prices STEP 7b) y CS4 (delete-racks STEP 7), en ese orden de implementación, vía el mismo pnSeedMap. Son los únicos call sites con risk=none de staleness, fields triviales (solo arrays de IDs), y el fallback a GetPartNumber es simple y seguro. El impacto por corrida es modesto en frecuencia (guiones en precios/racks son casos especiales), pero elimina fetches seriales que hoy no tienen concurrencia (los loops de STEP 7/7b son secuenciales, líneas 6139 y 6236).\n\nDejar re-fetcheando sin cambios: CS1 (predictivos, prefetch independiente — 3 campos ligeros, costo de consolidación supera el beneficio), CS2 (enrichWorker mismo — fetch al inicio del worker, no hay step previo que lo preceda dentro del pool), CS3 (step6bWorker — DEBE ser post-STEP-6, toda la serie 1.5.x lo garantiza, riesgo de regresión muy alto), CS6 (STEP 8 default-price — DEBE ser post-STEP-7b, el seed estaría stale si 7b borró precios).\n\nLa ganancia real de la consolidación CS4+CS5 no es de throughput (los loops son pequeños) sino de simplicidad y reducción de surface de error: cada GetPartNumber eliminado es un timeout o 401 que no puede ocurrir. El refactor de infraestructura (pnSeedMap) también pavimenta el camino para futuras consolidaciones de call sites que hoy no existen pero que un nuevo feature podría agregar en STEP 7-8."
+ }
+}

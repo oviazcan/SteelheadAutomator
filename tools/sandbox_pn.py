@@ -97,6 +97,13 @@ def save(client, pid, input_obj):
     return _call(client, "SavePartNumber", {"input": [input_obj]})
 
 
+def archive(client, pid):
+    _assert_sandbox(client, pid)  # solo archiva el sandbox, nunca un PN real
+    import datetime
+    iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return _call(client, "UpdatePartNumber", {"id": int(pid), "archivedAt": iso})
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "get"
     client = client_from_env()
@@ -106,5 +113,7 @@ if __name__ == "__main__":
         print(json.dumps(get(client, sys.argv[2]), indent=2, ensure_ascii=False)[:4000])
     elif cmd == "save":
         print(json.dumps(save(client, sys.argv[2], json.loads(sys.argv[3])), indent=2, ensure_ascii=False)[:2000])
+    elif cmd == "archive":
+        print(json.dumps(archive(client, sys.argv[2]), indent=2, ensure_ascii=False)[:1000])
     else:
         raise SystemExit(f"comando desconocido: {cmd}")

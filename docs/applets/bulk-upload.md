@@ -32,6 +32,16 @@ Refactor en 5 fases (F1 extracción/tests · F2 memory+storage · F3 UI panel ú
 - **Correcciones de mapeo:** `clearDefaultProcess` NO es flag muerto (lo lee el builder en L4607/4741/5396) — no se tocó.
 - **Diferido a F3:** `sa_load_history` → IndexedDB. Razón: lo lee `extension/background.js` (`view-load-history`, `download-load-csv` vía `executeScript` world MAIN en la tab); migrar requiere cambiar background.js + republicar el `.zip`, que ya pasa en F3 (UI toca extension/). Plan: `bulk-upload.js` escribe `saIdbSet` + expone `getLoadHistory()`; `background.js` usa `window.BulkUpload.getLoadHistory()`.
 
+**F4 — velocidad (config 1.6.43/1.6.44, 2026-06-06, deployado; validación de corrida real pendiente):**
+- ✅ **AddParams batch** (N→1 por PN) + **SaveQuoteLines batch** (N→1 por cotización), ambos con fallback per-item (peor caso = comportamiento actual). Velocidad real en specs y COTI.
+- ✅ **Fix bug `isDefault`** (STEP 8): leía `p.isDefault` (siempre undefined; el campo real es `isDefaultPartNumberPrice`, verificado contra shape de SH) → el unset-default nunca corría; un PN podía quedar con 2 defaults. Corregido.
+- ✅ **Instrumentación de tiempos por fase** (`dumpPhaseTimings`) — para medir qué fase domina con datos.
+- ❌ **Consolidación `GetPartNumber` 4→1: NO viable** (análisis adversarial). Los re-fetches son NECESARIOS — leen datos post-mutación que toda la serie 1.5.x garantiza frescos; consolidarlos reintroduciría bugs. Solo CS4/CS5 (delete-racks/prices) consolidables y marginales. Análisis: `docs/superpowers/specs/2026-06-06-bulk-upload-F4-getpn-consolidation-analysis.json`.
+- ✅ **Scan acotado YA existía**: `classifyPNs` usa on-demand para ≤1000 filas, massive solo para >1000. Las corridas chicas NO escanean 50k. El mapeo inicial se equivocó.
+- 🟡 **Skip 8 (`partNumberLocations`)**: bug real en código (`[]` borraría con REPLACE) pero **INOFENSIVO en TLC** — `SearchLocationsOnPath` confirma **0 ubicaciones de PN en el dominio** (TLC no usa partNumberLocations). NO se corrigió: corregir requiere el shape de un location node + validar contra un PN con ubicaciones (no existe en TLC). Corregir a ciegas sería más riesgoso que el bug inofensivo. **Plan:** preserve-on-missing (como dims) cuando un dominio use ubicaciones, validando contra un PN real.
+- ✅ **Sandbox "Pruebas Claude" (id 3671383) archivado** tras las validaciones de escritura. Writer reutilizable: `tools/sandbox_pn.py` (create/get/save/archive con guarda de nombre).
+- **Pendiente:** validación de F4 con corrida real (la "prueba" que el usuario difirió) — confirmar AddParams/SaveQuoteLines/isDefault end-to-end + revisar el desglose `dumpPhaseTimings`.
+
 ## 1.5.20 (config 1.6.38, 2026-06-05) — Actualización de precios: matching con acabados vacíos + footprint ControlCambios + inputSchemaId dinámico
 
 **Objetivo:** habilitar bulk-upload para **actualizar precios** de PNs existentes,
