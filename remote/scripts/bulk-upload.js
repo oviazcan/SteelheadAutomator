@@ -2221,10 +2221,26 @@ const BulkUpload = (() => {
         }))
         .join('');
 
+      // F5: badge de intención de la corrida (retroalimentación en el preview).
+      let intentBadge = '';
+      try {
+        if (Parse && typeof Parse.classifyRunIntent === 'function') {
+          const runIntent = Parse.classifyRunIntent(parts, nc === 0);
+          const INTENT_UI = {
+            SOLO_PRECIO: ['💲 Solo precio (fast-path)', '#16a34a'],
+            AJUSTE_LINEA: ['✏️ Ajuste de línea', '#2563eb'],
+            ENRIQUECIMIENTO: ['📝 Enriquecimiento', '#7c3aed'],
+            ALTA: ['➕ Alta', '#64748b'],
+          };
+          const [txt, color] = INTENT_UI[runIntent] || ['', '#64748b'];
+          if (txt) intentBadge = ` <span style="display:inline-block;padding:2px 9px;border-radius:10px;background:${color};color:#fff;font-size:11px;font-weight:700;vertical-align:middle" title="Intención detectada de la corrida (por columnas con datos)">${txt}</span>`;
+        }
+      } catch (_) { /* el badge nunca rompe el preview */ }
+
       modal.style.background = modeBg;
       modal.innerHTML = `
         <h2 style="color:${modeColor}">Steelhead Automator v10 — ${modeLabel}</h2>
-        <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup${pendingCount > 0 ? ` · <span class="dl9-pending-chip"><b>${pendingCount}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">Solo pendientes</button>` : ''}</p>
+        <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup${intentBadge}${pendingCount > 0 ? ` · <span class="dl9-pending-chip"><b>${pendingCount}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">Solo pendientes</button>` : ''}</p>
         ${statsHtml}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center">
           <label style="font-size:12px;color:#94a3b8">Filtro:
