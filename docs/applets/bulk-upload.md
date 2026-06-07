@@ -10,6 +10,16 @@ Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Mod
 
 Refactor en 5 fases (F1 extracción/tests · F2 memory+storage · F3 UI panel único + 2 barras · F4 pipeline consolidado worker per-PN · F5 intención + fast-path SOLO_PRECIO).
 
+### Cierre de sesión 2026-06-07 — estado de deploys + fix del `.zip`
+
+**LIVE en gh-pages:** config `version` 1.6.47 + `extensionVersion` 1.6.4. `steelhead-automator.zip` republicado con `manifest.json` **1.6.4** y `background.js` async (IndexedDB) — verificado descargando el link real (64779 bytes, `indexedDB.open('sa_storage')` presente).
+
+**⚠️ Gotcha de deploy de extensión (causa del "el zip baja 1.6.3"):** bumpear `config.extensionVersion` **NO basta**. Chrome lee la versión de `extension/manifest.json`, no de `config.json`. En el primer deploy se subió `config.extensionVersion` a 1.6.4 y se empaquetó el `background.js` nuevo, pero **`extension/manifest.json` quedó en 1.6.3** → el `.zip` mostraba 1.6.3 aunque traía el código nuevo. **Regla:** al republicar el `.zip`, bumpear SIEMPRE `extension/manifest.json` Y `config.extensionVersion` juntos, y **verificar el manifest DENTRO del zip servido** (`curl <extensionZipUrl> -o z.zip && unzip -p z.zip manifest.json | grep version`), no solo el tamaño en bytes. Commit del fix: `fix(extension): bump manifest 1.6.3 -> 1.6.4`. De paso se borraron 2 zips legacy sin referencias (`SHAutomator260330.zip`, `extension.zip`, ambos 1.6.3).
+
+**El usuario debe:** recargar la extensión instalada con el `.zip` 1.6.4 (chrome://extensions → quitar la vieja → cargar la nueva descomprimida) para que `background.js` async tome efecto. Hasta entonces, "Ver historial"/"Descargar CSV" del popup leen del background viejo (localStorage).
+
+**Pendientes NO bloqueantes (próxima semana):** validación de corrida real F4 (`⏱️ Tiempos por fase` via `dumpPhaseTimings`, confirmar AddParams/SaveQuoteLines/isDefault end-to-end) · decisión fast-path SOLO_PRECIO (F5 ya clasifica + badge; falta el atajo real) · restyle F3 a panel anclado a la derecha · `precioAnterior` real para delta en `Detalle` de ControlCambios.
+
 **F1 — refactor estructural sin cambio de comportamiento (deployado, validado por usuario "se ve igual"):**
 - Extraídas las funciones PURAS a módulos testeables (`node --test`):
   - `bulk-upload-parse.js` — `toBool/isDash/resolveStr/resolveNum/cell/cellNum/parseCSV/buildDimensions` + constantes (`PRICE_UNIT_MAP`, `PREDICTIVE_MATERIALS`, `HEADER_KEYS`).
@@ -30,7 +40,7 @@ Refactor en 5 fases (F1 extracción/tests · F2 memory+storage · F3 UI panel ú
 - **`AbortController`** por llamada en `steelhead-api.js` `query()` (default 90s configurable vía `config.steelhead.fetchTimeoutMs`; libera el slot del runPool cuando SH cuelga; `AbortError`→'timeout' retryable). Default generoso porque steelhead-api es compartido por 25 usos.
 - Fix tooltip del chip "validada": dice IndexedDB (no localStorage; el resume migró en 1.4.27).
 - **Correcciones de mapeo:** `clearDefaultProcess` NO es flag muerto (lo lee el builder en L4607/4741/5396) — no se tocó.
-- **Diferido a F3:** `sa_load_history` → IndexedDB. Razón: lo lee `extension/background.js` (`view-load-history`, `download-load-csv` vía `executeScript` world MAIN en la tab); migrar requiere cambiar background.js + republicar el `.zip`, que ya pasa en F3 (UI toca extension/). Plan: `bulk-upload.js` escribe `saIdbSet` + expone `getLoadHistory()`; `background.js` usa `window.BulkUpload.getLoadHistory()`.
+- **✅ HECHO (config 1.6.47 + ext 1.6.4, deploy fin de semana):** `sa_load_history` → IndexedDB. Lo lee `extension/background.js` (`view-load-history`, `download-load-csv` vía `executeScript` world MAIN en la tab). `bulk-upload.js` escribe `saIdbSet` + migración localStorage→IDB + expone `getLoadHistory()`; `background.js` lee IDB (`indexedDB.open('sa_storage')`, store `kv`) async con fallback localStorage. Requirió republicar el `.zip`.
 
 **F4 — velocidad (config 1.6.43/1.6.44, 2026-06-06, deployado; validación de corrida real pendiente):**
 - ✅ **AddParams batch** (N→1 por PN) + **SaveQuoteLines batch** (N→1 por cotización), ambos con fallback per-item (peor caso = comportamiento actual). Velocidad real en specs y COTI.
