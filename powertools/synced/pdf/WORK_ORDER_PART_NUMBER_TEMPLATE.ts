@@ -43,20 +43,45 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
           (p) => p.receivedBatch?.id === batch.id
         ) || [];
 
-      partsForBatch.forEach((partEntry) => {
-        const part = partEntry.partNumber;
+      // 🔹 Consolidar las partAccounts (partGroups) del MISMO part number.
+      // `numeroContenedores` es atributo del LOTE FÍSICO: partir la cuenta en
+      // varias partAccounts NO multiplica los contenedores — solo reparte cuántos
+      // quedan en cada parte. Antes el loop corría una vez por partEntry, así que
+      // un lote partido en N partAccounts emitía numeroContenedores × N etiquetas
+      // (duplicadas). Ahora agrupamos por partNumber.id, sumamos la cantidad
+      // repartida entre las partes (= total del lote) y emitimos numeroContenedores
+      // etiquetas UNA sola vez por PN distinto del lote.
+      const groupsByPart = new Map<any, any>();
+      partsForBatch.forEach((partEntry, idx) => {
+        const pid = partEntry.partNumber?.id ?? `__null_${idx}`;
+        const existing = groupsByPart.get(pid);
+        if (existing) {
+          existing.totalQuantity += partEntry.quantity ?? 0;
+          if (partEntry.partGroup?.id != null) existing.partGroupIds.push(partEntry.partGroup.id);
+        } else {
+          groupsByPart.set(pid, {
+            part: partEntry.partNumber,
+            totalQuantity: partEntry.quantity ?? 0,
+            partGroupIds: partEntry.partGroup?.id != null ? [partEntry.partGroup.id] : [],
+          });
+        }
+      });
+
+      Array.from(groupsByPart.values()).forEach((group) => {
+        const part = group.part;
+        // Cantidad consolidada = suma de las partAccounts = total de piezas del lote.
+        const qty = group.totalQuantity;
 
         const partInfo = {
           partName: part?.name || null,
           partId: part?.id || null,
           partDescription: part?.description || null,
           specs: part?.specs || [],
-          quantity: partEntry.quantity ?? 0,
+          quantity: qty,
         };
 
         // Conversion Calcs
         const unitConversions = inputs.partNumber?.unitConversions || [];
-        const qty = partEntry.quantity ?? 0;
 
         // Filter By Unit
         const convertedQuantities = unitConversions
@@ -80,7 +105,7 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
           null;
 
         const partWeightKg =
-          kgmConversion != null ? (partEntry.quantity ?? 0) * kgmConversion : null;
+          kgmConversion != null ? qty * kgmConversion : null;
 
         // Area calculation
         const cmkConversion =
@@ -93,7 +118,7 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
           null;
 
           const partAreaCmk =
-          cmkConversion != null ? (partEntry.quantity ?? 0) * cmkConversion : null;
+          cmkConversion != null ? qty * cmkConversion : null;
 
         // Length calculation
         const lmConversion =
@@ -106,7 +131,7 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
           null;
 
           const partLengthLm =
-          lmConversion != null ? (partEntry.quantity ?? 0) * lmConversion : null;
+          lmConversion != null ? qty * lmConversion : null;
 
         // External specs logic
         const allExternalSpecs =
@@ -163,7 +188,9 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
             label: `Batch ${batchIndex + 1} - Container ${i + 1} of ${numeroContenedores} - Part ${partInfo.partName}`,
             numeroContenedores,
             partInfo,
-            partQuantity: partEntry.quantity ?? 0,
+            partQuantity: qty,
+            // partAccounts (partGroups) consolidadas en esta etiqueta del lote.
+            partGroupIds: group.partGroupIds,
 
             // Array Of Strings
             convertedQuantities,

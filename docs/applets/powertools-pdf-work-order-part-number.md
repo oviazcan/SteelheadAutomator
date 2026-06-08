@@ -2,6 +2,18 @@
 
 Hook low-code que genera **N copias** del PDF para etiquetar racks/contenedores físicos. Por cada `receivedBatch`, calcula `numeroContenedores` y empuja N entradas a `pdfsToGenerate[]` (una por contenedor); cada entrada precomputa conversiones de peso/área/longitud y agrupa specs externas.
 
+## ⚠️ Fix de duplicación por partAccounts (consolidación por lote) — 2026-06-08
+
+**Síntoma reportado:** cuando una OT ya se partió en varias `partAccounts` (partGroups), el template duplicaba la cantidad de etiquetas. `numeroContenedores` es atributo del **lote físico** (se captura una vez en `DatosRecibo`): partir la cuenta NO multiplica contenedores, solo reparte cuántos quedan en cada parte. Se necesitan SIEMPRE las etiquetas = contenedores iniciales del lote, consolidadas.
+
+**Root cause:** el loop interno corría `partsForBatch.forEach((partEntry) => { for (numeroContenedores) push })`. Cuando la OT se parte, `allPartsOnWorkOrder` trae **un renglón por partAccount, todos con el mismo `receivedBatch.id`**, así que `partsForBatch` tiene N entradas y cada una emitía `numeroContenedores` etiquetas → `etiquetas = numeroContenedores × #partAccounts`.
+
+**Fix:** dentro de cada lote se agrupa por `partNumber.id` (colapsa las partAccounts del mismo PN), se **suma** la cantidad repartida entre las partes (`partQuantity` = total del lote, decisión del usuario) y se emite `numeroContenedores` etiquetas UNA sola vez por PN distinto. Se agrega `partGroupIds[]` a cada entrada para trazabilidad. PNs genuinamente distintos en un lote NO se colapsan.
+
+**Validación con datos reales (snapshot TLC, `parts_transfer_account` → `inventory_account` → `inventory_batch`):** 19 combos OT×lote con >1 `part_group_id`; **en los 19, `distinct_pn = 1`** (siempre el mismo PN repartido), lo que confirma que consolidar por `partNumber.id` es correcto. Ejemplos: OT 5103 (nc=12, 2 groups → hoy 24, fix 12), OT 262 (nc=8, 35 groups → hoy 280, fix 8), OT 259 (nc=1, 25 groups → hoy 25, fix 1). El split vive en `parts_transfer_account.part_group_id`, NO en `inventory_account` (0 combos ahí).
+
+**Guarda de regresión:** `tools/wo_label_consolidation.mjs` + `tools/wo_label_consolidation.test.mjs` (8 tests, incluye OT 5103 y OT 262). Compila con `tsc --target es2017` vía `lowcode_sync.py push --dry-run` (17408 TS → 12552 JS, sin errores). **Pendiente:** push a producción + verificar en vivo contra OT 5848 (no estaba en el snapshot: TLC corta en id_in_domain 5360 / 2026-06-02).
+
 ## Lo que devuelve
 
 ```ts
@@ -71,6 +83,7 @@ Resultado:
 2. WO con batch sin `DatosRecibo.numeroContenedores`: confirmar warning chip + fallback a 1 contenedor.
 3. PN con conversión KGM, CMK y LM: confirmar los 3 campos calculados y `convertedQuantities` con 3 strings.
 4. WO con specs externas que incluyen "Primeras Piezas": confirmar que NO aparecen en `combinedExternalSpecs`.
+5. **OT partida (5848 u otra con partAccounts):** confirmar que el conteo de etiquetas = `numeroContenedores` del lote (NO × #partAccounts) y que `partQuantity` muestra la suma de las partes. Leer el log del template: `📦 Batch X: N Containers` debe casar con `✅ Generated N PDF entries` (antes del fix: `Generated N×#partAccounts`).
 
 ## Oportunidades
 
