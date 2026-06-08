@@ -162,3 +162,40 @@ Capturados nuevos del scan `2026-06-04_102353` → 12 stale ⇒ **6 stale**:
 
 **Estado final de la jornada 2026-06-04: 149 ok / 1 stale / 3 whitelist.** Único stale restante: `GetReceivedOrderDocuments` (deprecado en 1.6.28, reemplazado por `GetReceivedOrder` en po-comparator; sin uso runtime — candidato a remover).
 
+---
+
+## 2026-06-08 10:38 — 3 rotado(s) (config v1.6.47)
+
+**Corrida**: manual (disparada por el usuario; flujo del daily schedule). 147 ok / 3 stale / 3 whitelist / 0 unknown / 0 auth. Elapsed 109.5s.
+
+### Hashes rotados + impacto
+
+| Operación | Usado por | Clase | Acción |
+|---|---|---|---|
+| `GetDomain` | `bill-autofill` (L413) + `invoice-autofill` (L500) — TipoCambio/TC | **rotación NUEVA, activa y crítica** | Recapturar con hash-scanner |
+| `GetReceivedOrdersWithReceivedOrderLineItems` | `invoice-autofill` (L410) — OVs + divisa/linkage | **RE-rotación**: ya reparado el 2026-06-04 en 1.6.32 (`2e98d28d…`); SH lo volvió a rotar | Recapturar con hash-scanner |
+| `GetReceivedOrderDocuments` | SPA nativa de Steelhead (count=8 en scan); nuestro po-comparator ya NO lo usa (migró a `GetReceivedOrder` en 1.6.28) | **rotación real** (status:changed, HTTP 200) — NO era huérfano-muerto | Bump hash (se mantuvo en config por si se reusa) |
+
+### Diagnóstico
+
+- **`bill-autofill` (CxP) e `invoice-autofill` afectados** vía `GetDomain`: no podrán resolver el tipo de cambio (TC) hasta recapturar.
+- **`invoice-autofill` doblemente afectado**: también `GetReceivedOrdersWithReceivedOrderLineItems` (trae OVs con divisa + linkage de invoice→OV).
+- **`bulk-upload` limpio**.
+- `GetReceivedOrderDocuments` también rotó de verdad (el scan lo muestra `status:changed`, count=8 disparado por la SPA nativa). No rompe ningún applet nuestro porque po-comparator ya migró a `GetReceivedOrder`; aun así se actualizó el hash para no dejar el config desfasado.
+
+### Reparación (config 1.6.48, mismo día) — scan `2026-06-08_104505`
+
+Las 3 confirmadas como **Caso A (rotación)** del playbook: `previousHash` del scan == hash viejo del config, `hash` nuevo distinto, `lastHttpStatus=200`, `status:changed`.
+
+| Operación | viejo → nuevo |
+|---|---|
+| `GetDomain` | `774f1f0f…` → `28b65e26…` |
+| `GetReceivedOrdersWithReceivedOrderLineItems` | `2e98d28d…` → `8090a9dc…` |
+| `GetReceivedOrderDocuments` | `c2df1330…` → `7d74c516…` |
+
+Bump `version` 1.6.47 → **1.6.48** + `lastUpdated` 2026-06-08T10:45.
+
+**Re-validación local (config 1.6.48): 150 ok / 0 stale / 3 whitelist / 0 unknown / 0 auth.** El server acepta los 3 hashes nuevos.
+
+**Pendiente**: deploy a `gh-pages` + recargar extensión en el navegador (Chrome cachea `config.json` ~5 min).
+
