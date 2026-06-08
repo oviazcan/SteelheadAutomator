@@ -12,6 +12,21 @@
 
 ---
 
+## ✅ COMPLETADO — LIVE en productivo (2026-06-06)
+
+Las 4 tasks ejecutadas. El hook corre en Steelhead y el usuario lo validó en una OV Schneider real.
+
+- **Task 1 + 2 (módulo canónico + transcripción al hook):** commit `c3021fe` / `fbb4abc`. `tools/lib/schneider-plants.js` + test, transcrito a `received-order.ts`.
+- **Task 3 (verificación end-to-end):** ✅ **Phase-0 confirmada por el usuario** — `partNumber.partNumberLabels` SÍ llega poblado en "Add Parts to Sales Order"; los 4 escenarios (ok/mismatch/missing/ship-to-no-resoluble) se ven correctos. Sin regresión de NP Desconocido / Sin Precio / Lote / Spec / verde.
+- **Task 4 (bitácora):** `docs/applets/powertools-ordendeventa.md`, commits `de68717` (inicial) + `d77f410` (copy afinado).
+- **Deploy a Steelhead:** vía `tools/lowcode_sync.py push received-order` (NO se pegó a mano). Histórico de versiones: `1857` (pre-validación) → `1873` (primer push, copy viejo) → **`1874` (ACTIVA, copy afinado)**. Las tres en historial; rollback = `pull --all-versions` + re-push.
+- **Copy afinado tras validación (decisión usuario):** chips rojos separados — mismatch: «Etiqueta de NP pertenece a otra Planta distinta — 'NP' [SMY] vs Planta de la OV: STX (Tlaxcala). Valida OV asignada.» / missing: «NP sin etiqueta de planta — 'NP'. Asígnale la etiqueta de la OV: STX (Tlaxcala). Valida OV asignada.»
+- **Integración git:** la rama `worktree-archiver-label-filter` se mergeó a `main`; todo en `origin/main`.
+
+> Detalle operativo completo en la nota de estado de `docs/applets/powertools-ordendeventa.md` (sección "Validación de etiqueta de planta Schneider vs ship-to").
+
+---
+
 ## File Structure
 
 - **Create** `tools/lib/schneider-plants.js` — módulo canónico (datos + `resolvePlant` + `plantLabelVerdict`). Fuente de verdad. Sin dependencias, sin DOM.
@@ -423,7 +438,7 @@ git commit -m "docs(received-order): bitácora validación de planta Schneider v
 
 ## Pendientes fuera de este plan (no bloquean)
 
-- **Sweep `SQR`→`SQ1`** (config.json + tests + docs) ya aplicado en el working tree; falta **bump de `config.json` version + deploy a `gh-pages`** y commit. Coordinar (hot-file, una sesión deploya a la vez).
-- **Test stale pre-existente** `bulk-upload-helpers.test.js:56` (`isNonFinishLabel('smy')` espera case-sensitive pero la impl es case-insensitive a propósito). Decidir si se actualiza el test o la impl.
-- **One-off NPs** (`isOneOffPartNumber`): hoy también se validan; si genera ruido, eximirlos (cambio de una línea en el `if` del Step 4 de Task 2).
+- ✅ **Sweep `SQR`→`SQ1`** — resuelto: live en `gh-pages` 1.6.39 (commit `675f53e`). Independiente del push del hook.
+- **Test stale pre-existente** `bulk-upload-helpers.test.js:56` (`isNonFinishLabel('smy')` espera case-sensitive pero la impl es case-insensitive a propósito). Decidir si se actualiza el test o la impl. *(Sigue abierto.)*
+- **One-off NPs** (`isOneOffPartNumber`): hoy también se validan; si genera ruido, eximirlos (cambio de una línea en el `if` del Step 4 de Task 2). *(Sin reportes de ruido tras validación inicial; revisar si aparece.)*
 ```
