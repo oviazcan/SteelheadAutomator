@@ -937,7 +937,6 @@ const BulkUpload = (() => {
         <div class="sa-log" id="sa-bu-log"></div>
       </div>
       <div class="sa-actions">
-        <button class="sa-btn" id="sa-bu-dl-v11" style="background:#0d9488;color:white;margin-right:auto" title="Descarga la plantilla v11 y genera el archivo de catálogos vigente">&#x1F4E5; Plantilla v11 + catálogos</button>
         <button class="sa-btn sa-btn-stop" id="sa-bu-stop">Detener</button>
         <button class="sa-btn sa-btn-close" id="sa-bu-close" style="display:none">Cerrar</button>
       </div>`;
@@ -949,46 +948,9 @@ const BulkUpload = (() => {
     };
     p.querySelector('#sa-bu-close').onclick = () => hidePanel();
 
-    // Botón: Descargar plantilla v11 + catálogos en una sola acción.
-    // URL de la plantilla: misma base que templateUrl de config.json, apuntando a v11.
-    // NOTA: la ruta /templates/Plantilla_Cotizaciones_v11.xlsm debe existir en gh-pages
-    // antes de que este botón funcione (Agent E la publica junto con este deploy).
-    p.querySelector('#sa-bu-dl-v11').onclick = async function () {
-      const btn = this;
-      btn.disabled = true;
-      const origText = btn.textContent;
-      try {
-        // 1) Descarga la plantilla v11 desde GitHub Pages
-        btn.textContent = 'Descargando plantilla...';
-        const cfg = window.REMOTE_CONFIG || {};
-        // Derive v11 URL from the existing templateUrl in config, or fall back to known path.
-        const existingUrl = cfg.templateUrl || 'https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_Cotizaciones_v10.xlsm';
-        const templateV11Url = existingUrl.replace('Plantilla_Cotizaciones_v10.xlsm', 'Plantilla_Cotizaciones_v11.xlsm');
-        const resp = await fetch(templateV11Url);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status + ' al descargar plantilla v11');
-        const blob = await resp.blob();
-        const dlLink = document.createElement('a');
-        dlLink.href = URL.createObjectURL(blob);
-        dlLink.download = 'Plantilla_Cotizaciones_v11.xlsm';
-        document.body.appendChild(dlLink);
-        dlLink.click();
-        document.body.removeChild(dlLink);
-        URL.revokeObjectURL(dlLink.href);
-
-        // 2) Genera y descarga los catálogos vigentes (incluye TiposGeometria v11)
-        btn.textContent = 'Generando catalogos...';
-        if (!window.CatalogFetcher) throw new Error('CatalogFetcher no disponible — verifica que catalog-fetcher.js este cargado');
-        await window.CatalogFetcher.generateCatalogsFile();
-
-        // 3) Aviso final con instrucciones para el usuario
-        alert('Plantilla y catalogos descargados. Abre la plantilla y ejecuta primero Refrescar Listas apuntando al archivo Catalogos_Steelhead_*.xlsx antes de cargar datos.');
-      } catch (err) {
-        alert('Error al descargar: ' + (err.message || String(err)));
-      } finally {
-        btn.textContent = origText;
-        btn.disabled = false;
-      }
-    };
+    // (La descarga de plantilla + catálogos vive ahora SOLO en el menú de la extensión,
+    //  acción 'download-template'. Se quitó de este modal por decisión del usuario — el
+    //  botón de descarga pertenece al menú, no al panel de corrida.)
 
     return p;
   }
