@@ -9,7 +9,15 @@ Archiva/desarchiva números de parte en bloque por criterios combinables (inters
 Flujo (3 pantallas): **config** (modo + fecha opcional + validación) → **scan slim** (mode-aware) → **pantalla de filtros con conteo en vivo** → **preview/tabla** → ejecutar.
 
 ## Versión actual
-1.1.0 — **feedback de progreso** (barra en carga + ejecución): % real si `AllPartNumbers.pagedData.totalCount` está disponible, animada si no; el overlay se re-asegura en `executeArchive` (antes desaparecía en el flujo normal → no se veía nada al ejecutar). Previo 1.0.0 — filtro por etiquetas (AND/OR) + archivar/desarchivar + fecha opcional + form mudado al script remoto.
+1.2.0 — **fix desarchivar (0 resultados) + EJE B de memoria**.
+- **Bug:** en modo *desarchivar*, el scan entregaba 0 PNs. Causa raíz: el persisted query `AllPartNumbers` (hash `65c6de…`) (a) **excluye archivados server-side** por defecto (necesita `includeArchived:'YES'`) y (b) **NO expone `archivedAt`** a nivel de nodo PN (verificado contra `docs/api/Payload: AllPartNumbers.txt`: las 17 ocurrencias de `archivedAt` están en sub-objetos, ninguna a nivel PN). El `fetchPNsForMode` viejo llamaba sin `includeArchived` y filtraba con `keep = !!n.archivedAt` → siempre `false` → 0 en unarchive. (En *archivar* funcionaba por coincidencia: el server ya devolvía solo activos.) Bug latente gemelo: `slimPN` dejaba `archivedAt:null` → `isInTargetState(_, 'unarchive')` daba `true` para todos → `executeArchive` los habría saltado como "ya activos".
+- **Fix (patrón canónico de `auditor.js`):** `fetchPNsForMode` reescrito. Archivar → 1 pasada `includeArchived:'NO'`. Desarchivar → **diff de dos pasadas** vía `pageAllPNs`: pasada 1 (`'NO'`) recoge el `Set` de IDs activos (solo IDs, sin slim); pasada 2 (`'YES'`=activos+archivados) conserva los que NO son activos = archivados, marcados con `ARCHIVED_SENTINEL='__archived__'`. `slimPN(node, archivedAtOverride)` inyecta el estado (el server no lo da). Dedup `seenIds` por pasada contra drift de paginación. El sentinel **nunca** llega al server: la mutación manda `archivedAt:null` literal.
+- **EJE B (memory-hardening):** se cargó `host-cleanup-shared.js` en `config.json`; `startHostGuards()` detiene Datadog RUM + arranca `createMemMonitor` (span `#sa-arch-mem`, guardrail a 88% → abortar + persistir resume + modal); `makePeriodicDrain(50)` en el worker de `executeArchive`; `drainHostCache()` (Apollo) entre páginas — relevante porque desarchivar escanea el dominio dos veces. `stopMemMonitor()` en el `finally` de `openConfigAndRun`.
+- Tests `node --test tools/test/archiver.test.js` → **26/26** (incluye diff de dos pasadas, dedup, 0/all archivados, guard de `stopped`, drain con módulo presente).
+
+Previo 1.1.0 — **feedback de progreso** (barra en carga + ejecución): % real si `AllPartNumbers.pagedData.totalCount` está disponible, animada si no; el overlay se re-asegura en `executeArchive`. Previo 1.0.0 — filtro por etiquetas (AND/OR) + archivar/desarchivar + fecha opcional + form mudado al script remoto.
+
+> **OJO desarchivar:** la doble pasada hace que la barra de carga recorra 0→100% **dos veces** (pasada activos, luego archivados) y que el contador "del modo" muestre activos durante la pasada 1. Es esperado; no es bug. Pendiente de pulir el texto de fase si molesta.
 
 ## Estado de deploy (2026-06-04)
 - **Feedback de progreso (1.1.0) desplegado a `gh-pages`** (byte-exact verificado, propagado). `remote/config.json` `version` **1.6.37**. Spec/plan en `docs/superpowers/{specs,plans}/2026-06-04-archiver-progress-feedback*`. Tests `node --test tools/test/archiver.test.js` → **16/16**. Pendiente: piloto DOM (recargar extensión → ver barra en carga y al ejecutar).
@@ -40,12 +48,15 @@ Flujo (3 pantallas): **config** (modo + fecha opcional + validación) → **scan
 - Grupo (`partNumberGroupByPartNumberGroupId`) y proceso (`processNodeDescriptions`) vienen **vacíos** en el listado → fase 2.
 
 ## Plan de validación (pendiente — piloto de Omar en sesión autenticada)
-Un solo piloto valida los tres checkpoints:
-- [ ] **Archivar**, sin fecha, elegir **SQ1 + Antitarnish** en **AND** → ver el **conteo en vivo** y archivar un subconjunto chico.
+> **M1 ya tiene causa raíz confirmada y fix** (1.2.0). El piloto ahora **verifica el fix en vivo**, no descubre el problema.
+
+Un solo piloto valida los checkpoints:
+- [ ] **Desarchivar**, sin fecha → el scan ahora **SÍ debe listar PNs archivados** (antes 0). Confirmar que el conteo > 0 y que la lista son archivados reales.
+  - Valida **M1** (fix): la doble pasada `includeArchived:'NO'`→`'YES'` con diff por ID entrega los archivados.
+  - Valida **M2**: que `UpdatePartNumber {archivedAt:null}` los reactive de verdad (desarchivar un subconjunto chico y verificar en el catálogo).
+- [ ] **Archivar**, sin fecha, elegir **SQ1 + Antitarnish** en **AND** → ver el **conteo en vivo** y archivar un subconjunto chico (regresión: el modo archivar no debe haberse alterado).
   - Valida **M3**: si la etiqueta no se llama exactamente `SQ1` (en la muestra solo aparecía `SQ2`), se verá con su nombre real en la lista descubierta → autocorrige.
-- [ ] **Desarchivar** (mismo flujo) →
-  - Valida **M1**: que `AllPartNumbers` devuelva los archivados (si la lista sale vacía, hay que ver `includeArchived`).
-  - Valida **M2**: que `UpdatePartNumber {archivedAt:null}` los reactive de verdad.
+- [ ] **EJE B** (memory-hardening): durante una corrida real, ver el span `Mem: XXMB / YYMB (NN%)` en el overlay y confirmar que la barra de memoria se actualiza. Screenshot del mem monitor (lo pide el skill `memory-hardening-applets`).
 
 ## Issues conocidos (pre-existentes, heredados; no introducidos por 1.0.0)
 - **`dateType=modificacion` filtra por `createdAt`**: `slimPN` solo trae `createdAt`, así que la opción "Fecha de modificación" del form en realidad filtra por creación. Decidir en fase 2: traer `modifiedAt` al slim y diferenciarlo en `applyFilters`, o quitar la opción del form. ("creación" y "última utilización" sí funcionan bien.)

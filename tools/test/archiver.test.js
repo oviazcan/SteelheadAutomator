@@ -31,6 +31,58 @@ function loadArchiver() {
 
 const A = loadArchiver();
 
+// Carga el archiver con un window.SteelheadAPI inyectado, para tests de
+// fetchPNsForMode (que sí pega a la API). Sandbox fresco por test → `stopped`
+// arranca en false sin contaminar otros tests.
+function loadArchiverWithApi(mockApi) {
+  const code = fs.readFileSync(SCRIPT_PATH, 'utf8');
+  const window = { SteelheadAPI: mockApi };
+  const sandbox = {
+    window,
+    document: { getElementById: () => null, createElement: () => ({ style: {}, appendChild() {} }),
+                head: { appendChild() {} }, body: { appendChild() {}, removeChild() {} } },
+    console: { log() {}, warn() {}, error() {} },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    setTimeout, clearTimeout, Promise,
+  };
+  sandbox.globalThis = sandbox; sandbox.self = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox, { filename: 'archiver.js' });
+  const internals = sandbox.window.__SAArchiver;
+  internals._win = sandbox.window;  // acceso a PNArchiver.stop() para el guard de `stopped`
+  return internals;
+}
+
+// Mock fiel al server real de AllPartNumbers:
+//  - includeArchived:'YES' → activos + archivados
+//  - includeArchived:'NO' (o ausente) → SOLO activos
+//  - NINGÚN nodo trae `archivedAt` en el selection set (confirmado contra el
+//    payload real: el campo no existe a nivel de nodo PN).
+// `calls` registra cada query para aseverar que se hacen ambas pasadas.
+function makeAllPNsApi(active, archived) {
+  const calls = [];
+  const api = {
+    query(op, vars) {
+      if (op !== 'AllPartNumbers') return Promise.resolve({});
+      calls.push({ includeArchived: vars.includeArchived, offset: vars.offset || 0 });
+      const pool = vars.includeArchived === 'YES' ? active.concat(archived) : active;
+      const first = vars.first, offset = vars.offset || 0;
+      const nodes = pool.slice(offset, offset + first);
+      return Promise.resolve({ pagedData: { nodes, totalCount: pool.length } });
+    },
+    log() {}, warn() {},
+  };
+  return { api, calls };
+}
+
+// Nodo PN tal cual lo entrega el server: SIN `archivedAt` (no está en el
+// selection set). Solo los campos que el slim consume.
+const rawNode = (id, name, labels = []) => ({
+  id, name, createdAt: '2026-01-01T00:00:00Z',
+  customerByCustomerId: { id: 9, name: 'ACME' },
+  partNumberLabelsByPartNumberId: { nodes: labels.map((n, i) => ({ labelByLabelId: { id: 100 + i, name: n } })) },
+});
+
 const node = (over = {}) => ({
   id: 1, name: 'PN1', createdAt: '2026-01-01T00:00:00Z', archivedAt: null,
   customerByCustomerId: { id: 9, name: 'ACME' },
@@ -147,4 +199,113 @@ test('computeExecProgress sin errores omite sufijo; singular y mode-aware', () =
 
 test('computeExecProgress total=0 → fracción 0 (no NaN)', () => {
   assert.equal(A.computeExecProgress({ done: 0, total: 0, errors: 0, gerundio: 'Archivando' }).fraction, 0);
+});
+
+// ── fetchPNsForMode: el bug del desarchivado (0 resultados) ──
+
+test('fetchPNsForMode unarchive devuelve los ARCHIVADOS (diff dos pasadas)', async () => {
+  const active = [rawNode(1, 'A1'), rawNode(2, 'A2')];
+  const archived = [rawNode(3, 'X3'), rawNode(4, 'X4')];
+  const { api, calls } = makeAllPNsApi(active, archived);
+  const Ai = loadArchiverWithApi(api);
+
+  const got = await Ai.fetchPNsForMode('unarchive', null, 500);
+
+  // Solo los archivados, nunca los activos.
+  assert.deepEqual(got.map(p => p.id).sort(), [3, 4]);
+  // Marcados como archivados (archivedAt no-null) para que isInTargetState
+  // los reconozca y executeArchive los mute en vez de saltarlos.
+  for (const p of got) assert.notEqual(p.archivedAt, null);
+  for (const p of got) assert.equal(A.isInTargetState(p, 'unarchive'), false);
+  // Requiere la pasada includeArchived:'YES' (sin ella el server no da archivados).
+  assert.ok(calls.some(c => c.includeArchived === 'YES'), 'debe pedir includeArchived:YES');
+});
+
+test('fetchPNsForMode archive devuelve los ACTIVOS con archivedAt null', async () => {
+  const active = [rawNode(1, 'A1'), rawNode(2, 'A2')];
+  const archived = [rawNode(3, 'X3')];
+  const { api } = makeAllPNsApi(active, archived);
+  const Ai = loadArchiverWithApi(api);
+
+  const got = await Ai.fetchPNsForMode('archive', null, 500);
+
+  assert.deepEqual(got.map(p => p.id).sort(), [1, 2]);
+  for (const p of got) assert.equal(p.archivedAt, null);
+  for (const p of got) assert.equal(A.isInTargetState(p, 'archive'), false);
+});
+
+test('fetchPNsForMode unarchive pagina ambas pasadas (pageSize chico)', async () => {
+  const active = [rawNode(1, 'A1'), rawNode(2, 'A2'), rawNode(5, 'A5')];
+  const archived = [rawNode(3, 'X3'), rawNode(4, 'X4')];
+  const { api } = makeAllPNsApi(active, archived);
+  const Ai = loadArchiverWithApi(api);
+
+  const got = await Ai.fetchPNsForMode('unarchive', null, 2); // fuerza varias páginas
+
+  assert.deepEqual(got.map(p => p.id).sort(), [3, 4]);
+  for (const p of got) assert.notEqual(p.archivedAt, null); // sentinel también en páginas >1
+});
+
+test('fetchPNsForMode unarchive con CERO archivados devuelve []', async () => {
+  const { api } = makeAllPNsApi([rawNode(1, 'A1'), rawNode(2, 'A2')], []);
+  const Ai = loadArchiverWithApi(api);
+  const got = await Ai.fetchPNsForMode('unarchive', null, 500);
+  assert.deepEqual(got, []); // todos activos → el diff no debe colar activos
+});
+
+test('fetchPNsForMode unarchive sin ningún activo (activeIds vacío) devuelve todos los archivados', async () => {
+  const { api } = makeAllPNsApi([], [rawNode(3, 'X3'), rawNode(4, 'X4')]);
+  const Ai = loadArchiverWithApi(api);
+  const got = await Ai.fetchPNsForMode('unarchive', null, 500);
+  assert.deepEqual(got.map(p => p.id).sort(), [3, 4]);
+  for (const p of got) assert.notEqual(p.archivedAt, null);
+});
+
+test('fetchPNsForMode deduplica un PN repetido entre páginas (offset drift)', async () => {
+  // archive single-pass: el mismo PN aparece dos veces en el pool → una sola fila.
+  const dup = rawNode(7, 'A7');
+  const { api } = makeAllPNsApi([rawNode(1, 'A1'), dup, dup], []);
+  const Ai = loadArchiverWithApi(api);
+  const got = await Ai.fetchPNsForMode('archive', null, 500);
+  assert.deepEqual(got.map(p => p.id).sort(), [1, 7]); // 7 no se duplica
+});
+
+test('fetchPNsForMode unarchive con stop() en la pasada 1 corta y devuelve []', async () => {
+  const { api } = makeAllPNsApi([rawNode(1, 'A1')], [rawNode(3, 'X3')]);
+  const Ai = loadArchiverWithApi(api);
+  const orig = api.query.bind(api);
+  let n = 0;
+  api.query = (op, vars) => { if (++n === 1) Ai._win.PNArchiver.stop(); return orig(op, vars); };
+  const got = await Ai.fetchPNsForMode('unarchive', null, 500);
+  assert.deepEqual(got, []); // el guard `if (stopped) return []` corta antes de la pasada 2
+});
+
+test('fetchPNsForMode drena Apollo entre páginas cuando el módulo host-cleanup está cargado', async () => {
+  const { api } = makeAllPNsApi([rawNode(1, 'A1'), rawNode(2, 'A2'), rawNode(5, 'A5')], []);
+  const Ai = loadArchiverWithApi(api);
+  let drains = 0;
+  Ai._win.SteelheadHostCleanup = { apolloCacheDrain: () => { drains++; } }; // hc() lo lee lazy
+  await Ai.fetchPNsForMode('archive', null, 1); // pageSize 1 → varias páginas → varios drains
+  assert.ok(drains > 0, 'drainHostCache debe invocar apolloCacheDrain del módulo');
+});
+
+test('fetchPNsForMode unarchive conserva labels para el filtro posterior', async () => {
+  const active = [rawNode(1, 'A1', ['SQ1'])];
+  const archived = [rawNode(3, 'X3', ['SQ1', 'Antitarnish'])];
+  const { api } = makeAllPNsApi(active, archived);
+  const Ai = loadArchiverWithApi(api);
+
+  const got = await Ai.fetchPNsForMode('unarchive', null, 500);
+  assert.deepEqual(got.map(p => p.id), [3]);
+  assert.deepEqual(got[0].labels.map(l => l.name).sort(), ['Antitarnish', 'SQ1']);
+});
+
+test('slimPN respeta archivedAtOverride (selection set no trae archivedAt)', () => {
+  // El nodo viene SIN archivedAt; el override lo marca como archivado.
+  const s = A.slimPN(rawNode(3, 'X3'), '__archived__');
+  assert.equal(s.archivedAt, '__archived__');
+  // Con el sentinel, idempotencia: en unarchive NO está en estado destino (hay
+  // que mutarlo), en archive SÍ está en estado destino (ya archivado).
+  assert.equal(A.isInTargetState(s, 'unarchive'), false);
+  assert.equal(A.isInTargetState(s, 'archive'), true);
 });
