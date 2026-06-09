@@ -182,6 +182,48 @@ test('computeLoadProgress clamp processed>total a 1', () => {
   assert.equal(r.fraction, 1);
 });
 
+// ── Progreso de 2 pasos (desarchivar): no "engañar" con el conteo de activos ──
+
+test('computeLoadProgress paso 1/2 (escaneo de catálogo) no muestra conteo del modo y ocupa [0,0.5]', () => {
+  const r = A.computeLoadProgress({ processed: 1000, total: 4000, kept: 1000, step: 1, steps: 2 });
+  assert.equal(r.text, 'Paso 1/2: escaneando catálogo... 1,000/4,000'); // sin "(N del modo)"
+  assert.equal(r.fraction, (1000 / 4000) / 2); // mitad inferior de la barra
+});
+
+test('computeLoadProgress paso 2/2 muestra archivados y ocupa [0.5,1]', () => {
+  const r = A.computeLoadProgress({ processed: 2000, total: 4000, kept: 37, step: 2, steps: 2 });
+  assert.equal(r.text, 'Paso 2/2: identificando archivados... 2,000/4,000 (37 archivados)');
+  assert.equal(r.fraction, 0.5 + (2000 / 4000) / 2);
+});
+
+test('computeLoadProgress paso 1/2 sin total → procesados, indeterminado', () => {
+  const r = A.computeLoadProgress({ processed: 500, total: null, kept: 500, step: 1, steps: 2 });
+  assert.equal(r.fraction, null);
+  assert.equal(r.text, 'Paso 1/2: escaneando catálogo... 500');
+});
+
+test('computeLoadProgress paso 2/2 sin total → archivados hallados', () => {
+  const r = A.computeLoadProgress({ processed: 800, total: null, kept: 12, step: 2, steps: 2 });
+  assert.equal(r.fraction, null);
+  assert.equal(r.text, 'Paso 2/2: identificando archivados... 12 archivados');
+});
+
+test('fetchPNsForMode unarchive emite progreso con step 1 y luego step 2', async () => {
+  const { api } = makeAllPNsApi([rawNode(1, 'A1')], [rawNode(3, 'X3')]);
+  const Ai = loadArchiverWithApi(api);
+  const steps = [];
+  await Ai.fetchPNsForMode('unarchive', (p) => { if (p.step) steps.push(p.step); }, 500);
+  assert.ok(steps.includes(1) && steps.includes(2), `esperaba pasos 1 y 2, vi ${steps}`);
+});
+
+test('fetchPNsForMode archive emite progreso sin step (pasada única, legacy)', async () => {
+  const { api } = makeAllPNsApi([rawNode(1, 'A1')], []);
+  const Ai = loadArchiverWithApi(api);
+  let sawStep = false;
+  await Ai.fetchPNsForMode('archive', (p) => { if (p.step) sawStep = true; }, 500);
+  assert.equal(sawStep, false);
+});
+
 test('computeExecProgress fracción done/total + errores plural', () => {
   const r = A.computeExecProgress({ done: 140, total: 512, errors: 2, gerundio: 'Archivando' });
   assert.equal(r.fraction, 140 / 512);
