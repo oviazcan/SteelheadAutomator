@@ -13,10 +13,12 @@ const PNArchiver = (() => {
   'use strict';
 
   const api = () => window.SteelheadAPI;
+  const hc  = () => window.SteelheadHostCleanup || null;  // módulo de host-cleanup (opcional)
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
   let stopped = false;
+  let memMonitor = null;  // EJE B: monitor de heap del tab (createMemMonitor)
   const RESUME_KEY = 'sa_archiver_resume_v1';
 
   // ═══════════════════════════════════════════
@@ -81,7 +83,12 @@ const PNArchiver = (() => {
   // ═══════════════════════════════════════════
 
   // Reduce un nodo pesado de AllPartNumbers a lo mínimo necesario (memoria).
-  function slimPN(node) {
+  // archivedAtOverride: el persisted query AllPartNumbers NO expone `archivedAt`
+  // a nivel de nodo PN (confirmado contra el payload real), así que el estado
+  // archivado se infiere por diff de dos pasadas (ver fetchPNsForMode) y se
+  // inyecta aquí. Sin override (undefined) se cae al campo del nodo, que en la
+  // práctica es null para todo lo que devuelve esta query.
+  function slimPN(node, archivedAtOverride) {
     const labels = (node.partNumberLabelsByPartNumberId?.nodes || [])
       .map(n => n.labelByLabelId)
       .filter(Boolean)
@@ -90,7 +97,7 @@ const PNArchiver = (() => {
       id: node.id,
       name: node.name,
       createdAt: node.createdAt || null,
-      archivedAt: node.archivedAt || null,
+      archivedAt: archivedAtOverride !== undefined ? archivedAtOverride : (node.archivedAt || null),
       customer: node.customerByCustomerId?.name || '',
       labels,
     };
@@ -173,15 +180,81 @@ const PNArchiver = (() => {
   // PAGINACIÓN PNs POR MODO
   // ═══════════════════════════════════════════
 
-  // Pagina AllPartNumbers en SLIM. mode 'archive' → conserva activos;
-  // 'unarchive' → conserva archivados. Acumula slimPNs (no nodos pesados).
+  // Marca sintética para archivedAt. AllPartNumbers NO trae archivedAt a nivel
+  // de PN, así que el estado se infiere por diff de dos pasadas; cualquier valor
+  // no-null sirve para que isInTargetState reconozca el PN como archivado.
+  const ARCHIVED_SENTINEL = '__archived__';
+
+  // Drena el Apollo InMemoryCache del host entre páginas si el módulo compartido
+  // está cargado (best-effort, no-op si no). Evita crecimiento sin tope del
+  // normalizado durante el scan — más relevante en unarchive (doble pasada).
+  function drainHostCache() {
+    try { hc()?.apolloCacheDrain?.(); } catch (_) {}
+  }
+
+  // EJE B (memory-hardening): al iniciar trabajo real, detiene Datadog RUM +
+  // arranca el monitor de heap. A 70% re-aplica el stop; a 88% dispara el
+  // guardrail (abortar + persistir avance + pedir reload). Idempotente y no-op
+  // si el módulo host-cleanup no está cargado.
+  function startHostGuards() {
+    const cleanup = hc();
+    if (!cleanup) return;
+    try { cleanup.stopDatadogSessionReplay(); } catch (_) { /* defensa */ }
+    if (!memMonitor) {
+      memMonitor = cleanup.createMemMonitor({
+        getElement: () => document.getElementById('sa-arch-mem'),
+        onGuardrail: (pct) => {
+          warn(`Memoria al ${pct}% — abortando el archivador`);
+          stopped = true;  // corta scan o ejecución; executeArchive persiste el resume al ver stopped
+          try {
+            alert(`⚠ Memoria al ${pct}%. El archivador se detuvo. Si estaba ejecutando, ` +
+                  `tu avance quedó guardado: re-ejecuta el applet para reanudar. Recarga la pestaña.`);
+          } catch (_) {}
+        },
+      });
+    }
+    try { memMonitor.reset(); memMonitor.start(); } catch (_) {}  // reset → rearma el guardrail en cada corrida nueva
+  }
+
+  function stopMemMonitor() { try { memMonitor?.stop(); } catch (_) {} }
+
+  // Pagina AllPartNumbers en SLIM, mode-aware. NO se puede confiar en
+  // n.archivedAt (no está en el selection set de este persisted query) ni
+  // pedir "solo archivados" (includeArchived solo AGREGA los archivados al
+  // listado). Por eso:
+  //   - archive   → una pasada includeArchived:'NO' = activos (archivedAt=null).
+  //   - unarchive → diff de dos pasadas: pasada 1 ('NO') recoge los IDs activos;
+  //     pasada 2 ('YES' = activos+archivados) conserva los que NO son activos =
+  //     los archivados, marcados con ARCHIVED_SENTINEL.
   async function fetchPNsForMode(mode, onProgress, pageSize = 500) {
+    if (mode !== 'unarchive') {
+      return await pageAllPNs('NO', null, onProgress, pageSize, null);
+    }
+    // Pasada 1: solo IDs activos (sin slim — barato en memoria).
+    const activeIds = new Set();
+    await pageAllPNs('NO', null, onProgress, pageSize, activeIds);
+    if (stopped) return [];
+    // Pasada 2: archivados = aparecen con 'YES' pero no están entre los activos.
+    return await pageAllPNs('YES', activeIds, onProgress, pageSize, null);
+  }
+
+  // Una pasada paginada de AllPartNumbers. Siempre devuelve un array (vacío en el
+  // modo idSink, donde el resultado se acumula en el Set que recibe el caller).
+  //   idSink     (Set|null): si viene, solo acumula n.id (no construye slim) —
+  //              el Set deduplica por sí mismo.
+  //   excludeIds (Set|null): si viene, salta esos IDs (activos) y marca el resto
+  //              como ARCHIVED_SENTINEL; si null, slim con archivedAt=null.
+  // Dedup por seenIds (patrón auditor.js): bajo paginación por offset, las filas
+  // insertadas entre páginas durante un scan largo pueden reaparecer y duplicar
+  // el PN — un duplicado en selectedPNs sobre-cuenta results.archived.
+  async function pageAllPNs(includeArchived, excludeIds, onProgress, pageSize, idSink) {
     const slimPNs = [];
+    const seenIds = new Set();
     let offset = 0;
     let total = null;
     while (!stopped) {
       const data = await api().query('AllPartNumbers', {
-        orderBy: ['ID_ASC'], offset, first: pageSize, searchQuery: ''
+        orderBy: ['ID_ASC'], offset, first: pageSize, searchQuery: '', includeArchived
       }, 'AllPartNumbers');
       const nodes = data?.pagedData?.nodes || [];
       if (total == null) {
@@ -189,12 +262,15 @@ const PNArchiver = (() => {
         total = (typeof tc === 'number' && tc > 0) ? tc : null;
       }
       for (const n of nodes) {
-        const isArchived = !!n.archivedAt;
-        const keep = mode === 'unarchive' ? isArchived : !isArchived;
-        if (keep) slimPNs.push(slimPN(n));   // SLIM: no guardar nodo pesado
+        if (idSink) { idSink.add(n.id); continue; }  // Set dedup natural; no levantamos seenIds aquí
+        if (seenIds.has(n.id)) continue;
+        seenIds.add(n.id);
+        if (excludeIds && excludeIds.has(n.id)) continue;  // activo → no es archivado
+        slimPNs.push(slimPN(n, excludeIds ? ARCHIVED_SENTINEL : null));  // SLIM: no guardar nodo pesado
       }
       const processed = offset + nodes.length;
-      if (onProgress) onProgress({ processed, total, kept: slimPNs.length });
+      if (onProgress) onProgress({ processed, total, kept: idSink ? idSink.size : slimPNs.length });
+      drainHostCache();
       if (nodes.length < pageSize) break;
       offset += pageSize;
     }
@@ -261,6 +337,10 @@ const PNArchiver = (() => {
     } = options;
     const DOMAIN = api().getDomain();
     const results = { found: 0, archived: 0, validated: 0, errors: [] };
+
+    // EJE B: detener Datadog + monitor de heap antes de cualquier scan/ejecución
+    // (incluye el path de reanudación de abajo). Se detiene en openConfigAndRun.
+    startHostGuards();
 
     // ── Resume previo (solo si coincide el modo) ──
     const prevResume = loadResume();
@@ -360,6 +440,8 @@ const PNArchiver = (() => {
       }
     };
 
+    const drainPerPN = hc()?.makePeriodicDrain(50) || (() => {});  // EJE B: drena Apollo cada 50 mutaciones
+
     await runPool(selectedPNs, async (pn) => {
       if (stopped) return;
       if (completed.has(pn.id)) return; // doble-safety — saltar ya procesados
@@ -396,6 +478,7 @@ const PNArchiver = (() => {
 
       completed.add(pn.id);
       tick();
+      drainPerPN();  // EJE B: drena Apollo cada 50 mutaciones
     }, 3);
 
     if (stopped) {
@@ -509,6 +592,7 @@ const PNArchiver = (() => {
     if (!opts) return { cancelled: true };
     try { return await run(opts); }
     catch (e) { return { error: e.message }; }
+    finally { stopMemMonitor(); }  // EJE B: garantiza parar el monitor pase lo que pase
   }
 
   function showArchiverUI(msg) {
@@ -518,7 +602,7 @@ const PNArchiver = (() => {
       ov = document.createElement('div');
       ov.id = 'sa-archiver-overlay';
       ov.className = 'dl9-overlay';
-      ov.innerHTML = `<div class="dl9-modal" style="background:#1a2e1a"><h2 style="color:#4ade80">Archivador Masivo</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="sa-arch-bar" style="background:#4ade80"></div></div><div class="dl9-progress" id="sa-arch-text"></div><button id="sa-arch-stop" class="dl9-btn" style="background:#ef4444;color:white;margin-top:10px;padding:8px 16px;font-size:12px">⏹ Detener</button></div>`;
+      ov.innerHTML = `<div class="dl9-modal" style="background:#1a2e1a"><h2 style="color:#4ade80">Archivador Masivo</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="sa-arch-bar" style="background:#4ade80"></div></div><div class="dl9-progress" id="sa-arch-text"></div><div id="sa-arch-mem" style="margin-top:8px;font-family:ui-monospace,monospace;font-size:11px;color:#94a3b8"></div><style>#sa-arch-mem.sa-mem-warn{color:#fde68a}#sa-arch-mem.sa-mem-crit{color:#fca5a5;font-weight:600}</style><button id="sa-arch-stop" class="dl9-btn" style="background:#ef4444;color:white;margin-top:10px;padding:8px 16px;font-size:12px">⏹ Detener</button></div>`;
       document.body.appendChild(ov);
       document.getElementById('sa-arch-stop').onclick = () => { stopped = true; const b = document.getElementById('sa-arch-stop'); if (b) { b.textContent = 'Deteniendo...'; b.disabled = true; } };
     }
@@ -748,7 +832,7 @@ const PNArchiver = (() => {
 
   return {
     run, stop, openConfigAndRun,
-    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState, computeLoadProgress, computeExecProgress },
+    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState, computeLoadProgress, computeExecProgress, fetchPNsForMode },
   };
 })();
 
