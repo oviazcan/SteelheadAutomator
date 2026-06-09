@@ -61,8 +61,8 @@ combos** y emite el CSV canónico. El parser localiza cada campo por encabezado 
 Aunque no haya columna, el parser aplica defaults **por PN, solo si el PN NO tiene ya valor**
 (no sobrescribe lo existente en Steelhead):
 
-- `Departamento` = default — **PENDIENTE valor**.
-- `Código SAT` = default — **PENDIENTE valor**.
+- `Departamento` = **"Producción"**.
+- `Código SAT` = **"73181106 - Servicios de enchapado"**.
 - `customInputs.DatosFacturacion.UnidadMedidaSAT` = opción **"Unidad del Precio Default"**.
 
 Valores en `config.json` (p.ej. `bulkUpload.billingDefaults`) → ajustables **sin re-zip**.
@@ -110,9 +110,16 @@ diferenciar por tipo de spec.
 - ⚠️ **Productos:** expansión vive en `CAT_Productos`, materializada en VBA al exportar.
 - ℹ️ Ahora hay **2 empresas emisoras** (ECOPLATING, PROQUIPA).
 
+## Macro de exportación
+
+`tools/ExportarCSV_v12.bas` — módulo VBA que emite el CSV canónico desde la hoja `Upload`.
+Header-driven del lado Upload (lee fila 7), transforma solo `Estatus`/`Forzar duplicado`/
+`Productos`, desambigua encabezados duplicados (racks), salida UTF-8 sin BOM. Departamento/
+SAT/UnidadMedidaSAT NO salen (los pone el parser). Importar en el editor VBA y ejecutar
+`ExportarCSV_v12`.
+
 ## Pendientes (usuario)
 
-- Valores default: **Departamento** y **Código SAT**.
 - Encoding de specs Temperatura/Tiempo/Duración.
 - Confirmar lista del combo `Estatus` (4 opciones) y si "Planta Schneider" pierde el prefijo "Etiqueta".
 - **CSV de muestra** exportado por `ExportarCSV` v12 (para construir y probar el parser contra datos reales).
