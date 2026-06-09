@@ -49,16 +49,14 @@ Previo 1.1.0 — **feedback de progreso** (barra en carga + ejecución): % real 
 - `AllPartNumbers` trae etiquetas en `partNumberLabelsByPartNumberId.nodes[].labelByLabelId.{id,name}`.
 - Grupo (`partNumberGroupByPartNumberGroupId`) y proceso (`processNodeDescriptions`) vienen **vacíos** en el listado → fase 2.
 
-## Plan de validación (pendiente — piloto de Omar en sesión autenticada)
-> **M1 ya tiene causa raíz confirmada y fix** (1.2.0). El piloto ahora **verifica el fix en vivo**, no descubre el problema.
+## Plan de validación — ✅ VALIDADO en vivo (Omar, 2026-06-08)
+> Piloto en sesión autenticada confirmado por el usuario: **desarchivar ya lista los archivados** (antes 0) y el **progreso de 2 pasos** (1.2.1) se ve correcto. Cierra M1.
 
-Un solo piloto valida los checkpoints:
-- [ ] **Desarchivar**, sin fecha → el scan ahora **SÍ debe listar PNs archivados** (antes 0). Confirmar que el conteo > 0 y que la lista son archivados reales.
-  - Valida **M1** (fix): la doble pasada `includeArchived:'NO'`→`'YES'` con diff por ID entrega los archivados.
-  - Valida **M2**: que `UpdatePartNumber {archivedAt:null}` los reactive de verdad (desarchivar un subconjunto chico y verificar en el catálogo).
-- [ ] **Archivar**, sin fecha, elegir **SQ1 + Antitarnish** en **AND** → ver el **conteo en vivo** y archivar un subconjunto chico (regresión: el modo archivar no debe haberse alterado).
-  - Valida **M3**: si la etiqueta no se llama exactamente `SQ1` (en la muestra solo aparecía `SQ2`), se verá con su nombre real en la lista descubierta → autocorrige.
-- [ ] **EJE B** (memory-hardening): durante una corrida real, ver el span `Mem: XXMB / YYMB (NN%)` en el overlay y confirmar que la barra de memoria se actualiza. Screenshot del mem monitor (lo pide el skill `memory-hardening-applets`).
+- [x] **Desarchivar**, sin fecha → el scan **SÍ lista PNs archivados** (antes daba 0). **Confirmado en vivo.**
+  - **M1** (fix): la doble pasada `includeArchived:'NO'`→`'YES'` con diff por ID entrega los archivados. ✅
+  - **M2**: `UpdatePartNumber {archivedAt:null}` reactiva los PNs. ✅
+- [x] **Progreso de 2 pasos** (1.2.1): "Paso 1/2 escaneando catálogo → Paso 2/2 identificando archivados", barra continua. **Confirmado en vivo.**
+- [ ] *(opcional, no bloquea)* **Archivar** SQ1+Antitarnish AND como regresión explícita + screenshot del span `#sa-arch-mem` (EJE B) en una corrida grande — recomendado por la skill `memory-hardening-applets`, pendiente de oportunidad.
 
 ## Issues conocidos (pre-existentes, heredados; no introducidos por 1.0.0)
 - **`dateType=modificacion` filtra por `createdAt`**: `slimPN` solo trae `createdAt`, así que la opción "Fecha de modificación" del form en realidad filtra por creación. Decidir en fase 2: traer `modifiedAt` al slim y diferenciarlo en `applyFilters`, o quitar la opción del form. ("creación" y "última utilización" sí funcionan bien.)
