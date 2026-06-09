@@ -161,12 +161,31 @@ const PNArchiver = (() => {
   function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
   // Progreso de la fase de carga (scan). total falsy ⇒ indeterminado (fraction null).
-  function computeLoadProgress({ processed, total, kept }) {
-    if (total && total > 0) {
-      const fraction = Math.min(processed / total, 1);
-      return { fraction, text: `Cargando PNs... ${fmt(processed)}/${fmt(total)} (${fmt(kept)} del modo)` };
+  // Desarchivar hace 2 pasadas (step/steps): paso 1 escanea el catálogo (activos,
+  // para el diff) y paso 2 identifica los archivados. Sin step ⇒ comportamiento
+  // legacy (archivar / pasada única). La barra de 2 pasos es continua: paso 1
+  // ocupa [0,0.5] y paso 2 [0.5,1] — no retrocede ni muestra el conteo de activos
+  // como si fueran "del modo".
+  function computeLoadProgress({ processed, total, kept, step, steps }) {
+    const twoStep = steps === 2 && (step === 1 || step === 2);
+
+    if (!twoStep) {
+      if (total && total > 0) {
+        const fraction = Math.min(processed / total, 1);
+        return { fraction, text: `Cargando PNs... ${fmt(processed)}/${fmt(total)} (${fmt(kept)} del modo)` };
+      }
+      return { fraction: null, text: `Cargando PNs... ${fmt(kept)}` };
     }
-    return { fraction: null, text: `Cargando PNs... ${fmt(kept)}` };
+
+    const label = step === 1 ? 'Paso 1/2: escaneando catálogo' : 'Paso 2/2: identificando archivados';
+    if (total && total > 0) {
+      const within = Math.min(processed / total, 1);
+      const fraction = (step - 1) / 2 + within / 2;
+      const keptPart = step === 2 ? ` (${fmt(kept)} archivados)` : '';  // paso 1: activos no son "del modo"
+      return { fraction, text: `${label}... ${fmt(processed)}/${fmt(total)}${keptPart}` };
+    }
+    const tail = step === 2 ? `${fmt(kept)} archivados` : `${fmt(processed)}`;
+    return { fraction: null, text: `${label}... ${tail}` };
   }
 
   // Progreso de la fase de ejecución. gerundio = 'Archivando' | 'Desarchivando'.
@@ -226,16 +245,20 @@ const PNArchiver = (() => {
   //   - unarchive → diff de dos pasadas: pasada 1 ('NO') recoge los IDs activos;
   //     pasada 2 ('YES' = activos+archivados) conserva los que NO son activos =
   //     los archivados, marcados con ARCHIVED_SENTINEL.
+  // Envuelve onProgress para etiquetar la pasada (step/steps) sin que pageAllPNs
+  // tenga que saber de fases.
+  const tagStep = (cb, step, steps) => (cb ? (p) => cb({ ...p, step, steps }) : null);
+
   async function fetchPNsForMode(mode, onProgress, pageSize = 500) {
     if (mode !== 'unarchive') {
       return await pageAllPNs('NO', null, onProgress, pageSize, null);
     }
-    // Pasada 1: solo IDs activos (sin slim — barato en memoria).
+    // Pasada 1: solo IDs activos (sin slim — barato en memoria). Paso 1/2.
     const activeIds = new Set();
-    await pageAllPNs('NO', null, onProgress, pageSize, activeIds);
+    await pageAllPNs('NO', null, tagStep(onProgress, 1, 2), pageSize, activeIds);
     if (stopped) return [];
-    // Pasada 2: archivados = aparecen con 'YES' pero no están entre los activos.
-    return await pageAllPNs('YES', activeIds, onProgress, pageSize, null);
+    // Pasada 2: archivados = aparecen con 'YES' pero no están entre los activos. Paso 2/2.
+    return await pageAllPNs('YES', activeIds, tagStep(onProgress, 2, 2), pageSize, null);
   }
 
   // Una pasada paginada de AllPartNumbers. Siempre devuelve un array (vacío en el
