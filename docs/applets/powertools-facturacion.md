@@ -62,7 +62,7 @@ const consolidarPorProducto = sos.length > 0 && sosConFlag === sos.length
    - El resto se agrupa por `${productId}||${lineUnit}||${taxCodeId}`.
    - Por grupo: `totalQty = sum(quantity)`, `totalAmount = sum(quantity × rate)`, `rate = totalAmount / totalQty`.
    - Una sola línea representativa con el `salesOrderLineItemId` del **primer** miembro del grupo.
-   - Descripción agregada: `Producto: X. NPs (N): NP1, NP2, .... Acabado: A. OC: SO1, SO2. OTs: WO1, WO2. Lotes: L1, L2 PS: P1, P2.` (respetando flags y dedupando con `Set`).
+   - Descripción agregada (formato compacto del 2026-06-03, sin labels largos): `X NPs(N) NP1, NP2 OC SO1, SO2 L L1, L2 Ac A OT WO1, WO2` — el Producto va como valor directo (sin `Producto: `), unido con un espacio y dedupando con `Set` (respetando flags).
 
 ### Riesgo conocido — SOLIs huérfanos
 
@@ -109,11 +109,23 @@ Mitigación pendiente: investigar si Steelhead acepta `salesOrderLineItemIds: nu
 - [ ] Probar factura **mixta** (algunas OVs con flag, otras sin) — debe emitir warning y NO consolidar.
 - [ ] Probar con líneas mixtas: algunas en KG (consolidables), una con lote mínimo (no consolidable) — confirmar que la de lote mínimo sale aparte.
 
-### Descripción compacta para el SAT (2026-06-03) — validación en sandbox
+### Descripción compacta para el SAT (2026-06-03) — DESPLEGADO a productivo 2026-06-09
 
-Los hooks `.ts` no se prueban localmente; la lógica pura de strings está cubierta por `tools/invoice_description.{mjs,test.mjs}` (8 casos verde). Falta validar en el editor de Power Tools:
+**Desplegado a productivo 2026-06-09** vía `tools/lowcode_sync.py push` (la operación valida
+directo en productivo, no en sandbox):
 
-- [ ] Pegar `invoice.ts` (`getInvoicePricing`) y correr Test con la factura del ejemplo (NP `02104484`, OC `4507414828-10`) → `description == "Estañado OC 4507414828-10 OT 5086"`.
+- `invoice` (`getInvoicePricing`) → versión activa **#5304** (antes #5278, que aún traía `Producto: `).
+- `pdf:INVOICE_TEMPLATE` (`getPdfCustomization`) → versión activa **#10682** (quita `<b>Producto: </b>` del bloque 1 del PDF).
+
+La versión anterior de cada slot queda en el historial de Steelhead para rollback
+(`python3 tools/lowcode_sync.py pull <slug> --all-versions`). Tras el push, `diff invoice`
+y `diff pdf:INVOICE_TEMPLATE` dan **local == server** (0 diferencias).
+
+Los hooks `.ts` no se prueban localmente; la lógica pura de strings está cubierta por
+`tools/invoice_description.{mjs,test.mjs}` (8 casos verde). **Validación en productivo** (pendiente
+de confirmar con factura real):
+
+- [ ] Factura del ejemplo (NP `02104484`, OC `4507414828-10`) → `description == "Estañado OC 4507414828-10 OT 5086"`.
 - [ ] Caso con `Lote ≠ OC` → aparece el bloque `L …`.
 - [ ] Caso lote mínimo → la subcadena `"Cargo de lote mínimo aplicado"` está completa y el integrador SAT la reconoce.
 - [ ] Factura con líneas largas → se emite **un** warning resumido y la `description` **no** sale truncada a 60 (la corta el XML).

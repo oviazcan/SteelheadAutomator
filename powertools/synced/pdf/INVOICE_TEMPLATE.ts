@@ -313,14 +313,14 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
           ? fusionarPoLotePs(poName, loteNamesLinea, flags.MostrarPS ? psValsLinea : [])
           : { fusionado: false, label: '', valor: '', psRestantes: psValsLinea }
 
-      // ── Bloque 1: Producto ────────────────────────────────────────────
+      // ── Bloque 1: Producto (valor directo, sin label) ─────────────────
       if (flags.MostrarProducto) {
         const productName =
           item0?.product?.name ??
           item0?.salesOrderLineItem?.product?.name ??
           null;
         if (productName) {
-          partes.push(`<b>Producto: </b>${productName}<br>`);
+          partes.push(`${productName}<br>`);
         }
       }
 
