@@ -46,10 +46,59 @@ export const isPendingName = (name) => {
 // Pluraliza "contenedor" por número (se llama solo con n >= 1).
 export const pluralContenedor = (n) => (Number(n) === 1 ? 'contenedor' : 'contenedores')
 
+const KGM_UNIT_ID = 3969
+const LBR_UNIT_ID2 = 3972
+
 // number_format(x, 0, ".", ",") → entero con separador de miles.
 const formatInt = (n) => {
   const v = n == null || isNaN(Number(n)) ? 0 : Math.round(Number(n))
   return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+// number_format(x, 2, ".", ",") → 2 decimales con separador de miles.
+const format2 = (n) => {
+  const v = n == null || isNaN(Number(n)) ? 0 : Number(n)
+  const fixed = (Math.round(v * 100) / 100).toFixed(2)
+  const neg = fixed.charAt(0) === '-'
+  const abs = neg ? fixed.slice(1) : fixed
+  const dot = abs.indexOf('.')
+  const intPart = abs.slice(0, dot).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (neg ? '-' : '') + intPart + abs.slice(dot)
+}
+
+// Primera conversión de PESO válida del PN (LBR o KGM) con su unidad de origen.
+// Evita tomar [0] a ciegas (podría ser área u otra unidad) y permite convertir
+// correctamente a la unidad destino del cliente (corrige doble conversión #1090).
+const findWeightConversion = (convs) => {
+  if (!Array.isArray(convs)) return null
+  for (let i = 0; i < convs.length; i++) {
+    const c = convs[i]
+    if (c == null || c.unit == null || c.factor == null || c.factor <= 0) continue
+    const id = Number(c.unit.id)
+    const n = c.unit.name != null ? String(c.unit.name).toLowerCase() : ''
+    const isLbr = id === LBR_UNIT_ID2 || n.indexOf('lbr') >= 0 || n.indexOf('libra') >= 0
+    const isKgm = id === KGM_UNIT_ID || n.indexOf('kgm') >= 0 || n.indexOf('kilo') >= 0 || n.indexOf('kg') >= 0
+    if (isLbr) return { factor: c.factor, sourceIsLb: true }
+    if (isKgm) return { factor: c.factor, sourceIsLb: false }
+  }
+  return null
+}
+
+// Σ numeroContenedores (DatosRecibo) de los lotes únicos; null si no hay dato.
+const sumContenedores = (uniqueBatches) => {
+  let total = 0
+  let has = false
+  uniqueBatches.forEach((b) => {
+    const ci = b.customInputs
+    if (ci == null) return
+    const dr = ci.DatosRecibo
+    if (dr == null) return
+    const n = dr.numeroContenedores
+    if (n == null || isNaN(Number(n))) return
+    total += Number(n)
+    has = true
+  })
+  return has && total >= 1 ? total : null
 }
 
 // Detección recursiva de cliente que captura en libras (UnidadMedidaPeso).
@@ -131,6 +180,21 @@ const computeEmbarcada = (entries) => {
   return total
 }
 
+// Columna Cantidad Recibida: "N PZA<br><small>(peso unidad)<br>M contenedor(es)</small>".
+// Cada sub-bloque se omite limpio si falta el dato (sin "(Sin factor)" colgante).
+const buildCantidadRecibidaHtml = (recibida, pn, uniqueBatches, ctx) => {
+  const parts = []
+  const conv = findWeightConversion(pn.unitConversions)
+  if (conv != null) {
+    const peso = convertWeight({ value: recibida * conv.factor, sourceIsLb: conv.sourceIsLb, displayInLb: ctx.displayInLb })
+    if (peso != null) parts.push('(' + format2(peso) + (ctx.displayInLb ? ' LBS)' : ' KGM)'))
+  }
+  const cont = sumContenedores(uniqueBatches)
+  if (cont != null) parts.push(formatInt(cont) + ' ' + pluralContenedor(cont))
+  const small = parts.length > 0 ? '<br><small>' + parts.join('<br>') + '</small>' : ''
+  return formatInt(recibida) + ' PZA' + small
+}
+
 // Construye UNA fila del cuerpo por grupo PN. (Se enriquece columna por columna
 // en las tareas siguientes.)
 const buildRow = (g, ctx) => {
@@ -144,7 +208,7 @@ const buildRow = (g, ctx) => {
   const row = {
     pnId: g.pnId,
     partNumber: pn.name != null ? pn.name : '',
-    cantidadRecibidaHtml: formatInt(recibida) + ' PZA',
+    cantidadRecibidaHtml: buildCantidadRecibidaHtml(recibida, pn, uniqueBatches, ctx),
     descripcionHtml: '',
     referenciasHtml: '',
     cantidadEmbarcadaHtml: formatInt(embarcada) + ' PZA',

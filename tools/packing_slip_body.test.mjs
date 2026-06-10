@@ -85,6 +85,63 @@ test('buildBodyRows: inputs vacío/sin items → []', () => {
   assert.deepEqual(buildBodyRows({ packingSlip: { items: null } }), [])
 })
 
+// ── Task 3: Cantidad Recibida (peso teórico + contenedores) ──────────────────
+
+const CI_LB = { DatosLogisticos: { UnidadMedidaPeso: true } }
+const batchCont = (id, n) => ({ id: id, name: 'L' + id, customInputs: { DatosRecibo: { numeroContenedores: n } } })
+
+test('Cant. Recibida: cliente KG, factor KGM → peso teórico KGM', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50,
+    conv: [{ unit: { id: 3969, name: 'KGM Kilogramo' }, factor: 0.5 }],
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadRecibidaHtml, /50 PZA/)
+  assert.match(r.cantidadRecibidaHtml, /\(25\.00 KGM\)/)
+})
+
+test('Cant. Recibida: cliente LB con factor KGM → convierte (no duplica) 25kg→55.12 LBS', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50,
+    conv: [{ unit: { id: 3969, name: 'KGM Kilogramo' }, factor: 0.5 }],
+  })] })], { customerCI: CI_LB })
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadRecibidaHtml, /\(55\.12 LBS\)/)
+})
+
+test('Cant. Recibida: cliente LB con factor LBR → usa LBR directo (no ×2.2046)', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50,
+    conv: [{ unit: { id: 3972, name: 'LBR Libra' }, factor: 1.1 }],
+  })] })], { customerCI: CI_LB })
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadRecibidaHtml, /\(55\.00 LBS\)/)
+})
+
+test('Cant. Recibida: sin conversión → sin bloque de peso (no "Sin factor")', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50, conv: [] })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.doesNotMatch(r.cantidadRecibidaHtml, /Sin factor|KGM|LBS/)
+})
+
+test('Cant. Recibida: contenedores sumados de lotes únicos (2+3 → 5 contenedores)', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50,
+    batches: [batchCont(11, 2), batchCont(12, 3)],
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadRecibidaHtml, /5 contenedores/)
+})
+
+test('Cant. Recibida: numeroContenedores null → sin bloque de contenedores', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50,
+    batches: [{ id: 11, name: 'L11', customInputs: { DatosRecibo: {} } }],
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.doesNotMatch(r.cantidadRecibidaHtml, /contenedor/)
+})
+
 // ── Task 1: helpers de string ────────────────────────────────────────────────
 
 test('escapeHtml: < > & se escapan', () => {
