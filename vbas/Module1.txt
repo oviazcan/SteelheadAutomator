@@ -1,221 +1,400 @@
-' === MACRO 1: ExportarCSV (v14) ===
-' V14 (2026-05-28): predictive cols BD..BL (55..63) a NumberFormat "General"
-'   en el libro temporal antes del SaveAs.
-'   Bug origen: la plantilla muestra 4 decimales (legible para el usuario),
-'   pero SaveAs FileFormat:=62 exporta el VALOR MOSTRADO, no el valor raw.
-'   Con formato display "0.0000" el CSV salía con valores truncados y el
-'   parser predictive de bulk-upload veía consumos demasiado bajos.
-'   Forzar "General" en la copia temporal preserva precisión completa (hasta
-'   15 dígitos significativos de Excel) sin tocar la UI visible al usuario.
-' V13 (2026-05-26): lastRow considera col G (PN) y col E (Id SH) — toma el máximo
-'   - Permite filas con solo Id SH (col E) al final del rango sin PN en col G
-' V12 (2026-05-26): adaptado al spreadsheet layout v11 (71 cols, +Id SH, +Tipo de Geometría, Línea movida a col P)
-'   - Modo: leer H1 (antes G1)
-'   - quoteName: leer H3 (antes G3)
-'   - Validación Cliente: col 6 (F) — antes col 5 (E)
-'   - Validación PN:      col 7 (G) — antes col 6 (F)
-'   - lastRow por col 7 (G = PN)
-'   - Sort keys: F9 (Cliente) y G9 (PN) — antes E9 y F9
-'   - SetRange sort: A9:BS — antes A9:BQ
-'   - Cols extra: eliminar desde col 72 si UsedRange > 71 — antes >69 y col 70
-' V11.1 (2026-05-20): ChrW(211) = Ó para sobrevivir paste-encoding del VBE
-' V11 (2026-05-19): hardening para corrida masiva de 18k filas con bulk-upload
-' V10: Exporta 69 columnas (A-BQ).
+' === MACRO 1: ExportarCSV (v15 — layout v12) ===
+' V15 (2026-06-09): reescrito para el spreadsheet v12 (hoja "Upload", 60 cols visibles).
+'   CAMBIO DE FONDO vs v14: ya NO usa SaveAs (dump crudo). Construye el CSV CANÓNICO
+'   en memoria, expandiendo 3 columnas combo a su forma que el parser entiende:
+'     - "Estatus"          -> "Archivado" + "Validación"            (V/F)
+'     - "Forzar duplicado" -> "Forzar" + "Archivar anterior"        (V/F)
+'     - "Productos"        -> 3 grupos Producto/Precio/Cantidad/Unidad vía CAT_Productos
+'   El resto de columnas pasan 1:1 (encabezado normalizado + valor calculado .Value).
+'   "Etiqueta Planta Schneider" -> "Planta Schneider". Headers duplicados (racks) se
+'   desambiguan (" 2"). NO exporta Departamento/SAT/UnidadMedidaSAT (el parser los pone
+'   por default). Lee .Value (raw) -> ya no hace falta el truco "General" de predictivos.
+'   Metadata (modo/empresa/quoteName/notas/asignado/válida) se lee LABEL-DRIVEN (robusto a
+'   posiciones) y se re-emite como bloque limpio arriba del CSV.
+'   Orden determinista por (Cliente, PN) con quicksort en memoria (sin libro temporal).
 '
-' Target: spreadsheet v11 layout, 71 cols A..BS, datos fila 9+
+' Posiciones de datos v12 (fila 7 = encabezados, datos fila 9+):
+'   1=Estatus  2=Forzar duplicado  3=Id SH  4=Cliente  5=Número de parte ...
+'
+' Columnas de datos clave:
+Private Const COL_IDSH As Long = 3
+Private Const COL_CLIENTE As Long = 4
+Private Const COL_PN As Long = 5
+Private Const HEADER_ROW As Long = 7
+Private Const DATA_START As Long = 9
 
 Sub ExportarCSV()
-    Dim ws As Worksheet, csvName As String, savePath As String
+    Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets("Upload")
 
-    ' V12: leer modo de H1 (antes G1) y quoteName de H3 (antes G3)
-    Dim modo As String, quoteName As String
-    modo = UCase(Trim(CStr(ws.Range("H1").Value)))
-    quoteName = Trim(CStr(ws.Range("H3").Value))
-
-    Dim modoNorm As String
-    ' V11.1: ChrW(211) = Ó para sobrevivir paste-encoding del VBE
-    modoNorm = Replace(Replace(modo, ChrW(211), "O"), " ", "_")
+    ' ── 1) Metadata (label-driven) ──
+    Dim modoRaw As String, modoNorm As String
+    modoRaw = ScanModo(ws)
+    modoNorm = Replace(Replace(UCase(modoRaw), ChrW(211), "O"), " ", "_")
     If modoNorm <> "COTIZACION+NP" And modoNorm <> "SOLO_PN" Then
-        MsgBox "Modo inv" & ChrW(225) & "lido en H1: '" & ws.Range("H1").Value & "'." & vbCrLf & vbCrLf & _
-               "Debe ser 'COTIZACI" & ChrW(211) & "N+NP' o 'SOLO_PN'.", vbCritical, "Modo inv" & ChrW(225) & "lido"
+        MsgBox "Modo inv" & ChrW(225) & "lido: '" & modoRaw & "'." & vbCrLf & _
+               "Debe ser 'COTIZACI" & ChrW(211) & "N+NP' o 'SOLO_PN' en la regi" & ChrW(243) & "n superior.", _
+               vbCritical, "Modo inv" & ChrW(225) & "lido"
         Exit Sub
     End If
-
     Dim esCotizacion As Boolean
     esCotizacion = (modoNorm = "COTIZACION+NP")
 
+    Dim empresa As String, quoteName As String, notasExt As String
+    Dim notasInt As String, asignado As String, validaDias As String
+    empresa = MetaVal(ws, "empresa emisora")
+    quoteName = MetaVal(ws, "nombre cotizacion/layout")
+    notasExt = MetaVal(ws, "notas externas")
+    notasInt = MetaVal(ws, "notas internas")
+    asignado = MetaVal(ws, "asignado")
+    validaDias = MetaVal(ws, "valida hasta (dias)")
+
     If esCotizacion And quoteName = "" Then
-        MsgBox "Modo COTIZACI" & ChrW(211) & "N+NP requiere 'Nombre Cotizaci" & ChrW(243) & "n' en H3.", _
+        MsgBox "Modo COTIZACI" & ChrW(211) & "N+NP requiere 'Nombre Cotizaci" & ChrW(243) & "n/Layout'.", _
                vbCritical, "QuoteName faltante"
         Exit Sub
     End If
 
-    ' V12: validar que toda línea con PN (col G=7) tenga Cliente (col F=6)
-    ' Cliente: necesario incluso en SOLO_PN porque los PNs están scoped por customer.
-    ' Proceso: NO se valida aquí porque vacío tiene significado (PN existente: copiar el suyo).
-    '          La extensión valida por línea y reporta errores sin matar el batch.
-    Dim r As Long, lastR As Long, sinCliente As String, nFaltantes As Long
-    Dim pnVal As String, clVal As String
-    Dim lastG As Long, lastE As Long
-    lastG = ws.Cells(ws.Rows.Count, 7).End(xlUp).Row  ' col G = PN
-    lastE = ws.Cells(ws.Rows.Count, 5).End(xlUp).Row  ' col E = Id SH
-    lastR = lastG
-    If lastE > lastR Then lastR = lastE
-    For r = 9 To lastR
-        pnVal = Trim(CStr(ws.Cells(r, 7).Value))  ' col G=7 = PN
+    ' ── 2) Rango de datos + validaciones ──
+    Dim lastCol As Long, lastR As Long, lastPN As Long, lastID As Long
+    lastCol = ws.Cells(HEADER_ROW, ws.Columns.Count).End(xlToLeft).Column
+    lastPN = ws.Cells(ws.Rows.Count, COL_PN).End(xlUp).Row
+    lastID = ws.Cells(ws.Rows.Count, COL_IDSH).End(xlUp).Row
+    lastR = lastPN: If lastID > lastR Then lastR = lastID
+    If lastR < DATA_START Then MsgBox "No hay filas de datos.", vbExclamation: Exit Sub
+
+    ' PN sin Cliente
+    Dim r As Long, pnVal As String, clVal As String, nFalt As Long, faltMsg As String
+    For r = DATA_START To lastR
+        pnVal = Trim(CStr(ws.Cells(r, COL_PN).Value))
         If pnVal <> "" Then
-            clVal = Trim(CStr(ws.Cells(r, 6).Value))  ' col F=6 = Cliente
+            clVal = Trim(CStr(ws.Cells(r, COL_CLIENTE).Value))
             If clVal = "" Or clVal = "(seleccione)" Or clVal = "(seleccione o escriba)" Then
-                nFaltantes = nFaltantes + 1
-                If nFaltantes <= 10 Then
-                    sinCliente = sinCliente & "  Fila " & r & ": " & pnVal & vbCrLf
-                End If
+                nFalt = nFalt + 1
+                If nFalt <= 10 Then faltMsg = faltMsg & "  Fila " & r & ": " & pnVal & vbCrLf
             End If
         End If
     Next r
-    If nFaltantes > 0 Then
-        Dim msg As String
-        msg = "No se puede exportar: " & nFaltantes & " l" & ChrW(237) & "nea(s) con PN sin Cliente." & vbCrLf & vbCrLf
-        msg = msg & sinCliente
-        If nFaltantes > 10 Then msg = msg & "  ... y " & (nFaltantes - 10) & " m" & ChrW(225) & "s" & vbCrLf
-        msg = msg & vbCrLf & "Asigna un cliente en la columna F a cada l" & ChrW(237) & "nea con PN."
-        MsgBox msg, vbExclamation, "Cliente faltante"
-        Exit Sub
+    If nFalt > 0 Then
+        Dim m1 As String
+        m1 = "No se puede exportar: " & nFalt & " l" & ChrW(237) & "nea(s) con PN sin Cliente." & vbCrLf & vbCrLf & faltMsg
+        If nFalt > 10 Then m1 = m1 & "  ... y " & (nFalt - 10) & " m" & ChrW(225) & "s" & vbCrLf
+        MsgBox m1, vbExclamation, "Cliente faltante": Exit Sub
     End If
 
-    ' V11: cliente único en COTIZACIÓN+NP
-    ' Una cotización vive bajo un solo cliente; mezclar rompe el flujo.
+    ' Cliente único en COTIZACIÓN+NP
     If esCotizacion Then
-        Dim clientesUnicos As New Collection, clTmp As String
-        For r = 9 To lastR
-            If Trim(CStr(ws.Cells(r, 7).Value)) <> "" Then  ' V12: PN en col 7
-                clTmp = Trim(CStr(ws.Cells(r, 6).Value))     ' V12: Cliente en col 6
-                If clTmp <> "" Then
-                    On Error Resume Next
-                    clientesUnicos.Add clTmp, clTmp
-                    On Error GoTo 0
-                End If
+        Dim cu As New Collection, ct As String
+        For r = DATA_START To lastR
+            If Trim(CStr(ws.Cells(r, COL_PN).Value)) <> "" Then
+                ct = Trim(CStr(ws.Cells(r, COL_CLIENTE).Value))
+                If ct <> "" Then On Error Resume Next: cu.Add ct, ct: On Error GoTo 0
             End If
         Next r
-        If clientesUnicos.Count > 1 Then
-            Dim lista As String, i As Long
-            For i = 1 To clientesUnicos.Count
-                lista = lista & "  " & ChrW(8226) & " " & clientesUnicos(i) & vbCrLf
-                If i >= 6 Then
-                    lista = lista & "  ... y " & (clientesUnicos.Count - i) & " m" & ChrW(225) & "s" & vbCrLf
-                    Exit For
-                End If
-            Next i
-            MsgBox "Modo COTIZACI" & ChrW(211) & "N+NP requiere UN SOLO cliente, encontr" & ChrW(233) & " " & _
-                   clientesUnicos.Count & ":" & vbCrLf & vbCrLf & lista & vbCrLf & _
-                   "Si quieres cargar varios clientes, usa modo SOLO_PN.", _
-                   vbCritical, "Cliente mixto"
-            Exit Sub
+        If cu.Count > 1 Then
+            MsgBox "Modo COTIZACI" & ChrW(211) & "N+NP requiere UN SOLO cliente; encontr" & ChrW(233) & " " & _
+                   cu.Count & ". Usa SOLO_PN para varios.", vbCritical, "Cliente mixto": Exit Sub
         End If
     End If
 
-    ' V11: aviso si SOLO_PN > 2000 filas (recomienda chunkear)
+    ' Aviso SOLO_PN > 2000
     If Not esCotizacion Then
-        Dim dataRows As Long
-        dataRows = 0
-        For r = 9 To lastR
-            If Trim(CStr(ws.Cells(r, 7).Value)) <> "" Then dataRows = dataRows + 1  ' V12: col 7
+        Dim nData As Long
+        For r = DATA_START To lastR
+            If Trim(CStr(ws.Cells(r, COL_PN).Value)) <> "" Then nData = nData + 1
         Next r
-        If dataRows > 2000 Then
-            Dim respChunk As VbMsgBoxResult
-            respChunk = MsgBox(dataRows & " filas SOLO_PN exceden las 2,000 recomendadas." & vbCrLf & vbCrLf & _
-                "Para evitar corridas largas y facilitar el resume tras crash," & vbCrLf & _
-                "parte la plantilla en chunks de 2,000 antes de exportar." & vbCrLf & vbCrLf & _
-                ChrW(191) & "Continuar exportando todo en un solo CSV?", _
-                vbYesNo + vbExclamation, "SOLO_PN grande")
-            If respChunk <> vbYes Then Exit Sub
+        If nData > 2000 Then
+            If MsgBox(nData & " filas SOLO_PN exceden 2,000 recomendadas." & vbCrLf & _
+                      ChrW(191) & "Continuar en un solo CSV?", vbYesNo + vbExclamation, "SOLO_PN grande") <> vbYes Then Exit Sub
         End If
     End If
 
-    ' V11: sugerencia de nombre alineado con las 4 cargas
-    ' Timestamp en el nombre NO afecta runKey (que se calcula sobre el contenido del CSV).
-    Dim baseName As String
+    ' ── 3) Plan de columnas canónicas (header-driven sobre la fila 7) ──
+    Dim outHdr As New Collection, outCol As New Collection, outTyp As New Collection, used As New Collection
+    Dim c As Long, hn As String, gi As Long
+    For c = 1 To lastCol
+        hn = NormHeader(CStr(ws.Cells(HEADER_ROW, c).Value))
+        If hn <> "" Then
+            Select Case LCase$(hn)
+                Case "estatus"
+                    AddOut outHdr, outCol, outTyp, used, "Archivado", c, 1
+                    AddOut outHdr, outCol, outTyp, used, "Validaci" & ChrW(243) & "n", c, 11
+                Case "forzar duplicado"
+                    AddOut outHdr, outCol, outTyp, used, "Forzar", c, 2
+                    AddOut outHdr, outCol, outTyp, used, "Archivar anterior", c, 21
+                Case "productos"
+                    For gi = 1 To 3
+                        AddOut outHdr, outCol, outTyp, used, "Producto " & gi, c, 100 + (gi - 1) * 4 + 0
+                        AddOut outHdr, outCol, outTyp, used, "Precio " & gi, c, 100 + (gi - 1) * 4 + 1
+                        AddOut outHdr, outCol, outTyp, used, "Cantidad " & gi, c, 100 + (gi - 1) * 4 + 2
+                        AddOut outHdr, outCol, outTyp, used, "Unidad " & gi, c, 100 + (gi - 1) * 4 + 3
+                    Next gi
+                Case "etiqueta planta schneider"
+                    AddOut outHdr, outCol, outTyp, used, "Planta Schneider", c, 0
+                Case Else
+                    AddOut outHdr, outCol, outTyp, used, hn, c, 0
+            End Select
+        End If
+    Next c
+
+    ' ── 4) Datos a memoria + orden determinista (Cliente, PN) ──
+    Dim data As Variant
+    data = ws.Range(ws.Cells(DATA_START, 1), ws.Cells(lastR, lastCol)).Value
+    Dim n As Long: n = UBound(data, 1)
+    Dim idx() As Long, keys() As String, k As Long
+    ReDim idx(1 To n): ReDim keys(1 To n)
+    For k = 1 To n
+        idx(k) = k
+        keys(k) = UCase(Trim(CStr(data(k, COL_CLIENTE)))) & "|" & UCase(Trim(CStr(data(k, COL_PN))))
+    Next k
+    If n >= 2 Then QSortIdx idx, keys, 1, n
+
+    ' ── 5) CAT_Productos a memoria ──
+    Dim wsP As Worksheet
+    On Error Resume Next: Set wsP = ThisWorkbook.Sheets("CAT_Productos"): On Error GoTo 0
+    Dim prodMap As Collection
+    Set prodMap = LoadCatProductos(wsP)
+
+    ' ── 6) Construir CSV (bloque metadata + header canónico + filas) ──
+    Dim sb As String
+    sb = CsvQuote(modoRaw) & vbCrLf
+    sb = sb & "Empresa Emisora:," & CsvQuote(empresa) & vbCrLf
+    sb = sb & "Nombre Cotizacion/Layout:," & CsvQuote(quoteName) & vbCrLf
+    sb = sb & "Notas Externas:," & CsvQuote(notasExt) & vbCrLf
+    sb = sb & "Notas Internas:," & CsvQuote(notasInt) & vbCrLf
+    sb = sb & "Asignado:," & CsvQuote(asignado) & vbCrLf
+    sb = sb & "Valida Hasta (dias):," & CsvQuote(validaDias) & vbCrLf
+    sb = sb & BuildLine(outHdr) & vbCrLf
+
+    Dim i As Long, ri As Long, t As Long, col As Long, sv As String, fz As String, line As String
+    For k = 1 To n
+        ri = idx(k)
+        If Trim(CStr(data(ri, COL_PN))) = "" Then GoTo NextK
+        line = ""
+        For i = 1 To outHdr.Count
+            t = outTyp(i): col = outCol(i)
+            Select Case t
+                Case 0:  sv = CellToStr(data(ri, col))
+                Case 1:  sv = IIf(InStr(1, CStr(data(ri, col)), "Archivado", vbTextCompare) > 0, "V", "F")
+                Case 11: sv = IIf(InStr(1, CStr(data(ri, col)), "sin validaci", vbTextCompare) > 0, "F", "V")
+                Case 2
+                    fz = CStr(data(ri, col))
+                    sv = IIf(InStr(1, fz, "Forzar duplicado", vbTextCompare) > 0 _
+                             And InStr(1, fz, "Sin forzar", vbTextCompare) = 0, "V", "F")
+                Case 21: sv = IIf(InStr(1, CStr(data(ri, col)), "archivar anterior", vbTextCompare) > 0, "V", "F")
+                Case Is >= 100: sv = ProdValue(prodMap, NormKey(CStr(data(ri, col))), t - 100)
+            End Select
+            If i > 1 Then line = line & ","
+            line = line & CsvQuote(sv)
+        Next i
+        sb = sb & line & vbCrLf
+NextK:
+    Next k
+
+    ' ── 7) Guardar UTF-8 ──
+    Dim baseName As String, savePath As String, inv As Variant, ch As Variant
     If esCotizacion Then
         baseName = quoteName & "-" & Format(Now, "yyyymmdd")
+    ElseIf quoteName <> "" Then
+        baseName = quoteName & "-solopn-" & Format(Now, "yyyymmdd")
     Else
-        If quoteName <> "" Then
-            baseName = quoteName & "-solopn-" & Format(Now, "yyyymmdd")
-        Else
-            baseName = "solopn-" & Format(Now, "yyyymmdd-hhnn")
-        End If
+        baseName = "solopn-" & Format(Now, "yyyymmdd-hhnn")
     End If
-    csvName = baseName
-
-    ' V10: sanitizar caracteres inválidos en nombre de archivo
-    Dim inv As Variant, ch As Variant
     inv = Array("/", "\", ":", "*", "?", Chr(34), "<", ">", "|")
-    For Each ch In inv: csvName = Replace(csvName, CStr(ch), "_"): Next
-
+    For Each ch In inv: baseName = Replace(baseName, CStr(ch), "_"): Next
     #If Mac Then
-        savePath = Application.GetSaveAsFilename(csvName & ".csv")
+        savePath = Application.GetSaveAsFilename(baseName & ".csv")
     #Else
-        savePath = Application.GetSaveAsFilename(csvName & ".csv", "CSV (*.csv), *.csv")
+        savePath = Application.GetSaveAsFilename(baseName & ".csv", "CSV UTF-8 (*.csv), *.csv")
     #End If
     If CStr(savePath) = "False" Or savePath = "" Then Exit Sub
-    If Right(savePath, 4) <> ".csv" Then savePath = savePath & ".csv"
+    If LCase(Right(savePath, 4)) <> ".csv" Then savePath = savePath & ".csv"
+    WriteUtf8NoBom CStr(savePath), sb
 
-    ' Copiar hoja a libro temporal
-    ws.Copy
-    Dim tmpWb As Workbook
-    Set tmpWb = ActiveWorkbook
+    MsgBox "CSV v12 exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
+           "Modo: " & IIf(esCotizacion, "COTIZACI" & ChrW(211) & "N+NP", "SOLO_PN") & vbCrLf & _
+           outHdr.Count & " columnas " & ChrW(183) & " " & n & " filas " & ChrW(183) & " ordenado por (Cliente, PN).", _
+           vbInformation, "Listo"
+End Sub
 
-    ' V12: 71 columnas (A-BS). Eliminar columnas extra si UsedRange > 71
-    Dim tmpWs As Worksheet
-    Set tmpWs = tmpWb.Sheets(1)
-    If tmpWs.UsedRange.Columns.Count > 71 Then
-        tmpWs.Range(tmpWs.Columns(72), tmpWs.Columns(tmpWs.UsedRange.Columns.Count)).Delete
+' ===========================  Helpers  ===========================
+
+Private Sub AddOut(h As Collection, oc As Collection, ot As Collection, used As Collection, _
+                   ByVal hdr As String, ByVal col As Long, ByVal typ As Long)
+    Dim cand As String, k As Long
+    cand = hdr: k = 1
+    Do While CollHas(used, cand)
+        k = k + 1: cand = hdr & " " & k
+    Loop
+    used.Add cand, cand
+    h.Add cand: oc.Add col: ot.Add typ
+End Sub
+
+Private Function ScanModo(ws As Worksheet) As String
+    Dim r As Long, c As Long, v As String
+    For r = 1 To 4
+        For c = 1 To 26
+            v = Replace(UCase(Trim(CStr(ws.Cells(r, c).Value))), ChrW(211), "O")
+            If v = "COTIZACION+NP" Or v = "SOLO_PN" Or v = "SOLO PN" Then
+                ScanModo = Trim(CStr(ws.Cells(r, c).Value)): Exit Function
+            End If
+        Next c
+    Next r
+    ScanModo = ""
+End Function
+
+Private Function MetaVal(ws As Worksheet, ByVal labelKey As String) As String
+    ' Busca en filas 1..6 una celda cuyo label (sin acentos, sin ":") == labelKey,
+    ' y devuelve el primer valor no vacío a la derecha (1..4) que NO sea otro label.
+    Dim r As Long, c As Long, d As Long, nx As String
+    For r = 1 To 6
+        For c = 1 To 30
+            If NormLabel(CStr(ws.Cells(r, c).Value)) = labelKey Then
+                For d = 1 To 4
+                    nx = Trim(CStr(ws.Cells(r, c + d).Value))
+                    If nx <> "" Then
+                        If Not IsAnyLabel(NormLabel(nx)) Then MetaVal = nx: Exit Function
+                    End If
+                Next d
+            End If
+        Next c
+    Next r
+    MetaVal = ""
+End Function
+
+Private Function IsAnyLabel(ByVal nrm As String) As Boolean
+    Select Case nrm
+        Case "empresa emisora", "nombre cotizacion/layout", "notas externas", _
+             "notas internas", "asignado", "valida hasta (dias)"
+            IsAnyLabel = True
+        Case Else
+            IsAnyLabel = False
+    End Select
+End Function
+
+Private Function NormLabel(ByVal s As String) As String
+    s = LCase(Trim(s))
+    If Right(s, 1) = ":" Then s = Left(s, Len(s) - 1)
+    s = StripAccents(s)
+    Do While InStr(s, "  ") > 0: s = Replace(s, "  ", " "): Loop
+    NormLabel = Trim(s)
+End Function
+
+Private Function StripAccents(ByVal s As String) As String
+    s = Replace(s, ChrW(225), "a"): s = Replace(s, ChrW(233), "e")
+    s = Replace(s, ChrW(237), "i"): s = Replace(s, ChrW(243), "o")
+    s = Replace(s, ChrW(250), "u"): s = Replace(s, ChrW(241), "n")
+    s = Replace(s, ChrW(252), "u")
+    StripAccents = s
+End Function
+
+Private Function NormHeader(ByVal s As String) As String
+    s = Replace(s, vbLf, " "): s = Replace(s, vbCr, " ")
+    Do While InStr(s, "  ") > 0: s = Replace(s, "  ", " "): Loop
+    NormHeader = Trim$(s)
+End Function
+
+Private Function NormKey(ByVal s As String) As String
+    s = Trim$(s)
+    If s = "(seleccione)" Or s = "-" Then s = ""
+    NormKey = s
+End Function
+
+Private Function LoadCatProductos(ws As Worksheet) As Collection
+    Dim col As New Collection
+    If Not ws Is Nothing Then
+        Dim last As Long, r As Long, j As Long, key As String, s As String
+        last = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        For r = 2 To last
+            key = NormKey(CStr(ws.Cells(r, 1).Value))
+            If key <> "" Then
+                s = ""
+                For j = 0 To 11                       ' cols B..M = Producto1..Unidad3
+                    s = s & CellToStr(ws.Cells(r, 2 + j).Value) & Chr(1)
+                Next j
+                On Error Resume Next: col.Add s, key: On Error GoTo 0
+            End If
+        Next r
     End If
+    Set LoadCatProductos = col
+End Function
 
-    ' V12: ordenar filas 9..lastR por (col F=6 Cliente, col G=7 PN) en libro temporal
-    ' Determinismo del runKey de resume — dos exports del MISMO dataset → mismo byte-string.
-    ' Si el usuario re-ordena filas entre crashes, este sort las re-canoniza antes del CSV.
-    Dim tmpLastR As Long
-    Dim tmpLastG As Long, tmpLastE As Long
-    tmpLastG = tmpWs.Cells(tmpWs.Rows.Count, 7).End(xlUp).Row  ' col G = PN
-    tmpLastE = tmpWs.Cells(tmpWs.Rows.Count, 5).End(xlUp).Row  ' col E = Id SH
-    tmpLastR = tmpLastG
-    If tmpLastE > tmpLastR Then tmpLastR = tmpLastE
-    If tmpLastR >= 10 Then  ' al menos 2 filas de datos
-        With tmpWs.Sort
-            .SortFields.Clear
-            .SortFields.Add Key:=tmpWs.Range("F9:F" & tmpLastR), _
-                Order:=xlAscending, DataOption:=xlSortNormal
-            .SortFields.Add Key:=tmpWs.Range("G9:G" & tmpLastR), _
-                Order:=xlAscending, DataOption:=xlSortNormal
-            .SetRange tmpWs.Range("A9:BS" & tmpLastR)
-            .Header = xlNo
-            .MatchCase = False
-            .Orientation = xlTopToBottom
-            .SortMethod = xlPinYin
-            .Apply
-        End With
+Private Function ProdValue(map As Collection, ByVal key As String, ByVal idx As Long) As String
+    If key = "" Then ProdValue = "": Exit Function
+    Dim s As String
+    On Error GoTo nf
+    s = map(key)
+    On Error GoTo 0
+    Dim parts() As String
+    parts = Split(s, Chr(1))
+    If idx >= 0 And idx <= UBound(parts) Then ProdValue = parts(idx) Else ProdValue = ""
+    Exit Function
+nf:
+    ProdValue = ""
+End Function
+
+Private Function CellToStr(ByVal v As Variant) As String
+    If IsError(v) Then CellToStr = "": Exit Function
+    If IsNull(v) Or IsEmpty(v) Then CellToStr = "": Exit Function
+    Select Case VarType(v)
+        Case vbDouble, vbSingle, vbCurrency, vbDecimal, vbInteger, vbLong, vbByte
+            CellToStr = Trim$(Str$(v))               ' punto decimal invariante
+        Case vbBoolean
+            CellToStr = IIf(v, "V", "F")
+        Case vbDate
+            CellToStr = Format$(v, "yyyy-mm-dd")
+        Case Else
+            CellToStr = CStr(v)
+    End Select
+End Function
+
+Private Function CsvQuote(ByVal s As String) As String
+    If InStr(s, ",") > 0 Or InStr(s, """") > 0 Or InStr(s, vbLf) > 0 Or InStr(s, vbCr) > 0 Then
+        CsvQuote = """" & Replace(s, """", """""") & """"
+    Else
+        CsvQuote = s
     End If
+End Function
 
-    ' V14: predictive cols BD..BL (55..63) → "General" en el libro temporal
-    ' para que el CSV UTF-8 conserve la precisión completa. La plantilla viva
-    ' sigue mostrando 4 decimales al usuario (legibilidad), pero el snapshot
-    ' que exportamos lleva el Value2 sin truncar.
-    Dim predCol As Long
-    For predCol = 55 To 63
-        tmpWs.Columns(predCol).NumberFormat = "General"
-    Next predCol
+Private Function BuildLine(h As Collection) As String
+    Dim i As Long, s As String
+    For i = 1 To h.Count
+        If i > 1 Then s = s & ","
+        s = s & CsvQuote(CStr(h(i)))
+    Next i
+    BuildLine = s
+End Function
 
-    ' Guardar como CSV UTF-8 (formato 62)
-    Application.DisplayAlerts = False
-    tmpWb.SaveAs fileName:=savePath, FileFormat:=62
-    tmpWb.Close False
-    Application.DisplayAlerts = True
+Private Function CollHas(c As Collection, ByVal key As String) As Boolean
+    Dim v As Variant
+    On Error GoTo no
+    v = c(key): CollHas = True: Exit Function
+no: CollHas = False
+End Function
 
-    Dim resumen As String
-    resumen = "CSV UTF-8 exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf
-    resumen = resumen & "Modo: " & IIf(esCotizacion, "COTIZACI" & ChrW(211) & "N+NP", "SOLO_PN") & vbCrLf
-    If esCotizacion Then resumen = resumen & "Cotizaci" & ChrW(243) & "n: " & quoteName & vbCrLf
-    resumen = resumen & "Filas ordenadas por (Cliente, PN) para runKey estable."
-    MsgBox resumen, vbInformation, "Listo"
+Private Sub QSortIdx(idx() As Long, keys() As String, ByVal lo As Long, ByVal hi As Long)
+    Dim i As Long, j As Long, t As Long, p As String
+    i = lo: j = hi: p = keys(idx((lo + hi) \ 2))
+    Do While i <= j
+        Do While StrComp(keys(idx(i)), p, vbTextCompare) < 0: i = i + 1: Loop
+        Do While StrComp(keys(idx(j)), p, vbTextCompare) > 0: j = j - 1: Loop
+        If i <= j Then
+            t = idx(i): idx(i) = idx(j): idx(j) = t
+            i = i + 1: j = j - 1
+        End If
+    Loop
+    If lo < j Then QSortIdx idx, keys, lo, j
+    If i < hi Then QSortIdx idx, keys, i, hi
+End Sub
+
+Private Sub WriteUtf8NoBom(ByVal path As String, ByVal content As String)
+    Dim st As Object, bin As Object
+    Set st = CreateObject("ADODB.Stream")
+    st.Type = 2: st.Charset = "utf-8": st.Open
+    st.WriteText content
+    st.Position = 0: st.Type = 1: st.Position = 3      ' saltar BOM utf-8 (3 bytes)
+    Set bin = CreateObject("ADODB.Stream")
+    bin.Type = 1: bin.Open
+    st.CopyTo bin: st.Close
+    bin.SaveToFile path, 2: bin.Close                  ' 2 = sobrescribe
 End Sub

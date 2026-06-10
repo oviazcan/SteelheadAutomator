@@ -110,13 +110,23 @@ diferenciar por tipo de spec.
 - ⚠️ **Productos:** expansión vive en `CAT_Productos`, materializada en VBA al exportar.
 - ℹ️ Ahora hay **2 empresas emisoras** (ECOPLATING, PROQUIPA).
 
-## Macro de exportación
+## Macro de exportación (`ExportarCSV` v15)
 
-`tools/ExportarCSV_v12.bas` — módulo VBA que emite el CSV canónico desde la hoja `Upload`.
-Header-driven del lado Upload (lee fila 7), transforma solo `Estatus`/`Forzar duplicado`/
-`Productos`, desambigua encabezados duplicados (racks), salida UTF-8 sin BOM. Departamento/
-SAT/UnidadMedidaSAT NO salen (los pone el parser). Importar en el editor VBA y ejecutar
-`ExportarCSV_v12`.
+`vbas/Module1.txt` — versión definitiva v12 del `ExportarCSV` del usuario (reescrito, no parche).
+Conserva sus validaciones (modo, PN↔Cliente, cliente único, aviso >2000) y el orden
+determinista por (Cliente, PN) para el runKey (ahora quicksort en memoria, sin libro temporal).
+Corrige posiciones a v12 (PN col 5, Cliente col 4) y metadata **label-driven** (robusto a
+posiciones). Cambia el `SaveAs` crudo por **build canónico**: transforma solo `Estatus`/
+`Forzar duplicado`/`Productos` (resto 1:1), desambigua headers duplicados (racks), lee `.Value`
+raw (sin el truco "General" de v14), emite metadata como bloque limpio + header canónico + filas,
+y guarda UTF-8 sin BOM. Departamento/SAT/UnidadMedidaSAT NO salen (los pone el parser).
+
+### Estructura del CSV emitido
+1. Fila modo pelado (`COTIZACIÓN+NP` / `SOLO_PN`).
+2. Bloque metadata `Label,Valor` (Empresa Emisora, Nombre Cotización/Layout, Notas Ext/Int,
+   Asignado, Válida Hasta) — labels ASCII (el parser normaliza acentos).
+3. Fila de encabezados canónicos.
+4. Filas de datos canónicas.
 
 ## Pendientes (usuario)
 
