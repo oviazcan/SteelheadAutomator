@@ -1,8 +1,89 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  escapeHtml, mdToHtml, isPendingName, pluralContenedor,
+  escapeHtml, mdToHtml, isPendingName, pluralContenedor, buildBodyRows,
 } from './packing_slip_body.mjs'
+
+// ── Fixtures ─────────────────────────────────────────────────────────────────
+const mkPta = (o) => ({
+  id: o.id,
+  partCount: o.partCount != null ? o.partCount : 0,
+  partNumber: {
+    id: o.pnId, name: o.pnName != null ? o.pnName : 'NP',
+    descriptionMarkdown: o.desc != null ? o.desc : null,
+    partNumberGroup: o.group != null ? { id: 1, name: o.group } : null,
+    unitConversions: o.conv != null ? o.conv : [],
+    specFieldParameters: o.specs != null ? o.specs : null,
+    labels: o.labels != null ? o.labels : null,
+  },
+  workOrder: {
+    idInDomain: o.woId != null ? o.woId : null,
+    name: o.woName != null ? o.woName : null,
+    receivedOrder: o.ro !== undefined ? o.ro : null,
+  },
+  partNumberWorkOrder: o.billable != null ? { billablePartCount: o.billable } : null,
+  quote: o.quoteId != null ? { quoteId: o.quoteId } : null,
+  receivedBatches: o.batches != null ? o.batches : [],
+})
+
+const mkItem = (o) => ({
+  partCount: o.partCount != null ? o.partCount : 0,
+  comment: o.comment != null ? o.comment : null,
+  weight: o.weight != null ? o.weight : null,
+  unit: o.unit != null ? o.unit : null,
+  partsTransferAccounts: o.ptas != null ? o.ptas : [],
+})
+
+const mkInputs = (items, opts) => ({
+  packingSlip: {
+    customer: {
+      name: opts && opts.customer != null ? opts.customer : 'ACME',
+      customInputs: opts && opts.customerCI != null ? opts.customerCI : null,
+    },
+    unit: opts && opts.unit != null ? opts.unit : null,
+    items,
+  },
+})
+
+// ── Task 2: agrupación por PN + cantidades ───────────────────────────────────
+
+test('grupo: 1 PN en 2 items → 1 fila, embarcada sumada', () => {
+  const inp = mkInputs([
+    mkItem({ partCount: 30, ptas: [mkPta({ id: 1, partCount: 30, pnId: 100, woId: 5001, billable: 60 })] }),
+    mkItem({ partCount: 30, ptas: [mkPta({ id: 2, partCount: 30, pnId: 100, woId: 5001, billable: 60 })] }),
+  ])
+  const rows = buildBodyRows(inp)
+  assert.equal(rows.length, 1)
+  assert.match(rows[0].cantidadEmbarcadaHtml, /60 PZA/)
+})
+
+test('grupo: 2 PTAs mismo WO NO duplican billable (50 y 0 → recibida 50)', () => {
+  const inp = mkInputs([
+    mkItem({ partCount: 50, ptas: [
+      mkPta({ id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50 }),
+      mkPta({ id: 2, partCount: 0, pnId: 100, woId: 5001, billable: 50 }),
+    ] }),
+  ])
+  const rows = buildBodyRows(inp)
+  assert.equal(rows.length, 1)
+  assert.match(rows[0].cantidadEmbarcadaHtml, /50 PZA/)
+  assert.match(rows[0].cantidadRecibidaHtml, /50 PZA/)  // no 100
+})
+
+test('grupo: 2 WOs distintas SUMAN billable (50 + 30 → recibida 80)', () => {
+  const inp = mkInputs([
+    mkItem({ partCount: 50, ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 5001, billable: 50 })] }),
+    mkItem({ partCount: 30, ptas: [mkPta({ id: 2, partCount: 30, pnId: 100, woId: 5002, billable: 30 })] }),
+  ])
+  const rows = buildBodyRows(inp)
+  assert.match(rows[0].cantidadRecibidaHtml, /80 PZA/)
+  assert.match(rows[0].cantidadEmbarcadaHtml, /80 PZA/)
+})
+
+test('buildBodyRows: inputs vacío/sin items → []', () => {
+  assert.deepEqual(buildBodyRows(null), [])
+  assert.deepEqual(buildBodyRows({ packingSlip: { items: null } }), [])
+})
 
 // ── Task 1: helpers de string ────────────────────────────────────────────────
 
