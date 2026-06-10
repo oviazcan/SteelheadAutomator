@@ -11,7 +11,7 @@
 //
 // Spec: docs/superpowers/specs/2026-06-10-remision-cuerpo-ts-migracion-design.md
 
-import { KG_TO_LB, unitIsLb, convertWeight, groupWeights } from './packing_slip_weight.mjs'
+import { KG_TO_LB, unitIsLb, convertWeight } from './packing_slip_weight.mjs'
 
 // ── Helpers de string ────────────────────────────────────────────────────────
 
@@ -441,16 +441,13 @@ const computeNetWeight = (entries, ctx) => {
   let hasAny = false
   entries.forEach((e) => {
     const item = e.item
+    const w = item.weight
+    if (w == null || w.net == null) return
+    const ipc = item.partCount != null && item.partCount > 0 ? item.partCount : null
+    const wFrac = ipc != null && e.pta.partCount != null ? e.pta.partCount / ipc : 1
     const sourceIsLb = unitIsLb(item.unit) || ctx.psUnitIsLb
-    const w = groupWeights({
-      itemWeight: item.weight,
-      itemPartCount: item.partCount,
-      groupPartCount: e.pta.partCount,
-      itemGroups: 1,
-      sourceIsLb: sourceIsLb,
-      displayInLb: ctx.displayInLb,
-    })
-    if (w.netWeight != null) { total += w.netWeight; hasAny = true }
+    const conv = convertWeight({ value: w.net * wFrac, sourceIsLb: sourceIsLb, displayInLb: ctx.displayInLb })
+    if (conv != null) { total += conv; hasAny = true }
   })
   return hasAny ? total : null
 }
