@@ -329,6 +329,29 @@ test('Cant. Embarcada: comment no numérico → default 1 contenedor', () => {
   assert.match(r.cantidadEmbarcadaHtml, /1 contenedor(?!es)/)
 })
 
+// ── Task 7: orquestación (placeholder + coerción + shape) ────────────────────
+
+const BODY_KEYS = [
+  'pnId', 'partNumber', 'cantidadRecibidaHtml', 'descripcionHtml',
+  'referenciasHtml', 'cantidadEmbarcadaHtml', 'anyPending', '_placeholder',
+]
+
+test('placeholder: items presentes pero sin PN válido → 1 fila placeholder', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({ id: 1, partCount: 1, pnId: null, woId: 1, billable: 1 })] })])
+  const rows = buildBodyRows(inp)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0]._placeholder, '1')
+  assert.equal(rows[0].partNumber, '')
+  assert.equal(rows[0].anyPending, '0')
+})
+
+test('shape: cada fila trae las 8 keys definidas (ningún undefined); _placeholder="" en filas reales', () => {
+  const inp = mkInputs([mkItem({ partCount: 50, ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 1, billable: 50 })] })])
+  const r = buildBodyRows(inp)[0]
+  BODY_KEYS.forEach((k) => assert.ok(r[k] !== undefined, 'falta ' + k))
+  assert.equal(r._placeholder, '')
+})
+
 // ── Task 1: helpers de string ────────────────────────────────────────────────
 
 test('escapeHtml: < > & se escapan', () => {

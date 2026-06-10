@@ -498,8 +498,24 @@ const buildRow = (g, ctx) => {
     anyPending: refs.anyPending ? '1' : '0',
     _placeholder: '',
   }
+  // Coerción defensiva: ningún campo null/undefined (PDFGeneratorAPI no crea
+  // nodo para null en toda la muestra). Booleanos ya salen como '1'/'0'.
+  Object.keys(row).forEach((k) => { if (row[k] == null) row[k] = '' })
   return row
 }
+
+// Fila vacía para que PDFGeneratorAPI cree los nodos del cuerpo aunque el
+// embarque no produzca filas reales (ID-18).
+const placeholderRow = () => ({
+  pnId: 0,
+  partNumber: '',
+  cantidadRecibidaHtml: '',
+  descripcionHtml: '',
+  referenciasHtml: '',
+  cantidadEmbarcadaHtml: '',
+  anyPending: '0',
+  _placeholder: '1',
+})
 
 // Punto de entrada: arma additionalPayload.bodyRows[] (una fila por pn.id).
 export const buildBodyRows = (inputs) => {
@@ -532,6 +548,7 @@ export const buildBodyRows = (inputs) => {
 
   const rows = []
   groups.forEach((g) => { rows.push(buildRow(g, ctx)) })
+  if (rows.length === 0) return [placeholderRow()]
   return rows
 }
 
