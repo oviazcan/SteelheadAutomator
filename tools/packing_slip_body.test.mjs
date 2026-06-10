@@ -142,6 +142,62 @@ test('Cant. Recibida: numeroContenedores null → sin bloque de contenedores', (
   assert.doesNotMatch(r.cantidadRecibidaHtml, /contenedor/)
 })
 
+// ── Task 4: Descripción ──────────────────────────────────────────────────────
+
+const spec = (specName, type, fieldName, value, id) => ({
+  id: id, name: value,
+  specField: { id: id, name: fieldName, spec: { id: id, type: type, name: specName } },
+})
+
+test('Descripción: name(bold) + descriptionMarkdown(md) + grupo', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, pnName: 'NP-A', desc: '**Hi**', group: 'GRP-1', woId: 1, billable: 1,
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.descripcionHtml, /^<b>NP-A<\/b> <b>Hi<\/b> GRP-1/)
+})
+
+test('Descripción: Acabados union dedup', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 1, billable: 1,
+    labels: [{ id: 1, name: 'Brillante' }, { id: 2, name: 'Estañado' }, { id: 1, name: 'Brillante' }],
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.descripcionHtml, /<b>Acabados: <\/b>Brillante, Estañado/)
+})
+
+test('Descripción: Especificación solo EXTERNAL; null spec.name no produce "null"', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 1, billable: 1,
+    specs: [
+      spec('Zinc Alcalino', 'EXTERNAL', 'Baño', 'x', 1),
+      spec('Interno', 'INTERNAL', 'Y', 'y', 2),
+      spec(null, 'EXTERNAL', 'Z', 'z', 3),
+    ],
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.descripcionHtml, /Especificación: <\/b>Zinc Alcalino/)
+  assert.doesNotMatch(r.descripcionHtml, /Interno/)
+  assert.doesNotMatch(r.descripcionHtml, /null/)
+})
+
+test('Descripción: bloque Espesor/Grano = campo (valor)', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 1, billable: 1,
+    specs: [spec('S', 'EXTERNAL', 'Espesor', '5 um', 1), spec('G', 'EXTERNAL', 'Grano', 'fino', 2)],
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.descripcionHtml, /Espesor \(5 um\)/)
+  assert.match(r.descripcionHtml, /Grano \(fino\)/)
+})
+
+test('Descripción: labels null + specs null → sin Acabados/Especificación colgantes', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({ id: 1, partCount: 1, pnId: 100, pnName: 'NP-A', woId: 1, billable: 1 })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.doesNotMatch(r.descripcionHtml, /Acabados|Especificación/)
+  assert.equal(r.descripcionHtml, '<b>NP-A</b>')
+})
+
 // ── Task 1: helpers de string ────────────────────────────────────────────────
 
 test('escapeHtml: < > & se escapan', () => {

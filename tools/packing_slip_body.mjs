@@ -195,6 +195,97 @@ const buildCantidadRecibidaHtml = (recibida, pn, uniqueBatches, ctx) => {
   return formatInt(recibida) + ' PZA' + small
 }
 
+// Acabados (labels) union de todos los PTAs del grupo, dedup por id||name.
+const collectLabels = (entries) => {
+  const out = []
+  const seen = {}
+  entries.forEach((e) => {
+    const labels = e.pta.partNumber != null ? e.pta.partNumber.labels : null
+    if (!Array.isArray(labels)) return
+    labels.forEach((l) => {
+      if (l == null || l.name == null) return
+      const key = l.id != null ? 'id-' + l.id : 'n-' + l.name
+      if (seen[key]) return
+      seen[key] = true
+      out.push(l.name)
+    })
+  })
+  return out
+}
+
+// specFieldParameters union de todos los PTAs del grupo, dedup por sp.id.
+const collectSpecParams = (entries) => {
+  const out = []
+  const seen = {}
+  entries.forEach((e) => {
+    const sps = e.pta.partNumber != null ? e.pta.partNumber.specFieldParameters : null
+    if (!Array.isArray(sps)) return
+    sps.forEach((sp) => {
+      if (sp == null) return
+      if (sp.id != null) { if (seen[sp.id]) return; seen[sp.id] = true }
+      out.push(sp)
+    })
+  })
+  return out
+}
+
+const isExternalSpec = (sp) => {
+  const sf = sp.specField
+  const spec = sf != null ? sf.spec : null
+  return spec != null && spec.type != null && String(spec.type).toUpperCase() === 'EXTERNAL'
+}
+
+// Columna Descripción: PN(bold) + descripción(md) + grupo + Acabados(union) +
+// Especificación(EXTERNAL) + Espesor/Grano. Cada bloque se omite si está vacío.
+const buildDescripcionHtml = (pn, entries) => {
+  let html = '<b>' + escapeHtml(pn.name != null ? pn.name : '') + '</b>'
+  const desc = mdToHtml(pn.descriptionMarkdown)
+  if (desc !== '') html += ' ' + desc
+  const grupo = pn.partNumberGroup != null && pn.partNumberGroup.name != null ? pn.partNumberGroup.name : ''
+  if (grupo !== '') html += ' ' + escapeHtml(grupo)
+
+  const labels = collectLabels(entries)
+  if (labels.length > 0) {
+    html += '<br><b>Acabados: </b>' + labels.map(escapeHtml).join(', ')
+  }
+
+  const specs = collectSpecParams(entries)
+
+  const specNames = []
+  const seenSpec = {}
+  specs.forEach((sp) => {
+    if (!isExternalSpec(sp)) return
+    const name = sp.specField.spec.name
+    if (name == null) return
+    const key = String(name).trim().toLowerCase()
+    if (seenSpec[key]) return
+    seenSpec[key] = true
+    specNames.push(name)
+  })
+  if (specNames.length > 0) {
+    html += '<br><b>Especificación: </b>' + specNames.map((n) => escapeHtml(n) + ': ').join(', ')
+  }
+
+  const egItems = []
+  const seenEg = {}
+  specs.forEach((sp) => {
+    if (!isExternalSpec(sp)) return
+    const fname = sp.specField.name != null ? String(sp.specField.name) : ''
+    if (fname.indexOf('Espesor') < 0 && fname.indexOf('Grano') < 0) return
+    const value = sp.name != null ? sp.name : ''
+    const text = escapeHtml(fname) + ' (' + escapeHtml(value) + ')'
+    const key = text.toLowerCase()
+    if (seenEg[key]) return
+    seenEg[key] = true
+    egItems.push(text)
+  })
+  if (egItems.length > 0) {
+    html += '<br>' + egItems.join(', <br>')
+  }
+
+  return html
+}
+
 // Construye UNA fila del cuerpo por grupo PN. (Se enriquece columna por columna
 // en las tareas siguientes.)
 const buildRow = (g, ctx) => {
@@ -209,7 +300,7 @@ const buildRow = (g, ctx) => {
     pnId: g.pnId,
     partNumber: pn.name != null ? pn.name : '',
     cantidadRecibidaHtml: buildCantidadRecibidaHtml(recibida, pn, uniqueBatches, ctx),
-    descripcionHtml: '',
+    descripcionHtml: buildDescripcionHtml(pn, entries),
     referenciasHtml: '',
     cantidadEmbarcadaHtml: formatInt(embarcada) + ' PZA',
     anyPending: '0',
