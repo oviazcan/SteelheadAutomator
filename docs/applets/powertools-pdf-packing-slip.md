@@ -11,7 +11,7 @@ Hook low-code de la **remisión**. Hace **dos cosas** desde la v2 (id=10561):
 
 | Campo | Valor |
 |---|---|
-| `active_id` | **10630** (2026-06-06, fix doble conversión de peso) |
+| `active_id` | **10699** (2026-06-10, + `bodyRows[]`: cuerpo de la remisión en TS) |
 | versión previa (rollback) | **10629** (tara igual entre grupos) · 10628 (reparto peso) · 10627 (fix piezas-grupo) · 10626 (conversión peso) |
 | total versiones del slot | 15 |
 | deploy | `lowcode_sync.py push ... pdf:PACKING_SLIP_TEMPLATE` (CreatePdfLowCode) |
@@ -102,6 +102,22 @@ python3 tools/lowcode_sync.py push <ruta a 10477.ts en .versions/> pdf:PACKING_S
 
 ## Changelog
 
+- **v11 (2026-06-10, id=10699)**: **+ `additionalPayload.bodyRows[]`** — migra el CUERPO de la
+  remisión (4 columnas: Cantidad Recibida · Descripción · Referencias · Cantidad Embarcada) de la
+  fórmula expression-language de PDFGeneratorAPI a TypeScript, **consolidado por `pn.id`**, con el
+  **rojo de OV pendiente** (`<span style="color:red; font-size:14pt;">` cuando `/pen/i` o `"."`,
+  espejo de la factura). Corrige bugs reales de la fórmula nativa (auditoría 6 analizadores): la
+  consolidación Group-by-PN colapsaba al primer PTA (cantidades subestimadas/infladas, Estatus
+  siempre "Parcial" con >1 PTA, OVs/OTs/Lotes/PS ocultos), el peso no aplicaba el fix #1090 al
+  cuerpo, y faltaban guards de null. **Cantidad Recibida** = Σ `initialAmount` con fallback a
+  `billablePartCount` (COALESCE auto-actualizable: hoy usa billable porque `initialAmount` no llega
+  al hook — ver spec; dedup billable por WO). **Cantidad Embarcada** = Σ `part.partCount`; Estatus
+  Completa/Parcial/**Excedente** (+N). **Schneider** VM/VE por lote (RG-M→VM). **Descripción**
+  markdown→HTML + escape. Lógica pura + **40 tests** en `tools/packing_slip_body.mjs` (espejo inline
+  ES2017-safe en el `.ts`); compila con `tsc es2017 --alwaysStrict`; **paridad 4/4** del `.mjs` vs el
+  JS compilado. **Aditivo**: no toca `labels[]` ni la remisión actual hasta re-apuntar la tabla del
+  template a `bodyRows`. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-10-remision-cuerpo-ts*`.
+  **Rollback**: `lowcode_sync.py pull --all-versions` + re-push de `10630`.
 - **v10 (2026-06-06, id=10630)**: **fix doble conversión de peso**. El hook asumía `item.weight` SIEMPRE en KG y multiplicaba ×2.2046 para clientes LB; pero el input trae la unidad de **ORIGEN** explícita en `item.unit`/`packingSlip.unit` (id 3972=LBR). En #1090 (Wieland, `partGroup`) `item.weight` venía en **LBR** → se **duplicaba** (cajón 15 pz: neto 321.29 en vez de 145.74; tara 11.02 en vez de 5.00). Ahora `convertWeight(v, sourceIsLb)` con dos ejes: ORIGEN `unitIsLb(item.unit) ?? unitIsLb(ps.unit)` vs DESTINO `UnidadMedidaPeso`. **Verificado end-to-end** con el dump real de #1090: 5 grupos suman neto 923.01 / bruto 948.01 (= `totalWeight` 923/948 ✓). Lógica pura + 15 tests `node:test` en `tools/packing_slip_weight.mjs` (espejo inline en el `.ts`). Typecheck `tsc --target es2017 --strict` verde. **Deployado** vía `lowcode_sync.py push ... pdf:PACKING_SLIP_TEMPLATE` → id=10630.
 - **v9 (2026-06-06, id=10629)**: **tara igual entre grupos** (decisión del usuario). El empaque no escala con piezas → la **tara** se reparte igual entre los grupos del item (`item.weight.tare / itemGroups`, `itemGroups` = filas por item); el **neto** sigue proporcional a piezas (`× wFrac`); el **bruto** = neto + tara. Suma de grupos reconstituye el total. Verificado: tara 13 kg → 5.73 LB igual en los 5 grupos; suma cuadra. `shareW` eliminado.
 - **v8 (2026-06-06, id=10628)**: **reparto proporcional del peso por grupo** — confirmado en Test Panel que con grupos de partes Steelhead manda 1 `item` con N PTAs, `partGroup.containerWeight` viene **null** y solo hay `item.weight` (total). Se reparte el peso del item entre los grupos proporcional a `part.partCount` (`wFrac = part.partCount / item.partCount`); válido porque el PN es uniforme. Para contenedores físicos (1 PTA/item) `wFrac=1` → sin cambio. `conv` ahora redondea siempre a 2 dec. Verificado: 948/935/13 kg → grupos 440/550/… LB, suma cuadra con el total. Chip multi-parte actualizado.

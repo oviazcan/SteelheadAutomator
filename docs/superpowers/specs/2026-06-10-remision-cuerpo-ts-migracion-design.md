@@ -1,9 +1,12 @@
 # Remisión — migración del cuerpo a TypeScript + rojo de OV pendiente — diseño (2026-06-10)
 
-> **Estado: DISEÑO (pendiente de aprobación del usuario).** Migra las 4 columnas del cuerpo
-> de la remisión de expression language (PDFGeneratorAPI) a `additionalPayload.bodyRows[]`
-> en `powertools/synced/pdf/PACKING_SLIP_TEMPLATE.ts`, corrigiendo bugs de consolidación
-> Group-by-PN y agregando el rojo `isPending` (espejo de la factura). Aún **no** implementado.
+> **Estado: ✅ IMPLEMENTADO Y DESPLEGADO (2026-06-10, `pdf:PACKING_SLIP_TEMPLATE` id=10699).**
+> Cuerpo de la remisión migrado a `additionalPayload.bodyRows[]` en el `.ts` con consolidación
+> Group-by-PN y rojo `isPending`. Lógica pura + 40 tests en `tools/packing_slip_body.mjs` (espejo
+> inline ES2017-safe en el `.ts`); paridad 4/4 vs el JS compilado; `diff` post-push local==server.
+> **Aditivo**: bodyRows NO cambia la remisión actual hasta que el usuario re-apunte la tabla del
+> template a `bodyRows`. **Pendiente del usuario**: validar `bodyRows` en Test Panel + wiring del
+> template. Plan: `docs/superpowers/plans/2026-06-10-remision-cuerpo-ts.md`. Rollback: re-push id=10630.
 
 ## Contexto / problema
 
