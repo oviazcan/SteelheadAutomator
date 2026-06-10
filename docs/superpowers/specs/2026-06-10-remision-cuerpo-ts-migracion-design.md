@@ -39,7 +39,7 @@ Afecta:
 | 1 | **Enfoque = Opción C** (mirror completo): las 4 columnas se arman en el `.ts` como `additionalPayload.bodyRows[]`; la tabla del template itera ese array. |
 | 2 | **Group-by-PN en el `.ts`**, key = `pn.id` (number), **no** `pn.name` ni `pn.id+WO` ni `pn.id+batch`. Una fila por PN único del embarque. |
 | 3 | **OC(OV): unir OVs únicas** (dedup por `receivedOrder.idInDomain`, fallback `name`) separadas por coma; **rojo** si **cualquiera** es pendiente (`/pen/i` o `=== "."`, con `trim()`). Alcance del rojo: **solo la línea OC(OV)**, 14pt, espejo de la factura. |
-| 4 | **Cantidad Recibida = `initialAmount` del lote con fallback a `billablePartCount`.** `initialAmount` (cantidad inicial de la cuenta de inventario del lote) no está en el query actual → hay que **extenderlo y verificar en Test Panel**. Σ sobre los lotes/cuentas del grupo PN; si null/ausente → `billablePartCount`. |
+| 4 | **Cantidad Recibida = `initialAmount` del lote con fallback a `billablePartCount`** (COALESCE **auto-actualizable**, ver §Validación). `initialAmount` es el campo correcto (validado en DB = recibido del lote) pero **hoy NO llega** al hook → el COALESCE cae a `billablePartCount` solo. Cuando se extienda el query, el mismo código usa `initialAmount` sin cambios. Σ sobre los lotes/cuentas del grupo PN. |
 | 5 | **Cantidad Embarcada = Σ `part.partCount`** (piezas físicas del PS) de los PTAs **únicos** del grupo. |
 | 6 | **Balance**: cuando embarcado > recibido → Estatus **"Excedente"** y `"+N PZA"`. (`Completa` si =, `Parcial`+`Balance −N` si <.) |
 | 7 | **Sufijo Schneider VM/VE = por lote individual.** No es MTY/TLC (dominios distintos, no se mezclan): es **vale manual/automático según el formato del folio**. Cada lote (separado por comas) lleva su propio VM/VE **cuando aplica**: para clientes `SCH*`, `name` del lote con prefijo `RG-M` → `VM`, en otro caso → `VE`. |
@@ -197,20 +197,36 @@ Cada línea se **omite completa** si no hay dato (sin labels colgantes):
   `containerIndexByItemId` en el payload (camino a quitar la mutación; ID-1).
 - Diagnóstico: chips `missingPN`, `missingSO`, `missingRecibida`, etc. (consolidados por severidad).
 
-## Extensión del query (decisión #4)
+## Validación de la fuente de Cantidad Recibida (2026-06-10)
 
-`initialAmount` vive en GraphQL como
-`receivedBatch → inventoryAccountsByInventoryBatchId[] → initialAmount` (confirmado en
-`RECEIVER_TEMPLATE.ts:118-150`). **No** está en el query del packing slip. Tareas:
+Se evaluaron 3 fuentes contra la DuckDB (TLC, remisiones recientes) + un dump en el Test Panel:
 
-1. Agregar al query de datos del PDF de packing slip:
-   `partsTransferAccounts[].receivedBatches[].inventoryAccountsByInventoryBatchId[] { initialAmount, partNumber { id } }`.
-2. Actualizar el typedef `Inputs` del hook.
-3. **Verificar en Test Panel** que el campo llega poblado para "packing slip" (Steelhead lo expone
-   para "receiver"; falta confirmar para este tipo de documento).
-4. **Verificar unidades**: `initialAmount` en piezas vs microquantity (`/1e6`) — el modelo DuckDB
-   usa microquantity; confirmar el shape del GraphQL antes de sumar.
-5. Si no llega → el fallback a `billablePartCount` cubre, y se documenta como pendiente.
+| Fuente | Reachable en el hook hoy | ¿Buena para "recibido del lote"? |
+|---|---|---|
+| `initialAmount` (cuenta de inv. del lote) | **NO** (ver dump) | **Sí** — `first_credit/1e6` coincide exacto con lo embarcado: 50/50, 45/45, 115/115, 600/600 |
+| `billablePartCount` (`partNumberWorkOrder`) | **Sí** (directo) | Aproximado — campo **computado** (no hay columna en DB); el usuario reporta que "a veces no coincide" |
+| `received_order_part_transform.count` (ROPT) | Sí (vía OV, por match de PN) | **NO** — es el **total de la OV** (1656/160/30…), no la del lote → **descartado** |
+
+- **Dump en Test Panel (remisión real):** el batch del packing slip trae keys
+  `id,name,descriptionMarkdown,createdAt,createdBy,partNumberOnBatch,customInputs` — **sin**
+  `inventoryAccountsByInventoryBatchId`. `initialAmount` = `"AUSENTE"`. El runtime trae más campos
+  que el typedef (`createdAt`/`createdBy`) → el shape lo fija el query de Steelhead, no el typedef.
+- **Conclusión:** `initialAmount` es el campo correcto pero **Steelhead no lo expone hoy** para el
+  documento "packing slip" (sí para "receiver"). El COALESCE `initialAmount → billablePartCount`
+  hace que el hook use **billable hoy** y se **auto-actualice** a `initialAmount` el día que el
+  query lo exponga, **sin cambiar el `.ts`**.
+
+### Extensión del query (mejora futura, opcional)
+
+Para activar `initialAmount` (cuando se quiera la fuente correcta):
+
+1. Agregar al **data query del PDF de packing slip en Steelhead**:
+   `partsTransferAccounts[].receivedBatches[].inventoryAccountsByInventoryBatchId[] { initialAmount, partNumber { id } }`
+   (el schema lo soporta — `RECEIVER_TEMPLATE.ts:118-150` ya lo trae). **Pendiente confirmar si ese
+   query es editable del lado del usuario o requiere petición a Steelhead.**
+2. Re-correr el dump para confirmar que llega y su **unidad** (piezas vs microquantity `/1e6`).
+3. Sumar el typedef `Inputs` y, si viene en microquantity, dividir entre `1e6`.
+4. **No requiere cambio de la lógica** del hook — el COALESCE ya lo toma como primario.
 
 ## Pruebas
 
@@ -249,9 +265,10 @@ cubriendo los escenarios de la auditoría:
 
 ## Pendientes a confirmar / verificar
 
-- **initialAmount** reachable + unidades (§Extensión del query, pasos 3-4).
-- **Estatus** comparado contra `recibidaCount` (initialAmount/billable) vs `billablePartCount` puro
-  — confirmar con el usuario si el "Excedente/Parcial" debe medir contra el recibido inicial.
+- **initialAmount**: ✅ resuelto — no llega hoy, se usa `billablePartCount` vía COALESCE; el query
+  editable para exponerlo queda como mejora futura opcional (§Validación).
+- **Estatus** comparado contra `recibidaCount` (hoy = billable) — confirmar si el "Excedente/Parcial"
+  debe medir contra el recibido o contra el billable puro (hoy coinciden por el COALESCE).
 - **numeroContenedores** del `comment` vs el campo limpio `DatosRecibo.numeroContenedores` (¿migrar
   la fuente de contenedores embarcados al customInput?).
 - Render de **HTML en celda** del cuerpo (verificar en el motor).
