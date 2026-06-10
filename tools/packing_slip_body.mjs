@@ -11,7 +11,7 @@
 //
 // Spec: docs/superpowers/specs/2026-06-10-remision-cuerpo-ts-migracion-design.md
 
-import { KG_TO_LB, unitIsLb, convertWeight } from './packing_slip_weight.mjs'
+import { KG_TO_LB, unitIsLb, convertWeight, groupWeights } from './packing_slip_weight.mjs'
 
 // ── Helpers de string ────────────────────────────────────────────────────────
 
@@ -407,6 +407,75 @@ const buildReferenciasHtml = (entries, uniqueBatches, ctx) => {
   return { html: lines.join('<br>'), anyPending: anyPending }
 }
 
+// Items físicos únicos del grupo (un item = un contenedor/bulto).
+const collectUniqueItems = (entries) => {
+  const out = []
+  const seen = new Set()
+  entries.forEach((e) => {
+    if (seen.has(e.item)) return
+    seen.add(e.item)
+    out.push(e.item)
+  })
+  return out
+}
+
+// Σ contenedores embarcados: primer token numérico del comment de cada item (default 1).
+const sumContenedoresEmbarcados = (uniqueItems) => {
+  let total = 0
+  uniqueItems.forEach((it) => {
+    let n = 1
+    if (it.comment != null) {
+      const tok = String(it.comment).trim().split(/\s+/)[0]
+      const parsed = parseInt(tok, 10)
+      if (!isNaN(parsed)) n = parsed
+    }
+    total += n
+  })
+  return total
+}
+
+// Σ peso NETO del grupo, repartido por wFrac y convertido desde la unidad de
+// ORIGEN del item (item.unit/ps.unit, fix #1090). null si ningún item trae peso.
+const computeNetWeight = (entries, ctx) => {
+  let total = 0
+  let hasAny = false
+  entries.forEach((e) => {
+    const item = e.item
+    const sourceIsLb = unitIsLb(item.unit) || ctx.psUnitIsLb
+    const w = groupWeights({
+      itemWeight: item.weight,
+      itemPartCount: item.partCount,
+      groupPartCount: e.pta.partCount,
+      itemGroups: 1,
+      sourceIsLb: sourceIsLb,
+      displayInLb: ctx.displayInLb,
+    })
+    if (w.netWeight != null) { total += w.netWeight; hasAny = true }
+  })
+  return hasAny ? total : null
+}
+
+// Columna Cantidad Embarcada: "N PZA<br><small>(peso unidad)<br>M contenedor(es)
+// <br><b>Estatus: </b>…</small>". Estatus mide embarcada vs recibida.
+const buildCantidadEmbarcadaHtml = (embarcada, recibida, entries, uniqueItems, ctx) => {
+  const small = []
+  const net = computeNetWeight(entries, ctx)
+  if (net != null) small.push('(' + format2(net) + (ctx.displayInLb ? ' LBS)' : ' KGM)'))
+  else small.push('Sin peso')
+  const cont = sumContenedoresEmbarcados(uniqueItems)
+  small.push(formatInt(cont) + ' ' + pluralContenedor(cont))
+  let estatus
+  if (embarcada === recibida) {
+    estatus = '<b>Estatus: </b>Completa'
+  } else if (embarcada < recibida) {
+    estatus = '<b>Estatus: </b>Parcial<br><b>Balance: </b>' + formatInt(recibida - embarcada) + ' PZA'
+  } else {
+    estatus = '<b>Estatus: </b>Excedente<br><b>Balance: </b>+' + formatInt(embarcada - recibida) + ' PZA'
+  }
+  small.push(estatus)
+  return formatInt(embarcada) + ' PZA<br><small>' + small.join('<br>') + '</small>'
+}
+
 // Construye UNA fila del cuerpo por grupo PN. (Se enriquece columna por columna
 // en las tareas siguientes.)
 const buildRow = (g, ctx) => {
@@ -414,6 +483,7 @@ const buildRow = (g, ctx) => {
   const entries = g.entries
   const uniqueBatches = collectUniqueBatches(entries)
 
+  const uniqueItems = collectUniqueItems(entries)
   const recibida = computeRecibida(entries, uniqueBatches)
   const embarcada = computeEmbarcada(entries)
   const refs = buildReferenciasHtml(entries, uniqueBatches, ctx)
@@ -424,7 +494,7 @@ const buildRow = (g, ctx) => {
     cantidadRecibidaHtml: buildCantidadRecibidaHtml(recibida, pn, uniqueBatches, ctx),
     descripcionHtml: buildDescripcionHtml(pn, entries),
     referenciasHtml: refs.html,
-    cantidadEmbarcadaHtml: formatInt(embarcada) + ' PZA',
+    cantidadEmbarcadaHtml: buildCantidadEmbarcadaHtml(embarcada, recibida, entries, uniqueItems, ctx),
     anyPending: refs.anyPending ? '1' : '0',
     _placeholder: '',
   }

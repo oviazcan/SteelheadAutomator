@@ -272,6 +272,63 @@ test('Referencias: cliente NO Schneider → PS sin sufijo VM/VE', () => {
   assert.doesNotMatch(r.referenciasHtml, /VM|VE/)
 })
 
+// ── Task 6: Cantidad Embarcada + Estatus/Balance ─────────────────────────────
+
+test('Cant. Embarcada: Estatus Completa (emb == recibida)', () => {
+  const inp = mkInputs([mkItem({ partCount: 50, ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 1, billable: 50 })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /^50 PZA<br><small>/)
+  assert.match(r.cantidadEmbarcadaHtml, /<b>Estatus: <\/b>Completa/)
+})
+
+test('Cant. Embarcada: Parcial + Balance positivo (emb 30 < recibida 50)', () => {
+  const inp = mkInputs([mkItem({ partCount: 30, ptas: [mkPta({ id: 1, partCount: 30, pnId: 100, woId: 1, billable: 50 })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /<b>Estatus: <\/b>Parcial<br><b>Balance: <\/b>20 PZA/)
+})
+
+test('Cant. Embarcada: Excedente + Balance "+N" (emb 60 > recibida 50)', () => {
+  const inp = mkInputs([mkItem({ partCount: 60, ptas: [mkPta({ id: 1, partCount: 60, pnId: 100, woId: 1, billable: 50 })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /<b>Estatus: <\/b>Excedente<br><b>Balance: <\/b>\+10 PZA/)
+})
+
+test('Cant. Embarcada: peso neto KG (cliente KG, origen KGM)', () => {
+  const inp = mkInputs([mkItem({
+    partCount: 50, weight: { net: 10, tare: 1, gross: 11 }, unit: { id: 3969, name: 'KGM' },
+    ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 1, billable: 50 })],
+  })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /\(10\.00 KGM\)/)
+})
+
+test('Cant. Embarcada: origen LBR + cliente LB → NO duplica (20→20.00 LBS)', () => {
+  const inp = mkInputs([mkItem({
+    partCount: 50, weight: { net: 20, tare: 2, gross: 22 }, unit: { id: 3972, name: 'LBR Libra' },
+    ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 1, billable: 50 })],
+  })], { customerCI: CI_LB })
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /\(20\.00 LBS\)/)
+})
+
+test('Cant. Embarcada: weight null → "Sin peso"', () => {
+  const inp = mkInputs([mkItem({ partCount: 50, ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 1, billable: 50 })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /Sin peso/)
+})
+
+test('Cant. Embarcada: contenedores del comment ("3 cajas" → 3 contenedores)', () => {
+  const inp = mkInputs([mkItem({ partCount: 50, comment: '3 cajas', ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 1, billable: 50 })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /3 contenedores/)
+})
+
+test('Cant. Embarcada: comment no numérico → default 1 contenedor', () => {
+  const inp = mkInputs([mkItem({ partCount: 50, comment: 'paleta', ptas: [mkPta({ id: 1, partCount: 50, pnId: 100, woId: 1, billable: 50 })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.cantidadEmbarcadaHtml, /1 contenedor(?!es)/)
+})
+
 // ── Task 1: helpers de string ────────────────────────────────────────────────
 
 test('escapeHtml: < > & se escapan', () => {
