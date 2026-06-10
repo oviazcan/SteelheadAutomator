@@ -286,6 +286,127 @@ const buildDescripcionHtml = (pn, entries) => {
   return html
 }
 
+// Lee el PS del cliente del customInputs del batch (espejo de readPS del .ts):
+// DatosRecibo.PackingSlip anidado, con fallbacks plano y key /^(ps|packingslip)$/i.
+const readPS = (ci) => {
+  if (ci == null) return null
+  const dr = ci.DatosRecibo
+  if (dr != null && dr.PackingSlip != null && dr.PackingSlip !== '') return dr.PackingSlip
+  if (ci.PackingSlip != null && ci.PackingSlip !== '') return ci.PackingSlip
+  const keys = Object.keys(ci)
+  for (let i = 0; i < keys.length; i++) {
+    if (/^(ps|packingslip)$/i.test(String(keys[i]).trim())) {
+      if (ci[keys[i]] !== '') return ci[keys[i]]
+    }
+  }
+  return null
+}
+
+// OC (OV): OVs únicas del grupo (dedup por idInDomain, fallback name), rojo 14pt
+// si CUALQUIERA es pendiente. Devuelve null si no hay ninguna OV.
+const buildOcOv = (entries) => {
+  const ovs = []
+  const seen = {}
+  let anyPending = false
+  entries.forEach((e) => {
+    const wo = e.pta.workOrder
+    const ro = wo != null ? wo.receivedOrder : null
+    if (ro == null) return
+    const key = ro.idInDomain != null ? 'id-' + ro.idInDomain : (ro.name != null ? 'n-' + ro.name : null)
+    if (key == null || seen[key]) return
+    seen[key] = true
+    const name = ro.name != null ? ro.name : ''
+    const id = ro.idInDomain != null ? ro.idInDomain : ''
+    let disp
+    if (name !== '' && id !== '') disp = escapeHtml(name) + ' (' + id + ')'
+    else if (name !== '') disp = escapeHtml(name)
+    else if (id !== '') disp = '#' + id
+    else return
+    ovs.push(disp)
+    if (isPendingName(ro.name)) anyPending = true
+  })
+  if (ovs.length === 0) return null
+  const inner = '<b>OC (OV): </b>' + ovs.join(', ')
+  const html = anyPending ? '<span style="color:red; font-size:14pt;">' + inner + '</span>' : inner
+  return { html: html, anyPending: anyPending }
+}
+
+const buildOt = (entries) => {
+  const ots = []
+  const seen = {}
+  entries.forEach((e) => {
+    const wo = e.pta.workOrder
+    if (wo == null || wo.idInDomain == null || seen[wo.idInDomain]) return
+    seen[wo.idInDomain] = true
+    ots.push({ id: wo.idInDomain, name: wo.name })
+  })
+  if (ots.length === 0) return null
+  if (ots.length === 1) {
+    const o = ots[0]
+    const suf = o.name != null && String(o.name).trim() !== '' ? ' - ' + escapeHtml(o.name) : ''
+    return '<b>OT: </b>' + o.id + suf
+  }
+  return '<b>OT: </b>' + ots.map((o) => String(o.id)).join(', ')
+}
+
+const buildLote = (uniqueBatches) => {
+  const names = []
+  const seen = {}
+  uniqueBatches.forEach((b) => {
+    if (b.name == null || seen[String(b.name)]) return
+    seen[String(b.name)] = true
+    names.push(b.name)
+  })
+  if (names.length === 0) return null
+  return '<b>Lote: </b>' + names.map(escapeHtml).join(', ')
+}
+
+const buildPsCliente = (uniqueBatches, isSchneider) => {
+  const items = []
+  const seen = {}
+  uniqueBatches.forEach((b) => {
+    const ps = readPS(b.customInputs)
+    if (ps == null || ps === '') return
+    let suf = ''
+    if (isSchneider) {
+      const bn = b.name != null ? String(b.name).trim() : ''
+      suf = ' ' + (bn.substring(0, 4) === 'RG-M' ? 'VM' : 'VE')
+    }
+    const text = escapeHtml(String(ps)) + suf
+    if (seen[text]) return
+    seen[text] = true
+    items.push(text)
+  })
+  if (items.length === 0) return null
+  return '<b>PS Cliente: </b>' + items.join(', ')
+}
+
+const buildCotizacion = (entries) => {
+  const ids = []
+  const seen = {}
+  entries.forEach((e) => {
+    const q = e.pta.quote
+    if (q == null || q.quoteId == null || seen[q.quoteId]) return
+    seen[q.quoteId] = true
+    ids.push(q.quoteId)
+  })
+  if (ids.length === 0) return null
+  return '<b>Cotización: </b>' + ids.join(', ')
+}
+
+// Columna Referencias: cada línea se omite si no hay dato. Devuelve {html, anyPending}.
+const buildReferenciasHtml = (entries, uniqueBatches, ctx) => {
+  const lines = []
+  let anyPending = false
+  const oc = buildOcOv(entries)
+  if (oc != null) { lines.push(oc.html); anyPending = oc.anyPending }
+  const ot = buildOt(entries); if (ot != null) lines.push(ot)
+  const lote = buildLote(uniqueBatches); if (lote != null) lines.push(lote)
+  const ps = buildPsCliente(uniqueBatches, ctx.isSchneider); if (ps != null) lines.push(ps)
+  const cot = buildCotizacion(entries); if (cot != null) lines.push(cot)
+  return { html: lines.join('<br>'), anyPending: anyPending }
+}
+
 // Construye UNA fila del cuerpo por grupo PN. (Se enriquece columna por columna
 // en las tareas siguientes.)
 const buildRow = (g, ctx) => {
@@ -295,15 +416,16 @@ const buildRow = (g, ctx) => {
 
   const recibida = computeRecibida(entries, uniqueBatches)
   const embarcada = computeEmbarcada(entries)
+  const refs = buildReferenciasHtml(entries, uniqueBatches, ctx)
 
   const row = {
     pnId: g.pnId,
     partNumber: pn.name != null ? pn.name : '',
     cantidadRecibidaHtml: buildCantidadRecibidaHtml(recibida, pn, uniqueBatches, ctx),
     descripcionHtml: buildDescripcionHtml(pn, entries),
-    referenciasHtml: '',
+    referenciasHtml: refs.html,
     cantidadEmbarcadaHtml: formatInt(embarcada) + ' PZA',
-    anyPending: '0',
+    anyPending: refs.anyPending ? '1' : '0',
     _placeholder: '',
   }
   return row

@@ -198,6 +198,80 @@ test('Descripción: labels null + specs null → sin Acabados/Especificación co
   assert.equal(r.descripcionHtml, '<b>NP-A</b>')
 })
 
+// ── Task 5: Referencias + rojo OV pendiente ──────────────────────────────────
+
+const batchPS = (id, name, ps) => ({ id: id, name: name, customInputs: { DatosRecibo: { PackingSlip: ps } } })
+
+test('Referencias: OV pendiente ("Pending") → rojo 14pt + anyPending="1"', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 5001, billable: 1,
+    ro: { idInDomain: 9001, name: 'Pending' },
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.referenciasHtml, /<span style="color:red; font-size:14pt;"><b>OC \(OV\): <\/b>Pending \(9001\)<\/span>/)
+  assert.equal(r.anyPending, '1')
+})
+
+test('Referencias: OV normal → SIN rojo + anyPending="0"', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 5001, billable: 1,
+    ro: { idInDomain: 9001, name: '4507421079' },
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.doesNotMatch(r.referenciasHtml, /color:red/)
+  assert.match(r.referenciasHtml, /<b>OC \(OV\): <\/b>4507421079 \(9001\)/)
+  assert.equal(r.anyPending, '0')
+})
+
+test('Referencias: OVs múltiples dedup + una "." pendiente → rojo, ambas mostradas', () => {
+  const inp = mkInputs([mkItem({ ptas: [
+    mkPta({ id: 1, partCount: 1, pnId: 100, woId: 5001, billable: 1, ro: { idInDomain: 9001, name: 'OC-A' } }),
+    mkPta({ id: 2, partCount: 1, pnId: 100, woId: 5002, billable: 1, ro: { idInDomain: 9002, name: '.' } }),
+    mkPta({ id: 3, partCount: 1, pnId: 100, woId: 5003, billable: 1, ro: { idInDomain: 9001, name: 'OC-A' } }),
+  ] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.referenciasHtml, /color:red/)
+  assert.match(r.referenciasHtml, /OC-A \(9001\)/)
+  assert.match(r.referenciasHtml, /\. \(9002\)/)
+  // dedup: "OC-A (9001)" aparece una sola vez
+  assert.equal((r.referenciasHtml.match(/OC-A \(9001\)/g) || []).length, 1)
+})
+
+test('Referencias: receivedOrder null → sin línea OC', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({ id: 1, partCount: 1, pnId: 100, woId: 5001, billable: 1, ro: null })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.doesNotMatch(r.referenciasHtml, /OC \(OV\)/)
+})
+
+test('Referencias: OT única con nombre → " - nombre"; Cotización quoteId=0 se muestra', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 5001, woName: 'Lote especial', billable: 1, quoteId: 0,
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.referenciasHtml, /<b>OT: <\/b>5001 - Lote especial/)
+  assert.match(r.referenciasHtml, /<b>Cotización: <\/b>0/)
+})
+
+test('Referencias: Lote dedup + PS Cliente con sufijo Schneider por lote (RG-M→VM, otro→VE)', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 5001, billable: 1,
+    batches: [batchPS(11, 'RG-M001', 'PS-1'), batchPS(12, 'TLC-002', 'PS-2')],
+  })] })], { customer: 'SCHNEIDER ELECTRIC' })
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.referenciasHtml, /<b>Lote: <\/b>RG-M001, TLC-002/)
+  assert.match(r.referenciasHtml, /<b>PS Cliente: <\/b>PS-1 VM, PS-2 VE/)
+})
+
+test('Referencias: cliente NO Schneider → PS sin sufijo VM/VE', () => {
+  const inp = mkInputs([mkItem({ ptas: [mkPta({
+    id: 1, partCount: 1, pnId: 100, woId: 5001, billable: 1,
+    batches: [batchPS(11, 'RG-M001', 'PS-1')],
+  })] })])
+  const r = buildBodyRows(inp)[0]
+  assert.match(r.referenciasHtml, /<b>PS Cliente: <\/b>PS-1/)
+  assert.doesNotMatch(r.referenciasHtml, /VM|VE/)
+})
+
 // ── Task 1: helpers de string ────────────────────────────────────────────────
 
 test('escapeHtml: < > & se escapan', () => {
