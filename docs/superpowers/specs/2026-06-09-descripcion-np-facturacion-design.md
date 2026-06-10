@@ -1,5 +1,9 @@
 # Descripción del Número de Parte en la factura — diseño (2026-06-09)
 
+> **Estado: IMPLEMENTADO Y DESPLEGADO (2026-06-09).** `invoice` → #5307, `pdf:INVOICE_TEMPLATE`
+> → #10685. Lógica verificada en `tools/invoice_description.test.mjs` (12 verde); `diff` post-push
+> local == server. Pendiente: validación con factura real en productivo (usuario).
+
 ## Contexto / problema
 
 iMarz (proveedor de timbrado SAT) va a **remapear la descripción de cada línea al campo

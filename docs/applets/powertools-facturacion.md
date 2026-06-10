@@ -82,18 +82,18 @@ Mitigación pendiente: investigar si Steelhead acepta `salesOrderLineItemIds: nu
 
 ## Flags `DatosFactura` (defaults)
 
-| Flag | Default | Uso |
+| Flag | Default | Uso (2026-06-09: descripción re-diseñada, ver bitácora) |
 |---|---|---|
-| `MostrarNP` | `true` | Incluir nombre del NP en la descripción |
-| `MostrarAcabado` | `true` | Incluir labels del WO (acabados) |
-| `MostrarProducto` | `true` | Incluir `Producto: X` |
-| `MostrarRemision` | `true` | (Bloqueado: PS de embarque no expuesto en este hook) |
-| `MostrarPO` | `true` | Incluir `OC: salesOrderName` |
-| `MultiplicadorLineaOC` | `0` | Si `>0`, agrega `-lineNumber*N` al `OC:` |
-| `MostrarOV` | `false` | Si `true`, agrega `(salesOrderIdInDomain)` al `OC:` |
-| `MostrarOT` | `true` | Incluir `OT: workOrderIdInDomain` |
-| `MostrarLote` | `true` | Incluir `Lote(s): X, Y` |
-| `MostrarPS` | `true` | Incluir ` PS: A, B` al lado del lote |
+| `MostrarNP` | `true` | **Repurposed**: antepone la **descripción textual del NP** (`partNumber.description`), sin label, al inicio. (Antes: nombre del NP, que ya viaja en `NoIdentificacion`.) |
+| `MostrarProducto` | `true` | Incluir el Producto (sin label), tras la descripción del NP |
+| `MostrarAcabado` | `true` | Incluir `Acabado X` (justo después del Producto) |
+| `MostrarPO` | `true` | Incluir `OC <salesOrderName>` |
+| `MultiplicadorLineaOC` | `0` | Si `>0`, agrega `-lineNumber*N` al `OC` |
+| `MostrarOV` | `false` | Si `true`, agrega `(salesOrderIdInDomain)` al `OC` |
+| `MostrarLote` | `true` | Incluir `Lote X, Y` (solo lotes ≠ OC) |
+| `MostrarOT` | `true` | Incluir `OT <workOrderIdInDomain>` |
+| `MostrarPS` | `true` | Incluir `PS A, B` (del cliente) — **reincorporado** 2026-06-09 |
+| `MostrarRemision` | `true` | (Bloqueado en CFDI: PS de embarque no expuesto al hook) |
 
 **Nota**: `ConsolidarPorProducto` NO va aquí. Vive en `salesOrders[i].customInputs` (a nivel orden de venta, no cliente), porque el mismo cliente puede tener múltiples plantas con regímenes distintos.
 
@@ -108,6 +108,34 @@ Mitigación pendiente: investigar si Steelhead acepta `salesOrderLineItemIds: nu
 - [ ] Probar factura SIN el flag en ninguna OV (otra planta de Schneider) para confirmar comportamiento 1:1.
 - [ ] Probar factura **mixta** (algunas OVs con flag, otras sin) — debe emitir warning y NO consolidar.
 - [ ] Probar con líneas mixtas: algunas en KG (consolidables), una con lote mínimo (no consolidable) — confirmar que la de lote mínimo sale aparte.
+
+### Descripción del Número de Parte + reincorporación de datos (2026-06-09) — DESPLEGADO
+
+Con el remapeo de **iMarz** de la descripción de cada línea al **campo de observaciones del
+CFDI (1000 chars)**, se eliminó la limitante de 60 y se rediseñó la descripción.
+
+**Formato (caso normal):**
+`<descripción del NP>, <Producto>, Acabado <ac>, OC <oc>, Lote <lotes>, OT <ot>, PS <ps>`
+— descNP y Producto sin label; OC/Lote/Acabado/OT/PS con label; bloques separados por coma;
+cada bloque respeta su flag y se omite limpio si no aplica.
+
+- `MostrarNP` repurposed → antepone `partNumber.description` (texto de la pieza). El nombre/clave
+  del NP ya NO va (viaja en `NoIdentificacion`). Fuente: `description` plano si el runtime lo
+  expone; si no, `descriptionMarkdown` limpiado (`limpiarMarkdown`).
+- `MostrarPS` reincorporado (PS del cliente).
+- **Consolidado** (Schneider): sin descNP ni `NPs(N)` — los NPs van en la sub-tabla del PDF.
+- **Lote mínimo**: intacto (`"Cargo de lote mínimo aplicado"`).
+- Se quitó el warning de ">60"; red de seguridad a 1000.
+
+Lógica pura verificada en `tools/invoice_description.{mjs,test.mjs}` (12 casos verde).
+Desplegado a productivo: `invoice` → **#5307**, `pdf:INVOICE_TEMPLATE` → **#10685**
+(`lowcode_sync.py push`; `diff` post-push: local == server). Spec:
+`docs/superpowers/specs/2026-06-09-descripcion-np-facturacion-design.md`.
+
+Pendiente de validación en productivo (usuario):
+- [ ] `partNumber.description` llega al hook de factura (si no, cae a `descriptionMarkdown` limpio).
+- [ ] Factura con OC pendiente → la OC sigue en **rojo 14pt** en el PDF (label homologado a `OC:`).
+- [ ] Consolidada Schneider → sin `NPs(N)` en la descripción; NPs en la sub-tabla del PDF.
 
 ### Descripción compacta para el SAT (2026-06-03) — DESPLEGADO a productivo 2026-06-09
 

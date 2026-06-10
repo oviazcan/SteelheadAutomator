@@ -371,35 +371,20 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
 
           if (isPending) {
             partes.push(
-              `<span style="color:red; font-size:14pt;"><b> OC (OV): ${soName}${lineaPO}${
+              `<span style="color:red; font-size:14pt;"><b> OC: ${soName}${lineaPO}${
                 flags.MostrarOV ? ov + "</b>" : "</b>"
               }</span><br>`
             );
           } else {
-            partes.push(`<b> OC (OV): </b>${soName}${lineaPO}${ov}<br>`);
+            partes.push(`<b> OC: </b>${soName}${lineaPO}${ov}<br>`);
           }
         }
       }
 
-      // ── Bloque 4: Orden de Trabajo ────────────────────────────────────
-      // Por línea (no global). Si varios PAs apuntan a esta línea con
-      // distintas OTs, las unimos con coma; dedup por idInDomain.
-      if (flags.MostrarOT) {
-        const otIds = new Set<string>();
-        for (const pa of pasDeLinea) {
-          const id = pa?.workOrder?.idInDomain;
-          if (id != null) otIds.add(String(id));
-        }
-        if (otIds.size > 0) {
-          partes.push(
-            `<b>Orden de Trabajo: </b>${Array.from(otIds).join(", ")}<br>`
-          );
-        }
-      }
-
-      // ── Bloque 5: Lote + PS ───────────────────────────────────────────
-      // Por línea, usando el join. Sin parsear "Batch: X" del description.
-      // Sufijo Schneider (VM/VE) según el primer lote.
+      // ── Bloque 4: Lote + PS ───────────────────────────────────────────
+      // (Movido ANTES de OT para alinear el orden con el CFDI:
+      //  Producto, OC, Lote, OT, PS.) Por línea, usando el join. Sin parsear
+      //  "Batch: X" del description. Sufijo Schneider (VM/VE) según el primer lote.
       const fusionConsumioLote = fusion.fusionado
       const psParaMostrar = fusion.fusionado ? fusion.psRestantes : psValsLinea
       if (flags.MostrarLote && lotesDeLinea.length > 0 && !fusionConsumioLote) {
@@ -447,14 +432,32 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
             }
           }
 
-          partes.push(bloque);
+          // <br> al final para separar del bloque OT que ahora va después.
+          partes.push(bloque + "<br>");
         }
       } else if (fusionConsumioLote && psParaMostrar.length > 0) {
-        partes.push(`<b>PS: </b>${Array.from(new Set(psParaMostrar)).join(', ')}`)
+        partes.push(`<b>PS: </b>${Array.from(new Set(psParaMostrar)).join(', ')}<br>`)
       } else if (!flags.MostrarLote) {
         // Si Mostrar Lote está apagado: fallback al description original
         // (replica el `else` del expression).
         partes.push(line.description ?? "");
+      }
+
+      // ── Bloque 5: OT (Orden de Trabajo) ───────────────────────────────
+      // Por línea (no global). Si varios PAs apuntan a esta línea con
+      // distintas OTs, las unimos con coma; dedup por idInDomain. Label
+      // homologado al CFDI ("OT"). Es el último bloque → sin <br> final.
+      if (flags.MostrarOT) {
+        const otIds = new Set<string>();
+        for (const pa of pasDeLinea) {
+          const id = pa?.workOrder?.idInDomain;
+          if (id != null) otIds.add(String(id));
+        }
+        if (otIds.size > 0) {
+          partes.push(
+            `<b>OT: </b>${Array.from(otIds).join(", ")}`
+          );
+        }
       }
 
       return partes.join("");

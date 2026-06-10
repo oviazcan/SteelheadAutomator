@@ -82,14 +82,14 @@ Traducción a TS del expression language de PDFGeneratorAPI que vive en el templ
 |---|---|
 | `MostrarNP` | Renderiza `npHtml` (nombre + descripción del invoice line + descripción del PN). Si está apagado, `npHtml === ""` |
 | `MostrarAcabado` | Sufijo `<br><b>Acabado: </b>{labels}` en `npHtml` |
-| `MostrarProducto` | Antepone `<b>Producto: </b>{name}<br>` |
+| `MostrarProducto` | Antepone `{name}<br>` (sin label, desde 2026-06-09) |
 | `MostrarRemision` | `<b>Remisión: </b>{join(packingSlip.idInDomain)}<br>` |
-| `MostrarPO` | Bloque `OC (OV)` (con o sin span rojo) |
+| `MostrarPO` | Bloque `OC:` (con o sin span rojo). Label homologado de `OC (OV):` → `OC:` (2026-06-09) |
 | `MostrarLineaPO` | Sufijo `-{salesOrderLineNumber * MultiplicadorLineaOC}` después del PO |
 | `MostrarOV` | Sufijo ` ({salesOrder.idInDomain})` después del PO |
-| `MostrarOT` | `<b>Orden de Trabajo: </b>{ids}<br>` |
-| `MostrarLote` | `<b>Lote: </b>{nombres}` + opcional descripción del batch |
+| `MostrarLote` | `<b>Lote: </b>{nombres}` + opcional descripción del batch. **Ahora va ANTES de OT** (2026-06-09) |
 | `MostrarPS` | Sufijo `<b>PS: </b>{packingSlips}` + sufijo Schneider (VM/VE) |
+| `MostrarOT` | `<b>OT: </b>{ids}` (label homologado; movido después de Lote — 2026-06-09) |
 | `MultiplicadorLineaOC` | Numérico (default 1 si null) |
 
 ### Top-level guard
@@ -111,9 +111,22 @@ Adicionalmente:
 
 **Distinción importante:** "no configurado" (objeto ausente o vacío) NO es lo mismo que "todos los flags en false". Si el cliente decide a propósito ocultar todo, `DatosFactura: {MostrarProducto: false, ...}` sí cuenta como configurado y el `descripcionHtml` queda casi vacío (sin disparar el fallback).
 
-### OC (OV) — span rojo
+### OC — span rojo (pendiente)
 
 Si `salesOrder.name` matchea `/pen/i` o es `"."`, se envuelve en `<span style="color:red; font-size:14pt;">...</span>` para marcarlo como pendiente. Replica el `matches '/pen/i'` del expression.
+
+> **2026-06-09:** al homologar el label `OC (OV):` → `OC:` se preservó **intacto** el `<span>`
+> rojo y la condición `isPending` en las dos ramas (fusión y OC normal, pending/no-pending).
+> El reorden (Lote antes de OT) no toca este bloque.
+
+### Cambio de descripción del NP / consistencia con el CFDI (2026-06-09) — DESPLEGADO
+
+Para alinear el PDF con el nuevo CFDI (ver `powertools-facturacion.md`):
+- 2ª celda (`descripcionHtml`) reordenada: `Producto · Remisión · OC · Lote+PS · OT` (Lote antes
+  de OT). Labels homologados: `Orden de Trabajo:` → `OT:`, `OC (OV):` → `OC:`.
+- 1ª celda (`npHtml`) sin cambios: ya trae NP + descripción del NP + Acabado.
+- Rojo de OC pendiente **preservado**.
+- Desplegado: `pdf:INVOICE_TEMPLATE` → **#10685** (`diff` post-push: local == server).
 
 ### Sufijo Schneider (VM/VE)
 

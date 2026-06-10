@@ -1,25 +1,36 @@
 // Fuente verificable de la lógica de la descripción CFDI para el SAT.
 // DEBE quedar idéntica a la copia inline en powertools/synced/invoice/invoice.ts.
+// Nota: la limpieza de markdown de `descripcionNP` ocurre ANTES de llamar aquí
+// (en el loop del hook); este espejo recibe `descripcionNP` ya en texto plano.
 export const construirDescripcionCFDI = (p) => {
   const { flags } = p
 
-  // Caso especial: lote mínimo. Se preserva intacta la subcadena
-  // "Cargo de lote mínimo aplicado" (el integrador SAT la parsea).
-  if (p.loteMinimoCargado) {
-    const partesLM = []
-    if (flags.MostrarProducto && p.nombreProducto) partesLM.push(p.nombreProducto)
-    partesLM.push('Cargo de lote mínimo aplicado')
-    return partesLM.join(' ').trim()
-  }
-
   const partes = []
 
-  // BLOQUE 1: Producto (valor directo, sin label)
+  // BLOQUE 1: Descripción del NP (valor directo, sin label).
+  // Flag MostrarNP repurposed → "Mostrar Descripción del Número de parte".
+  if (flags.MostrarNP && p.descripcionNP) {
+    partes.push(p.descripcionNP)
+  }
+
+  // BLOQUE 2: Producto (valor directo, sin label)
   if (flags.MostrarProducto && p.nombreProducto) {
     partes.push(p.nombreProducto)
   }
 
-  // BLOQUE 2: OC
+  // Caso especial: lote mínimo. Se preserva intacta la subcadena
+  // "Cargo de lote mínimo aplicado" (el integrador SAT la parsea).
+  if (p.loteMinimoCargado) {
+    partes.push('Cargo de lote mínimo aplicado')
+    return partes.join(', ').trim()
+  }
+
+  // BLOQUE 3: Acabado (justo después de Producto)
+  if (flags.MostrarAcabado && p.acabados.length > 0) {
+    partes.push(`Acabado ${p.acabados.join(', ')}`)
+  }
+
+  // BLOQUE 4: OC
   if (flags.MostrarPO && p.salesOrderName) {
     let oc = `OC ${p.salesOrderName}`
     if (flags.MultiplicadorLineaOC > 0 && p.salesOrderLineNumber != null) {
@@ -31,29 +42,25 @@ export const construirDescripcionCFDI = (p) => {
     partes.push(oc)
   }
 
-  // BLOQUE 3: Lote — solo los nombres que difieran del OC (colapso de repetidos)
+  // BLOQUE 5: Lote — solo los nombres que difieran del OC (colapso de repetidos)
   if (flags.MostrarLote && p.nombresLotes.length > 0) {
     const lotesDistintos = p.nombresLotes.filter((l) => l !== p.salesOrderName)
     if (lotesDistintos.length > 0) {
-      partes.push(`L ${lotesDistintos.join(', ')}`)
+      partes.push(`Lote ${lotesDistintos.join(', ')}`)
     }
   }
 
-  // BLOQUE 4: Acabado
-  if (flags.MostrarAcabado && p.acabados.length > 0) {
-    partes.push(`Ac ${p.acabados.join(', ')}`)
-  }
-
-  // BLOQUE 5: OT
+  // BLOQUE 6: OT
   if (flags.MostrarOT && p.workOrderIdInDomain) {
     partes.push(`OT ${p.workOrderIdInDomain}`)
   }
 
-  // PS del cliente: NO se incluye en la descripción del SAT (redundante con OC;
-  // su sufijo es la descripción del NP, no prioritaria). Se conserva en el PDF.
+  // BLOQUE 7: PS del cliente (reincorporado con el flag MostrarPS)
+  if (flags.MostrarPS && p.packingSlips.length > 0) {
+    partes.push(`PS ${p.packingSlips.join(', ')}`)
+  }
 
-  const resultado = partes.join(' ').trim()
-  // Red de seguridad absoluta (el SAT permite hasta 1000). El aviso de 60 lo
-  // emite el caller; aquí NO truncamos a 60 para no mutilar la interfaz.
+  const resultado = partes.join(', ').trim()
+  // Red de seguridad: iMarz mapea la descripción a observaciones (1000 chars).
   return resultado.length > 1000 ? resultado.slice(0, 997) + '...' : resultado
 }
