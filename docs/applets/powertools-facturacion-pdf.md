@@ -10,6 +10,7 @@ getPdfCustomization(inputs, helpers)
       zipCode,                 // 5-dig o ZIP+4 extraído de billToAddress
       xmlDecodificado,         // CFDI XML reindentado (debug / leyenda)
       lotesPorLinea,           // { "<lineNumber>": [LoteResumen, ...] }
+      referenciaHeader,        // remisiones (referencedPartAccounts) + customInputs.DatosFiscales.Referencia
       invoiceLinesConLotes,    // invoiceLine[] enriquecido con `.lotes`
     }
 ```
@@ -127,6 +128,21 @@ Para alinear el PDF con el nuevo CFDI (ver `powertools-facturacion.md`):
 - 1ª celda (`npHtml`) sin cambios: ya trae NP + descripción del NP + Acabado.
 - Rojo de OC pendiente **preservado**.
 - Desplegado: `pdf:INVOICE_TEMPLATE` → **#10685** (`diff` post-push: local == server).
+
+### Cadena de Referencia para el encabezado — `additionalPayload.referenciaHeader` (2026-06-09)
+
+Campo nuevo en `additionalPayload`, **solo PDF**, para que la plantilla lo muestre en el
+encabezado como "Referencia". Es un string con, en orden:
+
+1. **Todas las remisiones** referenciadas por las líneas
+   (`invoiceLines[].invoiceLine.invoiceLineItems[].referencedPartAccounts[].packingSlip.idInDomain`),
+   dedupeadas y unidas con `, `.
+2. **Al final**, la referencia capturada en el customInput de la factura
+   (`inputs.customInputs.DatosFiscales.Referencia`).
+
+Solo el valor (sin etiqueta — la plantilla la pone). Omite limpio lo que no exista
+(sin comas colgantes). Ejemplo: `"REM-100, REM-101, OC-CLIENTE-555"`.
+Desplegado: `pdf:INVOICE_TEMPLATE` → **#10686**.
 
 ### Sufijo Schneider (VM/VE)
 

@@ -748,11 +748,36 @@ const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult =>
       });
     }
 
+    // ── 4.5️⃣ Cadena de Referencia para el encabezado (solo PDF) ──────────
+    // Concatena con comas TODAS las remisiones referenciadas por las líneas
+    // (referencedPartAccounts[].packingSlip.idInDomain, dedupeadas, en orden) y
+    // al final la referencia capturada en el customInput de la factura
+    // (customInputs.DatosFiscales.Referencia). Solo el valor — la plantilla pone
+    // la etiqueta. Omite limpio lo que no exista (sin comas colgantes).
+    const remisionesHeaderSet = new Set<string>();
+    for (const il of inputs.invoiceLines ?? []) {
+      for (const it of il?.invoiceLine?.invoiceLineItems ?? []) {
+        for (const rpa of it?.referencedPartAccounts ?? []) {
+          const id = rpa?.packingSlip?.idInDomain;
+          if (id != null) remisionesHeaderSet.add(String(id));
+        }
+      }
+    }
+    const referenciaFactura = (inputs.customInputs as any)?.DatosFiscales?.Referencia;
+    const referenciaFacturaStr =
+      referenciaFactura != null && String(referenciaFactura).trim() !== ""
+        ? String(referenciaFactura).trim()
+        : null;
+    const referenciaHeader = [...remisionesHeaderSet, referenciaFacturaStr]
+      .filter((s): s is string => !!s)
+      .join(", ");
+
     // ── 5️⃣ Payload final hacia el template ───────────────────────────────
     result.additionalPayload = {
       zipCode,
       xmlDecodificado,
       lotesPorLinea,
+      referenciaHeader,
       invoiceLinesConLotes,
       // Tabla consolidada y flag de sugerencia (no es gating — el template
       // decide). Ambas tablas siempre se exponen en paralelo.
