@@ -117,3 +117,46 @@ test('classifyOnePN: no truena con window.SteelheadBulkCC disponible y CSV sin a
   const r = C.classifyOnePN(csvRow, pns, [], new Map());
   assert.ok(r && typeof r.classification === 'string'); // produce clasificación válida sin lanzar
 });
+
+// ── 1.5.21: archivados NO se duplican (se matchean en TODOS los pases) ──
+
+test('rankCandidates: a igualdad de score+ibms, prefiere activo sobre archivado (1.5.21)', () => {
+  const csvRow = { metalBase: 'Estaño', labels: ['Zinc'], quoteIBMS: '' };
+  const cands = [
+    { id: 1, metalBase: 'Estaño', labels: ['Zinc'], quoteIBMS: '', archivedAt: '2026-01-01' }, // archivado
+    { id: 2, metalBase: 'Estaño', labels: ['Zinc'], quoteIBMS: '', archivedAt: null },          // activo
+  ];
+  const ranked = C.rankCandidates(csvRow, cands, [], new Map());
+  assert.strictEqual(ranked[0].id, 2); // el activo va primero
+});
+
+test('classifyOnePN Pase 3 (labels-match): PN archivado matchea por nombre+acabados -> MODIFY, no NEW (1.5.21)', () => {
+  // composite difiere por metalBase, pero nombre+acabados coinciden -> cae a Pase 3
+  const csvRow = { name: 'PNL', quoteIBMS: '', metalBase: 'Estaño', labels: ['Zinc'], customerId: 1 };
+  const pns = [{ id: 90, name: 'PNL', quoteIBMS: '', archivedAt: '2026-01-01', customerId: 1, metalBase: 'Cobre', labels: ['Zinc'] }];
+  const r = C.classifyOnePN(csvRow, pns, [], new Map());
+  assert.strictEqual(r.classification, 'MODIFY'); // antes: NEW (duplicaba el archivado)
+  assert.strictEqual(r.targetPnId, 90);
+  assert.strictEqual(r.wasArchived, true);
+  assert.match(r.confidence, /name\+labels-match/);
+});
+
+test('classifyOnePN Pase 3 (blank-candidate): archivado sin acabados se completa, no se duplica (1.5.21)', () => {
+  const csvRow = { name: 'PN3', quoteIBMS: '', metalBase: '', labels: ['Zinc'], customerId: 1 };
+  const pns = [{ id: 88, name: 'PN3', quoteIBMS: '', archivedAt: '2026-01-01', customerId: 1, metalBase: '', labels: [] }];
+  const r = C.classifyOnePN(csvRow, pns, [], new Map());
+  assert.strictEqual(r.classification, 'MODIFY');
+  assert.strictEqual(r.targetPnId, 88);
+  assert.strictEqual(r.wasArchived, true);
+});
+
+test('classifyOnePN: con activo y archivado del mismo nombre, Pase 2 sigue matcheando (no NEW) (1.5.21)', () => {
+  const csvRow = { name: 'DUP', quoteIBMS: '', metalBase: 'Estaño', labels: ['Zinc'], customerId: 1 };
+  const pns = [
+    { id: 11, name: 'DUP', quoteIBMS: '', archivedAt: null, customerId: 1, metalBase: 'Estaño', labels: ['Zinc'] },          // activo
+    { id: 10, name: 'DUP', quoteIBMS: '', archivedAt: '2026-01-01', customerId: 1, metalBase: 'Estaño', labels: ['Zinc'] }, // archivado
+  ];
+  const r = C.classifyOnePN(csvRow, pns, [], new Map());
+  assert.strictEqual(r.classification, 'MODIFY');
+  assert.strictEqual(r.targetPnId, 11); // composite find prefiere el activo (primero en el array)
+});

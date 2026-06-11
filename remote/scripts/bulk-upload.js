@@ -185,7 +185,16 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.20';
+  // VERSION 1.5.21 (2026-06-11): fix archivados duplicados + Estatus tri-state.
+  //   - classify: el match por nombre (Pase 3) ahora incluye archivados → un PN
+  //     archivado con el mismo nombre se MATCHEA (MODIFY) en vez de crear duplicado.
+  //     rankCandidates prefiere activos a igualdad de score.
+  //   - parser: `archivado` pasa a tri-state (V→true archiva, F→false reactiva,
+  //     vacío→null "Dejar como está": preserva el estado actual). Antes toBool('')
+  //     daba false → desarchivaba PNs que debían quedarse archivados.
+  //   - STEP 8: aplica el tri-state (blanco + existing + estaba archivado → re-archiva
+  //     tras editar; F → desarchiva; V → archiva). Chip del preview honesto por estado.
+  const VERSION = '1.5.21';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -1387,7 +1396,11 @@ const BulkUpload = (() => {
         linea: g(row, COLS.linea),
         departamento: g(row, COLS.departamento),
         codigoSAT: g(row, COLS.codigoSAT),
-        archivado: toBool(g(row, COLS.archivado)),
+        // 1.5.21: tri-state Estatus/Archivado. V→true (archiva), F→false (lo deja
+        // vivo/desarchiva), vacío→null ("Dejar como está": preserva el estado actual
+        // de archivado del PN). Antes toBool('') daba false → desarchivaba PNs que el
+        // operador quería dejar archivados.
+        archivado: (() => { const v = g(row, COLS.archivado); return v ? toBool(v) : null; })(),
         forzarDuplicado: toBool(g(row, COLS.forzar)),
         archivarAnterior: toBool(g(row, COLS.archivar)),
         // 1.5.13: tri-state. CSV vacío → null (preserve existing optInOuts); explícito → bool.
@@ -1927,6 +1940,7 @@ const BulkUpload = (() => {
         userDecided: true,
         targetPnId: node.id,
         wasArchived: !!node.archivedAt,
+        archivado: p.archivado, // 1.5.21: tri-state para chip + STEP 8
         csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
         csvLabels: p.labels || [],
         csvMetalBase: p.metalBase || '',
@@ -1974,7 +1988,8 @@ const BulkUpload = (() => {
       // con 2+ queda en false para que el operador confirme en el dropdown.
       userDecided: cls.autoDecided === true,
       targetPnId: cls.targetPnId,
-      wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado por Pase 1/2 estaba archivado
+      wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado estaba archivado (cualquier pase)
+      archivado: p.archivado, // 1.5.21: tri-state para chip + STEP 8
       csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
       // 1.2.11: snapshot del CSV para que dedupModifyTargets pueda evaluar
       // strict-match de alternates con la misma lógica de classifyOnePN.
@@ -2432,13 +2447,21 @@ const BulkUpload = (() => {
             dupChip.title = `El CSV trae ${r.csvDuplicateGroupSize} filas con este (PN, cliente) — fila ${r.csvDuplicateIndex} del grupo`;
             tdPN.appendChild(dupChip);
           }
-          // 1.2.12: chip "🔓 desarch" cuando Pase 1/2 matchearon un PN archivado.
-          // STEP 8 lo desarchiva automáticamente (UpdatePartNumber archivedAt:null).
+          // 1.5.21: chip cuando el PN matcheado estaba archivado. El texto refleja el
+          // Estatus tri-state, NO solo "desarch": F→reactiva, V→re-archiva, blanco→preserva.
           if (r.wasArchived) {
             const unArchChip = document.createElement('span');
             unArchChip.className = 'dl9-unarch-chip';
-            unArchChip.textContent = '🔓 desarch';
-            unArchChip.title = 'PN matcheado estaba archivado; se desarchivará automáticamente antes de aplicar cambios.';
+            if (r.archivado === false) {
+              unArchChip.textContent = '🔓 reactiva';
+              unArchChip.title = 'PN matcheado estaba archivado; el Estatus pide dejarlo vivo → se desarchiva.';
+            } else if (r.archivado === true) {
+              unArchChip.textContent = '📦 re-archiva';
+              unArchChip.title = 'PN matcheado estaba archivado; se edita y se vuelve a archivar (Estatus Archivado).';
+            } else {
+              unArchChip.textContent = '📦 sin cambio';
+              unArchChip.title = '"Dejar como está": el PN matcheado estaba archivado y se preserva archivado (se desarchiva temporalmente solo para editar).';
+            }
             tdPN.appendChild(unArchChip);
           }
           tr.appendChild(tdPN);
@@ -6307,10 +6330,18 @@ const BulkUpload = (() => {
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
         const entry = pnLookup.get(i); if (!entry) continue;
-        if (part.archivado) {
+        // 1.5.21: tri-state Estatus/Archivado.
+        //   V (true)      → archivar (existing o el nuevo de forceDup).
+        //   F (false)     → desarchivar / dejar vivo (si es existing).
+        //   blanco (null) → "Dejar como está": si el existing estaba archivado, se
+        //     PRESERVA archivado (STEP 4.5 lo desarchivó solo para editar → aquí se
+        //     re-archiva); si estaba activo o es nuevo, no se toca.
+        if (part.archivado === true) {
           if (!archiveSeen.has(entry.pn.id)) { pnsToArchive.push({ id: entry.pn.id, name: part.pn }); archiveSeen.add(entry.pn.id); }
-        } else if (pnStatus[i].status === 'existing') {
+        } else if (part.archivado === false && status.status === 'existing') {
           if (!unarchiveSeen.has(entry.pn.id)) { pnsToUnarchive.push({ id: entry.pn.id, name: part.pn }); unarchiveSeen.add(entry.pn.id); }
+        } else if (part.archivado == null && status.status === 'existing' && status.wasArchived) {
+          if (!archiveSeen.has(entry.pn.id)) { pnsToArchive.push({ id: entry.pn.id, name: part.pn }); archiveSeen.add(entry.pn.id); }
         }
         // archiveOverride per-row: undefined → seguir CSV; true → archivar; false → no archivar
         const csvWantsArchive = !!part.archivarAnterior;
