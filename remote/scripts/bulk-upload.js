@@ -218,7 +218,14 @@ const BulkUpload = (() => {
   //   {geometryTypeDimensionTypeId, dimensionValue, unitByUnitId.id}; la forma vieja
   //   {dimensionId, microQuantity, unitId} producía {} → HTTP 400 para PNs con dimensiones
   //   (caso 80283-220-50 en la cotización SRG). Ahora usa la forma correcta + filtra malformadas.
-  const VERSION = '1.5.25';
+  // VERSION 1.5.26 (2026-06-11): tres cambios del footprint/cotización pedidos por el usuario.
+  //   (A) Usuario del ControlCambios: usar CurrentUserActiveSegments (trae name) en vez de
+  //       CurrentUserDetails (mínima, sin name) → ya no estampa "(desconocido)". + warn si falla.
+  //   (B) Fecha del Evento sin milisegundos (nowIso.replace(/\.\d{3}Z$/,'Z')).
+  //   (C) STEP 9: al terminar una COTIZACIÓN+NP, mover la(s) cotización(es) al stage "Ganada"
+  //       (CreateQuoteStageChange, DOMAIN.ganadaStageId). Las bloquea (active); revert-from-active
+  //       para re-editar. Con withRetry; errores van a errors[] sin tumbar la corrida.
+  const VERSION = '1.5.26';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -3323,13 +3330,17 @@ const BulkUpload = (() => {
     // 1.5.20: inputSchemaId vigente del dominio (3932 en TLC). Default al hardcoded
     // de config; se sobreescribe con latestSchema.id tras GetPartNumbersInputSchema.
     let runtimeInputSchemaId = DOMAIN.inputSchemaId_PN;
-    // 1.5.20: identidad para el footprint de ControlCambios. Best-effort: si falla,
-    // se estampa "(desconocido)" y la corrida continúa.
+    // 1.5.26: identidad para el footprint de ControlCambios. CurrentUserDetails es la query
+    // MÍNIMA (id/domainId/isAdmin) y NO trae `name` → currentSession.userByUserId.name daba
+    // undefined → siempre "(desconocido)". CurrentUserActiveSegments sí expone el nombre en
+    // ese mismo path (verificado en scan: "OMAR FIDEL VIAZCAN GOMEZ"). Best-effort, pero con
+    // warn para que un fallo futuro NO vuelva a pasar en silencio.
     let currentUserName = '(desconocido)';
     try {
-      const cuData = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
+      const cuData = await api().query('CurrentUserActiveSegments', {}, 'CurrentUserActiveSegments');
       currentUserName = cuData?.currentSession?.userByUserId?.name || '(desconocido)';
-    } catch (_) {}
+      if (currentUserName === '(desconocido)') warn('ControlCambios: CurrentUserActiveSegments no devolvió name del usuario.');
+    } catch (e) { warn(`ControlCambios: fallo al obtener usuario actual: ${String(e).substring(0, 80)}`); }
     const errors = [];
     const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
@@ -5596,7 +5607,7 @@ const BulkUpload = (() => {
             });
             const ccEntry = window.SteelheadBulkCC.buildControlCambiosEntry({
               accion: ccAccion, detalle: ccDetalle, usuario: currentUserName,
-              version: (window.REMOTE_CONFIG && window.REMOTE_CONFIG.version) || VERSION, nowIso: new Date().toISOString(),
+              version: (window.REMOTE_CONFIG && window.REMOTE_CONFIG.version) || VERSION, nowIso: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
             });
             window.SteelheadBulkCC.appendControlCambios(mergedCI, ccEntry);
           }
@@ -6568,7 +6579,32 @@ const BulkUpload = (() => {
       }
       if (pnsToUnarchive.length) log(`  Desarchivados: ${stats.unarchived || 0}`);
 
-      // STEP 9: Done
+      // STEP 9 (1.5.26): mover las cotizaciones creadas al stage "Ganada". Esto las marca
+      // como "active" → quedan BLOQUEADAS para edición. Para re-editar/retomar hay que aplicar
+      // "revert from active" en la UI; si la cotización ya se usó (orderReceived), ya no se
+      // puede editar y hay que crear una nueva. Solo aplica a COTIZACIÓN+NP (SOLO_PN no crea quotes).
+      if (!isSoloPN && quotesCreated.length && DOMAIN.ganadaStageId) {
+        setPanelPhase(`Paso 9/9: Moviendo ${quotesCreated.length} cotización(es) a "Ganada"`);
+        let ganadaOk = 0;
+        for (const q of quotesCreated) {
+          try {
+            await withRetry(
+              () => api().query('CreateQuoteStageChange', {
+                quoteId: q.id, quoteStageId: DOMAIN.ganadaStageId, message: '', needsRevision: false
+              }, 'CreateQuoteStageChange'),
+              `CreateQuoteStageChange #${q.idInDomain}`, myRunId
+            );
+            ganadaOk++;
+            log(`  Cotización #${q.idInDomain} movida a "Ganada" (bloqueada; revert-from-active para editar)`);
+          } catch (e) {
+            if (isBail(e)) throw e;
+            errors.push(`Mover #${q.idInDomain} a Ganada: ${String(e).substring(0, 120)}`);
+          }
+        }
+        stats.movedToGanada = ganadaOk;
+      }
+
+      // STEP 10: Done
       setPanelPhase('Completado.'); setProgressBar(100);
       const domainId = window.location.pathname.match(/\/Domains\/(\d+)/)?.[1] || DOMAIN.id;
       // V10: si se creó UNA sola cotización abrir esa; si fueron varias, abrir el listado general
