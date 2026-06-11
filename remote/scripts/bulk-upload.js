@@ -208,7 +208,12 @@ const BulkUpload = (() => {
   //   simple → se colaba como valor real (iba a crear un "grupo de PN" llamado así).
   //   Ahora `g`/`cell` normalizan NFD + lowercase antes de comparar. (Misma fix en ambas
   //   copias: el `g` local de parseRows y el `cell` puro del módulo.)
-  const VERSION = '1.5.23';
+  // VERSION 1.5.24 (2026-06-11): STEP 7 (Racks) ahora usa withRetry en sus 5 llamadas API
+  //   (Get/Delete/Save/Update). Antes eran api().query directo → un HTTP 502/503/timeout
+  //   transitorio tumbaba el rack al instante (caso reportado: UpdatePartNumberPerPerRackType
+  //   PN 3027305 → 502). withRetry NO reintenta duplicate-key (isRetryable=false) → el upsert
+  //   y el fallback uno-por-uno siguen igual; solo los transitorios se auto-reintentan.
+  const VERSION = '1.5.24';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -6256,10 +6261,10 @@ const BulkUpload = (() => {
           delDone++;
           setPanelSubPhase(`Borrando racks ${delDone}/${racksToDelete.size} (PN ${pnId})`);
           try {
-            const pnData = await api().query('GetPartNumber', { partNumberId: pnId });
+            const pnData = await withRetry(() => api().query('GetPartNumber', { partNumberId: pnId }), `GetPN racks ${pnId}`, myRunId);
             const existingRacks = pnData?.partNumberById?.partNumberRackTypesByPartNumberId?.nodes || [];
             for (const rk of existingRacks) {
-              await api().query('DeletePartNumberRackType', { id: rk.id });
+              await withRetry(() => api().query('DeletePartNumberRackType', { id: rk.id }), `DeleteRack ${rk.id}`, myRunId);
               log(`  Rack ${rk.id} eliminado de PN ${pnId}`);
             }
             if (existingRacks.length) stats.racksSet += existingRacks.length;
@@ -6270,17 +6275,17 @@ const BulkUpload = (() => {
       // entonces borramos el viejo y reinsertamos con el partsPerRack nuevo.
       async function upsertRack(rk) {
         try {
-          await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
+          await withRetry(() => api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } }), `SaveRack PN ${rk.partNumberId}`, myRunId);
         } catch (e2) {
           if (isDuplicateKeyError(e2)) {
             // V10: usar mutación dedicada UpdatePartNumberPerPerRackType (typo en el API real)
             // que actualiza por composite key (partNumberId, rackTypeId).
             try {
-              await api().query('UpdatePartNumberPerPerRackType', {
+              await withRetry(() => api().query('UpdatePartNumberPerPerRackType', {
                 partNumberId: rk.partNumberId,
                 partsPerRack: rk.partsPerRack,
                 rackTypeId: rk.rackTypeId
-              }, 'UpdatePartNumberPerPerRackType');
+              }, 'UpdatePartNumberPerPerRackType'), `UpdateRack PN ${rk.partNumberId}`, myRunId);
               log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: partsPerRack actualizado a ${rk.partsPerRack}`);
             } catch (e3) {
               errors.push(`Rack PN ${rk.partNumberId} update: ${String(e3).substring(0, 100)}`);
@@ -6307,7 +6312,7 @@ const BulkUpload = (() => {
           setPanelSubPhase(`Racks batch ${batchNum}/${rackTotalBatches} (${batch.length} racks)`);
           setPanelProgress(Math.min(i + batch.length, rackIn.length), rackIn.length);
           try {
-            await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } });
+            await withRetry(() => api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } }), `SaveRack batch ${batchNum}`, myRunId);
           } catch (e) {
             rackBatchFailures++;
             const errMsg = String(e).substring(0, 200);
