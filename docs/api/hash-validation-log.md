@@ -199,3 +199,5 @@ Bump `version` 1.6.47 → **1.6.48** + `lastUpdated` 2026-06-08T10:45.
 
 **Pendiente**: deploy a `gh-pages` + recargar extensión en el navegador (Chrome cachea `config.json` ~5 min).
 
+## 2026-06-10 12:36 — 0 rotado(s) (config v1.6.51)
+
