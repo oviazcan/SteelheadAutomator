@@ -213,7 +213,12 @@ const BulkUpload = (() => {
   //   transitorio tumbaba el rack al instante (caso reportado: UpdatePartNumberPerPerRackType
   //   PN 3027305 → 502). withRetry NO reintenta duplicate-key (isRetryable=false) → el upsert
   //   y el fallback uno-por-uno siguen igual; solo los transitorios se auto-reintentan.
-  const VERSION = '1.5.24';
+  // VERSION 1.5.25 (2026-06-11): STEP 5 pre-archive — fix de field names en partNumberDimensions
+  //   (faltaba el fix 1.5.14 que sí se aplicó en enrichWorker). El nodo trae
+  //   {geometryTypeDimensionTypeId, dimensionValue, unitByUnitId.id}; la forma vieja
+  //   {dimensionId, microQuantity, unitId} producía {} → HTTP 400 para PNs con dimensiones
+  //   (caso 80283-220-50 en la cotización SRG). Ahora usa la forma correcta + filtra malformadas.
+  const VERSION = '1.5.25';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -4412,9 +4417,18 @@ const BulkUpload = (() => {
               const sentExistingDimCustomValueIds = (pnNode.acctPnDimensionValueSelectionsByPartNumberId?.nodes || [])
                 .map(sel => sel.dimensionCustomValueId)
                 .filter(Boolean);
+              // 1.5.25: mismo fix de field names que 1.5.14 (enrichWorker), que aquí faltaba.
+              // El nodo de GetPartNumber trae {geometryTypeDimensionTypeId, dimensionValue,
+              // unitByUnitId.id}, NO {dimensionId, microQuantity, unitId}. La forma vieja
+              // producía {} → HTTP 400 (input[0].partNumberDimensions) para PNs CON dimensiones
+              // (caso 80283-220-50). Filtra además entradas malformadas.
               const sentExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
-                .filter(d => !d.archivedAt)
-                .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+                .filter(d => !d.archivedAt && d.geometryTypeDimensionTypeId && (d.unitByUnitId?.id ?? d.unitId) != null)
+                .map(d => ({
+                  geometryTypeDimensionTypeId: d.geometryTypeDimensionTypeId,
+                  dimensionValue: d.dimensionValue,
+                  unitId: d.unitByUnitId?.id ?? d.unitId,
+                }));
               // 1.5.7: STEP 5 también resuelve grupo del CSV (no del cache).
               // Asegura que si SOLO Call B fallara, STEP 5 ya dejó el grupo aplicado.
               // 1.5.16: leer FK relacional como fuente primaria. El query persistido
