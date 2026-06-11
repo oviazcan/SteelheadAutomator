@@ -225,7 +225,12 @@ const BulkUpload = (() => {
   //   (C) STEP 9: al terminar una COTIZACIÓN+NP, mover la(s) cotización(es) al stage "Ganada"
   //       (CreateQuoteStageChange, DOMAIN.ganadaStageId). Las bloquea (active); revert-from-active
   //       para re-editar. Con withRetry; errores van a errors[] sin tumbar la corrida.
-  const VERSION = '1.5.26';
+  // VERSION 1.5.27 (2026-06-11): auto revert-from-active al "retomar anterior" (action='modify').
+  //   Si la cotización retomada está en "Ganada" (active/locked), el clean de PNPs y los
+  //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
+  //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
+  //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
+  const VERSION = '1.5.27';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -4688,6 +4693,27 @@ const BulkUpload = (() => {
               thisQuoteId = existingQuote.id;
               thisQuoteIdInDomain = existingQuote.idInDomain;
               log(`  Modificando cotización existente #${thisQuoteIdInDomain}`);
+
+              // 1.5.27: revert-from-active. Una cotización que ya pasó por STEP 9 está en
+              // "Ganada" (active) → BLOQUEADA: el clean de PNPs y los SaveQuoteLines de abajo
+              // fallarían. La movemos a un stage editable (DOMAIN.revertStageId) ANTES de
+              // editar; STEP 9 la regresa a "Ganada" al final. Las cotizaciones NUEVAS no pasan
+              // por aquí (nacen editables). Se hace siempre en modify porque AllQuotes/GetQuote_v8
+              // no exponen confiablemente el stage actual; si no estaba en Ganada es inofensivo.
+              if (DOMAIN.revertStageId) {
+                try {
+                  await withRetry(
+                    () => api().query('CreateQuoteStageChange', {
+                      quoteId: thisQuoteId, quoteStageId: DOMAIN.revertStageId, message: '', needsRevision: false
+                    }, 'CreateQuoteStageChange'),
+                    `Revert-from-active #${thisQuoteIdInDomain}`, myRunId
+                  );
+                  log(`  Cotización #${thisQuoteIdInDomain}: revert-from-active (→ editable) antes de retomar`);
+                } catch (e) {
+                  if (isBail(e)) throw e;
+                  warn(`  Revert-from-active #${thisQuoteIdInDomain} falló: ${String(e).substring(0, 80)}`);
+                }
+              }
 
               // Clean existing PNPs from the quote so we can re-add fresh
               try {
