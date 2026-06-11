@@ -2,11 +2,13 @@
   "category": "pdf",
   "slug": "pdf:WORK_ORDER_TEMPLATE",
   "discriminator": "WORK_ORDER_TEMPLATE",
-  "active_id": 10488,
-  "active_created_at": "2026-05-26T01:23:13.062493+00:00",
+  "active_id": 10718,
+  "active_created_at": "2026-06-11T23:00:32.945302+00:00",
   "active_creator": "OMAR FIDEL VIAZCAN GOMEZ",
-  "total_versions": 1,
+  "total_versions": 2,
   "all_version_ids": [
+    10718,
     10488
-  ]
+  ],
+  "note": "2026-06-11: primer hook con lógica del slot (id=10718). Antes era esqueleto vacío (id=10488, return result sin asignar). Payload 'documento completo por OT': workOrderInfo, order, customer (con facturación/terms/salesTaxable), domain (membrete), recipe (proceso seleccionado), currentUser (con signatureBase64), workOrderFiles, parts[] (TODAS las partes de la OT: count, unitPriceDollars, lineTotal, convertedQuantities, planos, partGroup, treatments con proceso/químicos, specs planas), totals{partCount, totalPieces, grandTotal, processes[]}. Diseño activo del slot: pdfTemplateId 1293766 'Orden de Trabajo' (work_order_template tag). Granularidad: 1 doc por OT con todas sus partes. OJO: este shape NO trae receivedBatches/specs.fields/recipe.nodes/progreso (eso vive en el verbose y el jobtag)."
 }

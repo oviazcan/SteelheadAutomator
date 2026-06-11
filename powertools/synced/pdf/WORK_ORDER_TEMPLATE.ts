@@ -1,9 +1,212 @@
-const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult  => {
+const getPdfCustomization = (inputs: Inputs, helpers: Helpers): LowCodeResult => {
+  const result: LowCodeResult = {};
 
-	return result;
-}
+  const nf1 = new Intl.NumberFormat("es-MX", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 
+  const fmtDate = (s: string | null | undefined): string | null => {
+    if (!s) return null;
+    try {
+      return new Date(s).toLocaleDateString("en-GB");
+    } catch (e) {
+      return null;
+    }
+  };
+  const names = (arr: any[] | null | undefined): string[] =>
+    (arr ?? []).map((x) => x && x.name).filter(Boolean);
 
+  try {
+    // ── 1. Encabezado de la Orden de Trabajo ──────────────────────────────
+    const workOrderInfo = {
+      id: inputs.idInDomain ?? null,
+      name: inputs.name || null,
+      createdAt: fmtDate(inputs.createdAt),
+      deadline: fmtDate(inputs.deadline),
+      notes: inputs.notes ?? null,
+      customInputs: inputs.customInputs ?? null,
+      labels: (inputs.labels ?? []).map((l) => ({
+        name: l?.name ?? null,
+        color: l?.color ?? null,
+      })),
+      origin: inputs.origin ?? null,
+      timezone: inputs.timezone ?? null,
+    };
+
+    // ── 2. Orden de venta (encabezado comercial) ──────────────────────────
+    const ro = inputs.receivedOrder;
+    const order = ro
+      ? {
+          id: ro.id ?? null,
+          name: ro.name ?? null,
+          idInDomain: ro.idInDomain ?? null,
+          invoiceTerms: ro.invoiceTerms ?? null,
+          createdAt: fmtDate(ro.createdAt),
+          customInputs: ro.customInputs ?? null,
+        }
+      : null;
+
+    // ── 3. Cliente (incluye facturación) ──────────────────────────────────
+    const c = inputs.customer;
+    const customer = c
+      ? {
+          name: c.name ?? null,
+          shortName: c.shortName ?? null,
+          idInDomain: c.idInDomain ?? null,
+          addresses: (c.addresses ?? []).map((a) => a?.address).filter(Boolean),
+          invoiceTerms: c.invoiceTermByDefaultInvoiceTermsId
+            ? {
+                terms: c.invoiceTermByDefaultInvoiceTermsId.terms ?? null,
+                days: c.invoiceTermByDefaultInvoiceTermsId.days ?? null,
+              }
+            : null,
+          salesTaxable: c.salesTaxable ?? null,
+          customInputs: c.customInputs ?? null,
+        }
+      : null;
+
+    // ── 4. Dominio (membrete) ─────────────────────────────────────────────
+    const d = inputs.domain;
+    const domain = d
+      ? {
+          name: d.name ?? null,
+          address: d.address ?? null,
+          phone: d.contactPhone ?? null,
+          email: d.contactEmail ?? null,
+          logoUrl: d.logoUrl ?? null,
+          customInputs: d.customInputs ?? null,
+        }
+      : null;
+
+    // ── 5. Receta / proceso seleccionado ──────────────────────────────────
+    const recipe = inputs.recipe
+      ? {
+          name: inputs.recipe.name ?? null,
+          selectedProcess: inputs.recipe.selectedProcess?.name ?? null,
+          selectedProcessId: inputs.recipe.selectedProcess?.id ?? null,
+        }
+      : null;
+
+    // ── 6. Usuario que genera + firma ─────────────────────────────────────
+    const currentUser = inputs.currentUser
+      ? {
+          name: inputs.currentUser.name ?? null,
+          signatureBase64: inputs.currentUser.signatureBase64 ?? null,
+        }
+      : null;
+
+    // ── 7. Archivos adjuntos de la OT ─────────────────────────────────────
+    const workOrderFiles = (inputs.workOrderFiles ?? []).map((f) => ({
+      name: f.name,
+      url: f.url,
+    }));
+
+    // ── 8. Partes (TODAS las de la OT) ────────────────────────────────────
+    const UNIT_IDS = [3969, 3972, 5150, 4907]; // KGM, CMK, LM, otra (dominio TLC)
+    let totalPieces = 0;
+    let grandTotal = 0;
+    const processSet = new Set<string>();
+    const parts = (inputs.parts ?? []).map((p) => {
+      const part = p.part;
+      const count = p.count ?? 0;
+      totalPieces += count;
+      const price = p.unitPriceDollars;
+      const lineTotal = price != null ? count * price : null;
+      if (lineTotal != null) grandTotal += lineTotal;
+
+      const uconv = part?.unitConversions ?? [];
+      const convertedQuantities = uconv
+        .filter(
+          (u) =>
+            u && u.unit && u.factor != null && UNIT_IDS.indexOf(u.unit.id) !== -1
+        )
+        .map((u) => `${nf1.format(count * u.factor)}: ${u.unit.name}`);
+
+      const treatments = (p.treatments ?? []).map((t) => {
+        const tn = t.treatment?.name ?? null;
+        const proc = t.process?.name ?? null;
+        if (proc) processSet.add(proc);
+        else if (tn) processSet.add(tn);
+        return {
+          treatment: tn,
+          treatmentGroup: t.treatment?.treatmentGroup?.name ?? null,
+          process: proc,
+          inventoryItems: names(t.treatment?.inventoryItems),
+        };
+      });
+
+      return {
+        index: p.index ?? null,
+        name: part?.name ?? null,
+        id: part?.id ?? null,
+        description: part?.descriptionMarkdown ?? null,
+        customInputs: part?.customInputs ?? null,
+        imageUrl: part?.displayImageUrl ?? null,
+        group: part?.partNumberGroup?.name ?? null,
+        count,
+        unitPriceDollars: price ?? null,
+        lineTotal,
+        convertedQuantities,
+        files: (part?.partNumberFiles ?? []).map((f) => ({
+          name: f.name,
+          url: f.url,
+        })),
+        partGroup: p.partGroup
+          ? {
+              name: p.partGroup.name ?? null,
+              labels: (p.partGroup.labels ?? []).map((l) => ({
+                name: l?.name ?? null,
+                color: l?.color ?? null,
+              })),
+              containerWeight: p.partGroup.containerWeight ?? null,
+              containerWeightUnit: p.partGroup.containerWeightUnit?.name ?? null,
+            }
+          : null,
+        treatments,
+        specs: (p.specs ?? []).map((s) => ({
+          name: s.name ?? null,
+          customInputs: s.customInputs ?? null,
+        })),
+        partDescription: p.descriptionMarkdown ?? null,
+      };
+    });
+
+    // ── 9. Totales / resumen de la OT ─────────────────────────────────────
+    const totals = {
+      partCount: parts.length,
+      totalPieces,
+      grandTotal,
+      processes: Array.from(processSet),
+    };
+
+    result.additionalPayload = {
+      variant: "work_order",
+      scope: "WORK_ORDER",
+      workOrderInfo,
+      order,
+      customer,
+      domain,
+      recipe,
+      currentUser,
+      workOrderFiles,
+      parts,
+      totals,
+    };
+
+    helpers.log(
+      `✅ Orden de Trabajo ${workOrderInfo.id ?? "?"} — ${parts.length} parte(s), ` +
+        `${totalPieces} pza(s), ${totals.processes.length} proceso(s).`
+    );
+  } catch (err) {
+    helpers.addErrorMessage({
+      severity: "error",
+      message: `❌ Error generando payload de orden de trabajo: ${err}`,
+    });
+  }
+
+  return result;
+};
 
 type LowCodeResult = {
     additionalPayload?: any;
@@ -169,10 +372,10 @@ type Severity = 'warning' | 'error' | 'info' | 'success'
 type ErrorMessage = string | { severity: Severity, message: string }
 
 interface Helpers {
-	log: (message: any) => void
-	addErrorMessage: (message: ErrorMessage) => void
-	addInformationalPrice: (value: { title: string, note?: string, price: number, category?: string }) => void
-	addQuotePartPricingTier: (value: { title: string, quantity: number, price: number}) => void
-	parseCSV: (value: string) => {data: any[][], errors: [], meta: any}
+    log: (message: any) => void
+    addErrorMessage: (message: ErrorMessage) => void
+    addInformationalPrice: (value: { title: string, note?: string, price: number, category?: string }) => void
+    addQuotePartPricingTier: (value: { title: string, quantity: number, price: number}) => void
+    parseCSV: (value: string) => {data: any[][], errors: [], meta: any}
 
 }
