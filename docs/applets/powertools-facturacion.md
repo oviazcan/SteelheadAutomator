@@ -82,10 +82,10 @@ Mitigación pendiente: investigar si Steelhead acepta `salesOrderLineItemIds: nu
 
 ## Flags `DatosFactura` (defaults)
 
-| Flag | Default | Uso (2026-06-09: descripción re-diseñada, ver bitácora) |
+| Flag | Default | Uso (2026-06-10: secciones N:/O:, ver bitácora) |
 |---|---|---|
-| `MostrarNP` | `true` | **Repurposed**: antepone la **descripción textual del NP** (`partNumber.description`), sin label, al inicio. (Antes: nombre del NP, que ya viaja en `NoIdentificacion`.) |
-| `MostrarProducto` | `true` | Incluir el Producto (sin label), tras la descripción del NP |
+| `MostrarNP` | `true` | **Repurposed**: pone la **descripción textual del NP** (`partNumber.description`) en la sección `N:`. Si off o sin dato → `N: N/A`. (El nombre/clave del NP viaja en `NoIdentificacion`.) |
+| `MostrarProducto` | `true` | Incluir el Producto (sin sub-label) al inicio de la sección `O:` |
 | `MostrarAcabado` | `true` | Incluir `Acabado X` (justo después del Producto) |
 | `MostrarPO` | `true` | Incluir `OC <salesOrderName>` |
 | `MultiplicadorLineaOC` | `0` | Si `>0`, agrega `-lineNumber*N` al `OC` |
@@ -109,26 +109,46 @@ Mitigación pendiente: investigar si Steelhead acepta `salesOrderLineItemIds: nu
 - [ ] Probar factura **mixta** (algunas OVs con flag, otras sin) — debe emitir warning y NO consolidar.
 - [ ] Probar con líneas mixtas: algunas en KG (consolidables), una con lote mínimo (no consolidable) — confirmar que la de lote mínimo sale aparte.
 
-### Descripción del Número de Parte + reincorporación de datos (2026-06-09) — DESPLEGADO
+### Etiquetas N: / O: en la descripción (2026-06-10) — DESPLEGADO
 
-Con el remapeo de **iMarz** de la descripción de cada línea al **campo de observaciones del
-CFDI (1000 chars)**, se eliminó la limitante de 60 y se rediseñó la descripción.
+La descripción de cada línea se divide en **dos secciones etiquetadas**, para que iMarz/SAT
+distinga la **descripción de la pieza** (`N:`) de las **observaciones** (`O:`).
 
 **Formato (caso normal):**
+`N: <descripción del NP | N/A> O: <Producto>, Acabado <ac>, OC <oc>, Lote <lotes>, OT <ot>, PS <ps>`
+— `N:` y `O:` van **siempre** (estructurales); separador entre secciones un **espacio**; dentro de
+`O:` los sub-bloques conservan sus labels (Acabado/OC/Lote/OT/PS), se unen con coma y cada uno
+respeta su flag.
+
+- **`N:`** = `partNumber.description` (texto de la pieza) si `MostrarNP` y hay dato; si no → `N: N/A`.
+  Fuente: `description` plano si el runtime lo expone; si no, `descriptionMarkdown` limpio (`limpiarMarkdown`).
+- **`O:`** = todo lo demás (Producto + Acabado + OC + Lote + OT + PS). Si queda vacío → `O: N/A`.
+- **Consolidado** (Schneider): `N: N/A O: <Producto>, …` (sigue sin descNP ni `NPs(N)`; los NPs van
+  en la sub-tabla del PDF).
+- **Lote mínimo**: dentro de `O:`, subcadena `"Cargo de lote mínimo aplicado"` intacta.
+- Helper compartido `formatearNO(descripcionNP, observaciones)` usado por el caso normal y el
+  consolidado; red de seguridad a 1000 chars.
+
+Lógica pura verificada en `tools/invoice_description.{mjs,test.mjs}` (20 casos verde).
+Desplegado a productivo: `invoice` → **#5309** (2026-06-11 UTC). (El PDF `INVOICE_TEMPLATE` **no** se tocó.)
+
+### Descripción del Número de Parte + reincorporación de datos (2026-06-09) — histórico (previo a N:/O:)
+
+Con el remapeo de **iMarz** de la descripción de cada línea al **campo de observaciones del
+CFDI (1000 chars)**, se eliminó la limitante de 60 y se rediseñó la descripción. Este formato
+(descNP y Producto **sin label**) fue reemplazado el 2026-06-10 por las secciones `N:`/`O:`.
+
+**Formato (entonces):**
 `<descripción del NP>, <Producto>, Acabado <ac>, OC <oc>, Lote <lotes>, OT <ot>, PS <ps>`
-— descNP y Producto sin label; OC/Lote/Acabado/OT/PS con label; bloques separados por coma;
-cada bloque respeta su flag y se omite limpio si no aplica.
 
 - `MostrarNP` repurposed → antepone `partNumber.description` (texto de la pieza). El nombre/clave
-  del NP ya NO va (viaja en `NoIdentificacion`). Fuente: `description` plano si el runtime lo
-  expone; si no, `descriptionMarkdown` limpiado (`limpiarMarkdown`).
+  del NP ya NO va (viaja en `NoIdentificacion`).
 - `MostrarPS` reincorporado (PS del cliente).
-- **Consolidado** (Schneider): sin descNP ni `NPs(N)` — los NPs van en la sub-tabla del PDF.
+- **Consolidado** (Schneider): sin descNP ni `NPs(N)`.
 - **Lote mínimo**: intacto (`"Cargo de lote mínimo aplicado"`).
 - Se quitó el warning de ">60"; red de seguridad a 1000.
 
-Lógica pura verificada en `tools/invoice_description.{mjs,test.mjs}` (12 casos verde).
-Desplegado a productivo: `invoice` → **#5307**, `pdf:INVOICE_TEMPLATE` → **#10685**
+Desplegado a productivo (histórico): `invoice` → **#5307**, `pdf:INVOICE_TEMPLATE` → **#10685**
 (`lowcode_sync.py push`; `diff` post-push: local == server). Spec:
 `docs/superpowers/specs/2026-06-09-descripcion-np-facturacion-design.md`.
 

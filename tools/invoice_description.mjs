@@ -2,35 +2,46 @@
 // DEBE quedar idéntica a la copia inline en powertools/synced/invoice/invoice.ts.
 // Nota: la limpieza de markdown de `descripcionNP` ocurre ANTES de llamar aquí
 // (en el loop del hook); este espejo recibe `descripcionNP` ya en texto plano.
+
+// Arma las dos secciones etiquetadas de la descripción CFDI:
+//   N: <descripción de la pieza>   O: <observaciones (Producto, Acabado, OC, …)>
+// Ambas etiquetas van SIEMPRE; si no hay dato, "N/A". Separador entre secciones:
+// un espacio; dentro de O: las observaciones se unen con ", ".
+// Red de seguridad: iMarz mapea la descripción a observaciones (1000 chars).
+export const formatearNO = (descripcionNP, observaciones) => {
+  const seccionN = `N: ${descripcionNP && descripcionNP.trim() ? descripcionNP : 'N/A'}`
+  const seccionO = `O: ${observaciones.length > 0 ? observaciones.join(', ') : 'N/A'}`
+  const resultado = `${seccionN} ${seccionO}`
+  return resultado.length > 1000 ? resultado.slice(0, 997) + '...' : resultado
+}
+
 export const construirDescripcionCFDI = (p) => {
   const { flags } = p
 
-  const partes = []
+  // Sección N: descripción de la pieza (null si el flag está off o no hay dato).
+  const descNP = flags.MostrarNP && p.descripcionNP ? p.descripcionNP : null
 
-  // BLOQUE 1: Descripción del NP (valor directo, sin label).
-  // Flag MostrarNP repurposed → "Mostrar Descripción del Número de parte".
-  if (flags.MostrarNP && p.descripcionNP) {
-    partes.push(p.descripcionNP)
-  }
+  // Sección O: observaciones.
+  const observaciones = []
 
-  // BLOQUE 2: Producto (valor directo, sin label)
+  // Producto (valor directo, sin sub-label)
   if (flags.MostrarProducto && p.nombreProducto) {
-    partes.push(p.nombreProducto)
+    observaciones.push(p.nombreProducto)
   }
 
   // Caso especial: lote mínimo. Se preserva intacta la subcadena
   // "Cargo de lote mínimo aplicado" (el integrador SAT la parsea).
   if (p.loteMinimoCargado) {
-    partes.push('Cargo de lote mínimo aplicado')
-    return partes.join(', ').trim()
+    observaciones.push('Cargo de lote mínimo aplicado')
+    return formatearNO(descNP, observaciones)
   }
 
-  // BLOQUE 3: Acabado (justo después de Producto)
+  // Acabado (justo después de Producto)
   if (flags.MostrarAcabado && p.acabados.length > 0) {
-    partes.push(`Acabado ${p.acabados.join(', ')}`)
+    observaciones.push(`Acabado ${p.acabados.join(', ')}`)
   }
 
-  // BLOQUE 4: OC
+  // OC
   if (flags.MostrarPO && p.salesOrderName) {
     let oc = `OC ${p.salesOrderName}`
     if (flags.MultiplicadorLineaOC > 0 && p.salesOrderLineNumber != null) {
@@ -39,28 +50,26 @@ export const construirDescripcionCFDI = (p) => {
     if (flags.MostrarOV && p.salesOrderIdInDomain) {
       oc += ` (${p.salesOrderIdInDomain})`
     }
-    partes.push(oc)
+    observaciones.push(oc)
   }
 
-  // BLOQUE 5: Lote — solo los nombres que difieran del OC (colapso de repetidos)
+  // Lote — solo los nombres que difieran del OC (colapso de repetidos)
   if (flags.MostrarLote && p.nombresLotes.length > 0) {
     const lotesDistintos = p.nombresLotes.filter((l) => l !== p.salesOrderName)
     if (lotesDistintos.length > 0) {
-      partes.push(`Lote ${lotesDistintos.join(', ')}`)
+      observaciones.push(`Lote ${lotesDistintos.join(', ')}`)
     }
   }
 
-  // BLOQUE 6: OT
+  // OT
   if (flags.MostrarOT && p.workOrderIdInDomain) {
-    partes.push(`OT ${p.workOrderIdInDomain}`)
+    observaciones.push(`OT ${p.workOrderIdInDomain}`)
   }
 
-  // BLOQUE 7: PS del cliente (reincorporado con el flag MostrarPS)
+  // PS del cliente (reincorporado con el flag MostrarPS)
   if (flags.MostrarPS && p.packingSlips.length > 0) {
-    partes.push(`PS ${p.packingSlips.join(', ')}`)
+    observaciones.push(`PS ${p.packingSlips.join(', ')}`)
   }
 
-  const resultado = partes.join(', ').trim()
-  // Red de seguridad: iMarz mapea la descripción a observaciones (1000 chars).
-  return resultado.length > 1000 ? resultado.slice(0, 997) + '...' : resultado
+  return formatearNO(descNP, observaciones)
 }
