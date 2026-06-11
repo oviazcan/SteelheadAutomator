@@ -194,7 +194,16 @@ const BulkUpload = (() => {
   //     daba false → desarchivaba PNs que debían quedarse archivados.
   //   - STEP 8: aplica el tri-state (blanco + existing + estaba archivado → re-archiva
   //     tras editar; F → desarchiva; V → archiva). Chip del preview honesto por estado.
-  const VERSION = '1.5.21';
+  // VERSION 1.5.22 (2026-06-11): colisión de specField contra spec ya linkeada se resuelve.
+  //   Sin sentinel "-", la carga era add-only: si un PN ya tenía una spec ocupando un
+  //   specField (ej. "Espesor") y el CSV traía OTRA spec con el mismo campo, SH rechazaba
+  //   con 23P01 (exclusion constraint) y el call dedicado 1.5.7 lo dejaba como error.
+  //   Ahora el call dedicado, cuando el claimer es una spec LINKEADA activa:
+  //     - mismo nombre (mismo acabado / dup de catálogo) → omite (ya presente, sin error);
+  //     - nombre distinto (cambio real) → archiva el claimer y aplica la nueva (reemplazo,
+  //       mismo mecanismo que el archive sentinel que SH ya acepta en un solo call).
+  //   Colisiones CSV-vs-CSV ('csv') siguen como error visible (dato malo del CSV).
+  const VERSION = '1.5.22';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -5063,6 +5072,12 @@ const BulkUpload = (() => {
         // 1.5.4: indexar también las linked rows archivadas para poder unarchive en lugar
         // de re-create (la unique_constraint pn_id+spec_id aplica también a archivadas).
         const archivedSpecLinkBySpecId = new Map();
+        // 1.5.22: mapas de links ACTIVOS por specId — para resolver colisiones de specField
+        // contra una spec ya linkeada: si el campo ("Espesor") ya está ocupado por otra spec
+        // activa, se archiva ese claimer y se aplica la nueva del CSV (reemplazo). Si es la
+        // MISMA spec (mismo nombre, p.ej. dup de catálogo) se omite (ya presente).
+        const activeSpecLinkBySpecId = new Map();   // specId → partNumberSpec.id (link activo)
+        const activeSpecNameBySpecId = new Map();   // specId → nombre de la spec linkeada
         // 1.5.5: extraer labelIds y dimensionCustomValueIds existentes para preservar-on-missing.
         // SavePartNumber hace REPLACE en estos arrays, entonces si el CSV no trae nada (o si
         // el lookup falla en tiempo de ejecución) y mandamos [], SH borra los existentes.
@@ -5074,6 +5089,8 @@ const BulkUpload = (() => {
             const sid = ls.specBySpecId?.id; if (!sid) continue;
             if (ls.archivedAt) { archivedSpecLinkBySpecId.set(sid, ls.id); continue; }
             alreadyLinkedSpecIds.add(sid);
+            activeSpecLinkBySpecId.set(sid, ls.id);
+            if (ls.specBySpecId?.name) activeSpecNameBySpecId.set(sid, ls.specBySpecId.name);
           }
           for (const ln of (existingPnNode.partNumberLabelsByPartNumberId?.nodes || [])) {
             if (ln.archivedAt) continue;
@@ -5677,20 +5694,44 @@ const BulkUpload = (() => {
             partNumberSpecsToArchive: [], specFieldParamUpdates: [],
             glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
           };
+          const _norm = (s) => String(s || '').trim().toUpperCase();
           for (const cx of conflictingExtras) {
+            // 1.5.22: resolución de colisión contra un claimer YA LINKEADO activo.
+            //   - mismo nombre (mismo acabado / dup de catálogo) → ya presente: se OMITE (sin error).
+            //   - nombre distinto (cambio real) → se ARCHIVA el claimer y se aplica la nueva (reemplazo).
+            //   - claimer 'csv' (dos specs del propio CSV reclaman el campo) → NO se auto-resuelve;
+            //     el error queda visible (es un problema de datos en el CSV).
+            let archiveClaimerLinkId = null;
+            if (cx.claimerKind === 'linked' && cx.claimerSpecId != null) {
+              const claimerName = activeSpecNameBySpecId.get(cx.claimerSpecId) || '';
+              if (claimerName && _norm(claimerName) === _norm(cx.specName)) {
+                stats.specsCollisionSkipped = (stats.specsCollisionSkipped || 0) + 1;
+                log(`  -> "${pnInput.name}/${cx.specName}": campo "${cx.sfName}" ya ocupado por la MISMA spec — se omite (ya presente)`);
+                continue;
+              }
+              archiveClaimerLinkId = activeSpecLinkBySpecId.get(cx.claimerSpecId) || null;
+            }
             try {
               await withRetry(
                 () => api().query('SavePartNumber', {
                   input: [{
                     ...baseInput,
                     specsToApply: cx.unarchiveLinkId ? [] : [cx.entry],
-                    partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : []
+                    partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : [],
+                    // reemplazo: archiva al claimer linkeado para liberar el specField (mismo
+                    // mecanismo que el archive sentinel, que ya se sabe que SH acepta en un call).
+                    partNumberSpecsToArchive: archiveClaimerLinkId ? [archiveClaimerLinkId] : []
                   }]
                 }),
                 `SavePartNumber colisión "${pnInput.name}/${cx.specName}"`,
                 myRunId
               );
-              log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+              if (archiveClaimerLinkId) {
+                stats.specsCollisionReplaced = (stats.specsCollisionReplaced || 0) + 1;
+                log(`  -> "${pnInput.name}/${cx.specName}": reemplazó la spec vieja en "${cx.sfName}" (OK)`);
+              } else {
+                log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+              }
             } catch (eExtra) {
               if (isBail(eExtra)) throw eExtra;
               errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}" reclamado por ${cx.claimerKind === 'linked' ? 'spec ya linkeada' : 'otra spec del CSV'}): ${String(eExtra).substring(0, 120)}`);
