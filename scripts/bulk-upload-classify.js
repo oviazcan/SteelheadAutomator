@@ -133,16 +133,23 @@
       if (sd !== 0) return sd;
       const id = ibmsRank(a) - ibmsRank(b);
       if (id !== 0) return id;
+      // 1.5.21: a igualdad de score+ibms, preferir activos sobre archivados. El PN
+      // vivo es el target natural; un archivado solo gana si matchea estrictamente
+      // mejor (más score). Así se matchea el archivado para no duplicar, sin pisar
+      // al activo cuando ambos coinciden por nombre.
+      const ad = (a.archivedAt ? 1 : 0) - (b.archivedAt ? 1 : 0);
+      if (ad !== 0) return ad;
       return (a.id || 0) - (b.id || 0);
     });
   }
 
   function classifyOnePN(csvRow, pnsForCustomer, nonFinishList, equivIndex) {
     const allPns = pnsForCustomer || [];
-    // 1.2.12: Pases 1 y 2 ven archivados también (auto-desarchiva en STEP 8 vía
-    // pnsToUnarchive cuando status='existing'). Pase 3 sigue limitado a activos
-    // para no ensuciar el dropdown de candidatos near-match con históricos.
-    const activePns = allPns.filter(p => !p.archivedAt);
+    // 1.2.12 + 1.5.21: TODOS los pases (incluido el match por nombre) ven archivados,
+    // para NO duplicar PNs que están archivados en Steelhead. Un archivado matcheado se
+    // devuelve como MODIFY con wasArchived=true; STEP 8 decide su estado final según el
+    // Estatus tri-state (V re-archiva, F reactiva, blanco preserva). rankCandidates
+    // prefiere activos a igualdad de score, así que el archivado solo gana si matchea mejor.
     const csvIbms = csvRow.quoteIBMS || '';
     const csvCompositeKey = buildCompositeKey(csvRow, nonFinishList, equivIndex);
 
@@ -233,7 +240,7 @@
     // En los 3 casos el dropdown del panel muestra TODOS los candidatos por nombre
     // (1.2.8) para que el operador pueda override.
     const nameUpper = (csvRow.name || '').toUpperCase();
-    const nameCandidates = activePns.filter(p => (p.name || '').toUpperCase() === nameUpper);
+    const nameCandidates = allPns.filter(p => (p.name || '').toUpperCase() === nameUpper);
     if (nameCandidates.length > 0) {
       const ranked = rankCandidates(csvRow, nameCandidates, nonFinishList, equivIndex);
       // 1.4.3: comparación canonical para que "Estaño" vs "Estaño s/Cobre" o
@@ -254,7 +261,7 @@
             pase: 3,
             confidence: 'name+blank-csv-recent',
             targetPnId: decision.targetPnId,
-            wasArchived: false,
+            wasArchived: !!(nameCandidates.find(p => p.id === decision.targetPnId) || {}).archivedAt,
             candidates: ranked,
             autoDecided: decision.autoDecided,
           };
@@ -268,7 +275,7 @@
           pase: 3,
           confidence: 'name+labels-match',
           targetPnId: ranked[0].id,
-          wasArchived: false,
+          wasArchived: !!ranked[0].archivedAt,
           candidates: ranked,
         };
       }
@@ -280,7 +287,7 @@
           pase: 3,
           confidence: 'name+blank-candidate',
           targetPnId: blankCandidate.id,
-          wasArchived: false,
+          wasArchived: !!blankCandidate.archivedAt,
           candidates: ranked,
         };
       }
