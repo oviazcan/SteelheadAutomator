@@ -32,7 +32,10 @@
   // En bulk-upload.js se llamaban g/gn; aquí cell/cellNum (nombres explícitos).
   const cell = (row, i) => {
     const v = (row[i] || '').trim().replace(/\s+/g, ' ');
-    if (v === '(seleccione)' || v === '(seleccione o escriba)') return '';
+    // 1.5.23: normaliza acentos + mayúsculas — el v10 usa "(seleccione ó escriba)" (ó acentuada),
+    // que antes se colaba como valor real. Espeja el `g` local de bulk-upload.js parseRows.
+    const ph = v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    if (ph === '(seleccione)' || ph === '(seleccione o escriba)') return '';
     return v;
   };
   const cellNum = (row, i) => { const v = parseFloat(cell(row, i)); return isNaN(v) ? null : v; };

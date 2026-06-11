@@ -31,6 +31,9 @@ test('cell: trim, colapsa espacios internos, (seleccione) -> vacío', () => {
   assert.strictEqual(P.cell(['  a   b  '], 0), 'a b');
   assert.strictEqual(P.cell(['(seleccione)'], 0), '');
   assert.strictEqual(P.cell(['(seleccione o escriba)'], 0), '');
+  assert.strictEqual(P.cell(['(seleccione ó escriba)'], 0), ''); // 1.5.23: ó acentuada (v10)
+  assert.strictEqual(P.cell(['(SELECCIONE)'], 0), '');            // 1.5.23: case-insensitive
+  assert.strictEqual(P.cell(['Grupo Real'], 0), 'Grupo Real');   // valor real no se toca
   assert.strictEqual(P.cell([], 0), '');
   assert.strictEqual(P.cell([undefined], 0), '');
   assert.strictEqual(P.cell(['  -  '], 0), '-'); // dash sobrevive al trim (lo resuelve resolveStr)

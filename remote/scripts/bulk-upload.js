@@ -203,7 +203,12 @@ const BulkUpload = (() => {
   //     - nombre distinto (cambio real) → archiva el claimer y aplica la nueva (reemplazo,
   //       mismo mecanismo que el archive sentinel que SH ya acepta en un solo call).
   //   Colisiones CSV-vs-CSV ('csv') siguen como error visible (dato malo del CSV).
-  const VERSION = '1.5.22';
+  // VERSION 1.5.23 (2026-06-11): filtro de placeholder de dropdown robusto a acentos/caso.
+  //   El v10 usa "(seleccione ó escriba)" con ó ACENTUADA; el filtro solo cubría la "o"
+  //   simple → se colaba como valor real (iba a crear un "grupo de PN" llamado así).
+  //   Ahora `g`/`cell` normalizan NFD + lowercase antes de comparar. (Misma fix en ambas
+  //   copias: el `g` local de parseRows y el `cell` puro del módulo.)
+  const VERSION = '1.5.23';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -1090,8 +1095,12 @@ const BulkUpload = (() => {
   const isoDate = (d) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString(); };
   const g = (row, i) => {
     const v = (row[i] || '').trim().replace(/\s+/g, ' ');
-    // V10: dropdowns prepend "(seleccione)" / "(seleccione o escriba)" — tratarlos como vacío
-    if (v === '(seleccione)' || v === '(seleccione o escriba)') return '';
+    // Dropdowns prepend placeholders ("(seleccione)" / "(seleccione o escriba)") → vacío.
+    // 1.5.23: normaliza acentos + mayúsculas para cubrir variantes del template. El v10 usa
+    // "(seleccione ó escriba)" con ó ACENTUADA — antes se colaba como valor real (p.ej. iba a
+    // crear un "grupo de PN" llamado "(seleccione ó escriba)").
+    const ph = v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    if (ph === '(seleccione)' || ph === '(seleccione o escriba)') return '';
     return v;
   };
   const gn = (row, i) => { const v = parseFloat(g(row, i)); return isNaN(v) ? null : v; };
