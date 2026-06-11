@@ -1,6 +1,6 @@
 {
-  "version": "1.6.57",
-  "lastUpdated": "2026-06-11T16:30",
+  "version": "1.6.58",
+  "lastUpdated": "2026-06-11T16:44",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -180,6 +180,7 @@
       "inputSchemaId_Bill": 27,
       "stagesRevisionId": 306,
       "ganadaStageId": 1212,
+      "revertStageId": 1208,
       "geometryGenericaId": 831,
       "validacionProcessNodeIds": [231176, 231174],
       "unitIds": {
@@ -786,7 +787,7 @@
     "CreateQuote": { "type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva" },
     "UpdateQuote": { "type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva" },
     "SaveQuoteLines": { "type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva" },
-    "CreateQuoteStageChange": { "type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload la mueve a 'Ganada' (DOMAIN.ganadaStageId) al terminar la carga. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva" },
+    "CreateQuoteStageChange": { "type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva" },
     "SaveManyPartNumberPrices": { "type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva" },
     "SavePartNumber": { "type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva" },
     "SavePartNumberRackTypes": { "type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva" },
