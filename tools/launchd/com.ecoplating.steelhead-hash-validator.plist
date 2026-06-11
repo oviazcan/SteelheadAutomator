@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ecoplating.steelhead-hash-validator</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/run-hash-validation.sh</string>
+    </array>
+
+    <!-- Diario a las 09:17. Sin Weekday = todos los días. Si la Mac está dormida
+         o apagada a esa hora, launchd corre el job en cuanto despierta. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>17</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/launchd.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Evitar que macOS mate el job por throttling en background. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
