@@ -56,6 +56,17 @@ const CatalogFetcher = (() => {
     return { entries, truncated };
   };
 
+  // Separa una entry "specName | a | b | …" en { specName, paramName } preservando
+  // TODOS los segmentos del param tras el primer ' | ' (con sus pipes internos). El
+  // VBA RefrescarListas reconstruye `specName & " | " & paramName`, así que el param
+  // combinado (temp|tiempo) llega íntegro al dropdown. paramName=null si no hay pipe.
+  const splitSpecEntry = (s) => {
+    const str = s || '';
+    const idx = str.indexOf(' | ');
+    if (idx < 0) return { specName: str, paramName: null };
+    return { specName: str.slice(0, idx), paramName: str.slice(idx + 3) };
+  };
+
   // ═══════════════════════════════════════════
   // FETCH CATALOGS FROM API
   // ═══════════════════════════════════════════
@@ -462,8 +473,13 @@ const CatalogFetcher = (() => {
     // Especificaciones sheet: col3=specName, col17=fieldName, col22=paramName
     const specRows = [['', '', 'SpecName', '', '', '', '', '', '', '', '', '', '', '', '', '', 'FieldName', '', '', '', '', 'ParamName']];
     for (const s of catalogs.specs) {
-      if (s.includes(' | ')) {
-        const [specName, paramName] = s.split(' | ');
+      // El param puede traer VARIOS segmentos (espesor/temp/tiempo combinados, p.ej.
+      // "177 - 205 °C | >= 3 hrs."). splitSpecEntry preserva TODO tras el primer ' | '
+      // (antes un destructuring tiraba el 3er segmento → perdía el tiempo → el VBA
+      // dedupeaba las filas idénticas a una sola). fieldName="espesor" es la etiqueta
+      // que RefrescarListas busca para reconstruir el dropdown (no es el field real).
+      const { specName, paramName } = splitSpecEntry(s);
+      if (paramName !== null) {
         specRows.push(['', '', specName, '', '', '', '', '', '', '', '', '', '', '', '', '', 'espesor', '', '', '', '', paramName]);
       } else {
         specRows.push(['', '', s]);
@@ -617,7 +633,7 @@ const CatalogFetcher = (() => {
     return counts;
   }
 
-  return { fetchAll, generateCatalogsFile, _comboFieldRank: comboFieldRank, _buildSpecComboEntries: buildSpecComboEntries };
+  return { fetchAll, generateCatalogsFile, _comboFieldRank: comboFieldRank, _buildSpecComboEntries: buildSpecComboEntries, _splitSpecEntry: splitSpecEntry };
 })();
 
 if (typeof window !== 'undefined') window.CatalogFetcher = CatalogFetcher;

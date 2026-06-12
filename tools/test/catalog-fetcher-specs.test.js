@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { _comboFieldRank: rank, _buildSpecComboEntries: build } = require('../../remote/scripts/catalog-fetcher.js');
+const { _comboFieldRank: rank, _buildSpecComboEntries: build, _splitSpecEntry: split } = require('../../remote/scripts/catalog-fetcher.js');
 
 // Helper para construir un spec field como lo devuelve SpecFieldsAndOptions.
 const field = (name, params, fieldType) => ({
@@ -75,4 +75,35 @@ test('tope COMBO_CAP marca truncated', () => {
   const { entries, truncated } = build('SP', fields, 500);
   assert.equal(truncated, true);
   assert.ok(entries.length <= 500);
+});
+
+// Bug real (catálogo 2026-06-12): la hoja Especificaciones destructuraba
+// `[specName, paramName] = s.split(' | ')` → tiraba el 3er segmento (tiempo). Las 3
+// filas de Deshidrogenado quedaban idénticas y el VBA dedupeaba a 1. splitSpecEntry
+// preserva TODO tras el primer ' | '.
+test('splitSpecEntry preserva todos los segmentos del param (no pierde el tiempo)', () => {
+  assert.deepEqual(
+    split('48053-001-01 (Deshidrogenado) | 177 - 205 °C | >= 3 hrs.'),
+    { specName: '48053-001-01 (Deshidrogenado)', paramName: '177 - 205 °C | >= 3 hrs.' });
+});
+
+test('splitSpecEntry: espesor simple (1 segmento) sigue bien', () => {
+  assert.deepEqual(split('NIQUEL | 5 - 8'), { specName: 'NIQUEL', paramName: '5 - 8' });
+});
+
+test('splitSpecEntry: spec bare (sin pipe) → paramName null', () => {
+  assert.deepEqual(split('SPEC-X'), { specName: 'SPEC-X', paramName: null });
+});
+
+test('las 3 entries de Deshidrogenado producen 3 paramName distintos (dropdown no colapsa)', () => {
+  const fields = [
+    field('Temperatura', ['177 - 205 °C'], 'NUMBER'),
+    field('Duración Horneado', ['>= 3 hrs.', '>= 2 hrs.', '>= 1 hrs.'], 'TIMER'),
+  ];
+  const { entries } = build('48053-001-01 (Deshidrogenado)', fields);
+  const dropdown = new Set(entries.map(s => {
+    const { specName, paramName } = split(s);
+    return `${specName} | ${paramName}`; // como reconstruye el VBA
+  }));
+  assert.equal(dropdown.size, 3); // antes del fix: 1 (todas iguales tras perder el tiempo)
 });
