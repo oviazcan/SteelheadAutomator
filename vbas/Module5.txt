@@ -1,11 +1,13 @@
-' === MACRO: LimpiarDatos (v15 — layout v12) ===
+' === MACRO: LimpiarDatos (v16 — layout v12) ===
 ' Borra datos de zona de datos (filas 9+) y restaura defaults / placeholders.
 ' Preserva fórmulas (HasFormula skip → Planta Schneider, Proceso, Esp.Spec, Longitud, predictivos).
 '
-' V15 (2026-06-11): dos ajustes solicitados:
-'   - Cantidad (col 9 = I): default = 1 constante (antes se borraba y quedaba vacía).
-'   - Grupo (col 8 = H): placeholder dropdown PURO "(seleccione)" (antes no se restauraba;
-'     debe ser "(seleccione)", NO "(seleccione o escriba)"). Agregado a phCols.
+' V16 (2026-06-11): swap correcto de placeholders Cliente/Grupo:
+'   - Cliente (col 4 = D): dropdown PURO "(seleccione)".
+'   - Grupo (col 8 = H): híbrido "(seleccione o escriba)".
+'   (v15 los tenía invertidos.)
+'
+' V15 (2026-06-11): Cantidad (col 9 = I): default = 1 constante (antes quedaba vacía).
 '
 ' V14 (2026-06-11): adaptado al layout v12 (60 cols A..BH). Cambios de fondo vs v11:
 '   - El modelo de PARÁMETROS cambió: v11 tenía 4 cols V/F (Archivado/Validación/Forzar/Archivar);
@@ -15,15 +17,15 @@
 '   - boolCols = (13) solo Precio default. Default "V".
 '   - Defaults especiales: Estatus(1)="Activo con validación", Forzar(2)="Sin forzar duplicado",
 '     Divisa(12)="USD", Cantidad(9)=1.
-'   - phCols (dropdown puro → "(seleccione)"): 8,11,14,16,17,18,19,22,23,25,27,29,35,37.
-'   - phHybridCols ("(seleccione o escriba)"): 4 Cliente, 15 Metal base, 39 Tipo de Geometría.
+'   - phCols (dropdown puro → "(seleccione)"): 4,11,14,16,17,18,19,22,23,25,27,29,35,37.
+'   - phHybridCols ("(seleccione o escriba)"): 8 Grupo, 15 Metal base, 39 Tipo de Geometría.
 '   - Proceso ahora en col 21 (U) (antes 23/W). La fórmula se restaura copiando desde U<lastRow>.
 '
 ' V12 LAYOUT (60 columnas, A..BH; tipo entre paréntesis):
 '   1=A  Estatus (Combo)          2=B  Forzar duplicado (Combo)
-'   3=C  Id SH (Texto)            4=D  Cliente (Combo híbrido)
+'   3=C  Id SH (Texto)            4=D  Cliente (Drop → "(seleccione)")
 '   5=E  Número de parte (Texto)  6=F  Descripción (Texto)
-'   7=G  PN alterno (Texto)       8=H  Grupo (Drop → "(seleccione)")
+'   7=G  PN alterno (Texto)       8=H  Grupo (Híbrido → "(seleccione o escriba)")
 '   9=I  Cantidad (# = 1)        10=J  Precio ($)
 '  11=K  Unidad precio (Drop)    12=L  Divisa (Drop, USD)
 '  13=M  Precio default (V/F)    14=N  Línea (Drop)
@@ -102,13 +104,13 @@ NextCell:
     phHybrid = "(seleccione o escriba)"
 
     ' Dropdown puro → "(seleccione)":
-    '   8 Grupo | 11 Unid Precio | 14 Línea | 16-19 Etiq1-4 | 22 Productos
+    '   4 Cliente | 11 Unid Precio | 14 Línea | 16-19 Etiq1-4 | 22 Productos
     '   23 Spec1 | 25 Spec2 | 27 Spec3 | 29 Spec4 | 35 Rack Línea | 37 Rack Sec
     Dim phCols As Variant
-    phCols = Array(8, 11, 14, 16, 17, 18, 19, 22, 23, 25, 27, 29, 35, 37)
-    ' Híbridas → "(seleccione o escriba)": 4 Cliente | 15 Metal base | 39 Tipo de Geometría
+    phCols = Array(4, 11, 14, 16, 17, 18, 19, 22, 23, 25, 27, 29, 35, 37)
+    ' Híbridas → "(seleccione o escriba)": 8 Grupo | 15 Metal base | 39 Tipo de Geometría
     Dim phHybridCols As Variant
-    phHybridCols = Array(4, 15, 39)
+    phHybridCols = Array(8, 15, 39)
 
     Dim phc As Variant
     For r = 9 To lastRow
@@ -152,7 +154,7 @@ NextCell:
     MsgBox cleaned & " celdas procesadas." & vbCrLf & _
         "Estatus=Activo con validaci" & ChrW(243) & "n, Forzar=Sin forzar duplicado." & vbCrLf & _
         "Precio Default = V. Divisa = USD. Cantidad = 1." & vbCrLf & _
-        "Placeholders restaurados en dropdowns (Grupo = (seleccione))." & vbCrLf & _
+        "Placeholders restaurados (Cliente=(seleccione), Grupo=(seleccione o escriba))." & vbCrLf & _
         "F" & ChrW(243) & "rmula de Proceso (col U) restaurada." & vbCrLf & _
         "Plantilla lista para nueva carga.", vbInformation, "LimpiarDatos"
 End Sub
