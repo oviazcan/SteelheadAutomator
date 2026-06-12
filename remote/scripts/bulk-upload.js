@@ -1201,6 +1201,26 @@ const BulkUpload = (() => {
     // BB=53 Departamento | BC=54 Codigo SAT
     // BD-BL=55-63 Predictivos | BM=64 QuoteIBMS | BN=65 EstacionIBMS | BO=66 Plano
     // BP=67 PiezasCarga | BQ=68 CargasHora | BR=69 TiempoEntrega | BS=70 Notas adicionales
+    //
+    // V12 column indices (0-indexed, 73 cols) — ESTAS SON LAS POSICIONES DEL CSV
+    // CANÓNICO que emite ExportarCSV v15, NO las visuales de la plantilla v12. El VBA
+    // expande Estatus→[Archivado,Validacion], Forzar dup→[Forzar,Archivar], Productos→3
+    // grupos, y OMITE Departamento/SAT (el parser los pone por default). Diferencia vs
+    // v11: v12 trae 4 specs (no 2), lo que corre +4 todo lo posterior a las specs.
+    // A=0 Archivado | B=1 Validacion | C=2 Forzar | D=3 Archivar
+    // E=4 Id SH | F=5 Cliente | G=6 PN | H=7 Descripcion | I=8 PN alterno | J=9 Grupo
+    // K=10 Cantidad | L=11 Precio | M=12 Unidad precio | N=13 Divisa | O=14 Precio default
+    // P=15 Linea | Q=16 Metal base
+    // R=17 Etq1 | S=18 Etq2 | T=19 Etq3 | U=20 Etq4 | V=21 Planta Schneider (Etq5)
+    // W=22 Proceso | 23 Prod1 | 24 Pre1 | 25 Cnt1 | 26 Uni1
+    // 27 Prod2 | 28 Pre2 | 29 Cnt2 | 30 Uni2 | 31 Prod3 | 32 Pre3 | 33 Cnt3 | 34 Uni3
+    // 35 Spec1 | 36 Esp1 | 37 Spec2 | 38 Esp2 | 39 Spec3 | 40 Esp3 | 41 Spec4 | 42 Esp4
+    // 43 KGM | 44 CMK | 45 LM | 46 MinPzasLote
+    // 47 Rack Linea | 48 Pzas R.L. | 49 Rack Sec | 50 Pzas R.S.
+    // 51 Tipo Geometria | 52 Long | 53 Ancho | 54 Alto | 55 D.Ext | 56 D.Int
+    // (SIN Departamento/SAT)
+    // 57-65 Predictivos | 66 Notas adicionales | 67 QuoteIBMS | 68 EstIBMS | 69 Plano
+    // 70 PiezasCarga | 71 CargasHora | 72 TiempoEntrega
 
     // === v10 (legacy, 69 cols A..BQ) ===
     const V10_COLS = {
@@ -1269,18 +1289,60 @@ const BulkUpload = (() => {
       piezasCarga: 68, cargasHora: 69, tiempoEntrega: 70,
     };
 
+    // === v12 (73 cols CSV canónico; 4 specs; sin Departamento/SAT) ===
+    // El VBA ExportarCSV v15 emite el MISMO canon que v11 (Archivado en A, Id SH en E)
+    // pero con 4 specs en vez de 2 → todo lo posterior a specs corre +4. Departamento y
+    // SAT NO se exportan (el parser inyecta defaults aguas abajo).
+    const V12_COLS = {
+      archivado: 0, validacion: 1, forzar: 2, archivar: 3,
+      idSh: 4,
+      cliente: 5, pn: 6, descripcion: 7, pnAlterno: 8, pnGroup: 9,
+      qty: 10, precio: 11, unidadPrecio: 12, divisa: 13, precioDefault: 14,
+      linea: 15,
+      metalBase: 16,
+      labels: [17, 18, 19, 20, 21],           // Etq1-4 + Planta Schneider
+      proceso: 22,
+      prods: [[23, 24, 25, 26], [27, 28, 29, 30], [31, 32, 33, 34]],
+      specs: [[35, 36], [37, 38], [39, 40], [41, 42]],   // 4 specs (vs 2 en v11)
+      kgm: 43, cmk: 44, lm: 45, minPzasLote: 46,
+      rackLinea: [47, 48], rackSec: [49, 50],
+      tipoGeometria: 51,
+      dims: { length: 52, width: 53, height: 54, outerDiam: 55, innerDiam: 56 },
+      departamento: -1,    // no se exporta en v12 → default aguas abajo
+      codigoSAT: -1,       // no se exporta en v12 → default aguas abajo
+      predictives: [        // 57..65, mismos 9 materiales/orden que v10/v11
+        { col: 57, name: 'Plata' },
+        { col: 58, name: 'Estano' },
+        { col: 59, name: 'Niquel' },
+        { col: 60, name: 'Zinc' },
+        { col: 61, name: 'Cobre' },
+        { col: 62, name: 'Antitarnish' },
+        { col: 63, name: 'Epox. MT' },
+        { col: 64, name: 'Epox. BT' },
+        { col: 65, name: 'Epox. MTR' },
+      ],
+      notas: 66,
+      quoteIBMS: 67, estacionIBMS: 68, plano: 69,
+      piezasCarga: 70, cargasHora: 71, tiempoEntrega: 72,
+    };
+
     // Detectar esquema leyendo la row de headers (col A = "Archivado"), col E.
     // Se hace en un primer pass sobre las primeras 15 filas antes de procesar datos.
+    // v10: E="Cliente" | v11/v12: E="Id SH". v11 vs v12 se discrimina por nº de specs:
+    // v12 emite headers "Spec 1".."Spec 4" (≥3); v11 solo "Spec 1"/"Spec 2".
+    const countSpecHeaders = (row) =>
+      (row || []).filter(h => /^spec\s*\d+$/i.test((h || '').trim())).length;
     let COLS = V11_COLS; // default
     let schemaVersion = 'v11';
     for (let r = 0; r < Math.min(rows.length, 15); r++) {
       const rowA = (rows[r][0] || '').trim();
       if (rowA === 'Archivado') {
         const rowE = (rows[r][4] || '').trim();
-        if (rowE === 'Id SH') {
-          COLS = V11_COLS; schemaVersion = 'v11';
-        } else if (rowE === 'Cliente') {
+        if (rowE === 'Cliente') {
           COLS = V10_COLS; schemaVersion = 'v10';
+        } else if (rowE === 'Id SH') {
+          if (countSpecHeaders(rows[r]) >= 3) { COLS = V12_COLS; schemaVersion = 'v12'; }
+          else { COLS = V11_COLS; schemaVersion = 'v11'; }
         } else {
           warn('parseRows: schema indeterminado (col E de la fila Archivado no es "Id SH" ni "Cliente"), asumiendo v11');
           COLS = V11_COLS; schemaVersion = 'v11';
