@@ -1,9 +1,9 @@
 ' === MACRO: SombrearModoSoloPN (v13 — layout v12) ===
 ' Sombrea en gris las columnas que NO aplican según el modo.
-' Se ejecuta automáticamente al cambiar A1 (Modo).
+' Se ejecuta automáticamente al cambiar H1 (Modo).
 '
 ' V13 (2026-06-11): adaptado al layout v12 (60 cols visibles A..BH).
-'   - Modo en A1 (antes H1 en v11). A2:H2 = título merged.
+'   - Modo en H1 (igual que v11; NO se movió). A2:H2 = título merged; A1 vacío.
 '   - Header de cotización: A3:M4 (la metadata llega a M por el merge J3:M4 de
 '     Notas Internas; Q3:S4 es el helper "Combinación no existente", NO se sombrea).
 '   - Nombre Cotización/Layout (quoteName) en F3 → permanece vivo en SOLO_PN.
@@ -18,9 +18,9 @@ Sub SombrearModoSoloPN()
     Dim wsUp As Worksheet
     Set wsUp = ThisWorkbook.Sheets("Upload")
 
-    ' V12: el modo está en A1
+    ' V12: el modo está en H1 (como v11)
     Dim modo As String
-    modo = UCase(Trim(wsUp.Range("A1").Value))
+    modo = UCase(Trim(wsUp.Range("H1").Value))
 
     Dim grisClaro As Long
     grisClaro = RGB(125, 125, 125)

@@ -2,7 +2,7 @@
 ' Pegar en Alt+F11 → "Hoja(Upload)" (no en un módulo). Contiene DOS handlers de evento.
 '
 ' V12 (2026-06-11): layout v12 (60 cols A..BH).
-'   - Worksheet_Change: Modo se movió a A1 (antes H1) → dispara SombrearModoSoloPN.
+'   - Worksheet_Change: Modo en H1 (igual que v11; A1 está vacío) → dispara SombrearModoSoloPN.
 '   - Worksheet_SelectionChange (feeder de catálogos): columnas re-mapeadas a v12:
 '       Proceso col 21 (U)        — antes 23 (W)  → alimenta CAT_Procesos!I2
 '       Spec 1-4 cols 23,25,27,29 — antes 36,38   → alimentan CAT_Specs!D2
@@ -10,7 +10,7 @@
 ' V11: Modo H1; feeder Proceso=23, Specs=36/38.
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    If Not Intersect(Target, Me.Range("A1")) Is Nothing Then
+    If Not Intersect(Target, Me.Range("H1")) Is Nothing Then
         SombrearModoSoloPN
     End If
 End Sub
