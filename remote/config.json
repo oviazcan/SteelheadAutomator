@@ -175,6 +175,7 @@
     "domain": {
       "id": 344,
       "dimensionIds": { "linea": 349, "departamento": 586 },
+      "billingDefaults": { "departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado" },
       "inputSchemaId_PN": 3932,
       "inputSchemaId_Quote": 659,
       "inputSchemaId_Bill": 27,
