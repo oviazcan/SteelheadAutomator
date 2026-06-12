@@ -286,7 +286,8 @@ def main():
                 affected.append({"id": n["id"], "name": n.get("name"), "schema": n.get("inputSchemaId"), "cargas": val})
         offset += len(ns)
         sys.stderr.write(f"\r  barridos {total}, afectados {len(affected)}…"); sys.stderr.flush()
-        if args.limit and total >= args.limit:
+        if args.limit and len(affected) >= args.limit:   # --limit topa AFECTADOS a aplicar
+            affected = affected[:args.limit]
             break
         if len(ns) < PAGE:
             break
