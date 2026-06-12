@@ -1,12 +1,13 @@
-' Código de la hoja Upload (v11)
+' Código de la hoja Upload (v12)
 ' Pegar en Alt+F11 → "Hoja(Upload)" (no en un módulo)
-' Dispara SombrearModoSoloPN automáticamente al cambiar H1 (la celda Modo)
+' Dispara SombrearModoSoloPN automáticamente al cambiar A1 (la celda Modo)
 '
-' V11 (2026-05-27): Modo se movió de G1 a H1 (alineación spreadsheet layout v11)
+' V12 (2026-06-11): Modo se movió a A1 (layout v12, 60 cols visibles). A2:H2 = título merged.
+' V11 (2026-05-27): Modo en H1.
 ' V10: escuchaba G1.
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    If Not Intersect(Target, Me.Range("H1")) Is Nothing Then
+    If Not Intersect(Target, Me.Range("A1")) Is Nothing Then
         SombrearModoSoloPN
     End If
 End Sub
