@@ -1,6 +1,6 @@
 {
-  "version": "1.6.58",
-  "lastUpdated": "2026-06-11T16:44",
+  "version": "1.6.59",
+  "lastUpdated": "2026-06-11T23:41",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -175,6 +175,7 @@
     "domain": {
       "id": 344,
       "dimensionIds": { "linea": 349, "departamento": 586 },
+      "billingDefaults": { "departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado" },
       "inputSchemaId_PN": 3932,
       "inputSchemaId_Quote": 659,
       "inputSchemaId_Bill": 27,

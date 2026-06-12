@@ -241,7 +241,7 @@ const BulkUpload = (() => {
   if (!Parse || !Classify) {
     console.error('[bulk-upload] FALTA bulk-upload-parse.js / bulk-upload-classify.js en el array scripts de config.json');
   }
-  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions } = Parse || {};
+  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections } = Parse || {};
   const {
     normLabel, isNonFinishLabel, buildEquivIndex, equivGroup, equivalentValues,
     acabadosOrdenados, acabadosCanonicos, metalCanonico, buildCompositeKey,
@@ -1201,6 +1201,26 @@ const BulkUpload = (() => {
     // BB=53 Departamento | BC=54 Codigo SAT
     // BD-BL=55-63 Predictivos | BM=64 QuoteIBMS | BN=65 EstacionIBMS | BO=66 Plano
     // BP=67 PiezasCarga | BQ=68 CargasHora | BR=69 TiempoEntrega | BS=70 Notas adicionales
+    //
+    // V12 column indices (0-indexed, 73 cols) — ESTAS SON LAS POSICIONES DEL CSV
+    // CANÓNICO que emite ExportarCSV v15, NO las visuales de la plantilla v12. El VBA
+    // expande Estatus→[Archivado,Validacion], Forzar dup→[Forzar,Archivar], Productos→3
+    // grupos, y OMITE Departamento/SAT (el parser los pone por default). Diferencia vs
+    // v11: v12 trae 4 specs (no 2), lo que corre +4 todo lo posterior a las specs.
+    // A=0 Archivado | B=1 Validacion | C=2 Forzar | D=3 Archivar
+    // E=4 Id SH | F=5 Cliente | G=6 PN | H=7 Descripcion | I=8 PN alterno | J=9 Grupo
+    // K=10 Cantidad | L=11 Precio | M=12 Unidad precio | N=13 Divisa | O=14 Precio default
+    // P=15 Linea | Q=16 Metal base
+    // R=17 Etq1 | S=18 Etq2 | T=19 Etq3 | U=20 Etq4 | V=21 Planta Schneider (Etq5)
+    // W=22 Proceso | 23 Prod1 | 24 Pre1 | 25 Cnt1 | 26 Uni1
+    // 27 Prod2 | 28 Pre2 | 29 Cnt2 | 30 Uni2 | 31 Prod3 | 32 Pre3 | 33 Cnt3 | 34 Uni3
+    // 35 Spec1 | 36 Esp1 | 37 Spec2 | 38 Esp2 | 39 Spec3 | 40 Esp3 | 41 Spec4 | 42 Esp4
+    // 43 KGM | 44 CMK | 45 LM | 46 MinPzasLote
+    // 47 Rack Linea | 48 Pzas R.L. | 49 Rack Sec | 50 Pzas R.S.
+    // 51 Tipo Geometria | 52 Long | 53 Ancho | 54 Alto | 55 D.Ext | 56 D.Int
+    // (SIN Departamento/SAT)
+    // 57-65 Predictivos | 66 Notas adicionales | 67 QuoteIBMS | 68 EstIBMS | 69 Plano
+    // 70 PiezasCarga | 71 CargasHora | 72 TiempoEntrega
 
     // === v10 (legacy, 69 cols A..BQ) ===
     const V10_COLS = {
@@ -1269,18 +1289,60 @@ const BulkUpload = (() => {
       piezasCarga: 68, cargasHora: 69, tiempoEntrega: 70,
     };
 
+    // === v12 (73 cols CSV canónico; 4 specs; sin Departamento/SAT) ===
+    // El VBA ExportarCSV v15 emite el MISMO canon que v11 (Archivado en A, Id SH en E)
+    // pero con 4 specs en vez de 2 → todo lo posterior a specs corre +4. Departamento y
+    // SAT NO se exportan (el parser inyecta defaults aguas abajo).
+    const V12_COLS = {
+      archivado: 0, validacion: 1, forzar: 2, archivar: 3,
+      idSh: 4,
+      cliente: 5, pn: 6, descripcion: 7, pnAlterno: 8, pnGroup: 9,
+      qty: 10, precio: 11, unidadPrecio: 12, divisa: 13, precioDefault: 14,
+      linea: 15,
+      metalBase: 16,
+      labels: [17, 18, 19, 20, 21],           // Etq1-4 + Planta Schneider
+      proceso: 22,
+      prods: [[23, 24, 25, 26], [27, 28, 29, 30], [31, 32, 33, 34]],
+      specs: [[35, 36], [37, 38], [39, 40], [41, 42]],   // 4 specs (vs 2 en v11)
+      kgm: 43, cmk: 44, lm: 45, minPzasLote: 46,
+      rackLinea: [47, 48], rackSec: [49, 50],
+      tipoGeometria: 51,
+      dims: { length: 52, width: 53, height: 54, outerDiam: 55, innerDiam: 56 },
+      departamento: -1,    // no se exporta en v12 → default aguas abajo
+      codigoSAT: -1,       // no se exporta en v12 → default aguas abajo
+      predictives: [        // 57..65, mismos 9 materiales/orden que v10/v11
+        { col: 57, name: 'Plata' },
+        { col: 58, name: 'Estano' },
+        { col: 59, name: 'Niquel' },
+        { col: 60, name: 'Zinc' },
+        { col: 61, name: 'Cobre' },
+        { col: 62, name: 'Antitarnish' },
+        { col: 63, name: 'Epox. MT' },
+        { col: 64, name: 'Epox. BT' },
+        { col: 65, name: 'Epox. MTR' },
+      ],
+      notas: 66,
+      quoteIBMS: 67, estacionIBMS: 68, plano: 69,
+      piezasCarga: 70, cargasHora: 71, tiempoEntrega: 72,
+    };
+
     // Detectar esquema leyendo la row de headers (col A = "Archivado"), col E.
     // Se hace en un primer pass sobre las primeras 15 filas antes de procesar datos.
+    // v10: E="Cliente" | v11/v12: E="Id SH". v11 vs v12 se discrimina por nº de specs:
+    // v12 emite headers "Spec 1".."Spec 4" (≥3); v11 solo "Spec 1"/"Spec 2".
+    const countSpecHeaders = (row) =>
+      (row || []).filter(h => /^spec\s*\d+$/i.test((h || '').trim())).length;
     let COLS = V11_COLS; // default
     let schemaVersion = 'v11';
     for (let r = 0; r < Math.min(rows.length, 15); r++) {
       const rowA = (rows[r][0] || '').trim();
       if (rowA === 'Archivado') {
         const rowE = (rows[r][4] || '').trim();
-        if (rowE === 'Id SH') {
-          COLS = V11_COLS; schemaVersion = 'v11';
-        } else if (rowE === 'Cliente') {
+        if (rowE === 'Cliente') {
           COLS = V10_COLS; schemaVersion = 'v10';
+        } else if (rowE === 'Id SH') {
+          if (countSpecHeaders(rows[r]) >= 3) { COLS = V12_COLS; schemaVersion = 'v12'; }
+          else { COLS = V11_COLS; schemaVersion = 'v11'; }
         } else {
           warn('parseRows: schema indeterminado (col E de la fila Archivado no es "Id SH" ni "Cliente"), asumiendo v11');
           COLS = V11_COLS; schemaVersion = 'v11';
@@ -1495,7 +1557,7 @@ const BulkUpload = (() => {
   // buildDimensions, isDash, resolveStr, resolveNum extraídos a bulk-upload-parse.js (F1)
   // — vienen del destructuring de Parse al inicio del IIFE.
 
-  function mergeCustomInputs(existing, part) {
+  function mergeCustomInputs(existing, part, opts = {}) {
     const ci = existing ? JSON.parse(JSON.stringify(existing)) : {};
 
     // 1.2.12: el campo MontoMinimo se removió del esquema; borrar siempre del legacy.
@@ -1510,6 +1572,15 @@ const BulkUpload = (() => {
     if (part.codigoSAT) {
       if (!ci.DatosFacturacion) ci.DatosFacturacion = {};
       ci.DatosFacturacion.CodigoSAT = isDash(part.codigoSAT) ? '' : part.codigoSAT;
+    } else if (opts.defaultCodigoSAT && opts.applyDefault !== false) {
+      // v12: el SAT ya no viene en el CSV. Regla de negocio: default si el PN no tiene
+      // CodigoSAT; si ya tiene, respetar. applyDefault=false en existentes sin snapshot
+      // (no sobreescribir un valor que no pudimos leer en el prefetch).
+      const current = ci.DatosFacturacion?.CodigoSAT;
+      if (current == null || current === '') {
+        if (!ci.DatosFacturacion) ci.DatosFacturacion = {};
+        ci.DatosFacturacion.CodigoSAT = opts.defaultCodigoSAT;
+      }
     }
 
     // DatosAdicionalesNP
@@ -3731,6 +3802,10 @@ const BulkUpload = (() => {
 
       // Load dimension value maps (Línea/Departamento → ID)
       const dimValueMap = new Map(); // "valor" → id
+      // Sets de ids por TIPO de dimensión (para resolveDimSelections: clasificar las
+      // selecciones existentes del PN y recomponerlas sin que un eje borre al otro).
+      const lineaValueIdSet = new Set();
+      const deptoValueIdSet = new Set();
       const dimIds = DOMAIN.dimensionIds || {};
       // 1.4.12: feedback en panel (típicamente 3-5 dims, corto pero consistente).
       const dimEntries = Object.entries(dimIds);
@@ -3746,13 +3821,32 @@ const BulkUpload = (() => {
           try {
             const dd = await api().query('GetDimension', { id: dimId, includeArchived: 'NO' });
             const nodes = dd?.acctDimensionById?.acctDimensionCustomValuesByDimensionId?.nodes || [];
-            for (const n of nodes) { if (n.value && !n.archivedAt) dimValueMap.set(n.value.trim(), n.id); }
+            const k = String(dimKey).toLowerCase();
+            for (const n of nodes) {
+              if (n.value && !n.archivedAt) {
+                dimValueMap.set(n.value.trim(), n.id);
+                if (k === 'linea') lineaValueIdSet.add(n.id);
+                else if (k === 'departamento') deptoValueIdSet.add(n.id);
+              }
+            }
           } catch (_) {}
           dimDone++;
           setPanelProgress(dimDone, dimEntries.length);
         }
       }
       log(`  ${dimValueMap.size} dimensiones contables cargadas`);
+      // Default de Departamento (regla de negocio: PN sin departamento → este valor).
+      // Resuelve por NOMBRE desde config (robusto a rotación de ids); cae al id literal.
+      const billingDefaults = DOMAIN.billingDefaults || {};
+      let deptoDefaultId = null;
+      if (billingDefaults.departmentName && dimValueMap.has(billingDefaults.departmentName)) {
+        deptoDefaultId = dimValueMap.get(billingDefaults.departmentName);
+      } else if (billingDefaults.departmentValueId) {
+        deptoDefaultId = billingDefaults.departmentValueId;
+      }
+      if (!deptoDefaultId && (billingDefaults.departmentName || billingDefaults.departmentValueId)) {
+        warn(`Departamento default "${billingDefaults.departmentName}" no resuelto en catálogo de dimensiones — no se inyectará default`);
+      }
 
       // Group resolver
       async function resolveGroupId(name) {
@@ -5166,40 +5260,34 @@ const BulkUpload = (() => {
           }
         }
 
-        // 1.5.5 — Preserve-on-missing para campos que SH trata como REPLACE.
-        // Antes (≤1.5.4) tanto Call A como Call B mandaban labelIds y dimensionCustomValueIds
-        // calculados desde el CSV; si el CSV no traía esos campos, o el lookup contra los
-        // catálogos fallaba, se enviaba [] y SH borraba los valores existentes (bug
-        // confirmado en piloto string-only: PN 3028297 perdió Línea/Depto/Etiquetas).
-        // Ahora ambos calls usan estos *ToSend y caen al snapshot del PN existente cuando
-        // el CSV no tiene intención de cambiar.
-        // Decisión dimensionCustomValueIds:
-        //   * Ambos campos vacíos en CSV  → preservar existing
-        //   * Ambos '-' (dash)            → [] (borrar explícito)
-        //   * Mezcla con dash             → enviar lookup (al menos un value-ok)
-        //   * Lookup roto sin value-ok    → preservar (no borrar por typo)
-        const dimValueIds = [];
-        let lineaIntent = 'none';   // 'none' | 'dash' | 'value-ok' | 'value-missing'
-        let deptoIntent = 'none';
+        // 1.5.5 / v12 — Preserve-on-missing + default por eje para dimensiones.
+        // SavePartNumber hace REPLACE en dimensionCustomValueIds; si el CSV no trae
+        // un eje y mandamos [], SH borra los existentes (bug piloto: PN 3028297 perdió
+        // Línea/Depto). resolveDimSelections recompone Línea + Departamento + otras
+        // preservando cada eje por separado, y aplica la regla de negocio del Depto:
+        //   "default Producción si el PN no tiene departamento; si ya tiene, respetar"
+        // (altas y edición). Esto también evita que una fila v12 con Línea — que NUNCA
+        // trae Departamento en el CSV — borre el departamento existente.
+        // Intents por eje: value-ok (CSV válido) | dash (borrar) | none/value-missing
+        // (sin dato → preservar existente; el Depto además cae al default).
+        let lineaIntent = 'none', deptoIntent = 'none';
+        let lineaId = null, deptoId = null;
         if (part.linea) {
           if (isDash(part.linea)) lineaIntent = 'dash';
-          else { const id = dimValueMap.get(part.linea); if (id) { dimValueIds.push(id); lineaIntent = 'value-ok'; } else { lineaIntent = 'value-missing'; warn(`Línea "${part.linea}" no encontrada en dimensiones`); } }
+          else { const id = dimValueMap.get(part.linea); if (id) { lineaId = id; lineaIntent = 'value-ok'; } else { lineaIntent = 'value-missing'; warn(`Línea "${part.linea}" no encontrada en dimensiones`); } }
         }
         if (part.departamento) {
           if (isDash(part.departamento)) deptoIntent = 'dash';
-          else { const id = dimValueMap.get(part.departamento); if (id) { dimValueIds.push(id); deptoIntent = 'value-ok'; } else { deptoIntent = 'value-missing'; warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); } }
+          else { const id = dimValueMap.get(part.departamento); if (id) { deptoId = id; deptoIntent = 'value-ok'; } else { deptoIntent = 'value-missing'; warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); } }
         }
-        let dimValueIdsToSend;
-        if (lineaIntent === 'none' && deptoIntent === 'none') {
-          dimValueIdsToSend = existingDimCustomValueIds;
-        } else if ((lineaIntent === 'value-missing' || lineaIntent === 'none') &&
-                   (deptoIntent === 'value-missing' || deptoIntent === 'none') &&
-                   dimValueIds.length === 0) {
-          dimValueIdsToSend = existingDimCustomValueIds;
-          warn(`"${pn.name}": Línea/Depto lookup falló → preservando ${existingDimCustomValueIds.length} dimSel existentes`);
-        } else {
-          dimValueIdsToSend = dimValueIds;
-        }
+        const dimValueIdsToSend = (typeof resolveDimSelections === 'function')
+          ? resolveDimSelections({
+              lineaIntent, lineaId, deptoIntent, deptoId,
+              existingDimIds: existingDimCustomValueIds,
+              lineaValueIdSet, deptoValueIdSet, deptoDefaultId,
+              applyDeptoDefault: (statusEarly?.status !== 'existing') || !!existingPnNode,
+            })
+          : existingDimCustomValueIds;
         // Labels: misma lógica de preservación.
         const csvHadLabels = !labelsAreDash && part.labels.length > 0;
         const allLabelsUnknown = csvHadLabels && labelIds.length === 0 && unknownLabels.length === part.labels.length;
@@ -5362,7 +5450,10 @@ const BulkUpload = (() => {
         // existingPnNode, mergeCustomInputs arrancaba desde {} y borraba todo lo que
         // el CSV no traía (mismo mecanismo que el bug de 1.5.8 que vació 13k PNs,
         // pero por el path SOLO_PN que el fix 1.5.9 no cubrió).
-        let mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part);
+        let mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part, {
+          defaultCodigoSAT: DOMAIN.billingDefaults?.codigoSAT,
+          applyDefault: (statusEarly?.status !== 'existing') || !!existingPnNode,
+        });
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
         // MODIFY-by-id sin pn: fallback al name del node existente
         const resolvedPnName = pn.name || (existingPnNode && existingPnNode.name) || (() => { throw new Error(`SavePartNumber sin name resuelto para id=${pn.id}`); })();
