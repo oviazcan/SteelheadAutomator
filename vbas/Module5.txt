@@ -1,6 +1,11 @@
-' === MACRO: LimpiarDatos (v14 — layout v12) ===
+' === MACRO: LimpiarDatos (v15 — layout v12) ===
 ' Borra datos de zona de datos (filas 9+) y restaura defaults / placeholders.
 ' Preserva fórmulas (HasFormula skip → Planta Schneider, Proceso, Esp.Spec, Longitud, predictivos).
+'
+' V15 (2026-06-11): dos ajustes solicitados:
+'   - Cantidad (col 9 = I): default = 1 constante (antes se borraba y quedaba vacía).
+'   - Grupo (col 8 = H): placeholder dropdown PURO "(seleccione)" (antes no se restauraba;
+'     debe ser "(seleccione)", NO "(seleccione o escriba)"). Agregado a phCols.
 '
 ' V14 (2026-06-11): adaptado al layout v12 (60 cols A..BH). Cambios de fondo vs v11:
 '   - El modelo de PARÁMETROS cambió: v11 tenía 4 cols V/F (Archivado/Validación/Forzar/Archivar);
@@ -9,8 +14,8 @@
 '   - lastRow: PN col 5 (E), Id SH col 3 (C). Loop 1..60.
 '   - boolCols = (13) solo Precio default. Default "V".
 '   - Defaults especiales: Estatus(1)="Activo con validación", Forzar(2)="Sin forzar duplicado",
-'     Divisa(12)="USD".
-'   - phCols (dropdown puro → "(seleccione)"): 11,14,16,17,18,19,22,23,25,27,29,35,37.
+'     Divisa(12)="USD", Cantidad(9)=1.
+'   - phCols (dropdown puro → "(seleccione)"): 8,11,14,16,17,18,19,22,23,25,27,29,35,37.
 '   - phHybridCols ("(seleccione o escriba)"): 4 Cliente, 15 Metal base, 39 Tipo de Geometría.
 '   - Proceso ahora en col 21 (U) (antes 23/W). La fórmula se restaura copiando desde U<lastRow>.
 '
@@ -18,8 +23,8 @@
 '   1=A  Estatus (Combo)          2=B  Forzar duplicado (Combo)
 '   3=C  Id SH (Texto)            4=D  Cliente (Combo híbrido)
 '   5=E  Número de parte (Texto)  6=F  Descripción (Texto)
-'   7=G  PN alterno (Texto)       8=H  Grupo (Texto)
-'   9=I  Cantidad (#)            10=J  Precio ($)
+'   7=G  PN alterno (Texto)       8=H  Grupo (Drop → "(seleccione)")
+'   9=I  Cantidad (# = 1)        10=J  Precio ($)
 '  11=K  Unidad precio (Drop)    12=L  Divisa (Drop, USD)
 '  13=M  Precio default (V/F)    14=N  Línea (Drop)
 '  15=O  Metal base (Híbrido)    16=P  Etiqueta 1 (Drop)  17=Q Etiqueta 2  18=R Etiqueta 3  19=S Etiqueta 4
@@ -97,20 +102,22 @@ NextCell:
     phHybrid = "(seleccione o escriba)"
 
     ' Dropdown puro → "(seleccione)":
-    '   11 Unid Precio | 14 Línea | 16-19 Etiq1-4 | 22 Productos
+    '   8 Grupo | 11 Unid Precio | 14 Línea | 16-19 Etiq1-4 | 22 Productos
     '   23 Spec1 | 25 Spec2 | 27 Spec3 | 29 Spec4 | 35 Rack Línea | 37 Rack Sec
     Dim phCols As Variant
-    phCols = Array(11, 14, 16, 17, 18, 19, 22, 23, 25, 27, 29, 35, 37)
+    phCols = Array(8, 11, 14, 16, 17, 18, 19, 22, 23, 25, 27, 29, 35, 37)
     ' Híbridas → "(seleccione o escriba)": 4 Cliente | 15 Metal base | 39 Tipo de Geometría
     Dim phHybridCols As Variant
     phHybridCols = Array(4, 15, 39)
 
     Dim phc As Variant
     For r = 9 To lastRow
-        ' Defaults especiales de los combos de parámetros + Divisa
+        ' Defaults especiales de los combos de parámetros + Divisa + Cantidad
         SetIfEmpty wsUp.Cells(r, 1), "Activo con validaci" & ChrW(243) & "n"  ' Estatus
         SetIfEmpty wsUp.Cells(r, 2), "Sin forzar duplicado"                    ' Forzar duplicado
         SetIfEmpty wsUp.Cells(r, 12), "USD"                                    ' Divisa
+        ' Cantidad (col 9 = I): 1 constante. Forzado (no SetIfEmpty) salvo fórmula.
+        If Not wsUp.Cells(r, 9).HasFormula Then wsUp.Cells(r, 9).Value = 1
 
         For Each phc In phCols
             SetIfEmpty wsUp.Cells(r, CLng(phc)), phSelect
@@ -144,8 +151,8 @@ NextCell:
 
     MsgBox cleaned & " celdas procesadas." & vbCrLf & _
         "Estatus=Activo con validaci" & ChrW(243) & "n, Forzar=Sin forzar duplicado." & vbCrLf & _
-        "Precio Default = V. Divisa = USD." & vbCrLf & _
-        "Placeholders restaurados en dropdowns." & vbCrLf & _
+        "Precio Default = V. Divisa = USD. Cantidad = 1." & vbCrLf & _
+        "Placeholders restaurados en dropdowns (Grupo = (seleccione))." & vbCrLf & _
         "F" & ChrW(243) & "rmula de Proceso (col U) restaurada." & vbCrLf & _
         "Plantilla lista para nueva carga.", vbInformation, "LimpiarDatos"
 End Sub
