@@ -1,13 +1,32 @@
 ' Código de la hoja Upload (v12)
-' Pegar en Alt+F11 → "Hoja(Upload)" (no en un módulo)
-' Dispara SombrearModoSoloPN automáticamente al cambiar A1 (la celda Modo)
+' Pegar en Alt+F11 → "Hoja(Upload)" (no en un módulo). Contiene DOS handlers de evento.
 '
-' V12 (2026-06-11): Modo se movió a A1 (layout v12, 60 cols visibles). A2:H2 = título merged.
-' V11 (2026-05-27): Modo en H1.
-' V10: escuchaba G1.
+' V12 (2026-06-11): layout v12 (60 cols A..BH).
+'   - Worksheet_Change: Modo se movió a A1 (antes H1) → dispara SombrearModoSoloPN.
+'   - Worksheet_SelectionChange (feeder de catálogos): columnas re-mapeadas a v12:
+'       Proceso col 21 (U)        — antes 23 (W)  → alimenta CAT_Procesos!I2
+'       Spec 1-4 cols 23,25,27,29 — antes 36,38   → alimentan CAT_Specs!D2
+'     (v11 tenía 2 specs en 36/38; v12 tiene 4 en 23/25/27/29.)
+' V11: Modo H1; feeder Proceso=23, Specs=36/38.
 
 Private Sub Worksheet_Change(ByVal Target As Range)
     If Not Intersect(Target, Me.Range("A1")) Is Nothing Then
         SombrearModoSoloPN
+    End If
+End Sub
+
+Private Sub Worksheet_SelectionChange(ByVal Target As Range)
+    ' Proceso (col 21 = U): alimenta la fila activa a CAT_Procesos!I2
+    If Target.Column = 21 Then
+        Application.EnableEvents = False
+        ThisWorkbook.Worksheets("CAT_Procesos").Range("I2").Value = Target.Row
+        Application.EnableEvents = True
+    End If
+    ' Spec 1-4 (cols 23, 25, 27, 29 = W, Y, AA, AC): alimentan la fila activa a CAT_Specs!D2
+    If Target.Column = 23 Or Target.Column = 25 _
+       Or Target.Column = 27 Or Target.Column = 29 Then
+        Application.EnableEvents = False
+        ThisWorkbook.Worksheets("CAT_Specs").Range("D2").Value = Target.Row
+        Application.EnableEvents = True
     End If
 End Sub
