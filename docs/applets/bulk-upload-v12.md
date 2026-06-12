@@ -15,9 +15,10 @@ plantilla NO requiere tocar la extensión.
 
 ## Arquitectura (DECIDIDA)
 
-- **CSV canónico + parser header-driven.** `ExportarCSV` (VBA) emite un CSV **ya expandido**;
-  el parser lo lee **mapeando por NOMBRE de encabezado** (tolerante a columnas: agregar/
-  reordenar/crecer columnas no rompe el parseo).
+- **CSV canónico + parser posicional por versión.** `ExportarCSV` (VBA) emite un CSV **ya
+  expandido**. El parser detecta el schema por el header (`V10/V11/V12_COLS`) y luego mapea
+  la zona de datos **por POSICIÓN** (no header-driven; ver corrección en el cierre 2026-06-11/12).
+  Cambiar el nº de specs u otras columnas SÍ requiere un nuevo `Vxx_COLS` + detección.
 - Toda la lógica de UX / combos / catálogos vive en el `.xlsm` (hoja `Upload` + macros +
   hojas `CAT_*`). **El parser NO replica lógica de Excel.**
 - Lo único que toca remoto (siempre **sin re-zip**): esquema header-driven (una vez),
@@ -130,6 +131,41 @@ y guarda UTF-8 sin BOM. Departamento/SAT/UnidadMedidaSAT NO salen (los pone el p
 
 ## Pendientes (usuario)
 
-- Encoding de specs Temperatura/Tiempo/Duración.
 - Confirmar lista del combo `Estatus` (4 opciones) y si "Planta Schneider" pierde el prefijo "Etiqueta".
-- **CSV de muestra** exportado por `ExportarCSV` v12 (para construir y probar el parser contra datos reales).
+- **Subir la plantilla `.xlsm` v12** a `gh-pages/templates/` + apuntar `templateUrl` (hoy → v11).
+  Requiere re-copiar `Module5` v16 al `.xlsm` y luz verde.
+
+## Cierre de sesión 2026-06-11/12 — parser v12 + billing + specs combos (DEPLOYADO 1.6.60)
+
+**Corrección importante al diseño:** la zona de DATOS del parser NO es header-driven, es
+**posicional** (`V12_COLS`). El header solo se usa para DETECTAR el schema. (El header-driven
+real solo aplica a la metadata superior vía `HEADER_KEYS`.)
+
+- **`V12_COLS`** (`bulk-upload.js`): el CSV canónico de `ExportarCSV v15` coincide con v11
+  hasta las specs, pero v12 trae **4 specs (vs 2)** → corre **+4** todo lo posterior
+  (KGM/racks/dims/predictivos/CargasHora). Mapa de 73 cols. Detección de schema:
+  `E='Cliente'`→v10 · `E='Id SH'` + **≥3 headers `Spec N`**→v12 · else v11. `parseRows` ya
+  itera `COLS.specs`/`prods` → sin cambios en el loop. Golden test: 34 asserts.
+- **Billing defaults** (Producción id 182 / SAT `73181106 - Servicios de enchapado`):
+  v12 ya no exporta Departamento/SAT → se inyectan aguas abajo con regla *"default si
+  vacío; si ya tiene, respeta"* (altas y edición). `resolveDimSelections` (parse.js)
+  recompone Línea+Depto por eje (REPLACE-safe) y **arregla bug latente**: fila v12 con
+  Línea (sin Depto en CSV) borraba el depto existente. SAT en `mergeCustomInputs`.
+  `applyDeptoDefault/applyDefault=false` en existentes sin snapshot (prefetch falló).
+  Config: `steelhead.domain.billingDefaults`. 11 tests.
+- **Specs combos Temp/Tiempo** (`catalog-fetcher`): generaliza a cualquier `EXTERNAL` spec
+  con fields espesor/temp/tiempo (no hardcode; el catálogo puede crecer). Producto
+  cartesiano `Nombre | espesor | temp | tiempo` (orden canónico), tope `COMBO_CAP=500`.
+  Deshidrogenado (`48053-001-01`): Temperatura `177-205 °C` × Duración Horneado (TIMER)
+  `>=3/2/1 hrs.` = 3 entries. Detección por nombre + type TIMER. Funciones puras
+  `_comboFieldRank`/`_buildSpecComboEntries`.
+- **Match-por-valor en uploader** (`pickSpecParamId` en parse.js): cada spec field elige su
+  param matcheando POR VALOR contra los segmentos del CSV (split ` | `), sin asumir orden ni
+  identificar el field. **Arregla bug**: field con >1 param no-espesor caía a `params[0]`
+  (ignoraba la Duración elegida). Compat espesor v10/v11 intacta.
+- **Migración CargasHora**: 100% (13,008 PNs; 9 transitorios 502/timeout reintentados y
+  verificados, todos string + schema 3955).
+- **VBA** `Module5` v16: Cantidad=1 constante, Cliente=`(seleccione)`, Grupo=`(seleccione o escriba)`.
+
+Tests: `bulk-upload-v12-parse`, `bulk-upload-dims`, `catalog-fetcher-specs`,
+`bulk-upload-specs-param` (todos verdes).
