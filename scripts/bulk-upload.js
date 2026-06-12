@@ -241,7 +241,7 @@ const BulkUpload = (() => {
   if (!Parse || !Classify) {
     console.error('[bulk-upload] FALTA bulk-upload-parse.js / bulk-upload-classify.js en el array scripts de config.json');
   }
-  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections } = Parse || {};
+  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections, pickSpecParamId } = Parse || {};
   const {
     normLabel, isNonFinishLabel, buildEquivIndex, equivGroup, equivalentValues,
     acabadosOrdenados, acabadosCanonicos, metalCanonico, buildCompositeKey,
@@ -5323,15 +5323,20 @@ const BulkUpload = (() => {
           wantedSpecIds.add(si.id);
           specNameById.set(si.id, cs.name);
           const sd = sfCache.get(si.id); if (!sd) continue;
+          // cs.param puede traer VARIOS valores combinados por ' | ' (espesor/temp/tiempo
+          // del producto cartesiano del catálogo, p.ej. "177 - 205 °C | >= 2 hrs."). Se
+          // matchea por VALOR: para cada field con >1 param se elige el param cuyo nombre
+          // coincida con alguno de los segmentos del CSV — sin asumir orden ni identificar
+          // cuál field es cuál. Field de 1 param se auto-selecciona. Compat espesor v10/v11:
+          // 1 segmento, matchea igual.
+          const segs = (cs.param || '').split(' | ').map(s => s.trim()).filter(Boolean);
           const dS = [], gS = [];
           for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
             const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
             const fn = sf.specFieldBySpecFieldId?.name || '';
             const isEsp = fn.toLowerCase().includes('espesor');
-            let pid;
-            if (params.length === 1) pid = params[0].id;
-            else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : (errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`), params[0].id); }
-            else pid = params[0].id;
+            const { id: pid, espesorMiss } = pickSpecParamId(params, segs, isEsp);
+            if (espesorMiss && cs.param) errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`);
             if (!pid) continue;
             // 1.4.38: regla nueva — SIEMPRE processNodeId=null. El param null es
             // genérico (se aplica a cualquier proceso) y sobrevive cambios de

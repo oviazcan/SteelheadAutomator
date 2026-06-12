@@ -9,6 +9,53 @@ const CatalogFetcher = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // ── Specs combinables (espesor/temp/tiempo) — funciones PURAS, testeables ──
+  // Clasifica un spec field: Espesor (0), Temperatura (1), Tiempo (2); -1 si no aplica.
+  // El catálogo combina los params de TODOS los fields combinables en su producto
+  // cartesiano. Hoy solo "Deshidrogenado" trae temp/tiempo, pero el catálogo puede
+  // crecer: cualquier EXTERNAL spec con estos fields se combina (no hay hardcode).
+  const comboFieldRank = (fieldName, fieldType) => {
+    const fn = (fieldName || '').toLowerCase();
+    const ft = (fieldType || '').toUpperCase();
+    if (fn.includes('espesor')) return 0;
+    if (fn.includes('temperatura')) return 1;
+    if (ft === 'TIMER' || /tiempo|duraci[oó]n|horneado/.test(fn)) return 2;
+    return -1;
+  };
+
+  // Construye las entries combinadas de UNA spec a partir de sus fields. Devuelve
+  // { entries, truncated }. entries=[] si la spec no tiene fields combinables (→ bare).
+  // Orden canónico de pipes: espesor | temperatura | tiempo.
+  const buildSpecComboEntries = (specName, fields, cap = 500) => {
+    const comboFields = [];
+    for (const sf of (fields || [])) {
+      const meta = sf.specFieldBySpecFieldId || {};
+      const rank = comboFieldRank(meta.name, meta.fieldType ?? meta.type);
+      if (rank < 0) continue;
+      const pnames = ((sf.defaultValues && sf.defaultValues.nodes) || []).map(p => p.name).filter(Boolean);
+      if (!pnames.length) continue;
+      comboFields.push({ rank, pnames });
+    }
+    if (!comboFields.length) return { entries: [], truncated: false };
+    comboFields.sort((a, b) => a.rank - b.rank);
+    let combos = [[]];
+    let truncated = false;
+    for (const cf of comboFields) {
+      const next = [];
+      for (const combo of combos) {
+        for (const pv of cf.pnames) {
+          next.push([...combo, pv]);
+          if (next.length >= cap) { truncated = true; break; }
+        }
+        if (truncated) break;
+      }
+      combos = next;
+      if (truncated) break;
+    }
+    const entries = combos.map(c => `${specName} | ${c.join(' | ')}`);
+    return { entries, truncated };
+  };
+
   // ═══════════════════════════════════════════
   // FETCH CATALOGS FROM API
   // ═══════════════════════════════════════════
@@ -239,10 +286,11 @@ const CatalogFetcher = (() => {
     // confiable es llamar SpecFieldsAndOptions para CADA spec externa. Con ~110 specs
     // y batch de 20 son ~6 rondas paralelas, ~1-2 segundos total.
     const specsSeen = new Set();
-    const espesorEntries = [];
-    const espesorEntrySet = new Set();
-    const specsWithEspesor = new Set();
+    const comboEntries = [];        // entries combinadas (espesor/temp/tiempo, producto cartesiano)
+    const comboEntrySet = new Set();
+    const specsWithCombo = new Set();
     const bareSpecs = [];
+    const COMBO_CAP = 500;          // tope de seguridad por spec (evita explosión cartesiana)
 
     for (const spec of allSpecs) {
       if (spec.name) specsSeen.add(spec.name);
@@ -261,32 +309,27 @@ const CatalogFetcher = (() => {
       for (const r of results) {
         if (!r || !r.sd) continue;
         const fields = r.sd.specFieldSpecsBySpecId?.nodes || [];
-        for (const sf of fields) {
-          const fieldName = sf.specFieldBySpecFieldId?.name || '';
-          if (!fieldName.toLowerCase().includes('espesor')) continue;
-          const params = sf.defaultValues?.nodes || [];
-          for (const param of params) {
-            const pname = param.name;
-            if (!pname) continue;
-            const entry = `${r.spec.name} | ${pname}`;
-            if (!espesorEntrySet.has(entry)) {
-              espesorEntrySet.add(entry);
-              espesorEntries.push(entry);
-              specsWithEspesor.add(r.spec.name);
-            }
+        const { entries, truncated } = buildSpecComboEntries(r.spec.name, fields, COMBO_CAP);
+        if (truncated) warn(`Spec "${r.spec.name}": producto cartesiano topado a ${COMBO_CAP} — catálogo parcial`);
+        for (const entry of entries) {
+          if (!comboEntrySet.has(entry)) {
+            comboEntrySet.add(entry);
+            comboEntries.push(entry);
+            specsWithCombo.add(r.spec.name);
           }
         }
       }
       if ((i + BATCH) % 100 === 0 || i + BATCH >= allSpecs.length) {
-        log(`  SpecFieldsAndOptions: ${Math.min(i + BATCH, allSpecs.length)}/${allSpecs.length} (${espesorEntries.length} entradas espesor hasta ahora)`);
+        log(`  SpecFieldsAndOptions: ${Math.min(i + BATCH, allSpecs.length)}/${allSpecs.length} (${comboEntries.length} entradas combinadas hasta ahora)`);
       }
     }
 
-    // Espesor entries first, then bare specs (without espesor)
+    // Entries combinadas (espesor/temp/tiempo) primero, luego specs sin fields
+    // combinables (bare).
     const result = [];
-    for (const entry of espesorEntries) result.push(entry);
+    for (const entry of comboEntries) result.push(entry);
     for (const name of specsSeen) {
-      if (!specsWithEspesor.has(name)) bareSpecs.push(name);
+      if (!specsWithCombo.has(name)) bareSpecs.push(name);
     }
     for (const name of bareSpecs) result.push(name);
     result.sort((a, b) => a.localeCompare(b));
@@ -574,7 +617,8 @@ const CatalogFetcher = (() => {
     return counts;
   }
 
-  return { fetchAll, generateCatalogsFile };
+  return { fetchAll, generateCatalogsFile, _comboFieldRank: comboFieldRank, _buildSpecComboEntries: buildSpecComboEntries };
 })();
 
 if (typeof window !== 'undefined') window.CatalogFetcher = CatalogFetcher;
+if (typeof module !== 'undefined' && module.exports) module.exports = CatalogFetcher;

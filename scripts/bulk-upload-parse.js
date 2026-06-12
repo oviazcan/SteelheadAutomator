@@ -189,9 +189,27 @@
     return [effLinea, effDepto, ...others].filter(v => v != null);
   }
 
+  // pickSpecParamId — elige el defaultParamId de un spec field a partir de los
+  // segmentos del CSV (cs.param partido por ' | '). El catálogo combina espesor/temp/
+  // tiempo como "Nombre | a | b | …"; aquí se matchea POR VALOR (no por posición ni por
+  // identificar el field): un field de 1 param se auto-selecciona; uno con varios toma
+  // el param cuyo nombre coincida con algún segmento. Compat espesor v10/v11: 1 segmento.
+  // Devuelve { id, espesorMiss } — espesorMiss=true cuando es un field "espesor" con
+  // varios params y ningún segmento coincide (el caller loguea el error y usa params[0]).
+  function pickSpecParamId(params, segs, isEsp) {
+    const ps = params || [];
+    if (!ps.length) return { id: null, espesorMiss: false };
+    if (ps.length === 1) return { id: ps[0].id, espesorMiss: false };
+    for (const seg of (segs || [])) {
+      const m = ps.find(p => p.name === seg);
+      if (m) return { id: m.id, espesorMiss: false };
+    }
+    return { id: ps[0].id, espesorMiss: !!isEsp };
+  }
+
   const api = {
     toBool, isDash, resolveStr, resolveNum, cell, cellNum, parseCSV, buildDimensions,
-    partHasEnrich, classifyRunIntent, resolveDimSelections,
+    partHasEnrich, classifyRunIntent, resolveDimSelections, pickSpecParamId,
     PRICE_UNIT_MAP, PREDICTIVE_MATERIALS, HEADER_KEYS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
