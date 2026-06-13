@@ -132,8 +132,9 @@ y guarda UTF-8 sin BOM. Departamento/SAT/UnidadMedidaSAT NO salen (los pone el p
 ## Pendientes (usuario)
 
 - Confirmar lista del combo `Estatus` (4 opciones) y si "Planta Schneider" pierde el prefijo "Etiqueta".
-- **Subir la plantilla `.xlsm` v12** a `gh-pages/templates/` + apuntar `templateUrl` (hoy → v11).
-  Requiere re-copiar `Module5` v16 al `.xlsm` y luz verde.
+- ✅ ~~Subir la plantilla `.xlsm` v12 (moderna, Excel 2021+)~~ — HECHO (config 1.6.62, botón "Descargar Plantilla v12 (Excel 2021+)", `templateUrl` → v12).
+- **PENDIENTE — `Module5` v17 en la plantilla MODERNA.** La moderna publicada (`templates/Plantilla_CargaMasiva_v12.xlsm`, 1.6.62) lleva `Module5` **v16** (solo restaura Proceso). Hay que actualizarla a **v17** (restaura TODAS las columnas calculadas) y **re-subir el `.xlsm` a `gh-pages`** (sin cambiar el botón ni la URL; solo reemplazar el archivo + bump config). El v17 ya está en `vbas/Module5.txt` y validado en la de compatibilidad.
+- **PENDIENTE — Subir la "Versión de compatibilidad (Excel 2019)".** `Plantilla_CargaMasiva_v12_compatibilidad.xlsm` ya validado (2026-06-12): 0 funciones modernas, VBAs Module1 v15 / Module2 v12 / Module4 v13 / Module5 v17, Proceso col U con SUMAPRODUCTO+TEXTJOIN (sin FILTER/LET). Falta subirlo a `gh-pages/templates/` + agregar 2º botón "Versión de compatibilidad (Excel 2019)" (100% config, URL literal). Conversión 2019 hecha por Ernesto; doc de portado en `~/Downloads/Portado_v12_Excel2019_ESPANOL.md`.
 
 ## Cierre de sesión 2026-06-11/12 — parser v12 + billing + specs combos (DEPLOYADO 1.6.60)
 
