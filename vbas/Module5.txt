@@ -1,6 +1,12 @@
-' === MACRO: LimpiarDatos (v16 — layout v12) ===
+' === MACRO: LimpiarDatos (v17 — layout v12) ===
 ' Borra datos de zona de datos (filas 9+) y restaura defaults / placeholders.
 ' Preserva fórmulas (HasFormula skip → Planta Schneider, Proceso, Esp.Spec, Longitud, predictivos).
+'
+' V17 (2026-06-12): restaura TODAS las columnas calculadas (no solo Proceso) copiándolas
+'   desde la FILA MODELO (lastRow). Genérico: detecta qué columnas tienen fórmula ahí y las
+'   re-crea con xlPasteFormulas (preserva matriciales/CSE; Excel ajusta refs relativas). El
+'   MISMO Module5 sirve para la plantilla moderna (Proceso con FILTER) y la de compatibilidad
+'   Excel 2019 (Proceso con SUMAPRODUCTO): copia la fórmula que exista, sea cual sea.
 '
 ' V16 (2026-06-11): swap correcto de placeholders Cliente/Grupo:
 '   - Cliente (col 4 = D): dropdown PURO "(seleccione)".
@@ -129,22 +135,29 @@ NextCell:
         Next phc
     Next r
 
-    ' Restaurar fórmula dinámica en col 21 (U) = Proceso, copiando desde U<lastRow>
-    ' (rara vez se sobreescribe a mano) con xlPasteFormulas. Excel ajusta las refs relativas.
-    Const PROCESO_START_ROW As Long = 9
-    Const PROCESO_COL As Long = 21
-    Dim sourceProcesoCell As Range
-    Set sourceProcesoCell = wsUp.Cells(lastRow, PROCESO_COL)
-    If sourceProcesoCell.HasFormula Then
-        sourceProcesoCell.Copy
-        wsUp.Range(wsUp.Cells(PROCESO_START_ROW, PROCESO_COL), _
-                   wsUp.Cells(lastRow, PROCESO_COL)) _
-            .PasteSpecial Paste:=xlPasteFormulas
-        Application.CutCopyMode = False
-        cleaned = cleaned + (lastRow - PROCESO_START_ROW + 1)
-    Else
+    ' Restaurar TODAS las fórmulas calculadas (Proceso col 21=U, Esp.Spec 24/26/28/30,
+    ' predictivos 45..53, Planta Schneider 20, etc.) copiándolas desde la FILA MODELO
+    ' (lastRow, normalmente 508 — casi nunca se toca a mano). Genérico: detecta qué columnas
+    ' tienen fórmula en la fila modelo y restaura esas hacia toda la zona de datos.
+    ' xlPasteFormulas preserva el estado MATRICIAL (CSE) y Excel ajusta las refs relativas.
+    Const DATA_START_ROW As Long = 9
+    Dim restoredCols As Long, procHadFormula As Boolean
+    restoredCols = 0: procHadFormula = False
+    For c = 1 To 60
+        Set cell = wsUp.Cells(lastRow, c)
+        If cell.HasFormula Then
+            cell.Copy
+            wsUp.Range(wsUp.Cells(DATA_START_ROW, c), wsUp.Cells(lastRow, c)) _
+                .PasteSpecial Paste:=xlPasteFormulas
+            restoredCols = restoredCols + 1
+            If c = 21 Then procHadFormula = True
+        End If
+    Next c
+    Application.CutCopyMode = False
+    cleaned = cleaned + restoredCols * (lastRow - DATA_START_ROW + 1)
+    If Not procHadFormula Then
         MsgBox "No se encontr" & ChrW(243) & " f" & ChrW(243) & "rmula de Proceso en U" & lastRow & _
-               ". Restaura la f" & ChrW(243) & "rmula de la columna Proceso a mano y vuelve a correr.", _
+               ". C" & ChrW(243) & "piala de otra fila a U" & lastRow & " y vuelve a correr LimpiarDatos.", _
                vbExclamation, "Proceso sin f" & ChrW(243) & "rmula"
     End If
 
@@ -155,7 +168,7 @@ NextCell:
         "Estatus=Activo con validaci" & ChrW(243) & "n, Forzar=Sin forzar duplicado." & vbCrLf & _
         "Precio Default = V. Divisa = USD. Cantidad = 1." & vbCrLf & _
         "Placeholders restaurados (Cliente=(seleccione), Grupo=(seleccione o escriba))." & vbCrLf & _
-        "F" & ChrW(243) & "rmula de Proceso (col U) restaurada." & vbCrLf & _
+        restoredCols & " columnas calculadas restauradas (Proceso, Esp.Spec, predictivos, ...)." & vbCrLf & _
         "Plantilla lista para nueva carga.", vbInformation, "LimpiarDatos"
 End Sub
 
