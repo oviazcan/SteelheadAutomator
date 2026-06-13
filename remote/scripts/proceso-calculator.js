@@ -408,22 +408,32 @@ const ProcesosCalculator = (() => {
   let _observer = null;
   let _debounce = null;
 
+  // Ícono de calculadora monocromo (estilo icon-button MUI, se mezcla con la UI).
+  const _ICON_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">'
+    + '<path d="M7 2c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H7zm0 2h10v4H7V4zm0 6h2v2H7v-2zm0 4h2v2H7v-2zm4-4h2v2h-2v-2zm0 4h2v2h-2v-2zm4-4h2v6h-2v-6z"/></svg>';
+
   function ensureIcon() {
     const ctrl = findProcessControl();
     if (!ctrl) return;
-    // Idempotente: un solo ícono por control.
-    if (ctrl.dataset.saPcIcon === '1') return;
-    ctrl.dataset.saPcIcon = '1';
+    // El wrapper inmediato del react-select container suele envolver SOLO el
+    // combobox → lo volvemos flex-row para anclar el botón AL LADO (no abajo).
+    const container = ctrl.closest('[class*="-container"]') || ctrl;
+    const wrap = container.parentElement || container;
+    if (wrap.querySelector(':scope > .sa-pc-icon')) return; // idempotente
     const btn = document.createElement('button');
     btn.id = 'sa-pc-icon';
+    btn.className = 'sa-pc-icon';
     btn.type = 'button';
     btn.title = 'Calculadora de Procesos';
-    btn.textContent = '🧮';
-    btn.style.cssText = 'margin-left:6px;border:none;background:#0ea5e9;color:#fff;border-radius:6px;width:30px;height:30px;font-size:15px;cursor:pointer;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,.25);flex:0 0 auto;';
+    btn.innerHTML = _ICON_SVG;
+    btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;'
+      + 'flex:0 0 auto;margin-left:6px;width:30px;height:30px;padding:0;border:none;'
+      + 'border-radius:6px;background:transparent;color:#1976d2;cursor:pointer;transition:background .15s;';
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(25,118,210,0.10)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
     btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openModal(); });
-    // Insertar tras el control (en su contenedor flex si lo hay).
-    const host = ctrl.parentElement || ctrl;
-    host.insertBefore(btn, ctrl.nextSibling);
+    try { wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; container.style.flex = '1 1 auto'; } catch (_) {}
+    wrap.appendChild(btn);
   }
 
   function startObserver() {
