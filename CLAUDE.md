@@ -21,13 +21,26 @@ La extensión es un cascarón: en runtime fetchea scripts y `config.json` desde 
 - `gh-pages` rama publicada. **Estructura aplanada**: `remote/scripts/foo.js` (main) → `scripts/foo.js` (gh-pages); `remote/config.json` (main) → `config.json` (gh-pages)
 - `gh-pages` debe quedar en sync byte-a-byte con el contenido de `remote/` de `main` (verificable con `git diff HEAD:remote/scripts/foo.js gh-pages:scripts/foo.js`)
 
-### Procedimiento (cada vez que cambia algo en `remote/`)
+### Procedimiento — usa `tools/deploy.sh` (NO lo hagas a mano)
+Edita tus archivos bajo `remote/` **en el worktree de `main`** y luego corre:
+```bash
+tools/deploy.sh "fix(applet-x): descripción" --check applet-x
+# bump patch + commit main + espejo gh-pages + push ambas + check-deploy
+# flags: --minor | --set X.Y.Z | --check <script>
+```
+`deploy.sh` hace TODA la danza de forma atómica y **self-healing** (re-espeja `main:remote/` → `gh-pages`, así que corrige cualquier drift previo). Solo deploya scripts **referenciados en `config.apps[].scripts`** (los `.js` dev-only de `remote/scripts/` no se empujan).
+
+**Antes de razonar "¿esto ya está vivo?"** corre `tools/deploy-status.sh` — imprime la versión de tu rama, `main`, `gh-pages` y el sitio **EN VIVO**, y verifica el invariante byte-a-byte. **Nunca concluyas el estado de deploy mirando el `config.json` de una rama de trabajo** (puede estar desfasada respecto a `main`/`gh-pages`).
+
+**Candado:** el hook `pre-push` (`.githooks/pre-push`, instalar una vez con `tools/install-hooks.sh`) **bloquea** pushear `gh-pages` si no espeja `main:remote/`. Si te topas el bloqueo, usa `deploy.sh`.
+
+#### Procedimiento manual (fallback, si `deploy.sh` falla)
 1. **Bump `remote/config.json` `version`** (ej. `0.4.2` → `0.4.3`) y `lastUpdated` a la fecha. Ese version es el cache-bust para que la extensión recargue scripts.
 2. **Commit en `main`** con prefijo apropiado (`fix(...)`, `feat(...)`, `chore(config)`).
 3. **Sync a `gh-pages`**: stash del .xlsm si está modificado → `git checkout gh-pages` → `git show main:remote/scripts/foo.js > scripts/foo.js` + `git show main:remote/config.json > config.json` → `git add ... && git commit -m "deploy: <descripción> + bump <version>"`.
 4. **Push ambas ramas**: `git push origin main && git push origin gh-pages`.
 5. **GitHub Pages publica en ~30-60s**. Después: recarga la extensión (chrome://extensions → reload) o reinicia Chrome si cachea.
-6. **Verificar byte-exact** con `tools/check-deploy.sh [<script-name>]`.
+6. **Verificar byte-exact** con `tools/check-deploy.sh [<script-name>]` o `tools/deploy-status.sh`.
 
 ### Notas
 - Commits de `gh-pages` siguen formato `deploy: <qué cambió> + bump <version>` (ver `git log gh-pages --oneline`).

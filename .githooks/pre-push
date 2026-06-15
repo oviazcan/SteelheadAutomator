@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# pre-push — CANDADO del invariante de deploy.
+#
+# Si estás pusheando gh-pages y su contenido (config.json + scripts/**.js) NO
+# coincide byte-a-byte con main:remote/, ABORTA el push. gh-pages debe ser un
+# espejo aplanado de main:remote/; deployar a mano sin sincronizar es el camino
+# al drift. Usa tools/deploy.sh.
+#
+# No toca pushes de main / workbench / feat-*: solo actúa sobre refs/heads/gh-pages.
+#
+# Instalación (una vez por clon):  tools/install-hooks.sh
+set -uo pipefail
+
+ZERO=0000000000000000000000000000000000000000
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/gh-pages" ] || continue
+  [ "$local_sha" = "$ZERO" ] && continue   # borrado de rama, no validar
+
+  # rama de referencia: main local si existe, si no origin/main
+  mainref=main
+  git rev-parse --verify --quiet main >/dev/null 2>&1 || mainref=origin/main
+
+  bad=0
+  if ! diff -q <(git show "$mainref:remote/config.json" 2>/dev/null) \
+               <(git show "$local_sha:config.json" 2>/dev/null) >/dev/null 2>&1; then
+    echo "  ✗ config.json difiere de $mainref:remote/config.json"
+    bad=1
+  fi
+  while IFS= read -r f; do
+    base="${f#scripts/}"
+    if ! diff -q <(git show "$mainref:remote/scripts/$base" 2>/dev/null) \
+                 <(git show "$local_sha:$f" 2>/dev/null) >/dev/null 2>&1; then
+      echo "  ✗ $f difiere de $mainref:remote/scripts/$base (o no existe en main)"
+      bad=1
+    fi
+  done < <(git ls-tree -r --name-only "$local_sha" -- scripts/ 2>/dev/null | grep -E '\.js$')
+
+  if [ "$bad" -ne 0 ]; then
+    echo ""
+    echo "🛑 pre-push ABORTADO: gh-pages NO espeja $mainref:remote/ byte-a-byte."
+    echo "   No pushees gh-pages a mano. Usa:  tools/deploy.sh \"<mensaje>\""
+    echo "   (o re-sincroniza: git show main:remote/... > scripts/...; git show main:remote/config.json > config.json)"
+    exit 1
+  fi
+  echo "  ✓ pre-push: gh-pages espeja $mainref:remote/ (config + scripts .js)"
+done
+exit 0
