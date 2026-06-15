@@ -1,4 +1,4 @@
-// Calculadora de Procesos (proceso-calculator) v0.1.0
+// Calculadora de Procesos (proceso-calculator) v0.1.1
 // ============================================================================
 // Replica la "Calculadora de Procesos" de la pestaña CAT_Procesos del Excel de
 // carga masiva, DENTRO del UI de Steelhead, como herramienta inline durante la
@@ -42,7 +42,7 @@
 const ProcesosCalculator = (() => {
   'use strict';
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
 
   // ── Constantes de dominio ──
   // El catálogo vive en customInputs.CatProcesos de un ARTÍCULO DE INVENTARIO
@@ -336,6 +336,12 @@ const ProcesosCalculator = (() => {
   // identifica por su svg[data-testid="CloseIcon"]; el texto es el textContent
   // del chip (el svg no aporta texto). Se filtran los labels administrativos
   // (nonFinishLabelNames: SRG, SMY, "En desarrollo", ...).
+  //
+  // OJO (ficha): el fallback usa el selector global `.css-1owv9dy`, que captura
+  // CUALQUIER chip de la página — incluidas las etiquetas de CLIENTE
+  // ("Industrial", "Automotriz", "Activo"), que NO son etiquetas de acabado del
+  // NP. Esas se descartan en openModal filtrando contra el catálogo oficial
+  // (forPartNumber:true); aquí solo quitamos los nonFinishLabelNames.
   function readEtiquetasFromDom() {
     const nonFinish = _nonFinishSet();
     // Modal: react-select de Labels (component-id estable); cada chip tiene un
@@ -514,10 +520,24 @@ const ProcesosCalculator = (() => {
     try { live = await loadLiveCatalogs(); }
     catch (e) { live = _live; warn(`catálogos: ${e.message}`); }
 
+    // Filtrar las etiquetas leídas del DOM contra el catálogo OFICIAL de acabado
+    // (live.etiquetas = AllLabels forPartNumber:true − nonFinishLabelNames). Esto
+    // descarta etiquetas de CLIENTE ("Industrial", "Automotriz", "Activo") que en
+    // la ficha se renderizan con la misma clase de chip (.css-1owv9dy) pero NO
+    // aplican al NP. Guardado: si el catálogo no cargó, no filtramos (degradado,
+    // no roto) en vez de descartar todo.
+    let etiquetas = (domInputs.etiquetas || []).filter(Boolean);
+    if (live.etiquetas && live.etiquetas.length) {
+      const finishAllow = new Set(live.etiquetas.map(normStr));
+      const dropped = etiquetas.filter(e => !finishAllow.has(normStr(e)));
+      etiquetas = etiquetas.filter(e => finishAllow.has(normStr(e)));
+      if (dropped.length) log(`etiquetas de cliente descartadas (no son de acabado del NP): ${dropped.join(', ')}`);
+    }
+
     _modalState = {
       metal: domInputs.metal || '',
       linea: domInputs.linea || '',
-      etiquetas: (domInputs.etiquetas || []).filter(Boolean),
+      etiquetas,
       live
     };
     renderBody();

@@ -1,6 +1,6 @@
 # Applet: `proceso-calculator` — Calculadora de Procesos
 
-**Versión actual:** 0.1.0 (en desarrollo — falta DOM adapter de inputs + deploy)
+**Versión actual:** 0.1.1 (DEPLOYADO a gh-pages, config 1.6.67 — fix: filtro de etiquetas de cliente)
 **Archivo:** `remote/scripts/proceso-calculator.js`
 **Global:** `window.ProcesosCalculator`
 
@@ -65,7 +65,11 @@ Exacto en metal + línea + **CONJUNTO** de etiquetas (sin orden, `Etiqueta1..6`)
 | **Línea** | react-select `singleValue` tras `<p>Línea:</p>` (forma larga). | `<p>` de texto plano hermano del label → `readSingleValueByLabel` captura texto plano. |
 | **Etiquetas** | `[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_LABELS"]` → chips por `svg[data-testid="CloseIcon"]` (parentElement). | chips de solo lectura `.css-1owv9dy` (sin CloseIcon) en el encabezado. |
 
-Etiquetas: se filtran `nonFinishLabelNames` (SRG, SMY, "En desarrollo", …) + dedup. El ícono 🧮 se ancla junto al combobox (idempotente por `dataset.saPcIcon`).
+Etiquetas: se filtran `nonFinishLabelNames` (SRG, SMY, "En desarrollo", …) + dedup.
+
+**Fix v0.1.1 — etiquetas de cliente vs de acabado.** El fallback de la ficha usa el selector **global** `.css-1owv9dy`, que captura *cualquier* chip de la página — incluidas las **etiquetas de CLIENTE** ("Industrial", "Automotriz", "Activo"), que NO son de acabado del NP y confundían el matching. `nonFinishLabelNames` solo cubre labels administrativos, no las de cliente. **Solución (data-driven, sin adivinar DOM):** en `openModal`, tras cargar `live`, se filtran las etiquetas leídas contra el **catálogo oficial de acabado** (`live.etiquetas` = `AllLabels(forPartNumber:true)` − `nonFinishLabelNames`). Las de cliente NO son `forPartNumber:true`, así que caen fuera del set y se descartan (se loguea cuáles). Guardado: si el catálogo no cargó, no se filtra (degradado, no roto). El mismo discriminador que usa `bulk-upload` para validar labels de NP.
+
+El ícono 🧮 se ancla junto al combobox (idempotente por `dataset.saPcIcon`).
 
 ### Mapeo de datos clave
 - **Línea = columna `Línea2`** del Excel (forma larga "T204-LI … (16.1)"), NO `Línea` ("Línea 16.1"). El UI muestra la larga (= dimensión oficial `GetDimension 349`: 27/29 coinciden; 2 raras quedan fuera: `T400-CE08 Barnizado`, `T500-CE04 Ensamble de Kits`). Catálogo recargado con `Línea2`.
