@@ -1,6 +1,6 @@
 # Applet: `proceso-calculator` — Calculadora de Procesos
 
-**Versión actual:** 0.1.2 (en workbench, PENDIENTE deploy — fix real: scoping etiquetas NP vs cliente por `MuiPaper-elevation0`). Vivo en gh-pages: 0.1.1 (fix por allowlist, fallido).
+**Versión actual:** 0.1.3 (en workbench — fix: Línea del modal acotada al diálogo, lee el valor ajustado-no-guardado). Vivo en gh-pages: 0.1.2 (scoping etiquetas por `MuiPaper-elevation0`).
 **Archivo:** `remote/scripts/proceso-calculator.js`
 **Global:** `window.ProcesosCalculator`
 
@@ -62,7 +62,7 @@ Exacto en metal + línea + **CONJUNTO** de etiquetas (sin orden, `Etiqueta1..6`)
 |---|---|---|
 | **Default Process** | react-select: `input[role="combobox"]` en `[class*="-control"]`; valor en `[class*="singleValue"]`. `writeProcess()` = click → setter nativo + InputEvent → opciones → click. | igual |
 | **Metal base** | `<select id="root_DatosAdicionalesNP_BaseMetal">` (RJSF nativo) → texto de la opción. | mismo `<select>` (con `disabled`, igual se lee `selectedIndex`). |
-| **Línea** | react-select `singleValue` tras `<p>Línea:</p>` (forma larga). | `<p>` de texto plano hermano del label → `readSingleValueByLabel` captura texto plano. |
+| **Línea** | react-select `singleValue` tras `<p>Línea:</p>` (forma larga), **acotado al diálogo `MuiDialogContent`** (ver fix v0.1.3). | `<p>` de texto plano hermano del label → `readSingleValueByLabel` captura texto plano. |
 | **Etiquetas** | `[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_LABELS"]` → chips por `svg[data-testid="CloseIcon"]` (parentElement). | chips `.css-1owv9dy` **dentro de `MuiPaper-elevation0`** (superficie del NP), NO los de la card del cliente (`MuiPaper-elevation1`). |
 
 Etiquetas: se filtran `nonFinishLabelNames` (SRG, SMY, "NP desconocido", "En desarrollo", …) + dedup. "NP desconocido" NO debe aparecer (decisión del usuario: no es acabado).
@@ -70,6 +70,8 @@ Etiquetas: se filtran `nonFinishLabelNames` (SRG, SMY, "NP desconocido", "En des
 **Fix v0.1.1 (FALLIDO) — allowlist por nombre.** Intento: filtrar las etiquetas leídas contra el catálogo oficial `AllLabels(forPartNumber:true)`. **No sirvió:** `Industrial` está asociada solo a Cliente en la UI pero IGUAL aparecía en el set `forPartNumber:true` (o existe una etiqueta de NP homónima), así que el filtro por **nombre** no la quitaba; y de fondo el chip se leía del bloque "Customer:". Lección: el discriminador correcto es DOM, no nombre.
 
 **Fix v0.1.2 — scoping por elevación de MuiPaper (verificado en DOM).** Las etiquetas del **NP** cuelgan de la superficie primaria plana `MuiPaper-elevation0`; las del **CLIENTE** (renglón "Customer:") viven en una tarjeta elevada `MuiPaper-elevation1`. En la ficha solo se aceptan chips `.css-1owv9dy` cuyo `closest('.MuiPaper-root')` sea `MuiPaper-elevation0`. `closest` funciona aunque la card del cliente esté anidada (devuelve el paper más cercano = elevation1 → excluido). **Degradación segura:** si nada matchea elevation0, no entra ninguna etiqueta (mejor "sin etiquetas" que colar las de cliente). Se eliminó la allowlist por nombre (arriesgaba falsos negativos). El modal no cambia: su input `CREATE_PART_NUMBER_DIALOG_LABELS` ya es del NP. **Cadena DOM verificada (2026-06-15):** NP `Estaño Mate` → `.css-1owv9dy` … `MuiPaper-elevation0.css-10sik0g`; cliente `Activo`/`Industrial` → `.css-1owv9dy` … `MuiPaper-elevation1.css-1qkmlp`.
+
+**Fix v0.1.3 — Línea del modal leía el valor GUARDADO, no el ajustado (verificado en DOM).** En el modal "Edit Part Number", la **ficha sigue montada DETRÁS** y aparece *antes* en el DOM; su `Línea:` es texto plano con el valor guardado. `readSingleValueByLabel(LINEA_LABEL_RE)` corría con scope = `document`, encontraba primero el de la ficha y devolvía el valor viejo, ignorando el react-select del modal con el valor ajustado-no-guardado. **Fix:** `readInputs` calcula el `modalRoot` (`[data-steelhead-component-id^="CREATE_PART_NUMBER_DIALOG"]`→`closest('[class*="MuiDialog"], [role="dialog"]')` = `MuiDialogContent-root`) y acota **metal+línea** a ese root; en la ficha (sin modal) `modalRoot=null` → lectura global como antes. La Línea del modal vive en `CREATE_PART_NUMBER_DIALOG_ACCOUNTING_DIMENSIONS`. **Verificado (2026-06-15):** sin scope → `#0 ficha T201-LI…(viejo)`; con scope → `#1 modal T111-LI…(ajustado)`. (Metal ya leía bien por el `<select id>` editable, pero se acotó por consistencia ante IDs duplicados ficha/modal.)
 
 El ícono 🧮 se ancla junto al combobox (idempotente por `dataset.saPcIcon`).
 
