@@ -12,8 +12,12 @@ set -euo pipefail
 
 REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
 HOOKS_SRC="$REPO_ROOT/.githooks"
-# directorio de hooks común (sirve a todos los worktrees)
-HOOKS_DST="$(git -C "$REPO_ROOT" rev-parse --git-common-dir)/hooks"
+# directorio de hooks común (sirve a todos los worktrees). --git-common-dir puede
+# devolver una ruta RELATIVA (".git") relativa a REPO_ROOT, no a tu cwd; en un
+# worktree linkeado ".git" es un ARCHIVO, así que hay que resolverla a absoluta.
+COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir)"
+case "$COMMON" in /*) ;; *) COMMON="$REPO_ROOT/$COMMON" ;; esac
+HOOKS_DST="$COMMON/hooks"
 
 mkdir -p "$HOOKS_DST"
 installed=0
