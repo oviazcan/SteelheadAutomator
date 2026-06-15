@@ -1,6 +1,6 @@
 # Applet: `proceso-calculator` — Calculadora de Procesos
 
-**Versión actual:** 0.1.1 (en desarrollo — falta deploy; DOM adapter afinado + filtro de etiquetas de cliente)
+**Versión actual:** 0.1.2 (en workbench, PENDIENTE deploy — fix real: scoping etiquetas NP vs cliente por `MuiPaper-elevation0`). Vivo en gh-pages: 0.1.1 (fix por allowlist, fallido).
 **Archivo:** `remote/scripts/proceso-calculator.js`
 **Global:** `window.ProcesosCalculator`
 
@@ -63,11 +63,13 @@ Exacto en metal + línea + **CONJUNTO** de etiquetas (sin orden, `Etiqueta1..6`)
 | **Default Process** | react-select: `input[role="combobox"]` en `[class*="-control"]`; valor en `[class*="singleValue"]`. `writeProcess()` = click → setter nativo + InputEvent → opciones → click. | igual |
 | **Metal base** | `<select id="root_DatosAdicionalesNP_BaseMetal">` (RJSF nativo) → texto de la opción. | mismo `<select>` (con `disabled`, igual se lee `selectedIndex`). |
 | **Línea** | react-select `singleValue` tras `<p>Línea:</p>` (forma larga). | `<p>` de texto plano hermano del label → `readSingleValueByLabel` captura texto plano. |
-| **Etiquetas** | `[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_LABELS"]` → chips por `svg[data-testid="CloseIcon"]` (parentElement). | chips de solo lectura `.css-1owv9dy` (sin CloseIcon) en el encabezado. |
+| **Etiquetas** | `[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_LABELS"]` → chips por `svg[data-testid="CloseIcon"]` (parentElement). | chips `.css-1owv9dy` **dentro de `MuiPaper-elevation0`** (superficie del NP), NO los de la card del cliente (`MuiPaper-elevation1`). |
 
-Etiquetas: se filtran `nonFinishLabelNames` (SRG, SMY, "En desarrollo", …) + dedup.
+Etiquetas: se filtran `nonFinishLabelNames` (SRG, SMY, "NP desconocido", "En desarrollo", …) + dedup. "NP desconocido" NO debe aparecer (decisión del usuario: no es acabado).
 
-**Fix v0.1.1 — etiquetas de cliente vs de acabado.** El fallback de la ficha usa el selector **global** `.css-1owv9dy`, que captura *cualquier* chip de la página — incluidas las **etiquetas de CLIENTE** ("Industrial", "Automotriz", "Activo"), que NO son de acabado del NP y confundían el matching. `nonFinishLabelNames` solo cubre labels administrativos, no las de cliente. **Solución (data-driven, sin adivinar DOM):** en `openModal`, tras cargar `live`, se filtran las etiquetas leídas contra el **catálogo oficial de acabado** (`live.etiquetas` = `AllLabels(forPartNumber:true)` − `nonFinishLabelNames`). Las de cliente NO son `forPartNumber:true`, así que caen fuera del set y se descartan (se loguea cuáles). Guardado: si el catálogo no cargó, no se filtra (degradado, no roto). El mismo discriminador que usa `bulk-upload` para validar labels de NP.
+**Fix v0.1.1 (FALLIDO) — allowlist por nombre.** Intento: filtrar las etiquetas leídas contra el catálogo oficial `AllLabels(forPartNumber:true)`. **No sirvió:** `Industrial` está asociada solo a Cliente en la UI pero IGUAL aparecía en el set `forPartNumber:true` (o existe una etiqueta de NP homónima), así que el filtro por **nombre** no la quitaba; y de fondo el chip se leía del bloque "Customer:". Lección: el discriminador correcto es DOM, no nombre.
+
+**Fix v0.1.2 — scoping por elevación de MuiPaper (verificado en DOM).** Las etiquetas del **NP** cuelgan de la superficie primaria plana `MuiPaper-elevation0`; las del **CLIENTE** (renglón "Customer:") viven en una tarjeta elevada `MuiPaper-elevation1`. En la ficha solo se aceptan chips `.css-1owv9dy` cuyo `closest('.MuiPaper-root')` sea `MuiPaper-elevation0`. `closest` funciona aunque la card del cliente esté anidada (devuelve el paper más cercano = elevation1 → excluido). **Degradación segura:** si nada matchea elevation0, no entra ninguna etiqueta (mejor "sin etiquetas" que colar las de cliente). Se eliminó la allowlist por nombre (arriesgaba falsos negativos). El modal no cambia: su input `CREATE_PART_NUMBER_DIALOG_LABELS` ya es del NP. **Cadena DOM verificada (2026-06-15):** NP `Estaño Mate` → `.css-1owv9dy` … `MuiPaper-elevation0.css-10sik0g`; cliente `Activo`/`Industrial` → `.css-1owv9dy` … `MuiPaper-elevation1.css-1qkmlp`.
 
 El ícono 🧮 se ancla junto al combobox (idempotente por `dataset.saPcIcon`).
 

@@ -1,4 +1,4 @@
-// Calculadora de Procesos (proceso-calculator) v0.1.1
+// Calculadora de Procesos (proceso-calculator) v0.1.2
 // ============================================================================
 // Replica la "Calculadora de Procesos" de la pestaña CAT_Procesos del Excel de
 // carga masiva, DENTRO del UI de Steelhead, como herramienta inline durante la
@@ -42,7 +42,7 @@
 const ProcesosCalculator = (() => {
   'use strict';
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
 
   // ── Constantes de dominio ──
   // El catálogo vive en customInputs.CatProcesos de un ARTÍCULO DE INVENTARIO
@@ -332,25 +332,31 @@ const ProcesosCalculator = (() => {
     return readSingleValueByLabel(MATERIAL_LABEL_RE);
   }
 
-  // Etiquetas de acabado: chips del react-select de "Labels". Cada chip se
-  // identifica por su svg[data-testid="CloseIcon"]; el texto es el textContent
-  // del chip (el svg no aporta texto). Se filtran los labels administrativos
-  // (nonFinishLabelNames: SRG, SMY, "En desarrollo", ...).
-  //
-  // OJO (ficha): el fallback usa el selector global `.css-1owv9dy`, que captura
-  // CUALQUIER chip de la página — incluidas las etiquetas de CLIENTE
-  // ("Industrial", "Automotriz", "Activo"), que NO son etiquetas de acabado del
-  // NP. Esas se descartan en openModal filtrando contra el catálogo oficial
-  // (forPartNumber:true); aquí solo quitamos los nonFinishLabelNames.
+  // Etiquetas de acabado del NP. Dos vistas:
+  //  - Modal "Edit Part Number": react-select de Labels (component-id estable);
+  //    cada chip tiene un svg CloseIcon → su parentElement es el chip. Ese input
+  //    es del NP; no mezcla etiquetas de cliente.
+  //  - Ficha (NP guardado): chips de solo lectura con la clase generada
+  //    `.css-1owv9dy`. PROBLEMA: ese selector es GLOBAL y también captura las
+  //    etiquetas del CLIENTE (renglón "Customer:"), que comparten la misma clase.
+  //    Discriminador real (verificado en el DOM): las etiquetas del NP cuelgan de
+  //    la superficie primaria PLANA `MuiPaper-elevation0`; las del cliente viven
+  //    en una tarjeta elevada `MuiPaper-elevation1`. Por eso, en la ficha, solo
+  //    aceptamos chips cuyo paper más cercano sea elevation0. `closest` funciona
+  //    aunque la card del cliente esté anidada: devuelve el paper más cercano
+  //    (elevation1) → se excluye. Degradación segura: si nada matchea elevation0,
+  //    no entra ninguna etiqueta (mejor "sin etiquetas" que colar las de cliente).
+  // En ambas vistas se quitan además los nonFinishLabelNames (SRG, SMY,
+  // "NP desconocido", "En desarrollo", ...): no son acabados (opción A).
   function readEtiquetasFromDom() {
     const nonFinish = _nonFinishSet();
-    // Modal: react-select de Labels (component-id estable); cada chip tiene un
-    // svg CloseIcon → su parentElement es el chip. Ficha: chips de solo lectura
-    // (sin CloseIcon) con la clase generada css-1owv9dy en el encabezado.
     const labelCont = document.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_LABELS"]');
     const chips = labelCont
       ? [...labelCont.querySelectorAll('svg[data-testid="CloseIcon"]')].map(svg => svg.parentElement).filter(Boolean)
-      : [...document.querySelectorAll('.css-1owv9dy')];
+      : [...document.querySelectorAll('.css-1owv9dy')].filter(chip => {
+          const paper = chip.closest('.MuiPaper-root');
+          return paper && paper.classList.contains('MuiPaper-elevation0');
+        });
     const out = [], seen = new Set();
     for (const chip of chips) {
       if (chip.closest('#sa-pc-modal, #sa-pc-icon')) continue;
@@ -520,24 +526,14 @@ const ProcesosCalculator = (() => {
     try { live = await loadLiveCatalogs(); }
     catch (e) { live = _live; warn(`catálogos: ${e.message}`); }
 
-    // Filtrar las etiquetas leídas del DOM contra el catálogo OFICIAL de acabado
-    // (live.etiquetas = AllLabels forPartNumber:true − nonFinishLabelNames). Esto
-    // descarta etiquetas de CLIENTE ("Industrial", "Automotriz", "Activo") que en
-    // la ficha se renderizan con la misma clase de chip (.css-1owv9dy) pero NO
-    // aplican al NP. Guardado: si el catálogo no cargó, no filtramos (degradado,
-    // no roto) en vez de descartar todo.
-    let etiquetas = (domInputs.etiquetas || []).filter(Boolean);
-    if (live.etiquetas && live.etiquetas.length) {
-      const finishAllow = new Set(live.etiquetas.map(normStr));
-      const dropped = etiquetas.filter(e => !finishAllow.has(normStr(e)));
-      etiquetas = etiquetas.filter(e => finishAllow.has(normStr(e)));
-      if (dropped.length) log(`etiquetas de cliente descartadas (no son de acabado del NP): ${dropped.join(', ')}`);
-    }
-
+    // Las etiquetas de cliente ya se excluyen en readEtiquetasFromDom (scoping a
+    // MuiPaper-elevation0 en la ficha). No re-filtramos por catálogo aquí: hacerlo
+    // por nombre arriesga falsos negativos (una etiqueta de cliente puede llamarse
+    // igual que un acabado, y un acabado nuevo puede no estar aún en el catálogo).
     _modalState = {
       metal: domInputs.metal || '',
       linea: domInputs.linea || '',
-      etiquetas,
+      etiquetas: (domInputs.etiquetas || []).filter(Boolean),
       live
     };
     renderBody();
