@@ -11,6 +11,7 @@
     "apolloClientVersion": "4.0.8",
     "hashes": {
       "mutations": {
+        "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf",
         "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b",
         "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163",
         "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49",
@@ -73,6 +74,8 @@
         "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f"
       },
       "queries": {
+        "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f",
+        "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac",
         "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890",
         "GetQuote_v8": "41d76b06d54d33333b78be9393438bca977b086e31076b84a756701da9854247",
         "GetQuote_v71": "41d76b06d54d33333b78be9393438bca977b086e31076b84a756701da9854247",
