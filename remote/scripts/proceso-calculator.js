@@ -1,4 +1,4 @@
-// Calculadora de Procesos (proceso-calculator) v0.1.2
+// Calculadora de Procesos (proceso-calculator) v0.1.3
 // ============================================================================
 // Replica la "Calculadora de Procesos" de la pestaña CAT_Procesos del Excel de
 // carga masiva, DENTRO del UI de Steelhead, como herramienta inline durante la
@@ -42,7 +42,7 @@
 const ProcesosCalculator = (() => {
   'use strict';
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
 
   // ── Constantes de dominio ──
   // El catálogo vive en customInputs.CatProcesos de un ARTÍCULO DE INVENTARIO
@@ -322,14 +322,16 @@ const ProcesosCalculator = (() => {
   }
 
   // Metal base: en el modal es un <select> RJSF nativo con id estable; en la
-  // ficha cae al extractor por label.
-  function readMetal() {
-    const sel = document.getElementById('root_DatosAdicionalesNP_BaseMetal');
+  // ficha cae al extractor por label. `root` acota la búsqueda al diálogo del
+  // modal (si está abierto) para no leer el <select> homónimo de la ficha de atrás.
+  function readMetal(root) {
+    const scope = root || document;
+    const sel = scope.querySelector('#root_DatosAdicionalesNP_BaseMetal');
     if (sel && sel.selectedIndex > 0) {
       const opt = sel.options[sel.selectedIndex];
       if (opt && opt.value) return (opt.text || '').trim();
     }
-    return readSingleValueByLabel(MATERIAL_LABEL_RE);
+    return readSingleValueByLabel(MATERIAL_LABEL_RE, root || undefined);
   }
 
   // Etiquetas de acabado del NP. Dos vistas:
@@ -370,9 +372,18 @@ const ProcesosCalculator = (() => {
 
   // Lee metal, línea y etiquetas del DOM del PN en edición.
   // OJO: la Línea del UI es la forma LARGA (= columna Línea2 del catálogo).
+  //
+  // CRÍTICO (modal): cuando el modal "Edit Part Number" está abierto, la FICHA
+  // sigue montada DETRÁS y aparece ANTES en el DOM. Su "Línea:" es texto plano con
+  // el valor GUARDADO; un readSingleValueByLabel global lo encuentra primero y
+  // devuelve el valor viejo, ignorando el react-select del modal con el valor
+  // AJUSTADO-no-guardado. Por eso acotamos metal+línea al diálogo (MuiDialogContent)
+  // cuando existe. En la ficha (sin modal) `modalRoot` es null → lectura global.
   function readInputs() {
-    const metal = readMetal();
-    const linea = readSingleValueByLabel(LINEA_LABEL_RE);
+    const modalAnchor = document.querySelector('[data-steelhead-component-id^="CREATE_PART_NUMBER_DIALOG"]');
+    const modalRoot = (modalAnchor && modalAnchor.closest('[class*="MuiDialog"], [role="dialog"]')) || null;
+    const metal = readMetal(modalRoot);
+    const linea = readSingleValueByLabel(LINEA_LABEL_RE, modalRoot || undefined);
     const etiquetas = readEtiquetasFromDom();
     return { metal, linea, etiquetas };
   }
