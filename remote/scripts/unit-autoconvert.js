@@ -185,9 +185,10 @@
         else missing.push(peer);
       }
       if (missing.length) {
-        const created = await apiUpsertPeers(missing);
-        if (created > 0) {
-          showNotice('Se crearon ' + created + ' unidad(es) por API (' +
+        const { created, updated } = await apiUpsertPeers(missing);
+        const n = created + updated;
+        if (n > 0) {
+          showNotice('Se guardaron ' + n + ' unidad(es) por API (' +
             missing.map((m) => m.code).join(', ') + ') · recarga para verlas');
         }
       }
@@ -266,11 +267,11 @@
   async function apiUpsertPeersInner(missing) {
     const inventoryItemId = await resolveInventoryItemId();
     if (inventoryItemId == null) {
-      console.warn(LOG, 'sin inventoryItemId; no se crean', missing.map((m) => m.code));
-      showNotice('No se pudo resolver el PN — no se crearon ' + missing.map((m) => m.code).join(', '), true);
-      return 0;
+      console.warn(LOG, 'sin inventoryItemId; no se guardan', missing.map((m) => m.code));
+      showNotice('No se pudo resolver el PN — no se guardaron ' + missing.map((m) => m.code).join(', '), true);
+      return { created: 0, updated: 0 };
     }
-    let created = 0;
+    let created = 0, updated = 0;
     try {
       const data = await api().query('GetAvailableUnits', { inventoryItemId }, 'GetAvailableUnits');
       const existing = data?.inventoryItemById?.inventoryItemUnitConversionsByInventoryItemId?.nodes || [];
@@ -280,6 +281,7 @@
         const hit = existing.find((c) => Number(c.unitByUnitId?.id) === Number(unitId));
         if (hit) {
           await api().query('UpdateInventoryItemUnitConversion', { id: hit.id, factor: peer.value }, 'UpdateInventoryItemUnitConversion');
+          updated++;
         } else {
           await api().query('CreateInventoryItemUnitConversion', { unitId, inventoryItemId, factor: peer.value }, 'CreateInventoryItemUnitConversion');
           created++;
@@ -287,9 +289,9 @@
       }
     } catch (e) {
       console.error(LOG, 'apiUpsertPeers', e);
-      showNotice('Error creando unidades por API', true);
+      showNotice('Error guardando unidades por API', true);
     }
-    return created;
+    return { created, updated };
   }
 
   // Aviso no bloqueante (toast efímero).
@@ -299,7 +301,7 @@
       el = document.createElement('div');
       el.className = 'sa-uac-notice';
       el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;padding:10px 16px;border-radius:8px;font-size:13px;font-family:-apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:340px;pointer-events:none;transition:opacity .3s;';
-      document.body.appendChild(el);
+      (document.body || document.documentElement).appendChild(el);
     }
     el.style.background = isError ? '#c13c26' : '#1f2937';
     el.style.color = '#fff';
