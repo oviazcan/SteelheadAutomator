@@ -7,7 +7,7 @@
 #   - corre tools/validate-hashes.py
 #   - exit 1 (stale)  -> notify-stale-hashes.sh (issue+email+bitácora) + notificación macOS
 #   - exit 2 (auth)   -> notificación macOS "re-login"
-#   - exit 0 (ok)     -> silencioso (solo log)
+#   - exit 0 (ok)     -> append "0 rotado(s)" a la bitácora + commit/push (deja rastro)
 #
 # Overrides opcionales por env var: REPO_ROOT, PYTHON
 set -uo pipefail
@@ -43,6 +43,7 @@ notify() {  # notify <título-corto> <mensaje> <sonido>
   case "$rc" in
     0)
       echo "OK: todos los hashes vigentes."
+      printf '\n## %s — 0 rotado(s) (launchd)\n' "$(date '+%Y-%m-%d %H:%M')" >> docs/api/hash-validation-log.md
       ;;
     1)
       echo "STALE detectado — disparando notificaciones."
@@ -62,6 +63,19 @@ notify() {  # notify <título-corto> <mensaje> <sonido>
       notify "error" "hash-validator salió con código $rc. Revisa runner.log." "Basso"
       ;;
   esac
+
+  # Rastro auditable en git: commit + push SOLO de la bitácora. El `git add` es
+  # SELECTIVO (solo este archivo) → nunca arrastra otros cambios sin commitear ni
+  # toca el working tree del usuario. Push defensivo: si falla (non-ff), loguea y
+  # sigue; la próxima corrida lo reintenta.
+  if ! git diff --quiet -- docs/api/hash-validation-log.md 2>/dev/null; then
+    git add docs/api/hash-validation-log.md
+    if git commit -q -m "chore(hash-validation): corrida $TODAY (exit $rc) [launchd]"; then
+      git push -q origin main 2>/dev/null && echo "bitácora commiteada+pusheada" \
+        || echo "WARN: push de bitácora falló (non-ff?); se sincroniza en la próxima corrida o a mano."
+    fi
+  fi
+
   exit "$rc"
 } 2>&1 | tee -a "$LOG_FILE"
 

@@ -201,3 +201,13 @@ Bump `version` 1.6.47 → **1.6.48** + `lastUpdated` 2026-06-08T10:45.
 
 ## 2026-06-10 12:36 — 0 rotado(s) (config v1.6.51)
 
+## 2026-06-15 22:14 — 20 rotado(s) (config v1.6.72)
+
+Validación a mano (skill `steelhead-hash-validator`, conectado a SH): **137 ok / 20 stale / 3 whitelist / 0 unknown / 0 auth** en 95.9s. Rotación grande de Steelhead; el usuario ya los está corrigiendo. El cron `hash-validator-daily` no estaba corriendo (última corrida 2026-06-10; `scheduled_tasks.json` ausente, CronList vacío) → recreado en esta sesión.
+
+**Queries rotadas (18):** `GetQuote_v8`, `GetQuote_v71`, `AllProcesses`, `GetPartNumber`, `Customer`, `AllPartNumbers`, `AllWorkOrders`, `SearchInventoryItemBatches`, `CreateEditReceivedOrderDialogQuery`, `GetCustomerInfoForReceivedOrder`, `GetReceivedOrder`, `GetSpec`, `SpecFieldsAndOptions`, `ReceivingBatchesQuery`, `InvoiceByIdInDomain`, `SearchPurchaseOrdersForBill`, `GetPurchaseOrdersDataForBill`, `GetReceivedOrdersWithReceivedOrderLineItems`.
+
+**Mutations rotadas (2):** `SaveManyPNP_Quote`, `SaveManyPNP_PN`.
+
+**No afectados** (relevante para hoy): `GetInventoryItem`, `UpdateInventoryItemInputs` siguen vigentes → `catalog-fetcher` (hoja CAT_Procesos) y `tools/rename-catalog-label.js` operan bien. Ojo: `catalog-fetcher` SÍ usa `AllProcesses` + `SpecFieldsAndOptions` (rotadas) → la hoja Procesos y los combos de specs del "Actualizar Catálogos" fallarán hasta actualizar esos hashes.
+
