@@ -21,6 +21,13 @@ LOG_FILE="$REPO_ROOT/docs/api/hash-validation-log.md"
 TODAY="$(date +%Y-%m-%d)"
 TIMESTAMP="$(date +%H:%M)"
 
+# ── Destinatarios del email de alerta. Edita esta lista para agregar/quitar. ──
+EMAIL_RECIPIENTS=(
+  "oviazcan@gmail.com"
+  "ernesto.sanchez@proecoplating.com"
+  "msierra@proecoplating.com"
+)
+
 # Extrae stats con python (jq no garantizado en macOS sin brew).
 read -r STALE_COUNT OK_COUNT TOTAL ELAPSED CONFIG_VER STALE_LIST <<EOF
 $(python3 - "$RESULT_JSON" <<'PY'
@@ -103,16 +110,21 @@ Acción: correr hash-scanner en navegador y actualizar config.json.
 
 JSON: $RESULT_JSON"
 
+# Una línea AppleScript "make new to recipient" por cada destinatario de la lista.
+RECIPIENT_LINES=""
+for _addr in "${EMAIL_RECIPIENTS[@]}"; do
+  RECIPIENT_LINES+="        make new to recipient at end of to recipients with properties {address:\"$_addr\"}"$'\n'
+done
+
 osascript <<EOF
 tell application "Mail"
     set newMessage to make new outgoing message with properties {subject:"[Steelhead] $STALE_COUNT hash(es) rotado(s) — $TODAY", content:"$EMAIL_BODY", visible:false}
     tell newMessage
-        make new to recipient at end of to recipients with properties {address:"oviazcan@gmail.com"}
-        send
+$RECIPIENT_LINES        send
     end tell
 end tell
 EOF
-echo "  ✓ Email enviado"
+echo "  ✓ Email enviado a: ${EMAIL_RECIPIENTS[*]}"
 
 # ── 3. Append a bitácora ─────────────────────────────────────────────────────
 mkdir -p "$(dirname "$LOG_FILE")"
