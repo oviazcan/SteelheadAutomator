@@ -70,6 +70,21 @@ Cada `lowCodeDefaultInvoiceLineItem` lleva **un solo `salesOrderLineItemId`**. A
 
 Mitigación pendiente: investigar si Steelhead acepta `salesOrderLineItemIds: number[]` (plural) en `lowCodeDefaultInvoiceLineItems` para vincular múltiples SOLIs a una línea consolidada (similar al patrón `rowKey` documentado en `powertools-ordendeventa.md`).
 
+### Hallazgo (2026-06-16): explotar por lote desde el hook NO funciona — la asociación pieza↔línea vive en el SOLI
+
+**Pregunta investigada:** ¿se puede facturar **por lote** (una línea de factura por `receivedBatch`) **desde el hook**, sin activar la función de domain de Steelhead "colocar cada lote en su propia línea de OV"?
+
+**Respuesta: NO.** Experimento real sobre OV/factura de prueba **1096** (1 SOLI `3374909`, 2 lotes: Batch 8800 con 5 pzs, Batch 8799 con 1 pza). Hook experimental en `powertools/experiments/invoice-explode-by-batch.experiment.ts` (copia de `invoice.ts` que emite una línea por lote, repartiendo `quantity` con la misma fórmula `pa.quantity × conversionFactor`, todas con el mismo `salesOrderLineItemId`).
+
+Resultado en el preview del editor de Power Tools:
+
+- **Lo que el hook SÍ controla salió bien:** se pintaron las 2 líneas con el mismo `salesOrderLineItemId: 3374909`, y las cantidades fueron correctas (5 pzs → 11.1158 LBR; 1 pza → 2.2231 LBR; suman el total 13.3387 — invariante OK). `rate` 1.88 idéntico.
+- **Lo que el hook NO controla rompió el caso:** en "Part Locations (Select To Associate Parts To Invoice)", **ambas** líneas heredaron **las dos** partidas (`5 Parts Batch 8800` + `1 Parts Batch 8799`), las 6 piezas pegadas a cada línea. Steelhead mostró el aviso **"Done invoicing quantity > line item quantity"** en ambas: cada línea factura 11.1/2.22 lbs pero arrastra las 6 piezas → doble asociación, no facturable.
+
+**Causa raíz:** el hook (`lowCodeDefaultInvoiceLineItems[]`) solo controla `quantity`, `rate`, `description`, `taxCodeId`, `productId` y **un** `salesOrderLineItemId` por línea. La **asociación pieza↔línea (las `partAccounts`/lotes que cuelgan de la línea) la determina el SOLI**, no la línea de factura. Al compartir `salesOrderLineItemId`, las N líneas explotadas heredan TODAS las `partAccounts` del SOLI; el hook no expone ningún canal para repartir partAccounts entre líneas (no hay equivalente al `rowKey` de `ordendeventa.ts`, que sirve para *crear* entidades, no para subdividir asociaciones de un SOLI existente).
+
+**Conclusión operativa:** para facturar por lote, la función de domain **"colocar cada lote en su propia línea de OV" es el único camino** — sube la granularidad al nivel SOLI (un lote = un SOLI = sus propias piezas), que es donde Steelhead ata la asociación. Explotar desde el hook produce facturas con piezas duplicadas y el bloqueo "Done invoicing quantity > line item quantity". El experimento se conserva como artefacto del hallazgo (no se publica nunca a productivo).
+
 ### Consistencia con `facturacion-pdf.ts`
 
 `facturacion-pdf.ts` expone **ambas vistas** (`invoiceLinesConLotes` per-línea y `lineasConsolidadasPorProducto` agregada) para que la plantilla PDF elija. `facturacion.ts` **decide en el hook** y solo emite una versión, porque el integrador SAT lee de los `lowCodeDefaultInvoiceLineItems` que se persisten en la factura — no hay forma de dejar las dos versiones disponibles.
