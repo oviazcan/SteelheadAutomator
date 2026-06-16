@@ -219,3 +219,5 @@ Re-captura vía hash-scanner (navegador, same-origin). Las 20 rotadas confirmada
 Deploy `tools/deploy.sh --set 1.6.73`. **Re-validación: 158 ok / 0 stale / 2 whitelist (`CurrentUser`, `GetPurchaseOrder`).** `GetAccountDataForBill` con el hash nuevo ya pasa desde el validador → **removido de la whitelist**.
 
 `CurrentUser` y `GetPurchaseOrder` NO rotaron (scan == config) → siguen session-sensitive (el front los usa OK; scripts externos / fetch de la extensión reciben "Must provide a query string"). Por eso el gating de `report-regen` se rediseñó (v0.2.0) para NO llamar `CurrentUser` sino interceptar la respuesta del front.
+
+## 2026-06-15 23:28 — 0 rotado(s) (launchd)
