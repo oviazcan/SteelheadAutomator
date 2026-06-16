@@ -606,8 +606,16 @@ Insertar dentro del IIFE (antes de `const Applet = ...`):
 Insertar dentro del IIFE (antes de `const Applet = ...`):
 
 ```js
+  // Serializa las llamadas API: blurs concurrentes (tab-through rápido) no deben crear
+  // conversiones duplicadas. La 2ª espera a la 1ª y ya ve la unidad recién creada → UPDATE.
+  function apiUpsertPeers(missing) {
+    const run = (S.apiQueue || Promise.resolve()).then(() => apiUpsertPeersInner(missing));
+    S.apiQueue = run.then(() => {}, () => {});
+    return run;
+  }
+
   // Crea/actualiza conversiones para los pares sin campo. Devuelve nº creados.
-  async function apiUpsertPeers(missing) {
+  async function apiUpsertPeersInner(missing) {
     const inventoryItemId = await resolveInventoryItemId();
     if (inventoryItemId == null) {
       console.warn(LOG, 'sin inventoryItemId; no se crean', missing.map((m) => m.code));
@@ -642,7 +650,7 @@ Insertar dentro del IIFE (antes de `const Applet = ...`):
     if (!el) {
       el = document.createElement('div');
       el.className = 'sa-uac-notice';
-      el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;padding:10px 16px;border-radius:8px;font-size:13px;font-family:-apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:340px;';
+      el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;padding:10px 16px;border-radius:8px;font-size:13px;font-family:-apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:340px;pointer-events:none;transition:opacity .3s;';
       document.body.appendChild(el);
     }
     el.style.background = isError ? '#c13c26' : '#1f2937';
