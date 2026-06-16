@@ -227,8 +227,8 @@ Agregar al array `apps` (mismo formato que `weight-quick-entry`):
   "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP",
   "icon": "📐",
   "category": "Números de Parte",
-  "autoInject": true,
   "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"],
+  "autoInject": true,
   "requiredPermissions": []
 }
 ```
