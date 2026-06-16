@@ -10,12 +10,14 @@
         <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/run-hash-validation.sh</string>
     </array>
 
-    <!-- Diario a las 09:17. Sin Weekday = todos los días. Si la Mac está dormida
-         o apagada a esa hora, launchd corre el job en cuanto despierta. -->
+    <!-- Cada hora a :17 (sin Hour = todas las horas). El GATE POR RELEASE del
+         wrapper hace que las corridas sin build nuevo sean casi gratis (solo un
+         curl a /version.json); solo valida los 160 hashes cuando Steelhead publica
+         un release nuevo. Así detecta una rotación dentro de ~1h del release
+         nocturno, en vez de hasta el día siguiente. Si la Mac está dormida, launchd
+         corre el job pendiente en cuanto despierta. -->
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Hour</key>
-        <integer>9</integer>
         <key>Minute</key>
         <integer>17</integer>
     </dict>

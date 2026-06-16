@@ -9,6 +9,11 @@
 #   - exit 2 (auth)   -> notificación macOS "re-login"
 #   - exit 0 (ok)     -> append "0 rotado(s)" a la bitácora + commit/push (deja rastro)
 #
+# GATE POR RELEASE: antes de validar, compara el code-id de /version.json con el de
+# la última corrida. Si no cambió (no hubo release de Steelhead) -> SKIP: los
+# persisted-query hashes solo rotan con un build nuevo del frontend. Así el job
+# corre seguido (cada hora) casi gratis y solo valida (~2min) cuando hay release.
+#
 # Overrides opcionales por env var: REPO_ROOT, PYTHON
 set -uo pipefail
 
@@ -36,6 +41,20 @@ notify() {  # notify <título-corto> <mensaje> <sonido>
   echo "========================================================================"
   echo "  Hash validation  —  $(date '+%Y-%m-%d %H:%M:%S %Z')"
   echo "========================================================================"
+
+  # ── Gate por release: solo validar si Steelhead publicó un build nuevo ──
+  RELEASE_FILE="$LOG_DIR/last-release.txt"
+  CUR_CODEID="$(curl -s -m 15 https://app.gosteelhead.com/version.json 2>/dev/null | "$PYTHON" -c 'import json,sys;print(json.load(sys.stdin).get("code-id",""))' 2>/dev/null || echo "")"
+  PREV_CODEID="$(cat "$RELEASE_FILE" 2>/dev/null || echo "")"
+  if [ -z "$CUR_CODEID" ]; then
+    echo "WARN: no pude leer code-id de /version.json — valido de todos modos (defensivo)."
+  elif [ "$CUR_CODEID" = "$PREV_CODEID" ]; then
+    echo "Sin release nuevo (code-id ${CUR_CODEID:0:8}) — skip. Los hashes no rotan sin release."
+    exit 0
+  else
+    echo "Release NUEVO detectado: '${PREV_CODEID:0:8}' -> '${CUR_CODEID:0:8}'. Validando..."
+  fi
+
   "$PYTHON" tools/validate-hashes.py
   rc=$?
   echo "Exit code: $rc  ($(date '+%Y-%m-%d %H:%M:%S %Z'))"
@@ -63,6 +82,11 @@ notify() {  # notify <título-corto> <mensaje> <sonido>
       notify "error" "hash-validator salió con código $rc. Revisa runner.log." "Basso"
       ;;
   esac
+
+  # Marca este release como ya validado (salvo auth-roto) para no re-validarlo.
+  if [ "$rc" != "2" ] && [ -n "${CUR_CODEID:-}" ]; then
+    echo "$CUR_CODEID" > "$RELEASE_FILE"
+  fi
 
   # Rastro auditable en git: commit + push SOLO de la bitácora. El `git add` es
   # SELECTIVO (solo este archivo) → nunca arrastra otros cambios sin commitear ni
