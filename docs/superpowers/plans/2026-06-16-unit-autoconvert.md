@@ -444,7 +444,7 @@ Insertar estas funciones dentro del IIFE (antes de `const Applet = ...`):
     const proto = window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(input, String(value));
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
