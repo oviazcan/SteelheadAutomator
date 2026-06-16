@@ -411,6 +411,7 @@
       "unitPriceFormula": "netPrice / priceUnit"
     }
   },
+  "unitAutoConvertEnabled": true,
   "apps": [
     {
       "id": "carga-masiva",
@@ -678,6 +679,16 @@
       "actions": [
         { "id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry" }
       ]
+    },
+    {
+      "id": "unit-autoconvert",
+      "name": "Auto-conversión de Unidades",
+      "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP",
+      "icon": "📐",
+      "category": "Números de Parte",
+      "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"],
+      "autoInject": true,
+      "requiredPermissions": []
     },
     {
       "id": "receiver-date-override",
