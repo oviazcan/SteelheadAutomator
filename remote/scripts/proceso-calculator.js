@@ -1,4 +1,4 @@
-// Calculadora de Procesos (proceso-calculator) v0.1.3
+// Calculadora de Procesos (proceso-calculator) v0.1.4
 // ============================================================================
 // Replica la "Calculadora de Procesos" de la pestaña CAT_Procesos del Excel de
 // carga masiva, DENTRO del UI de Steelhead, como herramienta inline durante la
@@ -42,7 +42,7 @@
 const ProcesosCalculator = (() => {
   'use strict';
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
 
   // ── Constantes de dominio ──
   // El catálogo vive en customInputs.CatProcesos de un ARTÍCULO DE INVENTARIO
@@ -370,20 +370,67 @@ const ProcesosCalculator = (() => {
     return out;
   }
 
+  // Cache de inputs del MODAL para sortear las pestañas. Metal y Línea viven en la
+  // pestaña "DATOS GENERALES"; cuando la calc abre desde "PROCESO Y SPECS" esos
+  // campos están DESMONTADOS (no existen en el DOM) → no se pueden leer ahí. El
+  // observer captura su valor mientras están montados (estás en DATOS GENERALES) y
+  // lo guarda aquí; al abrir la calc se usa este valor (el AJUSTADO-no-guardado).
+  // Se resetea al cerrar el modal. Verificado en DOM: solo existe 1 metal/1 línea a
+  // la vez, y en PROCESO Y SPECS son los de la FICHA (valor guardado), fuera del diálogo.
+  let _modalCache = { metal: '', linea: '' };
+
+  // Diálogo "Edit/Create Part Number" si está abierto (si no, null).
+  function partNumberDialog() {
+    const anchor = document.querySelector('[data-steelhead-component-id^="CREATE_PART_NUMBER_DIALOG"]');
+    return (anchor && anchor.closest('[role="dialog"], [class*="MuiDialog"]')) || null;
+  }
+
+  // Captura metal/línea del MODAL (no de la ficha) cuando están montados; conserva
+  // el último valor visto si la pestaña se desmonta. Resetea el cache si no hay modal.
+  // Corre síncrono desde el observer (barato: scopes chicos) para no perder el valor
+  // en un cambio-de-pestaña rápido.
+  function captureModalInputs() {
+    const dialog = partNumberDialog();
+    if (!dialog) { _modalCache = { metal: '', linea: '' }; return; }
+    // Metal: <select> nativo. Listener 'change' (captura ANTES de desmontar) + lectura directa.
+    const sel = dialog.querySelector('#root_DatosAdicionalesNP_BaseMetal');
+    if (sel) {
+      if (!sel.dataset.saPcHook) {
+        sel.dataset.saPcHook = '1';
+        sel.addEventListener('change', () => {
+          const o = sel.options[sel.selectedIndex];
+          if (o && o.value) _modalCache.metal = (o.text || '').trim();
+        });
+      }
+      const o = sel.options[sel.selectedIndex];
+      if (sel.selectedIndex > 0 && o && o.value) _modalCache.metal = (o.text || '').trim();
+    }
+    // Línea: react-select dentro de ACCOUNTING_DIMENSIONS (scope chico → label-walk barato).
+    const accDim = dialog.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_ACCOUNTING_DIMENSIONS"]');
+    if (accDim) {
+      const l = readSingleValueByLabel(LINEA_LABEL_RE, accDim);
+      if (l) _modalCache.linea = l;
+    }
+  }
+
   // Lee metal, línea y etiquetas del DOM del PN en edición.
   // OJO: la Línea del UI es la forma LARGA (= columna Línea2 del catálogo).
-  //
-  // CRÍTICO (modal): cuando el modal "Edit Part Number" está abierto, la FICHA
-  // sigue montada DETRÁS y aparece ANTES en el DOM. Su "Línea:" es texto plano con
-  // el valor GUARDADO; un readSingleValueByLabel global lo encuentra primero y
-  // devuelve el valor viejo, ignorando el react-select del modal con el valor
-  // AJUSTADO-no-guardado. Por eso acotamos metal+línea al diálogo (MuiDialogContent)
-  // cuando existe. En la ficha (sin modal) `modalRoot` es null → lectura global.
+  // MODAL: se prefiere el cache (valor del modal capturado en CUALQUIER pestaña,
+  // incl. el ajustado-no-guardado), luego el diálogo montado, luego la ficha (valor
+  // GUARDADO) como último recurso. FICHA (sin modal): lectura global directa.
   function readInputs() {
-    const modalAnchor = document.querySelector('[data-steelhead-component-id^="CREATE_PART_NUMBER_DIALOG"]');
-    const modalRoot = (modalAnchor && modalAnchor.closest('[class*="MuiDialog"], [role="dialog"]')) || null;
-    const metal = readMetal(modalRoot);
-    const linea = readSingleValueByLabel(LINEA_LABEL_RE, modalRoot || undefined);
+    const dialog = partNumberDialog();
+    if (dialog) {
+      captureModalInputs(); // refresca con lo montado ahora (por si abriste en DATOS GENERALES)
+      const metal = _modalCache.metal || readMetal(dialog) || readMetal(null);
+      const linea = _modalCache.linea
+        || readSingleValueByLabel(LINEA_LABEL_RE, dialog)
+        || readSingleValueByLabel(LINEA_LABEL_RE);
+      const etiquetas = readEtiquetasFromDom();
+      return { metal, linea, etiquetas };
+    }
+    const metal = readMetal(null);
+    const linea = readSingleValueByLabel(LINEA_LABEL_RE);
     const etiquetas = readEtiquetasFromDom();
     return { metal, linea, etiquetas };
   }
@@ -462,6 +509,7 @@ const ProcesosCalculator = (() => {
   function startObserver() {
     if (_observer) return;
     _observer = new MutationObserver(() => {
+      captureModalInputs(); // síncrono: captura metal/línea del modal antes de que cambies de pestaña
       if (_debounce) clearTimeout(_debounce);
       _debounce = setTimeout(ensureIcon, 350);
     });
