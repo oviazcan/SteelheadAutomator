@@ -1,6 +1,14 @@
-' === MACRO 2: RefrescarListas (v12) ===
+' === MACRO 2: RefrescarListas (v13) ===
 ' Lee catálogos desde archivo externo "Catalogos_Steelhead_*.xlsx"
 ' generado por la extensión Chrome "Actualizar Catálogos"
+'
+' V13 (2026-06-15): la hoja CAT_Procesos deja de ser fuente de verdad local.
+'   Ahora se reconstruye desde Steelhead (artículo de inventario 900192, que mantiene
+'   la Calculadora de Procesos). El archivo de catálogos trae una hoja "CAT_Procesos"
+'   con cols Linea/MetalBase/Etiqueta1..6/Proceso; CargarCatProcesosDesde la vuelca al
+'   ListObject Tabla1 (cols A..G): D=Linea, E=MetalBase, F=Etiqueta1..6 unidas con
+'   " + ", G=Proceso. A/B/C (Grupo/Característica/Línea corta) quedan vacías — ninguna
+'   fórmula las usa. Las fórmulas auxiliares (I2:O2, fuera de la tabla) no se tocan.
 '
 ' V12 (2026-05-26):
 '   1. Fix bug Insert→escritura directa. Items en row 4+, placeholders en 2,3.
@@ -28,6 +36,8 @@ Sub RefrescarListas()
 
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
+
+    Dim nCatProc As Long
 
     ' Abrir archivo de catálogos
     Dim wbCat As Workbook
@@ -57,6 +67,7 @@ Sub RefrescarListas()
     CargarUsuariosDesde wbCat, wsL
     CargarGruposDesde wbCat, wsL
     CargarTiposGeometriaDesde wbCat, wsL  ' V12: nueva
+    nCatProc = CargarCatProcesosDesde(wbCat)  ' V13: CAT_Procesos desde SH (inventario 900192)
 
     ' V12 FIX: Escribir placeholders directo en filas 2 y 3 (sin Insert para no empujar)
     ' Listas estrictas → "(seleccione)" + "-"
@@ -109,7 +120,8 @@ Sub RefrescarListas()
         NContar(wsL, 11) & " departamentos" & vbCrLf & _
         NContar(wsL, 12) & " usuarios" & vbCrLf & _
         NContar(wsL, 13) & " grupos PN" & vbCrLf & _
-        NContar(wsL, 14) & " tipos de geometr" & ChrW(237) & "a", vbInformation, "RefrescarListas"
+        NContar(wsL, 14) & " tipos de geometr" & ChrW(237) & "a" & vbCrLf & _
+        nCatProc & " combinaciones CAT_Procesos (desde SH)", vbInformation, "RefrescarListas"
     Exit Sub
 
 ErrorHandler:
@@ -502,6 +514,81 @@ Private Sub CargarTiposGeometriaDesde(wbCat As Workbook, wsL As Worksheet)
     Next r
     EscribirOrdenado wsL, 14, items
 End Sub
+
+' === CAT_PROCESOS (hoja CAT_Procesos, ListObject Tabla1, cols A..G) ===  V13: nueva
+' Reconstruye la tabla del catálogo de procesos desde Steelhead (artículo de inventario
+' 900192). El archivo de catálogos trae la hoja "CAT_Procesos" con:
+'   col1=Linea  col2=MetalBase  col3..8=Etiqueta1..6  col9=Proceso
+' Mapeo a Tabla1: D(Línea2)=Linea, E(Metal Base)=MetalBase,
+'   F(Etiquetas)=Etiqueta1..6 unidas con " + ", G(Proceso)=Proceso.
+' A(Grupo)/B(Característica)/C(Línea corta) quedan vacías (ninguna fórmula las usa).
+' NO toca las fórmulas auxiliares I2:O2 (viven fuera de la tabla). Devuelve el # de filas.
+Private Function CargarCatProcesosDesde(wbCat As Workbook) As Long
+    Dim wsSrc As Worksheet, wsCP As Worksheet, lo As ListObject
+    CargarCatProcesosDesde = 0
+
+    Set wsSrc = GetCatSheet(wbCat, "CAT_Procesos")
+    If wsSrc Is Nothing Then Exit Function
+
+    On Error Resume Next
+    Set wsCP = ThisWorkbook.Sheets("CAT_Procesos")
+    On Error GoTo 0
+    If wsCP Is Nothing Then Exit Function
+    On Error Resume Next
+    Set lo = wsCP.ListObjects("Tabla1")
+    On Error GoTo 0
+    If lo Is Nothing Then Exit Function
+
+    Dim srcLast As Long, r As Long, n As Long
+    Dim lin As String, met As String, proc As String, etqs As String, ev As String
+    Dim e As Long, k As Long
+
+    srcLast = wsSrc.Cells(wsSrc.Rows.Count, 1).End(xlUp).Row
+
+    ' Contar filas válidas (Linea o Proceso no vacíos)
+    n = 0
+    For r = 2 To srcLast
+        If Trim(CStr(wsSrc.Cells(r, 1).Value)) <> "" Or Trim(CStr(wsSrc.Cells(r, 9).Value)) <> "" Then n = n + 1
+    Next r
+    If n = 0 Then Exit Function  ' catálogo vacío: no tocar la tabla (defensivo)
+
+    ' Construir el bloque A..G (7 columnas). A/B/C se dejan Empty → celdas vacías.
+    Dim data() As Variant
+    ReDim data(1 To n, 1 To 7)
+    k = 0
+    For r = 2 To srcLast
+        lin = Trim(CStr(wsSrc.Cells(r, 1).Value))
+        proc = Trim(CStr(wsSrc.Cells(r, 9).Value))
+        If lin <> "" Or proc <> "" Then
+            met = Trim(CStr(wsSrc.Cells(r, 2).Value))
+            etqs = ""
+            For e = 3 To 8  ' Etiqueta1..6
+                ev = Trim(CStr(wsSrc.Cells(r, e).Value))
+                If ev <> "" Then
+                    If etqs = "" Then etqs = ev Else etqs = etqs & " + " & ev
+                End If
+            Next e
+            k = k + 1
+            data(k, 4) = lin   ' D Línea2
+            data(k, 5) = met   ' E Metal Base
+            data(k, 6) = etqs  ' F Etiquetas
+            data(k, 7) = proc  ' G Proceso
+        End If
+    Next r
+
+    ' Redimensionar Tabla1 a k filas de datos y volcar el bloque A..G
+    Dim prevRows As Long
+    prevRows = lo.Range.Rows.Count  ' incluye header
+    lo.Resize wsCP.Cells(1, 1).Resize(k + 1, 7)
+    wsCP.Cells(2, 1).Resize(k, 7).Value = data
+
+    ' Limpiar residuo si la tabla encogió (filas debajo de la tabla nueva, cols A..G)
+    If (k + 1) < prevRows Then
+        wsCP.Range(wsCP.Cells(k + 2, 1), wsCP.Cells(prevRows, 7)).ClearContents
+    End If
+
+    CargarCatProcesosDesde = k
+End Function
 
 ' === HELPERS ===
 ' V12: EscribirOrdenado escribe desde row 4 (i+3) — antes i+1
