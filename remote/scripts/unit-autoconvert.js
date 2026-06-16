@@ -103,8 +103,93 @@
     if (modoP) injectToggleNear(modoP.parentElement, 'before');
   }
 
-  // placeholder rellenado en Tasks 4–6
-  function onFocusOut() {}
+  // ── Escritura DOM compatible con React/MUI ──
+  function writeInput(input, value) {
+    const proto = window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(input, String(value));
+    // InputEvent (no Event) para que React reconcilie el input controlado — convención
+    // del repo (proceso-calculator / invoice-autofill / bill-autofill).
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // ── Identificación de contexto del input que disparó focusout ──
+  // Devuelve { panel:'A'|'B', code } o null.
+  function classifyInput(input) {
+    // Panel B: dentro de una fila de tabla con nombre de unidad
+    const tr = input.closest('tr.MuiTableRow-root');
+    if (tr) {
+      const nameP = tr.querySelector('td p.MuiTypography-root');
+      if (!nameP) return null;
+      // descartar el input recíproco (Parts / X)
+      const adorn = (input.closest('td')?.querySelector('.MuiInputAdornment-root')?.textContent) || '';
+      if (Core.isReciprocalAdornment(adorn)) return null;
+      return { panel: 'B', code: Core.unitCodeFromText(nameP.textContent) };
+    }
+    // Panel A: label hermano que termina en "/ Part:"
+    const fc = input.closest('.MuiFormControl-root');
+    if (fc && fc.parentElement) {
+      const labelP = fc.parentElement.querySelector(':scope > p.MuiTypography-root');
+      if (labelP && /\/\s*part:?\s*$/i.test(labelP.textContent.trim())) {
+        return { panel: 'A', code: Core.unitCodeFromText(labelP.textContent) };
+      }
+    }
+    return null;
+  }
+
+  // Busca el input del par `code` en el panel dado. Null si no tiene campo/fila.
+  function findPeerInput(panel, code) {
+    if (panel === 'A') {
+      const labels = document.querySelectorAll('p.MuiTypography-root');
+      for (const p of labels) {
+        const t = p.textContent.trim();
+        if (/\/\s*part:?\s*$/i.test(t) && Core.unitCodeFromText(t) === code) {
+          return p.parentElement.querySelector('input');
+        }
+      }
+      return null;
+    }
+    // Panel B
+    const rows = document.querySelectorAll('tr.MuiTableRow-root');
+    for (const tr of rows) {
+      const nameP = tr.querySelector('td p.MuiTypography-root');
+      if (!nameP || Core.unitCodeFromText(nameP.textContent) !== code) continue;
+      const inputs = tr.querySelectorAll('input');
+      for (const inp of inputs) {
+        const adorn = (inp.closest('td')?.querySelector('.MuiInputAdornment-root')?.textContent) || '';
+        if (!Core.isReciprocalAdornment(adorn)) return inp; // Unidades/Parts
+      }
+    }
+    return null;
+  }
+
+  async function onFocusOut(e) {
+    try {
+      if (!S.enabled || killSwitchOff()) return;
+      const input = e.target;
+      if (!input || input.tagName !== 'INPUT') return;
+      if (input.classList.contains('sa-uac-cb')) return; // nuestro propio toggle
+      const ctx = classifyInput(input);
+      if (!ctx || !Core.isConvertible(ctx.code)) return;
+      const value = parseFloat(input.value);
+      if (!isFinite(value) || value <= 0) return;
+
+      const peers = Core.computePeers(ctx.code, value);
+      if (!peers.length) return;
+
+      const missing = [];
+      for (const peer of peers) {
+        const peerInput = findPeerInput(ctx.panel, peer.code);
+        if (peerInput) writeInput(peerInput, peer.value);
+        else missing.push(peer);
+      }
+      // missing → API en Task 5 (por ahora se ignoran)
+      if (missing.length) console.log(LOG, 'pares sin campo (pendiente API):', missing);
+    } catch (err) {
+      console.error(LOG, 'onFocusOut', err);
+    }
+  }
 
   // ── init idempotente ──
   function init() {
