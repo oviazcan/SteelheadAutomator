@@ -150,3 +150,23 @@ test('intervalos de polling por estado', () => {
   assert.strictEqual(RR.pickPollIntervalMs('available'), 60000);
   assert.strictEqual(RR.pickPollIntervalMs('loading'), 15000);
 });
+
+// ── evalAllowed (gating reactivo v0.2.0) ────────────────────────────────────
+test('evalAllowed: admin pasa sin importar perms', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: true, perms: [] }, ['MANAGE_REPORTING']), true);
+});
+test('evalAllowed: superUser pasa', () => {
+  assert.strictEqual(RR.evalAllowed({ isSuperUser: true, perms: [] }, ['MANAGE_REPORTING']), true);
+});
+test('evalAllowed: no-admin CON el permiso pasa', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, perms: ['MANAGE_REPORTING'] }, ['MANAGE_REPORTING']), true);
+});
+test('evalAllowed: no-admin SIN el permiso no pasa', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, perms: ['OTHER'] }, ['MANAGE_REPORTING']), false);
+});
+test('evalAllowed: caps null → null (desconocido = fail-closed)', () => {
+  assert.strictEqual(RR.evalAllowed(null, ['MANAGE_REPORTING']), null);
+});
+test('evalAllowed: perms ausente se trata como []', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false }, ['MANAGE_REPORTING']), false);
+});

@@ -211,3 +211,11 @@ Validación a mano (skill `steelhead-hash-validator`, conectado a SH): **137 ok 
 
 **No afectados** (relevante para hoy): `GetInventoryItem`, `UpdateInventoryItemInputs` siguen vigentes → `catalog-fetcher` (hoja CAT_Procesos) y `tools/rename-catalog-label.js` operan bien. Ojo: `catalog-fetcher` SÍ usa `AllProcesses` + `SpecFieldsAndOptions` (rotadas) → la hoja Procesos y los combos de specs del "Actualizar Catálogos" fallarán hasta actualizar esos hashes.
 
+
+## 2026-06-15 22:48 — CORRECCIÓN: deploy config 1.6.73 (22 ops re-capturadas)
+
+Re-captura vía hash-scanner (navegador, same-origin). Las 20 rotadas confirmadas ROTADAS **desde el browser** (no falsos positivos del validador externo), **más `GetAccountDataForBill`** (estaba whitelisted como session-sensitive pero su hash TAMBIÉN rotó: `62fbb91b…` → `4265fbba…`). Total **22 keys** actualizadas (`GetQuote_v8/v71` y `SaveManyPNP_Quote/PN` comparten hash).
+
+Deploy `tools/deploy.sh --set 1.6.73`. **Re-validación: 158 ok / 0 stale / 2 whitelist (`CurrentUser`, `GetPurchaseOrder`).** `GetAccountDataForBill` con el hash nuevo ya pasa desde el validador → **removido de la whitelist**.
+
+`CurrentUser` y `GetPurchaseOrder` NO rotaron (scan == config) → siguen session-sensitive (el front los usa OK; scripts externos / fetch de la extensión reciben "Must provide a query string"). Por eso el gating de `report-regen` se rediseñó (v0.2.0) para NO llamar `CurrentUser` sino interceptar la respuesta del front.

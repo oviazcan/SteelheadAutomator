@@ -1,6 +1,6 @@
 # Applet: `report-regen` (Regenerar Reportes)
 
-**Versión actual:** 0.1.0
+**Versión actual:** 0.2.0
 **Archivo:** `remote/scripts/report-regen.js`
 **Tipo:** `autoInject` + acción de popup. Inyecta un botón en el header secundario de Steelhead.
 **Permiso requerido:** `MANAGE_REPORTING` (gating en runtime, no sólo popup).
@@ -47,14 +47,28 @@ Hashes (al 2026-06-15):
 popup (`popup.js:123-137`). El loop de auto-inject (`background.js:135-158`) inyecta todos los
 `autoInject:true` habilitados, sin mirar permisos.
 
-Por eso este applet **se auto-gatea en runtime**: al bootear consulta `CurrentUser` y sólo se
-monta (inyecta botón + arranca polling) si el usuario tiene `MANAGE_REPORTING` (o es admin/superuser).
+Por eso este applet **se auto-gatea en runtime**: sólo se monta (inyecta botón + arranca polling)
+si el usuario tiene `MANAGE_REPORTING` (o es admin/superuser).
 
-- **Fail-closed:** si no se puede confirmar el permiso (3 intentos), el applet queda inerte (sin botón).
-- El permiso requerido se lee de `window.REMOTE_CONFIG.apps[report-regen].requiredPermissions`, así que
-  respeta los **overrides** que un admin configure desde el editor de permisos del popup.
+### v0.2.0 — gating reactivo (NO llamar `CurrentUser`)
+**Lección clave:** `CurrentUser` es **session-sensitive** — rechaza el fetch de la extensión con
+`400 "Must provide a query string"` aunque el hash sea válido (sólo acepta el Apollo client del front;
+está en `hash-validator-whitelist.json`). v0.1.0 llamaba `CurrentUser` directo → fail-closed permanente,
+el botón nunca aparecía. (Por eso el gating del popup tampoco funcionaba nunca: cae a fail-open.)
+
+v0.2.0 **no llama `CurrentUser`**; en su lugar **intercepta la respuesta que el propio front hace**:
+- Parchea `window.fetch` UNA vez (latch `window.__saRRSnifferInstalled`), siempre delegando al hook
+  `window.__saRRonUser` (re-conectable por el closure actual → robusto a re-inyección/bump).
+- Captura `CurrentUser` (perms completos: `currentManagedPermissions`) y `Profile` (sólo
+  `isAdmin`/`isSuperUser`, llega antes — count altísimo). Merge sin pisar perms ya capturados.
+- Fallback inmediato `tryApolloCache()`: si el front expone `window.__APOLLO_CLIENT__`, lee del cache.
+- `reevaluateGate()` recalcula `allowed` (vía `evalAllowed`, función pura testeada) y monta/desmonta el botón.
+
+- **Fail-closed:** mientras no se confirme el permiso, no hay botón. El front pide `CurrentUser`/`Profile`
+  seguido → para un admin (vía `Profile`) llega en segundos; para no-admin con `MANAGE_REPORTING`, al llegar `CurrentUser`.
+- El permiso requerido se lee de `window.REMOTE_CONFIG.apps[report-regen].requiredPermissions` (respeta overrides del popup).
 - **El gating de cliente es UX, no seguridad.** El boundary real es server-side: Steelhead rechaza
-  `GenerateDuckDb` si la sesión no tiene el permiso. El gating sólo evita mostrar un botón inútil.
+  `GenerateDuckDb` si la sesión no tiene el permiso. `triggerFromPopup` espera ~3s a confirmar; si no resuelve, confía en el server.
 
 El botón del popup queda gateado por el mecanismo existente del popup (filtra por
 `managedPermissions`), que es **fail-open** si no logra leer permisos — pero `triggerFromPopup`
