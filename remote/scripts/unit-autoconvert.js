@@ -13,7 +13,7 @@
   // enabled = por sesión: arranca ON; se resetea a ON solo en recarga dura (window nuevo).
   const S = window.__saUac || (window.__saUac = {
     enabled: true, invItemId: null, pnId: null, unitIdCache: null,
-    fetchPatched: false, observer: null, focusoutBound: false, _injTimer: null,
+    fetchPatched: false, observer: null, focusoutBound: false, _injTimer: null, apiQueue: null,
   });
 
   function killSwitchOff() {
@@ -184,8 +184,13 @@
         if (peerInput) writeInput(peerInput, peer.value);
         else missing.push(peer);
       }
-      // missing → API en Task 5 (por ahora se ignoran)
-      if (missing.length) console.log(LOG, 'pares sin campo (pendiente API):', missing);
+      if (missing.length) {
+        const created = await apiUpsertPeers(missing);
+        if (created > 0) {
+          showNotice('Se crearon ' + created + ' unidad(es) por API (' +
+            missing.map((m) => m.code).join(', ') + ') · recarga para verlas');
+        }
+      }
     } catch (err) {
       console.error(LOG, 'onFocusOut', err);
     }
@@ -211,6 +216,97 @@
     }
     tryInjectToggles();
     console.log(LOG, 'init', VERSION);
+  }
+
+  // ── unitId por código: primero domain.unitIds, luego SearchUnits (cache) ──
+  async function resolveUnitId(code) {
+    const ids = (api()?.getDomain?.()?.unitIds) || {};
+    if (ids[code] != null) return ids[code];
+    if (S.unitIdCache && S.unitIdCache[code] != null) return S.unitIdCache[code];
+    try {
+      const data = await api().query('SearchUnits', {}, 'SearchUnits');
+      // shape observado en prod (bulk-upload.js:3521): pagedData.nodes (o searchUnits.nodes).
+      const nodes = data?.pagedData?.nodes || data?.searchUnits?.nodes || [];
+      S.unitIdCache = S.unitIdCache || {};
+      for (const n of nodes) {
+        const c = Core.unitCodeFromText(n.name);
+        if (c) S.unitIdCache[c] = n.id;
+      }
+      return S.unitIdCache[code] ?? null;
+    } catch (e) {
+      console.warn(LOG, 'SearchUnits falló', e);
+      return null;
+    }
+  }
+
+  // inventoryItemId del PN abierto: cache del interceptor, o fallback GetPartNumber por pnId.
+  async function resolveInventoryItemId() {
+    if (S.invItemId != null) return S.invItemId;
+    if (S.pnId != null) {
+      try {
+        const d = await api().query('GetPartNumber', { id: S.pnId }, 'GetPartNumber');
+        const inv = d?.partNumberById?.inventoryItemByPartNumberId?.id
+          || d?.partNumber?.inventoryItemByPartNumberId?.id;
+        if (inv != null) { S.invItemId = inv; return inv; }
+      } catch (e) { console.warn(LOG, 'GetPartNumber fallback falló', e); }
+    }
+    return null;
+  }
+
+  // Serializa las llamadas API: blurs concurrentes (tab-through rápido) no deben crear
+  // conversiones duplicadas. La 2ª espera a la 1ª y su GetAvailableUnits ya ve la unidad
+  // recién creada → hace UPDATE en vez de un segundo CREATE.
+  function apiUpsertPeers(missing) {
+    const run = (S.apiQueue || Promise.resolve()).then(() => apiUpsertPeersInner(missing));
+    S.apiQueue = run.then(() => {}, () => {}); // mantiene la cola viva aunque una corrida falle
+    return run;
+  }
+
+  // Crea/actualiza conversiones para los pares sin campo. Devuelve nº creados.
+  async function apiUpsertPeersInner(missing) {
+    const inventoryItemId = await resolveInventoryItemId();
+    if (inventoryItemId == null) {
+      console.warn(LOG, 'sin inventoryItemId; no se crean', missing.map((m) => m.code));
+      showNotice('No se pudo resolver el PN — no se crearon ' + missing.map((m) => m.code).join(', '), true);
+      return 0;
+    }
+    let created = 0;
+    try {
+      const data = await api().query('GetAvailableUnits', { inventoryItemId }, 'GetAvailableUnits');
+      const existing = data?.inventoryItemById?.inventoryItemUnitConversionsByInventoryItemId?.nodes || [];
+      for (const peer of missing) {
+        const unitId = await resolveUnitId(peer.code);
+        if (unitId == null) { console.warn(LOG, 'sin unitId para', peer.code); continue; }
+        const hit = existing.find((c) => Number(c.unitByUnitId?.id) === Number(unitId));
+        if (hit) {
+          await api().query('UpdateInventoryItemUnitConversion', { id: hit.id, factor: peer.value }, 'UpdateInventoryItemUnitConversion');
+        } else {
+          await api().query('CreateInventoryItemUnitConversion', { unitId, inventoryItemId, factor: peer.value }, 'CreateInventoryItemUnitConversion');
+          created++;
+        }
+      }
+    } catch (e) {
+      console.error(LOG, 'apiUpsertPeers', e);
+      showNotice('Error creando unidades por API', true);
+    }
+    return created;
+  }
+
+  // Aviso no bloqueante (toast efímero).
+  function showNotice(msg, isError) {
+    let el = document.querySelector('.sa-uac-notice');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sa-uac-notice';
+      el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;padding:10px 16px;border-radius:8px;font-size:13px;font-family:-apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:340px;pointer-events:none;transition:opacity .3s;';
+      document.body.appendChild(el);
+    }
+    el.style.background = isError ? '#c13c26' : '#1f2937';
+    el.style.color = '#fff';
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, 6000);
   }
 
   const Applet = { __saVersion: VERSION, init, _state: S };
