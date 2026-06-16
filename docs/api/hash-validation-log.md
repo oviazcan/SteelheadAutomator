@@ -221,3 +221,12 @@ Deploy `tools/deploy.sh --set 1.6.73`. **Re-validación: 158 ok / 0 stale / 2 wh
 `CurrentUser` y `GetPurchaseOrder` NO rotaron (scan == config) → siguen session-sensitive (el front los usa OK; scripts externos / fetch de la extensión reciben "Must provide a query string"). Por eso el gating de `report-regen` se rediseñó (v0.2.0) para NO llamar `CurrentUser` sino interceptar la respuesta del front.
 
 ## 2026-06-15 23:28 — 0 rotado(s) (launchd)
+
+## 2026-06-16 10:19 — 1 rotado(s)
+
+- Config version: `1.6.74`
+- OK: 157 / 160 · Tiempo: 120.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-16.json`
+
+**Rotados:**
+- `query GetProcessNode` (hash `fe59624d7a4f...`)
