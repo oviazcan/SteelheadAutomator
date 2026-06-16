@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.1.0';
+  const APPLET_VERSION = '0.2.0';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -51,6 +51,7 @@
   // ── Estado (cerrado en el closure, nada global salvo el handle público) ──
   let destroyed = false;
   let allowed = null;            // null=desconocido, true/false=veredicto de permiso
+  let capturedPerms = null;      // { isAdmin, isSuperUser, perms[] } — leído del front, no de un fetch propio
   let booted = false;
   let bootPromise = null;
   let lastRecomputableAt = null; // ISO string del servidor
@@ -140,29 +141,91 @@
     return Array.isArray(perms) && perms.length ? perms : [REQUIRED_PERMISSION];
   }
 
-  // → true | false | null(sesión no resuelta)
-  async function checkPermission() {
-    const data = await window.SteelheadAPI.query('CurrentUser', { deviceLocationIds: [] }, 'CurrentUser');
-    const user = data && data.currentSession && data.currentSession.userByUserId;
-    if (!user) return null;
-    if (user.isAdmin || user.isSuperUser) return true;
-    const userPerms = Array.isArray(user.currentManagedPermissions) ? user.currentManagedPermissions : [];
-    const req = requiredPerms();
-    return req.every((p) => userPerms.includes(p));
+  // ── Gating de permisos (reactivo) ─────────────────────────────────────────
+  // `CurrentUser` es session-sensitive: rechaza el fetch de la extensión aunque el
+  // hash sea válido. Así que NO lo llamamos; en su lugar interceptamos la respuesta
+  // que el propio front de Steelhead hace (CurrentUser → perms completos; Profile →
+  // isAdmin/isSuperUser). Fallback: leer del Apollo cache si está expuesto.
+
+  // Lógica pura (testeable): dado caps + permisos requeridos → true|false|null.
+  function evalAllowed(caps, req) {
+    if (!caps) return null; // aún no se conocen permisos
+    if (caps.isAdmin || caps.isSuperUser) return true;
+    const perms = Array.isArray(caps.perms) ? caps.perms : [];
+    return req.every((p) => perms.includes(p));
   }
 
-  async function checkPermissionSafe() {
-    for (let i = 0; i < 3 && !destroyed; i++) {
-      try {
-        const r = await checkPermission();
-        if (r === true) return true;
-        if (r === false) return false;
-      } catch (e) {
-        log('permiso: error consultando CurrentUser — ' + e.message);
-      }
-      await sleep(1500);
+  function reevaluateGate() {
+    if (destroyed) return;
+    const verdict = evalAllowed(capturedPerms, requiredPerms());
+    if (verdict === allowed) return;
+    allowed = verdict;
+    if (allowed === true) {
+      log('permiso confirmado (' + REQUIRED_PERMISSION + ' / admin) — montando botón');
+      installObserver();
+      ensureButton();
+      if (!pollTimer && !tickTimer) pollOnce();
+    } else if (allowed === false) {
+      removeButton();
     }
-    return false; // fail-closed: si no se pudo confirmar, no se muestra el botón
+  }
+
+  // CurrentUser trae perms completos; Profile sólo isAdmin/isSuperUser (merge sin
+  // pisar perms ya capturados). source = 'CurrentUser' | 'Profile'.
+  function onUserData(data, source) {
+    try {
+      const u = data && data.data && data.data.currentSession && data.data.currentSession.userByUserId;
+      if (!u) return;
+      const partial = { isAdmin: !!u.isAdmin, isSuperUser: !!u.isSuperUser };
+      if (source === 'CurrentUser' && Array.isArray(u.currentManagedPermissions)) {
+        partial.perms = u.currentManagedPermissions;
+      }
+      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false, perms: [] }, capturedPerms || {}, partial);
+      reevaluateGate();
+    } catch (_) {}
+  }
+
+  // Parchea fetch UNA vez; siempre llama al hook actual (window.__saRRonUser) para
+  // que la re-inyección (nueva versión) reconecte el closure vivo sin re-parchear.
+  function installPermSniffer() {
+    window.__saRRonUser = onUserData;
+    if (window.__saRRSnifferInstalled) return;
+    window.__saRRSnifferInstalled = true;
+    const orig = window.fetch;
+    window.fetch = function (...args) {
+      const ret = orig.apply(this, args);
+      try {
+        const body = args[1] && args[1].body;
+        if (typeof body === 'string' && (body.indexOf('"CurrentUser"') !== -1 || body.indexOf('"Profile"') !== -1)) {
+          const parsed = JSON.parse(body);
+          const op = parsed && parsed.operationName;
+          if (op === 'CurrentUser' || op === 'Profile') {
+            Promise.resolve(ret).then((res) => res.clone().json())
+              .then((d) => { if (typeof window.__saRRonUser === 'function') window.__saRRonUser(d, op); })
+              .catch(() => {});
+          }
+        }
+      } catch (_) {}
+      return ret;
+    };
+  }
+
+  // Fallback inmediato: si el front expone su Apollo client, leer perms del cache.
+  function tryApolloCache() {
+    try {
+      const client = window.__APOLLO_CLIENT__;
+      if (!client || !client.cache || typeof client.cache.extract !== 'function') return;
+      const data = client.cache.extract();
+      for (const k in data) {
+        const e = data[k];
+        if (!e) continue;
+        const isUser = /User/i.test(e.__typename || k);
+        if (isUser && (Array.isArray(e.currentManagedPermissions) || e.isAdmin !== undefined)) {
+          onUserData({ data: { currentSession: { userByUserId: e } } }, 'CurrentUser');
+          return;
+        }
+      }
+    } catch (_) {}
   }
 
   // ── DOM ─────────────────────────────────────────────────────────────────
@@ -360,9 +423,12 @@
     } catch (e) {
       return { error: 'No se pudo inicializar: ' + e.message };
     }
-    if (allowed !== true) {
+    // Espera breve a que el sniffer/cache confirme permisos (allowed pasa de null).
+    for (let i = 0; i < 20 && allowed === null && !destroyed; i++) await sleep(150);
+    if (allowed === false) {
       return { error: 'No tienes permiso ' + REQUIRED_PERMISSION + ' para regenerar reportes.' };
     }
+    // allowed === true, o null tras el timeout (el server valida el permiso al ejecutar).
     return doRegen();
   }
 
@@ -396,13 +462,12 @@
     if (bootPromise) return bootPromise;
     bootPromise = (async () => {
       const ok = await waitForDeps(20000);
-      if (!ok) { booted = true; return; } // deps no llegaron; queda inerte
-      allowed = await checkPermissionSafe();
       booted = true;
-      if (allowed !== true) { log('usuario sin ' + REQUIRED_PERMISSION + ' — applet inerte'); return; }
-      installObserver();
-      ensureButton();
-      pollOnce(); // primera lectura + arranca el ciclo de polling
+      if (!ok) return; // deps no llegaron; queda inerte
+      installPermSniffer(); // captura permisos de CurrentUser/Profile que pida el front
+      tryApolloCache();     // intento inmediato del cache (si el front lo expone)
+      // El botón se monta vía reevaluateGate cuando se confirmen permisos (fail-closed
+      // mientras tanto). El front pide CurrentUser/Profile seguido → llega en segundos.
     })();
     return bootPromise;
   }
@@ -415,6 +480,9 @@
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     if (observer) { try { observer.disconnect(); } catch (_) {} observer = null; }
+    // Desconectar el hook del sniffer sólo si sigue apuntando a ESTE closure
+    // (no pisar el de una versión más nueva). El patch de fetch queda (es benigno).
+    try { if (window.__saRRonUser === onUserData) window.__saRRonUser = null; } catch (_) {}
     removeButton();
   }
 
@@ -423,7 +491,7 @@
     __version: APPLET_VERSION,
     triggerFromPopup,
     destroy,
-    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor }
+    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed }
   };
   // Para los golden tests (node --test) y depuración manual.
   window.__SAReportRegen = window.ReportRegen._internals;
