@@ -1,9 +1,9 @@
 # `create-order-autofill` — bitácora
 
-Auto-llena las 3 Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `Consolidar por Producto`) del modal **"Crear Orden de Venta"** que sale en el flujo `/Receiving/CustomerParts → RECEIVE → +/Create`. Sustituye al canal write de OV customInputs que no existe en `ordendeventa.ts` (ver `powertools-ordendeventa.md` y `powertools-facturacion.md`).
+Auto-llena las 3 Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `Consolidar por Producto`) del modal **"Crear Orden de Venta"** que sale en el flujo `/Receiving/CustomerParts → RECEIVE → +/Create`. Sustituye al canal write de OV customInputs que no existe en `ordendeventa.ts` (ver bitácoras `powertools-ordendeventa.md` y `powertools-facturacion.md`, ahora en el repo **SteelheadPowerTools**).
 
 ## Por qué DOM en lugar de hook
-Probamos 4 casts experimentales (`workOrderUpdates` paralelo, `customInputs` top-level, `receivedOrderCustomInputs` singular, `shipToAddress.customInputs`) en el hook low-code `getReceivedOrderCustomization` de Power Tools. Test Run pasaba en todos (la shape se generaba bien), pero **el backend nunca aplicó el customInput a la OV** — mismo failure mode documentado para `partNumberLabels` en `powertools-ordendeventa.md` (2026-05-15). Steelhead solo respeta las claves declaradas explícitamente en su shape de backend; lo demás se silencia.
+Probamos 4 casts experimentales (`workOrderUpdates` paralelo, `customInputs` top-level, `receivedOrderCustomInputs` singular, `shipToAddress.customInputs`) en el hook low-code `getReceivedOrderCustomization` de Power Tools. Test Run pasaba en todos (la shape se generaba bien), pero **el backend nunca aplicó el customInput a la OV** — mismo failure mode documentado para `partNumberLabels` en `powertools-ordendeventa.md` (2026-05-15; repo SteelheadPowerTools). Steelhead solo respeta las claves declaradas explícitamente en su shape de backend; lo demás se silencia.
 
 Conclusión: el canal viable es DOM-fill desde la extensión.
 
@@ -45,7 +45,7 @@ El singleValue del react-select de Cliente trae el sufijo `(#1)` con el `idInDom
 - [ ] Probar cambio de cliente a media carrera (cerrar modal, cambiar cliente del wizard padre, re-abrir) — confirmar que `state.lastSig` detecta el cambio y re-ejecuta.
 - [ ] Probar cambio de shipTo dentro del modal (el operador cambia el "Enviar a:") — confirmar que Consolidar se re-evalúa.
 - [ ] Probar manual override: marcar Razón Social distinto a lo que sugiere el applet, luego cerrar/re-abrir el modal — confirmar que `dataset.saAutofilled='done'` previene el sobreescribir.
-- [ ] Confirmar que al guardar la OV los 3 customInputs persisten correctamente y `powertools/facturacion.ts` los lee al facturar (lee `salesOrders[i].customInputs.ConsolidarPorProducto`).
+- [ ] Confirmar que al guardar la OV los 3 customInputs persisten correctamente y el hook de facturación (`hooks/invoice/invoice.ts` en SteelheadPowerTools) los lee al facturar (lee `salesOrders[i].customInputs.ConsolidarPorProducto`).
 
 ## Pendientes derivados
 
