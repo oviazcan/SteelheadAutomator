@@ -192,7 +192,7 @@ Create `remote/scripts/unit-autoconvert-core.js`:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tools/test/unit-autoconvert-core.test.js`
-Expected: PASS — `pass 13  fail 0`.
+Expected: PASS — `pass 12  fail 0` (12 bloques `test()`).
 
 - [ ] **Step 5: Commit**
 
@@ -535,7 +535,7 @@ Reemplazar `function onFocusOut() {}` por:
 - [ ] **Step 3: Re-correr los golden tests del core (no deben romperse)**
 
 Run: `node --test tools/test/unit-autoconvert-core.test.js`
-Expected: PASS — `pass 13  fail 0` (el core no cambió; sanity check).
+Expected: PASS — `pass 12  fail 0` (el core no cambió; sanity check).
 
 - [ ] **Step 4: Validación en vivo (Panel A, pares con campo)**
 
