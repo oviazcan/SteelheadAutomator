@@ -268,3 +268,17 @@ Cierra issues `#3` (4 rotados) y `#2` (1 rotado — `GetProcessNode`, ya incluid
 
 **Rotados:**
 - `query GetDomain` (hash `28b65e268c0d...`)
+
+## 2026-06-17 16:04 — Reparación: deploy config 1.6.78 (GetDomain re-capturado)
+
+Re-captura vía hash-scanner (navegador, same-origin) — scan `2026-06-17_160048` (el scan previo `_093448` NO capturó `GetDomain` en vivo: la operación solo se dispara desde `bill-autofill`/`invoice-autofill` al abrir una factura, y no se navegó ahí; aparecía como `source:"documentada"` reflejando el hash viejo). Rotación confirmada **Caso A (rotación real)** del playbook: el server respondió `"Must provide a query string."` al hash viejo, y el scan trae `previousHash` == hash viejo, `hash` nuevo distinto, `status:changed`, `lastHttpStatus:200`. El `responseSchema` del scan incluye `customInputs.TipoCambio` + `currentExchangeRate` → es el `GetDomain` correcto.
+
+| Operación | viejo → nuevo | usedBy |
+|---|---|---|
+| `GetDomain` | `28b65e26…` → `a7216eb7…` | bill-autofill, invoice-autofill |
+
+Validación puntual del hash nuevo contra el server → **HTTP 200 con data real** antes de editar. Deploy `tools/deploy.sh --check bill-autofill` → bump 1.6.77 → **1.6.78** + `lastUpdated` 2026-06-17T16:04 (commit main `e94887b`, gh-pages `07dcfb7`). Publicado en vivo (GitHub Pages, verificado por polling: `GetDomain live=a7216eb7…`).
+
+**Re-validación local (config 1.6.78): 158 ok / 0 stale / 2 skipped (`CurrentUser`, `GetPurchaseOrder` whitelist) / 0 unknown / 0 auth** en 99.2s.
+
+Cierra issue `#4` (1 rotado — `GetDomain`).
