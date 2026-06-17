@@ -21,13 +21,26 @@ La extensión es un cascarón: en runtime fetchea scripts y `config.json` desde 
 - `gh-pages` rama publicada. **Estructura aplanada**: `remote/scripts/foo.js` (main) → `scripts/foo.js` (gh-pages); `remote/config.json` (main) → `config.json` (gh-pages)
 - `gh-pages` debe quedar en sync byte-a-byte con el contenido de `remote/` de `main` (verificable con `git diff HEAD:remote/scripts/foo.js gh-pages:scripts/foo.js`)
 
-### Procedimiento (cada vez que cambia algo en `remote/`)
+### Procedimiento — usa `tools/deploy.sh` (NO lo hagas a mano)
+Edita tus archivos bajo `remote/` **en el worktree de `main`** y luego corre:
+```bash
+tools/deploy.sh "fix(applet-x): descripción" --check applet-x
+# bump patch + commit main + espejo gh-pages + push ambas + check-deploy
+# flags: --minor | --set X.Y.Z | --check <script>
+```
+`deploy.sh` hace TODA la danza de forma atómica y **self-healing** (re-espeja `main:remote/` → `gh-pages`, así que corrige cualquier drift previo). Solo deploya scripts **referenciados en `config.apps[].scripts`** (los `.js` dev-only de `remote/scripts/` no se empujan).
+
+**Antes de razonar "¿esto ya está vivo?"** corre `tools/deploy-status.sh` — imprime la versión de tu rama, `main`, `gh-pages` y el sitio **EN VIVO**, y verifica el invariante byte-a-byte. **Nunca concluyas el estado de deploy mirando el `config.json` de una rama de trabajo** (puede estar desfasada respecto a `main`/`gh-pages`).
+
+**Candado:** el hook `pre-push` (`.githooks/pre-push`, instalar una vez con `tools/install-hooks.sh`) **bloquea** pushear `gh-pages` si no espeja `main:remote/`. Si te topas el bloqueo, usa `deploy.sh`.
+
+#### Procedimiento manual (fallback, si `deploy.sh` falla)
 1. **Bump `remote/config.json` `version`** (ej. `0.4.2` → `0.4.3`) y `lastUpdated` a la fecha. Ese version es el cache-bust para que la extensión recargue scripts.
 2. **Commit en `main`** con prefijo apropiado (`fix(...)`, `feat(...)`, `chore(config)`).
 3. **Sync a `gh-pages`**: stash del .xlsm si está modificado → `git checkout gh-pages` → `git show main:remote/scripts/foo.js > scripts/foo.js` + `git show main:remote/config.json > config.json` → `git add ... && git commit -m "deploy: <descripción> + bump <version>"`.
 4. **Push ambas ramas**: `git push origin main && git push origin gh-pages`.
 5. **GitHub Pages publica en ~30-60s**. Después: recarga la extensión (chrome://extensions → reload) o reinicia Chrome si cachea.
-6. **Verificar byte-exact** con `tools/check-deploy.sh [<script-name>]`.
+6. **Verificar byte-exact** con `tools/check-deploy.sh [<script-name>]` o `tools/deploy-status.sh`.
 
 ### Notas
 - Commits de `gh-pages` siguen formato `deploy: <qué cambió> + bump <version>` (ver `git log gh-pages --oneline`).
@@ -105,6 +118,8 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 
 | Applet | Versión actual | Bitácora |
 |---|---|---|
+| `proceso-calculator` | 0.1.0 | [`docs/applets/proceso-calculator.md`](docs/applets/proceso-calculator.md) |
+| `report-regen` | 0.2.0 (botón ♻️ "Regenerar Reportes" en header secundario, ancla play+correo; cooldown GLOBAL del domain vía `GetRecomputableAt.recomputableAt` server-side; `GenerateDuckDb`+`JobQuery`. **Gating reactivo v0.2.0**: NO llama `CurrentUser` (es session-sensitive → la extensión lo recibe como "Must provide a query string"); intercepta la respuesta de `CurrentUser`/`Profile` del front + fallback Apollo cache; fail-closed. Popup vía handler genérico `fn`, sin tocar `extension/`; **pendiente run real**) | [`docs/applets/report-regen.md`](docs/applets/report-regen.md) |
 | `bulk-upload` | 1.5.20 + config 1.6.47 + ext 1.6.4 (**Refactor F1-F5 + `sa_load_history`→IndexedDB** — ver bitácora §"Cierre de sesión 2026-06-07"). **F1** módulos puros + golden tests (`bulk-upload-parse.js`/`bulk-upload-classify.js`); **F2** memory hardening compartido (`host-cleanup-shared.js`) + `AbortController` en `steelhead-api`; **F4** batches AddParams/SaveQuoteLines (N→1) + fix `isDefaultPartNumberPrice`; **F5** `classifyRunIntent` + badge de intención (SOLO_PRECIO/AJUSTE_LINEA/ENRIQUECIMIENTO/ALTA). `sa_load_history` migrado a IndexedDB (`sa_storage`/`kv`); `background.js` lee IDB async — **VALIDADO en vivo** (7 corridas, localStorage migrado). **Gotcha de deploy de extensión:** bumpear `extension/manifest.json` Y `config.extensionVersion` JUNTOS y verificar el manifest DENTRO del zip servido (no solo bytes); Chrome lee del manifest, no del config. Pendientes no bloqueantes: validación de corrida real F4 (`dumpPhaseTimings`), fast-path real SOLO_PRECIO, restyle F3 a panel derecho, `precioAnterior` real. **Previo (config 1.6.38):** actualización de precios — matching con acabados vacíos (`confidence:'name+blank-csv-recent'` ANTES de `labelsMatchFull`) + footprint `ControlCambios` (schema 3932) + `inputSchemaId` dinámico (`runtimeInputSchemaId=latestSchema.id`, deja de degradar a 3456); helpers en `bulk-upload-cc.js`. | [`docs/applets/bulk-upload.md`](docs/applets/bulk-upload.md) |
 | `process-deep-audit` | 0.8.0 | [`docs/applets/process-deep-audit.md`](docs/applets/process-deep-audit.md) |
 | `spec-params-bulk` | 0.9.0 | [`docs/applets/spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |

@@ -32,7 +32,10 @@
   // En bulk-upload.js se llamaban g/gn; aquí cell/cellNum (nombres explícitos).
   const cell = (row, i) => {
     const v = (row[i] || '').trim().replace(/\s+/g, ' ');
-    if (v === '(seleccione)' || v === '(seleccione o escriba)') return '';
+    // 1.5.23: normaliza acentos + mayúsculas — el v10 usa "(seleccione ó escriba)" (ó acentuada),
+    // que antes se colaba como valor real. Espeja el `g` local de bulk-upload.js parseRows.
+    const ph = v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    if (ph === '(seleccione)' || ph === '(seleccione o escriba)') return '';
     return v;
   };
   const cellNum = (row, i) => { const v = parseFloat(cell(row, i)); return isNaN(v) ? null : v; };
@@ -139,9 +142,74 @@
     return 'ALTA';
   }
 
+  // resolveDimSelections — compone el array final de dimensionCustomValueIds que
+  // SavePartNumber recibe (semántica REPLACE), preservando por TIPO de dimensión.
+  //
+  // Contexto: el dominio tiene 2 dimensiones contables (Línea, Departamento). Como
+  // v12 ya NO exporta Departamento, una fila con Línea mandaría solo [lineaId] y
+  // BORRARÍA el departamento existente (REPLACE). Esta función resuelve cada eje por
+  // separado y los recompone, aplicando la regla de negocio del Departamento:
+  //   "default Producción si NO tiene dato; si ya tiene, respetar" (altas y edición).
+  //
+  // Intents por eje: 'value-ok' (CSV trae value válido), 'dash' (borrar explícito),
+  // 'none'/'value-missing' (sin dato del CSV → preservar existente).
+  //   - Línea:       value-ok→CSV | dash→borrar | else→preservar existente
+  //   - Departamento value-ok→CSV | dash→borrar | else→existente ?? default Producción
+  // Cualquier dim existente que no sea Línea ni Departamento se preserva tal cual.
+  function resolveDimSelections(opts) {
+    const {
+      lineaIntent, lineaId,
+      deptoIntent, deptoId,
+      existingDimIds = [],
+      lineaValueIdSet, deptoValueIdSet,
+      deptoDefaultId = null,
+      // Solo inyectar el default cuando SABEMOS que el PN no tiene departamento:
+      // alta (nuevo) o con snapshot del PN existente. Si es existente sin snapshot
+      // (prefetch falló) NO inyectamos default — no sobreescribir un depto que no
+      // pudimos leer.
+      applyDeptoDefault = true,
+    } = opts || {};
+    const inSet = (set, id) => !!(set && typeof set.has === 'function' && set.has(id));
+
+    let effLinea = null;
+    if (lineaIntent === 'value-ok') effLinea = lineaId ?? null;
+    else if (lineaIntent === 'dash') effLinea = null;
+    else effLinea = existingDimIds.find(id => inSet(lineaValueIdSet, id)) ?? null;
+
+    let effDepto = null;
+    if (deptoIntent === 'value-ok') effDepto = deptoId ?? null;
+    else if (deptoIntent === 'dash') effDepto = null;
+    else {
+      const existingDepto = existingDimIds.find(id => inSet(deptoValueIdSet, id));
+      effDepto = (existingDepto != null) ? existingDepto
+        : (applyDeptoDefault ? (deptoDefaultId ?? null) : null);
+    }
+
+    const others = existingDimIds.filter(id => !inSet(lineaValueIdSet, id) && !inSet(deptoValueIdSet, id));
+    return [effLinea, effDepto, ...others].filter(v => v != null);
+  }
+
+  // pickSpecParamId — elige el defaultParamId de un spec field a partir de los
+  // segmentos del CSV (cs.param partido por ' | '). El catálogo combina espesor/temp/
+  // tiempo como "Nombre | a | b | …"; aquí se matchea POR VALOR (no por posición ni por
+  // identificar el field): un field de 1 param se auto-selecciona; uno con varios toma
+  // el param cuyo nombre coincida con algún segmento. Compat espesor v10/v11: 1 segmento.
+  // Devuelve { id, espesorMiss } — espesorMiss=true cuando es un field "espesor" con
+  // varios params y ningún segmento coincide (el caller loguea el error y usa params[0]).
+  function pickSpecParamId(params, segs, isEsp) {
+    const ps = params || [];
+    if (!ps.length) return { id: null, espesorMiss: false };
+    if (ps.length === 1) return { id: ps[0].id, espesorMiss: false };
+    for (const seg of (segs || [])) {
+      const m = ps.find(p => p.name === seg);
+      if (m) return { id: m.id, espesorMiss: false };
+    }
+    return { id: ps[0].id, espesorMiss: !!isEsp };
+  }
+
   const api = {
     toBool, isDash, resolveStr, resolveNum, cell, cellNum, parseCSV, buildDimensions,
-    partHasEnrich, classifyRunIntent,
+    partHasEnrich, classifyRunIntent, resolveDimSelections, pickSpecParamId,
     PRICE_UNIT_MAP, PREDICTIVE_MATERIALS, HEADER_KEYS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

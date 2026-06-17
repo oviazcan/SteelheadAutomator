@@ -48,3 +48,6 @@ docs/api/Payload: *.txt
 # Datos efímeros de corridas de recuperación de CustomInputs
 /tools/27_*.json
 /tools/snapshot_ci_*.json
+
+# Migración one-time de customInputs (snapshots/resume con data de PNs)
+tools/.fix-custominputs/

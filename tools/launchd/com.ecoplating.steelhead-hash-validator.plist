@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ecoplating.steelhead-hash-validator</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/run-hash-validation.sh</string>
+    </array>
+
+    <!-- Cada hora a :17 (sin Hour = todas las horas). El GATE POR RELEASE del
+         wrapper hace que las corridas sin build nuevo sean casi gratis (solo un
+         curl a /version.json); solo valida los 160 hashes cuando Steelhead publica
+         un release nuevo. Así detecta una rotación dentro de ~1h del release
+         nocturno, en vez de hasta el día siguiente. Si la Mac está dormida, launchd
+         corre el job pendiente en cuanto despierta. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>17</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/launchd.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Evitar que macOS mate el job por throttling en background. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

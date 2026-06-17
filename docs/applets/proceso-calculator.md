@@ -56,6 +56,54 @@ El NP está en edición y aún no persiste; se leen del DOM (Material/metal, Lí
 ### Matching
 Exacto en metal + línea + **CONJUNTO** de etiquetas (sin orden, `Etiqueta1..6`), normalizado (trim + lowercase + strip acentos). **17+5 tests pasan.**
 
+## Sincronización inversa: SH → Excel (catalog-fetcher + RefrescarListas V13)
+
+Desde 2026-06-15 (config `1.6.68`) la hoja `CAT_Procesos` de la plantilla **deja de ser
+fuente de verdad local**: se reconstruye desde el artículo de inventario `900192` al
+"Actualizar Catálogos". Así, las combinaciones que la Calculadora agrega en vivo
+(`addOrUpdateEntry` → `customInputs.CatProcesos`) se propagan de vuelta al Excel.
+
+**Flujo:**
+```
+Calculadora (proceso-calculator) ──escribe──▶ inventario 900192 (customInputs.CatProcesos)
+                                                      │
+                "Actualizar Catálogos" (catalog-fetcher.fetchCatProcesos)
+                                                      │  GetInventoryItem {id:900192}
+                                                      ▼
+                 hoja "CAT_Procesos" en Catalogos_Steelhead_*.xlsx
+                 (Linea | MetalBase | Etiqueta1..6 | Proceso)
+                                                      │
+                       RefrescarListas V13 (Module2.txt, CargarCatProcesosDesde)
+                                                      ▼
+                 ListObject Tabla1 (CAT_Procesos!A..G):
+                   D=Linea, E=MetalBase, F=join(Etiqueta1..6," + "), G=Proceso
+                   A/B/C (Grupo/Característica/Línea corta) = vacías
+```
+
+**Decisiones / hallazgos (validados sobre `Plantilla_CargaMasiva_v12.xlsm`):**
+- Ninguna fórmula de la plantilla usa A/B/C. El cálculo del proceso (`Upload!U9:U508` y
+  `CAT_Procesos!M2`) solo lee **D (Línea2), E (Metal Base), F (Etiquetas), G (Proceso)** —
+  exactamente lo que SH guarda. Por eso A/B/C quedan vacías sin romper nada (decisión del
+  usuario 2026-06-15: "dejarlas vacías").
+- La 5ta/6ta etiqueta del catálogo (40 filas con 5, 3 con 6) son de **acabado real**
+  (Lavado, Enmascarado, Cromo Duro, Horno, Desenmascarado, Fibrado), NO la "Planta
+  Schneider" (esa vive en el Upload, columna T, y nunca entró al catálogo). Por eso F se
+  reconstruye con TODAS las etiquetas no vacías (1..6).
+- **Round-trip lossless**: simular `split(F," + ")`→`Etiqueta1..6`→`join(" + ")` reproduce
+  F exacto en las 1580 filas; D/E/G se preservan; 0 overflow de 6 slots. (Asume que la
+  siembra preservó el orden de F al hacer split — confirmar en la 1ª corrida en vivo
+  comparando F antes/después.)
+- `CAT_Procesos` es un **ListObject `Tabla1` (A1:G1581)**; `CargarCatProcesosDesde` lo
+  **redimensiona** (`lo.Resize`) al nº de combinaciones y limpia residuo si encoge. Las
+  fórmulas auxiliares I2:O2 viven **fuera** de la tabla → no se tocan.
+- Aplica a **ambas plantillas** (moderna v12 + compatibilidad 2019): misma hoja y misma
+  `Tabla1`. El VBA solo escribe datos A..G, no fórmulas.
+
+**Pendiente de aplicación:** el VBA del `.xlsm` se edita en Excel (no con openpyxl). Editado
+el fuente `vbas/Module2.txt` (Macro `RefrescarListas` V13 + `CargarCatProcesosDesde`); falta
+que el usuario lo pegue en ambas plantillas y las regenere. El `catalog-fetcher.js` ya
+deploya remoto (config `1.6.68`).
+
 ## DOM — selectores (AFINADOS modal + ficha)
 
 | Campo | Modal | Ficha |

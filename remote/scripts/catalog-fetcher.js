@@ -9,13 +9,79 @@ const CatalogFetcher = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // ── CAT_Procesos: catálogo de procesos en un ARTÍCULO DE INVENTARIO (fuente de
+  // verdad). Lo mantiene el applet proceso-calculator (agrega combinaciones nuevas
+  // en vivo). Aquí lo bajamos para que RefrescarListas reconstruya la hoja
+  // CAT_Procesos de la plantilla. Cada item: { Linea, MetalBase, Etiqueta1..6, Proceso }.
+  const CATPROC_INV_ITEM_ID = 900192;     // artículo "Catálogo de Procesos (no archivar)"
+  const CATPROC_KEY = 'CatProcesos';      // key del array dentro de customInputs
+  const CATPROC_MAX_ETIQUETAS = 6;        // Etiqueta1..6
+
+  // ── Specs combinables (espesor/temp/tiempo) — funciones PURAS, testeables ──
+  // Clasifica un spec field: Espesor (0), Temperatura (1), Tiempo (2); -1 si no aplica.
+  // El catálogo combina los params de TODOS los fields combinables en su producto
+  // cartesiano. Hoy solo "Deshidrogenado" trae temp/tiempo, pero el catálogo puede
+  // crecer: cualquier EXTERNAL spec con estos fields se combina (no hay hardcode).
+  const comboFieldRank = (fieldName, fieldType) => {
+    const fn = (fieldName || '').toLowerCase();
+    const ft = (fieldType || '').toUpperCase();
+    if (fn.includes('espesor')) return 0;
+    if (fn.includes('temperatura')) return 1;
+    if (ft === 'TIMER' || /tiempo|duraci[oó]n|horneado/.test(fn)) return 2;
+    return -1;
+  };
+
+  // Construye las entries combinadas de UNA spec a partir de sus fields. Devuelve
+  // { entries, truncated }. entries=[] si la spec no tiene fields combinables (→ bare).
+  // Orden canónico de pipes: espesor | temperatura | tiempo.
+  const buildSpecComboEntries = (specName, fields, cap = 500) => {
+    const comboFields = [];
+    for (const sf of (fields || [])) {
+      const meta = sf.specFieldBySpecFieldId || {};
+      const rank = comboFieldRank(meta.name, meta.fieldType ?? meta.type);
+      if (rank < 0) continue;
+      const pnames = ((sf.defaultValues && sf.defaultValues.nodes) || []).map(p => p.name).filter(Boolean);
+      if (!pnames.length) continue;
+      comboFields.push({ rank, pnames });
+    }
+    if (!comboFields.length) return { entries: [], truncated: false };
+    comboFields.sort((a, b) => a.rank - b.rank);
+    let combos = [[]];
+    let truncated = false;
+    for (const cf of comboFields) {
+      const next = [];
+      for (const combo of combos) {
+        for (const pv of cf.pnames) {
+          next.push([...combo, pv]);
+          if (next.length >= cap) { truncated = true; break; }
+        }
+        if (truncated) break;
+      }
+      combos = next;
+      if (truncated) break;
+    }
+    const entries = combos.map(c => `${specName} | ${c.join(' | ')}`);
+    return { entries, truncated };
+  };
+
+  // Separa una entry "specName | a | b | …" en { specName, paramName } preservando
+  // TODOS los segmentos del param tras el primer ' | ' (con sus pipes internos). El
+  // VBA RefrescarListas reconstruye `specName & " | " & paramName`, así que el param
+  // combinado (temp|tiempo) llega íntegro al dropdown. paramName=null si no hay pipe.
+  const splitSpecEntry = (s) => {
+    const str = s || '';
+    const idx = str.indexOf(' | ');
+    if (idx < 0) return { specName: str, paramName: null };
+    return { specName: str.slice(0, idx), paramName: str.slice(idx + 3) };
+  };
+
   // ═══════════════════════════════════════════
   // FETCH CATALOGS FROM API
   // ═══════════════════════════════════════════
 
   async function fetchAll() {
     log('Catálogos dinámicos: consultando API...');
-    const [customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes] = await Promise.all([
+    const [customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes, catProcesos] = await Promise.all([
       fetchCustomers(),
       fetchProcesses(),
       fetchProducts(),
@@ -25,14 +91,33 @@ const CatalogFetcher = (() => {
       fetchUsers(),
       fetchGroups(),
       fetchPNInputSchema(),
-      fetchGeometryTypes()
+      fetchGeometryTypes(),
+      fetchCatProcesos()
     ]);
     log(`  ${customers.length} clientes, ${processes.length} procesos, ${products.length} productos`);
     log(`  ${labels.length} etiquetas, ${specs.length} specs, ${racks.linea.length}/${racks.all.length} racks`);
     log(`  ${users.length} usuarios, ${groups.length} grupos`);
     log(`  Input schema: ${pnInputSchema.metalBase.length} metales, ${pnInputSchema.codigoSAT.length} códigos SAT`);
     log(`  ${geometryTypes.length} tipos de geometría`);
-    return { customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes };
+    log(`  ${catProcesos.length} combinaciones CAT_Procesos (inventario ${CATPROC_INV_ITEM_ID})`);
+    return { customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes, catProcesos };
+  }
+
+  // CAT_Procesos: lee el array customInputs.CatProcesos del artículo de inventario
+  // 900192 (la fuente de verdad que mantiene proceso-calculator). Devuelve los items
+  // tal cual { Linea, MetalBase, Etiqueta1..6, Proceso }; RefrescarListas los mapea
+  // a las columnas D/E/F/G de la hoja CAT_Procesos.
+  async function fetchCatProcesos() {
+    try {
+      const vars = { id: CATPROC_INV_ITEM_ID, usagesLimit: 10, usagesOffset: 0, purchaseOrderBomItemsOffset: 0, purchaseOrderBomItemsLimit: 10 };
+      const data = await api().query('GetInventoryItem', vars, 'GetInventoryItem');
+      const ci = data?.inventoryItemById?.customInputs || {};
+      const entries = Array.isArray(ci[CATPROC_KEY]) ? ci[CATPROC_KEY] : [];
+      return entries;
+    } catch (e) {
+      warn(`GetInventoryItem (CatProcesos): ${String(e).substring(0, 120)}`);
+      return [];
+    }
   }
 
   // V10: fetch metalBase + codigoSAT enums directly from PartNumber input schema
@@ -239,10 +324,11 @@ const CatalogFetcher = (() => {
     // confiable es llamar SpecFieldsAndOptions para CADA spec externa. Con ~110 specs
     // y batch de 20 son ~6 rondas paralelas, ~1-2 segundos total.
     const specsSeen = new Set();
-    const espesorEntries = [];
-    const espesorEntrySet = new Set();
-    const specsWithEspesor = new Set();
+    const comboEntries = [];        // entries combinadas (espesor/temp/tiempo, producto cartesiano)
+    const comboEntrySet = new Set();
+    const specsWithCombo = new Set();
     const bareSpecs = [];
+    const COMBO_CAP = 500;          // tope de seguridad por spec (evita explosión cartesiana)
 
     for (const spec of allSpecs) {
       if (spec.name) specsSeen.add(spec.name);
@@ -261,32 +347,27 @@ const CatalogFetcher = (() => {
       for (const r of results) {
         if (!r || !r.sd) continue;
         const fields = r.sd.specFieldSpecsBySpecId?.nodes || [];
-        for (const sf of fields) {
-          const fieldName = sf.specFieldBySpecFieldId?.name || '';
-          if (!fieldName.toLowerCase().includes('espesor')) continue;
-          const params = sf.defaultValues?.nodes || [];
-          for (const param of params) {
-            const pname = param.name;
-            if (!pname) continue;
-            const entry = `${r.spec.name} | ${pname}`;
-            if (!espesorEntrySet.has(entry)) {
-              espesorEntrySet.add(entry);
-              espesorEntries.push(entry);
-              specsWithEspesor.add(r.spec.name);
-            }
+        const { entries, truncated } = buildSpecComboEntries(r.spec.name, fields, COMBO_CAP);
+        if (truncated) warn(`Spec "${r.spec.name}": producto cartesiano topado a ${COMBO_CAP} — catálogo parcial`);
+        for (const entry of entries) {
+          if (!comboEntrySet.has(entry)) {
+            comboEntrySet.add(entry);
+            comboEntries.push(entry);
+            specsWithCombo.add(r.spec.name);
           }
         }
       }
       if ((i + BATCH) % 100 === 0 || i + BATCH >= allSpecs.length) {
-        log(`  SpecFieldsAndOptions: ${Math.min(i + BATCH, allSpecs.length)}/${allSpecs.length} (${espesorEntries.length} entradas espesor hasta ahora)`);
+        log(`  SpecFieldsAndOptions: ${Math.min(i + BATCH, allSpecs.length)}/${allSpecs.length} (${comboEntries.length} entradas combinadas hasta ahora)`);
       }
     }
 
-    // Espesor entries first, then bare specs (without espesor)
+    // Entries combinadas (espesor/temp/tiempo) primero, luego specs sin fields
+    // combinables (bare).
     const result = [];
-    for (const entry of espesorEntries) result.push(entry);
+    for (const entry of comboEntries) result.push(entry);
     for (const name of specsSeen) {
-      if (!specsWithEspesor.has(name)) bareSpecs.push(name);
+      if (!specsWithCombo.has(name)) bareSpecs.push(name);
     }
     for (const name of bareSpecs) result.push(name);
     result.sort((a, b) => a.localeCompare(b));
@@ -419,8 +500,13 @@ const CatalogFetcher = (() => {
     // Especificaciones sheet: col3=specName, col17=fieldName, col22=paramName
     const specRows = [['', '', 'SpecName', '', '', '', '', '', '', '', '', '', '', '', '', '', 'FieldName', '', '', '', '', 'ParamName']];
     for (const s of catalogs.specs) {
-      if (s.includes(' | ')) {
-        const [specName, paramName] = s.split(' | ');
+      // El param puede traer VARIOS segmentos (espesor/temp/tiempo combinados, p.ej.
+      // "177 - 205 °C | >= 3 hrs."). splitSpecEntry preserva TODO tras el primer ' | '
+      // (antes un destructuring tiraba el 3er segmento → perdía el tiempo → el VBA
+      // dedupeaba las filas idénticas a una sola). fieldName="espesor" es la etiqueta
+      // que RefrescarListas busca para reconstruir el dropdown (no es el field real).
+      const { specName, paramName } = splitSpecEntry(s);
+      if (paramName !== null) {
         specRows.push(['', '', specName, '', '', '', '', '', '', '', '', '', '', '', '', '', 'espesor', '', '', '', '', paramName]);
       } else {
         specRows.push(['', '', s]);
@@ -492,6 +578,23 @@ const CatalogFetcher = (() => {
     for (const c of catalogs.pnInputSchema.codigoSAT) satRows.push([c]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(satRows), 'CodigoSAT');
 
+    // CAT_Procesos sheet: catálogo de procesos desde el artículo de inventario 900192
+    // (fuente de verdad). Cols: Linea | MetalBase | Etiqueta1..6 | Proceso. El VBA
+    // CargarCatProcesosDesde reconstruye la hoja CAT_Procesos de la plantilla:
+    //   D=Linea, E=MetalBase, F=join(Etiqueta1..6, " + "), G=Proceso.
+    // A/B/C (Grupo/Característica/Línea corta) quedan vacías: ninguna fórmula las usa.
+    const catProcHeader = ['Linea', 'MetalBase', 'Etiqueta1', 'Etiqueta2', 'Etiqueta3', 'Etiqueta4', 'Etiqueta5', 'Etiqueta6', 'Proceso'];
+    const catProcRows = [catProcHeader];
+    for (const e of catalogs.catProcesos) {
+      catProcRows.push([
+        e.Linea || '', e.MetalBase || '',
+        e.Etiqueta1 || '', e.Etiqueta2 || '', e.Etiqueta3 || '',
+        e.Etiqueta4 || '', e.Etiqueta5 || '', e.Etiqueta6 || '',
+        e.Proceso || ''
+      ]);
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(catProcRows), 'CAT_Procesos');
+
     // Resumen sheet
     const counts = {
       clientes: catalogs.customers.length,
@@ -507,7 +610,8 @@ const CatalogFetcher = (() => {
       grupos: catalogs.groups.length,
       metalBase: catalogs.pnInputSchema.metalBase.length,
       codigoSAT: catalogs.pnInputSchema.codigoSAT.length,
-      tiposGeometria: catalogs.geometryTypes.length
+      tiposGeometria: catalogs.geometryTypes.length,
+      catProcesos: catalogs.catProcesos.length
     };
     const resumenRows = [
       ['Catálogos Steelhead — ' + new Date().toLocaleDateString('es-MX')],
@@ -527,6 +631,7 @@ const CatalogFetcher = (() => {
       ['Metal Base', counts.metalBase],
       ['Código SAT', counts.codigoSAT],
       ['Tipos de Geometría', counts.tiposGeometria],
+      ['CAT_Procesos (combinaciones)', counts.catProcesos],
       [],
       ['Instrucciones:'],
       ['1. Abre tu Plantilla de Cotizaciones (.xlsm)'],
@@ -566,7 +671,8 @@ const CatalogFetcher = (() => {
       `${counts.departamentos} departamentos\n` +
       `${counts.usuarios} usuarios\n` +
       `${counts.grupos} grupos PN\n` +
-      `${counts.tiposGeometria} tipos de geometría\n\n` +
+      `${counts.tiposGeometria} tipos de geometría\n` +
+      `${counts.catProcesos} combinaciones CAT_Procesos\n\n` +
       `Archivo descargado: Catalogos_Steelhead_${new Date().toISOString().slice(0, 10)}.xlsx\n\n` +
       `Siguiente paso: Abre tu plantilla y ejecuta "RefrescarListas".\n` +
       `La macro detectará el archivo automáticamente.`);
@@ -574,7 +680,8 @@ const CatalogFetcher = (() => {
     return counts;
   }
 
-  return { fetchAll, generateCatalogsFile };
+  return { fetchAll, generateCatalogsFile, _comboFieldRank: comboFieldRank, _buildSpecComboEntries: buildSpecComboEntries, _splitSpecEntry: splitSpecEntry };
 })();
 
 if (typeof window !== 'undefined') window.CatalogFetcher = CatalogFetcher;
+if (typeof module !== 'undefined' && module.exports) module.exports = CatalogFetcher;

@@ -201,3 +201,32 @@ Bump `version` 1.6.47 → **1.6.48** + `lastUpdated` 2026-06-08T10:45.
 
 ## 2026-06-10 12:36 — 0 rotado(s) (config v1.6.51)
 
+## 2026-06-15 22:14 — 20 rotado(s) (config v1.6.72)
+
+Validación a mano (skill `steelhead-hash-validator`, conectado a SH): **137 ok / 20 stale / 3 whitelist / 0 unknown / 0 auth** en 95.9s. Rotación grande de Steelhead; el usuario ya los está corrigiendo. El cron `hash-validator-daily` no estaba corriendo (última corrida 2026-06-10; `scheduled_tasks.json` ausente, CronList vacío) → recreado en esta sesión.
+
+**Queries rotadas (18):** `GetQuote_v8`, `GetQuote_v71`, `AllProcesses`, `GetPartNumber`, `Customer`, `AllPartNumbers`, `AllWorkOrders`, `SearchInventoryItemBatches`, `CreateEditReceivedOrderDialogQuery`, `GetCustomerInfoForReceivedOrder`, `GetReceivedOrder`, `GetSpec`, `SpecFieldsAndOptions`, `ReceivingBatchesQuery`, `InvoiceByIdInDomain`, `SearchPurchaseOrdersForBill`, `GetPurchaseOrdersDataForBill`, `GetReceivedOrdersWithReceivedOrderLineItems`.
+
+**Mutations rotadas (2):** `SaveManyPNP_Quote`, `SaveManyPNP_PN`.
+
+**No afectados** (relevante para hoy): `GetInventoryItem`, `UpdateInventoryItemInputs` siguen vigentes → `catalog-fetcher` (hoja CAT_Procesos) y `tools/rename-catalog-label.js` operan bien. Ojo: `catalog-fetcher` SÍ usa `AllProcesses` + `SpecFieldsAndOptions` (rotadas) → la hoja Procesos y los combos de specs del "Actualizar Catálogos" fallarán hasta actualizar esos hashes.
+
+
+## 2026-06-15 22:48 — CORRECCIÓN: deploy config 1.6.73 (22 ops re-capturadas)
+
+Re-captura vía hash-scanner (navegador, same-origin). Las 20 rotadas confirmadas ROTADAS **desde el browser** (no falsos positivos del validador externo), **más `GetAccountDataForBill`** (estaba whitelisted como session-sensitive pero su hash TAMBIÉN rotó: `62fbb91b…` → `4265fbba…`). Total **22 keys** actualizadas (`GetQuote_v8/v71` y `SaveManyPNP_Quote/PN` comparten hash).
+
+Deploy `tools/deploy.sh --set 1.6.73`. **Re-validación: 158 ok / 0 stale / 2 whitelist (`CurrentUser`, `GetPurchaseOrder`).** `GetAccountDataForBill` con el hash nuevo ya pasa desde el validador → **removido de la whitelist**.
+
+`CurrentUser` y `GetPurchaseOrder` NO rotaron (scan == config) → siguen session-sensitive (el front los usa OK; scripts externos / fetch de la extensión reciben "Must provide a query string"). Por eso el gating de `report-regen` se rediseñó (v0.2.0) para NO llamar `CurrentUser` sino interceptar la respuesta del front.
+
+## 2026-06-15 23:28 — 0 rotado(s) (launchd)
+
+## 2026-06-16 10:19 — 1 rotado(s)
+
+- Config version: `1.6.74`
+- OK: 157 / 160 · Tiempo: 120.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-16.json`
+
+**Rotados:**
+- `query GetProcessNode` (hash `fe59624d7a4f...`)

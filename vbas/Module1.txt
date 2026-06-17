@@ -175,8 +175,18 @@ Sub ExportarCSV()
             t = outTyp(i): col = outCol(i)
             Select Case t
                 Case 0:  sv = CellToStr(data(ri, col))
-                Case 1:  sv = IIf(InStr(1, CStr(data(ri, col)), "Archivado", vbTextCompare) > 0, "V", "F")
-                Case 11: sv = IIf(InStr(1, CStr(data(ri, col)), "sin validaci", vbTextCompare) > 0, "F", "V")
+                Case 1   ' Archivado (de Estatus). "Dejar como está" -> blanco (tri-state)
+                    If InStr(1, CStr(data(ri, col)), "Dejar como", vbTextCompare) > 0 Then
+                        sv = ""
+                    Else
+                        sv = IIf(InStr(1, CStr(data(ri, col)), "Archivado", vbTextCompare) > 0, "V", "F")
+                    End If
+                Case 11  ' Validación (de Estatus). "Dejar como está" -> blanco
+                    If InStr(1, CStr(data(ri, col)), "Dejar como", vbTextCompare) > 0 Then
+                        sv = ""
+                    Else
+                        sv = IIf(InStr(1, CStr(data(ri, col)), "sin validaci", vbTextCompare) > 0, "F", "V")
+                    End If
                 Case 2
                     fz = CStr(data(ri, col))
                     sv = IIf(InStr(1, fz, "Forzar duplicado", vbTextCompare) > 0 _

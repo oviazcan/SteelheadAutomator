@@ -185,7 +185,52 @@
 const BulkUpload = (() => {
   'use strict';
 
-  const VERSION = '1.5.20';
+  // VERSION 1.5.21 (2026-06-11): fix archivados duplicados + Estatus tri-state.
+  //   - classify: el match por nombre (Pase 3) ahora incluye archivados → un PN
+  //     archivado con el mismo nombre se MATCHEA (MODIFY) en vez de crear duplicado.
+  //     rankCandidates prefiere activos a igualdad de score.
+  //   - parser: `archivado` pasa a tri-state (V→true archiva, F→false reactiva,
+  //     vacío→null "Dejar como está": preserva el estado actual). Antes toBool('')
+  //     daba false → desarchivaba PNs que debían quedarse archivados.
+  //   - STEP 8: aplica el tri-state (blanco + existing + estaba archivado → re-archiva
+  //     tras editar; F → desarchiva; V → archiva). Chip del preview honesto por estado.
+  // VERSION 1.5.22 (2026-06-11): colisión de specField contra spec ya linkeada se resuelve.
+  //   Sin sentinel "-", la carga era add-only: si un PN ya tenía una spec ocupando un
+  //   specField (ej. "Espesor") y el CSV traía OTRA spec con el mismo campo, SH rechazaba
+  //   con 23P01 (exclusion constraint) y el call dedicado 1.5.7 lo dejaba como error.
+  //   Ahora el call dedicado, cuando el claimer es una spec LINKEADA activa:
+  //     - mismo nombre (mismo acabado / dup de catálogo) → omite (ya presente, sin error);
+  //     - nombre distinto (cambio real) → archiva el claimer y aplica la nueva (reemplazo,
+  //       mismo mecanismo que el archive sentinel que SH ya acepta en un solo call).
+  //   Colisiones CSV-vs-CSV ('csv') siguen como error visible (dato malo del CSV).
+  // VERSION 1.5.23 (2026-06-11): filtro de placeholder de dropdown robusto a acentos/caso.
+  //   El v10 usa "(seleccione ó escriba)" con ó ACENTUADA; el filtro solo cubría la "o"
+  //   simple → se colaba como valor real (iba a crear un "grupo de PN" llamado así).
+  //   Ahora `g`/`cell` normalizan NFD + lowercase antes de comparar. (Misma fix en ambas
+  //   copias: el `g` local de parseRows y el `cell` puro del módulo.)
+  // VERSION 1.5.24 (2026-06-11): STEP 7 (Racks) ahora usa withRetry en sus 5 llamadas API
+  //   (Get/Delete/Save/Update). Antes eran api().query directo → un HTTP 502/503/timeout
+  //   transitorio tumbaba el rack al instante (caso reportado: UpdatePartNumberPerPerRackType
+  //   PN 3027305 → 502). withRetry NO reintenta duplicate-key (isRetryable=false) → el upsert
+  //   y el fallback uno-por-uno siguen igual; solo los transitorios se auto-reintentan.
+  // VERSION 1.5.25 (2026-06-11): STEP 5 pre-archive — fix de field names en partNumberDimensions
+  //   (faltaba el fix 1.5.14 que sí se aplicó en enrichWorker). El nodo trae
+  //   {geometryTypeDimensionTypeId, dimensionValue, unitByUnitId.id}; la forma vieja
+  //   {dimensionId, microQuantity, unitId} producía {} → HTTP 400 para PNs con dimensiones
+  //   (caso 80283-220-50 en la cotización SRG). Ahora usa la forma correcta + filtra malformadas.
+  // VERSION 1.5.26 (2026-06-11): tres cambios del footprint/cotización pedidos por el usuario.
+  //   (A) Usuario del ControlCambios: usar CurrentUserActiveSegments (trae name) en vez de
+  //       CurrentUserDetails (mínima, sin name) → ya no estampa "(desconocido)". + warn si falla.
+  //   (B) Fecha del Evento sin milisegundos (nowIso.replace(/\.\d{3}Z$/,'Z')).
+  //   (C) STEP 9: al terminar una COTIZACIÓN+NP, mover la(s) cotización(es) al stage "Ganada"
+  //       (CreateQuoteStageChange, DOMAIN.ganadaStageId). Las bloquea (active); revert-from-active
+  //       para re-editar. Con withRetry; errores van a errors[] sin tumbar la corrida.
+  // VERSION 1.5.27 (2026-06-11): auto revert-from-active al "retomar anterior" (action='modify').
+  //   Si la cotización retomada está en "Ganada" (active/locked), el clean de PNPs y los
+  //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
+  //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
+  //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
+  const VERSION = '1.5.27';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -196,7 +241,7 @@ const BulkUpload = (() => {
   if (!Parse || !Classify) {
     console.error('[bulk-upload] FALTA bulk-upload-parse.js / bulk-upload-classify.js en el array scripts de config.json');
   }
-  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions } = Parse || {};
+  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections, pickSpecParamId } = Parse || {};
   const {
     normLabel, isNonFinishLabel, buildEquivIndex, equivGroup, equivalentValues,
     acabadosOrdenados, acabadosCanonicos, metalCanonico, buildCompositeKey,
@@ -1072,8 +1117,12 @@ const BulkUpload = (() => {
   const isoDate = (d) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString(); };
   const g = (row, i) => {
     const v = (row[i] || '').trim().replace(/\s+/g, ' ');
-    // V10: dropdowns prepend "(seleccione)" / "(seleccione o escriba)" — tratarlos como vacío
-    if (v === '(seleccione)' || v === '(seleccione o escriba)') return '';
+    // Dropdowns prepend placeholders ("(seleccione)" / "(seleccione o escriba)") → vacío.
+    // 1.5.23: normaliza acentos + mayúsculas para cubrir variantes del template. El v10 usa
+    // "(seleccione ó escriba)" con ó ACENTUADA — antes se colaba como valor real (p.ej. iba a
+    // crear un "grupo de PN" llamado "(seleccione ó escriba)").
+    const ph = v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    if (ph === '(seleccione)' || ph === '(seleccione o escriba)') return '';
     return v;
   };
   const gn = (row, i) => { const v = parseFloat(g(row, i)); return isNaN(v) ? null : v; };
@@ -1152,6 +1201,26 @@ const BulkUpload = (() => {
     // BB=53 Departamento | BC=54 Codigo SAT
     // BD-BL=55-63 Predictivos | BM=64 QuoteIBMS | BN=65 EstacionIBMS | BO=66 Plano
     // BP=67 PiezasCarga | BQ=68 CargasHora | BR=69 TiempoEntrega | BS=70 Notas adicionales
+    //
+    // V12 column indices (0-indexed, 73 cols) — ESTAS SON LAS POSICIONES DEL CSV
+    // CANÓNICO que emite ExportarCSV v15, NO las visuales de la plantilla v12. El VBA
+    // expande Estatus→[Archivado,Validacion], Forzar dup→[Forzar,Archivar], Productos→3
+    // grupos, y OMITE Departamento/SAT (el parser los pone por default). Diferencia vs
+    // v11: v12 trae 4 specs (no 2), lo que corre +4 todo lo posterior a las specs.
+    // A=0 Archivado | B=1 Validacion | C=2 Forzar | D=3 Archivar
+    // E=4 Id SH | F=5 Cliente | G=6 PN | H=7 Descripcion | I=8 PN alterno | J=9 Grupo
+    // K=10 Cantidad | L=11 Precio | M=12 Unidad precio | N=13 Divisa | O=14 Precio default
+    // P=15 Linea | Q=16 Metal base
+    // R=17 Etq1 | S=18 Etq2 | T=19 Etq3 | U=20 Etq4 | V=21 Planta Schneider (Etq5)
+    // W=22 Proceso | 23 Prod1 | 24 Pre1 | 25 Cnt1 | 26 Uni1
+    // 27 Prod2 | 28 Pre2 | 29 Cnt2 | 30 Uni2 | 31 Prod3 | 32 Pre3 | 33 Cnt3 | 34 Uni3
+    // 35 Spec1 | 36 Esp1 | 37 Spec2 | 38 Esp2 | 39 Spec3 | 40 Esp3 | 41 Spec4 | 42 Esp4
+    // 43 KGM | 44 CMK | 45 LM | 46 MinPzasLote
+    // 47 Rack Linea | 48 Pzas R.L. | 49 Rack Sec | 50 Pzas R.S.
+    // 51 Tipo Geometria | 52 Long | 53 Ancho | 54 Alto | 55 D.Ext | 56 D.Int
+    // (SIN Departamento/SAT)
+    // 57-65 Predictivos | 66 Notas adicionales | 67 QuoteIBMS | 68 EstIBMS | 69 Plano
+    // 70 PiezasCarga | 71 CargasHora | 72 TiempoEntrega
 
     // === v10 (legacy, 69 cols A..BQ) ===
     const V10_COLS = {
@@ -1220,18 +1289,60 @@ const BulkUpload = (() => {
       piezasCarga: 68, cargasHora: 69, tiempoEntrega: 70,
     };
 
+    // === v12 (73 cols CSV canónico; 4 specs; sin Departamento/SAT) ===
+    // El VBA ExportarCSV v15 emite el MISMO canon que v11 (Archivado en A, Id SH en E)
+    // pero con 4 specs en vez de 2 → todo lo posterior a specs corre +4. Departamento y
+    // SAT NO se exportan (el parser inyecta defaults aguas abajo).
+    const V12_COLS = {
+      archivado: 0, validacion: 1, forzar: 2, archivar: 3,
+      idSh: 4,
+      cliente: 5, pn: 6, descripcion: 7, pnAlterno: 8, pnGroup: 9,
+      qty: 10, precio: 11, unidadPrecio: 12, divisa: 13, precioDefault: 14,
+      linea: 15,
+      metalBase: 16,
+      labels: [17, 18, 19, 20, 21],           // Etq1-4 + Planta Schneider
+      proceso: 22,
+      prods: [[23, 24, 25, 26], [27, 28, 29, 30], [31, 32, 33, 34]],
+      specs: [[35, 36], [37, 38], [39, 40], [41, 42]],   // 4 specs (vs 2 en v11)
+      kgm: 43, cmk: 44, lm: 45, minPzasLote: 46,
+      rackLinea: [47, 48], rackSec: [49, 50],
+      tipoGeometria: 51,
+      dims: { length: 52, width: 53, height: 54, outerDiam: 55, innerDiam: 56 },
+      departamento: -1,    // no se exporta en v12 → default aguas abajo
+      codigoSAT: -1,       // no se exporta en v12 → default aguas abajo
+      predictives: [        // 57..65, mismos 9 materiales/orden que v10/v11
+        { col: 57, name: 'Plata' },
+        { col: 58, name: 'Estano' },
+        { col: 59, name: 'Niquel' },
+        { col: 60, name: 'Zinc' },
+        { col: 61, name: 'Cobre' },
+        { col: 62, name: 'Antitarnish' },
+        { col: 63, name: 'Epox. MT' },
+        { col: 64, name: 'Epox. BT' },
+        { col: 65, name: 'Epox. MTR' },
+      ],
+      notas: 66,
+      quoteIBMS: 67, estacionIBMS: 68, plano: 69,
+      piezasCarga: 70, cargasHora: 71, tiempoEntrega: 72,
+    };
+
     // Detectar esquema leyendo la row de headers (col A = "Archivado"), col E.
     // Se hace en un primer pass sobre las primeras 15 filas antes de procesar datos.
+    // v10: E="Cliente" | v11/v12: E="Id SH". v11 vs v12 se discrimina por nº de specs:
+    // v12 emite headers "Spec 1".."Spec 4" (≥3); v11 solo "Spec 1"/"Spec 2".
+    const countSpecHeaders = (row) =>
+      (row || []).filter(h => /^spec\s*\d+$/i.test((h || '').trim())).length;
     let COLS = V11_COLS; // default
     let schemaVersion = 'v11';
     for (let r = 0; r < Math.min(rows.length, 15); r++) {
       const rowA = (rows[r][0] || '').trim();
       if (rowA === 'Archivado') {
         const rowE = (rows[r][4] || '').trim();
-        if (rowE === 'Id SH') {
-          COLS = V11_COLS; schemaVersion = 'v11';
-        } else if (rowE === 'Cliente') {
+        if (rowE === 'Cliente') {
           COLS = V10_COLS; schemaVersion = 'v10';
+        } else if (rowE === 'Id SH') {
+          if (countSpecHeaders(rows[r]) >= 3) { COLS = V12_COLS; schemaVersion = 'v12'; }
+          else { COLS = V11_COLS; schemaVersion = 'v11'; }
         } else {
           warn('parseRows: schema indeterminado (col E de la fila Archivado no es "Id SH" ni "Cliente"), asumiendo v11');
           COLS = V11_COLS; schemaVersion = 'v11';
@@ -1387,7 +1498,11 @@ const BulkUpload = (() => {
         linea: g(row, COLS.linea),
         departamento: g(row, COLS.departamento),
         codigoSAT: g(row, COLS.codigoSAT),
-        archivado: toBool(g(row, COLS.archivado)),
+        // 1.5.21: tri-state Estatus/Archivado. V→true (archiva), F→false (lo deja
+        // vivo/desarchiva), vacío→null ("Dejar como está": preserva el estado actual
+        // de archivado del PN). Antes toBool('') daba false → desarchivaba PNs que el
+        // operador quería dejar archivados.
+        archivado: (() => { const v = g(row, COLS.archivado); return v ? toBool(v) : null; })(),
         forzarDuplicado: toBool(g(row, COLS.forzar)),
         archivarAnterior: toBool(g(row, COLS.archivar)),
         // 1.5.13: tri-state. CSV vacío → null (preserve existing optInOuts); explícito → bool.
@@ -1442,7 +1557,7 @@ const BulkUpload = (() => {
   // buildDimensions, isDash, resolveStr, resolveNum extraídos a bulk-upload-parse.js (F1)
   // — vienen del destructuring de Parse al inicio del IIFE.
 
-  function mergeCustomInputs(existing, part) {
+  function mergeCustomInputs(existing, part, opts = {}) {
     const ci = existing ? JSON.parse(JSON.stringify(existing)) : {};
 
     // 1.2.12: el campo MontoMinimo se removió del esquema; borrar siempre del legacy.
@@ -1457,6 +1572,15 @@ const BulkUpload = (() => {
     if (part.codigoSAT) {
       if (!ci.DatosFacturacion) ci.DatosFacturacion = {};
       ci.DatosFacturacion.CodigoSAT = isDash(part.codigoSAT) ? '' : part.codigoSAT;
+    } else if (opts.defaultCodigoSAT && opts.applyDefault !== false) {
+      // v12: el SAT ya no viene en el CSV. Regla de negocio: default si el PN no tiene
+      // CodigoSAT; si ya tiene, respetar. applyDefault=false en existentes sin snapshot
+      // (no sobreescribir un valor que no pudimos leer en el prefetch).
+      const current = ci.DatosFacturacion?.CodigoSAT;
+      if (current == null || current === '') {
+        if (!ci.DatosFacturacion) ci.DatosFacturacion = {};
+        ci.DatosFacturacion.CodigoSAT = opts.defaultCodigoSAT;
+      }
     }
 
     // DatosAdicionalesNP
@@ -1927,6 +2051,7 @@ const BulkUpload = (() => {
         userDecided: true,
         targetPnId: node.id,
         wasArchived: !!node.archivedAt,
+        archivado: p.archivado, // 1.5.21: tri-state para chip + STEP 8
         csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
         csvLabels: p.labels || [],
         csvMetalBase: p.metalBase || '',
@@ -1974,7 +2099,8 @@ const BulkUpload = (() => {
       // con 2+ queda en false para que el operador confirme en el dropdown.
       userDecided: cls.autoDecided === true,
       targetPnId: cls.targetPnId,
-      wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado por Pase 1/2 estaba archivado
+      wasArchived: !!cls.wasArchived, // 1.2.12: PN matcheado estaba archivado (cualquier pase)
+      archivado: p.archivado, // 1.5.21: tri-state para chip + STEP 8
       csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
       // 1.2.11: snapshot del CSV para que dedupModifyTargets pueda evaluar
       // strict-match de alternates con la misma lógica de classifyOnePN.
@@ -2432,13 +2558,21 @@ const BulkUpload = (() => {
             dupChip.title = `El CSV trae ${r.csvDuplicateGroupSize} filas con este (PN, cliente) — fila ${r.csvDuplicateIndex} del grupo`;
             tdPN.appendChild(dupChip);
           }
-          // 1.2.12: chip "🔓 desarch" cuando Pase 1/2 matchearon un PN archivado.
-          // STEP 8 lo desarchiva automáticamente (UpdatePartNumber archivedAt:null).
+          // 1.5.21: chip cuando el PN matcheado estaba archivado. El texto refleja el
+          // Estatus tri-state, NO solo "desarch": F→reactiva, V→re-archiva, blanco→preserva.
           if (r.wasArchived) {
             const unArchChip = document.createElement('span');
             unArchChip.className = 'dl9-unarch-chip';
-            unArchChip.textContent = '🔓 desarch';
-            unArchChip.title = 'PN matcheado estaba archivado; se desarchivará automáticamente antes de aplicar cambios.';
+            if (r.archivado === false) {
+              unArchChip.textContent = '🔓 reactiva';
+              unArchChip.title = 'PN matcheado estaba archivado; el Estatus pide dejarlo vivo → se desarchiva.';
+            } else if (r.archivado === true) {
+              unArchChip.textContent = '📦 re-archiva';
+              unArchChip.title = 'PN matcheado estaba archivado; se edita y se vuelve a archivar (Estatus Archivado).';
+            } else {
+              unArchChip.textContent = '📦 sin cambio';
+              unArchChip.title = '"Dejar como está": el PN matcheado estaba archivado y se preserva archivado (se desarchiva temporalmente solo para editar).';
+            }
             tdPN.appendChild(unArchChip);
           }
           tr.appendChild(tdPN);
@@ -3272,13 +3406,17 @@ const BulkUpload = (() => {
     // 1.5.20: inputSchemaId vigente del dominio (3932 en TLC). Default al hardcoded
     // de config; se sobreescribe con latestSchema.id tras GetPartNumbersInputSchema.
     let runtimeInputSchemaId = DOMAIN.inputSchemaId_PN;
-    // 1.5.20: identidad para el footprint de ControlCambios. Best-effort: si falla,
-    // se estampa "(desconocido)" y la corrida continúa.
+    // 1.5.26: identidad para el footprint de ControlCambios. CurrentUserDetails es la query
+    // MÍNIMA (id/domainId/isAdmin) y NO trae `name` → currentSession.userByUserId.name daba
+    // undefined → siempre "(desconocido)". CurrentUserActiveSegments sí expone el nombre en
+    // ese mismo path (verificado en scan: "OMAR FIDEL VIAZCAN GOMEZ"). Best-effort, pero con
+    // warn para que un fallo futuro NO vuelva a pasar en silencio.
     let currentUserName = '(desconocido)';
     try {
-      const cuData = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
+      const cuData = await api().query('CurrentUserActiveSegments', {}, 'CurrentUserActiveSegments');
       currentUserName = cuData?.currentSession?.userByUserId?.name || '(desconocido)';
-    } catch (_) {}
+      if (currentUserName === '(desconocido)') warn('ControlCambios: CurrentUserActiveSegments no devolvió name del usuario.');
+    } catch (e) { warn(`ControlCambios: fallo al obtener usuario actual: ${String(e).substring(0, 80)}`); }
     const errors = [];
     const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
@@ -3664,6 +3802,10 @@ const BulkUpload = (() => {
 
       // Load dimension value maps (Línea/Departamento → ID)
       const dimValueMap = new Map(); // "valor" → id
+      // Sets de ids por TIPO de dimensión (para resolveDimSelections: clasificar las
+      // selecciones existentes del PN y recomponerlas sin que un eje borre al otro).
+      const lineaValueIdSet = new Set();
+      const deptoValueIdSet = new Set();
       const dimIds = DOMAIN.dimensionIds || {};
       // 1.4.12: feedback en panel (típicamente 3-5 dims, corto pero consistente).
       const dimEntries = Object.entries(dimIds);
@@ -3679,13 +3821,32 @@ const BulkUpload = (() => {
           try {
             const dd = await api().query('GetDimension', { id: dimId, includeArchived: 'NO' });
             const nodes = dd?.acctDimensionById?.acctDimensionCustomValuesByDimensionId?.nodes || [];
-            for (const n of nodes) { if (n.value && !n.archivedAt) dimValueMap.set(n.value.trim(), n.id); }
+            const k = String(dimKey).toLowerCase();
+            for (const n of nodes) {
+              if (n.value && !n.archivedAt) {
+                dimValueMap.set(n.value.trim(), n.id);
+                if (k === 'linea') lineaValueIdSet.add(n.id);
+                else if (k === 'departamento') deptoValueIdSet.add(n.id);
+              }
+            }
           } catch (_) {}
           dimDone++;
           setPanelProgress(dimDone, dimEntries.length);
         }
       }
       log(`  ${dimValueMap.size} dimensiones contables cargadas`);
+      // Default de Departamento (regla de negocio: PN sin departamento → este valor).
+      // Resuelve por NOMBRE desde config (robusto a rotación de ids); cae al id literal.
+      const billingDefaults = DOMAIN.billingDefaults || {};
+      let deptoDefaultId = null;
+      if (billingDefaults.departmentName && dimValueMap.has(billingDefaults.departmentName)) {
+        deptoDefaultId = dimValueMap.get(billingDefaults.departmentName);
+      } else if (billingDefaults.departmentValueId) {
+        deptoDefaultId = billingDefaults.departmentValueId;
+      }
+      if (!deptoDefaultId && (billingDefaults.departmentName || billingDefaults.departmentValueId)) {
+        warn(`Departamento default "${billingDefaults.departmentName}" no resuelto en catálogo de dimensiones — no se inyectará default`);
+      }
 
       // Group resolver
       async function resolveGroupId(name) {
@@ -4366,9 +4527,18 @@ const BulkUpload = (() => {
               const sentExistingDimCustomValueIds = (pnNode.acctPnDimensionValueSelectionsByPartNumberId?.nodes || [])
                 .map(sel => sel.dimensionCustomValueId)
                 .filter(Boolean);
+              // 1.5.25: mismo fix de field names que 1.5.14 (enrichWorker), que aquí faltaba.
+              // El nodo de GetPartNumber trae {geometryTypeDimensionTypeId, dimensionValue,
+              // unitByUnitId.id}, NO {dimensionId, microQuantity, unitId}. La forma vieja
+              // producía {} → HTTP 400 (input[0].partNumberDimensions) para PNs CON dimensiones
+              // (caso 80283-220-50). Filtra además entradas malformadas.
               const sentExistingDims = (pnNode.partNumberDimensionsByPartNumberId?.nodes || [])
-                .filter(d => !d.archivedAt)
-                .map(d => ({ dimensionId: d.dimensionId, microQuantity: d.microQuantity, unitId: d.unitId }));
+                .filter(d => !d.archivedAt && d.geometryTypeDimensionTypeId && (d.unitByUnitId?.id ?? d.unitId) != null)
+                .map(d => ({
+                  geometryTypeDimensionTypeId: d.geometryTypeDimensionTypeId,
+                  dimensionValue: d.dimensionValue,
+                  unitId: d.unitByUnitId?.id ?? d.unitId,
+                }));
               // 1.5.7: STEP 5 también resuelve grupo del CSV (no del cache).
               // Asegura que si SOLO Call B fallara, STEP 5 ya dejó el grupo aplicado.
               // 1.5.16: leer FK relacional como fuente primaria. El query persistido
@@ -4617,6 +4787,27 @@ const BulkUpload = (() => {
               thisQuoteId = existingQuote.id;
               thisQuoteIdInDomain = existingQuote.idInDomain;
               log(`  Modificando cotización existente #${thisQuoteIdInDomain}`);
+
+              // 1.5.27: revert-from-active. Una cotización que ya pasó por STEP 9 está en
+              // "Ganada" (active) → BLOQUEADA: el clean de PNPs y los SaveQuoteLines de abajo
+              // fallarían. La movemos a un stage editable (DOMAIN.revertStageId) ANTES de
+              // editar; STEP 9 la regresa a "Ganada" al final. Las cotizaciones NUEVAS no pasan
+              // por aquí (nacen editables). Se hace siempre en modify porque AllQuotes/GetQuote_v8
+              // no exponen confiablemente el stage actual; si no estaba en Ganada es inofensivo.
+              if (DOMAIN.revertStageId) {
+                try {
+                  await withRetry(
+                    () => api().query('CreateQuoteStageChange', {
+                      quoteId: thisQuoteId, quoteStageId: DOMAIN.revertStageId, message: '', needsRevision: false
+                    }, 'CreateQuoteStageChange'),
+                    `Revert-from-active #${thisQuoteIdInDomain}`, myRunId
+                  );
+                  log(`  Cotización #${thisQuoteIdInDomain}: revert-from-active (→ editable) antes de retomar`);
+                } catch (e) {
+                  if (isBail(e)) throw e;
+                  warn(`  Revert-from-active #${thisQuoteIdInDomain} falló: ${String(e).substring(0, 80)}`);
+                }
+              }
 
               // Clean existing PNPs from the quote so we can re-add fresh
               try {
@@ -5040,6 +5231,12 @@ const BulkUpload = (() => {
         // 1.5.4: indexar también las linked rows archivadas para poder unarchive en lugar
         // de re-create (la unique_constraint pn_id+spec_id aplica también a archivadas).
         const archivedSpecLinkBySpecId = new Map();
+        // 1.5.22: mapas de links ACTIVOS por specId — para resolver colisiones de specField
+        // contra una spec ya linkeada: si el campo ("Espesor") ya está ocupado por otra spec
+        // activa, se archiva ese claimer y se aplica la nueva del CSV (reemplazo). Si es la
+        // MISMA spec (mismo nombre, p.ej. dup de catálogo) se omite (ya presente).
+        const activeSpecLinkBySpecId = new Map();   // specId → partNumberSpec.id (link activo)
+        const activeSpecNameBySpecId = new Map();   // specId → nombre de la spec linkeada
         // 1.5.5: extraer labelIds y dimensionCustomValueIds existentes para preservar-on-missing.
         // SavePartNumber hace REPLACE en estos arrays, entonces si el CSV no trae nada (o si
         // el lookup falla en tiempo de ejecución) y mandamos [], SH borra los existentes.
@@ -5051,6 +5248,8 @@ const BulkUpload = (() => {
             const sid = ls.specBySpecId?.id; if (!sid) continue;
             if (ls.archivedAt) { archivedSpecLinkBySpecId.set(sid, ls.id); continue; }
             alreadyLinkedSpecIds.add(sid);
+            activeSpecLinkBySpecId.set(sid, ls.id);
+            if (ls.specBySpecId?.name) activeSpecNameBySpecId.set(sid, ls.specBySpecId.name);
           }
           for (const ln of (existingPnNode.partNumberLabelsByPartNumberId?.nodes || [])) {
             if (ln.archivedAt) continue;
@@ -5061,40 +5260,34 @@ const BulkUpload = (() => {
           }
         }
 
-        // 1.5.5 — Preserve-on-missing para campos que SH trata como REPLACE.
-        // Antes (≤1.5.4) tanto Call A como Call B mandaban labelIds y dimensionCustomValueIds
-        // calculados desde el CSV; si el CSV no traía esos campos, o el lookup contra los
-        // catálogos fallaba, se enviaba [] y SH borraba los valores existentes (bug
-        // confirmado en piloto string-only: PN 3028297 perdió Línea/Depto/Etiquetas).
-        // Ahora ambos calls usan estos *ToSend y caen al snapshot del PN existente cuando
-        // el CSV no tiene intención de cambiar.
-        // Decisión dimensionCustomValueIds:
-        //   * Ambos campos vacíos en CSV  → preservar existing
-        //   * Ambos '-' (dash)            → [] (borrar explícito)
-        //   * Mezcla con dash             → enviar lookup (al menos un value-ok)
-        //   * Lookup roto sin value-ok    → preservar (no borrar por typo)
-        const dimValueIds = [];
-        let lineaIntent = 'none';   // 'none' | 'dash' | 'value-ok' | 'value-missing'
-        let deptoIntent = 'none';
+        // 1.5.5 / v12 — Preserve-on-missing + default por eje para dimensiones.
+        // SavePartNumber hace REPLACE en dimensionCustomValueIds; si el CSV no trae
+        // un eje y mandamos [], SH borra los existentes (bug piloto: PN 3028297 perdió
+        // Línea/Depto). resolveDimSelections recompone Línea + Departamento + otras
+        // preservando cada eje por separado, y aplica la regla de negocio del Depto:
+        //   "default Producción si el PN no tiene departamento; si ya tiene, respetar"
+        // (altas y edición). Esto también evita que una fila v12 con Línea — que NUNCA
+        // trae Departamento en el CSV — borre el departamento existente.
+        // Intents por eje: value-ok (CSV válido) | dash (borrar) | none/value-missing
+        // (sin dato → preservar existente; el Depto además cae al default).
+        let lineaIntent = 'none', deptoIntent = 'none';
+        let lineaId = null, deptoId = null;
         if (part.linea) {
           if (isDash(part.linea)) lineaIntent = 'dash';
-          else { const id = dimValueMap.get(part.linea); if (id) { dimValueIds.push(id); lineaIntent = 'value-ok'; } else { lineaIntent = 'value-missing'; warn(`Línea "${part.linea}" no encontrada en dimensiones`); } }
+          else { const id = dimValueMap.get(part.linea); if (id) { lineaId = id; lineaIntent = 'value-ok'; } else { lineaIntent = 'value-missing'; warn(`Línea "${part.linea}" no encontrada en dimensiones`); } }
         }
         if (part.departamento) {
           if (isDash(part.departamento)) deptoIntent = 'dash';
-          else { const id = dimValueMap.get(part.departamento); if (id) { dimValueIds.push(id); deptoIntent = 'value-ok'; } else { deptoIntent = 'value-missing'; warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); } }
+          else { const id = dimValueMap.get(part.departamento); if (id) { deptoId = id; deptoIntent = 'value-ok'; } else { deptoIntent = 'value-missing'; warn(`Departamento "${part.departamento}" no encontrado en dimensiones`); } }
         }
-        let dimValueIdsToSend;
-        if (lineaIntent === 'none' && deptoIntent === 'none') {
-          dimValueIdsToSend = existingDimCustomValueIds;
-        } else if ((lineaIntent === 'value-missing' || lineaIntent === 'none') &&
-                   (deptoIntent === 'value-missing' || deptoIntent === 'none') &&
-                   dimValueIds.length === 0) {
-          dimValueIdsToSend = existingDimCustomValueIds;
-          warn(`"${pn.name}": Línea/Depto lookup falló → preservando ${existingDimCustomValueIds.length} dimSel existentes`);
-        } else {
-          dimValueIdsToSend = dimValueIds;
-        }
+        const dimValueIdsToSend = (typeof resolveDimSelections === 'function')
+          ? resolveDimSelections({
+              lineaIntent, lineaId, deptoIntent, deptoId,
+              existingDimIds: existingDimCustomValueIds,
+              lineaValueIdSet, deptoValueIdSet, deptoDefaultId,
+              applyDeptoDefault: (statusEarly?.status !== 'existing') || !!existingPnNode,
+            })
+          : existingDimCustomValueIds;
         // Labels: misma lógica de preservación.
         const csvHadLabels = !labelsAreDash && part.labels.length > 0;
         const allLabelsUnknown = csvHadLabels && labelIds.length === 0 && unknownLabels.length === part.labels.length;
@@ -5130,15 +5323,20 @@ const BulkUpload = (() => {
           wantedSpecIds.add(si.id);
           specNameById.set(si.id, cs.name);
           const sd = sfCache.get(si.id); if (!sd) continue;
+          // cs.param puede traer VARIOS valores combinados por ' | ' (espesor/temp/tiempo
+          // del producto cartesiano del catálogo, p.ej. "177 - 205 °C | >= 2 hrs."). Se
+          // matchea por VALOR: para cada field con >1 param se elige el param cuyo nombre
+          // coincida con alguno de los segmentos del CSV — sin asumir orden ni identificar
+          // cuál field es cuál. Field de 1 param se auto-selecciona. Compat espesor v10/v11:
+          // 1 segmento, matchea igual.
+          const segs = (cs.param || '').split(' | ').map(s => s.trim()).filter(Boolean);
           const dS = [], gS = [];
           for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
             const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
             const fn = sf.specFieldBySpecFieldId?.name || '';
             const isEsp = fn.toLowerCase().includes('espesor');
-            let pid;
-            if (params.length === 1) pid = params[0].id;
-            else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : (errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`), params[0].id); }
-            else pid = params[0].id;
+            const { id: pid, espesorMiss } = pickSpecParamId(params, segs, isEsp);
+            if (espesorMiss && cs.param) errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`);
             if (!pid) continue;
             // 1.4.38: regla nueva — SIEMPRE processNodeId=null. El param null es
             // genérico (se aplica a cualquier proceso) y sobrevive cambios de
@@ -5257,7 +5455,10 @@ const BulkUpload = (() => {
         // existingPnNode, mergeCustomInputs arrancaba desde {} y borraba todo lo que
         // el CSV no traía (mismo mecanismo que el bug de 1.5.8 que vació 13k PNs,
         // pero por el path SOLO_PN que el fix 1.5.9 no cubrió).
-        let mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part);
+        let mergedCI = mergeCustomInputs(existingPnNode?.customInputs ?? pn.customInputs, part, {
+          defaultCodigoSAT: DOMAIN.billingDefaults?.codigoSAT,
+          applyDefault: (statusEarly?.status !== 'existing') || !!existingPnNode,
+        });
         if (part.codigoSAT || part.metalBase || part.pnAlterno) stats.ciSet++;
         // MODIFY-by-id sin pn: fallback al name del node existente
         const resolvedPnName = pn.name || (existingPnNode && existingPnNode.name) || (() => { throw new Error(`SavePartNumber sin name resuelto para id=${pn.id}`); })();
@@ -5528,7 +5729,7 @@ const BulkUpload = (() => {
             });
             const ccEntry = window.SteelheadBulkCC.buildControlCambiosEntry({
               accion: ccAccion, detalle: ccDetalle, usuario: currentUserName,
-              version: (window.REMOTE_CONFIG && window.REMOTE_CONFIG.version) || VERSION, nowIso: new Date().toISOString(),
+              version: (window.REMOTE_CONFIG && window.REMOTE_CONFIG.version) || VERSION, nowIso: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
             });
             window.SteelheadBulkCC.appendControlCambios(mergedCI, ccEntry);
           }
@@ -5654,20 +5855,44 @@ const BulkUpload = (() => {
             partNumberSpecsToArchive: [], specFieldParamUpdates: [],
             glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
           };
+          const _norm = (s) => String(s || '').trim().toUpperCase();
           for (const cx of conflictingExtras) {
+            // 1.5.22: resolución de colisión contra un claimer YA LINKEADO activo.
+            //   - mismo nombre (mismo acabado / dup de catálogo) → ya presente: se OMITE (sin error).
+            //   - nombre distinto (cambio real) → se ARCHIVA el claimer y se aplica la nueva (reemplazo).
+            //   - claimer 'csv' (dos specs del propio CSV reclaman el campo) → NO se auto-resuelve;
+            //     el error queda visible (es un problema de datos en el CSV).
+            let archiveClaimerLinkId = null;
+            if (cx.claimerKind === 'linked' && cx.claimerSpecId != null) {
+              const claimerName = activeSpecNameBySpecId.get(cx.claimerSpecId) || '';
+              if (claimerName && _norm(claimerName) === _norm(cx.specName)) {
+                stats.specsCollisionSkipped = (stats.specsCollisionSkipped || 0) + 1;
+                log(`  -> "${pnInput.name}/${cx.specName}": campo "${cx.sfName}" ya ocupado por la MISMA spec — se omite (ya presente)`);
+                continue;
+              }
+              archiveClaimerLinkId = activeSpecLinkBySpecId.get(cx.claimerSpecId) || null;
+            }
             try {
               await withRetry(
                 () => api().query('SavePartNumber', {
                   input: [{
                     ...baseInput,
                     specsToApply: cx.unarchiveLinkId ? [] : [cx.entry],
-                    partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : []
+                    partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : [],
+                    // reemplazo: archiva al claimer linkeado para liberar el specField (mismo
+                    // mecanismo que el archive sentinel, que ya se sabe que SH acepta en un call).
+                    partNumberSpecsToArchive: archiveClaimerLinkId ? [archiveClaimerLinkId] : []
                   }]
                 }),
                 `SavePartNumber colisión "${pnInput.name}/${cx.specName}"`,
                 myRunId
               );
-              log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+              if (archiveClaimerLinkId) {
+                stats.specsCollisionReplaced = (stats.specsCollisionReplaced || 0) + 1;
+                log(`  -> "${pnInput.name}/${cx.specName}": reemplazó la spec vieja en "${cx.sfName}" (OK)`);
+              } else {
+                log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+              }
             } catch (eExtra) {
               if (isBail(eExtra)) throw eExtra;
               errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}" reclamado por ${cx.claimerKind === 'linked' ? 'spec ya linkeada' : 'otra spec del CSV'}): ${String(eExtra).substring(0, 120)}`);
@@ -6183,10 +6408,10 @@ const BulkUpload = (() => {
           delDone++;
           setPanelSubPhase(`Borrando racks ${delDone}/${racksToDelete.size} (PN ${pnId})`);
           try {
-            const pnData = await api().query('GetPartNumber', { partNumberId: pnId });
+            const pnData = await withRetry(() => api().query('GetPartNumber', { partNumberId: pnId }), `GetPN racks ${pnId}`, myRunId);
             const existingRacks = pnData?.partNumberById?.partNumberRackTypesByPartNumberId?.nodes || [];
             for (const rk of existingRacks) {
-              await api().query('DeletePartNumberRackType', { id: rk.id });
+              await withRetry(() => api().query('DeletePartNumberRackType', { id: rk.id }), `DeleteRack ${rk.id}`, myRunId);
               log(`  Rack ${rk.id} eliminado de PN ${pnId}`);
             }
             if (existingRacks.length) stats.racksSet += existingRacks.length;
@@ -6197,17 +6422,17 @@ const BulkUpload = (() => {
       // entonces borramos el viejo y reinsertamos con el partsPerRack nuevo.
       async function upsertRack(rk) {
         try {
-          await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } });
+          await withRetry(() => api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } }), `SaveRack PN ${rk.partNumberId}`, myRunId);
         } catch (e2) {
           if (isDuplicateKeyError(e2)) {
             // V10: usar mutación dedicada UpdatePartNumberPerPerRackType (typo en el API real)
             // que actualiza por composite key (partNumberId, rackTypeId).
             try {
-              await api().query('UpdatePartNumberPerPerRackType', {
+              await withRetry(() => api().query('UpdatePartNumberPerPerRackType', {
                 partNumberId: rk.partNumberId,
                 partsPerRack: rk.partsPerRack,
                 rackTypeId: rk.rackTypeId
-              }, 'UpdatePartNumberPerPerRackType');
+              }, 'UpdatePartNumberPerPerRackType'), `UpdateRack PN ${rk.partNumberId}`, myRunId);
               log(`  Rack ${rk.rackTypeId} en PN ${rk.partNumberId}: partsPerRack actualizado a ${rk.partsPerRack}`);
             } catch (e3) {
               errors.push(`Rack PN ${rk.partNumberId} update: ${String(e3).substring(0, 100)}`);
@@ -6234,7 +6459,7 @@ const BulkUpload = (() => {
           setPanelSubPhase(`Racks batch ${batchNum}/${rackTotalBatches} (${batch.length} racks)`);
           setPanelProgress(Math.min(i + batch.length, rackIn.length), rackIn.length);
           try {
-            await api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } });
+            await withRetry(() => api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } }), `SaveRack batch ${batchNum}`, myRunId);
           } catch (e) {
             rackBatchFailures++;
             const errMsg = String(e).substring(0, 200);
@@ -6307,10 +6532,18 @@ const BulkUpload = (() => {
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i]; const status = pnStatus[i];
         const entry = pnLookup.get(i); if (!entry) continue;
-        if (part.archivado) {
+        // 1.5.21: tri-state Estatus/Archivado.
+        //   V (true)      → archivar (existing o el nuevo de forceDup).
+        //   F (false)     → desarchivar / dejar vivo (si es existing).
+        //   blanco (null) → "Dejar como está": si el existing estaba archivado, se
+        //     PRESERVA archivado (STEP 4.5 lo desarchivó solo para editar → aquí se
+        //     re-archiva); si estaba activo o es nuevo, no se toca.
+        if (part.archivado === true) {
           if (!archiveSeen.has(entry.pn.id)) { pnsToArchive.push({ id: entry.pn.id, name: part.pn }); archiveSeen.add(entry.pn.id); }
-        } else if (pnStatus[i].status === 'existing') {
+        } else if (part.archivado === false && status.status === 'existing') {
           if (!unarchiveSeen.has(entry.pn.id)) { pnsToUnarchive.push({ id: entry.pn.id, name: part.pn }); unarchiveSeen.add(entry.pn.id); }
+        } else if (part.archivado == null && status.status === 'existing' && status.wasArchived) {
+          if (!archiveSeen.has(entry.pn.id)) { pnsToArchive.push({ id: entry.pn.id, name: part.pn }); archiveSeen.add(entry.pn.id); }
         }
         // archiveOverride per-row: undefined → seguir CSV; true → archivar; false → no archivar
         const csvWantsArchive = !!part.archivarAnterior;
@@ -6468,7 +6701,32 @@ const BulkUpload = (() => {
       }
       if (pnsToUnarchive.length) log(`  Desarchivados: ${stats.unarchived || 0}`);
 
-      // STEP 9: Done
+      // STEP 9 (1.5.26): mover las cotizaciones creadas al stage "Ganada". Esto las marca
+      // como "active" → quedan BLOQUEADAS para edición. Para re-editar/retomar hay que aplicar
+      // "revert from active" en la UI; si la cotización ya se usó (orderReceived), ya no se
+      // puede editar y hay que crear una nueva. Solo aplica a COTIZACIÓN+NP (SOLO_PN no crea quotes).
+      if (!isSoloPN && quotesCreated.length && DOMAIN.ganadaStageId) {
+        setPanelPhase(`Paso 9/9: Moviendo ${quotesCreated.length} cotización(es) a "Ganada"`);
+        let ganadaOk = 0;
+        for (const q of quotesCreated) {
+          try {
+            await withRetry(
+              () => api().query('CreateQuoteStageChange', {
+                quoteId: q.id, quoteStageId: DOMAIN.ganadaStageId, message: '', needsRevision: false
+              }, 'CreateQuoteStageChange'),
+              `CreateQuoteStageChange #${q.idInDomain}`, myRunId
+            );
+            ganadaOk++;
+            log(`  Cotización #${q.idInDomain} movida a "Ganada" (bloqueada; revert-from-active para editar)`);
+          } catch (e) {
+            if (isBail(e)) throw e;
+            errors.push(`Mover #${q.idInDomain} a Ganada: ${String(e).substring(0, 120)}`);
+          }
+        }
+        stats.movedToGanada = ganadaOk;
+      }
+
+      // STEP 10: Done
       setPanelPhase('Completado.'); setProgressBar(100);
       const domainId = window.location.pathname.match(/\/Domains\/(\d+)/)?.[1] || DOMAIN.id;
       // V10: si se creó UNA sola cotización abrir esa; si fueron varias, abrir el listado general

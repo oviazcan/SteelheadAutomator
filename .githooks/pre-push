@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# pre-push — CANDADO del invariante de deploy.
+#
+# Al pushear gh-pages valida DOS cosas y ABORTA si fallan:
+#  1) que gh-pages espeje main:remote/ byte-a-byte (config.json + scripts/**.js).
+#  2) que config.version AUMENTE vs lo publicado (la version es el cache-bust;
+#     repetirla deja a usuarios con scripts viejos cacheados).
+# Deployar a mano sin sincronizar/bumpear es el camino al drift. Usa tools/deploy.sh.
+#
+# No toca pushes de main / workbench / feat-*: solo actúa sobre refs/heads/gh-pages.
+#
+# Instalación (una vez por clon):  tools/install-hooks.sh
+set -uo pipefail
+
+ZERO=0000000000000000000000000000000000000000
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/gh-pages" ] || continue
+  [ "$local_sha" = "$ZERO" ] && continue   # borrado de rama, no validar
+
+  # rama de referencia: main local si existe, si no origin/main
+  mainref=main
+  git rev-parse --verify --quiet main >/dev/null 2>&1 || mainref=origin/main
+
+  bad=0
+  if ! diff -q <(git show "$mainref:remote/config.json" 2>/dev/null) \
+               <(git show "$local_sha:config.json" 2>/dev/null) >/dev/null 2>&1; then
+    echo "  ✗ config.json difiere de $mainref:remote/config.json"
+    bad=1
+  fi
+  while IFS= read -r f; do
+    base="${f#scripts/}"
+    if ! diff -q <(git show "$mainref:remote/scripts/$base" 2>/dev/null) \
+                 <(git show "$local_sha:$f" 2>/dev/null) >/dev/null 2>&1; then
+      echo "  ✗ $f difiere de $mainref:remote/scripts/$base (o no existe en main)"
+      bad=1
+    fi
+  done < <(git ls-tree -r --name-only "$local_sha" -- scripts/ 2>/dev/null | grep -E '\.js$')
+
+  # 3) version-bump: el deploy debe AUMENTAR config.version vs lo PUBLICADO.
+  #    La version es el cache-bust de la extensión; repetir o bajar el número deja
+  #    a los usuarios con scripts viejos cacheados (el deploy no los alcanza).
+  if [ "$remote_sha" != "$ZERO" ]; then
+    cfgver() { grep -m1 '"version"' | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'; }
+    newv=$(git show "$local_sha:config.json" 2>/dev/null | cfgver)
+    oldv=$(git show "$remote_sha:config.json" 2>/dev/null | cfgver)
+    if [ -n "$newv" ] && [ -n "$oldv" ]; then
+      top=$(printf '%s\n%s\n' "$oldv" "$newv" | sort -V | tail -1)
+      if [ "$newv" = "$oldv" ] || [ "$top" != "$newv" ]; then
+        echo "  ✗ config.version no AUMENTA: publicado=$oldv  nuevo=$newv (la version es el cache-bust)"
+        bad=1
+      fi
+    fi
+  fi
+
+  if [ "$bad" -ne 0 ]; then
+    echo ""
+    echo "🛑 pre-push ABORTADO: gh-pages NO espeja $mainref:remote/ byte-a-byte, o la version no sube."
+    echo "   No pushees gh-pages a mano. Usa:  tools/deploy.sh \"<mensaje>\"  (bumpea la version solo)"
+    echo "   (o re-sincroniza: git show main:remote/... > scripts/...; git show main:remote/config.json > config.json)"
+    exit 1
+  fi
+  echo "  ✓ pre-push: gh-pages espeja $mainref:remote/ (config + scripts .js)"
+done
+exit 0
