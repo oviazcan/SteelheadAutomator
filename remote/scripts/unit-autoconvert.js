@@ -88,16 +88,26 @@
     else host.insertBefore(toggle, host.firstChild);
   }
 
+  // Devuelve el elemento MÁS INTERNO cuyo texto cumple el predicado. Con predicados
+  // anclados (^...$) evita matchear wrappers grandes (cuyo textContent contiene el
+  // título + todos los campos) y aterriza en el <p> real del encabezado.
   function findByText(selector, predicate) {
     const els = document.querySelectorAll(selector);
-    for (const el of els) { if (predicate(el.textContent.trim())) return el; }
-    return null;
+    let match = null;
+    for (const el of els) {
+      if (predicate((el.textContent || '').trim())) {
+        if (!match || match.contains(el)) match = el; // más profundo gana (hoja real)
+      }
+    }
+    return match;
   }
 
   function tryInjectToggles() {
     if (killSwitchOff()) return;
-    const headingA = findByText('p.MuiTypography-root, strong, h6, span', (t) =>
-      /per part count unit definitions/i.test(t));
+    // Panel A: el encabezado es texto EXACTO "Per Part Count Unit Definitions:" (anclado
+    // para no agarrar un wrapper). Selector amplio: no dependemos del tag/clase exactos.
+    const headingA = findByText('p, span, strong, b, h1, h2, h3, h4, h5, h6, div, label', (t) =>
+      /^per part count unit definitions:?\s*$/i.test(t));
     if (headingA) injectToggleNear(headingA, 'after');
     const modoP = findByText('p.MuiTypography-root', (t) => /^modo:?$/i.test(t));
     if (modoP) injectToggleNear(modoP.parentElement, 'before');
