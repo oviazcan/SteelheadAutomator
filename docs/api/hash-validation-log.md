@@ -259,3 +259,12 @@ Deploy `tools/deploy.sh --check bill-autofill` → bump 1.6.76 → **1.6.77** + 
 **Re-validación local (config 1.6.77): 158 ok / 0 stale / 2 skipped (`CurrentUser`, `GetPurchaseOrder` whitelist) / 0 unknown / 0 auth** en 100.5s.
 
 Cierra issues `#3` (4 rotados) y `#2` (1 rotado — `GetProcessNode`, ya incluido en el set de 4).
+
+## 2026-06-17 11:19 — 1 rotado(s)
+
+- Config version: `1.6.77`
+- OK: 157 / 160 · Tiempo: 126.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-17.json`
+
+**Rotados:**
+- `query GetDomain` (hash `28b65e268c0d...`)
