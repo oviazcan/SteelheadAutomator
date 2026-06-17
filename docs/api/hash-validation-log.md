@@ -230,3 +230,15 @@ Deploy `tools/deploy.sh --set 1.6.73`. **Re-validación: 158 ok / 0 stale / 2 wh
 
 **Rotados:**
 - `query GetProcessNode` (hash `fe59624d7a4f...`)
+
+## 2026-06-16 21:19 — 4 rotado(s)
+
+- Config version: `1.6.76`
+- OK: 154 / 160 · Tiempo: 129.2s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-16.json`
+
+**Rotados:**
+- `query SearchAccounts` (hash `90022de3792f...`)
+- `query GetBillByIdInDomain` (hash `404d9326b62e...`)
+- `query GetVendor` (hash `326a130b68bf...`)
+- `query GetProcessNode` (hash `fe59624d7a4f...`)
