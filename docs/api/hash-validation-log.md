@@ -242,3 +242,20 @@ Deploy `tools/deploy.sh --set 1.6.73`. **Re-validación: 158 ok / 0 stale / 2 wh
 - `query GetBillByIdInDomain` (hash `404d9326b62e...`)
 - `query GetVendor` (hash `326a130b68bf...`)
 - `query GetProcessNode` (hash `fe59624d7a4f...`)
+
+## 2026-06-17 09:38 — Reparación: deploy config 1.6.77 (4 ops re-capturadas)
+
+Re-captura vía hash-scanner (navegador, same-origin) — scan `2026-06-17_093448`. Las 4 rotadas confirmadas **Caso A (rotación real)** del playbook: `previousHash` del scan == hash viejo del config, `hash` nuevo distinto, `status:changed`, `lastHttpStatus:200` (el server ya acepta el hash nuevo). No son falsos positivos del validador externo.
+
+| Operación | viejo → nuevo | usedBy |
+|---|---|---|
+| `SearchAccounts` | `90022de3…` → `4b00b2b2…` | bill-autofill |
+| `GetBillByIdInDomain` | `404d9326…` → `161bb5aa…` | bill-autofill |
+| `GetVendor` | `326a130b…` → `efb7af01…` | bill-autofill |
+| `GetProcessNode` | `fe59624d…` → `fae7d1d1…` | process-canon, process-deep-audit |
+
+Deploy `tools/deploy.sh --check bill-autofill` → bump 1.6.76 → **1.6.77** + `lastUpdated` 2026-06-17T09:38. Publicado en vivo (GitHub Pages, verificado por polling).
+
+**Re-validación local (config 1.6.77): 158 ok / 0 stale / 2 skipped (`CurrentUser`, `GetPurchaseOrder` whitelist) / 0 unknown / 0 auth** en 100.5s.
+
+Cierra issues `#3` (4 rotados) y `#2` (1 rotado — `GetProcessNode`, ya incluido en el set de 4).
