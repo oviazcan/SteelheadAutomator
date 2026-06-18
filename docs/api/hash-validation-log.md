@@ -282,3 +282,12 @@ Validación puntual del hash nuevo contra el server → **HTTP 200 con data real
 **Re-validación local (config 1.6.78): 158 ok / 0 stale / 2 skipped (`CurrentUser`, `GetPurchaseOrder` whitelist) / 0 unknown / 0 auth** en 99.2s.
 
 Cierra issue `#4` (1 rotado — `GetDomain`).
+
+## 2026-06-17 22:19 — 1 rotado(s)
+
+- Config version: `1.6.78`
+- OK: 157 / 160 · Tiempo: 121.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-17.json`
+
+**Rotados:**
+- `query GetDomain` (hash `a7216eb75b65...`)
