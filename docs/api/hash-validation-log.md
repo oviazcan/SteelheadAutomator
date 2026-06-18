@@ -291,3 +291,5 @@ Cierra issue `#4` (1 rotado — `GetDomain`).
 
 **Rotados:**
 - `query GetDomain` (hash `a7216eb75b65...`)
+
+## 2026-06-17 23:37 — 0 rotado(s) (launchd)
