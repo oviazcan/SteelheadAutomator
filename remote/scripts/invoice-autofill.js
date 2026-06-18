@@ -215,18 +215,23 @@ const InvoiceAutofill = (() => {
     // Heurística: hay form activo si existen inputs con id="root_DatosContables_*" o varios "root_*".
     const divisaInput = document.getElementById(RJSF_DIVISA_ID);
     const tcInput = document.getElementById(RJSF_TC_ID);
-    const datosContablesAny = document.querySelector('[id^="root_DatosContables"]');
     const rjsfInputs = document.querySelectorAll('[id^="root_"]');
-    // Señal POSITIVA del editor de invoice — NO "cualquier form RJSF". La vista de
-    // detalle de un Packing Slip vive bajo /Domains/N/Shipping/PackingSlips/<id>
-    // (el URL gate la acepta porque la factura se crea in-place desde ahí) y trae su
-    // propio form RJSF con 5+ inputs root_* → el viejo `rjsfInputs.length >= 5`
-    // plantaba el panel sobre el albarán aunque no hubiera editor de invoice abierto.
-    // Anclamos en lo que SOLO existe con el editor montado: campos
-    // root_DatosContables_* o el heading "Creating/Editing/New Invoice for X".
+    // Señal POSITIVA del editor de invoice — NO "cualquier form RJSF" NI el bloque
+    // genérico `root_DatosContables` del cliente. La vista de un Packing Slip
+    // (/Domains/N/Shipping[/PackingSlips/<id>], que el URL gate acepta porque la
+    // factura se crea in-place desde ahí) renderiza el MISMO bloque de datos
+    // contables del cliente — `root_DatosContables`, `root_DatosContables_DivisaUSD`,
+    // `_DivisaMXN`, `_CuentasContables_*`, `_EmpresaEmisora`… (~87 inputs root_*) —
+    // SIN que haya editor de factura abierto. Por eso `[id^="root_DatosContables"]`
+    // genérico daba falso positivo y plantaba el panel sobre el albarán. Lo único
+    // exclusivo del editor de factura montado:
+    //   - root_DatosContables_Divisa      (selector de divisa de la FACTURA; OJO: NO
+    //     es root_DatosContables_DivisaUSD/DivisaMXN, que son flags del cliente)
+    //   - root_DatosContables_exchangeRate (TC de la factura)
+    //   - heading "Creating/Editing/New Invoice for X"
     const hasInvoiceHeading = [...document.querySelectorAll('h1,h2,h3,h4,[class*="MuiTypography-h"]')]
       .some(h => /(?:creating|editing|new|create|edit)\s+invoice\s+for\b/i.test(h.textContent || ''));
-    const found = !!(divisaInput || tcInput || datosContablesAny || hasInvoiceHeading);
+    const found = !!(divisaInput || tcInput || hasInvoiceHeading);
 
     if (!found) {
       // Modal "Create Invoice Manually" — overlay sin RJSF. Maneja su propio flow.
