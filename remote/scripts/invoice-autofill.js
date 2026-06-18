@@ -554,6 +554,39 @@ const InvoiceAutofill = (() => {
     }
   }
 
+  // ¿El catálogo trae al menos una cuenta de ventas/ingreso (0401-*/0402-*)?
+  // Sirve de señal de "catálogo completo": si no hay ninguna, el snapshot está
+  // incompleto y no debemos resolver líneas todavía (marcaríamos "No resuelto"
+  // espurio para cuentas que sí existen).
+  function hasSalesAccounts(arr) {
+    return Array.isArray(arr) && arr.some(a => /^040[12]/.test(String(a?.accountNumber || '')));
+  }
+
+  // Reintenta poblar state.allAccounts hasta que traiga cuentas de ventas. El primer
+  // snapshot (InvoiceLowCodeData / GetReceivedOrders interceptados) a veces llega sin
+  // ellas por race con el primer runAutofill. En cada vuelta: (1) empuja un
+  // SearchAccounts '%%' (catálogo completo) y (2) da chance a que los interceptores
+  // pueblen state.allAccounts solos entre reintentos. No-op si ya hay ventas.
+  async function ensureSalesAccountsLoaded(retries = 5, delayMs = 500) {
+    if (hasSalesAccounts(state.allAccounts)) return state.allAccounts;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const data = await api().query('SearchAccounts', { searchQuery: '%%' }, 'SearchAccounts');
+        const accounts = data?.searchAcctAccounts?.nodes || [];
+        if (accounts.length > (state.allAccounts?.length || 0)) state.allAccounts = accounts;
+      } catch (err) {
+        warn('ensureSalesAccountsLoaded fetch error: ' + err.message);
+      }
+      if (hasSalesAccounts(state.allAccounts)) {
+        log(`Catálogo de ventas cargado tras reintento #${i + 1} (${state.allAccounts.length} cuentas)`);
+        return state.allAccounts;
+      }
+      await sleep(delayMs);
+    }
+    log('ensureSalesAccountsLoaded: catálogo sigue sin cuentas 0401/0402 tras reintentos');
+    return state.allAccounts;
+  }
+
   // ── Account Resolution ──
 
   function normalizeForMatch(str) {
@@ -742,15 +775,21 @@ const InvoiceAutofill = (() => {
     }
 
     const mismatch = !!(productSuggested && expected && productSuggested.id !== expected.id);
+    const account = expected || productSuggested || null;
+    // Distinguir "el catálogo aún no carga" de "no existe la cuenta del prefijo":
+    // si no hay NINGUNA cuenta de ventas (0401/0402) en el catálogo, es carga
+    // incompleta (pending → "Cargando…"), no un genuino "No resuelto" (warn).
+    const catalogIncomplete = !account && !hasSalesAccounts(allAccounts);
 
     return {
-      account: expected || productSuggested || null,
+      account,
       expected,
       productSuggested,
       mismatch,
       isCredit,
       targetPrefix,
-      source: !expected ? 'unresolved' : (mismatch ? 'override' : (productSuggested ? 'product-default' : 'rule'))
+      catalogIncomplete,
+      source: !account ? (catalogIncomplete ? 'loading' : 'unresolved') : (mismatch ? 'override' : (productSuggested ? 'product-default' : 'rule'))
     };
   }
 
@@ -2071,6 +2110,18 @@ const InvoiceAutofill = (() => {
     }
     state.allAccounts = accountsData;
 
+    // Si hay líneas a resolver pero el catálogo aún no trae cuentas de ventas
+    // (0401-*/0402-*), el snapshot está incompleto (race: InvoiceLowCodeData a veces
+    // llega después del primer runAutofill, o el fetch trajo sólo un subconjunto).
+    // Esperar/reintentar la carga ANTES de resolver evita el "No resuelto" espurio
+    // que antes sólo se corregía con un re-run manual.
+    const lines = extractLinesFromDOM();
+    if (lines.length > 0 && !hasSalesAccounts(accountsData)) {
+      log('allAccounts sin cuentas de ventas (0401/0402) — esperando catálogo completo…');
+      accountsData = await ensureSalesAccountsLoaded();
+      state.allAccounts = accountsData;
+    }
+
     // Divisa: prioridad post-fill DOM → SO → DOM (pre-fill) → customer flags → default
     const divisaPostFill = scriptSetDivisa ? extractDivisaFromDOM() : null;
     const currencyFromSO = state.receivedOrderDivisa;
@@ -2106,8 +2157,7 @@ const InvoiceAutofill = (() => {
     // AR account
     const arResult = findBestARAccount(state.customer, currency, accountsData);
 
-    // Lines + cuenta de ingreso/descuento por línea
-    const lines = extractLinesFromDOM();
+    // Lines + cuenta de ingreso/descuento por línea (lines ya extraídas arriba)
     const lineAccounts = lines.map(line => {
       const resolved = resolveLineAccount({
         lineAmount: line.amount,
@@ -2242,10 +2292,12 @@ const InvoiceAutofill = (() => {
       if (state.lineAccounts.length > 0) {
         html += `<div style="border-top:1px solid #334155;margin:8px 0 6px;padding-top:6px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">Cuenta por línea</div>`;
         for (const line of state.lineAccounts) {
-          const status = !line.account ? 'warn' : 'done';
+          const status = !line.account ? (line.catalogIncomplete ? 'pending' : 'warn') : 'done';
           let lbl;
           if (line.account) {
             lbl = line.account.name || line.account.accountNumber;
+          } else if (line.catalogIncomplete) {
+            lbl = 'Cargando catálogo de cuentas…';
           } else if (line.reason === 'sin_salesTax_en_query') {
             lbl = 'Pendiente: salesTax del cliente no resuelto';
           } else if (line.targetPrefix) {
