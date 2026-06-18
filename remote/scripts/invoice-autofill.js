@@ -217,7 +217,16 @@ const InvoiceAutofill = (() => {
     const tcInput = document.getElementById(RJSF_TC_ID);
     const datosContablesAny = document.querySelector('[id^="root_DatosContables"]');
     const rjsfInputs = document.querySelectorAll('[id^="root_"]');
-    const found = !!(divisaInput || tcInput || datosContablesAny || rjsfInputs.length >= 5);
+    // Señal POSITIVA del editor de invoice — NO "cualquier form RJSF". La vista de
+    // detalle de un Packing Slip vive bajo /Domains/N/Shipping/PackingSlips/<id>
+    // (el URL gate la acepta porque la factura se crea in-place desde ahí) y trae su
+    // propio form RJSF con 5+ inputs root_* → el viejo `rjsfInputs.length >= 5`
+    // plantaba el panel sobre el albarán aunque no hubiera editor de invoice abierto.
+    // Anclamos en lo que SOLO existe con el editor montado: campos
+    // root_DatosContables_* o el heading "Creating/Editing/New Invoice for X".
+    const hasInvoiceHeading = [...document.querySelectorAll('h1,h2,h3,h4,[class*="MuiTypography-h"]')]
+      .some(h => /(?:creating|editing|new|create|edit)\s+invoice\s+for\b/i.test(h.textContent || ''));
+    const found = !!(divisaInput || tcInput || datosContablesAny || hasInvoiceHeading);
 
     if (!found) {
       // Modal "Create Invoice Manually" — overlay sin RJSF. Maneja su propio flow.
@@ -1154,6 +1163,14 @@ const InvoiceAutofill = (() => {
 
     if (!best || bestScore < 10) return { success: false, method: 'fallback', reason: 'opcion no encontrada' };
 
+    // react-select v5 confirma la opción en mousedown (el Option hace
+    // onMouseDown→preventDefault para no perder focus, y selecciona ahí). Un
+    // .click() sintético solo no disparaba el commit → la opción quedaba "a medio
+    // seleccionar": el texto tecleado persistía en el input y el menú abierto, sin
+    // singleValue. Disparamos la secuencia completa mousedown→mouseup→click.
+    const fireMouse = (el, type) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, view: window }));
+    fireMouse(best, 'mousedown');
+    fireMouse(best, 'mouseup');
     best.click();
     return { success: true, filled: targetAccountName, method: 'visual' };
   }
@@ -1955,13 +1972,21 @@ const InvoiceAutofill = (() => {
     if (state.arAccount?.account?.accountNumber) {
       const acc = state.arAccount.account;
       const search = acc.accountNumber || acc.name;
-      results.arAccount = await tryFillARBySubtitle(search, acc.name || acc.accountNumber);
+      // El modal nuevo rotula el campo como "AR Account:" (antes había un subtítulo
+      // italic <p>ACCOUNTS_RECEIVABLE</p>). El label y su combobox NO comparten un
+      // wrapper exclusivo: son hermanos dentro de un css-iyrxkt que ANTES contiene
+      // Ship Via. Por eso el viejo tryFillCombobox (que sube al ancestro y hace
+      // querySelector del primer combobox del bloque) aterrizaba la cuenta CXC en
+      // Ship Via. Solución: anclar por label vía sibling-walk
+      // (findReactSelectControlByLabel → findFieldContainerByPLabel), que toma el
+      // combobox que SIGUE al <p>AR Account:</p>, no el primero del bloque.
+      const AR_LABEL_RE = /^\s*ar\s*account\s*:?\s*$|^\s*cuenta\s*(?:por\s*)?cobrar\s*:?\s*$|^\s*accounts?\s*receivable\s*:?\s*$/i;
+      results.arAccount = await tryFillReactSelectByLabel(AR_LABEL_RE, search, acc.name || acc.accountNumber);
       if (!results.arAccount?.success) {
-        log(`Fill AR (subtitle path): ${JSON.stringify(results.arAccount)} — fallback a label`);
-        results.arAccount = await tryFillCombobox(
-          'cuenta.*cobrar|accounts?\\s*receivable|a\\/?r\\s*account|cuenta.*recibir',
-          search, acc.name || acc.accountNumber
-        );
+        // Fallback legacy: subtítulo italic <p>ACCOUNTS_RECEIVABLE</p> (modal viejo).
+        // Es fail-safe: si el subtítulo no existe, NO escribe en ningún combobox.
+        log(`Fill AR (label path): ${JSON.stringify(results.arAccount)} — fallback a subtítulo legacy`);
+        results.arAccount = await tryFillARBySubtitle(search, acc.name || acc.accountNumber);
       }
       log(`Fill AR: ${JSON.stringify(results.arAccount)}`);
     }
