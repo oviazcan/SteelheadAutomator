@@ -1,7 +1,18 @@
-' === MACRO 1: ExportarCSV (v15 — layout v12) ===
+' === MACRO 1: ExportarCSV (v15.3 — layout v12) ===
+' V15.3 (2026-06-18): FIX Mac DEFINITIVO — vuelve a SaveAs nativo (como el legacy v10/v11/v84).
+'   Los intentos v15.1/v15.2 fallaron en Mac: ADODB.Stream → "error 429 (ActiveX can't create
+'   object)" porque ADODB es COM solo-Windows; y Open ... For Binary → "error 75 (Path/File access
+'   error)" porque escribir un archivo NUEVO con I/O de bajo nivel está bloqueado por el SANDBOX
+'   de Excel para Mac (ni GetSaveAsFilename ni GrantAccessToMultipleFiles lo habilitan para Open).
+'   El método que SIEMPRE funcionó en Mac es SaveAs FileFormat:=62 (xlCSVUTF8): Excel guarda SU
+'   PROPIO archivo y el sandbox le concede la ruta elegida en GetSaveAsFilename.
+'   Se CONSERVA el build canónico de v15 (expansión de combos), pero en vez de armar el string y
+'   escribirlo a mano, se vuelca a un LIBRO TEMPORAL (celdas como texto "@" para preservar punto
+'   decimal/ceros/fechas) y se exporta con SaveAs 62. Sin ADODB, sin Open, sin #If, sin sandbox.
+'   El parser tolera BOM (lo strippea: bulk-upload.js `replace(/^﻿/,'')`), cualquier fin de
+'   línea (parseCSV consume \r/\n/\r\n) y filas cortas (`(row[i]||'')`). Ver secciones 6-8.
 ' V15 (2026-06-09): reescrito para el spreadsheet v12 (hoja "Upload", 60 cols visibles).
-'   CAMBIO DE FONDO vs v14: ya NO usa SaveAs (dump crudo). Construye el CSV CANÓNICO
-'   en memoria, expandiendo 3 columnas combo a su forma que el parser entiende:
+'   Expande 3 columnas combo a la forma que el parser entiende:
 '     - "Estatus"          -> "Archivado" + "Validación"            (V/F)
 '     - "Forzar duplicado" -> "Forzar" + "Archivar anterior"        (V/F)
 '     - "Productos"        -> 3 grupos Producto/Precio/Cantidad/Unidad vía CAT_Productos
@@ -11,7 +22,7 @@
 '   por default). Lee .Value (raw) -> ya no hace falta el truco "General" de predictivos.
 '   Metadata (modo/empresa/quoteName/notas/asignado/válida) se lee LABEL-DRIVEN (robusto a
 '   posiciones) y se re-emite como bloque limpio arriba del CSV.
-'   Orden determinista por (Cliente, PN) con quicksort en memoria (sin libro temporal).
+'   Orden determinista por (Cliente, PN) con quicksort en memoria.
 '
 ' Posiciones de datos v12 (fila 7 = encabezados, datos fila 9+):
 '   1=Estatus  2=Forzar duplicado  3=Id SH  4=Cliente  5=Número de parte ...
@@ -155,23 +166,45 @@ Sub ExportarCSV()
     Dim prodMap As Collection
     Set prodMap = LoadCatProductos(wsP)
 
-    ' ── 6) Construir CSV (bloque metadata + header canónico + filas) ──
-    Dim sb As String
-    sb = CsvQuote(modoRaw) & vbCrLf
-    sb = sb & "Empresa Emisora:," & CsvQuote(empresa) & vbCrLf
-    sb = sb & "Nombre Cotizacion/Layout:," & CsvQuote(quoteName) & vbCrLf
-    sb = sb & "Notas Externas:," & CsvQuote(notasExt) & vbCrLf
-    sb = sb & "Notas Internas:," & CsvQuote(notasInt) & vbCrLf
-    sb = sb & "Asignado:," & CsvQuote(asignado) & vbCrLf
-    sb = sb & "Valida Hasta (dias):," & CsvQuote(validaDias) & vbCrLf
-    sb = sb & BuildLine(outHdr) & vbCrLf
+    ' ── 6) Construir matriz de salida (metadata + header canónico + filas) ──
+    ' Se vuelca a un libro temporal y se exporta con SaveAs FileFormat:=62 (ver §8).
+    ' Las celdas van como TEXTO ("@") para preservar punto decimal, ceros a la izquierda y
+    ' fechas tal cual; Excel hace el escapado CSV (comas/comillas) — igual semántica que el
+    ' viejo CsvQuote, pero nativo y cross-platform. El orden ya viene canonizado (Cliente, PN).
+    Dim i As Long, ri As Long, t As Long, col As Long, sv As String, fz As String
 
-    Dim i As Long, ri As Long, t As Long, col As Long, sv As String, fz As String, line As String
+    Dim nOut As Long: nOut = 0
+    For k = 1 To n
+        If Trim(CStr(data(idx(k), COL_PN))) <> "" Then nOut = nOut + 1
+    Next k
+
+    Const METAROWS As Long = 7                  ' 1 fila modo + 6 labels de metadata
+    Dim nc As Long: nc = outHdr.Count
+    Dim totalRows As Long: totalRows = METAROWS + 1 + nOut    ' metadata + header + datos
+    Dim outArr() As Variant
+    ReDim outArr(1 To totalRows, 1 To nc)
+
+    ' Metadata (col 1 = label / modo, col 2 = valor). Labels ASCII (el parser normaliza acentos).
+    outArr(1, 1) = modoRaw
+    outArr(2, 1) = "Empresa Emisora:":          outArr(2, 2) = empresa
+    outArr(3, 1) = "Nombre Cotizacion/Layout:": outArr(3, 2) = quoteName
+    outArr(4, 1) = "Notas Externas:":           outArr(4, 2) = notasExt
+    outArr(5, 1) = "Notas Internas:":           outArr(5, 2) = notasInt
+    outArr(6, 1) = "Asignado:":                 outArr(6, 2) = asignado
+    outArr(7, 1) = "Valida Hasta (dias):":      outArr(7, 2) = validaDias
+
+    ' Header canónico (fila 8)
+    For i = 1 To nc
+        outArr(METAROWS + 1, i) = CStr(outHdr(i))
+    Next i
+
+    ' Filas de datos (desde fila 9), saltando filas sin PN
+    Dim outRow As Long: outRow = METAROWS + 1
     For k = 1 To n
         ri = idx(k)
         If Trim(CStr(data(ri, COL_PN))) = "" Then GoTo NextK
-        line = ""
-        For i = 1 To outHdr.Count
+        outRow = outRow + 1
+        For i = 1 To nc
             t = outTyp(i): col = outCol(i)
             Select Case t
                 Case 0:  sv = CellToStr(data(ri, col))
@@ -194,14 +227,12 @@ Sub ExportarCSV()
                 Case 21: sv = IIf(InStr(1, CStr(data(ri, col)), "archivar anterior", vbTextCompare) > 0, "V", "F")
                 Case Is >= 100: sv = ProdValue(prodMap, NormKey(CStr(data(ri, col))), t - 100)
             End Select
-            If i > 1 Then line = line & ","
-            line = line & CsvQuote(sv)
+            outArr(outRow, i) = sv
         Next i
-        sb = sb & line & vbCrLf
 NextK:
     Next k
 
-    ' ── 7) Guardar UTF-8 ──
+    ' ── 7) Nombre sugerido + ruta de guardado ──
     Dim baseName As String, savePath As String, inv As Variant, ch As Variant
     If esCotizacion Then
         baseName = quoteName & "-" & Format(Now, "yyyymmdd")
@@ -219,12 +250,41 @@ NextK:
     #End If
     If CStr(savePath) = "False" Or savePath = "" Then Exit Sub
     If LCase(Right(savePath, 4)) <> ".csv" Then savePath = savePath & ".csv"
-    WriteUtf8NoBom CStr(savePath), sb
+
+    ' ── 8) Volcar a libro temporal y exportar como CSV UTF-8 (SaveAs FileFormat:=62) ──
+    ' SaveAs es NATIVO de Excel y funciona en Mac y Windows: el sandbox de Mac concede a Excel
+    ' la ruta que el usuario eligió en GetSaveAsFilename (a diferencia de Open de bajo nivel,
+    ' que el sandbox bloquea → error 75). 62 = xlCSVUTF8 (UTF-8). El parser strippea el BOM.
+    Dim prevDA As Boolean, prevSU As Boolean
+    prevDA = Application.DisplayAlerts: prevSU = Application.ScreenUpdating
+    Application.DisplayAlerts = False: Application.ScreenUpdating = False
+
+    Dim tmpWb As Workbook, tmpWs As Worksheet
+    On Error GoTo SaveErr
+    Set tmpWb = Workbooks.Add
+    Set tmpWs = tmpWb.Sheets(1)
+    tmpWs.Cells.NumberFormat = "@"              ' todo texto: preserva 1.18, ceros y fechas tal cual
+    tmpWs.Range(tmpWs.Cells(1, 1), tmpWs.Cells(totalRows, nc)).Value = outArr
+    tmpWb.SaveAs fileName:=savePath, FileFormat:=62
+    tmpWb.Close SaveChanges:=False
+    On Error GoTo 0
+
+    Application.DisplayAlerts = prevDA: Application.ScreenUpdating = prevSU
 
     MsgBox "CSV v12 exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
            "Modo: " & IIf(esCotizacion, "COTIZACI" & ChrW(211) & "N+NP", "SOLO_PN") & vbCrLf & _
-           outHdr.Count & " columnas " & ChrW(183) & " " & n & " filas " & ChrW(183) & " ordenado por (Cliente, PN).", _
+           nc & " columnas " & ChrW(183) & " " & nOut & " filas " & ChrW(183) & " ordenado por (Cliente, PN).", _
            vbInformation, "Listo"
+    Exit Sub
+
+SaveErr:
+    Dim eDesc As String: eDesc = Err.Description
+    On Error Resume Next
+    If Not tmpWb Is Nothing Then tmpWb.Close SaveChanges:=False
+    Application.DisplayAlerts = prevDA: Application.ScreenUpdating = prevSU
+    On Error GoTo 0
+    MsgBox "No se pudo guardar el CSV:" & vbCrLf & savePath & vbCrLf & vbCrLf & eDesc, _
+           vbCritical, "Error al guardar"
 End Sub
 
 ' ===========================  Helpers  ===========================
@@ -358,23 +418,6 @@ Private Function CellToStr(ByVal v As Variant) As String
     End Select
 End Function
 
-Private Function CsvQuote(ByVal s As String) As String
-    If InStr(s, ",") > 0 Or InStr(s, """") > 0 Or InStr(s, vbLf) > 0 Or InStr(s, vbCr) > 0 Then
-        CsvQuote = """" & Replace(s, """", """""") & """"
-    Else
-        CsvQuote = s
-    End If
-End Function
-
-Private Function BuildLine(h As Collection) As String
-    Dim i As Long, s As String
-    For i = 1 To h.Count
-        If i > 1 Then s = s & ","
-        s = s & CsvQuote(CStr(h(i)))
-    Next i
-    BuildLine = s
-End Function
-
 Private Function CollHas(c As Collection, ByVal key As String) As Boolean
     Dim v As Variant
     On Error GoTo no
@@ -395,16 +438,4 @@ Private Sub QSortIdx(idx() As Long, keys() As String, ByVal lo As Long, ByVal hi
     Loop
     If lo < j Then QSortIdx idx, keys, lo, j
     If i < hi Then QSortIdx idx, keys, i, hi
-End Sub
-
-Private Sub WriteUtf8NoBom(ByVal path As String, ByVal content As String)
-    Dim st As Object, bin As Object
-    Set st = CreateObject("ADODB.Stream")
-    st.Type = 2: st.Charset = "utf-8": st.Open
-    st.WriteText content
-    st.Position = 0: st.Type = 1: st.Position = 3      ' saltar BOM utf-8 (3 bytes)
-    Set bin = CreateObject("ADODB.Stream")
-    bin.Type = 1: bin.Open
-    st.CopyTo bin: st.Close
-    bin.SaveToFile path, 2: bin.Close                  ' 2 = sobrescribe
 End Sub
