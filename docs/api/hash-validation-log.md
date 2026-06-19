@@ -295,3 +295,12 @@ Cierra issue `#4` (1 rotado — `GetDomain`).
 ## 2026-06-17 23:37 — 0 rotado(s) (launchd)
 
 ## 2026-06-18 22:42 — 0 rotado(s) (launchd)
+
+## 2026-06-18 23:19 — 1 rotado(s)
+
+- Config version: `1.6.82`
+- OK: 157 / 160 · Tiempo: 129.4s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-18.json`
+
+**Rotados:**
+- `query GetDomain` (hash `a7216eb75b65...`)
