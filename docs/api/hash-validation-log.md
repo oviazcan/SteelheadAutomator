@@ -304,3 +304,18 @@ Cierra issue `#4` (1 rotado — `GetDomain`).
 
 **Rotados:**
 - `query GetDomain` (hash `a7216eb75b65...`)
+
+## 2026-06-19 01:39 — Reparación: deploy config 1.6.83 (GetDomain rotó otra vez `a7216eb7` → `5c56c7a0`)
+
+Rotación **REAL** confirmada (3ra de `GetDomain` en ~2 días: `28b65e26…` → `a7216eb7…` → `5c56c7a0…`). Cierra issues **#5** y **#6** (ambos eran este `a7216eb7` muriendo, NO falsos positivos).
+
+**Trampa evitada (la del playbook):** el bloque `apiKnowledge` del scan refleja el hash de **config** (`a7216eb7`), NO la captura en vivo → un diff contra `apiKnowledge` dio "0 mismatches" (engañoso). El dato real vive en `scanResults["GetDomain"]` = `5c56c7a0…`, con `eventLog: {op:GetDomain, ok:true, status:200}` a las 07:21:48Z. El diff correcto (scanResults vs config) destapó la rotación.
+
+| Operación | viejo → nuevo | usedBy |
+|---|---|---|
+| `GetDomain` | `a7216eb7…` → `5c56c7a0…` | bill-autofill, invoice-autofill |
+
+- **Probe puntual al server antes de editar:** hash viejo `a7216eb7` → **6/6** `"Must provide a query string"` (HTTP 400); hash nuevo `5c56c7a0` → **HTTP 200**.
+- El "flapping" previo (`a7216eb7` ok en 17 jun 23:37 y 18 jun 22:42, stale en 22:19/23:19) **NO era bug del validador**: fue el rollout escalonado (canary) del cambio server-side entre nodos. El validador detectó bien la rotación. **NO** se aplicó retry-before-stale ni whitelist a `GetDomain` (habría enmascarado una rotación real).
+- Deploy `tools/deploy.sh --check bill-autofill`: 1.6.82 → **1.6.83** (commit main `63a1106`, gh-pages `703ad1b`). Verificado en vivo por polling: GitHub Pages sirve `1.6.83` con `GetDomain=5c56c7a0`.
+- **Nota de mantenimiento:** `GetDomain` rota con frecuencia inusual. Si reaparece, re-scanear **navegando a una factura** (la op solo dispara desde `bill-autofill`/`invoice-autofill`) y mirar `scanResults`, NO `apiKnowledge`.
