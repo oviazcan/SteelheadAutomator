@@ -319,3 +319,12 @@ Rotación **REAL** confirmada (3ra de `GetDomain` en ~2 días: `28b65e26…` →
 - El "flapping" previo (`a7216eb7` ok en 17 jun 23:37 y 18 jun 22:42, stale en 22:19/23:19) **NO era bug del validador**: fue el rollout escalonado (canary) del cambio server-side entre nodos. El validador detectó bien la rotación. **NO** se aplicó retry-before-stale ni whitelist a `GetDomain` (habría enmascarado una rotación real).
 - Deploy `tools/deploy.sh --check bill-autofill`: 1.6.82 → **1.6.83** (commit main `63a1106`, gh-pages `703ad1b`). Verificado en vivo por polling: GitHub Pages sirve `1.6.83` con `GetDomain=5c56c7a0`.
 - **Nota de mantenimiento:** `GetDomain` rota con frecuencia inusual. Si reaparece, re-scanear **navegando a una factura** (la op solo dispara desde `bill-autofill`/`invoice-autofill`) y mirar `scanResults`, NO `apiKnowledge`.
+
+## 2026-06-19 22:54 — 1 rotado(s)
+
+- Config version: `1.6.83`
+- OK: 157 / 160 · Tiempo: 1736.1s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-19.json`
+
+**Rotados:**
+- `query GetDomain` (hash `5c56c7a00a27...`)
