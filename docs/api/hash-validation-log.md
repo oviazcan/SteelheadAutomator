@@ -330,3 +330,17 @@ Rotación **REAL** confirmada (3ra de `GetDomain` en ~2 días: `28b65e26…` →
 - `query GetDomain` (hash `5c56c7a00a27...`)
 
 ## 2026-06-22 08:44 — 0 rotado(s) (launchd)
+
+## 2026-06-22 15:52 — Reparación: deploy config 1.6.84 (GetDomain rotó otra vez `5c56c7a0` → `c0c242bc`)
+
+Rotación **REAL** confirmada (**4ta** de `GetDomain` en ~5 días: `28b65e26… → a7216eb7… → 5c56c7a0… → c0c242bc…`). Detectada por corrida **manual** del validador (`config 1.6.83`, OK 157/160, 114.9s, resultado `tools/.hash-validation/2026-06-22.json`).
+
+| Operación | viejo → nuevo | usedBy |
+|---|---|---|
+| `GetDomain` | `5c56c7a0…` → `c0c242bc00a6…` | bill-autofill, invoice-autofill |
+
+- **Flapping intra-día confirmado otra vez:** el launchd de **hoy 08:44 dio 0 rotados** con `5c56c7a0`; a las 15:52 (manual) salió stale 3/3. Consistente con rollout escalonado (canary) del server entre nodos, igual que el 19 jun. No es bug del validador.
+- **Probe puntual al server (antes de editar):** hash viejo `5c56c7a0` → **3/3** `"Must provide a query string"` (HTTP 400); hash previo `a7216eb7` → también stale; hash nuevo `c0c242bc` → **HTTP 200 con data** (3/3).
+- **Fuente del hash nuevo:** scan del navegador `scan_results_2026-06-22_160230.json` → `scanResults.GetDomain = c0c242bc…` con `eventLog {op:GetDomain, ok:true, status:200}` a las 22:02:24Z. Mirado `scanResults` (tráfico en vivo), NO `apiKnowledge` (la trampa del playbook).
+- Deploy `tools/deploy.sh --check bill-autofill`: 1.6.83 → **1.6.84**. NO disparado gh-issue/email/push (corrida manual, usuario presente).
+- **Nota de mantenimiento:** `GetDomain` ya rotó 4 veces; es la op más inestable del registry. Si reaparece, re-scanear **navegando a una factura** y mirar `scanResults`, NO `apiKnowledge`.
