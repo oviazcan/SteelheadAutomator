@@ -328,3 +328,5 @@ Rotación **REAL** confirmada (3ra de `GetDomain` en ~2 días: `28b65e26…` →
 
 **Rotados:**
 - `query GetDomain` (hash `5c56c7a00a27...`)
+
+## 2026-06-22 08:44 — 0 rotado(s) (launchd)
