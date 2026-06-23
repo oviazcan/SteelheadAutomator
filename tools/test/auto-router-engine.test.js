@@ -41,12 +41,35 @@ const expById = new Map(fx.expected.map((r) => [r.recipeNodeId, r.stationId]));
 const nodeById = new Map(fx.recipeNodes.map((n) => [n.id, n]));
 const GENERIC_ENJ_TID = 71283;
 
-test('helpers: physPos / extractLineCode', () => {
+test('helpers: physPos / extractLineCode / isLineStation', () => {
   assert.equal(Engine.physPos('T205-TI00-019 Enjuague'), 19);
   assert.equal(Engine.physPos('T205-EN00-001 Enracado'), 1);
   assert.equal(Engine.physPos('T205-LI Plata y Estaño s/Barras (16.3)'), null);
   assert.equal(Engine.extractLineCode('T205-TI00-019 Enjuague'), 'T205');
   assert.equal(Engine.extractLineCode('T300-CE05-001 …'), 'T300');
+  assert.equal(Engine.isLineStation('T205-LI Plata y Estaño s/Barras (16.3)'), true);
+  assert.equal(Engine.isLineStation('T205-TI00-019 Enjuague'), false);
+  assert.equal(Engine.isLineStation('T205-EN00-001 Enracado'), false);
+});
+
+test('destinationLines: solo líneas del tratamiento de nivel-línea (Planificación)', () => {
+  // 98620 = "Listo para Procesar" (selector de línea, stations "-LI"); 71283 = Enjuague (tinas, muchas líneas).
+  const cbt = {
+    98620: [
+      { id: 1, name: 'T107-LI Plata Colgado Cx (60)' }, { id: 2, name: 'T110-LI Plata Colgado (26)' },
+      { id: 3, name: 'T204-LI Plata y Estaño s/Cobre Colgado (16.1)' }, { id: 4, name: 'T205-LI Plata y Estaño s/Barras (16.3)' },
+    ],
+    71283: [
+      { id: 10, name: 'T101-TI00-002 Enjuague' }, { id: 11, name: 'T205-TI00-019 Enjuague' }, { id: 12, name: 'T999-TI00-003 Enjuague' },
+    ],
+  };
+  // origen T204 → solo las líneas del selector (T107, T110, T205); NUNCA T101/T999 de los enjuagues.
+  assert.deepEqual(Engine.destinationLines(cbt, 'T204'), ['T107', 'T110', 'T205']);
+});
+
+test('destinationLines: fallback a unión si no hay selector de línea', () => {
+  const cbt = { 71283: [{ id: 1, name: 'T101-TI00-002 Enjuague' }, { id: 2, name: 'T205-TI00-019 Enjuague' }] };
+  assert.deepEqual(Engine.destinationLines(cbt, 'T204'), ['T101', 'T205']);
 });
 
 test('rutea EXACTAMENTE los mismos nodos que el ground-truth (34)', () => {

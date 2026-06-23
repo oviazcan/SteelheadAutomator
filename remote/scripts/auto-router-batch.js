@@ -40,9 +40,9 @@ const AutoRouterBatch = (() => {
   }
 
   // Cuántas tinas se re-rutean (nodos de la línea origen) para una WO+destLine.
-  function changedCount(routeData, sourceLine, destLine, candidates) {
+  function changedCount(routeData, sourceLine, destLine) {
     const r = Engine().computeRoutes({
-      recipeNodes: routeData.recipeNodes, candidatesByTreatment: candidates,
+      recipeNodes: routeData.recipeNodes, candidatesByTreatment: routeData.candidatesByTreatment || {},
       sourceLineCode: sourceLine, destLineCode: destLine,
     });
     const lc = Engine().extractLineCode;
@@ -65,14 +65,15 @@ const AutoRouterBatch = (() => {
     return out;
   }
 
-  // Aplica una orden (load-before-save: re-lee fresco justo antes).
-  async function applyOne(wo, destLine, candidates) {
+  // Aplica una orden (load-before-save: re-lee fresco justo antes — incluye las
+  // candidatas embebidas frescas).
+  async function applyOne(wo, destLine) {
     const fresh2 = await API().fetchWorkOrderRouteData(
       wo.workOrderId, wo.partNumberId, wo.partGroupId ? [wo.partGroupId] : []
     );
     const sourceLine = detectSourceLine(fresh2.recipeNodes) || wo.sourceLine;
     const r = Engine().computeRoutes({
-      recipeNodes: fresh2.recipeNodes, candidatesByTreatment: candidates,
+      recipeNodes: fresh2.recipeNodes, candidatesByTreatment: fresh2.candidatesByTreatment || {},
       sourceLineCode: sourceLine, destLineCode: destLine,
       partNumberId: wo.partNumberId, workOrderId: wo.workOrderId, partGroupId: wo.partGroupId ?? null,
     });
@@ -196,28 +197,20 @@ const AutoRouterBatch = (() => {
     await afterWosLoaded();
   }
 
-  // Carga candidatas (unión de tratamientos de la sección origen) + calcula las
-  // líneas destino disponibles, luego renderiza el preview. Compartido por el modo
-  // manual (onCompute) y el precargado del board (open(preloaded)).
+  // Calcula las líneas destino válidas (unión de las del tratamiento de nivel-línea
+  // de cada orden — grupo Planificación) y renderiza el preview. Las candidatas
+  // vienen EMBEBIDAS en el árbol de cada orden (routeData.candidatesByTreatment),
+  // así que no hace falta SearchStationsForTreatment. Compartido por el modo manual
+  // (onCompute) y el precargado del board (open(preloaded)).
   async function afterWosLoaded() {
     state.busy = true;
-    body(el('div', { class: 'sa-arb-note', text: 'Cargando tinas posibles…' }));
-    const lc = Engine().extractLineCode;
-    const tids = new Set();
-    for (const wo of state.wos) {
-      if (wo.error) continue;
-      for (const n of wo.routeData.recipeNodes) {
-        if (n.treatmentId != null && n.defaultStation && lc(n.defaultStation.name) === wo.sourceLine) tids.add(n.treatmentId);
-      }
-    }
-    try { state.candidates = await API().fetchCandidatesForTreatments([...tids]); }
-    catch (e) { state.busy = false; body(el('div', { class: 'sa-arb-warn', text: `Error cargando tinas: ${e.message}` })); return; }
     const set = new Set();
-    for (const tid of Object.keys(state.candidates)) for (const s of state.candidates[tid]) {
-      const c = lc(s.name); if (c) set.add(c);
+    for (const wo of state.wos) {
+      if (wo.error || !wo.routeData) continue;
+      const cbt = wo.routeData.candidatesByTreatment || {};
+      for (const d of Engine().destinationLines(cbt, wo.sourceLine)) set.add(d);
     }
-    const sources = new Set(state.wos.filter((w) => !w.error).map((w) => w.sourceLine));
-    state.destLines = [...set].filter((d) => !sources.has(d) || sources.size > 1).sort();
+    state.destLines = [...set].sort();
     state.destLine = state.destLines[0] || null;
     state.busy = false;
     renderPreview();
@@ -246,7 +239,7 @@ const AutoRouterBatch = (() => {
         tr.appendChild(el('td', { text: '—' }));
         tr.appendChild(el('td', {}, [el('span', { class: 'sa-arb-st err', text: wo.error })]));
       } else {
-        const cc = state.destLine ? changedCount(wo.routeData, wo.sourceLine, state.destLine, state.candidates) : { changed: 0, total: 0 };
+        const cc = state.destLine ? changedCount(wo.routeData, wo.sourceLine, state.destLine) : { changed: 0, total: 0 };
         tr.appendChild(el('td', { text: `#${wo.idInDomain}` }));
         tr.appendChild(el('td', { text: wo.partNumberName || String(wo.partNumberId) }));
         tr.appendChild(el('td', { text: `${wo.sourceLine || '?'} → ${state.destLine || '?'}` }));
@@ -277,7 +270,7 @@ const AutoRouterBatch = (() => {
     const results = await pool(targets, CONCURRENCY, async (wo) => {
       setRow(wo.idInDomain, 'run', 'aplicando…');
       try {
-        const res = await applyOne(wo, state.destLine, state.candidates);
+        const res = await applyOne(wo, state.destLine);
         done++;
         const prog = document.getElementById('sa-arb-prog'); if (prog) prog.textContent = `Aplicando ${done}/${targets.length}…`;
         if (res.ok) { okN++; setRow(wo.idInDomain, 'ok', `✓ +${res.created} ~${res.updated} -${res.deleted}`); return { wo, res }; }

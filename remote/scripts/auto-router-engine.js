@@ -46,6 +46,15 @@
     return m ? parseInt(m[1], 10) : null;
   }
 
+  // Station de nivel LÍNEA ("-LI"): el selector de línea de un tratamiento de
+  // Planificación (ej. "T205-LI Plata y Estaño s/Barras"). Las tinas individuales
+  // (T205-TI00-019, T205-EN00-001) NO lo son. Sirve para acotar las líneas destino
+  // a las realmente ruteables (grupo de tratamiento Planificación), no toda línea
+  // que tenga un enjuague.
+  function isLineStation(name) {
+    return /-LI\b/i.test(String(name || ''));
+  }
+
   // Roles distintivos que desambiguan tinas del MISMO tratamiento por nombre.
   // (Un "Enjuague Recuperador" T204 mapea al "Enjuague Recuperador" T205, no a un
   // enjuague genérico cualquiera.) Orden = prioridad de match.
@@ -251,7 +260,33 @@
     return { routesToCreate, routesToUpdate, routesToDelete };
   }
 
-  const api = { computeRoutes, diffRoutes, extractLineCode, physPos, roleMatch, pickMomentum, isRinsePool };
+  // Líneas destino VÁLIDAS para re-rutear: solo las del tratamiento de nivel-línea
+  // (grupo Planificación) de la sección origen — sus candidatas son stations "-LI"
+  // (selectores de línea) y la lista incluye la línea origen + sus destinos válidos.
+  // NO la unión de todos los tratamientos (los enjuagues arrastran ~25 líneas).
+  // Fallback a la unión si no se detecta un selector de línea.
+  function destinationLines(candidatesByTreatment, sourceLine) {
+    const cbt = candidatesByTreatment || {};
+    const selector = new Set();
+    let found = false;
+    for (const tId of Object.keys(cbt)) {
+      const li = (cbt[tId] || []).filter((s) => isLineStation(s && s.name));
+      if (!li.length) continue;
+      const lines = li.map((s) => extractLineCode(s.name)).filter(Boolean);
+      if (!lines.includes(sourceLine)) continue; // el selector de ESTA sección incluye su línea origen
+      found = true;
+      for (const c of lines) if (c !== sourceLine) selector.add(c);
+    }
+    if (found) return [...selector].sort();
+    const set = new Set();
+    for (const tId of Object.keys(cbt)) for (const s of (cbt[tId] || [])) {
+      const code = extractLineCode(s && s.name);
+      if (code && code !== sourceLine) set.add(code);
+    }
+    return [...set].sort();
+  }
+
+  const api = { computeRoutes, diffRoutes, extractLineCode, physPos, isLineStation, destinationLines, roleMatch, pickMomentum, isRinsePool };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.AutoRouterEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);

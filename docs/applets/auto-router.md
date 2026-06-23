@@ -64,6 +64,20 @@ exactos; el resto es interchangeable y de bajo riesgo, lo cubre el **preview edi
 UX MVP: el usuario abre el modal de ruteo nativo de una orden (Steelhead dispara la query, el applet
 captura el contexto) → aparece el FAB 🔀 → panel: elige línea destino → preview editable → **Aplicar**.
 
+## Líneas destino = grupo Planificación + candidatas embebidas (v1.6.93)
+El dropdown de línea destino mostraba ~25 líneas (la unión de todas las candidatas; los Enjuagues
+existen en casi toda planta). **Fix:** las líneas válidas salen SOLO del tratamiento de **nivel-línea
+(grupo de tratamiento "Planificación", id 2344)** de la sección origen — el nodo "Listo para Procesar",
+cuyas candidatas son stations **"-LI"** (selectores de línea, ej. `T205-LI Plata y Estaño s/Barras`).
+`AutoRouterEngine.destinationLines(candidatesByTreatment, sourceLine)` toma el/los tratamiento(s) cuyas
+candidatas son "-LI" (`isLineStation`) y que incluyen la línea origen; devuelve sus líneas (fallback a la
+unión si no detecta selector). Para WO 1760978 da exactamente `[T107,T110,T202,T203,T205]` en vez de 25.
+
+**Bonus:** las candidatas (`schedulingStations`) vienen **EMBEBIDAS** en el árbol
+(`recipeNode.treatmentByTreatmentId.schedulingStations`), así que `parseRouteData`/`parseAllRouteData`
+construyen `candidatesByTreatment` desde ahí — se **eliminan las 17+ llamadas `SearchStationsForTreatment`**
+por orden (queda solo como fallback). Mismos datos, cero llamadas extra.
+
 ## Idempotencia (re-rutear órdenes ya ruteadas) — IMPLEMENTADO
 Confirmado del scan 2026-06-22 (WO 1805646, idInDomain 8649):
 - `StationTreatmentByWorkOrder.activeRoutes.nodes[]` = `{id, stationId, treatmentId, workOrderId, partNumberId, recipeNodeId, partGroupId}`.
