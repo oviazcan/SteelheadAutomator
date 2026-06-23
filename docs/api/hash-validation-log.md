@@ -344,3 +344,5 @@ Rotación **REAL** confirmada (**4ta** de `GetDomain` en ~5 días: `28b65e26… 
 - **Fuente del hash nuevo:** scan del navegador `scan_results_2026-06-22_160230.json` → `scanResults.GetDomain = c0c242bc…` con `eventLog {op:GetDomain, ok:true, status:200}` a las 22:02:24Z. Mirado `scanResults` (tráfico en vivo), NO `apiKnowledge` (la trampa del playbook).
 - Deploy `tools/deploy.sh --check bill-autofill`: 1.6.83 → **1.6.84**. NO disparado gh-issue/email/push (corrida manual, usuario presente).
 - **Nota de mantenimiento:** `GetDomain` ya rotó 4 veces; es la op más inestable del registry. Si reaparece, re-scanear **navegando a una factura** y mirar `scanResults`, NO `apiKnowledge`.
+
+## 2026-06-22 20:19 — 0 rotado(s) (launchd)
