@@ -52,6 +52,29 @@
     };
   }
 
+  // Parsea una respuesta de StationTreatmentByWorkOrder que puede traer VARIAS
+  // órdenes (multi-selección del board: workOrderIds:[…] + partNumberIds:[…]).
+  // Empareja cada WO con su partNumberId por índice de las variables del request,
+  // y reparte activeRoutes por workOrderId. Devuelve un array de routeData por WO.
+  function parseAllRouteData(data, reqVars) {
+    const woIds = (reqVars && reqVars.workOrderIds) || [];
+    const pnIds = (reqVars && reqVars.partNumberIds) || [];
+    const pnByWo = new Map();
+    woIds.forEach((w, i) => pnByWo.set(Number(w), pnIds[i] != null ? Number(pnIds[i]) : null));
+    const transportGraph = (data?.allDefaultStationTransports?.nodes || []).map((e) => ({
+      fromStationId: e.fromStationId, toStationId: e.toStationId, durationMinutes: e.durationMinutes,
+    }));
+    const allActive = data?.activeRoutes?.nodes || [];
+    return (data?.allWorkOrders?.nodes || []).map((wo) => ({
+      workOrderId: wo.id,
+      idInDomain: wo.idInDomain ?? null,
+      partNumberId: pnByWo.has(wo.id) ? pnByWo.get(wo.id) : null,
+      recipeNodes: (wo.recipeNodesByWorkOrderId?.nodes || []).map(normRecipeNode),
+      transportGraph,
+      activeRoutes: allActive.filter((a) => a.workOrderId === wo.id),
+    }));
+  }
+
   // Carga el árbol + transportes + rutas activas de una WO.
   async function fetchWorkOrderRouteData(workOrderId, partNumberId, partGroupIds = []) {
     const data = await api().query('StationTreatmentByWorkOrder', {
@@ -146,6 +169,7 @@
     fetchCandidatesForTreatments,
     resolveWorkOrder,
     applyRoutes,
-    parseRouteData, // exportado para tests/depuración
+    parseRouteData,    // exportado para tests/depuración
+    parseAllRouteData, // multi-WO (captura del board)
   };
 })(typeof window !== 'undefined' ? window : globalThis);

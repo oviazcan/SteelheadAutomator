@@ -45,15 +45,15 @@ const AutoRouter = (() => {
       const resp = await origFetch.apply(this, args);
 
       if (op === 'StationTreatmentByWorkOrder' && vars) {
-        // lee la respuesta sin consumir el stream original.
+        // lee la respuesta sin consumir el stream original. Soporta 1 o N órdenes
+        // (multi-selección del board → workOrderIds:[…] + partNumberIds:[…]).
         try {
-          const woId = (vars.workOrderIds || [])[0];
-          const pnId = (vars.partNumberIds || [])[0] ?? null;
           resp.clone().json().then((j) => {
             if (!j || !j.data) return;
-            const routeData = window.AutoRouterAPI.parseRouteData(j.data, woId, pnId);
-            captured = { workOrderId: woId, partNumberId: pnId, routeData, capturedAt: Date.now() };
-            log(`Contexto capturado: WO ${woId} (idInDomain ${routeData.idInDomain}), ${routeData.recipeNodes.length} nodos`);
+            const wos = window.AutoRouterAPI.parseAllRouteData(j.data, vars);
+            if (!wos.length) return;
+            captured = { wos, capturedAt: Date.now() };
+            log(`Contexto capturado: ${wos.length} orden(es) — #${wos.map((w) => w.idInDomain).join(', #')}`);
             window.dispatchEvent(new Event('sa-ar-context'));
           }).catch(() => {});
         } catch (_) { /* swallow */ }
@@ -81,32 +81,51 @@ const AutoRouter = (() => {
   }
 
   function syncFab() {
-    const has = !!captured;
+    const n = captured && captured.wos ? captured.wos.length : 0;
     let fab = document.getElementById('sa-ar-fab');
-    if (has && !fab) {
+    if (n && !fab) {
       fab = document.createElement('button');
       fab.id = 'sa-ar-fab';
       fab.className = 'sa-ar-fab';
-      fab.title = 'Auto-rutear esta orden a otra línea';
-      fab.innerHTML = '🔀';
       fab.onclick = openPanel;
       document.body.appendChild(fab);
-    } else if (!has && fab) {
+    } else if (!n && fab) {
       fab.remove();
+      return;
+    }
+    if (fab) {
+      fab.title = n > 1 ? `Auto-rutear ${n} órdenes a otra línea` : 'Auto-rutear esta orden a otra línea';
+      fab.textContent = '🔀';
+      if (n > 1) {
+        const b = document.createElement('span');
+        b.className = 'sa-ar-badge';
+        b.textContent = String(n);
+        fab.appendChild(b);
+      }
     }
   }
 
   function openPanel() {
-    if (!window.AutoRouterPanel) { alert('Auto-Ruteador: panel no cargado.'); return; }
-    if (!captured) {
-      alert('Auto-Ruteador: abre primero el modal de ruteo de una orden (Cambiar estación) para capturar la orden, luego presiona 🔀.');
+    if (!captured || !captured.wos || !captured.wos.length) {
+      alert('Auto-Ruteador: abre primero el modal de ruteo de una orden (o selecciona varias en el board y abre el ruteo) para capturarlas, luego presiona 🔀.');
       return;
     }
-    window.AutoRouterPanel.open(captured);
+    if (captured.wos.length > 1) {
+      if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
+      window.AutoRouterBatch.open(captured.wos.map((w) => ({
+        idInDomain: w.idInDomain, workOrderId: w.workOrderId, partNumberId: w.partNumberId,
+        partGroupId: null, routeData: w,
+      })));
+    } else {
+      if (!window.AutoRouterPanel) { alert('Auto-Ruteador: panel no cargado.'); return; }
+      const w = captured.wos[0];
+      window.AutoRouterPanel.open({ workOrderId: w.workOrderId, partNumberId: w.partNumberId, routeData: w });
+    }
   }
 
   function openBatch() {
     if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
+    // Modo manual (sin contexto capturado): pegar números de orden.
     window.AutoRouterBatch.open();
   }
 
