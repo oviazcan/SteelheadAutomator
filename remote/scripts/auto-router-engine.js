@@ -262,22 +262,36 @@
 
   // Líneas destino VÁLIDAS para re-rutear: solo las del tratamiento de nivel-línea
   // (grupo Planificación) de la sección origen — sus candidatas son stations "-LI"
-  // (selectores de línea) y la lista incluye la línea origen + sus destinos válidos.
-  // NO la unión de todos los tratamientos (los enjuagues arrastran ~25 líneas).
-  // Fallback a la unión si no se detecta un selector de línea.
-  function destinationLines(candidatesByTreatment, sourceLine) {
+  // (selectores de línea). NO la unión de todos los tratamientos (los enjuagues
+  // arrastran ~25 líneas). Fallback a la unión si no hay selector de línea.
+  //
+  // Excluye la línea ACTUAL, no la del default: si la orden ya fue movida (ej.
+  // T204→T205), su default sigue siendo T204 pero una ruta activa apunta a la
+  // station "-LI" de T205 → la actual es T205, y T204 debe reaparecer para regresarla.
+  function destinationLines(candidatesByTreatment, sourceLine, activeRoutes) {
     const cbt = candidatesByTreatment || {};
-    const selector = new Set();
-    let found = false;
+    const selectorTreatments = [];
     for (const tId of Object.keys(cbt)) {
       const li = (cbt[tId] || []).filter((s) => isLineStation(s && s.name));
       if (!li.length) continue;
       const lines = li.map((s) => extractLineCode(s.name)).filter(Boolean);
-      if (!lines.includes(sourceLine)) continue; // el selector de ESTA sección incluye su línea origen
-      found = true;
-      for (const c of lines) if (c !== sourceLine) selector.add(c);
+      if (lines.includes(sourceLine)) selectorTreatments.push(tId); // selector de ESTA sección
     }
-    if (found) return [...selector].sort();
+    if (selectorTreatments.length) {
+      const stationLine = new Map();
+      for (const tId of selectorTreatments) for (const s of cbt[tId]) stationLine.set(s.id, extractLineCode(s.name));
+      // línea actual = la de la ruta activa que apunta a una station "-LI"; si no, el default.
+      let currentLine = sourceLine;
+      for (const a of (activeRoutes || [])) {
+        if (a && stationLine.has(a.stationId)) { currentLine = stationLine.get(a.stationId) || currentLine; break; }
+      }
+      const lines = new Set();
+      for (const tId of selectorTreatments) for (const s of cbt[tId]) {
+        const c = extractLineCode(s.name);
+        if (c && c !== currentLine) lines.add(c);
+      }
+      return [...lines].sort();
+    }
     const set = new Set();
     for (const tId of Object.keys(cbt)) for (const s of (cbt[tId] || [])) {
       const code = extractLineCode(s && s.name);

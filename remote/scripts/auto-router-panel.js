@@ -56,8 +56,8 @@ const AutoRouterPanel = (() => {
   }
 
   // Líneas destino válidas (delegado al motor: solo el tratamiento de nivel-línea
-  // del grupo Planificación, no la unión de todos los tratamientos).
-  const computeDestLines = (candidates, sourceLine) => Engine().destinationLines(candidates, sourceLine);
+  // del grupo Planificación, no la unión de todos; excluye la línea ACTUAL vía activeRoutes).
+  const computeDestLines = (candidates, sourceLine, activeRoutes) => Engine().destinationLines(candidates, sourceLine, activeRoutes);
 
   function compute() {
     const { ctx, sourceLine, destLine, candidates } = state;
@@ -190,7 +190,7 @@ const AutoRouterPanel = (() => {
       try { state.candidates = await ARAPI().fetchCandidatesForTreatments(tids); }
       catch (e) { renderBody(el('div', { class: 'sa-arp-warn', text: `Error cargando tinas: ${e.message}` })); return; }
     }
-    state.destLines = computeDestLines(state.candidates, state.sourceLine);
+    state.destLines = computeDestLines(state.candidates, state.sourceLine, state.ctx.routeData.activeRoutes);
     state.destLine = state.destLines[0] || null;
     compute();
     renderPreview();
