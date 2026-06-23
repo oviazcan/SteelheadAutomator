@@ -333,18 +333,59 @@ const AutoRouterPanel = (() => {
     if (state.busy || !state.result) return;
     state.busy = true;
     refreshFooter();
-    const desired = desiredRoutes();
-    const split = Engine().diffRoutes(desired, state.ctx.routeData.activeRoutes);
     try {
+      // Re-carga el contexto JUSTO antes de aplicar. Steelhead exige una lectura
+      // reciente del árbol de ruteo (StationTreatmentByWorkOrder) para que el save
+      // persista: con el modal nativo abierto esa lectura está "fresca" y graba;
+      // si el modal se cerró hace rato, la lectura quedó vieja y el servidor acepta
+      // la mutación pero NO crea las rutas (rechazo silencioso). Re-fetchear aquí
+      // replica la condición de "modal abierto" y refresca activeRoutes para el diff.
+      let activeRoutes = state.ctx.routeData.activeRoutes;
+      try {
+        const fresh = await ARAPI().fetchWorkOrderRouteData(state.ctx.workOrderId, state.ctx.partNumberId);
+        state.ctx.routeData = fresh;
+        activeRoutes = fresh.activeRoutes;
+      } catch (e) {
+        log(`re-fetch previo a aplicar falló (uso contexto capturado): ${e.message}`);
+      }
+
+      const split = Engine().diffRoutes(desiredRoutes(), activeRoutes);
+      const wantC = split.routesToCreate.length, wantU = split.routesToUpdate.length, wantD = split.routesToDelete.length;
+      const want = wantC + wantU + wantD;
+      if (want === 0) {
+        renderBody(el('div', {}, [el('div', { class: 'sa-arp-row' }, [el('h2', { text: 'Sin cambios que aplicar' })])]));
+        renderFooter(el('button', { class: 'sa-arp-btn primary', text: 'Cerrar', onclick: close }));
+        return;
+      }
+
       const res = await ARAPI().applyRoutes(split.routesToCreate, split.routesToUpdate, split.routesToDelete);
       const created = (res.createdRoutes || []).length;
-      const updated = (res.updatedRoutes || []).length || split.routesToUpdate.length;
-      const deleted = (res.deletedRouteIds || []).length || split.routesToDelete.length;
-      log(`CreateUpdateDeleteRoutes OK: +${created} ~${updated} -${deleted}.`);
+      const updated = (res.updatedRoutes || []).length;
+      const deleted = (res.deletedRouteIds || []).length;
+      log(`CreateUpdateDeleteRoutes: pedí +${wantC} ~${wantU} -${wantD}; servidor +${created} ~${updated} -${deleted}.`);
+      const woLabel = state.ctx.routeData.idInDomain ?? state.ctx.workOrderId;
+
+      // Verificación honesta: el servidor debe haber CREADO lo que pedimos.
+      // (update/delete no devuelven conteo confiable en todos los casos; el create
+      // vacío con wantC>0 es la firma del rechazo silencioso por estado obsoleto.)
+      if (wantC > 0 && created === 0) {
+        renderBody(el('div', {}, [
+          el('div', { class: 'sa-arp-row' }, [el('h2', { text: '⚠️ No se guardó el ruteo' })]),
+          el('div', { class: 'sa-arp-warn',
+            text: `El servidor aceptó la mutación pero creó 0 de ${wantC} rutas (estado obsoleto). Abre el modal de ruteo de la orden, déjalo abierto, y vuelve a presionar Aplicar.` }),
+        ]));
+        renderFooter(
+          el('button', { class: 'sa-arp-btn ghost', text: 'Cerrar', onclick: close }),
+          el('button', { class: 'sa-arp-btn primary', text: 'Reintentar', onclick: () => { state.busy = false; apply(); } }),
+        );
+        state.busy = false;
+        return;
+      }
+
       renderBody(el('div', {}, [
         el('div', { class: 'sa-arp-row' }, [el('h2', { text: '✅ Ruteo aplicado' })]),
         el('div', { class: 'sa-arp-note',
-          text: `WO ${state.ctx.routeData.idInDomain ?? state.ctx.workOrderId}: ${created} creadas, ${updated} actualizadas, ${deleted} eliminadas. Recarga el modal de ruteo para verlas.` }),
+          text: `WO ${woLabel}: ${created} creadas, ${updated} actualizadas, ${deleted} eliminadas. Recarga el modal de ruteo para verlas.` }),
       ]));
       renderFooter(el('button', { class: 'sa-arp-btn primary', text: 'Cerrar', onclick: close }));
     } catch (e) {
