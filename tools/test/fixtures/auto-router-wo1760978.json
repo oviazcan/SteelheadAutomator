@@ -1,0 +1,958 @@
+{
+ "workOrderId": 1760978,
+ "partNumberId": 3660553,
+ "sourceLineCode": "T204",
+ "destLineCode": "T205",
+ "recipeNodes": [
+  {
+   "id": 42642866,
+   "name": "T300 (LES)-T204 (PLA)-T300 (ANT)-CU-VARIOS (16.1)",
+   "treatmentId": null,
+   "recipeInd": 0,
+   "parentRecipeNodeId": null,
+   "defaultStation": null
+  },
+  {
+   "id": 42642867,
+   "name": "SP Inspección Recibo",
+   "treatmentId": null,
+   "recipeInd": 1,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642868,
+   "name": "Listo para Inspección Recibo",
+   "treatmentId": null,
+   "recipeInd": 2,
+   "parentRecipeNodeId": 42642867,
+   "defaultStation": null
+  },
+  {
+   "id": 42642869,
+   "name": "Inspeccionando Recibo",
+   "treatmentId": 82071,
+   "recipeInd": 3,
+   "parentRecipeNodeId": 42642867,
+   "defaultStation": null
+  },
+  {
+   "id": 42642870,
+   "name": "SP Preparación de Surtido en Almacén",
+   "treatmentId": null,
+   "recipeInd": 4,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642871,
+   "name": "Listo para Preparar Surtido",
+   "treatmentId": null,
+   "recipeInd": 5,
+   "parentRecipeNodeId": 42642870,
+   "defaultStation": null
+  },
+  {
+   "id": 42642872,
+   "name": "Preparando Surtido en Almacén",
+   "treatmentId": 80010,
+   "recipeInd": 6,
+   "parentRecipeNodeId": 42642870,
+   "defaultStation": null
+  },
+  {
+   "id": 42642873,
+   "name": "SP T300-CE05 Limpieza Especial",
+   "treatmentId": null,
+   "recipeInd": 7,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642874,
+   "name": "Listo para Limpieza Especial",
+   "treatmentId": null,
+   "recipeInd": 8,
+   "parentRecipeNodeId": 42642873,
+   "defaultStation": null
+  },
+  {
+   "id": 42642875,
+   "name": "T300-CE05 Limpiando Especial",
+   "treatmentId": 91100,
+   "recipeInd": 9,
+   "parentRecipeNodeId": 42642873,
+   "defaultStation": {
+    "id": 18547,
+    "name": "T300-CE05-001 Célula de Limpieza Especial"
+   }
+  },
+  {
+   "id": 42642876,
+   "name": "T204 Enracado",
+   "treatmentId": null,
+   "recipeInd": 10,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642877,
+   "name": "T204 Recibo de Orden",
+   "treatmentId": 94832,
+   "recipeInd": 11,
+   "parentRecipeNodeId": 42642876,
+   "defaultStation": {
+    "id": 14344,
+    "name": "T204-EN00-001 Enracado"
+   }
+  },
+  {
+   "id": 42642878,
+   "name": "T204 Listo para Enracar",
+   "treatmentId": null,
+   "recipeInd": 12,
+   "parentRecipeNodeId": 42642876,
+   "defaultStation": null
+  },
+  {
+   "id": 42642879,
+   "name": "T204-EN00-001 Enracando",
+   "treatmentId": 69027,
+   "recipeInd": 13,
+   "parentRecipeNodeId": 42642876,
+   "defaultStation": {
+    "id": 14344,
+    "name": "T204-EN00-001 Enracado"
+   }
+  },
+  {
+   "id": 42642880,
+   "name": "T204 Listo para Procesar (Plata s/Cobre)",
+   "treatmentId": 98620,
+   "recipeInd": 14,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": {
+    "id": 12098,
+    "name": "T204-LI Plata y Estaño s/Cobre Colgado (16.1)"
+   }
+  },
+  {
+   "id": 42642881,
+   "name": "T204-TI00-004 Desengrase Electrolítico Metex",
+   "treatmentId": 83769,
+   "recipeInd": 15,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 14450,
+    "name": "T204-TI00-004 Desengrase Electrolítico Metex"
+   }
+  },
+  {
+   "id": 42642882,
+   "name": "T204-TI00-005 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 16,
+   "parentRecipeNodeId": 42642881,
+   "defaultStation": {
+    "id": 14451,
+    "name": "T204-TI00-005 Enjuague"
+   }
+  },
+  {
+   "id": 42642883,
+   "name": "T204-TI00-006 Desengrase Electrolítico Metex",
+   "treatmentId": 83769,
+   "recipeInd": 17,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15125,
+    "name": "T204-TI00-006 Desengrase Electrolítico Metex"
+   }
+  },
+  {
+   "id": 42642884,
+   "name": "T204-TI00-005 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 18,
+   "parentRecipeNodeId": 42642883,
+   "defaultStation": {
+    "id": 14451,
+    "name": "T204-TI00-005 Enjuague"
+   }
+  },
+  {
+   "id": 42642885,
+   "name": "T204-TI00-008 Decapado Ácido Nítrico",
+   "treatmentId": 83738,
+   "recipeInd": 19,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15127,
+    "name": "T204-TI00-008 Decapado Ácido Nítrico"
+   }
+  },
+  {
+   "id": 42642886,
+   "name": "T204-TI00-007 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 20,
+   "parentRecipeNodeId": 42642885,
+   "defaultStation": {
+    "id": 15126,
+    "name": "T204-TI00-007 Enjuague"
+   }
+  },
+  {
+   "id": 42642887,
+   "name": "T204-TI00-006 Desengrase Electrolítico Metex",
+   "treatmentId": 83769,
+   "recipeInd": 21,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15125,
+    "name": "T204-TI00-006 Desengrase Electrolítico Metex"
+   }
+  },
+  {
+   "id": 42642888,
+   "name": "T204-TI00-005 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 22,
+   "parentRecipeNodeId": 42642887,
+   "defaultStation": {
+    "id": 14451,
+    "name": "T204-TI00-005 Enjuague"
+   }
+  },
+  {
+   "id": 42642889,
+   "name": "T204-TI00-008 Decapado Ácido Nítrico",
+   "treatmentId": 83738,
+   "recipeInd": 23,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15127,
+    "name": "T204-TI00-008 Decapado Ácido Nítrico"
+   }
+  },
+  {
+   "id": 42642890,
+   "name": "T204-TI00-007 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 24,
+   "parentRecipeNodeId": 42642889,
+   "defaultStation": {
+    "id": 15126,
+    "name": "T204-TI00-007 Enjuague"
+   }
+  },
+  {
+   "id": 42642891,
+   "name": "T204-TI00-009 Abrillantado Ácido Crómico",
+   "treatmentId": 83742,
+   "recipeInd": 25,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15128,
+    "name": "T204-TI00-009 Abrillantado Ácido Crómico"
+   }
+  },
+  {
+   "id": 42642892,
+   "name": "T204-TI00-010 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 26,
+   "parentRecipeNodeId": 42642891,
+   "defaultStation": {
+    "id": 15129,
+    "name": "T204-TI00-010 Enjuague"
+   }
+  },
+  {
+   "id": 42642893,
+   "name": "T204-TI00-011 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 27,
+   "parentRecipeNodeId": 42642891,
+   "defaultStation": {
+    "id": 15130,
+    "name": "T204-TI00-011 Enjuague"
+   }
+  },
+  {
+   "id": 42642894,
+   "name": "T204-TI00-012/013 Activado Ácido Clorhídrico",
+   "treatmentId": 83305,
+   "recipeInd": 28,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15131,
+    "name": "T204-TI00-012 Activado Ácido Clorhídrico"
+   }
+  },
+  {
+   "id": 42642895,
+   "name": "T204-TI00-014 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 29,
+   "parentRecipeNodeId": 42642894,
+   "defaultStation": {
+    "id": 15133,
+    "name": "T204-TI00-014 Enjuague"
+   }
+  },
+  {
+   "id": 42642896,
+   "name": "T204-TI00-015 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 30,
+   "parentRecipeNodeId": 42642894,
+   "defaultStation": {
+    "id": 15134,
+    "name": "T204-TI00-015 Enjuague"
+   }
+  },
+  {
+   "id": 42642897,
+   "name": "T204-TI00-016 Neutralizado Alcalino Cianuro",
+   "treatmentId": 83665,
+   "recipeInd": 31,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15135,
+    "name": "T204-TI00-016 Neutralizado Alcalino Cianuro"
+   }
+  },
+  {
+   "id": 42642898,
+   "name": "T204-TI00-017/018 Plata Silversene",
+   "treatmentId": 83781,
+   "recipeInd": 32,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15136,
+    "name": "T204-TI00-017 Plata Silversene (S-1) Flash"
+   }
+  },
+  {
+   "id": 42642899,
+   "name": "T204-TI00-019 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 33,
+   "parentRecipeNodeId": 42642898,
+   "defaultStation": {
+    "id": 15138,
+    "name": "T204-TI00-019 Enjuague Recuperador"
+   }
+  },
+  {
+   "id": 42642900,
+   "name": "T204-TI00-020 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 34,
+   "parentRecipeNodeId": 42642898,
+   "defaultStation": {
+    "id": 15139,
+    "name": "T204-TI00-020 Enjuague"
+   }
+  },
+  {
+   "id": 42642901,
+   "name": "T204-TI00-028 Pasivado Evabrite",
+   "treatmentId": 83626,
+   "recipeInd": 35,
+   "parentRecipeNodeId": 42642880,
+   "defaultStation": {
+    "id": 15147,
+    "name": "T204-TI00-028 Pasivado Evabrite"
+   }
+  },
+  {
+   "id": 42642902,
+   "name": "T204-TI00-027 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 36,
+   "parentRecipeNodeId": 42642901,
+   "defaultStation": {
+    "id": 15146,
+    "name": "T204-TI00-027 Enjuague"
+   }
+  },
+  {
+   "id": 42642903,
+   "name": "T204-TI00-029 Enjuague",
+   "treatmentId": 71283,
+   "recipeInd": 37,
+   "parentRecipeNodeId": 42642901,
+   "defaultStation": {
+    "id": 15148,
+    "name": "T204-TI00-029 Enjuague"
+   }
+  },
+  {
+   "id": 42642904,
+   "name": "T204-TI00-030 Enjuague Caliente",
+   "treatmentId": 71307,
+   "recipeInd": 38,
+   "parentRecipeNodeId": 42642901,
+   "defaultStation": {
+    "id": 15149,
+    "name": "T204-TI00-030 Enjuague Caliente"
+   }
+  },
+  {
+   "id": 42642905,
+   "name": "T204-SE00-001 Secando Manual - Desenracando",
+   "treatmentId": 70803,
+   "recipeInd": 39,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": {
+    "id": 14346,
+    "name": "T204-SE00-001 Secado Manual y Desenracado"
+   }
+  },
+  {
+   "id": 42642906,
+   "name": "T204 Inspección y Empaque",
+   "treatmentId": 70770,
+   "recipeInd": 40,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": {
+    "id": 14347,
+    "name": "T204-IC00-001 Inspección y Empaque"
+   }
+  },
+  {
+   "id": 42642907,
+   "name": "T204 Listo para Inspeccionar y Empacar",
+   "treatmentId": null,
+   "recipeInd": 41,
+   "parentRecipeNodeId": 42642906,
+   "defaultStation": null
+  },
+  {
+   "id": 42642908,
+   "name": "T204-IC00-001 Inspeccionando y Empacando",
+   "treatmentId": 70770,
+   "recipeInd": 42,
+   "parentRecipeNodeId": 42642906,
+   "defaultStation": {
+    "id": 14347,
+    "name": "T204-IC00-001 Inspección y Empaque"
+   }
+  },
+  {
+   "id": 42642909,
+   "name": "T300-CE03 Antitarnish",
+   "treatmentId": null,
+   "recipeInd": 43,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642910,
+   "name": "Recibo de Orden",
+   "treatmentId": 94832,
+   "recipeInd": 44,
+   "parentRecipeNodeId": 42642909,
+   "defaultStation": {
+    "id": 20655,
+    "name": "T300 Recibo de Orden (Antitarnish)"
+   }
+  },
+  {
+   "id": 42642911,
+   "name": "Listo para Antitarnish Manual",
+   "treatmentId": null,
+   "recipeInd": 45,
+   "parentRecipeNodeId": 42642909,
+   "defaultStation": null
+  },
+  {
+   "id": 42642912,
+   "name": "CE03 Aplicando Antitarnish Manual",
+   "treatmentId": 82877,
+   "recipeInd": 46,
+   "parentRecipeNodeId": 42642909,
+   "defaultStation": {
+    "id": 12135,
+    "name": "T300-CE03-002 Célula de Antitarnish"
+   }
+  },
+  {
+   "id": 42642913,
+   "name": "Inspección y Empaque",
+   "treatmentId": null,
+   "recipeInd": 47,
+   "parentRecipeNodeId": 42642909,
+   "defaultStation": null
+  },
+  {
+   "id": 42642914,
+   "name": "Listo para Inspección y Empaque",
+   "treatmentId": null,
+   "recipeInd": 48,
+   "parentRecipeNodeId": 42642913,
+   "defaultStation": null
+  },
+  {
+   "id": 42642915,
+   "name": "Inspeccionando y  Empacando Antitarnish",
+   "treatmentId": 86895,
+   "recipeInd": 49,
+   "parentRecipeNodeId": 42642913,
+   "defaultStation": {
+    "id": 12135,
+    "name": "T300-CE03-002 Célula de Antitarnish"
+   }
+  },
+  {
+   "id": 42642916,
+   "name": "SP Preparación de Embarque en Almacén",
+   "treatmentId": null,
+   "recipeInd": 50,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642917,
+   "name": "Recibo de Orden",
+   "treatmentId": 101355,
+   "recipeInd": 51,
+   "parentRecipeNodeId": 42642916,
+   "defaultStation": null
+  },
+  {
+   "id": 42642918,
+   "name": "Listo para Preparar Embarque en Almacén",
+   "treatmentId": null,
+   "recipeInd": 52,
+   "parentRecipeNodeId": 42642916,
+   "defaultStation": null
+  },
+  {
+   "id": 42642919,
+   "name": "Preparando Embarque en Almacén",
+   "treatmentId": 85132,
+   "recipeInd": 53,
+   "parentRecipeNodeId": 42642916,
+   "defaultStation": null
+  },
+  {
+   "id": 42642920,
+   "name": "SP Inspección de Calidad Embarques",
+   "treatmentId": null,
+   "recipeInd": 54,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642921,
+   "name": "Listo para Inspección Embarques",
+   "treatmentId": null,
+   "recipeInd": 55,
+   "parentRecipeNodeId": 42642920,
+   "defaultStation": null
+  },
+  {
+   "id": 42642922,
+   "name": "Inspeccionando Calidad Embarques",
+   "treatmentId": 83118,
+   "recipeInd": 56,
+   "parentRecipeNodeId": 42642920,
+   "defaultStation": null
+  },
+  {
+   "id": 42642923,
+   "name": "SP Embarque en Almacén",
+   "treatmentId": null,
+   "recipeInd": 57,
+   "parentRecipeNodeId": 42642866,
+   "defaultStation": null
+  },
+  {
+   "id": 42642924,
+   "name": "Listo para Embarcar",
+   "treatmentId": null,
+   "recipeInd": 58,
+   "parentRecipeNodeId": 42642923,
+   "defaultStation": null
+  },
+  {
+   "id": 42642925,
+   "name": "Creando Remisión",
+   "treatmentId": null,
+   "recipeInd": 59,
+   "parentRecipeNodeId": 42642923,
+   "defaultStation": null
+  },
+  {
+   "id": 42642926,
+   "name": "Embarcando",
+   "treatmentId": null,
+   "recipeInd": 60,
+   "parentRecipeNodeId": 42642923,
+   "defaultStation": null
+  }
+ ],
+ "candidatesByTreatment": {
+  "91100": [
+   {
+    "id": 18547,
+    "name": "T300-CE05-001 Célula de Limpieza Especial"
+   }
+  ],
+  "94832": [
+   {
+    "id": 13740,
+    "name": "T205-EN00-001 Enracado"
+   },
+   {
+    "id": 20655,
+    "name": "T300 Recibo de Orden (Antitarnish)"
+   }
+  ],
+  "69027": [
+   {
+    "id": 13740,
+    "name": "T205-EN00-001 Enracado"
+   }
+  ],
+  "98620": [
+   {
+    "id": 12099,
+    "name": "T205-LI Plata y Estaño s/Barras (16.3)"
+   },
+   {
+    "id": 12098,
+    "name": "T204-LI Plata y Estaño s/Cobre Colgado (16.1)"
+   }
+  ],
+  "83769": [
+   {
+    "id": 13722,
+    "name": "T205-TI00-018 Desengrase Electrolítico Metex"
+   }
+  ],
+  "71283": [
+   {
+    "id": 13705,
+    "name": "T205-TI00-002 Enjuague"
+   },
+   {
+    "id": 13707,
+    "name": "T205-TI00-004 Enjuague"
+   },
+   {
+    "id": 13709,
+    "name": "T205-TI00-006 Enjuague"
+   },
+   {
+    "id": 13710,
+    "name": "T205-TI00-007 Enjuague"
+   },
+   {
+    "id": 13713,
+    "name": "T205-TI00-010 Enjuague"
+   },
+   {
+    "id": 13714,
+    "name": "T205-TI00-011 Enjuague Recuperador"
+   },
+   {
+    "id": 13718,
+    "name": "T205-TI00-015 Enjuague"
+   },
+   {
+    "id": 13719,
+    "name": "T205-TI00-016 Enjuague"
+   },
+   {
+    "id": 13723,
+    "name": "T205-TI00-019 Enjuague"
+   },
+   {
+    "id": 13724,
+    "name": "T205-TI00-020 Enjuague"
+   },
+   {
+    "id": 13728,
+    "name": "T205-TI00-026 Enjuague"
+   },
+   {
+    "id": 13729,
+    "name": "T205-TI00-027 Enjuague"
+   },
+   {
+    "id": 13732,
+    "name": "T205-TI00-030 Enjuague"
+   },
+   {
+    "id": 13733,
+    "name": "T205-TI00-031 Enjuague"
+   },
+   {
+    "id": 13734,
+    "name": "T205-TI00-032 Enjuague"
+   },
+   {
+    "id": 13737,
+    "name": "T205-TI00-035 Enjuague"
+   },
+   {
+    "id": 13738,
+    "name": "T205-TI00-036 Enjuague"
+   },
+   {
+    "id": 14424,
+    "name": "T205-TI00-021 Enjuague"
+   }
+  ],
+  "83738": [
+   {
+    "id": 13725,
+    "name": "T205-TI00-023 Decapado/Activado Ácido Nítrico"
+   },
+   {
+    "id": 13726,
+    "name": "T205-TI00-024 Decapado/Activado Ácido Nítrico"
+   }
+  ],
+  "83742": [
+   {
+    "id": 13739,
+    "name": "T205-TI00-037 Abrillantado Ácido Crómico"
+   }
+  ],
+  "83305": [
+   {
+    "id": 13720,
+    "name": "T205-TI00-022 Decapado - Activado Ácido Clorhídrico"
+   }
+  ],
+  "83665": [
+   {
+    "id": 13717,
+    "name": "T205-TI00-014 Neutralizado Alcalino Cianuro"
+   }
+  ],
+  "83781": [
+   {
+    "id": 13715,
+    "name": "T205-TI00-012 Plata Silversene (Flash)"
+   },
+   {
+    "id": 13716,
+    "name": "T205-TI00-013 Plata Silversene (IMMSA)"
+   }
+  ],
+  "83626": [
+   {
+    "id": 13708,
+    "name": "T205-TI00-005 Pasivado Evabrite"
+   }
+  ],
+  "71307": [
+   {
+    "id": 13704,
+    "name": "T205-TI00-001 Enjuague Caliente"
+   }
+  ],
+  "70803": [
+   {
+    "id": 13741,
+    "name": "T205-SE00-001 Secado Manual y Desenracado"
+   }
+  ],
+  "70770": [
+   {
+    "id": 13743,
+    "name": "T205-IC00-001 Inspección y Empaque"
+   }
+  ],
+  "82877": [
+   {
+    "id": 12135,
+    "name": "T300-CE03-002 Célula de Antitarnish"
+   }
+  ],
+  "86895": [
+   {
+    "id": 12135,
+    "name": "T300-CE03-002 Célula de Antitarnish"
+   }
+  ]
+ },
+ "expected": [
+  {
+   "recipeNodeId": 42642875,
+   "treatmentId": 91100,
+   "stationId": 18547
+  },
+  {
+   "recipeNodeId": 42642877,
+   "treatmentId": 94832,
+   "stationId": 13740
+  },
+  {
+   "recipeNodeId": 42642879,
+   "treatmentId": 69027,
+   "stationId": 13740
+  },
+  {
+   "recipeNodeId": 42642880,
+   "treatmentId": 98620,
+   "stationId": 12099
+  },
+  {
+   "recipeNodeId": 42642881,
+   "treatmentId": 83769,
+   "stationId": 13722
+  },
+  {
+   "recipeNodeId": 42642882,
+   "treatmentId": 71283,
+   "stationId": 13723
+  },
+  {
+   "recipeNodeId": 42642883,
+   "treatmentId": 83769,
+   "stationId": 13722
+  },
+  {
+   "recipeNodeId": 42642884,
+   "treatmentId": 71283,
+   "stationId": 14424
+  },
+  {
+   "recipeNodeId": 42642885,
+   "treatmentId": 83738,
+   "stationId": 13725
+  },
+  {
+   "recipeNodeId": 42642886,
+   "treatmentId": 71283,
+   "stationId": 13724
+  },
+  {
+   "recipeNodeId": 42642887,
+   "treatmentId": 83769,
+   "stationId": 13722
+  },
+  {
+   "recipeNodeId": 42642888,
+   "treatmentId": 71283,
+   "stationId": 13719
+  },
+  {
+   "recipeNodeId": 42642889,
+   "treatmentId": 83738,
+   "stationId": 13725
+  },
+  {
+   "recipeNodeId": 42642890,
+   "treatmentId": 71283,
+   "stationId": 13718
+  },
+  {
+   "recipeNodeId": 42642891,
+   "treatmentId": 83742,
+   "stationId": 13739
+  },
+  {
+   "recipeNodeId": 42642892,
+   "treatmentId": 71283,
+   "stationId": 13738
+  },
+  {
+   "recipeNodeId": 42642893,
+   "treatmentId": 71283,
+   "stationId": 13737
+  },
+  {
+   "recipeNodeId": 42642894,
+   "treatmentId": 83305,
+   "stationId": 13720
+  },
+  {
+   "recipeNodeId": 42642895,
+   "treatmentId": 71283,
+   "stationId": 13728
+  },
+  {
+   "recipeNodeId": 42642896,
+   "treatmentId": 71283,
+   "stationId": 13729
+  },
+  {
+   "recipeNodeId": 42642897,
+   "treatmentId": 83665,
+   "stationId": 13717
+  },
+  {
+   "recipeNodeId": 42642898,
+   "treatmentId": 83781,
+   "stationId": 13715
+  },
+  {
+   "recipeNodeId": 42642899,
+   "treatmentId": 71283,
+   "stationId": 13714
+  },
+  {
+   "recipeNodeId": 42642900,
+   "treatmentId": 71283,
+   "stationId": 13713
+  },
+  {
+   "recipeNodeId": 42642901,
+   "treatmentId": 83626,
+   "stationId": 13708
+  },
+  {
+   "recipeNodeId": 42642902,
+   "treatmentId": 71283,
+   "stationId": 13707
+  },
+  {
+   "recipeNodeId": 42642903,
+   "treatmentId": 71283,
+   "stationId": 13705
+  },
+  {
+   "recipeNodeId": 42642904,
+   "treatmentId": 71307,
+   "stationId": 13704
+  },
+  {
+   "recipeNodeId": 42642905,
+   "treatmentId": 70803,
+   "stationId": 13741
+  },
+  {
+   "recipeNodeId": 42642906,
+   "treatmentId": 70770,
+   "stationId": 13743
+  },
+  {
+   "recipeNodeId": 42642908,
+   "treatmentId": 70770,
+   "stationId": 13743
+  },
+  {
+   "recipeNodeId": 42642910,
+   "treatmentId": 94832,
+   "stationId": 20655
+  },
+  {
+   "recipeNodeId": 42642912,
+   "treatmentId": 82877,
+   "stationId": 12135
+  },
+  {
+   "recipeNodeId": 42642915,
+   "treatmentId": 86895,
+   "stationId": 12135
+  }
+ ]
+}
