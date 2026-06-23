@@ -72,6 +72,29 @@ test('destinationLines: fallback a unión si no hay selector de línea', () => {
   assert.deepEqual(Engine.destinationLines(cbt, 'T204'), ['T101', 'T205']);
 });
 
+// BUG reportado: una orden movida de T204→T205 ya no muestra T204 para regresarla.
+// Causa: se excluía la línea ORIGEN del default (siempre T204), no la línea ACTUAL.
+const SELECTOR_CBT = {
+  98620: [
+    { id: 1, name: 'T107-LI Plata Colgado' }, { id: 2, name: 'T110-LI Plata' },
+    { id: 3, name: 'T204-LI Plata y Estaño s/Cobre' }, { id: 4, name: 'T205-LI Plata y Estaño s/Barras' },
+  ],
+};
+
+test('destinationLines: orden movida a T205 → T204 reaparece (excluye la línea ACTUAL, no el default)', () => {
+  // activeRoute del nodo de línea apunta a T205-LI (id 4) → la orden está en T205.
+  const activeRoutes = [{ recipeNodeId: 100, stationId: 4, treatmentId: 98620 }];
+  const dl = Engine.destinationLines(SELECTOR_CBT, 'T204', activeRoutes);
+  assert.ok(dl.includes('T204'), 'T204 debe aparecer para regresar la orden');
+  assert.ok(!dl.includes('T205'), 'T205 (línea actual) no debe aparecer');
+  assert.deepEqual(dl, ['T107', 'T110', 'T204']);
+});
+
+test('destinationLines: orden fresca (sin rutas activas) excluye su línea default', () => {
+  const dl = Engine.destinationLines(SELECTOR_CBT, 'T204', []);
+  assert.deepEqual(dl, ['T107', 'T110', 'T205']); // excluye T204 (donde ya está por default)
+});
+
 test('rutea EXACTAMENTE los mismos nodos que el ground-truth (34)', () => {
   const { routes, skipped } = run();
   assert.equal(routes.length, fx.expected.length, '34 rutas');

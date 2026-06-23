@@ -69,9 +69,14 @@ El dropdown de línea destino mostraba ~25 líneas (la unión de todas las candi
 existen en casi toda planta). **Fix:** las líneas válidas salen SOLO del tratamiento de **nivel-línea
 (grupo de tratamiento "Planificación", id 2344)** de la sección origen — el nodo "Listo para Procesar",
 cuyas candidatas son stations **"-LI"** (selectores de línea, ej. `T205-LI Plata y Estaño s/Barras`).
-`AutoRouterEngine.destinationLines(candidatesByTreatment, sourceLine)` toma el/los tratamiento(s) cuyas
-candidatas son "-LI" (`isLineStation`) y que incluyen la línea origen; devuelve sus líneas (fallback a la
+`AutoRouterEngine.destinationLines(candidatesByTreatment, sourceLine, activeRoutes)` toma el/los tratamiento(s)
+cuyas candidatas son "-LI" (`isLineStation`) y que incluyen la línea origen; devuelve sus líneas (fallback a la
 unión si no detecta selector). Para WO 1760978 da exactamente `[T107,T110,T202,T203,T205]` en vez de 25.
+
+**Fix bug "no puedo regresar a T204" (validado con test):** excluye la línea **ACTUAL**, no la del default.
+Si una orden ya se movió (T204→T205), su `defaultStation` sigue siendo T204 pero una **ruta activa** apunta a
+la station "-LI" de T205 → la línea actual es T205 y **T204 reaparece** para regresarla. (Antes excluía siempre
+la línea origen del default = T204, así que nunca dejaba regresar.) Por eso `destinationLines` recibe `activeRoutes`.
 
 **Bonus:** las candidatas (`schedulingStations`) vienen **EMBEBIDAS** en el árbol
 (`recipeNode.treatmentByTreatmentId.schedulingStations`), así que `parseRouteData`/`parseAllRouteData`
