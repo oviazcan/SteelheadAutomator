@@ -22,6 +22,13 @@ const AutoRouter = (() => {
   // { workOrderId, partNumberId, routeData, capturedAt }
   let captured = null;
 
+  // Selección RASTREADA del Scheduling board (idInDomain de cada orden marcada).
+  // La lista del board es virtualizada (solo renderiza filas visibles), así que en
+  // vez de leer el DOM al momento, acumulamos la selección conforme el usuario
+  // marca/desmarca — así sobrevive el scroll. Se limpia al cambiar de board (path).
+  const boardSelection = new Set();
+  let lastPath = typeof location !== 'undefined' ? location.pathname : '';
+
   function getContext() { return captured; }
 
   function patchFetch() {
@@ -85,16 +92,20 @@ const AutoRouter = (() => {
     return /\/Schedules\/\d+\/ScheduleBoard\/\d+/i.test(location.pathname);
   }
 
-  // Lee las órdenes seleccionadas (checkbox marcado) del board (List View). Cada
-  // fila marcada trae un link /Domains/N/WorkOrders/<idInDomain>. La lista es
-  // VIRTUALIZADA → solo lee las filas visibles en el DOM.
+  // idInDomain de la orden de una fila (del link /Domains/N/WorkOrders/<id>).
+  function woIdFromRow(tr) {
+    const a = tr && tr.querySelector('a[href*="/WorkOrders/"]');
+    const m = a && (a.getAttribute('href') || '').match(/\/WorkOrders\/(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  // Selección completa: la rastreada (boardSelection, sobrevive el scroll) UNIDA con
+  // las filas visibles marcadas ahora mismo (por si alguna no quedó rastreada).
   function readBoardSelection() {
-    const out = new Set();
+    const out = new Set(boardSelection);
     document.querySelectorAll('tr input[type="checkbox"]:checked').forEach((cb) => {
-      const tr = cb.closest('tr');
-      const a = tr && tr.querySelector('a[href*="/WorkOrders/"]');
-      const m = a && (a.getAttribute('href') || '').match(/\/WorkOrders\/(\d+)/);
-      if (m) out.add(m[1]);
+      const id = woIdFromRow(cb.closest('tr'));
+      if (id) out.add(id);
     });
     return [...out];
   }
@@ -203,10 +214,19 @@ const AutoRouter = (() => {
     listenManualTrigger();
     installUrlListener();
     window.addEventListener('sa-ar-context', syncFab);
-    window.addEventListener('sa-ar-url', syncFab);
-    // badge en vivo: al marcar/desmarcar checkboxes del board, actualiza el conteo.
+    window.addEventListener('sa-ar-url', () => {
+      if (location.pathname !== lastPath) { lastPath = location.pathname; boardSelection.clear(); } // nuevo board → resetea
+      syncFab();
+    });
+    // Rastreo de selección del board + badge en vivo: al marcar/desmarcar un checkbox,
+    // acumula/quita el idInDomain de esa fila (sobrevive la virtualización del scroll).
     document.addEventListener('change', (e) => {
-      if (isBoardPage() && e.target && typeof e.target.matches === 'function' && e.target.matches('input[type="checkbox"]')) syncFab();
+      if (!isBoardPage()) return;
+      const t = e.target;
+      if (!t || typeof t.matches !== 'function' || !t.matches('input[type="checkbox"]')) return;
+      const id = woIdFromRow(t.closest('tr'));
+      if (id) { if (t.checked) boardSelection.add(id); else boardSelection.delete(id); }
+      syncFab();
     }, true);
     syncFab();
     log(`cargado · v${VERSION}`);
