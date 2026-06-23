@@ -235,7 +235,7 @@ const AutoRouterBatch = (() => {
     for (const wo of state.wos) {
       if (wo.error || !wo.routeData) continue;
       const cbt = wo.routeData.candidatesByTreatment || {};
-      for (const d of Engine().destinationLines(cbt, wo.sourceLine)) set.add(d);
+      for (const d of Engine().destinationLines(cbt, wo.sourceLine, wo.routeData.activeRoutes)) set.add(d);
     }
     state.destLines = [...set].sort();
     state.destLine = state.destLines[0] || null;
