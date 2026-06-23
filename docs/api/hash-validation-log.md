@@ -346,3 +346,5 @@ Rotación **REAL** confirmada (**4ta** de `GetDomain` en ~5 días: `28b65e26… 
 - **Nota de mantenimiento:** `GetDomain` ya rotó 4 veces; es la op más inestable del registry. Si reaparece, re-scanear **navegando a una factura** y mirar `scanResults`, NO `apiKnowledge`.
 
 ## 2026-06-22 20:19 — 0 rotado(s) (launchd)
+
+## 2026-06-22 22:35 — 0 rotado(s) (launchd)
