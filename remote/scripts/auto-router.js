@@ -105,10 +105,17 @@ const AutoRouter = (() => {
     window.AutoRouterPanel.open(captured);
   }
 
+  function openBatch() {
+    if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
+    window.AutoRouterBatch.open();
+  }
+
   function listenManualTrigger() {
     try {
       chrome.runtime?.onMessage?.addListener?.((msg) => {
-        if (msg && msg.action === 'open-auto-router') openPanel();
+        if (!msg) return;
+        if (msg.action === 'open-auto-router') openPanel();
+        else if (msg.action === 'open-auto-router-batch') openBatch();
       });
     } catch (_) { /* no chrome.runtime en algunos contextos */ }
   }
@@ -126,7 +133,7 @@ const AutoRouter = (() => {
   }
 
   if (typeof window !== 'undefined') {
-    window.AutoRouter = { VERSION, init, openPanel, getContext };
+    window.AutoRouter = { VERSION, init, openPanel, openBatch, getContext };
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
     } else {

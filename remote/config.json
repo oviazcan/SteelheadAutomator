@@ -1,6 +1,6 @@
 {
-  "version": "1.6.88",
-  "lastUpdated": "2026-06-22T22:00",
+  "version": "1.6.89",
+  "lastUpdated": "2026-06-23T10:00",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -79,6 +79,7 @@
       "queries": {
         "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143",
         "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2",
+        "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3",
         "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f",
         "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac",
         "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890",
@@ -839,18 +840,21 @@
         "scripts/auto-router-engine.js",
         "scripts/auto-router-api.js",
         "scripts/auto-router-panel.js",
+        "scripts/auto-router-batch.js",
         "scripts/auto-router.js"
       ],
       "requiredPermissions": [],
       "actions": [
-        { "id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router" }
+        { "id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router" },
+        { "id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch" }
       ]
     }
   ],
   "knownOperations": {
     "StationTreatmentByWorkOrder": { "type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router" },
     "SearchStationsForTreatment": { "type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router" },
-    "CreateUpdateDeleteRoutes": { "type": "mutation", "description": "Aplica TODAS las rutas tina↔recipeNode de una WO en batch. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[], routesToDelete:[]}}. Devuelve createUpdateDeleteRoutes.createdRoutes[].{id,nodeId,priorityNumber}.", "usedBy": "auto-router" },
+    "CreateUpdateDeleteRoutes": { "type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router" },
+    "PartNumbersByWorkOrderIdInDomain": { "type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router" },
     "CreateQuote": { "type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva" },
     "UpdateQuote": { "type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva" },
     "SaveQuoteLines": { "type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva" },

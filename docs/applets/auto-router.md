@@ -1,7 +1,19 @@
 # Applet `auto-router` — Auto-Ruteador de Órdenes
 
-> Versión: **0.1.0** (Fase 1 MVP — motor + panel single-order, API-direct).
-> Estado: código completo + golden test verde. **Pendiente run real en vivo** (requiere deploy a gh-pages).
+> Versión: **0.2.0** (Fase 1 — motor + panel single-order + idempotencia + fix load-before-save).
+> Estado: **VALIDADO en vivo** (config 1.6.88). Run real OK: re-ruteo single-order graba correctamente.
+> Pendiente: Fase 2 (batch multi-orden), Fase 3 (auto-fill del modal nativo).
+
+## Lección crítica: load-before-save (fix 1.6.88)
+El re-ruteo "no se grababa" si el modal de ruteo nativo se cerraba antes de aplicar. **Causa raíz**
+(debugging sistemático): NO existe mutación de sesión de ruteo — `RouteWorkOrders`,
+`SuperNodeActiveRecipeNodeSelectionQuery`, `StationTreatmentByWorkOrder`, `PartNumbersByWorkOrderIdInDomain`
+son **todas lecturas**; la única mutación es `CreateUpdateDeleteRoutes`. Steelhead exige una **lectura
+RECIENTE** de `StationTreatmentByWorkOrder` para que el save persista: modal abierto = lectura fresca →
+graba; cerrado = lectura vieja → el servidor **acepta la mutación pero crea 0 rutas** (rechazo silencioso).
+Y `SteelheadAPI.query` no lanza si viene `data`, así que el panel fingía "✅ aplicado".
+**Fix:** `apply()` hace `fetchWorkOrderRouteData()` (re-lectura de `StationTreatmentByWorkOrder`) JUSTO antes
+de la mutación + verifica que `createdRoutes` ≥ lo pedido (si crea 0 de N → "⚠️ No se guardó" + Reintentar).
 
 ## Qué resuelve
 Re-rutear una orden de trabajo (WO) de una línea de producción a otra (ej. T204 → T205)
@@ -66,10 +78,14 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
 - **Fase 0 (opcional, fidelidad del test):** capturar `SearchStationsForTreatment` por treatment multi-tina
   para confirmar candidatas autoritativas (la línea T205 ya se reconstruyó completa del catálogo de 772
   estaciones — el fixture está confirmado). No bloquea: el applet llama `SearchStationsForTreatment` en vivo.
-- **Fase 2 (batch multi-orden):** `RouteWorkOrders {ids:[idInDomain]}` (hash `c9513c17…294041`) acepta
-  **array** de idInDomain → es el hook batch. `PartNumbersByWorkOrderIdInDomain` (hash `fda9e55c…b784d3`)
-  resuelve el pnId por idInDomain. Flujo: RouteWorkOrders/PartNumbers... → StationTreatmentByWorkOrder por WO
-  → diffRoutes → CreateUpdateDeleteRoutes. Concurrencia ~3; host-cleanup-shared.
+- **Fase 2 (batch multi-orden) — IMPLEMENTADO (modo entrada manual), v1.6.89.** `auto-router-batch.js`
+  (`window.AutoRouterBatch`, acción popup `open-auto-router-batch`): pegas los números de orden (idInDomain),
+  el applet resuelve cada una con `PartNumbersByWorkOrderIdInDomain {idInDomain}` (→ woId interno + pnId +
+  partGroup en UNA llamada — `workOrderByIdInDomain.{id, partLocationsByWorkOrderId.nodes[].partNumberByPartNumberId}`),
+  carga su árbol, elige línea destino única, y aplica todas con concurrencia 3. Cada orden hace el re-fetch
+  load-before-save + verificación de `createdRoutes` por separado. **Pendiente:** captura automática de la
+  selección del Scheduling board (requiere scan del flujo de multi-selección → ¿`StationTreatmentByWorkOrder`
+  con varios `workOrderIds`?).
 - **Fase 3 (auto-fill del modal nativo):** `auto-router-modal.js` — llenar los react-selects del modal
   para revisión nativa (helpers de `invoice-autofill.js`, cancellation token `runId/isStale`). Falta el HTML del modal.
 

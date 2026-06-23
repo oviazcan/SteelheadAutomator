@@ -101,6 +101,27 @@
     return map;
   }
 
+  // Resuelve una orden por su número visible (idInDomain) a sus IDs internos.
+  // PartNumbersByWorkOrderIdInDomain trae en una sola llamada el workOrderId interno
+  // + el/los partNumber(s) + partGroup. Devuelve el part primario (el primero).
+  async function resolveWorkOrder(idInDomain) {
+    const data = await api().query('PartNumbersByWorkOrderIdInDomain', { idInDomain: Number(idInDomain) });
+    const wo = data?.workOrderByIdInDomain;
+    if (!wo || wo.id == null) throw new Error(`Orden ${idInDomain} no encontrada`);
+    const locs = wo.partLocationsByWorkOrderId?.nodes || [];
+    const pn = locs[0]?.partNumberByPartNumberId || null;
+    const pg = locs[0]?.partGroupByPartGroupId || null;
+    return {
+      idInDomain: wo.idInDomain,
+      workOrderId: wo.id,
+      name: (wo.name || '').trim(),
+      partNumberId: pn?.id ?? null,
+      partNumberName: (pn?.name || '').trim() || null,
+      partGroupId: pg?.id ?? null,
+      partCount: locs.length,
+    };
+  }
+
   // Aplica las rutas en una sola mutación batch.
   // routes: [{recipeNodeId, treatmentId, stationId, partNumberId, workOrderId, partGroupId}]
   async function applyRoutes(routes, routesToUpdate = [], routesToDelete = []) {
@@ -123,6 +144,7 @@
     fetchWorkOrderRouteData,
     fetchStationsForTreatment,
     fetchCandidatesForTreatments,
+    resolveWorkOrder,
     applyRoutes,
     parseRouteData, // exportado para tests/depuración
   };
