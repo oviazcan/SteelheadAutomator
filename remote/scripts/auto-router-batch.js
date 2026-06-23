@@ -144,20 +144,47 @@ const AutoRouterBatch = (() => {
   const foot = (...n) => { const f = document.getElementById('sa-arb-ft'); if (f) { f.textContent = ''; for (const x of n) if (x) f.appendChild(x); } };
 
   // open() sin args → modo manual (pegar números). open(preloaded) → órdenes ya
-  // capturadas del board (cada una con su routeData) → salta el paso de resolver.
+  // capturadas del board (cada una con su árbol embebido).
   function open(preloaded) {
     injectStyles();
     state = fresh();
     shell();
     if (Array.isArray(preloaded) && preloaded.length) {
-      state.wos = preloaded
-        .filter((w) => w && w.routeData && w.partNumberId != null)
-        .map((w) => ({ ...w, sourceLine: detectSourceLine(w.routeData.recipeNodes) }));
-      if (!state.wos.length) { renderInput(); return; }
-      void afterWosLoaded();
+      state.wos = preloaded.map((w) => ({
+        idInDomain: w.idInDomain,
+        workOrderId: w.workOrderId,
+        partNumberId: w.partNumberId ?? null,
+        partGroupId: w.partGroupId ?? null,
+        routeData: w.routeData,
+        sourceLine: detectSourceLine((w.routeData && w.routeData.recipeNodes) || []),
+      }));
+      void enrichAndCompute();
     } else {
       renderInput();
     }
+  }
+
+  // Para las órdenes capturadas del board, resuelve el partNumberId/partGroup de
+  // CADA una autoritativamente por su número (PartNumbersByWorkOrderIdInDomain), en
+  // vez de confiar en el pareo por índice del request (que falla si una orden tiene
+  // varias partes o ninguna). NO descarta: las que no resuelvan se marcan con error.
+  async function enrichAndCompute() {
+    state.busy = true;
+    body(el('div', { class: 'sa-arb-note', text: `Resolviendo ${state.wos.length} órdenes…` }));
+    foot();
+    for (const wo of state.wos) {
+      if (!wo.routeData || !(wo.routeData.recipeNodes || []).length) { wo.error = 'sin árbol de proceso'; continue; }
+      try {
+        const m = await API().resolveWorkOrder(wo.idInDomain);
+        wo.partNumberId = m.partNumberId;
+        wo.partGroupId = m.partGroupId;
+        wo.partNumberName = m.partNumberName;
+        wo.name = m.name;
+      } catch (e) { wo.error = e.message; continue; }
+      if (wo.partNumberId == null && wo.partGroupId == null) wo.error = 'sin número de parte';
+    }
+    state.busy = false;
+    await afterWosLoaded();
   }
   function close() { document.getElementById('sa-arb-ov')?.remove(); state = fresh(); }
 
@@ -221,7 +248,8 @@ const AutoRouterBatch = (() => {
       state.destLines.map((d) => { const o = el('option', { value: d, text: d }); if (d === state.destLine) o.selected = true; return o; }));
     const ok = state.wos.filter((w) => !w.error);
     const head = el('div', { class: 'sa-arb-row' }, [
-      el('span', { text: `${ok.length} órdenes resueltas · línea destino:` }), destSel,
+      el('span', { text: `${ok.length} de ${state.wos.length} órdenes resueltas · línea destino:` }),
+      state.destLines.length ? destSel : el('span', { class: 'sa-arb-warn', text: 'sin líneas destino alternativas (solo corren en su línea actual)' }),
     ]);
     const tb = el('table', { class: 'sa-arb-tb' }, [
       el('thead', {}, [el('tr', {}, [
