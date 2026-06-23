@@ -83,9 +83,13 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
   el applet resuelve cada una con `PartNumbersByWorkOrderIdInDomain {idInDomain}` (→ woId interno + pnId +
   partGroup en UNA llamada — `workOrderByIdInDomain.{id, partLocationsByWorkOrderId.nodes[].partNumberByPartNumberId}`),
   carga su árbol, elige línea destino única, y aplica todas con concurrencia 3. Cada orden hace el re-fetch
-  load-before-save + verificación de `createdRoutes` por separado. **Pendiente:** captura automática de la
-  selección del Scheduling board (requiere scan del flujo de multi-selección → ¿`StationTreatmentByWorkOrder`
-  con varios `workOrderIds`?).
+  load-before-save + verificación de `createdRoutes` por separado.
+- **Fase 2b — captura desde el board (sin pegar números), v1.6.91.** Confirmado por scan: al multi-seleccionar
+  en el Scheduling board y abrir el ruteo, Steelhead dispara **UN** `StationTreatmentByWorkOrder` con
+  `workOrderIds:[…]` + `partNumberIds:[…]` (pareados por índice) y `allWorkOrders.nodes[]` con un árbol por WO;
+  `activeRoutes` traen `workOrderId` para repartirlas. El interceptor de `auto-router.js` usa
+  `AutoRouterAPI.parseAllRouteData(data, reqVars)` para capturar las N órdenes; el FAB 🔀 muestra un badge con el
+  conteo y, al click, abre el batch **precargado** (o el panel single si es 1 orden). NO requirió inspección de DOM.
 - **Fase 3 (auto-fill del modal nativo):** `auto-router-modal.js` — llenar los react-selects del modal
   para revisión nativa (helpers de `invoice-autofill.js`, cancellation token `runId/isStale`). Falta el HTML del modal.
 
