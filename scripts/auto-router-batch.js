@@ -142,11 +142,21 @@ const AutoRouterBatch = (() => {
   const body = (n) => { const b = document.getElementById('sa-arb-bd'); if (b) { b.textContent = ''; b.appendChild(n); } };
   const foot = (...n) => { const f = document.getElementById('sa-arb-ft'); if (f) { f.textContent = ''; for (const x of n) if (x) f.appendChild(x); } };
 
-  function open() {
+  // open() sin args → modo manual (pegar números). open(preloaded) → órdenes ya
+  // capturadas del board (cada una con su routeData) → salta el paso de resolver.
+  function open(preloaded) {
     injectStyles();
     state = fresh();
     shell();
-    renderInput();
+    if (Array.isArray(preloaded) && preloaded.length) {
+      state.wos = preloaded
+        .filter((w) => w && w.routeData && w.partNumberId != null)
+        .map((w) => ({ ...w, sourceLine: detectSourceLine(w.routeData.recipeNodes) }));
+      if (!state.wos.length) { renderInput(); return; }
+      void afterWosLoaded();
+    } else {
+      renderInput();
+    }
   }
   function close() { document.getElementById('sa-arb-ov')?.remove(); state = fresh(); }
 
@@ -183,7 +193,15 @@ const AutoRouterBatch = (() => {
         state.wos.push({ idInDomain: idd, error: e.message });
       }
     }
-    // 2. candidatas (unión de tratamientos de la sección origen de todas las órdenes).
+    await afterWosLoaded();
+  }
+
+  // Carga candidatas (unión de tratamientos de la sección origen) + calcula las
+  // líneas destino disponibles, luego renderiza el preview. Compartido por el modo
+  // manual (onCompute) y el precargado del board (open(preloaded)).
+  async function afterWosLoaded() {
+    state.busy = true;
+    body(el('div', { class: 'sa-arb-note', text: 'Cargando tinas posibles…' }));
     const lc = Engine().extractLineCode;
     const tids = new Set();
     for (const wo of state.wos) {
@@ -194,7 +212,6 @@ const AutoRouterBatch = (() => {
     }
     try { state.candidates = await API().fetchCandidatesForTreatments([...tids]); }
     catch (e) { state.busy = false; body(el('div', { class: 'sa-arb-warn', text: `Error cargando tinas: ${e.message}` })); return; }
-    // 3. líneas destino disponibles.
     const set = new Set();
     for (const tid of Object.keys(state.candidates)) for (const s of state.candidates[tid]) {
       const c = lc(s.name); if (c) set.add(c);
