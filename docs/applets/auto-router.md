@@ -109,8 +109,14 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
   `activeRoutes` traen `workOrderId` para repartirlas. El interceptor de `auto-router.js` usa
   `AutoRouterAPI.parseAllRouteData(data, reqVars)` para capturar las N órdenes; el FAB 🔀 muestra un badge con el
   conteo y, al click, abre el batch **precargado** (o el panel single si es 1 orden). NO requirió inspección de DOM.
-- **Fase 3 (auto-fill del modal nativo):** `auto-router-modal.js` — llenar los react-selects del modal
-  para revisión nativa (helpers de `invoice-autofill.js`, cancellation token `runId/isStale`). Falta el HTML del modal.
+- **Fase 3 — Ruteo directo desde el Scheduling board (sin modal), v1.6.99.** En vez de manejar los
+  react-selects frágiles del modal nativo, el usuario pidió rutear directo desde el board por API. El FAB 🔀
+  aparece en la página del board (URL `/Schedules/\d+/ScheduleBoard/\d+`), muestra un badge con el conteo de
+  filas seleccionadas (checkbox marcado) en vivo, y al click lee las órdenes seleccionadas
+  (`tr input[type=checkbox]:checked` → `a[href*="/WorkOrders/<idInDomain>"]`) y las pasa a
+  `AutoRouterBatch.openWithNumbers([...])` → resuelve + calcula + aplica vía API. **Limitación:** la lista es
+  VIRTUALIZADA, así que solo lee las filas visibles (si seleccionas muchas y scrolleas fuera, no las ve).
+  Pendiente menor: capturar la selección completa de la lista virtualizada (vía estado React o un query).
 
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
