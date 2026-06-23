@@ -1,6 +1,6 @@
 {
-  "version": "1.6.77",
-  "lastUpdated": "2026-06-17T09:38",
+  "version": "1.6.85",
+  "lastUpdated": "2026-06-22T20:50",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -11,6 +11,7 @@
     "apolloClientVersion": "4.0.8",
     "hashes": {
       "mutations": {
+        "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e",
         "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf",
         "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b",
         "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163",
@@ -76,6 +77,8 @@
         "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0"
       },
       "queries": {
+        "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143",
+        "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2",
         "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f",
         "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac",
         "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890",
@@ -148,7 +151,7 @@
         "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de",
         "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0",
         "GetPurchaseOrder": "6d8626794b0b81e885f621fac214f825c3078931ad030ddd2299d227e530bcf6",
-        "GetDomain": "28b65e268c0de9e9e66256a779f218060d177b5c8e0291ba47a941082bbba79e",
+        "GetDomain": "c0c242bcac011a6e72087bd0d0698dde5cf2fe8b247a51e4eb3b08c36299c866",
         "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57",
         "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0",
         "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d",
@@ -823,9 +826,31 @@
       "actions": [
         { "id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status" }
       ]
+    },
+    {
+      "id": "auto-router",
+      "name": "Auto-Ruteador",
+      "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción",
+      "icon": "🔀",
+      "category": "Producción",
+      "autoInject": true,
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/auto-router-engine.js",
+        "scripts/auto-router-api.js",
+        "scripts/auto-router-panel.js",
+        "scripts/auto-router.js"
+      ],
+      "requiredPermissions": [],
+      "actions": [
+        { "id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router" }
+      ]
     }
   ],
   "knownOperations": {
+    "StationTreatmentByWorkOrder": { "type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router" },
+    "SearchStationsForTreatment": { "type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router" },
+    "CreateUpdateDeleteRoutes": { "type": "mutation", "description": "Aplica TODAS las rutas tina↔recipeNode de una WO en batch. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[], routesToDelete:[]}}. Devuelve createUpdateDeleteRoutes.createdRoutes[].{id,nodeId,priorityNumber}.", "usedBy": "auto-router" },
     "CreateQuote": { "type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva" },
     "UpdateQuote": { "type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva" },
     "SaveQuoteLines": { "type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva" },

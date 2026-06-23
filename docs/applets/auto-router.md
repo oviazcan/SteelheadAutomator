@@ -1,0 +1,80 @@
+# Applet `auto-router` — Auto-Ruteador de Órdenes
+
+> Versión: **0.1.0** (Fase 1 MVP — motor + panel single-order, API-direct).
+> Estado: código completo + golden test verde. **Pendiente run real en vivo** (requiere deploy a gh-pages).
+
+## Qué resuelve
+Re-rutear una orden de trabajo (WO) de una línea de producción a otra (ej. T204 → T205)
+implica cambiar, **tina por tina**, la `station` de cada paso del proceso en el modal nativo
+de Steelhead: ~33 dropdowns react-select, ~17 min por orden. El applet calcula el mapeo
+completo en segundos y lo aplica en **una sola** mutación batch, con un preview editable.
+
+## Modelo de datos (descubierto del tráfico real — scan 2026-06-22)
+- Una WO tiene un árbol de `recipeNodes`. Cada nodo con `treatmentId` (el "qué se hace") corre
+  en una **`station`** = tina (el "dónde"). **Re-rutear = cambiar la station, NO el treatment.**
+- El **nombre** de la tina codifica línea + posición física: `T205-TI00-019 Enjuague`,
+  `T205-LI Plata y Estaño s/Barras (16.3)`. La posición `TI00-NNN` da el orden físico.
+- Solo se re-rutean los nodos cuya tina **default** pertenece a la línea origen. Los bloques de
+  otras líneas (T300 Limpieza Especial CE05, T300 Antitarnish CE03) **conservan su tina default**.
+- La mutación lleva **TODAS** las rutas del proceso (cambiadas y conservadas), no solo las modificadas.
+- Los nodos globales SP (Inspección Recibo, Embarque, etc.) tienen treatment pero **sin estación
+  física** (`stationByDefaultStationId = null`) → no se rutean (el ground-truth tampoco los incluye).
+
+## Flujo GraphQL
+| Operación | Tipo | Hash (config.json) | Rol |
+|---|---|---|---|
+| `StationTreatmentByWorkOrder` | query | `1d0e7eb3…dd143` | Árbol de recipeNodes + tinas default + `allDefaultStationTransports` + `activeRoutes` |
+| `SearchStationsForTreatment` | query | `6ce8c070…e6e4a2` | `treatmentById.schedulingStations.nodes[].{id,name}` — tinas compatibles, todas las líneas, ya filtradas al grupo "Planificación" |
+| `CreateUpdateDeleteRoutes` | mutation | `0597ad98…d9a76e` | `{input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[], routesToDelete:[]}}` |
+
+## Regla de mapeo (motor `auto-router-engine.js`)
+Validada contra el **ground-truth**: re-ruteo manual real de la WO 1760978 (PN S1D3852A01), T204→T205.
+1. **bypass** — nodo de otra línea → conserva default. (T300 CE05/Antitarnish.)
+2. **role-match** — la tina default tiene rol distintivo (Recuperador, Flash, IMMSA, Caliente) →
+   toma la candidata destino con ese rol. (Ej. "Enjuague Recuperador" T204 → "Enjuague Recuperador" T205.)
+3. **single / reúso de proceso** — tratamiento con 1 tina destino → reúso. Tanques de proceso con
+   varias variantes (ej. 2 tinas de Decapado Nítrico) → **se reúsan** (no se consumen).
+4. **momentum** — enjuagues genéricos (`isRinsePool`: ≥3 tinas mayormente "Enjuague") → **se consumen
+   una vez**, tomando la tina sin usar más cercana al ancla (la tina del paso padre), con inercia de
+   dirección (asc/desc) — el patrón serpentino de la línea física.
+
+**Cobertura medida (golden test):** 22/22 rutas deterministas (anclas, roles, reúso de proceso, bypass)
+**exactas** al ground-truth — esas son las críticas (química correcta). Enjuagues genéricos: **6/12 (50%)**
+exactos; el resto es interchangeable y de bajo riesgo, lo cubre el **preview editable**.
+
+## Arquitectura (`remote/scripts/`)
+- `auto-router-engine.js` — **motor puro** (sin DOM/red). `AutoRouterEngine.computeRoutes(...)`. Único con golden test.
+- `auto-router-api.js` — `AutoRouterAPI`: `fetchWorkOrderRouteData`, `fetchCandidatesForTreatments` (pool conc. 5), `applyRoutes`, `parseRouteData`.
+- `auto-router-panel.js` — `AutoRouterPanel.open(ctx)`: detecta línea origen, carga candidatas, select de línea destino, preview editable por tina, "Aplicar". Nombres vía `textContent` (anti-XSS).
+- `auto-router.js` — orquestador: **intercepta `StationTreatmentByWorkOrder`** (el modal nativo es el "selector de orden" → captura woId/pnId/árbol gratis), FAB 🔀, mensaje `open-auto-router`.
+- **Golden test:** `tools/test/auto-router-engine.test.js` + fixture `tools/test/fixtures/auto-router-wo1760978.json`. Run: `node --test tools/test/auto-router-engine.test.js`.
+
+UX MVP: el usuario abre el modal de ruteo nativo de una orden (Steelhead dispara la query, el applet
+captura el contexto) → aparece el FAB 🔀 → panel: elige línea destino → preview editable → **Aplicar**.
+
+## Idempotencia (re-rutear órdenes ya ruteadas) — IMPLEMENTADO
+Confirmado del scan 2026-06-22 (WO 1805646, idInDomain 8649):
+- `StationTreatmentByWorkOrder.activeRoutes.nodes[]` = `{id, stationId, treatmentId, workOrderId, partNumberId, recipeNodeId, partGroupId}`.
+- `CreateUpdateDeleteRoutes` acepta `routesToUpdate:[{id, stationId}]` y `routesToDelete:[id]`.
+
+`AutoRouterEngine.diffRoutes(desiredRoutes, activeRoutes)` produce el payload: **crea** los recipeNodes
+sin ruta activa, **actualiza** `{id, stationId}` los que cambian de tina, **borra** `[id]` los que ya no
+se rutean, y **omite** (no-op) los iguales. El panel lo aplica así (ya NO bloquea órdenes ya ruteadas);
+muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape real.
+
+## Pendientes
+- **Fase 0 (opcional, fidelidad del test):** capturar `SearchStationsForTreatment` por treatment multi-tina
+  para confirmar candidatas autoritativas (la línea T205 ya se reconstruyó completa del catálogo de 772
+  estaciones — el fixture está confirmado). No bloquea: el applet llama `SearchStationsForTreatment` en vivo.
+- **Fase 2 (batch multi-orden):** `RouteWorkOrders {ids:[idInDomain]}` (hash `c9513c17…294041`) acepta
+  **array** de idInDomain → es el hook batch. `PartNumbersByWorkOrderIdInDomain` (hash `fda9e55c…b784d3`)
+  resuelve el pnId por idInDomain. Flujo: RouteWorkOrders/PartNumbers... → StationTreatmentByWorkOrder por WO
+  → diffRoutes → CreateUpdateDeleteRoutes. Concurrencia ~3; host-cleanup-shared.
+- **Fase 3 (auto-fill del modal nativo):** `auto-router-modal.js` — llenar los react-selects del modal
+  para revisión nativa (helpers de `invoice-autofill.js`, cancellation token `runId/isStale`). Falta el HTML del modal.
+
+## Riesgos abiertos
+- **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
+- **Momentum** de enjuagues: best-effort por diseño (≈50% exacto en genéricos; las 22 rutas críticas son
+  exactas). El preview editable es la red de seguridad. No vale la pena sobreajustar (las elecciones del
+  operador en el cluster Desengrase/Decapado son batching físico, no una regla geométrica).
