@@ -55,19 +55,9 @@ const AutoRouterPanel = (() => {
     return best;
   }
 
-  // Líneas destino candidatas: códigos de línea presentes en las candidatas de los
-  // tratamientos de la sección origen, distintos de la línea origen.
-  function computeDestLines(candidates, sourceLine) {
-    const lc = Engine().extractLineCode;
-    const set = new Set();
-    for (const tId of Object.keys(candidates)) {
-      for (const s of candidates[tId]) {
-        const code = lc(s.name);
-        if (code && code !== sourceLine) set.add(code);
-      }
-    }
-    return [...set].sort();
-  }
+  // Líneas destino válidas (delegado al motor: solo el tratamiento de nivel-línea
+  // del grupo Planificación, no la unión de todos los tratamientos).
+  const computeDestLines = (candidates, sourceLine) => Engine().destinationLines(candidates, sourceLine);
 
   function compute() {
     const { ctx, sourceLine, destLine, candidates } = state;
@@ -189,16 +179,16 @@ const AutoRouterPanel = (() => {
       renderBody(el('div', { class: 'sa-arp-warn', text: 'No se pudo detectar la línea origen de esta orden.' }));
       return;
     }
-    // tratamientos de la sección origen (los que se van a re-rutear).
-    const lc = Engine().extractLineCode;
-    const tids = [...new Set(rn
-      .filter((n) => n.treatmentId != null && n.defaultStation && lc(n.defaultStation.name) === state.sourceLine)
-      .map((n) => n.treatmentId))];
-    try {
-      state.candidates = await ARAPI().fetchCandidatesForTreatments(tids);
-    } catch (e) {
-      renderBody(el('div', { class: 'sa-arp-warn', text: `Error cargando tinas: ${e.message}` }));
-      return;
+    // Candidatas: vienen EMBEBIDAS en el árbol (treatmentByTreatmentId.schedulingStations).
+    // Fallback a SearchStationsForTreatment solo si faltaran.
+    state.candidates = state.ctx.routeData.candidatesByTreatment;
+    if (!state.candidates || !Object.keys(state.candidates).length) {
+      const lc = Engine().extractLineCode;
+      const tids = [...new Set(rn
+        .filter((n) => n.treatmentId != null && n.defaultStation && lc(n.defaultStation.name) === state.sourceLine)
+        .map((n) => n.treatmentId))];
+      try { state.candidates = await ARAPI().fetchCandidatesForTreatments(tids); }
+      catch (e) { renderBody(el('div', { class: 'sa-arp-warn', text: `Error cargando tinas: ${e.message}` })); return; }
     }
     state.destLines = computeDestLines(state.candidates, state.sourceLine);
     state.destLine = state.destLines[0] || null;

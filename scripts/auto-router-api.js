@@ -29,11 +29,29 @@
     };
   }
 
+  // Las candidatas (schedulingStations) vienen EMBEBIDAS en el árbol, una por
+  // tratamiento (treatmentByTreatmentId.schedulingStations). Construirlas desde
+  // aquí evita 17+ llamadas SearchStationsForTreatment por orden y da la fuente
+  // autoritativa (incluye las stations "-LI" del tratamiento de Planificación).
+  function buildCandidatesFromTree(rawNodes) {
+    const byT = {};
+    for (const n of rawNodes || []) {
+      const t = n.treatmentId;
+      if (t == null || byT[t]) continue;
+      const ss = (n.treatmentByTreatmentId?.schedulingStations?.nodes || [])
+        .map((s) => ({ id: s.id, name: (s.name || '').trim() }))
+        .filter((s) => s.id != null && s.name);
+      if (ss.length) byT[t] = ss;
+    }
+    return byT;
+  }
+
   // Parsea la respuesta de StationTreatmentByWorkOrder en datos de ruteo.
   function parseRouteData(data, workOrderId, partNumberId) {
     const wo = (data?.allWorkOrders?.nodes || [])[0] || null;
     const rawNodes = wo?.recipeNodesByWorkOrderId?.nodes || [];
     const recipeNodes = rawNodes.map(normRecipeNode);
+    const candidatesByTreatment = buildCandidatesFromTree(rawNodes);
     const transportGraph = (data?.allDefaultStationTransports?.nodes || []).map((e) => ({
       fromStationId: e.fromStationId,
       toStationId: e.toStationId,
@@ -49,6 +67,7 @@
       recipeNodes,
       transportGraph,
       activeRoutes,
+      candidatesByTreatment,
     };
   }
 
@@ -65,14 +84,18 @@
       fromStationId: e.fromStationId, toStationId: e.toStationId, durationMinutes: e.durationMinutes,
     }));
     const allActive = data?.activeRoutes?.nodes || [];
-    return (data?.allWorkOrders?.nodes || []).map((wo) => ({
-      workOrderId: wo.id,
-      idInDomain: wo.idInDomain ?? null,
-      partNumberId: pnByWo.has(wo.id) ? pnByWo.get(wo.id) : null,
-      recipeNodes: (wo.recipeNodesByWorkOrderId?.nodes || []).map(normRecipeNode),
-      transportGraph,
-      activeRoutes: allActive.filter((a) => a.workOrderId === wo.id),
-    }));
+    return (data?.allWorkOrders?.nodes || []).map((wo) => {
+      const rawNodes = wo.recipeNodesByWorkOrderId?.nodes || [];
+      return {
+        workOrderId: wo.id,
+        idInDomain: wo.idInDomain ?? null,
+        partNumberId: pnByWo.has(wo.id) ? pnByWo.get(wo.id) : null,
+        recipeNodes: rawNodes.map(normRecipeNode),
+        transportGraph,
+        activeRoutes: allActive.filter((a) => a.workOrderId === wo.id),
+        candidatesByTreatment: buildCandidatesFromTree(rawNodes),
+      };
+    });
   }
 
   // Carga el árbol + transportes + rutas activas de una WO.
