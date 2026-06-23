@@ -201,14 +201,19 @@ const AutoRouterBatch = (() => {
     );
   }
 
-  async function onCompute() {
+  function onCompute() {
     const text = document.getElementById('sa-arb-ta')?.value || '';
     const nums = parseWoNumbers(text);
     if (!nums.length) { body(el('div', { class: 'sa-arb-warn', text: 'No detecté números de orden válidos.' })); return; }
+    void resolveAndCompute(nums);
+  }
+
+  // Resuelve cada orden por su número (idInDomain), carga su árbol y calcula. Usado
+  // por el modo manual (textarea) y por la selección del Scheduling board.
+  async function resolveAndCompute(nums) {
     state.busy = true;
     body(el('div', { class: 'sa-arb-note', text: `Resolviendo ${nums.length} órdenes…` }));
     foot();
-    // 1. resolver + cargar árbol de cada orden.
     state.wos = [];
     for (const idd of nums) {
       try {
@@ -222,6 +227,15 @@ const AutoRouterBatch = (() => {
       }
     }
     await afterWosLoaded();
+  }
+
+  // Entrada desde la selección del board: abre el panel ya resolviendo esos números.
+  function openWithNumbers(nums) {
+    injectStyles();
+    state = fresh();
+    shell();
+    if (!Array.isArray(nums) || !nums.length) { renderInput(); return; }
+    void resolveAndCompute(nums.map(String));
   }
 
   // Calcula las líneas destino válidas (unión de las del tratamiento de nivel-línea
@@ -316,6 +330,6 @@ const AutoRouterBatch = (() => {
     void results;
   }
 
-  if (typeof window !== 'undefined') window.AutoRouterBatch = { open, close };
-  return { open, close };
+  if (typeof window !== 'undefined') window.AutoRouterBatch = { open, openWithNumbers, close };
+  return { open, openWithNumbers, close };
 })();

@@ -80,29 +80,71 @@ const AutoRouter = (() => {
     document.head.appendChild(s);
   }
 
+  // ── Scheduling board: rutear directo desde la selección, sin abrir el modal ──
+  function isBoardPage() {
+    return /\/Schedules\/\d+\/ScheduleBoard\/\d+/i.test(location.pathname);
+  }
+
+  // Lee las órdenes seleccionadas (checkbox marcado) del board (List View). Cada
+  // fila marcada trae un link /Domains/N/WorkOrders/<idInDomain>. La lista es
+  // VIRTUALIZADA → solo lee las filas visibles en el DOM.
+  function readBoardSelection() {
+    const out = new Set();
+    document.querySelectorAll('tr input[type="checkbox"]:checked').forEach((cb) => {
+      const tr = cb.closest('tr');
+      const a = tr && tr.querySelector('a[href*="/WorkOrders/"]');
+      const m = a && (a.getAttribute('href') || '').match(/\/WorkOrders\/(\d+)/);
+      if (m) out.add(m[1]);
+    });
+    return [...out];
+  }
+
+  function fabCount() {
+    if (isBoardPage()) return readBoardSelection().length;
+    return captured && captured.wos ? captured.wos.length : 0;
+  }
+
   function syncFab() {
-    const n = captured && captured.wos ? captured.wos.length : 0;
+    const onBoard = isBoardPage();
+    const show = onBoard || (captured && captured.wos && captured.wos.length > 0);
     let fab = document.getElementById('sa-ar-fab');
-    if (n && !fab) {
+    if (show && !fab) {
       fab = document.createElement('button');
       fab.id = 'sa-ar-fab';
       fab.className = 'sa-ar-fab';
-      fab.onclick = openPanel;
+      fab.onclick = onFab;
       document.body.appendChild(fab);
-    } else if (!n && fab) {
+    } else if (!show && fab) {
       fab.remove();
       return;
     }
     if (fab) {
-      fab.title = n > 1 ? `Auto-rutear ${n} órdenes a otra línea` : 'Auto-rutear esta orden a otra línea';
+      const n = fabCount();
+      fab.title = onBoard
+        ? (n ? `Rutear ${n} orden(es) seleccionada(s)` : 'Selecciona órdenes en el board y presiona 🔀')
+        : (n > 1 ? `Auto-rutear ${n} órdenes a otra línea` : 'Auto-rutear esta orden a otra línea');
       fab.textContent = '🔀';
-      if (n > 1) {
+      if (n > 0) {
         const b = document.createElement('span');
         b.className = 'sa-ar-badge';
         b.textContent = String(n);
         fab.appendChild(b);
       }
     }
+  }
+
+  function onFab() {
+    if (isBoardPage()) {
+      const nums = readBoardSelection();
+      if (!nums.length) {
+        alert('Auto-Ruteador: selecciona órdenes en el board (checkbox de la columna "Selected") y vuelve a presionar 🔀.\n(Solo lee las filas visibles — si seleccionaste muchas, no scrollees fuera de vista.)');
+        return;
+      }
+      if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
+      window.AutoRouterBatch.openWithNumbers(nums);
+      return;
+    }
+    openPanel();
   }
 
   function openPanel() {
@@ -139,6 +181,18 @@ const AutoRouter = (() => {
     } catch (_) { /* no chrome.runtime en algunos contextos */ }
   }
 
+  function installUrlListener() {
+    if (window.__saAutoRouterUrlListener) return;
+    window.__saAutoRouterUrlListener = true;
+    const fire = () => window.dispatchEvent(new Event('sa-ar-url'));
+    ['pushState', 'replaceState'].forEach((m) => {
+      const orig = history[m];
+      history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; };
+    });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('hashchange', fire);
+  }
+
   function init() {
     if (window.__saAutoRouterInit) return;
     window.__saAutoRouterInit = true;
@@ -147,7 +201,14 @@ const AutoRouter = (() => {
     injectStyles();
     patchFetch();
     listenManualTrigger();
+    installUrlListener();
     window.addEventListener('sa-ar-context', syncFab);
+    window.addEventListener('sa-ar-url', syncFab);
+    // badge en vivo: al marcar/desmarcar checkboxes del board, actualiza el conteo.
+    document.addEventListener('change', (e) => {
+      if (isBoardPage() && e.target && typeof e.target.matches === 'function' && e.target.matches('input[type="checkbox"]')) syncFab();
+    }, true);
+    syncFab();
     log(`cargado · v${VERSION}`);
   }
 
