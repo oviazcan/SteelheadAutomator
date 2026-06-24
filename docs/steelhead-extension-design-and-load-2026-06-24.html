@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Ecoplating Browser Extension — Design &amp; Load Profile (2026-06-24)</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 880px; margin: 32px auto; padding: 0 24px; color: #1a1a1a; line-height: 1.55; }
+  h1 { font-size: 26px; border-bottom: 2px solid #0b6e4f; padding-bottom: 8px; color: #0b6e4f; }
+  h2 { font-size: 20px; margin-top: 36px; color: #1a1a1a; border-left: 4px solid #0b6e4f; padding-left: 10px; }
+  h3 { font-size: 16px; margin-top: 20px; color: #444; }
+  .meta { background: #f6f6f6; border: 1px solid #ddd; padding: 12px 16px; border-radius: 6px; font-size: 14px; }
+  .meta dl { margin: 0; display: grid; grid-template-columns: 170px 1fr; gap: 4px 16px; }
+  .meta dt { font-weight: 600; }
+  pre { background: #1e1e1e; color: #e0e0e0; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; font-family: "SF Mono", Monaco, monospace; }
+  code { background: #f0f0f0; padding: 1px 6px; border-radius: 3px; font-family: "SF Mono", Monaco, monospace; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #f6f6f6; font-weight: 600; }
+  ul li, ol li { margin-bottom: 6px; }
+  .good { background: #e6f7ee; border: 1px solid #5cb87c; padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
+  .note { background: #fffbe6; border: 1px solid #f0d000; padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
+  .footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 13px; color: #666; }
+</style>
+</head>
+<body>
+
+<h1>Ecoplating Browser Extension — Design &amp; Load Profile</h1>
+
+<div class="meta">
+  <dl>
+    <dt>From</dt><dd>Omar Viazcán — Ecoplating</dd>
+    <dt>Domain</dt><dd>Ecoplating production (app.gosteelhead.com)</dd>
+    <dt>Date</dt><dd>2026-06-24</dd>
+    <dt>Subject</dt><dd>How our internal Chrome extension works, its load profile, and the optimization we just shipped</dd>
+    <dt>Status</dt><dd>Optimization deployed the same day the concern was raised</dd>
+  </dl>
+</div>
+
+<p>Thank you for flagging the performance concern. We take it seriously and want to be fully transparent about what our internal browser extension does, how it talks to Steelhead, and the change we shipped today to reduce its request volume. We also include one observation that may help on the platform side. Our goal is a tool that stays well within reasonable usage and is a good citizen on shared infrastructure.</p>
+
+<h2>1. What the extension is</h2>
+<p>It is an <strong>internal, client-side Chrome extension</strong> used only by Ecoplating staff to automate repetitive data-entry tasks in the Steelhead UI (bulk quote/part-number entry, invoice auto-fill, line routing, etc.). Key facts:</p>
+<ul>
+  <li><strong>No backend of our own.</strong> It runs entirely in the operator's browser tab.</li>
+  <li><strong>It uses the same public GraphQL endpoint and persisted queries that the Steelhead web app itself uses</strong> (<code>POST /graphql</code>, Apollo persisted-query SHA-256 hashes, <code>credentials: include</code>). It does not use any private or undocumented API.</li>
+  <li><strong>It acts strictly as the logged-in user,</strong> with that user's own session cookies and permissions. It cannot see or touch anything the operator could not already do by hand in the UI.</li>
+  <li>No data leaves the browser; nothing is scraped to an external server.</li>
+</ul>
+
+<h2>2. Why it is designed this way</h2>
+<p>The tasks it automates are otherwise done by hand, click-by-click, in the native UI — slow and error-prone at our volume. The extension performs the <em>same</em> operations a human would, just faster and with fewer mistakes. In several cases it actually issues <strong>fewer</strong> requests than the manual flow it replaces:</p>
+<table>
+  <tr><th>Task</th><th>Manual flow (native UI)</th><th>Extension</th></tr>
+  <tr>
+    <td>Re-routing a work order between lines</td>
+    <td>~33 react-select dropdowns, each tied to its own lookups; ~17 min/order</td>
+    <td><strong>One</strong> batch mutation (<code>CreateUpdateDeleteRoutes</code>) after computing the mapping locally</td>
+  </tr>
+  <tr>
+    <td>Candidate stations per treatment</td>
+    <td>Up to 17+ <code>SearchStationsForTreatment</code> calls per order</td>
+    <td><strong>Zero extra calls</strong> — reuses the candidates already embedded in the routing tree response</td>
+  </tr>
+  <tr>
+    <td>Bulk price / part-number upload</td>
+    <td>One round-trip per line, manually</td>
+    <td>Batched (e.g. 20 PNs per <code>SaveManyPartNumberPrices</code>)</td>
+  </tr>
+</table>
+<p>So the design intent is explicitly to <strong>lower</strong> total request count versus manual operation, not raise it.</p>
+
+<h2>3. The issue we found, and the fix we shipped today</h2>
+<p>We audited the extension after your message and identified one recently-added feature whose request volume was higher than it should be: a hover tooltip on the Scheduling board that shows a part's base metal and customer packing slip.</p>
+<ul>
+  <li><strong>Before:</strong> it <em>pre-fetched</em> that data for every part row as it scrolled into view. On a large board this could fan out to thousands of small <code>GetPartNumber</code> / <code>GetInventoryBatch</code> reads triggered passively by scrolling.</li>
+  <li><strong>After (deployed 2026-06-24):</strong> the tooltip is now strictly <strong>on-demand</strong> — it issues a read <em>only</em> when the operator actually hovers a specific part, and caches the result. Request volume is now proportional to what a person genuinely inspects (a handful per session), with no scroll-driven traffic.</li>
+</ul>
+<div class="good"><strong>Result:</strong> the passive, scroll-driven request pattern is eliminated. We also removed an automatic "route the whole board" path that could load many work-order trees at once; routing now requires an explicit selection.</div>
+
+<h2>4. One observation that may help on the platform side</h2>
+<p>While profiling, we noticed the board's own native query <code>RelatedSchedulingInformation</code> is very heavy: a single load returns on the order of <strong>~87&nbsp;MB</strong>, dominated by <code>allWorkOrders</code> returning <strong>every</strong> work order in the domain un-paginated (~1,700+ rows), each eager-loading ~10 nested relations. This is native Steelhead behavior, independent of our extension, but it may be a meaningful contributor to perceived load on the Scheduling board. Paginating it and lazy-loading the heavy relations would likely help all tenants. We're happy to share the captured request/response shapes if useful.</p>
+
+<h2>5. Our commitments</h2>
+<ul>
+  <li>Keep request volume proportional to real operator work; no passive/background fan-out.</li>
+  <li>Batch writes where the API supports it; reuse embedded data instead of re-querying.</li>
+  <li><strong>Honor any rate limits, headers, or usage guidance you provide.</strong> If you can point us to recommended limits or a preferred pattern for high-volume operations, we'll adopt them.</li>
+  <li>Share our network captures (exact operations, hashes, variable shapes) on request so you can verify the traffic.</li>
+</ul>
+
+<p>We want this to work well for everyone on the platform. Please tell us if you'd like specific changes or limits on our side, and we'll implement them promptly.</p>
+
+<div class="footer">
+  Prepared by Ecoplating. Internal tool; client-side only; uses the operator's own Steelhead session. Network captures available on request.
+</div>
+
+</body>
+</html>
