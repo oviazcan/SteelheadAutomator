@@ -42,32 +42,24 @@ const SpecMigrator = (() => {
   }
 
   // ── Get spec field spec with unassigned PNs ──
+  // Steelhead dividió el viejo GetSpecFieldSpec (que traía los 3 tabs en una llamada) en
+  // queries por-tab. Los PNs sin asignar — lo único que este flujo usa — ahora salen de
+  // GetSpecFieldPartNumbers (root key `pagedData` en vez de `searchPartNumbers`, y filtros
+  // PN sin el prefijo en first/offset/orderBy/searchQuery). isGeneric/defaultValues/
+  // specFieldBySpecFieldId ya venían de SpecFieldsAndOptions, no de aquí. Se conserva el
+  // shape de retorno {searchPartNumbers:{totalCount,nodes}} para no tocar el caller.
   async function getSpecFieldSpec(specFieldSpecId, offset = 0) {
-    const data = await api().query('GetSpecFieldSpec', {
+    const data = await api().query('GetSpecFieldPartNumbers', {
       specFieldSpecId,
-      // PN filters (what we care about)
       partNumberUnassignedActive: true,
       partNumberSpecFieldParamActive: false,
-      partNumberSearchQuery: '',
-      partNumberFirst: 500,
-      partNumberOffset: offset,
-      partNumberOrderBy: ['NAME_ASC'],
-      // Treatment filters (required by query but unused)
-      treatmentUnassignedActive: false,
-      treatmentSpecFieldParamActive: false,
-      treatmentSearchQuery: '',
-      treatmentFirst: 10,
-      treatmentOffset: 0,
-      treatmentOrderBy: ['ID_DESC'],
-      // Work order filters (required by query but unused)
-      partNumberWorkOrderUnassignedActive: false,
-      partNumberWorkOrderSpecFieldParamActive: false,
-      partNumberWorkOrderSearchQuery: '',
-      partNumberWorkOrderFirst: 10,
-      partNumberWorkOrderOffset: 0,
-      partNumberWorkOrderOrderBy: ['ID_DESC']
-    }, 'GetSpecFieldSpec');
-    return data || null;
+      searchQuery: '',
+      first: 500,
+      offset,
+      orderBy: ['NAME_ASC']
+    }, 'GetSpecFieldPartNumbers');
+    const paged = data?.pagedData;
+    return paged ? { searchPartNumbers: { totalCount: paged.totalCount, nodes: paged.nodes || [] } } : null;
   }
 
   // ── Get PN detail with specs and params ──
@@ -1053,7 +1045,7 @@ const SpecMigrator = (() => {
 
     log(`Total fields a revisar: ${specFields.length}`);
 
-    // Phase 4: For each field, check for unassigned PNs via GetSpecFieldSpec
+    // Phase 4: For each field, check for unassigned PNs via GetSpecFieldPartNumbers
     const fieldsWithPending = [];
 
     for (let i = 0; i < specFields.length; i += BATCH) {
@@ -1076,7 +1068,7 @@ const SpecMigrator = (() => {
 
           return { ...field, pns };
         } catch (e) {
-          warn(`GetSpecFieldSpec ${field.specName}/${field.fieldName}: ${String(e).substring(0, 120)}`);
+          warn(`GetSpecFieldPartNumbers ${field.specName}/${field.fieldName}: ${String(e).substring(0, 120)}`);
           return null;
         }
       }));
