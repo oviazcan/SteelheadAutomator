@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reply to Jeff — Automations matrix &amp; next steps</title>
+</head>
+<body style="margin:0; padding:24px; background:#f4f5f7;">
+<div style="max-width:720px; margin:0 auto; background:#ffffff; padding:32px 36px; border-radius:8px; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#1f2933; font-size:15px; line-height:1.6;">
+
+  <p style="margin:0 0 16px;">Hi Jeff,</p>
+
+  <p style="margin:0 0 16px;">Thank you for the detailed note &mdash; and it was good to connect at the show. Glad the receiving fix is holding, and the near-term native multi-currency roadmap is great news; that one will make a real difference for us.</p>
+
+  <p style="margin:0 0 16px;">As Camilo mentioned, I&rsquo;ve put together the matrix of the browser-level tools we use today &mdash; it&rsquo;s attached. I built it around the two dimensions you and Camilo flagged: <strong>data-safety footprint</strong> and <strong>operational importance</strong>, grouped into six categories so it maps cleanly against your upcoming <em>&ldquo;Automations&rdquo;</em> feature. It also flags three high-priority capabilities we haven&rsquo;t built yet &mdash; automatic re-routing of the plating tanks when an order is produced on a different line, bulk-merging of sales-order lines by criteria, and bulk warehouse issue-slips for internal control &mdash; which I&rsquo;d especially like the <em>&ldquo;Automations&rdquo;</em> design to account for. A few points up front, because I think they speak directly to the concerns you raised:</p>
+
+  <ol style="margin:0 0 16px; padding-left:22px;">
+    <li style="margin-bottom:10px;"><strong>How the tools touch Steelhead.</strong> Everything runs inside the signed-in user&rsquo;s own browser session, with that user&rsquo;s existing permissions &mdash; the tools do only what the same person could do by hand in the UI. No admin or elevated access, and no private/undocumented channel: they reuse the <em>same platform operations the Steelhead web app itself issues</em>, so your server-side validation and safeguards stay fully in effect. We deliberately keep request volume conservative (small batches, capped concurrency) to be gentle on the platform.</li>
+    <li style="margin-bottom:10px;"><strong>Read vs. write.</strong> A good share are read-only or merely pre-fill fields the user then reviews and saves. The large majority of the writes are <strong>reversible (we archive, not hard-delete)</strong> and carry an audit record (who / when / what). Only three tools perform higher-impact operations (an inventory reset, a process-tree rewrite, and an empty-folder cleanup) &mdash; each gated behind an explicit confirmation step. The matrix flags every tool&rsquo;s access level, so the real footprint is visible per tool, including those three.</li>
+    <li style="margin-bottom:10px;"><strong>On breakage when Steelhead updates.</strong> You&rsquo;re right that these can break when the platform changes &mdash; that&rsquo;s inherent to operating outside the native API. We mitigate it with an automated daily check that detects those changes proactively, usually before a user hits an error, and the fixes are typically quick.</li>
+    <li style="margin-bottom:0;"><strong>On the emergency-migration scenario.</strong> I understand the concern in principle, but I&rsquo;d gently note that these tools use sanctioned platform operations, write reversibly in the large majority of cases, leave an audit trail, and gate the few higher-impact operations behind explicit confirmation &mdash; so that catastrophic-repair scenario doesn&rsquo;t fit how they actually behave. I&rsquo;m glad to walk your engineering team through any tool line-by-line so they can verify this directly.</li>
+  </ol>
+
+  <p style="margin:0 0 16px;"><strong>On sharing the code.</strong> As Camilo offered, I&rsquo;m happy to share it as input to your <em>&ldquo;Automations&rdquo;</em> design &mdash; our tools map closely to what you described, and the matrix is meant to serve as exactly that road map. Just let me know the format that works best for your team (repo access, an archive, or a working session).</p>
+
+  <p style="margin:0 0 16px;"><strong>On the transition.</strong> I hear you on pausing further development, and I want to be straightforward about the operational reality on our side: a few of these tools are currently load-bearing for day-to-day work &mdash; invoicing and receiving in particular, which (as Camilo noted) is part of why we can&rsquo;t yet retire the legacy system. The commercial and contractual side of this is Camilo&rsquo;s call rather than mine; from the technical side, what I&rsquo;d propose is that we use the matrix to agree item by item &mdash; what we retire now, what stays until the equivalent native capability is available, and how we sequence the rest &mdash; and that I freeze net-new tooling and collaborate closely with your team so <em>&ldquo;Automations&rdquo;</em> lands with parity for the handful of things we genuinely depend on.</p>
+
+  <p style="margin:0 0 16px;"><strong>On AI order entry</strong> &mdash; yes, we started trying it this week. I&rsquo;ll send Calvin a set of representative example orders so he can validate our setup before we open it up to the team.</p>
+
+  <p style="margin:0 0 16px;">A call this week works well for me &mdash; happy to do the matrix and tool walkthrough on that same call.</p>
+
+  <p style="margin:0 0 4px;">Thanks,</p>
+  <p style="margin:0;">Omar</p>
+
+</div>
+</body>
+</html>
