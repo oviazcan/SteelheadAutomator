@@ -238,6 +238,34 @@ const AutoRouterBatch = (() => {
     void resolveAndCompute(nums.map(String));
   }
 
+  // Entrada "rutear todas": ya traemos {workOrderId, partNumberId, partGroupId}
+  // internos (de SchedulablePartLocations), así que solo cargamos cada árbol.
+  function openWithWorkOrders(list) {
+    injectStyles();
+    state = fresh();
+    shell();
+    if (!Array.isArray(list) || !list.length) { renderInput(); return; }
+    void loadWorkOrders(list);
+  }
+
+  async function loadWorkOrders(list) {
+    state.busy = true;
+    body(el('div', { class: 'sa-arb-note', text: `Cargando ${list.length} órdenes…` }));
+    foot();
+    state.wos = await pool(list, CONCURRENCY, async (w) => {
+      try {
+        const routeData = await API().fetchWorkOrderRouteData(w.workOrderId, w.partNumberId, w.partGroupId ? [w.partGroupId] : []);
+        return {
+          idInDomain: routeData.idInDomain ?? w.workOrderId,
+          workOrderId: w.workOrderId, partNumberId: w.partNumberId, partGroupId: w.partGroupId ?? null,
+          routeData, sourceLine: detectSourceLine(routeData.recipeNodes),
+        };
+      } catch (e) { return { idInDomain: w.workOrderId, error: e.message }; }
+    });
+    state.busy = false;
+    await afterWosLoaded();
+  }
+
   // Calcula las líneas destino válidas (unión de las del tratamiento de nivel-línea
   // de cada orden — grupo Planificación) y renderiza el preview. Las candidatas
   // vienen EMBEBIDAS en el árbol de cada orden (routeData.candidatesByTreatment),
@@ -330,6 +358,6 @@ const AutoRouterBatch = (() => {
     void results;
   }
 
-  if (typeof window !== 'undefined') window.AutoRouterBatch = { open, openWithNumbers, close };
-  return { open, openWithNumbers, close };
+  if (typeof window !== 'undefined') window.AutoRouterBatch = { open, openWithNumbers, openWithWorkOrders, close };
+  return { open, openWithNumbers, openWithWorkOrders, close };
 })();

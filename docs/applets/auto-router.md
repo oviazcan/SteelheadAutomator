@@ -115,8 +115,28 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
   filas seleccionadas (checkbox marcado) en vivo, y al click lee las órdenes seleccionadas
   (`tr input[type=checkbox]:checked` → `a[href*="/WorkOrders/<idInDomain>"]`) y las pasa a
   `AutoRouterBatch.openWithNumbers([...])` → resuelve + calcula + aplica vía API. **Limitación:** la lista es
-  VIRTUALIZADA, así que solo lee las filas visibles (si seleccionas muchas y scrolleas fuera, no las ve).
-  Pendiente menor: capturar la selección completa de la lista virtualizada (vía estado React o un query).
+  VIRTUALIZADA → se RASTREA la selección por evento `change` de cada checkbox (set persistente que
+  sobrevive el scroll; se limpia al cambiar de board). `readBoardSelection` = rastreado ∪ visibles-marcados.
+  No hay "select all" → cubre el 100% de la selección individual.
+- **Rutear TODAS (FAB sin selección), v1.7.0.** Si presionas 🔀 sin órdenes marcadas, lee `scheduleId`+`stationId`
+  de la URL, trae las WO de la línea con `SchedulablePartLocations {scheduleId, stationIds:[station], routedOnly:false}`
+  (dedup por workOrderId), confirma el conteo, y abre el batch con `openWithWorkOrders` (carga cada árbol con
+  concurrencia 3). El preview deja revisar antes de aplicar.
+- **Tooltip de "Metal base" en el board, v1.7.0** (`board-metal-tooltip.js`). El metal base es un customInput
+  (`customInputs.DatosAdicionalesNP.BaseMetal`) que las queries del board NO traen. Al hacer hover sobre el link
+  del PN (`a[href*="/PartNumbers/<id>"]`) se pide bajo demanda con `GetPartNumber {partNumberId, usagesLimit:0}`
+  (mismo patrón que `auditor.js`) y se cachea por parte → tooltip con el metal base. Columna+orden se descartó
+  (requeriría traer el metal base de las ~1767 partes de golpe).
+
+## Diagnóstico del query pesado del Scheduling board (para un "Programador rápido")
+`RelatedSchedulingInformation` (hash `3d2f8583…`) es **el query más pesado** (~87 MB / 7 llamadas). El **98% del
+peso es `allWorkOrders` = 54 MB**: trae **las ~1,751 órdenes del dominio sin paginar**, cada una ~30 KB porque
+eager-carga ~10 relaciones anidadas (`receivedBatches`, `currentPartsTransferAccounts`, `recipeNodeByRecipeId`,
+`incompleteRecipeNodesByWorkOrderId`, `customerByCustomerId`, labels, `partNumberWorkOrders`, plan-before/after).
+Es `O(órdenes × relaciones)` → JOINs masivos server-side; **no es problema de índices sino de la FORMA del query**
+(sin paginar + eager-load). Arreglarlo de verdad = paginar + lazy-load de lo pesado + read-model. **Un "Programador
+Rápido" puede saltarse este query por completo**: traer solo la(s) orden(es) objetivo por-WO (KBs, como hace el
+auto-ruteador) y programar con `CreateManyScheduleTasks`/`CreateManyStationTasks` (mutaciones ligeras ya existentes).
 
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
