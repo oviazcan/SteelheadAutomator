@@ -87,6 +87,17 @@ const BoardMetalTooltip = (() => {
     const m = (a.getAttribute('href') || '').match(PN_RE);
     return m ? m[1] : null;
   }
+
+  // La celda lleva un title= con el MISMO texto del link → el navegador lo muestra como
+  // tooltip nativo encima del popover MUI (el recuadro oscuro redundante). Lo quitamos: el
+  // valor ya se ve en el link y, para el PN, en el popover enriquecido. Solo si el title
+  // ES exactamente el texto del link (no toca titles legítimos de otras celdas).
+  function suppressNativeTitle(a) {
+    const holder = a.closest('[title]');
+    if (holder && holder.getAttribute('title') === (a.textContent || '').trim()) {
+      holder.removeAttribute('title');
+    }
+  }
   function rowOf(el) {
     return el.closest('tr, [role="row"], [data-index]');
   }
@@ -199,7 +210,7 @@ const BoardMetalTooltip = (() => {
   }
   function scanAnchors(root) {
     const scope = (root && root.querySelectorAll) ? root : document;
-    scope.querySelectorAll('a[href*="/PartNumbers/"]').forEach(enqueue);
+    scope.querySelectorAll('a[href*="/PartNumbers/"]').forEach((a) => { suppressNativeTitle(a); enqueue(a); });
   }
 
   // ── observer único (inyección de tooltips + prefetch) ──
@@ -218,7 +229,7 @@ const BoardMetalTooltip = (() => {
       for (const n of m.addedNodes) {
         if (n.nodeType !== 1) continue;
         if (n.matches?.('div[role="tooltip"]') || n.querySelector?.('div[role="tooltip"]')) sawPopover = true;
-        if (n.matches?.('a[href*="/PartNumbers/"]')) enqueue(n);
+        if (n.matches?.('a[href*="/PartNumbers/"]')) { suppressNativeTitle(n); enqueue(n); }
         else if (n.querySelector?.('a[href*="/PartNumbers/"]')) scanAnchors(n);
       }
     }
