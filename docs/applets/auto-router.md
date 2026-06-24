@@ -127,8 +127,9 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
   del PN (`a[href*="/PartNumbers/<id>"]`) se pide bajo demanda con `GetPartNumber {partNumberId, usagesLimit:0}`
   (mismo patrón que `auditor.js`) y se cachea por parte → tooltip con el metal base. Columna+orden se descartó
   (requeriría traer el metal base de las ~1767 partes de golpe).
-- **Tooltip enriquecido v1.7.x — inyección en el popover nativo + PS + prefetch** (`board-metal-tooltip.js`,
-  reescrito). **Pendiente: hash de `GetInventoryBatch` (validándolo el background agent) + validación en vivo + deploy.**
+- **Tooltip enriquecido v1.7.3 — inyección en el popover nativo + PS + prefetch** (`board-metal-tooltip.js`,
+  reescrito). **Deployado** (config 1.7.3, commit main `b7ee40c`, gh-pages `0a0bd6d`). Pendiente: validación visual
+  del hover por el usuario. Cadena del PS validada en vivo: `idInDomain 7053 → id interno 1283250 → PS "1983-728-2-8280"`.
   - **Bug de los 3 tooltips traslapados (fix):** la v1.7.0 creaba su PROPIO `.sa-bmt-tip` que se encimaba sobre el
     MUI Tooltip nativo de Steelhead (`<div role="tooltip" id="<id>">` con PN + `<hr>` + descripción). Confirmado por
     DevTools: ambos divs coexistían. **Fix:** ya NO se crea tooltip propio; se **INYECTAN** dos líneas dentro del
