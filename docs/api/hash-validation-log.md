@@ -359,3 +359,56 @@ Rotación **REAL** confirmada (**4ta** de `GetDomain` en ~5 días: `28b65e26… 
 - `query GetSpec` (hash `6945af196c6e...`)
 - `query GetSpecFieldSpec` (hash `4da5a5785f6a...`)
 - `query InvoiceByIdInDomain` (hash `b98519554b2b...`)
+
+## 2026-06-24 12:48 — 4 rotado(s) + reparación parcial + deploy config 1.7.2
+
+**Corrida**: manual (agente de mantenimiento, skill `steelhead-hash-validator`).
+
+**Resultado pre-reparación**: 159 ok / 4 stale / 2 skipped / 0 unknown / 0 auth. Elapsed: 121.6s.
+
+**Stale detectado adicional vs la corrida de las 10:19:** `GetReceivedOrdersWithReceivedOrderLineItems` — rotó de nuevo (el hash `f3bf00a3…` capturado el 2026-06-15 ya está stale; no hay captura nueva en los scans de hoy).
+
+### Hashes reparados (confirmados HTTP 200 contra el server antes de editar)
+
+| Operación | viejo → nuevo | usedBy | Fuente del hash nuevo |
+|---|---|---|---|
+| `GetSpec` | `6945af19…` → `73c17957…` | spec-migrator | scan `2026-06-24_122857` + confirmado en `_124125` (status:changed, 622 capturas browser) |
+| `InvoiceByIdInDomain` | `b98519554b2b…` → `f18f1274…` | invoice-autofill (cfdi-attacher) | scan `2026-06-24_122857` (status:changed, 5 capturas browser) |
+
+**Probe puntual al server (antes de editar):** ambos hashes nuevos respondieron HTTP 400 con "Variable ... of required type ... was not provided" (sin "Must provide a query string" ni "PersistedQueryNotFound") → hash existe en el registry de Apollo, servidor intentó ejecutar la query. Hashes válidos.
+
+Deploy `tools/deploy.sh --set 1.7.2 --check invoice-autofill` → **config 1.7.2** + `lastUpdated 2026-06-24T12:50` (commit main `f5ec71d`, gh-pages `00afb0d`). Publicado en vivo (GitHub Pages, polling hasta confirmar `version:1.7.2` en `oviazcan.github.io`).
+
+**Re-validación post-deploy (config 1.7.2): 161 ok / 2 stale / 2 skipped / 0 unknown / 0 auth.** `GetSpec` e `InvoiceByIdInDomain` ya no aparecen stale.
+
+### Pendientes sin reparar
+
+| Operación | Hash viejo | Motivo | Acción |
+|---|---|---|---|
+| `GetSpecFieldSpec` | `4da5a578…` | **Steelhead dividió la operación** — ya no existe con ese nombre. Ver diagnóstico abajo. | Refactor de spec-migrator (task separada) |
+| `GetReceivedOrdersWithReceivedOrderLineItems` | `f3bf00a3…` | Rotó de nuevo; no se capturó en ningún scan de hoy (no se navegó a la pantalla de facturas con el hash-scanner activo) | Correr hash-scanner navegando a pantalla de Facturas/OVs |
+
+### Diagnóstico: GetSpecFieldSpec dividida en varias queries
+
+Steelhead **partió** la operación `GetSpecFieldSpec` en al menos 5 queries nuevas (capturadas en scan `2026-06-24_124125`):
+
+| Query nueva | Hash | Variables | Responde |
+|---|---|---|---|
+| `GetSpecFieldSpecDetails` | `6e58ad71…` | `{specFieldSpecId}` | `specFieldSpecById.{isGeneric, requiresGeometryType, isExternal, specFieldBySpecFieldId.{id,name,...}, defaultValues}` |
+| `GetSpecFieldPartNumbers` | `0e49e0ee…` | `{specFieldSpecId, partNumberUnassignedActive, partNumberSpecFieldParamActive, first, offset, orderBy, searchQuery}` | `pagedData.{totalCount, nodes[].{id,name,conflictingParams,...}}` |
+| `GetSpecFieldTreatments` | `5ec54d95…` | `{specFieldSpecId, treatmentUnassignedActive, treatmentSpecFieldParamActive, first, offset, orderBy, searchQuery}` | `pagedData.{totalCount, nodes[]}` |
+| `GetSpecFieldWorkOrders` | `5867a197…` | `{specFieldSpecId, partNumberWorkOrderUnassignedActive, partNumberWorkOrderSpecFieldParamActive, first, offset, orderBy, searchQuery}` | `pagedData.{totalCount, nodes[]}` |
+| `GetSpecFieldSpecData` | `719539b5…` | `{id}` (id de spec, NO specFieldSpecId) | `specById.{id,name,type,specFieldSpecsBySpecId.nodes[].{id,specFieldId,archivedAt}}` |
+
+**Impacto en spec-migrator.js:** usa `GetSpecFieldSpec` en `spec-migrator.js:46-69` con variable `specFieldSpecId` para obtener en una sola llamada:
+1. `searchPartNumbers.{totalCount, nodes[].{id,name}}` — ahora en **`GetSpecFieldPartNumbers`** (mismas variables de paginación)
+2. `specFieldSpecById.{defaultValues.nodes[].{id,name,isDefault}, isGeneric, specFieldBySpecFieldId.id}` — ahora en **`GetSpecFieldSpecDetails`** (solo `{specFieldSpecId}`)
+
+**Plan de refactor** (no ejecutar hasta revisión del usuario):
+1. Reemplazar la llamada única a `GetSpecFieldSpec` por **dos llamadas paralelas**: `GetSpecFieldSpecDetails` + `GetSpecFieldPartNumbers`.
+2. `GetSpecFieldSpecDetails` devuelve `isGeneric` + `specFieldBySpecFieldId.id` + `defaultValues` → mismos campos que antes.
+3. `GetSpecFieldPartNumbers` devuelve `pagedData.{totalCount,nodes[].{id,name}}` — cambio de root key: antes era `searchPartNumbers`, ahora `pagedData`. Requiere ajustar spec-migrator.js en el mapeo de la respuesta.
+4. Agregar las 2 nuevas keys (+ hashes) a `config.json` antes del refactor.
+5. **NO agregar** `GetSpecFieldSpec` viejo a la whitelist — está genuinamente muerto, quitarlo del config en la misma sesión del refactor.
+
+Nota: `GetSpecFieldTreatments` y `GetSpecFieldWorkOrders` cubren los tabs de Treatments y WorkOrders de la misma pantalla; `spec-migrator.js` no los usa (solo lee el tab de PartNumbers). `GetSpecFieldSpecData` (variable `id` de spec, no specFieldSpecId) parece ser el selector inicial de spec → no relevante para el flujo actual de spec-migrator.
