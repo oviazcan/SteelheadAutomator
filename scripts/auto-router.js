@@ -146,16 +146,30 @@ const AutoRouter = (() => {
 
   function onFab() {
     if (isBoardPage()) {
-      const nums = readBoardSelection();
-      if (!nums.length) {
-        alert('Auto-Ruteador: selecciona órdenes en el board (checkbox de la columna "Selected") y vuelve a presionar 🔀.\n(Solo lee las filas visibles — si seleccionaste muchas, no scrollees fuera de vista.)');
-        return;
-      }
       if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
-      window.AutoRouterBatch.openWithNumbers(nums);
+      const nums = readBoardSelection();
+      if (nums.length) { window.AutoRouterBatch.openWithNumbers(nums); return; }
+      void rerouteAll(); // sin selección → rutear TODAS las de la línea
       return;
     }
     openPanel();
+  }
+
+  // "Rutear todas": sin órdenes seleccionadas, carga TODAS las de la línea actual
+  // (vía SchedulablePartLocations con el scheduleId+stationId de la URL) y las rutea.
+  async function rerouteAll() {
+    const sm = location.pathname.match(/\/Schedules\/(\d+)\/ScheduleBoard\/\d+/i);
+    const stm = location.search.match(/[?&]stationId=(\d+)/);
+    if (!sm || !stm) {
+      alert('Auto-Ruteador: no pude leer el schedule/estación de la URL. Marca las órdenes con checkbox para rutearlas.');
+      return;
+    }
+    let wos;
+    try { wos = await window.AutoRouterAPI.fetchBoardWorkOrders(sm[1], stm[1]); }
+    catch (e) { alert('Auto-Ruteador: error cargando órdenes de la línea: ' + e.message); return; }
+    if (!wos.length) { alert('Auto-Ruteador: no hay órdenes en esta línea para rutear.'); return; }
+    if (!confirm(`Auto-Ruteador: ¿cargar y rutear TODAS las ${wos.length} órdenes de esta línea? (sin seleccionar una por una)\nRevisarás el preview antes de aplicar.`)) return;
+    window.AutoRouterBatch.openWithWorkOrders(wos);
   }
 
   function openPanel() {

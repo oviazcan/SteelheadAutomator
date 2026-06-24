@@ -168,6 +168,30 @@
     };
   }
 
+  // Todas las órdenes de una línea del Scheduling board (para "rutear todas" sin
+  // seleccionar una por una). SchedulablePartLocations da las part-locations de la
+  // estación; devolvemos las WO únicas con su pnId/partGroup (ya internos).
+  async function fetchBoardWorkOrders(scheduleId, stationId) {
+    const data = await api().query('SchedulablePartLocations', {
+      scheduleId: Number(scheduleId),
+      stationIds: [Number(stationId)],
+      routedOnly: false,
+    });
+    const nodes = data?.allPartLocations?.nodes || [];
+    const byWo = new Map();
+    for (const n of nodes) {
+      if (n.workOrderId == null) continue;
+      if (!byWo.has(n.workOrderId)) {
+        byWo.set(n.workOrderId, {
+          workOrderId: n.workOrderId,
+          partNumberId: n.partNumberId ?? null,
+          partGroupId: n.partGroupId ?? null,
+        });
+      }
+    }
+    return [...byWo.values()];
+  }
+
   // Aplica las rutas en una sola mutación batch.
   // routes: [{recipeNodeId, treatmentId, stationId, partNumberId, workOrderId, partGroupId}]
   async function applyRoutes(routes, routesToUpdate = [], routesToDelete = []) {
@@ -191,6 +215,7 @@
     fetchStationsForTreatment,
     fetchCandidatesForTreatments,
     resolveWorkOrder,
+    fetchBoardWorkOrders,
     applyRoutes,
     parseRouteData,    // exportado para tests/depuración
     parseAllRouteData, // multi-WO (captura del board)
