@@ -412,3 +412,12 @@ Steelhead **partió** la operación `GetSpecFieldSpec` en al menos 5 queries nue
 5. **NO agregar** `GetSpecFieldSpec` viejo a la whitelist — está genuinamente muerto, quitarlo del config en la misma sesión del refactor.
 
 Nota: `GetSpecFieldTreatments` y `GetSpecFieldWorkOrders` cubren los tabs de Treatments y WorkOrders de la misma pantalla; `spec-migrator.js` no los usa (solo lee el tab de PartNumbers). `GetSpecFieldSpecData` (variable `id` de spec, no specFieldSpecId) parece ser el selector inicial de spec → no relevante para el flujo actual de spec-migrator.
+
+## 2026-06-24 13:19 — 1 rotado(s)
+
+- Config version: `1.7.2`
+- OK: 162 / 165 · Tiempo: 124.0s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-24.json`
+
+**Rotados:**
+- `query GetSpecFieldSpec` (hash `4da5a5785f6a...`)
