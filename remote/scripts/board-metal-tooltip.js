@@ -1,25 +1,23 @@
 // board-metal-tooltip.js — Enriquece el tooltip NATIVO del Scheduling board.
 //
 // Steelhead muestra un MUI Tooltip (<div role="tooltip" id="<id>"> con PN + <hr> +
-// descripción) al hacer hover sobre el link del PN. Antes este applet creaba SU PROPIO
-// tooltip (.sa-bmt-tip) que se ENCIMABA sobre el de Steelhead (3 recuadros traslapados).
-// Ahora NO crea uno propio: INYECTA dos líneas dentro del popover de Steelhead, así nunca
-// se traslapa. El <a> del PN apunta a su popover por aria-labelledby="<id>" → id del div.
+// descripción) al hacer hover sobre el link del PN. Este módulo INYECTA dos líneas
+// dentro de ESE popover (no crea uno propio → no se traslapa): "Metal base" y "PS"
+// (Packing Slip del cliente). El <a> del PN apunta a su popover por aria-labelledby.
 //
-// Datos inyectados:
-//   - Metal base: customInputs.DatosAdicionalesNP.BaseMetal del PN (GetPartNumber, usagesLimit:0).
-//   - PS (Packing Slip del cliente): customInputs.DatosRecibo.PackingSlip del batch de la fila
-//     (GetInventoryBatch). El batchId sale del link /Inventory/Batches/<id> de la MISMA fila.
-//     Si la fila tuviera varios batches, los PS se concatenan con ", ".
-// Ambos se cachean y se PRECARGAN en background (filas visibles + las que entran al viewport
-// al hacer scroll) para que el dato ya esté listo cuando aparezca el tooltip.
+// Datos:
+//   - Metal base: customInputs.DatosAdicionalesNP.BaseMetal del PN (GetPartNumber).
+//   - PS: customInputs.DatosRecibo.PackingSlip del batch de la fila. El link da el
+//     idInDomain del batch; cadena GetPartNumberInventoryBatch(idInDomain)→id→GetInventoryBatch(id).
+//     Varios batches en la fila → PS concatenados con ", ".
 //
-// Memory: SteelheadAPI.query usa fetch() PROPIO (no el Apollo client del host), así que estas
-// respuestas NO entran al InMemoryCache del host → NO se usa apolloCacheDrain (rompería el board
-// que el usuario está usando). Es un applet PASIVO co-residente: no detiene Datadog ni corre
-// mem-monitor con modal de reload (eso es para runs intensivos con panel). Hardening propio:
-// slim responses (solo se guarda el string, el objeto GraphQL se descarta), caches topados (FIFO)
-// y limpieza al cambiar de board. (Ver docs/applets/auto-router.md.)
+// CARGA / rendimiento (importante — Steelhead reportó lentitud con el prefetch agresivo):
+//   NO hay prefetch masivo. Las queries se disparan SOLO cuando el popover nativo
+//   aparece (= hover real del usuario sobre un PN), nunca al hacer scroll. Así el
+//   tráfico a /graphql es proporcional a las partes que el usuario realmente inspecciona
+//   (unas pocas por sesión), no a las ~1767 del board. El cache hace instantáneo el
+//   re-hover. SteelheadAPI.query usa fetch propio (no toca el Apollo del host).
+//   suppressNativeTitle es DOM puro (sin red).
 //
 // Depende de: SteelheadAPI. Expone window.BoardMetalTooltip.
 
@@ -28,10 +26,9 @@ const BoardMetalTooltip = (() => {
 
   const api = () => window.SteelheadAPI;
 
-  const CACHE_CAP = 3000;           // tope FIFO de cada cache (strings cortos)
-  const MAX_CONC = 4;               // concurrencia del prefetch
-  const metalCache = new Map();     // pnId -> string | Promise<string>
-  const psCache = new Map();        // batchId -> string | Promise<string>
+  const CACHE_CAP = 1500;        // tope FIFO (strings cortos; on-demand, crece despacio)
+  const metalCache = new Map();  // pnId -> string | Promise<string>
+  const psCache = new Map();     // batchIdInDomain -> string | Promise<string>
 
   function capPut(map, key, val) {
     if (!map.has(key) && map.size >= CACHE_CAP) map.delete(map.keys().next().value);
@@ -61,9 +58,8 @@ const BoardMetalTooltip = (() => {
     return p;
   }
 
-  // El link de la fila da el idInDomain del batch (ej. 7053), pero GetInventoryBatch (que trae
-  // el PackingSlip) necesita el id INTERNO. Cadena de 2 pasos:
-  //   GetPartNumberInventoryBatch(idInDomain) → inventoryBatchByIdInDomain.id → GetInventoryBatch(id).
+  // El link de la fila da el idInDomain del batch; GetInventoryBatch necesita el id INTERNO.
+  // Cadena: GetPartNumberInventoryBatch(idInDomain) → inventoryBatchByIdInDomain.id → GetInventoryBatch(id).
   function getPS(idInDomain) {
     if (psCache.has(idInDomain)) return psCache.get(idInDomain);
     const p = api().query('GetPartNumberInventoryBatch', { idInDomain: Number(idInDomain) })
@@ -89,20 +85,17 @@ const BoardMetalTooltip = (() => {
   }
 
   // La celda lleva un title= con el MISMO texto del link → el navegador lo muestra como
-  // tooltip nativo encima del popover MUI (el recuadro oscuro redundante). Lo quitamos: el
-  // valor ya se ve en el link y, para el PN, en el popover enriquecido. Solo si el title
-  // ES exactamente el texto del link (no toca titles legítimos de otras celdas).
+  // tooltip nativo encima del popover MUI (recuadro oscuro redundante). Lo quitamos solo
+  // si el title ES exactamente el texto del link (no toca titles legítimos de otras celdas).
   function suppressNativeTitle(a) {
     const holder = a.closest('[title]');
     if (holder && holder.getAttribute('title') === (a.textContent || '').trim()) {
       holder.removeAttribute('title');
     }
   }
-  function rowOf(el) {
-    return el.closest('tr, [role="row"], [data-index]');
-  }
+
   function batchIdsForAnchor(a) {
-    const row = rowOf(a);
+    const row = a.closest('tr, [role="row"], [data-index]');
     if (!row) return [];
     const ids = [];
     row.querySelectorAll('a[href*="/Inventory/Batches/"]').forEach((b) => {
@@ -116,7 +109,7 @@ const BoardMetalTooltip = (() => {
     return Promise.all(batchIds.map(getPS)).then((a) => a.filter(Boolean).join(', '));
   }
 
-  // ── inyección en el popover MUI de Steelhead ──
+  // ── inyección en el popover MUI de Steelhead (on-demand: al aparecer el popover) ──
   function anchorForPopover(pop) {
     const id = pop.id;
     if (!id) return null;
@@ -182,55 +175,26 @@ const BoardMetalTooltip = (() => {
     document.querySelectorAll('div[role="tooltip"]').forEach((pop) => { try { enrichPopover(pop); } catch {} });
   }
 
-  // ── prefetch (filas visibles + las que entran al viewport al hacer scroll) ──
-  const prefetchSeen = new Set();
-  const queue = [];
-  let active = 0;
-
-  function enqueue(a) {
-    const pnId = pnIdFromAnchor(a);
-    if (!pnId) return;
-    const batchIds = batchIdsForAnchor(a);
-    const key = pnId + '|' + batchIds.join(',');
-    if (prefetchSeen.has(key)) return;
-    if (prefetchSeen.size >= CACHE_CAP) prefetchSeen.clear();
-    prefetchSeen.add(key);
-    queue.push({ pnId, batchIds });
-    pump();
-  }
-  function pump() {
-    while (active < MAX_CONC && queue.length) {
-      const job = queue.shift();
-      active++;
-      Promise.all([
-        Promise.resolve(getMetal(job.pnId)).catch(() => {}),
-        job.batchIds.length ? psForRow(job.batchIds).catch(() => {}) : Promise.resolve(),
-      ]).finally(() => { active--; pump(); });
-    }
-  }
-  function scanAnchors(root) {
+  // Suprime el title nativo de los PN anchors de un subárbol (DOM puro, sin red).
+  function suppressTitlesIn(root) {
     const scope = (root && root.querySelectorAll) ? root : document;
-    scope.querySelectorAll('a[href*="/PartNumbers/"]').forEach((a) => { suppressNativeTitle(a); enqueue(a); });
+    scope.querySelectorAll('a[href*="/PartNumbers/"]').forEach(suppressNativeTitle);
   }
 
-  // ── observer único (inyección de tooltips + prefetch) ──
+  // ── observer único: inyecta tooltips (on-hover) + suprime title nativo (DOM) ──
   let observer = null;
   let lastPath = location.pathname;
 
-  function resetForNavigation() {
-    metalCache.clear(); psCache.clear(); prefetchSeen.clear(); queue.length = 0;
-  }
-
   function onMutations(muts) {
-    if (location.pathname !== lastPath) { lastPath = location.pathname; resetForNavigation(); }
+    if (location.pathname !== lastPath) { lastPath = location.pathname; metalCache.clear(); psCache.clear(); }
     if (!isBoardPage()) return;
     let sawPopover = false;
     for (const m of muts) {
       for (const n of m.addedNodes) {
         if (n.nodeType !== 1) continue;
         if (n.matches?.('div[role="tooltip"]') || n.querySelector?.('div[role="tooltip"]')) sawPopover = true;
-        if (n.matches?.('a[href*="/PartNumbers/"]')) { suppressNativeTitle(n); enqueue(n); }
-        else if (n.querySelector?.('a[href*="/PartNumbers/"]')) scanAnchors(n);
+        if (n.matches?.('a[href*="/PartNumbers/"]')) suppressNativeTitle(n);
+        else if (n.querySelector?.('a[href*="/PartNumbers/"]')) suppressTitlesIn(n);
       }
     }
     if (sawPopover) scanPopovers();
@@ -242,7 +206,7 @@ const BoardMetalTooltip = (() => {
     if (document.documentElement.dataset.saAutoRouterEnabled === 'false') return;
     observer = new MutationObserver(onMutations);
     observer.observe(document.body, { childList: true, subtree: true });
-    if (isBoardPage()) scanAnchors(document); // prefetch inicial de lo visible
+    if (isBoardPage()) suppressTitlesIn(document); // limpia titles visibles iniciales (sin red)
   }
 
   if (typeof window !== 'undefined') {
