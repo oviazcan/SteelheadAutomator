@@ -25,9 +25,22 @@ const AutoRouter = (() => {
   // Selección RASTREADA del Scheduling board (idInDomain de cada orden marcada).
   // La lista del board es virtualizada (solo renderiza filas visibles), así que en
   // vez de leer el DOM al momento, acumulamos la selección conforme el usuario
-  // marca/desmarca — así sobrevive el scroll. Se limpia al cambiar de board (path).
+  // marca/desmarca — así sobrevive el scroll.
   const boardSelection = new Set();
-  let lastPath = typeof location !== 'undefined' ? location.pathname : '';
+
+  // Clave de "tarjeta" = path + estación (?stationId). Cambiar de ESTACIÓN en el board
+  // NO cambia el pathname (solo el ?stationId) → hay que limpiar la selección al cambiar
+  // de estación, no solo de board. (Bug: la selección de una estación se arrastraba a otra.)
+  function boardKey() {
+    const m = (typeof location !== 'undefined' ? location.search : '').match(/[?&]stationId=(\d+)/);
+    return (typeof location !== 'undefined' ? location.pathname : '') + '|' + (m ? m[1] : '');
+  }
+  let lastKey = boardKey();
+  function checkBoardChange() {
+    const k = boardKey();
+    if (k !== lastKey) { lastKey = k; boardSelection.clear(); captured = null; return true; }
+    return false;
+  }
 
   function getContext() { return captured; }
 
@@ -105,6 +118,7 @@ const AutoRouter = (() => {
   // desmarcaron al rutear y el evento change pudo no capturarse → eran el "fantasma 2-3").
   // Las filas no visibles (virtualizadas) se conservan tal cual.
   function readBoardSelection() {
+    checkBoardChange(); // si cambió de estación, descarta la selección de la anterior
     document.querySelectorAll('tr input[type="checkbox"]').forEach((cb) => {
       const id = woIdFromRow(cb.closest('tr'));
       if (!id) return; // solo filas de orden (con link a /WorkOrders/)
@@ -241,11 +255,7 @@ const AutoRouter = (() => {
     installUrlListener();
     window.addEventListener('sa-ar-context', syncFab);
     window.addEventListener('sa-ar-url', () => {
-      if (location.pathname !== lastPath) {
-        lastPath = location.pathname;
-        boardSelection.clear();
-        captured = null; // al navegar (p.ej. salir del board) invalida el contexto → el FAB se quita
-      }
+      checkBoardChange(); // cambio de board O de estación → limpia selección + contexto (FAB se quita al salir)
       syncFab();
     });
     // Rastreo de selección del board + badge en vivo: al marcar/desmarcar un checkbox,
@@ -254,6 +264,7 @@ const AutoRouter = (() => {
       if (!isBoardPage()) return;
       const t = e.target;
       if (!t || typeof t.matches !== 'function' || !t.matches('input[type="checkbox"]')) return;
+      checkBoardChange(); // por si el selector de estación cambió sin disparar sa-ar-url
       const id = woIdFromRow(t.closest('tr'));
       if (id) { if (t.checked) boardSelection.add(id); else boardSelection.delete(id); }
       syncFab();
