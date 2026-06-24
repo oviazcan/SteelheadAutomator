@@ -169,6 +169,23 @@ Es `O(órdenes × relaciones)` → JOINs masivos server-side; **no es problema d
 Rápido" puede saltarse este query por completo**: traer solo la(s) orden(es) objetivo por-WO (KBs, como hace el
 auto-ruteador) y programar con `CreateManyScheduleTasks`/`CreateManyStationTasks` (mutaciones ligeras ya existentes).
 
+## Fixes 2026-06-24 (feedback en vivo del usuario) — config 1.7.5/1.7.6
+
+**Lentitud reportada por Steelhead (crítico, config 1.7.5).** El prefetch del tooltip disparaba ~3 queries por PN **al hacer scroll** (miles en un board de ~1767). Se ELIMINÓ el prefetch masivo: el tooltip ahora es on-demand (solo al aparecer el popover nativo = hover real) + cache. Ver `board-metal-tooltip.js` y la nota de memory en este doc. HTML de comunicación a Steelhead en `docs/steelhead-extension-design-and-load-2026-06-24.html`.
+
+**FAB persistía fuera del board (1.7.5).** `auto-router.js`: al cambiar de `location.pathname` se limpia `captured = null` (además de `boardSelection`), así el FAB se quita al salir del board.
+
+**Selección fantasma "2-3" sin marcar (1.7.5).** `readBoardSelection` ahora RECONCILIA contra el DOM visible: quita de `boardSelection` las filas visibles desmarcadas (residuos de desmarcar/rutear). Las no visibles (virtualizadas) se conservan.
+
+**Bugs del motor: `T204→T204`, "Aplicar a 0", `T111` no aparece (1.7.6).** Causa raíz: el batch confundía la línea **default** (`detectSourceLine`) con la **actual** (`activeRoutes`). Para órdenes movidas (default≠actual) eso mostraba el default como origen, filtraba por `sourceLine!==destLine` (bloqueaba el botón) y `destinationLines` excluía mal la línea a devolver. **Fix (validado, datos reales = activeRoutes mixtas: tinas físicas de una línea + selector "-LI" de otra → detectar "la actual" es ambiguo):**
+- `AutoRouterEngine.destinationLines` ahora OFRECE TODAS las líneas selectoras (no excluye ninguna) → siempre puedes devolver a la original.
+- Conteo "tinas a re-rutear" y filtro "Aplicar" = `effectiveChangeCount` (tina deseada ≠ efectiva = `activeRoute ?? default`). Elegir la línea donde ya está → 0; cualquier otra aplica. Independiente de comparar líneas.
+- Origen mostrado = `currentLineCode` (tina física efectiva más frecuente, best-effort).
+- Default del dropdown = primera línea con cambios reales (evita arrancar en "0 tinas").
+- Golden test: 13/13 (34 rutas exactas + `effectiveChangeCount`/`currentLineCode`/`destinationLines` actualizado).
+
+**"Rutear todas" reinterpretado (1.7.6).** El FAB sin selección ahora rutea solo la **estación activa** (`?stationId` de la URL, que el selector de estación del board cambia), NO todo el board. CAP `REROUTE_STATION_CAP = 60`: arriba del cap pide selección (cargar cientos de árboles martillaría `/graphql`).
+
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
 - **Momentum** de enjuagues: best-effort por diseño (≈50% exacto en genéricos; las 22 rutas críticas son
