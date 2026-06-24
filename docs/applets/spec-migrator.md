@@ -15,6 +15,25 @@ Scripts: `steelhead-api.js` + `spec-migrator.js`. Sin VERSION constant exportado
 
 ---
 
+# Refactor 2026-06-24 (config 1.7.4) — `GetSpecFieldSpec` dividido por Steelhead → `GetSpecFieldPartNumbers`
+
+## Síntoma
+Steelhead **partió** la persisted query `GetSpecFieldSpec` en queries por-tab (detectado por el hash-scanner, scan `2026-06-24_124125`). El hash viejo `4da5a578…` quedó STALE y la operación **ya no existe con ese nombre** — `assignPendingParams` (Phase 4) habría tronado al pedir PNs sin asignar.
+
+## Causa raíz
+El viejo `GetSpecFieldSpec` traía en UNA llamada los 3 tabs (PartNumbers/Treatments/WorkOrders) + `specFieldSpecById`. Steelhead lo dividió en `GetSpecFieldSpecDetails`, `GetSpecFieldPartNumbers`, `GetSpecFieldTreatments`, `GetSpecFieldWorkOrders`, `GetSpecFieldSpecData`.
+
+## Fix (acotado)
+`spec-migrator.js` **solo** usaba `searchPartNumbers` de esa query (los PNs sin asignar de un field) — `isGeneric/defaultValues/specFieldBySpecFieldId` ya venían de `SpecFieldsAndOptions` (que NO rotó). Por eso bastó **una** query de reemplazo, no las 5:
+- `getSpecFieldSpec()` ahora llama **`GetSpecFieldPartNumbers`** (hash `0e49e0ee…`, http 200) con `{specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}`.
+- Cambio de root key: antes `searchPartNumbers.{totalCount,nodes}`, ahora **`pagedData.{totalCount,nodes}`**. La función **adapta** `pagedData → {searchPartNumbers:{totalCount,nodes}}` para no tocar el caller (Phase 4, líneas ~1063-1075).
+- `GetSpecFieldSpec` **removido** de `config.json` (muerto, ningún otro applet lo usaba).
+
+## Pendiente de validación
+Run real de `assignPendingParams` (uso manual del applet) para confirmar la paginación end-to-end. Hash validado http 200 por separado; cadena no probada en vivo aún.
+
+---
+
 # `validate-duplicate-params` 0.5.5 (2026-05-26, bump config 1.5.4) — Memory hardening completo (EJE A + B + mem monitor + virtualización)
 
 ## Síntoma / petición

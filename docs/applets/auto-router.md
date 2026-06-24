@@ -127,9 +127,14 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
   del PN (`a[href*="/PartNumbers/<id>"]`) se pide bajo demanda con `GetPartNumber {partNumberId, usagesLimit:0}`
   (mismo patrón que `auditor.js`) y se cachea por parte → tooltip con el metal base. Columna+orden se descartó
   (requeriría traer el metal base de las ~1767 partes de golpe).
-- **Tooltip enriquecido v1.7.3 — inyección en el popover nativo + PS + prefetch** (`board-metal-tooltip.js`,
-  reescrito). **Deployado** (config 1.7.3, commit main `b7ee40c`, gh-pages `0a0bd6d`). Pendiente: validación visual
-  del hover por el usuario. Cadena del PS validada en vivo: `idInDomain 7053 → id interno 1283250 → PS "1983-728-2-8280"`.
+- **Tooltip enriquecido v1.7.4 — inyección en el popover nativo + PS + prefetch + supresión del title nativo**
+  (`board-metal-tooltip.js`, reescrito). **VALIDADO en vivo** (config 1.7.4). El popover de Steelhead muestra
+  `PN → descripción → Metal base → PS` en un solo recuadro. Cadena del PS validada: `idInDomain 7053 → id interno
+  1283250 → customInputs.DatosRecibo.PackingSlip "1983-728-2-8280"`.
+  - **Supresión del title nativo (v1.7.4):** seguía saliendo el tooltip oscuro del navegador encima del popover.
+    El `title=` redundante NO estaba en el `<a>` (ese venía vacío) sino en el **`<div>` contenedor de la celda**
+    (`<div title="<PN>">`). `suppressNativeTitle(a)` remueve ese `title` cuando coincide exacto con el texto del
+    link (PN o lote) — se llama en `scanAnchors` y en el observer, así cubre filas iniciales + virtualización.
   - **Bug de los 3 tooltips traslapados (fix):** la v1.7.0 creaba su PROPIO `.sa-bmt-tip` que se encimaba sobre el
     MUI Tooltip nativo de Steelhead (`<div role="tooltip" id="<id>">` con PN + `<hr>` + descripción). Confirmado por
     DevTools: ambos divs coexistían. **Fix:** ya NO se crea tooltip propio; se **INYECTAN** dos líneas dentro del
