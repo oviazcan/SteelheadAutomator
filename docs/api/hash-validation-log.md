@@ -259,3 +259,92 @@ Deploy `tools/deploy.sh --check bill-autofill` → bump 1.6.76 → **1.6.77** + 
 **Re-validación local (config 1.6.77): 158 ok / 0 stale / 2 skipped (`CurrentUser`, `GetPurchaseOrder` whitelist) / 0 unknown / 0 auth** en 100.5s.
 
 Cierra issues `#3` (4 rotados) y `#2` (1 rotado — `GetProcessNode`, ya incluido en el set de 4).
+
+## 2026-06-17 11:19 — 1 rotado(s)
+
+- Config version: `1.6.77`
+- OK: 157 / 160 · Tiempo: 126.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-17.json`
+
+**Rotados:**
+- `query GetDomain` (hash `28b65e268c0d...`)
+
+## 2026-06-17 16:04 — Reparación: deploy config 1.6.78 (GetDomain re-capturado)
+
+Re-captura vía hash-scanner (navegador, same-origin) — scan `2026-06-17_160048` (el scan previo `_093448` NO capturó `GetDomain` en vivo: la operación solo se dispara desde `bill-autofill`/`invoice-autofill` al abrir una factura, y no se navegó ahí; aparecía como `source:"documentada"` reflejando el hash viejo). Rotación confirmada **Caso A (rotación real)** del playbook: el server respondió `"Must provide a query string."` al hash viejo, y el scan trae `previousHash` == hash viejo, `hash` nuevo distinto, `status:changed`, `lastHttpStatus:200`. El `responseSchema` del scan incluye `customInputs.TipoCambio` + `currentExchangeRate` → es el `GetDomain` correcto.
+
+| Operación | viejo → nuevo | usedBy |
+|---|---|---|
+| `GetDomain` | `28b65e26…` → `a7216eb7…` | bill-autofill, invoice-autofill |
+
+Validación puntual del hash nuevo contra el server → **HTTP 200 con data real** antes de editar. Deploy `tools/deploy.sh --check bill-autofill` → bump 1.6.77 → **1.6.78** + `lastUpdated` 2026-06-17T16:04 (commit main `e94887b`, gh-pages `07dcfb7`). Publicado en vivo (GitHub Pages, verificado por polling: `GetDomain live=a7216eb7…`).
+
+**Re-validación local (config 1.6.78): 158 ok / 0 stale / 2 skipped (`CurrentUser`, `GetPurchaseOrder` whitelist) / 0 unknown / 0 auth** en 99.2s.
+
+Cierra issue `#4` (1 rotado — `GetDomain`).
+
+## 2026-06-17 22:19 — 1 rotado(s)
+
+- Config version: `1.6.78`
+- OK: 157 / 160 · Tiempo: 121.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-17.json`
+
+**Rotados:**
+- `query GetDomain` (hash `a7216eb75b65...`)
+
+## 2026-06-17 23:37 — 0 rotado(s) (launchd)
+
+## 2026-06-18 22:42 — 0 rotado(s) (launchd)
+
+## 2026-06-18 23:19 — 1 rotado(s)
+
+- Config version: `1.6.82`
+- OK: 157 / 160 · Tiempo: 129.4s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-18.json`
+
+**Rotados:**
+- `query GetDomain` (hash `a7216eb75b65...`)
+
+## 2026-06-19 01:39 — Reparación: deploy config 1.6.83 (GetDomain rotó otra vez `a7216eb7` → `5c56c7a0`)
+
+Rotación **REAL** confirmada (3ra de `GetDomain` en ~2 días: `28b65e26…` → `a7216eb7…` → `5c56c7a0…`). Cierra issues **#5** y **#6** (ambos eran este `a7216eb7` muriendo, NO falsos positivos).
+
+**Trampa evitada (la del playbook):** el bloque `apiKnowledge` del scan refleja el hash de **config** (`a7216eb7`), NO la captura en vivo → un diff contra `apiKnowledge` dio "0 mismatches" (engañoso). El dato real vive en `scanResults["GetDomain"]` = `5c56c7a0…`, con `eventLog: {op:GetDomain, ok:true, status:200}` a las 07:21:48Z. El diff correcto (scanResults vs config) destapó la rotación.
+
+| Operación | viejo → nuevo | usedBy |
+|---|---|---|
+| `GetDomain` | `a7216eb7…` → `5c56c7a0…` | bill-autofill, invoice-autofill |
+
+- **Probe puntual al server antes de editar:** hash viejo `a7216eb7` → **6/6** `"Must provide a query string"` (HTTP 400); hash nuevo `5c56c7a0` → **HTTP 200**.
+- El "flapping" previo (`a7216eb7` ok en 17 jun 23:37 y 18 jun 22:42, stale en 22:19/23:19) **NO era bug del validador**: fue el rollout escalonado (canary) del cambio server-side entre nodos. El validador detectó bien la rotación. **NO** se aplicó retry-before-stale ni whitelist a `GetDomain` (habría enmascarado una rotación real).
+- Deploy `tools/deploy.sh --check bill-autofill`: 1.6.82 → **1.6.83** (commit main `63a1106`, gh-pages `703ad1b`). Verificado en vivo por polling: GitHub Pages sirve `1.6.83` con `GetDomain=5c56c7a0`.
+- **Nota de mantenimiento:** `GetDomain` rota con frecuencia inusual. Si reaparece, re-scanear **navegando a una factura** (la op solo dispara desde `bill-autofill`/`invoice-autofill`) y mirar `scanResults`, NO `apiKnowledge`.
+
+## 2026-06-19 22:54 — 1 rotado(s)
+
+- Config version: `1.6.83`
+- OK: 157 / 160 · Tiempo: 1736.1s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-19.json`
+
+**Rotados:**
+- `query GetDomain` (hash `5c56c7a00a27...`)
+
+## 2026-06-22 08:44 — 0 rotado(s) (launchd)
+
+## 2026-06-22 15:52 — Reparación: deploy config 1.6.84 (GetDomain rotó otra vez `5c56c7a0` → `c0c242bc`)
+
+Rotación **REAL** confirmada (**4ta** de `GetDomain` en ~5 días: `28b65e26… → a7216eb7… → 5c56c7a0… → c0c242bc…`). Detectada por corrida **manual** del validador (`config 1.6.83`, OK 157/160, 114.9s, resultado `tools/.hash-validation/2026-06-22.json`).
+
+| Operación | viejo → nuevo | usedBy |
+|---|---|---|
+| `GetDomain` | `5c56c7a0…` → `c0c242bc00a6…` | bill-autofill, invoice-autofill |
+
+- **Flapping intra-día confirmado otra vez:** el launchd de **hoy 08:44 dio 0 rotados** con `5c56c7a0`; a las 15:52 (manual) salió stale 3/3. Consistente con rollout escalonado (canary) del server entre nodos, igual que el 19 jun. No es bug del validador.
+- **Probe puntual al server (antes de editar):** hash viejo `5c56c7a0` → **3/3** `"Must provide a query string"` (HTTP 400); hash previo `a7216eb7` → también stale; hash nuevo `c0c242bc` → **HTTP 200 con data** (3/3).
+- **Fuente del hash nuevo:** scan del navegador `scan_results_2026-06-22_160230.json` → `scanResults.GetDomain = c0c242bc…` con `eventLog {op:GetDomain, ok:true, status:200}` a las 22:02:24Z. Mirado `scanResults` (tráfico en vivo), NO `apiKnowledge` (la trampa del playbook).
+- Deploy `tools/deploy.sh --check bill-autofill`: 1.6.83 → **1.6.84**. NO disparado gh-issue/email/push (corrida manual, usuario presente).
+- **Nota de mantenimiento:** `GetDomain` ya rotó 4 veces; es la op más inestable del registry. Si reaparece, re-scanear **navegando a una factura** y mirar `scanResults`, NO `apiKnowledge`.
+
+## 2026-06-22 20:19 — 0 rotado(s) (launchd)
+
+## 2026-06-22 22:35 — 0 rotado(s) (launchd)
