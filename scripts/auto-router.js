@@ -153,28 +153,34 @@ const AutoRouter = (() => {
       if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
       const nums = readBoardSelection();
       if (nums.length) { window.AutoRouterBatch.openWithNumbers(nums); return; }
-      // Sin selección NO se rutea "todo el board": son varias tarjetas (una por estación);
-      // rutear todas no tiene sentido y dispara carga pesada (N árboles). Se pide selección.
-      alert('Auto-Ruteador: marca con los checkboxes las órdenes que quieres re-rutear (las de la estación a mover) y vuelve a presionar 🔀.');
+      void rerouteActiveStation(); // sin selección → rutear las de la ESTACIÓN ACTIVA (stationId de la URL)
       return;
     }
     openPanel();
   }
 
-  // "Rutear todas": sin órdenes seleccionadas, carga TODAS las de la línea actual
-  // (vía SchedulablePartLocations con el scheduleId+stationId de la URL) y las rutea.
-  async function rerouteAll() {
+  // "Rutear toda la estación activa": sin órdenes seleccionadas, carga las de la ESTACIÓN
+  // ACTIVA (la del ?stationId= de la URL — el selector de estación del board la cambia) vía
+  // SchedulablePartLocations y abre el batch. NO es "todo el board" (cada tarjeta es una
+  // estación distinta). CAP anti-carga: si la estación tiene demasiadas órdenes, cargar el
+  // árbol de cada una martillaría /graphql (lo que Steelhead reportó) → pide selección.
+  const REROUTE_STATION_CAP = 60;
+  async function rerouteActiveStation() {
     const sm = location.pathname.match(/\/Schedules\/(\d+)\/ScheduleBoard\/\d+/i);
     const stm = location.search.match(/[?&]stationId=(\d+)/);
     if (!sm || !stm) {
-      alert('Auto-Ruteador: no pude leer el schedule/estación de la URL. Marca las órdenes con checkbox para rutearlas.');
+      alert('Auto-Ruteador: no pude leer la estación de la URL (falta ?stationId). Marca las órdenes con checkbox para rutearlas.');
       return;
     }
     let wos;
     try { wos = await window.AutoRouterAPI.fetchBoardWorkOrders(sm[1], stm[1]); }
-    catch (e) { alert('Auto-Ruteador: error cargando órdenes de la línea: ' + e.message); return; }
-    if (!wos.length) { alert('Auto-Ruteador: no hay órdenes en esta línea para rutear.'); return; }
-    if (!confirm(`Auto-Ruteador: ¿cargar y rutear TODAS las ${wos.length} órdenes de esta línea? (sin seleccionar una por una)\nRevisarás el preview antes de aplicar.`)) return;
+    catch (e) { alert('Auto-Ruteador: error cargando órdenes de la estación: ' + e.message); return; }
+    if (!wos.length) { alert('Auto-Ruteador: no hay órdenes en esta estación para rutear.'); return; }
+    if (wos.length > REROUTE_STATION_CAP) {
+      alert(`Auto-Ruteador: esta estación tiene ${wos.length} órdenes — son demasiadas para "rutear todas" (cargar el árbol de cada una es pesado para Steelhead). Marca con los checkboxes solo las que quieras mover y presiona 🔀.`);
+      return;
+    }
+    if (!confirm(`Auto-Ruteador: cargar y rutear las ${wos.length} órdenes de ESTA estación a otra línea.\nSe carga el proceso de cada una; revisarás el preview antes de aplicar. ¿Continuar?`)) return;
     window.AutoRouterBatch.openWithWorkOrders(wos);
   }
 

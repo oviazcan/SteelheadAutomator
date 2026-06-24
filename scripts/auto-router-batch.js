@@ -39,19 +39,15 @@ const AutoRouterBatch = (() => {
     return [...new Set((text || '').split(/[\s,;]+/).map((s) => s.trim()).filter((s) => /^\d+$/.test(s)))];
   }
 
-  // Cuántas tinas se re-rutean (nodos de la línea origen) para una WO+destLine.
+  // Cambios REALES al rutear una WO a destLine: tinas cuyo destino difiere de la tina
+  // efectiva actual (activeRoute ?? default). Es la verdad para el conteo y el botón
+  // Aplicar — no depende de comparar líneas (que falla con órdenes ya movidas).
   function changedCount(routeData, sourceLine, destLine) {
     const r = Engine().computeRoutes({
       recipeNodes: routeData.recipeNodes, candidatesByTreatment: routeData.candidatesByTreatment || {},
       sourceLineCode: sourceLine, destLineCode: destLine,
     });
-    const lc = Engine().extractLineCode;
-    const byNode = new Map(routeData.recipeNodes.map((n) => [n.id, n]));
-    let changed = 0;
-    for (const rt of r.routes) {
-      const n = byNode.get(rt.recipeNodeId);
-      if (n && n.defaultStation && lc(n.defaultStation.name) === sourceLine) changed++;
-    }
+    const changed = Engine().effectiveChangeCount(routeData.recipeNodes, r.routes, routeData.activeRoutes);
     return { changed, total: r.routes.length, skipped: r.skipped.length };
   }
 
@@ -277,10 +273,14 @@ const AutoRouterBatch = (() => {
     for (const wo of state.wos) {
       if (wo.error || !wo.routeData) continue;
       const cbt = wo.routeData.candidatesByTreatment || {};
-      for (const d of Engine().destinationLines(cbt, wo.sourceLine, wo.routeData.activeRoutes)) set.add(d);
+      for (const d of Engine().destinationLines(cbt, wo.sourceLine)) set.add(d);
     }
     state.destLines = [...set].sort();
-    state.destLine = state.destLines[0] || null;
+    // default: la primera línea que produzca cambios reales en alguna orden (evita
+    // arrancar en la línea donde ya están → "0 tinas"). Si ninguna, la primera.
+    state.destLine = state.destLines.find((d) =>
+      state.wos.some((w) => !w.error && w.routeData && changedCount(w.routeData, w.sourceLine, d).changed > 0)
+    ) || state.destLines[0] || null;
     state.busy = false;
     renderPreview();
   }
@@ -310,17 +310,18 @@ const AutoRouterBatch = (() => {
         tr.appendChild(el('td', {}, [el('span', { class: 'sa-arb-st err', text: wo.error })]));
       } else {
         const cc = state.destLine ? changedCount(wo.routeData, wo.sourceLine, state.destLine) : { changed: 0, total: 0 };
+        const curLine = Engine().currentLineCode(wo.routeData.recipeNodes, wo.routeData.activeRoutes, wo.routeData.candidatesByTreatment) || wo.sourceLine;
         tr.appendChild(el('td', { text: `#${wo.idInDomain}` }));
         tr.appendChild(el('td', { text: wo.partNumberName || String(wo.partNumberId) }));
-        tr.appendChild(el('td', { text: `${wo.sourceLine || '?'} → ${state.destLine || '?'}` }));
-        tr.appendChild(el('td', { text: cc.changed ? `${cc.changed}` : '0 (sin tinas en destino)' }));
-        tr.appendChild(el('td', {}, [el('span', { class: 'sa-arb-st', id: `sa-arb-stx-${wo.idInDomain}`, text: 'listo' })]));
+        tr.appendChild(el('td', { text: `${curLine || '?'} → ${state.destLine || '?'}` }));
+        tr.appendChild(el('td', { text: cc.changed ? `${cc.changed}` : '0 (sin cambios)' }));
+        tr.appendChild(el('td', {}, [el('span', { class: 'sa-arb-st', id: `sa-arb-stx-${wo.idInDomain}`, text: cc.changed ? 'listo' : 'sin cambios' })]));
       }
       tbody.appendChild(tr);
     }
     tb.appendChild(tbody);
     body(el('div', {}, [head, el('div', { class: 'sa-arb-note', text: 'Cada orden se re-lee justo antes de aplicar (para que el save persista). Las tinas finas se ajustan en el modo individual.' }), tb]));
-    const applicable = ok.filter((w) => state.destLine && w.sourceLine && w.sourceLine !== state.destLine);
+    const applicable = ok.filter((w) => state.destLine && w.routeData && changedCount(w.routeData, w.sourceLine, state.destLine).changed > 0);
     const btn = el('button', { class: 'sa-arb-btn primary', text: `Aplicar a ${applicable.length} órdenes`, onclick: applyAll });
     if (!applicable.length || state.busy) btn.disabled = true;
     foot(el('button', { class: 'sa-arb-btn ghost', text: 'Cancelar', onclick: close }), btn);
@@ -334,7 +335,7 @@ const AutoRouterBatch = (() => {
   async function applyAll() {
     if (state.busy) return;
     state.busy = true;
-    const targets = state.wos.filter((w) => !w.error && state.destLine && w.sourceLine && w.sourceLine !== state.destLine);
+    const targets = state.wos.filter((w) => !w.error && state.destLine && w.routeData && changedCount(w.routeData, w.sourceLine, state.destLine).changed > 0);
     foot(el('span', { class: 'sa-arb-note', id: 'sa-arb-prog', text: `Aplicando 0/${targets.length}…` }));
     let done = 0, okN = 0;
     const results = await pool(targets, CONCURRENCY, async (wo) => {
