@@ -348,3 +348,14 @@ Rotación **REAL** confirmada (**4ta** de `GetDomain` en ~5 días: `28b65e26… 
 ## 2026-06-22 20:19 — 0 rotado(s) (launchd)
 
 ## 2026-06-22 22:35 — 0 rotado(s) (launchd)
+
+## 2026-06-24 10:19 — 3 rotado(s)
+
+- Config version: `1.7.1`
+- OK: 160 / 165 · Tiempo: 138.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-24.json`
+
+**Rotados:**
+- `query GetSpec` (hash `6945af196c6e...`)
+- `query GetSpecFieldSpec` (hash `4da5a5785f6a...`)
+- `query InvoiceByIdInDomain` (hash `b98519554b2b...`)
