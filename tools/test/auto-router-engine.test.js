@@ -52,7 +52,7 @@ test('helpers: physPos / extractLineCode / isLineStation', () => {
   assert.equal(Engine.isLineStation('T205-EN00-001 Enracado'), false);
 });
 
-test('destinationLines: solo líneas del tratamiento de nivel-línea (Planificación)', () => {
+test('destinationLines: TODAS las líneas del tratamiento de nivel-línea (Planificación)', () => {
   // 98620 = "Listo para Procesar" (selector de línea, stations "-LI"); 71283 = Enjuague (tinas, muchas líneas).
   const cbt = {
     98620: [
@@ -63,8 +63,8 @@ test('destinationLines: solo líneas del tratamiento de nivel-línea (Planificac
       { id: 10, name: 'T101-TI00-002 Enjuague' }, { id: 11, name: 'T205-TI00-019 Enjuague' }, { id: 12, name: 'T999-TI00-003 Enjuague' },
     ],
   };
-  // origen T204 → solo las líneas del selector (T107, T110, T205); NUNCA T101/T999 de los enjuagues.
-  assert.deepEqual(Engine.destinationLines(cbt, 'T204'), ['T107', 'T110', 'T205']);
+  // TODAS las del selector (incl. la origen T204, para poder devolver); NUNCA T101/T999 de los enjuagues.
+  assert.deepEqual(Engine.destinationLines(cbt, 'T204'), ['T107', 'T110', 'T204', 'T205']);
 });
 
 test('destinationLines: fallback a unión si no hay selector de línea', () => {
@@ -72,8 +72,6 @@ test('destinationLines: fallback a unión si no hay selector de línea', () => {
   assert.deepEqual(Engine.destinationLines(cbt, 'T204'), ['T101', 'T205']);
 });
 
-// BUG reportado: una orden movida de T204→T205 ya no muestra T204 para regresarla.
-// Causa: se excluía la línea ORIGEN del default (siempre T204), no la línea ACTUAL.
 const SELECTOR_CBT = {
   98620: [
     { id: 1, name: 'T107-LI Plata Colgado' }, { id: 2, name: 'T110-LI Plata' },
@@ -81,18 +79,40 @@ const SELECTOR_CBT = {
   ],
 };
 
-test('destinationLines: orden movida a T205 → T204 reaparece (excluye la línea ACTUAL, no el default)', () => {
-  // activeRoute del nodo de línea apunta a T205-LI (id 4) → la orden está en T205.
-  const activeRoutes = [{ recipeNodeId: 100, stationId: 4, treatmentId: 98620 }];
-  const dl = Engine.destinationLines(SELECTOR_CBT, 'T204', activeRoutes);
-  assert.ok(dl.includes('T204'), 'T204 debe aparecer para regresar la orden');
-  assert.ok(!dl.includes('T205'), 'T205 (línea actual) no debe aparecer');
-  assert.deepEqual(dl, ['T107', 'T110', 'T204']);
+test('destinationLines: ofrece TODAS las líneas (incl. la original) para poder devolver', () => {
+  // BUG previo (Image #6): se excluía la "línea actual" (detección frágil con activeRoutes
+  // mixtas) y desaparecía la línea a la que el operador quería REGRESAR la orden (ej. T111).
+  // Ahora se ofrecen todas; el conteo de cambios reales indica cuál aplica.
+  assert.deepEqual(Engine.destinationLines(SELECTOR_CBT, 'T204'), ['T107', 'T110', 'T204', 'T205']);
 });
 
-test('destinationLines: orden fresca (sin rutas activas) excluye su línea default', () => {
-  const dl = Engine.destinationLines(SELECTOR_CBT, 'T204', []);
-  assert.deepEqual(dl, ['T107', 'T110', 'T205']); // excluye T204 (donde ya está por default)
+test('effectiveChangeCount: cuenta solo tinas que cambian vs la efectiva actual (activeRoute ?? default)', () => {
+  const recipeNodes = [
+    { id: 1, treatmentId: 10, defaultStation: { id: 100, name: 'T204-TI00-001 Proc' } },
+    { id: 2, treatmentId: 11, defaultStation: { id: 200, name: 'T204-TI00-002 Proc' } },
+  ];
+  // sin activeRoutes: efectivo = default. desired == default → 0 (no es un cambio real).
+  assert.equal(Engine.effectiveChangeCount(recipeNodes,
+    [{ recipeNodeId: 1, stationId: 100 }, { recipeNodeId: 2, stationId: 200 }], []), 0);
+  // desired distinto en uno → 1 cambio.
+  assert.equal(Engine.effectiveChangeCount(recipeNodes,
+    [{ recipeNodeId: 1, stationId: 999 }, { recipeNodeId: 2, stationId: 200 }], []), 1);
+  // orden movida (activeRoute en otra tina) y desired = default → cuenta (devolver al default).
+  assert.equal(Engine.effectiveChangeCount(recipeNodes,
+    [{ recipeNodeId: 1, stationId: 100 }, { recipeNodeId: 2, stationId: 200 }],
+    [{ recipeNodeId: 1, stationId: 500 }]), 1);
+});
+
+test('currentLineCode: línea efectiva = tina física más frecuente (activeRoute ?? default)', () => {
+  const recipeNodes = [
+    { id: 1, treatmentId: 10, defaultStation: { id: 100, name: 'T204-EN00-001 Enracado' } },
+    { id: 2, treatmentId: 11, defaultStation: { id: 200, name: 'T204-TI00-002 Proc' } },
+    { id: 3, treatmentId: 12, defaultStation: { id: 300, name: 'T204-IC00-001 Insp' } },
+  ];
+  const cbt = { 11: [{ id: 250, name: 'T205-TI00-002 Proc' }] };
+  assert.equal(Engine.currentLineCode(recipeNodes, [], cbt), 'T204'); // sin rutas → default
+  // nodo 2 movido a T205 (id 250) → T204 sigue siendo mayoría (2 de 3 tinas físicas).
+  assert.equal(Engine.currentLineCode(recipeNodes, [{ recipeNodeId: 2, stationId: 250 }], cbt), 'T204');
 });
 
 test('rutea EXACTAMENTE los mismos nodos que el ground-truth (34)', () => {

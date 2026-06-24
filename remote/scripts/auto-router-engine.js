@@ -260,15 +260,17 @@
     return { routesToCreate, routesToUpdate, routesToDelete };
   }
 
-  // Líneas destino VÁLIDAS para re-rutear: solo las del tratamiento de nivel-línea
+  // Líneas destino VÁLIDAS para re-rutear: TODAS las del tratamiento de nivel-línea
   // (grupo Planificación) de la sección origen — sus candidatas son stations "-LI"
   // (selectores de línea). NO la unión de todos los tratamientos (los enjuagues
   // arrastran ~25 líneas). Fallback a la unión si no hay selector de línea.
   //
-  // Excluye la línea ACTUAL, no la del default: si la orden ya fue movida (ej.
-  // T204→T205), su default sigue siendo T204 pero una ruta activa apunta a la
-  // station "-LI" de T205 → la actual es T205, y T204 debe reaparecer para regresarla.
-  function destinationLines(candidatesByTreatment, sourceLine, activeRoutes) {
+  // Se ofrecen TODAS (incluida la origen/actual): NO se excluye ninguna. Detectar "la
+  // línea actual" es ambiguo (una orden movida tiene activeRoutes mixtas: tinas físicas
+  // de una línea + selector "-LI" de otra). En vez de esconder líneas, el batch usa los
+  // CAMBIOS REALES (effectiveChangeCount) para el conteo y el botón Aplicar: elegir la
+  // línea donde ya está da 0 cambios; cualquier otra (incl. devolver a la original) aplica.
+  function destinationLines(candidatesByTreatment, sourceLine) {
     const cbt = candidatesByTreatment || {};
     const selectorTreatments = [];
     for (const tId of Object.keys(cbt)) {
@@ -277,30 +279,63 @@
       const lines = li.map((s) => extractLineCode(s.name)).filter(Boolean);
       if (lines.includes(sourceLine)) selectorTreatments.push(tId); // selector de ESTA sección
     }
-    if (selectorTreatments.length) {
-      const stationLine = new Map();
-      for (const tId of selectorTreatments) for (const s of cbt[tId]) stationLine.set(s.id, extractLineCode(s.name));
-      // línea actual = la de la ruta activa que apunta a una station "-LI"; si no, el default.
-      let currentLine = sourceLine;
-      for (const a of (activeRoutes || [])) {
-        if (a && stationLine.has(a.stationId)) { currentLine = stationLine.get(a.stationId) || currentLine; break; }
-      }
-      const lines = new Set();
-      for (const tId of selectorTreatments) for (const s of cbt[tId]) {
-        const c = extractLineCode(s.name);
-        if (c && c !== currentLine) lines.add(c);
-      }
-      return [...lines].sort();
-    }
     const set = new Set();
-    for (const tId of Object.keys(cbt)) for (const s of (cbt[tId] || [])) {
-      const code = extractLineCode(s && s.name);
-      if (code && code !== sourceLine) set.add(code);
+    if (selectorTreatments.length) {
+      for (const tId of selectorTreatments) for (const s of cbt[tId]) {
+        const c = extractLineCode(s.name); if (c) set.add(c);
+      }
+    } else {
+      for (const tId of Object.keys(cbt)) for (const s of (cbt[tId] || [])) {
+        const code = extractLineCode(s && s.name); if (code) set.add(code);
+      }
     }
     return [...set].sort();
   }
 
-  const api = { computeRoutes, diffRoutes, extractLineCode, physPos, isLineStation, destinationLines, roleMatch, pickMomentum, isRinsePool };
+  // Station EFECTIVA de cada recipeNode = la activeRoute si existe, si no la default.
+  function effectiveStationByNode(recipeNodes, activeRoutes) {
+    const active = new Map();
+    for (const a of activeRoutes || []) if (a && a.recipeNodeId != null) active.set(a.recipeNodeId, a.stationId);
+    const eff = new Map();
+    for (const n of recipeNodes || []) {
+      if (!n) continue;
+      if (active.has(n.id)) eff.set(n.id, active.get(n.id));
+      else if (n.defaultStation && n.defaultStation.id != null) eff.set(n.id, n.defaultStation.id);
+    }
+    return eff;
+  }
+
+  // Cambios REALES de un set de rutas deseadas vs el estado efectivo actual
+  // (activeRoute ?? default). Un nodo cuenta si su tina deseada difiere de la efectiva.
+  // Esto es la verdad para el conteo "tinas a re-rutear" y el filtro "aplicable":
+  // independiente de comparar líneas (que falla con órdenes movidas).
+  function effectiveChangeCount(recipeNodes, desiredRoutes, activeRoutes) {
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+    let n = 0;
+    for (const r of desiredRoutes || []) if (r.stationId !== eff.get(r.recipeNodeId)) n++;
+    return n;
+  }
+
+  // Línea EFECTIVA actual (best-effort, para mostrar el "Origen"): la línea de la tina
+  // física (con posición) más frecuente entre las stations efectivas. Las "-LI" y nodos
+  // sin posición no cuentan (no son tinas de proceso). Fallback: null.
+  function currentLineCode(recipeNodes, activeRoutes, candidatesByTreatment) {
+    const nameById = new Map();
+    for (const n of recipeNodes || []) if (n && n.defaultStation && n.defaultStation.id != null) nameById.set(n.defaultStation.id, n.defaultStation.name);
+    for (const tId of Object.keys(candidatesByTreatment || {})) for (const s of (candidatesByTreatment[tId] || [])) if (s && s.id != null) nameById.set(s.id, s.name);
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+    const freq = new Map();
+    for (const [, sid] of eff) {
+      const name = nameById.get(sid);
+      const line = extractLineCode(name);
+      if (line && physPos(name) != null) freq.set(line, (freq.get(line) || 0) + 1);
+    }
+    let best = null, k = 0;
+    for (const [l, c] of freq) if (c > k) { best = l; k = c; }
+    return best;
+  }
+
+  const api = { computeRoutes, diffRoutes, extractLineCode, physPos, isLineStation, destinationLines, effectiveStationByNode, effectiveChangeCount, currentLineCode, roleMatch, pickMomentum, isRinsePool };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.AutoRouterEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
