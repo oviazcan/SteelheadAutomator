@@ -99,15 +99,19 @@ const AutoRouter = (() => {
     return m ? m[1] : null;
   }
 
-  // Selección completa: la rastreada (boardSelection, sobrevive el scroll) UNIDA con
-  // las filas visibles marcadas ahora mismo (por si alguna no quedó rastreada).
+  // Selección efectiva. Parte de la rastreada (boardSelection, sobrevive la virtualización)
+  // pero RECONCILIA contra el DOM visible: marca las visibles que estén checked y, sobre
+  // todo, QUITA las visibles que ya NO estén checked (el usuario las desmarcó o se
+  // desmarcaron al rutear y el evento change pudo no capturarse → eran el "fantasma 2-3").
+  // Las filas no visibles (virtualizadas) se conservan tal cual.
   function readBoardSelection() {
-    const out = new Set(boardSelection);
-    document.querySelectorAll('tr input[type="checkbox"]:checked').forEach((cb) => {
+    document.querySelectorAll('tr input[type="checkbox"]').forEach((cb) => {
       const id = woIdFromRow(cb.closest('tr'));
-      if (id) out.add(id);
+      if (!id) return; // solo filas de orden (con link a /WorkOrders/)
+      if (cb.checked) boardSelection.add(id);
+      else boardSelection.delete(id);
     });
-    return [...out];
+    return [...boardSelection];
   }
 
   function fabCount() {
@@ -149,7 +153,9 @@ const AutoRouter = (() => {
       if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
       const nums = readBoardSelection();
       if (nums.length) { window.AutoRouterBatch.openWithNumbers(nums); return; }
-      void rerouteAll(); // sin selección → rutear TODAS las de la línea
+      // Sin selección NO se rutea "todo el board": son varias tarjetas (una por estación);
+      // rutear todas no tiene sentido y dispara carga pesada (N árboles). Se pide selección.
+      alert('Auto-Ruteador: marca con los checkboxes las órdenes que quieres re-rutear (las de la estación a mover) y vuelve a presionar 🔀.');
       return;
     }
     openPanel();
@@ -229,7 +235,11 @@ const AutoRouter = (() => {
     installUrlListener();
     window.addEventListener('sa-ar-context', syncFab);
     window.addEventListener('sa-ar-url', () => {
-      if (location.pathname !== lastPath) { lastPath = location.pathname; boardSelection.clear(); } // nuevo board → resetea
+      if (location.pathname !== lastPath) {
+        lastPath = location.pathname;
+        boardSelection.clear();
+        captured = null; // al navegar (p.ej. salir del board) invalida el contexto → el FAB se quita
+      }
       syncFab();
     });
     // Rastreo de selección del board + badge en vivo: al marcar/desmarcar un checkbox,
