@@ -127,6 +127,31 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
   del PN (`a[href*="/PartNumbers/<id>"]`) se pide bajo demanda con `GetPartNumber {partNumberId, usagesLimit:0}`
   (mismo patrón que `auditor.js`) y se cachea por parte → tooltip con el metal base. Columna+orden se descartó
   (requeriría traer el metal base de las ~1767 partes de golpe).
+- **Tooltip enriquecido v1.7.x — inyección en el popover nativo + PS + prefetch** (`board-metal-tooltip.js`,
+  reescrito). **Pendiente: hash de `GetInventoryBatch` (validándolo el background agent) + validación en vivo + deploy.**
+  - **Bug de los 3 tooltips traslapados (fix):** la v1.7.0 creaba su PROPIO `.sa-bmt-tip` que se encimaba sobre el
+    MUI Tooltip nativo de Steelhead (`<div role="tooltip" id="<id>">` con PN + `<hr>` + descripción). Confirmado por
+    DevTools: ambos divs coexistían. **Fix:** ya NO se crea tooltip propio; se **INYECTAN** dos líneas dentro del
+    popover de Steelhead, así nunca se traslapa. El vínculo popover↔PN es `<a aria-labelledby="<id>">` ↔
+    `<div role="tooltip" id="<id>">`; el `href` del `<a>` da el `pnId`. (No había `title` nativo del navegador — el
+    `title` del `<a>` venía vacío.) Inyección con `textContent` (anti-XSS); idempotente vía `data-sa-pn` (MUI reusa
+    el popper para distintos PN → se re-inyecta si cambia).
+  - **PS (Packing Slip del cliente):** `customInputs.DatosRecibo.PackingSlip` del **batch de la fila**, vía
+    `GetInventoryBatch {id, limit:10, offset:0}` → `inventoryBatchById.customInputs.DatosRecibo.PackingSlip`. El
+    `batchId` sale del link `/Inventory/Batches/<id>` de la MISMA fila (`closest('tr,[data-index]')`). 1 batch por
+    fila normalmente → 1 PS; si hubiera varios, se concatenan con `, `. **Ojo (pendiente del agente):** en el scan
+    `GetInventoryBatch` usaba `id` INTERNO (ej. 1338941), no el del link (ej. 7053) — falta confirmar cuál acepta;
+    y dio http 502 transitorio (hash sin validar). `GetInventoryBatch` aún NO está en `config.json`.
+  - **Prefetch (lazy-load) "visibles + scroll":** un `MutationObserver` sobre `document.body` encola los
+    `a[href*="/PartNumbers/"]` que se añaden al DOM (filas que entran al viewport en la lista virtualizada) y
+    precarga metal+PS en background con pool de concurrencia 4 → el tooltip aparece instantáneo. Prefetch inicial
+    de lo visible al cargar. **NO** se trae todo el board de golpe (la bitácora ya había descartado las ~1767).
+  - **Memory hardening (skill `memory-hardening-applets`):** `SteelheadAPI.query` usa `fetch()` PROPIO (no el Apollo
+    client del host) → las respuestas NO entran al InMemoryCache del host. Por eso **EJE B no aplica**:
+    `apolloCacheDrain` (clearStore) rompería el board que el usuario está usando, y es un applet PASIVO co-residente
+    (no run intensivo) → tampoco detiene Datadog ni corre mem-monitor con modal de reload. **EJE A sí:** slim
+    responses (solo se guarda el string, el objeto GraphQL se descarta), caches `Map` topados FIFO (`CACHE_CAP=3000`)
+    y limpieza al cambiar de board (reset en `MutationObserver` por cambio de `location.pathname`).
 
 ## Diagnóstico del query pesado del Scheduling board (para un "Programador rápido")
 `RelatedSchedulingInformation` (hash `3d2f8583…`) es **el query más pesado** (~87 MB / 7 llamadas). El **98% del
