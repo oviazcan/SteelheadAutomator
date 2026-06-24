@@ -111,7 +111,37 @@ diferenciar por tipo de spec.
 - ⚠️ **Productos:** expansión vive en `CAT_Productos`, materializada en VBA al exportar.
 - ℹ️ Ahora hay **2 empresas emisoras** (ECOPLATING, PROQUIPA).
 
-## Macro de exportación (`ExportarCSV` v15)
+## Macro de exportación (`ExportarCSV` v15.3 — fix Mac)
+
+### ⚠️ Lección Mac (2026-06-18): el método de ESCRITURA del archivo debe ser nativo de Excel
+
+El refactor **v15 (2026-06-09)** cambió el dump crudo `SaveAs` por **build canónico en memoria +
+escritura a mano** (`WriteUtf8NoBom` con `CreateObject("ADODB.Stream")`). Eso se desarrolló/probó
+en **Windows** y **rompió en Mac** porque:
+- **ADODB es COM solo-Windows** → en Mac: `Run-time error '429': ActiveX component can't create object`.
+- El fallback `Open ... For Binary` (VBA puro) → en Mac: `Run-time error '75': Path/File access error`,
+  porque **escribir un archivo NUEVO con I/O de bajo nivel está bloqueado por el sandbox de Office Mac**.
+  Ni `GetSaveAsFilename` ni `GrantAccessToMultipleFiles(Array(path))` habilitan `Open` para rutas nuevas
+  (el `GrantAccess` devuelve `True` pero no concede creación → el `Open` sigue tronando con 75).
+
+**Fix v15.3 (definitivo):** volver a `SaveAs FileFormat:=62` (`xlCSVUTF8`) — el método que SIEMPRE
+funcionó en Mac (legacy v10/v11/v84), porque Excel guarda **su propio** archivo y el sandbox le concede
+la ruta elegida. Se **conserva** el build canónico de v15 (expansión de combos), pero en vez de armar el
+string, se vuelca a un **libro temporal** (`Workbooks.Add`, celdas `NumberFormat="@"` para preservar punto
+decimal/ceros/fechas) y se exporta con `SaveAs 62`. Resultado: **un solo código Win+Mac**, sin ADODB, sin
+`Open`, sin `#If Mac` en la escritura, sin sandbox. Eliminadas `WriteUtf8NoBom`/`Utf8Bytes`/`CsvQuote`/`BuildLine`.
+
+Por qué es seguro respecto al parser (verificado en `bulk-upload-parse.js` / `bulk-upload.js`):
+- **BOM:** el `62` puede anteponer BOM, pero el parser lo strippea (`csvText.replace(/^﻿/, '')`).
+- **Fin de línea:** `parseCSV` consume `\r`, `\n` y `\r\n` indistintamente.
+- **Filas cortas:** Excel recorta las comas finales de celdas vacías → filas con menos campos; el parser
+  es posicional pero lee `(row[i] || '')`, así que campos faltantes = vacío. (Por esto el legacy SaveAs
+  siempre funcionó pese a ser posicional.)
+
+**Regla para el futuro:** en la plantilla Mac/Win, escribir archivos SIEMPRE vía `SaveAs` nativo de Excel.
+NO usar `ADODB.Stream`, `Scripting.FileSystemObject` ni `Open ... For Binary/Output` para archivos nuevos.
+
+---
 
 `vbas/Module1.txt` — versión definitiva v12 del `ExportarCSV` del usuario (reescrito, no parche).
 Conserva sus validaciones (modo, PN↔Cliente, cliente único, aviso >2000) y el orden
