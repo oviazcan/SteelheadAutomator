@@ -158,6 +158,42 @@
     ctx.rackName = rackName;
   }
 
+  // ───────────────────────── persistencia (Fase 2b) ─────────────────────────
+  async function getCurrentUserName() {
+    try {
+      const d = await api().query('CurrentUserActiveSegments', {});
+      return (d && d.currentSession && d.currentSession.userByUserId && d.currentSession.userByUserId.name) || '(operador)';
+    } catch (_) { return '(operador)'; }
+  }
+
+  // Escribe SOLO customInputs (DatosPlanificacion + Control de Cambios) vía UpdatePartNumber
+  // (input parcial — NO toca labels/specs/dims/precios). Con confirmación previa.
+  async function persistToPN(piezasCarga, metodo) {
+    if (piezasCarga == null) return;
+    const detalle = `Piezas por carga = ${piezasCarga} (${metodo}; rack ${ctx.rackName || '—'}, estación ${ctx.estacion ? ctx.estacion.name : '—'})`;
+    if (!confirm(`Se escribirá en el PN "${ctx.pnName}":\n\n• DatosPlanificacion.PiezasCarga = ${piezasCarga}\n• Una entrada en Control de Cambios\n\n(No toca acabados, specs, precios ni dimensiones.)\n\n¿Confirmar?`)) return;
+    setPersistMsg('Guardando…');
+    try {
+      const r = await api().query('GetPartNumber', { partNumberId: ctx.partNumberId, usagesLimit: 0 });
+      const node = r && r.partNumberById;
+      const ci = (node && node.customInputs) || {};
+      const usuario = await getCurrentUserName();
+      const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const ccEntry = { Fecha: nowIso, Usuario: usuario, Accion: 'CARGA', Detalle: detalle, Version: (cfg() && cfg().version) || '' };
+      const customInputs = ST().buildPlanningCustomInputs(ci, { piezasCarga, ccEntry });
+      await api().query('UpdatePartNumber', { id: ctx.partNumberId, customInputs });
+      setPersistMsg(`✓ Guardado en el PN (PiezasCarga = ${piezasCarga}).`, 'ok');
+    } catch (e) {
+      warn('persistToPN', e);
+      setPersistMsg('Error al guardar: ' + String(e).slice(0, 160), 'err');
+    }
+  }
+
+  function setPersistMsg(text, kind) {
+    const m = document.getElementById('sa-lcm-pmsg');
+    if (m) { m.textContent = text; m.className = 'sa-lcm-row ' + (kind === 'ok' ? '' : kind === 'err' ? 'sa-lcm-warn' : ''); m.style.color = kind === 'ok' ? '#4ade80' : kind === 'err' ? '#f87171' : '#cbd5e1'; }
+  }
+
   // ───────────────────────── DOM del modal ─────────────────────────
   function findModal() {
     const titles = document.querySelectorAll('h2#form-dialog-title, [id="form-dialog-title"]');
@@ -214,7 +250,9 @@
       .sa-lcm-res{margin-top:10px;border-top:1px dashed #334155;padding-top:10px}
       .sa-lcm-big{font-size:22px;color:#4ade80;font-weight:700}
       .sa-lcm-apply{margin-top:8px;width:100%;border:0;background:#38bdf8;color:#0f172a;font-weight:600;border-radius:7px;padding:8px;cursor:pointer}
-      .sa-lcm-apply.alt{background:#334155;color:#e2e8f0;margin-top:6px}`;
+      .sa-lcm-apply.alt{background:#334155;color:#e2e8f0;margin-top:6px;width:auto;padding:5px 10px;font-size:12px}
+      .sa-lcm-persist{margin-top:8px;width:100%;border:0;background:#16a34a;color:#fff;font-weight:600;border-radius:7px;padding:8px;cursor:pointer}
+      .sa-lcm-persist.alt{margin-top:0;margin-left:6px;width:auto;padding:5px 10px;font-size:12px}`;
     const el = document.createElement('style'); el.id = 'sa-lcm-styles'; el.textContent = css; document.head.appendChild(el);
   }
 
@@ -246,12 +284,15 @@
       if (r.modo === 'BARRIL') {
         res = `<div class="sa-lcm-res"><div class="sa-lcm-row">Modo: <b>Barril</b> (cap ${r.capacidadDMK} dm²)</div>
           <div class="sa-lcm-big">${r.piezasPorCarga ?? '—'}</div>
-          ${r.piezasPorCarga != null ? `<button class="sa-lcm-apply" data-v="${r.piezasPorCarga}">Aplicar ${r.piezasPorCarga}</button>` : '<span class="sa-lcm-warn">falta área de pieza</span>'}</div>`;
+          ${r.piezasPorCarga != null ? `<button class="sa-lcm-apply" data-v="${r.piezasPorCarga}">Aplicar al modal</button>
+            <button class="sa-lcm-persist" data-v="${r.piezasPorCarga}" data-m="barril">💾 Persistir en el PN</button>` : '<span class="sa-lcm-warn">falta área de pieza</span>'}
+          <div class="sa-lcm-row" id="sa-lcm-pmsg"></div></div>`;
       } else {
         const g = r.grid && r.grid.piezasPorCarga, a = r.area && r.area.piezasPorCarga;
         res = `<div class="sa-lcm-res"><div class="sa-lcm-row">Modo: <b>Rack</b></div>
-          ${g != null ? `<div class="sa-lcm-row">Cuadrícula: <b>${g}</b> (${r.grid.columnas}×${r.grid.filas}) <button class="sa-lcm-apply alt" data-v="${g}">Aplicar</button></div>` : '<div class="sa-lcm-row sa-lcm-warn">Cuadrícula: sin dims de pieza</div>'}
-          ${a != null ? `<div class="sa-lcm-row">Área: <b>${a}</b> <button class="sa-lcm-apply alt" data-v="${a}">Aplicar</button></div>` : '<div class="sa-lcm-row sa-lcm-warn">Área: sin área de pieza</div>'}</div>`;
+          ${g != null ? `<div class="sa-lcm-row">Cuadrícula: <b>${g}</b> (${r.grid.columnas}×${r.grid.filas}) <button class="sa-lcm-apply alt" data-v="${g}">Aplicar</button><button class="sa-lcm-persist alt" data-v="${g}" data-m="cuadrícula">💾</button></div>` : '<div class="sa-lcm-row sa-lcm-warn">Cuadrícula: sin dims de pieza</div>'}
+          ${a != null ? `<div class="sa-lcm-row">Área: <b>${a}</b> <button class="sa-lcm-apply alt" data-v="${a}">Aplicar</button><button class="sa-lcm-persist alt" data-v="${a}" data-m="área">💾</button></div>` : '<div class="sa-lcm-row sa-lcm-warn">Área: sin área de pieza</div>'}
+          <div class="sa-lcm-row" id="sa-lcm-pmsg"></div></div>`;
       }
     }
 
@@ -271,6 +312,9 @@
     };
     b.querySelectorAll('.sa-lcm-apply').forEach(btn => {
       btn.onclick = () => { const modal = findModal(); if (modal && fillPartsPerRack(modal, btn.dataset.v)) { btn.textContent = '✓ Aplicado'; } };
+    });
+    b.querySelectorAll('.sa-lcm-persist').forEach(btn => {
+      btn.onclick = () => persistToPN(Number(btn.dataset.v), btn.dataset.m);
     });
   }
 

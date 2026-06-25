@@ -147,3 +147,31 @@ test('groupStationsByLine agrupa por línea y omite las que no parsean', () => {
   assert.equal(g.M102.length, 1);
   assert.deepEqual(g.T205.map(s => s.id), [1, 2]);
 });
+
+// ── Fase 2b: persistencia en el PN (RMW de customInputs, no-destructivo) ──
+
+test('buildPlanningCustomInputs: RMW de DatosPlanificacion + append ControlCambios, sin pisar lo demás', () => {
+  const ci = { DatosFacturacion: { CodigoSAT: 'x' }, DatosPlanificacion: { TiempoEntrega: 5 } };
+  const out = S.buildPlanningCustomInputs(ci, { piezasCarga: 87, ccEntry: { Fecha: '2026-06-25', Accion: 'CARGA' } });
+  assert.equal(out.DatosPlanificacion.PiezasCarga, 87);
+  assert.equal(out.DatosPlanificacion.TiempoEntrega, 5);      // preservado
+  assert.equal(out.DatosFacturacion.CodigoSAT, 'x');          // preservado
+  assert.equal(out.ControlCambios.length, 1);
+  assert.equal(out.ControlCambios[0].Accion, 'CARGA');
+  assert.equal(ci.DatosPlanificacion.PiezasCarga, undefined); // NO muta el original
+  assert.ok(ci.ControlCambios === undefined);
+});
+
+test('buildPlanningCustomInputs: append a ControlCambios existente + crea DatosPlanificacion si falta', () => {
+  const ci = { ControlCambios: [{ Accion: 'ALTA' }] };
+  const out = S.buildPlanningCustomInputs(ci, { piezasCarga: 10, ccEntry: { Accion: 'CARGA' } });
+  assert.equal(out.ControlCambios.length, 2);
+  assert.equal(out.DatosPlanificacion.PiezasCarga, 10);
+});
+
+test('buildPlanningCustomInputs: sin ccEntry no toca ControlCambios; solo escribe los campos provistos', () => {
+  const out = S.buildPlanningCustomInputs({}, { piezasCarga: 5 });
+  assert.equal(out.DatosPlanificacion.PiezasCarga, 5);
+  assert.ok(out.ControlCambios === undefined);
+  assert.ok(!('CargasHora' in out.DatosPlanificacion));
+});

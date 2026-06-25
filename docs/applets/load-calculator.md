@@ -1,9 +1,17 @@
 # Applet: `load-calculator` — Calculadora de Piezas por Carga
 
-**Versión actual:** 0.1.1 (Fase 1: **Configurador de Estaciones**, datos maestros. Ronda 2 de feedback en vivo: tema oscuro, dropdown filtrado a estaciones programables, campos ajustados, capacidades de barril como array por Rack Type. **Pendiente validación en vivo de la ronda 2.**)
-**Archivos:** `remote/scripts/load-calculator.js` (applet DOM) · `remote/scripts/load-calculator-engine.js` (motor puro) · `remote/scripts/load-calculator-stations.js` (núcleo puro del configurador)
-**Tests:** `tools/test/load-calculator-engine.test.js` (8) · `tools/test/load-calculator-stations.test.js` (12)
-**Global:** `window.LoadCalculator` (`openStationConfig`) · `window.LoadCalculatorEngine` · `window.LoadCalculatorStations`
+**Versión actual:** 0.2.0 (**Fase 1 validada en vivo** + **Fase 2a/2b**: calculadora en el modal de Rack Types. F2a: intercepta `CreateEditPartsPerRackTypeQuery`, resuelve línea→estación→params+barriles, dims del Geometry Type, área DMK; al elegir Rack Type calcula (BARRIL/RACK) y autollenan "Parts Per Rack". F2b: **Persistir en el PN** = `DatosPlanificacion.PiezasCarga` + Control de Cambios vía **`UpdatePartNumber {id, customInputs}`** (input PARCIAL, no toca acabados/specs/dims/precios — evita el riesgo de `SavePartNumber` completo), con confirmación previa. **Pendiente validación en vivo de F2a/F2b.**)
+**Archivos:** `remote/scripts/load-calculator.js` (configurador, popup) · `remote/scripts/load-calculator-modal.js` (F2a/F2b, autoInject) · `remote/scripts/load-calculator-engine.js` (motor puro) · `remote/scripts/load-calculator-stations.js` (núcleo puro)
+**Tests:** `tools/test/load-calculator-engine.test.js` (12) · `tools/test/load-calculator-stations.test.js` (18) — 30 verdes
+**Global:** `window.LoadCalculator` (`openStationConfig`) · `window.LoadCalculatorEngine` · `window.LoadCalculatorStations` · `window.LoadCalculatorModal` (auto)
+
+## Fase 2 — calculadora en el modal de Rack Types
+
+- **Activación:** app `autoInject`; `load-calculator-modal.js` hace monkey-patch de `window.fetch` e intercepta `CreateEditPartsPerRackTypeQuery` (trae `allRackTypes` + `inventoryItemUnitConversions` con el área DMK del PN). Panel oscuro flotante.
+- **Contexto:** `GetPartNumber` → línea (dim 349 vía `acctPnDimensionValueSelections` + `GetDimension`) + dims (`partNumberDimensions` LENGTH/WIDTH metros→pulgadas). Línea → estación `-LI` (`findSchedulableStationsForLine`) → `GetStation.customInputs` (params + `CapacidadesBarril`). Dropdown override.
+- **Cálculo (`computeForRackType`):** Rack Type en `CapacidadesBarril` → **BARRIL** (`cap/areaPieza`); si no → **RACK** = cuadrícula + área. **Aplicar** = `fillPartsPerRack` (MUI native setter).
+- **Persistencia F2b (`persistToPN`):** `GetPartNumber` → `buildPlanningCustomInputs` (RMW de `DatosPlanificacion.PiezasCarga` + append `ControlCambios`, usuario vía `CurrentUserActiveSegments`) → **`UpdatePartNumber {id, customInputs}`** (parcial). `confirm()` previo.
+- **Pendiente F2c:** persistir **dims** (Geometry Type) y **área DMK/CMK/FTK** cuando el PN no las tiene — requiere `SaveGeometryType` + shapes de las mutaciones de unit conversion (o `SavePartNumber` completo). Aquí vive el "registrar en Geometría Genérica (831) avisando".
 **Plan/diseño:** [`docs/superpowers/plans/2026-06-24-load-calculator.md`](../superpowers/plans/2026-06-24-load-calculator.md)
 
 ## Qué es
