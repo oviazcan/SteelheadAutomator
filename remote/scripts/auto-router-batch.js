@@ -84,28 +84,32 @@ const AutoRouterBatch = (() => {
   // ── UI ────────────────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById('sa-arb-style')) return;
+    // Modo OSCURO a propósito: los modales nativos de Steelhead son claros, así el
+    // operador distingue de un vistazo que este panel es del Auto-Ruteador (la extensión).
     const css = `
-      .sa-arb-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2147483640;display:flex;
+      .sa-arb-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483640;display:flex;
         align-items:center;justify-content:center;}
-      .sa-arb{background:#fff;width:min(760px,94vw);max-height:90vh;border-radius:10px;display:flex;
-        flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1c2430;}
-      .sa-arb h2{margin:0;font-size:16px;}
+      .sa-arb{background:#1c2430;width:min(760px,94vw);max-height:90vh;border-radius:10px;display:flex;
+        flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e6e9ee;border:1px solid #33404f;}
+      .sa-arb h2{margin:0;font-size:16px;color:#f0f3f7;}
       .sa-arb-hd,.sa-arb-ft{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
-      .sa-arb-hd{border-bottom:1px solid #e6e9ee;} .sa-arb-ft{border-top:1px solid #e6e9ee;}
+      .sa-arb-hd{border-bottom:1px solid #33404f;} .sa-arb-ft{border-top:1px solid #33404f;}
       .sa-arb-bd{padding:14px 18px;overflow:auto;}
-      .sa-arb-x{border:none;background:none;font-size:22px;cursor:pointer;color:#7a8696;}
+      .sa-arb-x{border:none;background:none;font-size:22px;cursor:pointer;color:#9aa7b5;}
+      .sa-arb-x:hover{color:#e6e9ee;}
       .sa-arb textarea{width:100%;min-height:70px;font-family:ui-monospace,monospace;font-size:13px;
-        border:1px solid #c7cdd6;border-radius:6px;padding:8px;box-sizing:border-box;}
-      .sa-arb select{font-size:13px;padding:5px 7px;border:1px solid #c7cdd6;border-radius:6px;}
+        background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;padding:8px;box-sizing:border-box;}
+      .sa-arb textarea::placeholder{color:#6f7c8b;}
+      .sa-arb select{font-size:13px;padding:5px 7px;background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;}
       .sa-arb-btn{border:none;border-radius:7px;padding:9px 15px;font-size:14px;font-weight:600;cursor:pointer;}
-      .sa-arb-btn.primary{background:#0b6e4f;color:#fff;} .sa-arb-btn.primary:disabled{background:#9bbcb0;cursor:not-allowed;}
-      .sa-arb-btn.ghost{background:#eef1f5;color:#33404f;}
+      .sa-arb-btn.primary{background:#13a36f;color:#fff;} .sa-arb-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}
+      .sa-arb-btn.ghost{background:#33404f;color:#dfe5ec;}
       table.sa-arb-tb{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px;}
-      table.sa-arb-tb th,table.sa-arb-tb td{text-align:left;padding:6px 8px;border-bottom:1px solid #eef1f5;}
-      table.sa-arb-tb th{color:#7a8696;font-weight:600;}
+      table.sa-arb-tb th,table.sa-arb-tb td{text-align:left;padding:6px 8px;border-bottom:1px solid #2a3340;}
+      table.sa-arb-tb th{color:#9aa7b5;font-weight:600;}
       .sa-arb-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
-      .sa-arb-note{font-size:12px;color:#7a8696;} .sa-arb-warn{color:#9a3412;}
-      .sa-arb-st{font-weight:600;} .sa-arb-st.ok{color:#0b6e4f;} .sa-arb-st.err{color:#c0392b;} .sa-arb-st.run{color:#b8860b;}`;
+      .sa-arb-note{font-size:12px;color:#9aa7b5;} .sa-arb-warn{color:#f0a35e;}
+      .sa-arb-st{font-weight:600;} .sa-arb-st.ok{color:#5fd0a0;} .sa-arb-st.err{color:#ff7a7a;} .sa-arb-st.run{color:#e0b34a;}`;
     const s = document.createElement('style'); s.id = 'sa-arb-style'; s.textContent = css;
     document.head.appendChild(s);
   }
