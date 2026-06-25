@@ -1,6 +1,6 @@
 {
-  "version": "1.7.7",
-  "lastUpdated": "2026-06-24T17:40",
+  "version": "1.7.10",
+  "lastUpdated": "2026-06-24T18:49",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -11,6 +11,8 @@
     "apolloClientVersion": "4.0.8",
     "hashes": {
       "mutations": {
+        "CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00",
+        "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112",
         "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e",
         "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf",
         "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b",
@@ -77,6 +79,10 @@
         "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0"
       },
       "queries": {
+        "AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b",
+        "GetStation": "912beb134cb89f78cf22fdfbe3fd6e59bc5160e11bdffde5d398506492831d41",
+        "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce",
+        "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380",
         "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143",
         "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2",
         "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3",
@@ -202,6 +208,7 @@
         "LBR": 3972,
         "FTK": 4797,
         "CMK": 4907,
+        "DMK": 3975,
         "FOT": 5148,
         "LM": 5150,
         "LO": 5348,
@@ -428,6 +435,32 @@
   },
   "unitAutoConvertEnabled": true,
   "apps": [
+    {
+      "id": "load-calculator",
+      "name": "Calculadora de Piezas por Carga",
+      "subtitle": "Configura parámetros de estaciones y calcula piezas/carga",
+      "icon": "⚙️",
+      "category": "Números de Parte",
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/load-calculator-engine.js",
+        "scripts/load-calculator-stations.js",
+        "scripts/load-calculator.js"
+      ],
+      "requiredPermissions": [],
+      "actions": [
+        {
+          "id": "open-station-config",
+          "label": "Configurar Estaciones",
+          "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea",
+          "icon": "⚙️",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-station-config",
+          "fn": "LoadCalculator.openStationConfig"
+        }
+      ]
+    },
     {
       "id": "proceso-calculator",
       "name": "Calculadora de Procesos",
