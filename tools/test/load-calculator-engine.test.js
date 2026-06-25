@@ -85,3 +85,46 @@ test('loadsPerHour = (60/ciclo) × estaciones × OEE', () => {
   assert.equal(E.loadsPerHour({ cycleMin: 30, stations: 4, oee: 1 }), 8);
   assert.equal(E.loadsPerHour({ cycleMin: 0, stations: 4, oee: 1 }), 0); // guard ciclo inválido
 });
+
+// ── Fase 2: decisión en runtime desde el modal de Rack Types ──
+
+test('pieceAreaDm2FromConversions extrae el factor DMK del PN', () => {
+  const nodes = [
+    { factor: 0.1341, unitByUnitId: { id: 3975, name: 'DMK Decímetro Cuadrado' } },
+    { factor: 13.41, unitByUnitId: { id: 4907, name: 'CMK Centímetro Cuadrado' } },
+  ];
+  assert.equal(E.pieceAreaDm2FromConversions(nodes), 0.1341);
+  assert.equal(E.pieceAreaDm2FromConversions([{ factor: 1, unitByUnitId: { id: 3969 } }]), null); // sin DMK
+  assert.equal(E.pieceAreaDm2FromConversions(null), null);
+});
+
+test('selectBarrelCapacity: el RackType configurado como barril en la estación', () => {
+  const caps = [{ rackTypeId: 2910, rackTypeName: 'M101-BA01 Barril', capacidadDMK: 400 }];
+  assert.equal(E.selectBarrelCapacity(2910, caps), 400);
+  assert.equal(E.selectBarrelCapacity('2910', caps), 400); // tolera string
+  assert.equal(E.selectBarrelCapacity(2683, caps), null);  // un rack normal
+});
+
+test('computeForRackType: BARRIL cuando el RackType está en las capacidades de la estación', () => {
+  const r = E.computeForRackType({
+    rackTypeId: 2910,
+    capacidadesBarril: [{ rackTypeId: 2910, capacidadDMK: 400 }],
+    areaPieza_dm2: 0.1341,
+  });
+  assert.equal(r.modo, 'BARRIL');
+  assert.equal(r.capacidadDMK, 400);
+  assert.equal(r.piezasPorCarga, Math.floor(400 / 0.1341)); // 2983
+});
+
+test('computeForRackType: RACK calcula cuadrícula y área (reproduce los golden)', () => {
+  const r = E.computeForRackType({
+    rackTypeId: 2683, // no está en capacidades → rack
+    capacidadesBarril: [{ rackTypeId: 2910, capacidadDMK: 400 }],
+    areaPieza_dm2: 4.87805, // 487.805 cm²
+    piece: { largoIn: 8.66, anchoIn: 0.25 },
+    tina: { largoMaxCm: 170, anchoMaxCm: 90, sepColCm: 5.08, sepFilaCm: 5.08, factor: 1.5 },
+  });
+  assert.equal(r.modo, 'RACK');
+  assert.equal(r.grid.piezasPorCarga, 87);
+  assert.equal(r.area.piezasPorCarga, 47);
+});
