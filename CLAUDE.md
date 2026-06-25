@@ -34,6 +34,28 @@ tools/deploy.sh "fix(applet-x): descripción" --check applet-x
 
 **Candado:** el hook `pre-push` (`.githooks/pre-push`, instalar una vez con `tools/install-hooks.sh`) **bloquea** pushear `gh-pages` si no espeja `main:remote/`. Si te topas el bloqueo, usa `deploy.sh`.
 
+#### Deploy DESDE el worktree `workbench` — usa `tools/wb-deploy.sh` (NO `deploy.sh` + `git show` a mano)
+Si tu sesión vive en `workbench` (no en `main`) y quieres publicar un script, **NO** lo lleves a mano
+con `git show workbench:remote/scripts/foo.js > <main>/remote/...` + `tools/deploy.sh`. `deploy.sh` hace
+`git add remote/` en el worktree de `main`, así que **arrastraría dentro de TU commit de deploy cualquier
+WIP sin commitear que la otra sesión de `main` tenga bajo `remote/`** (p.ej. otra feature en curso).
+**Pasó el 2026-06-24:** un deploy del auto-router desde workbench casi commitea el WIP de `load-calculator`
+de otra sesión; `deploy.sh` ni completó. Síntoma a reconocer: `git -C <main> status` muestra archivos
+`remote/...` modificados que **no son tuyos**.
+
+En su lugar:
+```bash
+SH_ALLOW_DEPLOY=1 tools/wb-deploy.sh <script-sin-.js> "<mensaje>" [--minor|--set X.Y.Z]
+```
+`wb-deploy.sh` es atómico y **resguarda la WIP de `main`**: la respalda a un patch + `git stash`, aplica TU
+script desde `workbench`, bumpea desde la versión **commiteada** de main, commitea **solo tu script + config**,
+espeja gh-pages, push ambas y restaura la WIP (trap de recuperación si algo falla). El `SH_ALLOW_DEPLOY=1` es
+**obligatorio**: el guard de workbench (`~/.claude/sh-workbench-guard.sh`) bloquea push/checkout de `main` desde
+workbench sin él. Es **un script por corrida** — si cambiaste varios (p.ej. batch + panel), corre `wb-deploy.sh`
+una vez por cada uno (cada corrida bumpea el patch). Si necesitas cambiar `config.json` (hashes nuevos, no solo
+el bump), eso NO lo cubre wb-deploy: hazlo en el worktree de `main` con `deploy.sh`, coordinando que NO haya otra
+sesión con WIP en main (regla §"Trabajo paralelo").
+
 #### Procedimiento manual (fallback, si `deploy.sh` falla)
 1. **Bump `remote/config.json` `version`** (ej. `0.4.2` → `0.4.3`) y `lastUpdated` a la fecha. Ese version es el cache-bust para que la extensión recargue scripts.
 2. **Commit en `main`** con prefijo apropiado (`fix(...)`, `feat(...)`, `chore(config)`).
@@ -87,7 +109,8 @@ tools/new-worktree.sh <feature-name> [branch-base]
 1. Solo UNA sesión bumpea `remote/config.json` y deploya a `gh-pages` por vez.
 2. Si vas a editar `config.json` o `CLAUDE.md`, hazlo en pasadas cortas (read → edit → commit → push) sin dejarlo WIP largo.
 3. Para deploys: la sesión que está deployando hace `git stash` del WIP propio antes de `checkout gh-pages`. Nunca toca el directorio del otro worktree.
-4. Idealmente UN applet por sesión. Si tocan dos applets que comparten helpers (`host-cleanup-shared.js`, `process-canon.js`), coordinar.
+4. **Si deployas DESDE `workbench`, usa `SH_ALLOW_DEPLOY=1 tools/wb-deploy.sh <script> "msg"`, NUNCA `git show … > <main>/remote/…` + `deploy.sh` a mano.** `deploy.sh` hace `git add remote/` y se llevaría la WIP sin commitear de la sesión de `main` dentro de tu deploy (incidente 2026-06-24: casi mezcla `load-calculator` con un deploy del auto-router). `wb-deploy.sh` stashea y restaura esa WIP automáticamente. Antes de deployar, verifica con `git -C <worktree-main> status` que no haya `remote/...` modificado ajeno; si lo hay, wb-deploy es obligatorio. Ver §"Deploy DESDE el worktree `workbench`".
+5. Idealmente UN applet por sesión. Si tocan dos applets que comparten helpers (`host-cleanup-shared.js`, `process-canon.js`), coordinar.
 
 **Limpiar al terminar:**
 ```bash
