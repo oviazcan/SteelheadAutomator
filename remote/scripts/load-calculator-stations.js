@@ -67,6 +67,12 @@
     return m ? m[1].toUpperCase() : null;
   }
 
+  /** True si la estación es programable (tiene calendario) — las `-LI`/cotizables. */
+  function stationIsSchedulable(station) {
+    if (!station) return false;
+    return !!(station.calendarId || (station.calendarByCalendarId && station.calendarByCalendarId.id));
+  }
+
   /** Agrupa estaciones por línea (parseStationLine). Omite las que no parsean. → { line: [stations] } */
   function groupStationsByLine(stations = []) {
     const out = {};
@@ -80,7 +86,7 @@
 
   const api = {
     buildStationInputSchema, buildUpdateStationInputsVars,
-    schemaMissingFields, parseStationLine, groupStationsByLine,
+    schemaMissingFields, parseStationLine, groupStationsByLine, stationIsSchedulable,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.LoadCalculatorStations = api;

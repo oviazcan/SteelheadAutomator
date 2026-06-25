@@ -1,6 +1,6 @@
 # Applet: `load-calculator` — Calculadora de Piezas por Carga
 
-**Versión actual:** 0.1.0 (Fase 1: **Configurador de Estaciones**, datos maestros. Motor de cálculo y configurador con núcleo puro + golden tests. **Pendiente validación en vivo + deploy.**)
+**Versión actual:** 0.1.1 (Fase 1: **Configurador de Estaciones**, datos maestros. Ronda 2 de feedback en vivo: tema oscuro, dropdown filtrado a estaciones programables, campos ajustados, capacidades de barril como array por Rack Type. **Pendiente validación en vivo de la ronda 2.**)
 **Archivos:** `remote/scripts/load-calculator.js` (applet DOM) · `remote/scripts/load-calculator-engine.js` (motor puro) · `remote/scripts/load-calculator-stations.js` (núcleo puro del configurador)
 **Tests:** `tools/test/load-calculator-engine.test.js` (8) · `tools/test/load-calculator-stations.test.js` (12)
 **Global:** `window.LoadCalculator` (`openStationConfig`) · `window.LoadCalculatorEngine` · `window.LoadCalculatorStations`
@@ -29,8 +29,16 @@ Núcleo puro (RMW **no-destructivo**, lección de oro del proyecto):
 
 Applet DOM (`load-calculator.js`): panel flotante (patrón `wo-mover`), modo **estación individual** o **bulk por línea**, banner "Extender esquema" cuando faltan campos, prefill desde `customInputs` de la estación.
 
-### Campos del schema de estación (confirmados con el usuario)
-`TipoLinea` (enum) · `TinaLargoCm` · `TinaAnchoCm` · `SepColCm` · `SepFilaCm` · `FactorArea` · `CapacidadDMK` · `NumEstaciones` · `TiempoCicloMin` · `OEE`. Capturados en cm; el motor convierte.
+### Campos del schema de estación (ronda 2 de feedback en vivo)
+`TipoLinea` (enum) · `TinaLargoMaxCm` · `TinaAnchoMaxCm` (largo/ancho **máximos** de tina) · `SepColCm` · `SepFilaCm` · `FactorArea` · **`CapacidadesBarril`** (array `{rackTypeId, rackTypeName, capacidadDMK}` — una estación procesa varios barriles con distinta capacidad; el RackType viene de `AllRackTypes`). Capturados en cm; el motor convierte.
+
+**Quitados** (decisión del usuario): `NumEstaciones`, `TiempoCicloMin` (el ciclo sale del **tratamiento genérico** del proceso del NP, no de aquí), `OEE` (no se configura en customInput). `CapacidadDMK` simple → reemplazado por el array `CapacidadesBarril`.
+
+### Estaciones objetivo = sólo las PROGRAMABLES
+El dropdown se filtra a estaciones **con calendario** (`stationIsSchedulable`: `calendarId`/`calendarByCalendarId.id`) — las `-LI` (generales de línea) y cotizables. Sólo en esas vale la pena cargar datos. Se quitó el toggle individual/línea (las `-LI` ya representan la línea).
+
+### UI — tema OSCURO
+Panel `#1e293b`/inputs `#0f172a`/título `#38bdf8` (patrón de `proceso-calculator`/`archiver`/`spec-migrator`). El modo oscuro es lo que distingue los modales de la extensión de los de Steelhead. Layout en grid `210px 1fr` con `min-width:0` para que el `<select>` de estación no desborde (fix del corte reportado en v0.1.0).
 
 ### Modelo de datos (hashes en `config.steelhead.hashes`)
 | Acción | Op | Notas |

@@ -115,6 +115,14 @@ test('parseStationLine extrae el prefijo de línea del nombre de la estación', 
   assert.equal(S.parseStationLine(null), null);
 });
 
+test('stationIsSchedulable: true sólo si la estación tiene calendario', () => {
+  assert.equal(S.stationIsSchedulable({ calendarByCalendarId: { id: 5 } }), true);
+  assert.equal(S.stationIsSchedulable({ calendarId: 5 }), true);
+  assert.equal(S.stationIsSchedulable({ calendarByCalendarId: null }), false);
+  assert.equal(S.stationIsSchedulable({}), false);
+  assert.equal(S.stationIsSchedulable(null), false);
+});
+
 test('groupStationsByLine agrupa por línea y omite las que no parsean', () => {
   const stations = [
     { id: 1, name: 'T205-A' }, { id: 2, name: 'T205-B' },
