@@ -119,10 +119,27 @@
     return out;
   }
 
+  /**
+   * Convierte las dimensiones de un PN (length/width, en metros) a pulgadas para la cuadrícula.
+   * `partNumberDimensions` = [{geometryTypeDimensionTypeId, dimensionValue}]; `geometryDimensions`
+   * = config.domain.geometryDimensions ({LENGTH,WIDTH,...} → dimensionTypeId). null si falta largo o ancho.
+   */
+  function dimsToPieceInches(partNumberDimensions, geometryDimensions) {
+    const geo = geometryDimensions || {};
+    const byType = {};
+    for (const d of (partNumberDimensions || [])) {
+      if (d && d.geometryTypeDimensionTypeId != null) byType[d.geometryTypeDimensionTypeId] = d.dimensionValue;
+    }
+    const lenM = byType[geo.LENGTH];
+    const widM = byType[geo.WIDTH];
+    if (lenM == null || widM == null) return null;
+    return { largoIn: mToIn(lenM), anchoIn: mToIn(widM) };
+  }
+
   const api = {
     M_TO_IN, mToIn, cmToIn, cm2ToDm2,
     gridPieces, areaPieces, barrelPieces, decideMode, loadsPerHour,
-    pieceAreaDm2FromConversions, selectBarrelCapacity, computeForRackType,
+    pieceAreaDm2FromConversions, selectBarrelCapacity, computeForRackType, dimsToPieceInches,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

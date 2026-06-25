@@ -115,6 +115,19 @@ test('parseStationLine extrae el prefijo de línea del nombre de la estación', 
   assert.equal(S.parseStationLine(null), null);
 });
 
+test('findSchedulableStationsForLine: estaciones programables de una línea', () => {
+  const stations = [
+    { id: 1, name: 'T101-LI Pre-Limpiezas', calendarByCalendarId: { id: 9 } },
+    { id: 2, name: 'T101-TI00 Enjuague' },                                  // no programable
+    { id: 3, name: 'T205-LI Algo', calendarByCalendarId: { id: 9 } },       // otra línea
+    { id: 4, name: 'T101-CA01 Cotizable', calendarId: 7 },                  // programable, misma línea
+  ];
+  const r = S.findSchedulableStationsForLine(stations, 'T101');
+  assert.deepEqual(r.map(s => s.id), [1, 4]);
+  assert.deepEqual(S.findSchedulableStationsForLine(stations, 't101').map(s => s.id), [1, 4]); // case-insensitive
+  assert.deepEqual(S.findSchedulableStationsForLine(stations, 'T999'), []);
+});
+
 test('stationIsSchedulable: true sólo si la estación tiene calendario', () => {
   assert.equal(S.stationIsSchedulable({ calendarByCalendarId: { id: 5 } }), true);
   assert.equal(S.stationIsSchedulable({ calendarId: 5 }), true);

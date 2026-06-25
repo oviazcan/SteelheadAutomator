@@ -128,3 +128,16 @@ test('computeForRackType: RACK calcula cuadrícula y área (reproduce los golden
   assert.equal(r.grid.piezasPorCarga, 87);
   assert.equal(r.area.piezasPorCarga, 47);
 });
+
+test('dimsToPieceInches convierte length/width (metros) del PN a pulgadas', () => {
+  const geo = { LENGTH: 1284, WIDTH: 1011, HEIGHT: 1012, OUTER_DIAM: 1013, INNER_DIAM: 1014 };
+  const dims = [
+    { geometryTypeDimensionTypeId: 1284, dimensionValue: 0.22 },    // length ≈ 8.66 in
+    { geometryTypeDimensionTypeId: 1011, dimensionValue: 0.00635 }, // width  = 0.25 in
+  ];
+  const p = E.dimsToPieceInches(dims, geo);
+  assert.ok(Math.abs(p.largoIn - 8.6614) < 0.01, `largoIn=${p.largoIn}`);
+  assert.ok(Math.abs(p.anchoIn - 0.25) < 0.01, `anchoIn=${p.anchoIn}`);
+  assert.equal(E.dimsToPieceInches([], geo), null);       // sin dims → null
+  assert.equal(E.dimsToPieceInches([{ geometryTypeDimensionTypeId: 1284, dimensionValue: 0.22 }], geo), null); // falta width
+});
