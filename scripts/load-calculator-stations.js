@@ -84,9 +84,16 @@
     return out;
   }
 
+  /** Estaciones PROGRAMABLES (con calendario) cuya línea coincide con `lineCode`. */
+  function findSchedulableStationsForLine(stations, lineCode) {
+    const lc = String(lineCode || '').toUpperCase();
+    return (stations || []).filter(s => stationIsSchedulable(s) && parseStationLine(s && s.name) === lc);
+  }
+
   const api = {
     buildStationInputSchema, buildUpdateStationInputsVars,
     schemaMissingFields, parseStationLine, groupStationsByLine, stationIsSchedulable,
+    findSchedulableStationsForLine,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.LoadCalculatorStations = api;

@@ -1,6 +1,6 @@
 {
-  "version": "1.7.11",
-  "lastUpdated": "2026-06-24T18:53",
+  "version": "1.7.12",
+  "lastUpdated": "2026-06-24T19:37",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -438,14 +438,16 @@
     {
       "id": "load-calculator",
       "name": "Calculadora de Piezas por Carga",
-      "subtitle": "Configura parámetros de estaciones y calcula piezas/carga",
+      "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types",
       "icon": "⚙️",
       "category": "Números de Parte",
+      "autoInject": true,
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/load-calculator-engine.js",
         "scripts/load-calculator-stations.js",
-        "scripts/load-calculator.js"
+        "scripts/load-calculator.js",
+        "scripts/load-calculator-modal.js"
       ],
       "requiredPermissions": [],
       "actions": [

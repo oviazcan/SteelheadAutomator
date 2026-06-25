@@ -78,9 +78,68 @@
     return (60 / cycleMin) * stations * oee;
   }
 
+  // ── Fase 2: decisión en runtime desde el modal de Rack Types ──
+
+  /** Área de la pieza en dm² desde las unit conversions del PN (factor de la unidad DMK). null si no está. */
+  function pieceAreaDm2FromConversions(nodes, dmkUnitId) {
+    const id = dmkUnitId || 3975;
+    const n = (nodes || []).find(x => x && x.unitByUnitId && x.unitByUnitId.id === id);
+    return n ? n.factor : null;
+  }
+
+  /** Capacidad DMK del barril si el RackType está configurado como barril en la estación; null si es rack. */
+  function selectBarrelCapacity(rackTypeId, capacidadesBarril) {
+    const m = (capacidadesBarril || []).find(c => c && String(c.rackTypeId) === String(rackTypeId));
+    return m ? m.capacidadDMK : null;
+  }
+
+  /**
+   * Decide modo y calcula para el RackType elegido en el modal.
+   * - Si el RackType está en `capacidadesBarril` de la estación → BARRIL (capacidad / área pieza).
+   * - Si no → RACK: cuadrícula (si hay dims de pieza + tina) y área (si hay área de pieza + tina).
+   * Tina en cm; pieza en pulgadas; áreas en dm².
+   */
+  function computeForRackType({ rackTypeId, capacidadesBarril, areaPieza_dm2, piece, tina }) {
+    const cap = selectBarrelCapacity(rackTypeId, capacidadesBarril);
+    if (cap != null) {
+      return { modo: 'BARRIL', capacidadDMK: cap, piezasPorCarga: (areaPieza_dm2 != null ? Math.floor(cap / areaPieza_dm2) : null) };
+    }
+    const out = { modo: 'RACK', grid: null, area: null };
+    if (piece && tina && piece.largoIn != null && piece.anchoIn != null && tina.largoMaxCm != null && tina.anchoMaxCm != null) {
+      out.grid = gridPieces({
+        tankW_in: cmToIn(tina.largoMaxCm), tankD_in: cmToIn(tina.anchoMaxCm),
+        pieceL_in: piece.largoIn, pieceW_in: piece.anchoIn,
+        sepCol_in: cmToIn(tina.sepColCm || 0), sepRow_in: cmToIn(tina.sepFilaCm || 0),
+      });
+    }
+    if (areaPieza_dm2 != null && tina && tina.largoMaxCm != null && tina.anchoMaxCm != null) {
+      const areaEfectiva = (tina.largoMaxCm * tina.anchoMaxCm / 100) * (tina.factor != null ? tina.factor : 1);
+      out.area = { piezasPorCarga: Math.floor(areaEfectiva / areaPieza_dm2), areaEfectiva, areaPieza_dm2 };
+    }
+    return out;
+  }
+
+  /**
+   * Convierte las dimensiones de un PN (length/width, en metros) a pulgadas para la cuadrícula.
+   * `partNumberDimensions` = [{geometryTypeDimensionTypeId, dimensionValue}]; `geometryDimensions`
+   * = config.domain.geometryDimensions ({LENGTH,WIDTH,...} → dimensionTypeId). null si falta largo o ancho.
+   */
+  function dimsToPieceInches(partNumberDimensions, geometryDimensions) {
+    const geo = geometryDimensions || {};
+    const byType = {};
+    for (const d of (partNumberDimensions || [])) {
+      if (d && d.geometryTypeDimensionTypeId != null) byType[d.geometryTypeDimensionTypeId] = d.dimensionValue;
+    }
+    const lenM = byType[geo.LENGTH];
+    const widM = byType[geo.WIDTH];
+    if (lenM == null || widM == null) return null;
+    return { largoIn: mToIn(lenM), anchoIn: mToIn(widM) };
+  }
+
   const api = {
     M_TO_IN, mToIn, cmToIn, cm2ToDm2,
     gridPieces, areaPieces, barrelPieces, decideMode, loadsPerHour,
+    pieceAreaDm2FromConversions, selectBarrelCapacity, computeForRackType, dimsToPieceInches,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
