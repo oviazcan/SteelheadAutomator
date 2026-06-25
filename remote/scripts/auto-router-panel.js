@@ -76,38 +76,40 @@ const AutoRouterPanel = (() => {
   // ── UI ──────────────────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById('sa-arp-style')) return;
+    // Modo OSCURO a propósito (igual que el batch): se diferencia de los modales claros de Steelhead.
     const css = `
-      .sa-arp-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2147483640;
+      .sa-arp-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483640;
         display:flex;align-items:center;justify-content:center;}
-      .sa-arp{background:#fff;width:min(880px,94vw);max-height:90vh;border-radius:10px;
-        display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.35);
-        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1c2430;}
-      .sa-arp h2{margin:0;font-size:17px;}
-      .sa-arp-hd{padding:16px 20px;border-bottom:1px solid #e6e9ee;display:flex;
+      .sa-arp{background:#1c2430;width:min(880px,94vw);max-height:90vh;border-radius:10px;
+        display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55);
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e6e9ee;border:1px solid #33404f;}
+      .sa-arp h2{margin:0;font-size:17px;color:#f0f3f7;}
+      .sa-arp-hd{padding:16px 20px;border-bottom:1px solid #33404f;display:flex;
         align-items:center;justify-content:space-between;gap:12px;}
-      .sa-arp-x{border:none;background:none;font-size:22px;cursor:pointer;color:#7a8696;}
+      .sa-arp-x{border:none;background:none;font-size:22px;cursor:pointer;color:#9aa7b5;}
+      .sa-arp-x:hover{color:#e6e9ee;}
       .sa-arp-bd{padding:16px 20px;overflow:auto;}
-      .sa-arp-ft{padding:14px 20px;border-top:1px solid #e6e9ee;display:flex;
+      .sa-arp-ft{padding:14px 20px;border-top:1px solid #33404f;display:flex;
         align-items:center;justify-content:space-between;gap:12px;}
       .sa-arp-row{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
-      .sa-arp-row label{font-size:13px;color:#55606e;}
-      .sa-arp select,.sa-arp .sa-arp-rowsel{font-size:13px;padding:5px 7px;border:1px solid #c7cdd6;
-        border-radius:6px;background:#fff;max-width:340px;}
+      .sa-arp-row label{font-size:13px;color:#9aa7b5;}
+      .sa-arp select,.sa-arp .sa-arp-rowsel{font-size:13px;padding:5px 7px;border:1px solid #3a4757;
+        border-radius:6px;background:#141a23;color:#e6e9ee;max-width:340px;}
       .sa-arp-btn{border:none;border-radius:7px;padding:9px 16px;font-size:14px;font-weight:600;
         cursor:pointer;}
-      .sa-arp-btn.primary{background:#0b6e4f;color:#fff;}
-      .sa-arp-btn.primary:disabled{background:#9bbcb0;cursor:not-allowed;}
-      .sa-arp-btn.ghost{background:#eef1f5;color:#33404f;}
+      .sa-arp-btn.primary{background:#13a36f;color:#fff;}
+      .sa-arp-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}
+      .sa-arp-btn.ghost{background:#33404f;color:#dfe5ec;}
       table.sa-arp-tb{width:100%;border-collapse:collapse;font-size:12.5px;}
-      table.sa-arp-tb th,table.sa-arp-tb td{text-align:left;padding:6px 8px;border-bottom:1px solid #eef1f5;
+      table.sa-arp-tb th,table.sa-arp-tb td{text-align:left;padding:6px 8px;border-bottom:1px solid #2a3340;
         vertical-align:middle;}
-      table.sa-arp-tb th{color:#7a8696;font-weight:600;position:sticky;top:0;background:#fff;}
+      table.sa-arp-tb th{color:#9aa7b5;font-weight:600;position:sticky;top:0;background:#1c2430;}
       .sa-arp-tag{font-size:10.5px;padding:1px 6px;border-radius:9px;font-weight:700;}
-      .sa-arp-tag.chg{background:#e6f4ee;color:#0b6e4f;}
-      .sa-arp-tag.keep{background:#eef1f5;color:#7a8696;}
-      .sa-arp-warn{background:#fdeee9;border:1px solid #f3c4b6;color:#9a3412;padding:10px 12px;
+      .sa-arp-tag.chg{background:#163a2c;color:#5fd0a0;}
+      .sa-arp-tag.keep{background:#2a3340;color:#9aa7b5;}
+      .sa-arp-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;padding:10px 12px;
         border-radius:7px;font-size:13px;margin-bottom:12px;}
-      .sa-arp-note{font-size:12px;color:#7a8696;}`;
+      .sa-arp-note{font-size:12px;color:#9aa7b5;}`;
     const s = document.createElement('style');
     s.id = 'sa-arp-style';
     s.textContent = css;
