@@ -89,6 +89,7 @@ sesión con WIP en main (regla §"Trabajo paralelo").
 - Los hashes de persisted queries cambian cuando Steelhead actualiza — usar siempre los de `config.json`
 - Constantes de dominio (IDs, schemas) van en `config.json`, no hardcodeadas
 - Batching de PNs en grupos de 20 para SaveManyPNP
+- **UI propia en DARK MODE (regla de diseño).** Todo modal, panel, popover o tooltip que inyecte la extensión va en **tema oscuro** (base `#1c2430`, texto `#e6e9ee`, inputs `#141a23`, acento verde `#13a36f`) para que el operador distinga **de un vistazo** que es UI de la extensión y NO una pantalla nativa de Steelhead (que son CLARAS). Evita confundir nuestra UI con la de SH. Referencia: `auto-router-batch.js`/`auto-router-panel.js` (modales), `board-metal-tooltip.js` inyecta en el popover nativo y ahí sí respeta el estilo de SH (no es UI nuestra, es enriquecimiento del suyo).
 
 ## Trabajo paralelo (dos instancias de Claude)
 Para correr dos sesiones de Claude sobre este repo sin pisarse, usa **git worktrees**. Cada worktree es un directorio aislado en su propia rama; los commits no chocan hasta que mergees.
