@@ -421,3 +421,18 @@ Nota: `GetSpecFieldTreatments` y `GetSpecFieldWorkOrders` cubren los tabs de Tre
 
 **Rotados:**
 - `query GetSpecFieldSpec` (hash `4da5a5785f6a...`)
+
+## 2026-06-24 22:19 — 7 rotado(s)
+
+- Config version: `1.7.12`
+- OK: 164 / 173 · Tiempo: 144.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-24.json`
+
+**Rotados:**
+- `query GetQuoteRelatedData` (hash `572c489092ca...`)
+- `query AllPartNumbers` (hash `571d2028b068...`)
+- `query CreateEditReceivedOrderDialogQuery` (hash `1625daf1fab9...`)
+- `query GetCustomerInfoForReceivedOrder` (hash `efc55dec5cef...`)
+- `query WorkOrderDialogQuery` (hash `4d745ead94ba...`)
+- `query ProcessesComponentQuery` (hash `e04ec51b9301...`)
+- `query ProcessesWithTag` (hash `01c772451a17...`)
