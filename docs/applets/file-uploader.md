@@ -50,7 +50,9 @@ Steelhead tiene 11 buckets `*UserFiles*`. El applet toca y dedupea **exclusivame
 - **Homónimos → a TODOS** los PNs con ese nombre exacto.
 - **Multi-archivo → sufijo `__`** (varios descriptores por PN).
 - **Idempotencia → saltar** si el PN ya tiene ese `originalName` (no duplica ni encima). Re-correr es seguro; dump incremental solo sube lo nuevo.
-- **PNs archivados → desarchivar → vincular → re-archivar (PENDIENTE de implementar).** El usuario NO quiere un paso manual previo. El applet debe, para un PN que solo existe archivado: desarchivarlo (`UpdatePartNumber{id, archivedAt:null}`), subir/vincular la foto, y **volver a archivarlo** (`UpdatePartNumber{id, archivedAt:<timestamp original>}`) para no revertir la limpieza de catálogo. **Reto técnico:** `SearchPartNumbers` NO devuelve archivados (verificado en vivo), así que hay que encontrarlos por otra vía (`AllPartNumbers` con `includeArchived`, como `archiver.js`).
+- **PNs archivados → desarchivar → vincular → re-archivar (IMPLEMENTADO v0.3.0).** Para un grupo sin PN activo, se buscan los archivados con `AllPartNumbers(searchQuery, includeArchived:'YES')`, se leen sus archivos + `archivedAt` con `GetPartNumber`, se desarchivan (`UpdatePartNumber{id, archivedAt:null}`), se vinculan los archivos faltantes y se **re-archivan con su `archivedAt` ORIGINAL** (preserva la limpieza de catálogo de mayo). El re-archivado va en `finally` → si algo truena, igual se re-archiva; si el re-archivado falla, se reporta `⚠️ PN … QUEDÓ DESARCHIVADO`.
+  - **Verificado en vivo (003397015, reversible):** `AllPartNumbers(includeArchived:'YES')` sí lo encuentra; `UpdatePartNumber{archivedAt:null}` lo hace visible en `SearchPartNumbers`; re-archivar con el string crudo de `GetPartNumber` (`"2026-05-22T07:18:38.31+00:00"`) lo restaura idéntico. El server acepta el `archivedAt` crudo de vuelta → no hace falta normalizar.
+  - **Gotcha (incidente probe 2026-06-26):** Python 3.9 `datetime.fromisoformat` NO parsea ms de 2 dígitos (`.31`); dejó un PN desarchivado un momento (restaurado). El applet usa JS y el string crudo, sin ese problema.
 
 ## Validación del dump real (2026-06-25)
 CSV `mapeo_imagenes_Steelhead.csv` (Cowork) cruzado contra el catálogo TLC: **8,586 archivos**, 6,133 PNs únicos.
@@ -72,7 +74,12 @@ CSV `mapeo_imagenes_Steelhead.csv` (Cowork) cruzado contra el catálogo TLC: **8
 - **`display_image_id`:** el applet no marca foto principal del PN. Posible mejora: setear el primer `__front`/`__principal` como display image.
 - **Manifiesto CSV** (descartado por YAGNI): si el naming codificado se vuelve frágil, mapear archivo→PN explícito.
 
+## Lecciones
+- **CSS propio obligatorio (bug 2026-06-26).** El applet usaba las clases `.dl9-*` pero NO inyectaba su CSS; ese CSS lo definen otros applets (archiver/po-comparator/bulk-upload) cada uno con su `<style>`. file-uploader corre **aislado** (su array no incluye a ninguno de esos), así que el overlay de progreso y el resumen se creaban **invisibles** (sin `position:fixed`/fondo/centrado). Síntoma: "no mostró nada de resumen". La v0.1.0 lo tapaba con `alert()`. **Fix:** `ensureStyles()` inyecta un `<style id="sa-uploader-styles">` propio (idempotente) — no depender de otro applet. **Regla general:** cualquier applet que use clases `dl9-*` debe inyectar su propio CSS. La lógica de negocio NO estaba rota (se verificó en vivo que las fotos sí se vincularon, incl. fan-out a homónimos); era 100% un problema de UI.
+
 ## Historial
+- **0.3.0 (2026-06-26):** ciclo de archivados (desarchivar→vincular→re-archivar con `archivedAt` original, re-archivado en `finally`) + reporte accionable (cuenta **archivos seleccionados**, desarchivados/re-archivados, **lista + exporta CSV** de no encontrados). Mutaciones validadas en vivo (reversible). Pendiente: deploy + memory hardening para el full run.
+- **0.2.1 deploy (2026-06-26):** config **1.7.17**. Fix CSS dl9 (UI invisible) + `run()` siempre muestra resumen (try/finally + try por grupo). Causa raíz vía systematic-debugging; lógica confirmada correcta en vivo.
 - **0.2.0 deploy (2026-06-25):** publicado a gh-pages, config **1.7.15**. Validado el dump real (8,586 archivos). Próximo: ciclo de archivados (desarchivar→vincular→re-archivar) + memory hardening, tras prueba chica.
 - **0.2.0 (2026-06-25):** refactor a carga masiva inteligente. Núcleo puro + 18 tests. Homónimos→todos (antes `.find()` solo el más reciente), multi-archivo por PN (agrupación + convención `__`), idempotencia vs bucket del PN, paginación de búsqueda, resumen no bloqueante en dark mode. Shape y métricas validados en vivo.
 - **0.1.0:** versión inicial — 1 archivo = 1 PN exacto (`.find()`), sin dedup, `alert()` final, `first:20`.
