@@ -1,5 +1,5 @@
 /* ============================================================================
- * load-calculator-modal.js — Fase 2a: calculadora dentro del modal de Rack Types
+ * load-calculator-modal.js — Fase 2a/2b/2c: calculadora dentro del modal de Rack Types
  *
  * autoInject. Intercepta `CreateEditPartsPerRackTypeQuery` (el query que abre el
  * modal "...that can fit on a rack type"), resuelve la LÍNEA del PN → su estación
@@ -8,11 +8,17 @@
  * (BARRIL si el rack está en las Capacidades de barril de la estación; si no RACK
  * = cuadrícula + área) y ofrece **Aplicar** al campo "Parts Per Rack".
  *
- * F2a NO escribe en el PN (solo autollenan el campo del modal; tú das Save nativo).
- * La persistencia (DatosPlanificacion + CC + dims/DMK) es F2b.
+ * F2a  — NO escribe en el PN (solo autollenan el campo del modal; tú das Save nativo).
+ * F2b  — Persistir PiezasCarga en DatosPlanificacion + Control de Cambios (UpdatePartNumber parcial).
+ * F2c  — LECTURA Y PREVIEW de Geometry Type (estado, dims actuales, conversiones de área).
+ *         El botón "Registrar geometría" queda DESHABILITADO hasta validación en vivo.
  *
  * Depende de window.SteelheadAPI, window.LoadCalculatorEngine, window.LoadCalculatorStations.
  * ========================================================================== */
+
+// F2c: escritura de geometría DESHABILITADA hasta validación en vivo.
+// Activar cuando el usuario confirme que la lectura funciona correctamente.
+const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
 (function () {
   'use strict';
 
@@ -63,6 +69,12 @@
         rackTypes,
         areaPieza_dm2: ENG().pieceAreaDm2FromConversions(conv, dmkId),
         linea: null, pieceDims: null, stationsForLine: [], estacion: null, params: null, result: null,
+        // F2c: estado de geometría (se rellena en resolveContext)
+        geometryState: null,   // 'SIN_GEOMETRIA' | 'GENERICA' | 'OTRA'
+        geometryTypeName: null, // nombre del Geometry Type (si tiene)
+        existingDims: null,    // { lengthM, widthM, heightM } o null
+        dimsDiffer: false,     // si las dims capturadas difieren de las existentes >1%
+        areaConversions: null, // { dmk, cmk, ftk } a registrar (calculado desde pieceDims o areaPieza_dm2)
       };
       showPanel();
       await resolveContext();
@@ -81,6 +93,9 @@
 
     ctx.linea = await resolveLinea(node).catch(() => null);
     ctx.pieceDims = resolvePieceDims(node);
+
+    // F2c: clasificar estado de geometría y extraer dims existentes
+    resolveGeometryState(node);
 
     // estaciones programables de la línea
     try {
@@ -113,6 +128,41 @@
     const dims = (node && node.partNumberDimensionsByPartNumberId && node.partNumberDimensionsByPartNumberId.nodes) || [];
     const active = dims.filter(d => d && !d.archivedAt);
     return ENG().dimsToPieceInches(active, cfg()?.steelhead?.domain?.geometryDimensions);
+  }
+
+  // F2c: clasifica el estado del Geometry Type del PN y extrae dims existentes.
+  function resolveGeometryState(node) {
+    const geoNode = node && node.geometryTypeByGeometryTypeId;
+    const geoTypeId = geoNode ? geoNode.geometryTypeId : null;
+    const genericId = cfg()?.steelhead?.domain?.geometryGenericaId || 831;
+    ctx.geometryState    = ENG().classifyGeometryState(geoTypeId, genericId);
+    ctx.geometryTypeName = geoNode ? (geoNode.name || null) : null;
+
+    // Extraer dims existentes del PN (en metros) para comparar con las capturadas
+    const dimNodes = (node && node.partNumberDimensionsByPartNumberId && node.partNumberDimensionsByPartNumberId.nodes) || [];
+    const activeNodes = dimNodes.filter(d => d && !d.archivedAt);
+    ctx.existingDims = ENG().dimsFromPartNumber(activeNodes, cfg()?.steelhead?.domain?.geometryDimensions);
+
+    // Calcular conversiones de área a partir del área del PN (si tiene DMK)
+    // o a partir de las dims capturadas (si hay pieceDims)
+    const conversions = cfg()?.steelhead?.domain?.conversions;
+    if (ctx.areaPieza_dm2 != null) {
+      ctx.areaConversions = ENG().buildAreaConversions(ctx.areaPieza_dm2, conversions);
+    } else if (ctx.pieceDims) {
+      // Calcular el área desde las dims en metros
+      // dimsToPieceInches devuelve largoIn/anchoIn; necesitamos las dims en metros
+      // Las extraemos directamente desde existingDims si están
+      if (ctx.existingDims) {
+        const areaDm2 = ENG().areaFromDims(ctx.existingDims.lengthM, ctx.existingDims.widthM);
+        ctx.areaConversions = ENG().buildAreaConversions(areaDm2, conversions);
+      }
+    }
+
+    // ¿Las dims capturadas difieren de las existentes?
+    // "capturadas" = las que el panel tiene (existingDims es lo que hay en SH)
+    // Para F2c solo comparamos si ctx.existingDims difiere de sí mismo (siempre false)
+    // La comparación real (capturadas por el usuario vs SH) se hará en F2d.
+    ctx.dimsDiffer = false;
   }
 
   async function fetchAllStations() {
@@ -252,7 +302,18 @@
       .sa-lcm-apply{margin-top:8px;width:100%;border:0;background:#38bdf8;color:#0f172a;font-weight:600;border-radius:7px;padding:8px;cursor:pointer}
       .sa-lcm-apply.alt{background:#334155;color:#e2e8f0;margin-top:6px;width:auto;padding:5px 10px;font-size:12px}
       .sa-lcm-persist{margin-top:8px;width:100%;border:0;background:#16a34a;color:#fff;font-weight:600;border-radius:7px;padding:8px;cursor:pointer}
-      .sa-lcm-persist.alt{margin-top:0;margin-left:6px;width:auto;padding:5px 10px;font-size:12px}`;
+      .sa-lcm-persist.alt{margin-top:0;margin-left:6px;width:auto;padding:5px 10px;font-size:12px}
+      .sa-lcm-geo{margin-top:10px;border-top:1px dashed #334155;padding-top:10px}
+      .sa-lcm-geo-title{font-weight:700;color:#38bdf8;font-size:12px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em}
+      .sa-lcm-geo-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-left:4px}
+      .sa-lcm-geo-badge.sin{background:#374151;color:#9ca3af}
+      .sa-lcm-geo-badge.generica{background:#1e3a5f;color:#60a5fa}
+      .sa-lcm-geo-badge.otra{background:#14532d;color:#4ade80}
+      .sa-lcm-geo-row{margin:3px 0;color:#94a3b8;font-size:12px}
+      .sa-lcm-geo-row b{color:#e2e8f0}
+      .sa-lcm-geo-preview{margin-top:6px;background:#0f172a;border-radius:6px;padding:7px 10px;font-size:12px}
+      .sa-lcm-geo-btn{margin-top:8px;width:100%;border:1px solid #475569;background:#1e293b;color:#64748b;font-size:12px;border-radius:6px;padding:6px;cursor:not-allowed;opacity:0.6}
+      .sa-lcm-geo-note{margin-top:4px;font-size:11px;color:#64748b;font-style:italic}`;
     const el = document.createElement('style'); el.id = 'sa-lcm-styles'; el.textContent = css; document.head.appendChild(el);
   }
 
@@ -301,7 +362,7 @@
       <div class="sa-lcm-row">Línea: <b>${esc(ctx.linea || ctx.lineCode || '—')}</b></div>
       <div class="sa-lcm-row">Estación: ${estSel}</div>
       <div class="sa-lcm-row">Área pieza: <b>${area}</b> · Dims: <b>${dims}</b></div>
-      ${paramWarn}${res}`;
+      ${paramWarn}${res}${renderGeometrySection()}`;
 
     const sel = document.getElementById('sa-lcm-est');
     if (sel) sel.onchange = async () => {
@@ -316,6 +377,71 @@
     b.querySelectorAll('.sa-lcm-persist').forEach(btn => {
       btn.onclick = () => persistToPN(Number(btn.dataset.v), btn.dataset.m);
     });
+  }
+
+  // ───────────────────────── F2c: sección de geometría (solo lectura/preview) ─────────────────────────
+
+  /** Renderiza la sección "Geometría" del panel (F2c). */
+  function renderGeometrySection() {
+    if (!ctx) return '';
+
+    // Badge de estado
+    const stateLabel = ctx.geometryState === 'SIN_GEOMETRIA' ? 'Sin geometría'
+      : ctx.geometryState === 'GENERICA' ? 'Geometría Genérica'
+      : `Geometría: ${esc(ctx.geometryTypeName || String(ctx.geometryState || ''))}`;
+    const badgeClass = ctx.geometryState === 'SIN_GEOMETRIA' ? 'sin'
+      : ctx.geometryState === 'GENERICA' ? 'generica' : 'otra';
+
+    // Dims actuales del PN (en cm para mostrar)
+    let existingDimsHtml = '';
+    if (ctx.existingDims) {
+      const lCm = (ctx.existingDims.lengthM * 100).toFixed(2);
+      const wCm = (ctx.existingDims.widthM * 100).toFixed(2);
+      const hCm = ctx.existingDims.heightM != null ? (ctx.existingDims.heightM * 100).toFixed(2) : null;
+      existingDimsHtml = `<div class="sa-lcm-geo-row">Dims actuales: <b>${lCm} cm × ${wCm} cm${hCm != null ? ` × ${hCm} cm` : ''}</b></div>`;
+    } else {
+      existingDimsHtml = `<div class="sa-lcm-geo-row" style="color:#fbbf24">Sin dims registradas en el PN</div>`;
+    }
+
+    // Aviso si dims difieren
+    const differWarn = ctx.dimsDiffer
+      ? `<div class="sa-lcm-row sa-lcm-warn" style="font-size:11px">&#9888; Las dims capturadas difieren de las registradas</div>`
+      : '';
+
+    // Preview de área a registrar
+    let previewHtml = '';
+    if (ctx.areaConversions) {
+      const { dmk, cmk, ftk } = ctx.areaConversions;
+      previewHtml = `<div class="sa-lcm-geo-preview">
+        <div class="sa-lcm-geo-row" style="color:#94a3b8;margin-bottom:3px">Preview de área a registrar:</div>
+        <div class="sa-lcm-geo-row"><b>${dmk.toFixed(4)}</b> DMK (dm²) &nbsp;·&nbsp; <b>${cmk.toFixed(4)}</b> CMK (cm²) &nbsp;·&nbsp; <b>${ftk.toFixed(6)}</b> FTK (ft²)</div>
+      </div>`;
+    } else if (ctx.existingDims) {
+      // Calcular área desde dims existentes como preview
+      const areaDm2 = ENG().areaFromDims(ctx.existingDims.lengthM, ctx.existingDims.widthM);
+      const conversions = cfg()?.steelhead?.domain?.conversions;
+      const conv = ENG().buildAreaConversions(areaDm2, conversions);
+      previewHtml = `<div class="sa-lcm-geo-preview">
+        <div class="sa-lcm-geo-row" style="color:#94a3b8;margin-bottom:3px">Preview (calculado desde dims):</div>
+        <div class="sa-lcm-geo-row"><b>${conv.dmk.toFixed(4)}</b> DMK &nbsp;·&nbsp; <b>${conv.cmk.toFixed(4)}</b> CMK &nbsp;·&nbsp; <b>${conv.ftk.toFixed(6)}</b> FTK</div>
+      </div>`;
+    } else {
+      previewHtml = `<div class="sa-lcm-geo-row" style="color:#64748b;font-size:11px">Sin área disponible para preview (faltan dims o conversión DMK)</div>`;
+    }
+
+    // Botón deshabilitado + nota
+    const btnHtml = F2C_WRITE_ENABLED
+      ? `<button class="sa-lcm-persist" id="sa-lcm-geo-btn">💾 Registrar geometría</button>`
+      : `<button class="sa-lcm-geo-btn" disabled title="Pendiente de validación en vivo">&#128274; Registrar geometría</button>
+         <div class="sa-lcm-geo-note">Pendiente de validación en vivo (F2C_WRITE_ENABLED = false)</div>`;
+
+    return `<div class="sa-lcm-geo">
+      <div class="sa-lcm-geo-title">Geometría <span class="sa-lcm-geo-badge ${badgeClass}">${stateLabel}</span></div>
+      ${existingDimsHtml}
+      ${differWarn}
+      ${previewHtml}
+      ${btnHtml}
+    </div>`;
   }
 
   function cleanup() {
