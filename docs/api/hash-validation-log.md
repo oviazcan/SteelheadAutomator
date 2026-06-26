@@ -453,3 +453,13 @@ Los 6 hashes detectados como ROTADOS en el scan del navegador (same-origin, Caso
 | `ProcessesWithTag` | `01c77245` | `2d83c581` | process-deep-audit, process-canon |
 
 Deploy `tools/deploy.sh "fix(hashes): rotación 6 ops (scan 2026-06-25)" --check load-calculator-modal`: 1.7.12 → **1.7.13** + `lastUpdated 2026-06-25T11:57` (commit main `559b1cd`, gh-pages `64729a3`). Publicado en vivo (GitHub Pages, verificado por polling: `version:1.7.13`).
+
+## 2026-06-25 23:21 — 2 rotado(s)
+
+- Config version: `1.7.16`
+- OK: 169 / 173 · Tiempo: 156.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-25.json`
+
+**Rotados:**
+- `query GetQuoteRelatedData` (hash `572c489092ca...`)
+- `query WorkOrderDialogQuery` (hash `4d745ead94ba...`)
