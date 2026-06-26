@@ -490,3 +490,5 @@ Scan nuevo `~/Downloads/scan_results_2026-06-26_115519.json` capturó la operaci
 Deploy `tools/deploy.sh "fix(hashes): GetQuoteRelatedData rotó (scan 2026-06-26) → 02b8cf87" --check bulk-upload`: 1.7.20 → **1.7.21** + `lastUpdated 2026-06-26T11:57` (commit main `402544e` gh-pages). Publicado en vivo (polling: `version:1.7.21`; invariante byte-a-byte OK).
 
 Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (whitelist: `CurrentUser`, `GetPurchaseOrder`). ✅ **Ambas rotaciones del 2026-06-25 resueltas.**
+
+## 2026-06-26 16:51 — 0 rotado(s) (launchd)
