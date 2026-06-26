@@ -478,3 +478,15 @@ Deploy `tools/deploy.sh "fix(hashes): WorkOrderDialogQuery rotó (scan 2026-06-2
 Re-validación post-deploy (config 1.7.20): **OK 170 / 173 · STALE 1** (`GetQuoteRelatedData`) · SKIPPED 2 (whitelist: `CurrentUser`, `GetPurchaseOrder`).
 
 **Pendiente `GetQuoteRelatedData`:** correr el hash-scanner abriendo una **cotización (Quote)** en Steelhead (carga de direcciones/contactos del cliente) para que el front nativo dispare la operación y el scanner capture el hash nuevo. Luego repetir bump+deploy.
+
+## 2026-06-26 11:57 — `GetQuoteRelatedData` resuelto (0 rotados)
+
+Scan nuevo `~/Downloads/scan_results_2026-06-26_115519.json` capturó la operación en vivo (status `changed`, HTTP 200):
+
+| Operación | viejo (8 chars) | nuevo (8 chars) | usedBy | estado |
+|---|---|---|---|---|
+| `GetQuoteRelatedData` | `572c489` | `02b8cf87` | carga-masiva (catalog-fetcher, bulk-upload) | ✅ corregido + verificado en server (HTTP 400 `$customerId` required → hash existe) |
+
+Deploy `tools/deploy.sh "fix(hashes): GetQuoteRelatedData rotó (scan 2026-06-26) → 02b8cf87" --check bulk-upload`: 1.7.20 → **1.7.21** + `lastUpdated 2026-06-26T11:57` (commit main `402544e` gh-pages). Publicado en vivo (polling: `version:1.7.21`; invariante byte-a-byte OK).
+
+Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (whitelist: `CurrentUser`, `GetPurchaseOrder`). ✅ **Ambas rotaciones del 2026-06-25 resueltas.**
