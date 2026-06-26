@@ -69,8 +69,13 @@ CSV `mapeo_imagenes_Steelhead.csv` (Cowork) cruzado contra el catálogo TLC: **8
 - [ ] **Llevar a main el test + bitácora** (`tools/test/file-uploader-core.test.js`, este doc): el deploy solo movió `remote/`; viven en `workbench`.
 - [ ] **Sincronizar `workbench` con `main`** (config divergió: hashes vigentes + `load-calculator-modal.js`).
 
+## Memory hardening (v0.4.0, full run de miles)
+Integrado `host-cleanup-shared.js` (en el array de `scripts`). Aplica para el dump completo (~8,585 archivos / decenas de miles de llamadas).
+- **EJE A — propia:** `paginateExact` hace **slim** a `{id,name}` (los nodos de `AllPartNumbers` traen `customInputs`/labels pesados); `getPNDetail` retiene solo `{archivedAt, names}` del `GetPartNumber` (504 campos); `detailById`/`uploadCache` se reasignan por grupo (no acumulan); `groups.clear()` al final.
+- **EJE B — host:** `stopDatadogSessionReplay()` al iniciar el run; `createMemMonitor` con span `#sa-upl-mem` (warn 70% re-aplica DD stop, **guardrail 88% → `cancelRun` + detiene con checkpoint**, la idempotencia continúa al re-correr); `makePeriodicDrain(50)` al cierre de cada grupo; `apolloCacheDrain()` + `mem.stop()` en `finally`.
+- **Plan de validación:** correr una tanda de ~300-500 archivos reales y observar `#sa-upl-mem` estable (sin crecer sin tope); confirmar que el guardrail detiene y el resumen marca "Carga detenida (memoria)".
+
 ## Pendientes / mejoras
-- **Memory hardening si el dump es masivo (>200 archivos):** el applet es secuencial y no acumula respuestas, pero `GetPartNumber` es pesado (504 campos) y los binarios de imagen pasan por memoria. Antes de un dump de miles, invocar el skill `memory-hardening-applets` y considerar `host-cleanup-shared` (Apollo cache drain periódico + mem monitor). Hoy NO está integrado.
 - **`display_image_id`:** el applet no marca foto principal del PN. Posible mejora: setear el primer `__front`/`__principal` como display image.
 - **Manifiesto CSV** (descartado por YAGNI): si el naming codificado se vuelve frágil, mapear archivo→PN explícito.
 
@@ -78,6 +83,7 @@ CSV `mapeo_imagenes_Steelhead.csv` (Cowork) cruzado contra el catálogo TLC: **8
 - **CSS propio obligatorio (bug 2026-06-26).** El applet usaba las clases `.dl9-*` pero NO inyectaba su CSS; ese CSS lo definen otros applets (archiver/po-comparator/bulk-upload) cada uno con su `<style>`. file-uploader corre **aislado** (su array no incluye a ninguno de esos), así que el overlay de progreso y el resumen se creaban **invisibles** (sin `position:fixed`/fondo/centrado). Síntoma: "no mostró nada de resumen". La v0.1.0 lo tapaba con `alert()`. **Fix:** `ensureStyles()` inyecta un `<style id="sa-uploader-styles">` propio (idempotente) — no depender de otro applet. **Regla general:** cualquier applet que use clases `dl9-*` debe inyectar su propio CSS. La lógica de negocio NO estaba rota (se verificó en vivo que las fotos sí se vincularon, incl. fan-out a homónimos); era 100% un problema de UI.
 
 ## Historial
+- **0.4.0 (2026-06-26):** memory hardening con `host-cleanup-shared` (slim, Datadog stop, mem monitor + guardrail 88% con checkpoint, drain cada 50). Para el full run. Pendiente: deploy (config estructural → `deploy.sh`).
 - **0.3.0 (2026-06-26):** ciclo de archivados (desarchivar→vincular→re-archivar con `archivedAt` original, re-archivado en `finally`) + reporte accionable (cuenta **archivos seleccionados**, desarchivados/re-archivados, **lista + exporta CSV** de no encontrados). Mutaciones validadas en vivo (reversible). Pendiente: deploy + memory hardening para el full run.
 - **0.2.1 deploy (2026-06-26):** config **1.7.17**. Fix CSS dl9 (UI invisible) + `run()` siempre muestra resumen (try/finally + try por grupo). Causa raíz vía systematic-debugging; lógica confirmada correcta en vivo.
 - **0.2.0 deploy (2026-06-25):** publicado a gh-pages, config **1.7.15**. Validado el dump real (8,586 archivos). Próximo: ciclo de archivados (desarchivar→vincular→re-archivar) + memory hardening, tras prueba chica.
