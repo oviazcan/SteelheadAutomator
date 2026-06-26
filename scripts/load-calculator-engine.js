@@ -136,10 +136,99 @@
     return { largoIn: mToIn(lenM), anchoIn: mToIn(widM) };
   }
 
+  // ── Fase 2c: funciones puras de geometría ──
+
+  /**
+   * Clasifica el estado de geometría de un PN.
+   * @param {number|null} geometryTypeId  id del Geometry Type del PN (o null/undefined si no tiene).
+   * @param {number}      genericId       id del Geometry Type genérico (config.domain.geometryGenericaId, usualmente 831).
+   * @returns {'SIN_GEOMETRIA'|'GENERICA'|'OTRA'}
+   */
+  function classifyGeometryState(geometryTypeId, genericId) {
+    if (!geometryTypeId) return 'SIN_GEOMETRIA';
+    return geometryTypeId === genericId ? 'GENERICA' : 'OTRA';
+  }
+
+  /**
+   * Extrae las dimensiones físicas de un PN desde los nodos de
+   * `partNumberDimensionsByPartNumberId.nodes`.
+   * Los valores se almacenan en metros (unitByUnitId.id === MTR = 3971).
+   * @param {Array} nodes             array de nodos { geometryTypeDimensionTypeId, dimensionValue, unitByUnitId:{id} }.
+   * @param {object} geometryDimensions  config.domain.geometryDimensions ({LENGTH,WIDTH,HEIGHT,...} → typeId).
+   * @returns {{lengthM:number, widthM:number, heightM:number|null}|null}
+   *   null si no hay nodos o si faltan tanto LENGTH como WIDTH.
+   */
+  function dimsFromPartNumber(nodes, geometryDimensions) {
+    if (!nodes || !nodes.length) return null;
+    const geo = geometryDimensions || {};
+    const byType = {};
+    for (const d of nodes) {
+      if (d && d.geometryTypeDimensionTypeId != null) {
+        byType[d.geometryTypeDimensionTypeId] = d.dimensionValue;
+      }
+    }
+    const lengthM = byType[geo.LENGTH] != null ? byType[geo.LENGTH] : null;
+    const widthM  = byType[geo.WIDTH]  != null ? byType[geo.WIDTH]  : null;
+    if (lengthM == null || widthM == null) return null;
+    const heightM = byType[geo.HEIGHT] != null ? byType[geo.HEIGHT] : null;
+    return { lengthM, widthM, heightM };
+  }
+
+  /**
+   * Calcula el área de la pieza en dm² a partir de sus dims en metros.
+   * Fórmula: (lengthM * 10) * (widthM * 10)  → dm² directamente.
+   * Ejemplo: 0.3m × 0.2m → 3dm × 2dm = 6 dm².
+   * @param {number} lengthM  largo en metros.
+   * @param {number} widthM   ancho en metros.
+   * @returns {number} área en dm².
+   */
+  function areaFromDims(lengthM, widthM) {
+    return (lengthM * 10) * (widthM * 10);
+  }
+
+  /**
+   * Construye las 3 conversiones de área para un PN a partir del área en dm².
+   * @param {number} areaDm2      área en dm² (DMK).
+   * @param {object} conversions  config.domain.conversions ({CMK_TO_FTK, ...}).
+   * @returns {{dmk:number, cmk:number, ftk:number}}
+   *   dmk = areaDm2 · cmk = areaDm2 × 100 · ftk = cmk × CMK_TO_FTK.
+   */
+  function buildAreaConversions(areaDm2, conversions) {
+    const cmk = areaDm2 * 100;
+    const ftk = cmk * ((conversions && conversions.CMK_TO_FTK) || 0.00107639);
+    return { dmk: areaDm2, cmk, ftk };
+  }
+
+  /**
+   * Indica si las dims capturadas difieren de las existentes en el PN por más de
+   * `tolerancePct`% en CUALQUIER dimensión (length o width).
+   * Retorna false si cualquiera de los dos objetos es null/undefined (no hay con qué comparar).
+   * @param {{lengthM:number,widthM:number}} capturedDims   dims que el usuario capturó.
+   * @param {{lengthM:number,widthM:number}|null} existingDims  dims actuales del PN.
+   * @param {number} [tolerancePct=1]  porcentaje de tolerancia (default 1%).
+   * @returns {boolean}
+   */
+  function dimsAreDifferent(capturedDims, existingDims, tolerancePct = 1) {
+    if (!capturedDims || !existingDims) return false;
+    const tol = tolerancePct / 100;
+    const checkKeys = ['lengthM', 'widthM'];
+    for (const key of checkKeys) {
+      const cap = capturedDims[key];
+      const ex  = existingDims[key];
+      if (cap == null || ex == null) continue;
+      // Diferencia relativa vs la referencia existente
+      const ref = Math.abs(ex) > 1e-12 ? ex : 1;
+      if (Math.abs(cap - ex) / Math.abs(ref) > tol) return true;
+    }
+    return false;
+  }
+
   const api = {
     M_TO_IN, mToIn, cmToIn, cm2ToDm2,
     gridPieces, areaPieces, barrelPieces, decideMode, loadsPerHour,
     pieceAreaDm2FromConversions, selectBarrelCapacity, computeForRackType, dimsToPieceInches,
+    // F2c: geometría
+    classifyGeometryState, dimsFromPartNumber, areaFromDims, buildAreaConversions, dimsAreDifferent,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
