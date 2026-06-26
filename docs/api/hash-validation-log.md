@@ -463,3 +463,18 @@ Deploy `tools/deploy.sh "fix(hashes): rotación 6 ops (scan 2026-06-25)" --check
 **Rotados:**
 - `query GetQuoteRelatedData` (hash `572c489092ca...`)
 - `query WorkOrderDialogQuery` (hash `4d745ead94ba...`)
+
+## 2026-06-26 11:49 — corrección (1 de 2 rotados resuelto)
+
+**Corrida**: manual (agente de corrección de hashes). Fuente: `~/Downloads/scan_results_2026-06-26_114407.json`. Validación previa: `tools/.hash-validation/2026-06-26.json` (config 1.7.19, 2 stale).
+
+| Operación | viejo (8 chars) | nuevo (8 chars) | usedBy | estado |
+|---|---|---|---|---|
+| `WorkOrderDialogQuery` | `4d745ead` | `5b7f7153` | wo-mover | ✅ corregido + verificado en server (HTTP 400 `$workOrderId` required → hash existe) |
+| `GetQuoteRelatedData` | `572c489` | — | carga-masiva (catalog-fetcher, bulk-upload) | ⏳ **pendiente** — el scan no capturó la operación en vivo; el único hash previo en vivo (`04cc75ea`, jun-1) también está rotado |
+
+Deploy `tools/deploy.sh "fix(hashes): WorkOrderDialogQuery rotó (scan 2026-06-26) → 5b7f7153" --check wo-mover`: 1.7.19 → **1.7.20** + `lastUpdated 2026-06-26T11:49` (commit main `f2924e1`, gh-pages `ab5b35b`). Publicado en vivo (GitHub Pages, verificado por polling: `version:1.7.20`; invariante byte-a-byte OK).
+
+Re-validación post-deploy (config 1.7.20): **OK 170 / 173 · STALE 1** (`GetQuoteRelatedData`) · SKIPPED 2 (whitelist: `CurrentUser`, `GetPurchaseOrder`).
+
+**Pendiente `GetQuoteRelatedData`:** correr el hash-scanner abriendo una **cotización (Quote)** en Steelhead (carga de direcciones/contactos del cliente) para que el front nativo dispare la operación y el scanner capture el hash nuevo. Luego repetir bump+deploy.
