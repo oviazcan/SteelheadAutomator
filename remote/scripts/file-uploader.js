@@ -79,54 +79,73 @@ const FileUploader = (() => {
     log(`FileUploader: ${files.length} archivos en ${groups.size} PNs`);
     showUploaderUI(`Procesando ${files.length} archivos…`);
 
-    let gi = 0;
-    for (const [pnName, group] of groups) {
-      gi++;
-      const pct = Math.round((gi / groups.size) * 100);
-      updateUploaderUI(`${gi}/${groups.size} (${pct}%) — "${pnName}" — ${results.linked} vinculados`);
+    try {
+      let gi = 0;
+      for (const [pnName, group] of groups) {
+        gi++;
+        const pct = Math.round((gi / groups.size) * 100);
+        updateUploaderUI(`${gi}/${groups.size} (${pct}%) — "${pnName}" — ${results.linked} vinculados`);
 
-      const { matches, truncated } = await findAllPNsByName(pnName);
-      if (truncated) results.truncated.push(pnName);
-      if (!matches.length) {
-        for (const f of group) results.notFound.push({ fileName: f.name, pnName });
-        warn(`PN "${pnName}" no encontrado (${group.length} archivos)`);
-        continue;
-      }
-      if (matches.length > 1) results.homonymGroups++;
-
-      // Archivos existentes por cada PN homónimo (se descarta al cambiar de grupo → no acumula).
-      const existing = new Map();
-      for (const pn of matches) {
-        try { existing.set(pn.id, await existingNamesForPN(pn.id)); }
-        catch (e) { existing.set(pn.id, new Set()); warn(`No se pudieron leer archivos de PN ${pn.id}: ${e}`); }
-      }
-
-      for (const file of group) {
-        // PNs homónimos que AÚN no tienen este archivo (idempotencia: no duplicar/encimar).
-        const targets = matches.filter((pn) => !core().isAlreadyLinked(existing.get(pn.id), file.name));
-        if (!targets.length) { results.skipped++; continue; }
+        // Un grupo que truene (red/hash) NO debe tumbar toda la corrida ni esconder el resumen.
         try {
-          const up = await uploadBinary(file);
-          results.uploaded++;
-          await registerFile(up.name, file.name);
-          for (const pn of targets) {
-            await linkToPN(pn.id, up.name);
-            results.linked++;
-            existing.get(pn.id)?.add(core().norm(file.name));
+          const { matches, truncated } = await findAllPNsByName(pnName);
+          if (truncated) results.truncated.push(pnName);
+          if (!matches.length) {
+            for (const f of group) results.notFound.push({ fileName: f.name, pnName });
+            warn(`PN "${pnName}" no encontrado (${group.length} archivos)`);
+            continue;
           }
-          log(`  "${file.name}" → ${targets.length} PN(s)`);
+          if (matches.length > 1) results.homonymGroups++;
+
+          // Archivos existentes por cada PN homónimo (se descarta al cambiar de grupo → no acumula).
+          const existing = new Map();
+          for (const pn of matches) {
+            try { existing.set(pn.id, await existingNamesForPN(pn.id)); }
+            catch (e) { existing.set(pn.id, new Set()); warn(`No se pudieron leer archivos de PN ${pn.id}: ${e}`); }
+          }
+
+          for (const file of group) {
+            // PNs homónimos que AÚN no tienen este archivo (idempotencia: no duplicar/encimar).
+            const targets = matches.filter((pn) => !core().isAlreadyLinked(existing.get(pn.id), file.name));
+            if (!targets.length) { results.skipped++; continue; }
+            try {
+              const up = await uploadBinary(file);
+              results.uploaded++;
+              await registerFile(up.name, file.name);
+              for (const pn of targets) {
+                await linkToPN(pn.id, up.name);
+                results.linked++;
+                existing.get(pn.id)?.add(core().norm(file.name));
+              }
+              log(`  "${file.name}" → ${targets.length} PN(s)`);
+            } catch (e) {
+              results.errors.push(`"${file.name}": ${String(e).substring(0, 80)}`);
+            }
+          }
         } catch (e) {
-          results.errors.push(`"${file.name}": ${String(e).substring(0, 80)}`);
+          results.errors.push(`grupo "${pnName}": ${String(e).substring(0, 80)}`);
         }
       }
+    } finally {
+      showSummaryUI(results); // SIEMPRE muestra el resumen, aunque algo haya tronado
     }
-
-    showSummaryUI(results);
     return results;
   }
 
   // ── UI (dark mode: regla de diseño — distinguir de pantallas claras de Steelhead) ──
+  // Inyecta el CSS dl9 propio: file-uploader corre aislado, y si ningún otro applet
+  // (archiver/po-comparator/…) inyectó .dl9-* antes en esta tab, el overlay/resumen
+  // quedan SIN estilos = invisibles. Idempotente por id propio.
+  function ensureStyles() {
+    if (document.getElementById('sa-uploader-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'sa-uploader-styles';
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1c2430;color:#e6e9ee;border-radius:12px;padding:28px 32px;max-width:480px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 12px}.dl9-bar{height:10px;background:#0f291a;border-radius:6px;overflow:hidden;margin:14px 0 10px}.dl9-bar-fill{height:100%;width:40%;background:#13a36f;border-radius:6px;animation:saUplSlide 1.1s infinite ease-in-out}@keyframes saUplSlide{0%{margin-left:-40%}100%{margin-left:100%}}.dl9-progress{font-size:13px;color:#cbd5e1}`;
+    (document.head || document.documentElement).appendChild(s);
+  }
+
   function showUploaderUI(msg) {
+    ensureStyles();
     let ov = document.getElementById('sa-uploader-overlay');
     if (!ov) {
       ov = document.createElement('div');
@@ -151,6 +170,7 @@ const FileUploader = (() => {
   // Resumen no bloqueante (reemplaza alert()).
   function showSummaryUI(r) {
     removeUploaderUI();
+    ensureStyles();
     const ov = document.createElement('div');
     ov.id = 'sa-uploader-overlay';
     ov.className = 'dl9-overlay';
