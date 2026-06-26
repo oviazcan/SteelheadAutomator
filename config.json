@@ -1,6 +1,6 @@
 {
-  "version": "1.7.18",
-  "lastUpdated": "2026-06-26T09:35",
+  "version": "1.7.19",
+  "lastUpdated": "2026-06-26T09:47",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -534,7 +534,7 @@
       "subtitle": "Fotos y planos por PN",
       "icon": "📎",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"],
       "requiredPermissions": ["READ_ALL_UPLOADED_FILES"],
       "actions": [
         { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
