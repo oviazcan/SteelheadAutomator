@@ -55,7 +55,16 @@
     return !!existingSet && existingSet.has(norm(fileName));
   }
 
-  const api = { extractPNName, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm };
+  // ¿Vale la pena reintentar este error? true para 5xx/429/red (transitorios:
+  // gateway saturado, rate-limit), false para 4xx de lógica (404, 400) y vacíos.
+  function isTransientError(message) {
+    const m = String(message == null ? '' : message);
+    if (!m) return false;
+    return /HTTP\s*(429|500|502|503|504)\b/i.test(m)
+      || /(Bad Gateway|Service Unavailable|Gateway Time-?out|Too Many Requests|Failed to fetch|NetworkError|ECONNRESET|ETIMEDOUT|timeout)/i.test(m);
+  }
+
+  const api = { extractPNName, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FileUploaderCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
