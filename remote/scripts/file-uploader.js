@@ -51,7 +51,10 @@ const FileUploader = (() => {
       if (nodes.length < PAGE) break;
       if (p === MAX_PAGES - 1) truncated = true;
     }
-    return { matches: core().selectMatchingPNs(all, name), truncated };
+    // EJE A (slim): retener solo {id,name}; los nodos de AllPartNumbers traen
+    // customInputs/labels/relations pesados que no usamos (× miles de PNs = OOM).
+    const matches = core().selectMatchingPNs(all, name).map((n) => ({ id: n.id, name: n.name }));
+    return { matches, truncated };
   }
 
   // PNs ACTIVOS con ese nombre exacto (SearchPartNumbers no devuelve archivados).
@@ -133,7 +136,7 @@ const FileUploader = (() => {
     const results = {
       selected: files?.length || 0,
       uploaded: 0, linked: 0, skipped: 0, homonymGroups: 0, unarchived: 0, rearchived: 0,
-      notFound: [], truncated: [], errors: [],
+      notFound: [], truncated: [], errors: [], stopped: false,
     };
     if (!files?.length) return { error: 'No se seleccionaron archivos' };
     if (!core()) return { error: 'FileUploaderCore no disponible' };
@@ -149,9 +152,25 @@ const FileUploader = (() => {
     log(`FileUploader: ${files.length} archivos en ${groups.size} PNs`);
     showUploaderUI(`Procesando ${files.length} archivos…`);
 
+    // ── Memory hardening (host SPA): este run puede tocar miles de PNs por minutos. ──
+    const HC = window.SteelheadHostCleanup;
+    let cancelRun = false;
+    HC?.stopDatadogSessionReplay();
+    const mem = HC?.createMemMonitor({
+      getElement: () => document.getElementById('sa-upl-mem'),
+      onGuardrail: (pct) => {
+        cancelRun = true;
+        results.stopped = true;
+        results.errors.push(`⚠️ Memoria al ${pct}%: corrida detenida. Recarga la pestaña y vuelve a correr el lote — la idempotencia continúa donde quedó.`);
+      },
+    });
+    mem?.start();
+    const drain = HC?.makePeriodicDrain(50) || (() => {});
+
     try {
       let gi = 0;
       for (const [pnName, group] of groups) {
+        if (cancelRun) break; // guardrail @88% — checkpoint > crash
         gi++;
         const pct = Math.round((gi / groups.size) * 100);
         updateUploaderUI(`${gi}/${groups.size} (${pct}%) — "${pnName}" — ${results.linked} vinculados`);
@@ -182,8 +201,12 @@ const FileUploader = (() => {
         } catch (e) {
           results.errors.push(`grupo "${pnName}": ${String(e).substring(0, 80)}`);
         }
+        drain(); // Apollo cache drain cada 50 grupos (no acumular el normalizado del host)
       }
     } finally {
+      mem?.stop();
+      HC?.apolloCacheDrain();
+      groups.clear();
       showSummaryUI(results); // SIEMPRE muestra el resumen, aunque algo haya tronado
     }
     return results;
@@ -197,7 +220,7 @@ const FileUploader = (() => {
     if (document.getElementById('sa-uploader-styles')) return;
     const s = document.createElement('style');
     s.id = 'sa-uploader-styles';
-    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1c2430;color:#e6e9ee;border-radius:12px;padding:28px 32px;max-width:520px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 12px}.dl9-bar{height:10px;background:#0f291a;border-radius:6px;overflow:hidden;margin:14px 0 10px}.dl9-bar-fill{height:100%;width:40%;background:#13a36f;border-radius:6px;animation:saUplSlide 1.1s infinite ease-in-out}@keyframes saUplSlide{0%{margin-left:-40%}100%{margin-left:100%}}.dl9-progress{font-size:13px;color:#cbd5e1}.sa-upl-btn{padding:8px 20px;border:none;border-radius:6px;font-size:13px;cursor:pointer;color:#fff}`;
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1c2430;color:#e6e9ee;border-radius:12px;padding:28px 32px;max-width:520px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 12px}.dl9-bar{height:10px;background:#0f291a;border-radius:6px;overflow:hidden;margin:14px 0 10px}.dl9-bar-fill{height:100%;width:40%;background:#13a36f;border-radius:6px;animation:saUplSlide 1.1s infinite ease-in-out}@keyframes saUplSlide{0%{margin-left:-40%}100%{margin-left:100%}}.dl9-progress{font-size:13px;color:#cbd5e1}.sa-upl-btn{padding:8px 20px;border:none;border-radius:6px;font-size:13px;cursor:pointer;color:#fff}#sa-upl-mem.sa-mem-warn{color:#fde68a}#sa-upl-mem.sa-mem-crit{color:#fca5a5;font-weight:600}`;
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -208,7 +231,7 @@ const FileUploader = (() => {
       ov = document.createElement('div');
       ov.id = 'sa-uploader-overlay';
       ov.className = 'dl9-overlay';
-      ov.innerHTML = `<div class="dl9-modal" style="background:#1c2430;color:#e6e9ee"><h2 style="color:#13a36f">Cargador de Archivos</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="sa-upl-bar" style="background:#13a36f"></div></div><div class="dl9-progress" id="sa-upl-text"></div></div>`;
+      ov.innerHTML = `<div class="dl9-modal" style="background:#1c2430;color:#e6e9ee"><h2 style="color:#13a36f">Cargador de Archivos</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="sa-upl-bar" style="background:#13a36f"></div></div><div class="dl9-progress" id="sa-upl-text"></div><div id="sa-upl-mem" style="margin-top:8px;font-family:ui-monospace,monospace;font-size:11px;color:#94a3b8"></div></div>`;
       document.body.appendChild(ov);
     }
     document.getElementById('sa-upl-text').textContent = msg;
@@ -254,7 +277,8 @@ const FileUploader = (() => {
 
     const exportBtn = (r.notFound.length || r.errors.length)
       ? `<button id="sa-upl-export" class="sa-upl-btn" style="background:#475569">Exportar no encontrados</button>` : '';
-    ov.innerHTML = `<div class="dl9-modal" style="background:#1c2430;color:#e6e9ee;min-width:360px"><h2 style="color:#13a36f">Carga completada</h2><div style="font-size:13px;line-height:1.85">${body}</div>${detail}<div style="display:flex;gap:10px;margin-top:18px"><button id="sa-upl-close" class="sa-upl-btn" style="background:#13a36f">Cerrar</button>${exportBtn}</div></div>`;
+    const title = r.stopped ? '⚠️ Carga detenida (memoria)' : 'Carga completada';
+    ov.innerHTML = `<div class="dl9-modal" style="background:#1c2430;color:#e6e9ee;min-width:360px"><h2 style="color:${r.stopped ? '#fbbf24' : '#13a36f'}">${title}</h2><div style="font-size:13px;line-height:1.85">${body}</div>${detail}<div style="display:flex;gap:10px;margin-top:18px"><button id="sa-upl-close" class="sa-upl-btn" style="background:#13a36f">Cerrar</button>${exportBtn}</div></div>`;
     document.body.appendChild(ov);
     document.getElementById('sa-upl-close').onclick = () => ov.parentNode.removeChild(ov);
     const eb = document.getElementById('sa-upl-export');
