@@ -532,7 +532,7 @@
       "subtitle": "Fotos y planos por PN",
       "icon": "📎",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"],
       "requiredPermissions": ["READ_ALL_UPLOADED_FILES"],
       "actions": [
         { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
