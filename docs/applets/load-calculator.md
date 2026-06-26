@@ -1,9 +1,17 @@
 # Applet: `load-calculator` — Calculadora de Piezas por Carga
 
-**Versión actual:** 0.1.1 (Fase 1: **Configurador de Estaciones**, datos maestros. Ronda 2 de feedback en vivo: tema oscuro, dropdown filtrado a estaciones programables, campos ajustados, capacidades de barril como array por Rack Type. **Pendiente validación en vivo de la ronda 2.**)
-**Archivos:** `remote/scripts/load-calculator.js` (applet DOM) · `remote/scripts/load-calculator-engine.js` (motor puro) · `remote/scripts/load-calculator-stations.js` (núcleo puro del configurador)
-**Tests:** `tools/test/load-calculator-engine.test.js` (8) · `tools/test/load-calculator-stations.test.js` (12)
-**Global:** `window.LoadCalculator` (`openStationConfig`) · `window.LoadCalculatorEngine` · `window.LoadCalculatorStations`
+**Versión actual:** 0.2.0 (**Fase 1 validada en vivo** + **Fase 2a/2b**: calculadora en el modal de Rack Types. F2a: intercepta `CreateEditPartsPerRackTypeQuery`, resuelve línea→estación→params+barriles, dims del Geometry Type, área DMK; al elegir Rack Type calcula (BARRIL/RACK) y autollenan "Parts Per Rack". F2b: **Persistir en el PN** = `DatosPlanificacion.PiezasCarga` + Control de Cambios vía **`UpdatePartNumber {id, customInputs}`** (input PARCIAL, no toca acabados/specs/dims/precios — evita el riesgo de `SavePartNumber` completo), con confirmación previa. **Pendiente validación en vivo de F2a/F2b.**)
+**Archivos:** `remote/scripts/load-calculator.js` (configurador, popup) · `remote/scripts/load-calculator-modal.js` (F2a/F2b, autoInject) · `remote/scripts/load-calculator-engine.js` (motor puro) · `remote/scripts/load-calculator-stations.js` (núcleo puro)
+**Tests:** `tools/test/load-calculator-engine.test.js` (12) · `tools/test/load-calculator-stations.test.js` (18) — 30 verdes
+**Global:** `window.LoadCalculator` (`openStationConfig`) · `window.LoadCalculatorEngine` · `window.LoadCalculatorStations` · `window.LoadCalculatorModal` (auto)
+
+## Fase 2 — calculadora en el modal de Rack Types
+
+- **Activación:** app `autoInject`; `load-calculator-modal.js` hace monkey-patch de `window.fetch` e intercepta `CreateEditPartsPerRackTypeQuery` (trae `allRackTypes` + `inventoryItemUnitConversions` con el área DMK del PN). Panel oscuro flotante.
+- **Contexto:** `GetPartNumber` → línea (dim 349 vía `acctPnDimensionValueSelections` + `GetDimension`) + dims (`partNumberDimensions` LENGTH/WIDTH metros→pulgadas). Línea → estación `-LI` (`findSchedulableStationsForLine`) → `GetStation.customInputs` (params + `CapacidadesBarril`). Dropdown override.
+- **Cálculo (`computeForRackType`):** Rack Type en `CapacidadesBarril` → **BARRIL** (`cap/areaPieza`); si no → **RACK** = cuadrícula + área. **Aplicar** = `fillPartsPerRack` (MUI native setter).
+- **Persistencia F2b (`persistToPN`):** `GetPartNumber` → `buildPlanningCustomInputs` (RMW de `DatosPlanificacion.PiezasCarga` + append `ControlCambios`, usuario vía `CurrentUserActiveSegments`) → **`UpdatePartNumber {id, customInputs}`** (parcial). `confirm()` previo.
+- **Pendiente F2c:** persistir **dims** (Geometry Type) y **área DMK/CMK/FTK** cuando el PN no las tiene — requiere `SaveGeometryType` + shapes de las mutaciones de unit conversion (o `SavePartNumber` completo). Aquí vive el "registrar en Geometría Genérica (831) avisando".
 **Plan/diseño:** [`docs/superpowers/plans/2026-06-24-load-calculator.md`](../superpowers/plans/2026-06-24-load-calculator.md)
 
 ## Qué es
@@ -64,8 +72,67 @@ Geometría (fase 2, ya en config): `geometryGenericaId:831`, `geometryDimensions
 4. Modo **línea**: elegir una línea, confirmar conteo, Guardar → todas sus estaciones quedan con los params (previos preservados).
 5. Re-abrir y elegir la misma estación → el form **prellena** con lo guardado.
 
+## F2c — Lectura y preview de geometría (2026-06-25)
+
+**Estado:** implementado y deployado. Escritura deshabilitada (`F2C_WRITE_ENABLED = false`).
+
+### Qué hace F2c
+- **Lectura:** cuando se abre el modal de Rack Types, `resolveGeometryState()` lee del nodo `GetPartNumber` el `geometryTypeByGeometryTypeId.geometryTypeId` y las `partNumberDimensionsByPartNumberId.nodes`.
+- **Clasificación:** `classifyGeometryState(geometryTypeId, 831)` → `'SIN_GEOMETRIA'` / `'GENERICA'` / `'OTRA'`.
+- **Preview:** muestra dims actuales del PN en cm + área calculada en DMK/CMK/FTK.
+- **Aviso:** si las dims capturadas difieren >1% de las registradas, badge naranja (en F2d con dims editables).
+- **Botón deshabilitado:** "🔒 Registrar geometría" — tooltip "Pendiente de validación en vivo".
+
+### GAP de escritura segura — por qué F2C_WRITE_ENABLED = false
+
+**El problema con `SavePartNumber` completo:**
+`SavePartNumber` es un REPLACE total: si no reconstruyes absolutamente todos los campos del PN
+(specs, labels, precios, acabados, grupos, procesos, opt-in/outs, etc.), los datos faltantes
+se borran. `bulk-upload-build.js` tiene la maquinaria para esta reconstrucción, pero requiere
+leer TODO el PN primero (GetPartNumber completo) y reconstruir cada sub-objeto fielmente. Un
+error de reconstrucción borra datos en producción sin rollback.
+
+**Opciones para escritura segura:**
+
+1. **Opción A — Mutaciones quirúrgicas de unit conversion (PREFERIDA):**
+   - `CreateInventoryItemUnitConversion` / `UpdateInventoryItemUnitConversion` están en config
+     (hashes `769411466c...` / `ffc8db6cd8...`). Solo tocan la conversión de una unidad específica
+     del InventoryItem del PN, sin tocar el PN en sí.
+   - **Lo que falta para activar:** capturar el shape completo de las variables con el hash-scanner:
+     - Abrir un PN en SH → ir a Inventory Item → editar una conversión de unidad (DMK, CMK, FTK)
+     - El hash-scanner capturará el `operationName` y el shape de `{inventoryItemId, unitId, factor}`.
+   - Para dims: `SaveGeometryType` (hash `45b7a864...`) requiere el shape de
+     `{geometryTypeId, name, geometryTypeDimensions:[{geometryTypeDimensionTypeId, unitId, dimensionValue}]}`.
+     También falta capturar si se pasa `geometryTypeId=831` o se asigna el type al PN via otro campo.
+
+2. **Opción B — SavePartNumber RMW completo con bulk-upload-build.js:**
+   - Leer TODO el PN con GetPartNumber → reconstruir con `decideDims`, `decideLabelIds`, etc.
+   - Reutiliza maquinaria existente y probada, pero es costoso (muchos campos) y expone el riesgo
+     de que un campo nuevo en SH no esté cubierto por el builder.
+
+3. **Opción C — UpdatePartNumber parcial (SOLO customInputs — ya usada en F2b):**
+   - Solo escribe `customInputs`. NO puede escribir dims ni conversiones de área.
+   - Irrelevante para registrar geometría.
+
+**Procedimiento para activar F2C_WRITE_ENABLED:**
+1. Con el hash-scanner activo, abrir un PN de prueba en SH → ir a su Inventory Item → editar
+   (o crear) las conversiones DMK, CMK, FTK → capturar variables de `CreateInventoryItemUnitConversion`
+   y `UpdateInventoryItemUnitConversion`.
+2. Confirmar que el shape es `{inventoryItemId, unitId, factor}` (o similar).
+3. Implementar `persistGeometryToPN()` en `load-calculator-modal.js` usando las mutaciones quirúrgicas:
+   - Si el PN ya tiene la conversión DMK → `UpdateInventoryItemUnitConversion`.
+   - Si no → `CreateInventoryItemUnitConversion`.
+   - Ídem CMK y FTK.
+   - Para dims: `SaveGeometryType` con el geometry type genérico 831 + dims en metros.
+4. Probar en UN PN de prueba y verificar en SH que las conversiones y dims quedaron correctas.
+5. Cambiar `const F2C_WRITE_ENABLED = false;` → `true` en `load-calculator-modal.js` y deployar.
+
+**Funciones puras ya implementadas (listas para usar en F2d/F2e):**
+- `classifyGeometryState`, `dimsFromPartNumber`, `areaFromDims`, `buildAreaConversions`, `dimsAreDifferent`
+  (en `load-calculator-engine.js`, 19 tests verdes).
+
 ## Pendientes
-- **Deploy + validación en vivo** (Fase 1).
-- **Fase 2:** calculadora en el modal de Rack Types (intercept `CreateEditPartsPerRackTypeQuery`, autollenan Parts Per Rack, persistir partsPerRack + DatosPlanificacion + CC + Geometry Type con dims/DMK/CMK/FTK). DOM del modal ya capturado (ver plan).
+- **Deploy + validación en vivo** (Fase 1 + F2a/F2b/F2c).
+- **F2d:** Activar escritura de geometría tras capturar shapes de unit conversion con hash-scanner.
 - **Geometry Type genérico (id 831):** flujo de "registrar dims en Geometría Genérica" avisando, detectar geometría existente, check para no sobre-escribir (reutilizar `bulk-upload-build.js`).
 - Confirmar fórmulas con el `Calculo.xlsx` real (no está en disco; el motor reproduce los 3 golden conocidos).

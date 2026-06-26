@@ -421,3 +421,45 @@ Nota: `GetSpecFieldTreatments` y `GetSpecFieldWorkOrders` cubren los tabs de Tre
 
 **Rotados:**
 - `query GetSpecFieldSpec` (hash `4da5a5785f6a...`)
+
+## 2026-06-24 22:19 — 7 rotado(s)
+
+- Config version: `1.7.12`
+- OK: 164 / 173 · Tiempo: 144.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-24.json`
+
+**Rotados:**
+- `query GetQuoteRelatedData` (hash `572c489092ca...`)
+- `query AllPartNumbers` (hash `571d2028b068...`)
+- `query CreateEditReceivedOrderDialogQuery` (hash `1625daf1fab9...`)
+- `query GetCustomerInfoForReceivedOrder` (hash `efc55dec5cef...`)
+- `query WorkOrderDialogQuery` (hash `4d745ead94ba...`)
+- `query ProcessesComponentQuery` (hash `e04ec51b9301...`)
+- `query ProcessesWithTag` (hash `01c772451a17...`)
+
+## 2026-06-25 — 6 rotado(s) corregidos (scan manual)
+
+**Corrida**: manual (agente de corrección de hashes). Fuente: `~/Downloads/scan_results_2026-06-25_114954.json`.
+
+Los 6 hashes detectados como ROTADOS en el scan del navegador (same-origin, Caso A del playbook):
+
+| Operación | viejo (8 chars) | nuevo (8 chars) | usedBy |
+|---|---|---|---|
+| `AllPartNumbers` | `571d2028` | `827be681` | bulk-upload, auditor |
+| `CreateEditReceivedOrderDialogQuery` | `1625daf1` | `5b01210e` | portal-importer, carga-masiva |
+| `GetCustomerInfoForReceivedOrder` | `efc55dec` | `be7c8dbe` | portal-importer |
+| `GetPartNumber` | `4f36e940` | `804dd8f7` | bulk-upload, proceso-calculator |
+| `ProcessesComponentQuery` | `e04ec51b` | `c6941779` | process-deep-audit, auto-router |
+| `ProcessesWithTag` | `01c77245` | `2d83c581` | process-deep-audit, process-canon |
+
+Deploy `tools/deploy.sh "fix(hashes): rotación 6 ops (scan 2026-06-25)" --check load-calculator-modal`: 1.7.12 → **1.7.13** + `lastUpdated 2026-06-25T11:57` (commit main `559b1cd`, gh-pages `64729a3`). Publicado en vivo (GitHub Pages, verificado por polling: `version:1.7.13`).
+
+## 2026-06-25 23:21 — 2 rotado(s)
+
+- Config version: `1.7.16`
+- OK: 169 / 173 · Tiempo: 156.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-25.json`
+
+**Rotados:**
+- `query GetQuoteRelatedData` (hash `572c489092ca...`)
+- `query WorkOrderDialogQuery` (hash `4d745ead94ba...`)

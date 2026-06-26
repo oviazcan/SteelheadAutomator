@@ -215,12 +215,17 @@ Flujo: extender el schema de estación **una vez** (no-destructivo) + UI para ca
 ## Estado de implementación
 
 - [x] Plan materializado (este doc) + hallazgos DOM/API consolidados.
-- [x] Motor puro `load-calculator-engine.js` + golden tests (8/8 verdes).
-- [ ] **Decisiones de alcance/UX** (fuente de dims de pieza · params de estación · qué persiste) — pendiente confirmar con el usuario.
-- [ ] Applet `load-calculator.js` (capa DOM/API).
-- [ ] Entry en `config.json` + bitácora + índice CLAUDE.md.
-- [x] Mutación de escritura de estación capturada (`UpdateStationInputs`). Pendiente: extender schema + alta de params por estación.
-- [ ] Validación en vivo.
+- [x] Motor puro `load-calculator-engine.js` + golden tests (12 verdes).
+- [x] Decisiones de alcance/UX cerradas (ver §"Decisiones del usuario — ronda 2").
+- [x] Applet `load-calculator.js` (capa DOM) + `load-calculator-modal.js` (modal F2a/F2b/F2c).
+- [x] Entry en `config.json` + bitácora + índice CLAUDE.md.
+- [x] Mutación de escritura de estación capturada (`UpdateStationInputs`).
+- [x] **F1** — Configurador de Estaciones. Tests 18/18. Pendiente: run real.
+- [x] **F2a** — Calcula piezas/carga en el modal, autollenan "Parts Per Rack". Pendiente: run real.
+- [x] **F2b** — Persistir `DatosPlanificacion.PiezasCarga` + Control de Cambios (UpdatePartNumber parcial). Pendiente: run real.
+- [x] **F2c** — Lectura + preview de geometría. Estado, dims en cm, área DMK/CMK/FTK. `F2C_WRITE_ENABLED=false`. 19 tests. **Deployado config 1.7.16 (2026-06-25)**.
+- [ ] **F2d** — Activar escritura de geometría: capturar shapes de `CreateInventoryItemUnitConversion` / `UpdateInventoryItemUnitConversion` con hash-scanner → implementar `persistGeometryToPN()` → `F2C_WRITE_ENABLED=true`.
+- [ ] Validación en vivo (F1, F2a, F2b, F2c).
 
 ## Verificación
 

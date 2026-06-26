@@ -115,6 +115,19 @@ test('parseStationLine extrae el prefijo de línea del nombre de la estación', 
   assert.equal(S.parseStationLine(null), null);
 });
 
+test('findSchedulableStationsForLine: estaciones programables de una línea', () => {
+  const stations = [
+    { id: 1, name: 'T101-LI Pre-Limpiezas', calendarByCalendarId: { id: 9 } },
+    { id: 2, name: 'T101-TI00 Enjuague' },                                  // no programable
+    { id: 3, name: 'T205-LI Algo', calendarByCalendarId: { id: 9 } },       // otra línea
+    { id: 4, name: 'T101-CA01 Cotizable', calendarId: 7 },                  // programable, misma línea
+  ];
+  const r = S.findSchedulableStationsForLine(stations, 'T101');
+  assert.deepEqual(r.map(s => s.id), [1, 4]);
+  assert.deepEqual(S.findSchedulableStationsForLine(stations, 't101').map(s => s.id), [1, 4]); // case-insensitive
+  assert.deepEqual(S.findSchedulableStationsForLine(stations, 'T999'), []);
+});
+
 test('stationIsSchedulable: true sólo si la estación tiene calendario', () => {
   assert.equal(S.stationIsSchedulable({ calendarByCalendarId: { id: 5 } }), true);
   assert.equal(S.stationIsSchedulable({ calendarId: 5 }), true);
@@ -133,4 +146,32 @@ test('groupStationsByLine agrupa por línea y omite las que no parsean', () => {
   assert.equal(g.T205.length, 2);
   assert.equal(g.M102.length, 1);
   assert.deepEqual(g.T205.map(s => s.id), [1, 2]);
+});
+
+// ── Fase 2b: persistencia en el PN (RMW de customInputs, no-destructivo) ──
+
+test('buildPlanningCustomInputs: RMW de DatosPlanificacion + append ControlCambios, sin pisar lo demás', () => {
+  const ci = { DatosFacturacion: { CodigoSAT: 'x' }, DatosPlanificacion: { TiempoEntrega: 5 } };
+  const out = S.buildPlanningCustomInputs(ci, { piezasCarga: 87, ccEntry: { Fecha: '2026-06-25', Accion: 'CARGA' } });
+  assert.equal(out.DatosPlanificacion.PiezasCarga, 87);
+  assert.equal(out.DatosPlanificacion.TiempoEntrega, 5);      // preservado
+  assert.equal(out.DatosFacturacion.CodigoSAT, 'x');          // preservado
+  assert.equal(out.ControlCambios.length, 1);
+  assert.equal(out.ControlCambios[0].Accion, 'CARGA');
+  assert.equal(ci.DatosPlanificacion.PiezasCarga, undefined); // NO muta el original
+  assert.ok(ci.ControlCambios === undefined);
+});
+
+test('buildPlanningCustomInputs: append a ControlCambios existente + crea DatosPlanificacion si falta', () => {
+  const ci = { ControlCambios: [{ Accion: 'ALTA' }] };
+  const out = S.buildPlanningCustomInputs(ci, { piezasCarga: 10, ccEntry: { Accion: 'CARGA' } });
+  assert.equal(out.ControlCambios.length, 2);
+  assert.equal(out.DatosPlanificacion.PiezasCarga, 10);
+});
+
+test('buildPlanningCustomInputs: sin ccEntry no toca ControlCambios; solo escribe los campos provistos', () => {
+  const out = S.buildPlanningCustomInputs({}, { piezasCarga: 5 });
+  assert.equal(out.DatosPlanificacion.PiezasCarga, 5);
+  assert.ok(out.ControlCambios === undefined);
+  assert.ok(!('CargasHora' in out.DatosPlanificacion));
 });

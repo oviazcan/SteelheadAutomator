@@ -84,9 +84,35 @@
     return out;
   }
 
+  /** Estaciones PROGRAMABLES (con calendario) cuya línea coincide con `lineCode`. */
+  function findSchedulableStationsForLine(stations, lineCode) {
+    const lc = String(lineCode || '').toUpperCase();
+    return (stations || []).filter(s => stationIsSchedulable(s) && parseStationLine(s && s.name) === lc);
+  }
+
+  /**
+   * RMW NO-destructivo de los `customInputs` de un PN para persistir el cálculo (Fase 2b):
+   * escribe DatosPlanificacion.{PiezasCarga,CargasHora,TiempoEntrega} (solo los provistos) y
+   * hace append a ControlCambios[] (si se pasa ccEntry). Preserva todo lo demás. No muta el original.
+   */
+  function buildPlanningCustomInputs(existingCI, opts) {
+    const o = opts || {};
+    const ci = existingCI ? clone(existingCI) : {};
+    if (!ci.DatosPlanificacion || typeof ci.DatosPlanificacion !== 'object') ci.DatosPlanificacion = {};
+    if (o.piezasCarga != null) ci.DatosPlanificacion.PiezasCarga = o.piezasCarga;
+    if (o.cargasHora != null) ci.DatosPlanificacion.CargasHora = String(o.cargasHora);
+    if (o.tiempoEntrega != null) ci.DatosPlanificacion.TiempoEntrega = o.tiempoEntrega;
+    if (o.ccEntry) {
+      if (!Array.isArray(ci.ControlCambios)) ci.ControlCambios = [];
+      ci.ControlCambios.push(clone(o.ccEntry));
+    }
+    return ci;
+  }
+
   const api = {
     buildStationInputSchema, buildUpdateStationInputsVars,
     schemaMissingFields, parseStationLine, groupStationsByLine, stationIsSchedulable,
+    findSchedulableStationsForLine, buildPlanningCustomInputs,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.LoadCalculatorStations = api;
