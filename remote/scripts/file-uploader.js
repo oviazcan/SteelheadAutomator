@@ -16,28 +16,60 @@ const FileUploader = (() => {
   const warn = (m) => api().warn(m);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  // ── Rate-limit + retry (evita el HTTP 502 por disparar requests sin pausa) ──
+  let cancelRun = false;            // lo activa el guardrail de memoria
+  let _lastCall = 0;
+  const MIN_GAP_MS = 120;           // ~8 req/s: el gateway de Steelhead se satura sin esto
+  const RETRY_DELAYS = [0, 1000, 3000, 8000]; // backoff en transitorios (502/429/red)
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function gate() {           // espacia las llamadas de red
+    const wait = MIN_GAP_MS - (Date.now() - _lastCall);
+    if (wait > 0) await sleep(wait);
+    _lastCall = Date.now();
+  }
+
+  // Throttle + reintento con backoff SOLO en errores transitorios; los de lógica fallan ya.
+  async function withRetry(fn, label) {
+    let lastErr;
+    for (let i = 0; i < RETRY_DELAYS.length; i++) {
+      if (cancelRun) throw new Error('__sa_cancelado__');
+      if (RETRY_DELAYS[i]) await sleep(RETRY_DELAYS[i]);
+      await gate();
+      try { return await fn(); }
+      catch (e) {
+        lastErr = e;
+        if (i === RETRY_DELAYS.length - 1 || !core().isTransientError(e?.message || e)) throw e;
+        warn(`${label}: reintento ${i + 1} · ${String(e?.message || e).substring(0, 50)}`);
+      }
+    }
+    throw lastErr;
+  }
+
   // Sube el binario una sola vez a Steelhead.
   async function uploadBinary(file) {
-    const formData = new FormData();
-    formData.append('myfile', file, file.name);
-    const resp = await fetch('/api/files', { method: 'POST', credentials: 'include', body: formData });
-    if (!resp.ok) throw new Error(`Upload HTTP ${resp.status}`);
-    return await resp.json(); // { name: "generated.pdf", originalName: "original.pdf" }
+    return withRetry(async () => {
+      const formData = new FormData();
+      formData.append('myfile', file, file.name);
+      const resp = await fetch('/api/files', { method: 'POST', credentials: 'include', body: formData });
+      if (!resp.ok) throw new Error(`Upload HTTP ${resp.status}`);
+      return await resp.json(); // { name: "generated.pdf", originalName: "original.pdf" }
+    }, `subir ${file.name}`);
   }
 
   async function registerFile(generatedName, originalName) {
-    const data = await api().query('CreateUserFile', { name: generatedName, originalName });
+    const data = await withRetry(() => api().query('CreateUserFile', { name: generatedName, originalName }), 'CreateUserFile');
     return data?.createUserFile?.userFile;
   }
 
   async function linkToPN(partNumberId, generatedName) {
-    const data = await api().query('CreatePartNumberUserFile', { partNumberId, fileName: generatedName });
+    const data = await withRetry(() => api().query('CreatePartNumberUserFile', { partNumberId, fileName: generatedName }), 'CreatePartNumberUserFile');
     return data?.createPartNumberUserFile?.partNumberUserFile;
   }
 
   // archivedAt: null = desarchivar; timestamp ISO = (re)archivar.
   async function setArchived(partNumberId, archivedAt) {
-    await api().query('UpdatePartNumber', { id: partNumberId, archivedAt });
+    await withRetry(() => api().query('UpdatePartNumber', { id: partNumberId, archivedAt }), 'UpdatePartNumber');
   }
 
   // Paginación + filtro de exactos, parametrizada por operación (activos vs incluir archivados).
@@ -45,7 +77,7 @@ const FileUploader = (() => {
     const PAGE = 50, MAX_PAGES = 6;
     let all = [], truncated = false;
     for (let p = 0; p < MAX_PAGES; p++) {
-      const data = await api().query(opName, { searchQuery: name, first: PAGE, offset: p * PAGE, orderBy: ['ID_DESC'], ...extraVars });
+      const data = await withRetry(() => api().query(opName, { searchQuery: name, first: PAGE, offset: p * PAGE, orderBy: ['ID_DESC'], ...extraVars }), opName);
       const nodes = data?.searchPartNumbers?.nodes || data?.pagedData?.nodes || data?.allPartNumbers?.nodes || [];
       all = all.concat(nodes);
       if (nodes.length < PAGE) break;
@@ -64,7 +96,7 @@ const FileUploader = (() => {
 
   // GetPartNumber → { archivedAt original, names: set de originalName ya vinculados }.
   async function getPNDetail(pnId) {
-    const data = await api().query('GetPartNumber', { partNumberId: pnId, usagesLimit: 10, usagesOffset: 0 });
+    const data = await withRetry(() => api().query('GetPartNumber', { partNumberId: pnId, usagesLimit: 10, usagesOffset: 0 }), 'GetPartNumber');
     const pn = data?.partNumberById || {};
     return { archivedAt: pn.archivedAt || null, names: core().existingOriginalNames(pn) };
   }
@@ -154,7 +186,7 @@ const FileUploader = (() => {
 
     // ── Memory hardening (host SPA): este run puede tocar miles de PNs por minutos. ──
     const HC = window.SteelheadHostCleanup;
-    let cancelRun = false;
+    cancelRun = false; // reset del flag de módulo (lo usa withRetry para abortar reintentos)
     HC?.stopDatadogSessionReplay();
     const mem = HC?.createMemMonitor({
       getElement: () => document.getElementById('sa-upl-mem'),
