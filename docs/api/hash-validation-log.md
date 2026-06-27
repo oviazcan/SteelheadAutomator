@@ -492,3 +492,13 @@ Deploy `tools/deploy.sh "fix(hashes): GetQuoteRelatedData rotó (scan 2026-06-26
 Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (whitelist: `CurrentUser`, `GetPurchaseOrder`). ✅ **Ambas rotaciones del 2026-06-25 resueltas.**
 
 ## 2026-06-26 16:51 — 0 rotado(s) (launchd)
+
+## 2026-06-26 22:20 — 2 rotado(s)
+
+- Config version: `1.7.23`
+- OK: 169 / 173 · Tiempo: 177.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-26.json`
+
+**Rotados:**
+- `query GetPurchaseOrdersDataForBill` (hash `ad098de458c4...`)
+- `mutation CreateInventoryTransferEventGroups` (hash `21bf4eb2b1b2...`)
