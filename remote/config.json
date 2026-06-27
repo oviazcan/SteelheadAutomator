@@ -887,6 +887,23 @@
         { "id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router" },
         { "id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch" }
       ]
+    },
+    {
+      "id": "surtido-guard",
+      "name": "Candado de Surtido Programado",
+      "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido",
+      "icon": "🔒",
+      "category": "Producción",
+      "autoInject": true,
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/surtido-guard-core.js",
+        "scripts/surtido-guard.js"
+      ],
+      "requiredPermissions": [],
+      "actions": [
+        { "id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup" }
+      ]
     }
   ],
   "knownOperations": {
