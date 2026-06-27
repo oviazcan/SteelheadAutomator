@@ -124,6 +124,11 @@ test('isTransientError: errores de red son transitorios', () => {
   assert.equal(Core.isTransientError('NetworkError when attempting to fetch resource'), true);
 });
 
+test('isTransientError: AbortError por corte de red se reintenta', () => {
+  assert.equal(Core.isTransientError('AbortError: The user aborted a request.'), true);
+  assert.equal(Core.isTransientError('The operation was aborted'), true);
+});
+
 test('isTransientError: 4xx de lógica NO se reintentan', () => {
   assert.equal(Core.isTransientError('HTTP 404 not found'), false);
   assert.equal(Core.isTransientError('Upload HTTP 400'), false);
