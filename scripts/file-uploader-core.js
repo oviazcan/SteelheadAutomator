@@ -61,7 +61,7 @@
     const m = String(message == null ? '' : message);
     if (!m) return false;
     return /HTTP\s*(429|500|502|503|504)\b/i.test(m)
-      || /(Bad Gateway|Service Unavailable|Gateway Time-?out|Too Many Requests|Failed to fetch|NetworkError|ECONNRESET|ETIMEDOUT|timeout)/i.test(m);
+      || /(Bad Gateway|Service Unavailable|Gateway Time-?out|Too Many Requests|Failed to fetch|NetworkError|ECONNRESET|ETIMEDOUT|timeout|AbortError|aborted)/i.test(m);
   }
 
   const api = { extractPNName, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError };
