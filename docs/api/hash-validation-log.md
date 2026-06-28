@@ -502,3 +502,13 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 **Rotados:**
 - `query GetPurchaseOrdersDataForBill` (hash `ad098de458c4...`)
 - `mutation CreateInventoryTransferEventGroups` (hash `21bf4eb2b1b2...`)
+
+## 2026-06-28 03:19 — 2 rotado(s)
+
+- Config version: `1.7.23`
+- OK: 169 / 173 · Tiempo: 172.2s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-28.json`
+
+**Rotados:**
+- `query GetPurchaseOrdersDataForBill` (hash `ad098de458c4...`)
+- `mutation CreateInventoryTransferEventGroups` (hash `21bf4eb2b1b2...`)
