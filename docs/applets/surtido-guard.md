@@ -60,6 +60,13 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 4. **Toggle**: apagar desde el popup → permite mover; recargar → vuelve a ON. ✅ **VALIDADO en vivo 2026-06-29** (fix v0.1.1: estado en `window` singleton).
 5. **Verde**: tarjetas con "Tareas Programadas:" en verde; afinar el selector de contenedor con el HTML real.
 
+## Portar a iPad (Safari Web Extension)
+Decidido portar como **Safari Web Extension** (no PWA) — análisis en
+[`docs/architecture/ipad-surtido-guard-decision.md`](../architecture/ipad-surtido-guard-decision.md).
+POC en `safari/` (source + plan B + README de Xcode). Riesgo a vigilar: el mapa de programadas
+(`buildScheduledAccountSet`) tiene **fail-safe silencioso** ante cambios de schema de `GetRelatedScheduleData`
+→ pendiente telemetría cuando el set sale vacío.
+
 ## Lecciones
 
 ### El estado mutable del applet NO puede vivir en el closure del IIFE (bug del toggle, 2026-06-29)

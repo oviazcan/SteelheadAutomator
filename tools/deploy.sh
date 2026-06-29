@@ -141,3 +141,24 @@ if [ -n "$CHECK_SCRIPT" ] && [ -x "$MAINWT/tools/check-deploy.sh" ]; then
 else
   echo "✅ Push hecho. Verifica con: tools/deploy-status.sh   (o check-deploy.sh <script>)"
 fi
+
+# --- guardrail anti-divergencia Safari/iPad (handoff) ---
+# El candado de surtido vive ADEMÁS empaquetado para Safari/iPad en safari/extension/ (copias
+# byte-a-byte de remote/scripts/). Ese canal NO se actualiza con git push: requiere
+# safari/sync-scripts.sh + recompilar en Xcode. Avisa si quedó desincronizado para que un
+# sucesor no deploye a Chrome y olvide iPad (ver safari/README.md).
+if [ -d "$MAINWT/safari/extension" ]; then
+  SDRIFT=""
+  for f in "$MAINWT"/safari/extension/*.js; do
+    [ -e "$f" ] || continue
+    base="$(basename "$f")"
+    src="$MAINWT/remote/scripts/$base"
+    [ -e "$src" ] || continue   # sg-inject.js u otros propios de Safari → no aplican
+    diff -q "$src" "$f" >/dev/null 2>&1 || SDRIFT="$SDRIFT $base"
+  done
+  if [ -n "$SDRIFT" ]; then
+    echo
+    echo "⚠️  Safari/iPad DESINCRONIZADO:$SDRIFT difiere(n) de remote/scripts/."
+    echo "    Si el cambio aplica al candado de iPad: corre 'safari/sync-scripts.sh' y recompila en Xcode."
+  fi
+fi
