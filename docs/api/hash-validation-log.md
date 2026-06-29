@@ -514,3 +514,19 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 - `mutation CreateInventoryTransferEventGroups` (hash `21bf4eb2b1b2...`)
 
 ## 2026-06-29 08:27 — 0 rotado(s) (launchd)
+
+## 2026-06-29 14:19 — Reparación: deploy config 1.7.26 (2 rotados re-capturados del scan)
+
+**Corrida**: manual (sesión de la feature `file-uploader` display-image, skill `steelhead-hash-validator`). El usuario pidió corregir de paso los rotados aprovechando el scan de hoy.
+
+**Resultado pre-reparación (config 1.7.25): 169 ok / 2 stale / 2 skipped / 0 unknown / 0 auth** en 102.1s. Resultado `tools/.hash-validation/2026-06-29.json`.
+
+| Operación | viejo → nuevo | usedBy | Fuente del hash nuevo |
+|---|---|---|---|
+| `GetPurchaseOrdersDataForBill` (query) | `ad098de4…` → `a94f4396…` | bill-autofill | scan `2026-06-29_135728` (`scanResults`, no `apiKnowledge`) |
+| `CreateInventoryTransferEventGroups` (mutation) | `21bf4eb2…` → `901d61bf…` | inventory-reset | scan `2026-06-29_135728` (`scanResults`) |
+
+- **Probe puntual al server (antes de editar):** ambos hashes viejos → `"Must provide a query string"` (STALE 1/1); ambos nuevos → HTTP 400 de variables (hash existe en el registry, OK).
+- **Discrepancia con launchd:** la entrada `2026-06-29 08:27 — 0 rotado(s) (launchd)` reportó 0 con el **mismo** config 1.7.25; la corrida manual de las 14:00 detectó 2 stale, confirmados con probe. Consistente con flapping/rollout escalonado (canary) del server, como `GetDomain` el 19/22 jun — NO bug del validador. (Estos 2 ya venían reportados stale el 26 y 28 jun, sin reparar hasta hoy.)
+- **`AllSensorDashboards` NO se tocó:** el scan trae un hash distinto al de config, pero el validador en vivo lo da **OK** (el server aún acepta el del config; el front migró a otro hash sin rotar el viejo). `sensor-status-autofill` no está roto. Sin cambio — defensa contra falsos positivos del diff scan-vs-config.
+- Deploy `tools/deploy.sh --check bill-autofill`: 1.7.25 → **1.7.26** (commit main `3500b8d`, gh-pages `e80fe8c`). Publicado en vivo (GitHub Pages sirve config 1.7.26 con ambos hashes nuevos, verificado por curl).
