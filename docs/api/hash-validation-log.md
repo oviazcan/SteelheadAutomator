@@ -512,3 +512,5 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 **Rotados:**
 - `query GetPurchaseOrdersDataForBill` (hash `ad098de458c4...`)
 - `mutation CreateInventoryTransferEventGroups` (hash `21bf4eb2b1b2...`)
+
+## 2026-06-29 08:27 — 0 rotado(s) (launchd)
