@@ -282,3 +282,51 @@ test('readDisplayState: bucket de nodo/instrucciones NUNCA aporta ids al mapa', 
   assert.equal(st.fileIdByName.get('foto.jpg'), 5);
   assert.equal(st.fileIdByName.has('instruccion-nodo.pdf'), false);
 });
+
+// ── parseBackfillCsv (BACKFILL: ingiere el CSV de Cowork PN→displayImage) ─────
+// Columnas reales (Cowork): PN, displayImage, tipo, fuente. La principal ya viene
+// decidida en displayImage → el backfill solo la aplica (no re-elige heurística).
+test('parseBackfillCsv: parsea filas por header (PN, displayImage, tipo, fuente)', () => {
+  const csv = 'PN,displayImage,tipo,fuente\n000851,000851.jpg,unico,heuristica\n003397005,003397005__1.jpg,foto,heuristica';
+  const rows = Core.parseBackfillCsv(csv);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[0], { pn: '000851', displayImage: '000851.jpg', tipo: 'unico', fuente: 'heuristica' });
+  assert.equal(rows[1].pn, '003397005');
+  assert.equal(rows[1].displayImage, '003397005__1.jpg');
+});
+
+test('parseBackfillCsv: mapea por NOMBRE de columna (robusto a reordenar)', () => {
+  const csv = 'displayImage,fuente,PN\nx.jpg,heuristica,ABC';
+  const rows = Core.parseBackfillCsv(csv);
+  assert.equal(rows[0].pn, 'ABC');
+  assert.equal(rows[0].displayImage, 'x.jpg');
+  assert.equal(rows[0].fuente, 'heuristica');
+});
+
+test('parseBackfillCsv: ignora líneas vacías y BOM al inicio', () => {
+  const csv = '﻿PN,displayImage,tipo,fuente\n\n000851,000851.jpg,unico,heuristica\n\n';
+  const rows = Core.parseBackfillCsv(csv);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].pn, '000851');
+});
+
+test('parseBackfillCsv: respeta comillas con coma interna y espacios en el nombre', () => {
+  const csv = 'PN,displayImage,tipo,fuente\n"ABC,X","003397105__BRIGHT DIP.jpg",unico,heuristica';
+  const rows = Core.parseBackfillCsv(csv);
+  assert.equal(rows[0].pn, 'ABC,X');
+  assert.equal(rows[0].displayImage, '003397105__BRIGHT DIP.jpg');
+});
+
+test('parseBackfillCsv: preserva el valor tal cual (no toca mayúsculas de .JPG)', () => {
+  const rows = Core.parseBackfillCsv('PN,displayImage\n003397015,003397015__2.JPG');
+  assert.equal(rows[0].displayImage, '003397015__2.JPG');
+});
+
+test('parseBackfillCsv: sin header reconocible → arroja (evita comerse datos)', () => {
+  assert.throws(() => Core.parseBackfillCsv('a,b,c\n1,2,3'), /encabezado|header|PN|displayImage/i);
+});
+
+test('parseBackfillCsv: vacío → []', () => {
+  assert.deepEqual(Core.parseBackfillCsv(''), []);
+  assert.deepEqual(Core.parseBackfillCsv('   '), []);
+});
