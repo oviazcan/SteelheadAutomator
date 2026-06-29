@@ -125,7 +125,54 @@
     return { displayImageId, fileIdByName };
   }
 
-  const api = { extractPNName, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError, isImageFile, isPrincipalDescriptor, selectDisplayImage, readDisplayState };
+  // ── Backfill: ingesta del CSV de Cowork (PN → displayImage ya decidido) ──────
+  // Una línea CSV → campos, respetando comillas ("" = comilla escapada) y comas
+  // internas. No maneja newlines dentro de comillas (los nombres de archivo no
+  // los tienen).
+  function splitCsvLine(line) {
+    const out = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inQ) {
+        if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+        else cur += c;
+      } else if (c === '"') inQ = true;
+      else if (c === ',') { out.push(cur); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  // Parsea el CSV de Cowork → [{pn, displayImage, tipo, fuente}].
+  // Header mapeado por NOMBRE de columna (case-insensitive); exige PN + displayImage.
+  // Cowork ya eligió la principal (columna displayImage) → el backfill solo la aplica.
+  function parseBackfillCsv(text) {
+    let s = String(text == null ? '' : text);
+    if (s.charCodeAt(0) === 0xfeff) s = s.slice(1); // BOM
+    const lines = s.split(/\r\n|\r|\n/).filter((l) => l.trim() !== '');
+    if (!lines.length) return [];
+    const header = splitCsvLine(lines[0]).map((h) => norm(h));
+    const idx = {};
+    header.forEach((h, i) => { if (!(h in idx)) idx[h] = i; });
+    const pnI = idx['pn'], diI = idx['displayimage'];
+    if (pnI == null || diI == null) {
+      throw new Error('CSV sin encabezado reconocible (faltan columnas PN/displayImage)');
+    }
+    const tipoI = idx['tipo'], fuenteI = idx['fuente'];
+    const at = (c, i) => (i != null && c[i] != null ? String(c[i]).trim() : '');
+    const rows = [];
+    for (let li = 1; li < lines.length; li++) {
+      const c = splitCsvLine(lines[li]);
+      const pn = at(c, pnI), displayImage = at(c, diI);
+      if (!pn && !displayImage) continue;
+      rows.push({ pn, displayImage, tipo: at(c, tipoI), fuente: at(c, fuenteI) });
+    }
+    return rows;
+  }
+
+  const api = { extractPNName, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError, isImageFile, isPrincipalDescriptor, selectDisplayImage, readDisplayState, parseBackfillCsv };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FileUploaderCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
