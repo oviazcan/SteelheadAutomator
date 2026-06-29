@@ -1,6 +1,6 @@
 # file-uploader — Cargador de Archivos
 
-**Versión actual:** 0.6.0 (backfill de portadas desde CSV — implementado, pendiente deploy + run real)
+**Versión actual:** 0.6.1 (backfill de portadas desde CSV, incl. archivados — implementado, pendiente run real)
 **Scripts:** `remote/scripts/steelhead-api.js`, `remote/scripts/file-uploader-core.js`, `remote/scripts/file-uploader.js`
 **Tests:** `tools/test/file-uploader-core.test.js` (18 golden, núcleo puro)
 **Handler:** `extension/background.js` → `upload-pn-files` (input `multiple`, no `webkitdirectory`)
@@ -92,10 +92,9 @@ Marca la display image de lo **ya cargado** sin re-subir, leyendo el CSV de Cowo
 - **Flujo** (`runBackfill`, reusa toda la infra de `run`: paginación, `withRetry`/`gate`, memory hardening): por fila → `findActivePNs(pn)` (homónimos→todos) → `getPNDetail`→`readDisplayState`; si el PN **no** tiene `displayImageId`, resuelve `fileIdByName.get(norm(displayImage))` y marca con `UpdatePartNumber`. Respeta portada existente; **no sube ni vincula nada**.
 - **Parser puro** `core.parseBackfillCsv` (header por nombre, comillas, BOM; 7 golden tests). Validado contra nombres reales (`__BRIGHT DIP.jpg`, `.JPG`↔`.jpg`).
 - **Reporte exportable:** PN no encontrado (activo), foto del CSV no vinculada, errores.
-- **v1 = solo PNs ACTIVOS.** Los archivados (el dump tenía 541) se reportan como "no encontrado"; el ciclo desarchivar→marcar→re-archivar para portada queda pendiente (invasivo).
+- **Cubre activos Y archivados** (v0.6.1). Si `findActivePNs` no halla, busca con `findAnyPNs` (incluye archivados); `applyBackfillToPN` desarchiva→marca→re-archiva con el `archivedAt` crudo original (re-archivado SIEMPRE en `finally`; si falla, reporta "QUEDÓ DESARCHIVADO"). Contadores `unarchived/rearchived` en el resumen. Solo desarchiva si el PN realmente está archivado Y tiene la foto vinculada sin portada (no toca de más).
 
 ## Pendientes / mejoras
-- **Backfill de archivados:** extender `runBackfill` para desarchivar→marcar→re-archivar (reusa `processArchivedGroup`). Hoy solo activos.
 - **Resolución (píxeles)** como desempate fino cuando los bytes empatan (YAGNI por ahora).
 - **Manifiesto CSV** (descartado por YAGNI): si el naming codificado se vuelve frágil, mapear archivo→PN explícito.
 
@@ -104,6 +103,7 @@ Marca la display image de lo **ya cargado** sin re-subir, leyendo el CSV de Cowo
 - **CSS propio obligatorio (bug 2026-06-26).** El applet usaba las clases `.dl9-*` pero NO inyectaba su CSS; ese CSS lo definen otros applets (archiver/po-comparator/bulk-upload) cada uno con su `<style>`. file-uploader corre **aislado** (su array no incluye a ninguno de esos), así que el overlay de progreso y el resumen se creaban **invisibles** (sin `position:fixed`/fondo/centrado). Síntoma: "no mostró nada de resumen". La v0.1.0 lo tapaba con `alert()`. **Fix:** `ensureStyles()` inyecta un `<style id="sa-uploader-styles">` propio (idempotente) — no depender de otro applet. **Regla general:** cualquier applet que use clases `dl9-*` debe inyectar su propio CSS. La lógica de negocio NO estaba rota (se verificó en vivo que las fotos sí se vincularon, incl. fan-out a homónimos); era 100% un problema de UI.
 
 ## Historial
+- **0.6.1 (2026-06-29):** backfill cubre **archivados**. `applyBackfillToPN` (extraída): activos marca directo; archivados desarchiva→marca→re-archiva (`archivedAt` original, re-archivado en `finally`). `runBackfill` cae a `findAnyPNs` si no hay activos. Contadores `unarchived/rearchived`. Solo orquestador (core/config sin cambio).
 - **0.6.0 (2026-06-29):** **backfill de portadas desde CSV de Cowork.** Acción nueva "Marcar Portadas desde CSV" (handler genérico `fn`, sin tocar `extension/`). `core.parseBackfillCsv` (puro, 7 tests) + `runBackfill`/`runBackfillFromPopup`/`showBackfillSummary` reusando la infra de `run`. Marca display image de lo ya cargado SIN re-subir: por fila del CSV resuelve `displayImage→partNumberUserFile.id` vía `readDisplayState` y marca si el PN no tiene portada. v1 solo activos; reporte exportable. **Pendiente: action en config + deploy + run real.** Parser validado contra datos reales del CSV.
 - **0.5.0 (2026-06-29):** **display image automático.** Tras vincular un grupo, marca foto principal en los PNs sin portada (`UpdatePartNumber{displayImageId}`, misma persisted query que archivar — cero hashes nuevos). Selección pura en el core (`selectDisplayImage`: descriptor Cowork → mayor bytes → única foto; excluye PDFs) + `isImageFile`/`isPrincipalDescriptor`/`readDisplayState`, 40 golden tests. Respeta portada existente (idempotente), fan-out a homónimos, fallback de re-lectura del id. Mecanismo confirmado contra scan `2026-06-29_135728` (`UpdatePartNumber` vars `{id,displayImageId}`) + `GetPartNumber` hash == producción (trae `displayImageId` + `nodes[].id`). **Pendiente: deploy + run real** (verificar que el create devuelve `id`, que el tablero muestra la foto, e idempotencia en 2ª corrida).
 - **0.4.2 (2026-06-26):** `isTransientError` también reintenta `AbortError`/`aborted` (corte de red a media request). Validado: run de 500 con 1 solo error = un `AbortError` por desconexión del usuario; ahora el retry lo recupera. 22 golden tests.
