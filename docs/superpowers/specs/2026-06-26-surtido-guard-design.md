@@ -153,18 +153,41 @@ Sin DOM ni red. Sigue el patrón `auto-router-engine` / `bulk-upload-parse`.
 Solo el board "Preparación de Surtido" / nodo **"Preparando Surtido en Almacén"**, **match por
 nombre de nodo** (robusto entre boards / ids). No toca otros movimientos ni otros nodos.
 
-## Capturas pendientes (Fase 0 — al arrancar implementación)
-1. **Mutación de mover**: `operationName` + shape de `variables` (cómo identifica WO/part-location,
-   nodo origen y tipo "Paso"). Capturar un `MOVER` por modal **y** un drag, con Network abierto.
-2. **Query de tarjetas del board**: `operationName` + dónde viene la fecha de programa por WO
-   (para construir el mapa). Confirmar la clave de cruce con la mutación.
-3. **HTML del modal "Mover Piezas"**: wrapper con botones, `Desde Nodo`, y id de WO/part-location
-   si está embebido — para agrisar y asociar modal→tarjeta.
-4. **HTML de la tarjeta** del step derecho — para el marcado verde y leer la WO / part-location.
+## Shapes confirmados (Fase 0 — capturado 2026-06-26/29) ✅
 
-> `CreateInventoryTransferEventGroups` (ya en config) **NO** es la mutación de mover: config la
-> describe como "carga inicial de lotes", usedBy `inventory-reset`. La mutación del "Mover Piezas /
-> Tipo: Paso" aún es desconocida → captura obligatoria.
+Definición operativa: **programada = la pieza tiene una tarea en el programa** (sección
+"Tareas Programadas:" visible en la tarjeta: tratamiento + estación + fecha-hora). El color del
+calendario (rojo/verde) es la **fecha de entrega** (deadline), NO la señal de programación.
+
+### Operaciones GraphQL relevantes
+| Operación | Tipo | Rol |
+|---|---|---|
+| `CreateManyPartsTransfersChecked` | **mutación** | **El move real** (modal MOVER y commit del drag). Variables: `partsTransferEventsPayload.partsTransferEvents[].partsTransfers[].{fromAccountId, type:"STEP", partCount, toAccount:{recipeNodeId, locationId, stationId}}`. `type:"STEP"` = transferencia *Paso*. **NO trae workOrderId ni nombre de nodo** — solo `fromAccountId`. |
+| `WorkOrderMovePartsData` | query (modal) | Lo dispara el modal al abrir. Variables: `{workOrderId, fromRecipeNodeId, partNumberIds, stationId, partsTransferAccountIds:[...], rackId}`. **Puente account→WO y account→fromRecipeNodeId** (todos los `partsTransferAccountIds` cuelgan de `fromRecipeNodeId`/`workOrderId`). |
+| `MoveMultipleFromWorkboardData` | query (drag) | Lo dispara el drag múltiple. Variables: `{partNumberIds, workOrderIds:[...], fromRecipeNodeIds:[...], partsTransferAccountIds:[...]}` **pareados por índice**. Puente account→WO y account→fromRecipeNodeId para el drag. |
+| `GetRelatedScheduleData` | query (board) | **Fuente de "programada".** `allSchedules.nodes[].validScheduleTasks.nodes[].scheduleTaskElementsByScheduleTaskId.nodes[].associatedPartsTransferAccounts.nodes[].{id, workOrderId}`. El `id` = `partsTransferAccountId` que está programado. Variables: `{stationIds:[...]}`. |
+| `GetRelatedWorkboardData` | query (board) | `allRecipeNodes.nodes[].{id, name}` → mapa **recipeNodeId → nombre de nodo** (para el scoping). |
+
+### Cruce (cómo se decide bloquear)
+1. **Set de programados** (de `GetRelatedScheduleData`): `scheduledAccountIds = { todos los associatedPartsTransferAccounts[].id }` (también se guarda `workOrderId` para mensajes).
+2. **Nodos de surtido** (de `GetRelatedWorkboardData`): `surtidoRecipeNodeIds = { recipeNode.id : normalize(name).includes('preparando surtido en almacen') }`.
+3. **Puente account → fromRecipeNodeId** (de las *variables* de `WorkOrderMovePartsData` / `MoveMultipleFromWorkboardData`): `accountNode[accountId] = { recipeNodeId, workOrderId }`.
+4. **En la mutación** `CreateManyPartsTransfersChecked`: por cada transfer con `type:"STEP"`, tomar `fromAccountId` → `recipeNodeId` (del puente). Si `recipeNodeId ∈ surtidoRecipeNodeIds` (es el nodo objetivo) **y** `fromAccountId ∉ scheduledAccountIds` (no programado) → **bloquear**. (FAIL-SAFE si falta el puente o el set.)
+
+### Modal "Mover Piezas" (MUI Dialog) — selectores
+- Contenedor: `.MuiDialog-root` / `[role="dialog"]`; el contenido tiene los textos `Desde Nodo:`, `A Nodo:`, `Tipo de Transferencia:`.
+- Botones a agrisar: los `<button>` cuyo `textContent` empieza con **`Mover`** y **`Imprimir y Mover`** (las clases `css-*` de emotion son hashes volátiles → **match por texto**, no por clase). `Cancelar` y `Enbastar Piezas` se dejan intactos.
+- "Desde Nodo:" muestra el nombre del nodo origen (ej. `Preparando Surtido en Almacén`) → fallback DOM para el scoping del modal.
+
+### Marcado verde — señal DOM
+Una tarjeta está programada si su DOM contiene la sección **"Tareas Programadas:"**. Es la vía
+DOM directa para el marcado verde (no requiere cruzar la red), y coincide con el set de programados.
+
+### Notas de captura
+- `CreateInventoryTransferEventGroups` (ya en config) **NO** es la mutación de mover (es "carga inicial
+  de lotes", usedBy `inventory-reset`). La real es `CreateManyPartsTransfersChecked`.
+- HTML de la tarjeta del step: pendiente de capturar en el board objetivo para los selectores finos de
+  `readCardContext` (WO# / account). El marcado verde puede arrancar solo con la señal "Tareas Programadas:".
 
 ## Notas de implementación
 - **Memory hardening** (`memory-hardening-applets`): el applet mantiene `MutationObserver` + wrap de

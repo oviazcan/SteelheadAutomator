@@ -19,6 +19,9 @@ node_modules/
 # Scan results (contain Steelhead invoice tokens)
 scan_results_*.json
 
+# Capturas de tráfico GraphQL para diseño de applets (pueden traer datos productivos)
+surtido-guard-capture*.json
+
 # Validador de hashes — resultados diarios (ruido, no aportan al repo)
 tools/.hash-validation/
 
