@@ -296,6 +296,156 @@ const FileUploader = (() => {
     return results;
   }
 
+  // ── BACKFILL: marca portadas de lo YA cargado, desde el CSV de Cowork ─────────
+  // El CSV (PN, displayImage, tipo, fuente) ya trae la principal decidida; aquí solo
+  // se aplica: busca el PN, ubica el id del archivo displayImage entre sus archivos
+  // vinculados y marca display image SI el PN no tiene una. NO sube ni vincula nada.
+  // v1: solo PNs ACTIVOS (los archivados/no-encontrados se reportan).
+  async function runBackfill(csvText) {
+    const results = {
+      rows: 0, displaySet: 0, alreadyHad: 0, homonyms: 0,
+      notFound: [], notLinked: [], errors: [], stopped: false,
+    };
+    let rows;
+    try { rows = core().parseBackfillCsv(csvText); }
+    catch (e) { return { error: String(e?.message || e) }; }
+    if (!rows.length) return { error: 'El CSV no tiene filas (revisa encabezados PN/displayImage).' };
+    results.rows = rows.length;
+
+    log(`Backfill display image: ${rows.length} PNs del CSV`);
+    showUploaderUI(`Marcando portadas: ${rows.length} PNs…`);
+
+    const HC = window.SteelheadHostCleanup;
+    cancelRun = false;
+    HC?.stopDatadogSessionReplay();
+    const mem = HC?.createMemMonitor({
+      getElement: () => document.getElementById('sa-upl-mem'),
+      onGuardrail: (pct) => {
+        cancelRun = true;
+        results.stopped = true;
+        results.errors.push(`⚠️ Memoria al ${pct}%: backfill detenido. Recarga la pestaña y re-corre el CSV — es idempotente (salta los que ya tienen portada).`);
+      },
+    });
+    mem?.start();
+    const drain = HC?.makePeriodicDrain(50) || (() => {});
+
+    try {
+      let i = 0;
+      for (const row of rows) {
+        if (cancelRun) break;
+        i++;
+        if (i % 5 === 0 || i === rows.length) {
+          const pct = Math.round((i / rows.length) * 100);
+          updateUploaderUI(`${i}/${rows.length} (${pct}%) — "${row.pn}" — ${results.displaySet} marcadas`);
+        }
+        if (!row.displayImage) { results.notLinked.push({ pn: row.pn, file: '(vacío en CSV)' }); continue; }
+        try {
+          const active = await findActivePNs(row.pn);
+          if (!active.matches.length) { results.notFound.push(row.pn); drain(); continue; }
+          if (active.matches.length > 1) results.homonyms++;
+          const wantKey = core().norm(row.displayImage);
+          for (const pn of active.matches) {
+            if (cancelRun) break;
+            let detail;
+            try { detail = await getPNDetail(pn.id); }
+            catch (e) { results.errors.push(`leer PN ${row.pn} (${pn.id}): ${String(e).substring(0, 50)}`); continue; }
+            if (detail.displayImageId != null) { results.alreadyHad++; continue; } // respeta la existente
+            const fileId = detail.fileIdByName.get(wantKey);
+            if (fileId == null) { results.notLinked.push({ pn: row.pn, file: row.displayImage }); continue; }
+            try {
+              await setDisplayImage(pn.id, fileId);
+              results.displaySet++;
+              log(`  ★ ${row.pn} (${pn.id}) → "${row.displayImage}"`);
+            } catch (e) {
+              results.errors.push(`marcar ${row.pn} (${pn.id}): ${String(e).substring(0, 50)}`);
+            }
+          }
+        } catch (e) {
+          results.errors.push(`fila "${row.pn}": ${String(e).substring(0, 60)}`);
+        }
+        drain();
+      }
+    } finally {
+      mem?.stop();
+      HC?.apolloCacheDrain();
+      showBackfillSummary(results);
+    }
+    return results;
+  }
+
+  // Overlay propio (dark) con input del CSV — invocado por el handler genérico `fn`.
+  function runBackfillFromPopup() {
+    ensureStyles();
+    return new Promise((resolve) => {
+      const ov = document.createElement('div');
+      ov.id = 'sa-uploader-overlay';
+      ov.className = 'dl9-overlay';
+      ov.innerHTML = `<div class="dl9-modal" style="background:#1c2430;color:#e6e9ee;text-align:center;max-width:460px"><h2 style="color:#13a36f">★ Marcar Portadas desde CSV</h2><p style="font-size:13px;color:#cbd5e1;margin:0 0 16px">Sube el CSV de Cowork (columnas <b>PN</b>, <b>displayImage</b>). Marca la foto principal de los PNs que aún no tengan una. No sube ni re-vincula archivos.</p><input type="file" id="sa-bf-input" accept=".csv,text/csv" style="margin-bottom:18px;color:#e6e9ee;font-size:13px"><div style="display:flex;gap:10px;justify-content:center"><button id="sa-bf-cancel" class="sa-upl-btn" style="background:#475569">Cancelar</button></div></div>`;
+      document.body.appendChild(ov);
+      const close = () => { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+      document.getElementById('sa-bf-cancel').onclick = () => { close(); resolve({ cancelled: true }); };
+      document.getElementById('sa-bf-input').onchange = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        close();
+        try { resolve(await runBackfill(await file.text())); }
+        catch (err) { resolve({ error: String(err?.message || err) }); }
+      };
+    });
+  }
+
+  // Resumen del backfill (dark, no bloqueante) + export del reporte.
+  function showBackfillSummary(r) {
+    removeUploaderUI();
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.id = 'sa-uploader-overlay';
+    ov.className = 'dl9-overlay';
+    const line = (l, v) => `<div style="display:flex;justify-content:space-between;gap:24px;padding:1px 0"><span>${l}</span><strong>${v}</strong></div>`;
+    let body = line('PNs en el CSV', r.rows)
+      + line('Portadas marcadas', r.displaySet)
+      + line('Ya tenían portada', r.alreadyHad);
+    if (r.homonyms) body += line('PNs con homónimos', r.homonyms);
+    if (r.notFound.length) body += line('PN no encontrado (activo)', r.notFound.length);
+    if (r.notLinked.length) body += line('Foto del CSV no vinculada', r.notLinked.length);
+    if (r.errors.length) body += line('Errores ⚠️', r.errors.length);
+
+    let detail = '';
+    if (r.notFound.length) {
+      const sample = r.notFound.slice(0, 10).map(esc).join(', ');
+      detail += `<div style="margin-top:12px;font-size:12px;color:#94a3b8;border-top:1px solid #2a3441;padding-top:10px">No encontrados como activos (${r.notFound.length}): ${sample}${r.notFound.length > 10 ? '…' : ''}. Pueden estar archivados (no cubiertos en esta versión).</div>`;
+    }
+    if (r.notLinked.length) {
+      const sample = r.notLinked.slice(0, 6).map((x) => esc(`${x.pn}→${x.file}`)).join('<br>');
+      detail += `<div style="margin-top:8px;font-size:12px;color:#fcd34d">Foto del CSV no vinculada al PN (${r.notLinked.length}):<br>${sample}${r.notLinked.length > 6 ? '<br>…' : ''}</div>`;
+    }
+    if (r.errors.length) {
+      detail += `<div style="margin-top:8px;font-size:12px;color:#fca5a5">${r.errors.slice(0, 5).map(esc).join('<br>')}${r.errors.length > 5 ? '<br>…' : ''}</div>`;
+    }
+
+    const hasReport = r.notFound.length || r.notLinked.length || r.errors.length;
+    const exportBtn = hasReport ? `<button id="sa-bf-export" class="sa-upl-btn" style="background:#475569">Exportar reporte</button>` : '';
+    const title = r.stopped ? '⚠️ Backfill detenido (memoria)' : 'Backfill completado';
+    ov.innerHTML = `<div class="dl9-modal" style="background:#1c2430;color:#e6e9ee;min-width:380px"><h2 style="color:${r.stopped ? '#fbbf24' : '#13a36f'}">${title}</h2><div style="font-size:13px;line-height:1.85">${body}</div>${detail}<div style="display:flex;gap:10px;margin-top:18px"><button id="sa-bf-close" class="sa-upl-btn" style="background:#13a36f">Cerrar</button>${exportBtn}</div></div>`;
+    document.body.appendChild(ov);
+    document.getElementById('sa-bf-close').onclick = () => ov.parentNode.removeChild(ov);
+    const eb = document.getElementById('sa-bf-export');
+    if (eb) eb.onclick = () => exportBackfillReport(r);
+  }
+
+  function exportBackfillReport(r) {
+    const rows = ['tipo,pn,detalle'];
+    for (const pn of r.notFound) rows.push(`no_encontrado,${csv(pn)},`);
+    for (const nl of r.notLinked) rows.push(`foto_no_vinculada,${csv(nl.pn)},${csv(nl.file)}`);
+    for (const e of r.errors) rows.push(`error,,${csv(e)}`);
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'backfill_portadas_reporte.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   // ── UI (dark mode: regla de diseño — distinguir de pantallas claras de Steelhead) ──
   // Inyecta el CSS dl9 propio: file-uploader corre aislado, y si ningún otro applet
   // (archiver/po-comparator/…) inyectó .dl9-* antes en esta tab, el overlay/resumen
@@ -384,7 +534,7 @@ const FileUploader = (() => {
   }
   const csv = (s) => `"${String(s == null ? '' : s).replace(/"/g, '""')}"`;
 
-  return { run };
+  return { run, runBackfill, runBackfillFromPopup };
 })();
 
 if (typeof window !== 'undefined') window.FileUploader = FileUploader;
