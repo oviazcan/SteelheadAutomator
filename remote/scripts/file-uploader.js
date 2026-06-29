@@ -72,6 +72,12 @@ const FileUploader = (() => {
     await withRetry(() => api().query('UpdatePartNumber', { id: partNumberId, archivedAt }), 'UpdatePartNumber');
   }
 
+  // Marca la foto principal del PN (la que sale en los tableros). displayImageId
+  // = id del vínculo partNumberUserFile. Misma persisted query que archivar.
+  async function setDisplayImage(partNumberId, displayImageId) {
+    await withRetry(() => api().query('UpdatePartNumber', { id: partNumberId, displayImageId }), 'UpdatePartNumber(displayImage)');
+  }
+
   // Paginación + filtro de exactos, parametrizada por operación (activos vs incluir archivados).
   async function paginateExact(opName, name, extraVars) {
     const PAGE = 50, MAX_PAGES = 6;
@@ -94,12 +100,17 @@ const FileUploader = (() => {
   // PNs (incluye archivados) — para hallar los que SearchPartNumbers no ve.
   const findAnyPNs = (name) => paginateExact('AllPartNumbers', name, { includeArchived: 'YES' });
 
-  // GetPartNumber → { archivedAt original, names: set de originalName ya vinculados }.
+  // GetPartNumber → { archivedAt, names ya vinculados, displayImageId actual,
+  //                   fileIdByName: Map<originalName norm → partNumberUserFile.id> }.
   async function getPNDetail(pnId) {
     const data = await withRetry(() => api().query('GetPartNumber', { partNumberId: pnId, usagesLimit: 10, usagesOffset: 0 }), 'GetPartNumber');
     const pn = data?.partNumberById || {};
-    return { archivedAt: pn.archivedAt || null, names: core().existingOriginalNames(pn) };
+    const ds = core().readDisplayState(pn);
+    return { archivedAt: pn.archivedAt || null, names: core().existingOriginalNames(pn), displayImageId: ds.displayImageId, fileIdByName: ds.fileIdByName };
   }
+
+  // Detail por defecto cuando GetPartNumber falla (no se pierde el shape esperado).
+  const emptyDetail = () => ({ archivedAt: null, names: new Set(), displayImageId: null, fileIdByName: new Map() });
 
   // Vincula los archivos faltantes de un grupo a un conjunto de PNs; sube cada binario 1 sola vez.
   // detailById: Map<pnId, {archivedAt, names}>. Marca dedup en vivo para no re-linkear.
@@ -118,13 +129,52 @@ const FileUploader = (() => {
           results.uploaded++;
         }
         for (const pn of targets) {
-          await linkToPN(pn.id, gen);
+          const pnuf = await linkToPN(pn.id, gen);
           results.linked++;
-          detailById.get(pn.id).names.add(core().norm(file.name));
+          const d = detailById.get(pn.id);
+          d.names.add(core().norm(file.name));
+          // Captura el id del vínculo recién creado para resolver display image
+          // sin re-leer (si CreatePartNumberUserFile lo devuelve).
+          if (pnuf && pnuf.id != null) d.fileIdByName.set(core().norm(file.name), pnuf.id);
         }
         log(`  "${file.name}" → ${targets.length} PN(s)`);
       } catch (e) {
         results.errors.push(`"${file.name}": ${String(e).substring(0, 80)}`);
+      }
+    }
+  }
+
+  // Marca la foto principal en los PNs del grupo que NO tengan display image.
+  // Elige la imagen más grande (o la marcada con descriptor de Cowork); respeta
+  // la existente. Resuelve el id del vínculo del mapa; si falta, relee GetPartNumber.
+  async function markDisplayImages(group, pns, detailById, results) {
+    const chosen = core().selectDisplayImage(group);
+    if (!chosen) return; // solo planos/PDFs: no hay imagen que poner de portada
+    const key = core().norm(chosen.name);
+    for (const pn of pns) {
+      if (cancelRun) break;
+      const d = detailById.get(pn.id);
+      if (!d || d.displayImageId != null) continue; // respeta la portada existente
+      let fileId = d.fileIdByName.get(key);
+      if (fileId == null) {
+        // Fallback: la foto ya está vinculada → GetPartNumber la trae con su id.
+        try {
+          const fresh = await getPNDetail(pn.id);
+          if (fresh.displayImageId != null) { d.displayImageId = fresh.displayImageId; continue; }
+          fileId = fresh.fileIdByName.get(key);
+        } catch (e) { /* cae al guard de abajo */ }
+      }
+      if (fileId == null) {
+        results.errors.push(`display "${chosen.name}" en PN ${pn.name || pn.id}: no resolví el id del archivo`);
+        continue;
+      }
+      try {
+        await setDisplayImage(pn.id, fileId);
+        d.displayImageId = fileId;
+        results.displaySet++;
+        log(`  ★ display image de ${pn.name || pn.id} → "${chosen.name}"`);
+      } catch (e) {
+        results.errors.push(`display PN ${pn.name || pn.id}: ${String(e).substring(0, 60)}`);
       }
     }
   }
@@ -135,7 +185,7 @@ const FileUploader = (() => {
     const detailById = new Map();
     for (const pn of pns) {
       try { detailById.set(pn.id, await getPNDetail(pn.id)); }
-      catch (e) { detailById.set(pn.id, { archivedAt: null, names: new Set() }); results.errors.push(`leer PN ${pn.name}: ${String(e).substring(0, 60)}`); }
+      catch (e) { detailById.set(pn.id, emptyDetail()); results.errors.push(`leer PN ${pn.name}: ${String(e).substring(0, 60)}`); }
     }
     // Desarchivar solo los que realmente están archivados y necesitan algún archivo.
     const unarchived = [];
@@ -149,6 +199,7 @@ const FileUploader = (() => {
     }
     try {
       await linkGroupToPNs(group, pns, detailById, results);
+      await markDisplayImages(group, pns, detailById, results); // antes de re-archivar
     } finally {
       // Re-archivar SIEMPRE los que desarchivamos, con su archivedAt ORIGINAL crudo
       // (validado en vivo: el server acepta de vuelta el string de GetPartNumber tal cual).
@@ -167,7 +218,7 @@ const FileUploader = (() => {
   async function run(files) {
     const results = {
       selected: files?.length || 0,
-      uploaded: 0, linked: 0, skipped: 0, homonymGroups: 0, unarchived: 0, rearchived: 0,
+      uploaded: 0, linked: 0, skipped: 0, homonymGroups: 0, unarchived: 0, rearchived: 0, displaySet: 0,
       notFound: [], truncated: [], errors: [], stopped: false,
     };
     if (!files?.length) return { error: 'No se seleccionaron archivos' };
@@ -217,9 +268,10 @@ const FileUploader = (() => {
             const detailById = new Map();
             for (const pn of active.matches) {
               try { detailById.set(pn.id, await getPNDetail(pn.id)); }
-              catch (e) { detailById.set(pn.id, { archivedAt: null, names: new Set() }); warn(`leer PN ${pn.id}: ${e}`); }
+              catch (e) { detailById.set(pn.id, emptyDetail()); warn(`leer PN ${pn.id}: ${e}`); }
             }
             await linkGroupToPNs(group, active.matches, detailById, results);
+            await markDisplayImages(group, active.matches, detailById, results);
           } else {
             // No hay activos: buscar archivados y desarchivar→vincular→re-archivar.
             const any = await findAnyPNs(pnName);
@@ -290,6 +342,7 @@ const FileUploader = (() => {
     let body = line('Archivos seleccionados', r.selected)
       + line('Archivos subidos', r.uploaded)
       + line('Vínculos creados (PNs)', r.linked)
+      + line('Display image marcada', r.displaySet)
       + line('Saltados (ya existían)', r.skipped)
       + line('PNs con homónimos', r.homonymGroups);
     if (r.unarchived) body += line('Desarchivados → re-archivados', `${r.rearchived}/${r.unarchived}`);
