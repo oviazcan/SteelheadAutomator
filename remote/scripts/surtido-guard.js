@@ -15,24 +15,37 @@ const SurtidoGuard = (() => {
   const Core = () => window.SurtidoGuardCore;
   const WB_PATH_RE = /^\/Domains\/\d+\/Workboards\/\d+/;
 
-  let enforcementEnabled = true;        // default ON cada carga (no persistente)
+  // Estado del candado: vive en `window` (singleton), NO en el closure. background.js
+  // → injectAppScripts RE-EVALÚA este IIFE en cada acción del popup (surtido-guard.js
+  // no está en el mapa `globals` de dedup), creando una instancia nueva. Si el flag
+  // viviera en el closure, el toggle mutaría la instancia nueva mientras el interceptor
+  // de fetch —latcheado a la instancia ORIGINAL vía __saSurtidoGuardFetchPatched—
+  // seguiría leyendo el flag viejo → "Desactivado" sin efecto real. El singleton lo
+  // comparten todas las instancias. Default ON solo en la PRIMERA carga (si está sin
+  // definir): así una re-inyección no repisa lo que el operador apagó, y un reload
+  // limpia window → vuelve a ON (no persistente, por diseño).
+  if (window.__saSurtidoGuardEnabled === undefined) window.__saSurtidoGuardEnabled = true;
+  function isEnforcementEnabled() { return window.__saSurtidoGuardEnabled === true; }
+  function setEnforcementEnabled(v) { window.__saSurtidoGuardEnabled = !!v; }
+
   let scheduledAccountIds = new Set();  // partsTransferAccountId programados (GetRelatedScheduleData)
   let surtidoNodeIds = new Set();       // recipeNodeId del nodo de surtido (GetRelatedWorkboardData)
   let accountNode = {};                 // accountId -> {recipeNodeId, workOrderId} (vars de move-data)
   let lastModalCtx = null;              // últimas vars de WorkOrderMovePartsData (para la capa de modal)
 
   function isWorkboardPage() { return WB_PATH_RE.test(location.pathname); }
-  function isEnabled() { return enforcementEnabled; }
+  function isEnabled() { return isEnforcementEnabled(); }
   function ctx() { return { scheduledAccountIds, accountNode, surtidoNodeIds }; }
 
   // Entrada desde el popup (background llama window.SurtidoGuard.toggleFromPopup).
   function toggleFromPopup() {
-    enforcementEnabled = !enforcementEnabled;
-    toast(enforcementEnabled
+    setEnforcementEnabled(!isEnforcementEnabled());
+    const on = isEnforcementEnabled();
+    toast(on
       ? '🔒 Candado de Surtido: ACTIVADO'
       : '🔓 Candado de Surtido: DESACTIVADO (hasta recargar)');
     scheduleDecorate();
-    return { enabled: enforcementEnabled };
+    return { enabled: on };
   }
 
   // ── Estilos (toast + acento verde + mensaje de modal) ──
@@ -87,7 +100,7 @@ const SurtidoGuard = (() => {
 
       // (b) Enforcement: bloquear la mutación de mover ANTES de mandarla al servidor.
       if (op === Core().MOVE_MUTATION_OP && vars) {
-        const decision = Core().evaluateMove(vars, ctx(), { enforcementEnabled });
+        const decision = Core().evaluateMove(vars, ctx(), { enforcementEnabled: isEnforcementEnabled() });
         if (decision.block) {
           const wos = decision.blocked.map((b) => '#' + b.workOrderId).join(', ');
           toast('🔒 Bloqueado: la WO ' + wos + ' no está programada. No se puede mover al siguiente proceso.', true);
@@ -131,7 +144,7 @@ const SurtidoGuard = (() => {
   }
 
   function modalShouldBlock() {
-    if (!enforcementEnabled || !lastModalCtx) return false;
+    if (!isEnforcementEnabled() || !lastModalCtx) return false;
     const accs = lastModalCtx.partsTransferAccountIds || [];
     const inSurtido = surtidoNodeIds.has(lastModalCtx.fromRecipeNodeId);
     return inSurtido && accs.some((a) => !scheduledAccountIds.has(a));
@@ -255,7 +268,7 @@ const SurtidoGuard = (() => {
 
   return {
     init, isEnabled, toggleFromPopup,
-    _getState: () => ({ enforcementEnabled, scheduled: [...scheduledAccountIds], surtido: [...surtidoNodeIds], accounts: Object.keys(accountNode).length })
+    _getState: () => ({ enforcementEnabled: isEnforcementEnabled(), scheduled: [...scheduledAccountIds], surtido: [...surtidoNodeIds], accounts: Object.keys(accountNode).length })
   };
 })();
 
