@@ -1,6 +1,6 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.1.0** (config 1.7.24). Estado: **deployado, pendiente validación en vivo (bloqueo real)**.
+> Versión: **0.1.1** (config 1.7.25). Estado: **bloqueo aparece en vivo; fix del toggle deployado, pendiente confirmación del usuario**.
 > Spec: [`docs/superpowers/specs/2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
 > Plan: [`docs/superpowers/plans/2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
 
@@ -59,6 +59,31 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 3. **Bloqueo drag**: arrastrar una no programada → bloqueado igual.
 4. **Toggle**: apagar desde el popup → permite mover; recargar → vuelve a ON.
 5. **Verde**: tarjetas con "Tareas Programadas:" en verde; afinar el selector de contenedor con el HTML real.
+
+## Lecciones
+
+### El estado mutable del applet NO puede vivir en el closure del IIFE (bug del toggle, 2026-06-29)
+**Síntoma:** el operador apaga el candado desde el popup → toast "DESACTIVADO" aparece → pero **sigue
+bloqueando**; al recargar vuelve a ON.
+
+**Causa raíz:** `background.js` → `injectAppScripts` **re-evalúa los scripts del app en CADA acción del
+popup**. El dedup que evita re-evaluar (`if (window[globalName].__saVersion === version) return`) solo aplica
+a los scripts listados en el mapa `globals` de `background.js` — **`surtido-guard.js` no está en ese mapa**,
+así que cada toggle corre `new Function(código)()` y crea una **instancia nueva** del IIFE. El interceptor de
+`window.fetch` está latcheado a la instancia ORIGINAL (`__saSurtidoGuardFetchPatched`) y lee el
+`enforcementEnabled` de **su** closure; el toggle mutaba el `enforcementEnabled` de la instancia NUEVA. Toast
+sí (la nueva instancia lo dispara), enforcement no (el interceptor lee el flag viejo).
+
+**Fix:** el flag de estado vive en `window.__saSurtidoGuardEnabled` (singleton compartido por todas las
+instancias), igual que los latches `__saSurtidoGuard*` que el applet ya usaba para interceptor/observer/init.
+Default ON solo en la **primera** carga (`if (window.__saSurtidoGuardEnabled === undefined) … = true`): una
+re-inyección NO repisa lo que el operador apagó, y un reload limpia `window` → vuelve a ON (no persistente, por
+diseño). Test de regresión: `tools/test/surtido-guard-toggle.test.js` (replica `new Function()` como la
+extensión; RED sin fix, GREEN con fix).
+
+**Regla general:** cualquier applet re-inyectable que NO esté en el mapa `globals` de `background.js` debe
+guardar su estado mutable en `window.__sa<App>*`, no en variables del closure — o el popup mutará una instancia
+distinta a la que tiene los interceptores latcheados.
 
 ## Pendientes
 - **Validación en vivo del bloqueo real** (arriba). Riesgo a vigilar: **falsos positivos** (bloquear una
