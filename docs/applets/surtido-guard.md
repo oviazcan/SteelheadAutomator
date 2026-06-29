@@ -1,6 +1,6 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.1.1** (config 1.7.25). Estado: **bloqueo aparece en vivo; fix del toggle deployado, pendiente confirmación del usuario**.
+> Versión: **0.1.1** (config 1.7.25). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓; el bloqueo aparece en vivo. Pendiente: validación fina del bloqueo (falsos positivos prog/no-prog), drag silencioso y marcado verde**.
 > Spec: [`docs/superpowers/specs/2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
 > Plan: [`docs/superpowers/plans/2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
 
@@ -57,7 +57,7 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 2. **Bloqueo modal**: abrir ⇄ de una WO **no programada** + MOVER → no se mueve, toast rojo, botones grises.
    Una WO **programada** → se mueve normal (cuidar falsos positivos).
 3. **Bloqueo drag**: arrastrar una no programada → bloqueado igual.
-4. **Toggle**: apagar desde el popup → permite mover; recargar → vuelve a ON.
+4. **Toggle**: apagar desde el popup → permite mover; recargar → vuelve a ON. ✅ **VALIDADO en vivo 2026-06-29** (fix v0.1.1: estado en `window` singleton).
 5. **Verde**: tarjetas con "Tareas Programadas:" en verde; afinar el selector de contenedor con el HTML real.
 
 ## Lecciones
