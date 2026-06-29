@@ -152,3 +152,133 @@ test('isAlreadyLinked: un archivo nuevo no se reporta como duplicado', () => {
   const set = Core.existingOriginalNames(pnWithFiles(['VXC084N528YF53EC front.jpg']));
   assert.equal(Core.isAlreadyLinked(set, 'VXC084N528YF53EC side.jpg'), false);
 });
+
+// ── isImageFile (solo imágenes pueden ser display image, NO planos PDF) ───────
+test('isImageFile: extensiones de imagen reconocidas (case-insensitive)', () => {
+  for (const n of ['a.jpg', 'a.jpeg', 'A.JPG', 'a.png', 'a.webp', 'a.gif', 'a.heic', 'a.heif', 'a.bmp', 'a.tif', 'a.tiff']) {
+    assert.equal(Core.isImageFile(n), true, n);
+  }
+});
+
+test('isImageFile: PDF/planos y no-imágenes NO son imagen', () => {
+  for (const n of ['a.pdf', 'a.dwg', 'a.xlsx', 'a.txt', 'sinext', '', null]) {
+    assert.equal(Core.isImageFile(n), false, String(n));
+  }
+});
+
+// ── isPrincipalDescriptor (gancho Cowork: <PN>__PRINCIPAL/DI/FOTO/...) ────────
+test('isPrincipalDescriptor: tokens de principal matchean (FOTO/DI/PRINCIPAL y variantes)', () => {
+  for (const n of [
+    'ABC__PRINCIPAL.jpg', 'ABC__principal.jpg', 'ABC__DI.jpg', 'ABC__di.png',
+    'ABC__FOTO.jpg', 'ABC__foto.jpg', 'ABC__photo.jpg', 'ABC__main.jpg',
+    'ABC__PORTADA.jpg', 'ABC__display.jpg', 'ABC__cover.jpg', 'ABC__ppal.jpg',
+  ]) {
+    assert.equal(Core.isPrincipalDescriptor(n), true, n);
+  }
+});
+
+test('isPrincipalDescriptor: token con frontera (foto1/di2/portada-1 sí; difuminado/diagram no)', () => {
+  assert.equal(Core.isPrincipalDescriptor('ABC__foto1.jpg'), true);
+  assert.equal(Core.isPrincipalDescriptor('ABC__di2.jpg'), true);
+  assert.equal(Core.isPrincipalDescriptor('ABC__portada-1.jpg'), true);
+  // "difuminado" empieza con "di" pero la siguiente es letra → NO es principal
+  assert.equal(Core.isPrincipalDescriptor('ABC__difuminado.jpg'), false);
+  assert.equal(Core.isPrincipalDescriptor('ABC__diagram.jpg'), false);
+  assert.equal(Core.isPrincipalDescriptor('ABC__fotografo.jpg'), false);
+});
+
+test('isPrincipalDescriptor: descriptores normales (front/back/plano) NO son principal', () => {
+  for (const n of ['ABC__front.jpg', 'ABC__back.jpg', 'ABC__plano.pdf', 'ABC__side.jpg']) {
+    assert.equal(Core.isPrincipalDescriptor(n), false, n);
+  }
+});
+
+test('isPrincipalDescriptor: sin descriptor __ no es principal', () => {
+  assert.equal(Core.isPrincipalDescriptor('ABC.jpg'), false);
+  assert.equal(Core.isPrincipalDescriptor('ABCprincipal.jpg'), false);
+});
+
+// ── selectDisplayImage (cuál foto se marca como portada del PN) ───────────────
+const f = (name, size) => ({ name, size });
+
+test('selectDisplayImage: una sola foto → esa (caso trivial pedido por el usuario)', () => {
+  assert.equal(Core.selectDisplayImage([f('ABC__front.jpg', 1000)]).name, 'ABC__front.jpg');
+});
+
+test('selectDisplayImage: varias imágenes sin descriptor → la de más bytes', () => {
+  const got = Core.selectDisplayImage([f('ABC__a.jpg', 100), f('ABC__b.jpg', 999), f('ABC__c.jpg', 500)]);
+  assert.equal(got.name, 'ABC__b.jpg');
+});
+
+test('selectDisplayImage: imagen + PDF → la imagen (el PDF se ignora aunque pese más)', () => {
+  const got = Core.selectDisplayImage([f('ABC__plano.pdf', 9999), f('ABC__front.jpg', 100)]);
+  assert.equal(got.name, 'ABC__front.jpg');
+});
+
+test('selectDisplayImage: solo PDFs/planos → null (no se marca display)', () => {
+  assert.equal(Core.selectDisplayImage([f('ABC__plano.pdf', 9999), f('ABC__corte.pdf', 1)]), null);
+});
+
+test('selectDisplayImage: descriptor de principal gana aunque no sea la más grande', () => {
+  const got = Core.selectDisplayImage([f('ABC__back.jpg', 9999), f('ABC__PRINCIPAL.jpg', 10)]);
+  assert.equal(got.name, 'ABC__PRINCIPAL.jpg');
+});
+
+test('selectDisplayImage: varios descriptores de principal → la más grande de las marcadas', () => {
+  const got = Core.selectDisplayImage([
+    f('ABC__foto1.jpg', 200), f('ABC__foto2.jpg', 800), f('ABC__back.jpg', 9999),
+  ]);
+  assert.equal(got.name, 'ABC__foto2.jpg');
+});
+
+test('selectDisplayImage: desempate determinista por nombre cuando empatan bytes', () => {
+  const got = Core.selectDisplayImage([f('ABC__zeta.jpg', 500), f('ABC__alfa.jpg', 500)]);
+  assert.equal(got.name, 'ABC__alfa.jpg');
+});
+
+test('selectDisplayImage: lista vacía o sin imágenes → null', () => {
+  assert.equal(Core.selectDisplayImage([]), null);
+  assert.equal(Core.selectDisplayImage(null), null);
+});
+
+// ── readDisplayState (displayImageId actual + mapa originalName→vínculo.id) ────
+function pnWithDisplay(displayImageId, files) {
+  // files: [{originalName, id}]
+  return {
+    displayImageId,
+    partNumberUserFilesByPartNumberId: {
+      nodes: files.map((x) => ({ id: x.id, userFileByUserFileName: { originalName: x.originalName } })),
+    },
+  };
+}
+
+test('readDisplayState: extrae displayImageId actual', () => {
+  const st = Core.readDisplayState(pnWithDisplay(964376, [{ originalName: 'a.jpg', id: 1 }]));
+  assert.equal(st.displayImageId, 964376);
+});
+
+test('readDisplayState: displayImageId null/ausente cuando el PN no tiene portada', () => {
+  assert.equal(Core.readDisplayState(pnWithDisplay(null, [])).displayImageId, null);
+  assert.equal(Core.readDisplayState({}).displayImageId, null);
+});
+
+test('readDisplayState: mapea originalName(normalizado) → partNumberUserFile.id', () => {
+  const st = Core.readDisplayState(pnWithDisplay(null, [
+    { originalName: 'ABC__Front.JPG', id: 11 }, { originalName: 'ABC__back.jpg', id: 22 },
+  ]));
+  assert.equal(st.fileIdByName.get('abc__front.jpg'), 11);
+  assert.equal(st.fileIdByName.get('abc__back.jpg'), 22);
+});
+
+test('readDisplayState: bucket de nodo/instrucciones NUNCA aporta ids al mapa', () => {
+  const pn = pnWithDisplay(null, [{ originalName: 'foto.jpg', id: 5 }]);
+  pn.partNumberRackTypesByPartNumberId = {
+    nodes: [{ rackTypeByRackTypeId: { rackTypeUserFilesByRackTypeId: { nodes: [
+      { id: 999, userFileByUserFileName: { originalName: 'instruccion-nodo.pdf' } },
+    ] } } }],
+  };
+  const st = Core.readDisplayState(pn);
+  assert.equal(st.fileIdByName.size, 1);
+  assert.equal(st.fileIdByName.get('foto.jpg'), 5);
+  assert.equal(st.fileIdByName.has('instruccion-nodo.pdf'), false);
+});

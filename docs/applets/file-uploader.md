@@ -1,6 +1,6 @@
 # file-uploader — Cargador de Archivos
 
-**Versión actual:** 0.2.0 (carga masiva inteligente — pendiente deploy + run real)
+**Versión actual:** 0.5.0 (display image automático — implementado, pendiente deploy + run real)
 **Scripts:** `remote/scripts/steelhead-api.js`, `remote/scripts/file-uploader-core.js`, `remote/scripts/file-uploader.js`
 **Tests:** `tools/test/file-uploader-core.test.js` (18 golden, núcleo puro)
 **Handler:** `extension/background.js` → `upload-pn-files` (input `multiple`, no `webkitdirectory`)
@@ -75,8 +75,19 @@ Integrado `host-cleanup-shared.js` (en el array de `scripts`). Aplica para el du
 - **EJE B — host:** `stopDatadogSessionReplay()` al iniciar el run; `createMemMonitor` con span `#sa-upl-mem` (warn 70% re-aplica DD stop, **guardrail 88% → `cancelRun` + detiene con checkpoint**, la idempotencia continúa al re-correr); `makePeriodicDrain(50)` al cierre de cada grupo; `apolloCacheDrain()` + `mem.stop()` en `finally`.
 - **Plan de validación:** correr una tanda de ~300-500 archivos reales y observar `#sa-upl-mem` estable (sin crecer sin tope); confirmar que el guardrail detiene y el resumen marca "Carga detenida (memoria)".
 
+## Display image automático (v0.5.0)
+El applet **marca foto principal** del PN para que aparezca en los tableros (sin display image, el PN no muestra foto). Diseño en `docs/superpowers/specs/2026-06-29-file-uploader-display-image-design.md`.
+
+- **Mutación:** `UpdatePartNumber({ id, displayImageId })` — misma persisted query que archivar (hash `af584fa8…`, vigente). `displayImageId` = `id` del vínculo `partNumberUserFile` (lo devuelve `CreatePartNumberUserFile` o se lee de `GetPartNumber.partNumberById.partNumberUserFilesByPartNumberId.nodes[].id`). Variable confirmada del front en scan `2026-06-29_135728`: `{id:3028120, displayImageId:964376}`.
+- **Qué foto** (`core.selectDisplayImage`, precedencia): (1) descriptor explícito de principal en el nombre `<PN>__PRINCIPAL/DI/FOTO/…` (gancho Cowork, tokens `principal|ppal|di|foto|photo|main|portada|display|cover` con frontera — `__difuminado` NO matchea); (2) si no, la **imagen más grande por bytes**; (3) **PN con una sola foto → esa**; excluye PDFs/planos (`core.isImageFile`); solo-PDFs → no marca.
+- **Respeta la existente:** solo marca si `partNumberById.displayImageId == null` (idempotente). Homónimos: marca en todos los que no tengan.
+- **Fallback de id:** si el create no devuelve `.id` o la foto se saltó (preexistente), relee `GetPartNumber` una vez (la foto ya vinculada trae su id). Confirmar en run real si el create devuelve `id` (camino feliz sin re-lectura).
+- **Resumen:** nueva línea "Display image marcada" (`results.displaySet`).
+- Tests: `selectDisplayImage`/`isImageFile`/`isPrincipalDescriptor`/`readDisplayState` (golden, 40/40).
+
 ## Pendientes / mejoras
-- **`display_image_id`:** el applet no marca foto principal del PN. Posible mejora: setear el primer `__front`/`__principal` como display image.
+- **CSV de Cowork** (lo pasará el usuario): fuente alternativa/preferente de "cuál es la principal" si el descriptor en nombre resulta insuficiente. Hoy fuera de alcance (el applet matchea por nombre, no lee CSV).
+- **Resolución (píxeles)** como desempate fino cuando los bytes empatan (YAGNI por ahora).
 - **Manifiesto CSV** (descartado por YAGNI): si el naming codificado se vuelve frágil, mapear archivo→PN explícito.
 
 ## Lecciones
@@ -84,6 +95,7 @@ Integrado `host-cleanup-shared.js` (en el array de `scripts`). Aplica para el du
 - **CSS propio obligatorio (bug 2026-06-26).** El applet usaba las clases `.dl9-*` pero NO inyectaba su CSS; ese CSS lo definen otros applets (archiver/po-comparator/bulk-upload) cada uno con su `<style>`. file-uploader corre **aislado** (su array no incluye a ninguno de esos), así que el overlay de progreso y el resumen se creaban **invisibles** (sin `position:fixed`/fondo/centrado). Síntoma: "no mostró nada de resumen". La v0.1.0 lo tapaba con `alert()`. **Fix:** `ensureStyles()` inyecta un `<style id="sa-uploader-styles">` propio (idempotente) — no depender de otro applet. **Regla general:** cualquier applet que use clases `dl9-*` debe inyectar su propio CSS. La lógica de negocio NO estaba rota (se verificó en vivo que las fotos sí se vincularon, incl. fan-out a homónimos); era 100% un problema de UI.
 
 ## Historial
+- **0.5.0 (2026-06-29):** **display image automático.** Tras vincular un grupo, marca foto principal en los PNs sin portada (`UpdatePartNumber{displayImageId}`, misma persisted query que archivar — cero hashes nuevos). Selección pura en el core (`selectDisplayImage`: descriptor Cowork → mayor bytes → única foto; excluye PDFs) + `isImageFile`/`isPrincipalDescriptor`/`readDisplayState`, 40 golden tests. Respeta portada existente (idempotente), fan-out a homónimos, fallback de re-lectura del id. Mecanismo confirmado contra scan `2026-06-29_135728` (`UpdatePartNumber` vars `{id,displayImageId}`) + `GetPartNumber` hash == producción (trae `displayImageId` + `nodes[].id`). **Pendiente: deploy + run real** (verificar que el create devuelve `id`, que el tablero muestra la foto, e idempotencia en 2ª corrida).
 - **0.4.2 (2026-06-26):** `isTransientError` también reintenta `AbortError`/`aborted` (corte de red a media request). Validado: run de 500 con 1 solo error = un `AbortError` por desconexión del usuario; ahora el retry lo recupera. 22 golden tests.
 - **0.4.1 (2026-06-26):** fix HTTP 502 — `gate()` rate-limit (120ms) + `withRetry()` backoff en transitorios (`isTransientError` + 4 golden tests). Sin esto, ~72% de un run de 1159 falló con 502. Pendiente: deploy + re-validar escala.
 - **0.4.0 (2026-06-26):** memory hardening con `host-cleanup-shared` (slim, Datadog stop, mem monitor + guardrail 88% con checkpoint, drain cada 50). Para el full run. Pendiente: deploy (config estructural → `deploy.sh`).
