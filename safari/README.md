@@ -80,11 +80,26 @@ quítalos si prefieres que abra Xcode automáticamente.
 > abre el Web Inspector de la pestaña del iPad. Ahí, en consola: `window.SurtidoGuard._getState()` debe mostrar
 > `scheduled > 0` y `surtido` con el recipeNodeId. Si salen vacíos, el candado está en fail-safe (no bloquea).
 
-## Si `world:"MAIN"` no funciona en el Safari del iPad (plan B)
+## Si `world:"MAIN"` no funciona en el Safari del iPad (plan B — YA INCLUIDO)
 `world:"MAIN"` en `content_scripts` requiere Safari/iPadOS reciente (17+). Si el candado no intercepta
-(el `_getState` no se puebla o no bloquea), el fallback es un content script en el mundo aislado que inyecta
-los scripts del candado como `<script src>` en el MAIN world. Avísame y te dejo esa variante del manifest +
-loader; es un cambio chico y no toca la lógica del candado.
+(el `_getState` no se puebla o no bloquea), usa la variante **plan B**, ya lista en este repo:
+
+- `extension/manifest.fallback.json` — manifest sin `world:"MAIN"`; inyecta vía content script aislado +
+  `web_accessible_resources`.
+- `extension/sg-inject.js` — loader que corre en el mundo aislado y mete `surtido-guard-core.js` +
+  `surtido-guard.js` como `<script src>` en el MAIN world, en orden (core → glue).
+
+**Cómo activarlo** (no toca la lógica del candado):
+```bash
+cd safari/extension
+mv manifest.json manifest.world-main.json   # respalda la variante A
+mv manifest.fallback.json manifest.json      # activa el plan B
+```
+Luego vuelve a correr el converter (paso 1) y recompila. Para volver a la variante A, invierte el rename.
+
+> Diferencia de timing: el plan B inyecta los scripts asincrónicamente en `document_start`; el candado se
+> auto-gestiona (parchea `fetch` en su `init`), así que sigue interceptando los fetch del board, que ocurren
+> mucho después de la carga. Es ligeramente más frágil que `world:"MAIN"` pero funciona en iPadOS más viejos.
 
 ## Mantener sincronizado
 Cuando cambie la lógica del candado en `remote/scripts/`:
