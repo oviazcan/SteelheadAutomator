@@ -303,7 +303,7 @@ const FileUploader = (() => {
   // v1: solo PNs ACTIVOS (los archivados/no-encontrados se reportan).
   async function runBackfill(csvText) {
     const results = {
-      rows: 0, displaySet: 0, alreadyHad: 0, homonyms: 0,
+      rows: 0, displaySet: 0, alreadyHad: 0, homonyms: 0, unarchived: 0, rearchived: 0,
       notFound: [], notLinked: [], errors: [], stopped: false,
     };
     let rows;
@@ -340,25 +340,14 @@ const FileUploader = (() => {
         }
         if (!row.displayImage) { results.notLinked.push({ pn: row.pn, file: '(vacío en CSV)' }); continue; }
         try {
-          const active = await findActivePNs(row.pn);
-          if (!active.matches.length) { results.notFound.push(row.pn); drain(); continue; }
-          if (active.matches.length > 1) results.homonyms++;
+          let pns = (await findActivePNs(row.pn)).matches;
+          if (!pns.length) pns = (await findAnyPNs(row.pn)).matches; // incluye archivados
+          if (!pns.length) { results.notFound.push(row.pn); drain(); continue; }
+          if (pns.length > 1) results.homonyms++;
           const wantKey = core().norm(row.displayImage);
-          for (const pn of active.matches) {
+          for (const pn of pns) {
             if (cancelRun) break;
-            let detail;
-            try { detail = await getPNDetail(pn.id); }
-            catch (e) { results.errors.push(`leer PN ${row.pn} (${pn.id}): ${String(e).substring(0, 50)}`); continue; }
-            if (detail.displayImageId != null) { results.alreadyHad++; continue; } // respeta la existente
-            const fileId = detail.fileIdByName.get(wantKey);
-            if (fileId == null) { results.notLinked.push({ pn: row.pn, file: row.displayImage }); continue; }
-            try {
-              await setDisplayImage(pn.id, fileId);
-              results.displaySet++;
-              log(`  ★ ${row.pn} (${pn.id}) → "${row.displayImage}"`);
-            } catch (e) {
-              results.errors.push(`marcar ${row.pn} (${pn.id}): ${String(e).substring(0, 50)}`);
-            }
+            await applyBackfillToPN(pn, wantKey, row.displayImage, row.pn, results);
           }
         } catch (e) {
           results.errors.push(`fila "${row.pn}": ${String(e).substring(0, 60)}`);
@@ -371,6 +360,36 @@ const FileUploader = (() => {
       showBackfillSummary(results);
     }
     return results;
+  }
+
+  // Marca la portada de UN PN (si no tiene). Si está archivado: desarchiva →
+  // marca → re-archiva con su archivedAt ORIGINAL (re-archivado SIEMPRE, en finally).
+  async function applyBackfillToPN(pn, wantKey, displayImage, pnName, results) {
+    let detail;
+    try { detail = await getPNDetail(pn.id); }
+    catch (e) { results.errors.push(`leer PN ${pnName} (${pn.id}): ${String(e).substring(0, 50)}`); return; }
+    if (detail.displayImageId != null) { results.alreadyHad++; return; } // respeta la existente
+    const fileId = detail.fileIdByName.get(wantKey);
+    if (fileId == null) { results.notLinked.push({ pn: pnName, file: displayImage }); return; }
+
+    if (!detail.archivedAt) {
+      try { await setDisplayImage(pn.id, fileId); results.displaySet++; log(`  ★ ${pnName} (${pn.id}) → "${displayImage}"`); }
+      catch (e) { results.errors.push(`marcar ${pnName} (${pn.id}): ${String(e).substring(0, 50)}`); }
+      return;
+    }
+    // PN archivado: desarchivar → marcar → re-archivar (archivedAt crudo original).
+    try { await setArchived(pn.id, null); results.unarchived++; }
+    catch (e) { results.errors.push(`desarchivar ${pnName} (${pn.id}): ${String(e).substring(0, 50)}`); return; }
+    try {
+      await setDisplayImage(pn.id, fileId);
+      results.displaySet++;
+      log(`  ★ (archivado) ${pnName} (${pn.id}) → "${displayImage}"`);
+    } catch (e) {
+      results.errors.push(`marcar ${pnName} (${pn.id}): ${String(e).substring(0, 50)}`);
+    } finally {
+      try { await setArchived(pn.id, detail.archivedAt); results.rearchived++; }
+      catch (e) { results.errors.push(`⚠️ PN ${pnName} (${pn.id}) QUEDÓ DESARCHIVADO: ${String(e).substring(0, 50)}`); }
+    }
   }
 
   // Overlay propio (dark) con input del CSV — invocado por el handler genérico `fn`.
@@ -405,15 +424,16 @@ const FileUploader = (() => {
     let body = line('PNs en el CSV', r.rows)
       + line('Portadas marcadas', r.displaySet)
       + line('Ya tenían portada', r.alreadyHad);
+    if (r.unarchived) body += line('Desarchivados → re-archivados', `${r.rearchived}/${r.unarchived}`);
     if (r.homonyms) body += line('PNs con homónimos', r.homonyms);
-    if (r.notFound.length) body += line('PN no encontrado (activo)', r.notFound.length);
+    if (r.notFound.length) body += line('PN no encontrado', r.notFound.length);
     if (r.notLinked.length) body += line('Foto del CSV no vinculada', r.notLinked.length);
     if (r.errors.length) body += line('Errores ⚠️', r.errors.length);
 
     let detail = '';
     if (r.notFound.length) {
       const sample = r.notFound.slice(0, 10).map(esc).join(', ');
-      detail += `<div style="margin-top:12px;font-size:12px;color:#94a3b8;border-top:1px solid #2a3441;padding-top:10px">No encontrados como activos (${r.notFound.length}): ${sample}${r.notFound.length > 10 ? '…' : ''}. Pueden estar archivados (no cubiertos en esta versión).</div>`;
+      detail += `<div style="margin-top:12px;font-size:12px;color:#94a3b8;border-top:1px solid #2a3441;padding-top:10px">No encontrados ni activos ni archivados (${r.notFound.length}): ${sample}${r.notFound.length > 10 ? '…' : ''}.</div>`;
     }
     if (r.notLinked.length) {
       const sample = r.notLinked.slice(0, 6).map((x) => esc(`${x.pn}→${x.file}`)).join('<br>');
