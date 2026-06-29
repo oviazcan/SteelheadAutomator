@@ -1,6 +1,6 @@
 {
-  "version": "1.7.30",
-  "lastUpdated": "2026-06-29T16:34",
+  "version": "1.7.31",
+  "lastUpdated": "2026-06-29T16:35",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -537,7 +537,8 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"],
       "requiredPermissions": ["READ_ALL_UPLOADED_FILES"],
       "actions": [
-        { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" }
+        { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" },
+        { "id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup" }
       ]
     },
     {
