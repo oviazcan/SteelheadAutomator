@@ -65,6 +65,12 @@ En Xcode, panel izquierdo → selecciona el proyecto (ícono azul arriba). Verá
 > Apple ID gratis (Personal Team) = la firma vale **7 días**: suficiente para el POC. Para producción se usa
 > cuenta Apple Developer ($99) + TestFlight o MDM (ver `docs/architecture/ipad-surtido-guard-decision.md`).
 
+> **Error común al hacer Run: _"Embedded binary's bundle identifier is not prefixed with the parent app's
+> bundle identifier."_** El Bundle Identifier de la **extensión** debe **empezar con** el de la **app** + un
+> sufijo. Fix: copia el del target de la app (p. ej. `com.tu.candadosurtido`) y pon el de la extensión =
+> ese mismo + sufijo → `com.tu.candadosurtido.Extension`. Pasa cuando cambias el ID de la app por un conflicto
+> y olvidas el de la extensión. Ambos targets con el **mismo Team**.
+
 [captura pendiente: pantalla Signing & Capabilities de cada target]
 
 ## Paso 3 — Instalar en el iPad

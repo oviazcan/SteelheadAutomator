@@ -211,6 +211,9 @@ xcrun safari-web-extension-converter safari/extension \
     <div class="callout tip">
       <p><span class="label">💡 Firma con Apple ID gratis</span> vale <strong>7 días</strong>: suficiente para el POC. Para producción se usa cuenta Apple Developer ($99) + TestFlight o MDM — ver el <a href="architecture/ipad-surtido-guard-decision.html">documento de decisión</a>.</p>
     </div>
+    <div class="callout warn">
+      <p><span class="label">⚠️ Error común al hacer Run:</span> <em>“Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier.”</em> El Bundle ID de la <strong>extensión</strong> debe <strong>empezar con</strong> el de la <strong>app</strong> + un sufijo. Fix: copia el del target de la app (p. ej. <code>com.tu.candadosurtido</code>) y pon el de la extensión = ese mismo + sufijo → <code>com.tu.candadosurtido.Extension</code>. Ambos targets con el <strong>mismo Team</strong>.</p>
+    </div>
     <p class="placeholder">[captura pendiente: pantalla Signing &amp; Capabilities de cada target]</p>
   </section>
 
