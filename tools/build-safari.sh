@@ -54,6 +54,15 @@ parts = [
     "// ==========================================================================",
     "",
 ]
+
+# Prelude: bootstrap del MAIN world — recibe el config.json que bridge.js (mundo aislado)
+# fetchea de gh-pages e instala window.REMOTE_CONFIG + SteelheadAPI.init (hashes en caliente).
+boot = os.path.join(root, 'safari', 'sa-bootstrap.js')
+if os.path.exists(boot):
+    parts += ["// ===== BEGIN sa-bootstrap.js (prelude) =====", "(function(){",
+              open(boot, encoding='utf-8').read().rstrip("\n"), "})();",
+              "// ===== END sa-bootstrap.js =====", ""]
+
 for rel in ordered:
     src = os.path.join(root, 'remote', rel)
     if not os.path.exists(src):
@@ -67,10 +76,13 @@ manifest = {
     "manifest_version": 3,
     "name": bundle["name"], "description": bundle["description"], "version": bundle["version"],
     "host_permissions": bundle["matches"],
-    "content_scripts": [{
-        "matches": bundle["matches"], "js": ["main-bundle.js"],
-        "run_at": "document_start", "world": "MAIN", "all_frames": False,
-    }],
+    "content_scripts": [
+        # Mundo AISLADO: bridge.js fetchea config.json de gh-pages → postMessage al MAIN.
+        {"matches": bundle["matches"], "js": ["bridge.js"], "run_at": "document_start"},
+        # Mundo MAIN: prelude (recibe config) + helpers + applets.
+        {"matches": bundle["matches"], "js": ["main-bundle.js"],
+         "run_at": "document_start", "world": "MAIN", "all_frames": False},
+    ],
     "icons": {"16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png"},
 }
 manifest_str = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"

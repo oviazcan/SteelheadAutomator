@@ -12,6 +12,15 @@
         "https://app.gosteelhead.com/*"
       ],
       "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://app.gosteelhead.com/*"
+      ],
+      "js": [
         "main-bundle.js"
       ],
       "run_at": "document_start",

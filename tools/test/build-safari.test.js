@@ -50,9 +50,16 @@ test('cada script va envuelto en su propio IIFE (aislamiento de scope)', () => {
   assert.strictEqual(begins.length, total, 'todo BEGIN debe ir seguido de (function(){');
 });
 
-test('manifest: content script world:MAIN apuntando al bundle', () => {
-  const cs = manifest.content_scripts[0];
-  assert.deepStrictEqual(cs.js, ['main-bundle.js']);
-  assert.strictEqual(cs.world, 'MAIN');
-  assert.strictEqual(cs.run_at, 'document_start');
+test('manifest: bridge (ISOLATED) + bundle (MAIN)', () => {
+  const main = manifest.content_scripts.find((c) => c.world === 'MAIN');
+  const iso = manifest.content_scripts.find((c) => c.world !== 'MAIN');
+  assert.ok(main && iso, 'debe haber un content script MAIN y uno aislado');
+  assert.deepStrictEqual(main.js, ['main-bundle.js']);
+  assert.strictEqual(main.run_at, 'document_start');
+  assert.deepStrictEqual(iso.js, ['bridge.js']);
+});
+
+test('el bundle incluye el prelude de bootstrap (config/hashes en caliente)', () => {
+  assert.ok(bundle.includes('sa-bootstrap.js (prelude)'), 'falta el prelude en el bundle');
+  assert.ok(bundle.includes('REMOTE_CONFIG'), 'el prelude debe instalar window.REMOTE_CONFIG');
 });
