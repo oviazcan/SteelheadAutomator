@@ -64,6 +64,17 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 Decidido portar como **Safari Web Extension** (no PWA) — análisis en
 [`docs/architecture/ipad-surtido-guard-decision.md`](../architecture/ipad-surtido-guard-decision.md).
 POC en `safari/` (source + plan B + README de Xcode). Guía de build: `docs/deploy-safari.html`.
+Inventario de portabilidad de TODOS los applets: `docs/architecture/ipad-applets-inventory.html`.
+
+**Pipeline de bundle multi-applet + bridge de config VALIDADO en vivo (Safari iPad, 2026-06-30) ✓:**
+`tools/build-safari.sh` genera `main-bundle.js` (varios applets concatenados desde la fuente única, cada uno
+en IIFE) + `manifest.json` (bridge ISOLATED + bundle `world:MAIN`). El **bridge** (`bridge.js`) fetchea
+`config.json` de gh-pages en el mundo aislado y `sa-bootstrap.js` instala `window.REMOTE_CONFIG` +
+`SteelheadAPI.init` → **los hashes se actualizan EN CALIENTE (git push), sin recompilar** (Apple 2.5.2 prohíbe
+código remoto, no datos). Confirmado en dispositivo: `REMOTE_CONFIG.version`="1.7.34" (la version EN VIVO de
+gh-pages, no horneada) y `getHash('CreateMaintenanceEvent')` devolvió el hash correcto → la CSP de Steelhead
+NO bloquea el fetch del bridge a github.io. Mini-bundle: surtido-guard + paros-linea + weight-quick-entry +
+receiver-date-override. **Para escalar a los 16 "directo": editar `safari/bundle.json`.**
 
 **POC validado en vivo (Safari iPad, 2026-06-30) ✓:** `world:"MAIN"` SÍ intercepta `fetch` en Safari/iPadOS
 (el warning `world not supported` del converter es de su validador, no del runtime → **NO se necesitó el plan
