@@ -40,8 +40,11 @@ xcrun safari-web-extension-converter safari/extension \
 - `--ios-only`: solo target iPad/iPhone (no macOS). Si luego quieres probar en Mac, regeneras sin este flag.
 - `--copy-resources`: copia los `.js`/`manifest` dentro del proyecto (autocontenido). **Ojo divergencia**: si
   cambias el candado, hay que re-sincronizar (ver "Mantener al día").
-- Al terminar imprime un resumen. **Si advierte sobre `world: "MAIN"`** (no soportado en tu target), usa el
-  **plan B** (ver abajo) y vuelve a correr este paso.
+- Al terminar imprime un resumen. **Es esperado que advierta `world … not supported by your current version
+  of Safari`** — es el *validador del converter*, que no reconoce la clave `world`; Safari reciente sí la
+  soporta en runtime, y el proyecto Xcode se genera igual. **No cambies nada todavía:** termina el build
+  (Pasos 2-3) y **prueba en el iPad** (Paso 5). **Solo si NO intercepta** (el `_getState` no se puebla / no
+  bloquea) pasa al **plan B** (abajo). El warning por sí solo no prueba que falle.
 
 `safari/` y `safari/xcode/` ya están en `.gitignore` para los artefactos de build; el *source* (`safari/extension/`)
 sí se versiona. (Si el proyecto generado no debe subirse, confirma el `.gitignore` — ver "Notas de repo".)

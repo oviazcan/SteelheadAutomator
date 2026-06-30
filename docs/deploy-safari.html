@@ -194,7 +194,7 @@ xcrun safari-web-extension-converter safari/extension \
       <li>Al terminar imprime un resumen.</li>
     </ul>
     <div class="callout warn">
-      <p><span class="label">⚠️ Si advierte sobre <code>world: "MAIN"</code></span> (no soportado en tu target) → usa el <a href="#planb">plan B</a> y vuelve a correr este paso. Pégame el output del converter y lo confirmamos.</p>
+      <p><span class="label">⚠️ El converter advierte <code>world … not supported</code></span> — es <strong>esperado</strong>: el validador del converter no reconoce la clave; Safari reciente sí la soporta en runtime y el proyecto se genera igual. <strong>No cambies nada todavía:</strong> termina el build (Pasos 2-3) y <strong>prueba en el iPad</strong> (Paso 5). <strong>Solo si NO intercepta</strong> (el <code>_getState</code> no se puebla) pasa al <a href="#planb">plan B</a>. El warning por sí solo no prueba que falle.</p>
     </div>
   </section>
 
