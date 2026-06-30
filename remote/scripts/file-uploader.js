@@ -304,7 +304,7 @@ const FileUploader = (() => {
   async function runBackfill(csvText) {
     const results = {
       rows: 0, displaySet: 0, alreadyHad: 0, homonyms: 0, unarchived: 0, rearchived: 0,
-      notFound: [], notLinked: [], errors: [], stopped: false,
+      notFound: [], notLinked: [], pdfDisplays: [], errors: [], stopped: false,
     };
     let rows;
     try { rows = core().parseBackfillCsv(csvText); }
@@ -372,8 +372,15 @@ const FileUploader = (() => {
     const fileId = detail.fileIdByName.get(wantKey);
     if (fileId == null) { results.notLinked.push({ pn: pnName, file: displayImage }); return; }
 
+    // Cuenta la marca; si la portada NO es imagen (PDF/plano), la registra aparte
+    // para revisión (decisión del usuario: marcar igual pero listarlas).
+    const noteMark = () => {
+      results.displaySet++;
+      if (!core().isImageFile(displayImage)) results.pdfDisplays.push({ pn: pnName, file: displayImage });
+    };
+
     if (!detail.archivedAt) {
-      try { await setDisplayImage(pn.id, fileId); results.displaySet++; log(`  ★ ${pnName} (${pn.id}) → "${displayImage}"`); }
+      try { await setDisplayImage(pn.id, fileId); noteMark(); log(`  ★ ${pnName} (${pn.id}) → "${displayImage}"`); }
       catch (e) { results.errors.push(`marcar ${pnName} (${pn.id}): ${String(e).substring(0, 50)}`); }
       return;
     }
@@ -382,7 +389,7 @@ const FileUploader = (() => {
     catch (e) { results.errors.push(`desarchivar ${pnName} (${pn.id}): ${String(e).substring(0, 50)}`); return; }
     try {
       await setDisplayImage(pn.id, fileId);
-      results.displaySet++;
+      noteMark();
       log(`  ★ (archivado) ${pnName} (${pn.id}) → "${displayImage}"`);
     } catch (e) {
       results.errors.push(`marcar ${pnName} (${pn.id}): ${String(e).substring(0, 50)}`);
@@ -426,6 +433,7 @@ const FileUploader = (() => {
       + line('Ya tenían portada', r.alreadyHad);
     if (r.unarchived) body += line('Desarchivados → re-archivados', `${r.rearchived}/${r.unarchived}`);
     if (r.homonyms) body += line('PNs con homónimos', r.homonyms);
+    if (r.pdfDisplays.length) body += line('Portada = PDF/plano (revisar)', r.pdfDisplays.length);
     if (r.notFound.length) body += line('PN no encontrado', r.notFound.length);
     if (r.notLinked.length) body += line('Foto del CSV no vinculada', r.notLinked.length);
     if (r.errors.length) body += line('Errores ⚠️', r.errors.length);
@@ -443,7 +451,7 @@ const FileUploader = (() => {
       detail += `<div style="margin-top:8px;font-size:12px;color:#fca5a5">${r.errors.slice(0, 5).map(esc).join('<br>')}${r.errors.length > 5 ? '<br>…' : ''}</div>`;
     }
 
-    const hasReport = r.notFound.length || r.notLinked.length || r.errors.length;
+    const hasReport = r.notFound.length || r.notLinked.length || r.errors.length || r.pdfDisplays.length;
     const exportBtn = hasReport ? `<button id="sa-bf-export" class="sa-upl-btn" style="background:#475569">Exportar reporte</button>` : '';
     const title = r.stopped ? '⚠️ Backfill detenido (memoria)' : 'Backfill completado';
     ov.innerHTML = `<div class="dl9-modal" style="background:#1c2430;color:#e6e9ee;min-width:380px"><h2 style="color:${r.stopped ? '#fbbf24' : '#13a36f'}">${title}</h2><div style="font-size:13px;line-height:1.85">${body}</div>${detail}<div style="display:flex;gap:10px;margin-top:18px"><button id="sa-bf-close" class="sa-upl-btn" style="background:#13a36f">Cerrar</button>${exportBtn}</div></div>`;
@@ -457,6 +465,7 @@ const FileUploader = (() => {
     const rows = ['tipo,pn,detalle'];
     for (const pn of r.notFound) rows.push(`no_encontrado,${csv(pn)},`);
     for (const nl of r.notLinked) rows.push(`foto_no_vinculada,${csv(nl.pn)},${csv(nl.file)}`);
+    for (const pd of r.pdfDisplays) rows.push(`portada_pdf,${csv(pd.pn)},${csv(pd.file)}`);
     for (const e of r.errors) rows.push(`error,,${csv(e)}`);
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const a = document.createElement('a');
