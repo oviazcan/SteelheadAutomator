@@ -54,3 +54,7 @@ docs/api/Payload: *.txt
 
 # Migración one-time de customInputs (snapshots/resume con data de PNs)
 tools/.fix-custominputs/
+
+# Proyecto Xcode generado por el converter de Safari (artefacto de build, no source).
+# El source versionado es safari/extension/ ; safari/xcode/ se regenera con el converter.
+safari/xcode/
