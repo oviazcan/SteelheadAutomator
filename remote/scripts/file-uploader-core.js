@@ -21,8 +21,11 @@
     return s.trim();
   }
 
+  // NFC unifica acentos: macOS guarda nombres en NFD (Ñ = N+◌̃) y el CSV suele
+  // venir en NFC (Ñ = un code point). Sin normalizar, "ESTAÑO" del ERP no matchea
+  // el del CSV → falso "no vinculada". normalize antes de lowercase/trim.
   function norm(s) {
-    return String(s == null ? '' : s).trim().toLowerCase();
+    return String(s == null ? '' : s).normalize('NFC').trim().toLowerCase();
   }
 
   // TODOS los PNs cuyo `name` coincide EXACTO (case-insensitive, trim) con pnName.

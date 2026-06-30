@@ -283,6 +283,21 @@ test('readDisplayState: bucket de nodo/instrucciones NUNCA aporta ids al mapa', 
   assert.equal(st.fileIdByName.has('instruccion-nodo.pdf'), false);
 });
 
+// ── norm: normalización Unicode (acentos macOS NFD vs CSV NFC) ───────────────
+test('norm: unifica NFC y NFD para que ESTAÑO/COBRE matcheen pese a la forma Unicode', () => {
+  const nfc = 'ESTAÑO.jpg'.normalize('NFC');
+  const nfd = 'ESTAÑO.jpg'.normalize('NFD');
+  assert.notEqual(nfc, nfd); // distintos a nivel de code points (Ñ vs N+◌̃)
+  assert.equal(Core.norm(nfc), Core.norm(nfd)); // norm los iguala
+});
+
+test('isAlreadyLinked / fileIdByName matchean aunque el ERP guarde el acento en NFD', () => {
+  // El CSV trae NFC, el ERP (subido desde macOS) puede traer NFD: deben matchear.
+  const erp = pnWithFiles(['06100310003__ESTAÑO.jpg'.normalize('NFD')]);
+  const set = Core.existingOriginalNames(erp);
+  assert.equal(Core.isAlreadyLinked(set, '06100310003__ESTAÑO.jpg'.normalize('NFC')), true);
+});
+
 // ── parseBackfillCsv (BACKFILL: ingiere el CSV de Cowork PN→displayImage) ─────
 // Columnas reales (Cowork): PN, displayImage, tipo, fuente. La principal ya viene
 // decidida en displayImage → el backfill solo la aplica (no re-elige heurística).
