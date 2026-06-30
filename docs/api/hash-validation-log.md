@@ -530,3 +530,5 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 - **Discrepancia con launchd:** la entrada `2026-06-29 08:27 — 0 rotado(s) (launchd)` reportó 0 con el **mismo** config 1.7.25; la corrida manual de las 14:00 detectó 2 stale, confirmados con probe. Consistente con flapping/rollout escalonado (canary) del server, como `GetDomain` el 19/22 jun — NO bug del validador. (Estos 2 ya venían reportados stale el 26 y 28 jun, sin reparar hasta hoy.)
 - **`AllSensorDashboards` NO se tocó:** el scan trae un hash distinto al de config, pero el validador en vivo lo da **OK** (el server aún acepta el del config; el front migró a otro hash sin rotar el viejo). `sensor-status-autofill` no está roto. Sin cambio — defensa contra falsos positivos del diff scan-vs-config.
 - Deploy `tools/deploy.sh --check bill-autofill`: 1.7.25 → **1.7.26** (commit main `3500b8d`, gh-pages `e80fe8c`). Publicado en vivo (GitHub Pages sirve config 1.7.26 con ambos hashes nuevos, verificado por curl).
+
+## 2026-06-29 21:19 — 0 rotado(s) (launchd)
