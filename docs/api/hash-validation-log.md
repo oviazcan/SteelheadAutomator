@@ -532,3 +532,5 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 - Deploy `tools/deploy.sh --check bill-autofill`: 1.7.25 → **1.7.26** (commit main `3500b8d`, gh-pages `e80fe8c`). Publicado en vivo (GitHub Pages sirve config 1.7.26 con ambos hashes nuevos, verificado por curl).
 
 ## 2026-06-29 21:19 — 0 rotado(s) (launchd)
+
+## 2026-06-29 23:30 — 0 rotado(s) (launchd)
