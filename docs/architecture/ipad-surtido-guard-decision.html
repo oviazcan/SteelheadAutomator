@@ -121,7 +121,7 @@
     <div class="meta">
       <span class="pill win">✓ DECIDIDO — Ruta A</span>
       <span class="pill">2026-06-29</span>
-      <span class="pill">POC en curso · commit 19f326f</span>
+      <span class="pill win">POC Fase 1 VALIDADA ✓ · Safari iPad</span>
       <span class="pill">Análisis: 10 agentes + red-team</span>
     </div>
   </header>
@@ -219,8 +219,8 @@
     <h2>5 · Plan por fases <span style="font-weight:400;font-size:14px;color:var(--ink-soft)">(el POC ya existe)</span></h2>
     <div class="phase"><div class="when">Fase 0 · hoy<br><span style="font-weight:400;color:var(--ink-soft)">5 min</span></div>
       <div class="what">Confirmar la versión de iPadOS de los iPads. Si ≥17, <code>world:"MAIN"</code> directo; si &lt;17, usar el <strong>plan B</strong> ya incluido (<code>manifest.fallback.json</code> + <code>sg-inject.js</code>).</div></div>
-    <div class="phase"><div class="when">Fase 1 · esta semana<br><span style="font-weight:400;color:var(--ink-soft)">1-3 h en Xcode</span></div>
-      <div class="what">El source ya está en <code>safari/</code>. Falta solo lo que requiere GUI: instalar Xcode, correr el converter, firmar (Apple ID gratis = sideload 7 días), instalar en <strong>un</strong> iPad, validar bloqueo + login OAuth. <strong>No es diseño futuro: es completar el POC.</strong></div></div>
+    <div class="phase"><div class="when" style="color:var(--accent-ink)">Fase 1 · ✓ HECHA<br><span style="font-weight:400;color:var(--ink-soft)">2026-06-30</span></div>
+      <div class="what">Converter → firma (Apple ID gratis) → instalado en un iPad. <strong><code>world:"MAIN"</code> intercepta <code>fetch</code> en Safari/iPadOS</strong>, login OAuth OK y <strong>bloqueo de pieza no programada confirmado</strong>. Pendiente menor: validar una pieza PROGRAMADA (que no se bloquee).</div></div>
     <div class="phase"><div class="when">Fase 2 · si pasa</div>
       <div class="what">Cuenta Apple Developer ($99), decidir toggle (§7), decidir distribución (§6), agendar la telemetría del fail-safe (riesgo #1), guía de deploy con capturas.</div></div>
   </section>

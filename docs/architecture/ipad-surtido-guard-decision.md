@@ -1,6 +1,6 @@
 # Decisión de arquitectura — Candado de surtido en iPad: Safari Web Extension vs PWA
 
-> **Fecha:** 2026-06-29 · **Estado:** DECIDIDO (Ruta A) · **POC en curso** (`safari/`, commit `19f326f`)
+> **Fecha:** 2026-06-29 · **Estado:** DECIDIDO (Ruta A) · **POC Fase 1 VALIDADA en vivo 2026-06-30** — `world:"MAIN"` funciona en Safari iPad y el bloqueo de una pieza no programada quedó confirmado (NO se necesitó plan B)
 > **Decisión:** Portar `surtido-guard` a iPad como **Safari Web Extension** (solo el candado), no como PWA.
 > Generado con un análisis multi-agente (10 agentes: mapeo del repo → 4 dimensiones → síntesis → red-team).
 
@@ -75,9 +75,10 @@ no por hash) — el dolor de mantenimiento más frecuente del proyecto **no lo a
 ## 5. Plan por fases (corregido: el POC YA existe)
 - **Fase 0 — hoy (5 min):** confirmar la versión de iPadOS de los iPads. Si ≥17, `world:"MAIN"` directo; si
   <17, usar el **plan B** ya incluido (`manifest.fallback.json` + `sg-inject.js`).
-- **Fase 1 — esta semana (1-3 h en Xcode):** el source ya está en `safari/` (commit `19f326f`). Falta solo lo
-  que requiere GUI: instalar Xcode, correr el converter, firmar (Apple ID gratis = sideload 7 días), instalar
-  en **un** iPad, validar bloqueo + login OAuth. **No es trabajo de diseño futuro: es completar el POC.**
+- **Fase 1 — ✓ VALIDADA (2026-06-30):** se generó el proyecto con el converter, se firmó con Apple ID gratis y
+  se instaló en un iPad. `world:"MAIN"` intercepta `fetch` en Safari/iPadOS, el login OAuth funcionó y el
+  bloqueo de una pieza no programada quedó confirmado. **Pendiente menor:** validar el caso de una pieza
+  PROGRAMADA (que no se bloquee) cuando haya una en el board.
 - **Fase 2 — si el POC pasa:** cuenta Apple Developer ($99), decidir toggle (§7), decidir distribución (§6),
   agendar la telemetría del fail-safe (riesgo #1), escribir `docs/deploy-safari.md`.
 

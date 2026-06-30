@@ -63,9 +63,21 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 ## Portar a iPad (Safari Web Extension)
 Decidido portar como **Safari Web Extension** (no PWA) — análisis en
 [`docs/architecture/ipad-surtido-guard-decision.md`](../architecture/ipad-surtido-guard-decision.md).
-POC en `safari/` (source + plan B + README de Xcode). Riesgo a vigilar: el mapa de programadas
-(`buildScheduledAccountSet`) tiene **fail-safe silencioso** ante cambios de schema de `GetRelatedScheduleData`
-→ pendiente telemetría cuando el set sale vacío.
+POC en `safari/` (source + plan B + README de Xcode). Guía de build: `docs/deploy-safari.html`.
+
+**POC validado en vivo (Safari iPad, 2026-06-30) ✓:** `world:"MAIN"` SÍ intercepta `fetch` en Safari/iPadOS
+(el warning `world not supported` del converter es de su validador, no del runtime → **NO se necesitó el plan
+B**). `_getState()` devolvió `{enforcementEnabled:true, surtido:[44721633], scheduled:[], accounts:0}`: el
+interceptor captura el nodo de surtido y **bloquea mover una pieza no programada** (confirmado en dispositivo).
+`scheduled:[]` fue correcto — no había piezas programadas en el board. Gotchas de build documentados en la
+guía (warning de `world`; error "Embedded binary's bundle identifier is not prefixed…" → la extensión debe ser
+`<bundleId-app>.Extension`).
+
+**Pendiente de validación (crítico, descarta falsos positivos):** probar una pieza **PROGRAMADA** cuando haya
+una en el board → debe **moverse normal** (no bloquearse). Ese test confirma además que `GetRelatedScheduleData`
+sí se captura y puebla `scheduled` (hoy no se pudo distinguir "vacío correcto" de "no capturado"). Vinculado al
+riesgo del **fail-safe silencioso**: el mapa de programadas (`buildScheduledAccountSet`) devuelve `Set` vacío
+sin error si el shape cambia → pendiente telemetría/alerta cuando el set sale vacío en un board de surtido.
 
 ## Lecciones
 
