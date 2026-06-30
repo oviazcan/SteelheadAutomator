@@ -1,37 +1,10 @@
 // ==========================================================================
-// Steelhead Automator — iPad — main-bundle.js  (v0.1.0)
+// Steelhead Automator — iPad — main-bundle.js  (v0.2.0)
 // GENERADO por tools/build-safari.sh desde remote/scripts + config.json.
 // NO editar a mano: edita la fuente en remote/scripts/ y re-corre el build.
 // Cada applet va en su propio IIFE (scope aislado, como el new Function() del
 // remote-loader); la comunicación entre scripts es vía window.* (SteelheadAPI, etc.).
 // ==========================================================================
-
-// ===== BEGIN sa-bootstrap.js (prelude) =====
-(function(){
-// sa-bootstrap.js — PRELUDE del bundle (MAIN world). build-safari.sh lo concatena PRIMERO en
-// main-bundle.js. Recibe el config.json que bridge.js (mundo aislado) fetchea de gh-pages y lo instala:
-//   · window.REMOTE_CONFIG  → lo leen applets como paros-linea (const cfg = () => window.REMOTE_CONFIG)
-//   · SteelheadAPI.init(config) → carga los hashes para query()/getHash()
-//
-// El config llega de forma ASÍNCRONA (tras el fetch del bridge, ~cientos de ms). Las mutaciones de
-// los applets ocurren por ACCIÓN del usuario (clicks posteriores), así que para entonces el config ya
-// está. Como los hashes NO se hornean en el bundle, rotan en caliente (git push a gh-pages) sin rebuild.
-(function () {
-  'use strict';
-  window.addEventListener('message', function (e) {
-    if (e.source !== window) return;
-    var d = e.data;
-    if (!d || d.__saBridge !== true || d.type !== 'config' || !d.config) return;
-    window.REMOTE_CONFIG = d.config;
-    try {
-      if (window.SteelheadAPI && typeof window.SteelheadAPI.init === 'function') {
-        window.SteelheadAPI.init(d.config);
-      }
-    } catch (err) { console.error('[SA] bootstrap: SteelheadAPI.init falló', err); }
-  });
-})();
-})();
-// ===== END sa-bootstrap.js =====
 
 // ===== BEGIN scripts/steelhead-api.js =====
 (function(){
@@ -674,1002 +647,6 @@ if (typeof window !== 'undefined') {
 }
 })();
 // ===== END scripts/surtido-guard.js =====
-
-// ===== BEGIN scripts/paros-linea.js =====
-(function(){
-// Steelhead Paros de Línea
-// Skin operador sobre MaintenanceEvent con botón flotante Andon.
-// Flujo: CreateMaintenanceEvent (inicio) → UpdateMaintenanceEvent/Comment (durante)
-//        → CreateMaintenanceNodeEvent + CreateManySensorMeasurements + UpdateMaintenanceEvent{completedAt} (al detener)
-//        → /api/files + CreateUserFile + CreateMaintenanceEventUserFile (evidencia)
-// Depende de: SteelheadAPI + window.REMOTE_CONFIG
-
-const ParosLinea = (() => {
-  'use strict';
-
-  const api = () => window.SteelheadAPI;
-  const cfg = () => window.REMOTE_CONFIG;
-
-  const STATE_KEY = 'sa_paros_active_event';
-  const LAST_LINE_KEY = 'sa_paros_last_line';
-  const EQUIP_CACHE_KEY = 'sa_paros_line_equipments_v1';
-  const EQUIP_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
-
-  const RESPONSABLE_AREAS = {
-    PLM: { label: 'Mantenimiento',          icon: '🔧' },
-    PLP: { label: 'Producción',             icon: '🏭' },
-    PLO: { label: 'Operaciones',            icon: '⚙️' },
-    PLR: { label: 'Recursos Humanos',       icon: '👥' },
-    PLC: { label: 'Calidad',                icon: '✅' },
-    PLS: { label: 'Seguridad',              icon: '🛡️' },
-    PLA: { label: 'Almacén',                icon: '📦' },
-    PLI: { label: 'Ingeniería',             icon: '🛠️' },
-    PLL: { label: 'Laboratorio y Procesos', icon: '🧪' },
-    PLN: { label: 'Planeación',             icon: '📅' },
-    PLT: { label: 'TI (Sistemas)',          icon: '💻' }
-  };
-  const DEFAULT_AREA_ICON = '📌';
-
-  function normalizeEs(s) {
-    return String(s || '')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase().trim();
-  }
-
-  const LINE_LABEL_RE = /^(?:l[ií]neas?|c[eé]lulas?)$/i;
-  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders)(?:\/|$)/;
-
-  let state = {
-    currentUser: null,
-    allNodes: [],
-    responsableOptions: [],
-    allEquipments: [],
-    selectedSensorId: null,
-    activeEvent: null,
-    timerInterval: null,
-    fabTimerInterval: null,
-    floatingBtn: null,
-    catalogsLoaded: false
-  };
-
-  async function init() {
-    if (window.__saParosLineaInitDone) return;
-    window.__saParosLineaInitDone = true;
-
-    try {
-      state.currentUser = await fetchCurrentUser();
-    } catch (e) {
-      console.warn('[SA] ParosLinea: no se pudo obtener usuario actual:', e.message);
-      return;
-    }
-    if (!state.currentUser) return;
-    if (!isAuthorized(state.currentUser)) {
-      console.log('[SA] ParosLinea: usuario sin rol operador/admin — botón omitido');
-      return;
-    }
-
-    injectStyles();
-
-    const saved = readActiveEvent();
-    if (saved) {
-      state.activeEvent = saved;
-      state.selectedSensorId = saved.selectedSensorId || null;
-    }
-
-    installUrlChangeListener();
-    syncFabVisibility();
-
-    if (saved) {
-      loadCatalogs().catch(e => console.warn('[SA] ParosLinea catálogos:', e.message));
-      renderRunningView().catch(e => console.warn('[SA] ParosLinea reanudar:', e.message));
-    }
-  }
-
-  function isAllowedPath() {
-    return ALLOWED_PATH_RE.test(location.pathname);
-  }
-
-  function syncFabVisibility() {
-    const should = isAllowedPath() || !!state.activeEvent;
-    const existing = document.getElementById('sa-pl-fab-dock');
-    if (should && !existing) renderFloatingButton();
-    else if (!should && existing) {
-      existing.remove();
-      stopFabTimer();
-      state.floatingBtn = null;
-    }
-  }
-
-  function installUrlChangeListener() {
-    if (window.__saParosUrlListenerInstalled) {
-      window.addEventListener('sa-urlchange', syncFabVisibility);
-      return;
-    }
-    window.__saParosUrlListenerInstalled = true;
-    const fire = () => window.dispatchEvent(new Event('sa-urlchange'));
-    ['pushState', 'replaceState'].forEach(m => {
-      const orig = history[m];
-      history[m] = function () {
-        const r = orig.apply(this, arguments);
-        fire();
-        return r;
-      };
-    });
-    window.addEventListener('popstate', fire);
-    window.addEventListener('hashchange', fire);
-    window.addEventListener('sa-urlchange', syncFabVisibility);
-  }
-
-  async function fetchCurrentUser() {
-    // CurrentUser fue deprecada server-side 2026-04-27 (HTTP 400 "Must provide a query string.").
-    // CurrentUserDetails sigue activa pero solo trae id/isAdmin (sin currentManagedPermissions).
-    // isAuthorized cae al branch "no hay info de permisos finos → permitido", así que el
-    // gating queda solo por isAdmin (y por requiredPermissions del config si están presentes).
-    const data = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
-    const u = data?.currentSession?.userByUserId;
-    if (!u) return null;
-    return {
-      id: u.id,
-      name: u.name || null,
-      isAdmin: u.isAdmin === true,
-      managedPermissions: undefined
-    };
-  }
-
-  function isAuthorized(user) {
-    if (user.isAdmin) return true;
-    const req = cfg()?.apps?.find(a => a.id === 'paros-linea')?.requiredPermissions || [];
-    if (req.length === 0) return true;
-    if (!Array.isArray(user.managedPermissions)) return true;
-    return req.every(p => user.managedPermissions.includes(p));
-  }
-
-  function readActiveEvent() {
-    try { return JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch { return null; }
-  }
-  function writeActiveEvent(ev) {
-    try {
-      if (!ev) localStorage.removeItem(STATE_KEY);
-      else localStorage.setItem(STATE_KEY, JSON.stringify(ev));
-    } catch (_) {}
-  }
-
-  function pushComment(ev, { text, author, auto = false, at }) {
-    if (!ev) return;
-    if (!Array.isArray(ev.comments)) ev.comments = [];
-    ev.comments.push({
-      at: at || Date.now(),
-      text: String(text || '').trim(),
-      author: author || (state.currentUser?.name || 'Operador'),
-      auto: !!auto
-    });
-    writeActiveEvent(ev);
-    renderCommentsList();
-  }
-
-  function renderCommentsList() {
-    const host = document.getElementById('pl-comments-list');
-    if (!host) return;
-    const comments = (state.activeEvent?.comments || []).slice().reverse();
-    if (!comments.length) {
-      host.innerHTML = '<div class="pl-comments-empty">Aún no hay comentarios en este paro.</div>';
-      return;
-    }
-    host.innerHTML = comments.map(c => {
-      const t = new Date(c.at);
-      const hh = String(t.getHours()).padStart(2, '0');
-      const mm = String(t.getMinutes()).padStart(2, '0');
-      const ss = String(t.getSeconds()).padStart(2, '0');
-      const meta = escapeHtml(c.author || 'Operador') + ' · ' + hh + ':' + mm + ':' + ss +
-        (c.auto ? ' · automático' : '');
-      return '<div class="pl-comment' + (c.auto ? ' auto' : '') + '">' +
-        '<div class="pl-comment-meta">' + meta + '</div>' +
-        '<div class="pl-comment-text">' + escapeHtml(c.text) + '</div>' +
-      '</div>';
-    }).join('');
-  }
-
-  function injectStyles() {
-    if (document.getElementById('dl9-paros-styles')) return;
-    const s = document.createElement('style');
-    s.id = 'dl9-paros-styles';
-    s.textContent = [
-      '.pl-fab-dock{position:fixed;bottom:24px;left:24px;z-index:99998;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none}',
-      '.pl-fab-dock > *{pointer-events:auto}',
-      '.pl-fab-ring{display:flex;align-items:center;justify-content:center;border-radius:50%;padding:10px;box-shadow:0 8px 24px rgba(220,38,38,0.55)}',
-      '.pl-fab-dock.running .pl-fab-ring{background:repeating-linear-gradient(45deg,#dc2626 0 14px,#facc15 14px 28px);animation:plStripeScroll 1.4s linear infinite}',
-      '.pl-fab{width:76px;height:76px;border-radius:50%;background:#dc2626;color:#fff;border:none;font-size:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:transform .15s ease;box-shadow:0 2px 8px rgba(0,0,0,0.3) inset, 0 0 0 3px #0f172a}',
-      '.pl-fab:not(.running):hover{transform:scale(1.08)}',
-      '.pl-fab.running{animation:plIconPulse 0.95s ease-in-out infinite}',
-      '@keyframes plIconPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}',
-      '.pl-fab-timer-wrap{padding:5px;border-radius:12px;background:repeating-linear-gradient(45deg,#dc2626 0 10px,#facc15 10px 20px);animation:plStripeScroll 1.4s linear infinite;box-shadow:0 6px 18px rgba(0,0,0,0.55)}',
-      '.pl-fab-timer{font-family:"SF Mono","Menlo","Consolas",monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:800;color:#fef3c7;background:#0f172a;border-radius:8px;padding:8px 16px;letter-spacing:1.5px;white-space:nowrap;text-align:center;line-height:1}',
-      '@media (prefers-reduced-motion:reduce){.pl-fab.running,.pl-fab-dock.running .pl-fab-ring,.pl-fab-timer-wrap{animation:none}}',
-      '.pl-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.88);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
-      '.pl-modal{background:#1e293b;color:#f1f5f9;border-radius:18px;padding:32px 36px;width:620px;max-width:94vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);box-sizing:border-box}',
-      '.pl-modal.running{width:840px;text-align:center}',
-      '.pl-modal h2{margin:0 0 18px;font-size:26px;color:#fecaca}',
-      '.pl-row{margin-bottom:16px}',
-      '.pl-label{font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}',
-      '.pl-select,.pl-input,.pl-textarea{width:100%;padding:12px 14px;border-radius:9px;border:1px solid #475569;background:#0f172a;color:#f1f5f9;font-size:16px;box-sizing:border-box}',
-      '.pl-select:disabled{opacity:.6}',
-      '.pl-textarea{min-height:68px;resize:vertical;font-family:inherit}',
-      '.pl-btnrow{display:flex;gap:12px;justify-content:flex-end;margin-top:24px;flex-wrap:wrap}',
-      '.pl-btn{padding:14px 26px;border:none;border-radius:9px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:.3px}',
-      '.pl-btn:disabled{opacity:.5;cursor:not-allowed}',
-      '.pl-btn-cancel{background:#475569;color:#f1f5f9}',
-      '.pl-btn-primary{background:#dc2626;color:#fff}',
-      '.pl-btn-ghost{background:transparent;color:#cbd5e1;border:1px solid #475569}',
-      '.pl-btn-stop{background:#dc2626;color:#fff;font-size:24px;padding:22px 0;width:100%;margin-top:20px}',
-      '.pl-btn-stop:hover{background:#b91c1c}',
-      '.pl-cone{font-size:112px;line-height:1;margin-bottom:6px}',
-      '.pl-title{font-size:32px;font-weight:800;color:#fecaca;letter-spacing:1.5px;margin:8px 0}',
-      '.pl-timer{font-size:88px;font-family:"SF Mono","Menlo","Consolas",monospace;font-variant-numeric:tabular-nums;color:#fef3c7;margin:10px 0 22px}',
-      '.pl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;text-align:left;margin-top:14px}',
-      '.pl-static{background:#0f172a;border:1px solid #334155;border-radius:9px;padding:12px 14px;font-size:16px}',
-      '.pl-static strong{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;font-weight:700}',
-      '.pl-comment-row{display:flex;gap:10px;margin-top:16px;align-items:flex-start}',
-      '.pl-comment-row .pl-textarea{flex:1;min-height:56px}',
-      '.pl-comments{margin-top:14px;text-align:left;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:10px 12px;max-height:220px;overflow-y:auto}',
-      '.pl-comments-title{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:8px}',
-      '.pl-comments-empty{font-size:13px;color:#64748b;font-style:italic;padding:4px 0}',
-      '.pl-comment{padding:8px 10px;background:#1e293b;border-left:3px solid #60a5fa;border-radius:6px;margin-bottom:6px;font-size:14px;line-height:1.35}',
-      '.pl-comment.auto{border-left-color:#a78bfa;opacity:.9}',
-      '.pl-comment .pl-comment-meta{font-size:11px;color:#94a3b8;margin-bottom:3px}',
-      '.pl-comment .pl-comment-text{color:#f1f5f9;white-space:pre-wrap;word-break:break-word}',
-      '.pl-summary{text-align:center;background:#0f172a;border-radius:14px;padding:26px;margin:10px 0}',
-      '.pl-summary .pl-big{font-size:50px;font-family:"SF Mono","Menlo","Consolas",monospace;color:#86efac;margin:8px 0}',
-      '.pl-dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;text-align:left;margin-top:14px;font-size:15px}',
-      '.pl-dl dt{color:#94a3b8}',
-      '.pl-dl dd{margin:0;color:#f1f5f9}',
-      '.pl-error{color:#fecaca;background:#7f1d1d;padding:12px 14px;border-radius:9px;margin-bottom:14px;font-size:15px}',
-      '.pl-loading{text-align:center;padding:22px;color:#94a3b8;font-size:15px}',
-      '.pl-striped-frame{padding:26px;border-radius:28px;background:repeating-linear-gradient(45deg,#dc2626 0 22px,#facc15 22px 44px);background-size:200% 200%;box-shadow:0 25px 70px rgba(0,0,0,0.7);max-width:96vw;max-height:96vh;box-sizing:border-box;display:flex;animation:plStripeScroll 1.4s linear infinite}',
-      '.pl-striped-frame > .pl-modal.running{box-shadow:none;max-width:100%;max-height:calc(96vh - 52px)}',
-      '@keyframes plStripeScroll{0%{background-position:0 0}100%{background-position:62.23px 0}}',
-      '@media (prefers-reduced-motion:reduce){.pl-striped-frame{animation:none}}'
-    ].join('');
-    document.head.appendChild(s);
-  }
-
-  function renderFloatingButton() {
-    const existing = document.getElementById('sa-pl-fab-dock');
-    if (existing) existing.remove();
-    stopFabTimer();
-
-    const running = !!state.activeEvent;
-    const dock = document.createElement('div');
-    dock.className = 'pl-fab-dock' + (running ? ' running' : '');
-    dock.id = 'sa-pl-fab-dock';
-
-    const ring = document.createElement('div');
-    ring.className = 'pl-fab-ring';
-
-    const btn = document.createElement('button');
-    btn.className = 'pl-fab' + (running ? ' running' : '');
-    btn.id = 'sa-pl-fab';
-    btn.setAttribute('aria-label', 'Paro de Línea');
-    btn.title = running ? 'Paro de Línea en curso — click para ver' : 'Registrar Paro de Línea';
-    btn.textContent = '⚠️';
-    btn.addEventListener('click', () => {
-      if (state.activeEvent) renderRunningView();
-      else openStopDialog();
-    });
-    ring.appendChild(btn);
-    dock.appendChild(ring);
-
-    if (running) {
-      const wrap = document.createElement('div');
-      wrap.className = 'pl-fab-timer-wrap';
-      const chip = document.createElement('div');
-      chip.className = 'pl-fab-timer';
-      chip.id = 'sa-pl-fab-timer';
-      chip.textContent = formatElapsed(Date.now() - state.activeEvent.createdAt);
-      wrap.appendChild(chip);
-      dock.appendChild(wrap);
-    }
-
-    document.body.appendChild(dock);
-    state.floatingBtn = btn;
-
-    if (running) startFabTimer();
-  }
-
-  function updateFabStyle() {
-    const should = isAllowedPath() || !!state.activeEvent;
-    const existing = document.getElementById('sa-pl-fab-dock');
-    if (existing) existing.remove();
-    stopFabTimer();
-    state.floatingBtn = null;
-    if (should) renderFloatingButton();
-  }
-
-  function startFabTimer() {
-    stopFabTimer();
-    const tick = () => {
-      const chip = document.getElementById('sa-pl-fab-timer');
-      if (!chip || !state.activeEvent) { stopFabTimer(); return; }
-      chip.textContent = formatElapsed(Date.now() - state.activeEvent.createdAt);
-    };
-    tick();
-    state.fabTimerInterval = setInterval(tick, 1000);
-  }
-
-  function stopFabTimer() {
-    if (state.fabTimerInterval) {
-      clearInterval(state.fabTimerInterval);
-      state.fabTimerInterval = null;
-    }
-  }
-
-  function removeOverlay() {
-    const ov = document.getElementById('sa-pl-overlay');
-    if (ov) ov.remove();
-    if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
-  }
-
-  function showOverlay(innerHTML, { wide } = {}) {
-    removeOverlay();
-    const ov = document.createElement('div');
-    ov.className = 'pl-overlay';
-    ov.id = 'sa-pl-overlay';
-    const modal = document.createElement('div');
-    modal.className = 'pl-modal' + (wide ? ' running' : '');
-    modal.innerHTML = innerHTML;
-    if (wide) {
-      const frame = document.createElement('div');
-      frame.className = 'pl-striped-frame';
-      frame.appendChild(modal);
-      ov.appendChild(frame);
-    } else {
-      ov.appendChild(modal);
-    }
-    document.body.appendChild(ov);
-    return ov;
-  }
-
-  function areaForNode(node) {
-    const m = (node?.name || '').match(/\bPL([A-Z])\b/);
-    const code = m ? 'PL' + m[1] : '';
-    return RESPONSABLE_AREAS[code] || { label: code || 'Otros', icon: DEFAULT_AREA_ICON };
-  }
-
-  function buildResponsableOptions(paroNodes) {
-    const items = paroNodes.map(n => {
-      const area = areaForNode(n);
-      const suffix = (n.name || '')
-        .replace(/paro\s+de\s+l[ií]nea\s*/gi, '')
-        .replace(/PL[A-Z]\s*[\-:]?\s*/g, '')
-        .replace(/\s{2,}/g, ' ')
-        .trim();
-      const sameAsArea = suffix && normalizeEs(suffix) === normalizeEs(area.label);
-      const label = (suffix && !sameAsArea) ? area.label + ' — ' + suffix : area.label;
-      return { id: n.id, name: n.name, area, display: area.icon + ' ' + label, sortKey: area.label + ' ' + suffix };
-    });
-    items.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'es'));
-    return items;
-  }
-
-  function extractLabelMeta(rawLabel) {
-    if (!rawLabel || typeof rawLabel !== 'object') return { ids: [], names: [] };
-    const ids = [];
-    const names = [];
-    const candidates = [rawLabel, rawLabel.labelByLabelId, rawLabel.label];
-    for (const c of candidates) {
-      if (!c || typeof c !== 'object') continue;
-      if (typeof c.id === 'number' || typeof c.id === 'string') ids.push(c.id);
-      if (typeof c.name === 'string') names.push(c.name);
-    }
-    if (rawLabel.labelId != null) ids.push(rawLabel.labelId);
-    if (typeof rawLabel.labelName === 'string') names.push(rawLabel.labelName);
-    return { ids, names };
-  }
-
-  async function fetchLineLabelIds() {
-    const conditions = [{ forEquipment: true }, {}];
-    for (const condition of conditions) {
-      try {
-        const data = await api().query('AllLabels', { condition }, 'AllLabels');
-        const nodes = data?.allLabels?.nodes || [];
-        const matched = nodes.filter(l =>
-          typeof l?.name === 'string' && LINE_LABEL_RE.test(l.name.trim())
-        );
-        const ids = matched.map(l => l.id).filter(id => id != null);
-        if (nodes.length > 0) {
-          if (matched.length === 0) {
-            console.warn('[SA] ParosLinea: AllLabels devolvió ' + nodes.length +
-              ' etiquetas pero ninguna coincide con Líneas/Células — ejemplos:',
-              nodes.slice(0, 12).map(l => l?.name).join(' | '));
-          } else {
-            console.log('[SA] ParosLinea: etiquetas objetivo encontradas:',
-              matched.map(l => l.name + '(' + l.id + ')').join(', '));
-          }
-          return new Set(ids);
-        }
-      } catch (e) {
-        console.warn('[SA] ParosLinea AllLabels (' + JSON.stringify(condition) + '):', e.message);
-      }
-    }
-    return new Set();
-  }
-
-  function readCachedLineEquipments() {
-    try {
-      const raw = localStorage.getItem(EQUIP_CACHE_KEY);
-      if (!raw) return null;
-      const obj = JSON.parse(raw);
-      if (!obj || !Array.isArray(obj.equipments)) return null;
-      if (Date.now() - (obj.savedAt || 0) > EQUIP_CACHE_TTL_MS) return null;
-      return obj.equipments;
-    } catch { return null; }
-  }
-  function writeCachedLineEquipments(equipments) {
-    try {
-      localStorage.setItem(EQUIP_CACHE_KEY, JSON.stringify({
-        savedAt: Date.now(), equipments
-      }));
-    } catch (_) {}
-  }
-  function clearCachedLineEquipments() {
-    try { localStorage.removeItem(EQUIP_CACHE_KEY); } catch (_) {}
-  }
-
-  async function fetchAllLineEquipments(targetLabelIds, onProgress) {
-    const PAGE = 500;
-    const matchByLine = (e) => {
-      const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
-      for (const l of labels) {
-        const meta = extractLabelMeta(l);
-        if (targetLabelIds.size && meta.ids.some(id => targetLabelIds.has(id))) return true;
-        if (meta.names.some(n => LINE_LABEL_RE.test(String(n).trim()))) return true;
-      }
-      return false;
-    };
-
-    const matched = [];
-    let offset = 0;
-    let total = null;
-    let scanned = 0;
-    let safety = 0;
-    while (safety++ < 20) {
-      const data = await api().query('AllEquipments', {
-        fetchEquipmentType: false,
-        fetchStation: false,
-        fetchLabel: true,
-        fetchLocation: false,
-        endOfService: true,
-        orderBy: ['NAME_ASC'],
-        offset,
-        first: PAGE,
-        searchQuery: ''
-      }, 'AllEquipments');
-      const nodes = data?.pagedData?.nodes || [];
-      if (total == null) total = data?.pagedData?.totalCount ?? null;
-      scanned += nodes.length;
-      for (const n of nodes) {
-        if (matchByLine(n)) matched.push({ id: n.id, name: n.name, idInDomain: n.idInDomain });
-      }
-      if (typeof onProgress === 'function') onProgress(scanned, total, matched.length);
-      if (nodes.length < PAGE) break;
-      if (total != null && scanned >= total) break;
-      offset += PAGE;
-    }
-    return { matched, scanned, total };
-  }
-
-  async function loadCatalogs(force = false) {
-    if (state.catalogsLoaded && !force) return;
-
-    const dlg = await api().query('CreateMaintenanceEventDialogQuery', {},
-      'CreateMaintenanceEventDialogQuery');
-    const allNodes = dlg?.allMaintenanceNodes?.nodes || [];
-    const paroNodes = allNodes.filter(n => /paro de l.nea/i.test(n.name || ''));
-    if (paroNodes.length === 0) {
-      throw new Error('No hay nodos de mantenimiento con "Paro de Línea" configurados. Contacta al administrador.');
-    }
-    state.allNodes = paroNodes;
-    state.responsableOptions = buildResponsableOptions(paroNodes);
-
-    if (!force) {
-      const cached = readCachedLineEquipments();
-      if (cached && cached.length > 0) {
-        state.allEquipments = cached;
-        console.log('[SA] ParosLinea: ' + cached.length + ' líneas/células desde caché');
-        state.catalogsLoaded = true;
-        return;
-      }
-    }
-
-    const targetLabelIds = await fetchLineLabelIds();
-    const onProgress = (scanned, total, found) => {
-      const el = document.getElementById('pl-pre-content');
-      if (el && el.classList.contains('pl-loading')) {
-        el.textContent = 'Cargando catálogo de equipos… ' + scanned +
-          (total ? '/' + total : '') + ' (líneas/células: ' + found + ')';
-      }
-    };
-    const { matched, scanned, total } = await fetchAllLineEquipments(targetLabelIds, onProgress);
-    console.log('[SA] ParosLinea: ' + matched.length + ' equipos con etiqueta Líneas/Células (de ' + scanned + (total ? '/' + total : '') + ')');
-
-    if (matched.length === 0) {
-      throw new Error('No se encontraron equipos con etiqueta "Línea" o "Célula". Revisa que estén etiquetados en Steelhead.');
-    }
-    state.allEquipments = matched;
-    writeCachedLineEquipments(matched);
-    state.catalogsLoaded = true;
-  }
-
-  async function inferLinePrefix() {
-    const wbMatch = location.pathname.match(/\/Workboards\/(\d+)/);
-    if (wbMatch) {
-      try {
-        const data = await api().query('WorkboardById',
-          { id: parseInt(wbMatch[1], 10) }, 'WorkboardById');
-        const name = data?.workboardById?.name;
-        if (name) {
-          try { localStorage.setItem(LAST_LINE_KEY, name); } catch (_) {}
-          console.log('[SA] ParosLinea: workboard activo =', name);
-          return name;
-        }
-      } catch (e) {
-        console.warn('[SA] ParosLinea: WorkboardById falló:', e.message);
-      }
-    }
-    const headings = document.querySelectorAll('h1, h2, h3, [class*="breadcrumb"], [class*="Breadcrumb"], [class*="page-title"], [class*="PageTitle"]');
-    for (const h of headings) {
-      const txt = h.textContent || '';
-      const m = txt.match(/\b(T\d{2,3}[A-Z\-]*)\b/);
-      if (m) return m[1];
-    }
-    try { return localStorage.getItem(LAST_LINE_KEY); } catch { return null; }
-  }
-
-  function matchEquipmentByPrefix(prefix) {
-    if (!prefix || !state.allEquipments.length) return null;
-    const p = prefix.toUpperCase();
-    let match = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(p));
-    if (match) return match;
-    const tokenMatch = p.match(/^(T\d{2,3})/);
-    if (tokenMatch) {
-      const token = tokenMatch[1];
-      match = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(token))
-        || state.allEquipments.find(e => (e.name || '').toUpperCase().includes(token));
-      if (match) return match;
-    }
-    return state.allEquipments.find(e => (e.name || '').toUpperCase().includes(p)) || null;
-  }
-
-  function responsableLabelFromNodeName(name) {
-    const area = areaForNode({ name });
-    return area.icon + ' ' + area.label;
-  }
-
-  async function loadSensorsForNode(nodeId) {
-    const data = await api().query('OperatorMaintenanceNodeDialogQuery',
-      { nodeId, maintenanceEventId: state.activeEvent?.id || 0 },
-      'OperatorMaintenanceNodeDialogQuery');
-    const raw = data?.maintenanceNodeById?.maintenanceNodeSensorsByMaintenanceNodeId?.nodes || [];
-    return raw
-      .map(s => s.sensorBySensorId)
-      .filter(Boolean)
-      .map(s => ({ id: s.id, name: s.name }));
-  }
-
-  async function openStopDialog() {
-    if (state.activeEvent) { renderRunningView(); return; }
-
-    const ov = showOverlay(
-      '<h2>⚠️ Registrar Paro de Línea</h2>' +
-      '<div id="pl-pre-content" class="pl-loading">Cargando catálogos…</div>'
-    );
-
-    try {
-      await loadCatalogs();
-    } catch (e) {
-      document.getElementById('pl-pre-content').innerHTML =
-        '<div class="pl-error">' + escapeHtml(e.message) + '</div>' +
-        '<div class="pl-btnrow"><button class="pl-btn pl-btn-cancel" id="pl-pre-cancel">CERRAR</button></div>';
-      document.getElementById('pl-pre-cancel').onclick = removeOverlay;
-      return;
-    }
-
-    const responsableOptionsHtml = (state.responsableOptions || [])
-      .map(o => '<option value="' + o.id + '">' + escapeHtml(o.display) + '</option>')
-      .join('');
-
-    const linePrefix = await inferLinePrefix();
-    const defaultEq = matchEquipmentByPrefix(linePrefix);
-    const equipmentOptions = state.allEquipments
-      .map(e => '<option value="' + e.id + '"' + (defaultEq && defaultEq.id === e.id ? ' selected' : '') + '>' + escapeHtml(e.name) + '</option>')
-      .join('');
-
-    document.getElementById('pl-pre-content').innerHTML =
-      '<div class="pl-row">' +
-        '<label class="pl-label">Responsable (categoría)</label>' +
-        '<select class="pl-select" id="pl-node-select"><option value="">— Selecciona —</option>' + responsableOptionsHtml + '</select>' +
-      '</div>' +
-      '<div class="pl-row">' +
-        '<label class="pl-label">Motivo</label>' +
-        '<select class="pl-select" id="pl-sensor-select" disabled><option value="">Selecciona responsable primero…</option></select>' +
-      '</div>' +
-      '<div class="pl-row">' +
-        '<label class="pl-label">Línea / Equipo</label>' +
-        '<select class="pl-select" id="pl-eq-select"><option value="">— Selecciona equipo —</option>' + equipmentOptions + '</select>' +
-      '</div>' +
-      '<div class="pl-row">' +
-        '<label class="pl-label">Comentario inicial (opcional)</label>' +
-        '<textarea class="pl-textarea" id="pl-comment" placeholder="Ej: Falla de agitación en tanque 3"></textarea>' +
-      '</div>' +
-      '<div class="pl-btnrow">' +
-        '<button class="pl-btn pl-btn-cancel" id="pl-cancel">CANCELAR</button>' +
-        '<button class="pl-btn pl-btn-primary" id="pl-start" disabled>INICIAR PARO</button>' +
-      '</div>';
-
-    const nodeSel = document.getElementById('pl-node-select');
-    const sensorSel = document.getElementById('pl-sensor-select');
-    const eqSel = document.getElementById('pl-eq-select');
-    const startBtn = document.getElementById('pl-start');
-
-    const refreshStartState = () => {
-      startBtn.disabled = !(nodeSel.value && sensorSel.value && eqSel.value);
-    };
-
-    nodeSel.addEventListener('change', async () => {
-      sensorSel.disabled = true;
-      sensorSel.innerHTML = '<option value="">Cargando motivos…</option>';
-      refreshStartState();
-      if (!nodeSel.value) return;
-      try {
-        const sensors = await loadSensorsForNode(parseInt(nodeSel.value, 10));
-        if (!sensors.length) {
-          sensorSel.innerHTML = '<option value="">(sin motivos configurados)</option>';
-        } else {
-          sensorSel.innerHTML = '<option value="">— Selecciona motivo —</option>' +
-            sensors.map(s => '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>').join('');
-          sensorSel.disabled = false;
-        }
-      } catch (e) {
-        sensorSel.innerHTML = '<option value="">Error: ' + escapeHtml(e.message.substring(0, 60)) + '</option>';
-      }
-      refreshStartState();
-    });
-
-    sensorSel.addEventListener('change', refreshStartState);
-    eqSel.addEventListener('change', refreshStartState);
-
-    document.getElementById('pl-cancel').onclick = removeOverlay;
-    startBtn.onclick = async () => {
-      startBtn.disabled = true;
-      startBtn.textContent = 'Iniciando…';
-      try {
-        const nodeId = parseInt(nodeSel.value, 10);
-        const equipmentId = parseInt(eqSel.value, 10);
-        const sensorId = parseInt(sensorSel.value, 10);
-        const node = state.allNodes.find(n => n.id === nodeId);
-        const eq = state.allEquipments.find(e => e.id === equipmentId);
-        const comment = document.getElementById('pl-comment').value.trim();
-
-        const data = await api().query('CreateMaintenanceEvent', {
-          maintenancePlanId: null,
-          maintenanceNodeId: nodeId,
-          equipmentId,
-          assigneeId: state.currentUser.id
-        }, 'CreateMaintenanceEvent');
-
-        const ev = data?.createMaintenanceEvent?.maintenanceEvent;
-        if (!ev) throw new Error('Respuesta sin maintenanceEvent');
-
-        state.activeEvent = {
-          id: ev.id,
-          idInDomain: ev.idInDomain,
-          nodeId,
-          nodeName: node?.name || '',
-          equipmentId,
-          equipmentName: eq?.name || '',
-          responsable: responsableLabelFromNodeName(node?.name),
-          createdAt: Date.now(),
-          selectedSensorId: sensorId,
-          comments: []
-        };
-        state.selectedSensorId = sensorId;
-        writeActiveEvent(state.activeEvent);
-
-        if (comment) {
-          try {
-            await api().query('CreateMaintenanceEventComment',
-              { comment, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
-            pushComment(state.activeEvent, { text: comment });
-          } catch (e) { console.warn('[SA] comentario inicial falló:', e.message); }
-        }
-
-        const prefix = (eq?.name || '').split(/[\s-]/)[0];
-        if (prefix) { try { localStorage.setItem(LAST_LINE_KEY, prefix); } catch (_) {} }
-
-        updateFabStyle();
-        await renderRunningView();
-      } catch (e) {
-        const modal = ov.querySelector('.pl-modal');
-        const err = document.createElement('div');
-        err.className = 'pl-error';
-        err.textContent = 'Error: ' + e.message;
-        const btnrow = modal.querySelector('.pl-btnrow');
-        if (btnrow) modal.insertBefore(err, btnrow);
-        else modal.appendChild(err);
-        startBtn.disabled = false;
-        startBtn.textContent = 'INICIAR PARO';
-      }
-    };
-  }
-
-  async function renderRunningView() {
-    const ev = state.activeEvent;
-    if (!ev) return;
-
-    if (!state.catalogsLoaded) {
-      try { await loadCatalogs(); } catch (e) { console.warn('[SA] catálogos:', e.message); }
-    }
-
-    let sensors = [];
-    try { sensors = await loadSensorsForNode(ev.nodeId); } catch (e) { console.warn('[SA] sensores:', e.message); }
-
-    const eqOptions = state.allEquipments
-      .map(e => '<option value="' + e.id + '"' + (e.id === ev.equipmentId ? ' selected' : '') + '>' + escapeHtml(e.name) + '</option>')
-      .join('');
-    const sensorOptions = sensors
-      .map(s => '<option value="' + s.id + '"' + (s.id === state.selectedSensorId ? ' selected' : '') + '>' + escapeHtml(s.name) + '</option>')
-      .join('');
-
-    showOverlay(
-      '<div class="pl-cone">⚠️</div>' +
-      '<div class="pl-title">PARO DE LÍNEA EN CURSO</div>' +
-      '<div class="pl-timer" id="pl-timer">00:00:00</div>' +
-      '<div class="pl-grid">' +
-        '<div class="pl-static"><strong>Responsable</strong>' + escapeHtml(ev.responsable || '—') + '</div>' +
-        '<div class="pl-static"><strong>Evento</strong>#' + ev.idInDomain + '</div>' +
-        '<div>' +
-          '<label class="pl-label">Línea / Equipo</label>' +
-          '<select class="pl-select" id="pl-run-eq">' + eqOptions + '</select>' +
-        '</div>' +
-        '<div>' +
-          '<label class="pl-label">Motivo</label>' +
-          '<select class="pl-select" id="pl-run-sensor">' +
-            '<option value="">— Selecciona motivo —</option>' + sensorOptions +
-          '</select>' +
-        '</div>' +
-      '</div>' +
-      '<div class="pl-comment-row">' +
-        '<textarea class="pl-textarea" id="pl-run-comment" placeholder="Agregar comentario…"></textarea>' +
-        '<button class="pl-btn pl-btn-ghost" id="pl-run-addcomment">Añadir</button>' +
-      '</div>' +
-      '<div class="pl-comments">' +
-        '<div class="pl-comments-title">Historial de comentarios</div>' +
-        '<div id="pl-comments-list"></div>' +
-      '</div>' +
-      '<button class="pl-btn pl-btn-stop" id="pl-run-stop">DETENER PARO</button>' +
-      '<div class="pl-btnrow" style="margin-top:10px">' +
-        '<button class="pl-btn pl-btn-ghost" id="pl-run-hide">OCULTAR (continuar)</button>' +
-      '</div>',
-      { wide: true }
-    );
-
-    const timerEl = document.getElementById('pl-timer');
-    const tick = () => { timerEl.textContent = formatElapsed(Date.now() - ev.createdAt); };
-    tick();
-    state.timerInterval = setInterval(tick, 1000);
-
-    renderCommentsList();
-
-    document.getElementById('pl-run-hide').onclick = removeOverlay;
-
-    const eqSel = document.getElementById('pl-run-eq');
-    eqSel.addEventListener('change', async () => {
-      const newEqId = parseInt(eqSel.value, 10);
-      if (!Number.isFinite(newEqId) || newEqId === ev.equipmentId) return;
-      const prevEqName = ev.equipmentName;
-      const newEq = state.allEquipments.find(e => e.id === newEqId);
-      eqSel.disabled = true;
-      try {
-        await api().query('UpdateMaintenanceEvent',
-          { id: ev.id, equipmentId: newEqId }, 'UpdateMaintenanceEvent');
-        ev.equipmentId = newEqId;
-        ev.equipmentName = newEq?.name || '';
-        writeActiveEvent(ev);
-        const autoText = 'Línea cambiada de "' + prevEqName + '" a "' + (newEq?.name || newEqId) + '" por el operador.';
-        try {
-          await api().query('CreateMaintenanceEventComment', {
-            comment: autoText, maintenanceEventId: ev.id
-          }, 'CreateMaintenanceEventComment');
-          pushComment(ev, { text: autoText, auto: true });
-        } catch (_) {}
-      } catch (e) {
-        alert('No se pudo cambiar el equipo: ' + e.message + '\nSe mantiene la línea anterior.');
-        eqSel.value = String(ev.equipmentId);
-      } finally {
-        eqSel.disabled = false;
-      }
-    });
-
-    const sensorSel = document.getElementById('pl-run-sensor');
-    sensorSel.addEventListener('change', () => {
-      const sid = parseInt(sensorSel.value, 10);
-      state.selectedSensorId = Number.isFinite(sid) ? sid : null;
-      ev.selectedSensorId = state.selectedSensorId;
-      writeActiveEvent(ev);
-    });
-
-    document.getElementById('pl-run-addcomment').onclick = async () => {
-      const ta = document.getElementById('pl-run-comment');
-      const txt = ta.value.trim();
-      if (!txt) return;
-      const btn = document.getElementById('pl-run-addcomment');
-      btn.disabled = true;
-      btn.textContent = '…';
-      try {
-        await api().query('CreateMaintenanceEventComment',
-          { comment: txt, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
-        pushComment(ev, { text: txt });
-        ta.value = '';
-        btn.textContent = '✓';
-        setTimeout(() => { btn.textContent = 'Añadir'; btn.disabled = false; }, 900);
-      } catch (e) {
-        alert('Error agregando comentario: ' + e.message);
-        btn.textContent = 'Añadir';
-        btn.disabled = false;
-      }
-    };
-
-    document.getElementById('pl-run-stop').onclick = () => {
-      stopEvent().catch(e => {
-        alert('Error al detener: ' + e.message);
-        const sb = document.getElementById('pl-run-stop');
-        if (sb) { sb.disabled = false; sb.textContent = 'DETENER PARO'; }
-      });
-    };
-  }
-
-  function formatElapsed(ms) {
-    if (!(ms >= 0)) ms = 0;
-    const s = Math.floor(ms / 1000);
-    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
-    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-    const ss = String(s % 60).padStart(2, '0');
-    return hh + ':' + mm + ':' + ss;
-  }
-
-  async function stopEvent() {
-    const ev = state.activeEvent;
-    if (!ev) return;
-    if (!state.selectedSensorId) {
-      alert('Selecciona un motivo antes de detener el paro.');
-      return;
-    }
-    const stopBtn = document.getElementById('pl-run-stop');
-    if (stopBtn) { stopBtn.disabled = true; stopBtn.textContent = 'Deteniendo…'; }
-
-    const finalCommentEl = document.getElementById('pl-run-comment');
-    const finalComment = finalCommentEl?.value.trim();
-    const totalMs = Date.now() - ev.createdAt;
-
-    const ne = await api().query('CreateMaintenanceNodeEvent',
-      { maintenanceNodeId: ev.nodeId, maintenanceEventId: ev.id }, 'CreateMaintenanceNodeEvent');
-    const nodeEventId = ne?.createMaintenanceNodeEvent?.maintenanceNodeEvent?.id;
-    if (!nodeEventId) throw new Error('Respuesta sin maintenanceNodeEvent.id');
-
-    await api().query('CreateManySensorMeasurements', {
-      input: [{
-        sensorId: state.selectedSensorId,
-        measurementBoolean: true,
-        maintenanceNodeEventId: nodeEventId
-      }]
-    }, 'CreateManySensorMeasurements');
-
-    if (finalComment) {
-      try {
-        await api().query('CreateMaintenanceEventComment',
-          { comment: finalComment, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
-        pushComment(ev, { text: finalComment });
-      } catch (e) { console.warn('[SA] comentario final falló:', e.message); }
-    }
-
-    const completedAt = new Date().toISOString();
-    await api().query('UpdateMaintenanceEvent',
-      { id: ev.id, completedAt }, 'UpdateMaintenanceEvent');
-
-    const sensors = await loadSensorsForNode(ev.nodeId).catch(() => []);
-    const motivo = sensors.find(s => s.id === state.selectedSensorId)?.name || '(motivo)';
-
-    const stopped = {
-      id: ev.id,
-      idInDomain: ev.idInDomain,
-      totalMs,
-      responsable: ev.responsable,
-      motivo,
-      linea: ev.equipmentName,
-      completedAt
-    };
-
-    state.activeEvent = null;
-    state.selectedSensorId = null;
-    writeActiveEvent(null);
-    if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
-    updateFabStyle();
-
-    renderSummaryView(stopped);
-  }
-
-  function renderSummaryView(s) {
-    const domainId = cfg()?.steelhead?.domain?.id || '';
-    const link = location.origin + '/Domains/' + domainId + '/MaintenanceEvents/' + s.idInDomain;
-    showOverlay(
-      '<div class="pl-summary">' +
-        '<div style="font-size:44px">✅</div>' +
-        '<div style="font-size:20px;font-weight:800;color:#86efac;margin:6px 0;letter-spacing:1px">PARO REGISTRADO</div>' +
-        '<div class="pl-big">' + formatElapsed(s.totalMs) + '</div>' +
-        '<dl class="pl-dl">' +
-          '<dt>Responsable</dt><dd>' + escapeHtml(s.responsable || '—') + '</dd>' +
-          '<dt>Motivo</dt><dd>' + escapeHtml(s.motivo || '—') + '</dd>' +
-          '<dt>Línea</dt><dd>' + escapeHtml(s.linea || '—') + '</dd>' +
-          '<dt>Evento</dt><dd><a href="' + link + '" target="_blank" style="color:#60a5fa;text-decoration:none">#' + s.idInDomain + '</a></dd>' +
-        '</dl>' +
-      '</div>' +
-      '<div class="pl-btnrow">' +
-        '<button class="pl-btn pl-btn-ghost" id="pl-sum-attach">📎 Adjuntar evidencia</button>' +
-        '<button class="pl-btn pl-btn-primary" id="pl-sum-close">CERRAR</button>' +
-      '</div>' +
-      '<input type="file" id="pl-sum-file" accept="image/*,application/pdf" multiple style="display:none">'
-    );
-
-    const fileInput = document.getElementById('pl-sum-file');
-    const attachBtn = document.getElementById('pl-sum-attach');
-    attachBtn.onclick = () => fileInput.click();
-    fileInput.addEventListener('change', async () => {
-      if (!fileInput.files?.length) return;
-      attachBtn.disabled = true;
-      attachBtn.textContent = 'Subiendo…';
-      let ok = 0, fail = 0;
-      for (const file of fileInput.files) {
-        try { await attachEvidence(s.id, file); ok++; }
-        catch (e) { fail++; console.error('[SA] attach', e); }
-      }
-      attachBtn.disabled = false;
-      attachBtn.textContent = '📎 ' + ok + ' adjunto(s)' + (fail ? ' — ' + fail + ' fallaron' : '');
-    });
-    document.getElementById('pl-sum-close').onclick = removeOverlay;
-  }
-
-  async function attachEvidence(maintenanceEventId, file) {
-    const formData = new FormData();
-    formData.append('myfile', file, file.name);
-    const resp = await fetch('/api/files', {
-      method: 'POST', credentials: 'include', body: formData
-    });
-    if (!resp.ok) throw new Error('Upload HTTP ' + resp.status);
-    const uploaded = await resp.json();
-    await api().query('CreateUserFile',
-      { name: uploaded.name, originalName: file.name }, 'CreateUserFile');
-    await api().query('CreateMaintenanceEventUserFile',
-      { maintenanceEventId, userFileName: uploaded.name }, 'CreateMaintenanceEventUserFile');
-  }
-
-  function escapeHtml(str) {
-    return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[c]);
-  }
-
-  return { init, openStopDialog, renderRunningView, stopEvent, attachEvidence };
-})();
-
-if (typeof window !== 'undefined') {
-  window.ParosLinea = ParosLinea;
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => ParosLinea.init());
-  } else {
-    ParosLinea.init();
-  }
-}
-})();
-// ===== END scripts/paros-linea.js =====
 
 // ===== BEGIN scripts/weight-quick-entry.js =====
 (function(){
@@ -2898,4 +1875,11110 @@ if (typeof window !== 'undefined') {
 }
 })();
 // ===== END scripts/receiver-date-override.js =====
+
+// ===== BEGIN scripts/warehouse-location-prefill.js =====
+(function(){
+// Warehouse Location Prefill
+// Inyecta un combobox "Ubicación inicial:" en el header del modal Receive Parts
+// y, al elegir una ubicación, intercepta CreateReceiverChecked para sobrescribir
+// el locationId en todos los receiverBomItems[].inventoryTransferEvent.
+// debitAccounts.accounts[]. Deshabilita visualmente los combos per-line via
+// overlay CSS mientras hay valor en el header.
+
+const WarehouseLocationPrefill = (() => {
+  'use strict';
+
+  const LOG_PREFIX = '[WLP]';
+  const api = () => window.SteelheadAPI;
+  let observerActive = false;
+
+  const modalStates = new WeakMap();
+
+  // Estado compartido entre modal y fetch patch (singleton)
+  let pendingLocationId = null;
+  let pendingLocationOwner = null;
+
+  const HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]';
+  const VIEW_REGEX = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
+
+  function patchFetch() {
+    if (window.__saWlpFetchPatched) return;
+    window.__saWlpFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body || typeof opts.body !== 'string') {
+        return origFetch.apply(this, args);
+      }
+
+      // Bypass rápido si no hay locationId seleccionado
+      if (!pendingLocationId) return origFetch.apply(this, args);
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
+
+      if (bodyObj?.operationName !== 'CreateReceiverChecked') {
+        return origFetch.apply(this, args);
+      }
+
+      // Mutar el payload inyectando locationId en todos los debitAccounts
+      try {
+        const items = bodyObj.variables?.receiverPayload?.receiverBomItems;
+        if (!Array.isArray(items)) return origFetch.apply(this, args);
+
+        let totalAccounts = 0;
+        for (const item of items) {
+          const accounts = item?.inventoryTransferEvent?.debitAccounts?.accounts;
+          if (!Array.isArray(accounts)) continue;
+          for (const account of accounts) {
+            if (account && typeof account === 'object') {
+              account.locationId = pendingLocationId;
+              totalAccounts++;
+            }
+          }
+        }
+
+        if (totalAccounts === 0) {
+          console.warn(LOG_PREFIX, 'locationId seleccionado pero el payload no tiene accounts mutables — locationId no aplicado');
+          return origFetch.apply(this, args);
+        }
+        opts.body = JSON.stringify(bodyObj);
+        console.log(LOG_PREFIX, `locationId=${pendingLocationId} inyectado en ${items.length} bomItems (${totalAccounts} accounts total)`);
+        return origFetch.apply(this, [url, opts]);
+      } catch (err) {
+        console.warn(LOG_PREFIX, 'Error mutando payload:', err);
+        return origFetch.apply(this, args);
+      }
+    };
+  }
+
+  function init() {
+    const disabled = document.documentElement.dataset.saWarehouseLocationPrefillEnabled === 'false';
+    if (disabled) { console.log(LOG_PREFIX, 'Deshabilitado'); return; }
+    patchFetch();
+    setupObserver();
+    console.log(LOG_PREFIX, 'Inicializado');
+  }
+
+  function setupObserver() {
+    if (observerActive) return;
+    observerActive = true;
+
+    let scanTimeout = null;
+    const observer = new MutationObserver(() => {
+      if (scanTimeout) clearTimeout(scanTimeout);
+      scanTimeout = setTimeout(scanForReceiveView, 300);
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    scanForReceiveView();
+  }
+
+  function scanForReceiveView() {
+    const candidates = document.querySelectorAll(HEADING_SELECTOR);
+    for (const el of candidates) {
+      if (!VIEW_REGEX.test(el.textContent?.trim())) continue;
+      const container = el.closest('[role="dialog"]')
+        || el.closest('.MuiDialog-paper')
+        || el.closest('[class*="MuiPaper"]')
+        || el.closest('main')
+        || el.closest('form')
+        || el.parentElement?.parentElement;
+      if (container) {
+        onModalFound(container);
+        return;
+      }
+    }
+  }
+
+  function onModalFound(modal) {
+    if (modal.dataset.saWlpAttached === 'true') return;
+    modal.dataset.saWlpAttached = 'true';
+    modalStates.set(modal, {
+      selectedLocation: null,
+      aduanaFilterActive: true,
+      aduanaCache: null,
+      aduanaError: null,
+      fullCache: null,
+      fullCacheOffset: 0,
+      fullCacheExhausted: false,
+      fullCacheLoading: false,
+      unusedEnabled: { partGroups: false, container: false },
+    });
+    console.log(LOG_PREFIX, 'Modal de recibo detectado');
+    injectStyles();
+    injectField(modal);
+    wireCombobox(modal);
+    watchModalRemoval(modal);
+    watchLineRows(modal);
+    applyUnusedFieldStatesWithRetry(modal);
+    preloadAduana(modal);
+  }
+
+  async function preloadAduana(modal) {
+    const state = modalStates.get(modal);
+    if (!state) return;
+    state.aduanaError = null;
+    if (state.dropdown && !state.dropdown.hidden) renderDropdown(state);
+    try {
+      const nodes = await fetchAduanaLocations();
+      state.aduanaCache = nodes;
+      console.log(LOG_PREFIX, `Aduana precargada: ${nodes.length} ubicaciones`);
+    } catch (err) {
+      state.aduanaCache = [];
+      state.aduanaError = err;
+      console.warn(LOG_PREFIX, 'Error precargando Aduana:', err);
+    }
+    // Re-render si el dropdown está visible
+    if (state.dropdown && !state.dropdown.hidden) renderDropdown(state);
+  }
+
+  function watchModalRemoval(modal) {
+    const removalObserver = new MutationObserver(() => {
+      if (!document.body.contains(modal)) {
+        removalObserver.disconnect();
+        cleanupModal(modal);
+      }
+    });
+    removalObserver.observe(document.body, { childList: true, subtree: true });
+    const state = modalStates.get(modal);
+    if (state) state.removalObserver = removalObserver;
+  }
+
+  function cleanupModal(modal) {
+    const state = modalStates.get(modal);
+    if (state?.removalObserver) state.removalObserver.disconnect();
+    if (state?.rowObserver) state.rowObserver.disconnect();
+    if (state?.docClickHandler) document.removeEventListener('mousedown', state.docClickHandler);
+    modalStates.delete(modal);
+    pendingLocationId = null;
+    pendingLocationOwner = null;
+    console.log(LOG_PREFIX, 'Modal cleanup completado');
+  }
+
+  async function fetchAduanaLocations() {
+    if (!api()) {
+      console.warn(LOG_PREFIX, 'SteelheadAPI no disponible');
+      return [];
+    }
+    try {
+      const data = await api().query('SearchLocationsOnPath', {
+        fetchInventoryItem: false, fetchPartNumber: false, isShipping: null,
+        path: '', searchText: '%Aduana%', offset: 0, first: 100,
+        subpathOffset: 0, searchTextLast: '%Aduana%',
+        archivedIsNull: true, isEmpty: false, includeTypes: true
+      }, 'SearchLocationsOnPath');
+      return data?.searchLocationsOnPath?.nodes || [];
+    } catch (err) {
+      console.warn(LOG_PREFIX, 'Error cargando ubicaciones Aduana:', err);
+      throw err;
+    }
+  }
+
+  async function fetchAllLocations(offset = 0, first = 200) {
+    if (!api()) {
+      console.warn(LOG_PREFIX, 'SteelheadAPI no disponible');
+      return [];
+    }
+    try {
+      const data = await api().query('SearchLocationsOnPath', {
+        fetchInventoryItem: false, fetchPartNumber: false, isShipping: null,
+        path: '', searchText: '%', offset, first,
+        subpathOffset: 0, searchTextLast: '%',
+        archivedIsNull: true, isEmpty: false, includeTypes: true
+      }, 'SearchLocationsOnPath');
+      return data?.searchLocationsOnPath?.nodes || [];
+    } catch (err) {
+      console.warn(LOG_PREFIX, 'Error cargando catálogo completo de ubicaciones:', err);
+      throw err;
+    }
+  }
+
+  function injectStyles() {
+    if (document.getElementById('sa-wlp-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'sa-wlp-styles';
+    style.textContent = `
+      .sa-wlp-row-label, .sa-wlp-row-controls { margin-top: 12px; }
+      .sa-wlp-controls {
+        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      }
+      .sa-wlp-combo {
+        position: relative; min-width: 320px;
+        border: 1px solid #c4c4c4; border-radius: 4px; background: #fff;
+      }
+      .sa-wlp-combo-input {
+        width: 100%; border: 0; outline: 0; background: transparent;
+        padding: 8.5px 32px 8.5px 14px; font: inherit; font-size: 14px;
+        color: rgba(0,0,0,0.87);
+      }
+      .sa-wlp-combo:focus-within {
+        outline: 2px solid #1976d2; outline-offset: -1px; border-color: transparent;
+      }
+      .sa-wlp-combo-clear {
+        position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+        cursor: pointer; color: #888; font-size: 16px; line-height: 1;
+        background: transparent; border: 0; padding: 2px 6px;
+      }
+      .sa-wlp-combo-clear:hover { color: #1976d2; }
+      .sa-wlp-dropdown {
+        position: absolute; top: 100%; left: 0; right: 0; z-index: 1500;
+        background: #fff; border: 1px solid #c4c4c4; border-radius: 4px;
+        max-height: 280px; overflow-y: auto; margin-top: 2px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      }
+      .sa-wlp-dropdown[hidden] { display: none; }
+      .sa-wlp-option {
+        padding: 8px 14px; cursor: pointer; font-size: 14px;
+      }
+      .sa-wlp-option:hover, .sa-wlp-option[data-active="true"] {
+        background: rgba(25,118,210,0.08);
+      }
+      .sa-wlp-option-empty {
+        padding: 8px 14px; font-size: 13px; color: #888; font-style: italic;
+      }
+      .sa-wlp-option-sentinel {
+        padding: 8px 14px; font-size: 13px; color: #1976d2; font-style: italic;
+        cursor: pointer; border-top: 1px solid #eee;
+      }
+      .sa-wlp-option-sentinel:hover { background: rgba(25,118,210,0.08); }
+      .sa-wlp-row-overlay {
+        position: absolute; inset: 0; display: flex; align-items: center;
+        padding: 0 14px; background: rgba(245,245,245,0.92);
+        font-size: 13px; color: rgba(0,0,0,0.65); font-style: italic;
+        pointer-events: auto; cursor: not-allowed; z-index: 10;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function injectField(modal) {
+    if (modal.querySelector('[data-sa-wlp-field="true"]')) return;
+
+    // Anclar dentro del .css-iyrxkt de "Receiver Comments" como rows extra del grid
+    const labels = modal.querySelectorAll('p');
+    let anchorWrapper = null;
+    for (const p of labels) {
+      if (/^(?:receiver\s+comments|comentarios\s+del\s+receptor):?$/i.test(p.textContent.trim())) {
+        anchorWrapper = p.closest('.css-iyrxkt');
+        break;
+      }
+    }
+    if (!anchorWrapper) {
+      console.warn(LOG_PREFIX, 'No se localizó el wrapper de Receiver Comments — layout cambió?');
+      return;
+    }
+
+    const label = document.createElement('p');
+    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3 sa-wlp-row-label';
+    label.style.gridColumn = '1';
+    label.textContent = 'Ubicación inicial:';
+    label.dataset.saWlpField = 'true';
+
+    const controls = document.createElement('div');
+    controls.style.gridColumn = '2';
+    controls.className = 'sa-wlp-controls sa-wlp-row-controls';
+    controls.dataset.saWlpField = 'true';
+
+    const combo = document.createElement('div');
+    combo.className = 'sa-wlp-combo';
+    combo.dataset.saWlpCombo = 'true';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'sa-wlp-combo-input';
+    input.placeholder = 'Buscar ubicación (filtro: Aduana)';
+    input.autocomplete = 'off';
+    combo.appendChild(input);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'sa-wlp-combo-clear';
+    clearBtn.textContent = '✕';
+    clearBtn.hidden = true;
+    clearBtn.title = 'Limpiar selección';
+    combo.appendChild(clearBtn);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'sa-wlp-dropdown';
+    dropdown.hidden = true;
+    combo.appendChild(dropdown);
+
+    controls.appendChild(combo);
+
+    anchorWrapper.appendChild(label);
+    anchorWrapper.appendChild(controls);
+
+    // Fila extra con checkboxes para re-habilitar Grupo de Piezas / Contenedor
+    const toggles = document.createElement('div');
+    toggles.style.gridColumn = '2';
+    toggles.style.display = 'flex';
+    toggles.style.gap = '14px';
+    toggles.style.flexWrap = 'wrap';
+    toggles.style.marginTop = '6px';
+    toggles.style.fontSize = '12px';
+    toggles.style.color = 'rgba(0,0,0,0.75)';
+    toggles.dataset.saWlpField = 'true';
+    toggles.className = 'sa-wlp-unused-toggles';
+
+    for (const cfg of UNUSED_FIELDS) {
+      const lab = document.createElement('label');
+      lab.style.cursor = 'pointer';
+      lab.style.userSelect = 'none';
+      lab.style.display = 'inline-flex';
+      lab.style.alignItems = 'center';
+      lab.style.gap = '4px';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = false;
+      cb.dataset.saWlpToggleKey = cfg.key;
+      cb.style.cursor = 'pointer';
+      cb.style.margin = '0';
+      cb.addEventListener('change', () => {
+        const st = modalStates.get(modal);
+        if (!st || !st.unusedEnabled) return;
+        st.unusedEnabled[cfg.key] = cb.checked;
+        applyUnusedFieldStates(modal);
+      });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' Habilitar ' + cfg.displayLabel));
+      toggles.appendChild(lab);
+    }
+    anchorWrapper.appendChild(toggles);
+
+    // Stash refs en el state
+    const state = modalStates.get(modal) || {};
+    state.combo = combo;
+    state.input = input;
+    state.clearBtn = clearBtn;
+    state.dropdown = dropdown;
+    modalStates.set(modal, state);
+
+    console.log(LOG_PREFIX, 'Combobox de ubicación inyectado');
+  }
+
+  function renderDropdown(state) {
+    const dd = state.dropdown;
+    dd.innerHTML = '';
+    const cache = state.aduanaFilterActive ? state.aduanaCache : state.fullCache;
+    const search = (state.input.value || '').trim().toLowerCase();
+
+    if (!cache) {
+      const empty = document.createElement('div');
+      empty.className = 'sa-wlp-option-empty';
+      empty.textContent = 'Cargando ubicaciones…';
+      dd.appendChild(empty);
+      return;
+    }
+
+    // Bloque de error con retry (solo en modo Aduana)
+    if (state.aduanaFilterActive && state.aduanaError) {
+      const errDiv = document.createElement('div');
+      errDiv.className = 'sa-wlp-option-empty';
+      errDiv.textContent = 'Error al cargar ubicaciones Aduana.';
+      dd.appendChild(errDiv);
+
+      const retrySentinel = document.createElement('div');
+      retrySentinel.className = 'sa-wlp-option-sentinel';
+      retrySentinel.textContent = '🔄 Reintentar';
+      retrySentinel.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const modal = findModalForState(state);
+        if (modal) preloadAduana(modal);
+      });
+      dd.appendChild(retrySentinel);
+      return;
+    }
+
+    const filtered = search
+      ? cache.filter(loc => (loc.path || '').toLowerCase().includes(search)
+                         || (loc.name || '').toLowerCase().includes(search))
+      : cache.slice();
+
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'sa-wlp-option-empty';
+      empty.textContent = state.aduanaFilterActive
+        ? "No se encontraron ubicaciones con 'Aduana'"
+        : 'Sin matches';
+      dd.appendChild(empty);
+    } else {
+      for (const loc of filtered) {
+        const opt = document.createElement('div');
+        opt.className = 'sa-wlp-option';
+        opt.textContent = loc.path || loc.name || `(id ${loc.id})`;
+        opt.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          selectLocation(state, loc);
+        });
+        dd.appendChild(opt);
+      }
+    }
+
+    if (state.aduanaFilterActive) {
+      const sentinel = document.createElement('div');
+      sentinel.className = 'sa-wlp-option-sentinel';
+      sentinel.textContent = '🔄 Mostrar todas las ubicaciones';
+      sentinel.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        state.aduanaFilterActive = false;
+        if (!state.fullCache) {
+          state.input.placeholder = 'Cargando catálogo completo…';
+          try {
+            const nodes = await fetchAllLocations(0, 200);
+            state.fullCache = nodes;
+            state.fullCacheOffset = nodes.length;
+            state.fullCacheExhausted = nodes.length < 200;
+          } catch {
+            state.fullCache = [];
+            state.fullCacheOffset = 0;
+            state.fullCacheExhausted = true;
+          }
+          state.input.placeholder = 'Buscar ubicación';
+        }
+        renderDropdown(state);
+      });
+      dd.appendChild(sentinel);
+    } else if (!state.fullCacheExhausted) {
+      // Paginación lazy: "Cargar más" solo en modo catálogo completo con más páginas disponibles
+      const loadMoreSentinel = document.createElement('div');
+      loadMoreSentinel.className = 'sa-wlp-option-sentinel';
+      loadMoreSentinel.textContent = '⬇️ Cargar más';
+      loadMoreSentinel.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        if (state.fullCacheLoading) return;
+        state.fullCacheLoading = true;
+        loadMoreSentinel.textContent = 'Cargando…';
+        try {
+          const next = await fetchAllLocations(state.fullCacheOffset || 0, 200);
+          state.fullCache = (state.fullCache || []).concat(next);
+          state.fullCacheOffset = state.fullCache.length;
+          state.fullCacheExhausted = next.length < 200;
+        } catch {
+          state.fullCacheExhausted = true;
+        } finally {
+          state.fullCacheLoading = false;
+        }
+        renderDropdown(state);
+      });
+      dd.appendChild(loadMoreSentinel);
+    }
+  }
+
+  function selectLocation(state, loc) {
+    state.selectedLocation = { id: loc.id, path: loc.path || loc.name };
+    state.input.value = state.selectedLocation.path;
+    state.clearBtn.hidden = false;
+    state.dropdown.hidden = true;
+    // Actualizar canal modal → fetch patch
+    pendingLocationId = loc.id;
+    pendingLocationOwner = findModalForState(state);
+    console.log(LOG_PREFIX, `Ubicación seleccionada: id=${loc.id} path=${loc.path}`);
+    onSelectionChange(state);
+  }
+
+  function clearSelection(state) {
+    state.selectedLocation = null;
+    state.input.value = '';
+    state.clearBtn.hidden = true;
+    state.aduanaFilterActive = true;
+    state.input.placeholder = 'Buscar ubicación (filtro: Aduana)';
+    // Limpiar canal modal → fetch patch
+    pendingLocationId = null;
+    pendingLocationOwner = null;
+    console.log(LOG_PREFIX, 'Ubicación limpiada');
+    onSelectionChange(state);
+  }
+
+  function findLocationCombos(modal) {
+    const combos = [];
+    const placeholders = modal.querySelectorAll('[id^="react-select-"][id$="-placeholder"]');
+    for (const p of placeholders) {
+      const txt = p.textContent?.trim() || '';
+      if (/^(?:search\s+locations|buscar\s+ubicaciones)/i.test(txt)) {
+        const control = p.closest('[class*="-control"]');
+        if (control) combos.push(control);
+      }
+    }
+    return combos;
+  }
+
+  function disableCombo(control, text, title) {
+    title = title || 'Heredada del header. Limpia el campo de arriba para editar este renglón.';
+    if (control.dataset.saWlpDisabled === 'true') {
+      // Ya disabled — actualizar overlay text/title si cambió
+      const existing = control.querySelector('.sa-wlp-row-overlay');
+      if (existing) { existing.textContent = text; existing.title = title; }
+      return;
+    }
+    control.dataset.saWlpDisabled = 'true';
+    control.style.pointerEvents = 'none';
+    control.style.opacity = '0.55';
+    control.style.position = 'relative';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'sa-wlp-row-overlay';
+    overlay.textContent = text;
+    overlay.title = title;
+    const swallow = (e) => { e.stopPropagation(); e.preventDefault(); };
+    overlay.addEventListener('mousedown', swallow, true);
+    overlay.addEventListener('click', swallow, true);
+    overlay.addEventListener('focus', swallow, true);
+    control.appendChild(overlay);
+  }
+
+  const UNUSED_FIELD_TITLE = 'Campo deshabilitado: marca el check del header para habilitarlo.';
+  const UNUSED_FIELD_TEXT = '— Bloqueado —';
+  const UNUSED_FIELDS = [
+    { key: 'partGroups', displayLabel: 'Grupo de Piezas', label: /^(?:part\s+groups?|grupo\s+de\s+(?:piezas|partes))\s*:?$/i },
+    { key: 'container', displayLabel: 'Contenedor', label: /^(?:container|contenedor)\s*:?$/i },
+  ];
+
+  function findHeaderComboByLabel(modal, labelRegex) {
+    // El text node del label vive dentro de un .css-xd9ivb que suele ser
+    // SIBLING (no ancestor) del control react-select, así que iteramos
+    // wrappers .css-iyrxkt y para cada uno checamos (a) algún .css-xd9ivb
+    // descendiente con text node directo que matchee el label y (b) un
+    // [class*="-control"] descendiente. Preferimos el wrapper más profundo
+    // (más específico, evita matches espurios cuando hay anidación).
+    const wrappers = modal.querySelectorAll('.css-iyrxkt');
+    let best = null;
+    let bestDepth = -1;
+    for (const w of wrappers) {
+      const labelBlocks = w.querySelectorAll('.css-xd9ivb');
+      let hasLabel = false;
+      for (const block of labelBlocks) {
+        for (const node of block.childNodes) {
+          if (node.nodeType === 3) {
+            const t = node.textContent.trim();
+            if (t && labelRegex.test(t)) { hasLabel = true; break; }
+          }
+        }
+        if (hasLabel) break;
+      }
+      if (!hasLabel) continue;
+      const control = w.querySelector('[class*="-control"]');
+      if (!control) continue;
+      let depth = 0; let cur = w;
+      while (cur && cur !== modal) { depth++; cur = cur.parentElement; }
+      if (depth > bestDepth) { best = control; bestDepth = depth; }
+    }
+    return best;
+  }
+
+  function applyUnusedFieldStates(modal) {
+    const state = modalStates.get(modal);
+    if (!state || !state.unusedEnabled) return 0;
+    let pending = 0;
+    for (const cfg of UNUSED_FIELDS) {
+      const control = findHeaderComboByLabel(modal, cfg.label);
+      if (!control) { pending++; continue; }
+      if (state.unusedEnabled[cfg.key]) {
+        enableCombo(control);
+      } else {
+        disableCombo(control, UNUSED_FIELD_TEXT, UNUSED_FIELD_TITLE);
+      }
+    }
+    return pending;
+  }
+
+  function applyUnusedFieldStatesWithRetry(modal, attempt = 0) {
+    const pending = applyUnusedFieldStates(modal);
+    if (pending === 0) return;
+    if (attempt >= 8) {
+      console.warn(LOG_PREFIX, 'Campos del header no detectados tras retries:', pending);
+      return;
+    }
+    const delay = [100, 200, 400, 800, 1200, 1600, 2000, 2500][attempt] || 2500;
+    setTimeout(() => {
+      if (modal.isConnected) applyUnusedFieldStatesWithRetry(modal, attempt + 1);
+    }, delay);
+  }
+
+  function enableCombo(control) {
+    if (control.dataset.saWlpDisabled !== 'true') return;
+    control.dataset.saWlpDisabled = 'false';
+    control.style.pointerEvents = '';
+    control.style.opacity = '';
+    control.querySelector('.sa-wlp-row-overlay')?.remove();
+  }
+
+  function applyDisableState(modal) {
+    const state = modalStates.get(modal);
+    if (!state) return;
+    const combos = findLocationCombos(modal);
+    if (state.selectedLocation) {
+      combos.forEach(c => disableCombo(c, state.selectedLocation.path));
+    } else {
+      combos.forEach(enableCombo);
+    }
+    // Re-aplicar estado de campos del header (sobrevive re-renders)
+    applyUnusedFieldStates(modal);
+  }
+
+  function findModalForState(state) {
+    const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+    return (modal && modalStates.get(modal) === state) ? modal : null;
+  }
+
+  function onSelectionChange(state) {
+    const modal = findModalForState(state);
+    if (!modal) return;
+    applyDisableState(modal);
+  }
+
+  function watchLineRows(modal) {
+    const tbody = modal.querySelector('tbody.MuiTableBody-root');
+    if (!tbody) {
+      console.warn(LOG_PREFIX, 'No se encontró tbody.MuiTableBody-root — observer de líneas no instalado');
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      // Re-aplicar el estado cuando cambian las líneas (add/remove)
+      applyDisableState(modal);
+    });
+    observer.observe(tbody, { childList: true, subtree: false });
+    const state = modalStates.get(modal);
+    if (state) state.rowObserver = observer;
+  }
+
+  function wireCombobox(modal) {
+    const state = modalStates.get(modal);
+    if (!state?.input) return;
+    const { input, clearBtn, dropdown, combo } = state;
+
+    input.addEventListener('focus', () => {
+      dropdown.hidden = false;
+      renderDropdown(state);
+    });
+    input.addEventListener('input', () => {
+      if (state.selectedLocation) {
+        // El usuario está editando — invalidar selección y limpiar canal de intercepción
+        state.selectedLocation = null;
+        clearBtn.hidden = true;
+        pendingLocationId = null;
+        pendingLocationOwner = null;
+        applyDisableState(findModalForState(state));
+      }
+      dropdown.hidden = false;
+      renderDropdown(state);
+    });
+    input.addEventListener('blur', () => {
+      // Pequeño delay para permitir click en option (mousedown corre antes que blur)
+      setTimeout(() => { dropdown.hidden = true; }, 150);
+    });
+    clearBtn.addEventListener('click', () => clearSelection(state));
+
+    // Cerrar dropdown si click fuera — guardamos el listener para cleanup
+    const docClickHandler = (e) => {
+      if (!combo.contains(e.target)) dropdown.hidden = true;
+    };
+    document.addEventListener('mousedown', docClickHandler);
+    state.docClickHandler = docClickHandler;
+  }
+
+  return { init };
+})();
+
+if (typeof window !== 'undefined') {
+  window.WarehouseLocationPrefill = WarehouseLocationPrefill;
+  WarehouseLocationPrefill.init();
+}
+})();
+// ===== END scripts/warehouse-location-prefill.js =====
+
+// ===== BEGIN scripts/create-order-autofill.js =====
+(function(){
+// Create Order Autofill
+// Auto-llena las 3 Entradas Personalizadas del modal "Crear Orden de Venta"
+// que sale en /Receiving/CustomerParts → "RECEIVE" → "+ / Create".
+//
+// Reglas:
+//   - Razón Social  ← customer.customInputs.DatosFactura.RazonSocialVenta (match exacto contra <option>)
+//   - Divisa        ← customer.customInputs.DatosFactura.Divisa            (match exacto contra <option>)
+//   - Consolidar    ← ship-to-driven: marca checkbox si "Enviar a:" del modal contiene "javier rojo"
+//
+// Depende de: SteelheadAPI
+
+const CreateOrderAutofill = (() => {
+  'use strict';
+
+  const URL_RE = /\/Receiving\/CustomerParts(?:\/|$)/;
+  const MODAL_HEADING_RE = /^\s*crear\s+orden\s+de\s+venta\s*$/i;
+  const RJSF_RAZON_ID = 'root_RazonSocialVenta';
+  const RJSF_DIVISA_ID = 'root_Divisa';
+  const RJSF_CONSOLIDAR_ID = 'root_ConsolidarPorProducto';
+  const ROJO_GOMEZ_RE = /javier\s*rojo/i;
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => (api()?.log ? api().log(`[create-order-autofill] ${m}`) : console.log('[create-order-autofill]', m));
+  const warn = (m) => (api()?.warn ? api().warn(`[create-order-autofill] ${m}`) : console.warn('[create-order-autofill]', m));
+
+  const _customerCache = new Map();
+  let observerActive = false;
+  let debounceTimer = null;
+  let state = {
+    runId: 0,
+    lastSig: null,
+    panel: null,
+    results: { razon: null, divisa: null, consolidar: null }
+  };
+
+  function init() {
+    if (window.__saCreateOrderAutofillVersion) return;
+    window.__saCreateOrderAutofillVersion = true;
+    if (document.documentElement.dataset.saCreateOrderAutofillEnabled === 'false') {
+      log('deshabilitado');
+      return;
+    }
+    setupUrlListener();
+    log(`init en ${location.pathname} (matches=${URL_RE.test(location.pathname)})`);
+    checkUrl();
+  }
+
+  function setupUrlListener() {
+    if (window.__saCreateOrderAutofillHistoryPatched) return;
+    window.__saCreateOrderAutofillHistoryPatched = true;
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () {
+        const r = orig.apply(this, arguments);
+        checkUrl();
+        return r;
+      };
+    });
+    window.addEventListener('popstate', checkUrl);
+  }
+
+  function checkUrl() {
+    if (!URL_RE.test(location.pathname)) {
+      removePanel();
+      state.lastSig = null;
+      return;
+    }
+    setupObserver();
+  }
+
+  function setupObserver() {
+    if (observerActive) return;
+    observerActive = true;
+    const obs = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(scanForModal, 350);
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    scanForModal();
+  }
+
+  // ── Detección del modal ──
+
+  function scanForModal() {
+    const razonSel = document.getElementById(RJSF_RAZON_ID);
+    const divisaSel = document.getElementById(RJSF_DIVISA_ID);
+    const consolidarChk = document.getElementById(RJSF_CONSOLIDAR_ID);
+    if (!razonSel || !divisaSel || !consolidarChk) {
+      // Modal cerrado o aún no montado
+      if (state.lastSig !== null) {
+        state.lastSig = null;
+        removePanel();
+      }
+      return;
+    }
+    if (!isCreateOrderModal()) return;
+
+    const customerName = extractCustomerNameFromModal();
+    const shipTo = extractShipToFromModal();
+    const sig = `${customerName || '?'}||${shipTo || '?'}`;
+    if (sig === state.lastSig) return;
+    state.lastSig = sig;
+    state.runId++;
+    const myRun = state.runId;
+
+    log(`modal detectado | cliente=${customerName || '(sin cliente)'} | shipTo=${shipTo || '(sin shipTo)'}`);
+
+    runAutofill(myRun, { customerName, shipTo, razonSel, divisaSel, consolidarChk })
+      .catch(err => warn(`runAutofill: ${err.message}`));
+  }
+
+  function isStale(myRun) { return state.runId !== myRun; }
+
+  function isCreateOrderModal() {
+    const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
+    for (const h of heads) {
+      if (MODAL_HEADING_RE.test((h.textContent || '').trim())) return true;
+    }
+    return false;
+  }
+
+  // Subir al MuiDialog/Paper que contiene el heading "Crear Orden de Venta"
+  // para anclar las búsquedas de cliente/shipTo SOLO dentro del modal y no del
+  // wizard padre "Recibir piezas del cliente" (que también trae un combo Cliente).
+  function getModalRoot() {
+    const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
+    for (const h of heads) {
+      if (!MODAL_HEADING_RE.test((h.textContent || '').trim())) continue;
+      let cur = h;
+      for (let i = 0; i < 12 && cur; i++) {
+        if (cur.matches?.('[role="dialog"], [class*="MuiDialog"], [class*="MuiPaper"]')) return cur;
+        cur = cur.parentElement;
+      }
+      return h.closest('[role="dialog"], [class*="MuiPaper"]') || h.parentElement;
+    }
+    return null;
+  }
+
+  // ── Extracción dentro del modal ──
+
+  function extractCustomerNameFromModal() {
+    const root = getModalRoot();
+    if (!root) return null;
+    const sv = findSingleValueByLabel(root, /^\s*cliente:?\s*$/i);
+    if (!sv) return null;
+    const clone = sv.cloneNode(true);
+    clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+    return cleanCustomerName((clone.textContent || '').trim());
+  }
+
+  function extractShipToFromModal() {
+    const root = getModalRoot();
+    if (!root) return null;
+    const sv = findSingleValueByLabel(root, /^\s*enviar\s+a:?\s*$/i);
+    if (!sv) return null;
+    return (sv.textContent || '').trim();
+  }
+
+  // El singleValue del react-select absorbe badges sin whitespace
+  // ("SCHNEIDER ELECTRIC MEXICO (#1)Industrial"). Cortamos tras "(#N)".
+  function cleanCustomerName(raw) {
+    if (!raw) return raw;
+    const m = raw.match(/^(.+?\(#\d+\))/);
+    if (m) return m[1].trim();
+    return raw.trim();
+  }
+
+  function extractCustomerIdInDomain(rawName) {
+    const m = (rawName || '').match(/\(#(\d+)\)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  // Localiza un singleValue de react-select por su label de <p>label:</p>.
+  // Patrón replicado de invoice-autofill.findFieldContainerByPLabel: subimos al
+  // labelRoot (ancestro hijo único) y caminamos siblings hasta encontrar uno
+  // con [class*=singleValue] o con un combobox vacío (placeholder).
+  function findSingleValueByLabel(root, labelRe) {
+    const candidates = root.querySelectorAll('p, label, span');
+    for (const el of candidates) {
+      const raw = (el.textContent || '').trim();
+      if (raw.length === 0 || raw.length > 40) continue;
+      const cleaned = raw.replace(/[\s:*]+$/, '').trim();
+      if (!labelRe.test(cleaned) && !labelRe.test(raw)) continue;
+      if (el.querySelector('input, textarea, button, select')) continue;
+
+      // Ascender al labelRoot (mientras sea hijo único)
+      let labelRoot = el;
+      while (labelRoot.parentElement
+        && labelRoot.parentElement.children.length === 1
+        && labelRoot.parentElement.firstElementChild === labelRoot
+        && !['BODY', 'HTML'].includes(labelRoot.parentElement.tagName)) {
+        labelRoot = labelRoot.parentElement;
+      }
+
+      let cursor = labelRoot.nextElementSibling;
+      let hops = 0;
+      while (cursor && hops < 8) {
+        const sv = cursor.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+        if (sv) return sv;
+        if (cursor.querySelector('input[role="combobox"]')) return null;
+        cursor = cursor.nextElementSibling;
+        hops++;
+      }
+    }
+    return null;
+  }
+
+  // ── Fetch del customer ──
+
+  async function fetchCustomerCustomInputs(idInDomain) {
+    if (idInDomain == null) return null;
+    if (_customerCache.has(idInDomain)) return _customerCache.get(idInDomain);
+    try {
+      const data = await SteelheadAPI.query('Customer', { idInDomain, includeAccountingFields: true });
+      const c = data?.customerByIdInDomain || null;
+      _customerCache.set(idInDomain, c);
+      return c;
+    } catch (err) {
+      warn(`Customer(idInDomain=${idInDomain}) falló: ${err.message}`);
+      _customerCache.set(idInDomain, null);
+      return null;
+    }
+  }
+
+  // ── Fills ──
+
+  function normalizeForMatch(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function fillNativeSelectByText(sel, targetText) {
+    if (!sel || !targetText) return { success: false, reason: 'sin select o target' };
+    const targetNorm = normalizeForMatch(targetText);
+    if (!targetNorm) return { success: false, reason: 'target vacío' };
+
+    // Si ya está en el valor correcto, no tocamos
+    const currentOpt = sel.options?.[sel.selectedIndex];
+    if (currentOpt && normalizeForMatch(currentOpt.text || '') === targetNorm) {
+      return { success: true, filled: currentOpt.text, noop: true };
+    }
+
+    // Si el operador ya seleccionó algo distinto, NO sobreescribir
+    if (sel.dataset.saAutofilled === 'done' && sel.value && sel.value !== '') {
+      return { success: false, reason: 'usuario tocó después de autofill' };
+    }
+
+    let best = null, bestScore = -1;
+    for (const opt of sel.options) {
+      const txt = (opt.text || '').trim();
+      if (!txt) continue;
+      const norm = normalizeForMatch(txt);
+      let score = 0;
+      if (norm === targetNorm) score = 100;
+      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 60;
+      else {
+        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
+        for (const t of tokens) { if (norm.includes(t)) score += 8; }
+      }
+      if (score > bestScore) { bestScore = score; best = opt; }
+    }
+    if (!best || bestScore < 60) {
+      return { success: false, reason: `sin match (mejor score=${bestScore})` };
+    }
+
+    const tracker = sel._valueTracker;
+    if (tracker) tracker.setValue('');
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(sel, best.value);
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sel.dataset.saAutofilled = 'done';
+    return { success: true, filled: best.text };
+  }
+
+  function setCheckbox(chk, target) {
+    if (!chk) return { success: false, reason: 'sin checkbox' };
+    if (chk.dataset.saAutofilled === 'done') {
+      return { success: true, noop: true, value: chk.checked };
+    }
+    if (chk.checked === target) {
+      chk.dataset.saAutofilled = 'done';
+      return { success: true, noop: true, value: chk.checked };
+    }
+    // RJSF acepta click() en boolean checkboxes
+    chk.click();
+    chk.dataset.saAutofilled = 'done';
+    return { success: true, value: chk.checked };
+  }
+
+  // ── Run principal ──
+
+  async function runAutofill(myRun, { customerName, shipTo, razonSel, divisaSel, consolidarChk }) {
+    const idInDomain = extractCustomerIdInDomain(customerName);
+    if (!idInDomain) {
+      log(`sin idInDomain (cliente="${customerName}") — no autofill`);
+      state.results = { razon: { ok: false, msg: 'sin idInDomain' }, divisa: { ok: false, msg: 'sin idInDomain' }, consolidar: null };
+      renderPanel({ customerName, shipTo });
+      return;
+    }
+
+    const customer = await fetchCustomerCustomInputs(idInDomain);
+    if (isStale(myRun)) return;
+
+    const datos = customer?.customInputs?.DatosFactura || {};
+    const targetRazon = datos.RazonSocialVenta || null;
+    const targetDivisa = datos.Divisa || null;
+
+    // Razón Social
+    let razonResult;
+    if (!targetRazon) {
+      razonResult = { ok: false, msg: 'cliente sin DatosFactura.RazonSocialVenta' };
+    } else {
+      const r = fillNativeSelectByText(razonSel, targetRazon);
+      razonResult = r.success
+        ? { ok: true, msg: r.noop ? `ya estaba: ${r.filled}` : `seleccionado: ${r.filled}` }
+        : { ok: false, msg: r.reason };
+    }
+
+    // Divisa
+    let divisaResult;
+    if (!targetDivisa) {
+      divisaResult = { ok: false, msg: 'cliente sin DatosFactura.Divisa' };
+    } else {
+      const r = fillNativeSelectByText(divisaSel, targetDivisa);
+      divisaResult = r.success
+        ? { ok: true, msg: r.noop ? `ya estaba: ${r.filled}` : `seleccionado: ${r.filled}` }
+        : { ok: false, msg: r.reason };
+    }
+
+    // Consolidar (ship-to-driven, independiente del customer)
+    let consolidarResult;
+    if (!shipTo) {
+      consolidarResult = { ok: false, msg: 'sin shipTo visible' };
+    } else if (ROJO_GOMEZ_RE.test(shipTo)) {
+      const r = setCheckbox(consolidarChk, true);
+      consolidarResult = r.success
+        ? { ok: true, msg: r.noop ? 'ya estaba marcado' : 'marcado (Rojo Gómez)' }
+        : { ok: false, msg: r.reason };
+    } else {
+      // No es Rojo Gómez — dejamos el checkbox tal cual (default RJSF=false)
+      consolidarResult = { ok: true, msg: 'no aplica (otra planta)', skipped: true };
+    }
+
+    state.results = { razon: razonResult, divisa: divisaResult, consolidar: consolidarResult };
+    log(`autofill | razon=${razonResult.ok ? 'OK' : 'FAIL'} | divisa=${divisaResult.ok ? 'OK' : 'FAIL'} | consolidar=${consolidarResult.ok ? 'OK' : 'FAIL'}`);
+
+    renderPanel({ customerName, shipTo });
+  }
+
+  // ── Panel UI ──
+
+  const STATUS = {
+    ok: { color: '#10b981', icon: '✓' },
+    fail: { color: '#ef4444', icon: '✗' },
+    skip: { color: '#94a3b8', icon: '·' }
+  };
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function row(label, res) {
+    if (!res) return '';
+    const tone = res.skipped ? STATUS.skip : (res.ok ? STATUS.ok : STATUS.fail);
+    return `
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px;">
+        <span style="color:${tone.color};font-weight:700;min-width:14px;">${tone.icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;">${escHtml(label)}</div>
+          <div style="color:#e2e8f0;font-size:12px;word-break:break-word;">${escHtml(res.msg || '')}</div>
+        </div>
+      </div>`;
+  }
+
+  function renderPanel({ customerName, shipTo }) {
+    let panel = document.getElementById('sa-create-order-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-create-order-autofill-panel';
+      panel.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:2147483646;background:#1e293b;color:#e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);font-family:system-ui,sans-serif;font-size:13px;padding:10px 12px;min-width:240px;max-width:320px;';
+      document.body.appendChild(panel);
+    }
+    state.panel = panel;
+    const { razon, divisa, consolidar } = state.results;
+    const allOk = [razon, divisa, consolidar].every(r => r && (r.ok || r.skipped));
+    const headerColor = allOk ? '#10b981' : '#f59e0b';
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-weight:700;color:${headerColor};">📝 Crear OV — Autofill</span>
+        <button id="sa-coa-close" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:14px;line-height:1;">×</button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">${escHtml(customerName || '(sin cliente)')} → ${escHtml(shipTo || '(sin shipTo)')}</div>
+      ${row('Razón Social', razon)}
+      ${row('Divisa', divisa)}
+      ${row('Consolidar', consolidar)}
+      <div style="text-align:right;margin-top:6px;">
+        <button id="sa-coa-redo" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Re-aplicar</button>
+      </div>`;
+    panel.querySelector('#sa-coa-close')?.addEventListener('click', () => removePanel());
+    panel.querySelector('#sa-coa-redo')?.addEventListener('click', () => {
+      // Forzar re-run reseteando las marcas dataset y la firma
+      [RJSF_RAZON_ID, RJSF_DIVISA_ID, RJSF_CONSOLIDAR_ID].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) delete el.dataset.saAutofilled;
+      });
+      state.lastSig = null;
+      scanForModal();
+    });
+
+    // Auto-colapsar si todo OK tras 1.8s
+    if (allOk) {
+      setTimeout(() => {
+        if (!state.panel || !document.body.contains(state.panel)) return;
+        if (state.lastSig === null) return;
+        state.panel.style.opacity = '0.45';
+      }, 1800);
+    }
+  }
+
+  function removePanel() {
+    const p = document.getElementById('sa-create-order-autofill-panel');
+    if (p) p.remove();
+    state.panel = null;
+  }
+
+  return { init, scanForModal };
+})();
+
+if (typeof window !== 'undefined') {
+  window.CreateOrderAutofill = CreateOrderAutofill;
+  CreateOrderAutofill.init();
+}
+})();
+// ===== END scripts/create-order-autofill.js =====
+
+// ===== BEGIN scripts/proceso-calculator.js =====
+(function(){
+// Calculadora de Procesos (proceso-calculator) v0.1.4
+// ============================================================================
+// Replica la "Calculadora de Procesos" de la pestaña CAT_Procesos del Excel de
+// carga masiva, DENTRO del UI de Steelhead, como herramienta inline durante la
+// edición de un Número de Parte (NP).
+//
+// FLUJO
+//   - autoInject: instala un MutationObserver que pone un ícono 🧮 junto al
+//     combobox "Default Process" (en el modal "Edit Part Number → PROCESO Y SPECS"
+//     y en la ficha del PN "Process Setup").
+//   - Click en 🧮 → abre el modal de la calculadora.
+//   - Lee del DOM (el NP aún no está guardado): metal base, línea, etiquetas de
+//     acabado. Pre-pobla inputs editables (dropdowns en vivo).
+//   - Calcula contra el catálogo `CatProcesos` (artículo de inventario 900192):
+//       0 match  → "Combinación no existente" + agregar al catálogo
+//       1 match  → coloca el proceso en el combobox Default Process
+//       2+ match → lista reducida; al elegir, coloca el proceso
+//   - Agregar combinación: escribe el customInputs del artículo (compartido).
+//
+// ALMACENAMIENTO
+//   El catálogo vive en `customInputs.CatProcesos` (array) de un ARTÍCULO DE
+//   INVENTARIO dedicado "Catálogo de Procesos (no archivar)" (id 900192, tipo
+//   3767). Persistente, compartido por todo el dominio, escribible con la sesión
+//   del operador en UNA mutación (UpdateInventoryItemInputs). Cada item:
+//     { Linea, MetalBase, Etiqueta1..Etiqueta6, Proceso }
+//   (Se descartó el operator input del nodo de proceso: se resetea por orden de
+//    trabajo — los datos viven en parts-transfers, frágil. Ver bitácora.)
+//
+// MATCHING
+//   Exacto en metal + línea + CONJUNTO de etiquetas (sin importar orden), con
+//   normalización (trim + lowercase + strip acentos). Replica la fórmula del
+//   Excel pero con etiquetas separadas en vez de concatenadas.
+//
+// PENDIENTES FASE 0 (ver docs/applets/proceso-calculator.md):
+//   0b — wrappers HTML de los campos METAL y LÍNEA y los chips de ETIQUETAS en
+//        ambas vistas → afinar los selectores readSingleValueByLabel/readEtiquetas
+//        (⚠️0b). El combobox "Default Process" ya está afinado (react-select).
+//
+// Depende de: SteelheadAPI
+// ============================================================================
+
+const ProcesosCalculator = (() => {
+  'use strict';
+
+  const VERSION = '0.1.4';
+
+  // ── Constantes de dominio ──
+  // El catálogo vive en customInputs.CatProcesos de un ARTÍCULO DE INVENTARIO
+  // dedicado (persistente, una mutación, sin parts-transfers). Ver bitácora.
+  const INV_ITEM_ID = 900192;         // artículo "Catálogo de Procesos (no archivar)"
+  const INV_TYPE_ID = 3767;           // tipo de inventario "Catálogo de Procesos"
+  const INPUT_SCHEMA_FALLBACK = 942;  // inputSchemaId (se lee dinámico del item; esto es fallback)
+  const CATALOG_KEY = 'CatProcesos';  // key del array dentro de customInputs
+  const MAX_ETIQUETAS = 6;            // Etiqueta1..6 (43 combos tienen 5-6 etiquetas)
+  const CACHE_TTL_MS = 5 * 60 * 1000;
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => (api()?.log ? api().log(`[proceso-calc] ${m}`) : console.log('[proceso-calc]', m));
+  const warn = (m) => (api()?.warn ? api().warn(`[proceso-calc] ${m}`) : console.warn('[proceso-calc]', m));
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // ════════════════════════════════════════════════════════════════════════
+  // matchEngine — lógica pura (sin DOM/API). Testeable de forma aislada.
+  // ════════════════════════════════════════════════════════════════════════
+  function normStr(s) {
+    const x = String(s ?? '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return (x === '(seleccione)') ? '' : x;
+  }
+
+  // Etiquetas no vacías de un item del catálogo (Etiqueta1..N) → array normalizado.
+  function etiquetasOf(row) {
+    const out = [];
+    for (let i = 1; i <= MAX_ETIQUETAS; i++) {
+      const v = normStr(row['Etiqueta' + i]);
+      if (v) out.push(v);
+    }
+    return out;
+  }
+
+  // Compara dos colecciones como CONJUNTOS (sin orden, sin duplicados).
+  function sameSet(arrA, arrB) {
+    const a = [...new Set((arrA || []).map(normStr).filter(Boolean))];
+    const b = [...new Set((arrB || []).map(normStr).filter(Boolean))];
+    if (a.length !== b.length) return false;
+    const setB = new Set(b);
+    return a.every(x => setB.has(x));
+  }
+
+  // input = { metal, linea, etiquetas:[] }. Devuelve array de procesos únicos.
+  function findMatches(entries, input) {
+    const metal = normStr(input.metal);
+    const linea = normStr(input.linea);
+    if (!metal || !linea) return [];
+    const inputEtq = (input.etiquetas || []).map(normStr).filter(Boolean);
+    const out = [];
+    const seen = new Set();
+    for (const row of (entries || [])) {
+      if (normStr(row.MetalBase) !== metal) continue;
+      if (normStr(row.Linea) !== linea) continue;
+      if (!sameSet(etiquetasOf(row), inputEtq)) continue;
+      const proc = (row.Proceso || '').trim();
+      if (proc && !seen.has(proc)) { seen.add(proc); out.push(proc); }
+    }
+    return out;
+  }
+
+  // Construye un item del catálogo a partir de inputs + proceso elegido.
+  function buildEntry(input, proceso) {
+    const etq = (input.etiquetas || []).filter(e => e && e.trim());
+    const item = {
+      Linea: input.linea || '',
+      MetalBase: input.metal || '',
+      Proceso: proceso || ''
+    };
+    for (let i = 1; i <= MAX_ETIQUETAS; i++) item['Etiqueta' + i] = etq[i - 1] || '';
+    return item;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // catalogStore — customInputs.CatProcesos del artículo de inventario (RMW)
+  //   Leer:   GetInventoryItem {id} → inventoryItemById.customInputs.CatProcesos
+  //   Schema: GetInventoryItemInputSchema {inventoryTypeId} → latest…ForType.id
+  //   Escribir: UpdateInventoryItemInputs {itemId, inputSchemaId, customInputs}
+  // ════════════════════════════════════════════════════════════════════════
+  const _cat = { ci: null, entries: null, loadedAt: 0 };
+
+  const _GET_VARS = { id: INV_ITEM_ID, usagesLimit: 10, usagesOffset: 0, purchaseOrderBomItemsOffset: 0, purchaseOrderBomItemsLimit: 10 };
+
+  // Una sola query trae el customInputs Y el inputSchemaId vigente del item.
+  // (El inputSchemaId cambia cuando se edita el schema; leerlo del item es lo
+  //  robusto — la query por tipo dejó de devolverlo tras editar el schema.)
+  async function _readItem() {
+    const data = await api().query('GetInventoryItem', _GET_VARS, 'GetInventoryItem');
+    const it = (data && data.inventoryItemById) || {};
+    const ci = it.customInputs || {};
+    const sid = (it.inventoryItemInputSchemaByInputSchemaId && it.inventoryItemInputSchemaByInputSchemaId.id) || INPUT_SCHEMA_FALLBACK;
+    return { ci, sid };
+  }
+
+  async function readCatalog(force) {
+    if (!force && _cat.entries && (Date.now() - _cat.loadedAt) < CACHE_TTL_MS) return _cat.entries;
+    const { ci } = await _readItem();
+    _cat.ci = ci;
+    _cat.entries = Array.isArray(ci[CATALOG_KEY]) ? ci[CATALOG_KEY] : [];
+    _cat.loadedAt = Date.now();
+    return _cat.entries;
+  }
+
+  // Escribe el array completo preservando otras keys del customInputs (RMW).
+  async function writeCatalog(entries) {
+    // Releer el customInputs COMPLETO + inputSchemaId justo antes de escribir.
+    const { ci, sid } = await _readItem();
+    ci[CATALOG_KEY] = entries;
+    await api().query('UpdateInventoryItemInputs', { itemId: INV_ITEM_ID, inputSchemaId: sid, customInputs: ci }, 'UpdateInventoryItemInputs');
+    _cat.ci = ci;
+    _cat.entries = entries;
+    _cat.loadedAt = Date.now();
+    return entries;
+  }
+
+  // Agrega o actualiza (dedup por metal+linea+set etiquetas → reemplaza Proceso).
+  async function addOrUpdateEntry(item) {
+    const entries = (await readCatalog(true)).slice();
+    const idx = entries.findIndex(r =>
+      normStr(r.MetalBase) === normStr(item.MetalBase) &&
+      normStr(r.Linea) === normStr(item.Linea) &&
+      sameSet(etiquetasOf(r), etiquetasOf(item)));
+    if (idx >= 0) entries[idx] = item; else entries.push(item);
+    await writeCatalog(entries);
+    return { added: idx < 0, total: entries.length };
+  }
+
+  async function deleteEntry(item) {
+    const entries = (await readCatalog(true)).slice();
+    const next = entries.filter(r => !(
+      normStr(r.MetalBase) === normStr(item.MetalBase) &&
+      normStr(r.Linea) === normStr(item.Linea) &&
+      normStr(r.Proceso) === normStr(item.Proceso) &&
+      sameSet(etiquetasOf(r), etiquetasOf(item))));
+    await writeCatalog(next);
+    return { removed: entries.length - next.length, total: next.length };
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // liveCatalogs — dropdowns poblados desde catálogos oficiales (en vivo)
+  // ════════════════════════════════════════════════════════════════════════
+  const _live = { procesos: [], etiquetas: [], lineas: [], metales: [], loadedAt: 0 };
+
+  async function loadLiveCatalogs(force) {
+    if (!force && _live.loadedAt && (Date.now() - _live.loadedAt) < CACHE_TTL_MS) return _live;
+    const [procesos, etiquetas, lineas, metales] = await Promise.all([
+      fetchProcesos().catch(e => (warn(`procesos: ${e.message}`), [])),
+      fetchEtiquetas().catch(e => (warn(`etiquetas: ${e.message}`), [])),
+      fetchLineas().catch(e => (warn(`lineas: ${e.message}`), [])),
+      fetchMetales().catch(e => (warn(`metales: ${e.message}`), []))
+    ]);
+    Object.assign(_live, { procesos, etiquetas, lineas, metales, loadedAt: Date.now() });
+    log(`catálogos en vivo: ${procesos.length} procesos, ${etiquetas.length} etiquetas, ${lineas.length} líneas, ${metales.length} metales`);
+    return _live;
+  }
+
+  async function fetchProcesos() {
+    const data = await api().query('AllProcesses', { includeArchived: 'NO', processNodeTypes: ['PROCESS'], searchQuery: '', first: 500 });
+    const nodes = data?.allProcessNodes?.nodes || data?.pagedData?.nodes || [];
+    return [...new Set(nodes.map(p => p.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }
+
+  async function fetchEtiquetas() {
+    const data = await api().query('AllLabels', { condition: { forPartNumber: true } });
+    const nodes = data?.allLabels?.nodes || [];
+    const nonFinish = new Set(((api().getDomain()?.bulkUpload?.nonFinishLabelNames) || []).map(normStr));
+    return [...new Set(nodes
+      .filter(l => l.name && !l.archivedAt && !nonFinish.has(normStr(l.name)))
+      .map(l => l.name))].sort((a, b) => a.localeCompare(b));
+  }
+
+  async function fetchLineas() {
+    const dimIds = api().getDomain()?.dimensionIds || { linea: 349 };
+    const data = await api().query('GetDimension', { id: dimIds.linea, includeArchived: 'NO' });
+    const nodes = data?.acctDimensionById?.acctDimensionCustomValuesByDimensionId?.nodes || [];
+    return nodes.filter(n => !n.archivedAt).map(n => (n.value || '').trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }
+
+  async function fetchMetales() {
+    const data = await api().query('GetPartNumbersInputSchema', {}, 'GetPartNumbersInputSchema');
+    const nodes = data?.allPartNumberInputSchemas?.nodes || [];
+    const latest = nodes.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
+    return [...(latest?.inputSchema?.properties?.DatosAdicionalesNP?.properties?.BaseMetal?.enum || [])];
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // domAdapter — leer inputs del DOM + escribir el combobox + anclar el ícono
+  // ⚠️0b — los selectores específicos se afinan con los wrappers HTML reales.
+  // ════════════════════════════════════════════════════════════════════════
+
+  // Label EXACTO del combobox de proceso (evita matchear el heading "PROCESO Y SPECS").
+  const PROCESS_LABEL_RE = /^\s*default\s*process\s*:?\s*$/i;
+  const PROCESS_COMPONENT_ID = 'CREATE_PART_NUMBER_DIALOG_DEFAULT_PROCESS';
+  const MODAL_HEADING_RE = /proceso\s*y\s*specs|edit\s*part\s*number/i;
+  const MATERIAL_LABEL_RE = /^\s*(material|metal\s*base|metal)\s*:?\s*$/i;
+  const LINEA_LABEL_RE = /^\s*l[ií]nea\s*:?\s*$/i;
+
+  function _ctrlFrom(el) {
+    if (!el || !el.querySelector) return null;
+    const combo = el.querySelector('input[role="combobox"]');
+    if (!combo) return null;
+    return combo.closest('[class*="-control"]') || combo.parentElement;
+  }
+
+  // Devuelve el control react-select del Default Process, o null.
+  function findProcessControl() {
+    // 1) Modal: contenedor estable por component-id.
+    const c1 = _ctrlFrom(document.querySelector(`[data-steelhead-component-id="${PROCESS_COMPONENT_ID}"]`));
+    if (c1) return c1;
+    // 2) Label EXACTO "Default Process:" → primer ancestro que contenga el combobox.
+    const els = document.querySelectorAll('p, label, span');
+    for (const el of els) {
+      if (el.closest('#sa-pc-modal, #sa-pc-icon')) continue;
+      if (!PROCESS_LABEL_RE.test((el.textContent || '').trim())) continue;
+      let p = el;
+      for (let d = 0; d < 6 && p; d++, p = p.parentElement) {
+        const c = _ctrlFrom(p);
+        if (c) return c;
+      }
+    }
+    return null;
+  }
+
+  function detectView() {
+    // modal si hay un [role=dialog]/MuiPaper con heading de PN; si no, ficha.
+    const heads = document.querySelectorAll('h1,h2,h3,h4,[class*="MuiTypography-h"]');
+    for (const h of heads) {
+      if (MODAL_HEADING_RE.test((h.textContent || '').trim()) &&
+          h.closest('[role="dialog"], [class*="MuiDialog"], [class*="MuiPaper"]')) {
+        return 'modal';
+      }
+    }
+    return findProcessControl() ? 'ficha' : null;
+  }
+
+  // Lee el texto seleccionado de un react-select localizado por label.
+  function readSingleValueByLabel(labelRe, root) {
+    const scope = root || document;
+    const candidates = scope.querySelectorAll('p, label, span, div');
+    for (const el of candidates) {
+      if (el.closest('#sa-pc-modal, #sa-pc-icon')) continue;
+      const raw = (el.textContent || '').trim();
+      if (!raw || raw.length > 40) continue;
+      const cleaned = raw.replace(/[\s:*]+$/, '').trim();
+      if (!labelRe.test(cleaned) && !labelRe.test(raw)) continue;
+      if (el.querySelector('input, textarea, button, select')) continue;
+      let labelRoot = el;
+      while (labelRoot.parentElement
+        && labelRoot.parentElement.children.length === 1
+        && !['BODY', 'HTML'].includes(labelRoot.parentElement.tagName)) {
+        labelRoot = labelRoot.parentElement;
+      }
+      let cursor = labelRoot.nextElementSibling;
+      for (let hops = 0; cursor && hops < 8; hops++, cursor = cursor.nextElementSibling) {
+        const sv = cursor.querySelector && cursor.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+        if (sv) return (sv.textContent || '').trim();
+        const inp = cursor.querySelector && cursor.querySelector('input[type="text"], input:not([type])');
+        if (inp && inp.value) return inp.value.trim();
+        // Ficha: el valor es texto plano (<p>) hermano del label, sin control.
+        const txt = (cursor.textContent || '').trim();
+        if (txt && txt.length < 80 && !labelRe.test(txt)
+            && !(cursor.querySelector && cursor.querySelector('input, select, button, textarea'))) {
+          return txt;
+        }
+      }
+    }
+    return '';
+  }
+
+  function _nonFinishSet() {
+    const dom = api() && api().getDomain ? api().getDomain() : {};
+    return new Set(((dom.bulkUpload && dom.bulkUpload.nonFinishLabelNames) || []).map(normStr));
+  }
+
+  // Metal base: en el modal es un <select> RJSF nativo con id estable; en la
+  // ficha cae al extractor por label. `root` acota la búsqueda al diálogo del
+  // modal (si está abierto) para no leer el <select> homónimo de la ficha de atrás.
+  function readMetal(root) {
+    const scope = root || document;
+    const sel = scope.querySelector('#root_DatosAdicionalesNP_BaseMetal');
+    if (sel && sel.selectedIndex > 0) {
+      const opt = sel.options[sel.selectedIndex];
+      if (opt && opt.value) return (opt.text || '').trim();
+    }
+    return readSingleValueByLabel(MATERIAL_LABEL_RE, root || undefined);
+  }
+
+  // Etiquetas de acabado del NP. Dos vistas:
+  //  - Modal "Edit Part Number": react-select de Labels (component-id estable);
+  //    cada chip tiene un svg CloseIcon → su parentElement es el chip. Ese input
+  //    es del NP; no mezcla etiquetas de cliente.
+  //  - Ficha (NP guardado): chips de solo lectura con la clase generada
+  //    `.css-1owv9dy`. PROBLEMA: ese selector es GLOBAL y también captura las
+  //    etiquetas del CLIENTE (renglón "Customer:"), que comparten la misma clase.
+  //    Discriminador real (verificado en el DOM): las etiquetas del NP cuelgan de
+  //    la superficie primaria PLANA `MuiPaper-elevation0`; las del cliente viven
+  //    en una tarjeta elevada `MuiPaper-elevation1`. Por eso, en la ficha, solo
+  //    aceptamos chips cuyo paper más cercano sea elevation0. `closest` funciona
+  //    aunque la card del cliente esté anidada: devuelve el paper más cercano
+  //    (elevation1) → se excluye. Degradación segura: si nada matchea elevation0,
+  //    no entra ninguna etiqueta (mejor "sin etiquetas" que colar las de cliente).
+  // En ambas vistas se quitan además los nonFinishLabelNames (SRG, SMY,
+  // "NP desconocido", "En desarrollo", ...): no son acabados (opción A).
+  function readEtiquetasFromDom() {
+    const nonFinish = _nonFinishSet();
+    const labelCont = document.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_LABELS"]');
+    const chips = labelCont
+      ? [...labelCont.querySelectorAll('svg[data-testid="CloseIcon"]')].map(svg => svg.parentElement).filter(Boolean)
+      : [...document.querySelectorAll('.css-1owv9dy')].filter(chip => {
+          const paper = chip.closest('.MuiPaper-root');
+          return paper && paper.classList.contains('MuiPaper-elevation0');
+        });
+    const out = [], seen = new Set();
+    for (const chip of chips) {
+      if (chip.closest('#sa-pc-modal, #sa-pc-icon')) continue;
+      const t = (chip.textContent || '').trim();
+      const n = normStr(t);
+      if (!t || !n || nonFinish.has(n) || seen.has(n)) continue;
+      seen.add(n); out.push(t);
+    }
+    return out;
+  }
+
+  // Cache de inputs del MODAL para sortear las pestañas. Metal y Línea viven en la
+  // pestaña "DATOS GENERALES"; cuando la calc abre desde "PROCESO Y SPECS" esos
+  // campos están DESMONTADOS (no existen en el DOM) → no se pueden leer ahí. El
+  // observer captura su valor mientras están montados (estás en DATOS GENERALES) y
+  // lo guarda aquí; al abrir la calc se usa este valor (el AJUSTADO-no-guardado).
+  // Se resetea al cerrar el modal. Verificado en DOM: solo existe 1 metal/1 línea a
+  // la vez, y en PROCESO Y SPECS son los de la FICHA (valor guardado), fuera del diálogo.
+  let _modalCache = { metal: '', linea: '' };
+
+  // Diálogo "Edit/Create Part Number" si está abierto (si no, null).
+  function partNumberDialog() {
+    const anchor = document.querySelector('[data-steelhead-component-id^="CREATE_PART_NUMBER_DIALOG"]');
+    return (anchor && anchor.closest('[role="dialog"], [class*="MuiDialog"]')) || null;
+  }
+
+  // Captura metal/línea del MODAL (no de la ficha) cuando están montados; conserva
+  // el último valor visto si la pestaña se desmonta. Resetea el cache si no hay modal.
+  // Corre síncrono desde el observer (barato: scopes chicos) para no perder el valor
+  // en un cambio-de-pestaña rápido.
+  function captureModalInputs() {
+    const dialog = partNumberDialog();
+    if (!dialog) { _modalCache = { metal: '', linea: '' }; return; }
+    // Metal: <select> nativo. Listener 'change' (captura ANTES de desmontar) + lectura directa.
+    const sel = dialog.querySelector('#root_DatosAdicionalesNP_BaseMetal');
+    if (sel) {
+      if (!sel.dataset.saPcHook) {
+        sel.dataset.saPcHook = '1';
+        sel.addEventListener('change', () => {
+          const o = sel.options[sel.selectedIndex];
+          if (o && o.value) _modalCache.metal = (o.text || '').trim();
+        });
+      }
+      const o = sel.options[sel.selectedIndex];
+      if (sel.selectedIndex > 0 && o && o.value) _modalCache.metal = (o.text || '').trim();
+    }
+    // Línea: react-select dentro de ACCOUNTING_DIMENSIONS (scope chico → label-walk barato).
+    const accDim = dialog.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_ACCOUNTING_DIMENSIONS"]');
+    if (accDim) {
+      const l = readSingleValueByLabel(LINEA_LABEL_RE, accDim);
+      if (l) _modalCache.linea = l;
+    }
+  }
+
+  // Lee metal, línea y etiquetas del DOM del PN en edición.
+  // OJO: la Línea del UI es la forma LARGA (= columna Línea2 del catálogo).
+  // MODAL: se prefiere el cache (valor del modal capturado en CUALQUIER pestaña,
+  // incl. el ajustado-no-guardado), luego el diálogo montado, luego la ficha (valor
+  // GUARDADO) como último recurso. FICHA (sin modal): lectura global directa.
+  function readInputs() {
+    const dialog = partNumberDialog();
+    if (dialog) {
+      captureModalInputs(); // refresca con lo montado ahora (por si abriste en DATOS GENERALES)
+      const metal = _modalCache.metal || readMetal(dialog) || readMetal(null);
+      const linea = _modalCache.linea
+        || readSingleValueByLabel(LINEA_LABEL_RE, dialog)
+        || readSingleValueByLabel(LINEA_LABEL_RE);
+      const etiquetas = readEtiquetasFromDom();
+      return { metal, linea, etiquetas };
+    }
+    const metal = readMetal(null);
+    const linea = readSingleValueByLabel(LINEA_LABEL_RE);
+    const etiquetas = readEtiquetasFromDom();
+    return { metal, linea, etiquetas };
+  }
+
+  // Escribe el proceso en el combobox Default Process (patrón react-select).
+  async function writeProcess(processName) {
+    const ctrl = findProcessControl();
+    if (!ctrl) return { success: false, reason: 'combobox Default Process no encontrado' };
+    ctrl.click();
+    await sleep(300);
+    const inputEl = ctrl.querySelector('input');
+    if (inputEl) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(inputEl, processName);
+      inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    let options = [];
+    for (let i = 0; i < 12; i++) {
+      await sleep(200);
+      const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"], [class*="menu"], [class*="Menu"]');
+      if (menu) {
+        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')];
+        if (options.length) break;
+      }
+    }
+    if (!options.length) return { success: false, reason: 'sin opciones tras abrir el combobox' };
+    const target = normStr(processName);
+    let best = null, bestScore = -1;
+    for (const opt of options) {
+      const norm = normStr(opt.textContent || '');
+      let score = 0;
+      if (norm === target) score = 100;
+      else if (norm.includes(target) || target.includes(norm)) score = 50;
+      if (score > bestScore) { bestScore = score; best = opt; }
+    }
+    if (!best || bestScore < 50) return { success: false, reason: `proceso "${processName}" no está en las opciones del combobox` };
+    best.click();
+    return { success: true, filled: best.textContent.trim() };
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // iconInjector — autoInject: ancla el ícono 🧮 junto al combobox
+  // ════════════════════════════════════════════════════════════════════════
+  let _observer = null;
+  let _debounce = null;
+
+  // Ícono de calculadora monocromo (estilo icon-button MUI, se mezcla con la UI).
+  const _ICON_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">'
+    + '<path d="M7 2c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H7zm0 2h10v4H7V4zm0 6h2v2H7v-2zm0 4h2v2H7v-2zm4-4h2v2h-2v-2zm0 4h2v2h-2v-2zm4-4h2v6h-2v-6z"/></svg>';
+
+  function ensureIcon() {
+    const ctrl = findProcessControl();
+    if (!ctrl) return;
+    // El wrapper inmediato del react-select container suele envolver SOLO el
+    // combobox → lo volvemos flex-row para anclar el botón AL LADO (no abajo).
+    const container = ctrl.closest('[class*="-container"]') || ctrl;
+    const wrap = container.parentElement || container;
+    if (wrap.querySelector(':scope > .sa-pc-icon')) return; // idempotente
+    const btn = document.createElement('button');
+    btn.id = 'sa-pc-icon';
+    btn.className = 'sa-pc-icon';
+    btn.type = 'button';
+    btn.title = 'Calculadora de Procesos';
+    btn.innerHTML = _ICON_SVG;
+    btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;'
+      + 'flex:0 0 auto;margin-left:6px;width:30px;height:30px;padding:0;border:none;'
+      + 'border-radius:6px;background:transparent;color:#1976d2;cursor:pointer;transition:background .15s;';
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(25,118,210,0.10)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+    btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openModal(); });
+    try { wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; container.style.flex = '1 1 auto'; } catch (_) {}
+    wrap.appendChild(btn);
+  }
+
+  function startObserver() {
+    if (_observer) return;
+    _observer = new MutationObserver(() => {
+      captureModalInputs(); // síncrono: captura metal/línea del modal antes de que cambies de pestaña
+      if (_debounce) clearTimeout(_debounce);
+      _debounce = setTimeout(ensureIcon, 350);
+    });
+    _observer.observe(document.body, { childList: true, subtree: true });
+    ensureIcon();
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // modal UI — inputs editables, cálculo, resultado, agregar al catálogo
+  // ════════════════════════════════════════════════════════════════════════
+  function ensureStyles() {
+    if (document.getElementById('sa-pc-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'sa-pc-styles';
+    s.textContent = `
+      #sa-pc-modal{position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
+      .sa-pc-card{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:22px 24px;width:480px;max-width:94vw;max-height:88vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.5)}
+      .sa-pc-card h2{margin:0 0 4px;font-size:18px;color:#38bdf8;display:flex;justify-content:space-between;align-items:center}
+      .sa-pc-sub{font-size:11px;color:#64748b;margin-bottom:14px}
+      .sa-pc-field{margin-bottom:10px}
+      .sa-pc-field label{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+      .sa-pc-field select,.sa-pc-field input{width:100%;padding:8px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:13px}
+      .sa-pc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+      .sa-pc-chip{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:3px 8px 3px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+      .sa-pc-chip button{background:none;border:none;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1}
+      .sa-pc-result{margin-top:14px;padding:12px;border-radius:8px;font-size:13px}
+      .sa-pc-btn{padding:8px 16px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer}
+      .sa-pc-btn-primary{background:#38bdf8;color:#0f172a}
+      .sa-pc-btn-ghost{background:#334155;color:#e2e8f0}
+      .sa-pc-btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+      .sa-pc-procbtn{display:block;width:100%;text-align:left;margin-bottom:6px;padding:9px 12px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:13px;cursor:pointer}
+      .sa-pc-procbtn:hover{border-color:#38bdf8}
+      .sa-pc-x{background:none;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1}
+    `;
+    document.head.appendChild(s);
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function optionsHtml(values, selected) {
+    const sel = normStr(selected);
+    const opts = ['<option value="">(seleccione)</option>'];
+    for (const v of values) {
+      const isSel = normStr(v) === sel ? ' selected' : '';
+      opts.push(`<option value="${escHtml(v)}"${isSel}>${escHtml(v)}</option>`);
+    }
+    return opts.join('');
+  }
+
+  // Estado mutable del modal.
+  let _modalState = null;
+
+  async function openModal() {
+    ensureStyles();
+    closeModal();
+
+    const ov = document.createElement('div');
+    ov.id = 'sa-pc-modal';
+    ov.innerHTML = `<div class="sa-pc-card">
+      <h2>🧮 Calculadora de Procesos <button class="sa-pc-x" id="sa-pc-close">×</button></h2>
+      <div class="sa-pc-sub">v${VERSION} · artículo ${INV_ITEM_ID}</div>
+      <div id="sa-pc-body">Cargando catálogos…</div>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeModal(); });
+    document.getElementById('sa-pc-close').onclick = closeModal;
+
+    // Leer inputs del DOM + cargar catálogos en vivo en paralelo.
+    const domInputs = readInputs();
+    let live;
+    try { live = await loadLiveCatalogs(); }
+    catch (e) { live = _live; warn(`catálogos: ${e.message}`); }
+
+    // Las etiquetas de cliente ya se excluyen en readEtiquetasFromDom (scoping a
+    // MuiPaper-elevation0 en la ficha). No re-filtramos por catálogo aquí: hacerlo
+    // por nombre arriesga falsos negativos (una etiqueta de cliente puede llamarse
+    // igual que un acabado, y un acabado nuevo puede no estar aún en el catálogo).
+    _modalState = {
+      metal: domInputs.metal || '',
+      linea: domInputs.linea || '',
+      etiquetas: (domInputs.etiquetas || []).filter(Boolean),
+      live
+    };
+    renderBody();
+  }
+
+  function renderBody() {
+    const body = document.getElementById('sa-pc-body');
+    if (!body || !_modalState) return;
+    const { metal, linea, etiquetas, live } = _modalState;
+
+    const chipsHtml = etiquetas.map((e, i) =>
+      `<span class="sa-pc-chip">${escHtml(e)}<button data-rm="${i}" title="quitar">×</button></span>`).join('');
+
+    body.innerHTML = `
+      <div class="sa-pc-field">
+        <label>Metal base</label>
+        <select id="sa-pc-metal">${optionsHtml(live.metales, metal)}</select>
+      </div>
+      <div class="sa-pc-field">
+        <label>Línea</label>
+        <select id="sa-pc-linea">${optionsHtml(live.lineas, linea)}</select>
+      </div>
+      <div class="sa-pc-field">
+        <label>Etiquetas de acabado (máx ${MAX_ETIQUETAS})</label>
+        <div class="sa-pc-chips" id="sa-pc-chips">${chipsHtml || '<span style="font-size:12px;color:#64748b">sin etiquetas</span>'}</div>
+        <select id="sa-pc-add-etq" style="margin-top:6px">${optionsHtml(live.etiquetas, '')}</select>
+      </div>
+      <div id="sa-pc-result"></div>
+      <div class="sa-pc-btnrow">
+        <button class="sa-pc-btn sa-pc-btn-ghost" id="sa-pc-recalc">Calcular</button>
+      </div>`;
+
+    // Wire inputs.
+    document.getElementById('sa-pc-metal').onchange = (e) => { _modalState.metal = e.target.value; };
+    document.getElementById('sa-pc-linea').onchange = (e) => { _modalState.linea = e.target.value; };
+    document.getElementById('sa-pc-add-etq').onchange = (e) => {
+      const v = e.target.value;
+      if (v && _modalState.etiquetas.length < MAX_ETIQUETAS && !_modalState.etiquetas.some(x => normStr(x) === normStr(v))) {
+        _modalState.etiquetas.push(v);
+        renderBody();
+      } else { e.target.value = ''; }
+    };
+    document.querySelectorAll('#sa-pc-chips [data-rm]').forEach(b => {
+      b.onclick = () => { _modalState.etiquetas.splice(parseInt(b.dataset.rm, 10), 1); renderBody(); };
+    });
+    document.getElementById('sa-pc-recalc').onclick = calculate;
+
+    calculate();
+  }
+
+  async function calculate() {
+    const res = document.getElementById('sa-pc-result');
+    if (!res || !_modalState) return;
+    const input = { metal: _modalState.metal, linea: _modalState.linea, etiquetas: _modalState.etiquetas };
+
+    if (!input.metal || !input.linea) {
+      res.className = 'sa-pc-result';
+      res.style.background = '#1e293b';
+      res.innerHTML = 'Selecciona al menos metal base y línea.';
+      return;
+    }
+
+    let entries;
+    try { entries = await readCatalog(); }
+    catch (e) {
+      res.className = 'sa-pc-result';
+      res.style.background = '#7f1d1d';
+      res.innerHTML = `⚠️ ${escHtml(e.message)}`;
+      return;
+    }
+
+    const matches = findMatches(entries, input);
+
+    if (matches.length === 1) {
+      res.className = 'sa-pc-result';
+      res.style.background = '#064e3b';
+      res.innerHTML = `<b>1 proceso:</b> ${escHtml(matches[0])}
+        <div class="sa-pc-btnrow"><button class="sa-pc-btn sa-pc-btn-primary" id="sa-pc-place">Colocar en Default Process</button></div>`;
+      document.getElementById('sa-pc-place').onclick = () => placeProcess(matches[0]);
+    } else if (matches.length > 1) {
+      res.className = 'sa-pc-result';
+      res.style.background = '#1e3a5f';
+      res.innerHTML = `<b>${matches.length} procesos candidatos — elige uno:</b>
+        <div style="margin-top:8px">${matches.map(m => `<button class="sa-pc-procbtn" data-proc="${escHtml(m)}">${escHtml(m)}</button>`).join('')}</div>`;
+      res.querySelectorAll('[data-proc]').forEach(b => { b.onclick = () => placeProcess(b.dataset.proc); });
+    } else {
+      res.className = 'sa-pc-result';
+      res.style.background = '#7c2d12';
+      res.innerHTML = `<b>Combinación no existente.</b> Agrégala al catálogo (compartido):
+        <div class="sa-pc-field" style="margin-top:8px">
+          <label>Proceso</label>
+          <select id="sa-pc-new-proc">${optionsHtml(_modalState.live.procesos, '')}</select>
+        </div>
+        <div class="sa-pc-btnrow"><button class="sa-pc-btn sa-pc-btn-primary" id="sa-pc-add">+ Agregar al catálogo</button></div>`;
+      document.getElementById('sa-pc-add').onclick = addCombination;
+    }
+  }
+
+  async function placeProcess(proc) {
+    const res = document.getElementById('sa-pc-result');
+    const r = await writeProcess(proc);
+    if (r.success) {
+      if (res) { res.style.background = '#064e3b'; res.innerHTML = `✓ Colocado: <b>${escHtml(r.filled)}</b>. Recuerda <b>Guardar</b> el NP.`; }
+      setTimeout(closeModal, 1400);
+    } else if (res) {
+      res.style.background = '#7f1d1d';
+      res.innerHTML = `⚠️ No se pudo colocar: ${escHtml(r.reason)}. Cópialo manual: <b>${escHtml(proc)}</b>`;
+    }
+  }
+
+  async function addCombination() {
+    const sel = document.getElementById('sa-pc-new-proc');
+    const proc = sel?.value;
+    const res = document.getElementById('sa-pc-result');
+    if (!proc) { if (res) res.innerHTML += '<div style="color:#fca5a5;margin-top:6px">Selecciona un proceso.</div>'; return; }
+    const item = buildEntry({ metal: _modalState.metal, linea: _modalState.linea, etiquetas: _modalState.etiquetas }, proc);
+    try {
+      const r = await addOrUpdateEntry(item);
+      if (res) { res.style.background = '#064e3b'; res.innerHTML = `✓ ${r.added ? 'Agregada' : 'Actualizada'} (catálogo: ${r.total}). Compartida con todos.`; }
+      // Recalcular para colocar el proceso ya resuelto.
+      setTimeout(() => placeProcess(proc), 900);
+    } catch (e) {
+      if (res) { res.style.background = '#7f1d1d'; res.innerHTML = `⚠️ No se pudo guardar: ${escHtml(e.message)}`; }
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('sa-pc-modal')?.remove();
+    _modalState = null;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // init — autoInject idempotente
+  // ════════════════════════════════════════════════════════════════════════
+  function init() {
+    if (window.__saProcesoCalcInstalled) return;
+    window.__saProcesoCalcInstalled = true;
+    if (document.documentElement.dataset.saProcesoCalculatorEnabled === 'false') { log('deshabilitado'); return; }
+    log(`init v${VERSION} en ${location.pathname}`);
+    startObserver();
+  }
+
+  return {
+    init, openModal, closeModal,
+    // expuesto para tests/depuración
+    _internals: { normStr, sameSet, findMatches, buildEntry, etiquetasOf }
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.ProcesosCalculator = ProcesosCalculator;
+  ProcesosCalculator.init();
+}
+})();
+// ===== END scripts/proceso-calculator.js =====
+
+// ===== BEGIN scripts/invoice-listing-marker.js =====
+(function(){
+// Invoice Listing Marker
+// Marca visualmente filas del listado de facturas (/Domains/{N}/Invoices...) según:
+//   - Monto cero → fondo rojo sutil + chip "Monto Cero"
+//   - Monto negativo (Nota de Crédito) → fondo amarillo sutil + chip "Nota de Crédito"
+//   - Sin botón de cancelación (Edit Invoice icon) → chip "Borrador"
+//     (independiente: aplica a facturas, NC y montos cero por igual)
+//
+// El total negativo en este listado viene en formato contable: "Total: ($1,234.56)".
+// El indicador de borrador es la presencia del icono Edit Invoice en lugar del
+// icono "Send cancellation request to Contpaq E".
+
+const InvoiceListingMarker = (() => {
+  'use strict';
+
+  const LOG_PREFIX = '[InvoiceListingMarker]';
+  const URL_RE = /\/Domains\/\d+\/Invoices(?:\/|\?|$)/;
+  const ROW_LINK_RE = /\/Domains\/\d+\/Invoices\/\d+/;
+  const TOTAL_RE = /total\s*:\s*(\(\s*)?-?\$?-?\s*([\d,]+(?:\.\d+)?)\s*(\))?/i;
+
+  const COLOR_ZERO_BG = 'rgba(244, 67, 54, 0.20)';
+  const COLOR_NC_BG = 'rgba(255, 193, 7, 0.32)';
+
+  const CHIP_STYLE = {
+    base: 'display:inline-block;font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;letter-spacing:0.3px;text-transform:uppercase;line-height:14px;vertical-align:middle;',
+    zero: 'background:#f44336;color:#fff;',
+    nc: 'background:#ffb300;color:#3a2300;',
+    draft: 'background:#607d8b;color:#fff;',
+  };
+
+  let enabled = true;
+  let observer = null;
+  let scanScheduled = false;
+
+  function shouldRun() {
+    return URL_RE.test(location.pathname + location.search);
+  }
+
+  function findRows() {
+    const headers = document.querySelectorAll('.css-15vf43d');
+    const rows = [];
+    for (const header of headers) {
+      const link = header.querySelector('a[href*="/Invoices/"]');
+      if (!link) continue;
+      const href = link.getAttribute('href') || '';
+      if (!ROW_LINK_RE.test(href)) continue;
+      const row = findRowContainer(header);
+      if (!row) continue;
+      rows.push({ row, header, link, href });
+    }
+    return rows;
+  }
+
+  function findRowContainer(header) {
+    let cur = header.parentElement;
+    let depth = 0;
+    while (cur && depth < 6) {
+      const style = cur.getAttribute('style') || '';
+      if (style.includes('padding: 15px') && style.includes('border-bottom')) return cur;
+      cur = cur.parentElement;
+      depth++;
+    }
+    return null;
+  }
+
+  function parseTotal(row) {
+    const candidates = row.querySelectorAll('div');
+    for (const div of candidates) {
+      const txt = (div.textContent || '').trim();
+      if (!/total\s*:/i.test(txt)) continue;
+      if (!/terms\s*:/i.test(txt)) continue;
+      const m = txt.match(TOTAL_RE);
+      if (!m) continue;
+      const isParenNegative = !!(m[1] && m[3]);
+      const hasMinus = /total\s*:\s*-?\$?\s*-/i.test(txt) || /-\$/i.test(txt);
+      const num = parseFloat(m[2].replace(/,/g, ''));
+      if (!isFinite(num)) continue;
+      const signed = isParenNegative || hasMinus ? -Math.abs(num) : num;
+      return signed;
+    }
+    return null;
+  }
+
+  function isDraft(row) {
+    return !!row.querySelector('svg[data-testid="EditIcon"], [aria-label="Edit Invoice"]');
+  }
+
+  function clearMarks(row, header) {
+    row.style.backgroundColor = '';
+    const existing = header.querySelector(':scope > .sa-ilm-chips');
+    if (existing) existing.remove();
+    const stale = header.parentElement && header.parentElement.querySelector(':scope > .sa-ilm-chips');
+    if (stale) stale.remove();
+    delete row.dataset.saIlmState;
+  }
+
+  function applyMarks(row, header, total, draft) {
+    const isZero = total === 0;
+    const isNC = total < 0;
+    const state = `${total}|${draft ? 1 : 0}|${isZero ? 'z' : isNC ? 'nc' : 'p'}`;
+    if (row.dataset.saIlmState === state) return;
+    row.dataset.saIlmState = state;
+
+    if (isZero) row.style.backgroundColor = COLOR_ZERO_BG;
+    else if (isNC) row.style.backgroundColor = COLOR_NC_BG;
+    else row.style.backgroundColor = '';
+
+    const stale = header.parentElement && header.parentElement.querySelector(':scope > .sa-ilm-chips');
+    if (stale) stale.remove();
+
+    let chipsContainer = header.querySelector(':scope > .sa-ilm-chips');
+    if (!chipsContainer) {
+      chipsContainer = document.createElement('div');
+      chipsContainer.className = 'sa-ilm-chips';
+      chipsContainer.style.cssText = 'margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;line-height:1;';
+      header.appendChild(chipsContainer);
+    }
+    chipsContainer.innerHTML = '';
+
+    if (isZero) chipsContainer.appendChild(makeChip('Monto Cero', CHIP_STYLE.zero));
+    if (isNC) chipsContainer.appendChild(makeChip('Nota de Crédito', CHIP_STYLE.nc));
+    if (draft) chipsContainer.appendChild(makeChip('Borrador', CHIP_STYLE.draft));
+
+    if (!isZero && !isNC && !draft) chipsContainer.remove();
+  }
+
+  function makeChip(text, colorStyle) {
+    const span = document.createElement('span');
+    span.className = 'sa-ilm-chip';
+    span.style.cssText = CHIP_STYLE.base + colorStyle;
+    span.textContent = text;
+    return span;
+  }
+
+  function scan() {
+    scanScheduled = false;
+    if (!enabled || !shouldRun()) return;
+    const rows = findRows();
+    for (const { row, header } of rows) {
+      const total = parseTotal(row);
+      if (total === null) continue;
+      const draft = isDraft(row);
+      applyMarks(row, header, total, draft);
+    }
+  }
+
+  function scheduleScan() {
+    if (scanScheduled) return;
+    scanScheduled = true;
+    requestAnimationFrame(() => setTimeout(scan, 80));
+  }
+
+  function startObserver() {
+    if (observer) return;
+    observer = new MutationObserver(() => scheduleScan());
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function stopObserver() {
+    if (observer) { observer.disconnect(); observer = null; }
+  }
+
+  function patchHistoryNav() {
+    if (window.__saIlmHistoryPatched) return;
+    window.__saIlmHistoryPatched = true;
+    const _push = history.pushState;
+    const _replace = history.replaceState;
+    history.pushState = function () { _push.apply(this, arguments); scheduleScan(); };
+    history.replaceState = function () { _replace.apply(this, arguments); scheduleScan(); };
+    window.addEventListener('popstate', scheduleScan);
+  }
+
+  function init() {
+    enabled = document.documentElement.dataset.saInvoiceListingMarkerEnabled !== 'false';
+    if (!enabled) { console.log(LOG_PREFIX, 'Deshabilitado'); return; }
+    if (window.__saIlmInitDone) { console.log(LOG_PREFIX, 'Ya inicializado — skip'); return; }
+    window.__saIlmInitDone = true;
+    patchHistoryNav();
+    startObserver();
+    scheduleScan();
+    console.log(LOG_PREFIX, 'Inicializado');
+  }
+
+  return { init };
+})();
+
+if (typeof window !== 'undefined') {
+  window.InvoiceListingMarker = InvoiceListingMarker;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => InvoiceListingMarker.init());
+  } else {
+    InvoiceListingMarker.init();
+  }
+}
+})();
+// ===== END scripts/invoice-listing-marker.js =====
+
+// ===== BEGIN scripts/paros-linea.js =====
+(function(){
+// Steelhead Paros de Línea
+// Skin operador sobre MaintenanceEvent con botón flotante Andon.
+// Flujo: CreateMaintenanceEvent (inicio) → UpdateMaintenanceEvent/Comment (durante)
+//        → CreateMaintenanceNodeEvent + CreateManySensorMeasurements + UpdateMaintenanceEvent{completedAt} (al detener)
+//        → /api/files + CreateUserFile + CreateMaintenanceEventUserFile (evidencia)
+// Depende de: SteelheadAPI + window.REMOTE_CONFIG
+
+const ParosLinea = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const cfg = () => window.REMOTE_CONFIG;
+
+  const STATE_KEY = 'sa_paros_active_event';
+  const LAST_LINE_KEY = 'sa_paros_last_line';
+  const EQUIP_CACHE_KEY = 'sa_paros_line_equipments_v1';
+  const EQUIP_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+
+  const RESPONSABLE_AREAS = {
+    PLM: { label: 'Mantenimiento',          icon: '🔧' },
+    PLP: { label: 'Producción',             icon: '🏭' },
+    PLO: { label: 'Operaciones',            icon: '⚙️' },
+    PLR: { label: 'Recursos Humanos',       icon: '👥' },
+    PLC: { label: 'Calidad',                icon: '✅' },
+    PLS: { label: 'Seguridad',              icon: '🛡️' },
+    PLA: { label: 'Almacén',                icon: '📦' },
+    PLI: { label: 'Ingeniería',             icon: '🛠️' },
+    PLL: { label: 'Laboratorio y Procesos', icon: '🧪' },
+    PLN: { label: 'Planeación',             icon: '📅' },
+    PLT: { label: 'TI (Sistemas)',          icon: '💻' }
+  };
+  const DEFAULT_AREA_ICON = '📌';
+
+  function normalizeEs(s) {
+    return String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().trim();
+  }
+
+  const LINE_LABEL_RE = /^(?:l[ií]neas?|c[eé]lulas?)$/i;
+  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders)(?:\/|$)/;
+
+  let state = {
+    currentUser: null,
+    allNodes: [],
+    responsableOptions: [],
+    allEquipments: [],
+    selectedSensorId: null,
+    activeEvent: null,
+    timerInterval: null,
+    fabTimerInterval: null,
+    floatingBtn: null,
+    catalogsLoaded: false
+  };
+
+  async function init() {
+    if (window.__saParosLineaInitDone) return;
+    window.__saParosLineaInitDone = true;
+
+    try {
+      state.currentUser = await fetchCurrentUser();
+    } catch (e) {
+      console.warn('[SA] ParosLinea: no se pudo obtener usuario actual:', e.message);
+      return;
+    }
+    if (!state.currentUser) return;
+    if (!isAuthorized(state.currentUser)) {
+      console.log('[SA] ParosLinea: usuario sin rol operador/admin — botón omitido');
+      return;
+    }
+
+    injectStyles();
+
+    const saved = readActiveEvent();
+    if (saved) {
+      state.activeEvent = saved;
+      state.selectedSensorId = saved.selectedSensorId || null;
+    }
+
+    installUrlChangeListener();
+    syncFabVisibility();
+
+    if (saved) {
+      loadCatalogs().catch(e => console.warn('[SA] ParosLinea catálogos:', e.message));
+      renderRunningView().catch(e => console.warn('[SA] ParosLinea reanudar:', e.message));
+    }
+  }
+
+  function isAllowedPath() {
+    return ALLOWED_PATH_RE.test(location.pathname);
+  }
+
+  function syncFabVisibility() {
+    const should = isAllowedPath() || !!state.activeEvent;
+    const existing = document.getElementById('sa-pl-fab-dock');
+    if (should && !existing) renderFloatingButton();
+    else if (!should && existing) {
+      existing.remove();
+      stopFabTimer();
+      state.floatingBtn = null;
+    }
+  }
+
+  function installUrlChangeListener() {
+    if (window.__saParosUrlListenerInstalled) {
+      window.addEventListener('sa-urlchange', syncFabVisibility);
+      return;
+    }
+    window.__saParosUrlListenerInstalled = true;
+    const fire = () => window.dispatchEvent(new Event('sa-urlchange'));
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () {
+        const r = orig.apply(this, arguments);
+        fire();
+        return r;
+      };
+    });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('hashchange', fire);
+    window.addEventListener('sa-urlchange', syncFabVisibility);
+  }
+
+  async function fetchCurrentUser() {
+    // CurrentUser fue deprecada server-side 2026-04-27 (HTTP 400 "Must provide a query string.").
+    // CurrentUserDetails sigue activa pero solo trae id/isAdmin (sin currentManagedPermissions).
+    // isAuthorized cae al branch "no hay info de permisos finos → permitido", así que el
+    // gating queda solo por isAdmin (y por requiredPermissions del config si están presentes).
+    const data = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
+    const u = data?.currentSession?.userByUserId;
+    if (!u) return null;
+    return {
+      id: u.id,
+      name: u.name || null,
+      isAdmin: u.isAdmin === true,
+      managedPermissions: undefined
+    };
+  }
+
+  function isAuthorized(user) {
+    if (user.isAdmin) return true;
+    const req = cfg()?.apps?.find(a => a.id === 'paros-linea')?.requiredPermissions || [];
+    if (req.length === 0) return true;
+    if (!Array.isArray(user.managedPermissions)) return true;
+    return req.every(p => user.managedPermissions.includes(p));
+  }
+
+  function readActiveEvent() {
+    try { return JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch { return null; }
+  }
+  function writeActiveEvent(ev) {
+    try {
+      if (!ev) localStorage.removeItem(STATE_KEY);
+      else localStorage.setItem(STATE_KEY, JSON.stringify(ev));
+    } catch (_) {}
+  }
+
+  function pushComment(ev, { text, author, auto = false, at }) {
+    if (!ev) return;
+    if (!Array.isArray(ev.comments)) ev.comments = [];
+    ev.comments.push({
+      at: at || Date.now(),
+      text: String(text || '').trim(),
+      author: author || (state.currentUser?.name || 'Operador'),
+      auto: !!auto
+    });
+    writeActiveEvent(ev);
+    renderCommentsList();
+  }
+
+  function renderCommentsList() {
+    const host = document.getElementById('pl-comments-list');
+    if (!host) return;
+    const comments = (state.activeEvent?.comments || []).slice().reverse();
+    if (!comments.length) {
+      host.innerHTML = '<div class="pl-comments-empty">Aún no hay comentarios en este paro.</div>';
+      return;
+    }
+    host.innerHTML = comments.map(c => {
+      const t = new Date(c.at);
+      const hh = String(t.getHours()).padStart(2, '0');
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      const ss = String(t.getSeconds()).padStart(2, '0');
+      const meta = escapeHtml(c.author || 'Operador') + ' · ' + hh + ':' + mm + ':' + ss +
+        (c.auto ? ' · automático' : '');
+      return '<div class="pl-comment' + (c.auto ? ' auto' : '') + '">' +
+        '<div class="pl-comment-meta">' + meta + '</div>' +
+        '<div class="pl-comment-text">' + escapeHtml(c.text) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function injectStyles() {
+    if (document.getElementById('dl9-paros-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'dl9-paros-styles';
+    s.textContent = [
+      '.pl-fab-dock{position:fixed;bottom:24px;left:24px;z-index:99998;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none}',
+      '.pl-fab-dock > *{pointer-events:auto}',
+      '.pl-fab-ring{display:flex;align-items:center;justify-content:center;border-radius:50%;padding:10px;box-shadow:0 8px 24px rgba(220,38,38,0.55)}',
+      '.pl-fab-dock.running .pl-fab-ring{background:repeating-linear-gradient(45deg,#dc2626 0 14px,#facc15 14px 28px);animation:plStripeScroll 1.4s linear infinite}',
+      '.pl-fab{width:76px;height:76px;border-radius:50%;background:#dc2626;color:#fff;border:none;font-size:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:transform .15s ease;box-shadow:0 2px 8px rgba(0,0,0,0.3) inset, 0 0 0 3px #0f172a}',
+      '.pl-fab:not(.running):hover{transform:scale(1.08)}',
+      '.pl-fab.running{animation:plIconPulse 0.95s ease-in-out infinite}',
+      '@keyframes plIconPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}',
+      '.pl-fab-timer-wrap{padding:5px;border-radius:12px;background:repeating-linear-gradient(45deg,#dc2626 0 10px,#facc15 10px 20px);animation:plStripeScroll 1.4s linear infinite;box-shadow:0 6px 18px rgba(0,0,0,0.55)}',
+      '.pl-fab-timer{font-family:"SF Mono","Menlo","Consolas",monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:800;color:#fef3c7;background:#0f172a;border-radius:8px;padding:8px 16px;letter-spacing:1.5px;white-space:nowrap;text-align:center;line-height:1}',
+      '@media (prefers-reduced-motion:reduce){.pl-fab.running,.pl-fab-dock.running .pl-fab-ring,.pl-fab-timer-wrap{animation:none}}',
+      '.pl-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.88);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
+      '.pl-modal{background:#1e293b;color:#f1f5f9;border-radius:18px;padding:32px 36px;width:620px;max-width:94vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);box-sizing:border-box}',
+      '.pl-modal.running{width:840px;text-align:center}',
+      '.pl-modal h2{margin:0 0 18px;font-size:26px;color:#fecaca}',
+      '.pl-row{margin-bottom:16px}',
+      '.pl-label{font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}',
+      '.pl-select,.pl-input,.pl-textarea{width:100%;padding:12px 14px;border-radius:9px;border:1px solid #475569;background:#0f172a;color:#f1f5f9;font-size:16px;box-sizing:border-box}',
+      '.pl-select:disabled{opacity:.6}',
+      '.pl-textarea{min-height:68px;resize:vertical;font-family:inherit}',
+      '.pl-btnrow{display:flex;gap:12px;justify-content:flex-end;margin-top:24px;flex-wrap:wrap}',
+      '.pl-btn{padding:14px 26px;border:none;border-radius:9px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:.3px}',
+      '.pl-btn:disabled{opacity:.5;cursor:not-allowed}',
+      '.pl-btn-cancel{background:#475569;color:#f1f5f9}',
+      '.pl-btn-primary{background:#dc2626;color:#fff}',
+      '.pl-btn-ghost{background:transparent;color:#cbd5e1;border:1px solid #475569}',
+      '.pl-btn-stop{background:#dc2626;color:#fff;font-size:24px;padding:22px 0;width:100%;margin-top:20px}',
+      '.pl-btn-stop:hover{background:#b91c1c}',
+      '.pl-cone{font-size:112px;line-height:1;margin-bottom:6px}',
+      '.pl-title{font-size:32px;font-weight:800;color:#fecaca;letter-spacing:1.5px;margin:8px 0}',
+      '.pl-timer{font-size:88px;font-family:"SF Mono","Menlo","Consolas",monospace;font-variant-numeric:tabular-nums;color:#fef3c7;margin:10px 0 22px}',
+      '.pl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;text-align:left;margin-top:14px}',
+      '.pl-static{background:#0f172a;border:1px solid #334155;border-radius:9px;padding:12px 14px;font-size:16px}',
+      '.pl-static strong{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;font-weight:700}',
+      '.pl-comment-row{display:flex;gap:10px;margin-top:16px;align-items:flex-start}',
+      '.pl-comment-row .pl-textarea{flex:1;min-height:56px}',
+      '.pl-comments{margin-top:14px;text-align:left;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:10px 12px;max-height:220px;overflow-y:auto}',
+      '.pl-comments-title{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:8px}',
+      '.pl-comments-empty{font-size:13px;color:#64748b;font-style:italic;padding:4px 0}',
+      '.pl-comment{padding:8px 10px;background:#1e293b;border-left:3px solid #60a5fa;border-radius:6px;margin-bottom:6px;font-size:14px;line-height:1.35}',
+      '.pl-comment.auto{border-left-color:#a78bfa;opacity:.9}',
+      '.pl-comment .pl-comment-meta{font-size:11px;color:#94a3b8;margin-bottom:3px}',
+      '.pl-comment .pl-comment-text{color:#f1f5f9;white-space:pre-wrap;word-break:break-word}',
+      '.pl-summary{text-align:center;background:#0f172a;border-radius:14px;padding:26px;margin:10px 0}',
+      '.pl-summary .pl-big{font-size:50px;font-family:"SF Mono","Menlo","Consolas",monospace;color:#86efac;margin:8px 0}',
+      '.pl-dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;text-align:left;margin-top:14px;font-size:15px}',
+      '.pl-dl dt{color:#94a3b8}',
+      '.pl-dl dd{margin:0;color:#f1f5f9}',
+      '.pl-error{color:#fecaca;background:#7f1d1d;padding:12px 14px;border-radius:9px;margin-bottom:14px;font-size:15px}',
+      '.pl-loading{text-align:center;padding:22px;color:#94a3b8;font-size:15px}',
+      '.pl-striped-frame{padding:26px;border-radius:28px;background:repeating-linear-gradient(45deg,#dc2626 0 22px,#facc15 22px 44px);background-size:200% 200%;box-shadow:0 25px 70px rgba(0,0,0,0.7);max-width:96vw;max-height:96vh;box-sizing:border-box;display:flex;animation:plStripeScroll 1.4s linear infinite}',
+      '.pl-striped-frame > .pl-modal.running{box-shadow:none;max-width:100%;max-height:calc(96vh - 52px)}',
+      '@keyframes plStripeScroll{0%{background-position:0 0}100%{background-position:62.23px 0}}',
+      '@media (prefers-reduced-motion:reduce){.pl-striped-frame{animation:none}}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  function renderFloatingButton() {
+    const existing = document.getElementById('sa-pl-fab-dock');
+    if (existing) existing.remove();
+    stopFabTimer();
+
+    const running = !!state.activeEvent;
+    const dock = document.createElement('div');
+    dock.className = 'pl-fab-dock' + (running ? ' running' : '');
+    dock.id = 'sa-pl-fab-dock';
+
+    const ring = document.createElement('div');
+    ring.className = 'pl-fab-ring';
+
+    const btn = document.createElement('button');
+    btn.className = 'pl-fab' + (running ? ' running' : '');
+    btn.id = 'sa-pl-fab';
+    btn.setAttribute('aria-label', 'Paro de Línea');
+    btn.title = running ? 'Paro de Línea en curso — click para ver' : 'Registrar Paro de Línea';
+    btn.textContent = '⚠️';
+    btn.addEventListener('click', () => {
+      if (state.activeEvent) renderRunningView();
+      else openStopDialog();
+    });
+    ring.appendChild(btn);
+    dock.appendChild(ring);
+
+    if (running) {
+      const wrap = document.createElement('div');
+      wrap.className = 'pl-fab-timer-wrap';
+      const chip = document.createElement('div');
+      chip.className = 'pl-fab-timer';
+      chip.id = 'sa-pl-fab-timer';
+      chip.textContent = formatElapsed(Date.now() - state.activeEvent.createdAt);
+      wrap.appendChild(chip);
+      dock.appendChild(wrap);
+    }
+
+    document.body.appendChild(dock);
+    state.floatingBtn = btn;
+
+    if (running) startFabTimer();
+  }
+
+  function updateFabStyle() {
+    const should = isAllowedPath() || !!state.activeEvent;
+    const existing = document.getElementById('sa-pl-fab-dock');
+    if (existing) existing.remove();
+    stopFabTimer();
+    state.floatingBtn = null;
+    if (should) renderFloatingButton();
+  }
+
+  function startFabTimer() {
+    stopFabTimer();
+    const tick = () => {
+      const chip = document.getElementById('sa-pl-fab-timer');
+      if (!chip || !state.activeEvent) { stopFabTimer(); return; }
+      chip.textContent = formatElapsed(Date.now() - state.activeEvent.createdAt);
+    };
+    tick();
+    state.fabTimerInterval = setInterval(tick, 1000);
+  }
+
+  function stopFabTimer() {
+    if (state.fabTimerInterval) {
+      clearInterval(state.fabTimerInterval);
+      state.fabTimerInterval = null;
+    }
+  }
+
+  function removeOverlay() {
+    const ov = document.getElementById('sa-pl-overlay');
+    if (ov) ov.remove();
+    if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+  }
+
+  function showOverlay(innerHTML, { wide } = {}) {
+    removeOverlay();
+    const ov = document.createElement('div');
+    ov.className = 'pl-overlay';
+    ov.id = 'sa-pl-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'pl-modal' + (wide ? ' running' : '');
+    modal.innerHTML = innerHTML;
+    if (wide) {
+      const frame = document.createElement('div');
+      frame.className = 'pl-striped-frame';
+      frame.appendChild(modal);
+      ov.appendChild(frame);
+    } else {
+      ov.appendChild(modal);
+    }
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  function areaForNode(node) {
+    const m = (node?.name || '').match(/\bPL([A-Z])\b/);
+    const code = m ? 'PL' + m[1] : '';
+    return RESPONSABLE_AREAS[code] || { label: code || 'Otros', icon: DEFAULT_AREA_ICON };
+  }
+
+  function buildResponsableOptions(paroNodes) {
+    const items = paroNodes.map(n => {
+      const area = areaForNode(n);
+      const suffix = (n.name || '')
+        .replace(/paro\s+de\s+l[ií]nea\s*/gi, '')
+        .replace(/PL[A-Z]\s*[\-:]?\s*/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      const sameAsArea = suffix && normalizeEs(suffix) === normalizeEs(area.label);
+      const label = (suffix && !sameAsArea) ? area.label + ' — ' + suffix : area.label;
+      return { id: n.id, name: n.name, area, display: area.icon + ' ' + label, sortKey: area.label + ' ' + suffix };
+    });
+    items.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'es'));
+    return items;
+  }
+
+  function extractLabelMeta(rawLabel) {
+    if (!rawLabel || typeof rawLabel !== 'object') return { ids: [], names: [] };
+    const ids = [];
+    const names = [];
+    const candidates = [rawLabel, rawLabel.labelByLabelId, rawLabel.label];
+    for (const c of candidates) {
+      if (!c || typeof c !== 'object') continue;
+      if (typeof c.id === 'number' || typeof c.id === 'string') ids.push(c.id);
+      if (typeof c.name === 'string') names.push(c.name);
+    }
+    if (rawLabel.labelId != null) ids.push(rawLabel.labelId);
+    if (typeof rawLabel.labelName === 'string') names.push(rawLabel.labelName);
+    return { ids, names };
+  }
+
+  async function fetchLineLabelIds() {
+    const conditions = [{ forEquipment: true }, {}];
+    for (const condition of conditions) {
+      try {
+        const data = await api().query('AllLabels', { condition }, 'AllLabels');
+        const nodes = data?.allLabels?.nodes || [];
+        const matched = nodes.filter(l =>
+          typeof l?.name === 'string' && LINE_LABEL_RE.test(l.name.trim())
+        );
+        const ids = matched.map(l => l.id).filter(id => id != null);
+        if (nodes.length > 0) {
+          if (matched.length === 0) {
+            console.warn('[SA] ParosLinea: AllLabels devolvió ' + nodes.length +
+              ' etiquetas pero ninguna coincide con Líneas/Células — ejemplos:',
+              nodes.slice(0, 12).map(l => l?.name).join(' | '));
+          } else {
+            console.log('[SA] ParosLinea: etiquetas objetivo encontradas:',
+              matched.map(l => l.name + '(' + l.id + ')').join(', '));
+          }
+          return new Set(ids);
+        }
+      } catch (e) {
+        console.warn('[SA] ParosLinea AllLabels (' + JSON.stringify(condition) + '):', e.message);
+      }
+    }
+    return new Set();
+  }
+
+  function readCachedLineEquipments() {
+    try {
+      const raw = localStorage.getItem(EQUIP_CACHE_KEY);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || !Array.isArray(obj.equipments)) return null;
+      if (Date.now() - (obj.savedAt || 0) > EQUIP_CACHE_TTL_MS) return null;
+      return obj.equipments;
+    } catch { return null; }
+  }
+  function writeCachedLineEquipments(equipments) {
+    try {
+      localStorage.setItem(EQUIP_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(), equipments
+      }));
+    } catch (_) {}
+  }
+  function clearCachedLineEquipments() {
+    try { localStorage.removeItem(EQUIP_CACHE_KEY); } catch (_) {}
+  }
+
+  async function fetchAllLineEquipments(targetLabelIds, onProgress) {
+    const PAGE = 500;
+    const matchByLine = (e) => {
+      const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
+      for (const l of labels) {
+        const meta = extractLabelMeta(l);
+        if (targetLabelIds.size && meta.ids.some(id => targetLabelIds.has(id))) return true;
+        if (meta.names.some(n => LINE_LABEL_RE.test(String(n).trim()))) return true;
+      }
+      return false;
+    };
+
+    const matched = [];
+    let offset = 0;
+    let total = null;
+    let scanned = 0;
+    let safety = 0;
+    while (safety++ < 20) {
+      const data = await api().query('AllEquipments', {
+        fetchEquipmentType: false,
+        fetchStation: false,
+        fetchLabel: true,
+        fetchLocation: false,
+        endOfService: true,
+        orderBy: ['NAME_ASC'],
+        offset,
+        first: PAGE,
+        searchQuery: ''
+      }, 'AllEquipments');
+      const nodes = data?.pagedData?.nodes || [];
+      if (total == null) total = data?.pagedData?.totalCount ?? null;
+      scanned += nodes.length;
+      for (const n of nodes) {
+        if (matchByLine(n)) matched.push({ id: n.id, name: n.name, idInDomain: n.idInDomain });
+      }
+      if (typeof onProgress === 'function') onProgress(scanned, total, matched.length);
+      if (nodes.length < PAGE) break;
+      if (total != null && scanned >= total) break;
+      offset += PAGE;
+    }
+    return { matched, scanned, total };
+  }
+
+  async function loadCatalogs(force = false) {
+    if (state.catalogsLoaded && !force) return;
+
+    const dlg = await api().query('CreateMaintenanceEventDialogQuery', {},
+      'CreateMaintenanceEventDialogQuery');
+    const allNodes = dlg?.allMaintenanceNodes?.nodes || [];
+    const paroNodes = allNodes.filter(n => /paro de l.nea/i.test(n.name || ''));
+    if (paroNodes.length === 0) {
+      throw new Error('No hay nodos de mantenimiento con "Paro de Línea" configurados. Contacta al administrador.');
+    }
+    state.allNodes = paroNodes;
+    state.responsableOptions = buildResponsableOptions(paroNodes);
+
+    if (!force) {
+      const cached = readCachedLineEquipments();
+      if (cached && cached.length > 0) {
+        state.allEquipments = cached;
+        console.log('[SA] ParosLinea: ' + cached.length + ' líneas/células desde caché');
+        state.catalogsLoaded = true;
+        return;
+      }
+    }
+
+    const targetLabelIds = await fetchLineLabelIds();
+    const onProgress = (scanned, total, found) => {
+      const el = document.getElementById('pl-pre-content');
+      if (el && el.classList.contains('pl-loading')) {
+        el.textContent = 'Cargando catálogo de equipos… ' + scanned +
+          (total ? '/' + total : '') + ' (líneas/células: ' + found + ')';
+      }
+    };
+    const { matched, scanned, total } = await fetchAllLineEquipments(targetLabelIds, onProgress);
+    console.log('[SA] ParosLinea: ' + matched.length + ' equipos con etiqueta Líneas/Células (de ' + scanned + (total ? '/' + total : '') + ')');
+
+    if (matched.length === 0) {
+      throw new Error('No se encontraron equipos con etiqueta "Línea" o "Célula". Revisa que estén etiquetados en Steelhead.');
+    }
+    state.allEquipments = matched;
+    writeCachedLineEquipments(matched);
+    state.catalogsLoaded = true;
+  }
+
+  async function inferLinePrefix() {
+    const wbMatch = location.pathname.match(/\/Workboards\/(\d+)/);
+    if (wbMatch) {
+      try {
+        const data = await api().query('WorkboardById',
+          { id: parseInt(wbMatch[1], 10) }, 'WorkboardById');
+        const name = data?.workboardById?.name;
+        if (name) {
+          try { localStorage.setItem(LAST_LINE_KEY, name); } catch (_) {}
+          console.log('[SA] ParosLinea: workboard activo =', name);
+          return name;
+        }
+      } catch (e) {
+        console.warn('[SA] ParosLinea: WorkboardById falló:', e.message);
+      }
+    }
+    const headings = document.querySelectorAll('h1, h2, h3, [class*="breadcrumb"], [class*="Breadcrumb"], [class*="page-title"], [class*="PageTitle"]');
+    for (const h of headings) {
+      const txt = h.textContent || '';
+      const m = txt.match(/\b(T\d{2,3}[A-Z\-]*)\b/);
+      if (m) return m[1];
+    }
+    try { return localStorage.getItem(LAST_LINE_KEY); } catch { return null; }
+  }
+
+  function matchEquipmentByPrefix(prefix) {
+    if (!prefix || !state.allEquipments.length) return null;
+    const p = prefix.toUpperCase();
+    let match = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(p));
+    if (match) return match;
+    const tokenMatch = p.match(/^(T\d{2,3})/);
+    if (tokenMatch) {
+      const token = tokenMatch[1];
+      match = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(token))
+        || state.allEquipments.find(e => (e.name || '').toUpperCase().includes(token));
+      if (match) return match;
+    }
+    return state.allEquipments.find(e => (e.name || '').toUpperCase().includes(p)) || null;
+  }
+
+  function responsableLabelFromNodeName(name) {
+    const area = areaForNode({ name });
+    return area.icon + ' ' + area.label;
+  }
+
+  async function loadSensorsForNode(nodeId) {
+    const data = await api().query('OperatorMaintenanceNodeDialogQuery',
+      { nodeId, maintenanceEventId: state.activeEvent?.id || 0 },
+      'OperatorMaintenanceNodeDialogQuery');
+    const raw = data?.maintenanceNodeById?.maintenanceNodeSensorsByMaintenanceNodeId?.nodes || [];
+    return raw
+      .map(s => s.sensorBySensorId)
+      .filter(Boolean)
+      .map(s => ({ id: s.id, name: s.name }));
+  }
+
+  async function openStopDialog() {
+    if (state.activeEvent) { renderRunningView(); return; }
+
+    const ov = showOverlay(
+      '<h2>⚠️ Registrar Paro de Línea</h2>' +
+      '<div id="pl-pre-content" class="pl-loading">Cargando catálogos…</div>'
+    );
+
+    try {
+      await loadCatalogs();
+    } catch (e) {
+      document.getElementById('pl-pre-content').innerHTML =
+        '<div class="pl-error">' + escapeHtml(e.message) + '</div>' +
+        '<div class="pl-btnrow"><button class="pl-btn pl-btn-cancel" id="pl-pre-cancel">CERRAR</button></div>';
+      document.getElementById('pl-pre-cancel').onclick = removeOverlay;
+      return;
+    }
+
+    const responsableOptionsHtml = (state.responsableOptions || [])
+      .map(o => '<option value="' + o.id + '">' + escapeHtml(o.display) + '</option>')
+      .join('');
+
+    const linePrefix = await inferLinePrefix();
+    const defaultEq = matchEquipmentByPrefix(linePrefix);
+    const equipmentOptions = state.allEquipments
+      .map(e => '<option value="' + e.id + '"' + (defaultEq && defaultEq.id === e.id ? ' selected' : '') + '>' + escapeHtml(e.name) + '</option>')
+      .join('');
+
+    document.getElementById('pl-pre-content').innerHTML =
+      '<div class="pl-row">' +
+        '<label class="pl-label">Responsable (categoría)</label>' +
+        '<select class="pl-select" id="pl-node-select"><option value="">— Selecciona —</option>' + responsableOptionsHtml + '</select>' +
+      '</div>' +
+      '<div class="pl-row">' +
+        '<label class="pl-label">Motivo</label>' +
+        '<select class="pl-select" id="pl-sensor-select" disabled><option value="">Selecciona responsable primero…</option></select>' +
+      '</div>' +
+      '<div class="pl-row">' +
+        '<label class="pl-label">Línea / Equipo</label>' +
+        '<select class="pl-select" id="pl-eq-select"><option value="">— Selecciona equipo —</option>' + equipmentOptions + '</select>' +
+      '</div>' +
+      '<div class="pl-row">' +
+        '<label class="pl-label">Comentario inicial (opcional)</label>' +
+        '<textarea class="pl-textarea" id="pl-comment" placeholder="Ej: Falla de agitación en tanque 3"></textarea>' +
+      '</div>' +
+      '<div class="pl-btnrow">' +
+        '<button class="pl-btn pl-btn-cancel" id="pl-cancel">CANCELAR</button>' +
+        '<button class="pl-btn pl-btn-primary" id="pl-start" disabled>INICIAR PARO</button>' +
+      '</div>';
+
+    const nodeSel = document.getElementById('pl-node-select');
+    const sensorSel = document.getElementById('pl-sensor-select');
+    const eqSel = document.getElementById('pl-eq-select');
+    const startBtn = document.getElementById('pl-start');
+
+    const refreshStartState = () => {
+      startBtn.disabled = !(nodeSel.value && sensorSel.value && eqSel.value);
+    };
+
+    nodeSel.addEventListener('change', async () => {
+      sensorSel.disabled = true;
+      sensorSel.innerHTML = '<option value="">Cargando motivos…</option>';
+      refreshStartState();
+      if (!nodeSel.value) return;
+      try {
+        const sensors = await loadSensorsForNode(parseInt(nodeSel.value, 10));
+        if (!sensors.length) {
+          sensorSel.innerHTML = '<option value="">(sin motivos configurados)</option>';
+        } else {
+          sensorSel.innerHTML = '<option value="">— Selecciona motivo —</option>' +
+            sensors.map(s => '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>').join('');
+          sensorSel.disabled = false;
+        }
+      } catch (e) {
+        sensorSel.innerHTML = '<option value="">Error: ' + escapeHtml(e.message.substring(0, 60)) + '</option>';
+      }
+      refreshStartState();
+    });
+
+    sensorSel.addEventListener('change', refreshStartState);
+    eqSel.addEventListener('change', refreshStartState);
+
+    document.getElementById('pl-cancel').onclick = removeOverlay;
+    startBtn.onclick = async () => {
+      startBtn.disabled = true;
+      startBtn.textContent = 'Iniciando…';
+      try {
+        const nodeId = parseInt(nodeSel.value, 10);
+        const equipmentId = parseInt(eqSel.value, 10);
+        const sensorId = parseInt(sensorSel.value, 10);
+        const node = state.allNodes.find(n => n.id === nodeId);
+        const eq = state.allEquipments.find(e => e.id === equipmentId);
+        const comment = document.getElementById('pl-comment').value.trim();
+
+        const data = await api().query('CreateMaintenanceEvent', {
+          maintenancePlanId: null,
+          maintenanceNodeId: nodeId,
+          equipmentId,
+          assigneeId: state.currentUser.id
+        }, 'CreateMaintenanceEvent');
+
+        const ev = data?.createMaintenanceEvent?.maintenanceEvent;
+        if (!ev) throw new Error('Respuesta sin maintenanceEvent');
+
+        state.activeEvent = {
+          id: ev.id,
+          idInDomain: ev.idInDomain,
+          nodeId,
+          nodeName: node?.name || '',
+          equipmentId,
+          equipmentName: eq?.name || '',
+          responsable: responsableLabelFromNodeName(node?.name),
+          createdAt: Date.now(),
+          selectedSensorId: sensorId,
+          comments: []
+        };
+        state.selectedSensorId = sensorId;
+        writeActiveEvent(state.activeEvent);
+
+        if (comment) {
+          try {
+            await api().query('CreateMaintenanceEventComment',
+              { comment, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+            pushComment(state.activeEvent, { text: comment });
+          } catch (e) { console.warn('[SA] comentario inicial falló:', e.message); }
+        }
+
+        const prefix = (eq?.name || '').split(/[\s-]/)[0];
+        if (prefix) { try { localStorage.setItem(LAST_LINE_KEY, prefix); } catch (_) {} }
+
+        updateFabStyle();
+        await renderRunningView();
+      } catch (e) {
+        const modal = ov.querySelector('.pl-modal');
+        const err = document.createElement('div');
+        err.className = 'pl-error';
+        err.textContent = 'Error: ' + e.message;
+        const btnrow = modal.querySelector('.pl-btnrow');
+        if (btnrow) modal.insertBefore(err, btnrow);
+        else modal.appendChild(err);
+        startBtn.disabled = false;
+        startBtn.textContent = 'INICIAR PARO';
+      }
+    };
+  }
+
+  async function renderRunningView() {
+    const ev = state.activeEvent;
+    if (!ev) return;
+
+    if (!state.catalogsLoaded) {
+      try { await loadCatalogs(); } catch (e) { console.warn('[SA] catálogos:', e.message); }
+    }
+
+    let sensors = [];
+    try { sensors = await loadSensorsForNode(ev.nodeId); } catch (e) { console.warn('[SA] sensores:', e.message); }
+
+    const eqOptions = state.allEquipments
+      .map(e => '<option value="' + e.id + '"' + (e.id === ev.equipmentId ? ' selected' : '') + '>' + escapeHtml(e.name) + '</option>')
+      .join('');
+    const sensorOptions = sensors
+      .map(s => '<option value="' + s.id + '"' + (s.id === state.selectedSensorId ? ' selected' : '') + '>' + escapeHtml(s.name) + '</option>')
+      .join('');
+
+    showOverlay(
+      '<div class="pl-cone">⚠️</div>' +
+      '<div class="pl-title">PARO DE LÍNEA EN CURSO</div>' +
+      '<div class="pl-timer" id="pl-timer">00:00:00</div>' +
+      '<div class="pl-grid">' +
+        '<div class="pl-static"><strong>Responsable</strong>' + escapeHtml(ev.responsable || '—') + '</div>' +
+        '<div class="pl-static"><strong>Evento</strong>#' + ev.idInDomain + '</div>' +
+        '<div>' +
+          '<label class="pl-label">Línea / Equipo</label>' +
+          '<select class="pl-select" id="pl-run-eq">' + eqOptions + '</select>' +
+        '</div>' +
+        '<div>' +
+          '<label class="pl-label">Motivo</label>' +
+          '<select class="pl-select" id="pl-run-sensor">' +
+            '<option value="">— Selecciona motivo —</option>' + sensorOptions +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pl-comment-row">' +
+        '<textarea class="pl-textarea" id="pl-run-comment" placeholder="Agregar comentario…"></textarea>' +
+        '<button class="pl-btn pl-btn-ghost" id="pl-run-addcomment">Añadir</button>' +
+      '</div>' +
+      '<div class="pl-comments">' +
+        '<div class="pl-comments-title">Historial de comentarios</div>' +
+        '<div id="pl-comments-list"></div>' +
+      '</div>' +
+      '<button class="pl-btn pl-btn-stop" id="pl-run-stop">DETENER PARO</button>' +
+      '<div class="pl-btnrow" style="margin-top:10px">' +
+        '<button class="pl-btn pl-btn-ghost" id="pl-run-hide">OCULTAR (continuar)</button>' +
+      '</div>',
+      { wide: true }
+    );
+
+    const timerEl = document.getElementById('pl-timer');
+    const tick = () => { timerEl.textContent = formatElapsed(Date.now() - ev.createdAt); };
+    tick();
+    state.timerInterval = setInterval(tick, 1000);
+
+    renderCommentsList();
+
+    document.getElementById('pl-run-hide').onclick = removeOverlay;
+
+    const eqSel = document.getElementById('pl-run-eq');
+    eqSel.addEventListener('change', async () => {
+      const newEqId = parseInt(eqSel.value, 10);
+      if (!Number.isFinite(newEqId) || newEqId === ev.equipmentId) return;
+      const prevEqName = ev.equipmentName;
+      const newEq = state.allEquipments.find(e => e.id === newEqId);
+      eqSel.disabled = true;
+      try {
+        await api().query('UpdateMaintenanceEvent',
+          { id: ev.id, equipmentId: newEqId }, 'UpdateMaintenanceEvent');
+        ev.equipmentId = newEqId;
+        ev.equipmentName = newEq?.name || '';
+        writeActiveEvent(ev);
+        const autoText = 'Línea cambiada de "' + prevEqName + '" a "' + (newEq?.name || newEqId) + '" por el operador.';
+        try {
+          await api().query('CreateMaintenanceEventComment', {
+            comment: autoText, maintenanceEventId: ev.id
+          }, 'CreateMaintenanceEventComment');
+          pushComment(ev, { text: autoText, auto: true });
+        } catch (_) {}
+      } catch (e) {
+        alert('No se pudo cambiar el equipo: ' + e.message + '\nSe mantiene la línea anterior.');
+        eqSel.value = String(ev.equipmentId);
+      } finally {
+        eqSel.disabled = false;
+      }
+    });
+
+    const sensorSel = document.getElementById('pl-run-sensor');
+    sensorSel.addEventListener('change', () => {
+      const sid = parseInt(sensorSel.value, 10);
+      state.selectedSensorId = Number.isFinite(sid) ? sid : null;
+      ev.selectedSensorId = state.selectedSensorId;
+      writeActiveEvent(ev);
+    });
+
+    document.getElementById('pl-run-addcomment').onclick = async () => {
+      const ta = document.getElementById('pl-run-comment');
+      const txt = ta.value.trim();
+      if (!txt) return;
+      const btn = document.getElementById('pl-run-addcomment');
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        await api().query('CreateMaintenanceEventComment',
+          { comment: txt, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+        pushComment(ev, { text: txt });
+        ta.value = '';
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = 'Añadir'; btn.disabled = false; }, 900);
+      } catch (e) {
+        alert('Error agregando comentario: ' + e.message);
+        btn.textContent = 'Añadir';
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById('pl-run-stop').onclick = () => {
+      stopEvent().catch(e => {
+        alert('Error al detener: ' + e.message);
+        const sb = document.getElementById('pl-run-stop');
+        if (sb) { sb.disabled = false; sb.textContent = 'DETENER PARO'; }
+      });
+    };
+  }
+
+  function formatElapsed(ms) {
+    if (!(ms >= 0)) ms = 0;
+    const s = Math.floor(ms / 1000);
+    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return hh + ':' + mm + ':' + ss;
+  }
+
+  async function stopEvent() {
+    const ev = state.activeEvent;
+    if (!ev) return;
+    if (!state.selectedSensorId) {
+      alert('Selecciona un motivo antes de detener el paro.');
+      return;
+    }
+    const stopBtn = document.getElementById('pl-run-stop');
+    if (stopBtn) { stopBtn.disabled = true; stopBtn.textContent = 'Deteniendo…'; }
+
+    const finalCommentEl = document.getElementById('pl-run-comment');
+    const finalComment = finalCommentEl?.value.trim();
+    const totalMs = Date.now() - ev.createdAt;
+
+    const ne = await api().query('CreateMaintenanceNodeEvent',
+      { maintenanceNodeId: ev.nodeId, maintenanceEventId: ev.id }, 'CreateMaintenanceNodeEvent');
+    const nodeEventId = ne?.createMaintenanceNodeEvent?.maintenanceNodeEvent?.id;
+    if (!nodeEventId) throw new Error('Respuesta sin maintenanceNodeEvent.id');
+
+    await api().query('CreateManySensorMeasurements', {
+      input: [{
+        sensorId: state.selectedSensorId,
+        measurementBoolean: true,
+        maintenanceNodeEventId: nodeEventId
+      }]
+    }, 'CreateManySensorMeasurements');
+
+    if (finalComment) {
+      try {
+        await api().query('CreateMaintenanceEventComment',
+          { comment: finalComment, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+        pushComment(ev, { text: finalComment });
+      } catch (e) { console.warn('[SA] comentario final falló:', e.message); }
+    }
+
+    const completedAt = new Date().toISOString();
+    await api().query('UpdateMaintenanceEvent',
+      { id: ev.id, completedAt }, 'UpdateMaintenanceEvent');
+
+    const sensors = await loadSensorsForNode(ev.nodeId).catch(() => []);
+    const motivo = sensors.find(s => s.id === state.selectedSensorId)?.name || '(motivo)';
+
+    const stopped = {
+      id: ev.id,
+      idInDomain: ev.idInDomain,
+      totalMs,
+      responsable: ev.responsable,
+      motivo,
+      linea: ev.equipmentName,
+      completedAt
+    };
+
+    state.activeEvent = null;
+    state.selectedSensorId = null;
+    writeActiveEvent(null);
+    if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+    updateFabStyle();
+
+    renderSummaryView(stopped);
+  }
+
+  function renderSummaryView(s) {
+    const domainId = cfg()?.steelhead?.domain?.id || '';
+    const link = location.origin + '/Domains/' + domainId + '/MaintenanceEvents/' + s.idInDomain;
+    showOverlay(
+      '<div class="pl-summary">' +
+        '<div style="font-size:44px">✅</div>' +
+        '<div style="font-size:20px;font-weight:800;color:#86efac;margin:6px 0;letter-spacing:1px">PARO REGISTRADO</div>' +
+        '<div class="pl-big">' + formatElapsed(s.totalMs) + '</div>' +
+        '<dl class="pl-dl">' +
+          '<dt>Responsable</dt><dd>' + escapeHtml(s.responsable || '—') + '</dd>' +
+          '<dt>Motivo</dt><dd>' + escapeHtml(s.motivo || '—') + '</dd>' +
+          '<dt>Línea</dt><dd>' + escapeHtml(s.linea || '—') + '</dd>' +
+          '<dt>Evento</dt><dd><a href="' + link + '" target="_blank" style="color:#60a5fa;text-decoration:none">#' + s.idInDomain + '</a></dd>' +
+        '</dl>' +
+      '</div>' +
+      '<div class="pl-btnrow">' +
+        '<button class="pl-btn pl-btn-ghost" id="pl-sum-attach">📎 Adjuntar evidencia</button>' +
+        '<button class="pl-btn pl-btn-primary" id="pl-sum-close">CERRAR</button>' +
+      '</div>' +
+      '<input type="file" id="pl-sum-file" accept="image/*,application/pdf" multiple style="display:none">'
+    );
+
+    const fileInput = document.getElementById('pl-sum-file');
+    const attachBtn = document.getElementById('pl-sum-attach');
+    attachBtn.onclick = () => fileInput.click();
+    fileInput.addEventListener('change', async () => {
+      if (!fileInput.files?.length) return;
+      attachBtn.disabled = true;
+      attachBtn.textContent = 'Subiendo…';
+      let ok = 0, fail = 0;
+      for (const file of fileInput.files) {
+        try { await attachEvidence(s.id, file); ok++; }
+        catch (e) { fail++; console.error('[SA] attach', e); }
+      }
+      attachBtn.disabled = false;
+      attachBtn.textContent = '📎 ' + ok + ' adjunto(s)' + (fail ? ' — ' + fail + ' fallaron' : '');
+    });
+    document.getElementById('pl-sum-close').onclick = removeOverlay;
+  }
+
+  async function attachEvidence(maintenanceEventId, file) {
+    const formData = new FormData();
+    formData.append('myfile', file, file.name);
+    const resp = await fetch('/api/files', {
+      method: 'POST', credentials: 'include', body: formData
+    });
+    if (!resp.ok) throw new Error('Upload HTTP ' + resp.status);
+    const uploaded = await resp.json();
+    await api().query('CreateUserFile',
+      { name: uploaded.name, originalName: file.name }, 'CreateUserFile');
+    await api().query('CreateMaintenanceEventUserFile',
+      { maintenanceEventId, userFileName: uploaded.name }, 'CreateMaintenanceEventUserFile');
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  return { init, openStopDialog, renderRunningView, stopEvent, attachEvidence };
+})();
+
+if (typeof window !== 'undefined') {
+  window.ParosLinea = ParosLinea;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => ParosLinea.init());
+  } else {
+    ParosLinea.init();
+  }
+}
+})();
+// ===== END scripts/paros-linea.js =====
+
+// ===== BEGIN scripts/report-regen.js =====
+(function(){
+// Report Regen — botón "Regenerar Reportes" inyectado en el header secundario de Steelhead.
+//
+// Qué hace:
+//   Steelhead refresca su base de reportes (DuckDB) cada noche, pero también se puede
+//   forzar manualmente — sólo que el botón nativo está enterrado 3-5 clicks. Este applet
+//   expone un botón en la barra de breadcrumb (junto a play/correo) que dispara la
+//   regeneración con un click.
+//
+// Timer GLOBAL del domain (sin backend propio):
+//   El cooldown NO es local ni inventado. Steelhead lo impone server-side vía
+//   `GetRecomputableAt.recomputableAt` (instante a partir del cual el domain puede volver
+//   a regenerar). Cuando CUALQUIER usuario del domain regenera, ese timestamp salta al
+//   futuro para TODOS. Así que el "todos ven el timer" se logra leyendo ese estado del
+//   servidor por polling — no compartiendo estado entre navegadores.
+//
+// Gating de permisos:
+//   autoInject NO respeta `requiredPermissions` (eso sólo gatea el popup). Por eso el
+//   applet se auto-gatea en runtime: consulta CurrentUser y sólo se monta si el usuario
+//   tiene MANAGE_REPORTING (o es admin/superuser). El gating de cliente es UX; el boundary
+//   real es server-side (Steelhead rechaza GenerateDuckDb sin el permiso).
+//
+// Operaciones (hashes vivos en el proyecto Reportes SH, registrados en config.json):
+//   GetRecomputableAt → { recomputableAt, transactionTime }
+//   GenerateDuckDb({maxAttempts:3}) → addWorkerTask.bigInt (taskId)
+//   JobQuery({jobId}) → getJobStatus.{ isDone, errorMessage, ... }
+
+(function () {
+  'use strict';
+
+  const APPLET_VERSION = '0.2.0';
+
+  // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
+  if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
+  if (window.ReportRegen && typeof window.ReportRegen.destroy === 'function') {
+    try { window.ReportRegen.destroy(); } catch (_) {}
+  }
+
+  // ── Constantes ──
+  const BTN_ID = 'sa-report-regen-btn';
+  const SEP_ID = 'sa-report-regen-sep';
+  const STYLE_ID = 'sa-report-regen-style';
+  const REQUIRED_PERMISSION = 'MANAGE_REPORTING';
+  const OBSERVER_DEBOUNCE_MS = 300;
+  const POLL_REGEN_MS = 10000;    // job propio activo → poll JobQuery
+  const POLL_COOLDOWN_MS = 30000; // en enfriamiento → resync recomputableAt
+  const POLL_AVAILABLE_MS = 60000;// idle → detectar que otro usuario disparó
+
+  // Iconos (SVG estáticos — innerHTML seguro, sin datos del usuario).
+  const ICON_REFRESH = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M19 8l-4 4h3c0 3.31-2.69 6-6 6-1.01 0-1.97-.25-2.8-.7l-1.46 1.46C8.97 19.54 10.43 20 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46C15.03 4.46 13.57 4 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z"/></svg>';
+
+  // ── Estado (cerrado en el closure, nada global salvo el handle público) ──
+  let destroyed = false;
+  let allowed = null;            // null=desconocido, true/false=veredicto de permiso
+  let capturedPerms = null;      // { isAdmin, isSuperUser, perms[] } — leído del front, no de un fetch propio
+  let booted = false;
+  let bootPromise = null;
+  let lastRecomputableAt = null; // ISO string del servidor
+  let skewMs = 0;                // serverNow - clientNow (ms)
+  let activeJob = null;          // { taskId, isDone, errorMessage } — sólo para quien disparó
+  let lastError = null;
+  let uiState = { status: 'loading', remainingMs: 0 };
+  let pollTimer = null;
+  let tickTimer = null;
+  let observer = null;
+  let debounceTimer = null;
+
+  function log(msg) { try { (window.SteelheadAPI?.log || console.log)('[report-regen] ' + msg); } catch (_) {} }
+
+  // ── Lógica pura (testeable) ───────────────────────────────────────────────
+  function computeSkewMs(transactionTimeISO, clientNowMsAtFetch) {
+    if (!transactionTimeISO) return 0;
+    const t = Date.parse(transactionTimeISO);
+    if (Number.isNaN(t)) return 0;
+    return t - clientNowMsAtFetch;
+  }
+
+  // Estado del botón a partir del estado del servidor + reloj del servidor.
+  //   input: { recomputableAt: ISO|null, activeJob: {isDone,errorMessage}|null }
+  //   serverNowMs: Date.now() + skewMs
+  //   → { status: 'regenerating'|'cooldown'|'available', remainingMs }
+  function computeState(input, serverNowMs) {
+    const recomputableAt = input && input.recomputableAt;
+    const job = input && input.activeJob;
+    let remainingMs = 0;
+    if (recomputableAt) {
+      const target = Date.parse(recomputableAt);
+      if (!Number.isNaN(target)) remainingMs = Math.max(0, target - serverNowMs);
+    }
+    const jobRunning = !!(job && !job.isDone && !job.errorMessage);
+    if (jobRunning) return { status: 'regenerating', remainingMs };
+    if (remainingMs > 0) return { status: 'cooldown', remainingMs };
+    return { status: 'available', remainingMs: 0 };
+  }
+
+  function formatCountdown(ms) {
+    const totalSec = Math.max(0, Math.ceil(ms / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+
+  function pickPollIntervalMs(status) {
+    if (status === 'regenerating') return POLL_REGEN_MS;
+    if (status === 'cooldown') return POLL_COOLDOWN_MS;
+    if (status === 'available') return POLL_AVAILABLE_MS;
+    return 15000; // loading/error
+  }
+
+  // ── Capa de red ───────────────────────────────────────────────────────────
+  async function fetchRecomputable() {
+    const data = await window.SteelheadAPI.query('GetRecomputableAt', {}, 'GetRecomputableAt');
+    const rec = (data && data.getDuckdbRecomputableAt) || {};
+    return { recomputableAt: rec.recomputableAt || null, transactionTime: rec.transactionTime || null };
+  }
+
+  async function fireRegen() {
+    const data = await window.SteelheadAPI.query('GenerateDuckDb', { maxAttempts: 3 }, 'GenerateDuckDb');
+    const taskId = data && data.addWorkerTask && data.addWorkerTask.bigInt;
+    if (taskId === undefined || taskId === null) throw new Error('GenerateDuckDb no devolvió taskId');
+    return String(taskId);
+  }
+
+  async function pollJobOnce(taskId) {
+    const data = await window.SteelheadAPI.query('JobQuery', { jobId: taskId }, 'JobQuery');
+    const st = (data && data.getJobStatus) || {};
+    return {
+      isDone: !!st.isDone,
+      errorMessage: st.errorMessage || null,
+      runAttempts: st.runAttempts,
+      maxRunAttempts: st.maxRunAttempts
+    };
+  }
+
+  // ── Gating de permisos ──────────────────────────────────────────────────
+  function requiredPerms() {
+    const apps = (window.REMOTE_CONFIG && window.REMOTE_CONFIG.apps) || [];
+    const me = apps.find((a) => a.id === 'report-regen');
+    const perms = me && me.requiredPermissions;
+    return Array.isArray(perms) && perms.length ? perms : [REQUIRED_PERMISSION];
+  }
+
+  // ── Gating de permisos (reactivo) ─────────────────────────────────────────
+  // `CurrentUser` es session-sensitive: rechaza el fetch de la extensión aunque el
+  // hash sea válido. Así que NO lo llamamos; en su lugar interceptamos la respuesta
+  // que el propio front de Steelhead hace (CurrentUser → perms completos; Profile →
+  // isAdmin/isSuperUser). Fallback: leer del Apollo cache si está expuesto.
+
+  // Lógica pura (testeable): dado caps + permisos requeridos → true|false|null.
+  function evalAllowed(caps, req) {
+    if (!caps) return null; // aún no se conocen permisos
+    if (caps.isAdmin || caps.isSuperUser) return true;
+    const perms = Array.isArray(caps.perms) ? caps.perms : [];
+    return req.every((p) => perms.includes(p));
+  }
+
+  function reevaluateGate() {
+    if (destroyed) return;
+    const verdict = evalAllowed(capturedPerms, requiredPerms());
+    if (verdict === allowed) return;
+    allowed = verdict;
+    if (allowed === true) {
+      log('permiso confirmado (' + REQUIRED_PERMISSION + ' / admin) — montando botón');
+      installObserver();
+      ensureButton();
+      if (!pollTimer && !tickTimer) pollOnce();
+    } else if (allowed === false) {
+      removeButton();
+    }
+  }
+
+  // CurrentUser trae perms completos; Profile sólo isAdmin/isSuperUser (merge sin
+  // pisar perms ya capturados). source = 'CurrentUser' | 'Profile'.
+  function onUserData(data, source) {
+    try {
+      const u = data && data.data && data.data.currentSession && data.data.currentSession.userByUserId;
+      if (!u) return;
+      const partial = { isAdmin: !!u.isAdmin, isSuperUser: !!u.isSuperUser };
+      if (source === 'CurrentUser' && Array.isArray(u.currentManagedPermissions)) {
+        partial.perms = u.currentManagedPermissions;
+      }
+      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false, perms: [] }, capturedPerms || {}, partial);
+      reevaluateGate();
+    } catch (_) {}
+  }
+
+  // Parchea fetch UNA vez; siempre llama al hook actual (window.__saRRonUser) para
+  // que la re-inyección (nueva versión) reconecte el closure vivo sin re-parchear.
+  function installPermSniffer() {
+    window.__saRRonUser = onUserData;
+    if (window.__saRRSnifferInstalled) return;
+    window.__saRRSnifferInstalled = true;
+    const orig = window.fetch;
+    window.fetch = function (...args) {
+      const ret = orig.apply(this, args);
+      try {
+        const body = args[1] && args[1].body;
+        if (typeof body === 'string' && (body.indexOf('"CurrentUser"') !== -1 || body.indexOf('"Profile"') !== -1)) {
+          const parsed = JSON.parse(body);
+          const op = parsed && parsed.operationName;
+          if (op === 'CurrentUser' || op === 'Profile') {
+            Promise.resolve(ret).then((res) => res.clone().json())
+              .then((d) => { if (typeof window.__saRRonUser === 'function') window.__saRRonUser(d, op); })
+              .catch(() => {});
+          }
+        }
+      } catch (_) {}
+      return ret;
+    };
+  }
+
+  // Fallback inmediato: si el front expone su Apollo client, leer perms del cache.
+  function tryApolloCache() {
+    try {
+      const client = window.__APOLLO_CLIENT__;
+      if (!client || !client.cache || typeof client.cache.extract !== 'function') return;
+      const data = client.cache.extract();
+      for (const k in data) {
+        const e = data[k];
+        if (!e) continue;
+        const isUser = /User/i.test(e.__typename || k);
+        if (isUser && (Array.isArray(e.currentManagedPermissions) || e.isAdmin !== undefined)) {
+          onUserData({ data: { currentSession: { userByUserId: e } } }, 'CurrentUser');
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // ── DOM ─────────────────────────────────────────────────────────────────
+  function ensureStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const st = document.createElement('style');
+    st.id = STYLE_ID;
+    st.textContent =
+      '@keyframes sa-rr-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}' +
+      '#' + BTN_ID + '{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;' +
+        'border:1px solid #ccc;border-radius:5px;background:#fff;color:#595959;cursor:pointer;' +
+        'font-size:11px;line-height:1;vertical-align:middle;font-family:inherit;}' +
+      '#' + BTN_ID + ':disabled{cursor:default;opacity:.85;}' +
+      '#' + BTN_ID + ' .sa-rr-ic{display:inline-flex;align-items:center;}' +
+      '#' + BTN_ID + '.sa-rr-spinning .sa-rr-ic{animation:sa-rr-spin 1s linear infinite;}' +
+      '#' + BTN_ID + ' .sa-rr-txt{display:none;}' +
+      '#' + BTN_ID + '.sa-rr-haslabel .sa-rr-txt{display:inline;}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  // Ancla definitiva: el contenedor que tiene play (PlayArrowIcon) Y correo
+  // (EmailOutlinedIcon) como hermanos. El botón se inserta justo antes del correo.
+  function findAnchor() {
+    const emailSvgs = document.querySelectorAll('svg[data-testid="EmailOutlinedIcon"]');
+    for (const svg of emailSvgs) {
+      const btn = svg.closest('button');
+      if (!btn || !btn.parentElement) continue;
+      const container = btn.parentElement;
+      if (container.querySelector('svg[data-testid="PlayArrowIcon"]')) {
+        return { container, emailBtn: btn };
+      }
+    }
+    return null;
+  }
+
+  function buildButton() {
+    const btn = document.createElement('button');
+    btn.id = BTN_ID;
+    btn.type = 'button';
+    btn.innerHTML = '<span class="sa-rr-ic">' + ICON_REFRESH + '</span><span class="sa-rr-txt"></span>';
+    btn.addEventListener('click', onButtonClick);
+    return btn;
+  }
+
+  function ensureButton() {
+    if (destroyed || allowed !== true) return;
+    if (document.getElementById(BTN_ID)) { renderState(); return; }
+    const anchor = findAnchor();
+    if (!anchor) return; // esta vista no tiene el header — no es error
+    ensureStyle();
+    const btn = buildButton();
+    // Clonar el separador nativo (css-* hasheado) para match visual sin hardcodear clases.
+    const nativeSep = anchor.emailBtn.previousElementSibling;
+    const sep = nativeSep ? nativeSep.cloneNode(true) : document.createElement('div');
+    sep.id = SEP_ID;
+    anchor.container.insertBefore(btn, anchor.emailBtn); // [play][sep0][BTN][email]
+    anchor.container.insertBefore(sep, anchor.emailBtn); // [play][sep0][BTN][sepClone][email]
+    renderState();
+  }
+
+  function renderState() {
+    const btn = document.getElementById(BTN_ID);
+    if (!btn) return;
+    const txt = btn.querySelector('.sa-rr-txt');
+    const status = uiState.status;
+    btn.classList.toggle('sa-rr-spinning', status === 'regenerating' || status === 'loading');
+    if (status === 'available') {
+      btn.disabled = false;
+      btn.classList.remove('sa-rr-haslabel');
+      if (txt) txt.textContent = '';
+      btn.title = 'Regenerar reportes (refresh global de la base)';
+    } else if (status === 'regenerating') {
+      btn.disabled = true;
+      btn.classList.add('sa-rr-haslabel');
+      if (txt) txt.textContent = 'Regenerando…';
+      btn.title = 'Regeneración en curso…';
+    } else if (status === 'cooldown') {
+      btn.disabled = true;
+      btn.classList.add('sa-rr-haslabel');
+      const cd = formatCountdown(uiState.remainingMs);
+      if (txt) txt.textContent = cd;
+      btn.title = 'Reportes en enfriamiento. Disponible en ' + cd;
+    } else { // loading / error
+      btn.disabled = status === 'loading';
+      btn.classList.toggle('sa-rr-haslabel', false);
+      if (txt) txt.textContent = '';
+      btn.title = lastError ? ('Reintentar (último error: ' + lastError + ')') : 'Cargando estado…';
+    }
+  }
+
+  function removeButton() {
+    const btn = document.getElementById(BTN_ID);
+    if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+    const sep = document.getElementById(SEP_ID);
+    if (sep && sep.parentNode) sep.parentNode.removeChild(sep);
+  }
+
+  // ── Loops: tick UI (1s, sin red) + poll de red (adaptativo) ───────────────
+  function recompute() {
+    const serverNow = Date.now() + skewMs;
+    const job = activeJob && !activeJob.isDone ? activeJob : null;
+    uiState = computeState({ recomputableAt: lastRecomputableAt, activeJob: job }, serverNow);
+    renderState();
+    syncTick();
+  }
+
+  // El tick de 1s sólo corre cuando hay countdown que pintar.
+  function syncTick() {
+    const needsTick = uiState.status === 'cooldown' || uiState.status === 'regenerating';
+    if (needsTick && !tickTimer) {
+      tickTimer = setInterval(recompute, 1000);
+    } else if (!needsTick && tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
+  }
+
+  async function pollOnce() {
+    if (destroyed) return;
+    try {
+      const fetchedAt = Date.now();
+      const { recomputableAt, transactionTime } = await fetchRecomputable();
+      skewMs = computeSkewMs(transactionTime, fetchedAt);
+      lastRecomputableAt = recomputableAt;
+      lastError = null;
+
+      if (activeJob && !activeJob.isDone) {
+        try {
+          const js = await pollJobOnce(activeJob.taskId);
+          activeJob = Object.assign({}, activeJob, js);
+          if (js.errorMessage) {
+            lastError = js.errorMessage;
+            activeJob = null;
+            log('job terminó con error: ' + js.errorMessage);
+          } else if (js.isDone) {
+            activeJob = null;
+            log('regeneración completada');
+          }
+        } catch (e) {
+          log('poll JobQuery falló: ' + e.message);
+        }
+      }
+      recompute();
+    } catch (e) {
+      lastError = e.message;
+      log('poll GetRecomputableAt falló: ' + e.message);
+      if (uiState.status === 'loading') { uiState = { status: 'error', remainingMs: 0 }; renderState(); }
+    } finally {
+      scheduleNextPoll();
+    }
+  }
+
+  function scheduleNextPoll() {
+    if (destroyed) return;
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(pollOnce, pickPollIntervalMs(uiState.status));
+  }
+
+  // ── Disparo de regeneración (compartido por botón y popup) ────────────────
+  async function doRegen() {
+    recompute();
+    if (uiState.status === 'cooldown') {
+      return { error: 'Reportes en enfriamiento. Disponible en ' + formatCountdown(uiState.remainingMs) };
+    }
+    if (uiState.status === 'regenerating') {
+      return { error: 'Ya hay una regeneración en curso.' };
+    }
+    // Optimista: pinta "Regenerando…" de inmediato.
+    uiState = { status: 'regenerating', remainingMs: 0 };
+    renderState();
+    syncTick();
+    try {
+      const taskId = await fireRegen();
+      activeJob = { taskId, isDone: false, errorMessage: null };
+      log('regeneración encolada — taskId=' + taskId);
+      await pollOnce(); // resync inmediato (recomputableAt ya saltó al futuro) + reprograma poll
+      return { started: true, message: 'Regeneración de reportes iniciada.' };
+    } catch (e) {
+      activeJob = null;
+      lastError = e.message;
+      await pollOnce(); // re-lee el estado real del servidor
+      return { error: 'No se pudo iniciar la regeneración: ' + e.message };
+    }
+  }
+
+  function onButtonClick() {
+    if (allowed !== true) return;
+    doRegen();
+  }
+
+  // Entrada desde el popup (background llama window.ReportRegen.triggerFromPopup).
+  async function triggerFromPopup() {
+    try {
+      await ensureBooted();
+    } catch (e) {
+      return { error: 'No se pudo inicializar: ' + e.message };
+    }
+    // Espera breve a que el sniffer/cache confirme permisos (allowed pasa de null).
+    for (let i = 0; i < 20 && allowed === null && !destroyed; i++) await sleep(150);
+    if (allowed === false) {
+      return { error: 'No tienes permiso ' + REQUIRED_PERMISSION + ' para regenerar reportes.' };
+    }
+    // allowed === true, o null tras el timeout (el server valida el permiso al ejecutar).
+    return doRegen();
+  }
+
+  // ── Observer (persistencia del botón en SPA nav) ──────────────────────────
+  function installObserver() {
+    if (observer) return;
+    observer = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(ensureButton, OBSERVER_DEBOUNCE_MS);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  function waitForDeps(timeoutMs) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      (function check() {
+        if (destroyed) return resolve(false);
+        if (window.REMOTE_CONFIG && window.SteelheadAPI && typeof window.SteelheadAPI.query === 'function') {
+          return resolve(true);
+        }
+        if (Date.now() - start > (timeoutMs || 20000)) return resolve(false);
+        setTimeout(check, 150);
+      })();
+    });
+  }
+
+  function ensureBooted() {
+    if (booted) return Promise.resolve();
+    if (bootPromise) return bootPromise;
+    bootPromise = (async () => {
+      const ok = await waitForDeps(20000);
+      booted = true;
+      if (!ok) return; // deps no llegaron; queda inerte
+      installPermSniffer(); // captura permisos de CurrentUser/Profile que pida el front
+      tryApolloCache();     // intento inmediato del cache (si el front lo expone)
+      // El botón se monta vía reevaluateGate cuando se confirmen permisos (fail-closed
+      // mientras tanto). El front pide CurrentUser/Profile seguido → llega en segundos.
+    })();
+    return bootPromise;
+  }
+
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  function destroy() {
+    destroyed = true;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    if (observer) { try { observer.disconnect(); } catch (_) {} observer = null; }
+    // Desconectar el hook del sniffer sólo si sigue apuntando a ESTE closure
+    // (no pisar el de una versión más nueva). El patch de fetch queda (es benigno).
+    try { if (window.__saRRonUser === onUserData) window.__saRRonUser = null; } catch (_) {}
+    removeButton();
+  }
+
+  // ── Export ──────────────────────────────────────────────────────────────
+  window.ReportRegen = {
+    __version: APPLET_VERSION,
+    triggerFromPopup,
+    destroy,
+    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed }
+  };
+  // Para los golden tests (node --test) y depuración manual.
+  window.__SAReportRegen = window.ReportRegen._internals;
+
+  ensureBooted();
+})();
+})();
+// ===== END scripts/report-regen.js =====
+
+// ===== BEGIN scripts/invoice-default-tab.js =====
+(function(){
+// Invoice Default Tab
+// Cuando el usuario entra a /Domains/{N}/Invoices SIN un parámetro `mode=` en la
+// URL (típicamente: link directo, reload, o entrada por menú), navega
+// automáticamente al tab "Packing Slips". Si después navega manualmente a otro
+// tab (Sales Orders, Shipments, etc.), Steelhead añade `?mode=…` y este applet
+// respeta esa elección.
+
+const InvoiceDefaultTab = (() => {
+  'use strict';
+
+  const INVOICES_PATH_RE = /\/Domains\/\d+\/Invoices\/?$/;
+  const TAB_LABEL_RE = /^\s*packing\s*slips\s*$/i;
+  let enabled = true;
+
+  function shouldRedirect() {
+    if (!INVOICES_PATH_RE.test(location.pathname)) return false;
+    const params = new URLSearchParams(location.search);
+    if (params.get('mode')) return false;
+    return true;
+  }
+
+  function findPackingSlipsTab() {
+    const candidates = document.querySelectorAll('button, [role="tab"], a');
+    for (const el of candidates) {
+      const txt = (el.textContent || '').trim();
+      if (TAB_LABEL_RE.test(txt)) return el;
+    }
+    return null;
+  }
+
+  function clickWhenReady() {
+    if (!shouldRedirect()) return;
+    const tab = findPackingSlipsTab();
+    if (tab) { tab.click(); return; }
+
+    // El DOM se hidrata async — observar y reintentar hasta 5 s.
+    const start = Date.now();
+    const obs = new MutationObserver(() => {
+      if (!shouldRedirect()) { obs.disconnect(); return; }
+      if (Date.now() - start > 5000) { obs.disconnect(); return; }
+      const t = findPackingSlipsTab();
+      if (t) { t.click(); obs.disconnect(); }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => obs.disconnect(), 5000);
+  }
+
+  function patchHistoryNav() {
+    if (window.__saInvoiceDefaultTabHistoryPatched) return;
+    window.__saInvoiceDefaultTabHistoryPatched = true;
+    const _push = history.pushState;
+    const _replace = history.replaceState;
+    history.pushState = function () {
+      _push.apply(this, arguments);
+      setTimeout(clickWhenReady, 50);
+    };
+    history.replaceState = function () {
+      _replace.apply(this, arguments);
+      setTimeout(clickWhenReady, 50);
+    };
+    window.addEventListener('popstate', () => setTimeout(clickWhenReady, 50));
+  }
+
+  function init() {
+    enabled = document.documentElement.dataset.saInvoiceDefaultTabEnabled !== 'false';
+    if (!enabled) { console.log('[InvoiceDefaultTab] Deshabilitado'); return; }
+    if (window.__saInvoiceDefaultTabInitDone) {
+      console.log('[InvoiceDefaultTab] Ya inicializado — skip');
+      return;
+    }
+    window.__saInvoiceDefaultTabInitDone = true;
+    patchHistoryNav();
+    clickWhenReady();
+    console.log('[InvoiceDefaultTab] Inicializado');
+  }
+
+  return { init };
+})();
+
+if (typeof window !== 'undefined') {
+  window.InvoiceDefaultTab = InvoiceDefaultTab;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => InvoiceDefaultTab.init());
+  } else {
+    InvoiceDefaultTab.init();
+  }
+}
+})();
+// ===== END scripts/invoice-default-tab.js =====
+
+// ===== BEGIN scripts/cfdi-attacher.js =====
+(function(){
+// CFDI Attacher
+// Auto-attaches CFDI XML to invoice emails
+// Intercepts InvoiceByIdInDomain responses to cache writeResult,
+// then intercepts SendEmailChecked to inject XML attachments
+// Depends on: SteelheadAPI
+
+const CfdiAttacher = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const invoiceCache = new Map(); // idInDomain → { xmlBase64, linkxml, filename }
+  let enabled = true;
+  let _origFetch = null; // unpatched fetch, set in patchFetch()
+  let observerActive = false;
+
+  // ── Init ──
+
+  function init() {
+    enabled = document.documentElement.dataset.saCfdiEnabled !== 'false';
+    if (!enabled) { console.log('[CFDI] Deshabilitado'); return; }
+    patchFetch();
+    setupObserver();
+    console.log('[CFDI] Attacher inicializado');
+  }
+
+  // ── Fetch Interceptor ──
+
+  function patchFetch() {
+    // Window-level sentinel prevents double-patching on version bumps
+    if (window.__saCfdiFetchPatched) return;
+    window.__saCfdiFetchPatched = true;
+    _origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+
+      if (!isGraphql || !opts?.body) return _origFetch.apply(this, args);
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return _origFetch.apply(this, args); }
+
+      const opName = bodyObj?.operationName;
+
+      // Intercept outgoing SendEmailChecked — inject XML attachments
+      if (opName === 'SendEmailChecked' && shouldAttach()) {
+        try {
+          const xmlAttachments = await uploadCachedXmls(bodyObj.variables);
+          if (xmlAttachments.length > 0) {
+            bodyObj.variables.attachments = [
+              ...(bodyObj.variables.attachments || []),
+              ...xmlAttachments
+            ];
+            args[1] = { ...opts, body: JSON.stringify(bodyObj) };
+          }
+        } catch (err) {
+          console.error('[CFDI] Error adjuntando XMLs:', err);
+          alert('Error al adjuntar XML(s) CFDI: ' + err.message + '\n\nEl email NO fue enviado. Intenta de nuevo.');
+          throw err; // Cancel the send
+        }
+      }
+
+      // Execute the (possibly modified) fetch
+      const response = await _origFetch.apply(this, args);
+
+      // Intercept InvoiceByIdInDomain responses — cache writeResult
+      if (opName === 'InvoiceByIdInDomain') {
+        try {
+          const clone = response.clone();
+          const json = await clone.json();
+          cacheInvoiceData(json);
+        } catch (err) {
+          console.warn('[CFDI] Error cacheando invoice data:', err);
+        }
+      }
+
+      return response;
+    };
+  }
+
+  // ── Cache Logic ──
+
+  function cacheInvoiceData(json) {
+    const inv = json?.data?.invoiceByIdInDomain;
+    if (!inv) return;
+
+    const idInDomain = inv.idInDomain;
+    const wr = inv.createWriteResult?.data?.result?.writeResult;
+    const customInput = wr?.CustomInput;
+    const linkxml = customInput?.linkxml || null;
+    const xmlBase64 = wr?.XmlBase64File || null;
+
+    // Extract filename from linkxml URL
+    let filename = null;
+    if (linkxml) {
+      try {
+        const urlPath = new URL(linkxml).pathname;
+        filename = urlPath.split('/').pop();
+      } catch { filename = `cfdi-${idInDomain}.xml`; }
+    }
+
+    invoiceCache.set(idInDomain, {
+      id: inv.id,
+      idInDomain,
+      xmlBase64,
+      linkxml,
+      filename: filename || `cfdi-${idInDomain}.xml`
+    });
+
+    console.log(`[CFDI] Cacheada factura #${idInDomain}:`, xmlBase64 ? 'con XML' : 'sin XML');
+  }
+
+  // ── MutationObserver ──
+
+  function setupObserver() {
+    if (observerActive) return;
+    observerActive = true;
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          // Look for the email dialog — has heading "Send Invoice Email"
+          const heading = node.querySelector?.('h2, h3, h4, h5, h6, [class*="heading"]');
+          if (heading && /send\s+invoice\s+email/i.test(heading.textContent)) {
+            injectCheckbox(node);
+            return;
+          }
+          // Also check if the node itself contains the dialog deeper
+          const dialog = node.querySelector?.('[class*="dialog"], [class*="modal"], [role="dialog"]');
+          if (dialog) {
+            const h = dialog.querySelector('h2, h3, h4, h5, h6, [class*="heading"]');
+            if (h && /send\s+(invoice|.*invoices)/i.test(h.textContent)) {
+              injectCheckbox(dialog);
+              return;
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // One-time check for dialog already present in DOM
+    const existing = document.querySelector('[role="dialog"], .MuiDialog-paper');
+    if (existing) {
+      const h = existing.querySelector('h2, h3, h4, h5, h6, [class*="heading"]');
+      if (h && /send\s+(invoice|.*invoices)/i.test(h.textContent)) {
+        injectCheckbox(existing);
+      }
+    }
+  }
+
+  // ── Checkbox Injection ──
+
+  function injectCheckbox(dialog) {
+    // Don't inject twice
+    if (dialog.querySelector('#sa-cfdi-toggle')) return;
+    if (!enabled) return;
+
+    // Steelhead email dialog uses a MUI Table with <tr> rows for each toggle
+    // (Logo, Attach PDF, Visible to Others). Find the last toggle row.
+    let lastToggleRow = null;
+    const rows = dialog.querySelectorAll('tr');
+    for (const tr of rows) {
+      const text = tr.textContent?.trim();
+      if (/^(Logo|Attach PDFs?|Visible to Others)$/.test(text.replace(/\s+/g, ' '))) {
+        lastToggleRow = tr;
+      }
+    }
+
+    if (!lastToggleRow) {
+      console.warn('[CFDI] No se encontró la zona de toggles del diálogo');
+      return;
+    }
+
+    // Build a new <tr> matching the MUI table structure
+    const tr = document.createElement('tr');
+    tr.id = 'sa-cfdi-toggle';
+    tr.className = lastToggleRow.className; // inherit MUI row classes
+
+    const tdLabel = document.createElement('td');
+    tdLabel.className = lastToggleRow.querySelector('td')?.className || '';
+    const labelP = document.createElement('p');
+    labelP.textContent = 'Adjuntar XML(s) CFDI';
+    labelP.className = lastToggleRow.querySelector('p')?.className || '';
+    tdLabel.appendChild(labelP);
+
+    const tdToggle = document.createElement('td');
+    const lastTds = lastToggleRow.querySelectorAll('td');
+    tdToggle.className = lastTds[lastTds.length - 1]?.className || '';
+    tdToggle.style.textAlign = 'right';
+
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.checked = true;
+    toggle.id = 'sa-cfdi-checkbox';
+    toggle.style.cssText = 'width:18px; height:18px; cursor:pointer; accent-color:#c13c26;';
+
+    tdToggle.appendChild(toggle);
+    tr.appendChild(tdLabel);
+    tr.appendChild(tdToggle);
+
+    // Insert after the last toggle row
+    lastToggleRow.parentElement.insertBefore(tr, lastToggleRow.nextSibling);
+
+    // Check which invoices are missing XML
+    addWarnings(tr);
+
+    console.log('[CFDI] Checkbox inyectado en diálogo');
+  }
+
+  function addWarnings(row) {
+    const missing = [];
+    for (const [idInDomain, data] of invoiceCache) {
+      if (!data.xmlBase64) missing.push(idInDomain);
+    }
+    if (missing.length === 0) return;
+
+    const warn = document.createElement('div');
+    warn.style.cssText = 'color:#f59e0b; font-size:12px; padding:4px 16px 0; margin-top:2px;';
+    warn.textContent = `\u26A0 Factura(s) #${missing.join(', #')} sin XML CFDI disponible`;
+    row.parentElement.insertBefore(warn, row.nextSibling);
+  }
+
+  // ── Upload Logic ──
+
+  function shouldAttach() {
+    const cb = document.getElementById('sa-cfdi-checkbox');
+    return cb && cb.checked;
+  }
+
+  async function uploadCachedXmls(sendVars) {
+    const attachments = [];
+
+    // Determine which invoices are being sent.
+    // SendEmailChecked variables contain linkInfo[] with idInDomain per invoice
+    // (observed in scan_results_2026-04-11 for both single and multi-invoice sends).
+    const linkInfo = sendVars?.linkInfo || [];
+    const idsToProcess = linkInfo.map(l => l.idInDomain).filter(Boolean);
+
+    if (idsToProcess.length === 0) {
+      console.warn('[CFDI] No se encontraron IDs de factura en linkInfo, omitiendo adjunto XML');
+      return [];
+    }
+
+    let uploaded = 0;
+    const total = idsToProcess.filter(id => invoiceCache.get(id)?.xmlBase64).length;
+
+    for (const idInDomain of idsToProcess) {
+      const cached = invoiceCache.get(idInDomain);
+      if (!cached?.xmlBase64) continue;
+
+      console.log(`[CFDI] Subiendo XML factura #${idInDomain} (${++uploaded}/${total})...`);
+
+      // Decode base64 → Blob
+      const byteStr = atob(cached.xmlBase64);
+      const bytes = new Uint8Array(byteStr.length);
+      for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/xml' });
+      const file = new File([blob], cached.filename, { type: 'application/xml' });
+
+      // Upload binary to /api/files (use _origFetch to bypass any fetch patches)
+      const formData = new FormData();
+      formData.append('myfile', file, cached.filename);
+      const uploadResp = await _origFetch('/api/files', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+      if (!uploadResp.ok) throw new Error(`Upload HTTP ${uploadResp.status} para factura #${idInDomain}`);
+      const uploadResult = await uploadResp.json();
+
+      // Register in Steelhead
+      await api().query('CreateUserFile', {
+        name: uploadResult.name,
+        originalName: cached.filename
+      });
+
+      attachments.push({
+        filename: uploadResult.name,
+        displayName: cached.filename
+      });
+
+      console.log(`[CFDI] XML factura #${idInDomain} adjuntado: ${cached.filename}`);
+    }
+
+    return attachments;
+  }
+
+  return { init };
+})();
+
+if (typeof window !== 'undefined') {
+  window.CfdiAttacher = CfdiAttacher;
+  // Auto-init — called after injection
+  CfdiAttacher.init();
+}
+})();
+// ===== END scripts/cfdi-attacher.js =====
+
+// ===== BEGIN scripts/invoice-autofill.js =====
+(function(){
+// Invoice Autofill
+// Auto-rellena Cuenta CXC, Divisa, Tipo de Cambio y Cuentas de Ingreso/Descuento en Create/Edit Invoice
+// Reglas:
+//   - AR (CXC): customer.customInputs.DatosContables.CuentasContables filtrado por DivisaContable, mayor numeración
+//   - Ingreso/Descuento por línea: salesTaxable × signo × prefijo (0401-0001 / 0401-0004 / 0402-0001 / 0402-0002)
+//   - Divisa+TC: solo si la factura es manual (sin packing slip ni OV)
+// Depends on: SteelheadAPI
+
+const InvoiceAutofill = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api().log(m);
+  const warn = (m) => api().warn(m);
+
+  // El editor RJSF de invoice se abre tanto en /Invoices como en /Shipping/PackingSlips
+  // (cuando se crea factura desde un Packing Slip, Steelhead lo monta in-place sin
+  // cambiar la URL). Aceptamos ambos paths; la detección DOM por `root_DatosContables_*`
+  // dentro de scanForInvoicePage filtra falsos positivos.
+  const INVOICE_URL_RE = /\/Domains\/\d+\/(?:Invoices|Shipping\/PackingSlips)(?:\/|$)/;
+  // Modal "Create Invoice Manually" — overlay sobre la lista de invoices, sin
+  // form RJSF. Se usa para Notas de Crédito y cargos manuales (tarifas, etc).
+  const MANUAL_HEADING_RE = /create\s+invoice\s+manually|crear\s+factura\s+manual/i;
+  let manualModalState = null;  // { active, customer, filled, filling, results }
+  let panelCollapsed = false;   // true = sólo header con botón [+] para expandir
+
+  // Matriz de prefijos contables
+  // [salesTaxBySalesTaxId.name=general] × [credit-note=false] → 0401-0001 (Ventas Tasa General)
+  // [salesTaxBySalesTaxId.name=general] × [credit-note=true]  → 0402-0001 (Devoluciones/Descuentos Tasa General)
+  // [salesTaxBySalesTaxId.name=exenta]  × [credit-note=false] → 0401-0004 (Ventas Tasa 0%)
+  // [salesTaxBySalesTaxId.name=exenta]  × [credit-note=true]  → 0402-0002 (Devoluciones/Descuentos Tasa 0%)
+  const PREFIX_VENTAS_GENERAL = '0401-0001';
+  const PREFIX_VENTAS_CERO    = '0401-0004';
+  const PREFIX_DESC_GENERAL   = '0402-0001';
+  const PREFIX_DESC_CERO      = '0402-0002';
+
+  let debounceTimer = null;
+  let state = {
+    customerId: null,
+    customerName: null,
+    customer: null,                  // objeto crudo de InvoiceLowCodeData / GetReceivedOrders…
+    currency: null,
+    currencySource: null,            // 'so' | 'invoice' | 'customer' | 'form' | 'default'
+    exchangeRate: null,
+    exchangeRateDate: null,
+    arAccount: null,                 // { account, ambiguous, candidates, reason }
+    lineAccounts: [],                // [{name, expected, productSuggested, source, mismatch, isCredit, account}]
+    ready: false,
+    receivedOrderDivisa: null,
+    hasOrderLinkage: false,          // true si la factura está atada a packing slip / OV
+    isInvoiceCreditNote: false,      // bandera global por DatosNotaCredito
+    invoiceDate: null,
+    allAccounts: [],
+    productAccountConfigs: []
+  };
+
+  // ── Init ──
+
+  function init() {
+    if (window.__saInvoiceAutofillVersion) return;
+    window.__saInvoiceAutofillVersion = true;
+    if (document.documentElement.dataset.saInvoiceAutofillEnabled === 'false') {
+      log('InvoiceAutofill deshabilitado');
+      return;
+    }
+    patchFetch();
+    setupUrlListener();
+    log(`InvoiceAutofill inicializado en ${location.pathname} (matches=${INVOICE_URL_RE.test(location.pathname)})`);
+    checkUrl();
+  }
+
+  // ── URL Listener ──
+
+  function setupUrlListener() {
+    if (window.__saInvoiceAutofillHistoryPatched) return;
+    window.__saInvoiceAutofillHistoryPatched = true;
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () {
+        const r = orig.apply(this, arguments);
+        checkUrl();
+        return r;
+      };
+    });
+    window.addEventListener('popstate', checkUrl);
+  }
+
+  function checkUrl() {
+    if (!INVOICE_URL_RE.test(location.pathname)) {
+      removePanel();
+      invoiceFormVisible = false;
+      resetInvoiceState();
+      return;
+    }
+    setupPageObserver();
+  }
+
+  // ── Page Observer ──
+
+  function setupPageObserver() {
+    if (window.__saInvoiceAutofillObserverActive) return;
+    window.__saInvoiceAutofillObserverActive = true;
+
+    const observer = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(scanForInvoicePage, 500);
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    scanForInvoicePage();
+  }
+
+  let invoiceFormVisible = false;
+  let lastDetectedCustomer = null;
+  let lastDetectedDivisa = null;
+  let lastDetectedInvoiceDate = null;
+  let lastLineCount = -1;
+  let autofillRunning = false;
+  let scriptSetDivisa = null;
+  let headingLostAt = 0;
+  let diagLoggedForUrl = null;
+
+  // Heading detection: matchea variantes Create/Edit/New Invoice, "Invoice #123",
+  // versiones en español ("Nueva/Editar Factura"), o solo "Invoice" como h1
+  const HEADING_RE = /(?:create|edit|new|view)\s+invoice|^\s*invoice(?:\s|$|#|·|\d|-)|nueva\s+factura|editar\s+factura|^\s*factura(?:\s|$|#|·|\d|-)/i;
+
+  const RJSF_DIVISA_ID = 'root_DatosContables_Divisa';
+  const RJSF_TC_ID = 'root_DatosContables_exchangeRate';
+
+  function resetInvoiceState() {
+    // Reset conservador: NO borra los datos capturados por queries
+    // (customer, allAccounts, productAccountConfigs, receivedOrderDivisa,
+    // hasOrderLinkage, _tipoCambioArray) porque las queries pasan antes
+    // de que el form RJSF se monte y el reset las perdería.
+    // Solo resetea los flags de UI y los derivados (currency, exchangeRate,
+    // arAccount, lineAccounts) que se recalculan en runAutofill.
+    lastDetectedCustomer = null;
+    lastDetectedDivisa = null;
+    lastDetectedInvoiceDate = null;
+    lastLineCount = -1;
+    scriptSetDivisa = null;
+    state.currency = null;
+    state.currencySource = null;
+    state.exchangeRate = null;
+    state.exchangeRateDate = null;
+    state.arAccount = null;
+    state.lineAccounts = [];
+    state.ready = false;
+    state.invoiceDate = null;
+    state.isInvoiceCreditNote = false;
+  }
+
+  function fillTCById(rate) {
+    const inp = document.getElementById(RJSF_TC_ID);
+    if (!inp) return false;
+    if (inp.value === String(rate)) return true;
+    const tracker = inp._valueTracker;
+    if (tracker) tracker.setValue('');
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(inp, String(rate));
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function installDivisaListener() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel || sel.dataset.saInvDivisaListener) return;
+    sel.dataset.saInvDivisaListener = 'true';
+    sel.addEventListener('change', onDivisaChange);
+    log('Divisa listener instalado (invoice)');
+  }
+
+  function onDivisaChange() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel) return;
+    const val = sel.options[sel.selectedIndex]?.text || sel.value || '';
+    const divisa = /mxn|peso/i.test(val) ? 'MXN' : /usd|d[oó]l/i.test(val) ? 'USD' : null;
+    if (!divisa || divisa === state.currency) return;
+
+    log(`Divisa change event (invoice): ${divisa}`);
+    lastDetectedDivisa = divisa;
+    state.currency = divisa;
+    state.currencySource = 'form';
+
+    if (divisa === 'MXN') {
+      state.exchangeRate = 1;
+      state.exchangeRateDate = null;
+    } else {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      const result = findRateForDate(invoiceDate);
+      state.exchangeRate = result?.rate ?? null;
+      state.exchangeRateDate = result?.date ?? null;
+    }
+
+    // Re-resolver AR (depende de divisa)
+    if (state.customer && state.allAccounts.length > 0) {
+      state.arAccount = findBestARAccount(state.customer, divisa, state.allAccounts);
+    }
+
+    renderPanel();
+
+    if (!state.hasOrderLinkage) {
+      const rate = state.exchangeRate;
+      fillTCById(rate);
+      setTimeout(() => fillTCById(rate), 300);
+      setTimeout(() => fillTCById(rate), 800);
+      setTimeout(() => fillTCById(rate), 1500);
+    }
+  }
+
+  function scanForInvoicePage() {
+    // Detección por presencia del form RJSF (Steelhead no muestra heading con "Invoice"/"Factura"
+    // en el editor; el nav lateral lo dice pero no sirve como ancla porque está siempre presente).
+    // Heurística: hay form activo si existen inputs con id="root_DatosContables_*" o varios "root_*".
+    const divisaInput = document.getElementById(RJSF_DIVISA_ID);
+    const tcInput = document.getElementById(RJSF_TC_ID);
+    const rjsfInputs = document.querySelectorAll('[id^="root_"]');
+    // Señal POSITIVA del editor de invoice — NO "cualquier form RJSF" NI el bloque
+    // genérico `root_DatosContables` del cliente. La vista de un Packing Slip
+    // (/Domains/N/Shipping[/PackingSlips/<id>], que el URL gate acepta porque la
+    // factura se crea in-place desde ahí) renderiza el MISMO bloque de datos
+    // contables del cliente — `root_DatosContables`, `root_DatosContables_DivisaUSD`,
+    // `_DivisaMXN`, `_CuentasContables_*`, `_EmpresaEmisora`… (~87 inputs root_*) —
+    // SIN que haya editor de factura abierto. Por eso `[id^="root_DatosContables"]`
+    // genérico daba falso positivo y plantaba el panel sobre el albarán. Lo único
+    // exclusivo del editor de factura montado:
+    //   - root_DatosContables_Divisa      (selector de divisa de la FACTURA; OJO: NO
+    //     es root_DatosContables_DivisaUSD/DivisaMXN, que son flags del cliente)
+    //   - root_DatosContables_exchangeRate (TC de la factura)
+    //   - heading "Creating/Editing/New Invoice for X"
+    const hasInvoiceHeading = [...document.querySelectorAll('h1,h2,h3,h4,[class*="MuiTypography-h"]')]
+      .some(h => /(?:creating|editing|new|create|edit)\s+invoice\s+for\b/i.test(h.textContent || ''));
+    const found = !!(divisaInput || tcInput || hasInvoiceHeading);
+
+    if (!found) {
+      // Modal "Create Invoice Manually" — overlay sin RJSF. Maneja su propio flow.
+      if (isManualInvoiceModal()) {
+        handleManualModal();
+        return;
+      }
+      // Salimos de modal manual sin haber pasado al editor: limpiar estado.
+      if (manualModalState?.active) {
+        manualModalState = null;
+        removePanel();
+      }
+      if (diagLoggedForUrl !== location.pathname) {
+        diagLoggedForUrl = location.pathname;
+        log(`InvoiceAutofill: form RJSF no detectado en ${location.pathname} (root_* inputs=${rjsfInputs.length}). Esperando que abras Create/Edit Invoice.`);
+      }
+      if (invoiceFormVisible) {
+        invoiceFormVisible = false;
+        headingLostAt = Date.now();
+        removePanel();
+      }
+      return;
+    }
+    // Si pasamos al editor RJSF, ya no estamos en modal manual.
+    if (manualModalState?.active) manualModalState = null;
+    if (diagLoggedForUrl !== null) {
+      log(`InvoiceAutofill: form RJSF detectado (root_* inputs=${rjsfInputs.length}, divisaInput=${!!divisaInput}, tcInput=${!!tcInput})`);
+    }
+    diagLoggedForUrl = null;
+
+    if (!invoiceFormVisible) {
+      invoiceFormVisible = true;
+      const elapsed = Date.now() - headingLostAt;
+      if (!lastDetectedCustomer || elapsed > 3000) {
+        resetInvoiceState();
+        log('Pantalla Invoice detectada');
+      }
+      renderPanel();
+    }
+
+    installDivisaListener();
+
+    const currentCustomer = extractCustomerFromDOM();
+    if (currentCustomer && currentCustomer !== lastDetectedCustomer) {
+      lastDetectedCustomer = currentCustomer;
+      lastDetectedDivisa = null;
+      lastLineCount = -1;
+      scriptSetDivisa = null;
+      log(`Customer detectado/cambiado: ${currentCustomer}`);
+      state.ready = false;
+      runAutofill();
+      return;
+    } else if (!currentCustomer && !lastDetectedCustomer) {
+      updatePanelStatus('pending', 'Esperando selección de cliente…');
+      return;
+    }
+
+    // Fallback divisa monitor
+    const currentDivisa = extractDivisaFromDOM();
+    if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedCustomer) {
+      lastDetectedDivisa = currentDivisa;
+      if (state.ready && currentDivisa !== state.currency) {
+        log(`Divisa scan fallback (invoice): ${currentDivisa}`);
+        state.currency = currentDivisa;
+        state.currencySource = 'form';
+        if (currentDivisa === 'MXN') {
+          state.exchangeRate = 1;
+          state.exchangeRateDate = null;
+        } else {
+          const invoiceDate = extractInvoiceDateFromDOM();
+          const result = findRateForDate(invoiceDate);
+          state.exchangeRate = result?.rate ?? null;
+          state.exchangeRateDate = result?.date ?? null;
+        }
+        if (state.customer && state.allAccounts.length > 0) {
+          state.arAccount = findBestARAccount(state.customer, currentDivisa, state.allAccounts);
+        }
+        renderPanel();
+        if (!state.hasOrderLinkage) {
+          const rate = state.exchangeRate;
+          fillTCById(rate);
+          setTimeout(() => fillTCById(rate), 300);
+          setTimeout(() => fillTCById(rate), 800);
+          setTimeout(() => fillTCById(rate), 1500);
+        }
+        return;
+      }
+    }
+
+    // Monitor line item changes
+    if (lastDetectedCustomer && state.ready) {
+      const lines = extractLinesFromDOM();
+      if (lines.length !== lastLineCount) {
+        lastLineCount = lines.length;
+        if (lines.length > 0) {
+          log(`Líneas cambiaron (invoice): ${lines.length}`);
+          state.ready = false;
+          runAutofill();
+        }
+      }
+    }
+
+    // Monitor Invoice Date changes — solo si la factura es manual
+    if (lastDetectedCustomer && state.ready && !state.hasOrderLinkage && state.currency !== 'MXN') {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      if (invoiceDate && invoiceDate !== lastDetectedInvoiceDate) {
+        lastDetectedInvoiceDate = invoiceDate;
+        const result = findRateForDate(invoiceDate);
+        if (result && result.rate !== state.exchangeRate) {
+          log(`Invoice Date: ${invoiceDate} → TC: ${result.rate} (del ${result.date})`);
+          state.exchangeRate = result.rate;
+          state.exchangeRateDate = result.date;
+          fillTCById(result.rate);
+          renderPanel();
+        }
+      }
+    }
+  }
+
+  // ── Fetch Interceptor ──
+  // v1: solo captura inbound, no inyecta outbound
+
+  function patchFetch() {
+    if (window.__saInvoiceAutofillFetchPatched) return;
+    window.__saInvoiceAutofillFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body) return origFetch.apply(this, args);
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
+
+      const opName = bodyObj?.operationName;
+      const response = await origFetch.apply(this, args);
+
+      try {
+        const clone = response.clone();
+        const json = await clone.json();
+        handleIncomingResponse(opName, json);
+      } catch (_) {}
+
+      return response;
+    };
+  }
+
+  function handleIncomingResponse(opName, json) {
+    if (!json?.data) return;
+
+    if (opName === 'InvoiceLowCodeData') {
+      // Carga única que trae customer + accounts + product configs + TipoCambio
+      const customer = json.data?.customerById
+        || json.data?.customer
+        || json.data?.invoiceLowCodeData?.customer
+        || json.data?.invoiceLowCodeData?.customerById
+        || null;
+      if (customer && typeof customer === 'object') {
+        state.customer = customer;
+        state.customerId = customer.id || customer.customerId || null;
+        state.customerName = customer.name || customer.shortName || customer.customerName || null;
+        const customInputsKeys = Object.keys(customer.customInputs || {}).slice(0, 30).join(',');
+        const hasCuentas = !!customer.customInputs?.DatosContables?.CuentasContables;
+        const cuentasCount = customer.customInputs?.DatosContables?.CuentasContables?.length || 0;
+        const taxName = customer?.salesTaxBySalesTaxId?.name || '(no en query)';
+        const ruleResolved = resolveSalesTaxRule(customer);
+        log(`InvoiceLowCodeData: customer hasCuentasContables=${hasCuentas} (n=${cuentasCount}) salesTax="${taxName}" → rule=${ruleResolved} customInputs.keys=[${customInputsKeys}]`);
+      } else {
+        const rootKeys = Object.keys(json.data || {}).slice(0, 20).join(', ');
+        log(`InvoiceLowCodeData: customer no encontrado. data keys=[${rootKeys}]`);
+      }
+      const accounts = json.data?.allAcctAccounts?.nodes;
+      if (Array.isArray(accounts)) state.allAccounts = accounts;
+      const productConfigs = json.data?.allAcctProductAccountConfigs?.nodes;
+      if (Array.isArray(productConfigs)) state.productAccountConfigs = productConfigs;
+      // TipoCambio puede venir bajo varios paths
+      const tipoCambio = json.data?.domainCustomInputs?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || json.data?.currentSession?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || [];
+      if (Array.isArray(tipoCambio) && tipoCambio.length > 0) {
+        state._tipoCambioArray = tipoCambio;
+      }
+      if (lastDetectedCustomer) {
+        state.ready = false;
+        setTimeout(() => runAutofill(), 800);
+      }
+    }
+
+    if (opName === 'GetReceivedOrdersWithReceivedOrderLineItems') {
+      const orders = json.data?.searchReceivedOrders?.nodes || [];
+      if (orders.length > 0) {
+        state.hasOrderLinkage = true;
+        // Divisa canónica de la primera OV
+        const firstDivisa = orders[0]?.customInputs?.divisa
+          || orders[0]?.customInputs?.Divisa
+          || null;
+        if (firstDivisa) {
+          state.receivedOrderDivisa = firstDivisa.toUpperCase();
+          log(`SO Divisa: ${state.receivedOrderDivisa}`);
+        }
+      }
+      // Esta query trae customer con salesTaxBySalesTaxId.name + idInDomain
+      // (InvoiceLowCodeData NO los trae). Mergeamos siempre.
+      const customer = json.data?.customerById;
+      if (customer) {
+        if (!state.customer) {
+          state.customer = customer;
+          state.customerId = customer.id || null;
+          state.customerName = customer.name || customer.shortName || null;
+        } else {
+          if (customer.salesTaxBySalesTaxId) state.customer.salesTaxBySalesTaxId = customer.salesTaxBySalesTaxId;
+          if (typeof customer.salesTaxable === 'boolean') state.customer.salesTaxable = customer.salesTaxable;
+          if (customer.idInDomain != null && state.customer.idInDomain == null) state.customer.idInDomain = customer.idInDomain;
+          if (customer.id != null && state.customer.id == null) state.customer.id = customer.id;
+          if (customer.name && !state.customerName) state.customerName = customer.name;
+        }
+        log(`GetReceivedOrders: customer.salesTax="${customer?.salesTaxBySalesTaxId?.name || '?'}" idInDomain=${customer.idInDomain}`);
+      }
+      const accounts = json.data?.allAcctAccounts?.nodes;
+      if (Array.isArray(accounts) && state.allAccounts.length === 0) state.allAccounts = accounts;
+      const productConfigs = json.data?.allAcctProductAccountConfigs?.nodes;
+      if (Array.isArray(productConfigs) && state.productAccountConfigs.length === 0) state.productAccountConfigs = productConfigs;
+      if (lastDetectedCustomer) {
+        state.ready = false;
+        setTimeout(() => runAutofill(), 800);
+      }
+    }
+
+    if (opName === 'PackingSlipsForInvoicing') {
+      // Tener packing slips listados implica linkage; la divisa real sale de la OV vinculada
+      const ps = json.data?.allPackingSlips?.nodes || [];
+      if (ps.length > 0) state.hasOrderLinkage = true;
+    }
+
+    if (opName === 'InvoiceByIdInDomain') {
+      const inv = json.data?.invoiceByIdInDomain;
+      if (inv) {
+        // Linkage: si tiene partsTransferEvent o relatedWorkOrders, está atada a OV/PS
+        if (inv.partsTransferEventByInvoiceId
+            || (inv.relatedWorkOrders?.nodes?.length > 0)) {
+          state.hasOrderLinkage = true;
+        }
+        // Credit note: si trae DatosNotaCredito poblado, marca global
+        const dnc = inv.customInputs?.DatosNotaCredito;
+        if (dnc && Object.keys(dnc).length > 0) {
+          state.isInvoiceCreditNote = true;
+        }
+        // Customer en InvoiceByIdInDomain (shape distinto: anidado bajo customerAddress)
+        const cust = inv.customerAddressByCustomerAddressShipToId?.customerByCustomerId
+          || inv.customerAddressByCustomerAddressBillToId?.customerByCustomerId
+          || null;
+        if (cust && !state.customer) {
+          state.customer = cust;
+          state.customerId = cust.id || null;
+          state.customerName = cust.name || cust.shortName || null;
+        }
+        // exchangeRate ya guardado en customInputs
+        const er = inv.customInputs?.exchangeRate;
+        if (er && state.exchangeRate == null) state.exchangeRate = parseFloat(er);
+        const dateStr = inv.invoicedAtAsDate;
+        if (dateStr && !state.invoiceDate) state.invoiceDate = dateStr;
+        // TipoCambio del dominio
+        const tc = inv.domainByDomainId?.customInputs?.TipoCambio;
+        if (Array.isArray(tc) && tc.length > 0 && !state._tipoCambioArray) {
+          state._tipoCambioArray = tc;
+        }
+      }
+    }
+  }
+
+  // ── Data Fetching (fallbacks si no se interceptó) ──
+
+  async function fetchExchangeRate() {
+    if (state._tipoCambioArray && state._tipoCambioArray.length > 0) {
+      const r = findRateForDate(null);
+      return r?.rate ?? null;
+    }
+    try {
+      const data = await api().query('GetDomain', {}, 'GetDomain');
+      const tipoCambio = data?.currentSession?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || data?.domain?.customInputs?.TipoCambio
+        || data?.domainByDomainId?.customInputs?.TipoCambio
+        || [];
+      if (!Array.isArray(tipoCambio) || tipoCambio.length === 0) {
+        warn('TipoCambio no encontrado (invoice)');
+        return null;
+      }
+      state._tipoCambioArray = tipoCambio;
+      const r = findRateForDate(null);
+      return r?.rate ?? null;
+    } catch (err) {
+      warn('fetchExchangeRate (invoice) error: ' + err.message);
+      return null;
+    }
+  }
+
+  function findRateForDate(dateStr) {
+    const arr = state._tipoCambioArray;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const target = dateStr || new Date().toISOString().slice(0, 10);
+    const exact = arr.find(e => e.FechaTipoCambio === target);
+    if (exact) return { rate: exact.TipoCambio, date: exact.FechaTipoCambio };
+    const sorted = [...arr].sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''));
+    const closest = sorted.find(e => (e.FechaTipoCambio || '') <= target);
+    const entry = closest || sorted[0];
+    return entry ? { rate: entry.TipoCambio, date: entry.FechaTipoCambio } : null;
+  }
+
+  async function fetchAllAccounts() {
+    if (state.allAccounts.length > 0) return state.allAccounts;
+    try {
+      const data = await api().query('SearchAccounts', { searchQuery: '%%' }, 'SearchAccounts');
+      const accounts = data?.searchAcctAccounts?.nodes || [];
+      state.allAccounts = accounts;
+      return accounts;
+    } catch (err) {
+      warn('fetchAllAccounts error: ' + err.message);
+      return [];
+    }
+  }
+
+  // ¿El catálogo trae al menos una cuenta de ventas/ingreso (0401-*/0402-*)?
+  // Sirve de señal de "catálogo completo": si no hay ninguna, el snapshot está
+  // incompleto y no debemos resolver líneas todavía (marcaríamos "No resuelto"
+  // espurio para cuentas que sí existen).
+  function hasSalesAccounts(arr) {
+    return Array.isArray(arr) && arr.some(a => /^040[12]/.test(String(a?.accountNumber || '')));
+  }
+
+  // Reintenta poblar state.allAccounts hasta que traiga cuentas de ventas. El primer
+  // snapshot (InvoiceLowCodeData / GetReceivedOrders interceptados) a veces llega sin
+  // ellas por race con el primer runAutofill. En cada vuelta: (1) empuja un
+  // SearchAccounts '%%' (catálogo completo) y (2) da chance a que los interceptores
+  // pueblen state.allAccounts solos entre reintentos. No-op si ya hay ventas.
+  async function ensureSalesAccountsLoaded(retries = 5, delayMs = 500) {
+    if (hasSalesAccounts(state.allAccounts)) return state.allAccounts;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const data = await api().query('SearchAccounts', { searchQuery: '%%' }, 'SearchAccounts');
+        const accounts = data?.searchAcctAccounts?.nodes || [];
+        if (accounts.length > (state.allAccounts?.length || 0)) state.allAccounts = accounts;
+      } catch (err) {
+        warn('ensureSalesAccountsLoaded fetch error: ' + err.message);
+      }
+      if (hasSalesAccounts(state.allAccounts)) {
+        log(`Catálogo de ventas cargado tras reintento #${i + 1} (${state.allAccounts.length} cuentas)`);
+        return state.allAccounts;
+      }
+      await sleep(delayMs);
+    }
+    log('ensureSalesAccountsLoaded: catálogo sigue sin cuentas 0401/0402 tras reintentos');
+    return state.allAccounts;
+  }
+
+  // ── Account Resolution ──
+
+  function normalizeForMatch(str) {
+    return String(str || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Resolución determinística de cuenta CXC:
+  //   1. cuentas[] del customer.DatosContables filtradas por DivisaContable === currency
+  //   2. orden descendente por CuentaContable (numeración más alta = más reciente)
+  //   3. resolver id numérico vía allAccounts.accountNumber
+  // TODO: filtro por EmpresaEmisora cuando aparezca un caso real con dos emisoras
+  // Resolver de cuenta CXC contra el catálogo consolidado `allAcctAccounts`.
+  //
+  // `customer.customInputs.DatosContables.CuentasContables` es LEGACY (sistema
+  // anterior, antes de consolidar las 3 razones sociales). No se usa.
+  //
+  // Convención del catálogo consolidado: cada cliente tiene SU(S) cuenta(s) AR
+  // nombrada(s) "<Razón social del cliente> [SIN IVA] <DIVISA>". Ejemplos para
+  // FEDERAL MOGUL en USD: "Federal Mogul de Mexico S de R.L de C.V. 1140 USD",
+  // "Federal Mogul S. de R.L. de C.V. SIN IVA 1188 USD",
+  // "Federal Mogul S. de R.L. de C.V. USD".
+  //
+  // Filtros:
+  //   1. Categoría receivable (cuando la trae el shape)
+  //   2. `name` contiene la divisa como token: `\b<CUR>\b` (no exigimos que termine
+  //      en la divisa — algunas cuentas la traen al final, otras la mezclan con el
+  //      número, ej. "... 1128 USD" vs "... USD 1128")
+  //   3. `name` contiene TODOS los tokens "fuertes" del nombre del cliente
+  //      (palabras alfanuméricas >2 chars, normalizadas, excluyendo formas
+  //      legales tipo "sa", "sade", "rl", "cv", "de"…)
+  //   4. Tie-break por salesTax rule:
+  //      - exenta → preferir cuenta con "SIN IVA" en name
+  //      - general → preferir cuenta SIN "SIN IVA" en name
+  //   5. Tie-break final: accountNumber más alto.
+  //   6. Guard defensivo: si después de tokenizar quedan >3 candidatas, NO
+  //      elegimos. Probablemente los tokens del cliente no narrowearon (cliente
+  //      sin name en el shape, etc.) y caímos a "todas las cuentas en divisa".
+  //      Mejor marcar X en el panel y que el usuario llene manualmente.
+  function findBestARAccount(customer, currency, allAccounts) {
+    const cur = String(currency || '').toUpperCase().trim();
+    if (!cur) return { account: null, ambiguous: false, candidates: [], reason: 'sin_divisa' };
+
+    const all = Array.isArray(allAccounts) ? allAccounts : [];
+    const arPool = all.filter(a => /receivable/i.test(String(a?.acctAccountTypeByTypeId?.category || '')));
+    const pool = arPool.length > 0 ? arPool : all;
+    if (pool.length === 0) {
+      return { account: null, ambiguous: false, candidates: [], reason: 'allAcctAccounts_vacio' };
+    }
+
+    // No exigimos que el name TERMINE en la divisa — algunas cuentas la traen al final
+    // pero otras la mezclan con el número ("... 1128 USD" vs "... USD 1128"). Basta con
+    // que la divisa aparezca como token (word boundary) en el name.
+    const reCur = new RegExp(`\\b${cur}\\b`, 'i');
+    const byCurrency = pool.filter(a => reCur.test(String(a?.name || '')));
+    if (byCurrency.length === 0) {
+      return {
+        account: null, ambiguous: false,
+        candidates: pool.map(a => ({ id: a.id, accountNumber: a.accountNumber, name: a.name })),
+        reason: `sin_cuenta_AR_para_${cur}`, currencyHint: cur
+      };
+    }
+
+    // Tokens fuertes del nombre del cliente. En el flow PS-embedded, customer.name
+    // del shape de InvoiceLowCodeData/GetReceivedOrders puede venir vacío aunque la UI
+    // sí lo muestre (lo extraemos a state.customerName). Caemos a esa lectura del DOM
+    // como último recurso para que los tokens narroween y no caigamos a "todas las
+    // cuentas en divisa" (66 candidatas → tooMany → ✗).
+    const customerName = customer?.name || customer?.shortName || customer?.customerName || state.customerName || '';
+    const stopWords = new Set([
+      'sa', 'sade', 'sadc', 'sade', 'rl', 'rldecv', 'cv', 'de', 'la', 'las',
+      'el', 'los', 'y', 'sapi', 'srl', 'sab', 'mx', 'usa', 'inc', 'llc', 'ltd',
+      'co', 'sa de cv', 'sa de rl', 'sa de rl de cv'
+    ]);
+    const tokens = normalizeForMatch(customerName).split(' ')
+      .filter(t => t.length > 2 && !stopWords.has(t));
+
+    let byCustomer = byCurrency;
+    if (tokens.length > 0) {
+      byCustomer = byCurrency.filter(a => {
+        const norm = normalizeForMatch(a?.name || '');
+        return tokens.every(t => norm.includes(t));
+      });
+    }
+
+    if (byCustomer.length === 0) {
+      return {
+        account: null, ambiguous: false,
+        candidates: byCurrency.map(a => ({ id: a.id, accountNumber: a.accountNumber, name: a.name })),
+        reason: `sin_cuenta_AR_para_${cur}_y_cliente`, currencyHint: cur,
+        customerTokens: tokens
+      };
+    }
+
+    // Tie-break por salesTax rule: exenta → "SIN IVA", general → sin "SIN IVA"
+    const rule = resolveSalesTaxRule(customer);
+    const hasSinIva = a => /\bsin\s*iva\b/i.test(String(a?.name || ''));
+    let preferred = byCustomer;
+    if (rule === 'exenta') {
+      const w = byCustomer.filter(hasSinIva);
+      if (w.length > 0) preferred = w;
+    } else if (rule === 'general') {
+      const w = byCustomer.filter(a => !hasSinIva(a));
+      if (w.length > 0) preferred = w;
+    }
+
+    preferred.sort((a, b) => String(b.accountNumber || '').localeCompare(String(a.accountNumber || '')));
+    const winner = preferred[0];
+    // >3 candidatas suele indicar falso positivo (tokens del cliente no
+    // narrowearon nada y caímos a "todas las cuentas en divisa"). Mejor no
+    // fillear y avisar al usuario que llene manualmente.
+    const tooMany = preferred.length > 3;
+    return {
+      account: tooMany ? null : { id: winner.id, accountNumber: winner.accountNumber, name: winner.name },
+      ambiguous: preferred.length > 1,
+      tooMany,
+      candidates: preferred.map(m => ({ id: m.id, accountNumber: m.accountNumber, name: m.name })),
+      reason: tooMany ? `demasiadas_candidatas_${preferred.length}` : null,
+      currencyHint: cur,
+      customerTokens: tokens,
+      ruleApplied: rule
+    };
+  }
+
+  // El flag relevante NO es `customer.salesTaxable` (siempre true: indica que el cliente
+  // tiene un impuesto asignado), sino *cuál* impuesto del catálogo está asignado:
+  // `customer.salesTaxBySalesTaxId.name` viene del catálogo de SalesTaxes del dominio.
+  // Convenciones del dominio Ecoplating:
+  //   - "Ventas Nacionales con Impuestos" → general (IVA 16%, prefijo 0401-0001 / 0402-0001)
+  //   - "Ventas Exentas sin impuestos"   → exenta (Tasa 0%, prefijo 0401-0004 / 0402-0002)
+  // Devuelve 'general' | 'exenta' | null (null = no se pudo determinar).
+  function resolveSalesTaxRule(customer) {
+    if (!customer) return null;
+    const taxName = customer?.salesTaxBySalesTaxId?.name
+      || customer?.customerAddressesByCustomerId?.nodes?.[0]?.salesTaxBySalesTaxId?.name
+      || null;
+    if (typeof taxName !== 'string' || !taxName.trim()) return null;
+    const s = taxName.toLowerCase();
+    if (/exent|sin\s*impuest|tasa\s*0|cero|0\s*%|export/.test(s)) return 'exenta';
+    if (/nacional|general|gravad|con\s*impuest|iva|16\s*%/.test(s)) return 'general';
+    return null;
+  }
+
+  // Cuenta de ingreso/descuento por línea
+  function resolveLineAccount({ lineAmount, customer, productId, allAccounts, productConfigs, isCreditNoteGlobal }) {
+    const rule = resolveSalesTaxRule(customer);
+    const isCredit = isCreditNoteGlobal || (typeof lineAmount === 'number' && lineAmount < 0);
+
+    if (rule === null) {
+      // Sin regla determinada no proponemos cuenta para evitar default silencioso.
+      return {
+        account: null,
+        expected: null,
+        productSuggested: null,
+        mismatch: false,
+        isCredit,
+        targetPrefix: null,
+        source: 'unresolved',
+        reason: 'sin_salesTax_en_query'
+      };
+    }
+    const isGeneral = rule === 'general';
+
+    let targetPrefix;
+    if (isCredit) {
+      targetPrefix = isGeneral ? PREFIX_DESC_GENERAL : PREFIX_DESC_CERO;
+    } else {
+      targetPrefix = isGeneral ? PREFIX_VENTAS_GENERAL : PREFIX_VENTAS_CERO;
+    }
+
+    const expected = allAccounts.find(a => String(a.accountNumber || '').startsWith(targetPrefix));
+
+    let productSuggested = null;
+    if (productId != null) {
+      const pc = (productConfigs || []).find(c =>
+        c.productId === productId
+        && (isCredit ? c.context === 'INVOICE_DISCOUNT' : c.context === 'INVOICE_INCOME')
+      );
+      if (pc) {
+        productSuggested = allAccounts.find(a => a.id === pc.acctAccountId) || null;
+      }
+    }
+
+    const mismatch = !!(productSuggested && expected && productSuggested.id !== expected.id);
+    const account = expected || productSuggested || null;
+    // Distinguir "el catálogo aún no carga" de "no existe la cuenta del prefijo":
+    // si no hay NINGUNA cuenta de ventas (0401/0402) en el catálogo, es carga
+    // incompleta (pending → "Cargando…"), no un genuino "No resuelto" (warn).
+    const catalogIncomplete = !account && !hasSalesAccounts(allAccounts);
+
+    return {
+      account,
+      expected,
+      productSuggested,
+      mismatch,
+      isCredit,
+      targetPrefix,
+      catalogIncomplete,
+      source: !account ? (catalogIncomplete ? 'loading' : 'unresolved') : (mismatch ? 'override' : (productSuggested ? 'product-default' : 'rule'))
+    };
+  }
+
+  // ── DOM Extraction ──
+
+  function extractCustomerFromDOM() {
+    // 1. Heading principal: "Creating Invoice for X" / "Editing Invoice for X"
+    //    El h1/h2 puede contener botones anexos ("View Customer Custom Inputs",
+    //    "Edit Power Tools", "Total: $X"). Usamos el primer text node directo
+    //    del heading (pre-children) para obtener solo "Creating Invoice for X".
+    const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"], [class*="heading"]');
+    for (const h of headings) {
+      let txt = '';
+      // Concatenar solo text nodes directos (no descender en buttons/spans inline)
+      for (const node of h.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          txt += node.textContent;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          // Aceptar spans inline que parezcan parte del título (no buttons/links)
+          const tag = node.tagName?.toLowerCase();
+          if (tag === 'span' || tag === 'em' || tag === 'strong' || tag === 'b') {
+            txt += ' ' + (node.textContent || '');
+          } else {
+            break;
+          }
+        }
+      }
+      txt = txt.trim();
+      // Fallback: si no hubo text nodes directos, usa textContent y luego corta
+      // en separadores conocidos
+      if (!txt) txt = h.textContent?.trim() || '';
+      const m = txt.match(/^(?:creating|editing|create|edit|new)\s+invoice\s+for\s+(.+?)$/i);
+      if (m && m[1]) {
+        let name = m[1].trim();
+        // Si vemos botones contaminando ("MOGULView Customer..."), insertar espacios
+        // en boundaries CamelCase y luego split por keywords de botones
+        if (/View\s*Customer|Edit\s*Power|Power\s*Tools|Total\s*:|\$\d/i.test(name)) {
+          name = name
+            .replace(/([a-z])([A-Z])/g, '$1 $2')          // mogULView → mogUL View
+            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');    // MOGULView → MOGUL View
+          name = name.split(/\bView\b|\bEdit\b|\bPower\s+Tools|\bTotal\s*:|\$\d/i)[0].trim();
+        }
+        if (name.length > 1 && name.length < 200) return name;
+      }
+    }
+    // 2. Fallback (modal manual y forms sin heading): label-driven lookup.
+    //    findReactSelectControlByLabel localiza el wrapper EXACTO del Customer
+    //    a partir del <p>Customer:</p>. Antes caminábamos hacia arriba desde
+    //    cualquier singleValue buscando un sibling con texto "Customer:" — pero
+    //    en el modal todos los labels (<p>Customer:</p>, <p>Terms:</p>, ...)
+    //    son siblings dentro del mismo css-iyrxkt, así que al limpiar Customer
+    //    el walker encontraba el value de Terms/Sales Tax y lo devolvía como
+    //    cliente, disparando ciclos espurios de "cliente cambió".
+    const ctrl = typeof findReactSelectControlByLabel === 'function'
+      ? findReactSelectControlByLabel(/^\s*customer:?\s*$|^\s*cliente:?\s*$/i)
+      : null;
+    if (ctrl?.container) {
+      const sv = ctrl.container.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+      if (sv) {
+        const clone = sv.cloneNode(true);
+        clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+        const val = cleanCustomerName(clone.textContent?.trim());
+        if (val && val.length > 1) return val;
+      }
+    }
+    return null;
+  }
+
+  // El singleValue del react-select de Customer absorbe badges/tags adyacentes
+  // sin whitespace ("FISHER CONTROLES (#7)ActivoIndustrial(Quote Assignee: ...)").
+  // Cortar tras "(#N)" si lo hay; si no, antes del primer "(Quote" / CamelCase boundary.
+  function cleanCustomerName(raw) {
+    if (!raw) return raw;
+    const idMatch = raw.match(/^(.+?\(#\d+\))/);
+    if (idMatch) return idMatch[1].trim();
+    const quoteIdx = raw.search(/\(Quote\s+Assignee/i);
+    if (quoteIdx > 0) return raw.slice(0, quoteIdx).trim();
+    return raw.trim();
+  }
+
+  // Extrae el customer.idInDomain de un link "View Customer" / "Customer Custom Inputs"
+  // cercano al heading. La URL canon es /Domains/{N}/Customers/{idInDomain}/...
+  function extractCustomerIdInDomainFromDOM() {
+    const anchors = document.querySelectorAll('a[href*="/Customers/"]');
+    for (const a of anchors) {
+      const m = a.getAttribute('href')?.match(/\/Domains\/\d+\/Customers\/(\d+)/);
+      if (m) return parseInt(m[1], 10);
+    }
+    return null;
+  }
+
+  // Fetch del customer vía persisted query "Customer" para obtener salesTaxable.
+  // Cacheado por idInDomain para evitar refetch en cada runAutofill.
+  const _customerCache = new Map();
+  async function fetchCustomerSalesTaxable(idInDomain) {
+    if (idInDomain == null) return null;
+    if (_customerCache.has(idInDomain)) return _customerCache.get(idInDomain);
+    try {
+      const data = await SteelheadAPI.query('Customer', { idInDomain, includeAccountingFields: true });
+      const c = data?.customerByIdInDomain || null;
+      _customerCache.set(idInDomain, c);
+      return c;
+    } catch (err) {
+      warn(`Customer query falló (idInDomain=${idInDomain}): ${err.message}`);
+      _customerCache.set(idInDomain, null);
+      return null;
+    }
+  }
+
+  function extractDivisaFromDOM() {
+    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of singleValues) {
+      if (sv.closest('#sa-invoice-autofill-panel')) continue;
+      const val = sv.textContent?.trim() || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = sv.parentElement;
+      for (let depth = 0; depth < 8 && parent; depth++) {
+        for (const child of parent.children) {
+          if (child.contains(sv)) continue;
+          const labelText = child.textContent?.trim() || '';
+          if (/divisa/i.test(labelText) && labelText.length < 50) {
+            return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    for (const select of document.querySelectorAll('select')) {
+      if (select.closest('#sa-invoice-autofill-panel')) continue;
+      const opt = select.options?.[select.selectedIndex];
+      const val = opt?.text || select.value || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = select.parentElement;
+      for (let d = 0; d < 6 && parent; d++) {
+        if (/divisa/i.test(parent.textContent || '') && parent.textContent.length < 300) {
+          return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function extractInvoiceDateFromDOM() {
+    const inputs = document.querySelectorAll('input[type="date"], input[type="text"], input');
+    for (const inp of inputs) {
+      if (inp.closest('#sa-invoice-autofill-panel')) continue;
+      let parent = inp.parentElement;
+      for (let d = 0; d < 5 && parent; d++) {
+        for (const child of parent.children) {
+          if (child.contains(inp)) continue;
+          const txt = child.textContent?.trim() || '';
+          if (/^invoice\s*date:?$/i.test(txt) || /^fecha.*factura:?$/i.test(txt) || /^invoiced\s*at:?$/i.test(txt)) {
+            const val = inp.value?.trim();
+            if (!val) return null;
+            const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return m[0];
+            const m2 = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+            return null;
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function findLineItemsSection() {
+    const headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div,p');
+    for (const h of headings) {
+      if (/line\s*items?|invoice\s*lines|l[ií]neas/i.test(h.textContent?.trim())) {
+        return h.closest('section') || h.parentElement?.parentElement || h.parentElement;
+      }
+    }
+    return document.querySelector('main') || document.querySelector('[class*="content"]');
+  }
+
+  // Cada línea se renderiza con dos sub-tables dentro de un wrapper:
+  //   1. Header table: <th>Line #N - PN</th> <th>Description:</th> <th>Total: $X</th>
+  //   2. Data table: <thead> con 11 columnas (Include, Product, ..., Income Account);
+  //      <tbody> con un row de datos (cells.length === 11) + sub-row con colspan=11
+  //      que contiene Part Numbers/Locations.
+  // El layout legacy usaba subtítulos italics (<p>INCOME</p>) junto al combobox; lo
+  // mantenemos como fallback.
+  function extractLinesFromDOM() {
+    const lines = [];
+    const seen = new Set();
+
+    // ── Layout A: tabla embebida en flujo Packing Slip ──
+    const allThs = document.querySelectorAll('th');
+    for (const th of allThs) {
+      if (th.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = th.textContent?.trim() || '';
+      const m = txt.match(/^Line\s*#(\d+)\s*-\s*([A-Z0-9._\-/]+)/);
+      if (!m) continue;
+      const lineNum = parseInt(m[1], 10);
+      const pn = m[2];
+
+      // Subir hasta encontrar el wrapper de la línea que contenga la sub-table de
+      // datos (la que tiene "Income Account" como columna).
+      let lineWrapper = th.parentElement;
+      let dataTable = null;
+      let columnHeaders = null;
+      let incomeIdx = -1;
+      for (let d = 0; d < 12 && lineWrapper; d++) {
+        const tables = lineWrapper.querySelectorAll('table');
+        for (const tbl of tables) {
+          const colThs = [...tbl.querySelectorAll(':scope > thead > tr > th')];
+          if (colThs.length < 5) continue;
+          const idx = colThs.findIndex(h => /^\s*income\s+account\s*$/i.test(h.textContent?.trim() || ''));
+          if (idx >= 0) {
+            dataTable = tbl;
+            columnHeaders = colThs;
+            incomeIdx = idx;
+            break;
+          }
+        }
+        if (dataTable) break;
+        lineWrapper = lineWrapper.parentElement;
+      }
+      if (!dataTable || incomeIdx < 0) continue;
+
+      // Data row: primer <tr> del <tbody> con cells.length === número de columnas
+      // (la sub-row de Part Numbers tiene 1 cell con colspan=11, no matchea).
+      let dataRow = null;
+      for (const tr of dataTable.querySelectorAll(':scope > tbody > tr')) {
+        if (tr.cells && tr.cells.length === columnHeaders.length) {
+          dataRow = tr;
+          break;
+        }
+      }
+      if (!dataRow) continue;
+
+      const incomeCell = dataRow.cells[incomeIdx];
+      if (!incomeCell) continue;
+      // Ancla en el primer hijo del <td> de Income Account: tryFillIncomeInLine
+      // hará host = incomeChild.parentElement = <td>, y querySelector queda
+      // scopeado a ese td (no captura comboboxes de otras columnas como Product).
+      const incomeChild = incomeCell.firstElementChild || incomeCell;
+
+      const key = `${lineNum}-${pn}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const headerTr = th.closest('tr');
+      const totalMatch = headerTr?.textContent.match(/Total:\s*\$?\s*(-?[\d,]+(?:\.\d+)?)/i);
+      const amount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : null;
+
+      lines.push({
+        name: pn,
+        lineNumber: lineNum,
+        container: lineWrapper,
+        incomeLabel: incomeChild,
+        amount
+      });
+    }
+
+    if (lines.length > 0) return lines;
+
+    // ── Layout B (fallback): subtítulo italic <p>INCOME</p> junto al combobox ──
+    const candidates = document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,div');
+    for (const el of candidates) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 400) continue;
+      const m = txt.match(/Line\s*#(\d+)\s*-\s*([A-Z0-9._\-/]+)/);
+      if (!m) continue;
+      const lineNum = parseInt(m[1], 10);
+      const pn = m[2];
+      let container = el.parentElement;
+      let incomeLabel = null;
+      for (let d = 0; d < 12 && container; d++) {
+        incomeLabel = [...container.querySelectorAll('p,span,div,label')].find(p => {
+          if (p.closest('#sa-invoice-autofill-panel')) return false;
+          const t = p.textContent?.trim() || '';
+          return /^income$/i.test(t);
+        });
+        if (incomeLabel) break;
+        container = container.parentElement;
+      }
+      if (!container || !incomeLabel) continue;
+      const key = `${lineNum}-${pn}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const totalMatch = container.textContent.match(/Total:\s*\$?\s*(-?[\d,]+(?:\.\d+)?)/i);
+      const amount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : null;
+      lines.push({ name: pn, lineNumber: lineNum, container, incomeLabel, amount });
+    }
+    return lines;
+  }
+
+  // Intenta inferir el monto de la línea a partir de quantity × price del row más cercano
+  function extractLineAmount(nameInput) {
+    let row = nameInput.closest('tr') || nameInput.closest('[role="row"]');
+    if (!row) {
+      let p = nameInput.parentElement;
+      for (let d = 0; d < 8 && p; d++) {
+        if (p.querySelectorAll('input[type="number"]').length >= 2) { row = p; break; }
+        p = p.parentElement;
+      }
+    }
+    if (!row) return null;
+    const numInputs = [...row.querySelectorAll('input[type="number"], input')]
+      .filter(i => i !== nameInput && i.value?.trim() && /^-?\d+([.,]\d+)?$/.test(i.value.trim()));
+    if (numInputs.length < 2) return null;
+    const nums = numInputs.map(i => parseFloat(i.value.replace(',', '.')));
+    // Heurística simple: producto de los dos primeros valores numéricos válidos
+    if (nums.length >= 2 && Number.isFinite(nums[0]) && Number.isFinite(nums[1])) {
+      return nums[0] * nums[1];
+    }
+    return null;
+  }
+
+  // ── Combobox Interaction (idéntico a bill-autofill) ──
+
+  async function tryFillCombobox(labelText, searchText, targetAccountName) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    let labelEl = null;
+
+    const labels = document.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 40) continue;
+      if (!labelRe.test(txt)) continue;
+      labelEl = el;
+      break;
+    }
+
+    if (!labelEl) return { success: false, method: 'fallback', reason: 'label no encontrado' };
+
+    let parent = labelEl;
+    for (let d = 0; d < 8 && parent; d++) {
+      const comboInput = parent.querySelector('input[role="combobox"]');
+      if (comboInput) {
+        const ctrl = comboInput.closest('[class*="-control"]');
+        if (ctrl) return await clickAndSelectOption(ctrl, parent, searchText, targetAccountName);
+      }
+      const sel = parent.querySelector('select');
+      if (sel) return tryFillNativeSelect(sel, searchText, targetAccountName);
+      parent = parent.parentElement;
+    }
+
+    return { success: false, method: 'fallback', reason: 'control no encontrado' };
+  }
+
+  function tryFillNativeSelect(sel, searchText, targetName) {
+    const searchNorm = normalizeForMatch(searchText);
+    for (const opt of sel.options) {
+      const optText = (opt.text || '').trim();
+      const norm = normalizeForMatch(optText || opt.value || '');
+      if (!norm) continue;
+      if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
+        const tracker = sel._valueTracker;
+        if (tracker) tracker.setValue('');
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+        if (nativeSetter) nativeSetter.call(sel, opt.value);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return { success: true, filled: optText, method: 'native-select' };
+      }
+    }
+    return { success: false, method: 'fallback', reason: 'opcion no encontrada en select nativo' };
+  }
+
+  async function clickAndSelectOption(control, container, searchText, targetAccountName) {
+    control.click();
+    await sleep(300);
+
+    const inputEl = control.querySelector('input');
+    if (inputEl) {
+      const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (nativeInputSetter) nativeInputSetter.call(inputEl, searchText);
+      inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    let options = [];
+    for (let i = 0; i < 10; i++) {
+      await sleep(200);
+      const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]')
+        || container.querySelector('[class*="menu"], [class*="Menu"]')
+        || document.querySelector('[class*="menu"], [class*="Menu"]');
+      if (menu) {
+        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')];
+        if (options.length > 0) break;
+      }
+    }
+
+    if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones tras click' };
+
+    return pickBestOption(options, targetAccountName);
+  }
+
+  function pickBestOption(options, targetAccountName) {
+    const targetNorm = normalizeForMatch(targetAccountName);
+    let best = null;
+    let bestScore = -1;
+
+    for (const opt of options) {
+      const text = opt.textContent?.trim() || '';
+      // CRITICAL: Steelhead muestra "Create…" como opción cuando no hay match.
+      // Clickearla abre el modal "Create Account" y registra basura. Nunca elegirla.
+      if (/^\s*(create|crear|nuev[oa])\b/i.test(text) || /create\s+new/i.test(text)) continue;
+      const norm = normalizeForMatch(text);
+      let score = 0;
+      if (norm === targetNorm) score = 100;
+      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 50;
+      else {
+        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
+        for (const t of tokens) { if (norm.includes(t)) score += 10; }
+      }
+      if (score > bestScore) { bestScore = score; best = opt; }
+    }
+
+    if (!best || bestScore < 10) return { success: false, method: 'fallback', reason: 'opcion no encontrada' };
+
+    // react-select v5 confirma la opción en mousedown (el Option hace
+    // onMouseDown→preventDefault para no perder focus, y selecciona ahí). Un
+    // .click() sintético solo no disparaba el commit → la opción quedaba "a medio
+    // seleccionar": el texto tecleado persistía en el input y el menú abierto, sin
+    // singleValue. Disparamos la secuencia completa mousedown→mouseup→click.
+    const fireMouse = (el, type) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, view: window }));
+    fireMouse(best, 'mousedown');
+    fireMouse(best, 'mouseup');
+    best.click();
+    return { success: true, filled: targetAccountName, method: 'visual' };
+  }
+
+  // Localiza el container del field que sigue al <p>label</p>.
+  // El modal manual usa este patrón:
+  //   <p class="MuiTypography...">Ship Date:</p>
+  //   <div class="react-datepicker-wrapper">…input…</div>
+  // o con wrapper-de-un-solo-hijo:
+  //   <div><p>Ship Date:</p></div>
+  //   <div>…input…</div>
+  // El input/combobox vive en un SIBLING (o sibling del wrapper que sólo contiene
+  // al <p>), NO en un ancestro. Subir por ancestros confundía con el primer input
+  // del grid (Customer combobox).
+  function findFieldContainerByPLabel(labelRe) {
+    const isLabelP = (el) => el && el.tagName === 'P'
+      && /:\s*$/.test((el.textContent?.trim() || ''))
+      && !el.querySelector('input, textarea, button');
+
+    const candidates = document.querySelectorAll('p, label, span');
+    for (const el of candidates) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const raw = el.textContent?.trim() || '';
+      if (raw.length === 0 || raw.length > 60) continue;
+      const cleaned = raw.replace(/[\s:*]+$/, '').trim();
+      if (!labelRe.test(cleaned) && !labelRe.test(raw)) continue;
+      if (el.querySelector('input, textarea, button')) continue;
+
+      // Ascender al "labelRoot": ancestro cuyo padre es el grid container y
+      // que es sibling del field. Subimos sólo mientras sea hijo único.
+      let labelRoot = el;
+      while (labelRoot.parentElement
+        && labelRoot.parentElement.children.length === 1
+        && labelRoot.parentElement.firstElementChild === labelRoot
+        && !['BODY', 'HTML'].includes(labelRoot.parentElement.tagName)) {
+        labelRoot = labelRoot.parentElement;
+      }
+
+      // Caminar siblings hacia adelante hasta 8 hops; primer container con
+      // input/textarea wins. Paramos si encontramos otro label-<p> (siguiente field).
+      let cursor = labelRoot.nextElementSibling;
+      let hops = 0;
+      while (cursor && hops < 8) {
+        if (isLabelP(cursor)) break;
+        if (cursor.children.length === 1 && isLabelP(cursor.firstElementChild)) break;
+        const inp = cursor.querySelector('input:not([aria-hidden]):not([type="hidden"]), textarea:not([aria-hidden])');
+        if (inp) {
+          const hasCombobox = !!cursor.querySelector('input[role="combobox"], input[aria-autocomplete]');
+          return { container: cursor, input: inp, hasCombobox };
+        }
+        cursor = cursor.nextElementSibling;
+        hops++;
+      }
+    }
+    return null;
+  }
+
+  // Devuelve un <input> NO combobox y no disabled (para fills tipo fecha/texto).
+  function findInputByLabel(labelRe) {
+    const f = findFieldContainerByPLabel(labelRe);
+    if (!f) return null;
+    return f.container.querySelector(
+      'input:not([role="combobox"]):not([aria-autocomplete]):not([aria-hidden]):not([disabled]):not([type="hidden"])'
+    ) || f.container.querySelector('textarea:not([aria-hidden]):not([disabled])')
+       || null;
+  }
+
+  async function tryFillTextInput(labelText, value) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    const inp = findInputByLabel(labelRe);
+    if (!inp) return { success: false };
+    const tracker = inp._valueTracker;
+    if (tracker) tracker.setValue('');
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(inp, String(value));
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    return { success: true };
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Modal "Create Invoice Manually" ──
+
+  function isManualInvoiceModal() {
+    const heads = document.querySelectorAll('h1,h2,h3,h4,[class*="MuiTypography-h"]');
+    for (const h of heads) {
+      if (MANUAL_HEADING_RE.test(h.textContent?.trim() || '')) return true;
+    }
+    return false;
+  }
+
+  function formatDateMMDDYYYY(d) {
+    return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+  }
+  function formatDateISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // Variante de tryFillTextInput para inputs de fecha: detecta type="date"
+  // (formato HTML5 YYYY-MM-DD) vs text con máscara MM/DD/YYYY.
+  // MUI DatePicker (masked input) ignora el native value setter — usa multi-estrategia
+  // y verifica que el valor persista, no sólo que se haya despachado el evento.
+  async function tryFillDateInput(labelText, date) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    const inp = findInputByLabel(labelRe);
+    if (!inp) return { success: false };
+    const value = inp.type === 'date' ? formatDateISO(date) : formatDateMMDDYYYY(date);
+    const ok = await writeToInput(inp, value);
+    if (ok) return { success: true, filled: value, type: inp.type || 'text' };
+    return { success: false, reason: `valor no persistió (DOM=${JSON.stringify(inp.value || '')})` };
+  }
+
+  // Comparación por dígitos: "04/28/2026" === "04282026" === "2026-04-28" tras strip.
+  function digitsOnly(s) { return String(s || '').replace(/\D/g, ''); }
+
+  // Multi-estrategia para forzar valor en input. Devuelve true si el DOM tiene
+  // el valor esperado tras los eventos.
+  async function writeToInput(inp, value) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    const target = digitsOnly(value);
+
+    // Estrategia 1: native value setter (funciona en inputs planos / type="date")
+    inp.focus();
+    if (inp._valueTracker) inp._valueTracker.setValue('');
+    if (setter) setter.call(inp, value);
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, inputType: 'insertText' }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleep(60);
+    if (digitsOnly(inp.value) === target) {
+      inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    }
+
+    // Estrategia 2: select all + execCommand insertText (varios masked inputs lo aceptan)
+    inp.focus();
+    try { inp.setSelectionRange(0, (inp.value || '').length); } catch (_) {}
+    try {
+      document.execCommand('selectAll', false, null);
+      const inserted = document.execCommand('insertText', false, value);
+      await sleep(60);
+      if (inserted && digitsOnly(inp.value) === target) {
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+        inp.dispatchEvent(new Event('blur', { bubbles: true }));
+        return true;
+      }
+    } catch (_) { /* fall through */ }
+
+    // Estrategia 3: keystroke por carácter (MUI DatePicker masked input)
+    inp.focus();
+    try { inp.setSelectionRange(0, (inp.value || '').length); } catch (_) {}
+    if (inp.value) {
+      if (setter) setter.call(inp, '');
+      inp.dispatchEvent(new InputEvent('input', { inputType: 'deleteContentBackward', bubbles: true }));
+    }
+    let cumulative = '';
+    for (const ch of value) {
+      inp.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true, cancelable: true }));
+      inp.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: ch, bubbles: true, cancelable: true }));
+      cumulative += ch;
+      if (setter) setter.call(inp, cumulative);
+      inp.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: ch, bubbles: true }));
+      inp.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+      await sleep(15);
+    }
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    inp.dispatchEvent(new Event('blur', { bubbles: true }));
+    await sleep(80);
+    return digitsOnly(inp.value) === target;
+  }
+
+  function handleManualModal() {
+    if (!manualModalState?.active) {
+      manualModalState = { active: true, customer: null, filled: false, filling: false, runId: 0, deferred: false };
+      log('Modal "Create Invoice Manually" detectado');
+      renderManualPanel();
+      installCustomerFocusGuard();
+    }
+    const customer = extractCustomerFromDOM();
+    if (customer && customer !== manualModalState.customer) {
+      const previous = manualModalState.customer;
+      manualModalState.customer = customer;
+      manualModalState.filled = false;
+      log(previous
+        ? `Modal manual: customer cambió ${previous} → ${customer}`
+        : `Modal manual: customer seleccionado = ${customer}`);
+      if (manualModalState.filling) {
+        // Cancelar run anterior incrementando runId — los pasos in-flight detectan
+        // stale y abortan.
+        manualModalState.runId++;
+        log('Modal manual: cancelando run anterior por cambio de cliente');
+      }
+      // Si el combobox Customer sigue activo (usuario abrió de nuevo para cambiar),
+      // no arranquemos otro fill — pelearíamos por el focus. Marcamos deferred
+      // y reintentamos cuando el usuario salga (focusout guard).
+      if (isCustomerComboboxActive()) {
+        manualModalState.deferred = true;
+        log('Modal manual: Customer combobox activo — fill diferido hasta blur');
+      } else {
+        manualModalState.deferred = false;
+        setTimeout(() => fillManualModalAll(), 200);
+      }
+      renderManualPanel();
+    } else if (manualModalState.deferred && !isCustomerComboboxActive() && manualModalState.customer && !manualModalState.filled && !manualModalState.filling) {
+      // El usuario soltó el combobox de Customer sin cambiar de cliente; arranca el
+      // fill que dejamos pendiente.
+      manualModalState.deferred = false;
+      log('Modal manual: Customer ya no está activo — disparando fill diferido');
+      fillManualModalAll();
+    } else if (!customer && !manualModalState.customer) {
+      renderManualPanel('pending');
+    }
+  }
+
+  // Instala una sola vez un focusin listener: si el usuario enfoca el combobox
+  // de Customer mientras un fill está en curso, bumpa runId para abortar y
+  // marca deferred para que no se relance hasta que el foco salga del combobox.
+  function installCustomerFocusGuard() {
+    if (window.__saInvoiceCustomerFocusGuardInstalled) return;
+    window.__saInvoiceCustomerFocusGuardInstalled = true;
+    document.addEventListener('focusin', (e) => {
+      if (!manualModalState?.active) return;
+      const ctrl = findReactSelectControlByLabel(CUSTOMER_LABEL_RE);
+      if (!ctrl) return;
+      const insideCustomer = ctrl.container?.contains(e.target) || ctrl.control?.contains(e.target) || ctrl.combo === e.target;
+      if (!insideCustomer) return;
+      if (manualModalState.filling) {
+        manualModalState.runId++;
+        log('Modal manual: Customer combobox enfocado — abortando fill en curso');
+      }
+      manualModalState.deferred = true;
+    }, true);
+  }
+
+  // Localiza el control de un react-select a partir de un label-<p>.
+  // Reusa findFieldContainerByPLabel — el sibling tras el label contiene el
+  // wrapper de react-select.
+  function findReactSelectControlByLabel(labelRe) {
+    const f = findFieldContainerByPLabel(labelRe);
+    if (!f) return null;
+    const combo = f.container.querySelector('input[role="combobox"], input[aria-autocomplete]');
+    if (!combo) return null;
+    const control = combo.closest('[class*="-control"]') || combo.parentElement;
+    return { combo, control, container: f.container };
+  }
+
+  const CUSTOMER_LABEL_RE = /^\s*customer:?\s*$|^\s*cliente:?\s*$/i;
+
+  // Devuelve true si el usuario está interactuando con el combobox de Customer
+  // (focus dentro del control o el combo input es activeElement, o el dropdown
+  // del combobox está abierto — aria-expanded="true"). Mientras esto sea true
+  // no debemos abrir/cerrar otros dropdowns: peleamos por focus con el usuario.
+  function isCustomerComboboxActive() {
+    const ctrl = findReactSelectControlByLabel(CUSTOMER_LABEL_RE);
+    if (!ctrl) return false;
+    const ae = document.activeElement;
+    if (ae && (ae === ctrl.combo || ctrl.container?.contains(ae) || ctrl.control?.contains(ae))) {
+      return true;
+    }
+    if (ctrl.combo?.getAttribute('aria-expanded') === 'true') return true;
+    return false;
+  }
+
+  // Lee el singleValue actual de un react-select por label (lo que ya está seleccionado).
+  function readReactSelectByLabel(labelRe) {
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return null;
+    const sv = ctrl.container.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+    const txt = sv?.textContent?.trim() || '';
+    return txt || null;
+  }
+
+  // Click + select sobre un react-select localizado por label.
+  async function tryFillReactSelectByLabel(labelRe, searchText, targetText) {
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return { success: false, reason: 'control no encontrado' };
+    return await clickAndSelectOption(ctrl.control, ctrl.container, searchText, targetText);
+  }
+
+  // Extrae el idInDomain (#N) del singleValue del Customer combobox en modal manual.
+  // El raw viene de extractCustomerFromDOM() ya pasado por cleanCustomerName (queda
+  // "Nombre (#N)").
+  function extractIdInDomainFromCustomerName(raw) {
+    if (!raw) return null;
+    const m = String(raw).match(/\(#(\d+)\)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  // Walker BFS recursivo: busca en customer un sub-objeto cuya key contenga
+  // "term"/"payment" y tenga {name: string}. Cubre paths anidados como
+  // customerTermsByCustomerTermId, customerPaymentTermsByPaymentTermsId,
+  // termByDefaultTermsId, etc.
+  function findTermsNameInCustomer(c) {
+    if (!c || typeof c !== 'object') return null;
+    const queue = [{ obj: c, depth: 0 }];
+    const seen = new Set();
+    while (queue.length) {
+      const { obj, depth } = queue.shift();
+      if (depth > 4) continue;
+      if (seen.has(obj)) continue;
+      seen.add(obj);
+      for (const [k, v] of Object.entries(obj)) {
+        if (!v) continue;
+        if (typeof v === 'object' && !Array.isArray(v)) {
+          if (/term|payment/i.test(k) && typeof v.name === 'string' && v.name.trim()) {
+            return v.name.trim();
+          }
+          queue.push({ obj: v, depth: depth + 1 });
+        } else if (typeof v === 'string' && /term/i.test(k) && v.trim() && v.length < 60) {
+          // Caso `customer.terms = "Net 30"` directo (sin sub-objeto).
+          return v.trim();
+        }
+      }
+    }
+    return null;
+  }
+
+  // Imprime top-level keys del customer fetched para diagnosticar paths.
+  function logCustomerShape(c) {
+    if (!c || typeof c !== 'object') { log('Customer shape: null/undef'); return; }
+    const keys = Object.keys(c).slice(0, 40).join(', ');
+    log(`Customer shape: keys=[${keys}]`);
+  }
+
+  // Abre un react-select y devuelve sus opciones visibles (sin "Create...").
+  async function openSelectAndGetOptions(ctrl) {
+    // react-select v5 listener: mousedown en el control. element.click() no
+    // siempre lo dispara (orden de eventos dependiente del browser). Y
+    // [class*="menu"] matcheaba MuiTypography / MuiMenuItem en el DOM y daba
+    // falso positivo de "ya abierto", saltándose los fallbacks. Ahora usamos
+    // aria-expanded del combo como señal definitiva.
+    const dispatchMouse = (el, type) => {
+      el.dispatchEvent(new MouseEvent(type, {
+        bubbles: true, cancelable: true, button: 0, view: window
+      }));
+    };
+    const isOpen = () => ctrl.combo?.getAttribute('aria-expanded') === 'true';
+
+    // 1. mousedown + mouseup (vía nativa de react-select).
+    dispatchMouse(ctrl.control, 'mousedown');
+    await sleep(120);
+    dispatchMouse(ctrl.control, 'mouseup');
+    for (let i = 0; i < 15 && !isOpen(); i++) await sleep(80);
+
+    // 2. Fallback: focus + ArrowDown.
+    if (!isOpen()) {
+      ctrl.combo?.focus();
+      await sleep(80);
+      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true, cancelable: true
+      }));
+      for (let i = 0; i < 15 && !isOpen(); i++) await sleep(80);
+    }
+
+    // 3. Último intento: element.click() plano.
+    if (!isOpen()) {
+      ctrl.control.click();
+      for (let i = 0; i < 10 && !isOpen(); i++) await sleep(80);
+    }
+
+    if (!isOpen()) return [];
+
+    // Localizar el menu: aria-controls del combo (definitivo) → descendiente
+    // del container → sibling cercano. Rechazamos clases ambiguas (MuiTypography).
+    let options = [];
+    for (let i = 0; i < 12 && options.length === 0; i++) {
+      await sleep(120);
+      const listboxId = ctrl.combo.getAttribute('aria-controls');
+      let menu = listboxId ? document.getElementById(listboxId) : null;
+      if (!menu) menu = ctrl.container.querySelector('[class*="-menu"]:not([class*="MuiTypography"])');
+      if (!menu) {
+        // Portal: react-select-N-listbox por id pattern.
+        const id = ctrl.combo.id || '';
+        const inputN = id.match(/react-select-(\d+)-input/)?.[1];
+        if (inputN) menu = document.getElementById(`react-select-${inputN}-listbox`);
+      }
+      if (!menu) continue;
+      options = [...menu.querySelectorAll('[role="option"], [class*="-option"]')]
+        .filter(o => !/^\s*(create|crear|nuev[oa])\b/i.test(o.textContent?.trim() || ''))
+        .filter(o => (o.textContent?.trim() || '').length > 0);
+    }
+    return options;
+  }
+
+  // Click en el combobox + selecciona la primera opción.
+  // Por default acepta ambigüedad (elige el primero); con strict=true sólo si hay una.
+  // Steelhead carga Bill To/Ship To/Customer Contact async al elegir cliente,
+  // así que reintentamos hasta `retries+1` veces con `retryDelayMs` entre cierres.
+  async function selectFirstOption(labelRe, opts = {}) {
+    const { strict = false, retries = 4, retryDelayMs = 600, isStale = null } = opts;
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return { success: false, reason: 'control no encontrado' };
+    let options = [];
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (isStale && isStale()) {
+        ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+        }));
+        return { success: false, reason: 'aborted' };
+      }
+      options = await openSelectAndGetOptions(ctrl);
+      if (options.length > 0) break;
+      // Cerrar el menú antes del siguiente intento para forzar re-fetch.
+      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+      }));
+      await sleep(retryDelayMs);
+    }
+    if (isStale && isStale()) return { success: false, reason: 'aborted' };
+    if (options.length === 0) return { success: false, reason: 'sin opciones tras retries' };
+    if (strict && options.length > 1) {
+      document.body.click();
+      return { success: false, reason: `ambiguous (${options.length} opciones)` };
+    }
+    const text = options[0].textContent?.trim() || '';
+    options[0].click();
+    return { success: true, filled: text, method: options.length === 1 ? 'only-option' : 'first-of-many' };
+  }
+
+  // Abre el dropdown SIN tipear y elige la primera opción cuyo texto matchee
+  // `optionRe`. Útil cuando tipear filtra incorrectamente (Ship Via: tipear
+  // "flete propio" hacía que react-select sólo ofreciera "Create flete propio"
+  // porque su filtro no matcheaba "Flete Propio").
+  async function selectOptionMatching(labelRe, optionRe, opts = {}) {
+    const { retries = 2, retryDelayMs = 500, isStale = null } = opts;
+    const ctrl = findReactSelectControlByLabel(labelRe);
+    if (!ctrl) return { success: false, reason: 'control no encontrado' };
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (isStale && isStale()) {
+        ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+        }));
+        return { success: false, reason: 'aborted' };
+      }
+      const options = await openSelectAndGetOptions(ctrl);
+      if (options.length > 0) {
+        const match = options.find(o => optionRe.test((o.textContent || '').trim()));
+        if (match) {
+          const text = match.textContent.trim();
+          match.click();
+          return { success: true, filled: text };
+        }
+        document.body.click();
+        return { success: false, reason: `no matchea ${optionRe}` };
+      }
+      ctrl.combo?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true
+      }));
+      await sleep(retryDelayMs);
+    }
+    return { success: false, reason: 'sin opciones tras retries' };
+  }
+
+  // Localiza y clickea el botón "New Line" / "Nueva Línea" para activar
+  // el primer renglón de captura tras llenar los campos.
+  function clickNewLine() {
+    // Idempotencia: si ya existe al menos un "Line #N" en el modal, no
+    // crear otro. El header de cada línea es texto plano "Line #1", "Line #2"…
+    // (se ve en el modal manual). Sin este guard, cada cambio de cliente
+    // apilaba una línea vacía adicional.
+    const existingLines = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,div')]
+      .some(el => /^\s*Line\s*#\d+\s*$/.test(el.textContent || ''));
+    if (existingLines) return { success: true, skipped: 'ya existe Line #N' };
+
+    const btn = [...document.querySelectorAll('button')].find(b => {
+      if (b.disabled) return false;
+      const t = b.textContent?.trim() || '';
+      return /^new\s*line$/i.test(t) || /^nueva\s*l[ií]nea$/i.test(t);
+    });
+    if (!btn) return { success: false, reason: 'botón New Line no encontrado' };
+    btn.click();
+    return { success: true };
+  }
+
+  async function fillManualModalAll() {
+    if (!manualModalState) return;
+    manualModalState.filling = true;
+    const myRunId = ++manualModalState.runId;
+    try {
+      await fillManualModalAllImpl(myRunId);
+    } catch (err) {
+      if (err && err.message === '__sa_aborted__') {
+        log('Modal manual: run abortado (cliente cambió)');
+      } else {
+        warn(`Modal manual falló: ${err.message}`);
+      }
+    } finally {
+      // Sólo limpiar filling/render si seguimos siendo el run vigente.
+      if (manualModalState && manualModalState.runId === myRunId) {
+        manualModalState.filling = false;
+        renderManualPanel();
+      }
+    }
+  }
+
+  async function fillManualModalAllImpl(myRunId) {
+    // Stale si: cancelaron el run, o el usuario volvió al combobox Customer
+    // (deferred). En ese caso abortamos para no robarle focus.
+    const isStale = () => !manualModalState
+      || manualModalState.runId !== myRunId
+      || isCustomerComboboxActive()
+      || manualModalState.deferred;
+    const bailIfStale = () => { if (isStale()) throw new Error('__sa_aborted__'); };
+    const today = new Date();
+    const results = manualModalState.results = {
+      invoicedAt: null, shipDate: null, shipVia: null,
+      salesTax: null, terms: null, dueDate: null,
+      billTo: null, shipTo: null, customerContact: null, newLine: null
+    };
+
+    // 0. Steelhead carga direcciones / sales tax / terms async tras elegir cliente.
+    //    Damos margen para que carguen antes del primer fill.
+    log('Modal manual: esperando 1500ms para que Steelhead cargue opciones del cliente…');
+    await sleep(1500);
+    bailIfStale();
+
+    // 1. Invoiced At = hoy
+    results.invoicedAt = await tryFillDateInput('^\\s*invoiced\\s*at\\s*$|fecha\\s*de\\s*factura(?:cion)?', today);
+    log(`Modal manual: invoicedAt=${JSON.stringify(results.invoicedAt)}`);
+    renderManualPanel(); bailIfStale();
+
+    // 2. Ship Date = hoy
+    results.shipDate = await tryFillDateInput('^\\s*ship\\s*date\\s*$|fecha\\s*de\\s*env[ií]o', today);
+    log(`Modal manual: shipDate=${JSON.stringify(results.shipDate)}`);
+    renderManualPanel(); bailIfStale();
+
+    // 3. Ship via = "Flete Propio" — sin tipear (el filtro de react-select rechaza
+    //    "flete propio" lowercase y muestra sólo la opción "Create…").
+    results.shipVia = await selectOptionMatching(/^\s*ship\s*via\s*$|env[ií]o\s*por/i, /^\s*flete\s*propio\s*$/i, { isStale });
+    log(`Modal manual: shipVia=${JSON.stringify(results.shipVia)}`);
+    renderManualPanel(); bailIfStale();
+
+    // 4. Sales Tax + Terms — el modal manual NO los prellena al elegir cliente.
+    //    Estrategia: fetchCustomer con el #N del customer name, llenar por nombre.
+    //    Fallback: si solo hay una opción → selectFirstOption.
+    const idInDomain = extractIdInDomainFromCustomerName(manualModalState.customer);
+    let fetched = null;
+    if (idInDomain != null) {
+      log(`Modal manual: fetching Customer(idInDomain=${idInDomain})…`);
+      fetched = await fetchCustomerSalesTaxable(idInDomain);
+      logCustomerShape(fetched);
+    } else {
+      log('Modal manual: idInDomain no extraíble del customer name');
+    }
+
+    bailIfStale();
+    const salesTaxName = fetched?.salesTaxBySalesTaxId?.name;
+    if (salesTaxName) {
+      results.salesTax = await tryFillReactSelectByLabel(/^\s*sales\s*tax\s*$|impuesto/i, salesTaxName, salesTaxName);
+      log(`Modal manual: salesTax (cliente="${salesTaxName}") = ${JSON.stringify(results.salesTax)}`);
+    } else {
+      results.salesTax = await selectFirstOption(/^\s*sales\s*tax\s*$|impuesto/i, { isStale });
+      log(`Modal manual: salesTax (fallback firstOption) = ${JSON.stringify(results.salesTax)}`);
+    }
+    renderManualPanel(); bailIfStale();
+
+    const termsName = findTermsNameInCustomer(fetched);
+    if (termsName) {
+      results.terms = await tryFillReactSelectByLabel(/^\s*terms?\s*$|t[eé]rminos|plazo/i, termsName, termsName);
+      log(`Modal manual: terms (cliente="${termsName}") = ${JSON.stringify(results.terms)}`);
+    } else {
+      results.terms = await selectFirstOption(/^\s*terms?\s*$|t[eé]rminos|plazo/i, { isStale });
+      log(`Modal manual: terms (fallback firstOption) = ${JSON.stringify(results.terms)}`);
+    }
+    renderManualPanel(); bailIfStale();
+
+    // 5. Bill To / Ship To / Customer Contact — primer opción del desplegable.
+    results.billTo = await selectFirstOption(/^\s*bill\s*to\s*$|facturar\s*a/i, { isStale });
+    log(`Modal manual: billTo=${JSON.stringify(results.billTo)}`);
+    renderManualPanel(); bailIfStale();
+
+    results.shipTo = await selectFirstOption(/^\s*ship\s*to\s*$|enviar\s*a/i, { isStale });
+    log(`Modal manual: shipTo=${JSON.stringify(results.shipTo)}`);
+    renderManualPanel(); bailIfStale();
+
+    results.customerContact = await selectFirstOption(/^\s*customer\s*contact\s*$|contacto/i, { isStale });
+    log(`Modal manual: customerContact=${JSON.stringify(results.customerContact)}`);
+    renderManualPanel(); bailIfStale();
+
+    // 6. Due Date está disabled en el DOM — Steelhead la recalcula auto al
+    //    setear Invoiced At + Terms. Sólo la leemos para reportar.
+    await sleep(1500);
+    bailIfStale();
+    const dueExisting = readDateInputValue('^\\s*due\\s*date\\s*$|fecha\\s*de\\s*vencimiento|vence');
+    if (dueExisting) {
+      log(`Due Date auto (Steelhead): ${dueExisting}`);
+      results.dueDate = { success: true, filled: dueExisting, type: 'auto' };
+    } else {
+      log('Due Date sin valor: Steelhead aún no la calculó (verificar Invoiced At + Terms)');
+      results.dueDate = { success: false, reason: 'sin valor en DOM' };
+    }
+
+    // 7. Click "New Line" para activar la primera línea de captura.
+    results.newLine = clickNewLine();
+    log(`Modal manual: newLine=${JSON.stringify(results.newLine)}`);
+
+    manualModalState.filled = !!(results.invoicedAt?.success && results.shipDate?.success
+      && results.shipVia?.success && results.salesTax?.success && results.terms?.success
+      && results.billTo?.success && results.shipTo?.success && results.customerContact?.success);
+  }
+
+  // Lee el value actual de un input de fecha por label, sin escribirlo.
+  // Sólo retorna si el value tiene formato de fecha (MM/DD/YYYY o YYYY-MM-DD)
+  // — así evitamos confundir un input vecino que no sea el target.
+  function readDateInputValue(labelText) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    // Due Date está :disabled en el modal manual (Steelhead lo calcula).
+    // findInputByLabel filtra disabled, así que buscamos directo en el container.
+    const f = findFieldContainerByPLabel(labelRe);
+    if (!f) return null;
+    const inp = f.container.querySelector('input:not([aria-hidden]):not([type="hidden"])')
+      || f.container.querySelector('textarea:not([aria-hidden])');
+    if (!inp) return null;
+    const v = (inp.value || inp.getAttribute('value') || inp.placeholder || '').trim();
+    if (!v) return null;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    return null;
+  }
+
+  // Extrae días de Terms del combobox: "75 Días" → 75, "Net 30" → 30, "30 días" → 30.
+  function readTermsDays() {
+    const labels = document.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
+      if (el.closest('#sa-invoice-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 30) continue;
+      if (!/^terms:?$|^t[eé]rminos:?$|^plazo:?$/i.test(txt)) continue;
+      let parent = el;
+      for (let d = 0; d < 6 && parent; d++) {
+        const sv = parent.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+        if (sv) {
+          const m = (sv.textContent || '').match(/(\d+)/);
+          if (m) return parseInt(m[1], 10);
+        }
+        const inp = parent.querySelector('input');
+        if (inp?.value) {
+          const m = inp.value.match(/(\d+)/);
+          if (m) return parseInt(m[1], 10);
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function renderManualPanel(forceStatus) {
+    let panel = document.getElementById('sa-invoice-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-invoice-autofill-panel';
+      panel.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e293b;color:#e2e8f0;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:99999;font:13px/1.4 system-ui,-apple-system,sans-serif;min-width:340px;max-width:420px;';
+      document.body.appendChild(panel);
+    }
+    const m = manualModalState || {};
+    const r = m.results || {};
+    const customerLabel = m.customer ? escHtml(m.customer) : 'Esperando…';
+
+    const fmtField = (res, pendingLabel = 'Pendiente') => {
+      if (!res) return { label: m.customer ? (m.filling ? 'Llenando…' : pendingLabel) : '—', status: 'pending' };
+      if (res.success) {
+        const auto = res.type === 'auto' ? ' (auto)' : '';
+        return { label: `${escHtml(res.filled || '')}${auto} ✓`, status: 'done' };
+      }
+      const reason = res.reason ? ` (${escHtml(res.reason)})` : '';
+      return { label: `Pendiente${reason}`, status: 'pending' };
+    };
+
+    const inv = fmtField(r.invoicedAt);
+    const ship = fmtField(r.shipDate);
+    const via = fmtField(r.shipVia);
+    const tax = fmtField(r.salesTax);
+    const terms = fmtField(r.terms);
+    const due = fmtField(r.dueDate, 'Calculando…');
+    const billTo = fmtField(r.billTo);
+    const shipTo = fmtField(r.shipTo);
+    const contact = fmtField(r.customerContact);
+    const newLineRes = r.newLine;
+    const newLine = !newLineRes
+      ? { label: m.customer ? (m.filling ? 'Llenando…' : 'Pendiente') : '—', status: 'pending' }
+      : newLineRes.success
+        ? { label: 'Activado ✓', status: 'done' }
+        : { label: `Pendiente (${escHtml(newLineRes.reason || '')})`, status: 'pending' };
+
+    const toggleIcon = panelCollapsed ? '+' : '–';
+    const headerSuffix = panelCollapsed && m.customer
+      ? `<span style="font-size:11px;color:#94a3b8;margin-right:8px;">${escHtml(m.customer)}</span>`
+      : `<span style="font-size:11px;color:#94a3b8;margin-right:8px;">NC / cargos · guarda + reabre</span>`;
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;${panelCollapsed ? '' : 'border-bottom:1px solid #334155;padding-bottom:8px;margin-bottom:8px;'}">
+      <strong>Invoice Manual</strong>
+      <span style="display:flex;align-items:center;">${headerSuffix}<button id="sa-iaf-toggle" title="${panelCollapsed ? 'Expandir' : 'Minimizar'}" style="background:#334155;color:#e2e8f0;border:none;border-radius:4px;width:22px;height:22px;cursor:pointer;font:bold 14px/1 system-ui;padding:0;">${toggleIcon}</button></span>
+    </div>`;
+    if (!panelCollapsed) {
+      html += renderRow('Cliente', customerLabel, m.customer ? 'done' : 'pending');
+      html += renderRow('Invoiced At', inv.label, inv.status);
+      html += renderRow('Ship Date', ship.label, ship.status);
+      html += renderRow('Ship via', via.label, via.status);
+      html += renderRow('Sales Tax', tax.label, tax.status);
+      html += renderRow('Terms', terms.label, terms.status);
+      html += renderRow('Bill To', billTo.label, billTo.status);
+      html += renderRow('Ship To', shipTo.label, shipTo.status);
+      html += renderRow('Contact', contact.label, contact.status);
+      html += renderRow('Due Date', due.label, due.status);
+      html += renderRow('New Line', newLine.label, newLine.status);
+      if (m.customer && !m.filled && !m.filling) {
+        html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refill" style="cursor:pointer;color:#64748b;font-size:11px;">↻ reintentar campos</span></div>`;
+      }
+    }
+    panel.innerHTML = html;
+    const toggle = panel.querySelector('#sa-iaf-toggle');
+    if (toggle) toggle.addEventListener('click', () => { panelCollapsed = !panelCollapsed; renderManualPanel(); });
+    const refill = panel.querySelector('#sa-iaf-refill');
+    if (refill) refill.addEventListener('click', () => fillManualModalAll());
+  }
+
+  // ── Fill: cuenta de ingreso/descuento por línea ──
+
+  // El layout no es <table>: cada línea tiene un sub-grid donde el Income Account
+  // se identifica por una <p>INCOME</p> italic adyacente al React Select.
+  // Localizamos el control subiendo del label "INCOME" hasta encontrar un control
+  // de react-select.
+  async function tryFillIncomeInLine(line, searchText, targetAccountName) {
+    const incomeLabel = line.incomeLabel;
+    const container = line.container;
+    if (!incomeLabel || !container) {
+      return { success: false, method: 'fallback', reason: `container/incomeLabel ausente para "${line.name}"` };
+    }
+    // El subtítulo INCOME suele estar dentro o debajo del campo. Subimos hasta
+    // encontrar un ancestor que tenga input[role="combobox"] (el control del select).
+    let host = incomeLabel.parentElement;
+    let control = null;
+    for (let d = 0; d < 8 && host; d++) {
+      const combo = host.querySelector('input[role="combobox"]');
+      if (combo) {
+        control = combo.closest('[class*="-control"]') || combo.parentElement;
+        break;
+      }
+      host = host.parentElement;
+    }
+    if (!control) {
+      return { success: false, method: 'fallback', reason: `combobox de Income no encontrado para "${line.name}"` };
+    }
+    return await clickAndSelectOption(control, host, searchText, targetAccountName);
+  }
+
+  // ── Fill: cuenta AR por subtítulo italic <p>ACCOUNTS_RECEIVABLE</p> ──
+
+  // El label visible "AR Account:" agarra el primer combobox del DOM (Terms/BillTo)
+  // cuando se sube por el árbol. Steelhead renderiza un subtítulo italic
+  // <p>ACCOUNTS_RECEIVABLE</p> debajo del react-select específico de AR — usamos eso
+  // como ancla precisa, igual que <p>INCOME</p> para líneas.
+  async function tryFillARBySubtitle(searchText, targetAccountName) {
+    const subtitle = [...document.querySelectorAll('p,span,div,label')].find(p => {
+      if (p.closest('#sa-invoice-autofill-panel')) return false;
+      const t = p.textContent?.trim() || '';
+      return /^accounts?_?receivable$/i.test(t);
+    });
+    if (!subtitle) {
+      return { success: false, method: 'fallback', reason: 'subtítulo ACCOUNTS_RECEIVABLE no encontrado' };
+    }
+    let host = subtitle.parentElement;
+    let control = null;
+    for (let d = 0; d < 8 && host; d++) {
+      const combo = host.querySelector('input[role="combobox"]');
+      if (combo) {
+        control = combo.closest('[class*="-control"]') || combo.parentElement;
+        break;
+      }
+      host = host.parentElement;
+    }
+    if (!control) {
+      return { success: false, method: 'fallback', reason: 'combobox AR no encontrado bajo subtítulo' };
+    }
+    return await clickAndSelectOption(control, host, searchText, targetAccountName);
+  }
+
+  // ── Fill All Fields ──
+
+  async function fillAllFields() {
+    const results = {};
+
+    // Divisa+TC: solo si la factura es manual (sin OV/packing slip)
+    if (!state.hasOrderLinkage) {
+      if (state.currency) {
+        results.currency = await tryFillCombobox('divisa.*factura|divisa|currency', state.currency, state.currency);
+        if (results.currency?.success) scriptSetDivisa = state.currency;
+        log(`Fill divisa (invoice): ${JSON.stringify(results.currency)}`);
+      }
+      if (state.exchangeRate != null) {
+        results.exchangeRate = await tryFillTextInput('tipo de cambio|exchange rate', state.exchangeRate);
+        log(`Fill TC (invoice): ${JSON.stringify(results.exchangeRate)}`);
+      }
+    } else {
+      log('Factura con linkage a OV/PS — divisa y TC respetados, no se tocan');
+    }
+
+    // Cuenta CXC: solo si pudimos resolverla contra `allAcctAccounts` por sufijo
+    // de divisa. El search es el accountNumber (más específico para el filtro
+    // del react-select, que matchea contra el texto "0105-... · Clientes USD").
+    if (state.arAccount?.account?.accountNumber) {
+      const acc = state.arAccount.account;
+      const search = acc.accountNumber || acc.name;
+      // El modal nuevo rotula el campo como "AR Account:" (antes había un subtítulo
+      // italic <p>ACCOUNTS_RECEIVABLE</p>). El label y su combobox NO comparten un
+      // wrapper exclusivo: son hermanos dentro de un css-iyrxkt que ANTES contiene
+      // Ship Via. Por eso el viejo tryFillCombobox (que sube al ancestro y hace
+      // querySelector del primer combobox del bloque) aterrizaba la cuenta CXC en
+      // Ship Via. Solución: anclar por label vía sibling-walk
+      // (findReactSelectControlByLabel → findFieldContainerByPLabel), que toma el
+      // combobox que SIGUE al <p>AR Account:</p>, no el primero del bloque.
+      const AR_LABEL_RE = /^\s*ar\s*account\s*:?\s*$|^\s*cuenta\s*(?:por\s*)?cobrar\s*:?\s*$|^\s*accounts?\s*receivable\s*:?\s*$/i;
+      results.arAccount = await tryFillReactSelectByLabel(AR_LABEL_RE, search, acc.name || acc.accountNumber);
+      if (!results.arAccount?.success) {
+        // Fallback legacy: subtítulo italic <p>ACCOUNTS_RECEIVABLE</p> (modal viejo).
+        // Es fail-safe: si el subtítulo no existe, NO escribe en ningún combobox.
+        log(`Fill AR (label path): ${JSON.stringify(results.arAccount)} — fallback a subtítulo legacy`);
+        results.arAccount = await tryFillARBySubtitle(search, acc.name || acc.accountNumber);
+      }
+      log(`Fill AR: ${JSON.stringify(results.arAccount)}`);
+    }
+
+    // Cuentas de ingreso/descuento por línea
+    for (let i = 0; i < state.lineAccounts.length; i++) {
+      const line = state.lineAccounts[i];
+      if (!line.account) continue;
+      const acc = line.account;
+      const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
+      results[`line_${i}`] = await tryFillIncomeInLine(line, search, acc.name || acc.accountNumber);
+      log(`Fill income line ${i} "${line.name}": ${JSON.stringify(results[`line_${i}`])}`);
+    }
+
+    return results;
+  }
+
+  // ── Orchestrator ──
+
+  async function runAutofill() {
+    if (autofillRunning) return;
+    autofillRunning = true;
+    try {
+      await _runAutofillInner();
+    } finally {
+      autofillRunning = false;
+    }
+  }
+
+  async function _runAutofillInner() {
+    updatePanelStatus('pending', 'Analizando…');
+
+    const customerName = lastDetectedCustomer || extractCustomerFromDOM();
+    if (!customerName) {
+      updatePanelStatus('pending', 'Esperando selección de cliente…');
+      return;
+    }
+
+    // salesTaxBySalesTaxId.name no viene en InvoiceLowCodeData. Si tampoco vino por
+    // GetReceivedOrders (factura manual sin OV), disparamos la persisted query "Customer".
+    if (resolveSalesTaxRule(state.customer) === null) {
+      const idInDomain = state.customer?.idInDomain || extractCustomerIdInDomainFromDOM();
+      if (idInDomain != null) {
+        log(`Fetching Customer(idInDomain=${idInDomain}) para resolver salesTax`);
+        const fetched = await fetchCustomerSalesTaxable(idInDomain);
+        if (fetched) {
+          if (!state.customer) state.customer = fetched;
+          else {
+            if (fetched.salesTaxBySalesTaxId) state.customer.salesTaxBySalesTaxId = fetched.salesTaxBySalesTaxId;
+            if (typeof fetched.salesTaxable === 'boolean') state.customer.salesTaxable = fetched.salesTaxable;
+            if (state.customer.idInDomain == null) state.customer.idInDomain = fetched.idInDomain;
+            // CuentasContables del Customer query es más completo si InvoiceLowCodeData no las trajo
+            if (!state.customer.customInputs?.DatosContables?.CuentasContables
+                && fetched.customInputs?.DatosContables?.CuentasContables) {
+              state.customer.customInputs = state.customer.customInputs || {};
+              state.customer.customInputs.DatosContables = fetched.customInputs.DatosContables;
+            }
+          }
+          log(`Customer query resuelto: salesTax="${fetched?.salesTaxBySalesTaxId?.name || '?'}" → rule=${resolveSalesTaxRule(fetched)}`);
+        }
+      } else {
+        log('No se pudo determinar customer.idInDomain — salesTax queda pendiente');
+      }
+    }
+
+    // Asegurar TC y accounts (preferir intercepted, fallback a fetch)
+    let exchangeData;
+    let accountsData = state.allAccounts;
+    try {
+      [exchangeData, accountsData] = await Promise.all([
+        fetchExchangeRate().catch(err => { warn('fetchExchangeRate (invoice) catch: ' + err.message); return null; }),
+        accountsData.length > 0 ? Promise.resolve(accountsData) : fetchAllAccounts()
+      ]);
+    } catch (err) {
+      updatePanelStatus('error', 'Error fetching datos: ' + err.message);
+      return;
+    }
+    state.allAccounts = accountsData;
+
+    // Si hay líneas a resolver pero el catálogo aún no trae cuentas de ventas
+    // (0401-*/0402-*), el snapshot está incompleto (race: InvoiceLowCodeData a veces
+    // llega después del primer runAutofill, o el fetch trajo sólo un subconjunto).
+    // Esperar/reintentar la carga ANTES de resolver evita el "No resuelto" espurio
+    // que antes sólo se corregía con un re-run manual.
+    const lines = extractLinesFromDOM();
+    if (lines.length > 0 && !hasSalesAccounts(accountsData)) {
+      log('allAccounts sin cuentas de ventas (0401/0402) — esperando catálogo completo…');
+      accountsData = await ensureSalesAccountsLoaded();
+      state.allAccounts = accountsData;
+    }
+
+    // Divisa: prioridad post-fill DOM → SO → DOM (pre-fill) → customer flags → default
+    const divisaPostFill = scriptSetDivisa ? extractDivisaFromDOM() : null;
+    const currencyFromSO = state.receivedOrderDivisa;
+    const divisaPreFill = !divisaPostFill && !currencyFromSO ? extractDivisaFromDOM() : null;
+    const currencyFromCustomer = inferCurrencyFromCustomer(state.customer);
+    const currency = divisaPostFill || currencyFromSO || divisaPreFill || currencyFromCustomer || 'USD';
+    const currencySource = divisaPostFill ? 'form'
+      : currencyFromSO ? 'so'
+      : divisaPreFill ? 'form'
+      : currencyFromCustomer ? 'customer'
+      : 'default';
+
+    // TC
+    let exchangeRate;
+    let exchangeRateDate = null;
+    if (currency === 'MXN') {
+      exchangeRate = 1;
+    } else {
+      const invoiceDate = state.invoiceDate || extractInvoiceDateFromDOM();
+      if (invoiceDate) {
+        const result = findRateForDate(invoiceDate);
+        exchangeRate = result?.rate ?? exchangeData;
+        exchangeRateDate = result?.date ?? null;
+      } else {
+        exchangeRate = exchangeData;
+        const today = new Date().toISOString().slice(0, 10);
+        const r = findRateForDate(today);
+        exchangeRateDate = r?.date ?? null;
+      }
+    }
+    log(`Divisa (invoice): ${currency} (${currencySource}), TC: ${exchangeRate}`);
+
+    // AR account
+    const arResult = findBestARAccount(state.customer, currency, accountsData);
+
+    // Lines + cuenta de ingreso/descuento por línea (lines ya extraídas arriba)
+    const lineAccounts = lines.map(line => {
+      const resolved = resolveLineAccount({
+        lineAmount: line.amount,
+        customer: state.customer,
+        productId: null,           // v1: no enlazamos a productId del DOM (la regla por prefijo gana igual)
+        allAccounts: accountsData,
+        productConfigs: state.productAccountConfigs,
+        isCreditNoteGlobal: state.isInvoiceCreditNote
+      });
+      return { ...line, ...resolved };
+    });
+
+    state = {
+      ...state,
+      customerName,
+      currency,
+      currencySource,
+      exchangeRate,
+      exchangeRateDate,
+      arAccount: arResult,
+      lineAccounts,
+      ready: true
+    };
+
+    await fillAllFields();
+
+    const domDivisaAfterFill = extractDivisaFromDOM();
+    if (domDivisaAfterFill) lastDetectedDivisa = domDivisaAfterFill;
+
+    renderPanel();
+    scheduleAutoCollapseIfAllDone();
+    log(`InvoiceAutofill listo: customer="${customerName}" currency=${currency} rate=${exchangeRate} ar="${arResult.account?.accountNumber}" lines=${lineAccounts.length}`);
+  }
+
+  // Si todos los rows quedaron en 'done' (palomita verde), colapsamos el panel
+  // a su header para que no estorbe sobre el form. El usuario puede re-expandir
+  // clickeando el header.
+  let autoCollapseTimer = null;
+  function isAllDone() {
+    if (!state.customerName) return false;
+    if (!state.currency || state.currencySource === 'default') return false;
+    if (state.exchangeRate == null) return false;
+    const ar = state.arAccount;
+    if (!ar?.account?.accountNumber || ar.ambiguous || ar.tooMany) return false;
+    if (state.lineAccounts.some(l => !l.account)) return false;
+    return true;
+  }
+  function scheduleAutoCollapseIfAllDone() {
+    if (autoCollapseTimer) { clearTimeout(autoCollapseTimer); autoCollapseTimer = null; }
+    if (!isAllDone()) return;
+    autoCollapseTimer = setTimeout(() => {
+      autoCollapseTimer = null;
+      const panel = document.getElementById('sa-invoice-autofill-panel');
+      if (!panel) return;
+      panel.dataset.collapsed = 'true';
+      renderPanel();
+    }, 1800);
+  }
+
+  function inferCurrencyFromCustomer(customer) {
+    if (!customer) return null;
+    const dc = customer.customInputs?.DatosContables;
+    if (!dc) return null;
+    if (dc.DivisaUSD && !dc.DivisaMXN) return 'USD';
+    if (dc.DivisaMXN && !dc.DivisaUSD) return 'MXN';
+    return null;
+  }
+
+  // ── Panel UI ──
+
+  const STATUS_COLORS = { done: '#4CAF50', warn: '#ff9800', error: '#f44336', learned: '#2196F3', pending: '#999' };
+  const STATUS_ICONS  = { done: '✓', warn: '~', error: '✗', learned: '★', pending: '…' };
+
+  function renderPanel() {
+    let panel = document.getElementById('sa-invoice-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-invoice-autofill-panel';
+      panel.style.cssText = [
+        'position:fixed', 'bottom:20px', 'left:50%', 'transform:translateX(-50%)',
+        'z-index:99999', 'background:#1e293b', 'color:#e2e8f0', 'border-radius:10px',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.4)', 'font-family:system-ui,sans-serif',
+        'font-size:13px', 'min-width:260px', 'max-width:360px'
+      ].join(';');
+      document.body.appendChild(panel);
+    }
+
+    const collapsed = panel.dataset.collapsed === 'true';
+
+    let html = `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #334155;cursor:pointer;" id="sa-iaf-header">
+        <span style="font-weight:700;font-size:14px;letter-spacing:.3px;">Invoice Autofill</span>
+        <span style="font-size:16px;color:#94a3b8;">${collapsed ? '▲' : '▼'}</span>
+      </div>`;
+
+    if (!collapsed) {
+      html += `<div style="padding:12px 14px;">`;
+
+      const customerStatus = state.customerName ? 'done' : 'pending';
+      html += renderRow('Cliente', state.customerName || '—', customerStatus);
+
+      const linkageLabel = state.hasOrderLinkage ? 'OV/Packing Slip' : 'Manual / Nota de Crédito';
+      html += renderRow('Tipo de factura', linkageLabel, 'done');
+
+      const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'default' ? 'warn' : 'done';
+      const divisaSources = { form: ' (del form)', so: ' (de OV)', customer: ' (del cliente)', default: ' (default)' };
+      const divisaSuffix = divisaSources[state.currencySource] || '';
+      const divisaLabel = state.currency ? `${state.currency}${divisaSuffix}` : '—';
+      html += renderRow('Divisa', divisaLabel, divisaStatus);
+
+      const tcLabel = state.exchangeRate != null
+        ? `$${Number(state.exchangeRate).toFixed(4)}${state.exchangeRateDate ? ` (${state.exchangeRateDate})` : ''}`
+        : '—';
+      html += renderRow('Tipo de Cambio', tcLabel, state.exchangeRate != null ? 'done' : 'pending');
+
+      const ar = state.arAccount;
+      let arLabel = '—';
+      let arStatus = 'pending';
+      if (ar?.tooMany) {
+        arLabel = `${ar.candidates.length} candidatas — no pude elegir, llénalo manualmente`;
+        arStatus = 'error';
+      } else if (ar?.account?.accountNumber) {
+        arLabel = `${ar.account.accountNumber} · ${ar.account.name || ''}`.trim();
+        if (ar.ambiguous) arLabel += ` (${ar.candidates.length} candidatas, mayor #)`;
+        arStatus = ar.ambiguous ? 'warn' : 'done';
+      } else if (ar?.reason) {
+        arLabel = `No resuelto: ${ar.reason}`;
+        arStatus = 'error';
+      }
+      html += renderRow('Cuenta CXC', arLabel, arStatus);
+
+      if (state.lineAccounts.length > 0) {
+        html += `<div style="border-top:1px solid #334155;margin:8px 0 6px;padding-top:6px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">Cuenta por línea</div>`;
+        for (const line of state.lineAccounts) {
+          const status = !line.account ? (line.catalogIncomplete ? 'pending' : 'warn') : 'done';
+          let lbl;
+          if (line.account) {
+            lbl = line.account.name || line.account.accountNumber;
+          } else if (line.catalogIncomplete) {
+            lbl = 'Cargando catálogo de cuentas…';
+          } else if (line.reason === 'sin_salesTax_en_query') {
+            lbl = 'Pendiente: salesTax del cliente no resuelto';
+          } else if (line.targetPrefix) {
+            lbl = `No resuelto (${line.targetPrefix})`;
+          } else {
+            lbl = 'No resuelto';
+          }
+          if (line.mismatch && line.productSuggested) {
+            const from = line.productSuggested.accountNumber || line.productSuggested.name;
+            const to = line.expected?.accountNumber || line.expected?.name;
+            lbl += ` (corregido: ${from} → ${to})`;
+          }
+          if (line.isCredit && line.account) lbl += ' [NC]';
+          html += renderRow(line.name || '(sin nombre)', lbl, status);
+        }
+      }
+
+      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-iaf-refresh" style="cursor:pointer;color:#64748b;font-size:11px;letter-spacing:.3px;">↻ actualizar</span></div>`;
+      html += `</div>`;
+    }
+
+    panel.innerHTML = html;
+
+    panel.querySelector('#sa-iaf-header').addEventListener('click', () => {
+      panel.dataset.collapsed = collapsed ? 'false' : 'true';
+      renderPanel();
+    });
+
+    const refreshBtn = panel.querySelector('#sa-iaf-refresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        state.ready = false;
+        runAutofill();
+      });
+    }
+  }
+
+  function renderRow(label, value, status) {
+    const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
+    const icon = STATUS_ICONS[status] || '·';
+    return `
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
+        <span style="color:${color};font-weight:700;min-width:14px;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;">${escHtml(label)}</div>
+          <div style="color:#e2e8f0;font-size:12px;word-break:break-word;">${escHtml(value)}</div>
+        </div>
+      </div>`;
+  }
+
+  function escHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function removePanel() {
+    const panel = document.getElementById('sa-invoice-autofill-panel');
+    if (panel) panel.remove();
+  }
+
+  function updatePanelStatus(status, message) {
+    let panel = document.getElementById('sa-invoice-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-invoice-autofill-panel';
+      panel.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;background:#1e293b;color:#e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);font-family:system-ui,sans-serif;font-size:13px;padding:12px 14px;min-width:220px;';
+      document.body.appendChild(panel);
+    }
+    const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
+    panel.innerHTML = `<span style="font-weight:700;">Invoice Autofill</span> <span style="color:${color};margin-left:8px;">${escHtml(message)}</span>`;
+  }
+
+  return { init, runAutofill };
+})();
+
+if (typeof window !== 'undefined') {
+  window.InvoiceAutofill = InvoiceAutofill;
+  InvoiceAutofill.init();
+}
+})();
+// ===== END scripts/invoice-autofill.js =====
+
+// ===== BEGIN scripts/bill-autofill.js =====
+(function(){
+// Bill Autofill
+// Auto-rellena Cuenta AP, Divisa, Tipo de Cambio y Cuentas de Gasto en Create/Edit Bill
+// Intercepta GraphQL para capturar datos del PO, infiere cuentas por nombre, aprende de selecciones previas
+// Depends on: SteelheadAPI
+
+const BillAutofill = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api().log(m);
+  const warn = (m) => api().warn(m);
+
+  const EXPENSE_MAPPING_KEY = 'sa_bill_expense_mapping';
+  const BILL_URL_RE = /\/Domains\/\d+\/Bills(?:\/|$)/;
+
+  let debounceTimer = null;
+  let state = {
+    vendorName: null,
+    currency: null,
+    exchangeRate: null,
+    apAccount: null,
+    lineAccounts: [],
+    ready: false,
+    poDivisa: null,
+    poLineItems: [],
+    existingInputs: null
+  };
+
+  // ── Init ──
+
+  function init() {
+    if (window.__saBillAutofillVersion) return;
+    window.__saBillAutofillVersion = true;
+    if (document.documentElement.dataset.saBillAutofillEnabled === 'false') {
+      log('BillAutofill deshabilitado');
+      return;
+    }
+    patchFetch();
+    setupUrlListener();
+    checkUrl();
+    log('BillAutofill inicializado');
+  }
+
+  // ── URL Listener ──
+
+  function setupUrlListener() {
+    if (window.__saBillAutofillHistoryPatched) return;
+    window.__saBillAutofillHistoryPatched = true;
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () {
+        const r = orig.apply(this, arguments);
+        checkUrl();
+        return r;
+      };
+    });
+    window.addEventListener('popstate', checkUrl);
+  }
+
+  function checkUrl() {
+    if (!BILL_URL_RE.test(location.pathname)) {
+      removePanel();
+      billFormVisible = false;
+      resetBillState();
+      return;
+    }
+    setupPageObserver();
+  }
+
+  // ── Page Observer ──
+
+  function setupPageObserver() {
+    if (window.__saBillAutofillObserverActive) return;
+    window.__saBillAutofillObserverActive = true;
+
+    const observer = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(scanForBillPage, 500);
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    scanForBillPage();
+  }
+
+  let billFormVisible = false;
+  let lastDetectedVendor = null;
+  let lastDetectedDivisa = null;
+  let lastDetectedInvoiceDate = null;
+  let lastLineCount = -1;
+  let autofillRunning = false;
+  let scriptSetDivisa = null;
+  let headingLostAt = 0;
+
+  const RJSF_DIVISA_ID = 'root_DatosContables_Divisa';
+  const RJSF_TC_ID = 'root_DatosContables_exchangeRate';
+
+  function resetBillState() {
+    lastDetectedVendor = null;
+    lastDetectedDivisa = null;
+    lastDetectedInvoiceDate = null;
+    lastLineCount = -1;
+    scriptSetDivisa = null;
+    state = { vendorName: null, currency: null, exchangeRate: null, apAccount: null, lineAccounts: [], ready: false, poDivisa: null, poLineItems: [], existingInputs: null };
+  }
+
+  function fillTCById(rate) {
+    const inp = document.getElementById(RJSF_TC_ID);
+    if (!inp) return false;
+    if (inp.value === String(rate)) return true;
+    const tracker = inp._valueTracker;
+    if (tracker) tracker.setValue('');
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(inp, String(rate));
+    inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function installDivisaListener() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel || sel.dataset.saDivisaListener) return;
+    sel.dataset.saDivisaListener = 'true';
+    sel.addEventListener('change', onDivisaChange);
+    log('Divisa listener instalado');
+  }
+
+  function onDivisaChange() {
+    const sel = document.getElementById(RJSF_DIVISA_ID);
+    if (!sel) return;
+    const val = sel.options[sel.selectedIndex]?.text || sel.value || '';
+    const divisa = /mxn|peso/i.test(val) ? 'MXN' : /usd|d[oó]l/i.test(val) ? 'USD' : null;
+    if (!divisa || divisa === state.currency) return;
+
+    log(`Divisa change event: ${divisa}`);
+    lastDetectedDivisa = divisa;
+    state.currency = divisa;
+    state.currencySource = 'form';
+
+    if (divisa === 'MXN') {
+      state.exchangeRate = 1;
+      state.exchangeRateDate = null;
+    } else {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      const result = findRateForDate(invoiceDate);
+      state.exchangeRate = result?.rate ?? null;
+      state.exchangeRateDate = result?.date ?? null;
+    }
+
+    renderPanel();
+
+    const rate = state.exchangeRate;
+    fillTCById(rate);
+    setTimeout(() => fillTCById(rate), 300);
+    setTimeout(() => fillTCById(rate), 800);
+    setTimeout(() => fillTCById(rate), 1500);
+  }
+
+  function scanForBillPage() {
+    const headings = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography"], [class*="heading"], [class*="title"]');
+    let found = false;
+    for (const h of headings) {
+      if (/create\s+bill|edit\s+bill/i.test(h.textContent?.trim())) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      if (billFormVisible) {
+        billFormVisible = false;
+        headingLostAt = Date.now();
+        removePanel();
+      }
+      return;
+    }
+
+    if (!billFormVisible) {
+      billFormVisible = true;
+      const elapsed = Date.now() - headingLostAt;
+      if (!lastDetectedVendor || elapsed > 3000) {
+        resetBillState();
+        log('Pantalla Bill detectada');
+      }
+      renderPanel();
+    }
+
+    installDivisaListener();
+
+    const currentVendor = extractVendorFromDOM();
+    if (currentVendor && currentVendor !== lastDetectedVendor) {
+      lastDetectedVendor = currentVendor;
+      lastDetectedDivisa = null;
+      lastLineCount = -1;
+      scriptSetDivisa = null;
+      log(`Vendor detectado/cambiado: ${currentVendor}`);
+      state.ready = false;
+      runAutofill();
+      return;
+    } else if (!currentVendor && !lastDetectedVendor) {
+      updatePanelStatus('pending', 'Esperando selección de proveedor…');
+      return;
+    }
+
+    // Fallback divisa monitor (in case listener wasn't installed yet)
+    const currentDivisa = extractDivisaFromDOM();
+    if (currentDivisa && currentDivisa !== lastDetectedDivisa && lastDetectedVendor) {
+      lastDetectedDivisa = currentDivisa;
+      if (state.ready && currentDivisa !== state.currency) {
+        log(`Divisa scan fallback: ${currentDivisa}`);
+        state.currency = currentDivisa;
+        state.currencySource = 'form';
+        if (currentDivisa === 'MXN') {
+          state.exchangeRate = 1;
+          state.exchangeRateDate = null;
+        } else {
+          const invoiceDate = extractInvoiceDateFromDOM();
+          const result = findRateForDate(invoiceDate);
+          state.exchangeRate = result?.rate ?? null;
+          state.exchangeRateDate = result?.date ?? null;
+        }
+        renderPanel();
+        const rate = state.exchangeRate;
+        fillTCById(rate);
+        setTimeout(() => fillTCById(rate), 300);
+        setTimeout(() => fillTCById(rate), 800);
+        setTimeout(() => fillTCById(rate), 1500);
+        return;
+      }
+    }
+
+    // Monitor line item changes
+    if (lastDetectedVendor && state.ready) {
+      const lines = extractLinesFromDOM();
+      if (lines.length !== lastLineCount) {
+        lastLineCount = lines.length;
+        if (lines.length > 0) {
+          log(`Líneas cambiaron: ${lines.length}`);
+          state.ready = false;
+          runAutofill();
+        }
+      }
+    }
+
+    // Monitor Invoice Date changes → update TC to match that date
+    if (lastDetectedVendor && state.ready && state.currency !== 'MXN') {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      if (invoiceDate && invoiceDate !== lastDetectedInvoiceDate) {
+        lastDetectedInvoiceDate = invoiceDate;
+        const result = findRateForDate(invoiceDate);
+        if (result && result.rate !== state.exchangeRate) {
+          log(`Invoice Date: ${invoiceDate} → TC: ${result.rate} (del ${result.date})`);
+          state.exchangeRate = result.rate;
+          state.exchangeRateDate = result.date;
+          fillTCById(result.rate);
+          renderPanel();
+        }
+      }
+    }
+  }
+
+  // ── Fetch Interceptor ──
+
+  function patchFetch() {
+    if (window.__saBillAutofillFetchPatched) return;
+    window.__saBillAutofillFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body) return origFetch.apply(this, args);
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
+
+      const opName = bodyObj?.operationName;
+
+      // Intercept outgoing UpdateBillChecked — inject missing accounting data.
+      // 2026-06-04: SH renombró la mutación de guardar bill CreateUpdateBill →
+      // UpdateBillChecked (misma shape: variables.billPayload.customInputs.DatosContables).
+      // Aceptamos ambos por compatibilidad.
+      if ((opName === 'UpdateBillChecked' || opName === 'CreateUpdateBill') && state.ready) {
+        try {
+          const bill = bodyObj.variables?.billPayload || bodyObj.variables?.input || bodyObj.variables;
+          if (bill) {
+            if (!bill.customInputs) bill.customInputs = {};
+            if (!bill.customInputs.DatosContables) bill.customInputs.DatosContables = {};
+            const ci = bill.customInputs.DatosContables;
+
+            let modified = false;
+            if (!ci.Divisa && state.currency) { ci.Divisa = state.currency; modified = true; }
+            if (!ci.exchangeRate && state.exchangeRate != null) { ci.exchangeRate = String(state.exchangeRate); modified = true; }
+            if (modified) {
+              args[1] = { ...opts, body: JSON.stringify(bodyObj) };
+              log(`Inyectado: Divisa=${ci.Divisa}, TC=${ci.exchangeRate}`);
+            }
+          }
+        } catch (err) {
+          warn('Error modificando UpdateBillChecked: ' + err.message);
+        }
+      }
+
+      const response = await origFetch.apply(this, args);
+
+      // Intercept incoming responses
+      try {
+        const clone = response.clone();
+        const json = await clone.json();
+        handleIncomingResponse(opName, json, bodyObj);
+      } catch (_) {}
+
+      return response;
+    };
+  }
+
+  function handleIncomingResponse(opName, json, bodyObj) {
+    if (!json?.data) return;
+
+    if (opName === 'SearchPurchaseOrdersForBill' || opName === 'GetPurchaseOrdersDataForBill') {
+      const pos = json.data?.searchPurchaseOrders?.nodes
+        || json.data?.allPurchaseOrders?.nodes
+        || [];
+      if (pos.length > 0) {
+        const lines = pos.flatMap(po => po?.purchaseOrderLinesByPurchaseOrderId?.nodes || []);
+        if (lines.length > 0) {
+          state.poLineItems = lines;
+          log(`PO líneas interceptadas: ${lines.length}`);
+          if (state.vendorName) {
+            state.ready = false;
+            setTimeout(() => runAutofill(), 1500);
+          }
+        }
+        const firstPo = pos[0];
+        if (firstPo?.idInDomain && !state.poDivisa) {
+          fetchPODivisa(firstPo.idInDomain).then(divisa => {
+            if (divisa) {
+              state.poDivisa = divisa;
+              log(`PO Divisa obtenida: ${divisa}`);
+              if (state.vendorName) {
+                state.ready = false;
+                runAutofill();
+              }
+            }
+          });
+        }
+      }
+    }
+
+    if (opName === 'GetBillByIdInDomain') {
+      const bill = json.data?.billByIdInDomain;
+      if (bill) {
+        state.existingInputs = bill.customInputs || null;
+        const divisa = bill.customInputs?.DatosContables?.Divisa;
+        if (divisa && !state.poDivisa) state.poDivisa = divisa;
+      }
+    }
+
+    // Learn from successful bill saves — use the SENT payload, not the response
+    if ((opName === 'UpdateBillChecked' || opName === 'CreateUpdateBill') && !json.errors) {
+      learnFromSave(bodyObj);
+    }
+  }
+
+  function learnFromSave(bodyObj) {
+    const bill = bodyObj?.variables?.billPayload || bodyObj?.variables?.input || bodyObj?.variables;
+    if (!bill) return;
+
+    const billLines = bill?.billLines || [];
+    const journal = bill?.journalEntryData?.lines || [];
+    if (billLines.length === 0 && journal.length === 0) return;
+
+    // Build a map of accountId → accountName from journal lines
+    const accountMap = {};
+    for (const jl of journal) {
+      if (jl.accountId) accountMap[jl.accountId] = true;
+    }
+
+    loadExpenseMapping().then(mapping => {
+      let changed = false;
+      for (const bl of billLines) {
+        const name = bl?.name || '';
+        if (!name) continue;
+
+        // Each billLine may have billLineItems with expense info
+        for (const item of (bl?.billLineItems || [])) {
+          const accountId = item?.expenseAccountId || item?.accountId;
+          if (!accountId) continue;
+
+          const key = normalizeForMatch(name);
+          const existing = mapping[key];
+          if (!existing || existing.accountId !== accountId) {
+            mapping[key] = { accountId, accountName: name, count: (existing?.count || 0) + 1, lastUsed: Date.now() };
+            changed = true;
+          } else {
+            mapping[key].count = (existing.count || 0) + 1;
+            mapping[key].lastUsed = Date.now();
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        saveExpenseMapping(mapping);
+        log(`Aprendizaje: ${Object.keys(mapping).length} mapeos guardados`);
+      }
+    });
+  }
+
+  // ── Data Fetching ──
+
+  async function fetchExchangeRate() {
+    try {
+      const data = await api().query('GetDomain', {}, 'GetDomain');
+      log('GetDomain keys: ' + JSON.stringify(Object.keys(data || {})));
+      const tipoCambio = data?.currentSession?.userByUserId?.domainByDomainId?.customInputs?.TipoCambio
+        || data?.domain?.customInputs?.TipoCambio
+        || data?.domainByDomainId?.customInputs?.TipoCambio
+        || [];
+      if (!Array.isArray(tipoCambio) || tipoCambio.length === 0) {
+        warn('TipoCambio no encontrado — paths revisados: currentSession..., domain..., domainByDomainId...');
+        return null;
+      }
+      log(`TipoCambio: ${tipoCambio.length} entradas, última: ${JSON.stringify(tipoCambio[tipoCambio.length - 1])}`);
+
+      const userId = data?.currentSession?.userByUserId?.id;
+      if (userId) state._userId = userId;
+
+      state._tipoCambioArray = tipoCambio;
+      const result = findRateForDate(null);
+      return result?.rate ?? null;
+    } catch (err) {
+      warn('fetchExchangeRate error: ' + err.message);
+      return null;
+    }
+  }
+
+  function findRateForDate(dateStr) {
+    const arr = state._tipoCambioArray;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const target = dateStr || new Date().toISOString().slice(0, 10);
+    const exact = arr.find(e => e.FechaTipoCambio === target);
+    if (exact) return { rate: exact.TipoCambio, date: exact.FechaTipoCambio };
+    const sorted = [...arr].sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''));
+    const closest = sorted.find(e => (e.FechaTipoCambio || '') <= target);
+    const entry = closest || sorted[0];
+    return entry ? { rate: entry.TipoCambio, date: entry.FechaTipoCambio } : null;
+  }
+
+  async function fetchAccounts() {
+    const data = await api().query('GetAccountDataForBill', {}, 'GetAccountDataForBill');
+    return data?.allAcctAccounts?.nodes || [];
+  }
+
+  async function fetchPODivisa(idInDomain) {
+    try {
+      const data = await api().query('GetPurchaseOrder', { idInDomain, userIdFilter: state._userId || 0 }, 'GetPurchaseOrder');
+      const po = data?.purchaseOrderByIdInDomain;
+      const divisa = po?.customInputs?.DatosReferencia?.Divisa || po?.customInputs?.Divisa || null;
+
+      // Alternative exchange rate from PO domain
+      if (!state.exchangeRate) {
+        const tipoCambio = po?.domainByDomainId?.customInputs?.TipoCambio;
+        if (Array.isArray(tipoCambio) && tipoCambio.length > 0) {
+          const today = new Date().toISOString().slice(0, 10);
+          const entry = tipoCambio.find(e => e.FechaTipoCambio === today) || tipoCambio.sort((a, b) => (b.FechaTipoCambio || '').localeCompare(a.FechaTipoCambio || ''))[0];
+          if (entry?.TipoCambio) state.exchangeRate = entry.TipoCambio;
+        }
+      }
+
+      return divisa;
+    } catch (err) {
+      warn('fetchPODivisa error: ' + err.message);
+      return null;
+    }
+  }
+
+  // ── Expense Mapping Storage (localStorage — runs in MAIN world) ──
+
+  function loadExpenseMapping() {
+    return new Promise(resolve => {
+      try {
+        resolve(JSON.parse(localStorage.getItem(EXPENSE_MAPPING_KEY) || '{}'));
+      } catch {
+        resolve({});
+      }
+    });
+  }
+
+  function saveExpenseMapping(mapping) {
+    try {
+      localStorage.setItem(EXPENSE_MAPPING_KEY, JSON.stringify(mapping));
+    } catch (_) {}
+  }
+
+  // ── Account Matching ──
+
+  function normalizeForMatch(str) {
+    return String(str || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function tokenOverlapScore(target, candidate) {
+    const targetTokens = normalizeForMatch(target).split(' ').filter(t => t.length > 2);
+    const candidateNorm = normalizeForMatch(candidate);
+    let score = 0;
+    for (const token of targetTokens) {
+      if (candidateNorm.includes(token)) score += 10;
+    }
+    return score;
+  }
+
+  function findBestAPAccount(vendorName, currency, accounts) {
+    const apAccounts = accounts.filter(a => {
+      const cat = (a.acctAccountTypeByTypeId?.category || '').toLowerCase();
+      return cat.includes('payable') || cat.includes('liability');
+    });
+
+    if (apAccounts.length === 0) return { account: null, ambiguous: false };
+
+    const scored = apAccounts.map(a => {
+      let score = tokenOverlapScore(vendorName, a.name || '');
+      const nameLower = normalizeForMatch(a.name || '');
+      const vendorNorm = normalizeForMatch(vendorName);
+
+      if (nameLower.includes(vendorNorm)) score += 20;
+      else if (vendorNorm.includes(nameLower) && nameLower.length > 3) score += 15;
+
+      if (currency) {
+        const cur = currency.toUpperCase();
+        const hasUsd = nameLower.includes('usd') || nameLower.includes('dolar') || nameLower.includes('dollar');
+        const hasMxn = nameLower.includes('mxn') || nameLower.includes('peso') || nameLower.includes('nacional');
+        if (cur === 'USD' && hasUsd) score += 30;
+        if (cur === 'MXN' && hasMxn) score += 30;
+        if (cur === 'USD' && hasMxn) score -= 40;
+        if (cur === 'MXN' && hasUsd) score -= 40;
+      }
+
+      return { account: a, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const best = scored[0];
+    const ambiguous = scored.length > 1 && (scored[0].score - scored[1].score) <= 5;
+    return { account: best.account, ambiguous, score: best.score };
+  }
+
+  function findBestExpenseAccount(lineName, accounts) {
+    const expAccounts = accounts.filter(a => {
+      const cat = (a.acctAccountTypeByTypeId?.category || '').toLowerCase();
+      return cat.includes('expense') || cat.includes('asset') || (!cat.includes('payable') && !cat.includes('receivable'));
+    });
+
+    if (expAccounts.length === 0) return null;
+
+    const scored = expAccounts.map(a => {
+      let score = tokenOverlapScore(lineName, a.name || '');
+      const nameLower = normalizeForMatch(a.name || '');
+      const lineNorm = normalizeForMatch(lineName);
+
+      if (nameLower.includes(lineNorm) && lineNorm.length > 3) score += 20;
+      else if (lineNorm.includes(nameLower) && nameLower.length > 3) score += 15;
+
+      return { account: a, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    if (scored[0].score === 0) return null;
+    return scored[0].account;
+  }
+
+  async function fetchVendorDivisas(vendorName) {
+    try {
+      const searchData = await api().query('SearchVendors', { searchString: vendorName, first: 5 }, 'SearchVendors');
+      const vendors = searchData?.searchVendors?.nodes || [];
+      if (vendors.length === 0) return null;
+      const match = vendors.find(v => normalizeForMatch(v.name) === normalizeForMatch(vendorName)) || vendors[0];
+      const vendorData = await api().query('GetVendor', { idInDomain: match.idInDomain }, 'GetVendor');
+      const vendor = vendorData?.vendorByIdInDomain;
+      if (!vendor) return null;
+      const datos = vendor.customInputs?.DatosContablesProv;
+      if (!datos) return null;
+      return { mxn: !!datos.DivisaMXN, usd: !!datos.DivisaUSD };
+    } catch (err) {
+      warn('fetchVendorDivisas error: ' + err.message);
+      return null;
+    }
+  }
+
+  function inferCurrencyFromVendorDivisas(divisas) {
+    if (!divisas) return null;
+    if (divisas.usd) return 'USD';
+    if (divisas.mxn) return 'MXN';
+    return null;
+  }
+
+  // ── DOM Extraction ──
+
+  function extractVendorFromDOM() {
+    // Walk from each singleValue upward looking for a "Vendor" label sibling
+    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of singleValues) {
+      let parent = sv.parentElement;
+      for (let depth = 0; depth < 8 && parent; depth++) {
+        for (const child of parent.children) {
+          if (child.contains(sv)) continue;
+          const txt = child.textContent?.trim() || '';
+          if (/^vendor:?$/i.test(txt)) {
+            const clone = sv.cloneNode(true);
+            clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+            const val = clone.textContent?.trim();
+            if (val && val.length > 1) return val;
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function extractDivisaFromDOM() {
+    // Strategy 1: reverse pattern — find singleValue with currency text, verify "Divisa" label nearby
+    const singleValues = document.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of singleValues) {
+      if (sv.closest('#sa-bill-autofill-panel')) continue;
+      const val = sv.textContent?.trim() || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = sv.parentElement;
+      for (let depth = 0; depth < 8 && parent; depth++) {
+        for (const child of parent.children) {
+          if (child.contains(sv)) continue;
+          const labelText = child.textContent?.trim() || '';
+          if (/divisa/i.test(labelText) && labelText.length < 50) {
+            return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    // Strategy 2: <select> elements near "Divisa"
+    for (const select of document.querySelectorAll('select')) {
+      if (select.closest('#sa-bill-autofill-panel')) continue;
+      const opt = select.options?.[select.selectedIndex];
+      const val = opt?.text || select.value || '';
+      if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
+      let parent = select.parentElement;
+      for (let d = 0; d < 6 && parent; d++) {
+        if (/divisa/i.test(parent.textContent || '') && parent.textContent.length < 300) {
+          return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    return null;
+  }
+
+  function extractInvoiceDateFromDOM() {
+    const inputs = document.querySelectorAll('input[type="date"], input[type="text"], input');
+    for (const inp of inputs) {
+      if (inp.closest('#sa-bill-autofill-panel')) continue;
+      let parent = inp.parentElement;
+      for (let d = 0; d < 5 && parent; d++) {
+        for (const child of parent.children) {
+          if (child.contains(inp)) continue;
+          const txt = child.textContent?.trim() || '';
+          if (/^invoice\s*date:?$/i.test(txt) || /^fecha.*factura:?$/i.test(txt)) {
+            const val = inp.value?.trim();
+            if (!val) return null;
+            const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return m[0];
+            const m2 = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+            return null;
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function extractLinesFromDOM() {
+    const lines = [];
+    const lineSection = findLineItemsSection();
+    if (!lineSection) return lines;
+
+    // Strategy 1: inputs with name-related attributes
+    for (const input of lineSection.querySelectorAll('input')) {
+      const n = (input.name || '').toLowerCase();
+      const p = (input.placeholder || '').toLowerCase();
+      if ((n.includes('name') || p.includes('name') || p.includes('nombre')) && input.value?.trim()) {
+        lines.push({ name: input.value.trim(), element: input });
+      }
+    }
+    if (lines.length > 0) return lines;
+
+    // Strategy 2: "Name:" label — find adjacent input (sibling or parent's child)
+    for (const el of lineSection.querySelectorAll('label, span, div, td, th')) {
+      if (el.closest('#sa-bill-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (!/^name:?\s*$/i.test(txt) || txt.length > 10) continue;
+
+      let found = false;
+      // Check next siblings first (label and input are typically siblings)
+      let sib = el.nextElementSibling;
+      for (let i = 0; i < 3 && sib && !found; i++, sib = sib.nextElementSibling) {
+        if (sib.tagName === 'INPUT' && sib.value?.trim()) {
+          lines.push({ name: sib.value.trim(), element: sib });
+          found = true;
+        } else {
+          const inp = sib.querySelector('input');
+          if (inp?.value?.trim()) {
+            lines.push({ name: inp.value.trim(), element: inp });
+            found = true;
+          }
+        }
+      }
+      if (found) continue;
+
+      // Check parent's children (label is child, input is another child)
+      const parent = el.parentElement;
+      if (parent) {
+        for (const child of parent.children) {
+          if (child === el || child.contains(el)) continue;
+          const inp = child.tagName === 'INPUT' ? child : child.querySelector('input');
+          if (inp?.value?.trim()) {
+            lines.push({ name: inp.value.trim(), element: inp });
+            break;
+          }
+        }
+      }
+    }
+
+    return lines;
+  }
+
+  function findLineItemsSection() {
+    const headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div,p');
+    for (const h of headings) {
+      if (/line\s*items?/i.test(h.textContent?.trim())) {
+        return h.closest('section') || h.parentElement?.parentElement || h.parentElement;
+      }
+    }
+    return document.querySelector('main') || document.querySelector('[class*="content"]');
+  }
+
+  // ── Combobox Interaction ──
+
+  async function tryFillCombobox(labelText, searchText, targetAccountName) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    let labelEl = null;
+
+    const labels = document.querySelectorAll('label, span, div, p');
+    for (const el of labels) {
+      if (el.closest('#sa-bill-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 40) continue;
+      if (!labelRe.test(txt)) continue;
+      labelEl = el;
+      break;
+    }
+
+    if (!labelEl) return { success: false, method: 'fallback', reason: 'label no encontrado' };
+
+    // Walk up looking for the CLOSEST control — whichever appears first wins.
+    // React Select has input[role="combobox"]; RJSF has native <select>.
+    let parent = labelEl;
+    for (let d = 0; d < 8 && parent; d++) {
+      const comboInput = parent.querySelector('input[role="combobox"]');
+      if (comboInput) {
+        const ctrl = comboInput.closest('[class*="-control"]');
+        if (ctrl) return await clickAndSelectOption(ctrl, parent, searchText, targetAccountName);
+      }
+      const sel = parent.querySelector('select');
+      if (sel) return tryFillNativeSelect(sel, searchText, targetAccountName);
+      parent = parent.parentElement;
+    }
+
+    return { success: false, method: 'fallback', reason: 'control no encontrado' };
+  }
+
+  function tryFillNativeSelect(sel, searchText, targetName) {
+    const searchNorm = normalizeForMatch(searchText);
+    for (const opt of sel.options) {
+      const optText = (opt.text || '').trim();
+      const norm = normalizeForMatch(optText || opt.value || '');
+      if (!norm) continue;
+      if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
+        const tracker = sel._valueTracker;
+        if (tracker) tracker.setValue('');
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+        if (nativeSetter) nativeSetter.call(sel, opt.value);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return { success: true, filled: optText, method: 'native-select' };
+      }
+    }
+    return { success: false, method: 'fallback', reason: 'opcion no encontrada en select nativo' };
+  }
+
+  async function clickAndSelectOption(control, container, searchText, targetAccountName) {
+    control.click();
+    await sleep(300);
+
+    const inputEl = control.querySelector('input');
+    if (inputEl) {
+      const nativeInputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (nativeInputSetter) nativeInputSetter.call(inputEl, searchText);
+      inputEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    let options = [];
+    for (let i = 0; i < 10; i++) {
+      await sleep(200);
+      const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]')
+        || container.querySelector('[class*="menu"], [class*="Menu"]')
+        || document.querySelector('[class*="menu"], [class*="Menu"]');
+      if (menu) {
+        options = [...menu.querySelectorAll('[class*="option"], [class*="Option"]')];
+        if (options.length > 0) break;
+      }
+    }
+
+    if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones tras click' };
+
+    return pickBestOption(options, targetAccountName);
+  }
+
+  function pickBestOption(options, targetAccountName) {
+    const targetNorm = normalizeForMatch(targetAccountName);
+    let best = null;
+    let bestScore = -1;
+
+    for (const opt of options) {
+      const text = opt.textContent?.trim() || '';
+      const norm = normalizeForMatch(text);
+      let score = 0;
+      if (norm === targetNorm) score = 100;
+      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 50;
+      else {
+        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
+        for (const t of tokens) { if (norm.includes(t)) score += 10; }
+      }
+      if (score > bestScore) { bestScore = score; best = opt; }
+    }
+
+    if (!best || bestScore < 10) return { success: false, method: 'fallback', reason: 'opcion no encontrada' };
+
+    best.click();
+    return { success: true, filled: targetAccountName, method: 'visual' };
+  }
+
+  async function tryFillTextInput(labelText, value) {
+    const labelRe = typeof labelText === 'string' ? new RegExp(labelText, 'i') : labelText;
+    const labels = document.querySelectorAll('label, span, div, p');
+
+    for (const el of labels) {
+      if (el.closest('#sa-bill-autofill-panel')) continue;
+      const txt = el.textContent?.trim() || '';
+      if (txt.length > 30) continue;
+      if (!labelRe.test(txt)) continue;
+
+      // Walk up to find a parent with an input
+      let parent = el;
+      for (let d = 0; d < 5 && parent; d++) {
+        const inp = parent.querySelector('input[type="text"], input[type="number"], input:not([type])');
+        if (inp) {
+          const tracker = inp._valueTracker;
+          if (tracker) tracker.setValue('');
+          const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+          if (nativeSetter) nativeSetter.call(inp, String(value));
+          inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          return { success: true };
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    return { success: false };
+  }
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  // ── Fill All Fields ──
+
+  async function fillAllFields() {
+    const results = {};
+
+    if (state.currency) {
+      results.currency = await tryFillCombobox('divisa.*factura|divisa|currency', state.currency, state.currency);
+      if (results.currency?.success) scriptSetDivisa = state.currency;
+      log(`Fill divisa: ${JSON.stringify(results.currency)}`);
+    }
+
+    if (state.exchangeRate != null) {
+      results.exchangeRate = await tryFillTextInput('tipo de cambio|exchange rate', state.exchangeRate);
+      log(`Fill TC: ${JSON.stringify(results.exchangeRate)}`);
+    }
+
+    if (state.apAccount?.account) {
+      const acc = state.apAccount.account;
+      const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
+      results.apAccount = await tryFillCombobox('cuenta.*pagar|accounts?\\s*payable|a/?p\\s*account|vendor\\s*account', search, acc.name);
+      log(`Fill AP: ${JSON.stringify(results.apAccount)}`);
+    }
+
+    // Expense accounts: find each line's container and fill its Expense Account combobox
+    for (let i = 0; i < state.lineAccounts.length; i++) {
+      const line = state.lineAccounts[i];
+      if (!line.account) continue;
+      const acc = line.account;
+      const search = acc.accountNumber || acc.name?.split(' ')[0] || acc.name;
+      results[`line_${i}`] = await tryFillExpenseInLine(line.name, search, acc.name);
+      log(`Fill expense line ${i} "${line.name}": ${JSON.stringify(results[`line_${i}`])}`);
+    }
+
+    return results;
+  }
+
+  async function tryFillExpenseInLine(lineName, searchText, targetAccountName) {
+    const lineNorm = lineName.toLowerCase().trim().replace(/\s+/g, ' ');
+
+    // The Name input is outside the MUI sub-table that has "Expense Account".
+    // Strategy: find Name input → walk up to the line item container (ancestor
+    // that contains a sub-table with "Expense Account") → find the column index
+    // → find the combobox in the corresponding data cell.
+
+    const nameInputs = document.querySelectorAll('input');
+    let nameInput = null;
+
+    for (const inp of nameInputs) {
+      if (inp.closest('#sa-bill-autofill-panel')) continue;
+      if (inp.getAttribute('role') === 'combobox') continue;
+      const val = (inp.value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!val) continue;
+      if (val === lineNorm || val.includes(lineNorm) || lineNorm.includes(val)) {
+        nameInput = inp;
+        break;
+      }
+    }
+
+    if (!nameInput) return { success: false, method: 'fallback', reason: `input Name no encontrado para "${lineName}"` };
+
+    // Walk up to find the line item container — the ancestor that contains
+    // a sub-table with "Expense Account" header
+    let lineContainer = null;
+    let targetTable = null;
+    let expenseColIdx = -1;
+    let parent = nameInput.parentElement;
+
+    for (let d = 0; d < 12 && parent; d++) {
+      const tables = parent.querySelectorAll('table');
+      for (const table of tables) {
+        const allCells = table.querySelectorAll('td, th');
+        for (let i = 0; i < allCells.length; i++) {
+          const t = allCells[i].textContent?.trim() || '';
+          if (/expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30) {
+            targetTable = table;
+            break;
+          }
+        }
+        if (targetTable) break;
+      }
+      if (targetTable) { lineContainer = parent; break; }
+      parent = parent.parentElement;
+    }
+
+    if (!targetTable) return { success: false, method: 'fallback', reason: `sub-tabla con Expense Account no encontrada para "${lineName}"` };
+
+    // Find the "Expense Account" column index in the header row
+    const rows = targetTable.querySelectorAll('tr');
+    for (const row of rows) {
+      const cells = row.querySelectorAll('td, th');
+      for (let i = 0; i < cells.length; i++) {
+        const t = cells[i].textContent?.trim() || '';
+        if (/expense\s*account|cuenta.*gasto/i.test(t) && t.length < 30) {
+          expenseColIdx = i;
+          break;
+        }
+      }
+      if (expenseColIdx >= 0) break;
+    }
+
+    if (expenseColIdx < 0) return { success: false, method: 'fallback', reason: 'columna Expense Account no encontrada en header' };
+
+    // Find the data row that has a combobox in the expense column
+    for (const row of rows) {
+      const cells = row.querySelectorAll('td, th');
+      if (expenseColIdx >= cells.length) continue;
+      const cell = cells[expenseColIdx];
+      const comboInput = cell.querySelector('input[role="combobox"]');
+      if (!comboInput) continue;
+      const control = comboInput.closest('[class*="-control"]');
+      if (!control) continue;
+      return await clickAndSelectOption(control, cell, searchText, targetAccountName);
+    }
+
+    return { success: false, method: 'fallback', reason: 'combobox no encontrado en columna Expense' };
+  }
+
+  // ── Orchestrator ──
+
+  async function runAutofill() {
+    if (autofillRunning) return;
+    autofillRunning = true;
+
+    try {
+      await _runAutofillInner();
+    } finally {
+      autofillRunning = false;
+    }
+  }
+
+  async function _runAutofillInner() {
+    updatePanelStatus('pending', 'Analizando...');
+
+    const vendorName = lastDetectedVendor || extractVendorFromDOM();
+    if (!vendorName) {
+      updatePanelStatus('pending', 'Esperando selección de proveedor…');
+      return;
+    }
+
+    let exchangeData, accountsData, expenseMapping, vendorDivisas;
+    try {
+      [exchangeData, accountsData, expenseMapping, vendorDivisas] = await Promise.all([
+        fetchExchangeRate().catch(err => { warn('fetchExchangeRate catch: ' + err.message); return null; }),
+        fetchAccounts().catch(err => { warn('fetchAccounts catch: ' + err.message); return []; }),
+        loadExpenseMapping(),
+        fetchVendorDivisas(vendorName).catch(err => { warn('fetchVendorDivisas catch: ' + err.message); return null; })
+      ]);
+    } catch (err) {
+      updatePanelStatus('error', 'Error fetching datos: ' + err.message);
+      return;
+    }
+
+    // Divisa: after first fill trust the DOM (preserves user changes).
+    // Before first fill (scriptSetDivisa null), infer from PO/vendor.
+    const divisaFromDOM = scriptSetDivisa ? extractDivisaFromDOM() : null;
+    const currencyFromPO = state.poDivisa;
+    const currencyFromVendor = inferCurrencyFromVendorDivisas(vendorDivisas);
+    const currency = divisaFromDOM || currencyFromPO || currencyFromVendor || 'USD';
+    const currencySource = divisaFromDOM ? 'form' : currencyFromPO ? 'po' : currencyFromVendor ? 'vendor' : 'default';
+
+    // TC: MXN=1, otherwise from TipoCambio array. Use Invoice Date if available.
+    let exchangeRate;
+    let exchangeRateDate = null;
+    if (currency === 'MXN') {
+      exchangeRate = 1;
+    } else {
+      const invoiceDate = extractInvoiceDateFromDOM();
+      if (invoiceDate) {
+        const result = findRateForDate(invoiceDate);
+        exchangeRate = result?.rate ?? exchangeData;
+        exchangeRateDate = result?.date ?? null;
+      } else {
+        exchangeRate = exchangeData;
+        const today = new Date().toISOString().slice(0, 10);
+        const result = findRateForDate(today);
+        exchangeRateDate = result?.date ?? null;
+      }
+      if (exchangeRate == null) warn('TC no disponible para ' + currency + ' — verificar hash GetDomain');
+    }
+    log(`Divisa: ${currency} (${currencySource}), TC: ${exchangeRate}, exchangeData: ${exchangeData}`);
+    const apResult = findBestAPAccount(vendorName, currency, accountsData);
+
+    // Lines: DOM first, fallback to intercepted PO data
+    let lines = extractLinesFromDOM();
+    if (lines.length === 0 && state.poLineItems.length > 0) {
+      lines = state.poLineItems.map(item => {
+        const name = item.name || item.description
+          || item.partNumberByPartNumberId?.name
+          || item.partNumber?.name || '';
+        return { name: name.trim(), element: null };
+      }).filter(l => {
+        if (!l.name || l.name.length < 3) return false;
+        if (/^\d[\d.,]*$/.test(l.name)) return false;
+        if (/^[A-Z_]{2,10}$/.test(l.name)) return false;
+        return true;
+      });
+      if (lines.length > 0) log(`Usando ${lines.length} líneas de PO interceptada`);
+    }
+
+    const lineAccounts = lines.map(line => {
+      const learned = expenseMapping[normalizeForMatch(line.name)];
+      if (learned) {
+        const account = accountsData.find(a => a.id === learned.accountId) || { id: learned.accountId, name: learned.accountName };
+        return { ...line, account, source: 'learned' };
+      }
+      const match = findBestExpenseAccount(line.name, accountsData);
+      return { ...line, account: match, source: match ? 'inferred' : 'none' };
+    });
+
+    state = {
+      ...state,
+      vendorName,
+      currency,
+      currencySource,
+      exchangeRate,
+      exchangeRateDate,
+      apAccount: apResult,
+      lineAccounts,
+      ready: true
+    };
+
+    await fillAllFields();
+
+    // Sync lastDetectedDivisa with what the DOM actually shows after fill,
+    // so the scan loop divisa monitor detects future user changes correctly.
+    const domDivisaAfterFill = extractDivisaFromDOM();
+    if (domDivisaAfterFill) lastDetectedDivisa = domDivisaAfterFill;
+
+    renderPanel();
+    log(`BillAutofill listo: vendor="${vendorName}" currency=${currency} rate=${exchangeRate} ap="${apResult.account?.name}" domDivisa=${domDivisaAfterFill}`);
+  }
+
+  // ── Panel UI ──
+
+  const STATUS_COLORS = { done: '#4CAF50', warn: '#ff9800', error: '#f44336', learned: '#2196F3', pending: '#999' };
+  const STATUS_ICONS  = { done: '✓', warn: '~', error: '✗', learned: '★', pending: '…' };
+  function getStatusIcon(status) { return STATUS_ICONS[status] || '·'; }
+
+  function renderPanel() {
+    let panel = document.getElementById('sa-bill-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-bill-autofill-panel';
+      panel.style.cssText = [
+        'position:fixed', 'bottom:20px', 'left:50%', 'transform:translateX(-50%)',
+        'z-index:99999', 'background:#1e293b', 'color:#e2e8f0', 'border-radius:10px',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.4)', 'font-family:system-ui,sans-serif',
+        'font-size:13px', 'min-width:260px', 'max-width:340px'
+      ].join(';');
+      document.body.appendChild(panel);
+    }
+
+    const collapsed = panel.dataset.collapsed === 'true';
+
+    let html = `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #334155;cursor:pointer;" id="sa-baf-header">
+        <span style="font-weight:700;font-size:14px;letter-spacing:.3px;">Bill Autofill</span>
+        <span style="font-size:16px;color:#94a3b8;">${collapsed ? '▲' : '▼'}</span>
+      </div>`;
+
+    if (!collapsed) {
+      html += `<div style="padding:12px 14px;">`;
+
+      const divisaStatus = !state.currency ? 'pending' : state.currencySource === 'default' ? 'warn' : 'done';
+      const divisaSources = { form: ' (del form)', po: ' (de PO)', vendor: ' (del vendor)', default: ' (default)' };
+      const divisaSuffix = divisaSources[state.currencySource] || '';
+      const divisaLabel = state.currency ? `${state.currency}${divisaSuffix}` : '—';
+      html += renderRow('Divisa', divisaLabel, divisaStatus);
+      const tcLabel = state.exchangeRate != null
+        ? `$${Number(state.exchangeRate).toFixed(4)}${state.exchangeRateDate ? ` (${state.exchangeRateDate})` : ''}`
+        : '—';
+      html += renderRow('Tipo de Cambio', tcLabel, state.exchangeRate != null ? 'done' : 'pending');
+
+      const ap = state.apAccount;
+      const apStatus = !ap?.account ? 'error' : ap.ambiguous ? 'warn' : 'done';
+      html += renderRow('Cuenta AP', ap?.account?.name || 'No resuelto', apStatus);
+
+      if (state.lineAccounts.length > 0) {
+        html += `<div style="border-top:1px solid #334155;margin:8px 0 6px;padding-top:6px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">Gastos por línea</div>`;
+        for (const line of state.lineAccounts) {
+          const status = line.source === 'learned' ? 'learned' : line.account ? 'inferred' : 'error';
+          const displayStatus = line.source === 'learned' ? 'learned' : line.account ? 'done' : 'error';
+          html += renderRow(line.name || '(sin nombre)', line.account?.name || 'No resuelto', displayStatus);
+        }
+      }
+
+      html += `<div style="text-align:center;padding-top:8px;border-top:1px solid #334155;margin-top:6px;"><span id="sa-baf-refresh" style="cursor:pointer;color:#64748b;font-size:11px;letter-spacing:.3px;">↻ actualizar</span></div>`;
+      html += `</div>`;
+    }
+
+    panel.innerHTML = html;
+
+    panel.querySelector('#sa-baf-header').addEventListener('click', () => {
+      panel.dataset.collapsed = collapsed ? 'false' : 'true';
+      renderPanel();
+    });
+
+    const refreshBtn = panel.querySelector('#sa-baf-refresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        state.ready = false;
+        runAutofill();
+      });
+    }
+  }
+
+  function renderRow(label, value, status) {
+    const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
+    const icon = getStatusIcon(status);
+    return `
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
+        <span style="color:${color};font-weight:700;min-width:14px;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;">${escHtml(label)}</div>
+          <div style="color:#e2e8f0;font-size:12px;word-break:break-word;">${escHtml(value)}</div>
+        </div>
+      </div>`;
+  }
+
+  function escHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function removePanel() {
+    const panel = document.getElementById('sa-bill-autofill-panel');
+    if (panel) panel.remove();
+  }
+
+  function updatePanelStatus(status, message) {
+    let panel = document.getElementById('sa-bill-autofill-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sa-bill-autofill-panel';
+      panel.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;background:#1e293b;color:#e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);font-family:system-ui,sans-serif;font-size:13px;padding:12px 14px;min-width:220px;';
+      document.body.appendChild(panel);
+    }
+    const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
+    panel.innerHTML = `<span style="font-weight:700;">Bill Autofill</span> <span style="color:${color};margin-left:8px;">${escHtml(message)}</span>`;
+  }
+
+  return { init, runAutofill };
+})();
+
+if (typeof window !== 'undefined') {
+  window.BillAutofill = BillAutofill;
+  BillAutofill.init();
+}
+})();
+// ===== END scripts/bill-autofill.js =====
+
+// ===== BEGIN scripts/host-cleanup-shared.js =====
+(function(){
+// host-cleanup-shared.js — Helpers compartidos para detener jobs del SPA host
+// de Steelhead (Datadog RUM session replay, Apollo InMemoryCache) y monitorear
+// memoria del tab. Se importa desde applets de larga duración (bulk-upload,
+// spec-migrator dup-params, etc) para no copiar el patrón inline.
+//
+// Versión 0.1.0 (2026-05-26): extracción inicial desde bulk-upload.js 1.4.42.
+// Latches en window.__sa_dd_stopped / __sa_fetch_patched / __sa_xhr_patched
+// — idempotente entre applets si el usuario abre varios en la misma tab.
+//
+// API:
+//   SteelheadHostCleanup.stopDatadogSessionReplay()
+//     Detiene Datadog RUM + monkey-patchea fetch/sendBeacon/XHR para descartar
+//     requests a *.datadoghq.com / *.datadog-rum / browser-intake-ddog-gov.
+//     Idempotente vía latch. Segundo+ call solo re-intenta Apollo drain.
+//
+//   SteelheadHostCleanup.apolloCacheDrain()
+//     clearStore() o cache.reset() del Apollo Client del host (busca en
+//     window.__APOLLO_CLIENT__, window.apolloClient, window.__APOLLO__.client).
+//     Idempotente y silencioso si no encuentra cliente.
+//
+//   SteelheadHostCleanup.createMemMonitor({ getElement, onWarn, onGuardrail,
+//                                            warnPct=70, critPct=85, guardrailPct=88,
+//                                            intervalMs=2000 })
+//     → { start(), stop(), reset() }
+//     Polling de performance.memory cada 2s. Pinta "Mem: XXMB/YYMB (NN%)" en el
+//     elemento que devuelva getElement(). A warnPct invoca stopDatadogSessionReplay()
+//     (re-aplica Apollo drain). A guardrailPct dispara onGuardrail(pct) UNA vez.
+//
+//   SteelheadHostCleanup.makePeriodicDrain(everyN)
+//     → fn() — Invocar al final de cada PN procesado en un pool. Llama
+//     apolloCacheDrain() cada `everyN` invocaciones. Mantiene contador interno.
+
+window.SteelheadHostCleanup = (() => {
+  'use strict';
+
+  const VERSION = '0.1.0';
+
+  const DD_URL_RE = /browser-intake-ddog-gov\.com|datadoghq\.com|datadog-rum/i;
+  const DD_BEACON_RE = /browser-intake-ddog-gov\.com|datadoghq\.com/i;
+
+  function apolloCacheDrain() {
+    try {
+      const candidates = [
+        window.__APOLLO_CLIENT__,
+        window.apolloClient,
+        window.__APOLLO__?.client,
+      ].filter(Boolean);
+      for (const client of candidates) {
+        try {
+          if (typeof client.clearStore === 'function') {
+            client.clearStore().catch(() => {});
+          } else if (client.cache && typeof client.cache.reset === 'function') {
+            client.cache.reset();
+          }
+        } catch (_) { /* defensa */ }
+      }
+    } catch (_) { /* defensa */ }
+  }
+
+  function stopDatadogSessionReplay() {
+    if (window.__sa_dd_stopped) {
+      apolloCacheDrain();
+      return;
+    }
+    try {
+      const dd = window.DD_RUM || window.datadogRum || window.__DD_RUM__;
+      if (dd) {
+        try { dd.stopSessionReplayRecording?.(); } catch (_) {}
+        try { dd.stopSession?.(); } catch (_) {}
+        try { dd.setTrackingConsent?.('not-granted'); } catch (_) {}
+      }
+    } catch (_) { /* defensa */ }
+    if (!window.__sa_fetch_patched) {
+      try {
+        const origFetch = window.fetch;
+        window.fetch = function (input, init) {
+          const url = typeof input === 'string' ? input : (input?.url || '');
+          if (DD_URL_RE.test(url)) {
+            return Promise.resolve(new Response('', { status: 204 }));
+          }
+          return origFetch.call(this, input, init);
+        };
+        if (navigator.sendBeacon) {
+          const origBeacon = navigator.sendBeacon.bind(navigator);
+          navigator.sendBeacon = function (url, data) {
+            if (DD_BEACON_RE.test(url)) return true;
+            return origBeacon(url, data);
+          };
+        }
+        if (window.XMLHttpRequest && !window.__sa_xhr_patched) {
+          const origOpen = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function (method, url) {
+            this.__sa_url = url;
+            return origOpen.apply(this, arguments);
+          };
+          const origSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.send = function (body) {
+            const url = this.__sa_url || '';
+            if (DD_URL_RE.test(url)) {
+              try { this.abort(); } catch (_) {}
+              return;
+            }
+            return origSend.apply(this, arguments);
+          };
+          window.__sa_xhr_patched = true;
+        }
+        window.__sa_fetch_patched = true;
+      } catch (_) { /* defensa */ }
+    }
+    apolloCacheDrain();
+    window.__sa_dd_stopped = true;
+  }
+
+  function createMemMonitor(opts = {}) {
+    const {
+      getElement = () => null,
+      onWarn = null,
+      onCrit = null,
+      onGuardrail = null,
+      intervalMs = 2000,
+      warnPct = 70,
+      critPct = 85,
+      guardrailPct = 88,
+      warnClass = 'sa-mem-warn',
+      critClass = 'sa-mem-crit',
+    } = opts;
+
+    let timer = null;
+    let guardrailFired = false;
+
+    function tick() {
+      if (!(performance && performance.memory)) return;
+      const used = performance.memory.usedJSHeapSize;
+      const limit = performance.memory.jsHeapSizeLimit;
+      const usedMB = Math.round(used / 1024 / 1024);
+      const limitMB = Math.round(limit / 1024 / 1024);
+      const pct = limit > 0 ? Math.round(used / limit * 100) : 0;
+      const el = getElement();
+      if (el) {
+        el.textContent = `Mem: ${usedMB}MB / ${limitMB}MB (${pct}%)`;
+        if (el.classList) {
+          el.classList.remove(warnClass, critClass);
+          if (pct >= critPct) el.classList.add(critClass);
+          else if (pct >= warnPct) el.classList.add(warnClass);
+        }
+      }
+      if (pct >= warnPct) {
+        stopDatadogSessionReplay();
+        try { onWarn?.(pct); } catch (_) {}
+      }
+      if (pct >= critPct) {
+        try { onCrit?.(pct); } catch (_) {}
+      }
+      if (pct >= guardrailPct && !guardrailFired) {
+        guardrailFired = true;
+        try { onGuardrail?.(pct); } catch (_) {}
+      }
+    }
+
+    return {
+      start() {
+        if (timer) return;
+        if (!(performance && performance.memory)) return;
+        tick();
+        timer = setInterval(tick, intervalMs);
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null; }
+      },
+      reset() { guardrailFired = false; },
+    };
+  }
+
+  function makePeriodicDrain(everyN) {
+    let counter = 0;
+    return () => {
+      counter++;
+      if (counter % everyN === 0) {
+        try { apolloCacheDrain(); } catch (_) {}
+      }
+    };
+  }
+
+  return {
+    VERSION,
+    stopDatadogSessionReplay,
+    apolloCacheDrain,
+    createMemMonitor,
+    makePeriodicDrain,
+  };
+})();
+})();
+// ===== END scripts/host-cleanup-shared.js =====
+
+// ===== BEGIN scripts/ov-operations.js =====
+(function(){
+// OV Operations — shared module for ReceivedOrder creation, adoption, and helpers
+// Consumed by po-comparator.js and portal-importer.js
+// Depends on: SteelheadAPI
+
+const OVOperations = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api().log(m);
+  const warn = (m) => api().warn(m);
+
+  // ── Shared helpers ─────────────────────────────────────────
+
+  function normalizePN(pn) {
+    if (pn == null) return null;
+    return String(pn).trim().toLowerCase();
+  }
+
+  function aggressiveNormalizePN(pn) {
+    if (pn == null) return null;
+    return String(pn).trim().toLowerCase().replace(/[\s\-\._]/g, '');
+  }
+
+  function normalizeCurrency(val) {
+    if (!val) return null;
+    const s = String(val).trim().toUpperCase();
+    if (s.includes('USD') || s.includes('$') || s.includes('DLLS')) return 'USD';
+    if (s.includes('MXN') || s.includes('PESO') || s.includes('MXP')) return 'MXN';
+    return s.substring(0, 3);
+  }
+
+  function fuzzyMatchStr(a, b) {
+    if (!a || !b) return false;
+    const na = String(a).trim().toLowerCase();
+    const nb = String(b).trim().toLowerCase();
+    return na.includes(nb) || nb.includes(na);
+  }
+
+  function escHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function toNumber(val) {
+    if (val == null) return null;
+    const n = typeof val === 'number' ? val : parseFloat(String(val).replace(/,/g, ''));
+    return isNaN(n) ? null : n;
+  }
+
+  // Shared number formatter — thousands with comma, decimals with period.
+  // Usage: fmtNumber(12473.49, 2) → "12,473.49"; fmtNumber(1500) → "1,500"
+  function fmtNumber(n, decimals) {
+    if (n == null || isNaN(n)) return '—';
+    const d = decimals == null ? 0 : decimals;
+    return Number(n).toLocaleString('en-US', {
+      minimumFractionDigits: d,
+      maximumFractionDigits: d
+    });
+  }
+
+  // ── UI helpers (overlay/modal — duplicated from po-comparator styles) ─
+
+  function createOverlay() {
+    const ov = document.createElement('div');
+    ov.id = 'dl9-ovop-overlay';
+    ov.className = 'dl9-overlay';
+    return ov;
+  }
+
+  function createModal() {
+    const md = document.createElement('div');
+    md.className = 'dl9-poc-modal';
+    return md;
+  }
+
+  function removeOverlay() {
+    const ov = document.getElementById('dl9-ovop-overlay');
+    if (ov) ov.remove();
+  }
+
+  // ── Multi-signal OV detection ──────────────────────────────
+
+  const PROVISIONAL_NAME_RE = /^(test|prueba|pendiente|temp|tmp)/i;
+
+  async function findCandidateOVs(sourceData, customerId) {
+    if (!customerId) return [];
+
+    log('Buscando OVs candidatas del cliente...');
+
+    // ActiveReceivedOrders rotó 2026-06-01 → nuevo shape (sin domainId/customerId;
+    // root key pagedData). El server no filtra por cliente → se compara PN abajo.
+    const data = await api().query('ActiveReceivedOrders', {
+      includeArchived: 'NO',
+      computeMargins: false,
+      showInvoicedSubtotal: false,
+      isBlanketOrder: false,
+      orderBy: ['ID_IN_DOMAIN_DESC'],
+      offset: 0,
+      first: 100,
+      receivedOrderStatusFilter: ['OPEN'],
+      searchQuery: ''
+    });
+
+    const orders = data?.pagedData?.nodes ||
+                   data?.receivedOrders?.nodes ||
+                   data?.allReceivedOrders?.nodes ||
+                   data?.activeReceivedOrders?.nodes || [];
+
+    if (orders.length === 0) {
+      log('No hay OVs activas para este cliente');
+      return [];
+    }
+
+    log(`${orders.length} OVs activas del cliente, analizando...`);
+
+    const pdfPNs = new Set(
+      sourceData.lines
+        .map(l => normalizePN(l.partNumber))
+        .filter(Boolean)
+    );
+
+    const candidates = [];
+    for (const order of orders) {
+      const ovId = order.idInDomain || order.id;
+      const ovName = order.name || '';
+      const score = { ovId, ovName, order, signals: [], pnMatchCount: 0, pnMatchList: [] };
+
+      if (PROVISIONAL_NAME_RE.test(ovName)) {
+        score.signals.push('provisional');
+      }
+
+      if (sourceData.poNumber && ovName.toLowerCase().includes(sourceData.poNumber.toLowerCase())) {
+        score.signals.push('name_similar');
+      }
+
+      try {
+        const ovData = await api().query('GetReceivedOrder', {
+          idInDomain: parseInt(ovId, 10),
+          revisionNumber: 1
+        });
+        const ovOrder = ovData?.receivedOrder;
+        const roLines = ovOrder?.receivedOrderLines?.nodes || ovOrder?.receivedOrderLines || [];
+        score.lineCount = roLines.length;
+        score.deadline = ovOrder?.deadline;
+
+        for (const line of roLines) {
+          const pn = normalizePN(line.partNumber?.name || line.partNumberName);
+          if (pn && pdfPNs.has(pn)) {
+            score.pnMatchCount++;
+            score.pnMatchList.push(pn);
+          }
+        }
+
+        if (score.pnMatchCount > 0) {
+          score.signals.push('pn_match');
+        }
+      } catch (e) {
+        warn(`No se pudieron cargar líneas de OV ${ovId}: ${e.message}`);
+        score.lineCount = '?';
+      }
+
+      if (score.signals.length > 0) {
+        candidates.push(score);
+      }
+    }
+
+    candidates.sort((a, b) => {
+      if (b.pnMatchCount !== a.pnMatchCount) return b.pnMatchCount - a.pnMatchCount;
+      return (b.ovId || 0) - (a.ovId || 0);
+    });
+
+    log(`${candidates.length} candidata(s) encontrada(s)`);
+    return candidates;
+  }
+
+  // ── File Upload & Attach ──────────────────────────────────
+
+  async function uploadAndAttachFile(file, receivedOrderId) {
+    log(`Subiendo "${file.name}" y adjuntando a OV...`);
+
+    const formData = new FormData();
+    formData.append('myfile', file, file.name);
+
+    const uploadResp = await fetch('/api/files', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+
+    if (!uploadResp.ok) throw new Error(`Upload HTTP ${uploadResp.status}`);
+    const uploadResult = await uploadResp.json();
+    log(`Archivo subido: ${uploadResult.name}`);
+
+    await api().query('CreateUserFile', {
+      name: uploadResult.name,
+      originalName: file.name
+    });
+
+    await api().query('CreateReceivedOrderUserFile', {
+      receivedOrderId: receivedOrderId,
+      userFileName: uploadResult.name
+    });
+
+    log(`Archivo adjuntado a OV exitosamente`);
+  }
+
+  // ── Adopt existing OV ──────────────────────────────────────
+
+  async function adoptExistingOV(candidate, sourceData, file) {
+    const ovId = candidate.ovId;
+    log(`Adoptando OV #${ovId} — renombrando a "${sourceData.poNumber}"...`);
+
+    await api().query('UpdateReceivedOrder', {
+      id: candidate.order.id || candidate.order.nodeId,
+      name: String(sourceData.poNumber)
+    });
+    log(`OV renombrada: ${candidate.ovName} → ${sourceData.poNumber}`);
+
+    if (file) {
+      try {
+        await uploadAndAttachFile(file, candidate.order.id);
+      } catch (e) {
+        warn(`No se pudo adjuntar archivo: ${e.message}`);
+      }
+    }
+
+    return ovId;
+  }
+
+  // ── OV Creation Data Fetching ─────────────────────────────
+
+  async function fetchCreationData(customerId) {
+    log('Cargando datos para creación de OV...');
+    const domainId = api().getDomain().id || 344;
+
+    const [dialogData, customerData] = await Promise.all([
+      api().query('CreateEditReceivedOrderDialogQuery', {
+        domainId,
+        quoteId: -1,
+        processIds: [],
+        withinLocationIds: null,
+        receivedOrderId: -1,
+        includeReceivedOrder: false
+      }),
+      customerId
+        ? api().query('GetCustomerInfoForReceivedOrder', { customerId: parseInt(customerId, 10) })
+        : Promise.resolve(null)
+    ]);
+
+    const schemas = dialogData?.allReceivedOrderInputSchemas?.nodes || [];
+    const inputSchema = schemas[0] || {};
+    const inputSchemaId = inputSchema.id || 559;
+    const schemaProperties = inputSchema.inputSchema?.properties || {};
+
+    const customer = customerData?.customerById || {};
+    const contacts = customer.customerContactsByCustomerId?.nodes || [];
+    const addresses = customer.customerAddressesByCustomerId?.nodes || [];
+    const defaultContact = contacts.find(c => c.isReceivedOrderContact) || contacts[0] || null;
+    const defaultBillTo = customer.customerAddressByDefaultBillToAddressId || addresses.find(a => a.useForBilling) || addresses[0] || null;
+    const defaultShipTo = customer.customerAddressByDefaultShipToAddressId || addresses.find(a => a.useForShipping) || addresses[0] || null;
+    const invoiceTerms = customer.invoiceTermByDefaultInvoiceTermsId || null;
+    const sector = customer.sectorBySectorId || null;
+    const defaultOrderType = customer.defaultOrderType || 'MAKE_TO_ORDER';
+    const defaultLeadTime = customer.defaultLeadTime || null;
+    const defaultShipViaId = customer.defaultShipViaId || null;
+
+    const razonSocialSchema = schemaProperties.RazonSocialVenta || {};
+    const razonSocialOptions = razonSocialSchema.enum || razonSocialSchema.oneOf?.map(o => o.const || o.title) || [];
+
+    const divisaSchema = schemaProperties.Divisa || {};
+    const divisaOptions = divisaSchema.enum || divisaSchema.oneOf?.map(o => o.const || o.title) || ['USD', 'MXN'];
+
+    const verificadoSchema = schemaProperties.VerificadaPor || schemaProperties.VerificadoPor || {};
+    const verificadoOptions = verificadoSchema.enum || verificadoSchema.oneOf?.map(o => o.const || o.title) || [];
+
+    const domain = dialogData?.domainById || {};
+    const deadlineCutoffTime = domain.deadlineCutoffTime || '17:00:00';
+    const timezoneName = domain.timezoneName || 'America/Mexico_City';
+
+    log('Datos de creación cargados');
+
+    return {
+      inputSchemaId, schemaProperties, contacts, addresses,
+      defaultContact, defaultBillTo, defaultShipTo,
+      invoiceTerms, sector, defaultOrderType, defaultLeadTime, defaultShipViaId,
+      razonSocialOptions, divisaOptions, verificadoOptions,
+      deadlineCutoffTime, timezoneName, customer
+    };
+  }
+
+  // ── PN Resolution with Fuzzy Match Detection ──────────────
+
+  async function resolvePartNumber(pnName, customerId) {
+    if (!pnName) return null;
+
+    try {
+      const pnData = await api().query('PartNumberCreatableSelectGetPartNumbers', {
+        name: `%${pnName}%`,
+        searchQuery: '',
+        hideCustomerPartsWhenNoCustomerIdFilter: true,
+        customerId: customerId ? parseInt(customerId, 10) : null,
+        specIds: [],
+        paramIds: []
+      });
+      const pns = pnData?.searchPartNumbers?.nodes || [];
+
+      const normalizedTarget = normalizePN(pnName);
+      const exactMatch = pns.find(p => normalizePN(p.label) === normalizedTarget);
+
+      if (exactMatch) {
+        const partNumberId = exactMatch.value || exactMatch.id;
+        let partNumberPriceId = null;
+        if (customerId) {
+          try {
+            const priceData = await api().query('SearchPartNumberPrices', {
+              searchQuery: '%%',
+              partNumberId,
+              customerId: parseInt(customerId, 10),
+              first: 5
+            });
+            const prices = priceData?.allPartNumberPrices?.nodes || [];
+            if (prices.length > 0) partNumberPriceId = prices[0].id;
+          } catch (e) {
+            warn(`No se encontró precio para ${pnName}: ${e.message}`);
+          }
+        }
+        return { partNumberId, partNumberPriceId, exact: true, label: exactMatch.label };
+      }
+
+      // Fuzzy match: aggressive normalization
+      if (String(pnName).length >= 4) {
+        const aggTarget = aggressiveNormalizePN(pnName);
+        const fuzzyMatches = pns.filter(p => aggressiveNormalizePN(p.label) === aggTarget);
+        if (fuzzyMatches.length === 1) {
+          const m = fuzzyMatches[0];
+          return {
+            suggestion: {
+              currentName: m.label,
+              suggestedName: pnName,
+              partNumberId: m.value || m.id
+            }
+          };
+        }
+        if (fuzzyMatches.length > 1) {
+          warn(`${fuzzyMatches.length} PNs ambiguos para "${pnName}" — requiere revisión manual`);
+        }
+      }
+
+      return null;
+    } catch (e) {
+      warn(`Error resolviendo PN "${pnName}": ${e.message}`);
+      return null;
+    }
+  }
+
+  // ── Create New OV ──────────────────────────────────────────
+
+  async function createNewOV(formData, sourceData, file) {
+    log('Creando OV nueva...');
+
+    const createResult = await api().query('CreateReceivedOrder', formData);
+    const newOV = createResult?.createReceivedOrder?.receivedOrder;
+    if (!newOV) throw new Error('CreateReceivedOrder no devolvió OV');
+
+    const ovId = newOV.idInDomain;
+    const ovInternalId = newOV.id;
+    log(`OV creada: #${ovId} (id: ${ovInternalId})`);
+
+    log('Resolviendo números de parte...');
+    const lineItems = [];
+    for (const line of sourceData.lines) {
+      if (!line.partNumber) continue;
+
+      const resolved = await resolvePartNumber(line.partNumber, formData.customerId);
+      if (resolved && resolved.partNumberId && !resolved.suggestion) {
+        lineItems.push({
+          lineNumber: line.lineNumber,
+          partNumberId: resolved.partNumberId,
+          partNumberPriceId: resolved.partNumberPriceId,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          partNumber: line.partNumber
+        });
+      } else {
+        warn(`No se pudo resolver PN "${line.partNumber}" a un PN exacto de Steelhead`);
+      }
+    }
+
+    const resolvedCount = lineItems.length;
+    const total = sourceData.lines.filter(l => l.partNumber).length;
+    log(`${resolvedCount}/${total} PNs resueltos en Steelhead`);
+
+    if (lineItems.length > 0) {
+      // Paso 1: crear un ReceivedOrderPartTransform por cada PN único.
+      // La unique constraint de Postgres prohibe (receivedOrderId, partNumberId, ...)
+      // duplicados, así que sumamos cantidades de líneas con el mismo PN.
+      const groups = new Map();
+      for (const l of lineItems) {
+        const key = l.partNumberId;
+        if (!groups.has(key)) {
+          groups.set(key, {
+            partNumberId: l.partNumberId,
+            partNumberPriceId: l.partNumberPriceId || null,
+            totalCount: 0,
+            partNumber: l.partNumber
+          });
+        }
+        groups.get(key).totalCount += Number(l.quantity) || 0;
+      }
+
+      log(`Creando ${groups.size} part transforms (para ${lineItems.length} líneas)...`);
+      const transformsByPN = new Map();
+      let idx = 0;
+      for (const [pnId, g] of groups) {
+        idx++;
+        const t0 = Date.now();
+        log(`  [${idx}/${groups.size}] transform PN=${g.partNumber} (${g.totalCount} pz)...`);
+        try {
+          const tr = await api().query('SaveReceivedOrderPartTransforms', {
+            input: [{
+              isBillable: true,
+              receivedOrderId: ovInternalId,
+              shipToId: formData.shipToAddressId || null,
+              partNumberPriceId: g.partNumberPriceId,
+              maxPartTransformCount: g.totalCount,
+              count: 0,
+              partNumberId: pnId,
+              orderType: formData.type || 'MAKE_TO_ORDER',
+              description: '',
+              deadline: formData.deadline,
+              children: []
+            }]
+          });
+          const t = tr?.saveReceivedOrderPartTransforms?.[0];
+          if (!t?.id) throw new Error('no devolvió id');
+          transformsByPN.set(pnId, t);
+          log(`  [${idx}/${groups.size}] OK (id=${t.id}, ${Date.now() - t0}ms)`);
+        } catch (e) {
+          throw new Error(`Falló transform ${idx}/${groups.size} (PN=${g.partNumber}, partNumberId=${pnId}): ${e.message}`);
+        }
+      }
+
+      // Paso 2: crear una línea por cada entrada original del PO, todas las que
+      // compartan PN apuntan al mismo transform id
+      log(`Agregando ${lineItems.length} líneas a la OV...`);
+      const newLines = lineItems.map(l => {
+        const t = transformsByPN.get(l.partNumberId) || {};
+        return {
+          id: null,
+          name: String(l.partNumber),
+          description: '',
+          lineItems: [{
+            archive: false,
+            description: String(l.partNumber),
+            quantity: String(l.quantity),
+            price: String(l.unitPrice || '0'),
+            productId: null,
+            unitId: null,
+            quoteLineItemId: null,
+            receivedOrderLineItemPartTransforms: [{
+              receivedOrderPartTransform: {
+                id: t.id ?? null,
+                partNumberId: l.partNumberId,
+                partNumberPriceId: l.partNumberPriceId || null,
+                maxPartTransformCount: groups.get(l.partNumberId)?.totalCount ?? null,
+                count: 0,
+                description: ''
+              }
+            }]
+          }]
+        };
+      });
+
+      await api().query('SaveReceivedOrderLinesAndItems', {
+        input: {
+          receivedOrderId: ovInternalId,
+          newLines
+        }
+      });
+      log('Líneas agregadas exitosamente');
+    }
+
+    if (file) {
+      try {
+        await uploadAndAttachFile(file, ovInternalId);
+      } catch (e) {
+        warn(`No se pudo adjuntar archivo: ${e.message}`);
+      }
+    }
+
+    log(`OV #${ovId} creada con ${lineItems.length} líneas`);
+    return ovId;
+  }
+
+  // ── UI: Candidate Selector ─────────────────────────────────
+
+  function showCandidateSelector(candidates, sourceData) {
+    ensureStyles();
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      let listHTML = '';
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        const deadline = c.deadline ? new Date(c.deadline).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+        let badges = '';
+        if (c.signals.includes('pn_match')) {
+          badges += `<span class="badge badge-pn">${c.pnMatchCount} de ${sourceData.lines.length} PNs coinciden</span>`;
+        }
+        if (c.signals.includes('provisional')) {
+          badges += `<span class="badge badge-provisional">Nombre provisional</span>`;
+        }
+        if (c.signals.includes('name_similar')) {
+          badges += `<span class="badge badge-similar">Nombre similar</span>`;
+        }
+
+        listHTML += `
+          <label class="candidate-item" data-idx="${i}">
+            <input type="radio" name="dl9-candidate" value="${i}">
+            <div class="candidate-info">
+              <div class="candidate-name">#${c.ovId} — ${escHtml(c.ovName)}</div>
+              <div class="candidate-detail">${c.lineCount} líneas · Plazo: ${deadline}</div>
+              <div class="candidate-badges">${badges}</div>
+            </div>
+          </label>`;
+      }
+
+      listHTML += `
+        <label class="candidate-item candidate-create" data-idx="create">
+          <input type="radio" name="dl9-candidate" value="create">
+          <div class="candidate-info">
+            <div class="candidate-name">Ninguna — Crear OV nueva</div>
+            <div class="candidate-detail">Crear orden de venta con los datos del archivo</div>
+          </div>
+        </label>`;
+
+      md.innerHTML = `
+        <h2>OV no encontrada por nombre</h2>
+        <p class="dl9-sub">Se encontraron ${candidates.length} OV(s) del mismo cliente que podrían ser la correcta. PO del archivo: <strong>${escHtml(sourceData.poNumber || '?')}</strong></p>
+        <div class="candidate-list">${listHTML}</div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-cand-cancel">Cancelar</button>
+          <button class="dl9-btn dl9-btn-primary" id="dl9-cand-confirm" disabled>Confirmar</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      let selected = null;
+
+      md.querySelectorAll('input[name="dl9-candidate"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+          selected = radio.value;
+          md.querySelector('#dl9-cand-confirm').disabled = false;
+        });
+      });
+
+      md.querySelectorAll('.candidate-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          if (e.target.tagName === 'INPUT') return;
+          const radio = item.querySelector('input[type=radio]');
+          radio.checked = true;
+          radio.dispatchEvent(new Event('change'));
+        });
+      });
+
+      md.querySelector('#dl9-cand-confirm').addEventListener('click', () => {
+        removeOverlay();
+        if (selected === 'create') {
+          resolve({ action: 'create' });
+        } else {
+          const idx = parseInt(selected, 10);
+          resolve({ action: 'adopt', candidate: candidates[idx] });
+        }
+      });
+
+      md.querySelector('#dl9-cand-cancel').addEventListener('click', () => {
+        removeOverlay();
+        resolve(null);
+      });
+    });
+  }
+
+  // ── UI: No-Match Options ───────────────────────────────────
+
+  function showNoMatchOptions(sourceData) {
+    ensureStyles();
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      md.innerHTML = `
+        <h2>OV no encontrada</h2>
+        <p class="dl9-sub">No se encontró OV para PO "${escHtml(sourceData.poNumber || '?')}" y no hay OVs candidatas del cliente.</p>
+        <div class="manual-search">
+          <input type="text" id="dl9-nm-input" placeholder="Buscar OV por número...">
+          <button id="dl9-nm-search">Buscar</button>
+        </div>
+        <p id="dl9-nm-error" style="color:#ef4444;font-size:12px;margin-top:4px;display:none"></p>
+        <div style="text-align:center;margin:16px 0;color:#475569;font-size:12px">— o —</div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-nm-cancel">Cancelar</button>
+          <button class="dl9-btn" id="dl9-nm-create" style="background:#f59e0b;color:#0f172a;font-weight:600">Crear OV nueva</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const doSearch = async () => {
+        const val = md.querySelector('#dl9-nm-input').value.trim();
+        if (!val) return;
+        const errEl = md.querySelector('#dl9-nm-error');
+        errEl.style.display = 'none';
+
+        const asNum = parseInt(val, 10);
+        if (!isNaN(asNum)) {
+          removeOverlay();
+          resolve({ action: 'manual', orderId: asNum });
+          return;
+        }
+
+        errEl.textContent = 'Ingresa el idInDomain (numérico) de la OV.';
+        errEl.style.display = 'block';
+      };
+
+      md.querySelector('#dl9-nm-search').addEventListener('click', doSearch);
+      md.querySelector('#dl9-nm-input').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+      md.querySelector('#dl9-nm-create').addEventListener('click', () => { removeOverlay(); resolve({ action: 'create' }); });
+      md.querySelector('#dl9-nm-cancel').addEventListener('click', () => { removeOverlay(); resolve(null); });
+    });
+  }
+
+  // ── UI: Creation Wizard ────────────────────────────────────
+
+  function showCreationWizard(sourceData, creationData, customerId) {
+    ensureStyles();
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      const inferredDivisa = normalizeCurrency(sourceData.currency);
+      const inferredRazon = creationData.razonSocialOptions.find(opt =>
+        fuzzyMatchStr(opt, sourceData.customer || '')
+      ) || '';
+
+      let defaultDeadline = '';
+      if (creationData.defaultLeadTime) {
+        const lead = creationData.defaultLeadTime;
+        const days = (lead.hours || 0) / 24 + (lead.days || 0);
+        const d = new Date();
+        d.setDate(d.getDate() + Math.max(days, 1));
+        defaultDeadline = d.toISOString().split('T')[0];
+      } else {
+        const d = new Date();
+        d.setDate(d.getDate() + 14);
+        defaultDeadline = d.toISOString().split('T')[0];
+      }
+
+      const contactOpts = creationData.contacts.map(c =>
+        `<option value="${c.id}" ${c === creationData.defaultContact ? 'selected' : ''}>${escHtml(c.name)}${c.email ? ' (' + escHtml(c.email) + ')' : ''}</option>`
+      ).join('');
+
+      const billToOpts = creationData.addresses.filter(a => a.useForBilling !== false).map(a =>
+        `<option value="${a.id}" ${a === creationData.defaultBillTo ? 'selected' : ''}>${escHtml(a.identifier || a.address || 'ID ' + a.id)}</option>`
+      ).join('');
+
+      const shipToOpts = creationData.addresses.filter(a => a.useForShipping !== false).map(a =>
+        `<option value="${a.id}" ${a === creationData.defaultShipTo ? 'selected' : ''}>${escHtml(a.identifier || a.address || 'ID ' + a.id)}</option>`
+      ).join('');
+
+      const divisaOpts = creationData.divisaOptions.map(d =>
+        `<option value="${d}" ${d === inferredDivisa ? 'selected' : ''}>${escHtml(d)}</option>`
+      ).join('');
+
+      const razonOpts = ['', ...creationData.razonSocialOptions].map(r =>
+        `<option value="${escHtml(r)}" ${r === inferredRazon ? 'selected' : ''}>${r || '(seleccione)'}</option>`
+      ).join('');
+
+      const verificadoOpts = ['', ...creationData.verificadoOptions].map(v =>
+        `<option value="${escHtml(v)}">${v || '(seleccione)'}</option>`
+      ).join('');
+
+      const orderTypeOpts = ['MAKE_TO_ORDER', 'MAKE_TO_STOCK', 'INVENTORY'].map(t =>
+        `<option value="${t}" ${t === creationData.defaultOrderType ? 'selected' : ''}>${t.replace(/_/g, ' ')}</option>`
+      ).join('');
+
+      md.innerHTML = `
+        <h2>Crear Orden de Venta</h2>
+        <p class="dl9-sub">Se creará una nueva OV con los datos extraídos. Verifica antes de confirmar.</p>
+        <div class="wizard-form">
+          <div class="wizard-group">Identificación</div>
+          <div class="wizard-field"><label>Nombre (PO)</label><input type="text" id="wiz-name" value="${escHtml(sourceData.poNumber || '')}"></div>
+          <div class="wizard-field"><label>Tipo de orden</label><select id="wiz-type">${orderTypeOpts}</select></div>
+
+          <div class="wizard-group">Contacto</div>
+          <div class="wizard-field"><label>Contacto del cliente</label><select id="wiz-contact">${contactOpts || '<option value="">(sin contactos)</option>'}</select></div>
+          <div class="wizard-field"><label>Plazo de entrega</label><input type="date" id="wiz-deadline" value="${defaultDeadline}"></div>
+
+          <div class="wizard-group">Direcciones</div>
+          <div class="wizard-field"><label>Dirección de facturación</label><select id="wiz-billto">${billToOpts || '<option value="">(sin direcciones)</option>'}</select></div>
+          <div class="wizard-field"><label>Dirección de envío</label><select id="wiz-shipto">${shipToOpts || '<option value="">(sin direcciones)</option>'}</select></div>
+
+          <div class="wizard-group">Términos</div>
+          <div class="wizard-field"><label>Invoice terms</label><input type="text" id="wiz-invoiceterms" value="${escHtml(creationData.invoiceTerms?.terms || '')}" data-id="${creationData.invoiceTerms?.id || ''}" readonly style="opacity:0.7"></div>
+          <div class="wizard-field"><label>Ship via</label><input type="text" id="wiz-shipvia" value="Flete Propio"></div>
+
+          <div class="wizard-group">Custom inputs</div>
+          <div class="wizard-field"><label>Divisa</label><select id="wiz-divisa">${divisaOpts}</select></div>
+          <div class="wizard-field"><label>Razón Social Venta</label><select id="wiz-razon">${razonOpts}</select></div>
+          <div class="wizard-field"><label>Verificado por</label><select id="wiz-verificado">${verificadoOpts}</select></div>
+
+          <div class="wizard-group">Opciones</div>
+          <div class="wizard-field wizard-check"><input type="checkbox" id="wiz-blockpartial"><label for="wiz-blockpartial" style="text-transform:none;font-size:13px">Bloquear envíos parciales</label></div>
+          <div class="wizard-field wizard-check"><input type="checkbox" id="wiz-blanket"><label for="wiz-blanket" style="text-transform:none;font-size:13px">Orden abierta (blanket)</label></div>
+        </div>
+        <p style="font-size:11px;color:#64748b;margin-top:8px">${sourceData.lines.length} líneas del archivo se agregarán automáticamente a la OV.</p>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="wiz-cancel">Cancelar</button>
+          <button class="dl9-btn dl9-btn-primary" id="wiz-create">Crear OV</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#wiz-create').addEventListener('click', () => {
+        const deadlineDate = md.querySelector('#wiz-deadline').value;
+        const deadlineISO = deadlineDate
+          ? new Date(deadlineDate + 'T' + creationData.deadlineCutoffTime).toISOString()
+          : new Date(Date.now() + 14 * 86400000).toISOString();
+
+        const formData = {
+          name: md.querySelector('#wiz-name').value.trim(),
+          customerId: parseInt(customerId, 10),
+          deadline: deadlineISO,
+          customerContactId: parseInt(md.querySelector('#wiz-contact').value, 10) || null,
+          billToAddressId: parseInt(md.querySelector('#wiz-billto').value, 10) || null,
+          shipToAddressId: parseInt(md.querySelector('#wiz-shipto').value, 10) || null,
+          invoiceTermsId: parseInt(md.querySelector('#wiz-invoiceterms').dataset.id, 10) || null,
+          shipVia: md.querySelector('#wiz-shipvia').value.trim(),
+          type: md.querySelector('#wiz-type').value,
+          blockPartialShipments: md.querySelector('#wiz-blockpartial').checked,
+          isBlanketOrder: md.querySelector('#wiz-blanket').checked,
+          sectorId: creationData.sector?.id || null,
+          inputSchemaId: creationData.inputSchemaId,
+          customInputs: {
+            Divisa: md.querySelector('#wiz-divisa').value,
+            RazonSocialVenta: md.querySelector('#wiz-razon').value,
+            VerificadaPor: md.querySelector('#wiz-verificado').value
+          }
+        };
+
+        for (const key of Object.keys(formData)) {
+          if (formData[key] === null || formData[key] === '' || Number.isNaN(formData[key])) {
+            delete formData[key];
+          }
+        }
+
+        removeOverlay();
+        resolve(formData);
+      });
+
+      md.querySelector('#wiz-cancel').addEventListener('click', () => {
+        removeOverlay();
+        resolve(null);
+      });
+    });
+  }
+
+  // ── Styles ────────────────────────────────────────────────
+
+  function ensureStyles() {
+    if (document.getElementById('dl9-ovop-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'dl9-ovop-styles';
+    s.textContent = `
+      .dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+      .dl9-poc-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:1080px;width:97%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5);position:relative}
+      .dl9-poc-modal h2{color:#38bdf8;font-size:18px;margin-bottom:4px}
+      .dl9-poc-modal .dl9-sub{color:#64748b;font-size:13px;margin-bottom:12px}
+      .dl9-poc-modal .dl9-btnrow{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+      .dl9-poc-modal .dl9-btn{padding:9px 18px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer}
+      .dl9-poc-modal .dl9-btn-primary{background:#38bdf8;color:#0f172a}
+      .dl9-poc-modal .dl9-btn-cancel{background:#475569;color:#e2e8f0}
+      .dl9-poc-modal .manual-search{display:flex;gap:6px;margin:8px 0}
+      .dl9-poc-modal .manual-search input{flex:1;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px}
+      .dl9-poc-modal .manual-search button{padding:8px 16px;border:none;border-radius:6px;background:#38bdf8;color:#0f172a;font-weight:600;font-size:13px;cursor:pointer}
+      .dl9-poc-modal .candidate-list{display:flex;flex-direction:column;gap:6px;margin:12px 0;max-height:320px;overflow-y:auto}
+      .dl9-poc-modal .candidate-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:#0f172a;border:1px solid #334155;cursor:pointer;transition:border-color 0.15s}
+      .dl9-poc-modal .candidate-item:hover{border-color:#38bdf8}
+      .dl9-poc-modal .candidate-item input[type=radio]{accent-color:#38bdf8;width:16px;height:16px;flex-shrink:0}
+      .dl9-poc-modal .candidate-info{flex:1;min-width:0}
+      .dl9-poc-modal .candidate-name{font-weight:600;font-size:13px;color:#e2e8f0}
+      .dl9-poc-modal .candidate-detail{font-size:11px;color:#64748b;margin-top:2px}
+      .dl9-poc-modal .candidate-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+      .dl9-poc-modal .badge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600}
+      .dl9-poc-modal .badge-pn{background:rgba(239,68,68,0.15);color:#f87171}
+      .dl9-poc-modal .badge-provisional{background:rgba(250,204,21,0.15);color:#facc15}
+      .dl9-poc-modal .badge-similar{background:rgba(52,211,153,0.15);color:#34d399}
+      .dl9-poc-modal .candidate-create{border-style:dashed;border-color:#475569}
+      .dl9-poc-modal .candidate-create:hover{border-color:#f59e0b}
+      .dl9-poc-modal .wizard-form{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin:16px 0}
+      .dl9-poc-modal .wizard-form .full-width{grid-column:1/-1}
+      .dl9-poc-modal .wizard-field{display:flex;flex-direction:column;gap:3px}
+      .dl9-poc-modal .wizard-field label{font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+      .dl9-poc-modal .wizard-field input,.dl9-poc-modal .wizard-field select{padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:13px}
+      .dl9-poc-modal .wizard-field input:focus,.dl9-poc-modal .wizard-field select:focus{outline:none;border-color:#38bdf8}
+      .dl9-poc-modal .wizard-group{grid-column:1/-1;font-size:12px;color:#38bdf8;font-weight:600;margin-top:8px;padding-bottom:4px;border-bottom:1px solid #1e293b}
+      .dl9-poc-modal .wizard-field input[type=checkbox]{width:16px;height:16px;accent-color:#38bdf8}
+      .dl9-poc-modal .wizard-check{flex-direction:row;align-items:center;gap:8px}
+      .dl9-source-btn{position:absolute;top:12px;right:16px;background:#0f172a;color:#38bdf8;border:1px solid #38bdf8;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;z-index:10}
+      .dl9-source-btn:hover{background:#38bdf8;color:#0f172a}
+      .dl9-suggestion-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:#0f172a;border:1px solid #334155;margin-bottom:6px}
+      .dl9-suggestion-item input[type=checkbox]{accent-color:#38bdf8;width:16px;height:16px}
+      .dl9-suggestion-text{flex:1;font-size:12px}
+      .dl9-suggestion-text .code{background:#1e293b;padding:2px 6px;border-radius:3px;color:#fbbf24;font-family:monospace}
+      .dl9-audit-table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
+      .dl9-audit-table th,.dl9-audit-table td{padding:8px;text-align:left;border-bottom:1px solid #334155}
+      .dl9-audit-table th{color:#94a3b8;text-transform:uppercase;font-size:10px;letter-spacing:0.5px}
+      .dl9-audit-table tbody tr:hover{background:rgba(56,189,248,0.05)}
+      .dl9-audit-table select{padding:4px 6px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px}
+    `;
+    document.head.appendChild(s);
+  }
+
+  // ── Source File Viewer ────────────────────────────────────
+
+  let sourceFileWindow = null;
+  let sourceFileBlobUrl = null;
+
+  function addSourceFileButton(modal, file, parsedData) {
+    if (!file) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'dl9-source-btn';
+    btn.textContent = '📎 Ver archivo fuente';
+    btn.addEventListener('click', () => openSourceFile(file, parsedData));
+    modal.appendChild(btn);
+  }
+
+  function openSourceFile(file, parsedData) {
+    if (sourceFileWindow && !sourceFileWindow.closed) {
+      sourceFileWindow.focus();
+      return;
+    }
+
+    const isPDF = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+
+    if (isPDF) {
+      if (sourceFileBlobUrl) URL.revokeObjectURL(sourceFileBlobUrl);
+      sourceFileBlobUrl = URL.createObjectURL(file);
+      const left = Math.max(0, window.screen.availWidth - 860);
+      sourceFileWindow = window.open(sourceFileBlobUrl, 'sa-source-file', `width=840,height=${window.screen.availHeight - 40},left=${left},top=20`);
+    } else {
+      const html = buildXLSViewerHTML(file, parsedData);
+      const left = Math.max(0, window.screen.availWidth - 1000);
+      sourceFileWindow = window.open('', 'sa-source-file', `width=980,height=${window.screen.availHeight - 40},left=${left},top=20`);
+      if (sourceFileWindow) {
+        sourceFileWindow.document.write(html);
+        sourceFileWindow.document.close();
+      }
+    }
+  }
+
+  function buildXLSViewerHTML(file, parsedData) {
+    if (!parsedData || !Array.isArray(parsedData.rows) || !Array.isArray(parsedData.headers)) {
+      return `<html><body style="font-family:sans-serif;padding:20px">Sin datos parseados para mostrar.<br>Archivo: ${escHtml(file.name)}</body></html>`;
+    }
+
+    const poColors = {};
+    const palette = ['#fef3c7', '#dbeafe', '#fce7f3', '#dcfce7', '#ede9fe', '#fee2e2', '#e0f2fe', '#fef9c3'];
+    let colorIdx = 0;
+
+    const headerHTML = parsedData.headers.map(h => `<th>${escHtml(h)}</th>`).join('');
+
+    const rowsHTML = parsedData.rows.map(row => {
+      const poCol = parsedData.poColumnIndex != null ? parsedData.poColumnIndex : 0;
+      const po = row[poCol];
+      if (!(po in poColors)) {
+        poColors[po] = palette[colorIdx % palette.length];
+        colorIdx++;
+      }
+      const bg = poColors[po];
+      const cells = row.map(c => `<td>${escHtml(String(c == null ? '' : c).substring(0, 100))}</td>`).join('');
+      return `<tr style="background:${bg}">${cells}</tr>`;
+    }).join('');
+
+    return `<!DOCTYPE html>
+<html><head><title>${escHtml(file.name)}</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:0;padding:0;background:#fafafa}
+  .hdr{position:sticky;top:0;background:#1e293b;color:#fff;padding:10px 16px;z-index:2;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+  .hdr h1{margin:0;font-size:14px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th,td{padding:6px 10px;border:1px solid #e5e7eb;text-align:left;white-space:nowrap;overflow:hidden;max-width:280px;text-overflow:ellipsis}
+  thead{position:sticky;top:36px;background:#f3f4f6;z-index:1}
+  th{font-weight:700;color:#374151}
+  tr:hover td{background:rgba(56,189,248,0.1)!important}
+</style>
+</head><body>
+<div class="hdr"><h1>${escHtml(file.name)} — ${parsedData.rows.length} filas</h1></div>
+<table><thead><tr>${headerHTML}</tr></thead><tbody>${rowsHTML}</tbody></table>
+</body></html>`;
+  }
+
+  // ── PN Rename Suggestions ──────────────────────────────────
+
+  function showSuggestionsModal(suggestions) {
+    ensureStyles();
+    return new Promise(resolve => {
+      const ov = createOverlay();
+      const md = createModal();
+
+      if (!suggestions || suggestions.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      let itemsHTML = '';
+      for (let i = 0; i < suggestions.length; i++) {
+        const s = suggestions[i];
+        itemsHTML += `
+          <div class="dl9-suggestion-item">
+            <input type="checkbox" id="sug-${i}" data-idx="${i}">
+            <div class="dl9-suggestion-text">
+              Cliente dice: <span class="code">${escHtml(s.suggestedName)}</span><br>
+              Steelhead tiene: <span class="code">${escHtml(s.currentName)}</span> (PN #${s.partNumberId})<br>
+              <label for="sug-${i}" style="color:#94a3b8">Renombrar en Steelhead a "${escHtml(s.suggestedName)}"</label>
+            </div>
+          </div>`;
+      }
+
+      md.innerHTML = `
+        <h2>Sugerencias de corrección de PN</h2>
+        <p class="dl9-sub">Se encontraron ${suggestions.length} PN(s) con variaciones menores. Corregirlos en Steelhead evita futuras discrepancias.</p>
+        <div style="max-height:400px;overflow-y:auto;margin:12px 0">${itemsHTML}</div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="sug-skip">Saltar todas</button>
+          <button class="dl9-btn dl9-btn-primary" id="sug-apply">Aplicar seleccionadas</button>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#sug-skip').addEventListener('click', () => {
+        removeOverlay();
+        resolve([]);
+      });
+
+      md.querySelector('#sug-apply').addEventListener('click', async () => {
+        const selected = [];
+        md.querySelectorAll('input[type=checkbox]:checked').forEach(cb => {
+          selected.push(suggestions[parseInt(cb.dataset.idx, 10)]);
+        });
+
+        if (selected.length === 0) {
+          removeOverlay();
+          resolve([]);
+          return;
+        }
+
+        md.querySelector('#sug-apply').disabled = true;
+        md.querySelector('#sug-apply').textContent = 'Aplicando...';
+
+        const applied = [];
+        for (const s of selected) {
+          try {
+            await api().query('UpdatePartNumber', {
+              id: s.partNumberId,
+              name: s.suggestedName
+            });
+            applied.push(s);
+            log(`PN renombrado: "${s.currentName}" → "${s.suggestedName}"`);
+          } catch (e) {
+            warn(`Error renombrando PN ${s.partNumberId}: ${e.message}`);
+          }
+        }
+
+        removeOverlay();
+        resolve(applied);
+      });
+    });
+  }
+
+  return {
+    normalizePN,
+    aggressiveNormalizePN,
+    normalizeCurrency,
+    fuzzyMatchStr,
+    escHtml,
+    toNumber,
+    fmtNumber,
+    createOverlay,
+    createModal,
+    removeOverlay,
+    findCandidateOVs,
+    uploadAndAttachFile,
+    adoptExistingOV,
+    fetchCreationData,
+    resolvePartNumber,
+    createNewOV,
+    showCandidateSelector,
+    showNoMatchOptions,
+    showCreationWizard,
+    addSourceFileButton,
+    ensureStyles,
+    showSuggestionsModal
+  };
+})();
+
+window.OVOperations = OVOperations;
+})();
+// ===== END scripts/ov-operations.js =====
+
+// ===== BEGIN scripts/wo-mover.js =====
+(function(){
+// WO Mover — Mover OTs (work orders) entre OVs (received orders)
+// Mecanismo: editar el ENCABEZADO de la OT (CreateUpdateWorkOrdersChecked con id
+//            poblado + receivedOrderId nuevo). Conserva la misma OT.
+// ALCANCE v0.2: SOLO reasigna el encabezado. La parte (ReceivedOrderPartTransform /
+//            línea de OV) queda en la OV origen y se asocia a mano en Steelhead
+//            (la UI no expone esa asociación por API — ver docs/applets/wo-mover.md).
+//            v2 futura: cantidad parcial.
+// Depende de: SteelheadAPI, OVOperations (window.OVOperations), SteelheadHostCleanup.
+// Plan: ~/.claude/plans/necesito-hacer-un-applet-staged-lightning.md
+
+const WOMover = (() => {
+  'use strict';
+
+  const VERSION = '0.2.0';
+
+  const api = () => window.SteelheadAPI;
+  const ovops = () => window.OVOperations;
+  const host = () => window.SteelheadHostCleanup;
+  const log = (m) => api()?.log?.(m) ?? console.log('[WM]', m);
+  const warn = (m) => api()?.warn?.(m) ?? console.warn('[WM]', m);
+
+  // Detección: estamos parados en el DETALLE de una OV → capturamos el idInDomain.
+  // OJO: el número de la URL es el idInDomain (display), NO el id interno.
+  const URL_RE = /\/Domains\/\d+\/ReceivedOrders\/(\d+)/i;
+
+  const CANDIDATE_CAP = 100;   // tope de OVs candidatas cargadas (memory hardening)
+  const DRAIN_EVERY = 10;      // drenar Apollo cache cada N OVs cargadas
+
+  // Advertencia base: este applet SOLO reasigna el encabezado de la OT. La parte
+  // (ReceivedOrderPartTransform / línea) queda en la OV origen y debe asociarse a
+  // mano en Steelhead (la UI no expone esa asociación por API — ver bitácora).
+  const NOTE_BASE = '⚠️ Solo reasigna el encabezado de la OT. La parte se asocia a la línea de la OV destino manualmente en Steelhead.';
+
+  // ── Estado (se reinicia entero en closePanel) ──
+  let state = freshState();
+  function freshState() {
+    return {
+      isOpen: false,
+      busy: false,
+      sourceOV: null,        // { id, idInDomain, name, customerId, ots[] }
+      candidateOVs: [],      // [{ id, idInDomain, name, pnSet:Set<string> }]
+      candidatesTruncated: false,
+      filterByPN: true,      // toggle: true = solo OVs con el mismo PN
+      rows: [],              // [{ ot, destOvId, selected, status, error }]
+      auditLog: [],          // [{ ts, woId, sourceOv, destOv, pn, partCount, status }]
+      memMonitor: null,
+    };
+  }
+
+  // ── Helpers de texto ──
+  function esc(s) {
+    if (ovops()?.escHtml) return ovops().escHtml(s);
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+  function fmtNum(n) {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toLocaleString('es-MX') : String(n ?? '');
+  }
+  function truncate(s, n) {
+    s = String(s ?? '');
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  }
+
+  // ── Extractors de OV (portados de po-reconciler.js:1236-1263) ──
+  function shipToObj(ov) {
+    return ov?.customerAddressByShipToAddressId
+        ?? ov?.shipToAddressByShipToAddressId
+        ?? ov?.shipToAddress
+        ?? null;
+  }
+  function shipToId(ov) {
+    return shipToObj(ov)?.id ?? ov?.shipToAddressId ?? null;
+  }
+  function customerObj(ov) {
+    return ov?.customerByCustomerId ?? ov?.customer ?? null;
+  }
+  function customerIdOf(ov) {
+    return customerObj(ov)?.id ?? ov?.customerId ?? null;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Init / navegación SPA / FAB contextual (patrón po-reconciler.js:30-80)
+  // ───────────────────────────────────────────────────────────────────────────
+  function init() {
+    if (window.__saWoMoverInit) return;
+    window.__saWoMoverInit = true;
+    injectStyles();
+    installUrlChangeListener();
+    syncFabVisibility();
+    listenManualTrigger();
+  }
+
+  function extractIdInDomain() {
+    const m = location.pathname.match(URL_RE);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  function isAllowedPath() {
+    return extractIdInDomain() != null;
+  }
+
+  function syncFabVisibility() {
+    const should = isAllowedPath();
+    const existing = document.getElementById('sa-wm-fab');
+    if (should && !existing) renderFloatingButton();
+    else if (!should && existing) existing.remove();
+  }
+
+  function renderFloatingButton() {
+    const btn = document.createElement('button');
+    btn.id = 'sa-wm-fab';
+    btn.className = 'sa-wm-fab';
+    btn.title = 'Mover OTs de esta OV a otra';
+    btn.textContent = '↔️';
+    btn.onclick = openPanel;
+    document.body.appendChild(btn);
+  }
+
+  function installUrlChangeListener() {
+    if (window.__saWoMoverUrlListener) {
+      window.addEventListener('sa-urlchange', syncFabVisibility);
+      return;
+    }
+    window.__saWoMoverUrlListener = true;
+    const fire = () => window.dispatchEvent(new Event('sa-urlchange'));
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; };
+    });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('hashchange', fire);
+    window.addEventListener('sa-urlchange', syncFabVisibility);
+  }
+
+  function listenManualTrigger() {
+    chrome.runtime?.onMessage?.addListener?.((msg) => {
+      if (msg && msg.action === 'run-wo-mover') openPanel();
+    });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Carga de datos (GraphQL de LECTURA — hashes ya validados)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // GetReceivedOrder (hash rotado 2026-06-01 → 4fa89e55…) requiere idInDomain (Int!).
+  // El nuevo query trae TODO en una sola pasada: workOrders, partTransforms (con
+  // currentPartsTransferAccounts que ligan workOrderId ↔ partsTransferAccountId),
+  // líneas y partAccountsNotAssignedToReceivedOrder. Ya no hace falta el Pass 2.
+  async function loadOVDetails(idInDomain) {
+    if (idInDomain == null) throw new Error('loadOVDetails requiere idInDomain');
+    const data = await api().query('GetReceivedOrder', { idInDomain: parseInt(idInDomain, 10) });
+    const ov = data?.receivedOrderByIdInDomain || data?.receivedOrder;
+    if (!ov) throw new Error(`GetReceivedOrder(idInDomain=${idInDomain}) devolvió shape inesperado`);
+
+    const lines = ov.receivedOrderLinesByReceivedOrderId?.nodes || ov.receivedOrderLines?.nodes || [];
+    const workOrders = ov.workOrdersByReceivedOrderId?.nodes || [];
+    const partTransforms = ov.receivedOrderPartTransformsByReceivedOrderId?.nodes || [];
+    const unassigned = ov.partAccountsNotAssignedToReceivedOrder?.nodes || [];
+
+    // Index workOrderId → { pt, pta } vía currentPartsTransferAccounts.
+    const linkByWoId = {};
+    for (const pt of partTransforms) {
+      for (const a of (pt.currentPartsTransferAccounts?.nodes || [])) {
+        if (a?.workOrderId != null) linkByWoId[a.workOrderId] = { pt, pta: a };
+      }
+    }
+
+    const ots = [];
+    const seen = new Set();
+    for (const wo of workOrders) {
+      if (seen.has(wo.id)) continue;
+      seen.add(wo.id);
+      const pnwo = wo.partNumberWorkOrdersByWorkOrderId?.nodes?.[0] || {};
+      const recipeNode = wo.recipeNodesByWorkOrderId?.nodes?.[0] || {};
+      const { pt = null, pta = null } = linkByWoId[wo.id] || {};
+      const partNumberId = pnwo.partNumberId ?? pt?.partNumberId ?? null;
+      const partNumber = pt?.partNumberByPartNumberId?.name || findPNStringForPT(lines, pt?.id) || '';
+      ots.push({
+        id: wo.id,
+        idInDomain: wo.idInDomain ?? null,
+        name: wo.name || wo.idInDomain || wo.id,
+        partCount: Number(pta?.partCount ?? pt?.count ?? 0),
+        partNumberId,
+        partNumber,
+        receivedOrderPartTransformId: pt?.id ?? null,
+        partsTransferAccountId: pta?.id ?? null,   // para "Asociar partes"
+        recipeNodeId: recipeNode.id ?? null,
+        raw: wo,
+      });
+    }
+
+    return {
+      id: ov.id,
+      idInDomain: ov.idInDomain,
+      name: ov.name,
+      customerId: customerIdOf(ov),
+      customerName: customerObj(ov)?.name || '',
+      shipToAddressId: shipToId(ov),
+      lines,
+      ots,
+      partTransforms,
+      unassigned,          // partAccounts que llegaron al mover y faltan asociar
+      snapshot: ov,
+    };
+  }
+
+  // Portado de po-reconciler.js:1547
+  function findPNStringForPT(lines, ptId) {
+    for (const line of lines) {
+      const lineItems = line.receivedOrderLineItemsByReceivedOrderLineId?.nodes || [];
+      for (const li of lineItems) {
+        const ptAssocs = li.receivedOrderLineItemPartTransformsByReceivedOrderLineItemId?.nodes || [];
+        for (const a of ptAssocs) {
+          const stub = a.receivedOrderPartTransformByReceivedOrderPartTransformId || a.receivedOrderPartTransform;
+          if (stub?.id === ptId) return line.name || '';
+        }
+      }
+    }
+    return '';
+  }
+
+  // ActiveReceivedOrders (hash rotado 2026-06-01 → 495ddfd6…). El shape de
+  // variables CAMBIÓ: ya no usa domainId; ahora includeArchived/receivedOrder
+  // StatusFilter/searchQuery. No filtra por cliente server-side → client-side.
+  // Root key: pagedData { totalCount, nodes }.
+  async function fetchActiveOrdersPage({ first = 100, offset = 0 } = {}) {
+    const variables = {
+      includeArchived: 'NO',
+      computeMargins: false,
+      showInvoicedSubtotal: false,
+      isBlanketOrder: false,
+      orderBy: ['ID_IN_DOMAIN_DESC'],
+      offset, first,
+      receivedOrderStatusFilter: ['OPEN'],
+      searchQuery: '',
+    };
+    const data = await api().query('ActiveReceivedOrders', variables);
+    const pd = data?.pagedData;
+    if (pd && Array.isArray(pd.nodes)) return { items: pd.nodes, totalCount: pd.totalCount ?? null };
+    for (const k of Object.keys(data || {})) {
+      const v = data[k];
+      if (v && typeof v === 'object' && Array.isArray(v.nodes)) {
+        return { items: v.nodes, totalCount: v.totalCount ?? null };
+      }
+    }
+    return { items: [], totalCount: null };
+  }
+
+  async function fetchActiveOrders({ first = 100, capPages = 10 } = {}) {
+    const items = [];
+    let total = null;
+    for (let page = 0; page < capPages; page++) {
+      const r = await fetchActiveOrdersPage({ first, offset: page * first });
+      if (!r.items.length) break;
+      items.push(...r.items);
+      total = r.totalCount;
+      if (total != null && items.length >= total) break;
+    }
+    return { items, total };
+  }
+
+  // Lista OVs candidatas del cliente. Slim: solo {id, idInDomain, name, pnSet}.
+  // Si filterByPN, carga las líneas de cada candidata (GetReceivedOrder) para
+  // poblar pnSet — con cap, drain periódico de Apollo y reporte de truncado.
+  async function loadCandidateOVs(customerId, sourceIdInDomain, onProgress) {
+    const { items } = await fetchActiveOrders({ first: 200, capPages: 10 });
+    const filtered = items.filter(ov => {
+      if (ov.archivedAt) return false;
+      if (String(customerIdOf(ov) ?? '') !== String(customerId)) return false;
+      if (String(ov.idInDomain) === String(sourceIdInDomain)) return false; // excluir origen
+      return true;
+    });
+
+    state.candidatesTruncated = filtered.length > CANDIDATE_CAP;
+    const capped = filtered.slice(0, CANDIDATE_CAP);
+
+    const drain = host()?.makePeriodicDrain ? host().makePeriodicDrain(DRAIN_EVERY) : () => {};
+    const out = [];
+    for (let i = 0; i < capped.length; i++) {
+      const ov = capped[i];
+      const entry = { id: ov.id, idInDomain: ov.idInDomain, name: ov.name, pnSet: new Set() };
+      try {
+        const data = await api().query('GetReceivedOrder', { idInDomain: parseInt(ov.idInDomain, 10) });
+        const full = data?.receivedOrderByIdInDomain || data?.receivedOrder;
+        const lines = full?.receivedOrderLinesByReceivedOrderId?.nodes || full?.receivedOrderLines?.nodes || [];
+        for (const line of lines) {
+          const pn = (line.name || '').trim();
+          if (pn) entry.pnSet.add(pn);
+        }
+      } catch (e) {
+        warn(`No pude cargar PNs de OV #${ov.idInDomain}: ${e.message}`);
+      }
+      out.push(entry);
+      drain();
+      if (onProgress) onProgress(i + 1, capped.length);
+    }
+    return out;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Propuestas y filtrado
+  // ───────────────────────────────────────────────────────────────────────────
+  function candidatesForOT(ot) {
+    if (state.filterByPN) {
+      return state.candidateOVs.filter(c => c.pnSet.has((ot.partNumber || '').trim()));
+    }
+    return state.candidateOVs;
+  }
+
+  function buildProposals() {
+    state.rows = state.sourceOV.ots.map(ot => {
+      const matches = state.candidateOVs.filter(c => c.pnSet.has((ot.partNumber || '').trim()));
+      return {
+        ot,
+        destOvId: matches[0]?.id ?? '',   // default: primera OV que ya tiene el PN
+        selected: false,
+        status: 'pending',
+        error: null,
+      };
+    });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // UI
+  // ───────────────────────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-wm-styles')) return;
+    const css = `
+      .sa-wm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 999999;
+        display: flex; align-items: center; justify-content: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+      .sa-wm-modal { background: #fff; width: min(96vw, 1100px); height: min(90vh, 760px);
+        border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;
+        box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+      .sa-wm-header { display: flex; justify-content: space-between; align-items: center;
+        padding: 14px 22px; border-bottom: 1px solid #e5e7eb; }
+      .sa-wm-header h2 { margin: 0; font-size: 17px; }
+      .sa-wm-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+      .sa-wm-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #6b7280; }
+      .sa-wm-toolbar { display: flex; align-items: center; gap: 16px; padding: 10px 22px;
+        border-bottom: 1px solid #e5e7eb; background: #f9fafb; font-size: 13px; }
+      .sa-wm-toolbar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+      .sa-wm-mem { margin-left: auto; font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+      .sa-wm-body { flex: 1; overflow: auto; padding: 0; }
+      .sa-wm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .sa-wm-table th, .sa-wm-table td { padding: 8px 12px; border-bottom: 1px solid #eef0f2; text-align: left; vertical-align: middle; }
+      .sa-wm-table th { background: #f9fafb; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+      .sa-wm-table tr.sel { background: #eff6ff; }
+      .sa-wm-table select { max-width: 320px; padding: 4px 6px; font-size: 12px; }
+      .sa-wm-st { font-size: 16px; }
+      .sa-wm-st.ok { color: #16a34a; } .sa-wm-st.err { color: #dc2626; } .sa-wm-st.run { color: #2563eb; }
+      .sa-wm-footer { display: flex; justify-content: space-between; align-items: center;
+        padding: 12px 22px; border-top: 1px solid #e5e7eb; gap: 12px; }
+      .sa-wm-footer .sa-wm-note { font-size: 12px; color: #6b7280; }
+      .sa-wm-btn { padding: 8px 16px; border: 1px solid #d1d5db; background: #fff; border-radius: 6px;
+        cursor: pointer; font-size: 14px; }
+      .sa-wm-btn:disabled { opacity: .5; cursor: not-allowed; }
+      .sa-wm-btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+      .sa-wm-btn.primary:disabled { background: #93c5fd; border-color: #93c5fd; }
+      .sa-wm-placeholder { color: #6b7280; padding: 48px; text-align: center; }
+      .sa-wm-warn { color: #d97706; padding: 10px 22px; font-size: 12px; background: #fffbeb; }
+      .sa-wm-err { color: #dc2626; padding: 10px 22px; font-size: 13px; }
+      .sa-wm-fab { position: fixed; bottom: 24px; right: 88px; width: 56px; height: 56px;
+        background: #2563eb; color: #fff; border: none; border-radius: 50%; font-size: 22px;
+        cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.25); z-index: 999998; }
+    `;
+    const s = document.createElement('style');
+    s.id = 'sa-wm-styles';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function removeOverlay() {
+    document.getElementById('sa-wm-overlay')?.remove();
+  }
+
+  function showShell() {
+    removeOverlay();
+    const ov = document.createElement('div');
+    ov.className = 'sa-wm-overlay';
+    ov.id = 'sa-wm-overlay';
+    ov.innerHTML = `
+      <div class="sa-wm-modal" role="dialog" aria-modal="true">
+        <div class="sa-wm-header">
+          <div>
+            <h2>Mover OTs entre OVs</h2>
+            <div class="sa-wm-sub" id="sa-wm-srcline">Cargando OV…</div>
+          </div>
+          <button class="sa-wm-close" id="sa-wm-close" title="Cerrar">✕</button>
+        </div>
+        <div class="sa-wm-toolbar">
+          <label><input type="checkbox" id="sa-wm-filter" checked> Solo OVs con el mismo PN</label>
+          <label><input type="checkbox" id="sa-wm-all"> Seleccionar todo</label>
+          <span class="sa-wm-mem" id="sa-wm-mem"></span>
+        </div>
+        <div class="sa-wm-body" id="sa-wm-body">
+          <div class="sa-wm-placeholder">Cargando órdenes de trabajo…</div>
+        </div>
+        <div class="sa-wm-footer">
+          <span class="sa-wm-note" id="sa-wm-note">${NOTE_BASE}</span>
+          <div>
+            <button class="sa-wm-btn" id="sa-wm-cancel">Cerrar</button>
+            <button class="sa-wm-btn primary" id="sa-wm-exec" disabled>Ejecutar (0)</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#sa-wm-close').onclick = closePanel;
+    ov.querySelector('#sa-wm-cancel').onclick = closePanel;
+    ov.querySelector('#sa-wm-filter').onchange = (e) => { state.filterByPN = e.target.checked; renderTable(); };
+    ov.querySelector('#sa-wm-all').onchange = (e) => toggleAll(e.target.checked);
+    ov.querySelector('#sa-wm-exec').onclick = onExecuteClick;
+  }
+
+  function setSourceLine() {
+    const el = document.getElementById('sa-wm-srcline');
+    if (!el || !state.sourceOV) return;
+    const s = state.sourceOV;
+    el.textContent = `OV origen: #${s.idInDomain} — ${s.name || ''}  ·  Cliente: ${s.customerName || s.customerId} (id ${s.customerId})  ·  ${s.ots.length} OT(s)`;
+  }
+
+  function renderTable() {
+    const body = document.getElementById('sa-wm-body');
+    if (!body) return;
+    if (!state.sourceOV) { body.innerHTML = `<div class="sa-wm-placeholder">Sin OV.</div>`; return; }
+    if (!state.sourceOV.ots.length) {
+      body.innerHTML = `<div class="sa-wm-placeholder">Esta OV no tiene órdenes de trabajo.</div>`;
+      return;
+    }
+
+    const warnHtml = state.candidatesTruncated
+      ? `<div class="sa-wm-warn">⚠️ El cliente tiene más de ${CANDIDATE_CAP} OVs activas; se cargaron las ${CANDIDATE_CAP} más recientes.</div>`
+      : '';
+
+    const rowsHtml = state.rows.map((row, i) => {
+      const opts = candidatesForOT(row.ot);
+      const optionsHtml = [
+        `<option value="">— Sin destino —</option>`,
+        ...opts.map(c => `<option value="${c.id}" ${String(c.id) === String(row.destOvId) ? 'selected' : ''}>#${c.idInDomain} · ${esc(truncate(c.name, 40))}</option>`),
+        `<option value="__new__" ${row.destOvId === '__new__' ? 'selected' : ''}>➕ Crear OV nueva…</option>`,
+      ].join('');
+      const stIcon = row.status === 'ok' ? '<span class="sa-wm-st ok">✓</span>'
+                   : row.status === 'error' ? `<span class="sa-wm-st err" title="${esc(row.error || '')}">✕</span>`
+                   : row.status === 'running' ? '<span class="sa-wm-st run">⏳</span>' : '';
+      return `
+        <tr class="${row.selected ? 'sel' : ''}" data-i="${i}">
+          <td><input type="checkbox" class="sa-wm-rowsel" data-i="${i}" ${row.selected ? 'checked' : ''}></td>
+          <td>${esc(row.ot.name)}</td>
+          <td>${esc(row.ot.partNumber || '(sin PN)')}</td>
+          <td>${fmtNum(row.ot.partCount)}</td>
+          <td><select class="sa-wm-dest" data-i="${i}">${optionsHtml}</select></td>
+          <td>${stIcon}</td>
+        </tr>`;
+    }).join('');
+
+    body.innerHTML = `${warnHtml}
+      <table class="sa-wm-table">
+        <thead><tr>
+          <th style="width:34px"></th><th>OT</th><th>PN</th><th>Piezas</th><th>OV destino</th><th style="width:34px"></th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>`;
+
+    body.querySelectorAll('.sa-wm-rowsel').forEach(cb => {
+      cb.onchange = (e) => { state.rows[+e.target.dataset.i].selected = e.target.checked; refreshSelectionUI(); };
+    });
+    body.querySelectorAll('.sa-wm-dest').forEach(sel => {
+      sel.onchange = (e) => { state.rows[+e.target.dataset.i].destOvId = e.target.value; refreshSelectionUI(); };
+    });
+    refreshSelectionUI();
+  }
+
+  function toggleAll(checked) {
+    state.rows.forEach(r => r.selected = checked);
+    renderTable();
+    const all = document.getElementById('sa-wm-all');
+    if (all) all.checked = checked;
+  }
+
+  function refreshSelectionUI() {
+    const n = state.rows.filter(r => r.selected).length;
+    const ready = state.rows.filter(r => r.selected && r.destOvId && r.destOvId !== '').length;
+    const exec = document.getElementById('sa-wm-exec');
+    if (exec && !state.busy) {
+      exec.textContent = `Ejecutar (${n})`;
+      exec.disabled = !(n > 0 && ready === n);   // habilita si todas las marcadas tienen destino
+    }
+    document.querySelectorAll('.sa-wm-table tbody tr').forEach((tr) => {
+      const i = +tr.dataset.i;
+      tr.classList.toggle('sel', !!state.rows[i]?.selected);
+    });
+    const note = document.getElementById('sa-wm-note');
+    if (note && !state.busy) {
+      if (n && ready < n) note.textContent = `${n - ready} fila(s) seleccionada(s) sin destino.`;
+      else note.innerHTML = NOTE_BASE;
+    }
+  }
+
+  function onExecuteClick() {
+    if (state.busy) return;
+    const rows = state.rows.filter(r => r.selected && r.destOvId && r.destOvId !== '');
+    if (!rows.length) return;
+    const msg = `Vas a reasignar el encabezado de ${rows.length} OT(s) a su OV destino.\n\n`
+      + `IMPORTANTE: esto mueve la orden de trabajo, pero la PARTE (demanda/línea) se queda en `
+      + `la OV origen. Después tendrás que ASOCIAR la parte a una línea de la OV destino manualmente `
+      + `en Steelhead.\n\n¿Continuar?`;
+    if (!confirm(msg)) return;
+    executeSelectedRows();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Ejecución (mutaciones)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // VALIDADO (scan 2026-06-01): editar encabezado = WorkOrderDialogQuery (para
+  // traer los campos actuales del encabezado) + CreateUpdateWorkOrdersChecked con
+  // `id` poblado + `receivedOrderId` nuevo. La respuesta es [] cuando no hay
+  // warnings (= OK). Esto mueve la WO a la OV destino; su parte queda en
+  // partAccountsNotAssignedToReceivedOrder hasta que se "Asocie" (paso siguiente).
+  async function reassignWOHeader(woId, destReceivedOrderId) {
+    const domainId = api().getDomain().id || 344;
+    const dlg = await api().query('WorkOrderDialogQuery', {
+      workOrderId: parseInt(woId, 10),
+      receivedOrderId: -1,
+      domainId,
+    });
+    const wo = dlg?.workOrderById;
+    if (!wo) throw new Error(`WorkOrderDialogQuery(${woId}) no devolvió workOrderById`);
+    const labelIds = (wo.workOrderLabelsByWorkOrderId?.nodes || [])
+      .map(n => n?.labelId ?? n?.id).filter(v => v != null);
+    const input = [{
+      id: parseInt(woId, 10),
+      name: wo.name || '',
+      customerId: wo.customerByCustomerId?.id ?? null,
+      deadline: wo.deadline ?? null,
+      productId: wo.productByProductId?.id ?? null,
+      startedAt: wo.startedAt ?? null,
+      receivedOrderId: parseInt(destReceivedOrderId, 10),
+      description: wo.descriptionMarkdown ?? '',
+      customerFacingNotes: wo.customerFacingNotes ?? '',
+      type: wo.type || 'MAKE_TO_ORDER',
+      blockPartialShipments: !!wo.blockPartialShipments,
+      labelIds,
+    }];
+    const data = await api().query('CreateUpdateWorkOrdersChecked', { input });
+    const checks = data?.createUpdateWorkOrdersChecked;
+    if (Array.isArray(checks) && checks.length) {
+      warn(`CreateUpdateWorkOrdersChecked devolvió ${checks.length} warning(s) para WO ${woId}`);
+    }
+    return data;
+  }
+
+  // Crea una OV nueva como destino reusando el wizard de OVOperations.
+  // Devuelve el id INTERNO de la OV creada, o null si se canceló.
+  // NOTA: createNewOV devuelve idInDomain; resolvemos el id interno con loadOVDetails.
+  async function createDestinationOV() {
+    const ops = ovops();
+    if (!ops?.showCreationWizard || !ops?.fetchCreationData || !ops?.createNewOV) {
+      alert('No está disponible el módulo de creación de OV (OVOperations).');
+      return null;
+    }
+    const customerId = state.sourceOV.customerId;
+    const creationData = await ops.fetchCreationData(customerId);
+    const sourceData = { currency: '', customer: state.sourceOV.customerName || '', lines: [], poNumber: '' };
+    const formData = await ops.showCreationWizard(sourceData, creationData, customerId);
+    if (!formData) return null;   // el usuario canceló el wizard
+    const newIdInDomain = await ops.createNewOV(formData, sourceData, null);
+    if (!newIdInDomain) throw new Error('createNewOV no devolvió id');
+    const detail = await loadOVDetails(newIdInDomain);
+    // Registrar en candidatas para reuso en otras filas + refrescar dropdowns.
+    state.candidateOVs.unshift({ id: detail.id, idInDomain: detail.idInDomain, name: detail.name, pnSet: new Set() });
+    renderTable();
+    return detail.id;
+  }
+
+  // Ejecuta una fila: (crea OV destino si "__new__") + reasigna el encabezado de
+  // la OT. NO asocia la parte ni reconcilia — eso queda manual (decisión del
+  // usuario: la UI de Steelhead no permite asociar por API con lo capturado).
+  async function executeMoveRow(row) {
+    let destInternalId = row.destOvId;
+    if (destInternalId === '__new__') {
+      destInternalId = await createDestinationOV();
+      if (!destInternalId) return { skipped: true };
+      row.destOvId = destInternalId;
+    }
+    await reassignWOHeader(row.ot.id, destInternalId);
+    return { ok: true, destInternalId };
+  }
+
+  // Itera las filas seleccionadas con destino, secuencialmente, y lleva bitácora.
+  async function executeSelectedRows() {
+    const rows = state.rows.filter(r => r.selected && r.destOvId && r.destOvId !== '');
+    if (!rows.length) return;
+    state.busy = true;
+    const exec = document.getElementById('sa-wm-exec');
+    if (exec) { exec.disabled = true; exec.textContent = 'Ejecutando…'; }
+    let okCount = 0, errCount = 0;
+    for (const row of rows) {
+      row.status = 'running'; renderTable();
+      try {
+        const res = await executeMoveRow(row);
+        if (res.skipped) { row.status = 'pending'; renderTable(); continue; }
+        row.status = 'ok'; okCount++;
+        state.auditLog.push({ woId: row.ot.id, woName: row.ot.name, pn: row.ot.partNumber,
+          sourceOv: state.sourceOV.idInDomain, destOvInternal: res.destInternalId,
+          partCount: row.ot.partCount, status: 'ok' });
+        log(`OT ${row.ot.name} (${row.ot.partNumber}) → OV interna ${res.destInternalId}: encabezado reasignado`);
+      } catch (e) {
+        row.status = 'error'; row.error = e.message; errCount++;
+        state.auditLog.push({ woId: row.ot.id, pn: row.ot.partNumber, status: 'error', error: e.message });
+        warn(`OT ${row.ot.name}: ${e.message}`);
+      }
+      renderTable();
+    }
+    state.busy = false;
+    const note = document.getElementById('sa-wm-note');
+    if (note) note.innerHTML = `✅ ${okCount} OT(s) movida(s)${errCount ? `, ❌ ${errCount} con error` : ''}. ` +
+      `<strong>Falta asociar la parte a la línea de la OV destino en Steelhead (manual).</strong>`;
+    refreshSelectionUI();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Apertura / cierre + memory hardening
+  // ───────────────────────────────────────────────────────────────────────────
+  async function openPanel() {
+    if (state.isOpen) return;
+    const idInDomain = extractIdInDomain();
+    if (idInDomain == null) {
+      alert('Abre el detalle de una OV (Received Order) antes de usar este applet.');
+      return;
+    }
+    state = freshState();
+    state.isOpen = true;
+    showShell();
+
+    // EJE B: detener Datadog + mem monitor con guardrail.
+    try { host()?.stopDatadogSessionReplay?.(); } catch (_) {}
+    if (host()?.createMemMonitor) {
+      state.memMonitor = host().createMemMonitor({
+        getElement: () => document.getElementById('sa-wm-mem'),
+        onGuardrail: () => {
+          const note = document.getElementById('sa-wm-note');
+          if (note) note.textContent = '⚠️ Memoria alta — cierra y recarga la pestaña.';
+        },
+      });
+      state.memMonitor.start();
+    }
+
+    try {
+      state.sourceOV = await loadOVDetails(idInDomain);
+      setSourceLine();
+      const body = document.getElementById('sa-wm-body');
+      if (body) body.innerHTML = `<div class="sa-wm-placeholder">Buscando OVs del cliente…</div>`;
+
+      state.candidateOVs = await loadCandidateOVs(
+        state.sourceOV.customerId,
+        state.sourceOV.idInDomain,
+        (done, total) => {
+          const b = document.getElementById('sa-wm-body');
+          if (b) b.querySelector('.sa-wm-placeholder') &&
+            (b.querySelector('.sa-wm-placeholder').textContent = `Cargando PNs de OVs… ${done}/${total}`);
+        }
+      );
+      buildProposals();
+      renderTable();
+      log(`OV #${state.sourceOV.idInDomain}: ${state.sourceOV.ots.length} OT(s), ${state.candidateOVs.length} OV(s) candidata(s)`);
+    } catch (e) {
+      const body = document.getElementById('sa-wm-body');
+      if (body) body.innerHTML = `<div class="sa-wm-err">Error al cargar: ${esc(e.message)}</div>`;
+      warn(`openPanel error: ${e.message}`);
+    }
+  }
+
+  function closePanel() {
+    try { state.memMonitor?.stop?.(); } catch (_) {}
+    removeOverlay();
+    state = freshState();   // reset total (EJE A)
+  }
+
+  // ── Entry point ──
+  if (typeof window !== 'undefined') {
+    window.WOMover = { VERSION, init, openPanel, closePanel };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  }
+
+  return { VERSION, init, openPanel, closePanel };
+})();
+})();
+// ===== END scripts/wo-mover.js =====
+
+// ===== BEGIN scripts/unit-autoconvert-core.js =====
+(function(){
+// unit-autoconvert-core.js — funciones PURAS de conversión de unidades por parte.
+//
+// Dual-export: window.UnitAutoConvertCore (browser) / module.exports (node --test).
+// SIN dependencias de DOM, API ni closure. El valor "X / Part" que el usuario
+// escribe ES el factor per-part de esa unidad (mismo número que guarda la API).
+(function (root) {
+  'use strict';
+
+  // factor = (unidades de esta unidad) por 1 unidad base. Conversión lineal sin offset.
+  const UNIT_GROUPS = [
+    { type: 'peso',       units: { KGM: 1, LBR: 2.2046226218 } },
+    { type: 'longitud',   units: { LM: 1, FOT: 3.280839895 } },
+    { type: 'superficie', units: { CMK: 1, DMK: 0.01, FTK: 0.001076391041670972 } },
+  ];
+
+  const CONVERTIBLE = new Set(UNIT_GROUPS.flatMap((g) => Object.keys(g.units)));
+
+  function round4(x) {
+    return Number(Number(x).toFixed(4));
+  }
+
+  function getGroup(code) {
+    return UNIT_GROUPS.find((g) =>
+      Object.prototype.hasOwnProperty.call(g.units, code)
+    ) || null;
+  }
+
+  function isConvertible(code) {
+    return CONVERTIBLE.has(code);
+  }
+
+  // Dado (code, value) devuelve [{code, value}] de los demás pares del grupo.
+  function computePeers(code, value) {
+    const v = Number(value);
+    if (!isFinite(v) || v <= 0) return [];
+    const g = getGroup(code);
+    if (!g) return [];
+    const base = v / g.units[code];
+    const out = [];
+    for (const peer of Object.keys(g.units)) {
+      if (peer === code) continue;
+      out.push({ code: peer, value: round4(base * g.units[peer]) });
+    }
+    return out;
+  }
+
+  // Primer token (código de unidad) de "KGM Kilogramo / Part:" → "KGM".
+  function unitCodeFromText(text) {
+    if (!text) return '';
+    return String(text).trim().split(/\s+/)[0].toUpperCase();
+  }
+
+  // El adorno recíproco del Panel B empieza con "Parts /".
+  function isReciprocalAdornment(text) {
+    return /^\s*parts\s*\//i.test(String(text || ''));
+  }
+
+  const api = {
+    UNIT_GROUPS, CONVERTIBLE, round4, getGroup, isConvertible,
+    computePeers, unitCodeFromText, isReciprocalAdornment,
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.UnitAutoConvertCore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/unit-autoconvert-core.js =====
+
+// ===== BEGIN scripts/unit-autoconvert.js =====
+(function(){
+// unit-autoconvert.js — Auto-conversión de unidades al editar un NP.
+// Tab en un campo de unidad → calcula los pares del mismo tipo (peso/longitud/superficie).
+// Campos presentes → DOM (setter nativo + InputEvent). Sin campo (DMK, pares ausentes) → API.
+// Toggle visible default ON (por sesión). Depende de SteelheadAPI + UnitAutoConvertCore.
+(function () {
+  'use strict';
+  const VERSION = '0.1.0';
+  const LOG = '[SA unit-autoconvert]';
+  const Core = window.UnitAutoConvertCore;
+  const api = () => window.SteelheadAPI;
+
+  // Estado en window para sobrevivir re-inyección (autoInject re-corre el IIFE).
+  // enabled = por sesión: arranca ON; se resetea a ON solo en recarga dura (window nuevo).
+  const S = window.__saUac || (window.__saUac = {
+    enabled: true, invItemId: null, pnId: null, unitIdCache: null,
+    fetchPatched: false, observer: null, focusoutBound: false, _injTimer: null, apiQueue: null,
+  });
+
+  function killSwitchOff() {
+    const cfg = window.REMOTE_CONFIG;
+    return !!(cfg && cfg.unitAutoConvertEnabled === false);
+  }
+
+  // ── Interceptor de fetch: cachea inventoryItemId del PN abierto ──
+  // El modal carga el PN vía GraphQL; capturamos inventoryItemByPartNumberId.id.
+  function installInterceptor() {
+    const orig = window.fetch;
+    if (!orig || orig.__saUacPatched) return;
+    const patched = async function (...args) {
+      const res = await orig.apply(this, args);
+      try {
+        const url = (args[0] && args[0].url) || args[0];
+        if (typeof url === 'string' && url.includes('/graphql')) {
+          res.clone().json().then((json) => {
+            try { scanForInventoryItem(json); } catch (_) {}
+          }).catch(() => {});
+        }
+      } catch (_) {}
+      return res;
+    };
+    patched.__saUacPatched = true;
+    window.fetch = patched;
+  }
+
+  // Busca recursivamente inventoryItemByPartNumberId.id en una respuesta GraphQL.
+  function scanForInventoryItem(node, depth) {
+    if (!node || typeof node !== 'object' || (depth || 0) > 8) return;
+    if (node.inventoryItemByPartNumberId && node.inventoryItemByPartNumberId.id != null) {
+      S.invItemId = node.inventoryItemByPartNumberId.id;
+      if (node.id != null) S.pnId = node.id;
+      return; // match encontrado: corta el subárbol (evita last-wins y trabajo de más)
+    }
+    for (const k in node) {
+      const v = node[k];
+      if (v && typeof v === 'object') scanForInventoryItem(v, (depth || 0) + 1);
+    }
+  }
+
+  // ── Toggle UI ──
+  function buildToggle() {
+    const wrap = document.createElement('label');
+    wrap.className = 'sa-uac-toggle';
+    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:6px;margin:8px 0;font-size:13px;color:#444;cursor:pointer;user-select:none;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'sa-uac-cb';
+    cb.checked = S.enabled;
+    cb.style.cssText = 'cursor:pointer;';
+    cb.addEventListener('change', () => {
+      S.enabled = cb.checked;
+      document.querySelectorAll('input.sa-uac-cb').forEach((other) => { other.checked = S.enabled; });
+    });
+    const txt = document.createElement('span');
+    txt.textContent = 'Auto-conversión de unidades';
+    wrap.appendChild(cb);
+    wrap.appendChild(txt);
+    return wrap;
+  }
+
+  function injectToggleNear(anchorEl, position) {
+    if (!anchorEl) return;
+    const host = anchorEl.parentElement || anchorEl;
+    // Guard idempotente auto-sanador: si el toggle ya cuelga de host, no re-inyecta;
+    // si React lo barrió en un re-render, se vuelve a inyectar (sin flag dataset pegajoso).
+    if (host.querySelector(':scope > .sa-uac-toggle')) return;
+    const toggle = buildToggle();
+    if (position === 'after') anchorEl.insertAdjacentElement('afterend', toggle);
+    else host.insertBefore(toggle, host.firstChild);
+  }
+
+  // Devuelve el elemento MÁS INTERNO cuyo texto cumple el predicado. Con predicados
+  // anclados (^...$) evita matchear wrappers grandes (cuyo textContent contiene el
+  // título + todos los campos) y aterriza en el <p> real del encabezado.
+  function findByText(selector, predicate) {
+    const els = document.querySelectorAll(selector);
+    let match = null;
+    for (const el of els) {
+      if (predicate((el.textContent || '').trim())) {
+        if (!match || match.contains(el)) match = el; // más profundo gana (hoja real)
+      }
+    }
+    return match;
+  }
+
+  function tryInjectToggles() {
+    if (killSwitchOff()) return;
+    // Panel A: el encabezado es texto EXACTO "Per Part Count Unit Definitions:" (anclado
+    // para no agarrar un wrapper). Selector amplio: no dependemos del tag/clase exactos.
+    const headingA = findByText('p, span, strong, b, h1, h2, h3, h4, h5, h6, div, label', (t) =>
+      /^per part count unit definitions:?\s*$/i.test(t));
+    if (headingA) injectToggleNear(headingA, 'after');
+    const modoP = findByText('p.MuiTypography-root', (t) => /^modo:?$/i.test(t));
+    if (modoP) injectToggleNear(modoP.parentElement, 'before');
+  }
+
+  // ── Escritura DOM compatible con React/MUI ──
+  function writeInput(input, value) {
+    const proto = window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(input, String(value));
+    // InputEvent (no Event) para que React reconcilie el input controlado — convención
+    // del repo (proceso-calculator / invoice-autofill / bill-autofill).
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // ── Identificación de contexto del input que disparó focusout ──
+  // Devuelve { panel:'A'|'B', code } o null.
+  function classifyInput(input) {
+    // Panel B: dentro de una fila de tabla con nombre de unidad
+    const tr = input.closest('tr.MuiTableRow-root');
+    if (tr) {
+      const nameP = tr.querySelector('td p.MuiTypography-root');
+      if (!nameP) return null;
+      // descartar el input recíproco (Parts / X)
+      const adorn = (input.closest('td')?.querySelector('.MuiInputAdornment-root')?.textContent) || '';
+      if (Core.isReciprocalAdornment(adorn)) return null;
+      return { panel: 'B', code: Core.unitCodeFromText(nameP.textContent) };
+    }
+    // Panel A: label hermano que termina en "/ Part:"
+    const fc = input.closest('.MuiFormControl-root');
+    if (fc && fc.parentElement) {
+      const labelP = fc.parentElement.querySelector(':scope > p.MuiTypography-root');
+      if (labelP && /\/\s*part:?\s*$/i.test(labelP.textContent.trim())) {
+        return { panel: 'A', code: Core.unitCodeFromText(labelP.textContent) };
+      }
+    }
+    return null;
+  }
+
+  // Busca el input del par `code` en el panel dado. Null si no tiene campo/fila.
+  function findPeerInput(panel, code) {
+    if (panel === 'A') {
+      const labels = document.querySelectorAll('p.MuiTypography-root');
+      for (const p of labels) {
+        const t = p.textContent.trim();
+        if (/\/\s*part:?\s*$/i.test(t) && Core.unitCodeFromText(t) === code) {
+          return p.parentElement.querySelector('input');
+        }
+      }
+      return null;
+    }
+    // Panel B
+    const rows = document.querySelectorAll('tr.MuiTableRow-root');
+    for (const tr of rows) {
+      const nameP = tr.querySelector('td p.MuiTypography-root');
+      if (!nameP || Core.unitCodeFromText(nameP.textContent) !== code) continue;
+      const inputs = tr.querySelectorAll('input');
+      for (const inp of inputs) {
+        const adorn = (inp.closest('td')?.querySelector('.MuiInputAdornment-root')?.textContent) || '';
+        if (!Core.isReciprocalAdornment(adorn)) return inp; // Unidades/Parts
+      }
+    }
+    return null;
+  }
+
+  async function onFocusOut(e) {
+    try {
+      if (!S.enabled || killSwitchOff()) return;
+      const input = e.target;
+      if (!input || input.tagName !== 'INPUT') return;
+      if (input.classList.contains('sa-uac-cb')) return; // nuestro propio toggle
+      const ctx = classifyInput(input);
+      if (!ctx || !Core.isConvertible(ctx.code)) return;
+      const value = parseFloat(input.value);
+      if (!isFinite(value) || value <= 0) return;
+
+      const peers = Core.computePeers(ctx.code, value);
+      if (!peers.length) return;
+
+      const missing = [];
+      for (const peer of peers) {
+        const peerInput = findPeerInput(ctx.panel, peer.code);
+        if (peerInput) writeInput(peerInput, peer.value);
+        else missing.push(peer);
+      }
+      if (missing.length) {
+        const { created, updated } = await apiUpsertPeers(missing);
+        const n = created + updated;
+        if (n > 0) {
+          showNotice('Se guardaron ' + n + ' unidad(es) por API (' +
+            missing.map((m) => m.code).join(', ') + ') · recarga para verlas');
+        }
+      }
+    } catch (err) {
+      console.error(LOG, 'onFocusOut', err);
+    }
+  }
+
+  // ── init idempotente ──
+  function init() {
+    if (killSwitchOff()) { console.log(LOG, 'kill-switch off'); return; }
+    if (!Core) { console.warn(LOG, 'UnitAutoConvertCore no cargado'); return; }
+    if (!S.fetchPatched) { installInterceptor(); S.fetchPatched = true; }
+    if (!S.observer) {
+      // debounce: el SPA dispara cientos de mutaciones por navegación (patrón hermano:
+      // proceso-calculator / weight-quick-entry usan clearTimeout + setTimeout ~300ms).
+      S.observer = new MutationObserver(() => {
+        clearTimeout(S._injTimer);
+        S._injTimer = setTimeout(tryInjectToggles, 300);
+      });
+      S.observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    }
+    if (!S.focusoutBound) {
+      document.addEventListener('focusout', onFocusOut, true);
+      S.focusoutBound = true;
+    }
+    tryInjectToggles();
+    console.log(LOG, 'init', VERSION);
+  }
+
+  // ── unitId por código: primero domain.unitIds, luego SearchUnits (cache) ──
+  async function resolveUnitId(code) {
+    const ids = (api()?.getDomain?.()?.unitIds) || {};
+    if (ids[code] != null) return ids[code];
+    if (S.unitIdCache && S.unitIdCache[code] != null) return S.unitIdCache[code];
+    try {
+      const data = await api().query('SearchUnits', {}, 'SearchUnits');
+      // shape observado en prod (bulk-upload.js:3521): pagedData.nodes (o searchUnits.nodes).
+      const nodes = data?.pagedData?.nodes || data?.searchUnits?.nodes || [];
+      S.unitIdCache = S.unitIdCache || {};
+      for (const n of nodes) {
+        const c = Core.unitCodeFromText(n.name);
+        if (c) S.unitIdCache[c] = n.id;
+      }
+      return S.unitIdCache[code] ?? null;
+    } catch (e) {
+      console.warn(LOG, 'SearchUnits falló', e);
+      return null;
+    }
+  }
+
+  // inventoryItemId del PN abierto: cache del interceptor, o fallback GetPartNumber por pnId.
+  async function resolveInventoryItemId() {
+    if (S.invItemId != null) return S.invItemId;
+    if (S.pnId != null) {
+      try {
+        const d = await api().query('GetPartNumber', { id: S.pnId }, 'GetPartNumber');
+        const inv = d?.partNumberById?.inventoryItemByPartNumberId?.id
+          || d?.partNumber?.inventoryItemByPartNumberId?.id;
+        if (inv != null) { S.invItemId = inv; return inv; }
+      } catch (e) { console.warn(LOG, 'GetPartNumber fallback falló', e); }
+    }
+    return null;
+  }
+
+  // Serializa las llamadas API: blurs concurrentes (tab-through rápido) no deben crear
+  // conversiones duplicadas. La 2ª espera a la 1ª y su GetAvailableUnits ya ve la unidad
+  // recién creada → hace UPDATE en vez de un segundo CREATE.
+  function apiUpsertPeers(missing) {
+    const run = (S.apiQueue || Promise.resolve()).then(() => apiUpsertPeersInner(missing));
+    S.apiQueue = run.then(() => {}, () => {}); // mantiene la cola viva aunque una corrida falle
+    return run;
+  }
+
+  // Crea/actualiza conversiones para los pares sin campo. Devuelve nº creados.
+  async function apiUpsertPeersInner(missing) {
+    const inventoryItemId = await resolveInventoryItemId();
+    if (inventoryItemId == null) {
+      console.warn(LOG, 'sin inventoryItemId; no se guardan', missing.map((m) => m.code));
+      showNotice('No se pudo resolver el PN — no se guardaron ' + missing.map((m) => m.code).join(', '), true);
+      return { created: 0, updated: 0 };
+    }
+    let created = 0, updated = 0;
+    try {
+      const data = await api().query('GetAvailableUnits', { inventoryItemId }, 'GetAvailableUnits');
+      const existing = data?.inventoryItemById?.inventoryItemUnitConversionsByInventoryItemId?.nodes || [];
+      for (const peer of missing) {
+        const unitId = await resolveUnitId(peer.code);
+        if (unitId == null) { console.warn(LOG, 'sin unitId para', peer.code); continue; }
+        const hit = existing.find((c) => Number(c.unitByUnitId?.id) === Number(unitId));
+        if (hit) {
+          await api().query('UpdateInventoryItemUnitConversion', { id: hit.id, factor: peer.value }, 'UpdateInventoryItemUnitConversion');
+          updated++;
+        } else {
+          await api().query('CreateInventoryItemUnitConversion', { unitId, inventoryItemId, factor: peer.value }, 'CreateInventoryItemUnitConversion');
+          created++;
+        }
+      }
+    } catch (e) {
+      console.error(LOG, 'apiUpsertPeers', e);
+      showNotice('Error guardando unidades por API', true);
+    }
+    return { created, updated };
+  }
+
+  // Aviso no bloqueante (toast efímero).
+  function showNotice(msg, isError) {
+    let el = document.querySelector('.sa-uac-notice');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sa-uac-notice';
+      el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;padding:10px 16px;border-radius:8px;font-size:13px;font-family:-apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:340px;pointer-events:none;transition:opacity .3s;';
+      (document.body || document.documentElement).appendChild(el);
+    }
+    el.style.background = isError ? '#c13c26' : '#1f2937';
+    el.style.color = '#fff';
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, 6000);
+  }
+
+  const Applet = { __saVersion: VERSION, init, _state: S };
+  window.UnitAutoConvert = Applet;
+  init();
+})();
+})();
+// ===== END scripts/unit-autoconvert.js =====
+
+// ===== BEGIN scripts/invoice-auto-regen.js =====
+(function(){
+// Invoice Auto-Regenerate
+// Detecta facturas timbradas con PDF pre-timbre y ofrece regenerar bajo demanda
+// vía botón en el header del dashboard. Para regenerar usa el flujo DOM-driven
+// (click programático al icono RestorePageOutlinedIcon + CONFIRMAR + history.back).
+//
+// Comportamiento:
+//   1. Dashboard: detector marca pendientes, muestra banner "N pendientes — Regenerar PDFs"
+//      al lado del título Invoices. Click → batch serial con overlay+stop.
+//   2. Modal abierto manualmente: si la factura está pendiente, dispara la regen
+//      en automático sin cerrar el modal — el usuario está ahí mirando.
+//
+// Depends on: SteelheadAPI
+
+const InvoiceAutoRegen = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  let enabled = true;
+  let _origFetch = null;
+
+  // Registry de sha256Hash por operationName, llenado en tiempo real desde el
+  // interceptor. Vive en window para sobrevivir doble-load del script.
+  const hashRegistry = window.__autoRegenHashRegistryMap || (window.__autoRegenHashRegistryMap = new Map());
+
+  // ── Estado ──
+  // Resultado del último pull activo. Se sobreescribe cada vez — NO se acumula.
+  // El banner y startRun leen de aquí. null = "todavía no hay info" o "degraded".
+  let lastPullResult = null;        // Array<{invoiceId, idInDomain}> | null
+  let lastPullAt = 0;               // ms epoch del último pull exitoso
+  let _pullInFlight = null;         // Promise compartido para evitar pulls concurrentes
+  let _pullDegraded = false;        // true tras 3 fallos consecutivos
+  let _pullConsecFailures = 0;
+  const PULL_THROTTLE_MS = 30 * 1000;
+  const PULL_WINDOW_DAYS = 7;
+  const PULL_PAGE_SIZE = 50;
+  const PULL_MAX_PAGES = 5;
+
+  // facturas regeneradas exitosamente — el detector ignora estas aunque
+  // ActiveInvoicesPaged siga reportándolas como pendientes (eventual consistency).
+  // Persistido en localStorage con TTL para sobrevivir reloads. Map: invoiceId → timestamp(ms).
+  const RECENT_KEY = 'sa_autoregen_recently_regenerated';
+  const RECENT_TTL_MS = 3 * 60 * 1000; // 3 min — solo cubre eventual consistency post-regen
+  const recentlyRegenerated = new Map();
+  function _persistRecent() {
+    try {
+      const obj = {};
+      for (const [k, v] of recentlyRegenerated.entries()) obj[k] = v;
+      localStorage.setItem(RECENT_KEY, JSON.stringify(obj));
+    } catch (_) { /* quota/disabled — silencioso */ }
+  }
+  function _hydrateRecent() {
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      const now = Date.now();
+      let kept = 0, expired = 0;
+      // Object.keys() siempre da strings; normalizamos todo el ciclo a string
+      // para no desalinear con inv.id (string en GraphQL ID!).
+      for (const k of Object.keys(obj)) {
+        const ts = Number(obj[k]) || 0;
+        if (now - ts < RECENT_TTL_MS) { recentlyRegenerated.set(k, ts); kept++; }
+        else { expired++; }
+      }
+      if (kept || expired) console.log(`[AutoRegen] Set persistido cargado: ${kept} vigentes, ${expired} expiradas`);
+      if (expired) _persistRecent();
+    } catch (_) { /* corrupto — ignorar */ }
+  }
+  function markRegenerated(invoiceId) {
+    recentlyRegenerated.set(String(invoiceId), Date.now());
+    _persistRecent();
+  }
+  function isRecentlyRegenerated(invoiceId) {
+    const key = String(invoiceId);
+    const ts = recentlyRegenerated.get(key);
+    if (!ts) return false;
+    if (Date.now() - ts >= RECENT_TTL_MS) {
+      recentlyRegenerated.delete(key);
+      _persistRecent();
+      return false;
+    }
+    return true;
+  }
+
+  // Estado del run en curso (batch del banner)
+  const runState = {
+    active: false,
+    total: 0,
+    index: 0,                 // 1-based
+    current: null,            // {invoiceId, idInDomain}
+    stopRequested: false
+  };
+
+  // Modal-auto-regen en flight (cuando el usuario abre una factura pendiente)
+  let modalAutoRegenActive = false;
+
+  // ── Init ──
+
+  function init() {
+    enabled = document.documentElement.dataset.saAutoRegenEnabled !== 'false';
+    if (!enabled) { console.log('[AutoRegen] Deshabilitado'); return; }
+    if (window.__saAutoRegenInitDone) {
+      console.log('[AutoRegen] Ya estaba inicializado en esta página — skip (registry compartido)');
+      return;
+    }
+    window.__saAutoRegenInitDone = true;
+    _hydrateRecent();
+    patchFetch();
+    installLock();
+    setupBannerObserver();
+
+    // Trigger (c): re-enfocar el tab dispara pull (con throttle propio en pullPendingCount).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (runState.active) return; // no interferir con batch
+      pullPendingCount(); // throttle a 30s aplica internamente
+    });
+
+    // Trigger (a): primer disparo. Si todavía no hay template aprendido, pullPendingCount
+    // imprime un log informativo y retorna null — el siguiente ActiveInvoicesPaged del UI
+    // (trigger d) lo activa.
+    pullPendingCount();
+
+    console.log('[AutoRegen] Inicializado');
+  }
+
+  // ── Fetch Interceptor ──
+
+  function patchFetch() {
+    if (window.__saAutoRegenPatched) {
+      // Reload del script (SPA nav) — la patch ya está colgada del window pero
+      // _origFetch del nuevo IIFE arrancó null. Recupéralo del stash en window
+      // para que _callOp pueda hacer bypass correcto.
+      _origFetch = window.__saAutoRegenOrigFetch || null;
+      return;
+    }
+    window.__saAutoRegenPatched = true;
+    _origFetch = window.fetch;
+    window.__saAutoRegenOrigFetch = _origFetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      if (!isGraphql || !opts?.body) return _origFetch.apply(this, args);
+
+      let bodyObj;
+      try { bodyObj = JSON.parse(opts.body); } catch { return _origFetch.apply(this, args); }
+      const opName = bodyObj?.operationName;
+
+      // Captura sha256Hash de toda op que pasa para tener registry siempre fresco.
+      const _h = bodyObj?.extensions?.persistedQuery?.sha256Hash;
+      if (opName && _h) {
+        hashRegistry.set(opName, _h);
+        try { window.__autoRegenHashRegistry = Object.fromEntries(hashRegistry); } catch {}
+      }
+
+      // Snapshot de variables como template para pullPendingCount/_verifyCandidate.
+      // Se sobreescribe en cada pasada — siempre queremos el template más reciente.
+      if ((opName === 'ActiveInvoicesPaged' || opName === 'InvoiceByIdInDomain') && bodyObj?.variables) {
+        try {
+          window.__autoRegenLastVars = window.__autoRegenLastVars || {};
+          window.__autoRegenLastVars[opName] = JSON.parse(JSON.stringify(bodyObj.variables));
+        } catch (_) { /* shape rara — ignorar */ }
+      }
+
+      // Captura payload completo de GetPdfTemplateOutputToUserFile (renderer del PDF).
+      // Útil para diagnóstico/dumpManualPair pero no requerido por el flujo DOM-driven.
+      if (opName === 'GetPdfTemplateOutputToUserFile') {
+        try {
+          const doc0 = bodyObj?.variables?.docs?.[0];
+          if (doc0?.data) {
+            const idInDomain = doc0.data.idInDomain;
+            window.__lastManualPdfData = window.__lastManualPdfData || {};
+            window.__lastManualPdfData[idInDomain] = doc0.data;
+            window.__lastManualPdfDataLatest = doc0.data;
+            const rawForId = (window.__lastRawInvoice || {})[idInDomain];
+            window.__lastManualPdfPair = window.__lastManualPdfPair || {};
+            window.__lastManualPdfPair[idInDomain] = { raw: rawForId || null, pdfData: doc0.data };
+          }
+        } catch (e) { /* no fatal */ }
+      }
+
+      const response = await _origFetch.apply(this, args);
+
+      // Hook para regenViaModal: resolver Promise pendiente al ver CreateInvoicePdf
+      if (opName === 'CreateInvoicePdf' && window.__autoRegenPdfWaiter) {
+        try {
+          const respClone = response.clone();
+          respClone.json().then(j => {
+            const pdfId = j?.data?.createInvoicePdf?.invoicePdf?.id;
+            const w = window.__autoRegenPdfWaiter;
+            window.__autoRegenPdfWaiter = null;
+            if (!w) return;
+            clearTimeout(w.timer);
+            if (pdfId) w.resolve({ pdfId, filename: bodyObj?.variables?.filename });
+            else w.reject(new Error('CreateInvoicePdf sin invoicePdf.id'));
+          }).catch(e => {
+            const w = window.__autoRegenPdfWaiter;
+            window.__autoRegenPdfWaiter = null;
+            if (w) { clearTimeout(w.timer); w.reject(e); }
+          });
+        } catch (e) { /* no fatal */ }
+      }
+
+      if (opName === 'ActiveInvoicesPaged' || opName === 'InvoiceByIdInDomain') {
+        try {
+          const clone = response.clone();
+          const json = await clone.json();
+
+          // Cachear el raw InvoiceByIdInDomain para diagnóstico (dumpManualPair)
+          if (opName === 'InvoiceByIdInDomain') {
+            const inv = json?.data?.invoiceByIdInDomain;
+            if (inv?.idInDomain != null) {
+              window.__lastRawInvoice = window.__lastRawInvoice || {};
+              window.__lastRawInvoice[inv.idInDomain] = inv;
+            }
+          }
+
+          if (opName === 'ActiveInvoicesPaged') {
+            // Trigger reactivo (d): aprovechamos que el UI ya consultó el server.
+            // pullPendingCount aplica su propio throttle de 30s y deduplica via _pullInFlight.
+            pullPendingCount();
+          } else if (opName === 'InvoiceByIdInDomain') {
+            const items = scanSingle(json);
+            if (items.length > 0) {
+              autoRegenInOpenModal(items[0]);  // no await: corre en background
+            }
+          }
+        } catch (err) {
+          console.warn('[AutoRegen] Error procesando', opName, err);
+        }
+      }
+      return response;
+    };
+  }
+
+  // ── Detector ──
+
+  function maxPdfAt(invoice) {
+    const nodes = invoice?.invoicePdfsByInvoiceId?.nodes;
+    if (!Array.isArray(nodes) || nodes.length === 0) return 0;
+    let max = 0;
+    for (const n of nodes) {
+      const t = n?.createdAt ? Date.parse(n.createdAt) : 0;
+      if (t > max) max = t;
+    }
+    return max;
+  }
+
+  function needsRegen(invoice, opts = {}) {
+    if (!invoice) return false;
+    const obj = invoice.steelheadObjectByInvoiceId;
+    if (!obj) return false;
+    const writtenAt = obj.writtenAt ? Date.parse(obj.writtenAt) : 0;
+    if (!writtenAt) return false;
+    if (invoice.voidedAt) return false;
+    if (obj.voidSuccessfulAt) return false;
+    if (maxPdfAt(invoice) >= writtenAt) return false;
+    if (opts.requireUuid) {
+      // El shape real de Steelhead no expone .uuid: el UUID del CFDI (Folio Fiscal)
+      // vive en .TaxFolio. Aceptamos también XmlBase64File o CustomInput.linkxml
+      // como markers válidos de timbre exitoso (cfdi-attacher usa los mismos).
+      const wr = invoice?.createWriteResult?.data?.result?.writeResult;
+      const stamped = !!(wr?.TaxFolio || wr?.XmlBase64File || wr?.CustomInput?.linkxml);
+      if (!stamped) return false;
+    }
+    return true;
+  }
+
+  function scanList(json) {
+    const nodes = json?.data?.allInvoices?.nodes;
+    if (!Array.isArray(nodes)) return [];
+    const out = [];
+    for (const inv of nodes) {
+      if (needsRegen(inv)) out.push({ invoiceId: inv.id, idInDomain: inv.idInDomain });
+    }
+    return out;
+  }
+
+  function scanSingle(json) {
+    const inv = json?.data?.invoiceByIdInDomain;
+    if (!inv) return [];
+    if (!needsRegen(inv, { requireUuid: true })) return [];
+    return [{ invoiceId: inv.id, idInDomain: inv.idInDomain }];
+  }
+
+  // ── Auto-regen cuando el usuario abre el modal de una pendiente ──
+
+  async function autoRegenInOpenModal(item) {
+    if (runState.active) return;                       // no interferir con batch
+    if (modalAutoRegenActive) return;                  // ya hay uno corriendo
+    if (window.__autoRegenPdfWaiter) return;           // hay otra regen en vuelo
+    if (isRecentlyRegenerated(item.invoiceId)) return; // ya la regeneramos hace < 3 min
+
+    modalAutoRegenActive = true;
+    console.log(`%c[AutoRegen] Modal abierto en factura pendiente #${item.idInDomain} — auto-regenerando…`, 'color:#0891b2;font-weight:bold');
+    try {
+      // Esperar a que el icono regenerar esté en el DOM y a React resuelva queries
+      const svg = await _waitForElement(REGEN_ICON_SELECTOR, 8000);
+      if (!svg) throw new Error('Icono regenerar no apareció');
+      await sleep(1500);
+      await testRegenInOpenModal(30000);
+      markRegenerated(item.invoiceId);
+      pullPendingCount({ force: true }); // refresca banner sin bloquear el flujo
+      console.log(`%c[AutoRegen] ✓ #${item.idInDomain} regenerada (modal abierto)`, 'color:#16a34a;font-weight:bold');
+    } catch (e) {
+      console.warn(`[AutoRegen] auto-regen en modal abierto falló para #${item.idInDomain}: ${e.message}`);
+    } finally {
+      modalAutoRegenActive = false;
+      updateBanner();
+    }
+  }
+
+  // ── Run (batch del banner) ──
+
+  function requestStop() {
+    if (!runState.active) return;
+    runState.stopRequested = true;
+    console.log('[AutoRegen] Stop solicitado por el usuario — terminando item actual…');
+    updateBanner();
+  }
+
+  async function startRun() {
+    if (runState.active) return;
+    const items = Array.isArray(lastPullResult) ? [...lastPullResult] : [];
+    if (items.length === 0) return;
+
+    runState.active = true;
+    runState.total = items.length;
+    runState.index = 0;
+    runState.current = null;
+    runState.stopRequested = false;
+    showOverlay();
+    updateBanner();
+    console.log(`%c[AutoRegen] Iniciando batch de ${items.length} facturas`, 'color:#0891b2;font-weight:bold');
+
+    let ok = 0, failed = 0;
+    try {
+      for (let i = 0; i < items.length; i++) {
+        if (runState.stopRequested) {
+          console.log('[AutoRegen] Batch detenido por el usuario');
+          break;
+        }
+        runState.index = i + 1;
+        runState.current = items[i];
+        updateBanner();
+        let success = false, lastErr = null;
+        for (let attempt = 1; attempt <= 2 && !success; attempt++) {
+          if (runState.stopRequested) break;
+          try {
+            if (attempt > 1) {
+              console.log(`[AutoRegen] reintento ${attempt} para #${items[i].idInDomain}`);
+              await sleep(2000);
+            }
+            await regenViaModal(items[i].idInDomain);
+            markRegenerated(items[i].invoiceId);
+            success = true;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        if (success) ok++;
+        else { console.warn(`[AutoRegen] #${items[i].idInDomain} falló tras 2 intentos: ${lastErr?.message}`); failed++; }
+        if (i < items.length - 1) await sleep(1000);
+      }
+    } finally {
+      runState.active = false;
+      runState.current = null;
+      hideOverlay();
+      // Trigger (b): post-regen siempre dispara pull fresco para que el banner refleje la realidad.
+      pullPendingCount({ force: true }).then(items => {
+        const remaining = Array.isArray(items) ? items.length : 0;
+        console.log(`%c[AutoRegen] Batch terminado. ✓${ok} ✗${failed}. Pendientes restantes (post-pull): ${remaining}`, 'color:#16a34a;font-weight:bold');
+      });
+      updateBanner();
+    }
+  }
+
+  // ── Banner UI ──
+
+  const BANNER_ID = 'sa-regen-banner';
+
+  function _isHeadingLike(el) {
+    if (!el || !el.isConnected) return false;
+    if (el.closest('a, nav, [role="tab"], [role="tablist"], [role="link"], [aria-label*="breadcrumb" i]')) return false;
+    if (el.tagName === 'BUTTON' || el.closest('button, [role="button"]')) return false;
+    const style = window.getComputedStyle(el);
+    const fontSize = parseFloat(style.fontSize) || 0;
+    const fontWeight = parseInt(style.fontWeight) || 0;
+    return fontSize >= 18 || fontWeight >= 600;
+  }
+  function _findExactInvoicesNode(root) {
+    if (!root) return null;
+    const all = root.querySelectorAll('h1, h2, h3, h4, h5, h6, div, span, p');
+    let best = null, bestSize = 0;
+    for (const el of all) {
+      if (el.children.length > 0) continue;
+      if (el.textContent.trim() !== 'Invoices') continue;
+      if (!_isHeadingLike(el)) continue;
+      const size = parseFloat(window.getComputedStyle(el).fontSize) || 0;
+      if (size > bestSize) { best = el; bestSize = size; }
+    }
+    return best;
+  }
+  function findInvoicesHeading() {
+    // 1. Heading semántico exacto "Invoices"
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (const h of headings) {
+      if (h.textContent && h.textContent.trim() === 'Invoices') return h;
+    }
+    // 2. Anclado al botón "CREAR FACTURA" del panel derecho
+    const buttons = document.querySelectorAll('button, a, [role="button"]');
+    for (const btn of buttons) {
+      const t = (btn.textContent || '').trim().toUpperCase();
+      if (t !== 'CREAR FACTURA') continue;
+      let node = btn;
+      for (let i = 0; i < 8 && node; i++) {
+        const found = _findExactInvoicesNode(node);
+        if (found) return found;
+        node = node.parentElement;
+      }
+    }
+    // 3. Heurística global: cualquier nodo "Invoices" con apariencia de heading
+    return _findExactInvoicesNode(document.body);
+  }
+
+  let _bannerWarned = false;
+  let _headingRef = null;
+  function injectBanner() {
+    let banner = document.getElementById(BANNER_ID);
+    if (banner) return banner;
+    // Cache del heading: si sigue en el DOM, no recorremos otra vez.
+    let heading = _headingRef && _headingRef.isConnected ? _headingRef : null;
+    if (!heading) {
+      heading = findInvoicesHeading();
+      _headingRef = heading;
+    }
+    if (!heading) {
+      if (!_bannerWarned) {
+        console.warn('[AutoRegen] No encontré el título "Invoices" para anclar el banner — reintento con MutationObserver');
+        _bannerWarned = true;
+      }
+      return null;
+    }
+    _bannerWarned = false;
+    banner = document.createElement('span');
+    banner.id = BANNER_ID;
+    banner.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:16px;vertical-align:middle;font-size:14px;font-weight:500;';
+    heading.appendChild(banner);
+    return banner;
+  }
+
+  function updateBanner() {
+    const banner = injectBanner();
+    if (!banner) return;
+    // Limpiar contenido (sólo nuestro propio chunk)
+    while (banner.firstChild) banner.removeChild(banner.firstChild);
+
+    if (runState.active) {
+      const text = document.createElement('span');
+      const idText = runState.current?.idInDomain ?? '…';
+      text.textContent = runState.stopRequested
+        ? `Deteniendo… (${runState.index}/${runState.total})`
+        : `↻ Regenerando #${idText} (${runState.index}/${runState.total})`;
+      text.style.cssText = 'color:#a02020;';
+      banner.appendChild(text);
+
+      const stop = document.createElement('button');
+      stop.dataset.saRegenStop = '1';
+      stop.textContent = runState.stopRequested ? 'Deteniendo…' : 'Detener';
+      stop.disabled = runState.stopRequested;
+      stop.style.cssText = 'background:#374151;color:#fff;border:0;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
+      if (runState.stopRequested) stop.style.opacity = '0.6';
+      stop.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); requestStop(); });
+      banner.appendChild(stop);
+
+      banner.style.display = 'inline-flex';
+      banner.style.position = 'relative';
+      banner.style.zIndex = '10000';
+    } else if (Array.isArray(lastPullResult) && lastPullResult.length > 0) {
+      const btn = document.createElement('button');
+      btn.dataset.saRegenStart = '1';
+      const n = lastPullResult.length;
+      btn.textContent = `↻ ${n} timbrada${n === 1 ? '' : 's'} pendiente${n === 1 ? '' : 's'} — Regenerar PDFs`;
+      btn.style.cssText = 'background:#a02020;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;';
+      btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); startRun(); });
+      banner.appendChild(btn);
+      banner.style.display = 'inline-flex';
+      banner.style.position = '';
+      banner.style.zIndex = '';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  let bannerObserver = null;
+  let bannerCheckScheduled = false;
+  function _scheduleBannerCheck() {
+    if (bannerCheckScheduled) return;
+    bannerCheckScheduled = true;
+    setTimeout(() => {
+      bannerCheckScheduled = false;
+      const needsBanner = (Array.isArray(lastPullResult) && lastPullResult.length > 0) || runState.active;
+      if (needsBanner && !document.getElementById(BANNER_ID)) updateBanner();
+    }, 500);
+  }
+  function setupBannerObserver() {
+    if (bannerObserver) return;
+    // Throttle a 500ms para no pegarle al CPU en cada microtask de React.
+    bannerObserver = new MutationObserver(_scheduleBannerCheck);
+    bannerObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ── Overlay + UI Lock ──
+
+  const OVERLAY_ID = 'sa-regen-overlay';
+
+  function showOverlay() {
+    let o = document.getElementById(OVERLAY_ID);
+    if (!o) {
+      o = document.createElement('div');
+      o.id = OVERLAY_ID;
+      // pointer-events: none para que nuestros clicks programáticos pasen por
+      // debajo. El bloqueo de clicks humanos lo hace el lockHandler global por
+      // event.isTrusted, no el overlay.
+      o.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.35);z-index:9998;pointer-events:none;';
+      document.body.appendChild(o);
+    }
+    o.style.display = 'block';
+  }
+
+  function hideOverlay() {
+    const o = document.getElementById(OVERLAY_ID);
+    if (o) o.style.display = 'none';
+  }
+
+  function isInsideStopBtn(target) {
+    return target instanceof Element && target.closest('[data-sa-regen-stop]');
+  }
+
+  function lockHandler(e) {
+    if (!runState.active) return;
+    if (!e.isTrusted) return;                      // dejamos pasar clicks programáticos
+    if (isInsideStopBtn(e.target)) return;         // botón Detener pasa
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+
+  let lockInstalled = false;
+  function installLock() {
+    if (lockInstalled) return;
+    lockInstalled = true;
+    // Sólo los eventos críticos para bloquear interacción real. mousedown/keydown
+    // capturan la mayoría de interacciones humanas; submit cubre forms.
+    ['click', 'mousedown', 'keydown', 'submit'].forEach(ev => {
+      document.addEventListener(ev, lockHandler, true);
+    });
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Helpers GraphQL ad-hoc (diagnóstico) ──
+
+  async function _callOp(opName, variables) {
+    const fromRegistry = hashRegistry.get(opName);
+    const fromConfig = api()?.getHash?.(opName);
+    const hash = fromRegistry || fromConfig;
+    if (!hash) {
+      throw new Error(`No hash para ${opName}. Haz un click manual de regenerar primero para que el applet aprenda los hashes.`);
+    }
+    const body = {
+      operationName: opName,
+      variables,
+      extensions: {
+        clientLibrary: { name: '@apollo/client', version: '4.0.8' },
+        persistedQuery: { version: 1, sha256Hash: hash }
+      }
+    };
+    // Bypass del window.fetch parcheado: si pasamos por él, el interceptor de
+    // patchFetch dispara autoRegenInOpenModal sobre nuestras propias verificaciones
+    // de _verifyCandidate, regenerando el invoice que esté visualmente expuesto
+    // en el visor en lugar del candidato real (loop de regens).
+    const fetchFn = _origFetch || window.fetch;
+    const r = await fetchFn.call(window, 'https://app.gosteelhead.com/graphql', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      throw new Error(`HTTP ${r.status} en ${opName}: ${text.substring(0, 300)}`);
+    }
+    const j = await r.json();
+    if (j.errors && !j.data) {
+      const msgs = (j.errors || []).map(e => e.message).join('; ');
+      throw new Error(`GraphQL ${opName}: ${msgs.substring(0, 300)}`);
+    }
+    return j.data;
+  }
+
+  // ── Pull activo de pendientes ──
+
+  // Inspecciona el template para encontrar el nombre del campo de filtro "desde".
+  // Devuelve el path (ej. "writtenAtFrom" o "filter.dateFrom") o null si no existe.
+  function _detectDateFromField(template) {
+    if (!template || typeof template !== 'object') return null;
+    const candidates = ['writtenAtFrom', 'writtenAtStart', 'dateFrom', 'fromDate', 'from', 'startDate'];
+    for (const k of candidates) {
+      if (k in template) return k;
+    }
+    for (const key of Object.keys(template)) {
+      const v = template[key];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const k of candidates) {
+          if (k in v) return `${key}.${k}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  function _setNestedField(obj, path, value) {
+    const parts = path.split('.');
+    let cur = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur[parts[i]] = cur[parts[i]] || {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+  }
+
+  // El template viene del UI con search/customer/etc. seleccionados por el usuario.
+  // Para nuestro pull global queremos esos filtros en blanco. Mutamos sobre una copia.
+  function _sanitizeTemplate(template) {
+    const t = JSON.parse(JSON.stringify(template));
+    const fieldsToClear = ['searchTerm', 'search', 'customerId', 'customer', 'status', 'tags', 'tagIds'];
+    for (const k of fieldsToClear) {
+      if (k in t) {
+        const v = t[k];
+        t[k] = (typeof v === 'string') ? '' : (Array.isArray(v) ? [] : null);
+      }
+    }
+    for (const key of Object.keys(t)) {
+      const v = t[key];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const k of fieldsToClear) {
+          if (k in v) {
+            const vv = v[k];
+            v[k] = (typeof vv === 'string') ? '' : (Array.isArray(vv) ? [] : null);
+          }
+        }
+      }
+    }
+    return t;
+  }
+
+  // Verifica un candidato preliminar consultando InvoiceByIdInDomain — único sitio donde
+  // los nodos PDF traen createdAt (la respuesta de ActiveInvoicesPaged solo expone nodeId,
+  // invoicePdfViewLogsByInvoicePdfId, __typename — sin createdAt — por lo que needsRegen()
+  // ahí siempre devuelve true para invoices con writtenAt). Aplicamos requireUuid:true para
+  // confirmar que efectivamente está timbrada.
+  async function _verifyCandidate(cand) {
+    const tpl = window.__autoRegenLastVars?.InvoiceByIdInDomain;
+    const vars = tpl ? JSON.parse(JSON.stringify(tpl)) : {};
+    vars.idInDomain = cand.idInDomain;
+    const data = await _callOp('InvoiceByIdInDomain', vars);
+    const inv = data?.invoiceByIdInDomain;
+    if (inv && needsRegen(inv, { requireUuid: true })) {
+      return { invoiceId: inv.id, idInDomain: inv.idInDomain };
+    }
+    return null;
+  }
+
+  // Pulls active from ActiveInvoicesPaged with a 7-day window — DOS FASES:
+  //   1. Recolectar candidatos preliminares: writtenAt en ventana, no voided,
+  //      no recentlyRegenerated. (No podemos aplicar needsRegen completo aquí porque
+  //      los PDFs no traen createdAt en este shape.)
+  //   2. Verificar cada candidato con InvoiceByIdInDomain (concurrencia 5) — ahí sí
+  //      hay createdAt en cada PDF, así que needsRegen({requireUuid:true}) es preciso.
+  // Coalesces concurrent calls via _pullInFlight.
+  async function pullPendingCount({ force = false } = {}) {
+    if (_pullInFlight) return _pullInFlight;
+    if (!force && Date.now() - lastPullAt < PULL_THROTTLE_MS && lastPullResult !== null) {
+      return lastPullResult;
+    }
+
+    const template = window.__autoRegenLastVars?.ActiveInvoicesPaged;
+    if (!template) {
+      console.log('[AutoRegen] pullPendingCount: sin template aprendido todavía — esperando ActiveInvoicesPaged del UI');
+      return null;
+    }
+
+    _pullInFlight = (async () => {
+      const cutoffMs = Date.now() - PULL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      const baseVars = _sanitizeTemplate(template);
+
+      // ── Fase 1: recolectar candidatos preliminares ──
+      const candidates = [];
+
+      for (let page = 0; page < PULL_MAX_PAGES; page++) {
+        const vars = JSON.parse(JSON.stringify(baseVars));
+        // Paginación. El template real de Steelhead usa offset/first (Relay-style);
+        // dejamos los otros como fallback por si cambia el shape en el futuro.
+        if ('offset' in vars) vars.offset = page * PULL_PAGE_SIZE;
+        else if ('pageNumber' in vars) vars.pageNumber = page + 1;
+        else if ('page' in vars) vars.page = page + 1;
+        if ('first' in vars) vars.first = PULL_PAGE_SIZE;
+        else if ('pageSize' in vars) vars.pageSize = PULL_PAGE_SIZE;
+        else if ('limit' in vars) vars.limit = PULL_PAGE_SIZE;
+
+        let data;
+        try {
+          data = await _callOp('ActiveInvoicesPaged', vars);
+        } catch (e) {
+          throw new Error(`Page ${page + 1}: ${e.message}`);
+        }
+        const nodes = data?.allInvoices?.nodes || [];
+        if (nodes.length === 0) break;
+
+        let allBelowCutoff = nodes.length > 0;
+        for (const inv of nodes) {
+          const sObj = inv?.steelheadObjectByInvoiceId;
+          if (!sObj?.writtenAt) { allBelowCutoff = false; continue; }
+          if (inv.voidedAt) continue;
+          if (sObj.voidSuccessfulAt) continue;
+          const wt = Date.parse(sObj.writtenAt);
+          if (!wt) { allBelowCutoff = false; continue; }
+          if (wt < cutoffMs) continue;
+          allBelowCutoff = false;
+          if (isRecentlyRegenerated(inv.id)) continue;
+          candidates.push({ invoiceId: inv.id, idInDomain: inv.idInDomain });
+        }
+
+        // Si toda la página cayó debajo del cutoff, asumimos orden DESC y paramos.
+        if (allBelowCutoff) break;
+        if (nodes.length < PULL_PAGE_SIZE) break;
+      }
+
+      console.log(`[AutoRegen] pullPendingCount: fase 1 → ${candidates.length} candidatos preliminares`);
+      if (candidates.length === 0) return [];
+
+      // ── Fase 2: verificación con InvoiceByIdInDomain (concurrencia 5) ──
+      const verified = [];
+      const CONCURRENCY = 5;
+      let cursor = 0;
+      async function worker() {
+        while (cursor < candidates.length) {
+          const i = cursor++;
+          const cand = candidates[i];
+          try {
+            const result = await _verifyCandidate(cand);
+            if (result) verified.push(result);
+          } catch (e) {
+            console.warn(`[AutoRegen] verify #${cand.idInDomain}: ${e.message}`);
+          }
+        }
+      }
+      const workers = [];
+      for (let i = 0; i < CONCURRENCY; i++) workers.push(worker());
+      await Promise.all(workers);
+
+      return verified;
+    })();
+
+    try {
+      const items = await _pullInFlight;
+      lastPullResult = items;
+      lastPullAt = Date.now();
+      _pullConsecFailures = 0;
+      if (_pullDegraded) {
+        console.log('[AutoRegen] Recovery: pull volvió a funcionar — banner reactivado');
+        _pullDegraded = false;
+      }
+      console.log(`[AutoRegen] pullPendingCount: fase 2 → ${items.length} pendientes verificados (ventana ${PULL_WINDOW_DAYS}d)`);
+      updateBanner();
+      return items;
+    } catch (e) {
+      _pullConsecFailures++;
+      const isHashDeprecated = /Must provide a query string|400/.test(e.message);
+      console.warn(`[AutoRegen] pullPendingCount falló (${_pullConsecFailures}/3)${isHashDeprecated ? ' — posible deprecación de hash' : ''}:`, e.message);
+      if (_pullConsecFailures >= 3) {
+        _pullDegraded = true;
+        lastPullResult = null;
+        console.warn('[AutoRegen] 3 fallos consecutivos — banner oculto. Pull se reactiva al próximo ActiveInvoicesPaged exitoso del UI.');
+        updateBanner();
+      }
+      return lastPullResult;
+    } finally {
+      _pullInFlight = null;
+    }
+  }
+
+  // ── Regen DOM-driven ──
+
+  const REGEN_ICON_SELECTOR = 'svg[data-testid="RestorePageOutlinedIcon"]';
+
+  function _waitForElement(selector, timeoutMs = 8000) {
+    return new Promise(resolve => {
+      const found = document.querySelector(selector);
+      if (found) return resolve(found);
+      const obs = new MutationObserver(() => {
+        const el = document.querySelector(selector);
+        if (el) { obs.disconnect(); resolve(el); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => { obs.disconnect(); resolve(null); }, timeoutMs);
+    });
+  }
+
+  function _waitForElementGone(selector, timeoutMs = 5000) {
+    return new Promise(resolve => {
+      if (!document.querySelector(selector)) return resolve(true);
+      const obs = new MutationObserver(() => {
+        if (!document.querySelector(selector)) { obs.disconnect(); resolve(true); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => { obs.disconnect(); resolve(false); }, timeoutMs);
+    });
+  }
+
+  function _findRowOpenTarget(idInDomain) {
+    const tag = '#' + idInDomain;
+    const all = document.querySelectorAll('a, span, div, td');
+    for (const el of all) {
+      if (el.children.length === 0 && el.textContent && el.textContent.trim() === tag) {
+        let cur = el;
+        for (let i = 0; i < 8 && cur; i++) {
+          if (cur.tagName === 'A' || cur.onclick || cur.getAttribute?.('role') === 'button') return cur;
+          cur = cur.parentElement;
+        }
+        return el;
+      }
+    }
+    return null;
+  }
+
+  // ── Paginación del DataGrid (footer "X - Y of Z, show <select>") ──
+  // Bilingual desde el inicio: "1 - 50 of 104, show 50" / "1 - 50 de 104, mostrar 50".
+
+  const _PAGINATION_LABELS = {
+    first: /^(?:first|primera|primero)$/i,
+    prev: /^(?:prev|previous|anterior)$/i,
+    next: /^(?:next|siguiente)$/i,
+    last: /^(?:last|última|ultima|último|ultimo)$/i
+  };
+  const _PAGINATION_POSITION_RE = /(\d+)\s*-\s*(\d+)\s+(?:of|de)\s+(\d+)/i;
+
+  function _getPaginationState() {
+    const ps = document.querySelectorAll('p');
+    for (const p of ps) {
+      const txt = (p.textContent || '').trim();
+      const m = txt.match(_PAGINATION_POSITION_RE);
+      if (m) return { from: +m[1], to: +m[2], total: +m[3], element: p };
+    }
+    return null;
+  }
+
+  // Localiza el div clickeable de "First/Prev/Next/Last" en el footer del DataGrid.
+  // Cue estructural: <div> cuyo único children no-text es un <svg> (icono de la flecha)
+  // y cuyo textContent matchee la label. Las classes CSS-in-JS de MUI cambian, no las uso.
+  function _findPaginationBtn(kind) {
+    const re = _PAGINATION_LABELS[kind];
+    if (!re) return null;
+    const divs = document.querySelectorAll('div');
+    for (const d of divs) {
+      const txt = (d.textContent || '').trim();
+      if (!re.test(txt)) continue;
+      const validShape = Array.from(d.children).every(c => c.tagName === 'svg' || c.tagName === 'SVG');
+      if (!validShape) continue;
+      return d;
+    }
+    return null;
+  }
+
+  async function _waitForPaginationChange(prevState, timeoutMs = 4000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      await sleep(120);
+      const cur = _getPaginationState();
+      if (cur && (cur.from !== prevState.from || cur.to !== prevState.to || cur.total !== prevState.total)) {
+        return cur;
+      }
+    }
+    return null;
+  }
+
+  // Busca el row del #idInDomain. Si no está en la página actual, resetea a First
+  // y avanza Next hasta encontrarlo o agotar páginas (to >= total).
+  async function _findRowOpenTargetAcrossPages(idInDomain, opts = {}) {
+    const maxPagesToWalk = opts.maxPagesToWalk ?? 30;
+
+    let target = _findRowOpenTarget(idInDomain);
+    if (target) return target;
+
+    let state = _getPaginationState();
+    if (state && state.from > 1) {
+      const firstBtn = _findPaginationBtn('first');
+      if (firstBtn) {
+        firstBtn.click();
+        const after = await _waitForPaginationChange(state, 4000);
+        if (after) state = after;
+        await sleep(200);
+        target = _findRowOpenTarget(idInDomain);
+        if (target) return target;
+      }
+    }
+
+    for (let i = 0; i < maxPagesToWalk; i++) {
+      state = _getPaginationState();
+      if (!state) break;
+      if (state.to >= state.total) break;
+      const nextBtn = _findPaginationBtn('next');
+      if (!nextBtn) break;
+      const before = state;
+      nextBtn.click();
+      const after = await _waitForPaginationChange(before, 4000);
+      if (!after) break;
+      await sleep(200);
+      target = _findRowOpenTarget(idInDomain);
+      if (target) return target;
+    }
+
+    return null;
+  }
+
+  function _findCloseButton() {
+    const btns = document.querySelectorAll('button');
+    for (const b of btns) {
+      if (b.textContent && b.textContent.trim() === 'Close') return b;
+    }
+    return null;
+  }
+
+  function _findButtonByText(textRegex) {
+    const btns = document.querySelectorAll('button');
+    for (const b of btns) {
+      const t = (b.textContent || '').trim();
+      if (textRegex.test(t)) return b;
+    }
+    return null;
+  }
+
+  function _waitForButton(textRegex, timeoutMs = 5000) {
+    return new Promise(resolve => {
+      const found = _findButtonByText(textRegex);
+      if (found) return resolve(found);
+      const obs = new MutationObserver(() => {
+        const b = _findButtonByText(textRegex);
+        if (b) { obs.disconnect(); resolve(b); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => { obs.disconnect(); resolve(null); }, timeoutMs);
+    });
+  }
+
+  function _waitForCreateInvoicePdf(timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+      if (window.__autoRegenPdfWaiter) {
+        return reject(new Error('Otro waiter ya está activo'));
+      }
+      const timer = setTimeout(() => {
+        window.__autoRegenPdfWaiter = null;
+        reject(new Error(`Timeout ${timeoutMs}ms esperando CreateInvoicePdf`));
+      }, timeoutMs);
+      window.__autoRegenPdfWaiter = { resolve, reject, timer };
+    });
+  }
+
+  // Asume modal/página de factura abierta. Click programático al icono regenerar
+  // + CONFIRMAR + espera respuesta de CreateInvoicePdf.
+  async function testRegenInOpenModal(timeoutMs = 30000) {
+    const svg = document.querySelector(REGEN_ICON_SELECTOR);
+    if (!svg) throw new Error('No se encontró el icono RestorePageOutlinedIcon — modal cerrado o no es invoice modal');
+    const waitPromise = _waitForCreateInvoicePdf(timeoutMs);
+    svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    console.log('[AutoRegen DOM] Click disparado al icono regenerar — esperando submodal de confirmación…');
+
+    const confirmBtn = await _waitForButton(/^confirmar$/i, 5000);
+    if (!confirmBtn) {
+      const w = window.__autoRegenPdfWaiter;
+      if (w) { clearTimeout(w.timer); window.__autoRegenPdfWaiter = null; }
+      throw new Error('Botón CONFIRMAR no apareció en 5s tras click al icono regenerar');
+    }
+    confirmBtn.click();
+    console.log('[AutoRegen DOM] CONFIRMAR clickeado — esperando CreateInvoicePdf…');
+
+    const result = await waitPromise;
+    console.log(`%c[AutoRegen DOM] ✓ CreateInvoicePdf OK → invoicePdf.id=${result.pdfId}`, 'color:#16a34a;font-weight:bold');
+    return result;
+  }
+
+  // Flujo completo: abre la factura, regenera, vuelve al dashboard.
+  async function regenViaModal(idInDomain, opts = {}) {
+    const settleMs = opts.settleMs ?? 1500;
+    const openTimeoutMs = opts.openTimeoutMs ?? 8000;
+    const regenTimeoutMs = opts.regenTimeoutMs ?? 30000;
+
+    console.log(`%c[AutoRegen DOM] regenViaModal(#${idInDomain}) — abriendo factura…`, 'color:#0891b2;font-weight:bold');
+    const urlBefore = location.href;
+
+    const target = await _findRowOpenTargetAcrossPages(idInDomain);
+    if (!target) throw new Error(`No se encontró fila con texto "#${idInDomain}" en el dashboard (incluso tras paginar)`);
+    target.click();
+
+    const svg = await _waitForElement(REGEN_ICON_SELECTOR, openTimeoutMs);
+    if (!svg) throw new Error(`Vista de factura no abrió en ${openTimeoutMs}ms (icono regenerar no apareció)`);
+
+    await sleep(settleMs);
+
+    const result = await testRegenInOpenModal(regenTimeoutMs);
+
+    // Cerrar: page-mode → history.back; modal-mode → botón Close
+    if (location.href !== urlBefore) {
+      console.log(`[AutoRegen DOM] page-mode detectado — history.back() al dashboard`);
+      history.back();
+      await _waitForElementGone(REGEN_ICON_SELECTOR, 5000);
+      if (location.href !== urlBefore) {
+        console.warn(`[AutoRegen DOM] history.back() no restauró URL exacta. Esperada: ${urlBefore} — actual: ${location.href}`);
+      } else {
+        console.log(`[AutoRegen DOM] Dashboard restaurado`);
+      }
+    } else {
+      const closeBtn = _findCloseButton();
+      if (closeBtn) {
+        closeBtn.click();
+        await _waitForElementGone(REGEN_ICON_SELECTOR, 3000);
+        console.log(`[AutoRegen DOM] Modal cerrado`);
+      } else {
+        console.warn('[AutoRegen DOM] No se encontró botón Close ni hubo cambio de URL — vista pudo quedar abierta');
+      }
+    }
+
+    return result;
+  }
+
+  async function regenViaModalBatch(idInDomains, opts = {}) {
+    const gapMs = opts.gapMs ?? 1000;
+    const results = [];
+    for (let i = 0; i < idInDomains.length; i++) {
+      const id = idInDomains[i];
+      console.log(`%c[AutoRegen DOM] [${i+1}/${idInDomains.length}] #${id}`, 'color:#0891b2;font-weight:bold');
+      try {
+        const r = await regenViaModal(id, opts);
+        results.push({ idInDomain: id, ok: true, ...r });
+      } catch (e) {
+        console.warn(`[AutoRegen DOM] #${id} falló:`, e.message);
+        results.push({ idInDomain: id, ok: false, error: e.message });
+      }
+      if (i < idInDomains.length - 1) await sleep(gapMs);
+    }
+    console.log(`%c[AutoRegen DOM] Batch completo: ${results.filter(r=>r.ok).length}/${results.length} OK`, 'color:#16a34a;font-weight:bold');
+    return results;
+  }
+
+  // ── Diagnóstico expuesto por consola ──
+
+  function _state() {
+    return {
+      pendingCount: Array.isArray(lastPullResult) ? lastPullResult.length : 0,
+      pendingIds: Array.isArray(lastPullResult) ? lastPullResult.map(i => i.idInDomain) : [],
+      lastPullAt: lastPullAt ? new Date(lastPullAt).toISOString() : null,
+      pullDegraded: _pullDegraded,
+      pullInFlight: !!_pullInFlight,
+      run: { ...runState },
+      modalAutoRegenActive
+    };
+  }
+
+  return {
+    init,
+    regenViaModal,
+    regenViaModalBatch,
+    testRegenInOpenModal,
+    startRun,
+    requestStop,
+    pullPendingCount,
+    _callOp,
+    _state,
+    _hashRegistry: hashRegistry,
+    _lastPullResult: () => lastPullResult
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.InvoiceAutoRegen = InvoiceAutoRegen;
+
+  // DOM-driven: replica el click manual del icono RestorePageOutlinedIcon
+  window.regenViaModal = (idInDomain, opts) => InvoiceAutoRegen.regenViaModal(idInDomain, opts);
+  window.regenViaModalBatch = (ids, opts) => InvoiceAutoRegen.regenViaModalBatch(ids, opts);
+  window.testRegenInOpenModal = (timeoutMs) => InvoiceAutoRegen.testRegenInOpenModal(timeoutMs);
+  window.regenStart = () => InvoiceAutoRegen.startRun();
+  window.regenStop = () => InvoiceAutoRegen.requestStop();
+  window.regenState = () => InvoiceAutoRegen._state();
+
+  // Diagnóstico: copia el último payload de GetPdfTemplateOutputToUserFile capturado.
+  window.dumpManualPdfPayload = function (idInDomain) {
+    const all = window.__lastManualPdfData || {};
+    const data = idInDomain ? all[idInDomain] : window.__lastManualPdfDataLatest;
+    if (!data) {
+      console.warn(`[AutoRegen] No hay payload capturado${idInDomain ? ` para #${idInDomain}` : ''}.`);
+      return null;
+    }
+    const json = JSON.stringify(data, null, 2);
+    try {
+      navigator.clipboard.writeText(json).then(() => {
+        console.log(`%c[AutoRegen] Payload de #${data.idInDomain} copiado al clipboard (${json.length} chars)`, 'color:#16a34a;font-weight:bold');
+      });
+    } catch (e) { console.warn('Clipboard falló:', e); }
+    return data;
+  };
+
+  window.dumpManualPair = function (idInDomain) {
+    const all = window.__lastManualPdfPair || {};
+    const pair = all[idInDomain];
+    if (!pair) {
+      console.warn(`[AutoRegen] No hay pair capturado para #${idInDomain}.`);
+      return null;
+    }
+    const json = JSON.stringify(pair, null, 2);
+    window.__lastDumpJson = json;
+    console.log(`%c[AutoRegen] Pair de #${idInDomain} listo (${json.length} chars).`, 'color:#16a34a;font-weight:bold');
+    navigator.clipboard.writeText(json).then(
+      () => console.log('%c[AutoRegen] (También copiado al clipboard)', 'color:#16a34a'),
+      (e) => console.log(`%c[AutoRegen] (Clipboard automático falló: ${e.message})`, 'color:#6b7280')
+    );
+    return pair;
+  };
+
+  InvoiceAutoRegen.init();
+}
+})();
+// ===== END scripts/invoice-auto-regen.js =====
+
+// ===== BEGIN config-seed (ignorado por --check) =====
+(function(){
+  window.REMOTE_CONFIG = {"version": "1.7.34", "lastUpdated": "2026-06-29T19:46", "extensionVersion": "1.6.4", "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip", "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html", "steelhead": {"baseUrl": "https://app.gosteelhead.com", "graphqlEndpoint": "/graphql", "keepAliveEndpoint": "/api/session/keep-alive", "apolloClientVersion": "4.0.8", "hashes": {"mutations": {"CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00", "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112", "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e", "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf", "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b", "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163", "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49", "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa", "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129", "UpdateQuote": "765fc26af87241f0f614a51fe3583e10d2f1765dafb1426402f69dcc79e33a8e", "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797", "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0", "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6", "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154", "SaveManyPNP_Quote": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SaveManyPNP_PN": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40", "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363", "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc", "CreateReceivedOrder": "c0ca8f0f56af7f5a306a1639184f66c627af19a2083f6d28caa6856bb71a5dea", "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9", "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57", "SetPNPricesDefault": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293", "UpdatePartNumber": "af584fa8ebb7487fc84de18fa3a5e360e99699a3280185fe98b840c157bbf2c7", "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202", "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419", "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394", "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4", "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8", "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953", "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0", "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174", "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b", "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261", "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce", "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4", "CreateUpdateReportWithPermissions": "6c7753a4bd5f3181b1fffa536833972a4959343da8461127155dd1dd76342bde", "DeleteFolderById": "282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15", "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0", "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022", "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3", "UpdateReceivedOrder": "d9e885763a3f65a6416ac0da3f4037562d6d8e6083dc34892158269d1f61c7b5", "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942", "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449", "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59", "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60", "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3", "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2", "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a", "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54", "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84", "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856", "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334", "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c", "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce", "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03", "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb", "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b", "UpdateProcessNode": "4ceb26654b8cf409da36a45a2b1ea3bd3442fb3dcb9da06b51363d29e5f417c6", "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928", "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec", "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3", "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f", "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0"}, "queries": {"AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b", "GetStation": "912beb134cb89f78cf22fdfbe3fd6e59bc5160e11bdffde5d398506492831d41", "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce", "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380", "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143", "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2", "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3", "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc", "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f", "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac", "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890", "GetQuote_v8": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuote_v71": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33", "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02", "CustomerFinancialById": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9", "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca", "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3", "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a", "AllProcesses": "acaa6a46bd1e47ff587ac28833302734d6b00e06c26292c268110ce406ba71e3", "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e", "SearchSpecsForSelect": "8e7723b3a4cf3e7b692999e45d20b7299952253089c7bf146d36ff2872507e2b", "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea", "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3", "SearchUnits": "1961ca85600a902498898502aeda031f270ff2b1289b3ef9fe43aaaefe97ceda", "SearchProducts": "b835021eff4113acd5529f63fa742a9b70373c62a5d9cb39f4203fe2bbba9f8a", "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91", "GetPartNumber": "804dd8f7e65f2f84661cf42637949a03ec0c2132e59048746edc9280cced7eec", "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109", "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a", "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b", "PNGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c", "Customer": "96b214b5632df4722bd64d7e51ce086da06c3bc41ab4e79d523b271f14a9f355", "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5", "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9", "AllPartNumbers": "827be6815fa644ea35f4982ea8eca8a451500b078112e6e8244f505d0f1cfe09", "AllWorkOrders": "a8c2baab3cf24698bdbb951bddabab8bd383378391b1a2b1c296c63008bba8d7", "AllReceivers": "153f2cac87aa0c23fab030d9463c15b8d494ab7f935265cbdd06779cfe2a1ee3", "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf", "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c", "SearchInventoryItemBatches": "ae2466466ed3e84a2010c726a166c432c176c3d21be5be7ac71db6c1846b901b", "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09", "CheckDuplicatePO": "94e659bf6eea8d493f8ea67f950fd38371a5cb680d2622145d5df9dc63583b85", "CreateEditReceivedOrderDialogQuery": "5b01210ebe19943b899b9255cf84021e66ef8a851bac9f1ea0ce8beaa44e8e7d", "GetCustomerInfoForReceivedOrder": "be7c8dbeec701f49545d5f3685c448db57d043a7a2ebbe184ed642559abce9d5", "PartNumberCreatableSelectGetPartNumbers": "1d5714f35b4232eed5c3e89df5dd833c595d77df333ee3bc0f0f09c3a4f9b23a", "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14", "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a", "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120", "GetReceivedOrder": "3b4ab8f11af9f2603acfe5983499874219b8a7ba49efd07cdf6a079b2875b293", "GetAddPartsReceivedOrder": "677ae9cac761b748b85311b63a6cfa27065119b0a20f998005ef6baea6831b64", "WorkOrderDialogQuery": "5b7f715303297e64f32806d5361f388ab84e48827a9d3e0d09982b4ca9504f13", "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686", "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8", "GetReceivedOrderDocuments": "7d74c516daa9938572e482fb1ea012dce5eeb3bad2de63cecb1e5740a139e42d", "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156", "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520", "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0", "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db", "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de", "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7", "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d", "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e", "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb", "AllCustomers": "66e271f6a8a2ad35955f54abbffc2ad3502deaae53dcd143250bc10e76d57712", "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6", "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888", "ReceivingBatchesQuery": "5b0baf3614222571071456156a30f86a4ee2b786cc5b204872a2b6baeefe46de", "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4", "InvoiceByIdInDomain": "f18f1274740aea191614627ac2b58807582012090cbe004daa5c3cedf7043a58", "CurrentUser": "18c6574c779e24f19b19e303b1b7c176601eb44e4dfd1860d2d925fd976c779e", "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c", "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0", "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c", "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac", "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830", "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63", "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83", "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f", "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de", "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0", "GetPurchaseOrder": "6d8626794b0b81e885f621fac214f825c3078931ad030ddd2299d227e530bcf6", "GetDomain": "c0c242bcac011a6e72087bd0d0698dde5cf2fe8b247a51e4eb3b08c36299c866", "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57", "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0", "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d", "SearchPurchaseOrdersForBill": "e99dddad15827a5c6b2a342f236a60a462edcc406f9896a1b04800a76def929a", "GetPurchaseOrdersDataForBill": "a94f43960ae91e6f62332a9e3268f9789ccdd847c8951dbf27a7d2ff25c5565d", "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8", "GetVendor": "efb7af01229000ecacf09372a1fe51b5c0d7340e82b599747a5900a9fb5596f5", "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e", "GetReceivedOrdersWithReceivedOrderLineItems": "944ee7858fbb16d20952732005eb6c1138049ab97c64a34e15c0dfab19e2aa3e", "GetProcessNode": "fae7d1d1d4e5ceae7b3c4e4d138ce9027158c37a7266b68f75264ec1756adbfe", "ProcessNode": "72a77473ba27a4854aa25e147d651f864a3fb6cb8893c169a00f8fd90b9d3f4c", "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af", "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d", "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3", "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3", "CreateEditProcessDialogQuery": "de4bc7fb144adaf8d3e314a2849b0680b6107f228890a463e59b74ca7eb9a0c0", "GetTreatment": "87a9d9f60a00814e8573ec59c0817fc2d29777777aa592a7db221a339322a750", "AllTreatments": "69c99e3fbb343cf07c0b95189b32ae411228a154f06588a9c28c58f8da26220b", "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca", "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2", "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec", "AllSensorDashboards": "432339f25bae0153d88fff64302df0bea1769987af20812c312748eb2babeedf", "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a", "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705", "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e", "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e"}}, "domain": {"id": 344, "dimensionIds": {"linea": 349, "departamento": 586}, "billingDefaults": {"departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado"}, "inputSchemaId_PN": 3932, "inputSchemaId_Quote": 659, "inputSchemaId_Bill": 27, "stagesRevisionId": 306, "ganadaStageId": 1212, "revertStageId": 1208, "geometryGenericaId": 831, "validacionProcessNodeIds": [231176, 231174], "unitIds": {"KGM": 3969, "LBR": 3972, "FTK": 4797, "CMK": 4907, "DMK": 3975, "FOT": 5148, "LM": 5150, "LO": 5348, "MTR": 3971}, "conversions": {"KGM_TO_LBR": 2.20462, "CMK_TO_FTK": 0.00107639, "LM_TO_FOT": 3.28084}, "geometryDimensions": {"LENGTH": 1284, "WIDTH": 1011, "HEIGHT": 1012, "OUTER_DIAM": 1013, "INNER_DIAM": 1014}, "empresas": {"ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México"}, "predictiveMaterials": {"PlataFina": 55113, "EstanoPuro": 55114, "Niquel": 55115, "Zinc": 55116, "Cobre": 55117, "Sterlingshield_S": 55118, "Epoxy_MT": 55119, "Epoxica_BT": 55120, "Epoxica_MT_Red": 55121}, "schneiderQueretaro": {"customerId": 176980, "shipToAddressId": 277022, "inputSchemaId": 559, "invoiceTermsId": 3142, "sectorId": 578, "shipMethodId": 4661, "poNumberRegex": "^1[14]\\d{8}$", "restantesOvName": "Restantes Schneider QRO"}, "processAudit": {"satelliteOverrides": {"include": [], "exclude": []}, "finishProductMap": {"EST": ["ESTAÑADO", "ESTAÑO"], "NIQ": ["NIQUELADO", "NIQUEL"], "NSU": ["NIQUEL SULFAMATO", "NIQUEL"], "NWO": ["NIQUEL WOOD", "NIQUEL"], "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"], "NBR": ["NIQUEL BRILLANTE", "NIQUEL"], "NCV": ["NIQUEL CHEVROL", "NIQUEL"], "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"], "CRO": ["CROMADO", "CROMO"], "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"], "PLA": ["PLATEADO", "PLATA"], "PLF": ["PLATA FLASH", "PLATA"], "COB": ["COBREADO", "COBRE"], "ZIN": ["ZINCADO", "ZINC"], "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"], "EST_T2": ["ESTAÑADO", "ESTAÑO"], "PAV": ["PAVONADO"], "FMS": ["FOSFATO MANGANESO"], "FZI": ["FOSFATO ZINC"], "AND": ["ANODIZADO"], "IRI": ["IRIDIZADO"], "BDP": ["BAÑO DE PASIVADO"], "BRI": ["BRILLO QUIMICO"], "PRE": ["PRELIMPIEZA", "LIMPIEZA"], "ROD": ["RODADO"], "REB": ["REBABADO", "REBARBADO"], "LES": ["LIMPIEZA ESPECIAL"], "DES": ["DESOXIDADO"], "PUL": ["PULIDO"], "ELE": ["ELECTROPULIDO"], "TIN": ["TINTURADO"], "ESM": ["ESMERILADO"], "SAB": ["SABLEADO"], "LMC": ["LIMPIEZA QUIMICA"], "NOX": ["NOX"], "LAV": ["LAVADO"], "DEC": ["DECAPADO"], "PAS": ["PASIVADO"], "ANT": ["ANTITARNISH"], "HOR": ["HORNEADO", "HORNO"], "FIB": ["FIBRADO"], "ENM": ["ENMASCARADO"], "DNM": ["DESENMASCARADO"], "ACE": ["ACEITADO"], "ABR": ["ABRILLANTADO"], "TRT": ["TRATAMIENTO TERMICO"], "EBT": ["EPOXICA BT"], "EMT": ["EPOXY MT"], "EMR": ["EPOXICA MR"], "CAZ": ["CAJA ZINC", "ZINC"], "CTR": ["CILINDRO TRADICIONAL"], "CVO": ["CILINDRO VOLTEO"], "CAM": ["CAMPANA"], "CAT": ["CATARINA"], "CNE": ["CILINDRO NEUMATICO"], "CNT": ["CILINDRO NETO"], "CRJ": ["CILINDRO ROJO"], "CTV": ["CILINDRO TV"], "CNN": ["CILINDRO NN"]}, "concurrency": {"audit": 5, "trees": 5, "parents": 5, "retryDelaysMs": [0, 1000, 2000]}, "duplicates": {"enabled": true, "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"], "ignoreNamePatterns": [], "ignoreIds": []}}, "specParamsBulk": {"concurrency": {"fetchDetails": 5, "editShape": 10}, "batchSize": 50, "retryDelaysMs": [1000, 2000, 4000], "labelMP": "MP", "impPrefixRegex": "^IMP", "page": {"first": 400}}, "bulkUpload": {"concurrency": {"savePartNumber": 8, "archive": 8, "sentinelPreQuoteArchive": 3}, "retry": {"delaysMs": [1000, 2000, 4000]}, "paging": {"allPartNumbers": {"first": 200, "maxResults": 1000, "massiveMaxResults": 50000}}, "preview": {"pageSize": 100}, "resume": {"maxEntries": 20, "purgeAgeDays": 7}, "nonFinishLabelNames": ["SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2", "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"], "metalEquivalents": [["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"], ["Plata", "Plata Flash"]], "dedup": {"massiveThreshold": 1000}, "chunking": {"defaultChunkSize": 250}, "debug": {"logPredictiveParse": true, "logPredictiveSampleRows": 20}}, "auditor": {"largeCustomers": [{"name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000}], "hardCapPns": 8000, "hardCapWithExclusions": 15000}}}, "portalLayouts": {"hubbell": {"name": "Hubbell Portal", "detection": {"requiredColumns": ["number", "status", "lineItem.itemNumber", "lineItem.materialCodeBuyer", "lineItem.materialDescription", "lineItem.netPrice", "lineItem.priceUnit", "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"], "minMatchRatio": 0.9}, "mapping": {"poNumber": "number", "status": "status", "customer": "customerAddressName", "currency": "currency", "date": "date", "lineNumber": "lineItem.itemNumber", "buyerCode": "lineItem.materialCodeBuyer", "description": "lineItem.note", "netPrice": "lineItem.netPrice", "priceUnit": "lineItem.priceUnit", "quantity": "lineItem.targetQuantity", "deliveryDate": "lineItem.schedule.deliveryDate", "unit": "lineItem.unit"}, "pnExtractor": {"type": "regex", "source": "description", "patterns": ["(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)", "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"]}, "statusFilter": {"activeValues": ["Nuevo"]}, "unitPriceFormula": "netPrice / priceUnit"}}, "unitAutoConvertEnabled": true, "apps": [{"id": "load-calculator", "name": "Calculadora de Piezas por Carga", "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types", "icon": "⚙️", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/load-calculator-engine.js", "scripts/load-calculator-stations.js", "scripts/load-calculator.js", "scripts/load-calculator-modal.js"], "requiredPermissions": [], "actions": [{"id": "open-station-config", "label": "Configurar Estaciones", "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea", "icon": "⚙️", "type": "primary", "handler": "message", "message": "open-station-config", "fn": "LoadCalculator.openStationConfig"}]}, {"id": "proceso-calculator", "name": "Calculadora de Procesos", "subtitle": "Sugiere Default Process al editar un NP", "icon": "🧮", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"], "requiredPermissions": []}, {"id": "carga-masiva", "name": "Carga Masiva", "subtitle": "Cotizaciones y NP", "icon": "📊", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"], "actions": [{"id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker"}, {"id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs"}, {"id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history"}]}, {"id": "hash-scanner", "name": "Explorador Steelhead", "subtitle": "Captura de APIs", "icon": "🔍", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"], "requiredPermissions": ["WRITE_USER_PERMISSIONS"], "actions": [{"id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan"}, {"id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results"}, {"id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config"}, {"id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge"}]}, {"id": "archiver", "name": "Archivador de PNs", "subtitle": "Por etiquetas, fecha y modo", "icon": "📦", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver"}]}, {"id": "auditor", "name": "Auditor de PNs", "subtitle": "Verificar calidad de datos", "icon": "🔎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor"}]}, {"id": "file-uploader", "name": "Cargador de Archivos", "subtitle": "Fotos y planos por PN", "icon": "📎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"], "requiredPermissions": ["READ_ALL_UPLOADED_FILES"], "actions": [{"id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files"}, {"id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup"}]}, {"id": "report-liberator", "name": "Liberador de Reportes", "subtitle": "Sacar reportes de carpetas", "icon": "📂", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator"}]}, {"id": "report-regen", "name": "Regenerar Reportes", "subtitle": "Fuerza el refresh global de la base de reportes", "icon": "♻️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup"}]}, {"id": "spec-migrator", "name": "Ajuste Masivo de Specs", "subtitle": "Migración y params pendientes", "icon": "🔀", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator.js"], "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"], "actions": [{"id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run"}, {"id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams"}, {"id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts"}, {"id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator"}]}, {"id": "inventory-reset", "name": "Reinicio de Inventario", "subtitle": "Archivar lotes y carga inicial", "icon": "🔄", "category": "Inventario", "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"], "requiredPermissions": ["READ_INVENTORY"], "actions": [{"id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset"}]}, {"id": "po-comparator", "name": "Validador OC vs OV", "subtitle": "Comparar orden de compra vs venta", "icon": "📋", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator"}]}, {"id": "po-reconciler", "name": "Reconciliador OV vs PO Schneider", "subtitle": "Rebalancear OVs temporales contra POs reales", "icon": "🧮", "category": "Órdenes de Venta", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "autoInject": true, "actions": [{"id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler"}]}, {"id": "wo-deadline", "name": "Gestión Masiva de OT", "subtitle": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run"}]}, {"id": "wo-mover", "name": "Mover OTs entre OVs", "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV", "icon": "↔️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"], "autoInject": true, "actions": [{"id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover"}]}, {"id": "cfdi-attacher", "name": "Adjuntar CFDI", "subtitle": "Auto-adjunta XML CFDI al enviar facturas", "icon": "📄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher"}]}, {"id": "invoice-auto-regen", "name": "Auto-regenerar Facturas", "subtitle": "Regenera PDF al detectar timbrado exitoso", "icon": "🔄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-auto-regen.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-auto-regen", "label": "Auto-regenerar Facturas", "sublabel": "Regenera PDF tras timbrado exitoso", "icon": "🔄", "type": "toggle", "handler": "message", "message": "toggle-invoice-auto-regen"}]}, {"id": "invoice-default-tab", "name": "Tab por defecto en Invoices", "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=", "icon": "📦", "category": "Facturación", "scripts": ["scripts/invoice-default-tab.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-default-tab", "label": "Tab por defecto Invoices", "sublabel": "Salta a Packing Slips al entrar a /Invoices", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-invoice-default-tab"}]}, {"id": "invoice-listing-marker", "name": "Marcadores de Facturas", "subtitle": "Resalta NC, montos cero y borradores en el listado", "icon": "🎯", "category": "Facturación", "scripts": ["scripts/invoice-listing-marker.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker"}]}, {"id": "portal-importer", "name": "Importador de Portales", "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)", "icon": "📥", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer"}]}, {"id": "paros-linea", "name": "Paro de Línea", "subtitle": "Registrar paros con cronómetro", "icon": "⚠️", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea"}, {"id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled"}]}, {"id": "weight-quick-entry", "name": "Peso Rápido", "subtitle": "Registra peso KG/LB desde el modal de recibo", "icon": "⚖️", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry"}]}, {"id": "unit-autoconvert", "name": "Auto-conversión de Unidades", "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP", "icon": "📐", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"], "autoInject": true, "requiredPermissions": []}, {"id": "receiver-date-override", "name": "Fecha de Recibo", "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts", "icon": "📅", "category": "Recibo", "scripts": ["scripts/receiver-date-override.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override"}]}, {"id": "warehouse-location-prefill", "name": "Ubicación de Recibo", "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts", "icon": "📦", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill"}]}, {"id": "create-order-autofill", "name": "Crear OV — Autofill", "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta", "icon": "📝", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill"}]}, {"id": "bill-autofill", "name": "Bill Autofill", "subtitle": "Llenado automático de cuentas contables en Bills", "icon": "🧾", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"], "actions": [{"id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill"}]}, {"id": "invoice-autofill", "name": "Invoice Autofill", "subtitle": "Llenado automático de cuentas contables en Invoices", "icon": "🧮", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill"}]}, {"id": "process-canon", "name": "Canon de Procesos", "subtitle": "Auditar y normalizar nodos canónicos", "icon": "🏭", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"], "actions": [{"id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run"}, {"id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit"}]}, {"id": "spec-params-bulk", "name": "Carga masiva Spec Params", "subtitle": "Editar parámetros de specs vía XLSX", "icon": "🧪", "category": "Calidad", "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"], "requiredPermissions": [], "actions": [{"id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params"}, {"id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params"}]}, {"id": "sensor-status-autofill", "name": "Auto-asignar status (Sensor Dashboards)", "subtitle": "Marca 'Use for Status' en members de un dashboard", "icon": "📊", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"], "requiredPermissions": [], "actions": [{"id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status"}]}, {"id": "auto-router", "name": "Auto-Ruteador", "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción", "icon": "🔀", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/auto-router-engine.js", "scripts/auto-router-api.js", "scripts/auto-router-panel.js", "scripts/auto-router-batch.js", "scripts/board-metal-tooltip.js", "scripts/auto-router.js"], "requiredPermissions": [], "actions": [{"id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router"}, {"id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch"}]}, {"id": "surtido-guard", "name": "Candado de Surtido Programado", "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido", "icon": "🔒", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/surtido-guard-core.js", "scripts/surtido-guard.js"], "requiredPermissions": [], "actions": [{"id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup"}]}], "knownOperations": {"StationTreatmentByWorkOrder": {"type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router"}, "SearchStationsForTreatment": {"type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router"}, "CreateUpdateDeleteRoutes": {"type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router"}, "PartNumbersByWorkOrderIdInDomain": {"type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router"}, "GetPartNumberInventoryBatch": {"type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router"}, "GetInventoryBatch": {"type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router"}, "SchedulablePartLocations": {"type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router"}, "CreateQuote": {"type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva"}, "UpdateQuote": {"type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva"}, "SaveQuoteLines": {"type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva"}, "CreateQuoteStageChange": {"type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva"}, "SaveManyPartNumberPrices": {"type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva"}, "SavePartNumber": {"type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva"}, "SavePartNumberRackTypes": {"type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva"}, "SetPartNumberPricesAsDefaultPrice": {"type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva"}, "UpdatePartNumber": {"type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva"}, "CreatePartNumberGroup": {"type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva"}, "CustomerSearchByName": {"type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva"}, "CustomerFinancialByCustomerId": {"type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva"}, "GetQuote": {"type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva"}, "GetQuoteRelatedData": {"type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva"}, "SearchInvoiceTerms": {"type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva"}, "SearchUsers": {"type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva"}, "AllProcesses": {"type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva"}, "AllLabels": {"type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva"}, "DeleteWorkOrderLabels": {"type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline"}, "CreateWorkOrderLabel": {"type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline"}, "SearchSpecsForSelect": {"type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva"}, "TempSpecFieldsAndOptions": {"type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva"}, "AllRackTypes": {"type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva"}, "SearchUnits": {"type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert"}, "SearchProducts": {"type": "query", "description": "Buscar productos para líneas de cotización", "usedBy": "carga-masiva"}, "SearchPartNumbers": {"type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva"}, "PartNumberGroupSelect": {"type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva"}, "DeletePartNumberPrice": {"type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva"}, "DeletePartNumberRackType": {"type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva"}, "CreatePartNumberInputSchema": {"type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva"}, "GetDimension": {"type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva"}, "Customer": {"type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill"}, "AllInventoryTypes": {"type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset"}, "SearchInventoryTypeItems": {"type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset"}, "SearchInventoryItemBatches": {"type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset"}, "AllInventoryBatchStatuses": {"type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset"}, "CreateEditInventoryBatchDialogQuery": {"type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset"}, "SearchLocationsOnPath": {"type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill"}, "UpdateInventoryBatchesChecked": {"type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset"}, "CreateInventoryTransferEventGroups": {"type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset"}, "GetSpec": {"type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator"}, "SpecFieldsAndOptions": {"type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator"}, "ApplySpecsToPartNumber": {"type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator"}, "ArchivePartNumberSpecAndParams": {"type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator"}, "UpdatePartNumberSpecParam": {"type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator"}, "AddParamsToPartNumber": {"type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator"}, "FilterSearch": {"type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator"}, "AllReports": {"type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator"}, "CreateUpdateReportWithPermissions": {"type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator"}, "DeleteFolderById": {"type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator"}, "ArchiveReport": {"type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator"}, "CreateUpdateBill": {"type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill"}, "GetPurchaseOrder": {"type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain", "usedBy": "bill-autofill"}, "GetDomain": {"type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill"}, "SearchAccounts": {"type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill"}, "GetAccountDataForBill": {"type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill"}, "GetBillByIdInDomain": {"type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill"}, "GetPartNumbersInputSchema": {"type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva"}, "AllSpecs": {"type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva"}, "AllCustomers": {"type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva"}, "UpdateInventoryItemPredictedUsage": {"type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva"}, "ArchivePredictedInventoryUsage": {"type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash"}, "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {"type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva"}, "UpdatePartNumberPerPerRackType": {"type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva"}, "GetSpecFieldPartNumbers": {"type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator"}, "CheckDuplicatePO": {"type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator"}, "ActiveReceivedOrders": {"type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator"}, "GetReceivedOrder": {"type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator"}, "GetAddPartsReceivedOrder": {"type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler"}, "GetReceivedOrderLine": {"type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator"}, "GetReceivedOrderDocuments": {"type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator"}, "RouteReceivedOrders": {"type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator"}, "GetReceivedOrderCosts": {"type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator"}, "ReceivingBatchesQuery": {"type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator"}, "EmailCustomerContactsByCustomerIds": {"type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator"}, "GetEmailDefaultByTypeAndSubType": {"type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator"}, "GetUserEmailRecipients": {"type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator"}, "SaveReceivedOrderLinesAndItems": {"type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator"}, "SaveReceivedOrderPartTransforms": {"type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer"}, "UpdateReceivedOrder": {"type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler"}, "AddPartsToWorkOrders": {"type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler"}, "CreateUpdateWorkOrdersChecked": {"type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler"}, "SendEmailChecked": {"type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher"}, "CreateEmailLogReceivedOrder": {"type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator"}, "InvoiceByIdInDomain": {"type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher"}, "CreateInvoicePdf": {"type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher"}, "ActiveInvoicesPaged": {"type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen"}, "CreateInvoiceEmailLog": {"type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher"}, "CurrentUser": {"type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions"}, "CurrentUserDetails": {"type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea"}, "CurrentUserActiveSegments": {"type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload"}, "GlobalUsers": {"type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions"}, "CreateReceivedOrder": {"type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator"}, "CreateUserFile": {"type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader"}, "CreateReceivedOrderUserFile": {"type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator"}, "CreateEditReceivedOrderDialogQuery": {"type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator"}, "GetCustomerInfoForReceivedOrder": {"type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator"}, "PartNumberCreatableSelectGetPartNumbers": {"type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator"}, "SearchPartNumberPrices": {"type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator"}, "CreateMaintenanceEvent": {"type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea"}, "CreateMaintenanceNodeEvent": {"type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea"}, "CreateManySensorMeasurements": {"type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea"}, "UpdateMaintenanceEvent": {"type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea"}, "CreateMaintenanceEventComment": {"type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea"}, "CreateMaintenanceEventUserFile": {"type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea"}, "CreateMaintenanceEventDialogQuery": {"type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea"}, "OperatorMaintenanceNodeDialogQuery": {"type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea"}, "SearchEquipments": {"type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea"}, "WorkboardById": {"type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea"}, "AllEquipments": {"type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea"}, "AllPermissionsEditManyPermissions": {"type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings"}, "GetAvailableUnits": {"type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "CreateInventoryItemUnitConversion": {"type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert"}, "UpdateInventoryItemUnitConversion": {"type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "InvoiceLowCodeData": {"type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill"}, "GetReceivedOrdersWithReceivedOrderLineItems": {"type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill"}, "CreateInvoiceAndUpdatePartTransferAccounts": {"type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill"}, "GetProcessNode": {"type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit"}, "CreateEditProcessDialogQuery": {"type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit"}, "GetTreatment": {"type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit"}, "AllTreatments": {"type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit"}, "CreateEditTreatmentTimesDialogQuery": {"type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit"}, "StationsByTreatmentId": {"type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit"}, "GetProcessNodeParents": {"type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit"}, "ProcessNode": {"type": "query", "description": "Lectura ligera de un process node (fallback de GetProcessNode)", "usedBy": "process-canon"}, "AllTagsAndNodes": {"type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon"}, "ProcessesComponentQuery": {"type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon"}, "ProcessesWithTag": {"type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon"}, "GetAllTagsQuery": {"type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon"}, "CreateProcessNode": {"type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon"}, "ProcureTree": {"type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon"}, "UpdateProcessNode": {"type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon"}, "UpdateReceiver": {"type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)"}, "CreateReceiverChecked": {"type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"}}, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm"};
+  try { if (window.SteelheadAPI && window.SteelheadAPI.init) window.SteelheadAPI.init(window.REMOTE_CONFIG); } catch (e) {}
+})();
+// ===== END config-seed =====
+
+// ===== BEGIN sa-bootstrap.js =====
+(function(){
+// sa-bootstrap.js — PRELUDE del bundle (MAIN world). build-safari.sh lo concatena PRIMERO en
+// main-bundle.js. Recibe el config.json que bridge.js (mundo aislado) fetchea de gh-pages y lo instala:
+//   · window.REMOTE_CONFIG  → lo leen applets como paros-linea (const cfg = () => window.REMOTE_CONFIG)
+//   · SteelheadAPI.init(config) → carga los hashes para query()/getHash()
+//
+// El config llega de forma ASÍNCRONA (tras el fetch del bridge, ~cientos de ms). Las mutaciones de
+// los applets ocurren por ACCIÓN del usuario (clicks posteriores), así que para entonces el config ya
+// está. Como los hashes NO se hornean en el bundle, rotan en caliente (git push a gh-pages) sin rebuild.
+(function () {
+  'use strict';
+  window.addEventListener('message', function (e) {
+    if (e.source !== window) return;
+    var d = e.data;
+    if (!d || d.__saBridge !== true || d.type !== 'config' || !d.config) return;
+    window.REMOTE_CONFIG = d.config;
+    try {
+      if (window.SteelheadAPI && typeof window.SteelheadAPI.init === 'function') {
+        window.SteelheadAPI.init(d.config);
+      }
+    } catch (err) { console.error('[SA] bootstrap: SteelheadAPI.init falló', err); }
+  });
+})();
+})();
+// ===== END sa-bootstrap.js =====
 

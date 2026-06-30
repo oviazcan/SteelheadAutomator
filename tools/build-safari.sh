@@ -23,7 +23,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 python3 - "$ROOT" "${1:-}" <<'PY'
-import sys, json, os
+import sys, json, os, re
 
 root  = sys.argv[1]
 check = len(sys.argv) > 2 and sys.argv[2] in ('--check', 'check')
@@ -55,14 +55,6 @@ parts = [
     "",
 ]
 
-# Prelude: bootstrap del MAIN world — recibe el config.json que bridge.js (mundo aislado)
-# fetchea de gh-pages e instala window.REMOTE_CONFIG + SteelheadAPI.init (hashes en caliente).
-boot = os.path.join(root, 'safari', 'sa-bootstrap.js')
-if os.path.exists(boot):
-    parts += ["// ===== BEGIN sa-bootstrap.js (prelude) =====", "(function(){",
-              open(boot, encoding='utf-8').read().rstrip("\n"), "})();",
-              "// ===== END sa-bootstrap.js =====", ""]
-
 for rel in ordered:
     src = os.path.join(root, 'remote', rel)
     if not os.path.exists(src):
@@ -70,6 +62,25 @@ for rel in ordered:
     code = open(src, encoding='utf-8').read()
     parts += [f"// ===== BEGIN {rel} =====", "(function(){", code.rstrip("\n"), "})();",
               f"// ===== END {rel} =====", ""]
+
+# Config SEMILLA (horneado) — disponible SÍNCRONAMENTE en document_start, ANTES de que los
+# applets corran su init() en DOMContentLoaded. Muchos hacen una query (CurrentUserDetails,
+# catálogos) que necesita el config; sin la semilla la query falla y el FAB no aparece. El
+# bridge (sa-bootstrap) lo REFRESCA en caliente. Marcado para que --check IGNORE este bloque:
+# una rotación de hash actualiza la semilla pero NO debe marcar el bundle como "drift" (los
+# hashes se sirven en caliente vía bridge; regenerar es opcional).
+parts += ["// ===== BEGIN config-seed (ignorado por --check) =====", "(function(){",
+          "  window.REMOTE_CONFIG = " + json.dumps(config, ensure_ascii=False) + ";",
+          "  try { if (window.SteelheadAPI && window.SteelheadAPI.init) window.SteelheadAPI.init(window.REMOTE_CONFIG); } catch (e) {}",
+          "})();", "// ===== END config-seed =====", ""]
+
+# Bootstrap: refresca el config en caliente cuando bridge.js lo trae de gh-pages.
+boot = os.path.join(root, 'safari', 'sa-bootstrap.js')
+if os.path.exists(boot):
+    parts += ["// ===== BEGIN sa-bootstrap.js =====", "(function(){",
+              open(boot, encoding='utf-8').read().rstrip("\n"), "})();",
+              "// ===== END sa-bootstrap.js =====", ""]
+
 bundle_js = "\n".join(parts) + "\n"
 
 manifest = {
@@ -93,8 +104,13 @@ manifest_path = os.path.join(ext, 'manifest.json')
 def read(p):
     return open(p, encoding='utf-8').read() if os.path.exists(p) else None
 
+def strip_seed(s):
+    # El config-seed (datos, no código) cambia con cada rotación de hash. --check lo ignora
+    # para no marcar "drift" cuando los hashes solo deben refrescarse en caliente (bridge).
+    return re.sub(r'// ===== BEGIN config-seed.*?// ===== END config-seed =====', '<<SEED>>', s or '', flags=re.S)
+
 if check:
-    drift = (read(bundle_path) != bundle_js) or (read(manifest_path) != manifest_str)
+    drift = (strip_seed(read(bundle_path)) != strip_seed(bundle_js)) or (read(manifest_path) != manifest_str)
     if drift:
         print("DRIFT: el bundle de Safari/iPad está desactualizado respecto a la fuente.")
         sys.exit(3)

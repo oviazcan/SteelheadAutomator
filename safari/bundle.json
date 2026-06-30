@@ -1,13 +1,25 @@
 {
   "name": "Steelhead Automator — iPad",
-  "version": "0.1.0",
-  "description": "Mejoras de Steelhead para iPad (bundle de applets empaquetado). Mini-bundle de validación del pipeline.",
+  "version": "0.2.0",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 16 applets 'directo' del inventario de portabilidad.",
   "matches": ["https://app.gosteelhead.com/*"],
-  "_comment": "Lista blanca de applets (por id en config.json). El build (tools/build-safari.sh) expande cada uno a sus scripts vía config.apps[].scripts, deduplica preservando orden (los helpers compartidos quedan antes) y concatena en main-bundle.js. Para escalar al bundle v1 completo, agrega aquí los 16 'directo' del inventario.",
+  "_comment": "Lista blanca de applets (por id en config.json). build-safari.sh expande cada uno a sus scripts vía config.apps[].scripts, deduplica preservando orden (helpers antes) y concatena en main-bundle.js. Estos son los 16 'directo' del inventario (docs/architecture/ipad-applets-inventory.html). Los 'con-popup' (auto-router, archiver, load-calculator, sensor-status-autofill...) entran cuando se porte el popup.",
   "applets": [
     "surtido-guard",
-    "paros-linea",
     "weight-quick-entry",
-    "receiver-date-override"
+    "receiver-date-override",
+    "warehouse-location-prefill",
+    "create-order-autofill",
+    "proceso-calculator",
+    "invoice-listing-marker",
+    "paros-linea",
+    "report-regen",
+    "invoice-default-tab",
+    "cfdi-attacher",
+    "invoice-autofill",
+    "bill-autofill",
+    "wo-mover",
+    "unit-autoconvert",
+    "invoice-auto-regen"
   ]
 }

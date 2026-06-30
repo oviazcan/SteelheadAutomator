@@ -59,7 +59,20 @@ test('manifest: bridge (ISOLATED) + bundle (MAIN)', () => {
   assert.deepStrictEqual(iso.js, ['bridge.js']);
 });
 
-test('el bundle incluye el prelude de bootstrap (config/hashes en caliente)', () => {
-  assert.ok(bundle.includes('sa-bootstrap.js (prelude)'), 'falta el prelude en el bundle');
-  assert.ok(bundle.includes('REMOTE_CONFIG'), 'el prelude debe instalar window.REMOTE_CONFIG');
+test('el bundle trae bridge bootstrap + config seed (caliente + arranque síncrono)', () => {
+  assert.ok(bundle.includes('BEGIN sa-bootstrap.js'), 'falta el listener del bridge (refresh en caliente)');
+  assert.ok(bundle.includes('BEGIN config-seed'), 'falta el config-seed (arranque síncrono)');
+  assert.ok(/window\.REMOTE_CONFIG\s*=\s*\{/.test(bundle), 'el seed debe asignar window.REMOTE_CONFIG');
+});
+
+test('--check ignora cambios SOLO en el config-seed (hashes en caliente, sin drift)', () => {
+  const p = path.join(EXT, 'main-bundle.js');
+  const orig = fs.readFileSync(p, 'utf8');
+  const tampered = orig.replace(/("CreateMaintenanceEvent":\s*")[0-9a-f]{64}(")/, '$1deadbeef$2');
+  assert.notStrictEqual(tampered, orig, 'el seed debe contener el hash a alterar');
+  fs.writeFileSync(p, tampered);
+  let code = 0;
+  try { execSync('tools/build-safari.sh --check', { cwd: ROOT, stdio: 'pipe' }); } catch (e) { code = e.status; }
+  fs.writeFileSync(p, orig); // restaurar
+  assert.strictEqual(code, 0, '--check NO debe marcar drift por cambio solo en el config-seed');
 });
