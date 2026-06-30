@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía — Candado de Surtido en Safari/iPad (POC)</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#ffffff; --ink:#1c2430; --ink-soft:#55606e; --line:#e4e8ee;
+    --accent:#13a36f; --accent-ink:#0c7a52; --code-bg:#1c2430; --code-ink:#e6e9ee;
+    --warn-bg:#fff6ed; --warn-line:#f0a35a; --warn-ink:#8a4b12;
+    --note-bg:#eef4ff; --note-line:#7aa7f0; --note-ink:#274a86;
+    --tip-bg:#ecfaf3; --tip-line:#13a36f; --tip-ink:#0c6f49;
+    --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    text-rendering:optimizeLegibility;
+  }
+  .wrap{max-width:840px; margin:0 auto; padding:40px 22px 80px}
+  h1,h2,h3{text-wrap:balance; line-height:1.25; letter-spacing:-0.01em}
+  p,li{text-wrap:pretty}
+  a{color:var(--accent-ink); text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.92em}
+
+  /* Header */
+  header.hero{
+    background:linear-gradient(135deg,#1c2430,#27384a);
+    color:#eef2f6; border-radius:var(--radius); padding:30px 30px 26px;
+    box-shadow:0 1px 2px rgba(0,0,0,.06), 0 10px 30px rgba(28,36,48,.18);
+  }
+  header.hero .eyebrow{
+    display:inline-block; font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:#9fe9c8; background:rgba(19,163,111,.16); padding:5px 11px; border-radius:999px;
+  }
+  header.hero h1{margin:14px 0 6px; font-size:28px; color:#fff}
+  header.hero p{margin:0; color:#b9c4d0; font-size:15px}
+
+  /* Flow chips */
+  .flow{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:22px 0 4px}
+  .chip{
+    background:var(--card); border-radius:11px; padding:9px 13px; font-size:13.5px; font-weight:600;
+    box-shadow:0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.05);
+  }
+  .chip.done{color:var(--accent-ink)}
+  .arrow{color:var(--ink-soft); font-weight:700}
+
+  /* Status banner */
+  .status{
+    margin:18px 0 0; padding:14px 16px; background:var(--tip-bg); color:var(--tip-ink);
+    border-radius:12px; box-shadow:inset 3px 0 0 0 var(--tip-line); font-size:14.5px;
+  }
+
+  /* TOC */
+  nav.toc{
+    margin:26px 0 8px; padding:16px 18px; background:var(--card); border-radius:14px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05);
+  }
+  nav.toc strong{font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft)}
+  nav.toc ol{margin:10px 0 0; padding-left:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:6px 18px}
+  nav.toc li{counter-increment:toc}
+  nav.toc a{display:flex; gap:9px; padding:5px 6px; border-radius:8px; color:var(--ink)}
+  nav.toc a:hover{background:var(--bg); text-decoration:none}
+  nav.toc a .n{font-variant-numeric:tabular-nums; color:var(--accent-ink); font-weight:700; min-width:1.4em}
+
+  /* Step cards */
+  section.step{
+    background:var(--card); border-radius:var(--radius); padding:24px 26px; margin:18px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 22px rgba(0,0,0,.06);
+  }
+  .step-head{display:flex; align-items:center; gap:13px; margin:0 0 6px}
+  .badge{
+    flex:none; width:34px; height:34px; border-radius:50%; display:grid; place-items:center;
+    background:var(--accent); color:#fff; font-weight:700; font-size:15px; font-variant-numeric:tabular-nums;
+    box-shadow:0 2px 6px rgba(19,163,111,.35);
+  }
+  .step h2{margin:0; font-size:20px}
+  .step .sub{color:var(--ink-soft); font-size:13.5px; margin:2px 0 0}
+  .step > p:first-of-type{margin-top:14px}
+  ol.steps{padding-left:22px} ol.steps li{margin:6px 0}
+  ul.tight{padding-left:20px} ul.tight li{margin:5px 0}
+
+  /* Code block + copy */
+  .code{position:relative; margin:14px 0}
+  .code pre{
+    margin:0; background:var(--code-bg); color:var(--code-ink); border-radius:12px;
+    padding:15px 16px; overflow-x:auto; font-size:13.5px; line-height:1.55;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);
+  }
+  .code pre code{color:inherit; white-space:pre}
+  .copy{
+    position:absolute; top:9px; right:9px; border:0; cursor:pointer;
+    background:rgba(255,255,255,.10); color:#d6f5e7; font-size:12px; font-weight:600;
+    padding:6px 11px; border-radius:8px; min-width:40px; min-height:30px;
+    transition-property:scale,background-color,color; transition-duration:.14s; transition-timing-function:cubic-bezier(.2,0,0,1);
+  }
+  .copy:hover{background:rgba(19,163,111,.32)}
+  .copy:active{scale:.96}
+  .copy.ok{background:var(--accent); color:#fff}
+
+  /* Callouts */
+  .callout{border-radius:12px; padding:13px 16px; margin:14px 0; font-size:14.5px}
+  .callout p{margin:6px 0} .callout p:first-child{margin-top:0} .callout p:last-child{margin-bottom:0}
+  .callout .label{font-weight:700; letter-spacing:.02em}
+  .note{background:var(--note-bg); color:var(--note-ink); box-shadow:inset 3px 0 0 0 var(--note-line)}
+  .warn{background:var(--warn-bg); color:var(--warn-ink); box-shadow:inset 3px 0 0 0 var(--warn-line)}
+  .tip{background:var(--tip-bg); color:var(--tip-ink); box-shadow:inset 3px 0 0 0 var(--tip-line)}
+
+  kbd{background:#eef1f5; border-radius:6px; padding:1px 7px; font-size:.85em; font-weight:600;
+    box-shadow:inset 0 -1px 0 rgba(0,0,0,.08), 0 1px 1px rgba(0,0,0,.05); font-family:inherit}
+  .placeholder{font-size:12.5px; color:var(--ink-soft); font-style:italic; margin-top:8px}
+
+  footer{margin-top:34px; padding-top:18px; color:var(--ink-soft); font-size:13px; text-align:center;
+    box-shadow:inset 0 1px 0 var(--line)}
+  footer a{color:var(--ink-soft); text-decoration:underline}
+
+  @media (max-width:560px){ nav.toc ol{grid-template-columns:1fr} .wrap{padding:26px 16px 60px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">POC · Safari Web Extension</span>
+    <h1>Candado de Surtido en iPad — guía de build</h1>
+    <p>Convertir el <em>source</em> de <code>safari/extension/</code> en una app instalable en iPad y probar el bloqueo. Pensada para alguien que nunca tocó Xcode.</p>
+    <div class="flow">
+      <span class="chip done">📁 safari/extension/ <span style="font-weight:400;opacity:.7">(ya hecho)</span></span>
+      <span class="arrow">→</span>
+      <span class="chip">⚙️ converter</span>
+      <span class="arrow">→</span>
+      <span class="chip">🛠️ proyecto Xcode</span>
+      <span class="arrow">→</span>
+      <span class="chip">🔏 firmar</span>
+      <span class="arrow">→</span>
+      <span class="chip">📱 iPad</span>
+    </div>
+  </header>
+
+  <div class="status">
+    <strong>Estado del POC:</strong> <code>safari/extension/</code> ya está listo (manifest MV3, <code>surtido-guard*.js</code>, iconos y la variante plan B). Solo falta lo que requiere la GUI de Xcode + un iPad físico. <strong>~1–3 h la primera vez.</strong>
+  </div>
+
+  <nav class="toc">
+    <strong>Pasos</strong>
+    <ol>
+      <li><a href="#p0"><span class="n">0</span> Instalar Xcode</a></li>
+      <li><a href="#p1"><span class="n">1</span> Generar el proyecto</a></li>
+      <li><a href="#p2"><span class="n">2</span> Abrir y firmar</a></li>
+      <li><a href="#p3"><span class="n">3</span> Instalar en el iPad</a></li>
+      <li><a href="#p4"><span class="n">4</span> Activar la extensión</a></li>
+      <li><a href="#p5"><span class="n">5</span> Probar el candado</a></li>
+      <li><a href="#planb"><span class="n">B</span> Plan B (fallback)</a></li>
+      <li><a href="#mant"><span class="n">↻</span> Mantener al día</a></li>
+    </ol>
+  </nav>
+
+  <div class="callout note">
+    <p><span class="label">El modelo mental:</span> no se crea un proyecto a mano ni se clona otro repo. El repo <em>ya</em> está clonado, y el <strong>converter de Apple genera</strong> el proyecto Xcode a partir de <code>safari/extension/</code>.</p>
+  </div>
+
+  <section class="step" id="p0">
+    <div class="step-head"><div class="badge">0</div><div><h2>Instalar Xcode</h2><p class="sub">Una sola vez</p></div></div>
+    <p>Hoy la Mac solo tiene <em>Command Line Tools</em>; el converter necesita <strong>Xcode completo</strong>.</p>
+    <ol class="steps">
+      <li>App Store → instala <strong>Xcode</strong> (~7 GB).</li>
+      <li>Apúntalo y acepta la licencia:</li>
+    </ol>
+    <div class="code"><button class="copy">Copiar</button><pre><code>sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept</code></pre></div>
+    <ol class="steps" start="3"><li>Verifica que el converter exista (debe imprimir una ruta):</li></ol>
+    <div class="code"><button class="copy">Copiar</button><pre><code>xcrun --find safari-web-extension-converter</code></pre></div>
+  </section>
+
+  <section class="step" id="p1">
+    <div class="step-head"><div class="badge">1</div><div><h2>Generar el proyecto Xcode</h2><p class="sub">Con el converter, desde la carpeta ya armada</p></div></div>
+    <div class="code"><button class="copy">Copiar</button><pre><code>cd /Users/oviazcan/Projects/Ecoplating/SteelheadAutomator
+xcrun safari-web-extension-converter safari/extension \
+  --project-location safari/xcode \
+  --app-name "Candado Surtido" \
+  --bundle-identifier com.ecoplating.candadosurtido \
+  --ios-only \
+  --copy-resources \
+  --no-open</code></pre></div>
+    <ul class="tight">
+      <li><code>--ios-only</code>: solo target iPad/iPhone (no macOS). Si luego quieres probar en Mac, regeneras sin este flag.</li>
+      <li><code>--copy-resources</code>: copia los <code>.js</code>/<code>manifest</code> dentro del proyecto (autocontenido). Ver <a href="#mant">Mantener al día</a> por el tema de divergencia.</li>
+      <li>Al terminar imprime un resumen.</li>
+    </ul>
+    <div class="callout warn">
+      <p><span class="label">⚠️ Si advierte sobre <code>world: "MAIN"</code></span> (no soportado en tu target) → usa el <a href="#planb">plan B</a> y vuelve a correr este paso. Pégame el output del converter y lo confirmamos.</p>
+    </div>
+  </section>
+
+  <section class="step" id="p2">
+    <div class="step-head"><div class="badge">2</div><div><h2>Abrir y firmar</h2><p class="sub">Con tu Apple ID gratis (sideload 7 días)</p></div></div>
+    <div class="code"><button class="copy">Copiar</button><pre><code>open "safari/xcode/Candado Surtido/Candado Surtido.xcodeproj"</code></pre></div>
+    <p>En Xcode, panel izquierdo → selecciona el proyecto (ícono azul arriba). Verás <strong>2 targets</strong>: <code>Candado Surtido</code> (la app) y <code>Candado Surtido Extension</code> (la extensión). Para <strong>CADA</strong> target:</p>
+    <ol class="steps">
+      <li>Pestaña <strong>Signing &amp; Capabilities</strong>.</li>
+      <li>Marca <strong>Automatically manage signing</strong>.</li>
+      <li><strong>Team</strong> → elige tu Apple ID <em>(Personal Team)</em>. Si no aparece: Xcode → <strong>Settings → Accounts → “+” → Apple ID</strong>. No necesitas cuenta de pago para el POC.</li>
+      <li><strong>Bundle Identifier</strong> único. Si marca conflicto, cámbialo a algo tuyo, p. ej. <code>com.TUNOMBRE.candadosurtido</code> (la extensión queda <code>…candadosurtido.Extension</code>).</li>
+    </ol>
+    <div class="callout tip">
+      <p><span class="label">💡 Firma con Apple ID gratis</span> vale <strong>7 días</strong>: suficiente para el POC. Para producción se usa cuenta Apple Developer ($99) + TestFlight o MDM — ver el <a href="architecture/ipad-surtido-guard-decision.md">documento de decisión</a>.</p>
+    </div>
+    <p class="placeholder">[captura pendiente: pantalla Signing &amp; Capabilities de cada target]</p>
+  </section>
+
+  <section class="step" id="p3">
+    <div class="step-head"><div class="badge">3</div><div><h2>Instalar en el iPad</h2><p class="sub">Por cable, desde Xcode</p></div></div>
+    <ol class="steps">
+      <li>Conecta el iPad por cable. En el iPad, toca <strong>Confiar</strong> (“Trust This Computer”).</li>
+      <li>En Xcode, barra superior: <strong>destino</strong> = tu iPad (no un simulador), <strong>esquema</strong> = la app <code>Candado Surtido</code>.</li>
+      <li><strong>Product → Run</strong> (▶). Compila e instala la app contenedora en el iPad.</li>
+      <li>Primera vez: en el iPad ve a <strong>Ajustes → General → VPN y gestión de dispositivos → [tu Apple ID] → Confiar</strong>.</li>
+    </ol>
+    <p class="placeholder">[captura pendiente: selector de destino (iPad) y botón Run]</p>
+  </section>
+
+  <section class="step" id="p4">
+    <div class="step-head"><div class="badge">4</div><div><h2>Activar la extensión en Safari</h2><p class="sub">En el iPad</p></div></div>
+    <ol class="steps">
+      <li><strong>Ajustes → Apps → Safari → Extensiones</strong> (en iPadOS viejos: <strong>Ajustes → Safari → Extensiones</strong>) → activa <strong>Candado Surtido</strong>.</li>
+      <li>Abre Safari → <code>app.gosteelhead.com</code>. Toca <kbd>ᴀA</kbd> / el ícono de extensiones en la barra → <strong>Gestionar extensiones</strong> → actívala y concede <strong>Permitir</strong> en este sitio (o <em>Permitir siempre</em>).</li>
+    </ol>
+  </section>
+
+  <section class="step" id="p5">
+    <div class="step-head"><div class="badge">5</div><div><h2>Probar el candado</h2><p class="sub">El momento de la verdad</p></div></div>
+    <ol class="steps">
+      <li>Inicia sesión en Steelhead en Safari del iPad (valida que el <strong>login OAuth funciona</strong> con la extensión activa).</li>
+      <li>Ve al board de surtido: <code>/Domains/344/Workboards/6234</code>, step “Preparando Surtido en Almacén”.</li>
+      <li>Intenta mover una pieza <strong>NO programada</strong> → debe <strong>bloquearse</strong> (toast rojo).</li>
+      <li>Una pieza <strong>programada</strong> → se mueve normal.</li>
+    </ol>
+
+    <h3 style="margin:20px 0 4px;font-size:16px">🔍 Diagnóstico (Web Inspector remoto)</h3>
+    <p>Safari del iPad no tiene consola en el dispositivo. Para inspeccionar:</p>
+    <ol class="steps">
+      <li>En la Mac: <strong>Safari → Ajustes → Avanzado → “Mostrar funciones para desarrolladores web”</strong>.</li>
+      <li>En el iPad: <strong>Ajustes → Safari → Avanzado → Inspector web → ON</strong>.</li>
+      <li>iPad conectado por cable → en la Mac, <strong>Safari → menú Desarrollo → [tu iPad] → [pestaña de Steelhead]</strong>.</li>
+      <li>En la consola:</li>
+    </ol>
+    <div class="code"><button class="copy">Copiar</button><pre><code>window.SurtidoGuard._getState()</code></pre></div>
+    <div class="callout note">
+      <p>Debe mostrar <code>scheduled &gt; 0</code> y <code>surtido</code> con el recipeNodeId. Si salen vacíos, el candado está en <strong>fail-safe</strong> (no bloquea) → revisa que los queries del board hayan cargado, o que <code>world:"MAIN"</code> esté interceptando (si no, <a href="#planb">plan B</a>).</p>
+    </div>
+  </section>
+
+  <section class="step" id="planb">
+    <div class="step-head"><div class="badge">B</div><div><h2>Plan B — si <code>world:"MAIN"</code> no funciona</h2><p class="sub">Requiere iPadOS 17+; ya está listo en el repo</p></div></div>
+    <p>Si el <code>_getState</code> no se puebla o no bloquea, cambia al loader vía <code>&lt;script&gt;</code>-tag:</p>
+    <div class="code"><button class="copy">Copiar</button><pre><code>cd safari/extension
+mv manifest.json manifest.world-main.json   # respalda variante A
+mv manifest.fallback.json manifest.json      # activa el loader &lt;script&gt;-tag</code></pre></div>
+    <p>Vuelve al <a href="#p1">Paso 1</a> (regenera con el converter) y al <a href="#p3">Paso 3</a>. Para volver a la variante A, invierte el <code>rename</code>.</p>
+  </section>
+
+  <section class="step" id="mant">
+    <div class="step-head"><div class="badge">↻</div><div><h2>Mantener al día</h2><p class="sub">Anti-divergencia</p></div></div>
+    <p>La fuente única del candado es <code>remote/scripts/</code>. Cuando cambie su lógica:</p>
+    <div class="code"><button class="copy">Copiar</button><pre><code>safari/sync-scripts.sh        # remote/scripts → safari/extension
+# regenera el proyecto Xcode (Paso 1, con --force) y recompila (Paso 3)</code></pre></div>
+    <div class="callout tip">
+      <p><code>tools/deploy.sh</code> ya avisa si <code>safari/extension/*.js</code> quedó desincronizado de <code>remote/scripts/</code>. El proyecto generado <code>safari/xcode/</code> es artefacto de build y no se versiona.</p>
+    </div>
+  </section>
+
+  <footer>
+    Guía del POC · candado fuente <code>remote/scripts/surtido-guard*.js</code> · decisión de arquitectura en
+    <a href="architecture/ipad-surtido-guard-decision.md">ipad-surtido-guard-decision</a> ·
+    bitácora <a href="applets/surtido-guard.md">surtido-guard</a>.
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.code').forEach(function(block){
+    var btn = block.querySelector('.copy');
+    var code = block.querySelector('code');
+    if(!btn || !code) return;
+    btn.addEventListener('click', function(){
+      navigator.clipboard.writeText(code.innerText).then(function(){
+        var prev = btn.textContent;
+        btn.textContent = '¡Copiado!'; btn.classList.add('ok');
+        setTimeout(function(){ btn.textContent = prev; btn.classList.remove('ok'); }, 1400);
+      });
+    });
+  });
+</script>
+</body>
+</html>
