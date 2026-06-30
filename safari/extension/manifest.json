@@ -1,15 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "Candado de Surtido — Steelhead (iPad)",
-  "description": "Bloquea mover piezas NO programadas en Preparación de Surtido. POC Safari/iPadOS del applet surtido-guard.",
+  "name": "Steelhead Automator — iPad",
+  "description": "Mejoras de Steelhead para iPad (bundle de applets empaquetado). Mini-bundle de validación del pipeline.",
   "version": "0.1.0",
   "host_permissions": [
     "https://app.gosteelhead.com/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://app.gosteelhead.com/*"],
-      "js": ["surtido-guard-core.js", "surtido-guard.js"],
+      "matches": [
+        "https://app.gosteelhead.com/*"
+      ],
+      "js": [
+        "main-bundle.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false

@@ -143,22 +143,14 @@ else
 fi
 
 # --- guardrail anti-divergencia Safari/iPad (handoff) ---
-# El candado de surtido vive ADEMÁS empaquetado para Safari/iPad en safari/extension/ (copias
-# byte-a-byte de remote/scripts/). Ese canal NO se actualiza con git push: requiere
-# safari/sync-scripts.sh + recompilar en Xcode. Avisa si quedó desincronizado para que un
-# sucesor no deploye a Chrome y olvide iPad (ver safari/README.md).
-if [ -d "$MAINWT/safari/extension" ]; then
-  SDRIFT=""
-  for f in "$MAINWT"/safari/extension/*.js; do
-    [ -e "$f" ] || continue
-    base="$(basename "$f")"
-    src="$MAINWT/remote/scripts/$base"
-    [ -e "$src" ] || continue   # sg-inject.js u otros propios de Safari → no aplican
-    diff -q "$src" "$f" >/dev/null 2>&1 || SDRIFT="$SDRIFT $base"
-  done
-  if [ -n "$SDRIFT" ]; then
+# El bundle de Safari/iPad (safari/extension/main-bundle.js) se genera con tools/build-safari.sh
+# desde remote/scripts + config.json y NO se actualiza con git push. Avisa (de forma determinística)
+# si quedó desactualizado, para que un sucesor que deploya a Chrome no olvide regenerar el bundle iPad
+# y recompilar en Xcode. Ver safari/README.md / docs/deploy-safari.html.
+if [ -f "$MAINWT/safari/bundle.json" ] && [ -x "$MAINWT/tools/build-safari.sh" ]; then
+  if ! "$MAINWT/tools/build-safari.sh" --check >/dev/null 2>&1; then
     echo
-    echo "⚠️  Safari/iPad DESINCRONIZADO:$SDRIFT difiere(n) de remote/scripts/."
-    echo "    Si el cambio aplica al candado de iPad: corre 'safari/sync-scripts.sh' y recompila en Xcode."
+    echo "⚠️  Bundle Safari/iPad DESACTUALIZADO respecto a la fuente (remote/scripts + config.json)."
+    echo "    Si tu cambio toca un applet del bundle: corre 'tools/build-safari.sh' y recompila en Xcode."
   fi
 fi

@@ -1,18 +1,6 @@
 #!/usr/bin/env bash
-# Sincroniza los scripts del candado desde la FUENTE ÚNICA (remote/scripts/) hacia el
-# paquete de la Safari Web Extension. Evita divergencia de código entre el candado de
-# Chrome (productivo, remote-loader) y el de Safari/iPad (empaquetado). El candado es
-# 100% autocontenido (no usa chrome.* ni otros scripts), así que la copia es byte-a-byte.
-#
-# Corre esto cada vez que cambie la lógica del candado en remote/scripts/, ANTES de
-# recompilar la app en Xcode.
-set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/remote/scripts"
-DST="$ROOT/safari/extension"
-
-for f in surtido-guard-core.js surtido-guard.js; do
-  cp "$SRC/$f" "$DST/$f"
-  echo "  ✓ $f"
-done
-echo "Sync OK. Recuerda recompilar en Xcode (los cambios NO llegan solos como en gh-pages)."
+# DEPRECADO. El bundle de Safari/iPad ahora se genera con tools/build-safari.sh, que lee
+# la FUENTE ÚNICA (remote/scripts/ + config.json), expande los applets de safari/bundle.json,
+# deduplica y concatena en main-bundle.js. Ya no se copian scripts sueltos a safari/extension/.
+# Este script solo redirige al build para no romper referencias viejas.
+exec "$(cd "$(dirname "$0")/.." && pwd)/tools/build-safari.sh"
