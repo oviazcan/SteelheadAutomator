@@ -463,3 +463,9 @@ Deploy `tools/deploy.sh "fix(hashes): rotación 6 ops (scan 2026-06-25)" --check
 **Rotados:**
 - `query GetQuoteRelatedData` (hash `572c489092ca...`)
 - `query WorkOrderDialogQuery` (hash `4d745ead94ba...`)
+
+## 2026-06-30 13:18 — 0 rotado(s) (manual)
+
+- Config version: `1.7.34`
+- OK: 171 / 173 (2 skipped whitelist: `CurrentUser`, `GetPurchaseOrder`) · Tiempo: 111.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-30.json`
