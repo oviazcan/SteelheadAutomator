@@ -26,6 +26,16 @@ Hoy la Mac solo tiene Command Line Tools; el converter necesita **Xcode completo
    xcrun --find safari-web-extension-converter
    ```
 
+## Paso 0.5 — Generar el bundle (cada vez que cambie un applet)
+El bundle de applets se genera desde la **fuente única** (`remote/scripts/` + `config.json`):
+```bash
+tools/build-safari.sh
+```
+Escribe `safari/extension/main-bundle.js` (los applets de `safari/bundle.json` concatenados, con sus
+helpers deduplicados y en orden) y `safari/extension/manifest.json`. Para **agregar applets** al bundle, edita
+la lista en `safari/bundle.json` (ver el inventario `docs/architecture/ipad-applets-inventory.html`) y re-corre
+el build. `tools/build-safari.sh --check` (lo usa `deploy.sh`) avisa si el bundle quedó desactualizado.
+
 ## Paso 1 — Generar el proyecto Xcode con el converter
 ```bash
 cd /Users/oviazcan/Projects/Ecoplating/SteelheadAutomator
@@ -116,15 +126,15 @@ mv manifest.fallback.json manifest.json       # activa el loader <script>-tag
 Vuelve al **Paso 1** (regenera con el converter) y al Paso 3. Para volver a la variante A, invierte el rename.
 
 ## Mantener al día (anti-divergencia)
-La fuente única del candado es `remote/scripts/`. Cuando cambie su lógica:
+La fuente única es `remote/scripts/` + `config.json`. Cuando cambie la lógica de un applet del bundle:
 ```bash
-safari/sync-scripts.sh                 # remote/scripts → safari/extension
+tools/build-safari.sh                  # regenera main-bundle.js + manifest.json
 # regenera el proyecto Xcode (Paso 1, agrega --force para sobreescribir) y recompila (Paso 3)
 ```
-`tools/deploy.sh` ya avisa si `safari/extension/*.js` quedó desincronizado de `remote/scripts/`.
+`tools/deploy.sh` corre `build-safari.sh --check` y avisa si el bundle quedó desactualizado.
 
 ## Notas de repo
-- Versiona `safari/extension/` (el source). El proyecto generado `safari/xcode/` es artefacto de build —
-  conviene **no** versionarlo (agrégalo a `.gitignore` si el converter lo dejó dentro del repo).
-- Para el bundle multi-applet (varios applets en una sola app Safari) ver la sección de escalamiento en
-  `docs/architecture/ipad-surtido-guard-decision.md`. Esta guía cubre solo el POC del candado.
+- Versiona `safari/extension/` (incluye `main-bundle.js`/`manifest.json` generados — determinísticos, con el
+  guardrail `--check`). El proyecto generado `safari/xcode/` es artefacto de build y está en `.gitignore`.
+- Para **agregar applets** al bundle, edita `safari/bundle.json` (inventario de portabilidad en
+  `docs/architecture/ipad-applets-inventory.html`) y re-corre `tools/build-safari.sh`.

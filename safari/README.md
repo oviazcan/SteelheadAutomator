@@ -1,37 +1,38 @@
-# Candado de Surtido — Safari Web Extension (POC iPad)
+# Steelhead Automator — Safari Web Extension (iPad)
 
-POC para portar el applet **`surtido-guard`** (Candado de Surtido Programado) a iPad vía
-**Safari Web Extension**, ya que Chrome iOS no soporta extensiones. Objetivo del POC: validar
-con costo $0 (sideload de 7 días con Apple ID gratis) lo más incierto, **antes** de invertir en
-cuenta Apple Developer y distribución.
+Bundle de applets de Steelhead empaquetados como **Safari Web Extension** para iPad (Chrome iOS no soporta
+extensiones). Generado desde la **fuente única** (`remote/scripts/` + `config.json`) por `tools/build-safari.sh`.
+Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 
-## Qué valida este POC
-1. **`world:"MAIN"` intercepta `fetch` en Safari de iPadOS** — el corazón del candado parchea
-   `window.fetch` en el contexto de la página para bloquear la mutación `CreateManyPartsTransfersChecked`.
-2. **El login OAuth de Steelhead funciona** con la extensión activa (Safari normal, no WebView).
-3. **El bloqueo real**: mover una pieza NO programada en "Preparando Surtido en Almacén" queda bloqueado.
-
-> Alcance deliberadamente mínimo: **solo el candado, sin popup ni toggle** (default ON). El toggle se
-> agrega en la siguiente iteración una vez validado lo crítico. Es un POC en UN iPad de prueba, no producción.
+## Estado
+- **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
+  `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
+  el plan B).
+- **Bundle multi-applet (mini-bundle de validación):** `surtido-guard`, `paros-linea`, `weight-quick-entry`,
+  `receiver-date-override`. Para escalar a los 16 "directo", edita `bundle.json` (inventario en
+  `docs/architecture/ipad-applets-inventory.html`).
 
 ## Estructura
 ```
 safari/
+├── bundle.json                ← lista blanca de applets del bundle (por id) + meta
 ├── extension/                 ← "source" de la Safari Web Extension (entra al converter)
-│   ├── manifest.json          ← MV3, content_scripts world:"MAIN", sin background ni remote-loader
-│   ├── surtido-guard-core.js  ← COPIA de remote/scripts/ (no editar aquí; usar sync-scripts.sh)
-│   ├── surtido-guard.js       ← COPIA de remote/scripts/ (íntegra, 0 cambios de lógica)
-│   └── icons/                 ← icon16/48/128.png reutilizados de la extensión Chrome
-├── sync-scripts.sh            ← recopia el candado desde remote/scripts/ (fuente única, anti-divergencia)
+│   ├── manifest.json          ← GENERADO por build-safari.sh (MV3, content_scripts world:"MAIN")
+│   ├── main-bundle.js         ← GENERADO: applets concatenados (cada uno en IIFE), helpers deduplicados
+│   ├── manifest.fallback.json ← plan B (sin world:MAIN; inyecta main-bundle.js vía <script>)
+│   ├── sg-inject.js           ← plan B: loader del bundle al MAIN world
+│   └── icons/                 ← icon16/48/128.png
+├── sync-scripts.sh            ← DEPRECADO → redirige a tools/build-safari.sh
 └── README.md
+tools/build-safari.sh          ← genera main-bundle.js + manifest.json (modo --check para deploy.sh)
 ```
 
 **Diferencias clave vs la extensión Chrome** (y por qué importan):
-- **Sin remote-loader**: Apple prohíbe descargar/ejecutar código remoto (Guideline 2.5.2). Los scripts van
-  empaquetados. Trade-off: actualizar la lógica = **recompilar en Xcode**, no `git push`.
-- **Sin background re-inyector**: los scripts se inyectan declarativamente una sola vez. El bug del toggle
-  que se arregló en Chrome (re-inyección que duplicaba instancias) **aquí ni existe**.
-- El candado en sí es **idéntico** (mismo `surtido-guard*.js`).
+- **Sin remote-loader**: Apple prohíbe descargar/ejecutar código remoto (Guideline 2.5.2). El bundle es
+  estático y empaquetado → actualizar = re-correr `build-safari.sh` + recompilar en Xcode, no `git push`.
+- **Sin background re-inyector**: los scripts se inyectan declarativamente una sola vez (el bug del toggle del
+  candado en Chrome ni aplica aquí).
+- El código de cada applet es **idéntico** al de Chrome (mismo `remote/scripts/`); solo cambia el empaquetado.
 
 ## Pasos en tu Mac (lo que NO puedo hacer yo: GUI de Xcode + firma + iPad)
 
@@ -86,8 +87,8 @@ quítalos si prefieres que abra Xcode automáticamente.
 
 - `extension/manifest.fallback.json` — manifest sin `world:"MAIN"`; inyecta vía content script aislado +
   `web_accessible_resources`.
-- `extension/sg-inject.js` — loader que corre en el mundo aislado y mete `surtido-guard-core.js` +
-  `surtido-guard.js` como `<script src>` en el MAIN world, en orden (core → glue).
+- `extension/sg-inject.js` — loader que corre en el mundo aislado y mete `main-bundle.js` como
+  `<script src>` en el MAIN world.
 
 **Cómo activarlo** (no toca la lógica del candado):
 ```bash
@@ -101,9 +102,10 @@ Luego vuelve a correr el converter (paso 1) y recompila. Para volver a la varian
 > auto-gestiona (parchea `fetch` en su `init`), así que sigue interceptando los fetch del board, que ocurren
 > mucho después de la carga. Es ligeramente más frágil que `world:"MAIN"` pero funciona en iPadOS más viejos.
 
-## Mantener sincronizado
-Cuando cambie la lógica del candado en `remote/scripts/`:
+## Mantener al día
+Cuando cambie la lógica de un applet del bundle en `remote/scripts/` (o agregues applets en `bundle.json`):
 ```bash
-safari/sync-scripts.sh   # recopia a safari/extension/
+tools/build-safari.sh    # regenera main-bundle.js + manifest.json
 # luego recompila en Xcode (paso 3)
 ```
+`tools/deploy.sh` corre `build-safari.sh --check` y avisa si el bundle quedó desactualizado.

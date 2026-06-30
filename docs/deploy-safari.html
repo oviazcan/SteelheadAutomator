@@ -151,6 +151,7 @@
     <strong>Pasos</strong>
     <ol>
       <li><a href="#p0"><span class="n">0</span> Instalar Xcode</a></li>
+      <li><a href="#p05"><span class="n">⚙</span> Generar el bundle</a></li>
       <li><a href="#p1"><span class="n">1</span> Generar el proyecto</a></li>
       <li><a href="#p2"><span class="n">2</span> Abrir y firmar</a></li>
       <li><a href="#p3"><span class="n">3</span> Instalar en el iPad</a></li>
@@ -176,6 +177,13 @@
 sudo xcodebuild -license accept</code></pre></div>
     <ol class="steps" start="3"><li>Verifica que el converter exista (debe imprimir una ruta):</li></ol>
     <div class="code"><button class="copy">Copiar</button><pre><code>xcrun --find safari-web-extension-converter</code></pre></div>
+  </section>
+
+  <section class="step" id="p05">
+    <div class="step-head"><div class="badge">⚙</div><div><h2>Generar el bundle</h2><p class="sub">Cada vez que cambie un applet</p></div></div>
+    <p>El bundle de applets se genera desde la <strong>fuente única</strong> (<code>remote/scripts/</code> + <code>config.json</code>):</p>
+    <div class="code"><button class="copy">Copiar</button><pre><code>tools/build-safari.sh</code></pre></div>
+    <p>Escribe <code>safari/extension/main-bundle.js</code> (los applets de <code>safari/bundle.json</code> concatenados, con sus helpers deduplicados y en orden) y <code>safari/extension/manifest.json</code>. Para <strong>agregar applets</strong>, edita la lista en <code>safari/bundle.json</code> (ver el <a href="architecture/ipad-applets-inventory.html">inventario de portabilidad</a>) y re-corre el build.</p>
   </section>
 
   <section class="step" id="p1">
@@ -270,18 +278,18 @@ mv manifest.fallback.json manifest.json      # activa el loader &lt;script&gt;-t
 
   <section class="step" id="mant">
     <div class="step-head"><div class="badge">↻</div><div><h2>Mantener al día</h2><p class="sub">Anti-divergencia</p></div></div>
-    <p>La fuente única del candado es <code>remote/scripts/</code>. Cuando cambie su lógica:</p>
-    <div class="code"><button class="copy">Copiar</button><pre><code>safari/sync-scripts.sh        # remote/scripts → safari/extension
+    <p>La fuente única es <code>remote/scripts/</code> + <code>config.json</code>. Cuando cambie la lógica de un applet del bundle:</p>
+    <div class="code"><button class="copy">Copiar</button><pre><code>tools/build-safari.sh         # regenera main-bundle.js + manifest.json
 # regenera el proyecto Xcode (Paso 1, con --force) y recompila (Paso 3)</code></pre></div>
     <div class="callout tip">
-      <p><code>tools/deploy.sh</code> ya avisa si <code>safari/extension/*.js</code> quedó desincronizado de <code>remote/scripts/</code>. El proyecto generado <code>safari/xcode/</code> es artefacto de build y no se versiona.</p>
+      <p><code>tools/deploy.sh</code> corre <code>build-safari.sh --check</code> y avisa si el bundle quedó desactualizado. Para <strong>agregar applets</strong>, edita <code>safari/bundle.json</code> (ver el <a href="architecture/ipad-applets-inventory.html">inventario</a>). El proyecto <code>safari/xcode/</code> es artefacto de build y no se versiona.</p>
     </div>
   </section>
 
   <footer>
-    Guía del POC · candado fuente <code>remote/scripts/surtido-guard*.js</code> · decisión de arquitectura en
-    <a href="architecture/ipad-surtido-guard-decision.html">ipad-surtido-guard-decision</a> ·
-    bitácora <a href="applets/surtido-guard.md">surtido-guard</a>.
+    Bundle generado por <code>tools/build-safari.sh</code> desde <code>remote/scripts</code> + <code>config.json</code> ·
+    inventario <a href="architecture/ipad-applets-inventory.html">portabilidad de applets</a> ·
+    decisión <a href="architecture/ipad-surtido-guard-decision.html">Safari vs PWA</a>.
   </footer>
 
 </div>
