@@ -72,13 +72,21 @@
     }
   }
 
+  var lastNonce = null; // dedup: el comando puede llegar por dos vías (runtime.onMessage + storage.onChanged).
+
   window.addEventListener('message', function (e) {
     if (e.source !== window) return;
     var d = e.data;
     if (!d || d.__saBridge !== true || d.type !== 'command' || !d.action) return;
+    if (d.nonce != null && d.nonce === lastNonce) return; // ya lo procesamos por la otra vía
+    lastNonce = d.nonce;
+    console.log('[SA] dispatcher: comando', d.action);
     var fn = resolveFn(d.action);
     if (!fn) { console.warn('[SA] dispatcher: acción sin función registrada:', d.action); return; }
     var res = callByPath(fn);
     if (res && res.error) console.error('[SA] dispatcher:', d.action, '→', res.error);
+    else console.log('[SA] dispatcher:', d.action, '→', fn, 'ok');
   });
+
+  console.log('[SA] dispatcher listo (v2 tabs.sendMessage + storage fallback)');
 })();

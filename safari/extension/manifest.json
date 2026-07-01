@@ -4,7 +4,8 @@
   "description": "Bundle de applets de Steelhead para iPad (empaquetado). 16 'directo' + 4 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router) lanzables desde el popup + vale-almacen (botón flotante).",
   "version": "0.4.0",
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://app.gosteelhead.com/*"

@@ -62,6 +62,16 @@ parts += ["// ===== BEGIN sa-shim =====", "(function(){",
           "if (typeof window.chrome === 'undefined') { window.chrome = {}; }",
           "})();", "// ===== END sa-shim =====", ""]
 
+# Dispatcher: ejecuta los comandos del popup (lanzadores). Va TEMPRANO —justo tras el shim, ANTES de los
+# applets— para que su listener de `message` quede registrado aunque un applet truene al cargar (el dispatcher
+# NO depende de ningún applet ni de steelhead-api en el registro; resuelve la función global de forma perezosa
+# cuando llega el comando). Antes iba al final del bundle: si un applet lanzaba, el dispatcher moría con él.
+disp = os.path.join(root, 'safari', 'sa-dispatcher.js')
+if os.path.exists(disp):
+    parts += ["// ===== BEGIN sa-dispatcher.js =====", "(function(){",
+              open(disp, encoding='utf-8').read().rstrip("\n"), "})();",
+              "// ===== END sa-dispatcher.js =====", ""]
+
 # Config SEMILLA (horneado) — se emite JUSTO DESPUÉS de steelhead-api.js para que
 # window.REMOTE_CONFIG + SteelheadAPI.init estén listos ANTES de que los applets corran su
 # init() (en document_idle, readyState != 'loading' → los applets inician de inmediato). Muchos
@@ -95,13 +105,6 @@ if os.path.exists(boot):
               open(boot, encoding='utf-8').read().rstrip("\n"), "})();",
               "// ===== END sa-bootstrap.js =====", ""]
 
-# Dispatcher: ejecuta los comandos que el popup manda por el puente (storage→bridge→MAIN) para
-# lanzar applets con interfaz (archivador, sensor-status, configurar estaciones, vale de almacén).
-disp = os.path.join(root, 'safari', 'sa-dispatcher.js')
-if os.path.exists(disp):
-    parts += ["// ===== BEGIN sa-dispatcher.js =====", "(function(){",
-              open(disp, encoding='utf-8').read().rstrip("\n"), "})();",
-              "// ===== END sa-dispatcher.js =====", ""]
 
 bundle_js = "\n".join(parts) + "\n"
 
@@ -109,7 +112,9 @@ icons = {"16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon1
 manifest = {
     "manifest_version": 3,
     "name": bundle["name"], "description": bundle["description"], "version": bundle["version"],
-    "permissions": ["storage"],
+    # "tabs": el popup usa tabs.query({active}) + tabs.sendMessage(tabId, ...) para lanzar applets
+    # (canal fiable popup→content script en Safari; storage.onChanged NO dispara en el content script en iPadOS).
+    "permissions": ["storage", "tabs"],
     "host_permissions": bundle["matches"],
     "content_scripts": [
         # Mundo AISLADO: bridge.js va en document_start para setear los flags (storage →

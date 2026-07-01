@@ -100,11 +100,37 @@
     });
   }
 
-  // Escribe el comando y cierra el popup para devolver el foco a la página (el applet abre su modal ahí).
+  // Manda el comando a la tab de Steelhead y cierra el popup (el applet abre su modal en la página).
+  // Vía primaria: tabs.sendMessage a la tab activa (fiable en Safari/iPad). Fallback: storage.local
+  // (storage.onChanged casi no dispara en el content script de iPadOS, pero se deja de red).
+  function sendToTab(payload) {
+    return new Promise(function (resolve, reject) {
+      function deliver(tabs) {
+        var tab = tabs && tabs[0];
+        if (!tab || tab.id == null) { reject(new Error('sin tab activa')); return; }
+        var msg = { __saCmd: true, action: payload.action, nonce: payload.nonce };
+        try {
+          var p = api.tabs.sendMessage(tab.id, msg);
+          if (p && p.then) { p.then(resolve, reject); return; }
+        } catch (e) { reject(e); return; }
+        api.tabs.sendMessage(tab.id, msg, function () {
+          if (api.runtime && api.runtime.lastError) reject(api.runtime.lastError); else resolve();
+        });
+      }
+      try {
+        var q = api.tabs.query({ active: true, currentWindow: true });
+        if (q && q.then) { q.then(deliver, reject); return; }
+      } catch (e) { reject(e); return; }
+      api.tabs.query({ active: true, currentWindow: true }, deliver);
+    });
+  }
+
   function launch(message) {
-    set(makeObj('saCommand', { action: message, nonce: Date.now() }))
-      .then(function () { try { window.close(); } catch (e) {} })
-      .catch(function () {});
+    var payload = { action: message, nonce: Date.now() };
+    sendToTab(payload)
+      .catch(function () { return set(makeObj('saCommand', payload)); }) // fallback storage
+      .then(function () { try { window.close(); } catch (e) {} },
+            function () { try { window.close(); } catch (e) {} });
   }
 
   getAll(FLAGS.map(function (f) { return f.key; })).then(render).catch(function () { render({}); });

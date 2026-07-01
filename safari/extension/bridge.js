@@ -11,12 +11,13 @@
 //     Handshake: el bundle pide el config al arrancar (por si ya lo fetcheamos antes de que escuche);
 //     también lo enviamos apenas llega. Así los hashes rotan en caliente con `git push` sin recompilar.
 //
-//  3) COMANDOS DEL POPUP: el popup escribe browser.storage.local.set({saCommand:{action,nonce}}) para
-//     LANZAR un applet con interfaz (archivador, sensor-status, configurar estaciones, vale de almacén).
-//     Aquí lo detectamos con storage.onChanged y lo reenviamos al MAIN por postMessage {type:'command'};
-//     sa-dispatcher.js (MAIN world) resuelve la acción → función global del applet. El `nonce` garantiza
-//     que onChanged dispare aun si se toca el mismo botón dos veces. NO se procesa en la lectura inicial
-//     (solo onChanged), para que un comando viejo en storage no re-lance el applet en cada carga de página.
+//  3) COMANDOS DEL POPUP: el popup LANZA un applet con interfaz (archivador, sensor-status, configurar
+//     estaciones, vale de almacén, auto-ruteador). Aquí lo recibimos y lo reenviamos al MAIN por
+//     postMessage {type:'command', action, nonce}; sa-dispatcher.js (MAIN world) resuelve la acción →
+//     función global del applet. DOS vías (el dispatcher deduplica por nonce):
+//       (3a) PRIMARIA — tabs.sendMessage(tabId,{__saCmd,action,nonce}) → runtime.onMessage. Fiable en Safari/iPad.
+//       (3b) FALLBACK — storage.local.set({saCommand}) → storage.onChanged. En iPadOS esta NO dispara en el
+//            content script (por eso los toggles surten solo al recargar), así que sola no basta; queda de red.
 (function () {
   'use strict';
   var api = (typeof browser !== 'undefined') ? browser : chrome;
@@ -53,15 +54,24 @@
 
   function relayCommand(cmd) {
     if (!cmd || !cmd.action) return;
-    try { window.postMessage({ __saBridge: true, type: 'command', action: cmd.action }, location.origin); }
+    console.log('[SA] bridge: relay comando →', cmd.action);
+    try { window.postMessage({ __saBridge: true, type: 'command', action: cmd.action, nonce: cmd.nonce }, location.origin); }
     catch (e) {}
   }
+
+  // (3a) Canal PRIMARIO del popup: tabs.sendMessage → runtime.onMessage (fiable en Safari/iPad;
+  // storage.onChanged NO dispara en el content script en iPadOS, por eso no basta la vía 3b).
+  try {
+    api.runtime.onMessage.addListener(function (msg) {
+      if (msg && msg.__saCmd) { console.log('[SA] bridge: runtime cmd', msg.action); relayCommand({ action: msg.action, nonce: msg.nonce }); }
+    });
+  } catch (e) {}
 
   try {
     api.storage.onChanged.addListener(function (changes) {
       FLAGS.forEach(function (f) { if (changes[f.key]) setAttr(f.attr, changes[f.key].newValue); });
-      // (3) Comando del popup → relay al MAIN world (sa-dispatcher lo ejecuta).
-      if (changes.saCommand) relayCommand(changes.saCommand.newValue);
+      // (3b) Fallback: comando del popup vía storage (por si tabs.sendMessage falla en algún iPadOS).
+      if (changes.saCommand) { console.log('[SA] bridge: storage cmd', changes.saCommand.newValue && changes.saCommand.newValue.action); relayCommand(changes.saCommand.newValue); }
     });
   } catch (e) {}
 
