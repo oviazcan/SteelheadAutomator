@@ -554,3 +554,15 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 **Rotados:**
 - `query InvoiceByIdInDomain` (hash `f18f1274740a...`)
 - `query GetVendor` (hash `efb7af012290...`)
+
+## 2026-07-01 00:18 — 2 resueltos (fix manual + deploy)
+
+- Rotación detectada el 2026-06-30 en `InvoiceByIdInDomain` (usedBy `cfdi-attacher`) y `GetVendor`.
+- Hashes nuevos recuperados del scan `~/Downloads/scan_results_2026-06-30_233100.json`
+  (`previousHash` = hash viejo del config en ambos, `status: changed`, `lastHttpStatus: 200`):
+  - `InvoiceByIdInDomain`: `f18f1274740a…` → **`5844a41c37db…`**
+  - `GetVendor`: `efb7af012290…` → **`87ad05379932…`**
+- Deploy `tools/deploy.sh`: 1.7.43 → **1.7.44** (commit main `21e45a5`, gh-pages `340d915`).
+  El otro agente había avanzado 1.7.39→1.7.43 con el applet `vale-almacen` (ortogonal, sin tocar hashes).
+- Post-deploy: validador `177 ok / 0 stale / 2 skipped` (whitelist `CurrentUser`, `GetPurchaseOrder`), exit 0.
+- Pendiente: bundle Safari/iPad quedó desactualizado (config cambió) — requiere `tools/build-safari.sh` + recompilar en Xcode si algún applet del bundle usa estos hashes.
