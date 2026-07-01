@@ -534,3 +534,13 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 ## 2026-06-29 21:19 — 0 rotado(s) (launchd)
 
 ## 2026-06-29 23:30 — 0 rotado(s) (launchd)
+
+## 2026-06-30 22:19 — 2 rotado(s)
+
+- Config version: `1.7.37`
+- OK: 172 / 176 · Tiempo: 128.4s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-30.json`
+
+**Rotados:**
+- `query InvoiceByIdInDomain` (hash `f18f1274740a...`)
+- `query GetVendor` (hash `efb7af012290...`)
