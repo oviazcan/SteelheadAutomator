@@ -60,15 +60,15 @@
 <body>
 <div class="wrap">
   <header class="hero">
-    <span class="eyebrow">Decisión de distribución · iPad</span>
-    <h1>Cómo distribuir la extensión a los 10+ iPads</h1>
-    <p>Extensión Safari interna (Steelhead), dispositivos corporativos, herramienta que se hereda. Basado en: sin Intune para operadores · iPads corporativos · D-U-N-S disponible.</p>
+    <span class="eyebrow">Decisión de distribución · iPad · 60 dispositivos</span>
+    <h1>Cómo distribuir la extensión a los 60 iPads</h1>
+    <p>Extensión Safari interna (Steelhead) para el piso, herramienta que se hereda. Basado en: <strong>60 iPads corporativos</strong> · sin Intune para operadores · D-U-N-S disponible.</p>
   </header>
 
   <div class="verdict">
     <h2>Recomendación</h2>
     <p><strong>Cuenta Apple Developer <em>Organization</em> ($99/año) + Apple Business Manager (gratis) + un MDM barato</strong>, distribuyendo la app por el MDM. Con D-U-N-S e iPads corporativos ya pueden montar la ruta corporativa completa. El MDM la instala y actualiza silenciosamente, sin expiración.</p>
-    <p style="color:var(--ink-soft);font-size:14px"><strong>Costo estimado año 1:</strong> $99 (cuenta) + MDM ($0–360/año según proveedor) ≈ <strong>$99–460/año</strong> para 10 iPads.</p>
+    <p style="color:var(--ink-soft);font-size:14px"><strong>Costo estimado año 1 (60 iPads):</strong> $99 (cuenta) + MDM (según proveedor) ≈ <strong>$820/año</strong> con la opción recomendada (Mosyle), hasta ~$2,250/año con el MDM más completo. La cuenta ($99) es fija; el MDM escala por dispositivo.</p>
   </div>
 
   <section class="card">
@@ -113,18 +113,18 @@
 
   <section class="card">
     <h2>4 · Qué MDM elegir (menor costo)</h2>
-    <p>Como no tienen Intune para los operadores, hay que elegir uno. Costos <em>aproximados</em> para 10 iPads (verificar precios vigentes):</p>
-    <div class="cmp"><table>
-      <thead><tr><th>MDM</th><th>Costo (10 iPads)</th><th>Notas</th></tr></thead>
+    <p>Como no tienen Intune para los operadores, hay que elegir uno. Costos <em>aproximados</em> para <strong>60 iPads</strong> (verificar precios vigentes; la mayoría cobra por dispositivo/mes):</p>
+    <div class=”cmp”><table>
+      <thead><tr><th>MDM</th><th>~$/disp/mes</th><th>Anual (60)</th><th>Notas</th></tr></thead>
       <tbody>
-        <tr><td class="dim">Apple Configurator</td><td class="yes cost">$0</td><td>Gratis, pero <strong>manual por cable</strong> — tedioso para updates. Para arrancar.</td></tr>
-        <tr><td class="dim">Mosyle</td><td class="cost">$0 – ~$25/mes</td><td class="yes">Tier gratis + planes baratos, especializado en Apple. <strong>Mejor relación costo/beneficio.</strong></td></tr>
-        <tr><td class="dim">Jamf Now</td><td class="cost">~$16/mes</td><td>Gratis hasta 3 disp.; ~$2/disp/mes después. Simple.</td></tr>
-        <tr><td class="dim">Apple Business Essentials</td><td class="cost">~$30/mes</td><td>~$2.99/disp/mes, es de Apple e integra directo con ABM. Lo más “oficial” y simple.</td></tr>
-        <tr><td class="dim">Jamf Pro / Kandji</td><td class="cost">$$$</td><td>Para flotas grandes; overkill aquí.</td></tr>
+        <tr><td class=”dim”>Apple Configurator</td><td class=”cost”>$0</td><td class=”cost”>$0</td><td><strong>Manual por cable</strong> — <span class=”no”>inviable a 60</span> para instalar/actualizar.</td></tr>
+        <tr><td class=”dim”>Mosyle</td><td class=”cost”>~$1</td><td class=”cost yes”>~$720</td><td class=”yes”>Especializado en Apple. <strong>Mejor costo/beneficio.</strong></td></tr>
+        <tr><td class=”dim”>Jamf Now</td><td class=”cost”>~$2</td><td class=”cost”>~$1,440</td><td>Simple; flotas chicas-medianas.</td></tr>
+        <tr><td class=”dim”>Apple Business Essentials</td><td class=”cost”>~$3</td><td class=”cost”>~$2,150</td><td>De Apple, integra directo con ABM. Lo más “oficial”, cero fricción.</td></tr>
+        <tr><td class=”dim”>Jamf Pro / Kandji</td><td class=”cost”>$3+</td><td class=”cost”>$2,150+</td><td>Para flotas grandes; overkill.</td></tr>
       </tbody>
     </table></div>
-    <div class="callout note"><p><span class="label">Recomendación:</span> <strong>Mosyle</strong> (menor costo, especializado en Apple) o <strong>Apple Business Essentials</strong> si prefieren todo dentro del ecosistema Apple con cero fricción de integración. <strong>Apple Configurator</strong> (gratis) sirve para el arranque si quieren $0 al inicio.</p></div>
+    <div class=”callout note”><p><span class=”label”>Recomendación a 60 iPads:</span> <strong>Mosyle</strong> (~$720/año, menor costo real) o <strong>Apple Business Essentials</strong> (~$2,150/año) si prefieren todo dentro del ecosistema Apple sin fricción de integración. A esta escala <strong>Apple Configurator ya no es viable</strong> (60 iPads a mano por cable, cada update).</p></div>
   </section>
 
   <section class="card">
@@ -140,16 +140,18 @@
   </section>
 
   <section class="card">
-    <h2>6 · Costo total estimado (año 1, 10 iPads)</h2>
+    <h2>6 · Costo total estimado (año 1, 60 iPads)</h2>
     <div class="cmp"><table>
       <thead><tr><th>Concepto</th><th>Costo/año</th></tr></thead>
       <tbody>
-        <tr><td class="dim">Apple Developer Organization</td><td class="cost">$99</td></tr>
+        <tr><td class="dim">Apple Developer Organization</td><td class="cost">$99 (fijo)</td></tr>
         <tr><td class="dim">Apple Business Manager</td><td class="cost yes">$0</td></tr>
-        <tr><td class="dim">MDM (Configurator $0 / Mosyle bajo / Business Essentials ~$360)</td><td class="cost">$0 – $360</td></tr>
-        <tr><td class="dim" style="font-weight:700">Total</td><td class="cost" style="font-weight:700">$99 – $460/año</td></tr>
+        <tr><td class="dim">MDM · 60 iPads (Mosyle ~$720 / Business Essentials ~$2,150)</td><td class="cost">~$720 – $2,150</td></tr>
+        <tr><td class="dim" style="font-weight:700">Total recomendado (con Mosyle)</td><td class="cost" style="font-weight:700">≈ $820/año</td></tr>
+        <tr><td class="dim">Total con Apple Business Essentials</td><td class="cost">≈ $2,250/año</td></tr>
       </tbody>
     </table></div>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin-top:8px">La cuenta ($99) no cambia con el número de iPads; el MDM sí (por dispositivo). A 60 iPads, ~$820/año ≈ <strong>$14/iPad/año</strong> con Mosyle.</p>
   </section>
 
   <footer>
