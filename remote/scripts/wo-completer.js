@@ -325,7 +325,10 @@ const WOCompleter = (() => {
   }
 
   function open() {
-    if (byId('woc-overlay')) return; // ya abierto
+    // El handler genérico de la extensión toma el valor de retorno del fn como
+    // resultado; si es undefined muestra "Error: Sin resultado". Devolvemos un
+    // objeto serializable truthy para que el popup no lo trate como error.
+    if (byId('woc-overlay')) return { ok: true, alreadyOpen: true }; // ya abierto
     ensureStyles();
     const overlay = document.createElement('div');
     overlay.className = 'woc-overlay';
@@ -371,6 +374,7 @@ const WOCompleter = (() => {
       state.memMonitor.start();
     }
     setMode('complete');
+    return { ok: true };
   }
 
   return { open, close: closePanel, _validate: validate, _execute: execute };
