@@ -55,6 +55,26 @@ parts = [
     "",
 ]
 
+# Shim: en el MAIN world de Safari NO existe `window.chrome` (en Chrome sí). Varios applets hacen
+# chrome.runtime?.onMessage — el ?. NO protege la variable base no declarada, así que sin esto lanzan
+# ReferenceError "chrome is not defined" y DETIENEN el bundle (crash de wo-mover/auto-router). Va PRIMERO.
+parts += ["// ===== BEGIN sa-shim =====", "(function(){",
+          "if (typeof window.chrome === 'undefined') { window.chrome = {}; }",
+          "})();", "// ===== END sa-shim =====", ""]
+
+# Config SEMILLA (horneado) — se emite JUSTO DESPUÉS de steelhead-api.js para que
+# window.REMOTE_CONFIG + SteelheadAPI.init estén listos ANTES de que los applets corran su
+# init() (en document_idle, readyState != 'loading' → los applets inician de inmediato). Muchos
+# hacen una query en el arranque (CurrentUserDetails, catálogos) que necesita el config; sin la
+# semilla la query falla y su UI no aparece. El bridge (sa-bootstrap) lo REFRESCA en caliente.
+# Marcado para que --check IGNORE este bloque: una rotación de hash actualiza la semilla pero NO
+# debe marcar el bundle como "drift" (los hashes se sirven en caliente vía bridge).
+seed_lines = ["// ===== BEGIN config-seed (ignorado por --check) =====", "(function(){",
+              "  window.REMOTE_CONFIG = " + json.dumps(config, ensure_ascii=False) + ";",
+              "  try { if (window.SteelheadAPI && window.SteelheadAPI.init) window.SteelheadAPI.init(window.REMOTE_CONFIG); } catch (e) {}",
+              "})();", "// ===== END config-seed =====", ""]
+
+seed_emitted = False
 for rel in ordered:
     src = os.path.join(root, 'remote', rel)
     if not os.path.exists(src):
@@ -62,17 +82,11 @@ for rel in ordered:
     code = open(src, encoding='utf-8').read()
     parts += [f"// ===== BEGIN {rel} =====", "(function(){", code.rstrip("\n"), "})();",
               f"// ===== END {rel} =====", ""]
-
-# Config SEMILLA (horneado) — disponible SÍNCRONAMENTE en document_start, ANTES de que los
-# applets corran su init() en DOMContentLoaded. Muchos hacen una query (CurrentUserDetails,
-# catálogos) que necesita el config; sin la semilla la query falla y el FAB no aparece. El
-# bridge (sa-bootstrap) lo REFRESCA en caliente. Marcado para que --check IGNORE este bloque:
-# una rotación de hash actualiza la semilla pero NO debe marcar el bundle como "drift" (los
-# hashes se sirven en caliente vía bridge; regenerar es opcional).
-parts += ["// ===== BEGIN config-seed (ignorado por --check) =====", "(function(){",
-          "  window.REMOTE_CONFIG = " + json.dumps(config, ensure_ascii=False) + ";",
-          "  try { if (window.SteelheadAPI && window.SteelheadAPI.init) window.SteelheadAPI.init(window.REMOTE_CONFIG); } catch (e) {}",
-          "})();", "// ===== END config-seed =====", ""]
+    if rel == 'scripts/steelhead-api.js':
+        parts += seed_lines            # config listo antes de los applets
+        seed_emitted = True
+if not seed_emitted:
+    parts += seed_lines                # bundle sin steelhead-api: igual expón REMOTE_CONFIG
 
 # Bootstrap: refresca el config en caliente cuando bridge.js lo trae de gh-pages.
 boot = os.path.join(root, 'safari', 'sa-bootstrap.js')
@@ -83,18 +97,22 @@ if os.path.exists(boot):
 
 bundle_js = "\n".join(parts) + "\n"
 
+icons = {"16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png"}
 manifest = {
     "manifest_version": 3,
     "name": bundle["name"], "description": bundle["description"], "version": bundle["version"],
+    "permissions": ["storage"],
     "host_permissions": bundle["matches"],
     "content_scripts": [
-        # Mundo AISLADO: bridge.js fetchea config.json de gh-pages → postMessage al MAIN.
-        {"matches": bundle["matches"], "js": ["bridge.js"], "run_at": "document_start"},
-        # Mundo MAIN: prelude (recibe config) + helpers + applets.
+        # Mundo AISLADO: bridge.js fetchea config.json (→ MAIN) y propaga flags de toggle
+        # (storage → data-attributes que leen los applets).
+        {"matches": bundle["matches"], "js": ["bridge.js"], "run_at": "document_idle"},
+        # Mundo MAIN: helpers + applets + config-seed + bootstrap.
         {"matches": bundle["matches"], "js": ["main-bundle.js"],
-         "run_at": "document_start", "world": "MAIN", "all_frames": False},
+         "run_at": "document_idle", "world": "MAIN", "all_frames": False},
     ],
-    "icons": {"16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png"},
+    "action": {"default_popup": "popup.html", "default_icon": icons},
+    "icons": icons,
 }
 manifest_str = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
 

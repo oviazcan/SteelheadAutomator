@@ -55,7 +55,7 @@ test('manifest: bridge (ISOLATED) + bundle (MAIN)', () => {
   const iso = manifest.content_scripts.find((c) => c.world !== 'MAIN');
   assert.ok(main && iso, 'debe haber un content script MAIN y uno aislado');
   assert.deepStrictEqual(main.js, ['main-bundle.js']);
-  assert.strictEqual(main.run_at, 'document_start');
+  assert.strictEqual(main.run_at, 'document_idle');
   assert.deepStrictEqual(iso.js, ['bridge.js']);
 });
 
