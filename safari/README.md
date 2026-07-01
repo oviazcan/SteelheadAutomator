@@ -139,6 +139,17 @@ tools/build-safari.sh    # regenera main-bundle.js + manifest.json
 ```
 `tools/deploy.sh` corre `build-safari.sh --check` y avisa si el bundle quedó desactualizado.
 
+**Integrar applets nuevos al bundle:** no es automático (el bundle es una lista blanca curada). Corre el
+escáner para ver qué falta y cómo clasifica cada candidato (FAB directo / lanzador de popup / no-aplica por
+bloqueadores de iOS):
+```bash
+python3 tools/safari-bundle-scan.py      # candidatos + señales + JSON
+```
+El flujo completo (escanear → clasificar → integrar → rebuild → resumir) lo automatiza la skill
+**`safari-bundle-sync`** (`~/.claude/skills/safari-bundle-sync/`); dile a Claude "actualiza el bundle Safari"
+o "mete X al bundle". Tests: `tools/test/safari-bundle-scan.test.js` (escáner) + `tools/test/build-safari.test.js`
+(cadena popup→dispatcher→applet).
+
 > **Rotación de hashes en `config.json` NO requiere rebundle.** La advertencia de `deploy.sh` es un falso
 > positivo cuando el deploy solo cambia hashes (no código de applets): `bridge.js` (mundo aislado) fetchea
 > `config.json` de gh-pages en runtime y `sa-bootstrap.js` → `SteelheadAPI.init()` re-instala los hashes en
