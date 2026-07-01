@@ -8,9 +8,28 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
-- **Bundle multi-applet (mini-bundle de validación):** `surtido-guard`, `paros-linea`, `weight-quick-entry`,
-  `receiver-date-override`. Para escalar a los 16 "directo", edita `bundle.json` (inventario en
-  `docs/architecture/ipad-applets-inventory.html`).
+- **Bundle v0.3.0 — 20 applets:** los 16 "directo" del inventario + `vale-almacen` (FAB) + 3 "con-popup"
+  (`archiver`, `sensor-status-autofill`, `load-calculator`) lanzables desde el popup. Para agregar/quitar,
+  edita `bundle.json` (inventario en `docs/architecture/ipad-applets-inventory.html`).
+
+## Applets con interfaz (lanzadores del popup)
+Algunos applets no se auto-inyectan con botón flotante: se **lanzan desde el popup** (sección "Acciones").
+En Chrome el service worker inyecta el script y llama su función; en Safari **todos los applets del bundle ya
+están cargados**, así que el popup solo dispara la función de entrada. El canal reusa el puente de storage que
+ya usan los toggles:
+
+```
+popup.js  → browser.storage.local.set({ saCommand: {action, nonce} })   (botón "Acciones")
+bridge.js → storage.onChanged detecta saCommand → postMessage {type:'command', action}   (mundo aislado)
+sa-dispatcher.js → resuelve action → función global del applet y la invoca   (MAIN world, concatenado)
+```
+
+- **Allowlist:** `safari/sa-dispatcher.js` mapea `message → función` (`LAUNCH_FN`). Un `postMessage` forjado solo
+  puede invocar funciones de esa lista (defensa en profundidad; el applet igual vive en el MAIN world).
+- **Agregar un lanzador:** (1) mete el applet a `bundle.json`; (2) agrega `{message,icon,label,sub}` a `LAUNCHERS`
+  en `safari/extension/popup.js`; (3) agrega `'message':'Global.fn'` a `LAUNCH_FN` en `safari/sa-dispatcher.js`.
+  El test `tools/test/build-safari.test.js` verifica que la cadena quede consistente (popup→dispatcher→applet).
+- **auto-router** queda pendiente: su acción de popup no está cableada ni en Chrome (usa FAB + intercept del modal).
 
 ## Estructura
 ```
@@ -101,6 +120,12 @@ Luego vuelve a correr el converter (paso 1) y recompila. Para volver a la varian
 > Diferencia de timing: el plan B inyecta los scripts asincrónicamente en `document_start`; el candado se
 > auto-gestiona (parchea `fetch` en su `init`), así que sigue interceptando los fetch del board, que ocurren
 > mucho después de la carga. Es ligeramente más frágil que `world:"MAIN"` pero funciona en iPadOS más viejos.
+
+> **Plan B no trae popup** (`default_popup` ausente en `manifest.fallback.json`), así que los **lanzadores del
+> popup no están disponibles** ahí: solo corren los applets con botón flotante (vale-almacén, paro de línea) y
+> el candado de surtido. El relay del comando sí funciona (plan B carga `bridge.js`); lo que falta es la UI del
+> popup. Si algún día se necesitan los lanzadores en iPadOS viejo, agrega `action.default_popup` + iconos al
+> `manifest.fallback.json`.
 
 ## Mantener al día
 Cuando cambie la lógica de un applet del bundle en `remote/scripts/` (o agregues applets en `bundle.json`):

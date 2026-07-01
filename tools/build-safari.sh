@@ -95,6 +95,14 @@ if os.path.exists(boot):
               open(boot, encoding='utf-8').read().rstrip("\n"), "})();",
               "// ===== END sa-bootstrap.js =====", ""]
 
+# Dispatcher: ejecuta los comandos que el popup manda por el puente (storage→bridge→MAIN) para
+# lanzar applets con interfaz (archivador, sensor-status, configurar estaciones, vale de almacén).
+disp = os.path.join(root, 'safari', 'sa-dispatcher.js')
+if os.path.exists(disp):
+    parts += ["// ===== BEGIN sa-dispatcher.js =====", "(function(){",
+              open(disp, encoding='utf-8').read().rstrip("\n"), "})();",
+              "// ===== END sa-dispatcher.js =====", ""]
+
 bundle_js = "\n".join(parts) + "\n"
 
 icons = {"16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png"}

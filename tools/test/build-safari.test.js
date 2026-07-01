@@ -76,3 +76,40 @@ test('--check ignora cambios SOLO en el config-seed (hashes en caliente, sin dri
   fs.writeFileSync(p, orig); // restaurar
   assert.strictEqual(code, 0, '--check NO debe marcar drift por cambio solo en el config-seed');
 });
+
+test('el bundle trae el dispatcher de comandos del popup (type:command)', () => {
+  assert.ok(bundle.includes('BEGIN sa-dispatcher.js'), 'falta sa-dispatcher.js en el bundle');
+  assert.ok(bundle.includes("'command'"), 'el dispatcher debe reaccionar a mensajes type:command');
+});
+
+// El canal de lanzadores cruza 4 archivos: popup.js (escribe saCommand) → bridge.js (reenvía) →
+// sa-dispatcher.js (mapea message→fn) → el applet (definido en el bundle). Este test verifica que la
+// cadena esté completa y consistente para CADA mensaje que el popup ofrece: un typo en cualquier
+// eslabón (message, allowlist o applet ausente del bundle) truena aquí antes del iPad.
+test('canal de lanzadores consistente: popup LAUNCHERS → dispatcher LAUNCH_FN → applet en bundle', () => {
+  const popupSrc  = fs.readFileSync(path.join(EXT, 'popup.js'), 'utf8');
+  const dispSrc   = fs.readFileSync(path.join(ROOT, 'safari/sa-dispatcher.js'), 'utf8');
+  const bridgeSrc = fs.readFileSync(path.join(EXT, 'bridge.js'), 'utf8');
+
+  const popupMsgs = [...popupSrc.matchAll(/message:\s*'([^']+)'/g)].map((m) => m[1]);
+  assert.ok(popupMsgs.length >= 4, 'popup.js debe declarar al menos 4 lanzadores');
+
+  // global del applet → script donde se define (para exigir que esté en el bundle)
+  const GLOBAL_SCRIPT = {
+    ValeAlmacen: 'scripts/vale-almacen.js',
+    PNArchiver: 'scripts/archiver.js',
+    SensorStatusAutofill: 'scripts/sensor-status-autofill.js',
+    LoadCalculator: 'scripts/load-calculator.js',
+  };
+
+  for (const msg of popupMsgs) {
+    const m = dispSrc.match(new RegExp(`'${msg}':\\s*'([A-Za-z]+)\\.`));
+    assert.ok(m, `sa-dispatcher LAUNCH_FN no mapea el mensaje '${msg}' del popup`);
+    const script = GLOBAL_SCRIPT[m[1]];
+    assert.ok(script, `global ${m[1]} sin script conocido en el test`);
+    assert.ok(bundle.includes('BEGIN ' + script), `el applet de '${msg}' (${script}) no está en el bundle`);
+  }
+
+  assert.ok(/saCommand/.test(bridgeSrc), 'bridge.js debe reenviar saCommand al MAIN world');
+  assert.ok(/saCommand/.test(popupSrc), 'popup.js debe escribir saCommand en storage');
+});

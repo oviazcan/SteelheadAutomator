@@ -3,6 +3,8 @@
 > **Fecha:** 2026-06-30 · Generado por el workflow `ipad-applets-port-inventory` (9 agentes: descubrir → clasificar en paralelo → plan).
 > Entregable humano: `docs/architecture/ipad-applets-inventory.html`. Decisión base: `ipad-surtido-guard-decision.md`.
 
+> **Actualización 2026-06-30 — Bundle v0.3.0 (canal de lanzadores del popup implementado).** Se resolvió la infraestructura de "applets con interfaz" en Safari sin tocar el código de los applets: el popup ofrece **botones lanzadores** que escriben un comando en `browser.storage.local` (`saCommand:{action,nonce}`); `bridge.js` (mundo aislado) lo reenvía al MAIN world por `postMessage`; y un nuevo `safari/sa-dispatcher.js` (MAIN world, concatenado por `build-safari.sh`) resuelve la acción → función global del applet vía **allowlist** (`LAUNCH_FN`) + fallback a `config.actions[].fn`. Con esto **entraron al bundle**: `vale-almacen` (FAB, "directo"), y las 3 "con-popup" **`archiver`, `sensor-status-autofill`, `load-calculator`** (lanzadas desde el popup). Total: **20 applets**. Regresión en `tools/test/build-safari.test.js` (canal popup→bridge→dispatcher→applet consistente). `auto-router` sigue pendiente: su acción de popup **no está cableada ni en Chrome** (usa FAB + intercept del modal), así que no se agregó su lanzador. Nota de peso: el bundle pasó de ~300 KB a **~785 KB** (mayormente `load-calculator`, 5 scripts) — perfilar en iPads A12 o anteriores.
+
 # Plan de Bundle Safari/iPad — SteelheadAutomator
 
 ## 1. Resumen ejecutivo

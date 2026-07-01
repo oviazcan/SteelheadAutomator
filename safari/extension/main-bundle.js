@@ -1,5 +1,5 @@
 // ==========================================================================
-// Steelhead Automator — iPad — main-bundle.js  (v0.2.0)
+// Steelhead Automator — iPad — main-bundle.js  (v0.3.0)
 // GENERADO por tools/build-safari.sh desde remote/scripts + config.json.
 // NO editar a mano: edita la fuente en remote/scripts/ y re-corre el build.
 // Cada applet va en su propio IIFE (scope aislado, como el new Function() del
@@ -228,7 +228,7 @@ if (typeof window !== 'undefined') window.SteelheadAPI = SteelheadAPI;
 
 // ===== BEGIN config-seed (ignorado por --check) =====
 (function(){
-  window.REMOTE_CONFIG = {"version": "1.7.34", "lastUpdated": "2026-06-29T19:46", "extensionVersion": "1.6.4", "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip", "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html", "steelhead": {"baseUrl": "https://app.gosteelhead.com", "graphqlEndpoint": "/graphql", "keepAliveEndpoint": "/api/session/keep-alive", "apolloClientVersion": "4.0.8", "hashes": {"mutations": {"CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00", "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112", "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e", "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf", "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b", "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163", "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49", "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa", "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129", "UpdateQuote": "765fc26af87241f0f614a51fe3583e10d2f1765dafb1426402f69dcc79e33a8e", "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797", "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0", "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6", "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154", "SaveManyPNP_Quote": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SaveManyPNP_PN": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40", "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363", "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc", "CreateReceivedOrder": "c0ca8f0f56af7f5a306a1639184f66c627af19a2083f6d28caa6856bb71a5dea", "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9", "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57", "SetPNPricesDefault": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293", "UpdatePartNumber": "af584fa8ebb7487fc84de18fa3a5e360e99699a3280185fe98b840c157bbf2c7", "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202", "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419", "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394", "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4", "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8", "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953", "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0", "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174", "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b", "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261", "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce", "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4", "CreateUpdateReportWithPermissions": "6c7753a4bd5f3181b1fffa536833972a4959343da8461127155dd1dd76342bde", "DeleteFolderById": "282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15", "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0", "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022", "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3", "UpdateReceivedOrder": "d9e885763a3f65a6416ac0da3f4037562d6d8e6083dc34892158269d1f61c7b5", "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942", "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449", "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59", "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60", "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3", "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2", "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a", "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54", "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84", "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856", "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334", "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c", "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce", "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03", "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb", "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b", "UpdateProcessNode": "4ceb26654b8cf409da36a45a2b1ea3bd3442fb3dcb9da06b51363d29e5f417c6", "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928", "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec", "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3", "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f", "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0"}, "queries": {"AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b", "GetStation": "912beb134cb89f78cf22fdfbe3fd6e59bc5160e11bdffde5d398506492831d41", "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce", "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380", "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143", "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2", "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3", "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc", "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f", "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac", "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890", "GetQuote_v8": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuote_v71": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33", "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02", "CustomerFinancialById": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9", "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca", "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3", "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a", "AllProcesses": "acaa6a46bd1e47ff587ac28833302734d6b00e06c26292c268110ce406ba71e3", "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e", "SearchSpecsForSelect": "8e7723b3a4cf3e7b692999e45d20b7299952253089c7bf146d36ff2872507e2b", "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea", "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3", "SearchUnits": "1961ca85600a902498898502aeda031f270ff2b1289b3ef9fe43aaaefe97ceda", "SearchProducts": "b835021eff4113acd5529f63fa742a9b70373c62a5d9cb39f4203fe2bbba9f8a", "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91", "GetPartNumber": "804dd8f7e65f2f84661cf42637949a03ec0c2132e59048746edc9280cced7eec", "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109", "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a", "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b", "PNGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c", "Customer": "96b214b5632df4722bd64d7e51ce086da06c3bc41ab4e79d523b271f14a9f355", "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5", "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9", "AllPartNumbers": "827be6815fa644ea35f4982ea8eca8a451500b078112e6e8244f505d0f1cfe09", "AllWorkOrders": "a8c2baab3cf24698bdbb951bddabab8bd383378391b1a2b1c296c63008bba8d7", "AllReceivers": "153f2cac87aa0c23fab030d9463c15b8d494ab7f935265cbdd06779cfe2a1ee3", "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf", "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c", "SearchInventoryItemBatches": "ae2466466ed3e84a2010c726a166c432c176c3d21be5be7ac71db6c1846b901b", "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09", "CheckDuplicatePO": "94e659bf6eea8d493f8ea67f950fd38371a5cb680d2622145d5df9dc63583b85", "CreateEditReceivedOrderDialogQuery": "5b01210ebe19943b899b9255cf84021e66ef8a851bac9f1ea0ce8beaa44e8e7d", "GetCustomerInfoForReceivedOrder": "be7c8dbeec701f49545d5f3685c448db57d043a7a2ebbe184ed642559abce9d5", "PartNumberCreatableSelectGetPartNumbers": "1d5714f35b4232eed5c3e89df5dd833c595d77df333ee3bc0f0f09c3a4f9b23a", "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14", "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a", "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120", "GetReceivedOrder": "3b4ab8f11af9f2603acfe5983499874219b8a7ba49efd07cdf6a079b2875b293", "GetAddPartsReceivedOrder": "677ae9cac761b748b85311b63a6cfa27065119b0a20f998005ef6baea6831b64", "WorkOrderDialogQuery": "5b7f715303297e64f32806d5361f388ab84e48827a9d3e0d09982b4ca9504f13", "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686", "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8", "GetReceivedOrderDocuments": "7d74c516daa9938572e482fb1ea012dce5eeb3bad2de63cecb1e5740a139e42d", "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156", "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520", "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0", "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db", "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de", "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7", "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d", "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e", "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb", "AllCustomers": "66e271f6a8a2ad35955f54abbffc2ad3502deaae53dcd143250bc10e76d57712", "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6", "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888", "ReceivingBatchesQuery": "5b0baf3614222571071456156a30f86a4ee2b786cc5b204872a2b6baeefe46de", "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4", "InvoiceByIdInDomain": "f18f1274740aea191614627ac2b58807582012090cbe004daa5c3cedf7043a58", "CurrentUser": "18c6574c779e24f19b19e303b1b7c176601eb44e4dfd1860d2d925fd976c779e", "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c", "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0", "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c", "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac", "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830", "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63", "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83", "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f", "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de", "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0", "GetPurchaseOrder": "6d8626794b0b81e885f621fac214f825c3078931ad030ddd2299d227e530bcf6", "GetDomain": "c0c242bcac011a6e72087bd0d0698dde5cf2fe8b247a51e4eb3b08c36299c866", "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57", "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0", "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d", "SearchPurchaseOrdersForBill": "e99dddad15827a5c6b2a342f236a60a462edcc406f9896a1b04800a76def929a", "GetPurchaseOrdersDataForBill": "a94f43960ae91e6f62332a9e3268f9789ccdd847c8951dbf27a7d2ff25c5565d", "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8", "GetVendor": "efb7af01229000ecacf09372a1fe51b5c0d7340e82b599747a5900a9fb5596f5", "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e", "GetReceivedOrdersWithReceivedOrderLineItems": "944ee7858fbb16d20952732005eb6c1138049ab97c64a34e15c0dfab19e2aa3e", "GetProcessNode": "fae7d1d1d4e5ceae7b3c4e4d138ce9027158c37a7266b68f75264ec1756adbfe", "ProcessNode": "72a77473ba27a4854aa25e147d651f864a3fb6cb8893c169a00f8fd90b9d3f4c", "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af", "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d", "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3", "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3", "CreateEditProcessDialogQuery": "de4bc7fb144adaf8d3e314a2849b0680b6107f228890a463e59b74ca7eb9a0c0", "GetTreatment": "87a9d9f60a00814e8573ec59c0817fc2d29777777aa592a7db221a339322a750", "AllTreatments": "69c99e3fbb343cf07c0b95189b32ae411228a154f06588a9c28c58f8da26220b", "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca", "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2", "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec", "AllSensorDashboards": "432339f25bae0153d88fff64302df0bea1769987af20812c312748eb2babeedf", "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a", "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705", "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e", "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e"}}, "domain": {"id": 344, "dimensionIds": {"linea": 349, "departamento": 586}, "billingDefaults": {"departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado"}, "inputSchemaId_PN": 3932, "inputSchemaId_Quote": 659, "inputSchemaId_Bill": 27, "stagesRevisionId": 306, "ganadaStageId": 1212, "revertStageId": 1208, "geometryGenericaId": 831, "validacionProcessNodeIds": [231176, 231174], "unitIds": {"KGM": 3969, "LBR": 3972, "FTK": 4797, "CMK": 4907, "DMK": 3975, "FOT": 5148, "LM": 5150, "LO": 5348, "MTR": 3971}, "conversions": {"KGM_TO_LBR": 2.20462, "CMK_TO_FTK": 0.00107639, "LM_TO_FOT": 3.28084}, "geometryDimensions": {"LENGTH": 1284, "WIDTH": 1011, "HEIGHT": 1012, "OUTER_DIAM": 1013, "INNER_DIAM": 1014}, "empresas": {"ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México"}, "predictiveMaterials": {"PlataFina": 55113, "EstanoPuro": 55114, "Niquel": 55115, "Zinc": 55116, "Cobre": 55117, "Sterlingshield_S": 55118, "Epoxy_MT": 55119, "Epoxica_BT": 55120, "Epoxica_MT_Red": 55121}, "schneiderQueretaro": {"customerId": 176980, "shipToAddressId": 277022, "inputSchemaId": 559, "invoiceTermsId": 3142, "sectorId": 578, "shipMethodId": 4661, "poNumberRegex": "^1[14]\\d{8}$", "restantesOvName": "Restantes Schneider QRO"}, "processAudit": {"satelliteOverrides": {"include": [], "exclude": []}, "finishProductMap": {"EST": ["ESTAÑADO", "ESTAÑO"], "NIQ": ["NIQUELADO", "NIQUEL"], "NSU": ["NIQUEL SULFAMATO", "NIQUEL"], "NWO": ["NIQUEL WOOD", "NIQUEL"], "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"], "NBR": ["NIQUEL BRILLANTE", "NIQUEL"], "NCV": ["NIQUEL CHEVROL", "NIQUEL"], "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"], "CRO": ["CROMADO", "CROMO"], "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"], "PLA": ["PLATEADO", "PLATA"], "PLF": ["PLATA FLASH", "PLATA"], "COB": ["COBREADO", "COBRE"], "ZIN": ["ZINCADO", "ZINC"], "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"], "EST_T2": ["ESTAÑADO", "ESTAÑO"], "PAV": ["PAVONADO"], "FMS": ["FOSFATO MANGANESO"], "FZI": ["FOSFATO ZINC"], "AND": ["ANODIZADO"], "IRI": ["IRIDIZADO"], "BDP": ["BAÑO DE PASIVADO"], "BRI": ["BRILLO QUIMICO"], "PRE": ["PRELIMPIEZA", "LIMPIEZA"], "ROD": ["RODADO"], "REB": ["REBABADO", "REBARBADO"], "LES": ["LIMPIEZA ESPECIAL"], "DES": ["DESOXIDADO"], "PUL": ["PULIDO"], "ELE": ["ELECTROPULIDO"], "TIN": ["TINTURADO"], "ESM": ["ESMERILADO"], "SAB": ["SABLEADO"], "LMC": ["LIMPIEZA QUIMICA"], "NOX": ["NOX"], "LAV": ["LAVADO"], "DEC": ["DECAPADO"], "PAS": ["PASIVADO"], "ANT": ["ANTITARNISH"], "HOR": ["HORNEADO", "HORNO"], "FIB": ["FIBRADO"], "ENM": ["ENMASCARADO"], "DNM": ["DESENMASCARADO"], "ACE": ["ACEITADO"], "ABR": ["ABRILLANTADO"], "TRT": ["TRATAMIENTO TERMICO"], "EBT": ["EPOXICA BT"], "EMT": ["EPOXY MT"], "EMR": ["EPOXICA MR"], "CAZ": ["CAJA ZINC", "ZINC"], "CTR": ["CILINDRO TRADICIONAL"], "CVO": ["CILINDRO VOLTEO"], "CAM": ["CAMPANA"], "CAT": ["CATARINA"], "CNE": ["CILINDRO NEUMATICO"], "CNT": ["CILINDRO NETO"], "CRJ": ["CILINDRO ROJO"], "CTV": ["CILINDRO TV"], "CNN": ["CILINDRO NN"]}, "concurrency": {"audit": 5, "trees": 5, "parents": 5, "retryDelaysMs": [0, 1000, 2000]}, "duplicates": {"enabled": true, "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"], "ignoreNamePatterns": [], "ignoreIds": []}}, "specParamsBulk": {"concurrency": {"fetchDetails": 5, "editShape": 10}, "batchSize": 50, "retryDelaysMs": [1000, 2000, 4000], "labelMP": "MP", "impPrefixRegex": "^IMP", "page": {"first": 400}}, "bulkUpload": {"concurrency": {"savePartNumber": 8, "archive": 8, "sentinelPreQuoteArchive": 3}, "retry": {"delaysMs": [1000, 2000, 4000]}, "paging": {"allPartNumbers": {"first": 200, "maxResults": 1000, "massiveMaxResults": 50000}}, "preview": {"pageSize": 100}, "resume": {"maxEntries": 20, "purgeAgeDays": 7}, "nonFinishLabelNames": ["SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2", "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"], "metalEquivalents": [["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"], ["Plata", "Plata Flash"]], "dedup": {"massiveThreshold": 1000}, "chunking": {"defaultChunkSize": 250}, "debug": {"logPredictiveParse": true, "logPredictiveSampleRows": 20}}, "auditor": {"largeCustomers": [{"name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000}], "hardCapPns": 8000, "hardCapWithExclusions": 15000}}}, "portalLayouts": {"hubbell": {"name": "Hubbell Portal", "detection": {"requiredColumns": ["number", "status", "lineItem.itemNumber", "lineItem.materialCodeBuyer", "lineItem.materialDescription", "lineItem.netPrice", "lineItem.priceUnit", "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"], "minMatchRatio": 0.9}, "mapping": {"poNumber": "number", "status": "status", "customer": "customerAddressName", "currency": "currency", "date": "date", "lineNumber": "lineItem.itemNumber", "buyerCode": "lineItem.materialCodeBuyer", "description": "lineItem.note", "netPrice": "lineItem.netPrice", "priceUnit": "lineItem.priceUnit", "quantity": "lineItem.targetQuantity", "deliveryDate": "lineItem.schedule.deliveryDate", "unit": "lineItem.unit"}, "pnExtractor": {"type": "regex", "source": "description", "patterns": ["(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)", "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"]}, "statusFilter": {"activeValues": ["Nuevo"]}, "unitPriceFormula": "netPrice / priceUnit"}}, "unitAutoConvertEnabled": true, "apps": [{"id": "load-calculator", "name": "Calculadora de Piezas por Carga", "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types", "icon": "⚙️", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/load-calculator-engine.js", "scripts/load-calculator-stations.js", "scripts/load-calculator.js", "scripts/load-calculator-modal.js"], "requiredPermissions": [], "actions": [{"id": "open-station-config", "label": "Configurar Estaciones", "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea", "icon": "⚙️", "type": "primary", "handler": "message", "message": "open-station-config", "fn": "LoadCalculator.openStationConfig"}]}, {"id": "proceso-calculator", "name": "Calculadora de Procesos", "subtitle": "Sugiere Default Process al editar un NP", "icon": "🧮", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"], "requiredPermissions": []}, {"id": "carga-masiva", "name": "Carga Masiva", "subtitle": "Cotizaciones y NP", "icon": "📊", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"], "actions": [{"id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker"}, {"id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs"}, {"id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history"}]}, {"id": "hash-scanner", "name": "Explorador Steelhead", "subtitle": "Captura de APIs", "icon": "🔍", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"], "requiredPermissions": ["WRITE_USER_PERMISSIONS"], "actions": [{"id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan"}, {"id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results"}, {"id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config"}, {"id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge"}]}, {"id": "archiver", "name": "Archivador de PNs", "subtitle": "Por etiquetas, fecha y modo", "icon": "📦", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver"}]}, {"id": "auditor", "name": "Auditor de PNs", "subtitle": "Verificar calidad de datos", "icon": "🔎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor"}]}, {"id": "file-uploader", "name": "Cargador de Archivos", "subtitle": "Fotos y planos por PN", "icon": "📎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"], "requiredPermissions": ["READ_ALL_UPLOADED_FILES"], "actions": [{"id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files"}, {"id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup"}]}, {"id": "report-liberator", "name": "Liberador de Reportes", "subtitle": "Sacar reportes de carpetas", "icon": "📂", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator"}]}, {"id": "report-regen", "name": "Regenerar Reportes", "subtitle": "Fuerza el refresh global de la base de reportes", "icon": "♻️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup"}]}, {"id": "spec-migrator", "name": "Ajuste Masivo de Specs", "subtitle": "Migración y params pendientes", "icon": "🔀", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator.js"], "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"], "actions": [{"id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run"}, {"id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams"}, {"id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts"}, {"id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator"}]}, {"id": "inventory-reset", "name": "Reinicio de Inventario", "subtitle": "Archivar lotes y carga inicial", "icon": "🔄", "category": "Inventario", "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"], "requiredPermissions": ["READ_INVENTORY"], "actions": [{"id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset"}]}, {"id": "po-comparator", "name": "Validador OC vs OV", "subtitle": "Comparar orden de compra vs venta", "icon": "📋", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator"}]}, {"id": "po-reconciler", "name": "Reconciliador OV vs PO Schneider", "subtitle": "Rebalancear OVs temporales contra POs reales", "icon": "🧮", "category": "Órdenes de Venta", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "autoInject": true, "actions": [{"id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler"}]}, {"id": "wo-deadline", "name": "Gestión Masiva de OT", "subtitle": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run"}]}, {"id": "wo-mover", "name": "Mover OTs entre OVs", "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV", "icon": "↔️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"], "autoInject": true, "actions": [{"id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover"}]}, {"id": "cfdi-attacher", "name": "Adjuntar CFDI", "subtitle": "Auto-adjunta XML CFDI al enviar facturas", "icon": "📄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher"}]}, {"id": "invoice-auto-regen", "name": "Auto-regenerar Facturas", "subtitle": "Regenera PDF al detectar timbrado exitoso", "icon": "🔄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-auto-regen.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-auto-regen", "label": "Auto-regenerar Facturas", "sublabel": "Regenera PDF tras timbrado exitoso", "icon": "🔄", "type": "toggle", "handler": "message", "message": "toggle-invoice-auto-regen"}]}, {"id": "invoice-default-tab", "name": "Tab por defecto en Invoices", "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=", "icon": "📦", "category": "Facturación", "scripts": ["scripts/invoice-default-tab.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-default-tab", "label": "Tab por defecto Invoices", "sublabel": "Salta a Packing Slips al entrar a /Invoices", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-invoice-default-tab"}]}, {"id": "invoice-listing-marker", "name": "Marcadores de Facturas", "subtitle": "Resalta NC, montos cero y borradores en el listado", "icon": "🎯", "category": "Facturación", "scripts": ["scripts/invoice-listing-marker.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker"}]}, {"id": "portal-importer", "name": "Importador de Portales", "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)", "icon": "📥", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer"}]}, {"id": "paros-linea", "name": "Paro de Línea", "subtitle": "Registrar paros con cronómetro", "icon": "⚠️", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea"}, {"id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled"}]}, {"id": "weight-quick-entry", "name": "Peso Rápido", "subtitle": "Registra peso KG/LB desde el modal de recibo", "icon": "⚖️", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry"}]}, {"id": "unit-autoconvert", "name": "Auto-conversión de Unidades", "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP", "icon": "📐", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"], "autoInject": true, "requiredPermissions": []}, {"id": "receiver-date-override", "name": "Fecha de Recibo", "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts", "icon": "📅", "category": "Recibo", "scripts": ["scripts/receiver-date-override.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override"}]}, {"id": "warehouse-location-prefill", "name": "Ubicación de Recibo", "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts", "icon": "📦", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill"}]}, {"id": "create-order-autofill", "name": "Crear OV — Autofill", "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta", "icon": "📝", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill"}]}, {"id": "bill-autofill", "name": "Bill Autofill", "subtitle": "Llenado automático de cuentas contables en Bills", "icon": "🧾", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"], "actions": [{"id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill"}]}, {"id": "invoice-autofill", "name": "Invoice Autofill", "subtitle": "Llenado automático de cuentas contables en Invoices", "icon": "🧮", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill"}]}, {"id": "process-canon", "name": "Canon de Procesos", "subtitle": "Auditar y normalizar nodos canónicos", "icon": "🏭", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"], "actions": [{"id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run"}, {"id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit"}]}, {"id": "spec-params-bulk", "name": "Carga masiva Spec Params", "subtitle": "Editar parámetros de specs vía XLSX", "icon": "🧪", "category": "Calidad", "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"], "requiredPermissions": [], "actions": [{"id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params"}, {"id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params"}]}, {"id": "sensor-status-autofill", "name": "Auto-asignar status (Sensor Dashboards)", "subtitle": "Marca 'Use for Status' en members de un dashboard", "icon": "📊", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"], "requiredPermissions": [], "actions": [{"id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status"}]}, {"id": "auto-router", "name": "Auto-Ruteador", "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción", "icon": "🔀", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/auto-router-engine.js", "scripts/auto-router-api.js", "scripts/auto-router-panel.js", "scripts/auto-router-batch.js", "scripts/board-metal-tooltip.js", "scripts/auto-router.js"], "requiredPermissions": [], "actions": [{"id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router"}, {"id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch"}]}, {"id": "surtido-guard", "name": "Candado de Surtido Programado", "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido", "icon": "🔒", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/surtido-guard-core.js", "scripts/surtido-guard.js"], "requiredPermissions": [], "actions": [{"id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup"}]}], "knownOperations": {"StationTreatmentByWorkOrder": {"type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router"}, "SearchStationsForTreatment": {"type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router"}, "CreateUpdateDeleteRoutes": {"type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router"}, "PartNumbersByWorkOrderIdInDomain": {"type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router"}, "GetPartNumberInventoryBatch": {"type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router"}, "GetInventoryBatch": {"type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router"}, "SchedulablePartLocations": {"type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router"}, "CreateQuote": {"type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva"}, "UpdateQuote": {"type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva"}, "SaveQuoteLines": {"type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva"}, "CreateQuoteStageChange": {"type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva"}, "SaveManyPartNumberPrices": {"type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva"}, "SavePartNumber": {"type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva"}, "SavePartNumberRackTypes": {"type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva"}, "SetPartNumberPricesAsDefaultPrice": {"type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva"}, "UpdatePartNumber": {"type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva"}, "CreatePartNumberGroup": {"type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva"}, "CustomerSearchByName": {"type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva"}, "CustomerFinancialByCustomerId": {"type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva"}, "GetQuote": {"type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva"}, "GetQuoteRelatedData": {"type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva"}, "SearchInvoiceTerms": {"type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva"}, "SearchUsers": {"type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva"}, "AllProcesses": {"type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva"}, "AllLabels": {"type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva"}, "DeleteWorkOrderLabels": {"type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline"}, "CreateWorkOrderLabel": {"type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline"}, "SearchSpecsForSelect": {"type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva"}, "TempSpecFieldsAndOptions": {"type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva"}, "AllRackTypes": {"type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva"}, "SearchUnits": {"type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert"}, "SearchProducts": {"type": "query", "description": "Buscar productos para líneas de cotización", "usedBy": "carga-masiva"}, "SearchPartNumbers": {"type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva"}, "PartNumberGroupSelect": {"type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva"}, "DeletePartNumberPrice": {"type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva"}, "DeletePartNumberRackType": {"type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva"}, "CreatePartNumberInputSchema": {"type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva"}, "GetDimension": {"type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva"}, "Customer": {"type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill"}, "AllInventoryTypes": {"type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset"}, "SearchInventoryTypeItems": {"type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset"}, "SearchInventoryItemBatches": {"type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset"}, "AllInventoryBatchStatuses": {"type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset"}, "CreateEditInventoryBatchDialogQuery": {"type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset"}, "SearchLocationsOnPath": {"type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill"}, "UpdateInventoryBatchesChecked": {"type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset"}, "CreateInventoryTransferEventGroups": {"type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset"}, "GetSpec": {"type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator"}, "SpecFieldsAndOptions": {"type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator"}, "ApplySpecsToPartNumber": {"type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator"}, "ArchivePartNumberSpecAndParams": {"type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator"}, "UpdatePartNumberSpecParam": {"type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator"}, "AddParamsToPartNumber": {"type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator"}, "FilterSearch": {"type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator"}, "AllReports": {"type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator"}, "CreateUpdateReportWithPermissions": {"type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator"}, "DeleteFolderById": {"type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator"}, "ArchiveReport": {"type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator"}, "CreateUpdateBill": {"type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill"}, "GetPurchaseOrder": {"type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain", "usedBy": "bill-autofill"}, "GetDomain": {"type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill"}, "SearchAccounts": {"type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill"}, "GetAccountDataForBill": {"type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill"}, "GetBillByIdInDomain": {"type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill"}, "GetPartNumbersInputSchema": {"type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva"}, "AllSpecs": {"type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva"}, "AllCustomers": {"type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva"}, "UpdateInventoryItemPredictedUsage": {"type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva"}, "ArchivePredictedInventoryUsage": {"type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash"}, "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {"type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva"}, "UpdatePartNumberPerPerRackType": {"type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva"}, "GetSpecFieldPartNumbers": {"type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator"}, "CheckDuplicatePO": {"type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator"}, "ActiveReceivedOrders": {"type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator"}, "GetReceivedOrder": {"type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator"}, "GetAddPartsReceivedOrder": {"type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler"}, "GetReceivedOrderLine": {"type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator"}, "GetReceivedOrderDocuments": {"type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator"}, "RouteReceivedOrders": {"type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator"}, "GetReceivedOrderCosts": {"type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator"}, "ReceivingBatchesQuery": {"type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator"}, "EmailCustomerContactsByCustomerIds": {"type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator"}, "GetEmailDefaultByTypeAndSubType": {"type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator"}, "GetUserEmailRecipients": {"type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator"}, "SaveReceivedOrderLinesAndItems": {"type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator"}, "SaveReceivedOrderPartTransforms": {"type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer"}, "UpdateReceivedOrder": {"type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler"}, "AddPartsToWorkOrders": {"type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler"}, "CreateUpdateWorkOrdersChecked": {"type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler"}, "SendEmailChecked": {"type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher"}, "CreateEmailLogReceivedOrder": {"type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator"}, "InvoiceByIdInDomain": {"type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher"}, "CreateInvoicePdf": {"type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher"}, "ActiveInvoicesPaged": {"type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen"}, "CreateInvoiceEmailLog": {"type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher"}, "CurrentUser": {"type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions"}, "CurrentUserDetails": {"type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea"}, "CurrentUserActiveSegments": {"type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload"}, "GlobalUsers": {"type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions"}, "CreateReceivedOrder": {"type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator"}, "CreateUserFile": {"type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader"}, "CreateReceivedOrderUserFile": {"type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator"}, "CreateEditReceivedOrderDialogQuery": {"type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator"}, "GetCustomerInfoForReceivedOrder": {"type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator"}, "PartNumberCreatableSelectGetPartNumbers": {"type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator"}, "SearchPartNumberPrices": {"type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator"}, "CreateMaintenanceEvent": {"type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea"}, "CreateMaintenanceNodeEvent": {"type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea"}, "CreateManySensorMeasurements": {"type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea"}, "UpdateMaintenanceEvent": {"type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea"}, "CreateMaintenanceEventComment": {"type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea"}, "CreateMaintenanceEventUserFile": {"type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea"}, "CreateMaintenanceEventDialogQuery": {"type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea"}, "OperatorMaintenanceNodeDialogQuery": {"type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea"}, "SearchEquipments": {"type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea"}, "WorkboardById": {"type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea"}, "AllEquipments": {"type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea"}, "AllPermissionsEditManyPermissions": {"type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings"}, "GetAvailableUnits": {"type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "CreateInventoryItemUnitConversion": {"type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert"}, "UpdateInventoryItemUnitConversion": {"type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "InvoiceLowCodeData": {"type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill"}, "GetReceivedOrdersWithReceivedOrderLineItems": {"type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill"}, "CreateInvoiceAndUpdatePartTransferAccounts": {"type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill"}, "GetProcessNode": {"type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit"}, "CreateEditProcessDialogQuery": {"type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit"}, "GetTreatment": {"type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit"}, "AllTreatments": {"type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit"}, "CreateEditTreatmentTimesDialogQuery": {"type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit"}, "StationsByTreatmentId": {"type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit"}, "GetProcessNodeParents": {"type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit"}, "ProcessNode": {"type": "query", "description": "Lectura ligera de un process node (fallback de GetProcessNode)", "usedBy": "process-canon"}, "AllTagsAndNodes": {"type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon"}, "ProcessesComponentQuery": {"type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon"}, "ProcessesWithTag": {"type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon"}, "GetAllTagsQuery": {"type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon"}, "CreateProcessNode": {"type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon"}, "ProcureTree": {"type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon"}, "UpdateProcessNode": {"type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon"}, "UpdateReceiver": {"type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)"}, "CreateReceiverChecked": {"type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"}}, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm"};
+  window.REMOTE_CONFIG = {"version": "1.7.37", "lastUpdated": "2026-06-30T20:22", "extensionVersion": "1.6.4", "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip", "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html", "steelhead": {"baseUrl": "https://app.gosteelhead.com", "graphqlEndpoint": "/graphql", "keepAliveEndpoint": "/api/session/keep-alive", "apolloClientVersion": "4.0.8", "hashes": {"mutations": {"CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00", "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112", "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e", "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf", "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b", "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163", "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49", "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa", "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129", "UpdateQuote": "765fc26af87241f0f614a51fe3583e10d2f1765dafb1426402f69dcc79e33a8e", "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797", "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0", "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6", "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154", "SaveManyPNP_Quote": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SaveManyPNP_PN": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40", "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363", "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc", "CreateReceivedOrder": "c0ca8f0f56af7f5a306a1639184f66c627af19a2083f6d28caa6856bb71a5dea", "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9", "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57", "SetPNPricesDefault": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293", "UpdatePartNumber": "af584fa8ebb7487fc84de18fa3a5e360e99699a3280185fe98b840c157bbf2c7", "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202", "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419", "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394", "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4", "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8", "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953", "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0", "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174", "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b", "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261", "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce", "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4", "CreateUpdateReportWithPermissions": "6c7753a4bd5f3181b1fffa536833972a4959343da8461127155dd1dd76342bde", "DeleteFolderById": "282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15", "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0", "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022", "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3", "UpdateReceivedOrder": "d9e885763a3f65a6416ac0da3f4037562d6d8e6083dc34892158269d1f61c7b5", "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942", "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449", "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59", "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60", "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3", "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2", "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a", "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54", "UpdateMaintenanceNodeEvent": "39b3cdf27e06a37884bfb551376b23fca971f705fc6472fc495d34dfce69970c", "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84", "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856", "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334", "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c", "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce", "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03", "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb", "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b", "UpdateProcessNode": "4ceb26654b8cf409da36a45a2b1ea3bd3442fb3dcb9da06b51363d29e5f417c6", "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928", "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec", "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3", "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f", "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0"}, "queries": {"AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b", "GetStation": "912beb134cb89f78cf22fdfbe3fd6e59bc5160e11bdffde5d398506492831d41", "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce", "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380", "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143", "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2", "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3", "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc", "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f", "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac", "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890", "GetQuote_v8": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuote_v71": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33", "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02", "CustomerFinancialById": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9", "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca", "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3", "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a", "AllProcesses": "acaa6a46bd1e47ff587ac28833302734d6b00e06c26292c268110ce406ba71e3", "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e", "SearchSpecsForSelect": "8e7723b3a4cf3e7b692999e45d20b7299952253089c7bf146d36ff2872507e2b", "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea", "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3", "SearchUnits": "1961ca85600a902498898502aeda031f270ff2b1289b3ef9fe43aaaefe97ceda", "SearchProducts": "b835021eff4113acd5529f63fa742a9b70373c62a5d9cb39f4203fe2bbba9f8a", "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91", "GetPartNumber": "804dd8f7e65f2f84661cf42637949a03ec0c2132e59048746edc9280cced7eec", "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109", "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a", "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b", "PNGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c", "Customer": "96b214b5632df4722bd64d7e51ce086da06c3bc41ab4e79d523b271f14a9f355", "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5", "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9", "AllPartNumbers": "827be6815fa644ea35f4982ea8eca8a451500b078112e6e8244f505d0f1cfe09", "AllWorkOrders": "a8c2baab3cf24698bdbb951bddabab8bd383378391b1a2b1c296c63008bba8d7", "AllReceivers": "153f2cac87aa0c23fab030d9463c15b8d494ab7f935265cbdd06779cfe2a1ee3", "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf", "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c", "SearchInventoryItemBatches": "ae2466466ed3e84a2010c726a166c432c176c3d21be5be7ac71db6c1846b901b", "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09", "CheckDuplicatePO": "94e659bf6eea8d493f8ea67f950fd38371a5cb680d2622145d5df9dc63583b85", "CreateEditReceivedOrderDialogQuery": "5b01210ebe19943b899b9255cf84021e66ef8a851bac9f1ea0ce8beaa44e8e7d", "GetCustomerInfoForReceivedOrder": "be7c8dbeec701f49545d5f3685c448db57d043a7a2ebbe184ed642559abce9d5", "PartNumberCreatableSelectGetPartNumbers": "1d5714f35b4232eed5c3e89df5dd833c595d77df333ee3bc0f0f09c3a4f9b23a", "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14", "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a", "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120", "GetReceivedOrder": "3b4ab8f11af9f2603acfe5983499874219b8a7ba49efd07cdf6a079b2875b293", "GetAddPartsReceivedOrder": "677ae9cac761b748b85311b63a6cfa27065119b0a20f998005ef6baea6831b64", "WorkOrderDialogQuery": "5b7f715303297e64f32806d5361f388ab84e48827a9d3e0d09982b4ca9504f13", "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686", "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8", "GetReceivedOrderDocuments": "7d74c516daa9938572e482fb1ea012dce5eeb3bad2de63cecb1e5740a139e42d", "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156", "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520", "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0", "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db", "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de", "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7", "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d", "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e", "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb", "AllCustomers": "66e271f6a8a2ad35955f54abbffc2ad3502deaae53dcd143250bc10e76d57712", "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6", "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888", "ReceivingBatchesQuery": "5b0baf3614222571071456156a30f86a4ee2b786cc5b204872a2b6baeefe46de", "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4", "InvoiceByIdInDomain": "f18f1274740aea191614627ac2b58807582012090cbe004daa5c3cedf7043a58", "CurrentUser": "18c6574c779e24f19b19e303b1b7c176601eb44e4dfd1860d2d925fd976c779e", "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c", "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0", "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c", "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac", "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830", "GetMaintenanceEvent": "be2a98642faeaa127dd66ac78f59716b030cc4dbeba7e9348fcde2d5bb074b2b", "UserDialogQuery": "843b5f4f236fd159b5d3912c434551cf2866a591e3c38babfdfb2fd6f7283959", "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63", "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83", "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f", "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de", "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0", "GetPurchaseOrder": "6d8626794b0b81e885f621fac214f825c3078931ad030ddd2299d227e530bcf6", "GetDomain": "c0c242bcac011a6e72087bd0d0698dde5cf2fe8b247a51e4eb3b08c36299c866", "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57", "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0", "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d", "SearchPurchaseOrdersForBill": "e99dddad15827a5c6b2a342f236a60a462edcc406f9896a1b04800a76def929a", "GetPurchaseOrdersDataForBill": "a94f43960ae91e6f62332a9e3268f9789ccdd847c8951dbf27a7d2ff25c5565d", "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8", "GetVendor": "efb7af01229000ecacf09372a1fe51b5c0d7340e82b599747a5900a9fb5596f5", "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e", "GetReceivedOrdersWithReceivedOrderLineItems": "944ee7858fbb16d20952732005eb6c1138049ab97c64a34e15c0dfab19e2aa3e", "GetProcessNode": "fae7d1d1d4e5ceae7b3c4e4d138ce9027158c37a7266b68f75264ec1756adbfe", "ProcessNode": "72a77473ba27a4854aa25e147d651f864a3fb6cb8893c169a00f8fd90b9d3f4c", "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af", "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d", "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3", "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3", "CreateEditProcessDialogQuery": "de4bc7fb144adaf8d3e314a2849b0680b6107f228890a463e59b74ca7eb9a0c0", "GetTreatment": "87a9d9f60a00814e8573ec59c0817fc2d29777777aa592a7db221a339322a750", "AllTreatments": "69c99e3fbb343cf07c0b95189b32ae411228a154f06588a9c28c58f8da26220b", "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca", "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2", "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec", "AllSensorDashboards": "432339f25bae0153d88fff64302df0bea1769987af20812c312748eb2babeedf", "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a", "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705", "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e", "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e"}}, "domain": {"id": 344, "dimensionIds": {"linea": 349, "departamento": 586}, "billingDefaults": {"departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado"}, "inputSchemaId_PN": 3932, "inputSchemaId_Quote": 659, "inputSchemaId_Bill": 27, "stagesRevisionId": 306, "ganadaStageId": 1212, "revertStageId": 1208, "geometryGenericaId": 831, "validacionProcessNodeIds": [231176, 231174], "unitIds": {"KGM": 3969, "LBR": 3972, "FTK": 4797, "CMK": 4907, "DMK": 3975, "FOT": 5148, "LM": 5150, "LO": 5348, "MTR": 3971}, "conversions": {"KGM_TO_LBR": 2.20462, "CMK_TO_FTK": 0.00107639, "LM_TO_FOT": 3.28084}, "geometryDimensions": {"LENGTH": 1284, "WIDTH": 1011, "HEIGHT": 1012, "OUTER_DIAM": 1013, "INNER_DIAM": 1014}, "empresas": {"ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México"}, "predictiveMaterials": {"PlataFina": 55113, "EstanoPuro": 55114, "Niquel": 55115, "Zinc": 55116, "Cobre": 55117, "Sterlingshield_S": 55118, "Epoxy_MT": 55119, "Epoxica_BT": 55120, "Epoxica_MT_Red": 55121}, "schneiderQueretaro": {"customerId": 176980, "shipToAddressId": 277022, "inputSchemaId": 559, "invoiceTermsId": 3142, "sectorId": 578, "shipMethodId": 4661, "poNumberRegex": "^1[14]\\d{8}$", "restantesOvName": "Restantes Schneider QRO"}, "processAudit": {"satelliteOverrides": {"include": [], "exclude": []}, "finishProductMap": {"EST": ["ESTAÑADO", "ESTAÑO"], "NIQ": ["NIQUELADO", "NIQUEL"], "NSU": ["NIQUEL SULFAMATO", "NIQUEL"], "NWO": ["NIQUEL WOOD", "NIQUEL"], "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"], "NBR": ["NIQUEL BRILLANTE", "NIQUEL"], "NCV": ["NIQUEL CHEVROL", "NIQUEL"], "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"], "CRO": ["CROMADO", "CROMO"], "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"], "PLA": ["PLATEADO", "PLATA"], "PLF": ["PLATA FLASH", "PLATA"], "COB": ["COBREADO", "COBRE"], "ZIN": ["ZINCADO", "ZINC"], "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"], "EST_T2": ["ESTAÑADO", "ESTAÑO"], "PAV": ["PAVONADO"], "FMS": ["FOSFATO MANGANESO"], "FZI": ["FOSFATO ZINC"], "AND": ["ANODIZADO"], "IRI": ["IRIDIZADO"], "BDP": ["BAÑO DE PASIVADO"], "BRI": ["BRILLO QUIMICO"], "PRE": ["PRELIMPIEZA", "LIMPIEZA"], "ROD": ["RODADO"], "REB": ["REBABADO", "REBARBADO"], "LES": ["LIMPIEZA ESPECIAL"], "DES": ["DESOXIDADO"], "PUL": ["PULIDO"], "ELE": ["ELECTROPULIDO"], "TIN": ["TINTURADO"], "ESM": ["ESMERILADO"], "SAB": ["SABLEADO"], "LMC": ["LIMPIEZA QUIMICA"], "NOX": ["NOX"], "LAV": ["LAVADO"], "DEC": ["DECAPADO"], "PAS": ["PASIVADO"], "ANT": ["ANTITARNISH"], "HOR": ["HORNEADO", "HORNO"], "FIB": ["FIBRADO"], "ENM": ["ENMASCARADO"], "DNM": ["DESENMASCARADO"], "ACE": ["ACEITADO"], "ABR": ["ABRILLANTADO"], "TRT": ["TRATAMIENTO TERMICO"], "EBT": ["EPOXICA BT"], "EMT": ["EPOXY MT"], "EMR": ["EPOXICA MR"], "CAZ": ["CAJA ZINC", "ZINC"], "CTR": ["CILINDRO TRADICIONAL"], "CVO": ["CILINDRO VOLTEO"], "CAM": ["CAMPANA"], "CAT": ["CATARINA"], "CNE": ["CILINDRO NEUMATICO"], "CNT": ["CILINDRO NETO"], "CRJ": ["CILINDRO ROJO"], "CTV": ["CILINDRO TV"], "CNN": ["CILINDRO NN"]}, "concurrency": {"audit": 5, "trees": 5, "parents": 5, "retryDelaysMs": [0, 1000, 2000]}, "duplicates": {"enabled": true, "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"], "ignoreNamePatterns": [], "ignoreIds": []}}, "specParamsBulk": {"concurrency": {"fetchDetails": 5, "editShape": 10}, "batchSize": 50, "retryDelaysMs": [1000, 2000, 4000], "labelMP": "MP", "impPrefixRegex": "^IMP", "page": {"first": 400}}, "bulkUpload": {"concurrency": {"savePartNumber": 8, "archive": 8, "sentinelPreQuoteArchive": 3}, "retry": {"delaysMs": [1000, 2000, 4000]}, "paging": {"allPartNumbers": {"first": 200, "maxResults": 1000, "massiveMaxResults": 50000}}, "preview": {"pageSize": 100}, "resume": {"maxEntries": 20, "purgeAgeDays": 7}, "nonFinishLabelNames": ["SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2", "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"], "metalEquivalents": [["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"], ["Plata", "Plata Flash"]], "dedup": {"massiveThreshold": 1000}, "chunking": {"defaultChunkSize": 250}, "debug": {"logPredictiveParse": true, "logPredictiveSampleRows": 20}}, "auditor": {"largeCustomers": [{"name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000}], "hardCapPns": 8000, "hardCapWithExclusions": 15000}}}, "portalLayouts": {"hubbell": {"name": "Hubbell Portal", "detection": {"requiredColumns": ["number", "status", "lineItem.itemNumber", "lineItem.materialCodeBuyer", "lineItem.materialDescription", "lineItem.netPrice", "lineItem.priceUnit", "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"], "minMatchRatio": 0.9}, "mapping": {"poNumber": "number", "status": "status", "customer": "customerAddressName", "currency": "currency", "date": "date", "lineNumber": "lineItem.itemNumber", "buyerCode": "lineItem.materialCodeBuyer", "description": "lineItem.note", "netPrice": "lineItem.netPrice", "priceUnit": "lineItem.priceUnit", "quantity": "lineItem.targetQuantity", "deliveryDate": "lineItem.schedule.deliveryDate", "unit": "lineItem.unit"}, "pnExtractor": {"type": "regex", "source": "description", "patterns": ["(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)", "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"]}, "statusFilter": {"activeValues": ["Nuevo"]}, "unitPriceFormula": "netPrice / priceUnit"}}, "unitAutoConvertEnabled": true, "apps": [{"id": "load-calculator", "name": "Calculadora de Piezas por Carga", "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types", "icon": "⚙️", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/load-calculator-engine.js", "scripts/load-calculator-stations.js", "scripts/load-calculator.js", "scripts/load-calculator-modal.js"], "requiredPermissions": [], "actions": [{"id": "open-station-config", "label": "Configurar Estaciones", "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea", "icon": "⚙️", "type": "primary", "handler": "message", "message": "open-station-config", "fn": "LoadCalculator.openStationConfig"}]}, {"id": "proceso-calculator", "name": "Calculadora de Procesos", "subtitle": "Sugiere Default Process al editar un NP", "icon": "🧮", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"], "requiredPermissions": []}, {"id": "carga-masiva", "name": "Carga Masiva", "subtitle": "Cotizaciones y NP", "icon": "📊", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"], "actions": [{"id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker"}, {"id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs"}, {"id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history"}]}, {"id": "hash-scanner", "name": "Explorador Steelhead", "subtitle": "Captura de APIs", "icon": "🔍", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"], "requiredPermissions": ["WRITE_USER_PERMISSIONS"], "actions": [{"id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan"}, {"id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results"}, {"id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config"}, {"id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge"}]}, {"id": "archiver", "name": "Archivador de PNs", "subtitle": "Por etiquetas, fecha y modo", "icon": "📦", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver"}]}, {"id": "auditor", "name": "Auditor de PNs", "subtitle": "Verificar calidad de datos", "icon": "🔎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor"}]}, {"id": "file-uploader", "name": "Cargador de Archivos", "subtitle": "Fotos y planos por PN", "icon": "📎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"], "requiredPermissions": ["READ_ALL_UPLOADED_FILES"], "actions": [{"id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files"}, {"id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup"}]}, {"id": "report-liberator", "name": "Liberador de Reportes", "subtitle": "Sacar reportes de carpetas", "icon": "📂", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator"}]}, {"id": "report-regen", "name": "Regenerar Reportes", "subtitle": "Fuerza el refresh global de la base de reportes", "icon": "♻️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup"}]}, {"id": "spec-migrator", "name": "Ajuste Masivo de Specs", "subtitle": "Migración y params pendientes", "icon": "🔀", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator.js"], "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"], "actions": [{"id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run"}, {"id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams"}, {"id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts"}, {"id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator"}]}, {"id": "inventory-reset", "name": "Reinicio de Inventario", "subtitle": "Archivar lotes y carga inicial", "icon": "🔄", "category": "Inventario", "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"], "requiredPermissions": ["READ_INVENTORY"], "actions": [{"id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset"}]}, {"id": "po-comparator", "name": "Validador OC vs OV", "subtitle": "Comparar orden de compra vs venta", "icon": "📋", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator"}]}, {"id": "po-reconciler", "name": "Reconciliador OV vs PO Schneider", "subtitle": "Rebalancear OVs temporales contra POs reales", "icon": "🧮", "category": "Órdenes de Venta", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "autoInject": true, "actions": [{"id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler"}]}, {"id": "wo-deadline", "name": "Gestión Masiva de OT", "subtitle": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run"}]}, {"id": "wo-mover", "name": "Mover OTs entre OVs", "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV", "icon": "↔️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"], "autoInject": true, "actions": [{"id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover"}]}, {"id": "cfdi-attacher", "name": "Adjuntar CFDI", "subtitle": "Auto-adjunta XML CFDI al enviar facturas", "icon": "📄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher"}]}, {"id": "invoice-auto-regen", "name": "Auto-regenerar Facturas", "subtitle": "Regenera PDF al detectar timbrado exitoso", "icon": "🔄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-auto-regen.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-auto-regen", "label": "Auto-regenerar Facturas", "sublabel": "Regenera PDF tras timbrado exitoso", "icon": "🔄", "type": "toggle", "handler": "message", "message": "toggle-invoice-auto-regen"}]}, {"id": "invoice-default-tab", "name": "Tab por defecto en Invoices", "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=", "icon": "📦", "category": "Facturación", "scripts": ["scripts/invoice-default-tab.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-default-tab", "label": "Tab por defecto Invoices", "sublabel": "Salta a Packing Slips al entrar a /Invoices", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-invoice-default-tab"}]}, {"id": "invoice-listing-marker", "name": "Marcadores de Facturas", "subtitle": "Resalta NC, montos cero y borradores en el listado", "icon": "🎯", "category": "Facturación", "scripts": ["scripts/invoice-listing-marker.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker"}]}, {"id": "portal-importer", "name": "Importador de Portales", "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)", "icon": "📥", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer"}]}, {"id": "paros-linea", "name": "Paro de Línea", "subtitle": "Registrar paros con cronómetro", "icon": "⚠️", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea"}, {"id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled"}]}, {"id": "vale-almacen", "name": "Vale de Almacén", "subtitle": "Surtido de material/equipo por usuario", "icon": "📦", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/vale-almacen-engine.js", "scripts/vale-almacen.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-vale-almacen", "label": "Emitir Vale de Almacén", "sublabel": "Registrar artículos entregados por usuario", "icon": "📦", "type": "primary", "handler": "message", "message": "open-vale-almacen", "fn": "ValeAlmacen.open"}]}, {"id": "weight-quick-entry", "name": "Peso Rápido", "subtitle": "Registra peso KG/LB desde el modal de recibo", "icon": "⚖️", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry"}]}, {"id": "unit-autoconvert", "name": "Auto-conversión de Unidades", "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP", "icon": "📐", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"], "autoInject": true, "requiredPermissions": []}, {"id": "receiver-date-override", "name": "Fecha de Recibo", "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts", "icon": "📅", "category": "Recibo", "scripts": ["scripts/receiver-date-override.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override"}]}, {"id": "warehouse-location-prefill", "name": "Ubicación de Recibo", "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts", "icon": "📦", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill"}]}, {"id": "create-order-autofill", "name": "Crear OV — Autofill", "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta", "icon": "📝", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill"}]}, {"id": "bill-autofill", "name": "Bill Autofill", "subtitle": "Llenado automático de cuentas contables en Bills", "icon": "🧾", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"], "actions": [{"id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill"}]}, {"id": "invoice-autofill", "name": "Invoice Autofill", "subtitle": "Llenado automático de cuentas contables en Invoices", "icon": "🧮", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill"}]}, {"id": "process-canon", "name": "Canon de Procesos", "subtitle": "Auditar y normalizar nodos canónicos", "icon": "🏭", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"], "actions": [{"id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run"}, {"id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit"}]}, {"id": "spec-params-bulk", "name": "Carga masiva Spec Params", "subtitle": "Editar parámetros de specs vía XLSX", "icon": "🧪", "category": "Calidad", "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"], "requiredPermissions": [], "actions": [{"id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params"}, {"id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params"}]}, {"id": "sensor-status-autofill", "name": "Auto-asignar status (Sensor Dashboards)", "subtitle": "Marca 'Use for Status' en members de un dashboard", "icon": "📊", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"], "requiredPermissions": [], "actions": [{"id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status"}]}, {"id": "auto-router", "name": "Auto-Ruteador", "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción", "icon": "🔀", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/auto-router-engine.js", "scripts/auto-router-api.js", "scripts/auto-router-panel.js", "scripts/auto-router-batch.js", "scripts/board-metal-tooltip.js", "scripts/auto-router.js"], "requiredPermissions": [], "actions": [{"id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router"}, {"id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch"}]}, {"id": "surtido-guard", "name": "Candado de Surtido Programado", "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido", "icon": "🔒", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/surtido-guard-core.js", "scripts/surtido-guard.js"], "requiredPermissions": [], "actions": [{"id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup"}]}], "knownOperations": {"StationTreatmentByWorkOrder": {"type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router"}, "SearchStationsForTreatment": {"type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router"}, "CreateUpdateDeleteRoutes": {"type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router"}, "PartNumbersByWorkOrderIdInDomain": {"type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router"}, "GetPartNumberInventoryBatch": {"type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router"}, "GetInventoryBatch": {"type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router"}, "SchedulablePartLocations": {"type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router"}, "CreateQuote": {"type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva"}, "UpdateQuote": {"type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva"}, "SaveQuoteLines": {"type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva"}, "CreateQuoteStageChange": {"type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva"}, "SaveManyPartNumberPrices": {"type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva"}, "SavePartNumber": {"type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva"}, "SavePartNumberRackTypes": {"type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva"}, "SetPartNumberPricesAsDefaultPrice": {"type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva"}, "UpdatePartNumber": {"type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva"}, "CreatePartNumberGroup": {"type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva"}, "CustomerSearchByName": {"type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva"}, "CustomerFinancialByCustomerId": {"type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva"}, "GetQuote": {"type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva"}, "GetQuoteRelatedData": {"type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva"}, "SearchInvoiceTerms": {"type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva"}, "SearchUsers": {"type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva"}, "AllProcesses": {"type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva"}, "AllLabels": {"type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva"}, "DeleteWorkOrderLabels": {"type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline"}, "CreateWorkOrderLabel": {"type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline"}, "SearchSpecsForSelect": {"type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva"}, "TempSpecFieldsAndOptions": {"type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva"}, "AllRackTypes": {"type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva"}, "SearchUnits": {"type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert"}, "SearchProducts": {"type": "query", "description": "Buscar productos para líneas de cotización", "usedBy": "carga-masiva"}, "SearchPartNumbers": {"type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva"}, "PartNumberGroupSelect": {"type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva"}, "DeletePartNumberPrice": {"type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva"}, "DeletePartNumberRackType": {"type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva"}, "CreatePartNumberInputSchema": {"type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva"}, "GetDimension": {"type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva"}, "Customer": {"type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill"}, "AllInventoryTypes": {"type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset"}, "SearchInventoryTypeItems": {"type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset"}, "SearchInventoryItemBatches": {"type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset"}, "AllInventoryBatchStatuses": {"type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset"}, "CreateEditInventoryBatchDialogQuery": {"type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset"}, "SearchLocationsOnPath": {"type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill"}, "UpdateInventoryBatchesChecked": {"type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset"}, "CreateInventoryTransferEventGroups": {"type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset"}, "GetSpec": {"type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator"}, "SpecFieldsAndOptions": {"type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator"}, "ApplySpecsToPartNumber": {"type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator"}, "ArchivePartNumberSpecAndParams": {"type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator"}, "UpdatePartNumberSpecParam": {"type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator"}, "AddParamsToPartNumber": {"type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator"}, "FilterSearch": {"type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator"}, "AllReports": {"type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator"}, "CreateUpdateReportWithPermissions": {"type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator"}, "DeleteFolderById": {"type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator"}, "ArchiveReport": {"type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator"}, "CreateUpdateBill": {"type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill"}, "GetPurchaseOrder": {"type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain", "usedBy": "bill-autofill"}, "GetDomain": {"type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill"}, "SearchAccounts": {"type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill"}, "GetAccountDataForBill": {"type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill"}, "GetBillByIdInDomain": {"type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill"}, "GetPartNumbersInputSchema": {"type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva"}, "AllSpecs": {"type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva"}, "AllCustomers": {"type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva"}, "UpdateInventoryItemPredictedUsage": {"type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva"}, "ArchivePredictedInventoryUsage": {"type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash"}, "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {"type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva"}, "UpdatePartNumberPerPerRackType": {"type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva"}, "GetSpecFieldPartNumbers": {"type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator"}, "CheckDuplicatePO": {"type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator"}, "ActiveReceivedOrders": {"type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator"}, "GetReceivedOrder": {"type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator"}, "GetAddPartsReceivedOrder": {"type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler"}, "GetReceivedOrderLine": {"type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator"}, "GetReceivedOrderDocuments": {"type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator"}, "RouteReceivedOrders": {"type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator"}, "GetReceivedOrderCosts": {"type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator"}, "ReceivingBatchesQuery": {"type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator"}, "EmailCustomerContactsByCustomerIds": {"type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator"}, "GetEmailDefaultByTypeAndSubType": {"type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator"}, "GetUserEmailRecipients": {"type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator"}, "SaveReceivedOrderLinesAndItems": {"type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator"}, "SaveReceivedOrderPartTransforms": {"type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer"}, "UpdateReceivedOrder": {"type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler"}, "AddPartsToWorkOrders": {"type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler"}, "CreateUpdateWorkOrdersChecked": {"type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler"}, "SendEmailChecked": {"type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher"}, "CreateEmailLogReceivedOrder": {"type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator"}, "InvoiceByIdInDomain": {"type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher"}, "CreateInvoicePdf": {"type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher"}, "ActiveInvoicesPaged": {"type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen"}, "CreateInvoiceEmailLog": {"type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher"}, "CurrentUser": {"type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions"}, "CurrentUserDetails": {"type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea"}, "CurrentUserActiveSegments": {"type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload"}, "GlobalUsers": {"type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions"}, "CreateReceivedOrder": {"type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator"}, "CreateUserFile": {"type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader"}, "CreateReceivedOrderUserFile": {"type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator"}, "CreateEditReceivedOrderDialogQuery": {"type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator"}, "GetCustomerInfoForReceivedOrder": {"type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator"}, "PartNumberCreatableSelectGetPartNumbers": {"type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator"}, "SearchPartNumberPrices": {"type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator"}, "CreateMaintenanceEvent": {"type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea"}, "CreateMaintenanceNodeEvent": {"type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea"}, "CreateManySensorMeasurements": {"type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea"}, "UpdateMaintenanceEvent": {"type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea"}, "CreateMaintenanceEventComment": {"type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea"}, "CreateMaintenanceEventUserFile": {"type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea"}, "CreateMaintenanceEventDialogQuery": {"type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea"}, "OperatorMaintenanceNodeDialogQuery": {"type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea"}, "SearchEquipments": {"type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea"}, "WorkboardById": {"type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea"}, "AllEquipments": {"type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea, vale-almacen"}, "GetMaintenanceEvent": {"type": "query", "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)", "usedBy": "vale-almacen"}, "UpdateMaintenanceNodeEvent": {"type": "mutation", "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado", "usedBy": "vale-almacen"}, "UserDialogQuery": {"type": "query", "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)", "usedBy": "vale-almacen"}, "AllPermissionsEditManyPermissions": {"type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings"}, "GetAvailableUnits": {"type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "CreateInventoryItemUnitConversion": {"type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert"}, "UpdateInventoryItemUnitConversion": {"type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "InvoiceLowCodeData": {"type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill"}, "GetReceivedOrdersWithReceivedOrderLineItems": {"type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill"}, "CreateInvoiceAndUpdatePartTransferAccounts": {"type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill"}, "GetProcessNode": {"type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit"}, "CreateEditProcessDialogQuery": {"type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit"}, "GetTreatment": {"type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit"}, "AllTreatments": {"type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit"}, "CreateEditTreatmentTimesDialogQuery": {"type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit"}, "StationsByTreatmentId": {"type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit"}, "GetProcessNodeParents": {"type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit"}, "ProcessNode": {"type": "query", "description": "Lectura ligera de un process node (fallback de GetProcessNode)", "usedBy": "process-canon"}, "AllTagsAndNodes": {"type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon"}, "ProcessesComponentQuery": {"type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon"}, "ProcessesWithTag": {"type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon"}, "GetAllTagsQuery": {"type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon"}, "CreateProcessNode": {"type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon"}, "ProcureTree": {"type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon"}, "UpdateProcessNode": {"type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon"}, "UpdateReceiver": {"type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)"}, "CreateReceiverChecked": {"type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"}}, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm"};
   try { if (window.SteelheadAPI && window.SteelheadAPI.init) window.SteelheadAPI.init(window.REMOTE_CONFIG); } catch (e) {}
 })();
 // ===== END config-seed =====
@@ -12961,6 +12961,3719 @@ if (typeof window !== 'undefined') {
 })();
 // ===== END scripts/invoice-auto-regen.js =====
 
+// ===== BEGIN scripts/vale-almacen-engine.js =====
+(function(){
+// Vale de Almacén — motor puro (sin DOM, sin API).
+// Construye y parsea los COMENTARIOS ESTRUCTURADOS que registran un vale en el
+// evento de mantenimiento. El formato es machine-parseable y sobrevive edición
+// humana gracias a los sentinels literales [VALE]…[/VALE].
+//
+// Una línea del vale → un comentario:
+//   [VALE] art:"Guante Nitrilo T/L" cant:2 unidad:"PZA" user:"Juan Pérez" emp:ABC1234 linea:"T205 Linea de Zinc" [/VALE]
+// Encabezado/cierre del vale (1 c/u):
+//   [VALE-INI] fecha:<ISO> equipo:"…" nodo:"…" recoge:"…" items:N [/VALE-INI]
+//   [VALE-FIN] items:N completedAt:<ISO> [/VALE-FIN]
+//
+// Un parser externo reconstruye la base de datos de entregas por usuario con
+// SteelheadValeEngine.parseAllLines(textoCompletoDeComentarios).
+(function (root) {
+  'use strict';
+
+  // Quote un valor string: envuelve en comillas dobles, escapando \ y " internos.
+  function quote(v) {
+    return '"' + String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+
+  // Normaliza una cantidad numérica a string ("3", "3.5"); no inventa decimales.
+  function formatNum(q) {
+    const n = Number(q);
+    return Number.isFinite(n) ? String(n) : '0';
+  }
+
+  // Tokeniza el contenido interno de un bloque en pares clave:valor.
+  // El valor puede ir entre comillas (con escapes \" y \\) o ser un token sin espacios.
+  function parseKeyVals(inner) {
+    const out = {};
+    const s = String(inner || '');
+    const n = s.length;
+    let i = 0;
+    while (i < n) {
+      while (i < n && /\s/.test(s[i])) i++;
+      if (i >= n) break;
+      let key = '';
+      while (i < n && s[i] !== ':' && !/\s/.test(s[i])) { key += s[i]; i++; }
+      if (i >= n || s[i] !== ':') { // clave malformada sin ':'; saltar token
+        while (i < n && !/\s/.test(s[i])) i++;
+        continue;
+      }
+      i++; // saltar ':'
+      let val = '';
+      if (s[i] === '"') {
+        i++; // saltar comilla de apertura
+        while (i < n) {
+          const c = s[i];
+          if (c === '\\' && i + 1 < n) { val += s[i + 1]; i += 2; continue; }
+          if (c === '"') { i++; break; }
+          val += c; i++;
+        }
+      } else {
+        while (i < n && !/\s/.test(s[i])) { val += s[i]; i++; }
+      }
+      out[key.trim()] = val;
+    }
+    return out;
+  }
+
+  // line: { articleName, quantity, unidad?, assigneeName, employeeNumber|null, equipmentName }
+  function buildLineComment(line) {
+    const l = line || {};
+    const emp = (l.employeeNumber == null || l.employeeNumber === '') ? '?' : String(l.employeeNumber);
+    const parts = [
+      'art:' + quote(l.articleName),
+      'cant:' + formatNum(l.quantity),
+    ];
+    if (l.unidad != null && l.unidad !== '') parts.push('unidad:' + quote(l.unidad));
+    parts.push('user:' + quote(l.assigneeName));
+    parts.push('emp:' + emp);
+    parts.push('linea:' + quote(l.equipmentName));
+    return '[VALE] ' + parts.join(' ') + ' [/VALE]';
+  }
+
+  // Parsea UN comentario [VALE]…[/VALE] (el primero que encuentre). null si no hay sentinel.
+  function parseLineComment(text) {
+    const m = /\[VALE\]\s*([\s\S]*?)\s*\[\/VALE\]/.exec(String(text == null ? '' : text));
+    if (!m) return null;
+    const kv = parseKeyVals(m[1]);
+    if (!('art' in kv)) return null;
+    return {
+      articleName: kv.art || '',
+      quantity: kv.cant != null ? Number(kv.cant) : null,
+      unidad: kv.unidad || '',
+      assigneeName: kv.user || '',
+      employeeNumber: (kv.emp == null || kv.emp === '?' || kv.emp === '') ? null : kv.emp,
+      equipmentName: kv.linea || '',
+    };
+  }
+
+  // Extrae TODOS los bloques [VALE]…[/VALE] de un texto (varios comentarios concatenados).
+  function parseAllLines(text) {
+    const re = /\[VALE\]\s*[\s\S]*?\s*\[\/VALE\]/g;
+    const src = String(text == null ? '' : text);
+    const res = [];
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      const parsed = parseLineComment(m[0]);
+      if (parsed) res.push(parsed);
+    }
+    return res;
+  }
+
+  // opts: { fecha:<ISO>, equipmentName, nodeName, pickupName, items }
+  function buildHeaderComment(opts) {
+    const o = opts || {};
+    const parts = [
+      'fecha:' + String(o.fecha || ''),
+      'equipo:' + quote(o.equipmentName),
+      'nodo:' + quote(o.nodeName),
+      'recoge:' + quote(o.pickupName),
+      'items:' + (Number(o.items) || 0),
+    ];
+    return '[VALE-INI] ' + parts.join(' ') + ' [/VALE-INI]';
+  }
+
+  // opts: { items, completedAt:<ISO> }
+  function buildFooterComment(opts) {
+    const o = opts || {};
+    return '[VALE-FIN] items:' + (Number(o.items) || 0) + ' completedAt:' + String(o.completedAt || '') + ' [/VALE-FIN]';
+  }
+
+  // line de la UI: { articleSensorId, articleName, quantity, assigneeId, assigneeName, equipmentName }
+  function validateValeLine(line) {
+    const l = line || {};
+    const errors = [];
+    if (!l.articleSensorId) errors.push('Falta el artículo');
+    if (l.articleName == null || String(l.articleName).trim() === '') errors.push('Falta el nombre del artículo');
+    const q = Number(l.quantity);
+    if (!Number.isFinite(q) || q <= 0) errors.push('La cantidad debe ser mayor a 0');
+    if (!l.assigneeId) errors.push('Falta el usuario asignado');
+    if (l.assigneeName == null || String(l.assigneeName).trim() === '') errors.push('Falta el nombre del usuario asignado');
+    if (l.equipmentName == null || String(l.equipmentName).trim() === '') errors.push('Falta la línea/equipo');
+    return { valid: errors.length === 0, errors };
+  }
+
+  const api = {
+    buildLineComment,
+    parseLineComment,
+    parseAllLines,
+    buildHeaderComment,
+    buildFooterComment,
+    validateValeLine,
+    // expuestos para tests/depuración
+    _parseKeyVals: parseKeyVals,
+    _quote: quote,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.SteelheadValeEngine = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/vale-almacen-engine.js =====
+
+// ===== BEGIN scripts/vale-almacen.js =====
+(function(){
+// Steelhead Vale de Almacén
+// Botón flotante (📦) sobre las pantallas de producción / mantenimiento / sensores /
+// inventario que emite un "vale" = evento de mantenimiento sobre un nodo de tipo
+// "Surtimiento". El nodo raíz tiene 3 pasos; el paso 0 (los sensores NUMBER) es el
+// catálogo de artículos. Cada línea del vale registra una cantidad por artículo y se
+// asigna a un usuario; el asignado queda como COMENTARIO ESTRUCTURADO y parseable
+// (motor en vale-almacen-engine.js) para reconstruir después la BD de entregas por
+// usuario. El campo "Asignado" del evento = la persona que recoge el vale.
+//
+// Flujo: CreateMaintenanceEvent(raíz) → GetMaintenanceEvent → resolver paso 0
+//        → OperatorMaintenanceNodeDialogQuery (sensores = artículos)
+//        → CreateMaintenanceNodeEvent(paso 0) → CreateManySensorMeasurements (batch)
+//        → CreateMaintenanceEventComment ([VALE]…) → /api/files (evidencia)
+//        → UpdateMaintenanceNodeEvent{archivedAt} → UpdateMaintenanceEvent{completedAt}
+// Depende de: SteelheadAPI + SteelheadValeEngine + window.REMOTE_CONFIG
+const ValeAlmacen = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const cfg = () => window.REMOTE_CONFIG;
+  const engine = () => window.SteelheadValeEngine;
+
+  const STATE_KEY = 'sa_vale_active_event';
+  const EQUIP_CACHE_KEY = 'sa_vale_line_equipments_v1';
+  const EQUIP_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+  const STEP0_CACHE_KEY = 'sa_vale_step0_map_v1';
+  const LAST_LINE_KEY = 'sa_vale_last_line';
+
+  // 4 familias de pantallas pedidas: Producción (Workboards/WorkOrders), Mantenimiento,
+  // Tableros de sensores e Inventario. Los segmentos exactos de SH se confirman en vivo.
+  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders|Maintenance\w*|SensorDashboards?|Sensors|Inventory\w*)(?:\/|$)/i;
+  const SURT_RE = /surtimiento/i;
+  // Las RAÍCES de surtimiento empiezan con un código de área en MAYÚSCULAS (SMP/EPP/SGL/MTY/MLA/LIM…)
+  // seguido de espacio; los PASOS hijo ("Solicitud…", "Surtimiento de Materia Prima",
+  // "Confirmación de Entrega") no. Así separamos raíces de pasos en la query plana.
+  const ROOT_CODE_RE = /^[A-Z]{2,4}\s/;
+
+  let lineUidSeq = 1;
+  function bumpUidSeq() { for (const l of state.lines) if ((l.uid || 0) >= lineUidSeq) lineUidSeq = l.uid + 1; }
+
+  let state = {
+    currentUser: null,
+    surtimientoNodes: [],   // [{id, idInDomain, name, lineToken}]
+    allEquipments: [],      // [{id, name, idInDomain}]
+    catalogsLoaded: false,
+    articleCatalog: [],     // sensores del paso 0 (NUMBER/TEXT/BOOLEAN) [{id, name, measurementType, unidad, unidadFull, mustBeInteger}]
+    activeEvent: null,      // persistido en localStorage
+    lines: [],              // líneas en construcción
+    empCache: {},           // userId -> CodigoEmpleado|null
+    floatingBtn: null,
+  };
+
+  // ── init / FAB ────────────────────────────────────────────────────────────
+  async function init() {
+    if (window.__saValeAlmacenInitDone) {
+      // Cierre re-creado por re-inyección: rehidratar lo esencial y re-sincronizar el FAB.
+      state.currentUser = window.__saValeUser || state.currentUser;
+      const saved = readActiveEvent();
+      if (saved) state.activeEvent = saved;
+      injectStyles();
+      installUrlChangeListener();
+      syncFabVisibility();
+      return;
+    }
+    window.__saValeAlmacenInitDone = true;
+
+    try {
+      state.currentUser = await ensureCurrentUser();
+    } catch (e) {
+      console.warn('[SA] ValeAlmacen: no se pudo obtener usuario actual:', e.message);
+    }
+    if (state.currentUser && !isAuthorized(state.currentUser)) {
+      console.log('[SA] ValeAlmacen: usuario sin permiso — botón omitido');
+      return;
+    }
+
+    injectStyles();
+    const saved = readActiveEvent();
+    if (saved) {
+      state.activeEvent = saved;
+      state.lines = Array.isArray(saved.lines) ? saved.lines.slice() : [];
+      bumpUidSeq();
+    }
+    installUrlChangeListener();
+    syncFabVisibility();
+  }
+
+  async function ensureCurrentUser() {
+    if (state.currentUser) return state.currentUser;
+    if (window.__saValeUser) { state.currentUser = window.__saValeUser; return state.currentUser; }
+    const u = await fetchCurrentUser();
+    state.currentUser = u;
+    window.__saValeUser = u;
+    return u;
+  }
+
+  async function fetchCurrentUser() {
+    const data = await api().query('CurrentUserDetails', {}, 'CurrentUserDetails');
+    const u = data?.currentSession?.userByUserId;
+    if (!u) return null;
+    return { id: u.id, name: u.name || null, isAdmin: u.isAdmin === true, managedPermissions: undefined };
+  }
+
+  function isAuthorized(user) {
+    if (!user) return true;
+    if (user.isAdmin) return true;
+    const req = cfg()?.apps?.find(a => a.id === 'vale-almacen')?.requiredPermissions || [];
+    if (req.length === 0) return true;
+    if (!Array.isArray(user.managedPermissions)) return true;
+    return req.every(p => user.managedPermissions.includes(p));
+  }
+
+  function isAllowedPath() { return ALLOWED_PATH_RE.test(location.pathname); }
+
+  function syncFabVisibility() {
+    const should = isAllowedPath() || !!state.activeEvent;
+    const existing = document.getElementById('sa-va-fab-dock');
+    if (should && !existing) renderFloatingButton();
+    else if (!should && existing) { existing.remove(); state.floatingBtn = null; }
+    else if (should && existing) renderFloatingButton(); // refresca estado activo/inactivo
+  }
+
+  function installUrlChangeListener() {
+    if (window.__saValeUrlListenerInstalled) {
+      window.addEventListener('sa-urlchange', syncFabVisibility);
+      return;
+    }
+    window.__saValeUrlListenerInstalled = true;
+    const fire = () => window.dispatchEvent(new Event('sa-urlchange'));
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      if (orig.__saValePatched) return;
+      const patched = function () { const r = orig.apply(this, arguments); fire(); return r; };
+      patched.__saValePatched = true;
+      history[m] = patched;
+    });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('hashchange', fire);
+    window.addEventListener('sa-urlchange', syncFabVisibility);
+  }
+
+  function renderFloatingButton() {
+    const existing = document.getElementById('sa-va-fab-dock');
+    if (existing) existing.remove();
+
+    const active = !!state.activeEvent;
+    const dock = document.createElement('div');
+    dock.className = 'va-fab-dock';
+    dock.id = 'sa-va-fab-dock';
+
+    const btn = document.createElement('button');
+    btn.className = 'va-fab' + (active ? ' active' : '');
+    btn.id = 'sa-va-fab';
+    btn.setAttribute('aria-label', 'Vale de Almacén');
+    btn.title = active ? 'Vale en curso — click para continuar' : 'Emitir Vale de Almacén';
+    btn.textContent = '📦';
+    btn.addEventListener('click', () => { open(); });
+    dock.appendChild(btn);
+
+    if (active) {
+      const badge = document.createElement('div');
+      badge.className = 'va-fab-badge';
+      badge.textContent = 'vale en curso';
+      dock.appendChild(badge);
+    }
+
+    document.body.appendChild(dock);
+    state.floatingBtn = btn;
+  }
+
+  // ── estilos (dark mode propio) ─────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('dl9-vale-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'dl9-vale-styles';
+    s.textContent = [
+      '.va-fab-dock{position:fixed;bottom:24px;left:110px;z-index:99998;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}',
+      '.va-fab-dock>*{pointer-events:auto}',
+      '.va-fab{width:64px;height:64px;border-radius:50%;background:#13a36f;color:#fff;border:none;font-size:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:transform .15s ease;box-shadow:0 8px 24px rgba(19,163,111,0.5),0 0 0 3px #0f172a}',
+      '.va-fab:hover{transform:scale(1.08)}',
+      '.va-fab.active{animation:vaPulse 1.6s ease-in-out infinite}',
+      '@keyframes vaPulse{0%,100%{box-shadow:0 8px 24px rgba(19,163,111,0.5),0 0 0 3px #0f172a}50%{box-shadow:0 8px 30px rgba(19,163,111,0.85),0 0 0 6px rgba(19,163,111,0.5)}}',
+      '@media (prefers-reduced-motion:reduce){.va-fab.active{animation:none}}',
+      '.va-fab-badge{font-size:11px;font-weight:700;color:#0f172a;background:#34d399;border-radius:8px;padding:3px 8px;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4)}',
+      '.va-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.88);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
+      '.va-modal{background:#1c2430;color:#e6e9ee;border-radius:18px;padding:28px 32px;width:760px;max-width:95vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);box-sizing:border-box}',
+      '.va-modal h2{margin:0 0 6px;font-size:24px;color:#f0f3f7;display:flex;align-items:center;gap:10px}',
+      '.va-sub{font-size:13px;color:#9aa7b5;margin:0 0 18px}',
+      '.va-row{margin-bottom:14px}',
+      '.va-label{font-size:11px;color:#9aa7b5;display:block;margin-bottom:6px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}',
+      '.va-select,.va-input,.va-textarea{width:100%;padding:11px 13px;border-radius:9px;border:1px solid #3a4757;background:#141a23;color:#e6e9ee;font-size:15px;box-sizing:border-box}',
+      '.va-select:disabled,.va-input:disabled{opacity:.55;cursor:not-allowed}',
+      '.va-textarea{min-height:60px;resize:vertical;font-family:inherit}',
+      '.va-locked{font-size:11px;color:#34d399;margin-top:4px;font-weight:600}',
+      '.va-ta{position:relative}',
+      '.va-dd{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:30;max-height:210px;overflow-y:auto;background:#141a23;border:1px solid #3a4757;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,0.5)}',
+      '.va-dd-item{padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #232c38;color:#e6e9ee}',
+      '.va-dd-item:last-child{border-bottom:none}',
+      '.va-dd-item:hover,.va-dd-item.active{background:#243042}',
+      '.va-dd-item small{color:#9aa7b5;margin-left:6px}',
+      '.va-dd-empty{padding:9px 12px;font-size:12px;color:#64748b;font-style:italic}',
+      '.va-lines{margin-top:6px}',
+      '.va-lines-head,.va-line{display:grid;grid-template-columns:1fr 122px 1.1fr 84px 34px;gap:8px;align-items:start}',
+      '.va-lines-head{font-size:10px;color:#9aa7b5;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px;padding:0 2px}',
+      '.va-line{margin-bottom:8px}',
+      '.va-qty-wrap{display:flex;align-items:center;gap:6px}',
+      '.va-qty{flex:1 1 auto;min-width:0}',
+      '.va-unit{flex:0 0 auto;font-size:12px;color:#9aa7b5;white-space:nowrap;min-width:30px}',
+      '.va-unit.set{color:#34d399;font-weight:700}',
+      '.va-emp{font-size:12px;color:#9aa7b5;align-self:center;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.va-emp.ok{color:#34d399;font-weight:700}',
+      '.va-x{background:#33404f;color:#e6e9ee;border:none;border-radius:8px;height:42px;cursor:pointer;font-size:15px}',
+      '.va-x:hover{background:#4a5b6e}',
+      '.va-addline{margin-top:4px;background:transparent;color:#34d399;border:1px dashed #2f6b54;border-radius:9px;padding:10px;width:100%;cursor:pointer;font-size:13px;font-weight:700}',
+      '.va-addline:hover{background:rgba(19,163,111,0.1)}',
+      '.va-divider{height:1px;background:#33404f;margin:18px 0}',
+      '.va-btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}',
+      '.va-btn{padding:12px 22px;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.3px}',
+      '.va-btn:disabled{opacity:.5;cursor:not-allowed}',
+      '.va-btn-cancel{background:#33404f;color:#e6e9ee}',
+      '.va-btn-ghost{background:transparent;color:#cbd5e1;border:1px solid #3a4757}',
+      '.va-btn-primary{background:#13a36f;color:#fff}',
+      '.va-btn-primary:hover:not(:disabled){background:#0f8d60}',
+      '.va-btn-danger{background:#7f1d1d;color:#fecaca}',
+      '.va-error{color:#fecaca;background:#7f1d1d;padding:11px 13px;border-radius:9px;margin-bottom:12px;font-size:14px;white-space:pre-wrap}',
+      '.va-warn{color:#fde68a;background:#78350f;padding:10px 13px;border-radius:9px;margin-bottom:12px;font-size:13px}',
+      '.va-loading{text-align:center;padding:22px;color:#9aa7b5;font-size:14px}',
+      '.va-static{background:#141a23;border:1px solid #33404f;border-radius:9px;padding:10px 12px;font-size:14px}',
+      '.va-static strong{display:block;font-size:10px;color:#9aa7b5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;font-weight:700}',
+      '.va-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
+      '.va-summary{text-align:center;background:#141a23;border-radius:14px;padding:24px;margin:6px 0}',
+      '.va-summary .va-chk{font-size:42px}',
+      '.va-summary .va-ttl{font-size:18px;font-weight:800;color:#34d399;margin:6px 0;letter-spacing:.5px}',
+      '.va-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;text-align:left;margin-top:12px;font-size:14px}',
+      '.va-dl dt{color:#9aa7b5}',
+      '.va-dl dd{margin:0;color:#e6e9ee}',
+      '.va-link{color:#5fb0ff;text-decoration:none}',
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  function removeOverlay() {
+    const ov = document.getElementById('sa-va-overlay');
+    if (ov) ov.remove();
+  }
+
+  function showOverlay(innerHTML) {
+    removeOverlay();
+    const ov = document.createElement('div');
+    ov.className = 'va-overlay';
+    ov.id = 'sa-va-overlay';
+    ov.addEventListener('mousedown', (e) => { if (e.target === ov) removeOverlay(); });
+    const modal = document.createElement('div');
+    modal.className = 'va-modal';
+    modal.innerHTML = innerHTML;
+    ov.appendChild(modal);
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+  function normalizeEs(s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  }
+
+  // ── localStorage helpers ───────────────────────────────────────────────────
+  function readActiveEvent() { try { return JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch { return null; } }
+  function writeActiveEvent(ev) {
+    try { if (!ev) localStorage.removeItem(STATE_KEY); else localStorage.setItem(STATE_KEY, JSON.stringify(ev)); } catch (_) {}
+  }
+  function persistLines() {
+    if (!state.activeEvent) return;
+    state.activeEvent.lines = state.lines.map(l => ({
+      uid: l.uid, articleSensorId: l.articleSensorId, articleName: l.articleName,
+      unidad: l.unidad, measurementType: l.measurementType, mustBeInteger: l.mustBeInteger, quantity: l.quantity,
+      assigneeId: l.assigneeId, assigneeName: l.assigneeName, employeeNumber: l.employeeNumber,
+    }));
+    writeActiveEvent(state.activeEvent);
+  }
+  function readStep0Cache() { try { return JSON.parse(localStorage.getItem(STEP0_CACHE_KEY) || '{}'); } catch { return {}; } }
+  function writeStep0Cache(rootId, step0Id) {
+    try { const m = readStep0Cache(); m[rootId] = step0Id; localStorage.setItem(STEP0_CACHE_KEY, JSON.stringify(m)); } catch (_) {}
+  }
+
+  // ── catálogos ──────────────────────────────────────────────────────────────
+  function lineTokenFromName(name) {
+    const m = String(name || '').match(/\b(T\d{2,3}[A-Z\-]*)\b/);
+    return m ? m[1] : null;
+  }
+
+  async function loadCatalogs(force = false) {
+    if (state.catalogsLoaded && !force) return;
+
+    const dlg = await api().query('CreateMaintenanceEventDialogQuery', {}, 'CreateMaintenanceEventDialogQuery');
+    const allNodes = dlg?.allMaintenanceNodes?.nodes || [];
+    const roots = allNodes
+      .filter(n => SURT_RE.test(n.name || '') && ROOT_CODE_RE.test(n.name || ''))
+      .map(n => ({ id: n.id, idInDomain: n.idInDomain, name: n.name, lineToken: lineTokenFromName(n.name) }));
+    if (roots.length === 0) {
+      throw new Error('No hay nodos de mantenimiento de "Surtimiento" configurados. Contacta al administrador.');
+    }
+    roots.sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
+    state.surtimientoNodes = roots;
+
+    if (!force) {
+      const cached = readCachedLineEquipments();
+      if (cached && cached.length > 0) {
+        state.allEquipments = cached;
+        state.catalogsLoaded = true;
+        return;
+      }
+    }
+    state.allEquipments = await fetchLineEquipments();
+    if (state.allEquipments.length === 0) {
+      throw new Error('No se encontraron equipos con etiqueta "Línea" o "Célula" en Steelhead.');
+    }
+    writeCachedLineEquipments(state.allEquipments);
+    state.catalogsLoaded = true;
+  }
+
+  function readCachedLineEquipments() {
+    try {
+      const obj = JSON.parse(localStorage.getItem(EQUIP_CACHE_KEY) || 'null');
+      if (!obj || !Array.isArray(obj.equipments)) return null;
+      if (Date.now() - (obj.savedAt || 0) > EQUIP_CACHE_TTL_MS) return null;
+      return obj.equipments;
+    } catch { return null; }
+  }
+  function writeCachedLineEquipments(equipments) {
+    try { localStorage.setItem(EQUIP_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), equipments })); } catch (_) {}
+  }
+
+  const LINE_LABEL_RE = /^(?:l[ií]neas?|c[eé]lulas?)$/i;
+  async function fetchLineEquipments() {
+    const PAGE = 500;
+    const matchByLine = (e) => {
+      const labels = e?.equipmentLabelsByEquipmentId?.nodes || [];
+      return labels.some(l => {
+        const nm = l?.labelByLabelId?.name || l?.name;
+        return typeof nm === 'string' && LINE_LABEL_RE.test(nm.trim());
+      });
+    };
+    const matched = [];
+    let offset = 0, total = null, scanned = 0, safety = 0;
+    while (safety++ < 20) {
+      const data = await api().query('AllEquipments', {
+        fetchEquipmentType: false, fetchStation: false, fetchLabel: true, fetchLocation: false,
+        endOfService: true, orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: ''
+      }, 'AllEquipments');
+      const nodes = data?.pagedData?.nodes || [];
+      if (total == null) total = data?.pagedData?.totalCount ?? null;
+      scanned += nodes.length;
+      for (const n of nodes) if (matchByLine(n)) matched.push({ id: n.id, name: n.name, idInDomain: n.idInDomain });
+      const el = document.getElementById('va-pre');
+      if (el && el.classList.contains('va-loading')) {
+        el.textContent = 'Cargando equipos… ' + scanned + (total ? '/' + total : '') + ' (líneas: ' + matched.length + ')';
+      }
+      if (nodes.length < PAGE) break;
+      if (total != null && scanned >= total) break;
+      offset += PAGE;
+    }
+    return matched;
+  }
+
+  async function inferLinePrefix() {
+    const wbMatch = location.pathname.match(/\/Workboards\/(\d+)/);
+    if (wbMatch) {
+      try {
+        const data = await api().query('WorkboardById', { id: parseInt(wbMatch[1], 10) }, 'WorkboardById');
+        const name = data?.workboardById?.name;
+        if (name) { try { localStorage.setItem(LAST_LINE_KEY, name); } catch (_) {} return name; }
+      } catch (_) {}
+    }
+    const headings = document.querySelectorAll('h1, h2, h3, [class*="breadcrumb"], [class*="Breadcrumb"], [class*="page-title"], [class*="PageTitle"]');
+    for (const h of headings) {
+      const m = (h.textContent || '').match(/\b(T\d{2,3}[A-Z\-]*)\b/);
+      if (m) return m[1];
+    }
+    try { return localStorage.getItem(LAST_LINE_KEY); } catch { return null; }
+  }
+
+  function matchEquipmentByToken(token) {
+    if (!token || !state.allEquipments.length) return null;
+    const p = token.toUpperCase();
+    let m = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(p));
+    if (m) return m;
+    const tk = p.match(/^(T\d{2,3})/);
+    if (tk) {
+      m = state.allEquipments.find(e => (e.name || '').toUpperCase().startsWith(tk[1]))
+        || state.allEquipments.find(e => (e.name || '').toUpperCase().includes(tk[1]));
+      if (m) return m;
+    }
+    return state.allEquipments.find(e => (e.name || '').toUpperCase().includes(p)) || null;
+  }
+
+  async function loadSensorsForNode(nodeId, eventId) {
+    const data = await api().query('OperatorMaintenanceNodeDialogQuery',
+      { nodeId, maintenanceEventId: eventId || 0 }, 'OperatorMaintenanceNodeDialogQuery');
+    const raw = data?.maintenanceNodeById?.maintenanceNodeSensorsByMaintenanceNodeId?.nodes || [];
+    return raw.map(s => {
+      const sb = s.sensorBySensorId;
+      if (!sb) return null;
+      const st = sb.sensorTypeBySensorTypeId || {};
+      const unit = st.unitByUnitId || {};
+      const full = unit.name || '';
+      return {
+        id: sb.id, name: sb.name || '',
+        measurementType: st.sensorMeasurementType || null,
+        unidad: full ? String(full).split(/\s+/)[0] : '',
+        unidadFull: full,
+        mustBeInteger: !!unit.mustBeInteger,
+      };
+    }).filter(Boolean);
+  }
+
+  // Resuelve el paso de artículos (paso 0) de una raíz y devuelve TODOS sus sensores
+  // (los artículos pueden ser NUMBER —cantidad/kg— o TEXT —p.ej. EPP/guantes— o BOOLEAN).
+  async function discoverArticleStep(rootNode, eventId, eventIdInDomain) {
+    const cache = readStep0Cache();
+    if (cache[rootNode.id]) {
+      const sensors = await loadSensorsForNode(cache[rootNode.id], eventId);
+      if (sensors.length) return { step0Id: cache[rootNode.id], sensors };
+    }
+    const data = await api().query('GetMaintenanceEvent', { idInDomain: eventIdInDomain }, 'GetMaintenanceEvent');
+    const rootData = data?.maintenanceEventByIdInDomain?.maintenanceNodeByMaintenanceNodeId;
+    const relsRaw = rootData?.descendantRelationships?.nodes || rootData?.descendantRelationships || [];
+    const children = (Array.isArray(relsRaw) ? relsRaw : [])
+      .filter(r => r && r.maintenanceNodeByFromId && (r.maintenanceNodeByToId == null || r.maintenanceNodeByToId.id === rootNode.id))
+      .map(r => ({ childIndex: r.childIndex == null ? 99 : r.childIndex, node: r.maintenanceNodeByFromId }))
+      .filter(c => c.node && c.node.id != null)
+      .sort((a, b) => a.childIndex - b.childIndex);
+
+    if (!children.length) {
+      // Sin hijos: tratar la propia raíz como paso de artículos (fallback).
+      const sensors = await loadSensorsForNode(rootNode.id, eventId);
+      writeStep0Cache(rootNode.id, rootNode.id);
+      return { step0Id: rootNode.id, sensors };
+    }
+    for (const c of children) {
+      const sensors = await loadSensorsForNode(c.node.id, eventId);
+      if (sensors.length) { writeStep0Cache(rootNode.id, c.node.id); return { step0Id: c.node.id, sensors }; }
+    }
+    // Ningún hijo con sensores: usar el primer hijo igual (sin artículos).
+    writeStep0Cache(rootNode.id, children[0].node.id);
+    return { step0Id: children[0].node.id, sensors: [] };
+  }
+
+  // ── typeahead genérico ─────────────────────────────────────────────────────
+  // fetcher(query) -> Promise<[{key, label, sub, data}]>; onPick(item)
+  function wireTypeahead(inputEl, ddEl, fetcher, onPick, opts) {
+    const o = opts || {};
+    const minChars = o.minChars == null ? 1 : o.minChars;
+    const debounceMs = o.debounceMs == null ? 200 : o.debounceMs;
+    let timer = null;
+    const hide = () => { ddEl.style.display = 'none'; ddEl.innerHTML = ''; };
+    const renderItems = (items) => {
+      if (!items.length) { ddEl.innerHTML = '<div class="va-dd-empty">Sin resultados</div>'; ddEl.style.display = 'block'; return; }
+      ddEl.innerHTML = items.map((it, i) =>
+        '<div class="va-dd-item" data-i="' + i + '">' + escapeHtml(it.label) +
+        (it.sub ? '<small>' + escapeHtml(it.sub) + '</small>' : '') + '</div>'
+      ).join('');
+      ddEl.querySelectorAll('.va-dd-item[data-i]').forEach(node => {
+        node.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          const it = items[parseInt(node.dataset.i, 10)];
+          if (!it) return;
+          inputEl.value = it.label;
+          hide();
+          onPick(it.data, it);
+        });
+      });
+      ddEl.style.display = 'block';
+    };
+    inputEl.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = inputEl.value.trim();
+      if (q.length < minChars) { hide(); return; }
+      timer = setTimeout(async () => {
+        try { renderItems((await fetcher(q)) || []); }
+        catch (e) { ddEl.innerHTML = '<div class="va-dd-empty">Error: ' + escapeHtml(String(e.message || e).slice(0, 50)) + '</div>'; ddEl.style.display = 'block'; }
+      }, debounceMs);
+    });
+    inputEl.addEventListener('blur', () => setTimeout(hide, 150));
+  }
+
+  function articleFetcher(q) {
+    const nq = normalizeEs(q);
+    const matches = state.articleCatalog
+      .filter(a => normalizeEs(a.name).includes(nq))
+      .slice(0, 40)
+      .map(a => ({ key: a.id, label: a.name, sub: a.unidad || '', data: a }));
+    return Promise.resolve(matches);
+  }
+
+  async function userFetcher(q) {
+    const data = await api().query('SearchUsers', { searchQuery: q, first: 20 }, 'SearchUsers');
+    const nodes = data?.searchUsers?.nodes || data?.pagedData?.nodes || [];
+    return nodes
+      .filter(u => u && (u.name || u.fullName))
+      .map(u => ({ key: u.id, label: u.name || u.fullName, data: { id: u.id, name: u.name || u.fullName } }));
+  }
+
+  async function fetchEmployeeNumber(userId) {
+    if (userId == null) return null;
+    if (Object.prototype.hasOwnProperty.call(state.empCache, userId)) return state.empCache[userId];
+    let code = null;
+    try {
+      const domainId = cfg()?.steelhead?.domain?.id;
+      const data = await api().query('UserDialogQuery', { domainId, userId }, 'UserDialogQuery');
+      code = data?.userById?.customInputs?.DatosLaborales?.CodigoEmpleado ?? null;
+    } catch (e) {
+      console.warn('[SA] ValeAlmacen: número de empleado no disponible:', e.message);
+    }
+    state.empCache[userId] = code;
+    return code;
+  }
+
+  // ── entrada principal ──────────────────────────────────────────────────────
+  function open() {
+    if (state.activeEvent) return renderLinesPhase();
+    return openValeDialog();
+  }
+
+  // ── Fase A: encabezado ─────────────────────────────────────────────────────
+  async function openValeDialog() {
+    showOverlay('<h2>📦 Vale de Almacén</h2><div id="va-pre" class="va-loading">Cargando catálogos…</div>');
+    try {
+      await ensureCurrentUser();
+      await loadCatalogs();
+    } catch (e) {
+      const pre = document.getElementById('va-pre');
+      if (pre) pre.outerHTML = '<div class="va-error">' + escapeHtml(e.message) + '</div>' +
+        '<div class="va-btnrow"><button class="va-btn va-btn-cancel" id="va-pre-close">CERRAR</button></div>';
+      const c = document.getElementById('va-pre-close'); if (c) c.onclick = removeOverlay;
+      return;
+    }
+
+    const nodeOpts = state.surtimientoNodes
+      .map(n => '<option value="' + n.id + '">' + escapeHtml(n.name) + '</option>').join('');
+    const onlyOne = state.surtimientoNodes.length === 1;
+
+    const linePrefix = await inferLinePrefix();
+    const ctxEq = matchEquipmentByToken(linePrefix);
+    const eqOpts = state.allEquipments
+      .map(e => '<option value="' + e.id + '"' + (ctxEq && ctxEq.id === e.id ? ' selected' : '') + '>' + escapeHtml(e.name) + '</option>').join('');
+
+    document.querySelector('#sa-va-overlay .va-modal').innerHTML =
+      '<h2>📦 Vale de Almacén</h2>' +
+      '<p class="va-sub">Surtido de material/equipo a usuarios. Encabezado del vale:</p>' +
+      '<div class="va-row">' +
+        '<label class="va-label">Tipo de surtimiento</label>' +
+        '<select class="va-select" id="va-node"' + (onlyOne ? ' disabled' : '') + '>' +
+          (onlyOne ? '' : '<option value="">— Selecciona —</option>') + nodeOpts +
+        '</select>' +
+      '</div>' +
+      '<div class="va-row">' +
+        '<label class="va-label">Línea / Equipo *</label>' +
+        '<select class="va-select" id="va-eq"><option value="">— Selecciona equipo —</option>' + eqOpts + '</select>' +
+        '<div class="va-locked" id="va-eq-locked" style="display:none">🔒 Inferida del tipo de surtimiento</div>' +
+      '</div>' +
+      '<div class="va-row va-ta">' +
+        '<label class="va-label">Asignado — quien recoge el vale *</label>' +
+        '<input class="va-input" id="va-pickup" placeholder="Buscar usuario…" autocomplete="off">' +
+        '<div class="va-dd" id="va-pickup-dd" style="display:none"></div>' +
+      '</div>' +
+      '<div class="va-btnrow">' +
+        '<button class="va-btn va-btn-cancel" id="va-cancel">CANCELAR</button>' +
+        '<button class="va-btn va-btn-primary" id="va-continue" disabled>CARGAR ARTÍCULOS →</button>' +
+      '</div>';
+
+    const nodeSel = document.getElementById('va-node');
+    const eqSel = document.getElementById('va-eq');
+    const eqLocked = document.getElementById('va-eq-locked');
+    const pickupInput = document.getElementById('va-pickup');
+    const pickupDd = document.getElementById('va-pickup-dd');
+    const contBtn = document.getElementById('va-continue');
+
+    let pickup = null; // {id, name}
+
+    const refresh = () => {
+      const nodeVal = onlyOne ? String(state.surtimientoNodes[0].id) : nodeSel.value;
+      contBtn.disabled = !(nodeVal && eqSel.value && pickup);
+    };
+
+    const applyNodeInference = () => {
+      const nodeId = parseInt(onlyOne ? state.surtimientoNodes[0].id : nodeSel.value, 10);
+      const node = state.surtimientoNodes.find(n => n.id === nodeId);
+      eqSel.disabled = false;
+      eqLocked.style.display = 'none';
+      if (node && node.lineToken) {
+        const inferred = matchEquipmentByToken(node.lineToken);
+        if (inferred) {
+          eqSel.value = String(inferred.id);
+          eqSel.disabled = true;
+          eqLocked.style.display = 'block';
+        }
+      }
+      refresh();
+    };
+
+    if (onlyOne) applyNodeInference();
+    nodeSel.addEventListener('change', applyNodeInference);
+    eqSel.addEventListener('change', refresh);
+
+    wireTypeahead(pickupInput, pickupDd, userFetcher, (u) => { pickup = u; refresh(); }, { minChars: 2, debounceMs: 300 });
+    pickupInput.addEventListener('input', () => { pickup = null; refresh(); });
+
+    document.getElementById('va-cancel').onclick = removeOverlay;
+    contBtn.onclick = async () => {
+      const nodeId = parseInt(onlyOne ? state.surtimientoNodes[0].id : nodeSel.value, 10);
+      const equipmentId = parseInt(eqSel.value, 10);
+      const node = state.surtimientoNodes.find(n => n.id === nodeId);
+      const eq = state.allEquipments.find(e => e.id === equipmentId);
+      if (!node || !eq || !pickup) return;
+
+      contBtn.disabled = true;
+      contBtn.textContent = 'Creando vale…';
+      try {
+        const data = await api().query('CreateMaintenanceEvent', {
+          maintenancePlanId: null, maintenanceNodeId: nodeId, equipmentId, assigneeId: pickup.id
+        }, 'CreateMaintenanceEvent');
+        const ev = data?.createMaintenanceEvent?.maintenanceEvent;
+        if (!ev) throw new Error('Respuesta sin maintenanceEvent');
+
+        contBtn.textContent = 'Cargando artículos…';
+        const { step0Id, sensors } = await discoverArticleStep(node, ev.id, ev.idInDomain);
+        state.articleCatalog = sensors;
+
+        state.activeEvent = {
+          id: ev.id, idInDomain: ev.idInDomain,
+          nodeId, nodeName: node.name, step0Id,
+          equipmentId, equipmentName: eq.name,
+          pickupId: pickup.id, pickupName: pickup.name,
+          createdAt: Date.now(), lines: [],
+        };
+        writeActiveEvent(state.activeEvent);
+        state.lines = [];
+        try { localStorage.setItem(LAST_LINE_KEY, eq.name); } catch (_) {}
+        syncFabVisibility();
+        renderLinesPhase();
+      } catch (e) {
+        const modal = document.querySelector('#sa-va-overlay .va-modal');
+        const err = document.createElement('div');
+        err.className = 'va-error';
+        err.textContent = 'Error: ' + e.message;
+        modal.insertBefore(err, modal.querySelector('.va-btnrow'));
+        contBtn.disabled = false;
+        contBtn.textContent = 'CARGAR ARTÍCULOS →';
+      }
+    };
+  }
+
+  // ── Fase B: líneas del vale ────────────────────────────────────────────────
+  async function renderLinesPhase() {
+    const ev = state.activeEvent;
+    if (!ev) return openValeDialog();
+
+    // Reanudación: recargar catálogo de artículos si hace falta.
+    if (!state.articleCatalog.length && ev.step0Id) {
+      showOverlay('<h2>📦 Vale en curso</h2><div id="va-pre" class="va-loading">Recargando artículos…</div>');
+      try {
+        await ensureCurrentUser();
+        if (!state.catalogsLoaded) await loadCatalogs();
+        state.articleCatalog = await loadSensorsForNode(ev.step0Id, ev.id);
+      } catch (e) { console.warn('[SA] ValeAlmacen recargar artículos:', e.message); }
+    }
+    if (Array.isArray(ev.lines) && ev.lines.length && !state.lines.length) { state.lines = ev.lines.slice(); bumpUidSeq(); }
+
+    showOverlay(
+      '<h2>📦 Vale de Almacén <span style="font-size:13px;color:#9aa7b5;font-weight:500">#' + ev.idInDomain + '</span></h2>' +
+      '<div class="va-grid2" style="margin-bottom:14px">' +
+        '<div class="va-static"><strong>Línea / Equipo</strong>' + escapeHtml(ev.equipmentName || '—') + '</div>' +
+        '<div class="va-static"><strong>Recoge</strong>' + escapeHtml(ev.pickupName || '—') + '</div>' +
+      '</div>' +
+      '<div class="va-static" style="margin-bottom:14px"><strong>Tipo de surtimiento</strong>' + escapeHtml(ev.nodeName || '—') + '</div>' +
+      (state.articleCatalog.length ? '' : '<div class="va-warn">No se encontraron artículos (sensores) en el paso de solicitud de este nodo. Verifica la configuración en Steelhead.</div>') +
+      '<div class="va-lines-head"><div>Artículo</div><div>Cant.</div><div>Asignado a</div><div>Núm. emp.</div><div></div></div>' +
+      '<div class="va-lines" id="va-lines"></div>' +
+      '<button class="va-addline" id="va-addline">+ Agregar artículo</button>' +
+      '<div class="va-divider"></div>' +
+      '<div class="va-row">' +
+        '<label class="va-label">Comentario general (opcional)</label>' +
+        '<textarea class="va-textarea" id="va-general" placeholder="Notas libres del vale…"></textarea>' +
+      '</div>' +
+      '<div class="va-row">' +
+        '<label class="va-label">Evidencia (fotos / PDF)</label>' +
+        '<input type="file" id="va-files" accept="image/*,application/pdf" multiple class="va-input">' +
+      '</div>' +
+      '<div id="va-submit-msg"></div>' +
+      '<div class="va-btnrow">' +
+        '<button class="va-btn va-btn-danger" id="va-discard">DESCARTAR</button>' +
+        '<button class="va-btn va-btn-ghost" id="va-hide">OCULTAR</button>' +
+        '<button class="va-btn va-btn-primary" id="va-submit">EMITIR VALE 📦</button>' +
+      '</div>'
+    );
+
+    const linesHost = document.getElementById('va-lines');
+    state.lines.forEach(l => addLineRow(linesHost, l));
+    if (!state.lines.length) addLineRow(linesHost);
+
+    document.getElementById('va-addline').onclick = () => addLineRow(linesHost);
+    document.getElementById('va-hide').onclick = removeOverlay;
+    document.getElementById('va-discard').onclick = discardVale;
+    document.getElementById('va-submit').onclick = () => {
+      submitVale().catch(e => showSubmitError('Error: ' + e.message));
+    };
+  }
+
+  function addLineRow(host, existing) {
+    const line = existing || {
+      uid: lineUidSeq++, articleSensorId: null, articleName: '', unidad: '', measurementType: null, mustBeInteger: false,
+      quantity: '', assigneeId: null, assigneeName: '', employeeNumber: null,
+    };
+    if (!existing) state.lines.push(line);
+    if (line.uid == null) line.uid = lineUidSeq++;
+
+    const row = document.createElement('div');
+    row.className = 'va-line';
+    row.dataset.uid = line.uid;
+    const step = line.mustBeInteger ? '1' : 'any';
+    row.innerHTML =
+      '<div class="va-ta">' +
+        '<input class="va-input va-art" placeholder="Buscar artículo…" autocomplete="off" value="' + escapeHtml(line.articleName) + '">' +
+        '<div class="va-dd va-art-dd" style="display:none"></div>' +
+      '</div>' +
+      '<div class="va-qty-wrap">' +
+        '<input class="va-input va-qty" type="number" min="0" step="' + step + '" placeholder="0" value="' + escapeHtml(line.quantity) + '">' +
+        '<span class="va-unit' + (line.unidad ? ' set' : '') + '">' + escapeHtml(line.unidad || '') + '</span>' +
+      '</div>' +
+      '<div class="va-ta">' +
+        '<input class="va-input va-user" placeholder="Asignar a…" autocomplete="off" value="' + escapeHtml(line.assigneeName) + '">' +
+        '<div class="va-dd va-user-dd" style="display:none"></div>' +
+      '</div>' +
+      '<div class="va-emp' + (line.employeeNumber ? ' ok' : '') + '">' + escapeHtml(line.employeeNumber || '—') + '</div>' +
+      '<button class="va-x" title="Quitar">✕</button>';
+    host.appendChild(row);
+
+    const artInput = row.querySelector('.va-art');
+    const artDd = row.querySelector('.va-art-dd');
+    const qtyInput = row.querySelector('.va-qty');
+    const unitSpan = row.querySelector('.va-unit');
+    const userInput = row.querySelector('.va-user');
+    const userDd = row.querySelector('.va-user-dd');
+    const empBox = row.querySelector('.va-emp');
+
+    wireTypeahead(artInput, artDd, articleFetcher, (a) => {
+      line.articleSensorId = a.id;
+      line.articleName = a.name;
+      line.unidad = a.unidad;
+      line.measurementType = a.measurementType;
+      line.mustBeInteger = a.mustBeInteger;
+      qtyInput.step = a.mustBeInteger ? '1' : 'any';
+      qtyInput.placeholder = '0';
+      unitSpan.textContent = a.unidad || '';
+      unitSpan.classList.toggle('set', !!a.unidad);
+      unitSpan.title = a.unidadFull || a.unidad || '';
+      persistLines();
+    }, { minChars: 1, debounceMs: 120 });
+    artInput.addEventListener('input', () => { line.articleSensorId = null; line.articleName = artInput.value.trim(); });
+
+    qtyInput.addEventListener('input', () => { line.quantity = qtyInput.value; persistLines(); });
+
+    wireTypeahead(userInput, userDd, userFetcher, async (u) => {
+      line.assigneeId = u.id;
+      line.assigneeName = u.name;
+      line.employeeNumber = null;
+      empBox.textContent = '…';
+      empBox.classList.remove('ok');
+      persistLines();
+      const code = await fetchEmployeeNumber(u.id);
+      line.employeeNumber = code;
+      empBox.textContent = code || '?';
+      empBox.classList.toggle('ok', !!code);
+      persistLines();
+    }, { minChars: 2, debounceMs: 300 });
+    userInput.addEventListener('input', () => { line.assigneeId = null; line.assigneeName = userInput.value.trim(); line.employeeNumber = null; empBox.textContent = '—'; empBox.classList.remove('ok'); });
+
+    row.querySelector('.va-x').onclick = () => {
+      state.lines = state.lines.filter(l => l.uid !== line.uid);
+      row.remove();
+      persistLines();
+      if (!state.lines.length) addLineRow(host);
+    };
+  }
+
+  function showSubmitError(msg) {
+    const box = document.getElementById('va-submit-msg');
+    if (box) box.innerHTML = '<div class="va-error">' + escapeHtml(msg) + '</div>';
+  }
+  function showSubmitWarn(msg) {
+    const box = document.getElementById('va-submit-msg');
+    if (box) box.innerHTML = '<div class="va-warn">' + escapeHtml(msg) + '</div>';
+  }
+
+  async function submitVale() {
+    const ev = state.activeEvent;
+    if (!ev) return;
+    const E = engine();
+
+    // Considerar solo filas con algún dato; validar todas.
+    const lines = state.lines.filter(l => l.articleSensorId || l.assigneeId || (l.quantity !== '' && l.quantity != null) || l.articleName);
+    if (!lines.length) { showSubmitError('Agrega al menos un artículo al vale.'); return; }
+
+    const errors = [];
+    lines.forEach((l, i) => {
+      // equipmentName vive en el evento, no en la línea → inyectarlo para la validación.
+      const v = E.validateValeLine({ ...l, equipmentName: ev.equipmentName });
+      if (!v.valid) errors.push('Línea ' + (i + 1) + ': ' + v.errors.join(', '));
+    });
+    if (errors.length) { showSubmitError(errors.join('\n')); return; }
+
+    const submitBtn = document.getElementById('va-submit');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Emitiendo…'; }
+    showSubmitWarn('Registrando vale… no cierres esta ventana.');
+
+    const post = (text) => api().query('CreateMaintenanceEventComment', { comment: text, maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+
+    try {
+      // 1. nodeEvent del paso de artículos
+      const ne = await api().query('CreateMaintenanceNodeEvent', { maintenanceNodeId: ev.step0Id, maintenanceEventId: ev.id }, 'CreateMaintenanceNodeEvent');
+      const nodeEventId = ne?.createMaintenanceNodeEvent?.maintenanceNodeEvent?.id;
+      if (!nodeEventId) throw new Error('Respuesta sin maintenanceNodeEvent.id');
+
+      // 2. mediciones (cantidades) en una sola llamada — el campo depende del tipo de sensor
+      await api().query('CreateManySensorMeasurements', {
+        input: lines.map(l => {
+          const m = { sensorId: l.articleSensorId, maintenanceNodeEventId: nodeEventId };
+          if (l.measurementType === 'NUMBER') m.measurement = Number(l.quantity);
+          else if (l.measurementType === 'BOOLEAN') m.measurementBoolean = true;
+          else m.measurementText = String(l.quantity); // TEXT (p.ej. EPP) y cualquier otro
+          return m;
+        })
+      }, 'CreateManySensorMeasurements');
+
+      // 3-5. comentarios (best-effort: no abortan el cierre)
+      const nowIso = new Date().toISOString();
+      try { await post(E.buildHeaderComment({ fecha: nowIso, equipmentName: ev.equipmentName, nodeName: ev.nodeName, pickupName: ev.pickupName, items: lines.length })); } catch (e) { console.warn('[SA] vale header:', e.message); }
+      for (const l of lines) {
+        try {
+          await post(E.buildLineComment({
+            articleName: l.articleName, quantity: l.quantity, unidad: l.unidad,
+            assigneeName: l.assigneeName, employeeNumber: l.employeeNumber, equipmentName: ev.equipmentName,
+          }));
+        } catch (e) { console.warn('[SA] vale línea:', e.message); }
+      }
+      const general = (document.getElementById('va-general')?.value || '').trim();
+      if (general) { try { await post(general); } catch (e) { console.warn('[SA] vale general:', e.message); } }
+
+      // 6. evidencia (best-effort)
+      const fileInput = document.getElementById('va-files');
+      let filesOk = 0, filesFail = 0;
+      if (fileInput?.files?.length) {
+        if (submitBtn) submitBtn.textContent = 'Subiendo evidencia…';
+        for (const f of fileInput.files) {
+          try { await attachEvidence(ev.id, f); filesOk++; } catch (e) { filesFail++; console.error('[SA] evidencia:', e); }
+        }
+      }
+
+      // 7. cerrar paso + evento
+      const completedAt = new Date().toISOString();
+      try { await api().query('UpdateMaintenanceNodeEvent', { id: nodeEventId, archivedAt: completedAt }, 'UpdateMaintenanceNodeEvent'); } catch (e) { console.warn('[SA] archivar paso:', e.message); }
+      await api().query('UpdateMaintenanceEvent', { id: ev.id, completedAt }, 'UpdateMaintenanceEvent');
+      try { await post(E.buildFooterComment({ items: lines.length, completedAt })); } catch (_) {}
+
+      const summary = {
+        idInDomain: ev.idInDomain, equipmentName: ev.equipmentName, pickupName: ev.pickupName,
+        items: lines.length, filesOk, filesFail,
+      };
+      clearActive();
+      renderSummary(summary);
+    } catch (e) {
+      showSubmitError('No se pudo emitir el vale: ' + e.message + '\nEl evento #' + ev.idInDomain + ' quedó abierto; puedes reintentar.');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'EMITIR VALE 📦'; }
+    }
+  }
+
+  async function discardVale() {
+    const ev = state.activeEvent;
+    if (!ev) { removeOverlay(); return; }
+    if (!window.confirm('¿Descartar este vale? El evento #' + ev.idInDomain + ' se cerrará sin artículos.')) return;
+    const btn = document.getElementById('va-discard');
+    if (btn) { btn.disabled = true; btn.textContent = 'Descartando…'; }
+    try {
+      try {
+        await api().query('CreateMaintenanceEventComment', { comment: '[VALE-DESCARTADO] sin artículos', maintenanceEventId: ev.id }, 'CreateMaintenanceEventComment');
+      } catch (_) {}
+      await api().query('UpdateMaintenanceEvent', { id: ev.id, completedAt: new Date().toISOString() }, 'UpdateMaintenanceEvent');
+    } catch (e) {
+      console.warn('[SA] ValeAlmacen descartar:', e.message);
+    }
+    clearActive();
+    removeOverlay();
+  }
+
+  function clearActive() {
+    state.activeEvent = null;
+    state.lines = [];
+    state.articleCatalog = [];
+    writeActiveEvent(null);
+    syncFabVisibility();
+  }
+
+  function renderSummary(s) {
+    const domainId = cfg()?.steelhead?.domain?.id || '';
+    const link = location.origin + '/Domains/' + domainId + '/MaintenanceEvents/' + s.idInDomain;
+    showOverlay(
+      '<div class="va-summary">' +
+        '<div class="va-chk">✅</div>' +
+        '<div class="va-ttl">VALE EMITIDO</div>' +
+        '<dl class="va-dl">' +
+          '<dt>Evento</dt><dd><a class="va-link" href="' + link + '" target="_blank">#' + s.idInDomain + '</a></dd>' +
+          '<dt>Línea</dt><dd>' + escapeHtml(s.equipmentName || '—') + '</dd>' +
+          '<dt>Recoge</dt><dd>' + escapeHtml(s.pickupName || '—') + '</dd>' +
+          '<dt>Artículos</dt><dd>' + s.items + '</dd>' +
+          (s.filesOk || s.filesFail ? '<dt>Evidencia</dt><dd>' + s.filesOk + ' adjunto(s)' + (s.filesFail ? ' — ' + s.filesFail + ' fallaron' : '') + '</dd>' : '') +
+        '</dl>' +
+      '</div>' +
+      '<div class="va-btnrow">' +
+        '<button class="va-btn va-btn-primary" id="va-sum-close">CERRAR</button>' +
+      '</div>'
+    );
+    document.getElementById('va-sum-close').onclick = removeOverlay;
+  }
+
+  async function attachEvidence(maintenanceEventId, file) {
+    const formData = new FormData();
+    formData.append('myfile', file, file.name);
+    const resp = await fetch('/api/files', { method: 'POST', credentials: 'include', body: formData });
+    if (!resp.ok) throw new Error('Upload HTTP ' + resp.status);
+    const uploaded = await resp.json();
+    await api().query('CreateUserFile', { name: uploaded.name, originalName: file.name }, 'CreateUserFile');
+    await api().query('CreateMaintenanceEventUserFile', { maintenanceEventId, userFileName: uploaded.name }, 'CreateMaintenanceEventUserFile');
+  }
+
+  return { init, open, openValeDialog, renderLinesPhase, submitVale, attachEvidence, _state: () => state };
+})();
+
+if (typeof window !== 'undefined') {
+  window.ValeAlmacen = ValeAlmacen;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => ValeAlmacen.init());
+  } else {
+    ValeAlmacen.init();
+  }
+}
+})();
+// ===== END scripts/vale-almacen.js =====
+
+// ===== BEGIN scripts/archiver.js =====
+(function(){
+// Steelhead Part Number Archiver
+// Archiva/desarchiva PNs por criterios combinables: fecha (opcional), etiquetas (AND/OR), modo.
+// Depends on: SteelheadAPI
+//
+// 2026-06-03 — feat: filtro por etiquetas + modo archivar/desarchivar:
+//   * Scan SLIM mode-aware (fetchPNsForMode): archive→activos, unarchive→archivados
+//   * Pantalla de filtros por etiqueta (AND/OR) con conteo en vivo antes del preview
+//   * Cruce de utilización extraído a filterByUnused (WO+recibos); sin fallback per-PN
+//   * runPool concurrencia 3 (UpdatePartNumber); resume via localStorage (sa_archiver_resume_v1), por modo
+//   * Preview limita a 500 filas en DOM (resto se procesa al confirmar)
+
+const PNArchiver = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const hc  = () => window.SteelheadHostCleanup || null;  // módulo de host-cleanup (opcional)
+  const log = (m) => api().log(m);
+  const warn = (m) => api().warn(m);
+
+  let stopped = false;
+  let memMonitor = null;  // EJE B: monitor de heap del tab (createMemMonitor)
+  const RESUME_KEY = 'sa_archiver_resume_v1';
+
+  // ═══════════════════════════════════════════
+  // POOL + RETRY (patrón de process-deep-audit.js)
+  // ═══════════════════════════════════════════
+
+  async function runPool(items, worker, concurrency) {
+    const queue = items.slice();
+    let active = 0, done = 0, idx = 0;
+    return new Promise((resolve) => {
+      function next() {
+        if (stopped) { if (active === 0) resolve(); return; }
+        while (active < concurrency && idx < queue.length) {
+          const myIdx = idx++;
+          const item = queue[myIdx];
+          active++;
+          Promise.resolve().then(() => worker(item, myIdx))
+            .catch(err => { if (err?.message !== '__sa_aborted__') warn(`runPool[${myIdx}]: ${String(err?.message || err).substring(0, 120)}`); })
+            .finally(() => {
+              active--; done++;
+              if (stopped && active === 0) { resolve(); return; }
+              if (done >= queue.length && active === 0) resolve();
+              else next();
+            });
+        }
+      }
+      if (!queue.length) resolve(); else next();
+    });
+  }
+
+  async function withRetry(fn, label, delays = [0, 1000, 2000]) {
+    let lastErr = null;
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (stopped) throw new Error('__sa_aborted__');
+      if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]));
+      try { return await fn(); }
+      catch (err) {
+        lastErr = err;
+        if (attempt < delays.length - 1) warn(`${label}: intento ${attempt + 1}/${delays.length} falló · ${String(err?.message || err).substring(0, 80)}`);
+      }
+    }
+    throw lastErr || new Error(`${label}: agotó reintentos`);
+  }
+
+  // ═══════════════════════════════════════════
+  // RESUME helpers (localStorage)
+  // ═══════════════════════════════════════════
+
+  function loadResume() {
+    try { const raw = localStorage.getItem(RESUME_KEY); return raw ? JSON.parse(raw) : null; }
+    catch { return null; }
+  }
+  function saveResume(state) {
+    try { localStorage.setItem(RESUME_KEY, JSON.stringify(state)); } catch (_) {}
+  }
+  function clearResume() {
+    try { localStorage.removeItem(RESUME_KEY); } catch (_) {}
+  }
+
+  // ═══════════════════════════════════════════
+  // HELPERS PUROS DE FILTRADO (testeables)
+  // ═══════════════════════════════════════════
+
+  // Reduce un nodo pesado de AllPartNumbers a lo mínimo necesario (memoria).
+  // archivedAtOverride: el persisted query AllPartNumbers NO expone `archivedAt`
+  // a nivel de nodo PN (confirmado contra el payload real), así que el estado
+  // archivado se infiere por diff de dos pasadas (ver fetchPNsForMode) y se
+  // inyecta aquí. Sin override (undefined) se cae al campo del nodo, que en la
+  // práctica es null para todo lo que devuelve esta query.
+  function slimPN(node, archivedAtOverride) {
+    const labels = (node.partNumberLabelsByPartNumberId?.nodes || [])
+      .map(n => n.labelByLabelId)
+      .filter(Boolean)
+      .map(l => ({ id: l.id, name: l.name }));
+    return {
+      id: node.id,
+      name: node.name,
+      createdAt: node.createdAt || null,
+      archivedAt: archivedAtOverride !== undefined ? archivedAtOverride : (node.archivedAt || null),
+      customer: node.customerByCustomerId?.name || '',
+      labels,
+    };
+  }
+
+  // Catálogo de etiquetas descubiertas con conteo, ordenado por nombre.
+  // slimPNs: [{labels:[{id,name}]}] → [{name, count}]
+  function discoverLabels(slimPNs) {
+    const counts = new Map();
+    for (const pn of slimPNs) {
+      for (const l of pn.labels || []) {
+        if (!l.name) continue;
+        // NOTE: dedup por NOMBRE, no por id. Si dos labels distintos comparten
+        // nombre, se colapsan en una entrada. matchesLabels también compara por
+        // nombre, así que ambos siguen empatando. Si algún día se hace match por
+        // id, actualizar AMBAS funciones juntas.
+        counts.set(l.name, (counts.get(l.name) || 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }
+
+  // ¿El PN cumple el filtro de etiquetas? mode: 'AND' | 'OR'.
+  // selectedNames vacío => no filtra (true). Case-insensitive por name.
+  function matchesLabels(pn, selectedNames, mode) {
+    if (!selectedNames || selectedNames.length === 0) return true;
+    const have = new Set((pn.labels || []).map(l => String(l.name || '').toUpperCase()));
+    const want = selectedNames.map(s => String(s).toUpperCase());
+    return mode === 'OR'
+      ? want.some(w => have.has(w))
+      : want.every(w => have.has(w));
+  }
+
+  // Aplica todos los filtros opcionales (intersección AND entre criterios).
+  // filters: { selectedLabels:[name], labelMode:'AND'|'OR',
+  //            dateFilter?: { cutoffISO, direction:'before'|'after' } }
+  // Devuelve el subconjunto que pasa TODOS los filtros activos.
+  function applyFilters(slimPNs, filters) {
+    const { selectedLabels = [], labelMode = 'AND', dateFilter = null } = filters || {};
+    return slimPNs.filter(pn => {
+      if (!matchesLabels(pn, selectedLabels, labelMode)) return false;
+      if (dateFilter && dateFilter.cutoffISO) {
+        if (!pn.createdAt) return false;
+        const d = new Date(pn.createdAt);
+        const cut = new Date(dateFilter.cutoffISO);
+        if (dateFilter.direction === 'after' ? !(d > cut) : !(d < cut)) return false;
+      }
+      return true;
+    });
+  }
+
+  // Idempotencia: ¿el PN ya está en el estado destino para el modo dado?
+  // mode 'archive': ya archivado. mode 'unarchive': ya activo.
+  function isInTargetState(pn, mode) {
+    return mode === 'unarchive' ? pn.archivedAt == null : pn.archivedAt != null;
+  }
+
+  // Formatea enteros con separador de miles (determinista, sin depender de ICU).
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  // Progreso de la fase de carga (scan). total falsy ⇒ indeterminado (fraction null).
+  // Desarchivar hace 2 pasadas (step/steps): paso 1 escanea el catálogo (activos,
+  // para el diff) y paso 2 identifica los archivados. Sin step ⇒ comportamiento
+  // legacy (archivar / pasada única). La barra de 2 pasos es continua: paso 1
+  // ocupa [0,0.5] y paso 2 [0.5,1] — no retrocede ni muestra el conteo de activos
+  // como si fueran "del modo".
+  function computeLoadProgress({ processed, total, kept, step, steps }) {
+    const twoStep = steps === 2 && (step === 1 || step === 2);
+
+    if (!twoStep) {
+      if (total && total > 0) {
+        const fraction = Math.min(processed / total, 1);
+        return { fraction, text: `Cargando PNs... ${fmt(processed)}/${fmt(total)} (${fmt(kept)} del modo)` };
+      }
+      return { fraction: null, text: `Cargando PNs... ${fmt(kept)}` };
+    }
+
+    const label = step === 1 ? 'Paso 1/2: escaneando catálogo' : 'Paso 2/2: identificando archivados';
+    if (total && total > 0) {
+      const within = Math.min(processed / total, 1);
+      const fraction = (step - 1) / 2 + within / 2;
+      const keptPart = step === 2 ? ` (${fmt(kept)} archivados)` : '';  // paso 1: activos no son "del modo"
+      return { fraction, text: `${label}... ${fmt(processed)}/${fmt(total)}${keptPart}` };
+    }
+    const tail = step === 2 ? `${fmt(kept)} archivados` : `${fmt(processed)}`;
+    return { fraction: null, text: `${label}... ${tail}` };
+  }
+
+  // Progreso de la fase de ejecución. gerundio = 'Archivando' | 'Desarchivando'.
+  function computeExecProgress({ done, total, errors, gerundio }) {
+    const fraction = total > 0 ? Math.min(done / total, 1) : 0;
+    const errPart = errors > 0 ? ` — ${errors} ${errors === 1 ? 'error' : 'errores'}` : '';
+    return { fraction, text: `${gerundio} ${fmt(done)}/${fmt(total)}${errPart}` };
+  }
+
+  // ═══════════════════════════════════════════
+  // PAGINACIÓN PNs POR MODO
+  // ═══════════════════════════════════════════
+
+  // Marca sintética para archivedAt. AllPartNumbers NO trae archivedAt a nivel
+  // de PN, así que el estado se infiere por diff de dos pasadas; cualquier valor
+  // no-null sirve para que isInTargetState reconozca el PN como archivado.
+  const ARCHIVED_SENTINEL = '__archived__';
+
+  // Drena el Apollo InMemoryCache del host entre páginas si el módulo compartido
+  // está cargado (best-effort, no-op si no). Evita crecimiento sin tope del
+  // normalizado durante el scan — más relevante en unarchive (doble pasada).
+  function drainHostCache() {
+    try { hc()?.apolloCacheDrain?.(); } catch (_) {}
+  }
+
+  // EJE B (memory-hardening): al iniciar trabajo real, detiene Datadog RUM +
+  // arranca el monitor de heap. A 70% re-aplica el stop; a 88% dispara el
+  // guardrail (abortar + persistir avance + pedir reload). Idempotente y no-op
+  // si el módulo host-cleanup no está cargado.
+  function startHostGuards() {
+    const cleanup = hc();
+    if (!cleanup) return;
+    try { cleanup.stopDatadogSessionReplay(); } catch (_) { /* defensa */ }
+    if (!memMonitor) {
+      memMonitor = cleanup.createMemMonitor({
+        getElement: () => document.getElementById('sa-arch-mem'),
+        onGuardrail: (pct) => {
+          warn(`Memoria al ${pct}% — abortando el archivador`);
+          stopped = true;  // corta scan o ejecución; executeArchive persiste el resume al ver stopped
+          try {
+            alert(`⚠ Memoria al ${pct}%. El archivador se detuvo. Si estaba ejecutando, ` +
+                  `tu avance quedó guardado: re-ejecuta el applet para reanudar. Recarga la pestaña.`);
+          } catch (_) {}
+        },
+      });
+    }
+    try { memMonitor.reset(); memMonitor.start(); } catch (_) {}  // reset → rearma el guardrail en cada corrida nueva
+  }
+
+  function stopMemMonitor() { try { memMonitor?.stop(); } catch (_) {} }
+
+  // Pagina AllPartNumbers en SLIM, mode-aware. NO se puede confiar en
+  // n.archivedAt (no está en el selection set de este persisted query) ni
+  // pedir "solo archivados" (includeArchived solo AGREGA los archivados al
+  // listado). Por eso:
+  //   - archive   → una pasada includeArchived:'NO' = activos (archivedAt=null).
+  //   - unarchive → diff de dos pasadas: pasada 1 ('NO') recoge los IDs activos;
+  //     pasada 2 ('YES' = activos+archivados) conserva los que NO son activos =
+  //     los archivados, marcados con ARCHIVED_SENTINEL.
+  // Envuelve onProgress para etiquetar la pasada (step/steps) sin que pageAllPNs
+  // tenga que saber de fases.
+  const tagStep = (cb, step, steps) => (cb ? (p) => cb({ ...p, step, steps }) : null);
+
+  async function fetchPNsForMode(mode, onProgress, pageSize = 500) {
+    if (mode !== 'unarchive') {
+      return await pageAllPNs('NO', null, onProgress, pageSize, null);
+    }
+    // Pasada 1: solo IDs activos (sin slim — barato en memoria). Paso 1/2.
+    const activeIds = new Set();
+    await pageAllPNs('NO', null, tagStep(onProgress, 1, 2), pageSize, activeIds);
+    if (stopped) return [];
+    // Pasada 2: archivados = aparecen con 'YES' pero no están entre los activos. Paso 2/2.
+    return await pageAllPNs('YES', activeIds, tagStep(onProgress, 2, 2), pageSize, null);
+  }
+
+  // Una pasada paginada de AllPartNumbers. Siempre devuelve un array (vacío en el
+  // modo idSink, donde el resultado se acumula en el Set que recibe el caller).
+  //   idSink     (Set|null): si viene, solo acumula n.id (no construye slim) —
+  //              el Set deduplica por sí mismo.
+  //   excludeIds (Set|null): si viene, salta esos IDs (activos) y marca el resto
+  //              como ARCHIVED_SENTINEL; si null, slim con archivedAt=null.
+  // Dedup por seenIds (patrón auditor.js): bajo paginación por offset, las filas
+  // insertadas entre páginas durante un scan largo pueden reaparecer y duplicar
+  // el PN — un duplicado en selectedPNs sobre-cuenta results.archived.
+  async function pageAllPNs(includeArchived, excludeIds, onProgress, pageSize, idSink) {
+    const slimPNs = [];
+    const seenIds = new Set();
+    let offset = 0;
+    let total = null;
+    while (!stopped) {
+      const data = await api().query('AllPartNumbers', {
+        orderBy: ['ID_ASC'], offset, first: pageSize, searchQuery: '', includeArchived
+      }, 'AllPartNumbers');
+      const nodes = data?.pagedData?.nodes || [];
+      if (total == null) {
+        const tc = data?.pagedData?.totalCount;
+        total = (typeof tc === 'number' && tc > 0) ? tc : null;
+      }
+      for (const n of nodes) {
+        if (idSink) { idSink.add(n.id); continue; }  // Set dedup natural; no levantamos seenIds aquí
+        if (seenIds.has(n.id)) continue;
+        seenIds.add(n.id);
+        if (excludeIds && excludeIds.has(n.id)) continue;  // activo → no es archivado
+        slimPNs.push(slimPN(n, excludeIds ? ARCHIVED_SENTINEL : null));  // SLIM: no guardar nodo pesado
+      }
+      const processed = offset + nodes.length;
+      if (onProgress) onProgress({ processed, total, kept: idSink ? idSink.size : slimPNs.length });
+      drainHostCache();
+      if (nodes.length < pageSize) break;
+      offset += pageSize;
+    }
+    return slimPNs;
+  }
+
+  // Cruza candidatos vs PNs con OT/recibos; devuelve los SIN uso. Solo modo archive.
+  async function filterByUnused(candidates) {
+    setProgress(null, `Cargando órdenes de trabajo...`);
+    const usedPNIds = new Set();
+    let woOffset = 0;
+    while (!stopped) {
+      try {
+        const woData = await withRetry(() => api().query('AllWorkOrders', {
+          status: null, includeArchived: 'YES', couponWorkOrders: null, computeMargins: false,
+          orderBy: ['ID_DESC'], offset: woOffset, first: 500, searchQuery: ''
+        }, 'AllWorkOrders'), `AllWorkOrders ${woOffset}`);
+        const woNodes = woData?.pagedData?.nodes || [];
+        if (!woNodes.length) break;
+        for (const wo of woNodes) for (const pnWO of (wo.partNumberWorkOrdersByWorkOrderId?.nodes || [])) {
+          const pnId = pnWO.partNumberId || pnWO.partNumberByPartNumberId?.id;
+          if (pnId) usedPNIds.add(pnId);
+        }
+        setProgress(null, `OTs: página ${Math.floor(woOffset / 500) + 1}, ${usedPNIds.size} PNs con OT`);
+        if (woNodes.length < 500) break;
+        woOffset += 500;
+      } catch (e) { warn(`AllWorkOrders ${woOffset}: ${String(e).substring(0, 60)}`); break; }
+    }
+    if (stopped) return candidates;
+
+    setProgress(null, `Cargando recibos...`);
+    let recOffset = 0;
+    while (!stopped) {
+      try {
+        const recData = await withRetry(() => api().query('AllReceivers', {
+          orderBy: ['CREATED_AT_DESC'], offset: recOffset, first: 500, searchQuery: ''
+        }, 'AllReceivers'), `AllReceivers ${recOffset}`);
+        const recNodes = recData?.pagedData?.nodes || [];
+        if (!recNodes.length) break;
+        for (const rec of recNodes) for (const item of (rec.receiverBomItemsByReceiverId?.nodes || [])) {
+          const pnId = item.partNumberId || item.partNumberByPartNumberId?.id;
+          if (pnId) usedPNIds.add(pnId);
+        }
+        setProgress(null, `Recibos: página ${Math.floor(recOffset / 500) + 1}, ${usedPNIds.size} PNs con actividad`);
+        if (recNodes.length < 500) break;
+        recOffset += 500;
+      } catch (e) { warn(`AllReceivers ${recOffset}: ${String(e).substring(0, 60)}`); break; }
+    }
+    log(`  ${usedPNIds.size} PNs con OT/recibos`);
+    if (usedPNIds.size === 0) warn('filterByUnused: 0 PNs con OT/recibos — el cruce de utilización podría no estar filtrando; revisa el conteo en el preview antes de confirmar');
+    return candidates.filter(pn => !usedPNIds.has(pn.id));
+  }
+
+  // ═══════════════════════════════════════════
+  // MAIN ARCHIVE FLOW
+  // ═══════════════════════════════════════════
+
+  async function run(options) {
+    stopped = false;
+    const {
+      mode = 'archive',
+      useDate = false, cutoffDate = null, dateType = 'creacion', direction = 'before',
+      enableValidation = false,
+    } = options;
+    const DOMAIN = api().getDomain();
+    const results = { found: 0, archived: 0, validated: 0, errors: [] };
+
+    // EJE B: detener Datadog + monitor de heap antes de cualquier scan/ejecución
+    // (incluye el path de reanudación de abajo). Se detiene en openConfigAndRun.
+    startHostGuards();
+
+    // ── Resume previo (solo si coincide el modo) ──
+    const prevResume = loadResume();
+    if (prevResume?.selectedPNs?.length && prevResume.opts?.mode === mode) {
+      const pending = prevResume.selectedPNs.filter(p => !prevResume.completed.includes(p.id));
+      const resume = confirm(
+        `Hay un ${mode === 'unarchive' ? 'desarchivado' : 'archivado'} previo pendiente:\n` +
+        `  ${prevResume.completed.length} ya hechos\n  ${pending.length} pendientes\n\n` +
+        `¿Reanudar? (Cancelar = empezar de cero)`
+      );
+      if (resume) {
+        showArchiverUI(`Reanudando: ${pending.length} pendientes...`);
+        return await executeArchive(prevResume.selectedPNs, prevResume.opts, prevResume.completed, results, DOMAIN);
+      }
+      clearResume();
+    }
+
+    log(`Archivador: modo=${mode}, useDate=${useDate}${useDate ? ` (${dateType} ${direction} ${cutoffDate})` : ''}, validación=${enableValidation}`);
+    setProgress(null, `Buscando números de parte (${mode === 'unarchive' ? 'archivados' : 'activos'})...`);
+
+    // 1. Scan slim por modo
+    let slimPNs = await fetchPNsForMode(mode, (p) => {
+      const r = computeLoadProgress(p);
+      setProgress(r.fraction, r.text);
+    }, 500);
+    if (stopped) return { ...results, stopped: true };
+    log(`  ${slimPNs.length} PNs ${mode === 'unarchive' ? 'archivados' : 'activos'}`);
+
+    // 2. Pre-filtro por fecha (opcional)
+    const dateFilter = useDate && cutoffDate
+      ? { cutoffISO: new Date(cutoffDate).toISOString(), direction }
+      : null;
+    if (dateFilter) {
+      slimPNs = applyFilters(slimPNs, { dateFilter });
+      log(`  ${slimPNs.length} tras filtro de fecha`);
+    }
+
+    // 3. Cruce de utilización (solo modo archive + dateType utilizacion)
+    if (mode === 'archive' && useDate && dateType === 'utilizacion') {
+      slimPNs = await filterByUnused(slimPNs);
+      if (stopped) return { ...results, stopped: true };
+    }
+
+    if (!slimPNs.length) { showArchiverResult(results, 'No hay PNs que cumplan los criterios base.'); return results; }
+
+    // 4. Pantalla de filtros por etiqueta + conteo en vivo
+    const labelCatalog = discoverLabels(slimPNs);
+    const picked = await showFilterScreen(slimPNs, mode, labelCatalog);
+    if (!picked) { log('Cancelado.'); return { cancelled: true }; }
+
+    // 5. Construir lista para preview (slimPN ya trae name/customer/createdAt)
+    const reasonBase = mode === 'unarchive' ? 'Desarchivar' : 'Archivar';
+    const toArchive = picked.selected.map(p => ({
+      id: p.id, name: p.name, createdAt: p.createdAt, customer: p.customer,
+      archivedAt: p.archivedAt, reason: reasonBase, selected: true,
+    }));
+    results.found = toArchive.length;
+    if (!toArchive.length) { showArchiverResult(results, 'Ningún PN tras el filtro de etiquetas.'); return results; }
+
+    const selectedPNs = await showArchiverPreview(toArchive, mode);
+    if (!selectedPNs) { log('Cancelado.'); return { cancelled: true }; }
+
+    const opts = { mode, useDate, cutoffDate, dateType, direction, enableValidation };
+    return await executeArchive(selectedPNs, opts, [], results, DOMAIN);
+  }
+
+  // ═══════════════════════════════════════════
+  // ARCHIVE EXECUTION — runPool concurrencia 3 + resume
+  // ═══════════════════════════════════════════
+
+  // selectedPNs = lista TOTAL original (no pre-filtrada). alreadyCompleted = IDs ya OK
+  // de reanudaciones previas. El loop salta los completed para evitar doble-archivado.
+  async function executeArchive(selectedPNs, opts, alreadyCompleted, results, DOMAIN) {
+    const completed = new Set(alreadyCompleted);
+    const totalCount = selectedPNs.length;
+    results.found = totalCount;
+    saveResume({ selectedPNs, opts, completed: [...completed] });
+
+    const isUnarchive = opts.mode === 'unarchive';
+    const gerundio = isUnarchive ? 'Desarchivando' : 'Archivando';
+    const verbo = isUnarchive ? 'Desarchivar' : 'Archivar';
+    const participio = isUnarchive ? 'desarchivados' : 'archivados';
+    {
+      const p0 = computeExecProgress({ done: completed.size, total: totalCount, errors: 0, gerundio });
+      setProgress(p0.fraction, p0.text);
+    }
+
+    // Actualiza barra + persiste cada 5. Se llama al completar una mutación y al
+    // saltar un PN ya en estado destino (idempotencia), para que la barra avance
+    // en ambos casos y no parezca estancada.
+    const tick = () => {
+      const done = completed.size;
+      const p = computeExecProgress({ done, total: totalCount, errors: results.errors.length, gerundio });
+      setProgress(p.fraction, p.text);
+      if (done % 5 === 0 || done === totalCount) {
+        saveResume({ selectedPNs, opts, completed: [...completed] });
+      }
+    };
+
+    const drainPerPN = hc()?.makePeriodicDrain(50) || (() => {});  // EJE B: drena Apollo cada 50 mutaciones
+
+    await runPool(selectedPNs, async (pn) => {
+      if (stopped) return;
+      if (completed.has(pn.id)) return; // doble-safety — saltar ya procesados
+      // Idempotencia: si el PN ya está en el estado destino, no re-mutar.
+      if (isInTargetState(pn, opts.mode)) { completed.add(pn.id); tick(); return; }
+
+      try {
+        const newArchivedAt = isUnarchive ? null : new Date().toISOString();
+        await withRetry(() => api().query('UpdatePartNumber', { id: pn.id, archivedAt: newArchivedAt }), `${verbo} ${pn.name}`);
+        results.archived++;
+      } catch (e) {
+        results.errors.push(`${verbo} "${pn.name}": ${String(e?.message || e).substring(0, 80)}`);
+        return;
+      }
+
+      if (opts.enableValidation && !isUnarchive) {
+        try {
+          const nodeIds = DOMAIN.validacionProcessNodeIds || [];
+          const optInOuts = nodeIds.map(id => ({ processNodeId: id, processNodeOccurrence: 1, cancelOthers: false }));
+          await withRetry(() => api().query('SavePartNumber', { input: [{
+            id: pn.id, name: pn.name, optInOuts,
+            specsToApply: [], paramsToApply: [], partNumberDimensions: [], partNumberLocations: [],
+            dimensionCustomValueIds: [], partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [],
+            partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+            partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [],
+            specFieldParamUpdates: [], labelIds: [], ownerIds: [], defaults: [],
+            inventoryPredictedUsages: []
+          }] }), `Validation ${pn.name}`);
+          results.validated++;
+        } catch (e) {
+          warn(`Validación "${pn.name}": ${String(e).substring(0, 80)}`);
+        }
+      }
+
+      completed.add(pn.id);
+      tick();
+      drainPerPN();  // EJE B: drena Apollo cada 50 mutaciones
+    }, 3);
+
+    if (stopped) {
+      saveResume({ selectedPNs, opts, completed: [...completed] });
+      log(`Archivador: detenido — ${completed.size}/${totalCount} completados, resume guardado`);
+      showArchiverResult(results, `Detenido. ${completed.size}/${totalCount} ${participio}. Re-ejecuta el applet para reanudar.`);
+      return { ...results, stopped: true };
+    }
+
+    // Completo OK — limpiar resume
+    clearResume();
+
+    log(`\n=== ARCHIVADOR RESULTADO ===`);
+    log(`${isUnarchive ? 'Desarchivados' : 'Archivados'}: ${results.archived}/${totalCount}`);
+    if (opts.enableValidation && !isUnarchive) log(`Con validación: ${results.validated}`);
+    if (results.errors.length) log(`Errores: ${results.errors.length}`);
+
+    showArchiverResult(results, null, isUnarchive);
+    return results;
+  }
+
+  function stop() { stopped = true; }
+
+  // ═══════════════════════════════════════════
+  // UI
+  // ═══════════════════════════════════════════
+
+  function ensureStyles() {
+    if (document.getElementById('dl9-styles')) return;
+    const s = document.createElement('style'); s.id = 'dl9-styles';
+    s.textContent = `.dl9-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.dl9-modal{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:28px 32px;max-width:720px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5)}.dl9-modal h2{font-size:20px;margin:0 0 4px;color:#38bdf8}.dl9-btnrow{display:flex;gap:12px;margin-top:20px;justify-content:flex-end}.dl9-btn{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.dl9-btn-cancel{background:#475569;color:#e2e8f0}.dl9-btn-exec{background:#ef4444;color:white}.dl9-bar{height:10px;background:#0f291a;border-radius:6px;overflow:hidden;margin:14px 0 10px}.dl9-bar-fill{height:100%;width:0;background:#4ade80;border-radius:6px;transition:width .2s ease}.dl9-bar-fill.indet{width:40%;animation:dl9slide 1.1s infinite ease-in-out}@keyframes dl9slide{0%{margin-left:-40%}100%{margin-left:100%}}.dl9-progress{font-size:13px;color:#cbd5e1}`;
+    document.head.appendChild(s);
+  }
+
+  // Modal de configuración (mudado desde extension/background.js). Devuelve
+  // Promise<options | null>. options: {mode, useDate, cutoffDate, dateType, direction, enableValidation}
+  function showConfigForm() {
+    return new Promise(resolve => {
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'dl9-overlay';
+      const md = document.createElement('div');
+      md.className = 'dl9-modal';
+      md.style.background = '#1a2e1a';
+      md.innerHTML = `
+        <h2 style="color:#4ade80">📦 Archivador Masivo de PNs</h2>
+        <div style="margin-bottom:14px;display:flex;gap:8px">
+          <label style="flex:1;font-size:13px;color:#e2e8f0"><input type="radio" name="sa-mode" value="archive" checked> Archivar</label>
+          <label style="flex:1;font-size:13px;color:#e2e8f0"><input type="radio" name="sa-mode" value="unarchive"> Desarchivar</label>
+        </div>
+        <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="sa-arch-usedate">
+          <label for="sa-arch-usedate" style="font-size:13px;color:#e2e8f0">Usar fecha de corte</label>
+        </div>
+        <div id="sa-arch-datebox" style="display:none">
+          <div style="margin-bottom:12px">
+            <input type="date" id="sa-arch-date" style="width:100%;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px" value="${new Date().toLocaleDateString('en-CA')}">
+          </div>
+          <div style="margin-bottom:12px;display:flex;gap:8px">
+            <select id="sa-arch-direction" style="flex:1;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
+              <option value="before" selected>Antes de la fecha</option>
+              <option value="after">Después de la fecha</option>
+            </select>
+            <select id="sa-arch-type" style="flex:1;padding:8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px">
+              <option value="utilizacion" selected>Última utilización</option>
+              <option value="creacion">Fecha de creación</option>
+              <option value="modificacion">Fecha de modificación</option>
+            </select>
+          </div>
+        </div>
+        <div id="sa-arch-valbox" style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="sa-arch-validation">
+          <label for="sa-arch-validation" style="font-size:13px;color:#e2e8f0">Activar validación de ingeniería (solo archivar)</label>
+        </div>
+        <p style="font-size:11px;color:#64748b;margin-bottom:8px">Tras buscar, podrás filtrar por etiquetas y ver el conteo antes de confirmar.</p>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="sa-arch-form-cancel">CANCELAR</button>
+          <button class="dl9-btn" id="sa-arch-form-exec" style="background:#4ade80;color:#0f172a">BUSCAR PNs</button>
+        </div>`;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const useDateCb = md.querySelector('#sa-arch-usedate');
+      const dateBox = md.querySelector('#sa-arch-datebox');
+      useDateCb.onchange = () => { dateBox.style.display = useDateCb.checked ? 'block' : 'none'; };
+      const valBox = md.querySelector('#sa-arch-valbox');
+      md.querySelectorAll('input[name="sa-mode"]').forEach(r => r.onchange = () => {
+        valBox.style.display = md.querySelector('input[name="sa-mode"]:checked').value === 'archive' ? 'flex' : 'none';
+      });
+      valBox.style.display = md.querySelector('input[name="sa-mode"]:checked').value === 'archive' ? 'flex' : 'none';
+
+      md.querySelector('#sa-arch-form-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve(null); };
+      md.querySelector('#sa-arch-form-exec').onclick = () => {
+        const opts = {
+          mode: md.querySelector('input[name="sa-mode"]:checked').value,
+          useDate: useDateCb.checked,
+          cutoffDate: md.querySelector('#sa-arch-date').value,
+          dateType: md.querySelector('#sa-arch-type').value,
+          direction: md.querySelector('#sa-arch-direction').value,
+          enableValidation: md.querySelector('#sa-arch-validation').checked,
+        };
+        ov.parentNode.removeChild(ov);
+        resolve(opts);
+      };
+    });
+  }
+
+  // Entry point único llamado desde la extensión.
+  async function openConfigAndRun() {
+    const opts = await showConfigForm();
+    if (!opts) return { cancelled: true };
+    try { return await run(opts); }
+    catch (e) { return { error: e.message }; }
+    finally { stopMemMonitor(); }  // EJE B: garantiza parar el monitor pase lo que pase
+  }
+
+  function showArchiverUI(msg) {
+    ensureStyles();
+    let ov = document.getElementById('sa-archiver-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'sa-archiver-overlay';
+      ov.className = 'dl9-overlay';
+      ov.innerHTML = `<div class="dl9-modal" style="background:#1a2e1a"><h2 style="color:#4ade80">Archivador Masivo</h2><div class="dl9-bar"><div class="dl9-bar-fill" id="sa-arch-bar" style="background:#4ade80"></div></div><div class="dl9-progress" id="sa-arch-text"></div><div id="sa-arch-mem" style="margin-top:8px;font-family:ui-monospace,monospace;font-size:11px;color:#94a3b8"></div><style>#sa-arch-mem.sa-mem-warn{color:#fde68a}#sa-arch-mem.sa-mem-crit{color:#fca5a5;font-weight:600}</style><button id="sa-arch-stop" class="dl9-btn" style="background:#ef4444;color:white;margin-top:10px;padding:8px 16px;font-size:12px">⏹ Detener</button></div>`;
+      document.body.appendChild(ov);
+      document.getElementById('sa-arch-stop').onclick = () => { stopped = true; const b = document.getElementById('sa-arch-stop'); if (b) { b.textContent = 'Deteniendo...'; b.disabled = true; } };
+    }
+    document.getElementById('sa-arch-text').textContent = msg;
+  }
+
+  // Pinta progreso reusando el overlay idempotente (showArchiverUI). fraction en
+  // [0,1] → barra determinada; fraction null → barra animada (clase 'indet').
+  function setProgress(fraction, text) {
+    showArchiverUI(text);                 // asegura overlay + setea #sa-arch-text
+    const bar = document.getElementById('sa-arch-bar');
+    if (!bar) return;
+    if (fraction == null) {
+      bar.classList.add('indet');
+      bar.style.width = '';               // deja que la clase 'indet' controle el ancho
+    } else {
+      bar.classList.remove('indet');
+      const pct = Math.round(Math.min(Math.max(fraction, 0), 1) * 100);
+      bar.style.width = `${pct}%`;
+    }
+  }
+
+  function removeArchiverUI() {
+    const ov = document.getElementById('sa-archiver-overlay');
+    if (ov) ov.parentNode.removeChild(ov);
+  }
+
+  // Pantalla de filtros: multiselect de etiquetas descubiertas + AND/OR + conteo en vivo.
+  // slimPNs: lista ya filtrada por fecha (si aplicaba). Devuelve Promise<{selected:[slimPN]} | null>.
+  function showFilterScreen(slimPNs, mode, labelCatalog) {
+    const verbo = mode === 'unarchive' ? 'desarchivarán' : 'archivarán';
+    return new Promise(resolve => {
+      removeArchiverUI();
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'dl9-overlay';
+      const md = document.createElement('div');
+      md.className = 'dl9-modal';
+      md.style.background = '#1a2e1a';
+      md.innerHTML = `
+        <h2 style="color:#4ade80">📦 Filtrar por etiquetas</h2>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:8px">
+          ${slimPNs.length} PNs en el conjunto base. Elegí etiquetas para acotar (opcional).
+        </p>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+          <label style="font-size:12px;color:#e2e8f0">Modo:</label>
+          <label style="font-size:12px;color:#e2e8f0"><input type="radio" name="sa-lblmode" value="AND" checked> Todas (AND)</label>
+          <label style="font-size:12px;color:#e2e8f0"><input type="radio" name="sa-lblmode" value="OR"> Cualquiera (OR)</label>
+        </div>
+        <div id="sa-lbl-list" style="max-height:240px;overflow-y:auto;background:#0f172a;border-radius:6px;padding:8px;margin-bottom:12px"></div>
+        <div style="font-size:15px;color:#4ade80;margin-bottom:12px">
+          <b id="sa-lbl-count">${slimPNs.length}</b> partes se ${verbo}
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="sa-lbl-cancel">CANCELAR</button>
+          <button class="dl9-btn" id="sa-lbl-next" style="background:#4ade80;color:#0f172a">CONTINUAR</button>
+        </div>`;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      // Lista de etiquetas con checkbox (textContent — XSS-safe)
+      const listEl = md.querySelector('#sa-lbl-list');
+      labelCatalog.forEach((l) => {
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;color:#e2e8f0;cursor:pointer';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className = 'sa-lbl-cb'; cb.dataset.name = l.name;
+        const txt = document.createElement('span');
+        txt.textContent = `${l.name} (${l.count})`;
+        row.append(cb, txt);
+        listEl.appendChild(row);
+      });
+
+      const getSelected = () => [...md.querySelectorAll('.sa-lbl-cb:checked')].map(cb => cb.dataset.name);
+      const getMode = () => md.querySelector('input[name="sa-lblmode"]:checked').value;
+      const recount = () => {
+        const filtered = applyFilters(slimPNs, { selectedLabels: getSelected(), labelMode: getMode() });
+        md.querySelector('#sa-lbl-count').textContent = filtered.length;
+        return filtered;
+      };
+      md.querySelectorAll('.sa-lbl-cb').forEach(cb => cb.onchange = recount);
+      md.querySelectorAll('input[name="sa-lblmode"]').forEach(r => r.onchange = recount);
+
+      md.querySelector('#sa-lbl-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve(null); };
+      md.querySelector('#sa-lbl-next').onclick = () => {
+        const filtered = recount();
+        ov.parentNode.removeChild(ov);
+        resolve({ selected: filtered });
+      };
+    });
+  }
+
+  function showArchiverPreview(pns, mode) {
+    const MAX_ROWS = 500;
+    const trimmed = pns.length > MAX_ROWS;
+    const displayed = trimmed ? pns.slice(0, MAX_ROWS) : pns;
+    return new Promise(resolve => {
+      removeArchiverUI();
+      ensureStyles();
+
+      const ov = document.createElement('div');
+      ov.className = 'dl9-overlay';
+      const md = document.createElement('div');
+      md.className = 'dl9-modal';
+      md.style.background = '#1a2e1a';
+
+      // Construir tabla con DOM API (no innerHTML masivo) — más eficiente y seguro
+      const accion = mode === 'unarchive' ? 'Desarchivar' : 'Archivar';
+      md.innerHTML = `
+        <h2 style="color:#4ade80">📦 ${accion} — Preview</h2>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:12px">${pns.length} PNs seleccionados.</p>
+        ${trimmed ? `<p style="color:#fbbf24;font-size:12px;margin-bottom:8px">⚠ Mostrando primeros ${MAX_ROWS} de ${pns.length}. Todos se procesan al confirmar.</p>` : ''}
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input type="checkbox" checked id="sa-arch-selectall">
+          <label for="sa-arch-selectall" style="font-size:12px;color:#94a3b8">Seleccionar todos los visibles</label>
+          <span style="font-size:12px;color:#4ade80;margin-left:auto" id="sa-arch-count">${pns.length} seleccionados</span>
+        </div>
+        <div style="max-height:300px;overflow-y:auto">
+          <table id="sa-arch-tbl" style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="color:#94a3b8;border-bottom:1px solid #334155"><th style="text-align:left;padding:4px"><input type="checkbox" checked id="sa-arch-th-check"></th><th style="text-align:left;padding:4px">PN</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Creado</th><th style="text-align:left;padding:4px">Acción</th></tr></thead>
+            <tbody id="sa-arch-tbody"></tbody>
+          </table>
+        </div>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="sa-arch-cancel">CANCELAR</button>
+          <button class="dl9-btn dl9-btn-exec" id="sa-arch-exec">${accion.toUpperCase()} (<span id="sa-arch-exec-count">${pns.length}</span>)</button>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      // Construir filas via DOM API (textContent, no innerHTML) — XSS-safe + más rápido
+      const tbody = md.querySelector('#sa-arch-tbody');
+      const frag = document.createDocumentFragment();
+      displayed.forEach((p, i) => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #1e293b';
+        const tdCheck = document.createElement('td'); tdCheck.style.padding = '3px';
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.className = 'sa-arch-check'; cb.dataset.idx = i;
+        tdCheck.appendChild(cb);
+        const tdName = document.createElement('td'); tdName.style.padding = '3px'; tdName.textContent = p.name || '';
+        const tdCust = document.createElement('td'); tdCust.style.cssText = 'padding:3px;color:#94a3b8;font-size:11px'; tdCust.textContent = p.customer || '';
+        const tdDate = document.createElement('td'); tdDate.style.cssText = 'padding:3px;color:#94a3b8;font-size:11px'; tdDate.textContent = p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-MX') : '?';
+        const tdReason = document.createElement('td'); tdReason.style.cssText = 'padding:3px;color:#4ade80;font-size:11px'; tdReason.textContent = p.reason || '';
+        tr.append(tdCheck, tdName, tdCust, tdDate, tdReason);
+        frag.appendChild(tr);
+      });
+      tbody.appendChild(frag);
+
+      const updateCount = () => {
+        const checked = md.querySelectorAll('.sa-arch-check:checked').length;
+        // Si trimmed: el contador real = checked + (pns.length - MAX_ROWS) porque los no-visibles se asumen seleccionados
+        const realCount = trimmed ? checked + (pns.length - MAX_ROWS) : checked;
+        document.getElementById('sa-arch-count').textContent = `${realCount} seleccionados`;
+        document.getElementById('sa-arch-exec-count').textContent = realCount;
+      };
+
+      md.querySelector('#sa-arch-selectall').onchange = (e) => {
+        md.querySelectorAll('.sa-arch-check').forEach(cb => { cb.checked = e.target.checked; });
+        updateCount();
+      };
+      md.querySelectorAll('.sa-arch-check').forEach(cb => { cb.onchange = updateCount; });
+
+      document.getElementById('sa-arch-cancel').onclick = () => { ov.parentNode.removeChild(ov); resolve(null); };
+      document.getElementById('sa-arch-exec').onclick = () => {
+        const selectedIdx = new Set();
+        md.querySelectorAll('.sa-arch-check:checked').forEach(cb => selectedIdx.add(parseInt(cb.dataset.idx)));
+        const selected = [];
+        // Visibles seleccionados
+        displayed.forEach((p, i) => { if (selectedIdx.has(i)) selected.push(p); });
+        // Si trimmed: agregar TODOS los no-visibles (la UI no permite deseleccionarlos individualmente)
+        if (trimmed) for (let i = MAX_ROWS; i < pns.length; i++) selected.push(pns[i]);
+        ov.parentNode.removeChild(ov);
+        resolve(selected);
+      };
+    });
+  }
+
+  function showArchiverResult(results, msg, isUnarchive = false) {
+    removeArchiverUI();
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.className = 'dl9-overlay';
+    const md = document.createElement('div');
+    md.className = 'dl9-modal';
+    md.style.background = '#1a2e1a';
+
+    const hasErrors = results.errors && results.errors.length > 0;
+    const summary = msg || (
+      `<div style="font-size:13px;color:#cbd5e1;line-height:1.7">` +
+      `<b>PNs encontrados:</b> ${results.found}<br>` +
+      `<b>${isUnarchive ? 'Desarchivados' : 'Archivados'}:</b> ${results.archived}<br>` +
+      (results.validated ? `<b>Con validación:</b> ${results.validated}<br>` : '') +
+      (hasErrors ? `<b style="color:#fca5a5">Errores:</b> ${results.errors.length}` : '') +
+      `</div>` +
+      (hasErrors ? `<div id="sa-arch-errbox" style="margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;color:#fca5a5;background:#0f172a;padding:8px;border-radius:6px"></div>` : '')
+    );
+
+    md.innerHTML = `
+      <h2 style="color:#4ade80">📦 ${isUnarchive ? 'Desarchivado' : 'Archivado'} completado</h2>
+      ${summary}
+      <div class="dl9-btnrow">
+        <button class="dl9-btn" id="sa-arch-close" style="background:#475569;color:#e2e8f0">CERRAR</button>
+        <button class="dl9-btn" id="sa-arch-reload" style="background:#4ade80;color:#0f172a">CERRAR Y RECARGAR</button>
+      </div>`;
+
+    // Insertar errores como texto seguro (no innerHTML)
+    if (hasErrors && !msg) {
+      const errBox = md.querySelector('#sa-arch-errbox');
+      if (errBox) {
+        results.errors.slice(0, 10).forEach((line, i) => {
+          if (i > 0) errBox.appendChild(document.createElement('br'));
+          errBox.appendChild(document.createTextNode(line));
+        });
+      }
+    }
+
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+
+    document.getElementById('sa-arch-close').onclick = () => ov.parentNode.removeChild(ov);
+    document.getElementById('sa-arch-reload').onclick = () => {
+      ov.parentNode.removeChild(ov);
+      window.location.reload();
+    };
+  }
+
+  return {
+    run, stop, openConfigAndRun,
+    _internals: { slimPN, discoverLabels, matchesLabels, applyFilters, isInTargetState, computeLoadProgress, computeExecProgress, fetchPNsForMode },
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.PNArchiver = PNArchiver;
+  window.__SAArchiver = PNArchiver._internals;
+}
+})();
+// ===== END scripts/archiver.js =====
+
+// ===== BEGIN scripts/sensor-status-autofill.js =====
+(function(){
+// Steelhead Sensor Status Autofill
+// Auto-asigna SpecFieldParam ("Use for Status") a members de Sensor Dashboards.
+// Scope: dashboard actual (default) o todos los del domain (toggle).
+// Depends on: SteelheadAPI + window.REMOTE_CONFIG
+
+const SensorStatusAutofill = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const cfg = () => window.REMOTE_CONFIG;
+  const log = (m) => api().log(`[sensor-status] ${m}`);
+  const warn = (m) => api().warn(`[sensor-status] ${m}`);
+
+  // URL real (Steelhead): /Domains/<id>/Maintenance/SensorDashboards/<idInDomain>
+  // Acepta también el slug con guión por si rota.
+  const DASHBOARD_URL_RE = /\/sensor-?dashboards\/(\d+)(?:[/?#]|$)/i;
+
+  let state = {
+    running: false,
+    cancelled: false,
+  };
+
+  // ── Styles ──
+  function injectStyles() {
+    if (document.getElementById('sa-sensor-status-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'sa-sensor-status-styles';
+    style.textContent = `
+      .sa-sst-fab { position: fixed; bottom: 24px; right: 24px; z-index: 999999;
+        background: linear-gradient(135deg,#7c3aed,#5b21b6); color: #fff;
+        border: none; border-radius: 999px; padding: 12px 18px; font-size: 13px;
+        font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(124,58,237,0.45);
+        font-family: system-ui,-apple-system,sans-serif; display: flex; align-items: center; gap: 8px; }
+      .sa-sst-fab:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(124,58,237,0.55); }
+      .sa-sst-fab[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+      .sa-sst-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000000;
+        display: flex; align-items: center; justify-content: center; font-family: system-ui,-apple-system,sans-serif; }
+      .sa-sst-modal { background: #1a1a2e; color: #e2e8f0; border-radius: 12px; padding: 24px;
+        min-width: 460px; max-width: 720px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+      .sa-sst-modal h2 { margin: 0 0 12px 0; font-size: 17px; }
+      .sa-sst-btnrow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+      .sa-sst-btn { padding: 9px 18px; border-radius: 7px; border: none; font-weight: 700;
+        font-size: 13px; cursor: pointer; }
+      .sa-sst-btn-cancel { background: #475569; color: #f8fafc; }
+      .sa-sst-btn-exec { background: #7c3aed; color: #fff; }
+      .sa-sst-btn-exec[disabled] { background: #4c1d95; opacity: 0.5; cursor: not-allowed; }
+      .sa-sst-progress { background: #0f172a; border-radius: 8px; padding: 14px; margin: 12px 0; }
+      .sa-sst-bar { height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+      .sa-sst-bar > div { height: 100%; background: linear-gradient(90deg,#7c3aed,#a78bfa); transition: width 0.2s; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // ── URL parsing ──
+  function parseSensorDashboardFromURL() {
+    const m = window.location.href.match(DASHBOARD_URL_RE);
+    if (!m) return null;
+    return { idInDomain: parseInt(m[1], 10) };
+  }
+
+  // ── HTML escape ──
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  // ── API: fetch a single dashboard ──
+  async function fetchDashboard(idInDomain) {
+    // El persisted query exige 4 vars (after/before/measurementType filtran
+    // mediciones, no el arbol de candidatos). Defaults: ultimos 30 dias, NUMBER.
+    const now = new Date();
+    const before = now.toISOString();
+    const after = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const data = await api().query('SensorDashboardQuery', {
+      idInDomain, after, before, measurementType: 'NUMBER'
+    }, 'SensorDashboardQuery');
+    const dash = data?.sensorDashboardByIdInDomain;
+    if (!dash) throw new Error(`Dashboard ${idInDomain} no encontrado`);
+    return dash;
+  }
+
+  // ── API: update one member (assign activeSpecFieldParamId) ──
+  async function updateMember(memberId, activeSpecFieldParamId) {
+    return await api().query('UpdateSensorDashboardMember', {
+      id: memberId,
+      activeSpecFieldParamId
+    }, 'UpdateSensorDashboardMember');
+  }
+
+  // ── API: list all sensor dashboards (single call, no pagination) ──
+  async function fetchAllSensorDashboards() {
+    const data = await api().query('AllSensorDashboards', {}, 'AllSensorDashboards');
+    const nodes = data?.allSensorDashboards?.nodes || [];
+    return nodes.map(n => ({
+      id: n.id,
+      idInDomain: n.idInDomain,
+      name: n.name || `#${n.idInDomain || n.id}`,
+    }));
+  }
+
+  // ── Classifier: extrae candidatos y clasifica cada member ──
+  function extractCandidates(member) {
+    const sensor = member?.sensorBySensorId;
+    const specFields = sensor?.sensorTypeBySensorTypeId?.specFieldsBySensorTypeId?.nodes || [];
+    const candidates = [];
+    for (const sf of specFields) {
+      const sfsList = sf?.specFieldSpecsBySpecFieldId?.nodes || [];
+      for (const sfs of sfsList) {
+        const params = sfs?.specFieldParamsBySpecFieldSpecId?.nodes || [];
+        for (const p of params) {
+          candidates.push({
+            id: p.id,
+            name: p.name || `#${p.id}`,
+            min: p.minimumValue ?? null,
+            max: p.maximumValue ?? null,
+            target: p.targetValue ?? null,
+            specName: sfs?.specBySpecId?.name || '',
+            specRevision: sfs?.specBySpecId?.revisionName || '',
+            specFieldName: sfs?.specFieldBySpecFieldId?.name || sf?.specFieldBySpecFieldId?.name || '',
+          });
+        }
+      }
+    }
+    return candidates;
+  }
+
+  function classifyMembers(dashboard) {
+    const members = dashboard?.sensorDashboardMembersBySensorDashboardId?.nodes || [];
+    const classified = members.map(m => {
+      const candidates = extractCandidates(m);
+      const activeId = m?.specFieldParamByActiveSpecFieldParamId?.id ?? null;
+      let stateName;
+      if (activeId != null) stateName = 'already';
+      else if (candidates.length === 0) stateName = 'zero';
+      else if (candidates.length === 1) stateName = 'auto';
+      else stateName = 'multi';
+      return {
+        memberId: m.id,
+        sensorName: m?.sensorBySensorId?.name || `#${m.id}`,
+        state: stateName,
+        candidates,
+        activeId,
+      };
+    });
+    return {
+      already: classified.filter(c => c.state === 'already'),
+      zero:    classified.filter(c => c.state === 'zero'),
+      auto:    classified.filter(c => c.state === 'auto'),
+      multi:   classified.filter(c => c.state === 'multi'),
+    };
+  }
+
+  // ── Modal Fase 0: scope selection ──
+  function showScopeModal({ currentRef, currentName }) {
+    return new Promise((resolve) => {
+      injectStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-sst-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-sst-modal';
+
+      const currentLabel = currentRef
+        ? `Solo este dashboard${currentName ? ` — ${escapeHtml(currentName)}` : ''}`
+        : 'Solo este dashboard (no detectado en la URL)';
+
+      md.innerHTML = `
+        <h2 style="color:#a78bfa">📊 Auto-asignar status</h2>
+        <p style="font-size:12px;color:#94a3b8;margin:0 0 14px 0">Marca "Use for Status" en members con un único candidato. Para members con varios candidatos abrirá un modal para que tú elijas.</p>
+
+        <div style="margin-bottom:14px">
+          <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 12px;background:#0f172a;border-radius:8px;${currentRef ? 'cursor:pointer' : 'opacity:0.5;cursor:not-allowed'}">
+            <input type="radio" name="sa-sst-scope" value="current" ${currentRef ? 'checked' : 'disabled'}>
+            <div>
+              <div style="font-weight:600;color:#e2e8f0">${currentLabel}</div>
+              <div style="font-size:11px;color:#94a3b8">Procesa solo el dashboard abierto.</div>
+            </div>
+          </label>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 12px;background:#0f172a;border-radius:8px;cursor:pointer">
+            <input type="checkbox" id="sa-sst-allcheck">
+            <div>
+              <div style="font-weight:600;color:#fbbf24">Procesar TODOS los dashboards del domain</div>
+              <div style="font-size:11px;color:#94a3b8">Puede tardar varios minutos. Off por default.</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="sa-sst-btnrow">
+          <button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-cancel">CANCELAR</button>
+          <button class="sa-sst-btn sa-sst-btn-exec" id="sa-sst-start">INICIAR</button>
+        </div>
+      `;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      const startBtn = md.querySelector('#sa-sst-start');
+      const allCheck = md.querySelector('#sa-sst-allcheck');
+      const radioCurrent = md.querySelector('input[name="sa-sst-scope"]');
+
+      const refresh = () => {
+        const isAll = allCheck.checked;
+        const canStart = isAll || (radioCurrent && radioCurrent.checked && !!currentRef);
+        startBtn.disabled = !canStart;
+      };
+      allCheck.addEventListener('change', refresh);
+      if (radioCurrent) radioCurrent.addEventListener('change', refresh);
+      refresh();
+
+      md.querySelector('#sa-sst-cancel').addEventListener('click', () => {
+        ov.remove();
+        resolve({ cancelled: true });
+      });
+      startBtn.addEventListener('click', () => {
+        const isAll = allCheck.checked;
+        ov.remove();
+        if (isAll) resolve({ scope: 'all' });
+        else resolve({ scope: 'current', idInDomain: currentRef.idInDomain });
+      });
+    });
+  }
+
+  // ── Progress UI ──
+  function showProgressUI(title, subtitle) {
+    removeUI();
+    injectStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-sst-overlay';
+    ov.id = 'sa-sst-progress-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-sst-modal';
+    md.innerHTML = `
+      <h2 style="color:#a78bfa" id="sa-sst-progress-title">${escapeHtml(title)}</h2>
+      <div class="sa-sst-progress">
+        <div id="sa-sst-progress-msg" style="font-size:13px;color:#cbd5e1">${escapeHtml(subtitle || '')}</div>
+        <div id="sa-sst-progress-sub" style="font-size:11px;color:#94a3b8;margin-top:4px"></div>
+        <div class="sa-sst-bar"><div id="sa-sst-progress-bar" style="width:0%"></div></div>
+      </div>
+      <div class="sa-sst-btnrow">
+        <button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-stop">DETENER</button>
+      </div>
+    `;
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+    md.querySelector('#sa-sst-stop').addEventListener('click', () => {
+      state.cancelled = true;
+      md.querySelector('#sa-sst-stop').disabled = true;
+      md.querySelector('#sa-sst-stop').textContent = 'DETENIENDO…';
+    });
+  }
+
+  function updateProgress({ title, msg, sub, pct }) {
+    const t = document.getElementById('sa-sst-progress-title');
+    const m = document.getElementById('sa-sst-progress-msg');
+    const s = document.getElementById('sa-sst-progress-sub');
+    const b = document.getElementById('sa-sst-progress-bar');
+    if (t && title != null) t.textContent = title;
+    if (m && msg != null) m.textContent = msg;
+    if (s && sub != null) s.textContent = sub;
+    if (b && pct != null) b.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  }
+
+  function removeUI() {
+    const ov = document.getElementById('sa-sst-progress-overlay');
+    if (ov) ov.remove();
+  }
+
+  // ── Modal asistido para members con ≥2 candidatos ──
+  function showCandidatesModal({ member, dashboardName, mode }) {
+    return new Promise((resolve) => {
+      injectStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-sst-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-sst-modal';
+      md.style.maxWidth = '720px';
+
+      const radios = member.candidates.map((c, i) => {
+        const range = (c.min != null || c.max != null)
+          ? `${c.min ?? ''} – ${c.max ?? ''}`
+          : (c.target != null ? `target ${c.target}` : '');
+        const specSuffix = [c.specName, c.specRevision].filter(Boolean).join(' · ');
+        return `
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;padding:8px 10px;background:#0f172a;border-radius:6px;margin-bottom:6px;cursor:pointer">
+            <input type="radio" name="sa-sst-cand" value="${c.id}" ${i === 0 ? 'checked' : ''}>
+            <div>
+              <div style="color:#e2e8f0;font-weight:600">${escapeHtml(c.name)}${range ? ` <span style="color:#94a3b8;font-weight:400;font-size:11px">(${escapeHtml(range)})</span>` : ''}</div>
+              ${specSuffix ? `<div style="font-size:11px;color:#94a3b8">${escapeHtml(specSuffix)}</div>` : ''}
+            </div>
+          </label>
+        `;
+      }).join('');
+
+      const skipDashboardBtn = mode === 'all'
+        ? `<button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-skip-dash" style="background:#78350f;color:#fbbf24">SALTAR RESTO DE ESTE DASHBOARD</button>`
+        : '';
+
+      md.innerHTML = `
+        <h2 style="color:#fbbf24">🔧 ${escapeHtml(member.sensorName)}</h2>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Dashboard: ${escapeHtml(dashboardName || '')} · ${member.candidates.length} candidatos</div>
+        <div>${radios}</div>
+        <div class="sa-sst-btnrow" style="justify-content:space-between">
+          <div>${skipDashboardBtn}</div>
+          <div style="display:flex;gap:10px">
+            <button class="sa-sst-btn sa-sst-btn-cancel" id="sa-sst-skip-member">SALTAR ESTE MEMBER</button>
+            <button class="sa-sst-btn sa-sst-btn-exec" id="sa-sst-assign">ASIGNAR</button>
+          </div>
+        </div>
+      `;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      md.querySelector('#sa-sst-skip-member').addEventListener('click', () => {
+        ov.remove();
+        resolve({ action: 'skip-member' });
+      });
+      const skipDash = md.querySelector('#sa-sst-skip-dash');
+      if (skipDash) skipDash.addEventListener('click', () => {
+        ov.remove();
+        resolve({ action: 'skip-dashboard' });
+      });
+      md.querySelector('#sa-sst-assign').addEventListener('click', () => {
+        const sel = md.querySelector('input[name="sa-sst-cand"]:checked');
+        if (!sel) { resolve({ action: 'skip-member' }); ov.remove(); return; }
+        ov.remove();
+        resolve({ action: 'assign', paramId: parseInt(sel.value, 10) });
+      });
+    });
+  }
+
+  // ── Resumen final ──
+  function showSummary(results) {
+    injectStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-sst-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-sst-modal';
+
+    const hasErrors = results.errors.length > 0;
+    const icon = hasErrors ? '⚠️' : '✅';
+    const iconColor = hasErrors ? '#f59e0b' : '#4ade80';
+
+    let errorsHTML = '';
+    if (hasErrors) {
+      const items = results.errors.slice(0, 15)
+        .map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escapeHtml(e)}</div>`)
+        .join('');
+      errorsHTML = `
+        <div style="margin-top:12px">
+          <div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>
+          ${items}
+        </div>`;
+    }
+
+    md.innerHTML = `
+      <h2 style="color:${iconColor}">${icon} Resumen</h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0">
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#a78bfa">${results.dashboardsProcessed}</div>
+          <div style="font-size:11px;color:#94a3b8">Dashboards</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#4ade80">${results.assigned}</div>
+          <div style="font-size:11px;color:#94a3b8">Auto-asignados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#8b5cf6">${results.assisted}</div>
+          <div style="font-size:11px;color:#94a3b8">Asistidos</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#64748b">${results.already}</div>
+          <div style="font-size:11px;color:#94a3b8">Ya asignados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#f59e0b">${results.skipped}</div>
+          <div style="font-size:11px;color:#94a3b8">Saltados</div>
+        </div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#fb7185">${results.zero}</div>
+          <div style="font-size:11px;color:#94a3b8">Sin candidatos</div>
+        </div>
+      </div>
+      ${errorsHTML}
+      <div class="sa-sst-btnrow">
+        <button class="sa-sst-btn sa-sst-btn-exec" id="sa-sst-close">CERRAR</button>
+      </div>
+    `;
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+    md.querySelector('#sa-sst-close').addEventListener('click', () => ov.remove());
+  }
+
+  // ── Init + FAB ──
+  async function init() {
+    if (window.__saSensorStatusInitDone) return;
+    window.__saSensorStatusInitDone = true;
+    log(`init (v${cfg()?.version || '?'})`);
+
+    injectStyles();
+    installUrlChangeListener();
+    syncFabVisibility();
+  }
+
+  function syncFabVisibility() {
+    const should = !!parseSensorDashboardFromURL();
+    const existing = document.getElementById('sa-sst-fab-dock');
+    if (should && !existing) renderFloatingButton();
+    else if (!should && existing) existing.remove();
+  }
+
+  function installUrlChangeListener() {
+    if (window.__saSensorStatusUrlListener) {
+      window.addEventListener('sa-sst-urlchange', syncFabVisibility);
+      return;
+    }
+    window.__saSensorStatusUrlListener = true;
+    const fire = () => window.dispatchEvent(new Event('sa-sst-urlchange'));
+    ['pushState', 'replaceState'].forEach(m => {
+      const orig = history[m];
+      history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; };
+    });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('hashchange', fire);
+    window.addEventListener('sa-sst-urlchange', syncFabVisibility);
+  }
+
+  function renderFloatingButton() {
+    const dock = document.createElement('div');
+    dock.id = 'sa-sst-fab-dock';
+    const btn = document.createElement('button');
+    btn.className = 'sa-sst-fab';
+    btn.innerHTML = '📊 Auto-asignar status';
+    btn.addEventListener('click', () => run().catch(e => warn(`run() falló: ${e?.message || e}`)));
+    dock.appendChild(btn);
+    document.body.appendChild(dock);
+  }
+
+  async function run() {
+    if (state.running) return { error: 'Ya hay una corrida en curso' };
+    state.running = true;
+    state.cancelled = false;
+    try {
+      // ─── Fase 0: scope ───
+      const currentRef = parseSensorDashboardFromURL();
+      let currentName = '';
+      if (currentRef) {
+        try {
+          const dash = await fetchDashboard(currentRef.idInDomain);
+          currentName = dash?.name || '';
+        } catch (_) { /* nombre opcional, seguimos */ }
+      }
+
+      const choice = await showScopeModal({ currentRef, currentName });
+      if (choice.cancelled) return { cancelled: true };
+
+      // ─── Resolver dashboards a procesar ───
+      let dashboards = [];
+      if (choice.scope === 'current') {
+        dashboards = [{ idInDomain: choice.idInDomain, name: currentName }];
+      } else {
+        showProgressUI('Listando dashboards', 'Cargando lista del domain…');
+        try {
+          const all = await fetchAllSensorDashboards();
+          dashboards = all.map(d => ({ idInDomain: d.idInDomain, name: d.name }));
+        } catch (e) {
+          removeUI();
+          return { error: String(e?.message || e) };
+        }
+      }
+
+      if (!dashboards.length) {
+        removeUI();
+        return { error: 'No hay dashboards a procesar' };
+      }
+
+      // ─── Fase 1: procesar dashboards ───
+      const results = {
+        dashboardsProcessed: 0, assigned: 0, assisted: 0, already: 0,
+        skipped: 0, zero: 0, errors: []
+      };
+
+      for (let di = 0; di < dashboards.length; di++) {
+        if (state.cancelled) break;
+        const d = dashboards[di];
+        showProgressUI(
+          `Dashboard ${di + 1} de ${dashboards.length}`,
+          `${d.name || `#${d.idInDomain}`} — pull…`
+        );
+
+        let dashboard;
+        try {
+          dashboard = await fetchDashboard(d.idInDomain);
+        } catch (e) {
+          results.errors.push(`Dashboard ${d.name}: ${String(e?.message || e).substring(0, 200)}`);
+          continue;
+        }
+
+        const groups = classifyMembers(dashboard);
+        results.already += groups.already.length;
+        results.zero    += groups.zero.length;
+
+        // Auto-asignación
+        for (let ai = 0; ai < groups.auto.length; ai++) {
+          if (state.cancelled) break;
+          const m = groups.auto[ai];
+          updateProgress({
+            title: `Dashboard ${di + 1} de ${dashboards.length}`,
+            msg: `Auto-asignando ${ai + 1} de ${groups.auto.length}: ${m.sensorName}`,
+            sub: d.name || '',
+            pct: ((ai + 1) / Math.max(groups.auto.length, 1)) * 100
+          });
+          try {
+            await updateMember(m.memberId, m.candidates[0].id);
+            results.assigned++;
+          } catch (e) {
+            results.errors.push(`${m.sensorName}: ${String(e?.message || e).substring(0, 200)}`);
+          }
+        }
+        if (state.cancelled) { removeUI(); break; }
+
+        // Modales asistidos
+        let skipRest = false;
+        for (let mi = 0; mi < groups.multi.length; mi++) {
+          if (state.cancelled || skipRest) break;
+          const m = groups.multi[mi];
+          removeUI();
+          const decision = await showCandidatesModal({
+            member: m, dashboardName: d.name, mode: choice.scope
+          });
+          if (decision.action === 'skip-member') { results.skipped++; continue; }
+          if (decision.action === 'skip-dashboard') { skipRest = true; results.skipped += groups.multi.length - mi; break; }
+          if (decision.action === 'assign') {
+            try {
+              await updateMember(m.memberId, decision.paramId);
+              results.assisted++;
+            } catch (e) {
+              results.errors.push(`${m.sensorName}: ${String(e?.message || e).substring(0, 200)}`);
+            }
+          }
+        }
+
+        results.dashboardsProcessed++;
+      }
+
+      removeUI();
+      log(`run() done: assigned=${results.assigned} assisted=${results.assisted} already=${results.already} zero=${results.zero} skipped=${results.skipped} errors=${results.errors.length}`);
+      showSummary(results);
+      return results;
+    } finally {
+      state.running = false;
+    }
+  }
+
+  return { init, run };
+})();
+
+if (typeof window !== 'undefined') {
+  window.SensorStatusAutofill = SensorStatusAutofill;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => SensorStatusAutofill.init());
+  } else {
+    SensorStatusAutofill.init();
+  }
+}
+})();
+// ===== END scripts/sensor-status-autofill.js =====
+
+// ===== BEGIN scripts/load-calculator-engine.js =====
+(function(){
+/* ============================================================================
+ * load-calculator-engine.js — Motor PURO de la Calculadora de Piezas por Carga
+ *
+ * Sin DOM ni API: solo aritmética. Dual-export browser/Node (patrón F1 de
+ * bulk-upload), testeable con `node --test tools/test/load-calculator-engine.test.js`.
+ *
+ * Replica los cálculos del `Calculo.xlsx` de ingeniería:
+ *   - Cuadrícula : columnas × filas (empaque rectangular en la tina).
+ *   - Área       : área efectiva de la tina ÷ área de la pieza.
+ *   - Barril     : capacidad (DMK = dm²) ÷ área de la pieza.
+ *   - Cargas/hora: (60 / ciclo) × estaciones × OEE.
+ *   - Decisión de modo (RACK / BARRIL / NINGUNO) por tipo de línea + unidad de precio.
+ *
+ * Expone `window.LoadCalculatorEngine` (browser) y `module.exports` (Node).
+ * ========================================================================== */
+(function (root) {
+  'use strict';
+
+  const M_TO_IN = 1 / 0.0254; // 39.37007874...
+
+  const mToIn   = (m)   => m * M_TO_IN;
+  const cmToIn  = (cm)  => cm / 2.54;
+  const cm2ToDm2 = (cm2) => cm2 / 100;
+
+  /**
+   * Cuadrícula — empaque rectangular con orientación FIJA: el lado largo de la
+   * tina se llena con el lado corto de la pieza (columnas) y el lado corto de la
+   * tina con el lado largo de la pieza (filas). Reproduce los golden del Excel.
+   * Todas las dimensiones en pulgadas.
+   */
+  function gridPieces({ tankW_in, tankD_in, pieceL_in, pieceW_in, sepCol_in = 0, sepRow_in = 0 }) {
+    const tankLong   = Math.max(tankW_in, tankD_in);
+    const tankShort  = Math.min(tankW_in, tankD_in);
+    const pieceLong  = Math.max(pieceL_in, pieceW_in);
+    const pieceShort = Math.min(pieceL_in, pieceW_in);
+    const columnas = Math.floor(tankLong  / (pieceShort + sepCol_in));
+    const filas    = Math.floor(tankShort / (pieceLong  + sepRow_in));
+    return { columnas, filas, piezasPorCarga: columnas * filas };
+  }
+
+  /**
+   * Área — piezas = FLOOR(areaTina_dm2 × factor / areaPieza_dm2).
+   * Dimensiones de tina en cm; área de pieza en cm².
+   */
+  function areaPieces({ tankL_cm, tankW_cm, factor = 1, pieceArea_cm2 }) {
+    const areaTina_dm2  = (tankL_cm * tankW_cm) / 100;
+    const areaEfectiva  = areaTina_dm2 * factor;
+    const areaPieza_dm2 = pieceArea_cm2 / 100;
+    const piezasPorCarga = Math.floor(areaEfectiva / areaPieza_dm2);
+    return { areaTina_dm2, areaEfectiva, areaPieza_dm2, piezasPorCarga };
+  }
+
+  /**
+   * Barril (superficie / DMK) — variante de Área con la capacidad del barril
+   * como área efectiva (factor implícito 1). Capacidad en DMK (dm²).
+   */
+  function barrelPieces({ capacityDMK, pieceArea_cm2 }) {
+    const areaPieza_dm2 = pieceArea_cm2 / 100;
+    return { areaPieza_dm2, piezasPorCarga: Math.floor(capacityDMK / areaPieza_dm2) };
+  }
+
+  /**
+   * Decisión de modo según el tipo de CAT_Líneas + unidad de precio (para Híbrida).
+   * Rack→RACK · Barril→BARRIL · Célula→NINGUNO · Híbrida: PZA→RACK, KG→BARRIL.
+   */
+  function decideMode({ lineType, priceUnit }) {
+    const t = String(lineType || '').trim().toLowerCase();
+    if (t.startsWith('rack')) return 'RACK';
+    if (t.startsWith('barr')) return 'BARRIL';          // barril / barrel
+    if (t.startsWith('cél') || t.startsWith('cel')) return 'NINGUNO'; // célula / celula
+    // Híbrida (o desconocido): decide por unidad de precio.
+    return String(priceUnit || '').toUpperCase() === 'PZA' ? 'RACK' : 'BARRIL';
+  }
+
+  /** Cargas por hora = (60 / ciclo_min) × estaciones × OEE. Ciclo inválido → 0. */
+  function loadsPerHour({ cycleMin, stations = 1, oee = 1 }) {
+    if (!cycleMin || cycleMin <= 0) return 0;
+    return (60 / cycleMin) * stations * oee;
+  }
+
+  // ── Fase 2: decisión en runtime desde el modal de Rack Types ──
+
+  /** Área de la pieza en dm² desde las unit conversions del PN (factor de la unidad DMK). null si no está. */
+  function pieceAreaDm2FromConversions(nodes, dmkUnitId) {
+    const id = dmkUnitId || 3975;
+    const n = (nodes || []).find(x => x && x.unitByUnitId && x.unitByUnitId.id === id);
+    return n ? n.factor : null;
+  }
+
+  /** Capacidad DMK del barril si el RackType está configurado como barril en la estación; null si es rack. */
+  function selectBarrelCapacity(rackTypeId, capacidadesBarril) {
+    const m = (capacidadesBarril || []).find(c => c && String(c.rackTypeId) === String(rackTypeId));
+    return m ? m.capacidadDMK : null;
+  }
+
+  /**
+   * Decide modo y calcula para el RackType elegido en el modal.
+   * - Si el RackType está en `capacidadesBarril` de la estación → BARRIL (capacidad / área pieza).
+   * - Si no → RACK: cuadrícula (si hay dims de pieza + tina) y área (si hay área de pieza + tina).
+   * Tina en cm; pieza en pulgadas; áreas en dm².
+   */
+  function computeForRackType({ rackTypeId, capacidadesBarril, areaPieza_dm2, piece, tina }) {
+    const cap = selectBarrelCapacity(rackTypeId, capacidadesBarril);
+    if (cap != null) {
+      return { modo: 'BARRIL', capacidadDMK: cap, piezasPorCarga: (areaPieza_dm2 != null ? Math.floor(cap / areaPieza_dm2) : null) };
+    }
+    const out = { modo: 'RACK', grid: null, area: null };
+    if (piece && tina && piece.largoIn != null && piece.anchoIn != null && tina.largoMaxCm != null && tina.anchoMaxCm != null) {
+      out.grid = gridPieces({
+        tankW_in: cmToIn(tina.largoMaxCm), tankD_in: cmToIn(tina.anchoMaxCm),
+        pieceL_in: piece.largoIn, pieceW_in: piece.anchoIn,
+        sepCol_in: cmToIn(tina.sepColCm || 0), sepRow_in: cmToIn(tina.sepFilaCm || 0),
+      });
+    }
+    if (areaPieza_dm2 != null && tina && tina.largoMaxCm != null && tina.anchoMaxCm != null) {
+      const areaEfectiva = (tina.largoMaxCm * tina.anchoMaxCm / 100) * (tina.factor != null ? tina.factor : 1);
+      out.area = { piezasPorCarga: Math.floor(areaEfectiva / areaPieza_dm2), areaEfectiva, areaPieza_dm2 };
+    }
+    return out;
+  }
+
+  /**
+   * Convierte las dimensiones de un PN (length/width, en metros) a pulgadas para la cuadrícula.
+   * `partNumberDimensions` = [{geometryTypeDimensionTypeId, dimensionValue}]; `geometryDimensions`
+   * = config.domain.geometryDimensions ({LENGTH,WIDTH,...} → dimensionTypeId). null si falta largo o ancho.
+   */
+  function dimsToPieceInches(partNumberDimensions, geometryDimensions) {
+    const geo = geometryDimensions || {};
+    const byType = {};
+    for (const d of (partNumberDimensions || [])) {
+      if (d && d.geometryTypeDimensionTypeId != null) byType[d.geometryTypeDimensionTypeId] = d.dimensionValue;
+    }
+    const lenM = byType[geo.LENGTH];
+    const widM = byType[geo.WIDTH];
+    if (lenM == null || widM == null) return null;
+    return { largoIn: mToIn(lenM), anchoIn: mToIn(widM) };
+  }
+
+  // ── Fase 2c: funciones puras de geometría ──
+
+  /**
+   * Clasifica el estado de geometría de un PN.
+   * @param {number|null} geometryTypeId  id del Geometry Type del PN (o null/undefined si no tiene).
+   * @param {number}      genericId       id del Geometry Type genérico (config.domain.geometryGenericaId, usualmente 831).
+   * @returns {'SIN_GEOMETRIA'|'GENERICA'|'OTRA'}
+   */
+  function classifyGeometryState(geometryTypeId, genericId) {
+    if (!geometryTypeId) return 'SIN_GEOMETRIA';
+    return geometryTypeId === genericId ? 'GENERICA' : 'OTRA';
+  }
+
+  /**
+   * Extrae las dimensiones físicas de un PN desde los nodos de
+   * `partNumberDimensionsByPartNumberId.nodes`.
+   * Los valores se almacenan en metros (unitByUnitId.id === MTR = 3971).
+   * @param {Array} nodes             array de nodos { geometryTypeDimensionTypeId, dimensionValue, unitByUnitId:{id} }.
+   * @param {object} geometryDimensions  config.domain.geometryDimensions ({LENGTH,WIDTH,HEIGHT,...} → typeId).
+   * @returns {{lengthM:number, widthM:number, heightM:number|null}|null}
+   *   null si no hay nodos o si faltan tanto LENGTH como WIDTH.
+   */
+  function dimsFromPartNumber(nodes, geometryDimensions) {
+    if (!nodes || !nodes.length) return null;
+    const geo = geometryDimensions || {};
+    const byType = {};
+    for (const d of nodes) {
+      if (d && d.geometryTypeDimensionTypeId != null) {
+        byType[d.geometryTypeDimensionTypeId] = d.dimensionValue;
+      }
+    }
+    const lengthM = byType[geo.LENGTH] != null ? byType[geo.LENGTH] : null;
+    const widthM  = byType[geo.WIDTH]  != null ? byType[geo.WIDTH]  : null;
+    if (lengthM == null || widthM == null) return null;
+    const heightM = byType[geo.HEIGHT] != null ? byType[geo.HEIGHT] : null;
+    return { lengthM, widthM, heightM };
+  }
+
+  /**
+   * Calcula el área de la pieza en dm² a partir de sus dims en metros.
+   * Fórmula: (lengthM * 10) * (widthM * 10)  → dm² directamente.
+   * Ejemplo: 0.3m × 0.2m → 3dm × 2dm = 6 dm².
+   * @param {number} lengthM  largo en metros.
+   * @param {number} widthM   ancho en metros.
+   * @returns {number} área en dm².
+   */
+  function areaFromDims(lengthM, widthM) {
+    return (lengthM * 10) * (widthM * 10);
+  }
+
+  /**
+   * Construye las 3 conversiones de área para un PN a partir del área en dm².
+   * @param {number} areaDm2      área en dm² (DMK).
+   * @param {object} conversions  config.domain.conversions ({CMK_TO_FTK, ...}).
+   * @returns {{dmk:number, cmk:number, ftk:number}}
+   *   dmk = areaDm2 · cmk = areaDm2 × 100 · ftk = cmk × CMK_TO_FTK.
+   */
+  function buildAreaConversions(areaDm2, conversions) {
+    const cmk = areaDm2 * 100;
+    const ftk = cmk * ((conversions && conversions.CMK_TO_FTK) || 0.00107639);
+    return { dmk: areaDm2, cmk, ftk };
+  }
+
+  /**
+   * Indica si las dims capturadas difieren de las existentes en el PN por más de
+   * `tolerancePct`% en CUALQUIER dimensión (length o width).
+   * Retorna false si cualquiera de los dos objetos es null/undefined (no hay con qué comparar).
+   * @param {{lengthM:number,widthM:number}} capturedDims   dims que el usuario capturó.
+   * @param {{lengthM:number,widthM:number}|null} existingDims  dims actuales del PN.
+   * @param {number} [tolerancePct=1]  porcentaje de tolerancia (default 1%).
+   * @returns {boolean}
+   */
+  function dimsAreDifferent(capturedDims, existingDims, tolerancePct = 1) {
+    if (!capturedDims || !existingDims) return false;
+    const tol = tolerancePct / 100;
+    const checkKeys = ['lengthM', 'widthM'];
+    for (const key of checkKeys) {
+      const cap = capturedDims[key];
+      const ex  = existingDims[key];
+      if (cap == null || ex == null) continue;
+      // Diferencia relativa vs la referencia existente
+      const ref = Math.abs(ex) > 1e-12 ? ex : 1;
+      if (Math.abs(cap - ex) / Math.abs(ref) > tol) return true;
+    }
+    return false;
+  }
+
+  const api = {
+    M_TO_IN, mToIn, cmToIn, cm2ToDm2,
+    gridPieces, areaPieces, barrelPieces, decideMode, loadsPerHour,
+    pieceAreaDm2FromConversions, selectBarrelCapacity, computeForRackType, dimsToPieceInches,
+    // F2c: geometría
+    classifyGeometryState, dimsFromPartNumber, areaFromDims, buildAreaConversions, dimsAreDifferent,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.LoadCalculatorEngine = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/load-calculator-engine.js =====
+
+// ===== BEGIN scripts/load-calculator-stations.js =====
+(function(){
+/* ============================================================================
+ * load-calculator-stations.js — Núcleo PURO del Configurador de Estaciones
+ *
+ * Construye payloads para los datos maestros de estación del calculador de
+ * piezas por carga. SIN DOM ni API. Dual-export browser/Node.
+ *
+ * REGLA DE ORO (RMW no-destructivo): en Steelhead tanto `customInputs` como el
+ * `inputSchema` son REPLACE TOTAL. Estas funciones MERGEAN sobre lo existente:
+ * nunca pisan campos/valores ajenos (Capacidad, DivisaManoObra, NombreAnterior…).
+ *
+ *   - buildStationInputSchema : extiende el schema con los campos del calculador.
+ *   - buildUpdateStationInputsVars : payload RMW de `UpdateStationInputs`.
+ *
+ * Expone `window.LoadCalculatorStations` (browser) y `module.exports` (Node).
+ * ========================================================================== */
+(function (root) {
+  'use strict';
+
+  const clone = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));
+
+  /**
+   * Extiende el inputSchema de una estación con los campos del calculador,
+   * preservando los existentes. Devuelve {inputSchema, uiSchema} listos para
+   * `CreateStationInputSchema`.
+   *
+   * @param existingSchema  el inputSchema actual de la estación (JSON Schema).
+   * @param existingUiOrder  array `ui:order` actual (o vacío).
+   * @param fields  objeto { key: { type, title, enum?, enumNames?, ... } } a agregar/actualizar.
+   */
+  function buildStationInputSchema({ existingSchema, existingUiOrder = [], fields = {} }) {
+    const base = clone(existingSchema) || { type: 'object', title: '', required: [], properties: {}, description: '', dependencies: {} };
+    base.properties = base.properties || {};
+    // Merge no-destructivo: las keys de `fields` se agregan o actualizan; el resto se preserva.
+    for (const [key, def] of Object.entries(fields)) {
+      base.properties[key] = clone(def);
+    }
+    // ui:order: existentes primero (deduplicados), luego las keys nuevas que no estuvieran.
+    const order = [];
+    const seen = new Set();
+    for (const k of existingUiOrder) {
+      if (!seen.has(k)) { order.push(k); seen.add(k); }
+    }
+    for (const k of Object.keys(fields)) {
+      if (!seen.has(k)) { order.push(k); seen.add(k); }
+    }
+    return { inputSchema: base, uiSchema: { 'ui:order': order } };
+  }
+
+  /**
+   * Payload RMW para `UpdateStationInputs`. Mergea `values` sobre los
+   * `customInputs` existentes (preserva los que no se tocan).
+   */
+  function buildUpdateStationInputsVars({ stationId, inputSchemaId, existingCustomInputs, values = {} }) {
+    const customInputs = Object.assign({}, clone(existingCustomInputs) || {}, clone(values) || {});
+    return { stationId, inputSchemaId, customInputs };
+  }
+
+  /** Keys de `fieldKeys` que NO están en `inputSchema.properties` (las que faltan por crear). */
+  function schemaMissingFields(inputSchema, fieldKeys = []) {
+    const props = (inputSchema && inputSchema.properties) || {};
+    return fieldKeys.filter((k) => !(k in props));
+  }
+
+  /** Prefijo de línea del nombre de una estación: "T205-TI00-019 Enjuague" → "T205". null si no parsea. */
+  function parseStationLine(name) {
+    const m = String(name || '').match(/^([A-Za-z]\d{3})/);
+    return m ? m[1].toUpperCase() : null;
+  }
+
+  /** True si la estación es programable (tiene calendario) — las `-LI`/cotizables. */
+  function stationIsSchedulable(station) {
+    if (!station) return false;
+    return !!(station.calendarId || (station.calendarByCalendarId && station.calendarByCalendarId.id));
+  }
+
+  /** Agrupa estaciones por línea (parseStationLine). Omite las que no parsean. → { line: [stations] } */
+  function groupStationsByLine(stations = []) {
+    const out = {};
+    for (const s of stations) {
+      const line = parseStationLine(s && s.name);
+      if (!line) continue;
+      (out[line] || (out[line] = [])).push(s);
+    }
+    return out;
+  }
+
+  /** Estaciones PROGRAMABLES (con calendario) cuya línea coincide con `lineCode`. */
+  function findSchedulableStationsForLine(stations, lineCode) {
+    const lc = String(lineCode || '').toUpperCase();
+    return (stations || []).filter(s => stationIsSchedulable(s) && parseStationLine(s && s.name) === lc);
+  }
+
+  /**
+   * RMW NO-destructivo de los `customInputs` de un PN para persistir el cálculo (Fase 2b):
+   * escribe DatosPlanificacion.{PiezasCarga,CargasHora,TiempoEntrega} (solo los provistos) y
+   * hace append a ControlCambios[] (si se pasa ccEntry). Preserva todo lo demás. No muta el original.
+   */
+  function buildPlanningCustomInputs(existingCI, opts) {
+    const o = opts || {};
+    const ci = existingCI ? clone(existingCI) : {};
+    if (!ci.DatosPlanificacion || typeof ci.DatosPlanificacion !== 'object') ci.DatosPlanificacion = {};
+    if (o.piezasCarga != null) ci.DatosPlanificacion.PiezasCarga = o.piezasCarga;
+    if (o.cargasHora != null) ci.DatosPlanificacion.CargasHora = String(o.cargasHora);
+    if (o.tiempoEntrega != null) ci.DatosPlanificacion.TiempoEntrega = o.tiempoEntrega;
+    if (o.ccEntry) {
+      if (!Array.isArray(ci.ControlCambios)) ci.ControlCambios = [];
+      ci.ControlCambios.push(clone(o.ccEntry));
+    }
+    return ci;
+  }
+
+  const api = {
+    buildStationInputSchema, buildUpdateStationInputsVars,
+    schemaMissingFields, parseStationLine, groupStationsByLine, stationIsSchedulable,
+    findSchedulableStationsForLine, buildPlanningCustomInputs,
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.LoadCalculatorStations = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/load-calculator-stations.js =====
+
+// ===== BEGIN scripts/load-calculator.js =====
+(function(){
+/* ============================================================================
+ * load-calculator.js — Calculadora de Piezas por Carga (applet de la extensión)
+ *
+ * FASE 1 — Configurador de Estaciones (datos maestros). Se abre desde el popup
+ * (`LoadCalculator.openStationConfig`), inyecta un panel (tema OSCURO, el que
+ * diferencia los modales de la extensión de los de Steelhead) en la tab, y
+ * captura los parámetros del calculador en `customInputs` de las estaciones
+ * PROGRAMABLES (las que tienen calendario: `-LI` / cotizables).
+ *
+ * Campos: TipoLinea · Tina largo/ancho MÁX (cm) · Sep col/fila (cm) · FactorArea
+ *         · CapacidadesBarril[] (array {RackType, DM²} — una estación procesa
+ *           varios barriles con distinta capacidad).
+ * (Ciclo y OEE NO se configuran aquí: el ciclo sale del tratamiento genérico del
+ *  proceso del NP.)
+ *
+ * Ops GraphQL: AllStations · GetStation · GetStationInputSchema · AllRackTypes
+ *              (queries) · CreateStationInputSchema · UpdateStationInputs (mut).
+ *
+ * Depende de window.SteelheadAPI y window.LoadCalculatorStations.
+ * Expone window.LoadCalculator = { openStationConfig }.
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const ST  = () => window.LoadCalculatorStations;
+  const log = (...a) => console.log('[load-calculator]', ...a);
+  const warn = (...a) => console.warn('[load-calculator]', ...a);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // Campos del calculador. CapacidadesBarril es un ARRAY {rackTypeId, rackTypeName, capacidadDMK}.
+  const CALC_FIELDS = {
+    TipoLinea:         { type: 'string', enum: ['Rack', 'Barril', 'Híbrida', 'Célula'], title: 'Tipo de Línea' },
+    TinaLargoMaxCm:    { type: 'number', title: 'Largo máximo de tina (cm)' },
+    TinaAnchoMaxCm:    { type: 'number', title: 'Ancho máximo de tina (cm)' },
+    SepColCm:          { type: 'number', title: 'Separación entre columnas (cm)' },
+    SepFilaCm:         { type: 'number', title: 'Separación entre filas (cm)' },
+    FactorArea:        { type: 'number', title: 'Factor de área (def 1.5)' },
+    CapacidadesBarril: { type: 'array', title: 'Capacidades de barril (por Rack Type, DM²)',
+      items: { type: 'object', properties: { rackTypeId: { type: 'integer' }, rackTypeName: { type: 'string' }, capacidadDMK: { type: 'number' } } } },
+  };
+  const CALC_KEYS = Object.keys(CALC_FIELDS);
+  const SIMPLE_KEYS = CALC_KEYS.filter(k => k !== 'CapacidadesBarril');
+
+  let state = null;
+  const freshState = () => ({ schedulable: [], schema: null, rackTypes: [], barril: [] });
+
+  // ───────────────────────── estilos (tema OSCURO) ─────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-lc-styles')) return;
+    const css = `
+      .sa-lc-overlay{position:fixed;inset:0;z-index:2147483600;background:rgba(0,0,0,.6);
+        display:flex;align-items:center;justify-content:center;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+      .sa-lc-modal{background:#1e293b;color:#e2e8f0;width:640px;max-width:94vw;max-height:90vh;border-radius:12px;
+        box-shadow:0 12px 48px rgba(0,0,0,.55);display:flex;flex-direction:column;overflow:hidden}
+      .sa-lc-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+        padding:18px 22px;border-bottom:1px solid #334155}
+      .sa-lc-header h2{margin:0;font-size:17px;color:#38bdf8}
+      .sa-lc-sub{font-size:12px;color:#94a3b8;margin-top:3px}
+      .sa-lc-close{border:0;background:#334155;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:15px;color:#e2e8f0}
+      .sa-lc-body{padding:18px 22px;overflow:auto}
+      .sa-lc-footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid #334155}
+      .sa-lc-btn{border:1px solid #475569;background:#334155;color:#e2e8f0;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px}
+      .sa-lc-btn.primary{background:#38bdf8;border-color:#38bdf8;color:#0f172a;font-weight:600}
+      .sa-lc-btn:disabled{opacity:.45;cursor:not-allowed}
+      .sa-lc-row{display:grid;grid-template-columns:210px 1fr;gap:12px;align-items:center;margin:9px 0}
+      .sa-lc-row label{font-size:13px;color:#cbd5e1}
+      .sa-lc-row input,.sa-lc-row select,.sa-lc-fullsel{min-width:0;width:100%;box-sizing:border-box;padding:8px 10px;
+        border:1px solid #475569;border-radius:7px;font-size:13px;background:#0f172a;color:#e2e8f0}
+      .sa-lc-banner{background:#422006;border:1px solid #a16207;color:#fde68a;border-radius:8px;padding:11px 13px;font-size:13px;margin-bottom:14px;
+        display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .sa-lc-section{margin-top:14px;border-top:1px dashed #334155;padding-top:12px}
+      .sa-lc-section h3{margin:0 0 8px;font-size:13px;color:#7dd3fc}
+      .sa-lc-brow{display:grid;grid-template-columns:1fr 130px 32px;gap:8px;align-items:center;margin:6px 0}
+      .sa-lc-brow input,.sa-lc-brow select{min-width:0;width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #475569;border-radius:7px;background:#0f172a;color:#e2e8f0;font-size:13px}
+      .sa-lc-xbtn{border:0;background:#7f1d1d;color:#fecaca;border-radius:6px;height:32px;cursor:pointer}
+      .sa-lc-addbtn{margin-top:6px;border:1px dashed #475569;background:transparent;color:#7dd3fc;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px}
+      .sa-lc-msg{font-size:13px;margin-top:12px}
+      .sa-lc-msg.ok{color:#4ade80}.sa-lc-msg.err{color:#f87171}`;
+    const el = document.createElement('style');
+    el.id = 'sa-lc-styles';
+    el.textContent = css;
+    document.head.appendChild(el);
+  }
+
+  function removeOverlay() { document.getElementById('sa-lc-overlay')?.remove(); }
+  function closePanel() { removeOverlay(); state = null; }
+
+  function showShell() {
+    removeOverlay();
+    const ov = document.createElement('div');
+    ov.className = 'sa-lc-overlay';
+    ov.id = 'sa-lc-overlay';
+    ov.innerHTML = `
+      <div class="sa-lc-modal" role="dialog" aria-modal="true">
+        <div class="sa-lc-header">
+          <div><h2>⚙️ Configurador de Estaciones</h2>
+            <div class="sa-lc-sub">Parámetros del calculador de piezas por carga (estaciones programables)</div></div>
+          <button class="sa-lc-close" id="sa-lc-close" title="Cerrar">✕</button>
+        </div>
+        <div class="sa-lc-body" id="sa-lc-body"><div class="sa-lc-sub">Cargando estaciones…</div></div>
+        <div class="sa-lc-footer">
+          <button class="sa-lc-btn" id="sa-lc-cancel">Cerrar</button>
+          <button class="sa-lc-btn primary" id="sa-lc-save" disabled>Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#sa-lc-close').onclick = closePanel;
+    ov.querySelector('#sa-lc-cancel').onclick = closePanel;
+  }
+
+  const $body = () => document.getElementById('sa-lc-body');
+  const $save = () => document.getElementById('sa-lc-save');
+
+  // ───────────────────────── data layer ─────────────────────────
+  async function fetchAllStations() {
+    const PAGE = 500;
+    let offset = 0; const out = [];
+    while (true) {
+      let data;
+      try { data = await api().query('AllStations', { orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: '' }); }
+      catch (e) { warn(`AllStations offset ${offset}:`, String(e).slice(0, 120)); break; }
+      const nodes = data?.pagedData?.nodes || [];
+      out.push(...nodes);
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 20000) { warn('AllStations: límite de seguridad'); break; }
+    }
+    return out;
+  }
+
+  async function fetchRackTypes() {
+    try {
+      const data = await api().query('AllRackTypes', {});
+      const nodes = data?.pagedData?.nodes || data?.allRackTypes?.nodes || [];
+      return nodes.map(n => ({ id: n.id, name: n.name })).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) { warn('AllRackTypes', e); return []; }
+  }
+
+  async function fetchLatestStationSchema() {
+    const data = await api().query('GetStationInputSchema', {});
+    const nodes = data?.allStationInputSchemas?.nodes || [];
+    if (!nodes.length) return null;
+    const latest = nodes.reduce((a, b) => (b.id > a.id ? b : a));
+    return { id: latest.id, inputSchema: latest.inputSchema, uiOrder: (latest.uiSchema && latest.uiSchema['ui:order']) || [] };
+  }
+
+  async function loadStation(id) {
+    const data = await api().query('GetStation', { id });
+    const s = data?.stationById || {};
+    return { name: s.name, customInputs: s.customInputs || {}, inputSchemaId: s.stationInputSchemaByInputSchemaId?.id ?? null };
+  }
+
+  async function ensureSchemaHasCalcFields() {
+    let latest = await fetchLatestStationSchema();
+    const missing = ST().schemaMissingFields(latest && latest.inputSchema, CALC_KEYS);
+    if (!missing.length) return latest;
+    const fields = {};
+    for (const k of missing) fields[k] = CALC_FIELDS[k];
+    const { inputSchema, uiSchema } = ST().buildStationInputSchema({
+      existingSchema: latest && latest.inputSchema, existingUiOrder: latest && latest.uiOrder, fields,
+    });
+    await api().query('CreateStationInputSchema', { inputSchema, uiSchema });
+    return await fetchLatestStationSchema();
+  }
+
+  async function saveStationValues(stationId, inputSchemaId, values) {
+    const existing = await loadStation(stationId);
+    const vars = ST().buildUpdateStationInputsVars({ stationId, inputSchemaId, existingCustomInputs: existing.customInputs, values });
+    await api().query('UpdateStationInputs', vars);
+  }
+
+  // ───────────────────────── UI ─────────────────────────
+  function simpleInputHtml(key) {
+    const def = CALC_FIELDS[key];
+    if (def.enum) {
+      return `<select class="sa-lc-f" data-key="${key}">${['<option value="">—</option>', ...def.enum.map(v => `<option value="${esc(v)}">${esc(v)}</option>`)].join('')}</select>`;
+    }
+    return `<input class="sa-lc-f" data-key="${key}" type="number" step="any" placeholder="—">`;
+  }
+
+  function barrelRowHtml(row) {
+    const opts = ['<option value="">— Rack Type —</option>', ...state.rackTypes.map(rt =>
+      `<option value="${rt.id}" ${String(row.rackTypeId) === String(rt.id) ? 'selected' : ''}>${esc(rt.name)}</option>`)].join('');
+    return `<div class="sa-lc-brow">
+      <select class="sa-lc-brt">${opts}</select>
+      <input class="sa-lc-bcap" type="number" step="any" placeholder="DM²" value="${row.capacidadDMK ?? ''}">
+      <button class="sa-lc-xbtn" title="Quitar">✕</button></div>`;
+  }
+
+  function renderBarrels() {
+    const cont = document.getElementById('sa-lc-barrels');
+    if (!cont) return;
+    cont.innerHTML = state.barril.map(barrelRowHtml).join('') || '<div class="sa-lc-sub">Sin capacidades de barril. Agrega una si la estación procesa barriles.</div>';
+    cont.querySelectorAll('.sa-lc-brow').forEach((rowEl, i) => {
+      rowEl.querySelector('.sa-lc-brt').onchange = (e) => { state.barril[i].rackTypeId = e.target.value ? Number(e.target.value) : null; state.barril[i].rackTypeName = e.target.selectedOptions[0]?.textContent || ''; };
+      rowEl.querySelector('.sa-lc-bcap').oninput = (e) => { state.barril[i].capacidadDMK = e.target.value === '' ? null : Number(e.target.value); };
+      rowEl.querySelector('.sa-lc-xbtn').onclick = () => { state.barril.splice(i, 1); renderBarrels(); };
+    });
+  }
+
+  function renderForm() {
+    const missing = ST().schemaMissingFields(state.schema && state.schema.inputSchema, CALC_KEYS);
+    const banner = missing.length
+      ? `<div class="sa-lc-banner"><span>El esquema de estaciones aún no tiene ${missing.length} campo(s) del calculador.</span>
+         <button class="sa-lc-btn" id="sa-lc-extend">Extender esquema</button></div>` : '';
+
+    const stationOpts = state.schedulable.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    const simpleRows = SIMPLE_KEYS.map(k =>
+      `<div class="sa-lc-row"><label>${esc(CALC_FIELDS[k].title)}</label>${simpleInputHtml(k)}</div>`).join('');
+
+    $body().innerHTML = `
+      ${banner}
+      <div class="sa-lc-row"><label>Estación programable</label><select id="sa-lc-target" class="sa-lc-fullsel">${stationOpts}</select></div>
+      ${simpleRows}
+      <div class="sa-lc-section">
+        <h3>${esc(CALC_FIELDS.CapacidadesBarril.title)}</h3>
+        <div id="sa-lc-barrels"></div>
+        <button class="sa-lc-addbtn" id="sa-lc-addbarrel">+ Agregar barril</button>
+      </div>
+      <div class="sa-lc-msg" id="sa-lc-msg"></div>`;
+
+    const ext = document.getElementById('sa-lc-extend');
+    if (ext) ext.onclick = onExtendSchema;
+    const tgt = document.getElementById('sa-lc-target');
+    tgt.onchange = () => prefillFromStation(Number(tgt.value));
+    document.getElementById('sa-lc-addbarrel').onclick = () => { state.barril.push({ rackTypeId: null, rackTypeName: '', capacidadDMK: null }); renderBarrels(); };
+    renderBarrels();
+    $save().disabled = missing.length > 0;
+    $save().onclick = onSave;
+    if (tgt.value) prefillFromStation(Number(tgt.value));
+  }
+
+  function collectValues() {
+    const values = {};
+    $body().querySelectorAll('.sa-lc-f').forEach(el => {
+      const raw = el.value;
+      if (raw === '' || raw == null) return;
+      const def = CALC_FIELDS[el.dataset.key];
+      values[el.dataset.key] = def.enum ? raw : Number(raw);
+    });
+    const barril = state.barril.filter(b => b.rackTypeId != null && b.capacidadDMK != null);
+    if (barril.length) values.CapacidadesBarril = barril;
+    return values;
+  }
+
+  async function prefillFromStation(stationId) {
+    try {
+      const st = await loadStation(stationId);
+      const ci = st.customInputs || {};
+      $body().querySelectorAll('.sa-lc-f').forEach(el => {
+        const v = ci[el.dataset.key];
+        el.value = (v === undefined || v === null) ? '' : v;
+      });
+      state.barril = Array.isArray(ci.CapacidadesBarril) ? ci.CapacidadesBarril.map(b => ({ ...b })) : [];
+      renderBarrels();
+    } catch (e) { warn('prefill', e); }
+  }
+
+  function setMsg(text, kind) {
+    const m = document.getElementById('sa-lc-msg');
+    if (m) { m.textContent = text; m.className = 'sa-lc-msg ' + (kind || ''); }
+  }
+
+  async function onExtendSchema() {
+    const ext = document.getElementById('sa-lc-extend');
+    if (ext) { ext.disabled = true; ext.textContent = 'Extendiendo…'; }
+    try {
+      state.schema = await ensureSchemaHasCalcFields();
+      renderForm();
+      setMsg('Esquema extendido. Ya puedes capturar parámetros.', 'ok');
+    } catch (e) {
+      warn('extend schema', e);
+      setMsg('Error al extender el esquema: ' + String(e).slice(0, 160), 'err');
+      if (ext) { ext.disabled = false; ext.textContent = 'Extender esquema'; }
+    }
+  }
+
+  async function onSave() {
+    const values = collectValues();
+    if (!Object.keys(values).length) { setMsg('No capturaste ningún valor.', 'err'); return; }
+    if (!state.schema || !state.schema.id) { setMsg('Esquema no disponible.', 'err'); return; }
+    const tgt = document.getElementById('sa-lc-target');
+    const stationId = Number(tgt.value);
+    $save().disabled = true;
+    try {
+      setMsg('Guardando…');
+      await saveStationValues(stationId, state.schema.id, values);
+      setMsg('✓ Estación actualizada.', 'ok');
+    } catch (e) {
+      warn('save', e);
+      setMsg('Error al guardar: ' + String(e).slice(0, 160), 'err');
+    } finally {
+      $save().disabled = false;
+    }
+  }
+
+  // ───────────────────────── entry point ─────────────────────────
+  async function openStationConfig() {
+    if (!api() || typeof api().query !== 'function') { alert('SteelheadAPI no disponible. Recarga la página de Steelhead.'); return; }
+    if (!ST()) { alert('Módulo load-calculator-stations no cargado.'); return; }
+    if (document.getElementById('sa-lc-overlay')) return;
+    injectStyles();
+    state = freshState();
+    showShell();
+    try {
+      const [stations, schema, rackTypes] = await Promise.all([fetchAllStations(), fetchLatestStationSchema(), fetchRackTypes()]);
+      state.schedulable = stations.filter(ST().stationIsSchedulable).map(s => ({ id: s.id, name: s.name }));
+      state.schema = schema;
+      state.rackTypes = rackTypes;
+      if (!state.schedulable.length) { $body().innerHTML = '<div class="sa-lc-msg err">No se encontraron estaciones programables (con calendario).</div>'; return; }
+      renderForm();
+    } catch (e) {
+      warn('open', e);
+      if ($body()) $body().innerHTML = `<div class="sa-lc-msg err">Error: ${esc(String(e).slice(0, 200))}</div>`;
+    }
+    return { ok: true };
+  }
+
+  window.LoadCalculator = Object.assign(window.LoadCalculator || {}, { openStationConfig });
+  log('listo (Configurador de Estaciones)');
+})();
+})();
+// ===== END scripts/load-calculator.js =====
+
+// ===== BEGIN scripts/load-calculator-modal.js =====
+(function(){
+/* ============================================================================
+ * load-calculator-modal.js — Fase 2a/2b/2c: calculadora dentro del modal de Rack Types
+ *
+ * autoInject. Intercepta `CreateEditPartsPerRackTypeQuery` (el query que abre el
+ * modal "...that can fit on a rack type"), resuelve la LÍNEA del PN → su estación
+ * programable (-LI) → params de tina/barriles, lee las dims de la pieza (Geometry
+ * Type) y el área DMK del PN, y cuando eliges un Rack Type calcula piezas/carga
+ * (BARRIL si el rack está en las Capacidades de barril de la estación; si no RACK
+ * = cuadrícula + área) y ofrece **Aplicar** al campo "Parts Per Rack".
+ *
+ * F2a  — NO escribe en el PN (solo autollenan el campo del modal; tú das Save nativo).
+ * F2b  — Persistir PiezasCarga en DatosPlanificacion + Control de Cambios (UpdatePartNumber parcial).
+ * F2c  — LECTURA Y PREVIEW de Geometry Type (estado, dims actuales, conversiones de área).
+ *         El botón "Registrar geometría" queda DESHABILITADO hasta validación en vivo.
+ *
+ * Depende de window.SteelheadAPI, window.LoadCalculatorEngine, window.LoadCalculatorStations.
+ * ========================================================================== */
+
+// F2c: escritura de geometría DESHABILITADA hasta validación en vivo.
+// Activar cuando el usuario confirme que la lectura funciona correctamente.
+const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
+(function () {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const ENG = () => window.LoadCalculatorEngine;
+  const ST  = () => window.LoadCalculatorStations;
+  const cfg = () => window.REMOTE_CONFIG;
+  const log = (...a) => console.log('[load-calc-modal]', ...a);
+  const warn = (...a) => console.warn('[load-calc-modal]', ...a);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  let ctx = null;        // contexto del modal abierto
+  let modalObserver = null;
+  let lastRackName = null;
+
+  // ───────────────────────── fetch intercept ─────────────────────────
+  function patchFetch() {
+    if (window.__saLoadCalcModalPatched) return;
+    window.__saLoadCalcModalPatched = true;
+    const orig = window.fetch;
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      let op = null, vars = null;
+      if (typeof url === 'string' && url.includes('/graphql') && opts && typeof opts.body === 'string') {
+        try { const b = JSON.parse(opts.body); op = b.operationName; vars = b.variables; } catch (_) {}
+      }
+      const resp = await orig.apply(this, args);
+      if (op === 'CreateEditPartsPerRackTypeQuery' && vars && vars.partNumberId) {
+        const pnId = vars.partNumberId;
+        try { resp.clone().json().then(j => onModalData(pnId, j && j.data)).catch(() => {}); } catch (_) {}
+      }
+      return resp;
+    };
+    log('fetch intercept activo');
+  }
+
+  // ───────────────────────── captura + resolución ─────────────────────────
+  async function onModalData(partNumberId, data) {
+    try {
+      const rackTypes = ((data && data.allRackTypes && data.allRackTypes.nodes) || []).map(n => ({ id: n.id, name: n.name }));
+      const conv = (((data && data.partNumberById && data.partNumberById.inventoryItemByPartNumberId
+        && data.partNumberById.inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId) || {}).nodes) || [];
+      const dmkId = cfg()?.steelhead?.domain?.unitIds?.DMK || 3975;
+      ctx = {
+        partNumberId,
+        pnName: (data && data.partNumberById && data.partNumberById.name) || '',
+        rackTypes,
+        areaPieza_dm2: ENG().pieceAreaDm2FromConversions(conv, dmkId),
+        linea: null, pieceDims: null, stationsForLine: [], estacion: null, params: null, result: null,
+        // F2c: estado de geometría (se rellena en resolveContext)
+        geometryState: null,   // 'SIN_GEOMETRIA' | 'GENERICA' | 'OTRA'
+        geometryTypeName: null, // nombre del Geometry Type (si tiene)
+        existingDims: null,    // { lengthM, widthM, heightM } o null
+        dimsDiffer: false,     // si las dims capturadas difieren de las existentes >1%
+        areaConversions: null, // { dmk, cmk, ftk } a registrar (calculado desde pieceDims o areaPieza_dm2)
+      };
+      showPanel();
+      await resolveContext();
+      renderPanel();
+      observeModal();
+    } catch (e) { warn('onModalData', e); }
+  }
+
+  async function resolveContext() {
+    // GetPartNumber → línea + dims de pieza
+    let node = null;
+    try {
+      const r = await api().query('GetPartNumber', { partNumberId: ctx.partNumberId, usagesLimit: 0 });
+      node = r && r.partNumberById;
+    } catch (e) { warn('GetPartNumber', e); }
+
+    ctx.linea = await resolveLinea(node).catch(() => null);
+    ctx.pieceDims = resolvePieceDims(node);
+
+    // F2c: clasificar estado de geometría y extraer dims existentes
+    resolveGeometryState(node);
+
+    // estaciones programables de la línea
+    try {
+      const stations = await fetchAllStations();
+      const code = ST().parseStationLine(ctx.linea) || ST().parseStationLine(ctx.pnName) || null;
+      ctx.lineCode = code;
+      ctx.stationsForLine = code ? ST().findSchedulableStationsForLine(stations, code) : [];
+      ctx.allSchedulable = stations.filter(ST().stationIsSchedulable).map(s => ({ id: s.id, name: s.name }));
+      ctx.estacion = ctx.stationsForLine[0] ? { id: ctx.stationsForLine[0].id, name: ctx.stationsForLine[0].name } : null;
+      if (ctx.estacion) ctx.params = await loadStationParams(ctx.estacion.id);
+    } catch (e) { warn('resolve estación', e); }
+  }
+
+  async function resolveLinea(node) {
+    if (!node) return null;
+    const lineaDimId = cfg()?.steelhead?.domain?.dimensionIds?.linea || 349;
+    const sels = (node.acctPnDimensionValueSelectionsByPartNumberId && node.acctPnDimensionValueSelectionsByPartNumberId.nodes) || [];
+    const sel = sels.find(s => s.dimensionId === lineaDimId);
+    if (!sel || sel.dimensionCustomValueId == null) return null;
+    try {
+      const dim = await api().query('GetDimension', { id: lineaDimId, includeArchived: 'NO' });
+      const vals = (dim && dim.acctDimensionById && dim.acctDimensionById.acctDimensionCustomValuesByDimensionId
+        && dim.acctDimensionById.acctDimensionCustomValuesByDimensionId.nodes) || [];
+      const v = vals.find(x => x.id === sel.dimensionCustomValueId);
+      return v ? String(v.value).trim() : null;
+    } catch (e) { warn('GetDimension', e); return null; }
+  }
+
+  function resolvePieceDims(node) {
+    const dims = (node && node.partNumberDimensionsByPartNumberId && node.partNumberDimensionsByPartNumberId.nodes) || [];
+    const active = dims.filter(d => d && !d.archivedAt);
+    return ENG().dimsToPieceInches(active, cfg()?.steelhead?.domain?.geometryDimensions);
+  }
+
+  // F2c: clasifica el estado del Geometry Type del PN y extrae dims existentes.
+  function resolveGeometryState(node) {
+    const geoNode = node && node.geometryTypeByGeometryTypeId;
+    const geoTypeId = geoNode ? geoNode.geometryTypeId : null;
+    const genericId = cfg()?.steelhead?.domain?.geometryGenericaId || 831;
+    ctx.geometryState    = ENG().classifyGeometryState(geoTypeId, genericId);
+    ctx.geometryTypeName = geoNode ? (geoNode.name || null) : null;
+
+    // Extraer dims existentes del PN (en metros) para comparar con las capturadas
+    const dimNodes = (node && node.partNumberDimensionsByPartNumberId && node.partNumberDimensionsByPartNumberId.nodes) || [];
+    const activeNodes = dimNodes.filter(d => d && !d.archivedAt);
+    ctx.existingDims = ENG().dimsFromPartNumber(activeNodes, cfg()?.steelhead?.domain?.geometryDimensions);
+
+    // Calcular conversiones de área a partir del área del PN (si tiene DMK)
+    // o a partir de las dims capturadas (si hay pieceDims)
+    const conversions = cfg()?.steelhead?.domain?.conversions;
+    if (ctx.areaPieza_dm2 != null) {
+      ctx.areaConversions = ENG().buildAreaConversions(ctx.areaPieza_dm2, conversions);
+    } else if (ctx.pieceDims) {
+      // Calcular el área desde las dims en metros
+      // dimsToPieceInches devuelve largoIn/anchoIn; necesitamos las dims en metros
+      // Las extraemos directamente desde existingDims si están
+      if (ctx.existingDims) {
+        const areaDm2 = ENG().areaFromDims(ctx.existingDims.lengthM, ctx.existingDims.widthM);
+        ctx.areaConversions = ENG().buildAreaConversions(areaDm2, conversions);
+      }
+    }
+
+    // ¿Las dims capturadas difieren de las existentes?
+    // "capturadas" = las que el panel tiene (existingDims es lo que hay en SH)
+    // Para F2c solo comparamos si ctx.existingDims difiere de sí mismo (siempre false)
+    // La comparación real (capturadas por el usuario vs SH) se hará en F2d.
+    ctx.dimsDiffer = false;
+  }
+
+  async function fetchAllStations() {
+    const PAGE = 500; let offset = 0; const out = [];
+    while (true) {
+      let data;
+      try { data = await api().query('AllStations', { orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: '' }); }
+      catch (e) { warn('AllStations', e); break; }
+      const nodes = (data && data.pagedData && data.pagedData.nodes) || [];
+      out.push(...nodes);
+      if (nodes.length < PAGE) break;
+      offset += PAGE; if (offset > 20000) break;
+    }
+    return out;
+  }
+
+  async function loadStationParams(stationId) {
+    try {
+      const r = await api().query('GetStation', { id: stationId });
+      const ci = (r && r.stationById && r.stationById.customInputs) || {};
+      return {
+        TipoLinea: ci.TipoLinea, TinaLargoMaxCm: ci.TinaLargoMaxCm, TinaAnchoMaxCm: ci.TinaAnchoMaxCm,
+        SepColCm: ci.SepColCm, SepFilaCm: ci.SepFilaCm, FactorArea: ci.FactorArea,
+        CapacidadesBarril: Array.isArray(ci.CapacidadesBarril) ? ci.CapacidadesBarril : [],
+      };
+    } catch (e) { warn('GetStation', e); return null; }
+  }
+
+  // ───────────────────────── cálculo ─────────────────────────
+  function recompute(rackName) {
+    ctx.result = null;
+    if (!rackName || !ctx.params) return;
+    const rt = ctx.rackTypes.find(r => r.name === rackName);
+    if (!rt) return;
+    const p = ctx.params;
+    ctx.result = ENG().computeForRackType({
+      rackTypeId: rt.id,
+      capacidadesBarril: p.CapacidadesBarril,
+      areaPieza_dm2: ctx.areaPieza_dm2,
+      piece: ctx.pieceDims ? { largoIn: ctx.pieceDims.largoIn, anchoIn: ctx.pieceDims.anchoIn } : null,
+      tina: { largoMaxCm: p.TinaLargoMaxCm, anchoMaxCm: p.TinaAnchoMaxCm, sepColCm: p.SepColCm, sepFilaCm: p.SepFilaCm, factor: p.FactorArea },
+    });
+    ctx.rackName = rackName;
+  }
+
+  // ───────────────────────── persistencia (Fase 2b) ─────────────────────────
+  async function getCurrentUserName() {
+    try {
+      const d = await api().query('CurrentUserActiveSegments', {});
+      return (d && d.currentSession && d.currentSession.userByUserId && d.currentSession.userByUserId.name) || '(operador)';
+    } catch (_) { return '(operador)'; }
+  }
+
+  // Escribe SOLO customInputs (DatosPlanificacion + Control de Cambios) vía UpdatePartNumber
+  // (input parcial — NO toca labels/specs/dims/precios). Con confirmación previa.
+  async function persistToPN(piezasCarga, metodo) {
+    if (piezasCarga == null) return;
+    const detalle = `Piezas por carga = ${piezasCarga} (${metodo}; rack ${ctx.rackName || '—'}, estación ${ctx.estacion ? ctx.estacion.name : '—'})`;
+    if (!confirm(`Se escribirá en el PN "${ctx.pnName}":\n\n• DatosPlanificacion.PiezasCarga = ${piezasCarga}\n• Una entrada en Control de Cambios\n\n(No toca acabados, specs, precios ni dimensiones.)\n\n¿Confirmar?`)) return;
+    setPersistMsg('Guardando…');
+    try {
+      const r = await api().query('GetPartNumber', { partNumberId: ctx.partNumberId, usagesLimit: 0 });
+      const node = r && r.partNumberById;
+      const ci = (node && node.customInputs) || {};
+      const usuario = await getCurrentUserName();
+      const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const ccEntry = { Fecha: nowIso, Usuario: usuario, Accion: 'CARGA', Detalle: detalle, Version: (cfg() && cfg().version) || '' };
+      const customInputs = ST().buildPlanningCustomInputs(ci, { piezasCarga, ccEntry });
+      await api().query('UpdatePartNumber', { id: ctx.partNumberId, customInputs });
+      setPersistMsg(`✓ Guardado en el PN (PiezasCarga = ${piezasCarga}).`, 'ok');
+    } catch (e) {
+      warn('persistToPN', e);
+      setPersistMsg('Error al guardar: ' + String(e).slice(0, 160), 'err');
+    }
+  }
+
+  function setPersistMsg(text, kind) {
+    const m = document.getElementById('sa-lcm-pmsg');
+    if (m) { m.textContent = text; m.className = 'sa-lcm-row ' + (kind === 'ok' ? '' : kind === 'err' ? 'sa-lcm-warn' : ''); m.style.color = kind === 'ok' ? '#4ade80' : kind === 'err' ? '#f87171' : '#cbd5e1'; }
+  }
+
+  // ───────────────────────── DOM del modal ─────────────────────────
+  function findModal() {
+    const titles = document.querySelectorAll('h2#form-dialog-title, [id="form-dialog-title"]');
+    for (const t of titles) {
+      if (/rack type/i.test(t.textContent || '')) return t.closest('[role="dialog"]') || t.parentElement;
+    }
+    return null;
+  }
+  function readSelectedRackName(modal) {
+    const sv = modal && modal.querySelector('.css-b62m3t-container [class*="singleValue"], [class*="-singleValue"]');
+    return sv ? (sv.textContent || '').trim() : null;
+  }
+  function fillPartsPerRack(modal, value) {
+    const inp = modal && modal.querySelector('input.MuiOutlinedInput-input');
+    if (!inp) return false;
+    try {
+      if (inp._valueTracker) inp._valueTracker.setValue('');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(inp, String(value)); else inp.value = String(value);
+      inp.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    } catch (e) { warn('fill', e); return false; }
+  }
+
+  function observeModal() {
+    if (modalObserver) modalObserver.disconnect();
+    const modal = findModal();
+    if (!modal) return;
+    const onChange = () => {
+      const name = readSelectedRackName(modal);
+      if (name && name !== lastRackName) { lastRackName = name; recompute(name); renderPanel(); }
+      if (!findModal()) cleanup(); // modal cerrado
+    };
+    modalObserver = new MutationObserver(onChange);
+    modalObserver.observe(modal, { subtree: true, childList: true, characterData: true });
+    onChange();
+  }
+
+  // ───────────────────────── panel (tema oscuro, esquina) ─────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-lcm-styles')) return;
+    const css = `
+      .sa-lcm{position:fixed;top:16px;right:16px;z-index:2147483601;width:320px;background:#1e293b;color:#e2e8f0;
+        border:1px solid #334155;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:13px}
+      .sa-lcm-h{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid #334155}
+      .sa-lcm-h b{color:#38bdf8;font-size:14px}
+      .sa-lcm-x{border:0;background:#334155;color:#e2e8f0;border-radius:6px;width:24px;height:24px;cursor:pointer}
+      .sa-lcm-b{padding:12px 14px;max-height:60vh;overflow:auto}
+      .sa-lcm-row{margin:6px 0;color:#cbd5e1}
+      .sa-lcm-row b{color:#e2e8f0}
+      .sa-lcm-warn{color:#fbbf24}
+      .sa-lcm-sel{width:100%;margin-top:4px;padding:6px 8px;background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:6px;font-size:12px}
+      .sa-lcm-res{margin-top:10px;border-top:1px dashed #334155;padding-top:10px}
+      .sa-lcm-big{font-size:22px;color:#4ade80;font-weight:700}
+      .sa-lcm-apply{margin-top:8px;width:100%;border:0;background:#38bdf8;color:#0f172a;font-weight:600;border-radius:7px;padding:8px;cursor:pointer}
+      .sa-lcm-apply.alt{background:#334155;color:#e2e8f0;margin-top:6px;width:auto;padding:5px 10px;font-size:12px}
+      .sa-lcm-persist{margin-top:8px;width:100%;border:0;background:#16a34a;color:#fff;font-weight:600;border-radius:7px;padding:8px;cursor:pointer}
+      .sa-lcm-persist.alt{margin-top:0;margin-left:6px;width:auto;padding:5px 10px;font-size:12px}
+      .sa-lcm-geo{margin-top:10px;border-top:1px dashed #334155;padding-top:10px}
+      .sa-lcm-geo-title{font-weight:700;color:#38bdf8;font-size:12px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em}
+      .sa-lcm-geo-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-left:4px}
+      .sa-lcm-geo-badge.sin{background:#374151;color:#9ca3af}
+      .sa-lcm-geo-badge.generica{background:#1e3a5f;color:#60a5fa}
+      .sa-lcm-geo-badge.otra{background:#14532d;color:#4ade80}
+      .sa-lcm-geo-row{margin:3px 0;color:#94a3b8;font-size:12px}
+      .sa-lcm-geo-row b{color:#e2e8f0}
+      .sa-lcm-geo-preview{margin-top:6px;background:#0f172a;border-radius:6px;padding:7px 10px;font-size:12px}
+      .sa-lcm-geo-btn{margin-top:8px;width:100%;border:1px solid #475569;background:#1e293b;color:#64748b;font-size:12px;border-radius:6px;padding:6px;cursor:not-allowed;opacity:0.6}
+      .sa-lcm-geo-note{margin-top:4px;font-size:11px;color:#64748b;font-style:italic}`;
+    const el = document.createElement('style'); el.id = 'sa-lcm-styles'; el.textContent = css; document.head.appendChild(el);
+  }
+
+  function showPanel() {
+    injectStyles();
+    if (document.getElementById('sa-lcm')) return;
+    const d = document.createElement('div');
+    d.className = 'sa-lcm'; d.id = 'sa-lcm';
+    d.innerHTML = `<div class="sa-lcm-h"><b>🧮 Piezas por carga</b><button class="sa-lcm-x" id="sa-lcm-x">✕</button></div><div class="sa-lcm-b" id="sa-lcm-b">Cargando…</div>`;
+    document.body.appendChild(d);
+    d.querySelector('#sa-lcm-x').onclick = cleanup;
+  }
+
+  function renderPanel() {
+    const b = document.getElementById('sa-lcm-b');
+    if (!b || !ctx) return;
+    const estSel = ctx.allSchedulable && ctx.allSchedulable.length
+      ? `<select class="sa-lcm-sel" id="sa-lcm-est">${ctx.allSchedulable.map(s =>
+          `<option value="${s.id}" ${ctx.estacion && ctx.estacion.id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`
+      : '<span class="sa-lcm-warn">sin estaciones</span>';
+
+    const area = ctx.areaPieza_dm2 != null ? `${ctx.areaPieza_dm2} dm²` : '<span class="sa-lcm-warn">—</span>';
+    const dims = ctx.pieceDims ? `${ctx.pieceDims.largoIn.toFixed(2)}″ × ${ctx.pieceDims.anchoIn.toFixed(2)}″` : '<span class="sa-lcm-warn">sin dims</span>';
+    const paramWarn = ctx.params ? '' : '<div class="sa-lcm-row sa-lcm-warn">⚠️ La estación no tiene parámetros cargados (usa el Configurador).</div>';
+
+    let res = '<div class="sa-lcm-res sa-lcm-row">Elige un Rack Type en el modal…</div>';
+    const r = ctx.result;
+    if (r) {
+      if (r.modo === 'BARRIL') {
+        res = `<div class="sa-lcm-res"><div class="sa-lcm-row">Modo: <b>Barril</b> (cap ${r.capacidadDMK} dm²)</div>
+          <div class="sa-lcm-big">${r.piezasPorCarga ?? '—'}</div>
+          ${r.piezasPorCarga != null ? `<button class="sa-lcm-apply" data-v="${r.piezasPorCarga}">Aplicar al modal</button>
+            <button class="sa-lcm-persist" data-v="${r.piezasPorCarga}" data-m="barril">💾 Persistir en el PN</button>` : '<span class="sa-lcm-warn">falta área de pieza</span>'}
+          <div class="sa-lcm-row" id="sa-lcm-pmsg"></div></div>`;
+      } else {
+        const g = r.grid && r.grid.piezasPorCarga, a = r.area && r.area.piezasPorCarga;
+        res = `<div class="sa-lcm-res"><div class="sa-lcm-row">Modo: <b>Rack</b></div>
+          ${g != null ? `<div class="sa-lcm-row">Cuadrícula: <b>${g}</b> (${r.grid.columnas}×${r.grid.filas}) <button class="sa-lcm-apply alt" data-v="${g}">Aplicar</button><button class="sa-lcm-persist alt" data-v="${g}" data-m="cuadrícula">💾</button></div>` : '<div class="sa-lcm-row sa-lcm-warn">Cuadrícula: sin dims de pieza</div>'}
+          ${a != null ? `<div class="sa-lcm-row">Área: <b>${a}</b> <button class="sa-lcm-apply alt" data-v="${a}">Aplicar</button><button class="sa-lcm-persist alt" data-v="${a}" data-m="área">💾</button></div>` : '<div class="sa-lcm-row sa-lcm-warn">Área: sin área de pieza</div>'}
+          <div class="sa-lcm-row" id="sa-lcm-pmsg"></div></div>`;
+      }
+    }
+
+    b.innerHTML = `
+      <div class="sa-lcm-row">PN: <b>${esc(ctx.pnName)}</b></div>
+      <div class="sa-lcm-row">Línea: <b>${esc(ctx.linea || ctx.lineCode || '—')}</b></div>
+      <div class="sa-lcm-row">Estación: ${estSel}</div>
+      <div class="sa-lcm-row">Área pieza: <b>${area}</b> · Dims: <b>${dims}</b></div>
+      ${paramWarn}${res}${renderGeometrySection()}`;
+
+    const sel = document.getElementById('sa-lcm-est');
+    if (sel) sel.onchange = async () => {
+      ctx.estacion = ctx.allSchedulable.find(s => String(s.id) === sel.value) || null;
+      ctx.params = ctx.estacion ? await loadStationParams(ctx.estacion.id) : null;
+      if (lastRackName) recompute(lastRackName);
+      renderPanel();
+    };
+    b.querySelectorAll('.sa-lcm-apply').forEach(btn => {
+      btn.onclick = () => { const modal = findModal(); if (modal && fillPartsPerRack(modal, btn.dataset.v)) { btn.textContent = '✓ Aplicado'; } };
+    });
+    b.querySelectorAll('.sa-lcm-persist').forEach(btn => {
+      btn.onclick = () => persistToPN(Number(btn.dataset.v), btn.dataset.m);
+    });
+  }
+
+  // ───────────────────────── F2c: sección de geometría (solo lectura/preview) ─────────────────────────
+
+  /** Renderiza la sección "Geometría" del panel (F2c). */
+  function renderGeometrySection() {
+    if (!ctx) return '';
+
+    // Badge de estado
+    const stateLabel = ctx.geometryState === 'SIN_GEOMETRIA' ? 'Sin geometría'
+      : ctx.geometryState === 'GENERICA' ? 'Geometría Genérica'
+      : `Geometría: ${esc(ctx.geometryTypeName || String(ctx.geometryState || ''))}`;
+    const badgeClass = ctx.geometryState === 'SIN_GEOMETRIA' ? 'sin'
+      : ctx.geometryState === 'GENERICA' ? 'generica' : 'otra';
+
+    // Dims actuales del PN (en cm para mostrar)
+    let existingDimsHtml = '';
+    if (ctx.existingDims) {
+      const lCm = (ctx.existingDims.lengthM * 100).toFixed(2);
+      const wCm = (ctx.existingDims.widthM * 100).toFixed(2);
+      const hCm = ctx.existingDims.heightM != null ? (ctx.existingDims.heightM * 100).toFixed(2) : null;
+      existingDimsHtml = `<div class="sa-lcm-geo-row">Dims actuales: <b>${lCm} cm × ${wCm} cm${hCm != null ? ` × ${hCm} cm` : ''}</b></div>`;
+    } else {
+      existingDimsHtml = `<div class="sa-lcm-geo-row" style="color:#fbbf24">Sin dims registradas en el PN</div>`;
+    }
+
+    // Aviso si dims difieren
+    const differWarn = ctx.dimsDiffer
+      ? `<div class="sa-lcm-row sa-lcm-warn" style="font-size:11px">&#9888; Las dims capturadas difieren de las registradas</div>`
+      : '';
+
+    // Preview de área a registrar
+    let previewHtml = '';
+    if (ctx.areaConversions) {
+      const { dmk, cmk, ftk } = ctx.areaConversions;
+      previewHtml = `<div class="sa-lcm-geo-preview">
+        <div class="sa-lcm-geo-row" style="color:#94a3b8;margin-bottom:3px">Preview de área a registrar:</div>
+        <div class="sa-lcm-geo-row"><b>${dmk.toFixed(4)}</b> DMK (dm²) &nbsp;·&nbsp; <b>${cmk.toFixed(4)}</b> CMK (cm²) &nbsp;·&nbsp; <b>${ftk.toFixed(6)}</b> FTK (ft²)</div>
+      </div>`;
+    } else if (ctx.existingDims) {
+      // Calcular área desde dims existentes como preview
+      const areaDm2 = ENG().areaFromDims(ctx.existingDims.lengthM, ctx.existingDims.widthM);
+      const conversions = cfg()?.steelhead?.domain?.conversions;
+      const conv = ENG().buildAreaConversions(areaDm2, conversions);
+      previewHtml = `<div class="sa-lcm-geo-preview">
+        <div class="sa-lcm-geo-row" style="color:#94a3b8;margin-bottom:3px">Preview (calculado desde dims):</div>
+        <div class="sa-lcm-geo-row"><b>${conv.dmk.toFixed(4)}</b> DMK &nbsp;·&nbsp; <b>${conv.cmk.toFixed(4)}</b> CMK &nbsp;·&nbsp; <b>${conv.ftk.toFixed(6)}</b> FTK</div>
+      </div>`;
+    } else {
+      previewHtml = `<div class="sa-lcm-geo-row" style="color:#64748b;font-size:11px">Sin área disponible para preview (faltan dims o conversión DMK)</div>`;
+    }
+
+    // Botón deshabilitado + nota
+    const btnHtml = F2C_WRITE_ENABLED
+      ? `<button class="sa-lcm-persist" id="sa-lcm-geo-btn">💾 Registrar geometría</button>`
+      : `<button class="sa-lcm-geo-btn" disabled title="Pendiente de validación en vivo">&#128274; Registrar geometría</button>
+         <div class="sa-lcm-geo-note">Pendiente de validación en vivo (F2C_WRITE_ENABLED = false)</div>`;
+
+    return `<div class="sa-lcm-geo">
+      <div class="sa-lcm-geo-title">Geometría <span class="sa-lcm-geo-badge ${badgeClass}">${stateLabel}</span></div>
+      ${existingDimsHtml}
+      ${differWarn}
+      ${previewHtml}
+      ${btnHtml}
+    </div>`;
+  }
+
+  function cleanup() {
+    if (modalObserver) { modalObserver.disconnect(); modalObserver = null; }
+    document.getElementById('sa-lcm')?.remove();
+    ctx = null; lastRackName = null;
+  }
+
+  // ───────────────────────── init ─────────────────────────
+  function init() {
+    if (window.__saLoadCalcModalInit) return;
+    window.__saLoadCalcModalInit = true;
+    patchFetch();
+    log('listo (Fase 2a — calculadora en modal de Rack Types)');
+  }
+  init();
+})();
+})();
+// ===== END scripts/load-calculator-modal.js =====
+
 // ===== BEGIN sa-bootstrap.js =====
 (function(){
 // sa-bootstrap.js — PRELUDE del bundle (MAIN world). build-safari.sh lo concatena tras steelhead-api.js.
@@ -12987,4 +16700,88 @@ if (typeof window !== 'undefined') {
 })();
 })();
 // ===== END sa-bootstrap.js =====
+
+// ===== BEGIN sa-dispatcher.js =====
+(function(){
+// sa-dispatcher.js — despachador de comandos del popup (MAIN world). build-safari.sh lo concatena
+// tras sa-bootstrap.js (ambos son el "pegamento" del bundle en el MAIN world).
+//
+// Contexto: en Chrome, el popup manda un chrome.runtime message y el service worker (background.js)
+// inyecta los scripts del applet y llama su función global. En Safari NO hay re-inyector: TODOS los
+// applets del bundle ya están cargados en el MAIN world (document_idle). Así que un botón del popup
+// solo necesita DISPARAR la función de entrada del applet, no cargarlo.
+//
+// Canal (reusa el mismo puente storage→bridge→MAIN que ya usan los toggles):
+//   popup.js  → browser.storage.local.set({ saCommand: { action, nonce } })
+//   bridge.js → storage.onChanged detecta saCommand → postMessage {type:'command', action} al MAIN
+//   AQUÍ      → resuelve action → función global del applet y la invoca
+//
+// Por qué un ALLOWLIST y no leer act.fn del config a ciegas:
+//   (1) Varias acciones (run-archiver, assign-sensor-status) NO declaran `fn` en config.json —en Chrome
+//       las resuelve un `switch` explícito en background.js—; el allowlist las cubre sin tocar el config
+//       (hot file compartido con Chrome).
+//   (2) Seguridad: el postMessage viene del MAIN world (que la página comparte); un allowlist evita que
+//       un mensaje forjado invoque cualquier window.<path>. El applet ya vive en el MAIN world, así que
+//       esto no agrega privilegios, pero acota la superficie a funciones conocidas.
+// El fallback a REMOTE_CONFIG.apps[].actions[].fn cubre applets futuros que sí declaren `fn` en config.
+(function () {
+  'use strict';
+
+  // message (config action.message) → función global del applet en el MAIN world.
+  var LAUNCH_FN = {
+    'open-vale-almacen':    'ValeAlmacen.open',
+    'run-archiver':         'PNArchiver.openConfigAndRun',
+    'assign-sensor-status': 'SensorStatusAutofill.run',
+    'open-station-config':  'LoadCalculator.openStationConfig'
+  };
+
+  function resolveFn(action) {
+    if (LAUNCH_FN[action]) return LAUNCH_FN[action];
+    // Fallback data-driven: busca act.fn en el config (seedeado + refrescado en caliente por el bridge).
+    try {
+      var apps = (window.REMOTE_CONFIG && window.REMOTE_CONFIG.apps) || [];
+      for (var i = 0; i < apps.length; i++) {
+        var acts = apps[i].actions || [];
+        for (var j = 0; j < acts.length; j++) {
+          if (acts[j].message === action && acts[j].fn) return acts[j].fn;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function callByPath(path) {
+    var parts = path.split('.');
+    var obj = window;
+    for (var k = 0; k < parts.length - 1; k++) {
+      obj = obj[parts[k]];
+      if (!obj) return { error: parts[k] + ' no disponible' };
+    }
+    var method = obj[parts[parts.length - 1]];
+    if (typeof method !== 'function') return { error: path + ' no es una función' };
+    try {
+      var r = method.call(obj);
+      // Muchas funciones de entrada devuelven Promise (abren un modal async). Fire-and-forget:
+      // el popup ya se cerró; el applet muestra su propia UI en la página.
+      if (r && typeof r.then === 'function') {
+        r.then(function () {}).catch(function (e) { console.error('[SA] dispatcher', path, e); });
+      }
+      return { started: true };
+    } catch (e) {
+      return { error: e && e.message ? e.message : String(e) };
+    }
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.source !== window) return;
+    var d = e.data;
+    if (!d || d.__saBridge !== true || d.type !== 'command' || !d.action) return;
+    var fn = resolveFn(d.action);
+    if (!fn) { console.warn('[SA] dispatcher: acción sin función registrada:', d.action); return; }
+    var res = callByPath(fn);
+    if (res && res.error) console.error('[SA] dispatcher:', d.action, '→', res.error);
+  });
+})();
+})();
+// ===== END sa-dispatcher.js =====
 

@@ -10,6 +10,13 @@
 //     2.5.2; el mundo aislado no está sujeto a la CSP de la página) y lo entrega al MAIN por postMessage.
 //     Handshake: el bundle pide el config al arrancar (por si ya lo fetcheamos antes de que escuche);
 //     también lo enviamos apenas llega. Así los hashes rotan en caliente con `git push` sin recompilar.
+//
+//  3) COMANDOS DEL POPUP: el popup escribe browser.storage.local.set({saCommand:{action,nonce}}) para
+//     LANZAR un applet con interfaz (archivador, sensor-status, configurar estaciones, vale de almacén).
+//     Aquí lo detectamos con storage.onChanged y lo reenviamos al MAIN por postMessage {type:'command'};
+//     sa-dispatcher.js (MAIN world) resuelve la acción → función global del applet. El `nonce` garantiza
+//     que onChanged dispare aun si se toca el mismo botón dos veces. NO se procesa en la lectura inicial
+//     (solo onChanged), para que un comando viejo en storage no re-lance el applet en cada carga de página.
 (function () {
   'use strict';
   var api = (typeof browser !== 'undefined') ? browser : chrome;
@@ -44,9 +51,17 @@
     FLAGS.forEach(function (f) { setAttr(f.attr, states[f.key]); });
   }).catch(function () {});
 
+  function relayCommand(cmd) {
+    if (!cmd || !cmd.action) return;
+    try { window.postMessage({ __saBridge: true, type: 'command', action: cmd.action }, location.origin); }
+    catch (e) {}
+  }
+
   try {
     api.storage.onChanged.addListener(function (changes) {
       FLAGS.forEach(function (f) { if (changes[f.key]) setAttr(f.attr, changes[f.key].newValue); });
+      // (3) Comando del popup → relay al MAIN world (sa-dispatcher lo ejecuta).
+      if (changes.saCommand) relayCommand(changes.saCommand.newValue);
     });
   } catch (e) {}
 

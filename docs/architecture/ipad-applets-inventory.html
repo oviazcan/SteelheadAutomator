@@ -95,6 +95,13 @@
   </div>
 
   <section class="card">
+    <h2>Actualización · Bundle v0.3.0 — canal de lanzadores del popup</h2>
+    <p>Se resolvió la infraestructura de "applets con interfaz" en Safari <strong>sin tocar el código de los applets</strong>. El popup muestra <strong>botones lanzadores</strong> (sección "Acciones") que escriben un comando en <code>browser.storage.local</code> (<code>saCommand:{action,nonce}</code>); <code>bridge.js</code> (mundo aislado) lo reenvía al MAIN world por <code>postMessage</code>; y un nuevo <code>safari/sa-dispatcher.js</code> (MAIN world) resuelve la acción a la función global del applet vía <strong>allowlist</strong> + fallback a <code>config.actions[].fn</code>.</p>
+    <p>Con esto <strong>entraron al bundle</strong>: <code>vale-almacen</code> (botón flotante, "directo") y las 3 "con-popup" <code>archiver</code>, <code>sensor-status-autofill</code> y <code>load-calculator</code> (lanzadas desde el popup). Total: <strong>20 applets</strong>. Regresión en <code>tools/test/build-safari.test.js</code> (cadena popup→bridge→dispatcher→applet consistente).</p>
+    <div class="callout warn"><p><span class="label">Notas:</span> <code>auto-router</code> sigue pendiente — su acción de popup no está cableada ni en Chrome (usa FAB + intercept del modal). El bundle pasó de ~300 KB a <strong>~785 KB</strong> (mayormente <code>load-calculator</code>, 5 scripts): conviene perfilar el parse en iPads A12 o anteriores.</p></div>
+  </section>
+
+  <section class="card">
     <h2>Resumen</h2>
     <p>El <strong>48 % de los applets son portables como content script directo</strong>. Los <strong>8 de valor alto son todos "directo" y de esfuerzo bajo/medio</strong>, así que el Bundle v1 puede ser ambicioso sin tocar la arquitectura de popup. <strong>La ruta crítica es la infraestructura de empaquetado</strong> (wrapper Xcode + build script), no adaptar el código de los applets.</p>
     <div class="callout note"><p><span class="label">Insight:</span> los applets que pediste para iPad (mejoras de UI, autofills, colores, bloqueo, paros de línea, XML en facturas) caen casi todos en "directo". Los de popup son fase 2; los descartados son herramientas de escritorio (carga masiva, auditorías batch, importadores con descarga de archivos).</p></div>

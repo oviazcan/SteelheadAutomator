@@ -32,7 +32,17 @@
     background:#cdd6e0; transition:transform .18s cubic-bezier(.2,0,0,1), background-color .18s}
   .sw input:checked + .slider{background:var(--accent)}
   .sw input:checked + .slider::before{transform:translateX(17px); background:#fff}
-  footer{margin-top:10px; text-align:center; color:var(--soft); font-size:10.5px}
+  /* sección de acciones (lanzadores) */
+  .sect{display:flex; align-items:center; gap:8px; margin:16px 2px 8px; color:var(--soft);
+    font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase}
+  .sect::after{content:""; flex:1; height:1px; background:var(--line)}
+  li.act{cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background-color .12s}
+  li.act:hover,li.act:active,li.act:focus{background:#26313f; outline:none}
+  li.act .ic{flex:none; width:30px; height:30px; border-radius:8px; background:var(--input);
+    box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; font-size:15px}
+  li.act .name{flex:1}
+  li.act .chev{flex:none; color:var(--soft); font-size:20px; line-height:1; font-weight:600}
+  footer{margin-top:12px; text-align:center; color:var(--soft); font-size:10.5px}
 </style>
 </head>
 <body>
@@ -42,6 +52,9 @@
   </header>
   <div class="hint">Apaga un applet para esta y las próximas cargas. El candado de surtido y los applets sin interruptor corren siempre activos.</div>
   <ul id="toggles"></ul>
+  <div class="sect">Acciones</div>
+  <div class="hint" style="margin-top:0">Abre un applet con interfaz. Se muestra sobre la página de Steelhead.</div>
+  <ul id="launchers"></ul>
   <footer id="ver">v—</footer>
   <script src="popup.js"></script>
 </body>
