@@ -27,7 +27,9 @@
     { message: 'assign-sensor-status',    icon: '📊', label: 'Asignar status de sensores', sub: 'Auto-asigna o elige candidato por member' },
     { message: 'open-station-config',     icon: '⚙️', label: 'Configurar Estaciones',      sub: 'Dims de tina, capacidad DMK y OEE por línea' },
     { message: 'open-auto-router',        icon: '🔀', label: 'Auto-Ruteador',             sub: 'Re-rutear orden a otra línea (abre el modal de ruteo primero)' },
-    { message: 'open-auto-router-batch',  icon: '🔀', label: 'Auto-Ruteador — Batch',     sub: 'Rutear varias órdenes (pega los números)' }
+    { message: 'open-auto-router-batch',  icon: '🔀', label: 'Auto-Ruteador — Batch',     sub: 'Rutear varias órdenes (pega los números)' },
+    { message: 'open-wo-completer',       icon: '✅', label: 'Completar / Descompletar OTs', sub: 'Pega un listado de OTs y ciérralas o revívelas' },
+    { message: 'run-wo-deadline',         icon: '⚙️', label: 'Gestionar OTs',              sub: 'Cambiar plazos y etiquetas masivamente' }
   ];
 
   function getAll(keys) {

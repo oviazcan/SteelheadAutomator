@@ -101,6 +101,8 @@ test('canal de lanzadores consistente: popup LAUNCHERS → dispatcher LAUNCH_FN 
     SensorStatusAutofill: 'scripts/sensor-status-autofill.js',
     LoadCalculator: 'scripts/load-calculator.js',
     AutoRouter: 'scripts/auto-router.js',
+    WOCompleter: 'scripts/wo-completer.js',
+    WODeadlineChanger: 'scripts/wo-deadline-changer.js',
   };
 
   for (const msg of popupMsgs) {

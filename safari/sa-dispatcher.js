@@ -32,7 +32,9 @@
     // hay contexto); openBatch abre el modal de pegar números de orden (autocontenido). En Chrome su
     // trigger vive en chrome.runtime.onMessage (muerto en MAIN world); aquí lo revive el postMessage.
     'open-auto-router':        'AutoRouter.openPanel',
-    'open-auto-router-batch':  'AutoRouter.openBatch'
+    'open-auto-router-batch':  'AutoRouter.openBatch',
+    'open-wo-completer':       'WOCompleter.open',
+    'run-wo-deadline':         'WODeadlineChanger.run'
   };
 
   function resolveFn(action) {

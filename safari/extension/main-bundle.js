@@ -1,5 +1,5 @@
 // ==========================================================================
-// Steelhead Automator — iPad — main-bundle.js  (v0.4.0)
+// Steelhead Automator — iPad — main-bundle.js  (v0.5.0)
 // GENERADO por tools/build-safari.sh desde remote/scripts + config.json.
 // NO editar a mano: edita la fuente en remote/scripts/ y re-corre el build.
 // Cada applet va en su propio IIFE (scope aislado, como el new Function() del
@@ -48,7 +48,9 @@ if (typeof window.chrome === 'undefined') { window.chrome = {}; }
     // hay contexto); openBatch abre el modal de pegar números de orden (autocontenido). En Chrome su
     // trigger vive en chrome.runtime.onMessage (muerto en MAIN world); aquí lo revive el postMessage.
     'open-auto-router':        'AutoRouter.openPanel',
-    'open-auto-router-batch':  'AutoRouter.openBatch'
+    'open-auto-router-batch':  'AutoRouter.openBatch',
+    'open-wo-completer':       'WOCompleter.open',
+    'run-wo-deadline':         'WODeadlineChanger.run'
   };
 
   function resolveFn(action) {
@@ -18641,6 +18643,1524 @@ const AutoRouter = (() => {
 })();
 })();
 // ===== END scripts/auto-router.js =====
+
+// ===== BEGIN scripts/wo-completer-engine.js =====
+(function(){
+// Completar / Descompletar OTs — motor puro (sin DOM, sin red).
+// Construye los payloads de las mutaciones a partir de las respuestas de lectura:
+//   COMPLETAR    : WorkOrder{idInDomain}.currentPartsTransferAccounts  -> AddPartsToWorkOrders(input)
+//   DESCOMPLETAR : GetWorkOrderPartsTransfers{idInDomain}              -> CreateManyPartsTransfersChecked(payload)
+//
+// Modelo confirmado byte-a-byte contra el scan real
+// (~/Downloads/scan_results_2026-06-30_210332.json). Ver golden tests en
+// tools/test/wo-completer-engine.test.js y el diseño en
+// docs/superpowers/specs/2026-06-30-wo-completer-design.md
+(function (root) {
+  'use strict';
+
+  // Parsea una lista pegada de números de OT (idInDomain). Tolera columnas de
+  // Excel (saltos de línea), comas, tabs, espacios y texto como "OT 5119".
+  // Toma enteros > 0, dedup, orden ascendente.
+  function parseWoList(text) {
+    if (!text) return [];
+    const seen = new Set();
+    const out = [];
+    String(text)
+      .split(/[\s,;]+/)
+      .forEach((tok) => {
+        const n = parseInt(tok, 10);
+        if (Number.isInteger(n) && n > 0 && !seen.has(n)) {
+          seen.add(n);
+          out.push(n);
+        }
+      });
+    return out.sort((a, b) => a - b);
+  }
+
+  // Cuentas activas de la OT con piezas por completar (partCount > 0).
+  function _activeAccounts(workOrder) {
+    const nodes = (workOrder && workOrder.currentPartsTransferAccounts &&
+      workOrder.currentPartsTransferAccounts.nodes) || [];
+    return nodes.filter((a) => a && (a.partCount || 0) > 0);
+  }
+
+  // Construye el input de AddPartsToWorkOrders para COMPLETAR toda la OT.
+  // Un solo evento con un partsTransfer por cuenta activa (todos juntos, como el
+  // "complete" nativo). Devuelve { skip:true, reason } si no aplica.
+  function buildCompletePayload(workOrder) {
+    if (workOrder && workOrder.completedAt) {
+      return { skip: true, reason: 'ya completada' };
+    }
+    const accts = _activeAccounts(workOrder);
+    if (!accts.length) {
+      return { skip: true, reason: 'sin piezas activas' };
+    }
+    const partsTransfers = accts.map((acc) => ({
+      fromAccountId: acc.id,
+      partCount: acc.partCount,
+      toAccount: {
+        workOrderId: null,
+        stationId: null,
+        recipeNodeId: null,
+        receivedOrderPartTransformId: acc.receivedOrderPartTransformId,
+        locationId: acc.locationByLocationId ? acc.locationByLocationId.id : null,
+      },
+      fromOperatorInput: {},
+      type: 'COMPLETE',
+      partsTransferIdCausingRework: null,
+      partsTransferCategoryId: null,
+      comment: null,
+    }));
+    return {
+      input: {
+        recipeNodePartNumberTreatmentsToCreate: [],
+        recipeNodePartNumberTreatmentsToUpdate: [],
+        recipeNodePartNumberTreatmentsToDelete: [],
+        workOrderUserFilesToCreate: [],
+        partsTransferEventsPayload: [
+          { createPartsTransferEvent: {}, partsTransfers },
+        ],
+        billedLaborTimeSegments: {
+          billedLaborTimeSegmentIdsToDelete: [],
+          billedLaborTimeSegmentsToUpdate: [],
+          billedLaborTimeSegmentsToCreate: [],
+        },
+      },
+    };
+  }
+
+  // De los transfers de GetWorkOrderPartsTransfers, devuelve los COMPLETE que aún
+  // NO fueron revertidos. Detecta el revert de dos formas complementarias:
+  //   (a) la sub-conexión partsTransfersByRevertsPartsTransferId trae nodos, o
+  //   (b) algún REVERT_COMPLETE de la lista apunta a su id vía revertsPartsTransferId.
+  function pickRevertableCompletes(transfers) {
+    const list = Array.isArray(transfers) ? transfers : [];
+    const revertedIds = new Set();
+    list.forEach((t) => {
+      if (t && t.type === 'REVERT_COMPLETE' && t.revertsPartsTransferId != null) {
+        revertedIds.add(t.revertsPartsTransferId);
+      }
+    });
+    return list.filter((t) => {
+      if (!t || t.type !== 'COMPLETE') return false;
+      const sub = t.partsTransfersByRevertsPartsTransferId;
+      const alreadyRevertedBySub = !!(sub && sub.nodes && sub.nodes.length);
+      return !alreadyRevertedBySub && !revertedIds.has(t.id);
+    });
+  }
+
+  // Construye el payload de CreateManyPartsTransfersChecked para DESCOMPLETAR
+  // (revertir) un transfer COMPLETE. El `at` se normaliza a millis+Z: el ERP
+  // espera exactamente el instante del COMPLETE original en ese formato
+  // ("…761946+00:00" -> "…761Z").
+  function buildRevertPayload(transfer) {
+    return {
+      partsTransferEventsPayload: {
+        partsTransferEvents: [
+          {
+            partsTransfers: [
+              {
+                partCount: transfer.partCount,
+                revertsPartsTransferId: transfer.id,
+                toAccount: { id: transfer.fromAccountId },
+                type: 'REVERT_COMPLETE',
+                at: new Date(transfer.at).toISOString(),
+              },
+            ],
+          },
+        ],
+        billedLaborTimeSegments: {},
+      },
+    };
+  }
+
+  const api = {
+    parseWoList,
+    buildCompletePayload,
+    pickRevertableCompletes,
+    buildRevertPayload,
+    // expuestos para tests/depuración
+    _activeAccounts,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.SteelheadWOCompleterEngine = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/wo-completer-engine.js =====
+
+// ===== BEGIN scripts/wo-completer.js =====
+(function(){
+// Completar / Descompletar OTs — orquestador + panel (dark-mode).
+// Se abre desde el popup de la extensión (fn: WOCompleter.open). Pega una lista de
+// números de OT (idInDomain), valida en dry-run y ejecuta:
+//   COMPLETAR    -> AddPartsToWorkOrders (transfer type COMPLETE por cada cuenta activa)
+//   DESCOMPLETAR -> CreateManyPartsTransfersChecked (REVERT_COMPLETE por cada COMPLETE vivo)
+//
+// Motor puro y golden tests: wo-completer-engine.js / tools/test/wo-completer-engine.test.js
+// Diseño: docs/superpowers/specs/2026-06-30-wo-completer-design.md
+// Depende de: SteelheadAPI + SteelheadWOCompleterEngine + SteelheadHostCleanup
+const WOCompleter = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const engine = () => window.SteelheadWOCompleterEngine;
+  const hostCleanup = () => window.SteelheadHostCleanup;
+
+  const CONCURRENCY = 5;
+
+  const state = {
+    mode: 'complete', // 'complete' | 'revert'
+    rows: [],
+    running: false,
+    cancel: false,
+    memMonitor: null,
+    overlay: null,
+  };
+
+  // ── API layer (slim responses — EJE A) ─────────────────────────────────────
+  async function fetchWorkOrderSlim(idInDomain) {
+    const data = await api().query('WorkOrder', { idInDomain }, 'WorkOrder');
+    const wo = data && data.workOrderByIdInDomain;
+    if (!wo) return null;
+    const nodes = ((wo.currentPartsTransferAccounts && wo.currentPartsTransferAccounts.nodes) || [])
+      .map((a) => ({
+        id: a.id,
+        partCount: a.partCount,
+        receivedOrderPartTransformId: a.receivedOrderPartTransformId,
+        locationByLocationId: a.locationByLocationId ? { id: a.locationByLocationId.id } : null,
+        nodeName: a.recipeNodeByRecipeNodeId ? a.recipeNodeByRecipeNodeId.name : null,
+        nodeType: a.recipeNodeByRecipeNodeId ? a.recipeNodeByRecipeNodeId.type : null,
+      }));
+    return {
+      idInDomain: wo.idInDomain,
+      id: wo.id,
+      name: wo.name,
+      completedAt: wo.completedAt,
+      currentPartsTransferAccounts: { nodes },
+    };
+  }
+
+  async function fetchTransfersSlim(idInDomain) {
+    const vars = {
+      idInDomain, first: 200, offset: 0, orderBy: ['AT_DESC'], includeReverts: true,
+      searchPartNumberName: null, searchCreatorName: null, searchStationName: null,
+      searchRackName: null, searchPartGroupName: null, searchWorkOrderName: null,
+      searchWorkOrderIdInDomain: null, searchMaterialConversionIds: null,
+    };
+    const data = await api().query('GetWorkOrderPartsTransfers', vars, 'GetWorkOrderPartsTransfers');
+    const wo = data && data.workOrderByIdInDomain;
+    if (!wo) return null;
+    const nodes = (wo.workOrderPartsTransfers && wo.workOrderPartsTransfers.nodes) || [];
+    return nodes.map((t) => ({
+      id: t.id,
+      type: t.type,
+      partCount: t.partCount,
+      fromAccountId: t.fromAccountId,
+      at: t.at,
+      revertsPartsTransferId: t.revertsPartsTransferId,
+      partsTransfersByRevertsPartsTransferId: {
+        nodes: ((t.partsTransfersByRevertsPartsTransferId &&
+          t.partsTransfersByRevertsPartsTransferId.nodes) || []).map((n) => ({ id: n.id })),
+      },
+    }));
+  }
+
+  async function runComplete(input) {
+    return api().query('AddPartsToWorkOrders', { input }, 'AddPartsToWorkOrders');
+  }
+  async function runRevert(payload) {
+    return api().query('CreateManyPartsTransfersChecked', payload, 'CreateManyPartsTransfersChecked');
+  }
+
+  // ── Pool de concurrencia ───────────────────────────────────────────────────
+  async function runPool(items, worker, concurrency, onTick) {
+    const results = new Array(items.length);
+    let i = 0;
+    async function lane() {
+      while (i < items.length && !state.cancel) {
+        const idx = i++;
+        try { results[idx] = await worker(items[idx], idx); }
+        catch (e) { results[idx] = { _poolError: e && e.message ? e.message : String(e) }; }
+        if (onTick) onTick();
+      }
+    }
+    const lanes = Array.from({ length: Math.min(concurrency, items.length || 1) }, lane);
+    await Promise.all(lanes);
+    return results;
+  }
+
+  // ── Validación (dry-run, no escribe) ───────────────────────────────────────
+  async function validate() {
+    if (state.running) return;
+    const txt = (byId('woc-input') || {}).value || '';
+    const ids = engine().parseWoList(txt);
+    if (!ids.length) { setStatus('Pega al menos un número de OT.', true); return; }
+
+    state.cancel = false;
+    setRunning(true);
+    hostCleanup() && hostCleanup().stopDatadogSessionReplay && hostCleanup().stopDatadogSessionReplay();
+    const drain = (hostCleanup() && hostCleanup().makePeriodicDrain) ? hostCleanup().makePeriodicDrain(25) : () => {};
+
+    let done = 0;
+    const tick = () => { done++; setStatus(`Validando ${done}/${ids.length}…`); };
+
+    const rows = await runPool(ids, async (idInDomain) => {
+      if (state.mode === 'complete') {
+        const wo = await fetchWorkOrderSlim(idInDomain);
+        drain();
+        if (!wo) return { idInDomain, status: 'notfound' };
+        const accts = wo.currentPartsTransferAccounts.nodes;
+        const built = engine().buildCompletePayload(wo);
+        return {
+          idInDomain, name: wo.name || '', completedAt: wo.completedAt,
+          accountsCount: accts.length,
+          parts: accts.reduce((s, a) => s + (a.partCount || 0), 0),
+          nodes: [...new Set(accts.map((a) => a.nodeName).filter(Boolean))],
+          built,
+          status: built.skip ? 'skip' : 'ready',
+          skipReason: built.skip ? built.reason : null,
+        };
+      }
+      const transfers = await fetchTransfersSlim(idInDomain);
+      drain();
+      if (!transfers) return { idInDomain, status: 'notfound' };
+      const completes = engine().pickRevertableCompletes(transfers);
+      return {
+        idInDomain,
+        accountsCount: completes.length,
+        parts: completes.reduce((s, t) => s + (t.partCount || 0), 0),
+        nodes: [],
+        payloads: completes.map((t) => ({ transfer: t, payload: engine().buildRevertPayload(t) })),
+        status: completes.length ? 'ready' : 'skip',
+        skipReason: completes.length ? null : 'sin COMPLETE por revertir',
+      };
+    }, CONCURRENCY, tick);
+
+    state.rows = rows.map((r, idx) => (r && !r._poolError)
+      ? r
+      : { idInDomain: ids[idx], status: 'error', error: (r && r._poolError) || 'sin resultado' });
+
+    setRunning(false);
+    renderPreview();
+    const readyCount = state.rows.filter((r) => r.status === 'ready').length;
+    setStatus(`Listo: ${readyCount} OT(s) accionables de ${ids.length}. Revisa y ejecuta.`);
+    setExecuteEnabled(readyCount > 0);
+  }
+
+  // ── Ejecución (escribe al ERP) ─────────────────────────────────────────────
+  async function execute() {
+    if (state.running) return;
+    const ready = state.rows.filter((r) => r.status === 'ready');
+    if (!ready.length) return;
+
+    const parts = ready.reduce((s, r) => s + (r.parts || 0), 0);
+    const verb = state.mode === 'complete' ? 'COMPLETAR' : 'DESCOMPLETAR';
+    const detail = state.mode === 'complete'
+      ? `${ready.length} OTs (${ready.reduce((s, r) => s + (r.accountsCount || 0), 0)} cuentas, ${parts.toLocaleString()} piezas)`
+      : `${ready.length} OTs (${ready.reduce((s, r) => s + (r.accountsCount || 0), 0)} transfers, ${parts.toLocaleString()} piezas)`;
+    if (!window.confirm(`Vas a ${verb} ${detail}.\n\nEsto ESCRIBE en Steelhead. ¿Continuar?`)) return;
+
+    state.cancel = false;
+    setRunning(true);
+    hostCleanup() && hostCleanup().stopDatadogSessionReplay && hostCleanup().stopDatadogSessionReplay();
+    const drain = (hostCleanup() && hostCleanup().makePeriodicDrain) ? hostCleanup().makePeriodicDrain(25) : () => {};
+
+    let done = 0; let ok = 0; let fail = 0;
+    await runPool(ready, async (r) => {
+      try {
+        if (state.mode === 'complete') {
+          await runComplete(r.built.input);
+        } else {
+          for (const p of r.payloads) {
+            if (state.cancel) break;
+            await runRevert(p.payload);
+          }
+        }
+        r.status = 'done'; r.result = 'ok'; ok++;
+      } catch (e) {
+        r.status = 'failed'; r.result = 'error'; r.error = (e && e.message) ? e.message : String(e); fail++;
+      }
+      drain();
+      done++;
+      setStatus(`Ejecutando ${done}/${ready.length} · ${ok} OK · ${fail} error`);
+      renderRowResult(r);
+    }, 4);
+
+    setRunning(false);
+    setStatus(`Terminado: ${ok} OK, ${fail} con error, de ${ready.length}.`, fail > 0);
+    setExecuteEnabled(false);
+  }
+
+  // ── UI ─────────────────────────────────────────────────────────────────────
+  function byId(id) { return document.getElementById(id); }
+
+  function ensureStyles() {
+    if (byId('woc-styles')) return;
+    const css = [
+      '.woc-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.88);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
+      '.woc-modal{background:#1c2430;color:#e6e9ee;border-radius:18px;padding:24px 28px;width:860px;max-width:96vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);box-sizing:border-box}',
+      '.woc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}',
+      '.woc-title{font-size:19px;font-weight:700;display:flex;align-items:center;gap:9px}',
+      '.woc-x{background:none;border:none;color:#93a1b3;font-size:24px;cursor:pointer;line-height:1}',
+      '.woc-mem{font-size:11px;color:#6b7a8d;font-variant-numeric:tabular-nums;margin-left:8px}',
+      '.woc-modes{display:inline-flex;background:#141a23;border:1px solid #33404f;border-radius:10px;padding:3px;margin-bottom:14px}',
+      '.woc-mode{padding:8px 18px;border:none;background:none;color:#aeb9c6;font-size:14px;font-weight:600;cursor:pointer;border-radius:8px}',
+      '.woc-mode.active{background:#13a36f;color:#fff}',
+      '.woc-mode.active.rev{background:#c2410c}',
+      '.woc-label{font-size:13px;color:#aeb9c6;margin:8px 0 6px}',
+      '.woc-textarea{width:100%;min-height:120px;padding:11px 13px;border-radius:9px;border:1px solid #3a4757;background:#141a23;color:#e6e9ee;font-size:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;box-sizing:border-box;resize:vertical}',
+      '.woc-actions{display:flex;gap:10px;margin:14px 0}',
+      '.woc-btn{padding:10px 18px;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer}',
+      '.woc-btn:disabled{opacity:.45;cursor:not-allowed}',
+      '.woc-btn-secondary{background:#2a3646;color:#e6e9ee}',
+      '.woc-btn-primary{background:#13a36f;color:#fff}',
+      '.woc-btn-danger{background:#c2410c;color:#fff}',
+      '.woc-status{font-size:13px;color:#cbd5e1;min-height:18px;margin:6px 0}',
+      '.woc-status.err{color:#f0a58a}',
+      '.woc-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}',
+      '.woc-table th{text-align:left;color:#93a1b3;font-weight:600;padding:6px 8px;border-bottom:1px solid #33404f;position:sticky;top:0;background:#1c2430}',
+      '.woc-table td{padding:6px 8px;border-bottom:1px solid #263140;vertical-align:top}',
+      '.woc-tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700}',
+      '.woc-tag.ready{background:#0f3d2e;color:#5ee0a8}',
+      '.woc-tag.skip{background:#3a2f10;color:#e6c06a}',
+      '.woc-tag.notfound{background:#3a1520;color:#f0a58a}',
+      '.woc-tag.error,.woc-tag.failed{background:#3a1520;color:#f0a58a}',
+      '.woc-tag.done{background:#123a5a;color:#7cc4f5}',
+      '.woc-node{color:#8fa0b3;font-size:12px}',
+      '.woc-tablewrap{max-height:46vh;overflow-y:auto;border:1px solid #263140;border-radius:9px;margin-top:6px}',
+    ].join('\n');
+    const s = document.createElement('style');
+    s.id = 'woc-styles';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function setStatus(msg, isErr) {
+    const el = byId('woc-status');
+    if (el) { el.textContent = msg; el.classList.toggle('err', !!isErr); }
+  }
+  function setRunning(v) {
+    state.running = v;
+    const val = byId('woc-validate'); const exe = byId('woc-execute');
+    if (val) val.disabled = v;
+    if (exe && v) exe.disabled = true;
+  }
+  function setExecuteEnabled(v) {
+    const exe = byId('woc-execute');
+    if (exe) exe.disabled = !v || state.running;
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    state.rows = [];
+    const cBtn = byId('woc-mode-complete'); const rBtn = byId('woc-mode-revert');
+    if (cBtn) cBtn.classList.toggle('active', mode === 'complete');
+    if (rBtn) { rBtn.classList.toggle('active', mode === 'revert'); rBtn.classList.toggle('rev', mode === 'revert'); }
+    const exe = byId('woc-execute');
+    if (exe) {
+      exe.textContent = mode === 'complete' ? 'Completar' : 'Descompletar';
+      exe.className = 'woc-btn ' + (mode === 'complete' ? 'woc-btn-primary' : 'woc-btn-danger');
+      exe.disabled = true;
+    }
+    renderPreview();
+    setStatus('');
+  }
+
+  function statusTag(row) {
+    const map = {
+      ready: 'listo', skip: 'omitir', notfound: 'no existe',
+      error: 'error', failed: 'error', done: 'hecho',
+    };
+    return `<span class="woc-tag ${row.status}">${map[row.status] || row.status}</span>`;
+  }
+
+  function renderPreview() {
+    const wrap = byId('woc-preview');
+    if (!wrap) return;
+    if (!state.rows.length) { wrap.innerHTML = ''; return; }
+    const unit = state.mode === 'complete' ? 'cuentas' : 'transfers';
+    const rowsHtml = state.rows.map((r) => {
+      const detail = r.status === 'notfound' ? 'OT no encontrada'
+        : r.status === 'error' || r.status === 'failed' ? (r.error || '—')
+        : r.status === 'skip' ? (r.skipReason || (r.completedAt ? 'ya completada' : '—'))
+        : `${r.accountsCount} ${unit} · ${(r.parts || 0).toLocaleString()} pzs`;
+      const nodes = (r.nodes && r.nodes.length) ? `<div class="woc-node">${escapeHtml(r.nodes.join(', '))}</div>` : '';
+      return `<tr id="woc-row-${r.idInDomain}"><td><b>${r.idInDomain}</b></td><td>${statusTag(r)}</td><td>${escapeHtml(detail)}${nodes}</td></tr>`;
+    }).join('');
+    wrap.innerHTML =
+      `<div class="woc-tablewrap"><table class="woc-table"><thead><tr>` +
+      `<th>OT</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  }
+
+  function renderRowResult(r) {
+    const tr = byId(`woc-row-${r.idInDomain}`);
+    if (!tr) return;
+    const tds = tr.querySelectorAll('td');
+    if (tds[1]) tds[1].innerHTML = statusTag(r);
+    if (tds[2] && r.status === 'failed') tds[2].textContent = r.error || 'error';
+    if (tds[2] && r.status === 'done') tds[2].textContent = state.mode === 'complete' ? 'completada' : 'revertida';
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  function closePanel() {
+    if (state.memMonitor) { try { state.memMonitor.stop(); } catch (_) {} state.memMonitor = null; }
+    if (state.overlay && state.overlay.parentNode) state.overlay.parentNode.removeChild(state.overlay);
+    state.overlay = null;
+    state.rows = [];
+    state.running = false;
+    state.cancel = true;
+  }
+
+  function open() {
+    // El handler genérico de la extensión toma el valor de retorno del fn como
+    // resultado; si es undefined muestra "Error: Sin resultado". Devolvemos un
+    // objeto serializable truthy para que el popup no lo trate como error.
+    if (byId('woc-overlay')) return { ok: true, alreadyOpen: true }; // ya abierto
+    ensureStyles();
+    const overlay = document.createElement('div');
+    overlay.className = 'woc-overlay';
+    overlay.id = 'woc-overlay';
+    overlay.innerHTML = `
+      <div class="woc-modal" id="woc-modal">
+        <div class="woc-head">
+          <div class="woc-title">✅ Completar / Descompletar OTs <span class="woc-mem" id="woc-mem"></span></div>
+          <button class="woc-x" id="woc-close" title="Cerrar">×</button>
+        </div>
+        <div class="woc-modes">
+          <button class="woc-mode active" id="woc-mode-complete">Completar</button>
+          <button class="woc-mode" id="woc-mode-revert">Descompletar</button>
+        </div>
+        <div class="woc-label">Números de OT (uno por línea; se toleran comas/tabs para pegar una columna de Excel):</div>
+        <textarea class="woc-textarea" id="woc-input" placeholder="5119&#10;5436&#10;10515"></textarea>
+        <div class="woc-actions">
+          <button class="woc-btn woc-btn-secondary" id="woc-validate">Validar</button>
+          <button class="woc-btn woc-btn-primary" id="woc-execute" disabled>Completar</button>
+        </div>
+        <div class="woc-status" id="woc-status"></div>
+        <div id="woc-preview"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    state.overlay = overlay;
+
+    byId('woc-close').addEventListener('click', closePanel);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closePanel(); });
+    byId('woc-mode-complete').addEventListener('click', () => setMode('complete'));
+    byId('woc-mode-revert').addEventListener('click', () => setMode('revert'));
+    byId('woc-validate').addEventListener('click', () => { validate().catch((e) => setStatus(e.message, true)); });
+    byId('woc-execute').addEventListener('click', () => { execute().catch((e) => setStatus(e.message, true)); });
+
+    // Memory monitor (EJE B) — arranca al abrir, se detiene en closePanel.
+    if (hostCleanup() && hostCleanup().createMemMonitor) {
+      state.memMonitor = hostCleanup().createMemMonitor({
+        getElement: () => byId('woc-mem'),
+        onGuardrail: (pct) => {
+          state.cancel = true;
+          setStatus(`Memoria al ${pct}% — corrida cancelada. Recarga la pestaña antes de continuar.`, true);
+        },
+      });
+      state.memMonitor.start();
+    }
+    setMode('complete');
+    return { ok: true };
+  }
+
+  return { open, close: closePanel, _validate: validate, _execute: execute };
+})();
+
+if (typeof window !== 'undefined') window.WOCompleter = WOCompleter;
+})();
+// ===== END scripts/wo-completer.js =====
+
+// ===== BEGIN scripts/wo-deadline-changer.js =====
+(function(){
+// Steelhead WO Deadline Changer
+// Bulk-update work order deadlines with filters
+// Depends on: SteelheadAPI
+
+const WODeadlineChanger = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api().log(m);
+  const warn = (m) => api().warn(m);
+
+  function labelTextColor(hex) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substring(0, 2), 16);
+    const g = parseInt(c.substring(2, 4), 16);
+    const b = parseInt(c.substring(4, 6), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.55 ? '#1e293b' : '#fff';
+  }
+
+  // ══════════════════════════════════════════
+  // DATA
+  // ══════════════════════════════════════════
+
+  async function fetchAllActiveWOs(serverFilters, onProgress) {
+    const all = [];
+    const PAGE = 500;
+    let offset = 0;
+    while (true) {
+      const vars = {
+        status: 'ACTIVE', includeArchived: 'NO', couponWorkOrders: null,
+        computeMargins: false, orderBy: ['ID_DESC'],
+        offset, first: PAGE, searchQuery: '',
+        ...serverFilters
+      };
+      const data = await api().query('AllWorkOrders', vars, 'AllWorkOrders');
+      const nodes = data?.pagedData?.nodes || [];
+      const total = data?.pagedData?.totalCount || 0;
+      all.push(...nodes);
+      if (onProgress) onProgress({ current: all.length, total });
+      if (nodes.length < PAGE) break;
+      offset += PAGE;
+    }
+    return all;
+  }
+
+  async function enrichWithPNData(wos, onProgress) {
+    // Collect unique partNumberIds
+    const pnIds = new Set();
+    for (const wo of wos) {
+      for (const pnwo of (wo.partNumberWorkOrdersByWorkOrderId?.nodes || [])) {
+        if (pnwo.partNumberId) pnIds.add(pnwo.partNumberId);
+      }
+    }
+
+    if (pnIds.size === 0) return {};
+
+    // Batch-fetch PN details
+    const pnCache = {}; // pnId → { name, labels: [{name, color}] }
+    const ids = [...pnIds];
+    const BATCH = 10;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const batch = ids.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async (pnId) => {
+        try {
+          const data = await api().query('GetPartNumber', {
+            partNumberId: pnId, usagesLimit: 0, usagesOffset: 0
+          });
+          const pn = data?.partNumberById;
+          if (!pn) return null;
+          return {
+            id: pnId,
+            name: pn.name || `PN ${pnId}`,
+            labels: (pn.partNumberLabelsByPartNumberId?.nodes || []).map(n => ({
+              name: n.labelByLabelId?.name || '?',
+              color: n.labelByLabelId?.color || '#475569'
+            }))
+          };
+        } catch (e) { return null; }
+      }));
+      for (const r of results) {
+        if (r) pnCache[r.id] = r;
+      }
+      if (onProgress) onProgress({ current: Math.min(i + BATCH, ids.length), total: ids.length });
+    }
+    return pnCache;
+  }
+
+  async function fetchWOLabels() {
+    const data = await api().query('AllLabels', { condition: { forWorkOrder: true } }, 'AllLabels');
+    return (data?.allLabels?.nodes || []).map(l => ({
+      id: l.id,
+      name: l.name,
+      color: l.color || '#475569'
+    }));
+  }
+
+  function extractWOLabels(wo, labelCatalog) {
+    const nodes = wo.workOrderLabelsByWorkOrderId?.nodes || [];
+    return nodes.map(n => {
+      if (n.labelByLabelId) {
+        return { id: n.labelByLabelId.id, name: n.labelByLabelId.name, color: n.labelByLabelId.color || '#475569' };
+      }
+      const labelId = n.labelId || n.id;
+      const found = labelCatalog.find(l => l.id === labelId);
+      return found || { id: labelId, name: `Label ${labelId}`, color: '#475569' };
+    });
+  }
+
+  function parseURLFilters() {
+    const params = new URLSearchParams(window.location.search);
+    const serverFilters = {};
+    const uiDefaults = {};
+    const customerFilter = params.get('customerIdFilter');
+    if (customerFilter) {
+      try {
+        const ids = JSON.parse(customerFilter);
+        serverFilters.customerIdFilter = Array.isArray(ids) ? ids : [ids];
+      } catch (_) {
+        serverFilters.customerIdFilter = [parseInt(customerFilter)];
+      }
+      uiDefaults.customerId = serverFilters.customerIdFilter[0];
+    }
+    return { serverFilters, uiDefaults };
+  }
+
+  // ══════════════════════════════════════════
+  // FILTER LOGIC
+  // ══════════════════════════════════════════
+
+  function applyFilters(wos, filters, pnCache) {
+    return wos.filter(wo => {
+      if (filters.customerId && wo.customerByCustomerId?.id !== filters.customerId) return false;
+      if (filters.productId && wo.productByProductId?.id !== filters.productId) return false;
+
+      if (filters.partNumber) {
+        const q = filters.partNumber.toLowerCase();
+        const pns = (wo.partNumberWorkOrdersByWorkOrderId?.nodes || []);
+        const match = pns.some(pnwo => {
+          const pn = pnCache[pnwo.partNumberId];
+          return pn && pn.name.toLowerCase().includes(q);
+        });
+        if (!match) return false;
+      }
+
+      if (filters.processName && wo.recipeNodeByRecipeId?.name !== filters.processName) return false;
+
+      if (filters.receivedOrder) {
+        const q = filters.receivedOrder.toLowerCase();
+        const roName = wo.receivedOrderByReceivedOrderId?.name || '';
+        if (!roName.toLowerCase().includes(q)) return false;
+      }
+
+      if (filters.woName) {
+        const q = filters.woName.toLowerCase();
+        if (!(wo.name || '').toLowerCase().includes(q)) return false;
+      }
+
+      if (filters.deadlineDate) {
+        const woDate = wo.deadline ? wo.deadline.substring(0, 10) : '';
+        if (woDate !== filters.deadlineDate) return false;
+      }
+
+      if (filters.createdFrom) {
+        const woCreated = wo.createdAt ? wo.createdAt.substring(0, 10) : '';
+        if (woCreated < filters.createdFrom) return false;
+      }
+
+      if (filters.createdTo) {
+        const woCreated = wo.createdAt ? wo.createdAt.substring(0, 10) : '';
+        if (woCreated > filters.createdTo) return false;
+      }
+
+      return true;
+    });
+  }
+
+  // ══════════════════════════════════════════
+  // UI
+  // ══════════════════════════════════════════
+
+  function ensureStyles() {
+    if (document.getElementById('sa-wod-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'sa-wod-styles';
+    s.textContent = `
+      .sa-wod-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+      .sa-wod-modal{background:#1a1a2e;color:#e2e8f0;border-radius:12px;padding:24px 28px;max-width:1100px;width:96%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,0.5)}
+      .sa-wod-modal h2{font-size:18px;margin:0 0 10px}
+      .sa-wod-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+      .sa-wod-filters input,.sa-wod-filters select{padding:6px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12px}
+      .sa-wod-filters input{width:120px}
+      .sa-wod-filters select{width:150px}
+      .sa-wod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;overflow-y:auto;flex:1;min-height:200px;max-height:55vh;padding:4px}
+      .sa-wod-card{background:#0f172a;border-radius:8px;padding:10px 12px;cursor:pointer;border:2px solid transparent;transition:border-color 0.15s;font-size:11px}
+      .sa-wod-card:hover{border-color:#475569}
+      .sa-wod-card.selected{border-color:#8b5cf6}
+      .sa-wod-card .wo-num{font-size:13px;font-weight:700;color:#e2e8f0}
+      .sa-wod-card .wo-ro{color:#60a5fa;font-size:10px}
+      .sa-wod-card .wo-pn{color:#cbd5e1;margin-top:3px}
+      .sa-wod-card .wo-label{display:inline-block;padding:0 6px;border-radius:8px;font-size:9px;font-weight:600;margin:1px 2px;white-space:nowrap}
+      .sa-wod-card .wo-date{color:#94a3b8;margin-top:3px}
+      .sa-wod-bar{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:12px}
+      .sa-wod-btn{padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+      .sa-wod-btn-cancel{background:#475569;color:#e2e8f0}
+      .sa-wod-btn-exec{background:#8b5cf6;color:white}
+      .sa-wod-btn-exec:disabled{opacity:0.4;cursor:default}
+      .sa-wod-progress{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+      .sa-wod-progress-box{background:#1e293b;color:#e2e8f0;border-radius:14px;padding:26px 32px 22px;text-align:center;min-width:380px;max-width:460px;box-shadow:0 12px 40px rgba(0,0,0,0.55)}
+      .sa-wod-prog-spinner{width:30px;height:30px;border:3px solid #334155;border-top-color:#a78bfa;border-radius:50%;animation:sa-wod-spin 0.9s linear infinite;margin:0 auto 12px}
+      .sa-wod-prog-phase{font-size:11px;font-weight:600;color:#a78bfa;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;min-height:14px}
+      .sa-wod-prog-counter{font-size:34px;font-weight:700;color:#fff;margin-bottom:12px;font-variant-numeric:tabular-nums;line-height:1.05;letter-spacing:-0.5px}
+      .sa-wod-prog-bar{width:100%;height:8px;background:#334155;border-radius:4px;overflow:hidden;margin-bottom:10px;position:relative}
+      .sa-wod-prog-bar-fill{height:100%;background:linear-gradient(90deg,#8b5cf6,#a78bfa);border-radius:4px;width:0%;transition:width 0.3s ease-out}
+      .sa-wod-prog-bar.indet .sa-wod-prog-bar-fill{width:35%;background:linear-gradient(90deg,transparent,#a78bfa,transparent);animation:sa-wod-indet 1.4s ease-in-out infinite;transition:none}
+      .sa-wod-prog-msg{font-size:13px;color:#cbd5e1;margin-bottom:10px;min-height:18px}
+      .sa-wod-prog-foot{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b;gap:12px}
+      .sa-wod-prog-hint{flex:1;text-align:left;color:#64748b}
+      .sa-wod-prog-eta{color:#94a3b8;font-variant-numeric:tabular-nums;white-space:nowrap}
+      @keyframes sa-wod-spin{to{transform:rotate(360deg)}}
+      @keyframes sa-wod-indet{0%{transform:translateX(-100%)}100%{transform:translateX(370%)}}
+      .sa-wod-labels-section{margin-bottom:8px}
+      .sa-wod-labels-section .section-title{font-size:11px;color:#94a3b8;margin-bottom:4px}
+      .sa-wod-label-chip{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;margin:2px 3px;cursor:pointer;border:2px solid transparent;transition:border-color 0.15s,opacity 0.15s;opacity:0.6}
+      .sa-wod-label-chip:hover{opacity:0.85}
+      .sa-wod-label-chip.chip-selected{opacity:1;border-color:#fff}
+      .sa-wod-label-chip.chip-remove.chip-selected{opacity:1;border-color:#ef4444}
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Timer por fase para calcular ETA. Se resetea cuando cambia phase.
+  let _progState = { phaseKey: null, startTs: 0, startCurrent: 0 };
+
+  function fmtDuration(ms) {
+    if (!isFinite(ms) || ms <= 0) return '';
+    const s = Math.ceil(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem ? `${m}m ${rem}s` : `${m}m`;
+  }
+
+  function fmtNum(n) {
+    if (n == null) return '—';
+    return Number(n).toLocaleString('es-MX');
+  }
+
+  // showProgress acepta string (compat) o un objeto:
+  //   { phase, phaseNum, phaseTotal, label, current, total, hint, indeterminate }
+  function showProgress(opts) {
+    ensureStyles();
+    let el = document.getElementById('sa-wod-prog');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sa-wod-prog';
+      el.className = 'sa-wod-progress';
+      el.innerHTML = `
+        <div class="sa-wod-progress-box">
+          <div class="sa-wod-prog-spinner"></div>
+          <div class="sa-wod-prog-phase" id="sa-wod-prog-phase"></div>
+          <div class="sa-wod-prog-counter" id="sa-wod-prog-counter">—</div>
+          <div class="sa-wod-prog-bar" id="sa-wod-prog-bar"><div class="sa-wod-prog-bar-fill" id="sa-wod-prog-bar-fill"></div></div>
+          <div class="sa-wod-prog-msg" id="sa-wod-prog-msg"></div>
+          <div class="sa-wod-prog-foot">
+            <div class="sa-wod-prog-hint" id="sa-wod-prog-hint">Esto puede tardar 1-2 min. No cierres esta pestaña.</div>
+            <div class="sa-wod-prog-eta" id="sa-wod-prog-eta"></div>
+          </div>
+        </div>`;
+      document.body.appendChild(el);
+      _progState = { phaseKey: null, startTs: Date.now(), startCurrent: 0 };
+    }
+
+    const o = typeof opts === 'string' ? { label: opts } : (opts || {});
+    const phase = o.phase || '';
+    const phaseNum = o.phaseNum, phaseTotal = o.phaseTotal;
+    const label = o.label || '';
+    const current = o.current, total = o.total;
+    const hint = o.hint;
+    const indeterminate = !!o.indeterminate || current == null || total == null || total <= 0;
+
+    // Reset timer cuando cambia de fase
+    const phaseKey = `${phaseNum || ''}|${phase}`;
+    if (_progState.phaseKey !== phaseKey) {
+      _progState.phaseKey = phaseKey;
+      _progState.startTs = Date.now();
+      _progState.startCurrent = current || 0;
+    }
+
+    // Phase header
+    const phaseEl = document.getElementById('sa-wod-prog-phase');
+    phaseEl.textContent = (phaseNum && phaseTotal && phase)
+      ? `Fase ${phaseNum} de ${phaseTotal} · ${phase}`
+      : (phase || '');
+
+    // Counter
+    const counterEl = document.getElementById('sa-wod-prog-counter');
+    counterEl.textContent = (current != null && total != null)
+      ? `${fmtNum(current)} / ${fmtNum(total)}`
+      : (indeterminate ? '…' : '—');
+
+    // Bar
+    const barEl = document.getElementById('sa-wod-prog-bar');
+    const fillEl = document.getElementById('sa-wod-prog-bar-fill');
+    if (indeterminate) {
+      barEl.classList.add('indet');
+    } else {
+      barEl.classList.remove('indet');
+      const pct = Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+      fillEl.style.width = pct + '%';
+    }
+
+    // Label
+    document.getElementById('sa-wod-prog-msg').textContent = label;
+
+    // Hint (sólo si lo pasan; conserva el default si no)
+    if (hint != null) document.getElementById('sa-wod-prog-hint').textContent = hint;
+
+    // ETA basado en velocidad de la fase actual
+    const etaEl = document.getElementById('sa-wod-prog-eta');
+    if (!indeterminate && current > _progState.startCurrent && current < total) {
+      const elapsed = Date.now() - _progState.startTs;
+      const done = current - _progState.startCurrent;
+      if (elapsed > 800 && done > 0) {
+        const rate = done / elapsed; // items per ms
+        const etaMs = (total - current) / rate;
+        etaEl.textContent = `⏱ ~${fmtDuration(etaMs)}`;
+      } else {
+        etaEl.textContent = '';
+      }
+    } else if (!indeterminate && current >= total && total > 0) {
+      etaEl.textContent = '✓ listo';
+    } else {
+      etaEl.textContent = '';
+    }
+  }
+
+  function hideProgress() {
+    const el = document.getElementById('sa-wod-prog');
+    if (el) el.parentNode.removeChild(el);
+    _progState = { phaseKey: null, startTs: 0, startCurrent: 0 };
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  async function fetchDropdownOptions() {
+    // Fetch ALL active WOs (for counts + dropdown extraction) and products in parallel
+    const PH = { phaseNum: 1, phaseTotal: 3, phase: 'Catálogos' };
+    const [prodResult, woCountResult] = await Promise.allSettled([
+      (async () => {
+        const d = await api().query('SearchProducts', {
+          searchQuery: '', first: 500, offset: 0, includeArchived: 'NO'
+        }, 'SearchProducts');
+        return d?.searchProducts?.nodes || d?.pagedData?.nodes || [];
+      })(),
+      fetchAllActiveWOs({}, (p) => {
+        showProgress({ ...PH, label: 'Indexando clientes y procesos...', current: p.current, total: p.total });
+      })
+    ]);
+
+    const allProducts = prodResult.status === 'fulfilled' ? prodResult.value : [];
+    const allWOs = woCountResult.status === 'fulfilled' ? woCountResult.value : [];
+
+    // Extract customers, processes, and counts from ALL active WOs
+    const customerMap = {};
+    const processMap = {};
+    const countByCustomer = {};
+    const countByProduct = {};
+    const countByProcess = {};
+
+    for (const wo of allWOs) {
+      const c = wo.customerByCustomerId;
+      if (c && c.id) {
+        customerMap[c.id] = c.name;
+        countByCustomer[c.id] = (countByCustomer[c.id] || 0) + 1;
+      }
+      const p = wo.productByProductId;
+      if (p && p.id) {
+        countByProduct[p.id] = (countByProduct[p.id] || 0) + 1;
+      }
+      const r = wo.recipeNodeByRecipeId;
+      if (r && r.name) {
+        processMap[r.name] = r.name;
+        countByProcess[r.name] = (countByProcess[r.name] || 0) + 1;
+      }
+    }
+
+    const allCustomers = Object.entries(customerMap).map(([id, name]) => ({ id: parseInt(id), name }));
+    const allProcesses = Object.keys(processMap).map(name => ({ id: name, name }));
+
+    // Devolvemos también las WOs descargadas para que loadData() pueda reutilizarlas
+    // cuando la primera carga es sin filtros server-side (ahorra ~50% del tiempo inicial).
+    return { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess, allWOsSnapshot: allWOs };
+  }
+
+  async function showMainUI(wos, pnCache, uiDefaults, dropdownCache, woLabelCatalog) {
+
+    return new Promise((resolve) => {
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-wod-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-wod-modal';
+
+      const { allCustomers, allProducts, allProcesses, countByCustomer, countByProduct, countByProcess } = dropdownCache;
+
+      const addChipsHTML = woLabelCatalog.map(l => {
+        const fg = labelTextColor(l.color);
+        return `<span class="sa-wod-label-chip" data-label-id="${l.id}" data-action="add" style="background:${l.color};color:${fg}">${l.name}</span>`;
+      }).join('');
+
+      const seenCust = new Set();
+      const customerOpts = allCustomers
+        .filter(c => { if (seenCust.has(c.id)) return false; seenCust.add(c.id); return true; })
+        .filter(c => countByCustomer[c.id])
+        .sort((a, b) => (countByCustomer[b.id] || 0) - (countByCustomer[a.id] || 0))
+        .map(c => `<option value="${c.id}">${c.name} (${countByCustomer[c.id] || 0})</option>`)
+        .join('');
+
+      const seenProd = new Set();
+      const productOpts = allProducts
+        .filter(p => { if (seenProd.has(p.id)) return false; seenProd.add(p.id); return true; })
+        .filter(p => countByProduct[p.id])
+        .sort((a, b) => (countByProduct[b.id] || 0) - (countByProduct[a.id] || 0))
+        .map(p => `<option value="${p.id}">${p.name} (${countByProduct[p.id] || 0})</option>`)
+        .join('');
+
+      const processOpts = allProcesses
+        .filter(p => countByProcess[p.id])
+        .sort((a, b) => (countByProcess[b.id] || 0) - (countByProcess[a.id] || 0))
+        .map(p => `<option value="${p.id}">${p.name} (${countByProcess[p.id] || 0})</option>`)
+        .join('');
+
+      const preCustomer = uiDefaults.customerId || '';
+
+      md.innerHTML = `
+        <h2 style="color:#8b5cf6">⚙️ Gestión Masiva de OT</h2>
+        <div class="sa-wod-filters">
+          <select id="sa-wod-customer">
+            <option value="">Cliente (todos)</option>
+            ${customerOpts}
+          </select>
+          <button id="sa-wod-reload" class="sa-wod-btn" style="padding:4px 12px;font-size:11px;background:#334155;color:#e2e8f0;display:none" title="Recargar datos del servidor con nuevo filtro">🔄 Recargar</button>
+          <input type="text" id="sa-wod-pn" placeholder="Número de parte...">
+          <select id="sa-wod-product">
+            <option value="">Producto (todos)</option>
+            ${productOpts}
+          </select>
+          <select id="sa-wod-process">
+            <option value="">Proceso (todos)</option>
+            ${processOpts}
+          </select>
+          <input type="text" id="sa-wod-ro" placeholder="Orden de venta...">
+          <input type="text" id="sa-wod-name" placeholder="Nombre lote...">
+        </div>
+        <div class="sa-wod-filters" style="margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:4px">
+            <label style="font-size:11px;color:#94a3b8;white-space:nowrap">Fecha límite:</label>
+            <input type="date" id="sa-wod-deadline-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;color-scheme:dark">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <label style="font-size:11px;color:#94a3b8;white-space:nowrap">Creada desde:</label>
+            <input type="date" id="sa-wod-created-from" style="padding:4px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;color-scheme:dark">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <label style="font-size:11px;color:#94a3b8;white-space:nowrap">hasta:</label>
+            <input type="date" id="sa-wod-created-to" style="padding:4px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;color-scheme:dark">
+          </div>
+        </div>
+        <div class="sa-wod-labels-section">
+          <div class="section-title">Agregar etiquetas:</div>
+          <div id="sa-wod-add-labels">${addChipsHTML}</div>
+        </div>
+        <div class="sa-wod-labels-section">
+          <div class="section-title">Quitar etiquetas:</div>
+          <div id="sa-wod-remove-labels"><span style="font-size:11px;color:#64748b;font-style:italic">Ninguna OT tiene etiquetas</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <label style="font-size:12px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="sa-wod-selall" checked> Seleccionar todo
+            <span id="sa-wod-count" style="color:#cbd5e1;font-weight:600"></span>
+          </label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="font-size:12px;color:#94a3b8">Nueva fecha:</label>
+            <input type="date" id="sa-wod-date" style="padding:6px 12px;border-radius:6px;border:2px solid #8b5cf6;background:#0f172a;color:#e2e8f0;font-size:14px;cursor:pointer;color-scheme:dark">
+          </div>
+        </div>
+        <div class="sa-wod-grid" id="sa-wod-grid"></div>
+        <div class="sa-wod-bar">
+          <div id="sa-wod-status" style="font-size:12px;color:#94a3b8"></div>
+          <div style="display:flex;gap:10px">
+            <button class="sa-wod-btn sa-wod-btn-cancel" id="sa-wod-cancel">CANCELAR</button>
+            <button class="sa-wod-btn sa-wod-btn-exec" id="sa-wod-exec" disabled>APLICAR FECHA</button>
+          </div>
+        </div>`;
+
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+
+      // Pre-set customer filter from URL
+      if (preCustomer) {
+        document.getElementById('sa-wod-customer').value = preCustomer;
+      }
+
+      // Track which customer was loaded server-side
+      const loadedCustomerId = preCustomer ? String(preCustomer) : '';
+
+      const selected = new Set(wos.map(wo => wo.id));
+      let filteredWOs = wos;
+
+      const labelsToAdd = new Set();
+      const labelsToRemove = new Set();
+
+      function rebuildRemoveChips() {
+        const presentLabels = new Map();
+        for (const wo of filteredWOs) {
+          const woLabels = extractWOLabels(wo, woLabelCatalog);
+          for (const l of woLabels) {
+            if (!presentLabels.has(l.id)) presentLabels.set(l.id, l);
+          }
+        }
+        const container = document.getElementById('sa-wod-remove-labels');
+        if (presentLabels.size === 0) {
+          container.innerHTML = '<span style="font-size:11px;color:#64748b;font-style:italic">Ninguna OT tiene etiquetas</span>';
+          labelsToRemove.clear();
+          return;
+        }
+        container.innerHTML = [...presentLabels.values()].map(l => {
+          const fg = labelTextColor(l.color);
+          const sel = labelsToRemove.has(l.id) ? ' chip-selected' : '';
+          return `<span class="sa-wod-label-chip chip-remove${sel}" data-label-id="${l.id}" data-action="remove" style="background:${l.color};color:${fg}">${l.name}</span>`;
+        }).join('');
+        for (const id of labelsToRemove) {
+          if (!presentLabels.has(id)) labelsToRemove.delete(id);
+        }
+      }
+
+      function getFilters() {
+        const cust = document.getElementById('sa-wod-customer').value;
+        const pn = document.getElementById('sa-wod-pn').value.trim();
+        const prod = document.getElementById('sa-wod-product').value;
+        const proc = document.getElementById('sa-wod-process').value;
+        const ro = document.getElementById('sa-wod-ro').value.trim();
+        const name = document.getElementById('sa-wod-name').value.trim();
+        const deadlineDate = document.getElementById('sa-wod-deadline-filter').value;
+        const createdFrom = document.getElementById('sa-wod-created-from').value;
+        const createdTo = document.getElementById('sa-wod-created-to').value;
+        return {
+          customerId: cust ? parseInt(cust) : null,
+          partNumber: pn || null,
+          productId: prod ? parseInt(prod) : null,
+          processName: proc || null,
+          receivedOrder: ro || null,
+          woName: name || null,
+          deadlineDate: deadlineDate || null,
+          createdFrom: createdFrom || null,
+          createdTo: createdTo || null
+        };
+      }
+
+      function renderCards() {
+        const filters = getFilters();
+        filteredWOs = applyFilters(wos, filters, pnCache);
+        const grid = document.getElementById('sa-wod-grid');
+
+        grid.innerHTML = filteredWOs.map(wo => {
+          const pns = (wo.partNumberWorkOrdersByWorkOrderId?.nodes || []);
+          const pnHTML = pns.map(pnwo => {
+            const pn = pnCache[pnwo.partNumberId];
+            if (!pn) return '';
+            const labelsHTML = pn.labels.map(l => {
+              const fg = labelTextColor(l.color);
+              return `<span class="wo-label" style="background:${l.color};color:${fg}">${l.name}</span>`;
+            }).join('');
+            return `<div class="wo-pn">${pn.name} ${labelsHTML}</div>`;
+          }).join('');
+
+          const roName = wo.receivedOrderByReceivedOrderId?.name || '';
+          const roDisplay = roName ? `<div class="wo-ro">${roName}</div>` : '';
+          const isSelected = selected.has(wo.id);
+
+          const woLabels = extractWOLabels(wo, woLabelCatalog);
+          const woLabelsHTML = woLabels.length > 0
+            ? `<div style="margin-top:3px">${woLabels.map(l => {
+                const fg = labelTextColor(l.color);
+                return `<span class="wo-label" style="background:${l.color};color:${fg}">${l.name}</span>`;
+              }).join('')}</div>`
+            : '';
+
+          return `<div class="sa-wod-card ${isSelected ? 'selected' : ''}" data-id="${wo.id}">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span class="wo-num">OT-${wo.idInDomain}</span>
+              <input type="checkbox" class="sa-wod-cb" data-id="${wo.id}" ${isSelected ? 'checked' : ''}>
+            </div>
+            ${roDisplay}
+            ${pnHTML}
+            ${woLabelsHTML}
+            <div class="wo-date">📅 ${formatDate(wo.deadline)}</div>
+          </div>`;
+        }).join('');
+
+        rebuildRemoveChips();
+        updateCounts();
+      }
+
+      function updateCounts() {
+        const visibleSelected = filteredWOs.filter(wo => selected.has(wo.id)).length;
+        document.getElementById('sa-wod-count').textContent = `(${visibleSelected} de ${filteredWOs.length})`;
+
+        const dateVal = document.getElementById('sa-wod-date').value;
+        const hasLabels = labelsToAdd.size > 0 || labelsToRemove.size > 0;
+        const execBtn = document.getElementById('sa-wod-exec');
+        execBtn.disabled = visibleSelected === 0 || (!dateVal && !hasLabels);
+
+        let btnText;
+        if (dateVal && hasLabels) btnText = `APLICAR CAMBIOS (${visibleSelected})`;
+        else if (dateVal) btnText = `APLICAR FECHA (${visibleSelected})`;
+        else if (hasLabels) btnText = `APLICAR ETIQUETAS (${visibleSelected})`;
+        else btnText = `APLICAR (${visibleSelected})`;
+        execBtn.textContent = btnText;
+
+        document.getElementById('sa-wod-selall').checked = visibleSelected === filteredWOs.length && filteredWOs.length > 0;
+      }
+
+      document.getElementById('sa-wod-add-labels').addEventListener('click', (e) => {
+        const chip = e.target.closest('.sa-wod-label-chip');
+        if (!chip) return;
+        const labelId = parseInt(chip.dataset.labelId);
+        if (labelsToAdd.has(labelId)) { labelsToAdd.delete(labelId); chip.classList.remove('chip-selected'); }
+        else { labelsToAdd.add(labelId); chip.classList.add('chip-selected'); }
+        updateCounts();
+      });
+
+      document.getElementById('sa-wod-remove-labels').addEventListener('click', (e) => {
+        const chip = e.target.closest('.sa-wod-label-chip');
+        if (!chip) return;
+        const labelId = parseInt(chip.dataset.labelId);
+        if (labelsToRemove.has(labelId)) { labelsToRemove.delete(labelId); chip.classList.remove('chip-selected'); }
+        else { labelsToRemove.add(labelId); chip.classList.add('chip-selected'); }
+        updateCounts();
+      });
+
+      // Event: card click or checkbox
+      document.getElementById('sa-wod-grid').addEventListener('click', (e) => {
+        const card = e.target.closest('.sa-wod-card');
+        if (!card) return;
+        const id = parseInt(card.dataset.id);
+        const cb = card.querySelector('.sa-wod-cb');
+        if (e.target !== cb) {
+          // Toggle from card click
+          if (selected.has(id)) { selected.delete(id); cb.checked = false; card.classList.remove('selected'); }
+          else { selected.add(id); cb.checked = true; card.classList.add('selected'); }
+        } else {
+          // Toggle from checkbox
+          if (cb.checked) { selected.add(id); card.classList.add('selected'); }
+          else { selected.delete(id); card.classList.remove('selected'); }
+        }
+        updateCounts();
+      });
+
+      // Select all toggle
+      document.getElementById('sa-wod-selall').addEventListener('change', (e) => {
+        filteredWOs.forEach(wo => {
+          if (e.target.checked) selected.add(wo.id);
+          else selected.delete(wo.id);
+        });
+        renderCards();
+      });
+
+      // Filter events
+      let filterTimeout;
+      const onFilter = () => {
+        clearTimeout(filterTimeout);
+        filterTimeout = setTimeout(renderCards, 200);
+      };
+      const checkReload = () => {
+        const custVal = document.getElementById('sa-wod-customer').value;
+        const reloadBtn = document.getElementById('sa-wod-reload');
+        // Show reload if customer changed from what was loaded server-side
+        reloadBtn.style.display = custVal !== loadedCustomerId ? '' : 'none';
+      };
+      document.getElementById('sa-wod-customer').addEventListener('change', () => { checkReload(); renderCards(); });
+      document.getElementById('sa-wod-product').addEventListener('change', renderCards);
+      document.getElementById('sa-wod-process').addEventListener('change', renderCards);
+
+      // Reload button
+      document.getElementById('sa-wod-reload').onclick = () => {
+        const custVal = document.getElementById('sa-wod-customer').value;
+        const newFilters = {};
+        if (custVal) newFilters.customerIdFilter = [parseInt(custVal)];
+        ov.parentNode.removeChild(ov);
+        resolve({ reload: newFilters });
+      };
+      document.getElementById('sa-wod-pn').addEventListener('input', onFilter);
+      document.getElementById('sa-wod-ro').addEventListener('input', onFilter);
+      document.getElementById('sa-wod-name').addEventListener('input', onFilter);
+      document.getElementById('sa-wod-deadline-filter').addEventListener('change', renderCards);
+      document.getElementById('sa-wod-created-from').addEventListener('change', renderCards);
+      document.getElementById('sa-wod-created-to').addEventListener('change', renderCards);
+      document.getElementById('sa-wod-date').addEventListener('change', updateCounts);
+
+      // Cancel
+      document.getElementById('sa-wod-cancel').onclick = () => {
+        ov.parentNode.removeChild(ov);
+        resolve({ cancelled: true });
+      };
+
+      // Execute
+      document.getElementById('sa-wod-exec').onclick = () => {
+        const dateVal = document.getElementById('sa-wod-date').value;
+        const selectedWOs = filteredWOs.filter(wo => selected.has(wo.id));
+        ov.parentNode.removeChild(ov);
+        resolve({
+          selectedWOs,
+          newDeadline: dateVal || null,
+          labelsToAdd: [...labelsToAdd],
+          labelsToRemove: [...labelsToRemove]
+        });
+      };
+
+      // Initial render
+      renderCards();
+    });
+  }
+
+  // ══════════════════════════════════════════
+  // ORCHESTRATOR
+  // ══════════════════════════════════════════
+
+  async function loadData(serverFilters, existingPnCache, prefetchedWOs) {
+    const PH = { phaseTotal: 3 };
+    let wos;
+    if (prefetchedWOs && prefetchedWOs.length > 0) {
+      // Reuso del snapshot que ya descargó fetchDropdownOptions(): mismas WOs, sin
+      // filtros server-side → ahorra una pasada completa por la red.
+      wos = prefetchedWOs;
+      log(`OTs reutilizadas del snapshot de catálogos: ${wos.length}`);
+    } else {
+      showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Listando...', indeterminate: true });
+      wos = await fetchAllActiveWOs(serverFilters, (p) => {
+        showProgress({ ...PH, phaseNum: 2, phase: 'Órdenes de trabajo', label: 'Descargando lote...', current: p.current, total: p.total });
+      });
+      log(`OTs cargadas: ${wos.length}`);
+    }
+
+    const pnCache = existingPnCache || {};
+    // Only fetch PNs we don't already have cached
+    const uncached = [];
+    for (const wo of wos) {
+      for (const pnwo of (wo.partNumberWorkOrdersByWorkOrderId?.nodes || [])) {
+        if (pnwo.partNumberId && !pnCache[pnwo.partNumberId]) uncached.push(pnwo.partNumberId);
+      }
+    }
+    if (uncached.length > 0) {
+      showProgress({ ...PH, phaseNum: 3, phase: 'Números de parte', label: 'Buscando detalles...', indeterminate: true });
+      const newPns = await enrichWithPNData(
+        wos.filter(wo => (wo.partNumberWorkOrdersByWorkOrderId?.nodes || []).some(p => uncached.includes(p.partNumberId))),
+        (p) => showProgress({ ...PH, phaseNum: 3, phase: 'Números de parte', label: 'Enriqueciendo...', current: p.current, total: p.total })
+      );
+      Object.assign(pnCache, newPns);
+    }
+    hideProgress();
+    return { wos, pnCache };
+  }
+
+  async function applyLabels(selectedWOs, labelsToAdd, labelsToRemove, woLabelCatalog, onProgress) {
+    let added = 0, removed = 0, errors = [];
+    const BATCH = 10;
+
+    for (let i = 0; i < selectedWOs.length; i += BATCH) {
+      const batch = selectedWOs.slice(i, i + BATCH);
+      await Promise.all(batch.map(async (wo) => {
+        try {
+          const currentLabels = extractWOLabels(wo, woLabelCatalog);
+          const currentIds = new Set(currentLabels.map(l => l.id));
+
+          if (labelsToRemove.length > 0) {
+            const removeSet = new Set(labelsToRemove);
+            const hasAnyToRemove = currentLabels.some(l => removeSet.has(l.id));
+            if (hasAnyToRemove) {
+              await api().query('DeleteWorkOrderLabels', { woId: wo.id }, 'DeleteWorkOrderLabels');
+              removed++;
+              const keepIds = currentLabels.filter(l => !removeSet.has(l.id)).map(l => l.id);
+              const addIds = labelsToAdd.filter(id => !currentIds.has(id) || removeSet.has(id));
+              const allToCreate = [...new Set([...keepIds, ...addIds])];
+              for (const labelId of allToCreate) {
+                await api().query('CreateWorkOrderLabel', { workOrderId: wo.id, labelId }, 'CreateWorkOrderLabel');
+              }
+              added += addIds.length;
+            } else {
+              const newIds = labelsToAdd.filter(id => !currentIds.has(id));
+              for (const labelId of newIds) {
+                await api().query('CreateWorkOrderLabel', { workOrderId: wo.id, labelId }, 'CreateWorkOrderLabel');
+              }
+              added += newIds.length;
+            }
+          } else {
+            const newIds = labelsToAdd.filter(id => !currentIds.has(id));
+            for (const labelId of newIds) {
+              await api().query('CreateWorkOrderLabel', { workOrderId: wo.id, labelId }, 'CreateWorkOrderLabel');
+            }
+            added += newIds.length;
+          }
+        } catch (e) {
+          errors.push(`OT ${wo.idInDomain}: ${String(e).substring(0, 100)}`);
+        }
+      }));
+      if (onProgress) onProgress({ current: Math.min(i + BATCH, selectedWOs.length), total: selectedWOs.length });
+    }
+    return { added, removed, errors };
+  }
+
+  async function run() {
+    log('=== CAMBIO DE PLAZOS OT ===');
+
+    const { serverFilters, uiDefaults } = parseURLFilters();
+    let currentServerFilters = serverFilters;
+    let currentUiDefaults = { ...uiDefaults };
+    let pnCache = {};
+    let finalChoice = null;
+
+    // Fetch dropdown options once (shared across reloads)
+    showProgress({ phaseNum: 1, phaseTotal: 3, phase: 'Catálogos', label: 'Cargando opciones...', indeterminate: true });
+    const dropdownCache = await fetchDropdownOptions();
+
+    showProgress({ phaseNum: 1, phaseTotal: 3, phase: 'Catálogos', label: 'Cargando etiquetas...', indeterminate: true });
+    const woLabelCatalog = await fetchWOLabels();
+
+    // Snapshot de WOs que dropdownCache descargó sin filtros server-side: lo usamos
+    // en la primera iteración del loop si no hay filtro inicial → evita doble fetch.
+    // Después de consumirlo, queda en null para que las recargas con filtros sí
+    // hagan su propia descarga.
+    let initialWOsSnapshot = dropdownCache.allWOsSnapshot;
+
+    // Load → show UI → reload loop
+    while (true) {
+      const canReuseSnapshot = initialWOsSnapshot && Object.keys(currentServerFilters || {}).length === 0;
+      const data = await loadData(currentServerFilters, pnCache, canReuseSnapshot ? initialWOsSnapshot : null);
+      initialWOsSnapshot = null;
+      pnCache = data.pnCache;
+
+      if (!data.wos.length) {
+        hideProgress();
+        log('Sin OTs activas con estos filtros');
+        return { error: 'Sin OTs activas' };
+      }
+
+      const choice = await showMainUI(data.wos, pnCache, currentUiDefaults, dropdownCache, woLabelCatalog);
+
+      if (choice.cancelled) return { cancelled: true };
+      if (choice.reload) {
+        currentServerFilters = choice.reload;
+        currentUiDefaults = { ...currentUiDefaults, customerId: currentServerFilters.customerIdFilter?.[0] || '' };
+        log(`Recargando con filtro: ${JSON.stringify(currentServerFilters)}`);
+        continue;
+      }
+
+      finalChoice = choice;
+      break;
+    }
+
+    const { selectedWOs, newDeadline, labelsToAdd, labelsToRemove } = finalChoice;
+    const selectedIds = selectedWOs.map(wo => wo.id);
+    log(`OTs seleccionadas: ${selectedIds.length}`);
+    if (newDeadline) log(`Nueva fecha: ${newDeadline}`);
+    if (labelsToAdd.length) log(`Etiquetas a agregar: ${labelsToAdd.length}`);
+    if (labelsToRemove.length) log(`Etiquetas a quitar: ${labelsToRemove.length}`);
+
+    let deadlineUpdated = 0, deadlineErrors = [];
+    let labelResult = { added: 0, removed: 0, errors: [] };
+
+    // Apply labels first
+    if (labelsToAdd.length > 0 || labelsToRemove.length > 0) {
+      showProgress({ phase: 'Aplicando etiquetas', label: 'Procesando OTs...', current: 0, total: selectedWOs.length, hint: 'No cierres esta pestaña.' });
+      labelResult = await applyLabels(selectedWOs, labelsToAdd, labelsToRemove, woLabelCatalog, (p) => {
+        showProgress({ phase: 'Aplicando etiquetas', label: 'Procesando OTs...', current: p.current, total: p.total });
+      });
+    }
+
+    // Apply deadline
+    if (newDeadline) {
+      showProgress({ phase: 'Actualizando fechas', label: 'Enviando lote...', current: 0, total: selectedIds.length, hint: 'No cierres esta pestaña.' });
+      const deadline = new Date(newDeadline + 'T12:00:00.000Z').toISOString();
+      const BATCH = 50;
+      for (let i = 0; i < selectedIds.length; i += BATCH) {
+        const batch = selectedIds.slice(i, i + BATCH);
+        const input = batch.map(id => ({ id, deadline }));
+        try {
+          await api().query('CreateUpdateWorkOrdersChecked', { input }, 'CreateUpdateWorkOrdersChecked');
+          deadlineUpdated += batch.length;
+          showProgress({ phase: 'Actualizando fechas', label: 'Enviando lote...', current: deadlineUpdated, total: selectedIds.length });
+        } catch (e) {
+          const errMsg = `Batch ${i}-${i + batch.length}: ${String(e).substring(0, 150)}`;
+          deadlineErrors.push(errMsg);
+          warn(errMsg);
+        }
+      }
+    }
+
+    hideProgress();
+
+    log(`\n=== RESULTADO ===`);
+    if (newDeadline) log(`Fecha actualizada: ${deadlineUpdated}`);
+    if (labelsToAdd.length || labelsToRemove.length) log(`Etiquetas agregadas: ${labelResult.added}, quitadas: ${labelResult.removed}`);
+    const allErrors = [...deadlineErrors, ...labelResult.errors];
+    log(`Errores: ${allErrors.length}`);
+
+    showSummary(deadlineUpdated, labelResult, newDeadline, allErrors);
+    return { deadlineUpdated, labelResult, errors: allErrors.length };
+  }
+
+  function showSummary(deadlineUpdated, labelResult, newDeadline, allErrors) {
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-wod-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-wod-modal';
+    md.style.maxWidth = '450px';
+
+    const icon = allErrors.length > 0 ? '⚠️' : '✅';
+    const color = allErrors.length > 0 ? '#f59e0b' : '#4ade80';
+
+    let statsHTML = '';
+    if (newDeadline) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#4ade80">${deadlineUpdated}</div>
+          <div style="font-size:11px;color:#94a3b8">Fecha actualizada</div>
+        </div>`;
+    }
+    if (labelResult.added > 0) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#60a5fa">${labelResult.added}</div>
+          <div style="font-size:11px;color:#94a3b8">Etiquetas agregadas</div>
+        </div>`;
+    }
+    if (labelResult.removed > 0) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#f59e0b">${labelResult.removed}</div>
+          <div style="font-size:11px;color:#94a3b8">OTs con etiquetas quitadas</div>
+        </div>`;
+    }
+    if (allErrors.length > 0) {
+      statsHTML += `
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#ef4444">${allErrors.length}</div>
+          <div style="font-size:11px;color:#94a3b8">Errores</div>
+        </div>`;
+    }
+
+    let errHTML = '';
+    if (allErrors.length > 0) {
+      errHTML = `<div style="margin-top:12px;font-size:11px;color:#fca5a5">${allErrors.slice(0, 10).join('<br>')}</div>`;
+    }
+
+    md.innerHTML = `
+      <h2 style="color:${color}">${icon} Cambios Aplicados</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:16px 0">
+        ${statsHTML}
+      </div>
+      ${errHTML}
+      <div style="display:flex;justify-content:flex-end;margin-top:16px">
+        <button class="sa-wod-btn sa-wod-btn-exec" id="sa-wod-close">CERRAR</button>
+      </div>`;
+
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+    document.getElementById('sa-wod-close').onclick = () => ov.parentNode.removeChild(ov);
+  }
+
+  return { run };
+})();
+
+if (typeof window !== 'undefined') window.WODeadlineChanger = WODeadlineChanger;
+})();
+// ===== END scripts/wo-deadline-changer.js =====
 
 // ===== BEGIN sa-bootstrap.js =====
 (function(){
