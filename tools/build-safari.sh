@@ -104,10 +104,11 @@ manifest = {
     "permissions": ["storage"],
     "host_permissions": bundle["matches"],
     "content_scripts": [
-        # Mundo AISLADO: bridge.js fetchea config.json (→ MAIN) y propaga flags de toggle
-        # (storage → data-attributes que leen los applets).
-        {"matches": bundle["matches"], "js": ["bridge.js"], "run_at": "document_idle"},
-        # Mundo MAIN: helpers + applets + config-seed + bootstrap.
+        # Mundo AISLADO: bridge.js va en document_start para setear los flags (storage →
+        # data-attributes) ANTES de que el bundle (document_idle) los lea, y para arrancar
+        # temprano el fetch de config. El config se entrega por handshake (el bundle lo pide).
+        {"matches": bundle["matches"], "js": ["bridge.js"], "run_at": "document_start"},
+        # Mundo MAIN: helpers + applets + config-seed + bootstrap. document_idle → body existe.
         {"matches": bundle["matches"], "js": ["main-bundle.js"],
          "run_at": "document_idle", "world": "MAIN", "all_frames": False},
     ],
