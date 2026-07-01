@@ -43,7 +43,7 @@ const ValeAlmacen = (() => {
     surtimientoNodes: [],   // [{id, idInDomain, name, lineToken}]
     allEquipments: [],      // [{id, name, idInDomain}]
     catalogsLoaded: false,
-    articleCatalog: [],     // sensores NUMBER del paso 0 [{id, name, measurementType, unidad, unidadFull, mustBeInteger}]
+    articleCatalog: [],     // sensores del paso 0 (NUMBER/TEXT/BOOLEAN) [{id, name, measurementType, unidad, unidadFull, mustBeInteger}]
     activeEvent: null,      // persistido en localStorage
     lines: [],              // líneas en construcción
     empCache: {},           // userId -> CodigoEmpleado|null
@@ -276,7 +276,7 @@ const ValeAlmacen = (() => {
     if (!state.activeEvent) return;
     state.activeEvent.lines = state.lines.map(l => ({
       uid: l.uid, articleSensorId: l.articleSensorId, articleName: l.articleName,
-      unidad: l.unidad, mustBeInteger: l.mustBeInteger, quantity: l.quantity,
+      unidad: l.unidad, measurementType: l.measurementType, mustBeInteger: l.mustBeInteger, quantity: l.quantity,
       assigneeId: l.assigneeId, assigneeName: l.assigneeName, employeeNumber: l.employeeNumber,
     }));
     writeActiveEvent(state.activeEvent);
@@ -417,13 +417,13 @@ const ValeAlmacen = (() => {
     }).filter(Boolean);
   }
 
-  // Resuelve el paso de artículos (paso 0) de una raíz y devuelve sus sensores NUMBER.
+  // Resuelve el paso de artículos (paso 0) de una raíz y devuelve TODOS sus sensores
+  // (los artículos pueden ser NUMBER —cantidad/kg— o TEXT —p.ej. EPP/guantes— o BOOLEAN).
   async function discoverArticleStep(rootNode, eventId, eventIdInDomain) {
     const cache = readStep0Cache();
     if (cache[rootNode.id]) {
       const sensors = await loadSensorsForNode(cache[rootNode.id], eventId);
-      const numeric = sensors.filter(s => s.measurementType === 'NUMBER');
-      if (numeric.length) return { step0Id: cache[rootNode.id], sensors: numeric };
+      if (sensors.length) return { step0Id: cache[rootNode.id], sensors };
     }
     const data = await api().query('GetMaintenanceEvent', { idInDomain: eventIdInDomain }, 'GetMaintenanceEvent');
     const rootData = data?.maintenanceEventByIdInDomain?.maintenanceNodeByMaintenanceNodeId;
@@ -436,15 +436,15 @@ const ValeAlmacen = (() => {
 
     if (!children.length) {
       // Sin hijos: tratar la propia raíz como paso de artículos (fallback).
-      const sensors = (await loadSensorsForNode(rootNode.id, eventId)).filter(s => s.measurementType === 'NUMBER');
+      const sensors = await loadSensorsForNode(rootNode.id, eventId);
       writeStep0Cache(rootNode.id, rootNode.id);
       return { step0Id: rootNode.id, sensors };
     }
     for (const c of children) {
-      const sensors = (await loadSensorsForNode(c.node.id, eventId)).filter(s => s.measurementType === 'NUMBER');
+      const sensors = await loadSensorsForNode(c.node.id, eventId);
       if (sensors.length) { writeStep0Cache(rootNode.id, c.node.id); return { step0Id: c.node.id, sensors }; }
     }
-    // Ninguno con sensores NUMBER: usar el primer hijo igual (sin artículos).
+    // Ningún hijo con sensores: usar el primer hijo igual (sin artículos).
     writeStep0Cache(rootNode.id, children[0].node.id);
     return { step0Id: children[0].node.id, sensors: [] };
   }
@@ -665,7 +665,7 @@ const ValeAlmacen = (() => {
       try {
         await ensureCurrentUser();
         if (!state.catalogsLoaded) await loadCatalogs();
-        state.articleCatalog = (await loadSensorsForNode(ev.step0Id, ev.id)).filter(s => s.measurementType === 'NUMBER');
+        state.articleCatalog = await loadSensorsForNode(ev.step0Id, ev.id);
       } catch (e) { console.warn('[SA] ValeAlmacen recargar artículos:', e.message); }
     }
     if (Array.isArray(ev.lines) && ev.lines.length && !state.lines.length) { state.lines = ev.lines.slice(); bumpUidSeq(); }
@@ -712,7 +712,7 @@ const ValeAlmacen = (() => {
 
   function addLineRow(host, existing) {
     const line = existing || {
-      uid: lineUidSeq++, articleSensorId: null, articleName: '', unidad: '', mustBeInteger: false,
+      uid: lineUidSeq++, articleSensorId: null, articleName: '', unidad: '', measurementType: null, mustBeInteger: false,
       quantity: '', assigneeId: null, assigneeName: '', employeeNumber: null,
     };
     if (!existing) state.lines.push(line);
@@ -751,6 +751,7 @@ const ValeAlmacen = (() => {
       line.articleSensorId = a.id;
       line.articleName = a.name;
       line.unidad = a.unidad;
+      line.measurementType = a.measurementType;
       line.mustBeInteger = a.mustBeInteger;
       qtyInput.step = a.mustBeInteger ? '1' : 'any';
       qtyInput.placeholder = '0';
@@ -824,9 +825,15 @@ const ValeAlmacen = (() => {
       const nodeEventId = ne?.createMaintenanceNodeEvent?.maintenanceNodeEvent?.id;
       if (!nodeEventId) throw new Error('Respuesta sin maintenanceNodeEvent.id');
 
-      // 2. mediciones (cantidades) en una sola llamada
+      // 2. mediciones (cantidades) en una sola llamada — el campo depende del tipo de sensor
       await api().query('CreateManySensorMeasurements', {
-        input: lines.map(l => ({ sensorId: l.articleSensorId, measurement: Number(l.quantity), maintenanceNodeEventId: nodeEventId }))
+        input: lines.map(l => {
+          const m = { sensorId: l.articleSensorId, maintenanceNodeEventId: nodeEventId };
+          if (l.measurementType === 'NUMBER') m.measurement = Number(l.quantity);
+          else if (l.measurementType === 'BOOLEAN') m.measurementBoolean = true;
+          else m.measurementText = String(l.quantity); // TEXT (p.ej. EPP) y cualquier otro
+          return m;
+        })
       }, 'CreateManySensorMeasurements');
 
       // 3-5. comentarios (best-effort: no abortan el cierre)
