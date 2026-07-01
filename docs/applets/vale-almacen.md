@@ -1,6 +1,6 @@
 # Bitácora: `vale-almacen` (Vale de Almacén)
 
-**Versión actual:** 0.1.0 (código completo + golden tests; **pendiente run real**).
+**Versión actual:** 0.1.2 (fix: la emisión de un vale = **solo la solicitud** → llena los sensores del paso 0, lo completa (ya NO lo archiva) y **deja el evento VIVO** —sin `completedAt`—. Almacén surte/confirma después, fuera del applet; el evento solo se cierra al DESCARTAR. Ver §"Lección: `archivedAt` deshace, no completa" y §"El vale = solo la solicitud"). 0.1.0 = código completo + golden tests.
 **Archivos:** `remote/scripts/vale-almacen.js` (FAB + panel + API), `remote/scripts/vale-almacen-engine.js` (motor puro), `tools/test/vale-almacen-engine.test.js` (19 tests).
 **Config:** app `vale-almacen` en `apps[]`; hashes nuevos `GetMaintenanceEvent`, `UpdateMaintenanceNodeEvent`, `UserDialogQuery`; bump `1.7.20`.
 
@@ -28,7 +28,19 @@ Es un primo de `paros-linea` (mismo molde de FAB/modal/MaintenanceEvent), con tr
 - `UserDialogQuery({domainId, userId})` → **`userById.customInputs.DatosLaborales.CodigoEmpleado`** (string, patrón `^[A-Z]{3}\d{4}$`, ej. `ABC1234`; `inputSchemaId:96`). Si viene `null` → el comentario emite `emp:?` (no bloquea). Cache en memoria por userId.
 
 ### Flujo completo (submitVale)
-`CreateMaintenanceEvent(raíz, equipmentId, assigneeId=recoge)` → `GetMaintenanceEvent` → `discoverArticleStep` → operador arma líneas → `CreateMaintenanceNodeEvent(paso0)` → `CreateManySensorMeasurements(batch)` → `[VALE-INI]` + un `[VALE]…` por línea + comentario general → `/api/files`+`CreateUserFile`+`CreateMaintenanceEventUserFile` (evidencia) → `UpdateMaintenanceNodeEvent{archivedAt}` → `UpdateMaintenanceEvent{completedAt}` → `[VALE-FIN]`.
+`CreateMaintenanceEvent(raíz, equipmentId, assigneeId=recoge)` → `GetMaintenanceEvent` → `discoverArticleStep` → operador arma líneas → `CreateMaintenanceNodeEvent(paso0)` → `CreateManySensorMeasurements(batch)` → `[VALE-INI]` + un `[VALE]…` por línea + comentario general → `/api/files`+`CreateUserFile`+`CreateMaintenanceEventUserFile` (evidencia) → `[VALE-FIN]`. **El paso de solicitud NO se archiva** (queda completado por su nodeEvent + mediciones) y **el evento NO se completa** (queda vivo).
+
+### El vale = solo la solicitud (v0.1.2)
+La emisión de un vale es **únicamente la solicitud**. El applet debe: (1) llenar los sensores del paso 0 con las cantidades, (2) **completar el paso 0** (no archivarlo), y (3) **dejar el evento VIVO** (sin `completedAt`, sin archivar). Los pasos siguientes —Surtimiento de Materia Prima (paso 1, rebaje real de inventario vía `CreateInventoryTransferEventGroups`) y Confirmación de Entrega (paso 2)— los hace almacén después, **fuera del applet** (por lo pronto). El evento solo se cierra cuando el operador **DESCARTA** el vale (`discardVale` → `UpdateMaintenanceEvent{completedAt}` + comentario `[VALE-DESCARTADO]`).
+
+### Lección: `archivedAt` deshace, no completa (fix 2026-06-30, v0.1.1/0.1.2)
+Síntoma: el vale dejaba el primer paso ("Solicitud") **sin completar** y la cantidad no persistía en el sensor; además **completaba el evento** cuando debía quedar vivo. Causa: `submitVale` cerraba el paso con `UpdateMaintenanceNodeEvent{id:nodeEventId, archivedAt}` (bajo la suposición errónea —también en la descripción vieja de `config.json`— de que `archivedAt` marca el paso como completado) y luego hacía `UpdateMaintenanceEvent{completedAt}`.
+Evidencia (2 scans del hash-scanner del 2026-06-30, un vale hecho a mano en la UI nativa, evento 156035):
+- El flujo feliz por cada paso es `CreateMaintenanceNodeEvent(nodeId,eventId)` → mediciones/transfer → `GetMaintenanceEvent`+`GetNextMaintenanceNodes` (navegación read-only), y al final `UpdateMaintenanceEvent{completedAt}`. **Un paso queda ejecutado/completado por la sola existencia de su `MaintenanceNodeEvent` + sus mediciones.**
+- `UpdateMaintenanceNodeEvent` **siempre** fue `{id, archivedAt}` (nunca `completedAt`) y **siempre** precedido de `DeleteSensorMeasurement` → es la operación de **DESHACER/borrar** un paso ejecutado, no de completarlo. Al archivar el paso 0, el applet borraba el paso que acababa de ejecutar y con él sus cantidades.
+- Fix (v0.1.1): eliminar la llamada de archivado del paso 0 → el paso se completa solo. `GetNextMaintenanceNodes` es query pura (dado `idInDomains` de nodos devuelve los siguientes); NO se usa en el applet.
+- Fix (v0.1.2): eliminar también `UpdateMaintenanceEvent{completedAt}` de la emisión → el evento queda **vivo**. El footer `[VALE-FIN]` cambió de `completedAt:` a `emitido:` (engine `buildFooterComment({items, emitidoAt})`; golden test actualizado). El descarte (`discardVale`) sí completa el evento.
+- La depleción de inventario real (paso 1 "Surtimiento de Materia Prima") la dispara la UI nativa con `CreateInventoryTransferEventGroups`, NO automáticamente por las mediciones del paso 0 — pendiente para Fase 2 (ver abajo).
 
 ## Formato del comentario estructurado (motor `vale-almacen-engine.js`)
 ```
