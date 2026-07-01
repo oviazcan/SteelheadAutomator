@@ -76,6 +76,29 @@ gh-pages, no horneada) y `getHash('CreateMaintenanceEvent')` devolvió el hash c
 NO bloquea el fetch del bridge a github.io. Mini-bundle: surtido-guard + paros-linea + weight-quick-entry +
 receiver-date-override. **Para escalar a los 16 "directo": editar `safari/bundle.json`.**
 
+**Bundle de 16 applets — gotchas de Safari resueltos (handoff, 2026-06-30):** al escalar de 4 a 16 el
+bundle crasheaba en cadena. Lecciones:
+- **`run_at: document_idle`** (NO `document_start`): en `document_start` `document.body` es `null` y
+  `weight-quick-entry` hace `observer.observe(document.body)` → `TypeError` que **detiene todo el bundle**
+  (un error de evaluación mata el `<script>` y no cargan los applets siguientes). La ext. de Chrome ya usa
+  `document_idle`.
+- **shim `window.chrome`**: en el MAIN world de Safari NO existe `window.chrome`; `wo-mover`/`auto-router`
+  hacen `chrome.runtime?.onMessage` y el `?.` no protege la variable base → `ReferenceError` que también
+  detiene el bundle. Fix: `if (typeof window.chrome==='undefined') window.chrome={}` al inicio del bundle.
+- **config-seed tras `steelhead-api.js`** (no al final) + **bridge en `document_start`**: los applets leen el
+  config y su flag de enable UNA vez en `init()`. El config va horneado (seed síncrono) antes de los applets;
+  los flags (toggles) los setea el bridge en `document_start` como data-attributes ANTES de que el bundle
+  (`document_idle`) los lea. El config en vivo llega por handshake (`__saBridgeReq`).
+- **Correr SIN el debugger de Xcode**: con el debugger adjunto (`MallocStackLogging`) el `WebContent` de Safari
+  + Steelhead da OOM en iPad a los ~5 min. Instalar con Xcode y luego abrir Safari suelto (o desmarcar "Debug
+  executable" en el scheme). No es la app: es el overhead del debugger.
+
+**Popup de toggles** (`safari/extension/popup.html`/`popup.js`): interruptores para los 6 applets con flag
+data-attribute (cfdi, weight, receiver, warehouse, invoice-auto-regen, invoice-default-tab). El candado y
+paros-linea usan otro mecanismo (no dataset) → **pendiente** portarlos al popup. Los 6 "con-popup" del
+inventario (auto-router, archiver, load-calculator config, sensor-status, report-liberator, wo-deadline) son
+**Fase 2** (requieren portar su popup de acción).
+
 **POC validado en vivo (Safari iPad, 2026-06-30) ✓:** `world:"MAIN"` SÍ intercepta `fetch` en Safari/iPadOS
 (el warning `world not supported` del converter es de su validador, no del runtime → **NO se necesitó el plan
 B**). `_getState()` devolvió `{enforcementEnabled:true, surtido:[44721633], scheduled:[], accounts:0}`: el
