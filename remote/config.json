@@ -77,7 +77,8 @@
         "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec",
         "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3",
         "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f",
-        "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0"
+        "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0",
+        "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed"
       },
       "queries": {
         "AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b",
@@ -191,7 +192,9 @@
         "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a",
         "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705",
         "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e",
-        "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e"
+        "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e",
+        "WorkOrder": "14578a2f6b953fde230fc4f32bd7129992032ae31459019c93d64f9865ae0667",
+        "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284"
       }
     },
     "domain": {
@@ -643,6 +646,18 @@
       "autoInject": true,
       "actions": [
         { "id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover" }
+      ]
+    },
+    {
+      "id": "wo-completer",
+      "name": "Completar / Descompletar OTs",
+      "subtitle": "Cerrar o revivir órdenes de trabajo desde un listado",
+      "icon": "✅",
+      "category": "Órdenes de Trabajo",
+      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/wo-completer-engine.js", "scripts/wo-completer.js"],
+      "requiredPermissions": ["READ_WORK_ORDER"],
+      "actions": [
+        { "id": "open-wo-completer", "label": "Completar / Descompletar OTs", "sublabel": "Pega un listado de OTs y ciérralas o revívelas", "icon": "✅", "type": "primary", "handler": "message", "message": "open-wo-completer", "fn": "WOCompleter.open" }
       ]
     },
     {

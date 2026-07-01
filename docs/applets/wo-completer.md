@@ -1,0 +1,68 @@
+# Bitácora — `wo-completer` (Completar / Descompletar OTs)
+
+**Versión actual:** 0.1.0 (código + golden tests completos; **pendiente deploy + run real**)
+**Categoría:** Órdenes de Trabajo · **Popup** (`fn: WOCompleter.open`, sin `autoInject`)
+**Diseño:** [`docs/superpowers/specs/2026-06-30-wo-completer-design.md`](../superpowers/specs/2026-06-30-wo-completer-design.md)
+
+## Qué hace
+Panel dark-mode que toma un **listado pegado de números de OT** (`idInDomain`) y, según el modo:
+- **Completar** → cierra la OT creando un *parts transfer* `type:"COMPLETE"` por cada cuenta activa.
+- **Descompletar** (revivir) → revierte el/los `COMPLETE` con `type:"REVERT_COMPLETE"`.
+
+Flujo: **Validar** (dry-run, no escribe) → tabla de preview → **Ejecutar** (confirm + progreso).
+
+## Modelo (reverse-engineering del scan real)
+Reconstruido de `~/Downloads/scan_results_2026-06-30_210332.json` (corrida en vivo del usuario
+completando y luego descompletando una OT). Confirmado byte-a-byte por los golden tests.
+
+### Completar
+- **Lee:** `WorkOrder{idInDomain}` → `data.workOrderByIdInDomain`:
+  `completedAt`, `currentPartsTransferAccounts.nodes[]` con `id`, `partCount`,
+  `receivedOrderPartTransformId`, `locationByLocationId.id`, `recipeNodeByRecipeNodeId.{name,type}`.
+- **Escribe:** `AddPartsToWorkOrders(input)` — un evento con un `partsTransfer` por cuenta:
+  `{fromAccountId, partCount, toAccount:{receivedOrderPartTransformId, locationId, workOrderId:null,
+  stationId:null, recipeNodeId:null}, type:"COMPLETE", fromOperatorInput:{}, partsTransferIdCausingRework:null,
+  partsTransferCategoryId:null, comment:null}`.
+
+### Descompletar
+- **Lee:** `GetWorkOrderPartsTransfers{idInDomain, includeReverts:true, orderBy:["AT_DESC"], first:200}` →
+  `data.workOrderByIdInDomain.workOrderPartsTransfers.nodes[]`. Cada nodo trae `id`, `type`, `partCount`,
+  `fromAccountId`, `at`, `revertsPartsTransferId`, `partsTransfersByRevertsPartsTransferId.nodes`.
+- **Filtra** COMPLETE aún no revertidos (por sub-conexión de reverts **o** por REVERT_COMPLETE que lo apunte).
+- **Escribe:** `CreateManyPartsTransfersChecked(payload)` — `{partCount, revertsPartsTransferId,
+  toAccount:{id:fromAccountId}, type:"REVERT_COMPLETE", at:<at del COMPLETE normalizado>}`.
+
+## Lecciones
+- **Timestamp del revert (crítico):** el `at` debe ser el `at` del COMPLETE original **normalizado** a
+  millis+Z. El ERP devuelve el transfer con microsegundos+offset (`…761946+00:00`) pero la mutación
+  espera `…761Z` → `new Date(t.at).toISOString()`. Verificado contra el scan (golden test).
+- **`WorkOrder{idInDomain}` trae todo** lo necesario para completar (cuenta+ROPT+location+nodo+`completedAt`):
+  no hace falta `MovePartsDialogPartLocation` ni `AllWorkOrders` por separado.
+- **`locationId` al completar** = la ubicación **actual** de la cuenta origen (misma `receivedOrderPartTransformId`).
+- **Decisión de producto:** se completa **todo lo que la OT tenga en piezas, sin validar el nodo** (el nodo
+  igual se muestra en el preview para detectar a simple vista algo a medio proceso).
+- **Idempotencia:** completar hace skip si `completedAt`/sin cuentas; descompletar hace skip si no hay COMPLETE vivo.
+
+## Hashes (agregados a `config.steelhead.hashes`)
+- queries: `WorkOrder`, `GetWorkOrderPartsTransfers`
+- mutations: `CreateManyPartsTransfersChecked`
+- Ya existían: `AllWorkOrders`, `AddPartsToWorkOrders`.
+
+## Memory hardening (skill `memory-hardening-applets`)
+Aplica (panel persistente + `runPool` + potencialmente cientos de OTs).
+- **EJE A:** slim responses (`fetchWorkOrderSlim`/`fetchTransfersSlim` mapean solo los fields usados);
+  `state.rows=[]` en `closePanel`.
+- **EJE B:** `host-cleanup-shared` importado; `stopDatadogSessionReplay()` al iniciar validar/ejecutar;
+  `createMemMonitor({getElement:#woc-mem, onGuardrail})` start/stop en open/closePanel;
+  `makePeriodicDrain(25)` en los pools.
+
+## Tests
+`tools/test/wo-completer-engine.test.js` — 10/10. Golden byte-a-byte de `AddPartsToWorkOrders` (COMPLETE)
+y `CreateManyPartsTransfersChecked` (REVERT_COMPLETE) del scan real, + `parseWoList`,
+`pickRevertableCompletes`, skips.
+
+## Pendientes
+- [ ] **Deploy:** scripts nuevos con `wb-deploy.sh` (uno por corrida); config+hashes en `main` con `deploy.sh`.
+- [ ] **Run real:** dry-run primero, luego una OT de prueba (completar + descompletar), luego el listado.
+- [ ] Confirmar en vivo que un COMPLETE con partes en **múltiples cuentas** se cierra en un solo evento (asunción).
+- [ ] (Opcional) barra de progreso visual y log copiable enriquecido; cancelar en vuelo.
