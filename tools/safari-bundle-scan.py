@@ -87,6 +87,8 @@ def launcher_for(app):
     for act in app.get('actions', []):
         if act.get('type') == 'toggle':
             continue  # los toggles no son lanzadores de UI
+        if not act.get('message'):
+            continue  # sin message no es lanzable por el canal (p. ej. file-picker/descarga)
         out.append({
             'message': act.get('message'),
             'fn': act.get('fn'),  # puede ser None → la skill lo resuelve por inspección
