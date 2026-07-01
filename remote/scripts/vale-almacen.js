@@ -200,10 +200,13 @@ const ValeAlmacen = (() => {
       '.va-dd-item small{color:#9aa7b5;margin-left:6px}',
       '.va-dd-empty{padding:9px 12px;font-size:12px;color:#64748b;font-style:italic}',
       '.va-lines{margin-top:6px}',
-      '.va-lines-head,.va-line{display:grid;grid-template-columns:1fr 96px 1.1fr 96px 34px;gap:8px;align-items:start}',
+      '.va-lines-head,.va-line{display:grid;grid-template-columns:1fr 122px 1.1fr 84px 34px;gap:8px;align-items:start}',
       '.va-lines-head{font-size:10px;color:#9aa7b5;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px;padding:0 2px}',
       '.va-line{margin-bottom:8px}',
-      '.va-unit-wrap{display:flex;align-items:center}',
+      '.va-qty-wrap{display:flex;align-items:center;gap:6px}',
+      '.va-qty{flex:1 1 auto;min-width:0}',
+      '.va-unit{flex:0 0 auto;font-size:12px;color:#9aa7b5;white-space:nowrap;min-width:30px}',
+      '.va-unit.set{color:#34d399;font-weight:700}',
       '.va-emp{font-size:12px;color:#9aa7b5;align-self:center;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.va-emp.ok{color:#34d399;font-weight:700}',
       '.va-x{background:#33404f;color:#e6e9ee;border:none;border-radius:8px;height:42px;cursor:pointer;font-size:15px}',
@@ -724,7 +727,10 @@ const ValeAlmacen = (() => {
         '<input class="va-input va-art" placeholder="Buscar artículo…" autocomplete="off" value="' + escapeHtml(line.articleName) + '">' +
         '<div class="va-dd va-art-dd" style="display:none"></div>' +
       '</div>' +
-      '<input class="va-input va-qty" type="number" min="0" step="' + step + '" placeholder="0" value="' + escapeHtml(line.quantity) + '">' +
+      '<div class="va-qty-wrap">' +
+        '<input class="va-input va-qty" type="number" min="0" step="' + step + '" placeholder="0" value="' + escapeHtml(line.quantity) + '">' +
+        '<span class="va-unit' + (line.unidad ? ' set' : '') + '">' + escapeHtml(line.unidad || '') + '</span>' +
+      '</div>' +
       '<div class="va-ta">' +
         '<input class="va-input va-user" placeholder="Asignar a…" autocomplete="off" value="' + escapeHtml(line.assigneeName) + '">' +
         '<div class="va-dd va-user-dd" style="display:none"></div>' +
@@ -736,6 +742,7 @@ const ValeAlmacen = (() => {
     const artInput = row.querySelector('.va-art');
     const artDd = row.querySelector('.va-art-dd');
     const qtyInput = row.querySelector('.va-qty');
+    const unitSpan = row.querySelector('.va-unit');
     const userInput = row.querySelector('.va-user');
     const userDd = row.querySelector('.va-user-dd');
     const empBox = row.querySelector('.va-emp');
@@ -746,7 +753,10 @@ const ValeAlmacen = (() => {
       line.unidad = a.unidad;
       line.mustBeInteger = a.mustBeInteger;
       qtyInput.step = a.mustBeInteger ? '1' : 'any';
-      qtyInput.placeholder = a.unidad ? a.unidad : '0';
+      qtyInput.placeholder = '0';
+      unitSpan.textContent = a.unidad || '';
+      unitSpan.classList.toggle('set', !!a.unidad);
+      unitSpan.title = a.unidadFull || a.unidad || '';
       persistLines();
     }, { minChars: 1, debounceMs: 120 });
     artInput.addEventListener('input', () => { line.articleSensorId = null; line.articleName = artInput.value.trim(); });
@@ -796,7 +806,8 @@ const ValeAlmacen = (() => {
 
     const errors = [];
     lines.forEach((l, i) => {
-      const v = E.validateValeLine(l);
+      // equipmentName vive en el evento, no en la línea → inyectarlo para la validación.
+      const v = E.validateValeLine({ ...l, equipmentName: ev.equipmentName });
       if (!v.valid) errors.push('Línea ' + (i + 1) + ': ' + v.errors.join(', '));
     });
     if (errors.length) { showSubmitError(errors.join('\n')); return; }
