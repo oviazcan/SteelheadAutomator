@@ -1,6 +1,6 @@
 {
-  "version": "1.7.34",
-  "lastUpdated": "2026-06-29T19:46",
+  "version": "1.7.35",
+  "lastUpdated": "2026-06-30T19:25",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -63,6 +63,7 @@
         "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2",
         "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a",
         "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54",
+        "UpdateMaintenanceNodeEvent": "39b3cdf27e06a37884bfb551376b23fca971f705fc6472fc495d34dfce69970c",
         "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84",
         "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856",
         "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334",
@@ -155,6 +156,8 @@
         "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c",
         "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac",
         "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830",
+        "GetMaintenanceEvent": "be2a98642faeaa127dd66ac78f59716b030cc4dbeba7e9348fcde2d5bb074b2b",
+        "UserDialogQuery": "843b5f4f236fd159b5d3912c434551cf2866a591e3c38babfdfb2fd6f7283959",
         "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63",
         "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83",
         "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f",
@@ -743,6 +746,19 @@
       ]
     },
     {
+      "id": "vale-almacen",
+      "name": "Vale de Almacén",
+      "subtitle": "Surtido de material/equipo por usuario",
+      "icon": "📦",
+      "category": "Producción",
+      "scripts": ["scripts/steelhead-api.js", "scripts/vale-almacen-engine.js", "scripts/vale-almacen.js"],
+      "autoInject": true,
+      "requiredPermissions": ["READ_MAINTENANCE"],
+      "actions": [
+        { "id": "open-vale-almacen", "label": "Emitir Vale de Almacén", "sublabel": "Registrar artículos entregados por usuario", "icon": "📦", "type": "primary", "handler": "message", "message": "open-vale-almacen", "fn": "ValeAlmacen.open" }
+      ]
+    },
+    {
       "id": "weight-quick-entry",
       "name": "Peso Rápido",
       "subtitle": "Registra peso KG/LB desde el modal de recibo",
@@ -1024,7 +1040,10 @@
     "OperatorMaintenanceNodeDialogQuery": { "type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea" },
     "SearchEquipments": { "type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea" },
     "WorkboardById": { "type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea" },
-    "AllEquipments": { "type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea" },
+    "AllEquipments": { "type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea, vale-almacen" },
+    "GetMaintenanceEvent": { "type": "query", "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)", "usedBy": "vale-almacen" },
+    "UpdateMaintenanceNodeEvent": { "type": "mutation", "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado", "usedBy": "vale-almacen" },
+    "UserDialogQuery": { "type": "query", "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)", "usedBy": "vale-almacen" },
     "AllPermissionsEditManyPermissions": { "type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings" },
     "GetAvailableUnits": { "type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert" },
     "CreateInventoryItemUnitConversion": { "type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert" },
