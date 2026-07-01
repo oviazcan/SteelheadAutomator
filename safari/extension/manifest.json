@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 16 'directo' + 3 'con-popup' (archiver, sensor-status-autofill, load-calculator) lanzables desde el popup + vale-almacen (botón flotante).",
-  "version": "0.3.0",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 16 'directo' + 4 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router) lanzables desde el popup + vale-almacen (botón flotante).",
+  "version": "0.4.0",
   "permissions": [
     "storage"
   ],

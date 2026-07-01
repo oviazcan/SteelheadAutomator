@@ -24,10 +24,15 @@
 
   // message (config action.message) → función global del applet en el MAIN world.
   var LAUNCH_FN = {
-    'open-vale-almacen':    'ValeAlmacen.open',
-    'run-archiver':         'PNArchiver.openConfigAndRun',
-    'assign-sensor-status': 'SensorStatusAutofill.run',
-    'open-station-config':  'LoadCalculator.openStationConfig'
+    'open-vale-almacen':       'ValeAlmacen.open',
+    'run-archiver':            'PNArchiver.openConfigAndRun',
+    'assign-sensor-status':    'SensorStatusAutofill.run',
+    'open-station-config':     'LoadCalculator.openStationConfig',
+    // auto-router: openPanel re-rutea la(s) orden(es) capturada(s) del modal de ruteo (alerta si no
+    // hay contexto); openBatch abre el modal de pegar números de orden (autocontenido). En Chrome su
+    // trigger vive en chrome.runtime.onMessage (muerto en MAIN world); aquí lo revive el postMessage.
+    'open-auto-router':        'AutoRouter.openPanel',
+    'open-auto-router-batch':  'AutoRouter.openBatch'
   };
 
   function resolveFn(action) {

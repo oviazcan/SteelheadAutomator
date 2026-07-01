@@ -1,5 +1,5 @@
 // ==========================================================================
-// Steelhead Automator — iPad — main-bundle.js  (v0.3.0)
+// Steelhead Automator — iPad — main-bundle.js  (v0.4.0)
 // GENERADO por tools/build-safari.sh desde remote/scripts + config.json.
 // NO editar a mano: edita la fuente en remote/scripts/ y re-corre el build.
 // Cada applet va en su propio IIFE (scope aislado, como el new Function() del
@@ -16674,6 +16674,1868 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
 })();
 // ===== END scripts/load-calculator-modal.js =====
 
+// ===== BEGIN scripts/auto-router-engine.js =====
+(function(){
+// auto-router-engine.js — MOTOR PURO del autoruteador (sin DOM, sin red, sin closure).
+//
+// Dual-export: window.AutoRouterEngine (browser) / module.exports (node --test).
+//
+// Dado el árbol de recipeNodes de una WO + las tinas (stations) candidatas por
+// tratamiento + la línea origen/destino, produce la lista completa de rutas
+// {recipeNodeId -> stationId} que se envía a CreateUpdateDeleteRoutes.
+//
+// Modelo (descubierto del tráfico real, ver docs/applets/auto-router.md):
+//   · Cada recipeNode con treatmentId corre en una "tina" (station). Re-rutear =
+//     cambiar la station, NO el treatment.
+//   · El nombre de la tina codifica línea + posición física: "T205-TI00-019 Enjuague".
+//   · Solo se re-rutean los nodos cuya tina DEFAULT pertenece a la línea origen;
+//     los bloques de otras líneas (T300 …) conservan su tina default.
+//   · La mutación lleva TODAS las rutas (las cambiadas y las conservadas).
+//
+// Regla de mapeo (validada contra ground-truth WO 1760978, T204→T205):
+//   1. bypass     — nodo de otra línea  → conserva default.
+//   2. role-match — la tina default tiene un rol distintivo (Recuperador, Flash,
+//                   IMMSA, Caliente) → toma la candidata destino con ese rol.
+//   3. single     — el tratamiento tiene 1 sola tina en destino → reúso.
+//   4. momentum   — varias tinas (enjuagues): consume la tina destino sin usar más
+//                   cercana al ancla (la tina del paso padre), con inercia de
+//                   dirección (asc/desc) — el patrón serpentino de la línea física.
+//
+// El resultado es best-effort para los enjuagues genéricos; el panel muestra un
+// preview EDITABLE para que el operador ajuste los pocos que el heurístico no
+// clave. Las anclas (pasos de proceso de 1 sola tina) y los roles distintivos se
+// reproducen al 100%.
+
+(function (root) {
+  'use strict';
+
+  // Código de línea del prefijo del nombre: "T205-TI00-019…" → "T205". Espeja
+  // ProcessShared.extractLineCodeFromName (se re-implementa para mantener el
+  // módulo puro / testeable en node sin cargar process-shared).
+  function extractLineCode(name) {
+    const m = String(name || '').trim().match(/^(T\d{2,4}|M\d{2,4})\b/i);
+    return m ? m[1].toUpperCase() : null;
+  }
+
+  // Posición física dentro de la línea: "T205-TI00-019 Enjuague" → 19,
+  // "T205-EN00-001 Enracado" → 1. Las tinas cabecera (T205-LI …) → null.
+  function physPos(name) {
+    const m = String(name || '').match(/-[A-Z]{2}\d{2}-(\d{3})\b/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  // Station de nivel LÍNEA ("-LI"): el selector de línea de un tratamiento de
+  // Planificación (ej. "T205-LI Plata y Estaño s/Barras"). Las tinas individuales
+  // (T205-TI00-019, T205-EN00-001) NO lo son. Sirve para acotar las líneas destino
+  // a las realmente ruteables (grupo de tratamiento Planificación), no toda línea
+  // que tenga un enjuague.
+  function isLineStation(name) {
+    return /-LI\b/i.test(String(name || ''));
+  }
+
+  // Roles distintivos que desambiguan tinas del MISMO tratamiento por nombre.
+  // (Un "Enjuague Recuperador" T204 mapea al "Enjuague Recuperador" T205, no a un
+  // enjuague genérico cualquiera.) Orden = prioridad de match.
+  const ROLE_KEYWORDS = ['recuperador', 'caliente', 'flash', 'immsa'];
+
+  function norm(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  // Si la tina default tiene un rol distintivo y existe una candidata destino con
+  // ese mismo rol, devuelve esa candidata; si no, null.
+  function roleMatch(defaultName, dest) {
+    const dn = norm(defaultName);
+    for (const kw of ROLE_KEYWORDS) {
+      if (!dn.includes(kw)) continue;
+      const hits = dest.filter((s) => norm(s.name).includes(kw));
+      if (hits.length) {
+        // empata por posición ascendente para determinismo.
+        return hits.slice().sort((a, b) => (a.pos ?? 1e9) - (b.pos ?? 1e9))[0];
+      }
+    }
+    return null;
+  }
+
+  // Un "pool de enjuague" (tinas intercambiables de flujo, ≥3 y mayormente
+  // "Enjuague") se CONSUME una vez por tina; un tanque de proceso con variantes
+  // (ej. 2 tinas de Decapado Nítrico) se REÚSA. La diferencia define si momentum
+  // descarta las tinas ya usadas o no.
+  function isRinsePool(dest) {
+    if (!Array.isArray(dest) || dest.length < 3) return false;
+    const rinse = dest.filter((s) => /enjuague|rinse/i.test(s && s.name)).length;
+    return rinse >= dest.length / 2;
+  }
+
+  // Elige la tina destino para un nodo multi-candidato: la más cercana al ancla,
+  // con inercia de dirección. Si `consume`, descarta las tinas ya usadas (enjuagues);
+  // si no, permite reúso (tanques de proceso con variantes).
+  function pickMomentum(dest, used, anchorPos, dir, consume) {
+    const withPos = dest.filter((s) => s.pos != null);
+    let pool = consume ? withPos.filter((s) => !used.has(s.id)) : withPos;
+    if (!pool.length) pool = withPos.length ? withPos : dest.slice(); // agotado → permite reúso
+    if (!pool.length) return dest[0] || null;
+    const ref = anchorPos != null ? anchorPos : (pool[0].pos ?? 0);
+    // candidatas en la dirección actual (incl. la propia ancla); si ninguna, todas.
+    const forward = pool.filter((s) => (dir >= 0 ? (s.pos ?? 0) >= ref : (s.pos ?? 0) <= ref));
+    const cand = forward.length ? forward : pool;
+    return cand.slice().sort((a, b) => {
+      const da = Math.abs((a.pos ?? 0) - ref);
+      const db = Math.abs((b.pos ?? 0) - ref);
+      if (da !== db) return da - db;
+      // empate: respeta la dirección (la que avanza en `dir`).
+      return dir >= 0 ? (a.pos ?? 0) - (b.pos ?? 0) : (b.pos ?? 0) - (a.pos ?? 0);
+    })[0];
+  }
+
+  // ── API pública ──────────────────────────────────────────────────────────────
+  // computeRoutes(input) → { routes, skipped, warnings }
+  //   input: {
+  //     recipeNodes: [{ id, name, treatmentId, recipeInd, parentRecipeNodeId,
+  //                     defaultStation: { id, name } | null }],
+  //     candidatesByTreatment: { [treatmentId]: [{ id, name }] },  // todas las líneas
+  //     sourceLineCode, destLineCode,
+  //     partNumberId, workOrderId,
+  //     partGroupId?,            // default null
+  //   }
+  //   routes:  [{ recipeNodeId, treatmentId, stationId, partNumberId, workOrderId, partGroupId }]
+  //   skipped: [{ recipeNodeId, name, treatmentId, reason }]
+  //   warnings: string[]
+  function computeRoutes(input) {
+    const {
+      recipeNodes = [],
+      candidatesByTreatment = {},
+      sourceLineCode,
+      destLineCode,
+      partNumberId,
+      workOrderId,
+      partGroupId = null,
+    } = input || {};
+
+    const routes = [];
+    const skipped = [];
+    const warnings = [];
+
+    const candOf = (tId) => candidatesByTreatment[tId] || candidatesByTreatment[String(tId)] || [];
+    const mkRoute = (node, stationId) => ({
+      recipeNodeId: node.id,
+      treatmentId: node.treatmentId,
+      stationId,
+      partNumberId,
+      workOrderId,
+      partGroupId,
+    });
+
+    const nodes = recipeNodes
+      .filter((n) => n && n.treatmentId != null)
+      .slice()
+      .sort((a, b) => (a.recipeInd ?? 0) - (b.recipeInd ?? 0));
+
+    const assignedPosByNode = new Map(); // recipeNodeId -> physPos de la tina asignada
+    const usedByTreatment = new Map();   // treatmentId -> Set(stationId) consumidas
+    let lastPos = null;                  // cursor global
+    let dir = 1;                         // inercia de dirección
+
+    const usedSet = (tId) => {
+      if (!usedByTreatment.has(tId)) usedByTreatment.set(tId, new Set());
+      return usedByTreatment.get(tId);
+    };
+
+    for (const node of nodes) {
+      const tId = node.treatmentId;
+      const def = node.defaultStation || null;
+      const nodeLine = def ? extractLineCode(def.name) : null;
+
+      // 1. bypass — nodo fuera de la línea origen conserva su tina default.
+      if (nodeLine !== sourceLineCode) {
+        if (def && def.id != null) {
+          routes.push(mkRoute(node, def.id));
+          if (def.name) { const p = physPos(def.name); if (p != null) assignedPosByNode.set(node.id, p); }
+        } else {
+          skipped.push({ recipeNodeId: node.id, name: node.name, treatmentId: tId, reason: 'sin_tina_default' });
+        }
+        continue;
+      }
+
+      // candidatas en la línea destino (schedulingStations ya viene filtrado por grupo).
+      const dest = candOf(tId)
+        .filter((s) => s && extractLineCode(s.name) === destLineCode)
+        .map((s) => ({ id: s.id, name: s.name, pos: physPos(s.name) }));
+
+      if (!dest.length) {
+        skipped.push({ recipeNodeId: node.id, name: node.name, treatmentId: tId, reason: 'sin_tina_destino' });
+        warnings.push(`${node.name || ('nodo ' + node.id)}: sin tina en ${destLineCode} para treatment ${tId}`);
+        continue;
+      }
+
+      // 2/3/4. role-match → single → momentum.
+      let chosen = roleMatch(def && def.name, dest);
+      if (!chosen) {
+        if (dest.length === 1) {
+          chosen = dest[0];
+        } else {
+          const consume = isRinsePool(dest); // enjuagues se consumen; tanques de proceso se reúsan.
+          // Un nodo SIN rol distintivo no debe robar una tina de rol (recuperador,
+          // caliente): se reservan para su nodo. Si el pool genérico queda vacío,
+          // cae a todas las candidatas.
+          const defHasRole = ROLE_KEYWORDS.some((kw) => norm(def && def.name).includes(kw));
+          let pool = dest;
+          if (!defHasRole) {
+            const generic = dest.filter((s) => !ROLE_KEYWORDS.some((kw) => norm(s.name).includes(kw)));
+            if (generic.length) pool = generic;
+          }
+          const parentPos = assignedPosByNode.has(node.parentRecipeNodeId)
+            ? assignedPosByNode.get(node.parentRecipeNodeId)
+            : null;
+          const anchorPos = parentPos != null ? parentPos : lastPos;
+          chosen = pickMomentum(pool, usedSet(tId), anchorPos, dir, consume);
+        }
+      }
+      if (!chosen) {
+        skipped.push({ recipeNodeId: node.id, name: node.name, treatmentId: tId, reason: 'sin_tina_destino' });
+        continue;
+      }
+
+      routes.push(mkRoute(node, chosen.id));
+      usedSet(tId).add(chosen.id);
+      if (chosen.pos != null) {
+        assignedPosByNode.set(node.id, chosen.pos);
+        if (lastPos != null && chosen.pos !== lastPos) dir = chosen.pos > lastPos ? 1 : -1;
+        lastPos = chosen.pos;
+      }
+    }
+
+    return { routes, skipped, warnings };
+  }
+
+  // Convierte el estado deseado (salida de computeRoutes, ya con ediciones del
+  // operador) + las rutas activas de la WO en el payload de la mutación:
+  //   · routesToCreate — recipeNode sin ruta activa.
+  //   · routesToUpdate — recipeNode con ruta activa pero distinta tina → {id, stationId}.
+  //   · routesToDelete — ruta activa cuyo recipeNode ya no se rutea → [id].
+  //   · (tina sin cambio → se omite, no-op).
+  // activeRoutes: nodos crudos de StationTreatmentByWorkOrder.activeRoutes
+  //   ({ id, stationId, recipeNodeId, ... }).
+  function diffRoutes(desiredRoutes, activeRoutes) {
+    const activeByNode = new Map();
+    for (const a of activeRoutes || []) {
+      if (a && a.recipeNodeId != null) activeByNode.set(a.recipeNodeId, a);
+    }
+    const routesToCreate = [];
+    const routesToUpdate = [];
+    const routesToDelete = [];
+    const desiredNodes = new Set();
+    for (const r of desiredRoutes || []) {
+      desiredNodes.add(r.recipeNodeId);
+      const a = activeByNode.get(r.recipeNodeId);
+      if (!a) routesToCreate.push(r);
+      else if (a.stationId !== r.stationId) routesToUpdate.push({ id: a.id, stationId: r.stationId });
+      // misma tina → no-op
+    }
+    for (const a of activeRoutes || []) {
+      if (a && a.id != null && !desiredNodes.has(a.recipeNodeId)) routesToDelete.push(a.id);
+    }
+    return { routesToCreate, routesToUpdate, routesToDelete };
+  }
+
+  // Líneas destino VÁLIDAS para re-rutear: TODAS las del tratamiento de nivel-línea
+  // (grupo Planificación) de la sección origen — sus candidatas son stations "-LI"
+  // (selectores de línea). NO la unión de todos los tratamientos (los enjuagues
+  // arrastran ~25 líneas). Fallback a la unión si no hay selector de línea.
+  //
+  // Se ofrecen TODAS (incluida la origen/actual): NO se excluye ninguna. Detectar "la
+  // línea actual" es ambiguo (una orden movida tiene activeRoutes mixtas: tinas físicas
+  // de una línea + selector "-LI" de otra). En vez de esconder líneas, el batch usa los
+  // CAMBIOS REALES (effectiveChangeCount) para el conteo y el botón Aplicar: elegir la
+  // línea donde ya está da 0 cambios; cualquier otra (incl. devolver a la original) aplica.
+  function destinationLines(candidatesByTreatment, sourceLine) {
+    const cbt = candidatesByTreatment || {};
+    const selectorTreatments = [];
+    for (const tId of Object.keys(cbt)) {
+      const li = (cbt[tId] || []).filter((s) => isLineStation(s && s.name));
+      if (!li.length) continue;
+      const lines = li.map((s) => extractLineCode(s.name)).filter(Boolean);
+      if (lines.includes(sourceLine)) selectorTreatments.push(tId); // selector de ESTA sección
+    }
+    const set = new Set();
+    if (selectorTreatments.length) {
+      for (const tId of selectorTreatments) for (const s of cbt[tId]) {
+        const c = extractLineCode(s.name); if (c) set.add(c);
+      }
+    } else {
+      for (const tId of Object.keys(cbt)) for (const s of (cbt[tId] || [])) {
+        const code = extractLineCode(s && s.name); if (code) set.add(code);
+      }
+    }
+    return [...set].sort();
+  }
+
+  // Station EFECTIVA de cada recipeNode = la activeRoute si existe, si no la default.
+  function effectiveStationByNode(recipeNodes, activeRoutes) {
+    const active = new Map();
+    for (const a of activeRoutes || []) if (a && a.recipeNodeId != null) active.set(a.recipeNodeId, a.stationId);
+    const eff = new Map();
+    for (const n of recipeNodes || []) {
+      if (!n) continue;
+      if (active.has(n.id)) eff.set(n.id, active.get(n.id));
+      else if (n.defaultStation && n.defaultStation.id != null) eff.set(n.id, n.defaultStation.id);
+    }
+    return eff;
+  }
+
+  // Cambios REALES de un set de rutas deseadas vs el estado efectivo actual
+  // (activeRoute ?? default). Un nodo cuenta si su tina deseada difiere de la efectiva.
+  // Esto es la verdad para el conteo "tinas a re-rutear" y el filtro "aplicable":
+  // independiente de comparar líneas (que falla con órdenes movidas).
+  function effectiveChangeCount(recipeNodes, desiredRoutes, activeRoutes) {
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+    let n = 0;
+    for (const r of desiredRoutes || []) if (r.stationId !== eff.get(r.recipeNodeId)) n++;
+    return n;
+  }
+
+  // Línea EFECTIVA actual (best-effort, para mostrar el "Origen"): la línea de la tina
+  // física (con posición) más frecuente entre las stations efectivas. Las "-LI" y nodos
+  // sin posición no cuentan (no son tinas de proceso). Fallback: null.
+  function currentLineCode(recipeNodes, activeRoutes, candidatesByTreatment) {
+    const nameById = new Map();
+    for (const n of recipeNodes || []) if (n && n.defaultStation && n.defaultStation.id != null) nameById.set(n.defaultStation.id, n.defaultStation.name);
+    for (const tId of Object.keys(candidatesByTreatment || {})) for (const s of (candidatesByTreatment[tId] || [])) if (s && s.id != null) nameById.set(s.id, s.name);
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+    const freq = new Map();
+    for (const [, sid] of eff) {
+      const name = nameById.get(sid);
+      const line = extractLineCode(name);
+      if (line && physPos(name) != null) freq.set(line, (freq.get(line) || 0) + 1);
+    }
+    let best = null, k = 0;
+    for (const [l, c] of freq) if (c > k) { best = l; k = c; }
+    return best;
+  }
+
+  const api = { computeRoutes, diffRoutes, extractLineCode, physPos, isLineStation, destinationLines, effectiveStationByNode, effectiveChangeCount, currentLineCode, roleMatch, pickMomentum, isRinsePool };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.AutoRouterEngine = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/auto-router-engine.js =====
+
+// ===== BEGIN scripts/auto-router-api.js =====
+(function(){
+// auto-router-api.js — Capa de datos GraphQL del autoruteador.
+//
+// Abstrae las 3 operaciones del flujo de ruteo (hashes en config.json):
+//   · StationTreatmentByWorkOrder (query)  — árbol de recipeNodes + tinas default
+//                                            + grafo de transportes + rutas activas.
+//   · SearchStationsForTreatment  (query)  — tinas (schedulingStations) por treatment.
+//   · CreateUpdateDeleteRoutes    (mutation) — aplica todas las rutas en batch.
+//
+// Devuelve estructuras normalizadas (sin __typename ni envoltura). Depende de
+// window.SteelheadAPI. Expone window.AutoRouterAPI.
+
+(function (root) {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api()?.log?.(m) ?? console.log('[AR-API]', m);
+
+  // Normaliza un recipeNode crudo del response a la forma que consume el motor.
+  function normRecipeNode(n) {
+    const pn = n.processNodeByDerivedFrom || {};
+    const ds = pn.stationByDefaultStationId || null;
+    return {
+      id: n.id,
+      name: (n.name || '').trim(),
+      treatmentId: n.treatmentId ?? null,
+      recipeInd: n.recipeInd ?? 0,
+      parentRecipeNodeId: n.parentRecipeNodeId ?? null,
+      defaultStation: ds && ds.id != null ? { id: ds.id, name: (ds.name || '').trim() } : null,
+    };
+  }
+
+  // Las candidatas (schedulingStations) vienen EMBEBIDAS en el árbol, una por
+  // tratamiento (treatmentByTreatmentId.schedulingStations). Construirlas desde
+  // aquí evita 17+ llamadas SearchStationsForTreatment por orden y da la fuente
+  // autoritativa (incluye las stations "-LI" del tratamiento de Planificación).
+  function buildCandidatesFromTree(rawNodes) {
+    const byT = {};
+    for (const n of rawNodes || []) {
+      const t = n.treatmentId;
+      if (t == null || byT[t]) continue;
+      const ss = (n.treatmentByTreatmentId?.schedulingStations?.nodes || [])
+        .map((s) => ({ id: s.id, name: (s.name || '').trim() }))
+        .filter((s) => s.id != null && s.name);
+      if (ss.length) byT[t] = ss;
+    }
+    return byT;
+  }
+
+  // Parsea la respuesta de StationTreatmentByWorkOrder en datos de ruteo.
+  function parseRouteData(data, workOrderId, partNumberId) {
+    const wo = (data?.allWorkOrders?.nodes || [])[0] || null;
+    const rawNodes = wo?.recipeNodesByWorkOrderId?.nodes || [];
+    const recipeNodes = rawNodes.map(normRecipeNode);
+    const candidatesByTreatment = buildCandidatesFromTree(rawNodes);
+    const transportGraph = (data?.allDefaultStationTransports?.nodes || []).map((e) => ({
+      fromStationId: e.fromStationId,
+      toStationId: e.toStationId,
+      durationMinutes: e.durationMinutes,
+    }));
+    // activeRoutes: rutas personalizadas ya existentes en la WO. Vacío = OV sin
+    // ruteo previo (caso típico). Se preserva crudo para detectar idempotencia.
+    const activeRoutes = (data?.activeRoutes?.nodes || []).slice();
+    return {
+      workOrderId,
+      idInDomain: wo?.idInDomain ?? null,
+      partNumberId,
+      recipeNodes,
+      transportGraph,
+      activeRoutes,
+      candidatesByTreatment,
+    };
+  }
+
+  // Parsea una respuesta de StationTreatmentByWorkOrder que puede traer VARIAS
+  // órdenes (multi-selección del board: workOrderIds:[…] + partNumberIds:[…]).
+  // Empareja cada WO con su partNumberId por índice de las variables del request,
+  // y reparte activeRoutes por workOrderId. Devuelve un array de routeData por WO.
+  function parseAllRouteData(data, reqVars) {
+    const woIds = (reqVars && reqVars.workOrderIds) || [];
+    const pnIds = (reqVars && reqVars.partNumberIds) || [];
+    const pnByWo = new Map();
+    woIds.forEach((w, i) => pnByWo.set(Number(w), pnIds[i] != null ? Number(pnIds[i]) : null));
+    const transportGraph = (data?.allDefaultStationTransports?.nodes || []).map((e) => ({
+      fromStationId: e.fromStationId, toStationId: e.toStationId, durationMinutes: e.durationMinutes,
+    }));
+    const allActive = data?.activeRoutes?.nodes || [];
+    return (data?.allWorkOrders?.nodes || []).map((wo) => {
+      const rawNodes = wo.recipeNodesByWorkOrderId?.nodes || [];
+      return {
+        workOrderId: wo.id,
+        idInDomain: wo.idInDomain ?? null,
+        partNumberId: pnByWo.has(wo.id) ? pnByWo.get(wo.id) : null,
+        recipeNodes: rawNodes.map(normRecipeNode),
+        transportGraph,
+        activeRoutes: allActive.filter((a) => a.workOrderId === wo.id),
+        candidatesByTreatment: buildCandidatesFromTree(rawNodes),
+      };
+    });
+  }
+
+  // Carga el árbol + transportes + rutas activas de una WO.
+  async function fetchWorkOrderRouteData(workOrderId, partNumberId, partGroupIds = []) {
+    const data = await api().query('StationTreatmentByWorkOrder', {
+      workOrderIds: [Number(workOrderId)],
+      partNumberIds: partNumberId != null ? [Number(partNumberId)] : [],
+      partGroupIds: partGroupIds.map(Number),
+    });
+    return parseRouteData(data, Number(workOrderId), partNumberId != null ? Number(partNumberId) : null);
+  }
+
+  // Tinas (schedulingStations) compatibles con un treatment, de TODAS las líneas.
+  async function fetchStationsForTreatment(treatmentId) {
+    const data = await api().query('SearchStationsForTreatment', {
+      nameLike: '%%',
+      treatmentId: Number(treatmentId),
+    });
+    const nodes = data?.treatmentById?.schedulingStations?.nodes || [];
+    return nodes.map((s) => ({ id: s.id, name: (s.name || '').trim() }));
+  }
+
+  // Corre fns async con concurrencia acotada (evita martillar /graphql con 17+
+  // queries simultáneas). Preserva el orden de `items` en el resultado.
+  async function mapPool(items, limit, fn) {
+    const out = new Array(items.length);
+    let i = 0;
+    const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+      while (i < items.length) {
+        const idx = i++;
+        out[idx] = await fn(items[idx], idx);
+      }
+    });
+    await Promise.all(workers);
+    return out;
+  }
+
+  // Para un set de treatmentIds únicos, devuelve { [treatmentId]: [{id,name}] }.
+  async function fetchCandidatesForTreatments(treatmentIds, concurrency = 5) {
+    const uniq = [...new Set((treatmentIds || []).filter((t) => t != null).map(Number))];
+    const lists = await mapPool(uniq, concurrency, (tId) =>
+      fetchStationsForTreatment(tId).catch((e) => {
+        log(`SearchStationsForTreatment(${tId}) falló: ${e.message}`);
+        return [];
+      })
+    );
+    const map = {};
+    uniq.forEach((tId, idx) => { map[tId] = lists[idx]; });
+    return map;
+  }
+
+  // Resuelve una orden por su número visible (idInDomain) a sus IDs internos.
+  // PartNumbersByWorkOrderIdInDomain trae en una sola llamada el workOrderId interno
+  // + el/los partNumber(s) + partGroup. Devuelve el part primario (el primero).
+  async function resolveWorkOrder(idInDomain) {
+    const data = await api().query('PartNumbersByWorkOrderIdInDomain', { idInDomain: Number(idInDomain) });
+    const wo = data?.workOrderByIdInDomain;
+    if (!wo || wo.id == null) throw new Error(`Orden ${idInDomain} no encontrada`);
+    const locs = wo.partLocationsByWorkOrderId?.nodes || [];
+    const pn = locs[0]?.partNumberByPartNumberId || null;
+    const pg = locs[0]?.partGroupByPartGroupId || null;
+    return {
+      idInDomain: wo.idInDomain,
+      workOrderId: wo.id,
+      name: (wo.name || '').trim(),
+      partNumberId: pn?.id ?? null,
+      partNumberName: (pn?.name || '').trim() || null,
+      partGroupId: pg?.id ?? null,
+      partCount: locs.length,
+    };
+  }
+
+  // Todas las órdenes de una línea del Scheduling board (para "rutear todas" sin
+  // seleccionar una por una). SchedulablePartLocations da las part-locations de la
+  // estación; devolvemos las WO únicas con su pnId/partGroup (ya internos).
+  async function fetchBoardWorkOrders(scheduleId, stationId) {
+    const data = await api().query('SchedulablePartLocations', {
+      scheduleId: Number(scheduleId),
+      stationIds: [Number(stationId)],
+      routedOnly: false,
+    });
+    const nodes = data?.allPartLocations?.nodes || [];
+    const byWo = new Map();
+    for (const n of nodes) {
+      if (n.workOrderId == null) continue;
+      if (!byWo.has(n.workOrderId)) {
+        byWo.set(n.workOrderId, {
+          workOrderId: n.workOrderId,
+          partNumberId: n.partNumberId ?? null,
+          partGroupId: n.partGroupId ?? null,
+        });
+      }
+    }
+    return [...byWo.values()];
+  }
+
+  // Aplica las rutas en una sola mutación batch.
+  // routes: [{recipeNodeId, treatmentId, stationId, partNumberId, workOrderId, partGroupId}]
+  async function applyRoutes(routes, routesToUpdate = [], routesToDelete = []) {
+    const data = await api().query('CreateUpdateDeleteRoutes', {
+      input: {
+        routesToCreate: routes,
+        routesToUpdate,
+        routesToDelete,
+      },
+    });
+    const res = data?.createUpdateDeleteRoutes || {};
+    return {
+      createdRoutes: res.createdRoutes || [],
+      updatedRoutes: res.updatedRoutes || [],
+      deletedRouteIds: res.deletedRouteIds || [],
+    };
+  }
+
+  root.AutoRouterAPI = {
+    fetchWorkOrderRouteData,
+    fetchStationsForTreatment,
+    fetchCandidatesForTreatments,
+    resolveWorkOrder,
+    fetchBoardWorkOrders,
+    applyRoutes,
+    parseRouteData,    // exportado para tests/depuración
+    parseAllRouteData, // multi-WO (captura del board)
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/auto-router-api.js =====
+
+// ===== BEGIN scripts/auto-router-panel.js =====
+(function(){
+// auto-router-panel.js — Panel de preview + aplicación (modo single-order, API-direct).
+//
+// Recibe el contexto capturado del modal nativo (workOrderId, partNumberId, árbol
+// de recipeNodes), deja elegir la línea destino, calcula el mapeo con
+// AutoRouterEngine, muestra un preview EDITABLE (una tina destino por nodo, con
+// override manual), y al aprobar dispara CreateUpdateDeleteRoutes.
+//
+// Depende de: AutoRouterEngine, AutoRouterAPI, (ProcessShared opcional).
+// Expone window.AutoRouterPanel.
+
+const AutoRouterPanel = (() => {
+  'use strict';
+
+  const LOG = '[AR-Panel]';
+  const Engine = () => window.AutoRouterEngine;
+  const ARAPI = () => window.AutoRouterAPI;
+  const log = (m) => window.SteelheadAPI?.log?.(m) ?? console.log(LOG, m);
+
+  let state = fresh();
+  function fresh() {
+    return {
+      ctx: null,
+      sourceLine: null,
+      destLine: null,
+      candidates: null,      // { [treatmentId]: [{id,name}] }
+      destLines: [],         // líneas destino disponibles
+      result: null,          // salida del motor
+      overrides: new Map(),  // recipeNodeId -> stationId (ediciones manuales)
+      busy: false,
+    };
+  }
+
+  // ── Detección de línea origen ──────────────────────────────────────────────
+  function detectSourceLine(recipeNodes) {
+    const lc = Engine().extractLineCode;
+    // 1) por el nodo "Listo para Procesar" (ancla de la sección de línea).
+    const listo = recipeNodes.find(
+      (n) => /listo para procesar/i.test(n.name || '') && n.defaultStation
+    );
+    if (listo) {
+      const code = lc(listo.defaultStation.name);
+      if (code) return code;
+    }
+    // 2) fallback: línea más frecuente entre las tinas default (excluye satélites
+    //    T300/T100 si hay una línea de proceso dominante TI00).
+    const freq = new Map();
+    for (const n of recipeNodes) {
+      if (!n.defaultStation) continue;
+      if (!/-TI\d{2}-/.test(n.defaultStation.name)) continue; // solo tinas de proceso húmedo
+      const code = lc(n.defaultStation.name);
+      if (code) freq.set(code, (freq.get(code) || 0) + 1);
+    }
+    let best = null, bestN = 0;
+    for (const [code, n] of freq) if (n > bestN) { best = code; bestN = n; }
+    return best;
+  }
+
+  // Líneas destino válidas (delegado al motor: solo el tratamiento de nivel-línea
+  // del grupo Planificación, no la unión de todos; excluye la línea ACTUAL vía activeRoutes).
+  const computeDestLines = (candidates, sourceLine, activeRoutes) => Engine().destinationLines(candidates, sourceLine, activeRoutes);
+
+  function compute() {
+    const { ctx, sourceLine, destLine, candidates } = state;
+    if (!destLine) { state.result = null; return; }
+    state.result = Engine().computeRoutes({
+      recipeNodes: ctx.routeData.recipeNodes,
+      candidatesByTreatment: candidates,
+      sourceLineCode: sourceLine,
+      destLineCode: destLine,
+      partNumberId: ctx.partNumberId,
+      workOrderId: ctx.workOrderId,
+    });
+    state.overrides.clear();
+  }
+
+  // ── UI ──────────────────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-arp-style')) return;
+    // Modo OSCURO a propósito (igual que el batch): se diferencia de los modales claros de Steelhead.
+    const css = `
+      .sa-arp-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483640;
+        display:flex;align-items:center;justify-content:center;}
+      .sa-arp{background:#1c2430;width:min(880px,94vw);max-height:90vh;border-radius:10px;
+        display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55);
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e6e9ee;border:1px solid #33404f;}
+      .sa-arp h2{margin:0;font-size:17px;color:#f0f3f7;}
+      .sa-arp-hd{padding:16px 20px;border-bottom:1px solid #33404f;display:flex;
+        align-items:center;justify-content:space-between;gap:12px;}
+      .sa-arp-x{border:none;background:none;font-size:22px;cursor:pointer;color:#9aa7b5;}
+      .sa-arp-x:hover{color:#e6e9ee;}
+      .sa-arp-bd{padding:16px 20px;overflow:auto;}
+      .sa-arp-ft{padding:14px 20px;border-top:1px solid #33404f;display:flex;
+        align-items:center;justify-content:space-between;gap:12px;}
+      .sa-arp-row{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
+      .sa-arp-row label{font-size:13px;color:#9aa7b5;}
+      .sa-arp select,.sa-arp .sa-arp-rowsel{font-size:13px;padding:5px 7px;border:1px solid #3a4757;
+        border-radius:6px;background:#141a23;color:#e6e9ee;max-width:340px;}
+      .sa-arp-btn{border:none;border-radius:7px;padding:9px 16px;font-size:14px;font-weight:600;
+        cursor:pointer;}
+      .sa-arp-btn.primary{background:#13a36f;color:#fff;}
+      .sa-arp-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}
+      .sa-arp-btn.ghost{background:#33404f;color:#dfe5ec;}
+      table.sa-arp-tb{width:100%;border-collapse:collapse;font-size:12.5px;}
+      table.sa-arp-tb th,table.sa-arp-tb td{text-align:left;padding:6px 8px;border-bottom:1px solid #2a3340;
+        vertical-align:middle;}
+      table.sa-arp-tb th{color:#9aa7b5;font-weight:600;position:sticky;top:0;background:#1c2430;}
+      .sa-arp-tag{font-size:10.5px;padding:1px 6px;border-radius:9px;font-weight:700;}
+      .sa-arp-tag.chg{background:#163a2c;color:#5fd0a0;}
+      .sa-arp-tag.keep{background:#2a3340;color:#9aa7b5;}
+      .sa-arp-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;padding:10px 12px;
+        border-radius:7px;font-size:13px;margin-bottom:12px;}
+      .sa-arp-note{font-size:12px;color:#9aa7b5;}`;
+    const s = document.createElement('style');
+    s.id = 'sa-arp-style';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function el(tag, attrs, children) {
+    const e = document.createElement(tag);
+    if (attrs) for (const k of Object.keys(attrs)) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];
+      else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    for (const c of children || []) if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    return e;
+  }
+
+  function removeOverlay() {
+    document.getElementById('sa-arp-ov')?.remove();
+  }
+
+  function open(ctx) {
+    injectStyles();
+    state = fresh();
+    state.ctx = ctx;
+    state.sourceLine = detectSourceLine(ctx.routeData.recipeNodes);
+    renderShell();
+    void loadAndCompute();
+  }
+
+  function close() {
+    removeOverlay();
+    state = fresh();
+  }
+
+  function renderShell() {
+    removeOverlay();
+    const ov = el('div', { id: 'sa-arp-ov', class: 'sa-arp-ov' });
+    ov.addEventListener('mousedown', (e) => { if (e.target === ov) close(); });
+    const panel = el('div', { class: 'sa-arp' });
+    panel.appendChild(el('div', { class: 'sa-arp-hd' }, [
+      el('h2', { text: `🔀 Auto-Ruteador · WO ${state.ctx.routeData.idInDomain ?? state.ctx.workOrderId}` }),
+      el('button', { class: 'sa-arp-x', text: '×', onclick: close }),
+    ]));
+    panel.appendChild(el('div', { class: 'sa-arp-bd', id: 'sa-arp-bd' }));
+    panel.appendChild(el('div', { class: 'sa-arp-ft', id: 'sa-arp-ft' }));
+    ov.appendChild(panel);
+    document.body.appendChild(ov);
+    renderBody(el('div', { class: 'sa-arp-note', text: 'Cargando tinas posibles…' }));
+  }
+
+  function renderBody(node) {
+    const bd = document.getElementById('sa-arp-bd');
+    if (!bd) return;
+    bd.textContent = '';
+    bd.appendChild(node);
+  }
+  function renderFooter(...nodes) {
+    const ft = document.getElementById('sa-arp-ft');
+    if (!ft) return;
+    ft.textContent = '';
+    for (const n of nodes) if (n) ft.appendChild(n);
+  }
+
+  async function loadAndCompute() {
+    const rn = state.ctx.routeData.recipeNodes;
+    if (!state.sourceLine) {
+      renderBody(el('div', { class: 'sa-arp-warn', text: 'No se pudo detectar la línea origen de esta orden.' }));
+      return;
+    }
+    // Candidatas: vienen EMBEBIDAS en el árbol (treatmentByTreatmentId.schedulingStations).
+    // Fallback a SearchStationsForTreatment solo si faltaran.
+    state.candidates = state.ctx.routeData.candidatesByTreatment;
+    if (!state.candidates || !Object.keys(state.candidates).length) {
+      const lc = Engine().extractLineCode;
+      const tids = [...new Set(rn
+        .filter((n) => n.treatmentId != null && n.defaultStation && lc(n.defaultStation.name) === state.sourceLine)
+        .map((n) => n.treatmentId))];
+      try { state.candidates = await ARAPI().fetchCandidatesForTreatments(tids); }
+      catch (e) { renderBody(el('div', { class: 'sa-arp-warn', text: `Error cargando tinas: ${e.message}` })); return; }
+    }
+    state.destLines = computeDestLines(state.candidates, state.sourceLine, state.ctx.routeData.activeRoutes);
+    state.destLine = state.destLines[0] || null;
+    compute();
+    renderPreview();
+  }
+
+  function destCandidatesFor(treatmentId) {
+    const lc = Engine().extractLineCode;
+    return (state.candidates[treatmentId] || [])
+      .filter((s) => lc(s.name) === state.destLine)
+      .map((s) => ({ id: s.id, name: s.name, pos: Engine().physPos(s.name) }))
+      .sort((a, b) => (a.pos ?? 1e9) - (b.pos ?? 1e9));
+  }
+
+  function renderPreview() {
+    const rn = state.ctx.routeData.recipeNodes;
+    const nodeById = new Map(rn.map((n) => [n.id, n]));
+    const lc = Engine().extractLineCode;
+
+    // Selector de línea destino.
+    const destSel = el('select', {
+      class: 'sa-arp-rowsel',
+      onchange: (e) => { state.destLine = e.target.value; compute(); renderPreview(); },
+    }, state.destLines.map((d) => {
+      const o = el('option', { value: d, text: d });
+      if (d === state.destLine) o.selected = true;
+      return o;
+    }));
+
+    const controls = el('div', { class: 'sa-arp-row' }, [
+      el('label', { text: `Origen: ${state.sourceLine}  →  Destino:` }),
+      destSel,
+      el('span', { class: 'sa-arp-note', text: `PN ${state.ctx.partNumberId ?? '—'} · ${rn.length} nodos` }),
+    ]);
+
+    const container = el('div', {}, [controls]);
+
+    // Idempotencia: si la orden ya tiene ruteo activo, se actualiza/borra en vez de duplicar.
+    const nActive = (state.ctx.routeData.activeRoutes || []).length;
+    if (nActive) {
+      container.appendChild(el('div', { class: 'sa-arp-note',
+        text: `Esta orden ya tiene ${nActive} ruta(s) activa(s): se actualizarán/eliminarán las que cambien (sin duplicar).` }));
+    }
+
+    if (!state.destLine || !state.result) {
+      container.appendChild(el('div', { class: 'sa-arp-warn', text: 'No hay líneas destino con tinas compatibles para esta orden.' }));
+      renderBody(container);
+      renderFooter(el('button', { class: 'sa-arp-btn ghost', text: 'Cerrar', onclick: close }));
+      return;
+    }
+
+    // Tabla de rutas.
+    const tb = el('table', { class: 'sa-arp-tb' });
+    tb.appendChild(el('thead', {}, [el('tr', {}, [
+      el('th', { text: 'Paso del proceso' }),
+      el('th', { text: 'Tina origen' }),
+      el('th', { text: 'Tina destino' }),
+      el('th', { text: '' }),
+    ])]));
+    const tbody = el('tbody');
+    let changed = 0;
+    const stationName = new Map(); // id -> name (para mostrar origen)
+    for (const n of rn) if (n.defaultStation) stationName.set(n.defaultStation.id, n.defaultStation.name);
+
+    for (const r of state.result.routes) {
+      const n = nodeById.get(r.recipeNodeId);
+      const inSource = n && n.defaultStation && lc(n.defaultStation.name) === state.sourceLine;
+      const tr = el('tr');
+      tr.appendChild(el('td', { text: n ? n.name : `nodo ${r.recipeNodeId}` }));
+      tr.appendChild(el('td', { text: n && n.defaultStation ? n.defaultStation.name : '—' }));
+
+      if (inSource) {
+        changed++;
+        const opts = destCandidatesFor(r.treatmentId);
+        const chosen = state.overrides.get(r.recipeNodeId) ?? r.stationId;
+        const sel = el('select', {
+          class: 'sa-arp-rowsel',
+          onchange: (e) => { state.overrides.set(r.recipeNodeId, Number(e.target.value)); refreshFooter(); },
+        }, opts.map((o) => {
+          const opt = el('option', { value: String(o.id), text: o.name });
+          if (o.id === chosen) opt.selected = true;
+          return opt;
+        }));
+        tr.appendChild(el('td', {}, [sel]));
+        tr.appendChild(el('td', {}, [el('span', { class: 'sa-arp-tag chg', text: state.sourceLine + '→' + state.destLine })]));
+      } else {
+        tr.appendChild(el('td', { text: stationName.get(r.stationId) || `station ${r.stationId}` }));
+        tr.appendChild(el('td', {}, [el('span', { class: 'sa-arp-tag keep', text: 'sin cambio' })]));
+      }
+      tbody.appendChild(tr);
+    }
+    tb.appendChild(tbody);
+
+    if (state.result.skipped.length) {
+      container.appendChild(el('div', { class: 'sa-arp-note',
+        text: `${state.result.skipped.length} nodo(s) sin tina destino se omiten (globales/sin estación).` }));
+    }
+    container.appendChild(el('div', { class: 'sa-arp-note',
+      text: `${changed} tinas re-ruteadas a ${state.destLine}. Revisa y ajusta cualquiera antes de aplicar.` }));
+    container.appendChild(tb);
+    renderBody(container);
+    refreshFooter();
+  }
+
+  function refreshFooter() {
+    let label = 'Aplicar ruteo';
+    if (state.result && !state.busy) {
+      const split = Engine().diffRoutes(desiredRoutes(), state.ctx.routeData.activeRoutes);
+      const c = split.routesToCreate.length, u = split.routesToUpdate.length, d = split.routesToDelete.length;
+      label = (c + u + d) === 0 ? 'Sin cambios que aplicar' : `Aplicar ruteo (+${c} ~${u} -${d})`;
+    } else if (state.busy) {
+      label = 'Aplicando…';
+    }
+    const applyBtn = el('button', { class: 'sa-arp-btn primary', text: label, onclick: apply });
+    if (state.busy || !state.result) applyBtn.disabled = true;
+    renderFooter(
+      el('button', { class: 'sa-arp-btn ghost', text: 'Cancelar', onclick: close }),
+      applyBtn,
+    );
+  }
+
+  // Estado final deseado (rutas del motor + ediciones del operador).
+  function desiredRoutes() {
+    return state.result.routes.map((r) => ({
+      ...r,
+      stationId: state.overrides.has(r.recipeNodeId) ? state.overrides.get(r.recipeNodeId) : r.stationId,
+    }));
+  }
+
+  async function apply() {
+    if (state.busy || !state.result) return;
+    state.busy = true;
+    refreshFooter();
+    try {
+      // Re-carga el contexto JUSTO antes de aplicar. Steelhead exige una lectura
+      // reciente del árbol de ruteo (StationTreatmentByWorkOrder) para que el save
+      // persista: con el modal nativo abierto esa lectura está "fresca" y graba;
+      // si el modal se cerró hace rato, la lectura quedó vieja y el servidor acepta
+      // la mutación pero NO crea las rutas (rechazo silencioso). Re-fetchear aquí
+      // replica la condición de "modal abierto" y refresca activeRoutes para el diff.
+      let activeRoutes = state.ctx.routeData.activeRoutes;
+      try {
+        const fresh = await ARAPI().fetchWorkOrderRouteData(state.ctx.workOrderId, state.ctx.partNumberId);
+        state.ctx.routeData = fresh;
+        activeRoutes = fresh.activeRoutes;
+      } catch (e) {
+        log(`re-fetch previo a aplicar falló (uso contexto capturado): ${e.message}`);
+      }
+
+      const split = Engine().diffRoutes(desiredRoutes(), activeRoutes);
+      const wantC = split.routesToCreate.length, wantU = split.routesToUpdate.length, wantD = split.routesToDelete.length;
+      const want = wantC + wantU + wantD;
+      if (want === 0) {
+        renderBody(el('div', {}, [el('div', { class: 'sa-arp-row' }, [el('h2', { text: 'Sin cambios que aplicar' })])]));
+        renderFooter(el('button', { class: 'sa-arp-btn primary', text: 'Cerrar', onclick: close }));
+        return;
+      }
+
+      const res = await ARAPI().applyRoutes(split.routesToCreate, split.routesToUpdate, split.routesToDelete);
+      const created = (res.createdRoutes || []).length;
+      const updated = (res.updatedRoutes || []).length;
+      const deleted = (res.deletedRouteIds || []).length;
+      log(`CreateUpdateDeleteRoutes: pedí +${wantC} ~${wantU} -${wantD}; servidor +${created} ~${updated} -${deleted}.`);
+      const woLabel = state.ctx.routeData.idInDomain ?? state.ctx.workOrderId;
+
+      // Verificación honesta: el servidor debe haber CREADO lo que pedimos.
+      // (update/delete no devuelven conteo confiable en todos los casos; el create
+      // vacío con wantC>0 es la firma del rechazo silencioso por estado obsoleto.)
+      if (wantC > 0 && created === 0) {
+        renderBody(el('div', {}, [
+          el('div', { class: 'sa-arp-row' }, [el('h2', { text: '⚠️ No se guardó el ruteo' })]),
+          el('div', { class: 'sa-arp-warn',
+            text: `El servidor aceptó la mutación pero creó 0 de ${wantC} rutas (estado obsoleto). Abre el modal de ruteo de la orden, déjalo abierto, y vuelve a presionar Aplicar.` }),
+        ]));
+        renderFooter(
+          el('button', { class: 'sa-arp-btn ghost', text: 'Cerrar', onclick: close }),
+          el('button', { class: 'sa-arp-btn primary', text: 'Reintentar', onclick: () => { state.busy = false; apply(); } }),
+        );
+        state.busy = false;
+        return;
+      }
+
+      renderBody(el('div', {}, [
+        el('div', { class: 'sa-arp-row' }, [el('h2', { text: '✅ Ruteo aplicado' })]),
+        el('div', { class: 'sa-arp-note',
+          text: `WO ${woLabel}: ${created} creadas, ${updated} actualizadas, ${deleted} eliminadas. Recarga el modal de ruteo para verlas.` }),
+      ]));
+      renderFooter(el('button', { class: 'sa-arp-btn primary', text: 'Cerrar', onclick: close }));
+    } catch (e) {
+      state.busy = false;
+      log(`Error aplicando ruteo: ${e.message}`);
+      const bd = document.getElementById('sa-arp-bd');
+      if (bd) bd.insertBefore(el('div', { class: 'sa-arp-warn', text: `Error al aplicar: ${e.message}` }), bd.firstChild);
+      refreshFooter();
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.AutoRouterPanel = { open, close };
+  }
+  return { open, close };
+})();
+})();
+// ===== END scripts/auto-router-panel.js =====
+
+// ===== BEGIN scripts/auto-router-batch.js =====
+(function(){
+// auto-router-batch.js — Modo BATCH: re-rutear varias órdenes a una línea de una vez.
+//
+// El operador pega los números de orden (idInDomain, los que ve en el Scheduling
+// board), elige la línea destino, y el applet resuelve cada orden, calcula el
+// mapeo con AutoRouterEngine y aplica todas con concurrencia acotada. Cada orden
+// re-lee su árbol JUSTO antes de aplicar (load-before-save) para que el save
+// persista, y verifica que el servidor haya creado lo pedido.
+//
+// Depende de: AutoRouterEngine, AutoRouterAPI. Expone window.AutoRouterBatch.
+
+const AutoRouterBatch = (() => {
+  'use strict';
+
+  const Engine = () => window.AutoRouterEngine;
+  const API = () => window.AutoRouterAPI;
+  const log = (m) => window.SteelheadAPI?.log?.(m) ?? console.log('[AR-Batch]', m);
+  const CONCURRENCY = 3;
+
+  let state = fresh();
+  function fresh() {
+    return { wos: [], candidates: null, destLines: [], destLine: null, busy: false };
+  }
+
+  function detectSourceLine(recipeNodes) {
+    const lc = Engine().extractLineCode;
+    const listo = recipeNodes.find((n) => /listo para procesar/i.test(n.name || '') && n.defaultStation);
+    if (listo) { const c = lc(listo.defaultStation.name); if (c) return c; }
+    const freq = new Map();
+    for (const n of recipeNodes) {
+      if (!n.defaultStation || !/-TI\d{2}-/.test(n.defaultStation.name)) continue;
+      const c = lc(n.defaultStation.name); if (c) freq.set(c, (freq.get(c) || 0) + 1);
+    }
+    let best = null, n = 0;
+    for (const [c, k] of freq) if (k > n) { best = c; n = k; }
+    return best;
+  }
+
+  function parseWoNumbers(text) {
+    return [...new Set((text || '').split(/[\s,;]+/).map((s) => s.trim()).filter((s) => /^\d+$/.test(s)))];
+  }
+
+  // Cambios REALES al rutear una WO a destLine: tinas cuyo destino difiere de la tina
+  // efectiva actual (activeRoute ?? default). Es la verdad para el conteo y el botón
+  // Aplicar — no depende de comparar líneas (que falla con órdenes ya movidas).
+  function changedCount(routeData, sourceLine, destLine) {
+    const r = Engine().computeRoutes({
+      recipeNodes: routeData.recipeNodes, candidatesByTreatment: routeData.candidatesByTreatment || {},
+      sourceLineCode: sourceLine, destLineCode: destLine,
+    });
+    const changed = Engine().effectiveChangeCount(routeData.recipeNodes, r.routes, routeData.activeRoutes);
+    return { changed, total: r.routes.length, skipped: r.skipped.length };
+  }
+
+  // ── concurrencia ────────────────────────────────────────────────────────────
+  async function pool(items, limit, fn) {
+    const out = new Array(items.length);
+    let i = 0;
+    await Promise.all(new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+      while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx); }
+    }));
+    return out;
+  }
+
+  // Aplica una orden (load-before-save: re-lee fresco justo antes — incluye las
+  // candidatas embebidas frescas).
+  async function applyOne(wo, destLine) {
+    const fresh2 = await API().fetchWorkOrderRouteData(
+      wo.workOrderId, wo.partNumberId, wo.partGroupId ? [wo.partGroupId] : []
+    );
+    const sourceLine = detectSourceLine(fresh2.recipeNodes) || wo.sourceLine;
+    const r = Engine().computeRoutes({
+      recipeNodes: fresh2.recipeNodes, candidatesByTreatment: fresh2.candidatesByTreatment || {},
+      sourceLineCode: sourceLine, destLineCode: destLine,
+      partNumberId: wo.partNumberId, workOrderId: wo.workOrderId, partGroupId: wo.partGroupId ?? null,
+    });
+    const split = Engine().diffRoutes(r.routes, fresh2.activeRoutes);
+    const want = split.routesToCreate.length;
+    const res = await API().applyRoutes(split.routesToCreate, split.routesToUpdate, split.routesToDelete);
+    const created = (res.createdRoutes || []).length;
+    if (want > 0 && created === 0) return { ok: false, msg: `creó 0 de ${want} (estado obsoleto)` };
+    return { ok: true, created, updated: (res.updatedRoutes || []).length, deleted: (res.deletedRouteIds || []).length };
+  }
+
+  // ── UI ────────────────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-arb-style')) return;
+    // Modo OSCURO a propósito: los modales nativos de Steelhead son claros, así el
+    // operador distingue de un vistazo que este panel es del Auto-Ruteador (la extensión).
+    const css = `
+      .sa-arb-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483640;display:flex;
+        align-items:center;justify-content:center;}
+      .sa-arb{background:#1c2430;width:min(760px,94vw);max-height:90vh;border-radius:10px;display:flex;
+        flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e6e9ee;border:1px solid #33404f;}
+      .sa-arb h2{margin:0;font-size:16px;color:#f0f3f7;}
+      .sa-arb-hd,.sa-arb-ft{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .sa-arb-hd{border-bottom:1px solid #33404f;} .sa-arb-ft{border-top:1px solid #33404f;}
+      .sa-arb-bd{padding:14px 18px;overflow:auto;}
+      .sa-arb-x{border:none;background:none;font-size:22px;cursor:pointer;color:#9aa7b5;}
+      .sa-arb-x:hover{color:#e6e9ee;}
+      .sa-arb textarea{width:100%;min-height:70px;font-family:ui-monospace,monospace;font-size:13px;
+        background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;padding:8px;box-sizing:border-box;}
+      .sa-arb textarea::placeholder{color:#6f7c8b;}
+      .sa-arb select{font-size:13px;padding:5px 7px;background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;}
+      .sa-arb-btn{border:none;border-radius:7px;padding:9px 15px;font-size:14px;font-weight:600;cursor:pointer;}
+      .sa-arb-btn.primary{background:#13a36f;color:#fff;} .sa-arb-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}
+      .sa-arb-btn.ghost{background:#33404f;color:#dfe5ec;}
+      table.sa-arb-tb{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px;}
+      table.sa-arb-tb th,table.sa-arb-tb td{text-align:left;padding:6px 8px;border-bottom:1px solid #2a3340;}
+      table.sa-arb-tb th{color:#9aa7b5;font-weight:600;}
+      .sa-arb-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
+      .sa-arb-note{font-size:12px;color:#9aa7b5;} .sa-arb-warn{color:#f0a35e;}
+      .sa-arb-st{font-weight:600;} .sa-arb-st.ok{color:#5fd0a0;} .sa-arb-st.err{color:#ff7a7a;} .sa-arb-st.run{color:#e0b34a;}`;
+    const s = document.createElement('style'); s.id = 'sa-arb-style'; s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function el(tag, attrs, kids) {
+    const e = document.createElement(tag);
+    if (attrs) for (const k of Object.keys(attrs)) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];
+      else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids || []) if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    return e;
+  }
+
+  function shell() {
+    document.getElementById('sa-arb-ov')?.remove();
+    const ov = el('div', { id: 'sa-arb-ov', class: 'sa-arb-ov' });
+    ov.addEventListener('mousedown', (e) => { if (e.target === ov && !state.busy) close(); });
+    const p = el('div', { class: 'sa-arb' });
+    p.appendChild(el('div', { class: 'sa-arb-hd' }, [
+      el('h2', { text: '🔀 Auto-Ruteador · Batch (varias órdenes)' }),
+      el('button', { class: 'sa-arb-x', text: '×', onclick: () => { if (!state.busy) close(); } }),
+    ]));
+    p.appendChild(el('div', { class: 'sa-arb-bd', id: 'sa-arb-bd' }));
+    p.appendChild(el('div', { class: 'sa-arb-ft', id: 'sa-arb-ft' }));
+    ov.appendChild(p);
+    document.body.appendChild(ov);
+  }
+  const body = (n) => { const b = document.getElementById('sa-arb-bd'); if (b) { b.textContent = ''; b.appendChild(n); } };
+  const foot = (...n) => { const f = document.getElementById('sa-arb-ft'); if (f) { f.textContent = ''; for (const x of n) if (x) f.appendChild(x); } };
+
+  // open() sin args → modo manual (pegar números). open(preloaded) → órdenes ya
+  // capturadas del board (cada una con su árbol embebido).
+  function open(preloaded) {
+    injectStyles();
+    state = fresh();
+    shell();
+    if (Array.isArray(preloaded) && preloaded.length) {
+      state.wos = preloaded.map((w) => ({
+        idInDomain: w.idInDomain,
+        workOrderId: w.workOrderId,
+        partNumberId: w.partNumberId ?? null,
+        partGroupId: w.partGroupId ?? null,
+        routeData: w.routeData,
+        sourceLine: detectSourceLine((w.routeData && w.routeData.recipeNodes) || []),
+      }));
+      void enrichAndCompute();
+    } else {
+      renderInput();
+    }
+  }
+
+  // Para las órdenes capturadas del board, resuelve el partNumberId/partGroup de
+  // CADA una autoritativamente por su número (PartNumbersByWorkOrderIdInDomain), en
+  // vez de confiar en el pareo por índice del request (que falla si una orden tiene
+  // varias partes o ninguna). NO descarta: las que no resuelvan se marcan con error.
+  async function enrichAndCompute() {
+    state.busy = true;
+    body(el('div', { class: 'sa-arb-note', text: `Resolviendo ${state.wos.length} órdenes…` }));
+    foot();
+    for (const wo of state.wos) {
+      if (!wo.routeData || !(wo.routeData.recipeNodes || []).length) { wo.error = 'sin árbol de proceso'; continue; }
+      try {
+        const m = await API().resolveWorkOrder(wo.idInDomain);
+        wo.partNumberId = m.partNumberId;
+        wo.partGroupId = m.partGroupId;
+        wo.partNumberName = m.partNumberName;
+        wo.name = m.name;
+      } catch (e) { wo.error = e.message; continue; }
+      if (wo.partNumberId == null && wo.partGroupId == null) wo.error = 'sin número de parte';
+    }
+    state.busy = false;
+    await afterWosLoaded();
+  }
+  function close() { document.getElementById('sa-arb-ov')?.remove(); state = fresh(); }
+
+  function renderInput() {
+    const ta = el('textarea', { id: 'sa-arb-ta', placeholder: 'Números de orden separados por coma o salto de línea\nej.  6260, 8649, 8650' });
+    body(el('div', {}, [
+      el('div', { class: 'sa-arb-note', text: 'Pega los números de orden (los que ves en el Scheduling board). Resolveré cada una y calcularé el ruteo a la línea destino que elijas.' }),
+      el('div', { class: 'sa-arb-row' }, []),
+      ta,
+    ]));
+    foot(
+      el('button', { class: 'sa-arb-btn ghost', text: 'Cerrar', onclick: close }),
+      el('button', { class: 'sa-arb-btn primary', text: 'Resolver y calcular', onclick: onCompute }),
+    );
+  }
+
+  function onCompute() {
+    const text = document.getElementById('sa-arb-ta')?.value || '';
+    const nums = parseWoNumbers(text);
+    if (!nums.length) { body(el('div', { class: 'sa-arb-warn', text: 'No detecté números de orden válidos.' })); return; }
+    void resolveAndCompute(nums);
+  }
+
+  // Resuelve cada orden por su número (idInDomain), carga su árbol y calcula. Usado
+  // por el modo manual (textarea) y por la selección del Scheduling board.
+  async function resolveAndCompute(nums) {
+    state.busy = true;
+    body(el('div', { class: 'sa-arb-note', text: `Resolviendo ${nums.length} órdenes…` }));
+    foot();
+    state.wos = [];
+    for (const idd of nums) {
+      try {
+        const meta = await API().resolveWorkOrder(idd);
+        if (meta.partNumberId == null) { state.wos.push({ idInDomain: idd, error: 'sin número de parte' }); continue; }
+        const routeData = await API().fetchWorkOrderRouteData(meta.workOrderId, meta.partNumberId, meta.partGroupId ? [meta.partGroupId] : []);
+        const sourceLine = detectSourceLine(routeData.recipeNodes);
+        state.wos.push({ ...meta, routeData, sourceLine });
+      } catch (e) {
+        state.wos.push({ idInDomain: idd, error: e.message });
+      }
+    }
+    await afterWosLoaded();
+  }
+
+  // Entrada desde la selección del board: abre el panel ya resolviendo esos números.
+  function openWithNumbers(nums) {
+    injectStyles();
+    state = fresh();
+    shell();
+    if (!Array.isArray(nums) || !nums.length) { renderInput(); return; }
+    void resolveAndCompute(nums.map(String));
+  }
+
+  // Entrada "rutear todas": ya traemos {workOrderId, partNumberId, partGroupId}
+  // internos (de SchedulablePartLocations), así que solo cargamos cada árbol.
+  function openWithWorkOrders(list) {
+    injectStyles();
+    state = fresh();
+    shell();
+    if (!Array.isArray(list) || !list.length) { renderInput(); return; }
+    void loadWorkOrders(list);
+  }
+
+  async function loadWorkOrders(list) {
+    state.busy = true;
+    body(el('div', { class: 'sa-arb-note', text: `Cargando ${list.length} órdenes…` }));
+    foot();
+    state.wos = await pool(list, CONCURRENCY, async (w) => {
+      try {
+        const routeData = await API().fetchWorkOrderRouteData(w.workOrderId, w.partNumberId, w.partGroupId ? [w.partGroupId] : []);
+        return {
+          idInDomain: routeData.idInDomain ?? w.workOrderId,
+          workOrderId: w.workOrderId, partNumberId: w.partNumberId, partGroupId: w.partGroupId ?? null,
+          routeData, sourceLine: detectSourceLine(routeData.recipeNodes),
+        };
+      } catch (e) { return { idInDomain: w.workOrderId, error: e.message }; }
+    });
+    state.busy = false;
+    await afterWosLoaded();
+  }
+
+  // Calcula las líneas destino válidas (unión de las del tratamiento de nivel-línea
+  // de cada orden — grupo Planificación) y renderiza el preview. Las candidatas
+  // vienen EMBEBIDAS en el árbol de cada orden (routeData.candidatesByTreatment),
+  // así que no hace falta SearchStationsForTreatment. Compartido por el modo manual
+  // (onCompute) y el precargado del board (open(preloaded)).
+  async function afterWosLoaded() {
+    state.busy = true;
+    const set = new Set();
+    for (const wo of state.wos) {
+      if (wo.error || !wo.routeData) continue;
+      const cbt = wo.routeData.candidatesByTreatment || {};
+      for (const d of Engine().destinationLines(cbt, wo.sourceLine)) set.add(d);
+    }
+    state.destLines = [...set].sort();
+    // default: la primera línea que produzca cambios reales en alguna orden (evita
+    // arrancar en la línea donde ya están → "0 tinas"). Si ninguna, la primera.
+    state.destLine = state.destLines.find((d) =>
+      state.wos.some((w) => !w.error && w.routeData && changedCount(w.routeData, w.sourceLine, d).changed > 0)
+    ) || state.destLines[0] || null;
+    state.busy = false;
+    renderPreview();
+  }
+
+  function renderPreview() {
+    const destSel = el('select', { onchange: (e) => { state.destLine = e.target.value; renderPreview(); } },
+      state.destLines.map((d) => { const o = el('option', { value: d, text: d }); if (d === state.destLine) o.selected = true; return o; }));
+    const ok = state.wos.filter((w) => !w.error);
+    const head = el('div', { class: 'sa-arb-row' }, [
+      el('span', { text: `${ok.length} de ${state.wos.length} órdenes resueltas · línea destino:` }),
+      state.destLines.length ? destSel : el('span', { class: 'sa-arb-warn', text: 'sin líneas destino alternativas (solo corren en su línea actual)' }),
+    ]);
+    const tb = el('table', { class: 'sa-arb-tb' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { text: 'Orden' }), el('th', { text: 'Parte' }), el('th', { text: 'Origen→Destino' }),
+        el('th', { text: 'Tinas a re-rutear' }), el('th', { text: 'Estado', id: 'x' }),
+      ])]),
+    ]);
+    const tbody = el('tbody');
+    for (const wo of state.wos) {
+      const tr = el('tr', { id: `sa-arb-r-${wo.idInDomain}` });
+      if (wo.error) {
+        tr.appendChild(el('td', { text: `#${wo.idInDomain}` }));
+        tr.appendChild(el('td', { text: '—' }));
+        tr.appendChild(el('td', { text: '—' }));
+        tr.appendChild(el('td', { text: '—' }));
+        tr.appendChild(el('td', {}, [el('span', { class: 'sa-arb-st err', text: wo.error })]));
+      } else {
+        const cc = state.destLine ? changedCount(wo.routeData, wo.sourceLine, state.destLine) : { changed: 0, total: 0 };
+        const curLine = Engine().currentLineCode(wo.routeData.recipeNodes, wo.routeData.activeRoutes, wo.routeData.candidatesByTreatment) || wo.sourceLine;
+        tr.appendChild(el('td', { text: `#${wo.idInDomain}` }));
+        tr.appendChild(el('td', { text: wo.partNumberName || String(wo.partNumberId) }));
+        tr.appendChild(el('td', { text: `${curLine || '?'} → ${state.destLine || '?'}` }));
+        tr.appendChild(el('td', { text: cc.changed ? `${cc.changed}` : '0 (sin cambios)' }));
+        tr.appendChild(el('td', {}, [el('span', { class: 'sa-arb-st', id: `sa-arb-stx-${wo.idInDomain}`, text: cc.changed ? 'listo' : 'sin cambios' })]));
+      }
+      tbody.appendChild(tr);
+    }
+    tb.appendChild(tbody);
+    body(el('div', {}, [head, el('div', { class: 'sa-arb-note', text: 'Cada orden se re-lee justo antes de aplicar (para que el save persista). Las tinas finas se ajustan en el modo individual.' }), tb]));
+    const applicable = ok.filter((w) => state.destLine && w.routeData && changedCount(w.routeData, w.sourceLine, state.destLine).changed > 0);
+    const btn = el('button', { class: 'sa-arb-btn primary', text: `Aplicar a ${applicable.length} órdenes`, onclick: applyAll });
+    if (!applicable.length || state.busy) btn.disabled = true;
+    foot(el('button', { class: 'sa-arb-btn ghost', text: 'Cancelar', onclick: close }), btn);
+  }
+
+  function setRow(idInDomain, cls, text) {
+    const x = document.getElementById(`sa-arb-stx-${idInDomain}`);
+    if (x) { x.className = `sa-arb-st ${cls}`; x.textContent = text; }
+  }
+
+  async function applyAll() {
+    if (state.busy) return;
+    state.busy = true;
+    const targets = state.wos.filter((w) => !w.error && state.destLine && w.routeData && changedCount(w.routeData, w.sourceLine, state.destLine).changed > 0);
+    foot(el('span', { class: 'sa-arb-note', id: 'sa-arb-prog', text: `Aplicando 0/${targets.length}…` }));
+    let done = 0, okN = 0;
+    const results = await pool(targets, CONCURRENCY, async (wo) => {
+      setRow(wo.idInDomain, 'run', 'aplicando…');
+      try {
+        const res = await applyOne(wo, state.destLine);
+        done++;
+        const prog = document.getElementById('sa-arb-prog'); if (prog) prog.textContent = `Aplicando ${done}/${targets.length}…`;
+        if (res.ok) { okN++; setRow(wo.idInDomain, 'ok', `✓ +${res.created} ~${res.updated} -${res.deleted}`); return { wo, res }; }
+        setRow(wo.idInDomain, 'err', `⚠️ ${res.msg}`); return { wo, res };
+      } catch (e) {
+        done++; setRow(wo.idInDomain, 'err', `error: ${e.message}`); return { wo, error: e.message };
+      }
+    });
+    state.busy = false;
+    log(`Batch: ${okN}/${targets.length} órdenes ruteadas a ${state.destLine}.`);
+    foot(
+      el('span', { class: 'sa-arb-note', text: `Listo: ${okN}/${targets.length} órdenes ruteadas a ${state.destLine}.` }),
+      el('button', { class: 'sa-arb-btn primary', text: 'Cerrar', onclick: close }),
+    );
+    void results;
+  }
+
+  if (typeof window !== 'undefined') window.AutoRouterBatch = { open, openWithNumbers, openWithWorkOrders, close };
+  return { open, openWithNumbers, openWithWorkOrders, close };
+})();
+})();
+// ===== END scripts/auto-router-batch.js =====
+
+// ===== BEGIN scripts/board-metal-tooltip.js =====
+(function(){
+// board-metal-tooltip.js — Enriquece el tooltip NATIVO del Scheduling board.
+//
+// Steelhead muestra un MUI Tooltip (<div role="tooltip" id="<id>"> con PN + <hr> +
+// descripción) al hacer hover sobre el link del PN. Este módulo INYECTA dos líneas
+// dentro de ESE popover (no crea uno propio → no se traslapa): "Metal base" y "PS"
+// (Packing Slip del cliente). El <a> del PN apunta a su popover por aria-labelledby.
+//
+// Datos:
+//   - Metal base: customInputs.DatosAdicionalesNP.BaseMetal del PN (GetPartNumber).
+//   - PS: customInputs.DatosRecibo.PackingSlip del batch de la fila. El link da el
+//     idInDomain del batch; cadena GetPartNumberInventoryBatch(idInDomain)→id→GetInventoryBatch(id).
+//     Varios batches en la fila → PS concatenados con ", ".
+//
+// CARGA / rendimiento (importante — Steelhead reportó lentitud con el prefetch agresivo):
+//   NO hay prefetch masivo. Las queries se disparan SOLO cuando el popover nativo
+//   aparece (= hover real del usuario sobre un PN), nunca al hacer scroll. Así el
+//   tráfico a /graphql es proporcional a las partes que el usuario realmente inspecciona
+//   (unas pocas por sesión), no a las ~1767 del board. El cache hace instantáneo el
+//   re-hover. SteelheadAPI.query usa fetch propio (no toca el Apollo del host).
+//   suppressNativeTitle es DOM puro (sin red).
+//
+// Depende de: SteelheadAPI. Expone window.BoardMetalTooltip.
+
+const BoardMetalTooltip = (() => {
+  'use strict';
+
+  const api = () => window.SteelheadAPI;
+
+  const CACHE_CAP = 1500;        // tope FIFO (strings cortos; on-demand, crece despacio)
+  const metalCache = new Map();  // pnId -> string | Promise<string>
+  const psCache = new Map();     // batchIdInDomain -> string | Promise<string>
+
+  function capPut(map, key, val) {
+    if (!map.has(key) && map.size >= CACHE_CAP) map.delete(map.keys().next().value);
+    map.set(key, val);
+  }
+
+  function isBoardPage() {
+    return /\/Schedules\/\d+\/ScheduleBoard\/\d+/i.test(location.pathname);
+  }
+
+  // ── extracción de datos (slim: solo el string que se muestra) ──
+  function metalFromCI(ci) {
+    let o = ci; if (typeof ci === 'string') { try { o = JSON.parse(ci); } catch { o = {}; } }
+    return (o && o.DatosAdicionalesNP && o.DatosAdicionalesNP.BaseMetal) || '';
+  }
+  function psFromCI(ci) {
+    let o = ci; if (typeof ci === 'string') { try { o = JSON.parse(ci); } catch { o = {}; } }
+    return (o && o.DatosRecibo && o.DatosRecibo.PackingSlip) || '';
+  }
+
+  function getMetal(pnId) {
+    if (metalCache.has(pnId)) return metalCache.get(pnId);
+    const p = api().query('GetPartNumber', { partNumberId: Number(pnId), usagesLimit: 0, usagesOffset: 0 })
+      .then((d) => { const m = metalFromCI(d?.partNumberById?.customInputs); capPut(metalCache, pnId, m); return m; })
+      .catch(() => { capPut(metalCache, pnId, ''); return ''; });
+    capPut(metalCache, pnId, p);
+    return p;
+  }
+
+  // El link de la fila da el idInDomain del batch; GetInventoryBatch necesita el id INTERNO.
+  // Cadena: GetPartNumberInventoryBatch(idInDomain) → inventoryBatchByIdInDomain.id → GetInventoryBatch(id).
+  function getPS(idInDomain) {
+    if (psCache.has(idInDomain)) return psCache.get(idInDomain);
+    const p = api().query('GetPartNumberInventoryBatch', { idInDomain: Number(idInDomain) })
+      .then((d) => {
+        const internalId = d?.inventoryBatchByIdInDomain?.id;
+        if (!internalId) return '';
+        return api().query('GetInventoryBatch', { id: Number(internalId), limit: 10, offset: 0 })
+          .then((d2) => psFromCI(d2?.inventoryBatchById?.customInputs));
+      })
+      .then((s) => { capPut(psCache, idInDomain, s || ''); return s || ''; })
+      .catch(() => { capPut(psCache, idInDomain, ''); return ''; });
+    capPut(psCache, idInDomain, p);
+    return p;
+  }
+
+  // ── DOM helpers ──
+  const PN_RE = /\/PartNumbers\/(\d+)/;
+  const BATCH_RE = /\/Inventory\/Batches\/(\d+)/;
+
+  function pnIdFromAnchor(a) {
+    const m = (a.getAttribute('href') || '').match(PN_RE);
+    return m ? m[1] : null;
+  }
+
+  // La celda lleva un title= con el MISMO texto del link → el navegador lo muestra como
+  // tooltip nativo encima del popover MUI (recuadro oscuro redundante). Lo quitamos solo
+  // si el title ES exactamente el texto del link (no toca titles legítimos de otras celdas).
+  function suppressNativeTitle(a) {
+    const holder = a.closest('[title]');
+    if (holder && holder.getAttribute('title') === (a.textContent || '').trim()) {
+      holder.removeAttribute('title');
+    }
+  }
+
+  function batchIdsForAnchor(a) {
+    const row = a.closest('tr, [role="row"], [data-index]');
+    if (!row) return [];
+    const ids = [];
+    row.querySelectorAll('a[href*="/Inventory/Batches/"]').forEach((b) => {
+      const m = (b.getAttribute('href') || '').match(BATCH_RE);
+      if (m) ids.push(m[1]);
+    });
+    return [...new Set(ids)];
+  }
+  function psForRow(batchIds) {
+    if (!batchIds.length) return Promise.resolve('');
+    return Promise.all(batchIds.map(getPS)).then((a) => a.filter(Boolean).join(', '));
+  }
+
+  // ── inyección en el popover MUI de Steelhead (on-demand: al aparecer el popover) ──
+  function anchorForPopover(pop) {
+    const id = pop.id;
+    if (!id) return null;
+    try { return document.querySelector('a[aria-labelledby="' + id + '"][href*="/PartNumbers/"]'); }
+    catch { return null; }
+  }
+
+  function mkRow(label) {
+    const p = document.createElement('p');
+    p.className = 'sa-bmt-row';
+    p.style.cssText = 'margin:3px 0 0;font-size:0.92em;line-height:1.25;';
+    const lab = document.createElement('span');
+    lab.textContent = label + ': ';
+    lab.style.opacity = '0.65';
+    const b = document.createElement('b');
+    b.className = 'sa-bmt-val';
+    b.textContent = '…';
+    p.appendChild(lab); p.appendChild(b);
+    return p;
+  }
+  function setVal(row, val) {
+    const b = row.querySelector('.sa-bmt-val');
+    if (b) b.textContent = val; // textContent → anti-XSS (datos de Steelhead)
+  }
+
+  function enrichPopover(pop) {
+    if (!isBoardPage()) return;
+    const a = anchorForPopover(pop);
+    if (!a) return; // no es el tooltip de un PN
+    const pnId = pnIdFromAnchor(a);
+    if (!pnId) return;
+    const inner = pop.querySelector('.MuiTooltip-tooltip') || pop;
+    // idempotencia + staleness (MUI reusa el popper para distintos PN)
+    if (inner.getAttribute('data-sa-pn') === pnId && inner.querySelector('.sa-bmt-row')) return;
+    inner.querySelectorAll('.sa-bmt-row, .sa-bmt-sep').forEach((n) => n.remove());
+    inner.setAttribute('data-sa-pn', pnId);
+
+    const sep = document.createElement('hr');
+    sep.className = 'sa-bmt-sep MuiDivider-root MuiDivider-fullWidth';
+    sep.style.cssText = 'margin:4px 0 2px;opacity:.4;';
+    const metalRow = mkRow('Metal base');
+    const psRow = mkRow('PS');
+    inner.appendChild(sep);
+    inner.appendChild(metalRow);
+    inner.appendChild(psRow);
+
+    Promise.resolve(getMetal(pnId)).then((m) => {
+      if (inner.getAttribute('data-sa-pn') !== pnId) return; // popper ya cambió de PN
+      setVal(metalRow, m || '(sin dato)');
+    });
+    const batchIds = batchIdsForAnchor(a);
+    if (batchIds.length) {
+      psForRow(batchIds).then((s) => {
+        if (inner.getAttribute('data-sa-pn') !== pnId) return;
+        setVal(psRow, s || '(sin dato)');
+      });
+    } else {
+      setVal(psRow, '(sin dato)');
+    }
+  }
+
+  function scanPopovers() {
+    document.querySelectorAll('div[role="tooltip"]').forEach((pop) => { try { enrichPopover(pop); } catch {} });
+  }
+
+  // Suprime el title nativo de los PN anchors de un subárbol (DOM puro, sin red).
+  function suppressTitlesIn(root) {
+    const scope = (root && root.querySelectorAll) ? root : document;
+    scope.querySelectorAll('a[href*="/PartNumbers/"]').forEach(suppressNativeTitle);
+  }
+
+  // ── observer único: inyecta tooltips (on-hover) + suprime title nativo (DOM) ──
+  let observer = null;
+  let lastPath = location.pathname;
+
+  function onMutations(muts) {
+    if (location.pathname !== lastPath) { lastPath = location.pathname; metalCache.clear(); psCache.clear(); }
+    if (!isBoardPage()) return;
+    let sawPopover = false;
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (n.matches?.('div[role="tooltip"]') || n.querySelector?.('div[role="tooltip"]')) sawPopover = true;
+        if (n.matches?.('a[href*="/PartNumbers/"]')) suppressNativeTitle(n);
+        else if (n.querySelector?.('a[href*="/PartNumbers/"]')) suppressTitlesIn(n);
+      }
+    }
+    if (sawPopover) scanPopovers();
+  }
+
+  function init() {
+    if (window.__saBmtInit) return;
+    window.__saBmtInit = true;
+    if (document.documentElement.dataset.saAutoRouterEnabled === 'false') return;
+    observer = new MutationObserver(onMutations);
+    observer.observe(document.body, { childList: true, subtree: true });
+    if (isBoardPage()) suppressTitlesIn(document); // limpia titles visibles iniciales (sin red)
+  }
+
+  if (typeof window !== 'undefined') {
+    window.BoardMetalTooltip = { init };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  }
+  return { init };
+})();
+})();
+// ===== END scripts/board-metal-tooltip.js =====
+
+// ===== BEGIN scripts/auto-router.js =====
+(function(){
+// auto-router.js — Orquestador del autoruteador.
+//
+// · Intercepta StationTreatmentByWorkOrder (la query que dispara el modal de
+//   ruteo nativo de Steelhead) para capturar GRATIS el contexto de la orden:
+//   workOrderId, partNumberId y el árbol completo de recipeNodes. El modal nativo
+//   funciona como "selector de orden" — el applet no necesita pedir IDs internos.
+// · Muestra un FAB 🔀 cuando hay contexto capturado y abre el panel de preview.
+// · Atiende el mensaje 'open-auto-router' del popup.
+//
+// Depende de: SteelheadAPI, AutoRouterAPI, AutoRouterEngine, AutoRouterPanel,
+//             ProcessShared (opcional), SteelheadHostCleanup (panel).
+
+const AutoRouter = (() => {
+  'use strict';
+
+  const VERSION = '0.1.0';
+  const LOG = '[AR]';
+  const api = () => window.SteelheadAPI;
+  const log = (m) => api()?.log?.(m) ?? console.log(LOG, m);
+
+  // Último contexto de ruteo capturado del modal nativo.
+  // { workOrderId, partNumberId, routeData, capturedAt }
+  let captured = null;
+
+  // Selección RASTREADA del Scheduling board (idInDomain de cada orden marcada).
+  // La lista del board es virtualizada (solo renderiza filas visibles), así que en
+  // vez de leer el DOM al momento, acumulamos la selección conforme el usuario
+  // marca/desmarca — así sobrevive el scroll.
+  const boardSelection = new Set();
+
+  // Clave de "tarjeta" = path + estación (?stationId). Cambiar de ESTACIÓN en el board
+  // NO cambia el pathname (solo el ?stationId) → hay que limpiar la selección al cambiar
+  // de estación, no solo de board. (Bug: la selección de una estación se arrastraba a otra.)
+  function boardKey() {
+    const m = (typeof location !== 'undefined' ? location.search : '').match(/[?&]stationId=(\d+)/);
+    return (typeof location !== 'undefined' ? location.pathname : '') + '|' + (m ? m[1] : '');
+  }
+  let lastKey = boardKey();
+  function checkBoardChange() {
+    const k = boardKey();
+    if (k !== lastKey) { lastKey = k; boardSelection.clear(); captured = null; return true; }
+    return false;
+  }
+
+  function getContext() { return captured; }
+
+  function patchFetch() {
+    if (window.__saAutoRouterFetchPatched) return;
+    window.__saAutoRouterFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      const isGraphql = typeof url === 'string' && url.includes('/graphql');
+      let op = null;
+      let vars = null;
+      if (isGraphql && opts?.body && typeof opts.body === 'string') {
+        try {
+          const b = JSON.parse(opts.body);
+          op = b.operationName;
+          vars = b.variables;
+        } catch (_) { /* no-json body */ }
+      }
+
+      const resp = await origFetch.apply(this, args);
+
+      if (op === 'StationTreatmentByWorkOrder' && vars) {
+        // lee la respuesta sin consumir el stream original. Soporta 1 o N órdenes
+        // (multi-selección del board → workOrderIds:[…] + partNumberIds:[…]).
+        try {
+          resp.clone().json().then((j) => {
+            if (!j || !j.data) return;
+            const wos = window.AutoRouterAPI.parseAllRouteData(j.data, vars);
+            if (!wos.length) return;
+            captured = { wos, capturedAt: Date.now() };
+            log(`Contexto capturado: ${wos.length} orden(es) — #${wos.map((w) => w.idInDomain).join(', #')}`);
+            window.dispatchEvent(new Event('sa-ar-context'));
+          }).catch(() => {});
+        } catch (_) { /* swallow */ }
+      }
+      return resp;
+    };
+  }
+
+  // ── FAB ───────────────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-ar-style')) return;
+    const css = `
+      .sa-ar-fab{position:fixed;bottom:20px;right:20px;z-index:2147483600;
+        width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+        background:#0b6e4f;color:#fff;font-size:24px;box-shadow:0 3px 10px rgba(0,0,0,.3);
+        display:flex;align-items:center;justify-content:center;transition:transform .12s;}
+      .sa-ar-fab:hover{transform:scale(1.08);background:#0d8a63;}
+      .sa-ar-fab .sa-ar-badge{position:absolute;top:-4px;right:-4px;background:#e8513a;
+        color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;
+        display:flex;align-items:center;justify-content:center;padding:0 4px;}`;
+    const s = document.createElement('style');
+    s.id = 'sa-ar-style';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // ── Scheduling board: rutear directo desde la selección, sin abrir el modal ──
+  function isBoardPage() {
+    return /\/Schedules\/\d+\/ScheduleBoard\/\d+/i.test(location.pathname);
+  }
+
+  // idInDomain de la orden de una fila (del link /Domains/N/WorkOrders/<id>).
+  function woIdFromRow(tr) {
+    const a = tr && tr.querySelector('a[href*="/WorkOrders/"]');
+    const m = a && (a.getAttribute('href') || '').match(/\/WorkOrders\/(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  // Selección efectiva. Parte de la rastreada (boardSelection, sobrevive la virtualización)
+  // pero RECONCILIA contra el DOM visible: marca las visibles que estén checked y, sobre
+  // todo, QUITA las visibles que ya NO estén checked (el usuario las desmarcó o se
+  // desmarcaron al rutear y el evento change pudo no capturarse → eran el "fantasma 2-3").
+  // Las filas no visibles (virtualizadas) se conservan tal cual.
+  function readBoardSelection() {
+    checkBoardChange(); // si cambió de estación, descarta la selección de la anterior
+    document.querySelectorAll('tr input[type="checkbox"]').forEach((cb) => {
+      const id = woIdFromRow(cb.closest('tr'));
+      if (!id) return; // solo filas de orden (con link a /WorkOrders/)
+      if (cb.checked) boardSelection.add(id);
+      else boardSelection.delete(id);
+    });
+    return [...boardSelection];
+  }
+
+  function fabCount() {
+    if (isBoardPage()) return readBoardSelection().length;
+    return captured && captured.wos ? captured.wos.length : 0;
+  }
+
+  function syncFab() {
+    const onBoard = isBoardPage();
+    const show = onBoard || (captured && captured.wos && captured.wos.length > 0);
+    let fab = document.getElementById('sa-ar-fab');
+    if (show && !fab) {
+      fab = document.createElement('button');
+      fab.id = 'sa-ar-fab';
+      fab.className = 'sa-ar-fab';
+      fab.onclick = onFab;
+      document.body.appendChild(fab);
+    } else if (!show && fab) {
+      fab.remove();
+      return;
+    }
+    if (fab) {
+      const n = fabCount();
+      fab.title = onBoard
+        ? (n ? `Rutear ${n} orden(es) seleccionada(s)` : 'Selecciona órdenes en el board y presiona 🔀')
+        : (n > 1 ? `Auto-rutear ${n} órdenes a otra línea` : 'Auto-rutear esta orden a otra línea');
+      fab.textContent = '🔀';
+      if (n > 0) {
+        const b = document.createElement('span');
+        b.className = 'sa-ar-badge';
+        b.textContent = String(n);
+        fab.appendChild(b);
+      }
+    }
+  }
+
+  function onFab() {
+    if (isBoardPage()) {
+      if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
+      const nums = readBoardSelection();
+      if (nums.length) { window.AutoRouterBatch.openWithNumbers(nums); return; }
+      void rerouteActiveStation(); // sin selección → rutear las de la ESTACIÓN ACTIVA (stationId de la URL)
+      return;
+    }
+    openPanel();
+  }
+
+  // "Rutear toda la estación activa": sin órdenes seleccionadas, carga las de la ESTACIÓN
+  // ACTIVA (la del ?stationId= de la URL — el selector de estación del board la cambia) vía
+  // SchedulablePartLocations y abre el batch. NO es "todo el board" (cada tarjeta es una
+  // estación distinta). CAP anti-carga: si la estación tiene demasiadas órdenes, cargar el
+  // árbol de cada una martillaría /graphql (lo que Steelhead reportó) → pide selección.
+  const REROUTE_STATION_CAP = 60;
+  async function rerouteActiveStation() {
+    const sm = location.pathname.match(/\/Schedules\/(\d+)\/ScheduleBoard\/\d+/i);
+    const stm = location.search.match(/[?&]stationId=(\d+)/);
+    if (!sm || !stm) {
+      alert('Auto-Ruteador: no pude leer la estación de la URL (falta ?stationId). Marca las órdenes con checkbox para rutearlas.');
+      return;
+    }
+    let wos;
+    try { wos = await window.AutoRouterAPI.fetchBoardWorkOrders(sm[1], stm[1]); }
+    catch (e) { alert('Auto-Ruteador: error cargando órdenes de la estación: ' + e.message); return; }
+    if (!wos.length) { alert('Auto-Ruteador: no hay órdenes en esta estación para rutear.'); return; }
+    if (wos.length > REROUTE_STATION_CAP) {
+      alert(`Auto-Ruteador: esta estación tiene ${wos.length} órdenes — son demasiadas para "rutear todas" (cargar el árbol de cada una es pesado para Steelhead). Marca con los checkboxes solo las que quieras mover y presiona 🔀.`);
+      return;
+    }
+    if (!confirm(`Auto-Ruteador: cargar y rutear las ${wos.length} órdenes de ESTA estación a otra línea.\nSe carga el proceso de cada una; revisarás el preview antes de aplicar. ¿Continuar?`)) return;
+    window.AutoRouterBatch.openWithWorkOrders(wos);
+  }
+
+  function openPanel() {
+    if (!captured || !captured.wos || !captured.wos.length) {
+      alert('Auto-Ruteador: abre primero el modal de ruteo de una orden (o selecciona varias en el board y abre el ruteo) para capturarlas, luego presiona 🔀.');
+      return;
+    }
+    if (captured.wos.length > 1) {
+      if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
+      window.AutoRouterBatch.open(captured.wos.map((w) => ({
+        idInDomain: w.idInDomain, workOrderId: w.workOrderId, partNumberId: w.partNumberId,
+        partGroupId: null, routeData: w,
+      })));
+    } else {
+      if (!window.AutoRouterPanel) { alert('Auto-Ruteador: panel no cargado.'); return; }
+      const w = captured.wos[0];
+      window.AutoRouterPanel.open({ workOrderId: w.workOrderId, partNumberId: w.partNumberId, routeData: w });
+    }
+  }
+
+  function openBatch() {
+    if (!window.AutoRouterBatch) { alert('Auto-Ruteador: módulo batch no cargado.'); return; }
+    // Modo manual (sin contexto capturado): pegar números de orden.
+    window.AutoRouterBatch.open();
+  }
+
+  function listenManualTrigger() {
+    try {
+      chrome.runtime?.onMessage?.addListener?.((msg) => {
+        if (!msg) return;
+        if (msg.action === 'open-auto-router') openPanel();
+        else if (msg.action === 'open-auto-router-batch') openBatch();
+      });
+    } catch (_) { /* no chrome.runtime en algunos contextos */ }
+  }
+
+  function installUrlListener() {
+    if (window.__saAutoRouterUrlListener) return;
+    window.__saAutoRouterUrlListener = true;
+    const fire = () => window.dispatchEvent(new Event('sa-ar-url'));
+    ['pushState', 'replaceState'].forEach((m) => {
+      const orig = history[m];
+      history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; };
+    });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('hashchange', fire);
+  }
+
+  function init() {
+    if (window.__saAutoRouterInit) return;
+    window.__saAutoRouterInit = true;
+    const disabled = document.documentElement.dataset.saAutoRouterEnabled === 'false';
+    if (disabled) { log('Deshabilitado'); return; }
+    injectStyles();
+    patchFetch();
+    listenManualTrigger();
+    installUrlListener();
+    window.addEventListener('sa-ar-context', syncFab);
+    window.addEventListener('sa-ar-url', () => {
+      checkBoardChange(); // cambio de board O de estación → limpia selección + contexto (FAB se quita al salir)
+      syncFab();
+    });
+    // Rastreo de selección del board + badge en vivo: al marcar/desmarcar un checkbox,
+    // acumula/quita el idInDomain de esa fila (sobrevive la virtualización del scroll).
+    document.addEventListener('change', (e) => {
+      if (!isBoardPage()) return;
+      const t = e.target;
+      if (!t || typeof t.matches !== 'function' || !t.matches('input[type="checkbox"]')) return;
+      checkBoardChange(); // por si el selector de estación cambió sin disparar sa-ar-url
+      const id = woIdFromRow(t.closest('tr'));
+      if (id) { if (t.checked) boardSelection.add(id); else boardSelection.delete(id); }
+      syncFab();
+    }, true);
+    syncFab();
+    log(`cargado · v${VERSION}`);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.AutoRouter = { VERSION, init, openPanel, openBatch, getContext };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  }
+
+  return { VERSION, init, openPanel, getContext };
+})();
+})();
+// ===== END scripts/auto-router.js =====
+
 // ===== BEGIN sa-bootstrap.js =====
 (function(){
 // sa-bootstrap.js — PRELUDE del bundle (MAIN world). build-safari.sh lo concatena tras steelhead-api.js.
@@ -16729,10 +18591,15 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
 
   // message (config action.message) → función global del applet en el MAIN world.
   var LAUNCH_FN = {
-    'open-vale-almacen':    'ValeAlmacen.open',
-    'run-archiver':         'PNArchiver.openConfigAndRun',
-    'assign-sensor-status': 'SensorStatusAutofill.run',
-    'open-station-config':  'LoadCalculator.openStationConfig'
+    'open-vale-almacen':       'ValeAlmacen.open',
+    'run-archiver':            'PNArchiver.openConfigAndRun',
+    'assign-sensor-status':    'SensorStatusAutofill.run',
+    'open-station-config':     'LoadCalculator.openStationConfig',
+    // auto-router: openPanel re-rutea la(s) orden(es) capturada(s) del modal de ruteo (alerta si no
+    // hay contexto); openBatch abre el modal de pegar números de orden (autocontenido). En Chrome su
+    // trigger vive en chrome.runtime.onMessage (muerto en MAIN world); aquí lo revive el postMessage.
+    'open-auto-router':        'AutoRouter.openPanel',
+    'open-auto-router-batch':  'AutoRouter.openBatch'
   };
 
   function resolveFn(action) {

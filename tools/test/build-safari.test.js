@@ -100,6 +100,7 @@ test('canal de lanzadores consistente: popup LAUNCHERS → dispatcher LAUNCH_FN 
     PNArchiver: 'scripts/archiver.js',
     SensorStatusAutofill: 'scripts/sensor-status-autofill.js',
     LoadCalculator: 'scripts/load-calculator.js',
+    AutoRouter: 'scripts/auto-router.js',
   };
 
   for (const msg of popupMsgs) {

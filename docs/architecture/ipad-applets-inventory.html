@@ -95,10 +95,10 @@
   </div>
 
   <section class="card">
-    <h2>Actualización · Bundle v0.3.0 — canal de lanzadores del popup</h2>
+    <h2>Actualización · Bundle v0.4.0 — canal de lanzadores del popup + auto-router</h2>
     <p>Se resolvió la infraestructura de "applets con interfaz" en Safari <strong>sin tocar el código de los applets</strong>. El popup muestra <strong>botones lanzadores</strong> (sección "Acciones") que escriben un comando en <code>browser.storage.local</code> (<code>saCommand:{action,nonce}</code>); <code>bridge.js</code> (mundo aislado) lo reenvía al MAIN world por <code>postMessage</code>; y un nuevo <code>safari/sa-dispatcher.js</code> (MAIN world) resuelve la acción a la función global del applet vía <strong>allowlist</strong> + fallback a <code>config.actions[].fn</code>.</p>
-    <p>Con esto <strong>entraron al bundle</strong>: <code>vale-almacen</code> (botón flotante, "directo") y las 3 "con-popup" <code>archiver</code>, <code>sensor-status-autofill</code> y <code>load-calculator</code> (lanzadas desde el popup). Total: <strong>20 applets</strong>. Regresión en <code>tools/test/build-safari.test.js</code> (cadena popup→bridge→dispatcher→applet consistente).</p>
-    <div class="callout warn"><p><span class="label">Notas:</span> <code>auto-router</code> sigue pendiente — su acción de popup no está cableada ni en Chrome (usa FAB + intercept del modal). El bundle pasó de ~300 KB a <strong>~785 KB</strong> (mayormente <code>load-calculator</code>, 5 scripts): conviene perfilar el parse en iPads A12 o anteriores.</p></div>
+    <p>Con esto <strong>entraron al bundle</strong>: <code>vale-almacen</code> (botón flotante, "directo") y las 4 "con-popup" <code>archiver</code>, <code>sensor-status-autofill</code>, <code>load-calculator</code> y <code>auto-router</code> (lanzadas desde el popup; auto-router además con su FAB). Total: <strong>21 applets</strong>, 6 lanzadores. Regresión en <code>tools/test/build-safari.test.js</code> (cadena popup→bridge→dispatcher→applet consistente).</p>
+    <div class="callout warn"><p><span class="label">Gotcha auto-router:</span> en Chrome su trigger de popup (<code>chrome.runtime.onMessage</code>) está muerto en el MAIN world y solo corre por el FAB; en Safari el dispatcher usa <code>postMessage</code>, así que los lanzadores <strong>sí operan</strong>. El bundle pasó de ~300 KB a <strong>~870 KB</strong> (mayormente <code>load-calculator</code> + <code>auto-router</code>): conviene perfilar el parse en iPads A12 o anteriores.</p></div>
   </section>
 
   <section class="card">

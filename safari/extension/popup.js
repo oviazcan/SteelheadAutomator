@@ -22,10 +22,12 @@
   // y sa-dispatcher.js llama la función global del applet. `message` debe coincidir con el allowlist de
   // sa-dispatcher.js (LAUNCH_FN) y con config.apps[].actions[].message.
   var LAUNCHERS = [
-    { message: 'open-vale-almacen',     icon: '📦', label: 'Emitir Vale de Almacén',    sub: 'Registrar artículos entregados por usuario' },
-    { message: 'run-archiver',          icon: '🗄️', label: 'Archivar / Desarchivar PNs', sub: 'Por etiquetas, fecha (opcional) y modo' },
-    { message: 'assign-sensor-status',  icon: '📊', label: 'Asignar status de sensores', sub: 'Auto-asigna o elige candidato por member' },
-    { message: 'open-station-config',   icon: '⚙️', label: 'Configurar Estaciones',      sub: 'Dims de tina, capacidad DMK y OEE por línea' }
+    { message: 'open-vale-almacen',       icon: '📦', label: 'Emitir Vale de Almacén',    sub: 'Registrar artículos entregados por usuario' },
+    { message: 'run-archiver',            icon: '🗄️', label: 'Archivar / Desarchivar PNs', sub: 'Por etiquetas, fecha (opcional) y modo' },
+    { message: 'assign-sensor-status',    icon: '📊', label: 'Asignar status de sensores', sub: 'Auto-asigna o elige candidato por member' },
+    { message: 'open-station-config',     icon: '⚙️', label: 'Configurar Estaciones',      sub: 'Dims de tina, capacidad DMK y OEE por línea' },
+    { message: 'open-auto-router',        icon: '🔀', label: 'Auto-Ruteador',             sub: 'Re-rutear orden a otra línea (abre el modal de ruteo primero)' },
+    { message: 'open-auto-router-batch',  icon: '🔀', label: 'Auto-Ruteador — Batch',     sub: 'Rutear varias órdenes (pega los números)' }
   ];
 
   function getAll(keys) {

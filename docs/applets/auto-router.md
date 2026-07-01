@@ -138,6 +138,11 @@ Es `O(órdenes × relaciones)` → JOINs masivos server-side; **no es problema d
 Rápido" puede saltarse este query por completo**: traer solo la(s) orden(es) objetivo por-WO (KBs, como hace el
 auto-ruteador) y programar con `CreateManyScheduleTasks`/`CreateManyStationTasks` (mutaciones ligeras ya existentes).
 
+## Safari/iPad (bundle)
+Incluido en el bundle Safari/iPad **v0.4.0** (`safari/bundle.json`). Auto-inyecta su **FAB 🔀** (board de scheduling / tras interceptar el modal de ruteo) igual que en Chrome, y además expone **2 lanzadores en el popup**: "Auto-Ruteador" (`open-auto-router` → `AutoRouter.openPanel`) y "Auto-Ruteador — Batch" (`open-auto-router-batch` → `AutoRouter.openBatch`), vía el canal `popup → storage(saCommand) → bridge.js → sa-dispatcher.js` (allowlist `LAUNCH_FN`).
+
+**Gotcha aprovechado:** en Chrome el trigger de popup vive en `chrome.runtime.onMessage` (línea `listenManualTrigger`), que **NO existe en el MAIN world** (MV3) → esas acciones de popup están muertas en Chrome y auto-router solo corre por el FAB. En Safari el dispatcher usa `window.postMessage` (sí funciona en MAIN world), así que los lanzadores **sí operan**. `openPanel` degrada con gracia (alerta pidiendo abrir el modal de ruteo si no hay contexto capturado); `openBatch` es autocontenido (modal de pegar números). Scripts limpios de bloqueadores iOS (`a.download`/clipboard/IndexedDB). Peso: suma ~83 KB al bundle (→ ~870 KB total).
+
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
 - **Momentum** de enjuagues: best-effort por diseño (≈50% exacto en genéricos; las 22 rutas críticas son

@@ -8,9 +8,10 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
-- **Bundle v0.3.0 — 20 applets:** los 16 "directo" del inventario + `vale-almacen` (FAB) + 3 "con-popup"
-  (`archiver`, `sensor-status-autofill`, `load-calculator`) lanzables desde el popup. Para agregar/quitar,
-  edita `bundle.json` (inventario en `docs/architecture/ipad-applets-inventory.html`).
+- **Bundle v0.4.0 — 21 applets:** los 16 "directo" del inventario + `vale-almacen` (FAB) + 4 "con-popup"
+  (`archiver`, `sensor-status-autofill`, `load-calculator`, `auto-router`) lanzables desde el popup
+  (auto-router además con su FAB). Para agregar/quitar, edita `bundle.json` (inventario en
+  `docs/architecture/ipad-applets-inventory.html`). Peso ~870 KB — perfilar en iPads A12 o anteriores.
 
 ## Applets con interfaz (lanzadores del popup)
 Algunos applets no se auto-inyectan con botón flotante: se **lanzan desde el popup** (sección "Acciones").
@@ -29,7 +30,10 @@ sa-dispatcher.js → resuelve action → función global del applet y la invoca 
 - **Agregar un lanzador:** (1) mete el applet a `bundle.json`; (2) agrega `{message,icon,label,sub}` a `LAUNCHERS`
   en `safari/extension/popup.js`; (3) agrega `'message':'Global.fn'` a `LAUNCH_FN` en `safari/sa-dispatcher.js`.
   El test `tools/test/build-safari.test.js` verifica que la cadena quede consistente (popup→dispatcher→applet).
-- **auto-router** queda pendiente: su acción de popup no está cableada ni en Chrome (usa FAB + intercept del modal).
+- **auto-router es un caso interesante:** en Chrome su trigger de popup (`chrome.runtime.onMessage`) está muerto en
+  el MAIN world (MV3), así que allá solo corre por su FAB. En Safari el dispatcher usa `postMessage` (sí llega al
+  MAIN world), así que sus lanzadores del popup **sí operan** — Safari lo recupera. `openPanel` pide abrir antes el
+  modal de ruteo (alerta si no hay contexto); `openBatch` es autocontenido.
 
 ## Estructura
 ```
