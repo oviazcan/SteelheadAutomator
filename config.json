@@ -1,6 +1,6 @@
 {
-  "version": "1.7.44",
-  "lastUpdated": "2026-07-01T00:18",
+  "version": "1.7.45",
+  "lastUpdated": "2026-07-01T17:58",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -795,6 +795,28 @@
       "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"],
       "autoInject": true,
       "requiredPermissions": []
+    },
+    {
+      "id": "price-confirm-guard",
+      "name": "Candado de Confirmación de Precio",
+      "subtitle": "Reconfirma el precio (tipo password) y exige divisa al guardar en el modal de precios",
+      "icon": "🔒",
+      "category": "Números de Parte",
+      "scripts": ["scripts/steelhead-api.js", "scripts/price-confirm-core.js", "scripts/price-confirm-guard.js"],
+      "autoInject": true,
+      "requiredPermissions": [],
+      "actions": [
+        {
+          "id": "toggle-price-confirm-guard",
+          "label": "Candado de Precio",
+          "sublabel": "Reconfirmar precio + divisa al guardar (se reactiva al recargar)",
+          "icon": "🔒",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-price-confirm-guard",
+          "fn": "PriceConfirmGuard.toggleFromPopup"
+        }
+      ]
     },
     {
       "id": "receiver-date-override",
