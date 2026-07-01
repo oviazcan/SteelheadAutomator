@@ -7,7 +7,9 @@
 //   [VALE] art:"Guante Nitrilo T/L" cant:2 unidad:"PZA" user:"Juan Pérez" emp:ABC1234 linea:"T205 Linea de Zinc" [/VALE]
 // Encabezado/cierre del vale (1 c/u):
 //   [VALE-INI] fecha:<ISO> equipo:"…" nodo:"…" recoge:"…" items:N [/VALE-INI]
-//   [VALE-FIN] items:N completedAt:<ISO> [/VALE-FIN]
+//   [VALE-FIN] items:N emitido:<ISO> [/VALE-FIN]
+// (El vale es solo la SOLICITUD: el evento queda VIVO tras emitir; por eso el cierre
+//  se marca como "emitido", no "completado".)
 //
 // Un parser externo reconstruye la base de datos de entregas por usuario con
 // SteelheadValeEngine.parseAllLines(textoCompletoDeComentarios).
@@ -116,10 +118,10 @@
     return '[VALE-INI] ' + parts.join(' ') + ' [/VALE-INI]';
   }
 
-  // opts: { items, completedAt:<ISO> }
+  // opts: { items, emitidoAt:<ISO> }
   function buildFooterComment(opts) {
     const o = opts || {};
-    return '[VALE-FIN] items:' + (Number(o.items) || 0) + ' completedAt:' + String(o.completedAt || '') + ' [/VALE-FIN]';
+    return '[VALE-FIN] items:' + (Number(o.items) || 0) + ' emitido:' + String(o.emitidoAt || '') + ' [/VALE-FIN]';
   }
 
   // line de la UI: { articleSensorId, articleName, quantity, assigneeId, assigneeName, equipmentName }
