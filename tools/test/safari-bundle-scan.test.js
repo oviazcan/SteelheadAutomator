@@ -51,8 +51,16 @@ test('las herramientas de descarga conocidas caen en NO-APLICA (si no están en 
   }
 });
 
-test('los candidatos con action.fn en config exponen el fn resoluble para el lanzador', () => {
-  // Al menos un candidato integrable debe traer un launcher con fn directo (data-driven).
-  const withFn = scan.candidates.some((c) => c.suggest === 'INTEGRABLE' && c.launchers.some((l) => l.fn));
-  assert.ok(withFn, 'ningún candidato integrable trae fn de lanzador — ¿cambió el shape de actions?');
+test('cada lanzador extraído trae el shape esperado (message/fn/icon/label/sublabel)', () => {
+  // Estructural, no dependiente del set actual de candidatos (que cambia al integrar): valida que
+  // el escáner extrae los campos que la skill necesita para cablear el lanzador. `fn` puede ser null
+  // (la skill lo resuelve), pero la clave debe existir; `message` siempre presente.
+  for (const c of scan.candidates) {
+    for (const l of c.launchers) {
+      for (const k of ['message', 'fn', 'icon', 'label', 'sublabel']) {
+        assert.ok(k in l, `${c.id}: launcher sin la clave '${k}'`);
+      }
+      assert.ok(l.message, `${c.id}: launcher sin message`);
+    }
+  }
 });
