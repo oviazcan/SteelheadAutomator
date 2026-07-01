@@ -1,6 +1,6 @@
 # Bitácora — `wo-completer` (Completar / Descompletar OTs)
 
-**Versión actual:** 0.1.0 (código + golden tests completos; **pendiente deploy + run real**)
+**Versión actual:** 0.1.0 (**deployado** en config `1.7.38` el 2026-06-30 — app + 3 hashes + 2 scripts en vivo y verificados; **pendiente run real**)
 **Categoría:** Órdenes de Trabajo · **Popup** (`fn: WOCompleter.open`, sin `autoInject`)
 **Diseño:** [`docs/superpowers/specs/2026-06-30-wo-completer-design.md`](../superpowers/specs/2026-06-30-wo-completer-design.md)
 
@@ -62,7 +62,7 @@ y `CreateManyPartsTransfersChecked` (REVERT_COMPLETE) del scan real, + `parseWoL
 `pickRevertableCompletes`, skips.
 
 ## Pendientes
-- [ ] **Deploy:** scripts nuevos con `wb-deploy.sh` (uno por corrida); config+hashes en `main` con `deploy.sh`.
+- [x] **Deploy:** hecho vía `deploy.sh` desde main (config+hashes+2 scripts) → **config `1.7.38` en vivo** (2026-06-30). Nota: el deploy tocaba `config.json` con hashes nuevos, por eso fue `deploy.sh` sobre main (no `wb-deploy.sh`), aplicando las 3 líneas + la app sobre el `1.7.37` actual de main (edición quirúrgica, sin reformatear ni tirar claves duplicadas del original).
 - [ ] **Run real:** dry-run primero, luego una OT de prueba (completar + descompletar), luego el listado.
 - [ ] Confirmar en vivo que un COMPLETE con partes en **múltiples cuentas** se cierra en un solo evento (asunción).
 - [ ] (Opcional) barra de progreso visual y log copiable enriquecido; cancelar en vuelo.
