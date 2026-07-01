@@ -10,8 +10,11 @@
 // Flujo: CreateMaintenanceEvent(raíz) → GetMaintenanceEvent → resolver paso 0
 //        → OperatorMaintenanceNodeDialogQuery (sensores = artículos)
 //        → CreateMaintenanceNodeEvent(paso 0) → CreateManySensorMeasurements (batch)
-//        → CreateMaintenanceEventComment ([VALE]…) → /api/files (evidencia)
-//        → UpdateMaintenanceNodeEvent{archivedAt} → UpdateMaintenanceEvent{completedAt}
+//        → CreateMaintenanceEventComment ([VALE]…) → /api/files (evidencia) → [VALE-FIN]
+// Un vale es solo la SOLICITUD: se completa el paso 0 (por su nodeEvent + mediciones) y el
+// EVENTO QUEDA VIVO (sin completedAt). Almacén surte/confirma después, fuera del applet.
+// El evento solo se cierra al DESCARTAR. El paso NO se archiva: en SH
+// `UpdateMaintenanceNodeEvent{archivedAt}` DESHACE un paso, no lo completa.
 // Depende de: SteelheadAPI + SteelheadValeEngine + window.REMOTE_CONFIG
 const ValeAlmacen = (() => {
   'use strict';
@@ -860,11 +863,15 @@ const ValeAlmacen = (() => {
         }
       }
 
-      // 7. cerrar paso + evento
-      const completedAt = new Date().toISOString();
-      try { await api().query('UpdateMaintenanceNodeEvent', { id: nodeEventId, archivedAt: completedAt }, 'UpdateMaintenanceNodeEvent'); } catch (e) { console.warn('[SA] archivar paso:', e.message); }
-      await api().query('UpdateMaintenanceEvent', { id: ev.id, completedAt }, 'UpdateMaintenanceEvent');
-      try { await post(E.buildFooterComment({ items: lines.length, completedAt })); } catch (_) {}
+      // 7. NO se completa NI se archiva el evento: un vale es solo la SOLICITUD. El evento
+      //    queda VIVO para que almacén surta (paso 1 "Surtimiento de MP") y alguien confirme
+      //    la entrega (paso 2) después — eso ya NO lo controla el applet. El evento solo se
+      //    cierra al DESCARTAR (discardVale). El paso de solicitud (paso 0) quedó COMPLETADO
+      //    por su nodeEvent + mediciones; NO se archiva — en SH `UpdateMaintenanceNodeEvent
+      //    {archivedAt}` DESHACE un paso (en el flujo nativo va siempre tras
+      //    DeleteSensorMeasurement), no lo completa (bug corregido 2026-06-30).
+      const emitidoAt = new Date().toISOString();
+      try { await post(E.buildFooterComment({ items: lines.length, emitidoAt })); } catch (_) {}
 
       const summary = {
         idInDomain: ev.idInDomain, equipmentName: ev.equipmentName, pickupName: ev.pickupName,
