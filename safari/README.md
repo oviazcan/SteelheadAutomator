@@ -138,3 +138,9 @@ tools/build-safari.sh    # regenera main-bundle.js + manifest.json
 # luego recompila en Xcode (paso 3)
 ```
 `tools/deploy.sh` corre `build-safari.sh --check` y avisa si el bundle quedó desactualizado.
+
+> **Rotación de hashes en `config.json` NO requiere rebundle.** La advertencia de `deploy.sh` es un falso
+> positivo cuando el deploy solo cambia hashes (no código de applets): `bridge.js` (mundo aislado) fetchea
+> `config.json` de gh-pages en runtime y `sa-bootstrap.js` → `SteelheadAPI.init()` re-instala los hashes en
+> caliente (fetch de **datos**, no código remoto → cumple Guideline 2.5.2). Verificado en vivo (2026-07-01).
+> Solo rehornea el bundle cuando cambia la **lógica** de un applet en `remote/scripts/`.

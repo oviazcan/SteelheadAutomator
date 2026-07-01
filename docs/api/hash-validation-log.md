@@ -565,4 +565,4 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 - Deploy `tools/deploy.sh`: 1.7.43 → **1.7.44** (commit main `21e45a5`, gh-pages `340d915`).
   El otro agente había avanzado 1.7.39→1.7.43 con el applet `vale-almacen` (ortogonal, sin tocar hashes).
 - Post-deploy: validador `177 ok / 0 stale / 2 skipped` (whitelist `CurrentUser`, `GetPurchaseOrder`), exit 0.
-- Pendiente: bundle Safari/iPad quedó desactualizado (config cambió) — requiere `tools/build-safari.sh` + recompilar en Xcode si algún applet del bundle usa estos hashes.
+- Safari/iPad: **NO requiere rebundle.** La advertencia de `deploy.sh` (`build-safari.sh --check`) es un falso positivo para cambios de solo-hash: `bridge.js` fetchea `config.json` de gh-pages en runtime y `sa-bootstrap.js` → `SteelheadAPI.init()` re-instala los hashes en caliente (ver `safari/sa-bootstrap.js:5` — "REFRESCA con el config en vivo (hashes que rotaron)"). El bundle solo se rehornea cuando cambia el **código** de un applet (`remote/scripts/`), no cuando solo rotan hashes en `config.json`. Verificado en vivo por el usuario (2026-07-01).
