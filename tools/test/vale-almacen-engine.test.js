@@ -100,7 +100,7 @@ test('parseAllLines: extrae varios bloques de un texto concatenado', () => {
     E.buildLineComment({ articleName: 'Guante', quantity: 2, unidad: 'PZA', assigneeName: 'Juan', employeeNumber: 'ABC1234', equipmentName: 'T205' }),
     'comentario libre',
     E.buildLineComment({ articleName: 'Lentes', quantity: 1, assigneeName: 'Ana', employeeNumber: null, equipmentName: 'T205' }),
-    E.buildFooterComment({ items: 2, completedAt: '2026-06-30T14:05:00Z' }),
+    E.buildFooterComment({ items: 2, emitidoAt: '2026-06-30T14:05:00Z' }),
   ].join('\n');
   const lines = E.parseAllLines(txt);
   assert.equal(lines.length, 2); // solo los [VALE], no INI/FIN ni el libre
@@ -122,8 +122,8 @@ test('buildHeaderComment: estructura correcta', () => {
 });
 
 test('buildFooterComment: estructura correcta', () => {
-  const s = E.buildFooterComment({ items: 3, completedAt: '2026-06-30T14:05:00Z' });
-  assert.equal(s, '[VALE-FIN] items:3 completedAt:2026-06-30T14:05:00Z [/VALE-FIN]');
+  const s = E.buildFooterComment({ items: 3, emitidoAt: '2026-06-30T14:05:00Z' });
+  assert.equal(s, '[VALE-FIN] items:3 emitido:2026-06-30T14:05:00Z [/VALE-FIN]');
 });
 
 // ── validateValeLine ──────────────────────────────────────────────────────
