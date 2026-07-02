@@ -232,3 +232,64 @@ test('parseLeadingNumber: primer número del texto (tabla Units / input value)',
   assert.equal(Core.parseLeadingNumber('abc'), null);
   assert.equal(Core.parseLeadingNumber(null), null);
 });
+
+// ---------- buildEquivalences: precio convertido a todas las unidades disponibles ----------
+
+test('buildEquivalences: precio por kg → pieza y demás unidades', () => {
+  // precio 2 USD/kg, factor KGM=0.5 kg/pza, CMK=200 cm²/pza
+  const out = Core.buildEquivalences({
+    price: 2, priceUnitCode: 'KGM', priceUnitFactor: 0.5,
+    factorsByCode: { KGM: 0.5, CMK: 200 },
+  });
+  // precio por pieza = 2 × 0.5 = 1
+  assert.deepEqual(out, [
+    { code: 'pieza', unitPrice: 1, isPriceUnit: false },
+    { code: 'KGM', unitPrice: 2, isPriceUnit: true },     // 1 / 0.5 = 2 (== precio capturado)
+    { code: 'CMK', unitPrice: 0.005, isPriceUnit: false }, // 1 / 200
+  ]);
+});
+
+test('buildEquivalences: precio por pieza → convierte al resto', () => {
+  const out = Core.buildEquivalences({
+    price: 1, priceUnitCode: 'pieza', priceUnitFactor: 1,
+    factorsByCode: { KGM: 0.5 },
+  });
+  assert.deepEqual(out, [
+    { code: 'pieza', unitPrice: 1, isPriceUnit: true },
+    { code: 'KGM', unitPrice: 2, isPriceUnit: false }, // 1 / 0.5
+  ]);
+});
+
+test('buildEquivalences: la unidad del precio no se duplica (está en factorsByCode)', () => {
+  const out = Core.buildEquivalences({
+    price: 4, priceUnitCode: 'CMK', priceUnitFactor: 200,
+    factorsByCode: { CMK: 200 },
+  });
+  // ppp = 4 × 200 = 800; pieza=800; CMK = 800/200 = 4 (== precio)
+  assert.deepEqual(out, [
+    { code: 'pieza', unitPrice: 800, isPriceUnit: false },
+    { code: 'CMK', unitPrice: 4, isPriceUnit: true },
+  ]);
+});
+
+test('buildEquivalences: factores inválidos en el mapa se omiten (no la unidad válida)', () => {
+  const out = Core.buildEquivalences({
+    price: 1, priceUnitCode: 'pieza', priceUnitFactor: 1,
+    factorsByCode: { KGM: 0.5, DMK: 0, FTK: NaN },
+  });
+  assert.deepEqual(out, [
+    { code: 'pieza', unitPrice: 1, isPriceUnit: true },
+    { code: 'KGM', unitPrice: 2, isPriceUnit: false },
+  ]);
+});
+
+test('buildEquivalences: precio/factor inválido → []', () => {
+  assert.deepEqual(Core.buildEquivalences({ price: '', priceUnitCode: 'KGM', priceUnitFactor: 0.5, factorsByCode: {} }), []);
+  assert.deepEqual(Core.buildEquivalences({ price: 2, priceUnitCode: 'KGM', priceUnitFactor: 0, factorsByCode: {} }), []);
+  assert.deepEqual(Core.buildEquivalences({ price: 2, priceUnitCode: 'KGM', priceUnitFactor: null, factorsByCode: {} }), []);
+});
+
+test('buildEquivalences: sin factores extra → solo pieza', () => {
+  const out = Core.buildEquivalences({ price: 3, priceUnitCode: 'pieza', priceUnitFactor: 1, factorsByCode: {} });
+  assert.deepEqual(out, [{ code: 'pieza', unitPrice: 3, isPriceUnit: true }]);
+});

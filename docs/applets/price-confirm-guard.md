@@ -1,6 +1,6 @@
 # Applet: `price-confirm-guard` — Candado de Confirmación de Precio
 
-**Versión actual:** 0.1.2 (factor **DOM-first**: lee de Panel A del modal Editar NP y de la tabla Units del NP, luego API, luego manual; core 20/20 golden. Pendiente validación en vivo)
+**Versión actual:** 0.1.3 (**preview multi-unidad**: el precio capturado se muestra convertido a TODAS las unidades disponibles del NP —pieza + cada unidad con factor—, no solo por pieza; `buildEquivalences` puro; core 26/26 golden. Factor DOM-first (Panel A + tabla Units → API → manual). Pendiente validación en vivo)
 **Archivos:** `remote/scripts/price-confirm-guard.js` (glue DOM/red) + `remote/scripts/price-confirm-core.js` (puro)
 **Tests:** `tools/test/price-confirm-core.test.js` (16/16 verdes)
 **Global:** `window.PriceConfirmGuard` · core `window.PriceConfirmCore` · estado en `window.__saPriceGuard*`
@@ -51,11 +51,18 @@ porque el DOM refleja lo que el operador tiene/cambia en el mismo save, más fre
    `GetAvailableUnits {inventoryItemId}` → `…inventoryItemUnitConversionsByInventoryItemId.nodes[].{factor, unitByUnitId.id}`.
 4. Si nada → **input manual** editable.
 
-En los 4 casos el campo del factor queda **editable** y se muestra la **fuente** detectada. El equivalente se
-calcula sobre el **valor reconfirmado** que teclea el operador (no sobre el original) → no revela el precio
-original y valida lo que se está capturando. `perPieceEquivalent = price × factor`. Anclas de lectura DOM:
-`data-steelhead-component-id` (estables), no clases CSS hasheadas. Parsing puro en `price-confirm-core.js`
-(`unitCodeFromLabel`, `isPerPartLabel`, `parseLeadingNumber`) con golden tests.
+### Preview multi-unidad (v0.1.3)
+El modal muestra el precio capturado convertido a **todas** las unidades disponibles del NP (no solo por
+pieza): `precio_por_pieza = precio × factor_de_la_unidad_capturada`; `precio_por_V = precio_por_pieza / factor_V`
+para cada unidad `V` con factor. Sirve para validar p. ej. "capturé por ft² → ¿cuánto da por pieza / por kg?".
+- Se lee el **mapa completo** de factores (`readAllFactorsFromDOM` → `resolveAllFactors`): Panel A (todas las
+  filas `CODE … / Part:`), tabla Units (todas las filas), o API (`UNIT_BY_ID` mapea `unitId`→código).
+- Núcleo puro `buildEquivalences({price, priceUnitCode, priceUnitFactor, factorsByCode})` → `[{code, unitPrice, isPriceUnit}]`
+  con `pieza` primero; `[]` si el precio o el factor de la unidad capturada son inválidos. Golden tests.
+- El **factor de la unidad capturada** queda editable (por si lo cambian en el save) → recalcula toda la tabla.
+  El equivalente usa el **valor reconfirmado** (no revela el original). La fila de la unidad capturada se resalta.
+- Anclas de lectura DOM: `data-steelhead-component-id` (estables), no clases CSS hasheadas. Parsing puro en
+  `price-confirm-core.js` (`unitCodeFromLabel`, `isPerPartLabel`, `parseLeadingNumber`, `buildEquivalences`).
 
 ## Decisiones de diseño
 - **Disparo:** todo guardado del modal (alta y cambio), no solo cambios.
