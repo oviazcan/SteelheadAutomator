@@ -743,6 +743,23 @@ async function handleMessage(message, sender) {
       return results?.[0]?.result || { error: 'Sin resultado' };
     }
 
+    // ── PN Lifecycle ──
+    case 'run-pn-lifecycle': {
+      const tab = await getSteelheadTab();
+      await injectAppScripts(tab.id, 'pn-lifecycle');
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: async () => {
+          if (!window.PNLifecycle?.openConfigAndRun) return { error: 'PNLifecycle no disponible' };
+          try { return await window.PNLifecycle.openConfigAndRun(); }
+          catch (e) { return { error: e.message }; }
+        }
+      });
+
+      return results?.[0]?.result || { error: 'Sin resultado' };
+    }
+
     // ── File Uploader ──
     case 'upload-pn-files': {
       const tab = await getSteelheadTab();
