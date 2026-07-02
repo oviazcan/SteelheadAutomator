@@ -26,7 +26,46 @@
     };
   }
 
-  const api = { slimPN };
+  function matchesLabels(pn, sel) {
+    const names = (sel?.names || []).map(s => String(s).toUpperCase());
+    if (!names.length) return true;
+    const have = new Set((pn.labels || []).map(l => String(l.name || '').toUpperCase()));
+    return sel.mode === 'OR' ? names.some(n => have.has(n)) : names.every(n => have.has(n));
+  }
+  function applyFilters(pns, filters) {
+    const f = filters || {};
+    const inSet = (arr, v) => !arr || !arr.length || arr.includes(v);
+    return (pns || []).filter(pn => {
+      if (!inSet(f.customers, pn.customer?.id)) return false;
+      if (!inSet(f.metals, pn.metal)) return false;
+      if (!inSet(f.procesos, pn.proceso)) return false;
+      if (!inSet(f.lineas, pn.linea)) return false;
+      if (!inSet(f.departamentos, pn.departamento)) return false;
+      if (!matchesLabels(pn, f.labels)) return false;
+      if (f.dateFilter?.cutoffISO) {
+        if (!pn.createdAt) return false;
+        const d = new Date(pn.createdAt), cut = new Date(f.dateFilter.cutoffISO);
+        if (f.dateFilter.direction === 'after' ? !(d > cut) : !(d < cut)) return false;
+      }
+      return true;
+    });
+  }
+  function discoverFacets(pns) {
+    const bump = (m, k) => { if (k) m.set(k, (m.get(k) || 0) + 1); };
+    const cust = new Map(), metal = new Map(), proc = new Map(), lin = new Map(), dep = new Map(), lbl = new Map();
+    for (const pn of pns || []) {
+      bump(cust, pn.customer?.name);
+      bump(metal, pn.metal); bump(proc, pn.proceso); bump(lin, pn.linea); bump(dep, pn.departamento);
+      for (const l of pn.labels || []) bump(lbl, l.name);
+    }
+    const toArr = (m) => [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    return {
+      customers: toArr(cust), metals: toArr(metal), procesos: toArr(proc),
+      lineas: toArr(lin), departamentos: toArr(dep), labels: toArr(lbl),
+    };
+  }
+
+  const api = { slimPN, matchesLabels, applyFilters, discoverFacets };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SteelheadPNLifecycleCore = api;
 })(typeof window !== 'undefined' ? window : null);
