@@ -566,3 +566,14 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
   El otro agente había avanzado 1.7.39→1.7.43 con el applet `vale-almacen` (ortogonal, sin tocar hashes).
 - Post-deploy: validador `177 ok / 0 stale / 2 skipped` (whitelist `CurrentUser`, `GetPurchaseOrder`), exit 0.
 - Safari/iPad: **NO requiere rebundle.** La advertencia de `deploy.sh` (`build-safari.sh --check`) es un falso positivo para cambios de solo-hash: `bridge.js` fetchea `config.json` de gh-pages en runtime y `sa-bootstrap.js` → `SteelheadAPI.init()` re-instala los hashes en caliente (ver `safari/sa-bootstrap.js:5` — "REFRESCA con el config en vivo (hashes que rotaron)"). El bundle solo se rehornea cuando cambia el **código** de un applet (`remote/scripts/`), no cuando solo rotan hashes en `config.json`. Verificado en vivo por el usuario (2026-07-01).
+
+## 2026-07-01 22:00 — 3 rotado(s)
+
+- Config version: `1.7.46`
+- OK: 161 / 179 · Tiempo: 2022.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-01.json`
+
+**Rotados:**
+- `query AllCustomers` (hash `66e271f6a8a2...`)
+- `query AllSensorDashboards` (hash `432339f25bae...`)
+- `query SensorDashboardQuery` (hash `bde56bd609a2...`)
