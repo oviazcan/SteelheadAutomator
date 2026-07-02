@@ -77,6 +77,21 @@
     return UNIT_BY_ID[unitId] || 'unidad #' + unitId;
   }
 
+  // Parsing del factor desde el DOM (glue en el guard):
+  //  - Panel A (modal Edit Part Number): labels "KGM Kilogramo / Part:" + input value.
+  //  - Tabla Units (página del NP): "1 KGM Kilogramos / part".
+  function unitCodeFromLabel(text) {
+    if (!text) return '';
+    return String(text).trim().split(/\s+/)[0].toUpperCase();
+  }
+  function isPerPartLabel(text) {
+    return /\/\s*part:?\s*$/i.test(String(text || '').trim());
+  }
+  function parseLeadingNumber(text) {
+    const n = parseFloat(String(text == null ? '' : text).trim());
+    return Number.isFinite(n) ? n : null;
+  }
+
   const api = {
     UNIT_BY_ID,
     extractLines,
@@ -85,6 +100,9 @@
     perPieceEquivalent,
     isPerPiece,
     unitLabel,
+    unitCodeFromLabel,
+    isPerPartLabel,
+    parseLeadingNumber,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PriceConfirmCore = api;
