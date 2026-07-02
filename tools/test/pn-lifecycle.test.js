@@ -138,3 +138,36 @@ test('fetchPNsForAction pagina y hace slim', async () => {
   assert.deepEqual(pns.map(p=>p.id), [1,2,3]);
   assert.equal(pns[0].archived, false); // 'NO' => activos
 });
+
+test('isInTargetState archive: true solo cuando archived=true Y tiene label 15646', () => {
+  const V=[231176,231174];
+  assert.equal(isInTargetState({archived:false, labels:[]}, 'archive', V), false);
+  assert.equal(isInTargetState({archived:true, labels:[]}, 'archive', V), false);
+  assert.equal(isInTargetState({archived:true, labels:[{id:15646}]}, 'archive', V), true);
+});
+
+test('applyFilters: fecha after', () => {
+  const P = [
+    { id:1, name:'A', customer:{id:9,name:'Fisher'}, labels:[], metal:'Cobre', proceso:'T204', linea:'L1', departamento:'D3', createdAt:'2026-01-01T00:00:00Z' },
+    { id:2, name:'B', customer:{id:8,name:'Hubbell'}, labels:[], metal:'Acero', proceso:'T106', linea:'L2', departamento:'D3', createdAt:'2026-03-01T00:00:00Z' },
+    { id:3, name:'C', customer:{id:9,name:'Fisher'}, labels:[], metal:'Cobre', proceso:'T204', linea:'L1', departamento:'D9', createdAt:'2026-05-01T00:00:00Z' },
+  ];
+  assert.deepEqual(applyFilters(P, { dateFilter:{cutoffISO:'2026-04-01T00:00:00Z',direction:'after'} }).map(x=>x.id), [3]);
+});
+
+test('archive: GetPartNumber → SavePartNumber → UpdatePartNumber; ya archivado no re-llama UpdatePartNumber', async () => {
+  const calls = [];
+  const api = { query: async (op, v) => { calls.push(op);
+    if (op === 'GetPartNumber') return { partNumberById: { id:5, name:'A',
+      partNumberLabelsByPartNumberId:{nodes:[]}, customInputs:{}, customerByCustomerId:{id:9} } };
+    return {}; }};
+  const r = await runOneItem({ id:5, name:'A', archived:false }, 'archive', api, { validacionNodeIds:[], labelId:15646 });
+  assert.equal(r.status, 'ok');
+  assert.deepEqual(calls, ['GetPartNumber','SavePartNumber','UpdatePartNumber']);
+  const calls2 = [];
+  const api2 = { query: async (op,v) => { calls2.push(op);
+    if (op==='GetPartNumber') return { partNumberById: { id:5, name:'A', partNumberLabelsByPartNumberId:{nodes:[]}, customInputs:{} } };
+    return {}; }};
+  await runOneItem({ id:5, name:'A', archived:true }, 'archive', api2, { validacionNodeIds:[], labelId:15646 });
+  assert.ok(!calls2.includes('UpdatePartNumber'));
+});

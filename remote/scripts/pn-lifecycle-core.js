@@ -109,7 +109,6 @@
   function buildArchiveInput(node, addLabelId) {
     const nds = (p) => { let c = node; for (const k of p.split('.')) c = c?.[k]; return c; };
     const fk = (rel) => node[rel]?.id ?? null;
-    const list = (p) => nds(p) || [];
     const existing = (node.partNumberLabelsByPartNumberId?.nodes || []).map(l => l.labelByLabelId?.id).filter(x => x != null);
     const labelIds = [...new Set([...existing, addLabelId])];
     const opt = (node.processNodePartNumberOptInoutsByPartNumberId?.nodes || [])
