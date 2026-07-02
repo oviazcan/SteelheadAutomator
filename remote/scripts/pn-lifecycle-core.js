@@ -94,7 +94,53 @@
     return { toTag, keep };
   }
 
-  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify };
+  function isInTargetState(pn, action, vnodes, optInNodeIds) {
+    if (action === 'unarchive') return pn.archived === false;
+    if (action === 'archive')   return pn.archived === true && (pn.labels || []).some(l => l.id === 15646);
+    if (action === 'validate')   return (vnodes || []).every(n => (optInNodeIds || []).includes(n));
+    if (action === 'unvalidate') return !(vnodes || []).some(n => (optInNodeIds || []).includes(n));
+    return false;
+  }
+  const buildValidationVars = (partNumberId, processNodeId) => ({ partNumberId, processNodeId, processNodeOccurrence: 1, cancelOthers: false });
+  function optInsToDelete(node, vnodes) {
+    return (node.processNodePartNumberOptInoutsByPartNumberId?.nodes || [])
+      .filter(o => (vnodes || []).includes(o.processNodeId)).map(o => o.id);
+  }
+  function buildArchiveInput(node, addLabelId) {
+    const nds = (p) => { let c = node; for (const k of p.split('.')) c = c?.[k]; return c; };
+    const fk = (rel) => node[rel]?.id ?? null;
+    const list = (p) => nds(p) || [];
+    const existing = (node.partNumberLabelsByPartNumberId?.nodes || []).map(l => l.labelByLabelId?.id).filter(x => x != null);
+    const labelIds = [...new Set([...existing, addLabelId])];
+    const opt = (node.processNodePartNumberOptInoutsByPartNumberId?.nodes || [])
+      .filter(o => o.processNodeId != null).map(o => ({ processNodeId: o.processNodeId, processNodeOccurrence: o.processNodeOccurrence ?? 1, cancelOthers: !!o.cancelOthers }));
+    const dfl = (node.partNumberProcessNodeDefaultsByPartNumberId?.nodes || [])
+      .filter(d => d.treatmentByTreatmentId?.id && d.processNodeId).map(d => ({ treatmentId: d.treatmentByTreatmentId.id, processNodeId: d.processNodeId, processNodeOccurrence: d.processNodeOccurrence ?? 1 }));
+    const inv = node.inventoryItemByPartNumberId; let inventoryItemInput = null;
+    if (inv) {
+      const ucs = (inv.inventoryItemUnitConversionsByInventoryItemId?.nodes || [])
+        .filter(u => u.unitByUnitId?.id && u.factor != null).map(u => ({ unitId: u.unitByUnitId.id, factor: u.factor }));
+      inventoryItemInput = { materialId: inv.materialByMaterialId?.id ?? null, purchasable: false,
+        sourceMaterialConversionType: inv.sourceMaterialConversionType ?? null, providedMaterialConversionType: inv.providedMaterialConversionType ?? null,
+        defaultLeadTime: inv.defaultLeadTime ?? null, unitConversions: ucs, inventoryItemVendors: [] };
+    }
+    return {
+      id: node.id, name: node.name, shortName: node.shortName ?? null,
+      customerId: fk('customerByCustomerId'), defaultProcessNodeId: fk('processNodeByDefaultProcessNodeId'),
+      geometryTypeId: fk('geometryTypeByGeometryTypeId'), partNumberGroupId: fk('partNumberGroupByPartNumberGroupId'),
+      inputSchemaId: node.inputSchemaId, customInputs: node.customInputs || {},
+      glAccountId: fk('glAccountByGlAccountId'), taxCodeId: fk('taxCodeByTaxCodeId'), certPdfTemplateId: node.certPdfTemplateId ?? null,
+      userFileName: null, inventoryItemInput, isOneOff: false, isTemplatePartNumber: !!node.isTemplate, isCoupon: !!node.isCoupon, shipDisassembled: false,
+      descriptionMarkdown: node.descriptionMarkdown || '', customerFacingNotes: node.customerFacingNotes || '',
+      labelIds, ownerIds: [], optInOuts: opt, defaults: dfl,
+      inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
+      partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+      partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], specFieldParamUpdates: [],
+      partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [], defaultSourceConversionItemId: null,
+    };
+  }
+
+  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify, isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SteelheadPNLifecycleCore = api;
 })(typeof window !== 'undefined' ? window : null);

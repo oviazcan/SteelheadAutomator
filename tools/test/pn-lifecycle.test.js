@@ -77,3 +77,30 @@ test('selectDuplicates: dup de activo + entre-archivados', () => {
   // par Z: conserva mayor score (id 5), marca 4
   assert.ok(r.toTag.includes(4) && !r.toTag.includes(5));
 });
+
+const { isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput } = require('../../remote/scripts/pn-lifecycle-core.js');
+const VNODES = [231176, 231174];
+test('isInTargetState validate/unvalidate', () => {
+  assert.equal(isInTargetState({}, 'validate', VNODES, [231176,231174]), true);   // ya tiene ambos
+  assert.equal(isInTargetState({}, 'validate', VNODES, [231176]), false);          // falta uno
+  assert.equal(isInTargetState({}, 'unvalidate', VNODES, []), true);               // ya no tiene ninguno
+});
+test('isInTargetState archive/unarchive por pn.archived', () => {
+  assert.equal(isInTargetState({archived:true}, 'unarchive', VNODES), false);
+  assert.equal(isInTargetState({archived:false}, 'unarchive', VNODES), true);
+});
+test('buildValidationVars', () => {
+  assert.deepEqual(buildValidationVars(5, 231174), {partNumberId:5, processNodeId:231174, processNodeOccurrence:1, cancelOthers:false});
+});
+test('optInsToDelete filtra por processNodeId de validación', () => {
+  const node = { processNodePartNumberOptInoutsByPartNumberId: { nodes: [
+    {id:100, processNodeId:231174}, {id:101, processNodeId:999}, {id:102, processNodeId:231176} ] } };
+  assert.deepEqual(optInsToDelete(node, VNODES).sort(), [100,102]);
+});
+test('buildArchiveInput agrega label preservando labels existentes', () => {
+  const node = { id:5, name:'A', partNumberLabelsByPartNumberId:{nodes:[{labelByLabelId:{id:3}}]},
+                 customerByCustomerId:{id:9}, inputSchemaId:3223 };
+  const inp = buildArchiveInput(node, 15646);
+  assert.deepEqual(inp.labelIds.sort((a,b)=>a-b), [3,15646]);
+  assert.equal(inp.customerId, 9); assert.equal(inp.id, 5);
+});
