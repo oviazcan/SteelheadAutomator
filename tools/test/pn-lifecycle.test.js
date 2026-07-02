@@ -104,3 +104,18 @@ test('buildArchiveInput agrega label preservando labels existentes', () => {
   assert.deepEqual(inp.labelIds.sort((a,b)=>a-b), [3,15646]);
   assert.equal(inp.customerId, 9); assert.equal(inp.id, 5);
 });
+
+const { INCLUDE_FOR_ACTION, fetchPNsForAction } = require('../../remote/scripts/pn-lifecycle-core.js');
+test('mapa acción → includeArchived', () => {
+  assert.equal(INCLUDE_FOR_ACTION.validate, 'NO');
+  assert.equal(INCLUDE_FOR_ACTION.unarchive, 'EXCLUSIVELY');
+});
+test('fetchPNsForAction pagina y hace slim', async () => {
+  const page = (nodes, total) => ({ pagedData: { nodes, totalCount: total } });
+  const api = { query: async (op, v) => v.offset === 0
+      ? page([{id:1,name:'A'},{id:2,name:'B'}], 3)
+      : page([{id:3,name:'C'}], 3) };
+  const pns = await fetchPNsForAction('validate', api, null, 2);
+  assert.deepEqual(pns.map(p=>p.id), [1,2,3]);
+  assert.equal(pns[0].archived, false); // 'NO' => activos
+});

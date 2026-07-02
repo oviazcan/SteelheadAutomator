@@ -140,7 +140,31 @@
     };
   }
 
-  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify, isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput };
+  const INCLUDE_FOR_ACTION = { validate: 'NO', unvalidate: 'NO', archive: 'NO', unarchive: 'EXCLUSIVELY' };
+  async function pageAll(api, includeArchived, archivedFlag, onProgress, pageSize, seen, out, step, steps) {
+    let offset = 0, total = null;
+    for (;;) {
+      const data = await api.query('AllPartNumbers', { orderBy:['ID_ASC'], offset, first:pageSize, searchQuery:'', includeArchived }, 'AllPartNumbers');
+      const nodes = data?.pagedData?.nodes || [];
+      if (total == null) { const tc = data?.pagedData?.totalCount; total = (typeof tc==='number'&&tc>0)?tc:null; }
+      for (const n of nodes) { if (seen.has(n.id)) continue; seen.add(n.id); out.push(slimPN(n, archivedFlag)); }
+      if (onProgress) onProgress({ processed: offset + nodes.length, total, kept: out.length, step, steps });
+      if (nodes.length < pageSize) break;
+      offset += pageSize;
+    }
+  }
+  async function fetchPNsForAction(action, api, onProgress, pageSize = 500, opts = {}) {
+    const inc = INCLUDE_FOR_ACTION[action] || 'NO';
+    const archivedFlag = inc === 'EXCLUSIVELY';
+    const seen = new Set(), out = [];
+    await pageAll(api, inc, archivedFlag, onProgress, pageSize, seen, out, 1, opts.includeArchivedToo ? 2 : 1);
+    if (action === 'archive' && opts.includeArchivedToo) {
+      await pageAll(api, 'EXCLUSIVELY', true, onProgress, pageSize, seen, out, 2, 2);
+    }
+    return out;
+  }
+
+  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify, isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput, INCLUDE_FOR_ACTION, fetchPNsForAction };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SteelheadPNLifecycleCore = api;
 })(typeof window !== 'undefined' ? window : null);
