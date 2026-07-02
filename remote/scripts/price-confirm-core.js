@@ -92,6 +92,28 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  // Precio convertido a todas las unidades disponibles del NP. El factor de cada unidad V es
+  // "unidades V por pieza" (V/pza). precio_por_pieza = precio × factor_de_la_unidad_capturada;
+  // precio_por_V = precio_por_pieza / factor_V. Devuelve [{code, unitPrice, isPriceUnit}] con
+  // 'pieza' primero, o [] si el precio o el factor de la unidad capturada no son válidos.
+  function buildEquivalences(opts) {
+    const o = opts || {};
+    const price = Number(o.price);
+    const puf = Number(o.priceUnitFactor);
+    if (o.price === '' || o.price == null || !Number.isFinite(price)) return [];
+    if (!Number.isFinite(puf) || puf <= 0) return [];
+    const ppp = price * puf;
+    const out = [{ code: 'pieza', unitPrice: ppp, isPriceUnit: o.priceUnitCode === 'pieza' }];
+    const factors = o.factorsByCode || {};
+    for (const code of Object.keys(factors)) {
+      if (code === 'pieza') continue;
+      const f = Number(factors[code]);
+      if (!Number.isFinite(f) || f <= 0) continue;
+      out.push({ code, unitPrice: ppp / f, isPriceUnit: code === o.priceUnitCode });
+    }
+    return out;
+  }
+
   const api = {
     UNIT_BY_ID,
     extractLines,
@@ -103,6 +125,7 @@
     unitCodeFromLabel,
     isPerPartLabel,
     parseLeadingNumber,
+    buildEquivalences,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PriceConfirmCore = api;

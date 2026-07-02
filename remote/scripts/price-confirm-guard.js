@@ -55,6 +55,11 @@ const PriceConfirmGuard = (() => {
       .sa-pcg-calc .r{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
       .sa-pcg-fin{width:120px;background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:8px;padding:7px 9px;font-size:14px;}
       .sa-pcg-eq{font-weight:700;color:#7ee0b8;font-size:15px;}
+      .sa-pcg-equiv{display:flex;flex-direction:column;gap:2px;margin:4px 0;}
+      .sa-pcg-eqrow{display:flex;align-items:baseline;gap:8px;padding:4px 8px;border-radius:6px;}
+      .sa-pcg-eqrow.me{background:#14251d;border:1px solid #1f5c44;}
+      .sa-pcg-eqv{font-weight:700;color:#7ee0b8;font-size:15px;min-width:120px;}
+      .sa-pcg-equ{color:#c3ccd6;font-size:13px;}
       .sa-pcg-nodiv{background:#3a1d1d;color:#f3c2c2;border:1px solid #6b2b2b;border-radius:8px;padding:9px 11px;margin:8px 0;font-size:13px;}
       .sa-pcg-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;}
       .sa-pcg-btn.primary{background:#13a36f;color:#fff;} .sa-pcg-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}
@@ -107,50 +112,67 @@ const PriceConfirmGuard = (() => {
   function nativePriceModalOpen() { return !!getNativePriceModal(); }
 
   function money(x) { return '$' + Number(x).toFixed(2); }
+  // Formato adaptativo: precios por unidad pueden ser muy chicos (0.005/cm²) → más decimales.
+  function fmtMoney(x) {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '—';
+    const abs = Math.abs(n);
+    const dec = abs >= 1 ? 2 : (abs >= 0.01 ? 4 : 6);
+    return '$' + n.toFixed(dec);
+  }
 
-  // ── factor de conversión unidad→pieza desde el DOM (más fresco que la API: refleja
-  //    lo que el operador tiene/cambia en el mismo save). Devuelve {factor, source} o null.
-  //    Fuente 1: Panel A del modal Edit Part Number (labels "CODE … / Part:" + input).
-  //    Fuente 2: tabla Units de la página del NP ("N CODE … / part" + href /Units/<id>). ──
-  function readFactorFromDOM(unitId, unitCode) {
-    const wantCode = String(unitCode || '').toUpperCase();
-    // Fuente 1: Panel A (Per Part Count Unit Definitions)
+  // Pinta la tabla de equivalencias (una fila por unidad; resalta la unidad capturada).
+  function renderEquiv(box, eqs, divisa) {
+    box.textContent = '';
+    if (!eqs || !eqs.length) { box.appendChild(el('div', { class: 'sa-pcg-sub', text: '—' })); return; }
+    for (const e of eqs) {
+      box.appendChild(el('div', { class: 'sa-pcg-eqrow' + (e.isPriceUnit ? ' me' : '') }, [
+        el('span', { class: 'sa-pcg-eqv', text: fmtMoney(e.unitPrice) + ' ' + divisa }),
+        el('span', { class: 'sa-pcg-equ', text: '/ ' + e.code + (e.isPriceUnit ? '  · capturado' : '') }),
+      ]));
+    }
+  }
+
+  // ── mapa COMPLETO de factores (unidad→pieza) del NP desde el DOM. Devuelve
+  //    {factorsByCode:{CODE:factor}, source} o null. Más fresco que la API (refleja lo que el
+  //    operador tiene/cambia en el mismo save).
+  //    Fuente 1: Panel A del modal Editar NP (labels "CODE … / Part:" + input).
+  //    Fuente 2: tabla Units de la página del NP ("N CODE … / part"). ──
+  function readAllFactorsFromDOM() {
     const panelA = document.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_PER_PART_COUNT_UNIT_DEFINITIONS"]');
     if (panelA) {
-      const labels = panelA.querySelectorAll('p.MuiTypography-root, p');
-      for (const p of labels) {
+      const factors = {};
+      panelA.querySelectorAll('p.MuiTypography-root, p').forEach((p) => {
         const txt = p.textContent || '';
-        if (!Core().isPerPartLabel(txt)) continue;
-        if (Core().unitCodeFromLabel(txt) !== wantCode) continue;
+        if (!Core().isPerPartLabel(txt)) return;
+        const code = Core().unitCodeFromLabel(txt);
         const input = p.parentElement && p.parentElement.querySelector('input');
         const f = input ? Core().parseLeadingNumber(input.value) : null;
-        if (f != null && f > 0) return { factor: f, source: 'modal Editar NP' };
-      }
+        if (code && f != null && f > 0) factors[code] = f;
+      });
+      if (Object.keys(factors).length) return { factorsByCode: factors, source: 'modal Editar NP' };
     }
-    // Fuente 2: tabla Units de la página del NP
     const unitsTable = document.querySelector('[data-steelhead-component-id="PART_NUMBER_PAGE_UNITS"]');
     if (unitsTable) {
-      const rows = unitsTable.querySelectorAll('tr');
-      for (const tr of rows) {
+      const factors = {};
+      unitsTable.querySelectorAll('tr').forEach((tr) => {
         const a = tr.querySelector('a[href*="/Units/"]');
-        if (!a) continue;
-        const href = a.getAttribute('href') || '';
-        const byId = unitId != null && new RegExp('/Units/' + unitId + '(?:$|[^0-9])').test(href);
-        const byCode = Core().unitCodeFromLabel(a.textContent || '') === wantCode;
-        if (!byId && !byCode) continue;
+        if (!a) return;
+        const code = Core().unitCodeFromLabel(a.textContent || '');
         const perPartP = tr.querySelector('td p.MuiTypography-root, td p');
         const f = perPartP ? Core().parseLeadingNumber(perPartP.textContent || '') : null;
-        if (f != null && f > 0) return { factor: f, source: 'tabla Units del NP' };
-      }
+        if (code && f != null && f > 0) factors[code] = f;
+      });
+      if (Object.keys(factors).length) return { factorsByCode: factors, source: 'tabla Units del NP' };
     }
     return null;
   }
 
-  // Factor por prioridad: DOM (Panel A / tabla Units) → API guardada. Devuelve {factor, source} o null.
-  async function resolveFactor(partNumberId, unitId, unitCode) {
-    const dom = readFactorFromDOM(unitId, unitCode);
+  // Mapa de factores por prioridad: DOM → API guardada. Devuelve {factorsByCode, source} o null.
+  async function resolveAllFactors(partNumberId) {
+    const dom = readAllFactorsFromDOM();
     if (dom) return dom;
-    if (!api() || partNumberId == null || unitId == null) return null;
+    if (!api() || partNumberId == null) return null;
     try {
       const pnData = await api().query('GetPartNumber', { id: partNumberId }, 'GetPartNumber');
       const invId = pnData?.partNumberById?.inventoryItemByPartNumberId?.id
@@ -158,11 +180,15 @@ const PriceConfirmGuard = (() => {
       if (!invId) return null;
       const unitsData = await api().query('GetAvailableUnits', { inventoryItemId: invId }, 'GetAvailableUnits');
       const nodes = unitsData?.inventoryItemById?.inventoryItemUnitConversionsByInventoryItemId?.nodes || [];
-      const conv = nodes.find((c) => Number(c.unitByUnitId?.id) === Number(unitId));
-      const f = conv ? Number(conv.factor) : null;
-      return Number.isFinite(f) && f > 0 ? { factor: f, source: 'guardado (API)' } : null;
+      const factors = {};
+      for (const c of nodes) {
+        const code = Core().UNIT_BY_ID[Number(c.unitByUnitId?.id)];
+        const f = Number(c.factor);
+        if (code && Number.isFinite(f) && f > 0) factors[code] = f;
+      }
+      return Object.keys(factors).length ? { factorsByCode: factors, source: 'guardado (API)' } : null;
     } catch (e) {
-      console.warn('[SA] PriceGuard: no se pudo obtener el factor guardado:', e && e.message);
+      console.warn('[SA] PriceGuard: no se pudieron obtener los factores:', e && e.message);
       return null;
     }
   }
@@ -203,10 +229,15 @@ const PriceConfirmGuard = (() => {
             r.mark.className = 'sa-pcg-mark' + (okPrice ? ' ok' : (typed ? ' bad' : ''));
             r.mark.textContent = okPrice ? '✔ coincide' : (typed ? '✖ no coincide' : '');
           }
-          if (r.equivSpan) {
-            // valores crudos (string): el core rechaza vacío/no-numérico → '—' hasta que teclee.
-            const eq = Core().perPieceEquivalent(val, r.factorInput.value);
-            r.equivSpan.textContent = eq == null ? '—' : (money(eq) + ' ' + (r.line.divisa || '') + ' / pieza');
+          if (r.equivBox) {
+            const priceUnitCode = Core().unitLabel(r.line.unitId);
+            const puf = Core().isPerPiece(r.line.unitId)
+              ? 1
+              : (r.priceUnitFactorInput ? Number(r.priceUnitFactorInput.value) : NaN);
+            const eqs = Core().buildEquivalences({
+              price: val, priceUnitCode, priceUnitFactor: puf, factorsByCode: r.factorsByCode || {},
+            });
+            renderEquiv(r.equivBox, eqs, r.line.divisa || '');
           }
           if (!(hasDiv && okPrice)) allOk = false;
         }
@@ -217,7 +248,7 @@ const PriceConfirmGuard = (() => {
 
       lines.forEach((line) => {
         const row = el('div', { class: 'sa-pcg-row' });
-        const r = { line, input: null, mark: null, factorInput: null, equivSpan: null };
+        const r = { line, input: null, mark: null, priceUnitFactorInput: null, equivBox: null, factorsByCode: {} };
         rows.push(r);
 
         row.appendChild(el('div', { class: 'sa-pcg-title', text: line.title || ('PN ' + line.partNumberId) }));
@@ -251,35 +282,42 @@ const PriceConfirmGuard = (() => {
           wrap.appendChild(input); wrap.appendChild(mark);
           row.appendChild(wrap);
 
-          // Calculadora de equivalente por pieza (solo si NO es por pieza).
+          // Equivalencias multi-unidad: el precio capturado convertido a todas las unidades del NP.
+          const calc = el('div', { class: 'sa-pcg-calc' });
+          calc.appendChild(el('div', { class: 'sa-pcg-lbl', text: 'Precio equivalente en otras unidades (validación):' }));
+          // Factor de la unidad capturada (editable) — solo si el precio NO es por pieza.
           if (!Core().isPerPiece(line.unitId)) {
-            const calc = el('div', { class: 'sa-pcg-calc' });
-            calc.appendChild(el('div', { class: 'sa-pcg-lbl', text: 'Equivalente por pieza (para validar el orden de magnitud):' }));
-            const factorInput = el('input', {
+            const pufInput = el('input', {
               class: 'sa-pcg-fin', type: 'text', inputmode: 'decimal', placeholder: unitLbl + '/pza', autocomplete: 'off',
               oninput: recompute,
             });
-            const equivSpan = el('span', { class: 'sa-pcg-eq', text: '—' });
-            r.factorInput = factorInput; r.equivSpan = equivSpan;
-            calc.appendChild(el('div', { class: 'r' }, [
-              el('span', { class: 'sa-pcg-sub', text: 'Factor:' }), factorInput,
-              el('span', { class: 'sa-pcg-sub', text: unitLbl + ' por pieza' }),
-              el('span', { text: '→' }), equivSpan,
+            r.priceUnitFactorInput = pufInput;
+            calc.appendChild(el('div', { class: 'r', style: 'margin-bottom:8px;' }, [
+              el('span', { class: 'sa-pcg-sub', text: 'Factor de la unidad capturada (' + unitLbl + '):' }),
+              pufInput, el('span', { class: 'sa-pcg-sub', text: unitLbl + ' por pieza' }),
             ]));
-            const hint = el('div', { class: 'sa-pcg-sub', text: 'Buscando factor…' });
-            calc.appendChild(hint);
-            row.appendChild(calc);
-            // Prioridad DOM (Panel A / tabla Units) → API. Rellena el factor (editable) y muestra la fuente.
-            resolveFactor(line.partNumberId, line.unitId, unitLbl).then((res) => {
-              if (res && res.factor != null && factorInput.value.trim() === '') {
-                factorInput.value = String(res.factor);
-              }
-              hint.textContent = res
-                ? 'Factor detectado (' + res.source + '): ' + res.factor + ' ' + unitLbl + '/pza (editable).'
-                : 'Sin factor detectado. Captura el factor manualmente si quieres el equivalente.';
-              recompute();
-            });
           }
+          const equivBox = el('div', { class: 'sa-pcg-equiv' });
+          r.equivBox = equivBox;
+          calc.appendChild(equivBox);
+          const hint = el('div', { class: 'sa-pcg-sub', text: 'Buscando factores…' });
+          calc.appendChild(hint);
+          row.appendChild(calc);
+          // Prioridad DOM (Panel A / tabla Units) → API. Prefill el factor de la unidad capturada.
+          resolveAllFactors(line.partNumberId).then((res) => {
+            r.factorsByCode = (res && res.factorsByCode) || {};
+            if (r.priceUnitFactorInput && r.priceUnitFactorInput.value.trim() === '') {
+              const puf = r.factorsByCode[unitLbl];
+              if (puf != null) r.priceUnitFactorInput.value = String(puf);
+            }
+            const n = Object.keys(r.factorsByCode).length;
+            hint.textContent = res
+              ? 'Factores detectados (' + res.source + '): ' + n + ' unidad(es).'
+              : (Core().isPerPiece(line.unitId)
+                  ? 'Sin factores de otras unidades para este NP.'
+                  : 'Sin factores detectados. Captura el factor de la unidad capturada para ver equivalencias.');
+            recompute();
+          });
         }
         bd.appendChild(row);
       });
