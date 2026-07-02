@@ -93,15 +93,18 @@ const PriceConfirmGuard = (() => {
   }
 
   // ── detección del modal nativo "Part Number Price" abierto ──
-  function nativePriceModalOpen() {
+  // Devuelve el elemento del dialog (paper) que matchea, o null. Último match = topmost.
+  function getNativePriceModal() {
     const dialogs = document.querySelectorAll('[role="dialog"], .MuiDialog-paper');
+    let found = null;
     for (const d of dialogs) {
       const titleEl = d.querySelector('.MuiDialogTitle-root');
       const t = (titleEl ? titleEl.textContent : d.textContent) || '';
-      if (MODAL_TITLE_RE.test(t)) return true;
+      if (MODAL_TITLE_RE.test(t)) found = d;
     }
-    return false;
+    return found;
   }
+  function nativePriceModalOpen() { return !!getNativePriceModal(); }
 
   function money(x) { return '$' + Number(x).toFixed(2); }
 
@@ -253,7 +256,12 @@ const PriceConfirmGuard = (() => {
         ]),
       ]);
       ov.appendChild(panel);
-      document.body.appendChild(ov);
+      // Montar DENTRO del contenedor del dialog nativo: el MuiDialog aplica focus-trap +
+      // inert/aria-hidden a todo lo externo, y en document.body el input no recibe teclado.
+      // Dentro del contenedor (dentro del trap, no-inert) el foco y el tecleo funcionan.
+      const modal = getNativePriceModal();
+      const mount = (modal && (modal.closest('.MuiDialog-container') || modal.parentElement)) || document.body;
+      mount.appendChild(ov);
       const first = bd.querySelector('input.sa-pcg-in');
       if (first) first.focus();
       recompute();
