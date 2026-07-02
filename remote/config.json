@@ -78,7 +78,10 @@
         "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3",
         "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f",
         "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0",
-        "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed"
+        "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed",
+        "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823",
+        "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6",
+        "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f"
       },
       "queries": {
         "AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b",
@@ -957,6 +960,25 @@
       "requiredPermissions": [],
       "actions": [
         { "id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup" }
+      ]
+    },
+    {
+      "id": "pn-lifecycle",
+      "name": "Ciclo de vida de PNs",
+      "subtitle": "Marcar validación de ingeniería, desarchivar, quitar validación o archivar (Borrado definitivo) PNs por lote, con filtros y dedup",
+      "icon": "♻️",
+      "category": "Números de Parte",
+      "scripts": [
+        "scripts/host-cleanup-shared.js",
+        "scripts/steelhead-api.js",
+        "scripts/bulk-upload-cc.js",
+        "scripts/bulk-upload-classify.js",
+        "scripts/pn-lifecycle-core.js",
+        "scripts/pn-lifecycle.js"
+      ],
+      "requiredPermissions": ["READ_PART_NUMBERS"],
+      "actions": [
+        { "id": "run-pn-lifecycle", "label": "Ciclo de vida de PNs", "sublabel": "Filtrar, previsualizar y ejecutar acciones sobre PNs", "icon": "♻️", "type": "primary", "handler": "message", "message": "run-pn-lifecycle" }
       ]
     }
   ],
