@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.2.0';
+  const APPLET_VERSION = '0.3.0';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -55,6 +55,7 @@
   let booted = false;
   let bootPromise = null;
   let lastRecomputableAt = null; // ISO string del servidor
+  let lastGeneratedAt = null;    // ISO string: cuándo terminó la última regeneración del domain
   let skewMs = 0;                // serverNow - clientNow (ms)
   let activeJob = null;          // { taskId, isDone, errorMessage } — sólo para quien disparó
   let lastError = null;
@@ -101,6 +102,38 @@
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
   }
 
+  // Fecha-hora absoluta de la última regeneración, en horario local del operador.
+  //   input: ISO string (server) | null  → "02 jul 2026, 03:45 p.m." | null
+  function formatLastGenerated(iso) {
+    if (!iso) return null;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return null;
+    try {
+      return new Date(t).toLocaleString('es-MX', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true
+      });
+    } catch (_) {
+      return new Date(t).toISOString();
+    }
+  }
+
+  // Antigüedad relativa ("hace 2 h"), anclada al reloj del servidor (nowMs = Date.now()+skew).
+  function formatRelativeAge(iso, nowMs) {
+    if (!iso) return '';
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return '';
+    const diff = nowMs - t;
+    if (diff < 0) return '';
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return 'hace un momento';
+    if (min < 60) return 'hace ' + min + ' min';
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return 'hace ' + hr + ' h';
+    const day = Math.floor(hr / 24);
+    return 'hace ' + day + ' d';
+  }
+
   function pickPollIntervalMs(status) {
     if (status === 'regenerating') return POLL_REGEN_MS;
     if (status === 'cooldown') return POLL_COOLDOWN_MS;
@@ -122,6 +155,15 @@
     return String(taskId);
   }
 
+  // La respuesta de JobQuery trae, además del status del job, el estado del domain:
+  //   currentSession.userByUserId.domainByDomainId.latestDuckdbFileCreatedAt
+  // = instante en que se creó la última base de reportes (la última regeneración).
+  function extractLatestGeneratedAt(data) {
+    const d = data && data.currentSession && data.currentSession.userByUserId &&
+              data.currentSession.userByUserId.domainByDomainId;
+    return (d && d.latestDuckdbFileCreatedAt) || null;
+  }
+
   async function pollJobOnce(taskId) {
     const data = await window.SteelheadAPI.query('JobQuery', { jobId: taskId }, 'JobQuery');
     const st = (data && data.getJobStatus) || {};
@@ -129,8 +171,15 @@
       isDone: !!st.isDone,
       errorMessage: st.errorMessage || null,
       runAttempts: st.runAttempts,
-      maxRunAttempts: st.maxRunAttempts
+      maxRunAttempts: st.maxRunAttempts,
+      latestGeneratedAt: extractLatestGeneratedAt(data)
     };
+  }
+
+  // Lee la fecha de la última regeneración sin necesitar un job propio (jobId:null).
+  async function fetchLatestGeneratedAt() {
+    const data = await window.SteelheadAPI.query('JobQuery', { jobId: null }, 'JobQuery');
+    return extractLatestGeneratedAt(data);
   }
 
   // ── Gating de permisos ──────────────────────────────────────────────────
@@ -286,6 +335,15 @@
     renderState();
   }
 
+  // Compone el tooltip: el texto base del estado + la fecha-hora de la última
+  // regeneración (con su antigüedad relativa). El `title` nativo respeta el \n.
+  function buildTitle(base) {
+    const abs = formatLastGenerated(lastGeneratedAt);
+    if (!abs) return base;
+    const rel = formatRelativeAge(lastGeneratedAt, Date.now() + skewMs);
+    return base + '\nÚltima regeneración: ' + abs + (rel ? ' (' + rel + ')' : '');
+  }
+
   function renderState() {
     const btn = document.getElementById(BTN_ID);
     if (!btn) return;
@@ -296,23 +354,23 @@
       btn.disabled = false;
       btn.classList.remove('sa-rr-haslabel');
       if (txt) txt.textContent = '';
-      btn.title = 'Regenerar reportes (refresh global de la base)';
+      btn.title = buildTitle('Regenerar reportes (refresh global de la base)');
     } else if (status === 'regenerating') {
       btn.disabled = true;
       btn.classList.add('sa-rr-haslabel');
       if (txt) txt.textContent = 'Regenerando…';
-      btn.title = 'Regeneración en curso…';
+      btn.title = buildTitle('Regeneración en curso…');
     } else if (status === 'cooldown') {
       btn.disabled = true;
       btn.classList.add('sa-rr-haslabel');
       const cd = formatCountdown(uiState.remainingMs);
       if (txt) txt.textContent = cd;
-      btn.title = 'Reportes en enfriamiento. Disponible en ' + cd;
+      btn.title = buildTitle('Reportes en enfriamiento. Disponible en ' + cd);
     } else { // loading / error
       btn.disabled = status === 'loading';
       btn.classList.toggle('sa-rr-haslabel', false);
       if (txt) txt.textContent = '';
-      btn.title = lastError ? ('Reintentar (último error: ' + lastError + ')') : 'Cargando estado…';
+      btn.title = buildTitle(lastError ? ('Reintentar (último error: ' + lastError + ')') : 'Cargando estado…');
     }
   }
 
@@ -356,6 +414,7 @@
         try {
           const js = await pollJobOnce(activeJob.taskId);
           activeJob = Object.assign({}, activeJob, js);
+          if (js.latestGeneratedAt) lastGeneratedAt = js.latestGeneratedAt;
           if (js.errorMessage) {
             lastError = js.errorMessage;
             activeJob = null;
@@ -366,6 +425,15 @@
           }
         } catch (e) {
           log('poll JobQuery falló: ' + e.message);
+        }
+      } else {
+        // Sin job propio activo: leer la fecha de la última regeneración del domain
+        // para el tooltip (JobQuery con jobId:null trae latestDuckdbFileCreatedAt).
+        try {
+          const gen = await fetchLatestGeneratedAt();
+          if (gen) lastGeneratedAt = gen;
+        } catch (e) {
+          log('poll latestGeneratedAt falló: ' + e.message);
         }
       }
       recompute();
@@ -491,7 +559,7 @@
     __version: APPLET_VERSION,
     triggerFromPopup,
     destroy,
-    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed }
+    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed, formatLastGenerated, formatRelativeAge, extractLatestGeneratedAt }
   };
   // Para los golden tests (node --test) y depuración manual.
   window.__SAReportRegen = window.ReportRegen._internals;
