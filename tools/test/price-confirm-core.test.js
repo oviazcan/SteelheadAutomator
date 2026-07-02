@@ -293,3 +293,13 @@ test('buildEquivalences: sin factores extra → solo pieza', () => {
   const out = Core.buildEquivalences({ price: 3, priceUnitCode: 'pieza', priceUnitFactor: 1, factorsByCode: {} });
   assert.deepEqual(out, [{ code: 'pieza', unitPrice: 3, isPriceUnit: true }]);
 });
+
+// ---------- isSaveErrorAlert: reconocer el alert nativo "Error saving price" de SH ----------
+
+test('isSaveErrorAlert: detecta el alert de error de guardado de precio', () => {
+  assert.equal(Core.isSaveErrorAlert('Error saving price'), true);
+  assert.equal(Core.isSaveErrorAlert('error   SAVING   PRICE'), true);
+  assert.equal(Core.isSaveErrorAlert('Algo más'), false);
+  assert.equal(Core.isSaveErrorAlert(''), false);
+  assert.equal(Core.isSaveErrorAlert(null), false);
+});
