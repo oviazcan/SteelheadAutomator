@@ -589,3 +589,40 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 - `query AllCustomers` (hash `66e271f6a8a2...`)
 - `query AllSensorDashboards` (hash `432339f25bae...`)
 - `query SensorDashboardQuery` (hash `bde56bd609a2...`)
+
+## 2026-07-02 00:55 — 4 "rotado(s)" DIAGNOSTICADOS COMO FALSOS POSITIVOS (whitelist)
+
+- Config version: `1.7.49` · Validador: 173 ok / 4 "stale" / 2 skipped (antes de whitelist).
+- Ops marcadas: `Customer`, `AllCustomers`, `AllSensorDashboards`, `SensorDashboardQuery`.
+  Todas con reason `Must provide a query string` (3 corridas consecutivas, consistente).
+
+### Diagnóstico: NO hay rotación. Hashes de `config.json` correctos. **No se tocó config ni se deployó.**
+
+Evidencia (investigación 2026-07-02):
+1. **Estabilidad histórica**: `AllCustomers`/`AllSensorDashboards`/`SensorDashboardQuery`
+   tienen el MISMO hash en los 75 scans desde 2026-05-05 (2 meses). `Customer` estable
+   desde 2026-06-25 (`875f…`→`96b2…`, rotación real de ese día). Ningún scan post-alerta
+   trae un hash nuevo → no existe hash de reemplazo.
+2. **Prueba en vivo (scan `scan_results_2026-07-02_003120.json`, tomado DESPUÉS de la alerta)**:
+   las 4 ops ejecutaron exitosamente en el navegador con los MISMOS hashes de config —
+   `Customer` scanCount=50 / 655 responseFields, `AllCustomers` scanCount=30 / 489,
+   `AllSensorDashboards` 93 responseFields, `SensorDashboardQuery` 147 + variablesSample real.
+3. **Probe hash-only externo consistente** (6/6 "Must provide") vs control `GetVendor`
+   (6/6 resuelve "Variable $idInDomain…") → no es LRU intermitente.
+4. **Root cause**: el validador es un **cliente externo** (Python + `x-steelhead-idp-token`).
+   Steelhead responde `Must provide a query string` a clientes que no son el frontend Apollo
+   del browser para ciertas ops sensibles a sesión. Nuestros applets corren **in-page**
+   (`fetch` `credentials:'include'`, mismo origen) → funcionan. Mismo patrón exacto que
+   `CurrentUser` y `GetPurchaseOrder` (ya en whitelist desde 2026-05-23).
+
+### Acciones
+- **Whitelist ampliada** (`tools/hash-validator-whitelist.json`): +`Customer`, +`AllCustomers`,
+  +`AllSensorDashboards`, +`SensorDashboardQuery` con la evidencia del scan y `verifiedOn:2026-07-02`.
+  Post-whitelist el validador da **173 ok / 0 stale / 6 skipped → exit 0**.
+  ⚠️ Nota en la entrada de `Customer`: SÍ rota de verdad ocasionalmente — si un scan futuro
+  muestra hash DISTINTO con `status:changed`+`lastHttpStatus:200`, es rotación real, quitar de whitelist.
+- **Notificación enriquecida**: `tools/notify-stale-hashes.sh` + nuevo `tools/hash-stale-report.py`.
+  Ahora el issue/email/bitácora listan, por op rotada, **qué applets truenan** (grep de op citada
+  en `remote/scripts/*.js` + `knownOperations.usedBy`) y una sección **"cómo recuperar (acciones en
+  el scan)"** que distingue rotación real (`status:changed`+`lastHttpStatus:200`, hash distinto) de
+  falso positivo (hash igual + `responseFields`/`scanCount>0` → whitelist, no tocar config).
