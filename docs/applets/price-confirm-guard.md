@@ -1,6 +1,6 @@
 # Applet: `price-confirm-guard` — Candado de Confirmación de Precio
 
-**Versión actual:** 0.1.0 (código completo + golden tests; **pendiente validación en vivo + deploy**)
+**Versión actual:** 0.1.2 (factor **DOM-first**: lee de Panel A del modal Editar NP y de la tabla Units del NP, luego API, luego manual; core 20/20 golden. Pendiente validación en vivo)
 **Archivos:** `remote/scripts/price-confirm-guard.js` (glue DOM/red) + `remote/scripts/price-confirm-core.js` (puro)
 **Tests:** `tools/test/price-confirm-core.test.js` (16/16 verdes)
 **Global:** `window.PriceConfirmGuard` · core `window.PriceConfirmCore` · estado en `window.__saPriceGuard*`
@@ -40,14 +40,22 @@ Patrón `surtido-guard`: **interceptor de `window.fetch`** como *gate asíncrono
 - **Precio:** `partNumberPriceLineItems[].price`.
 
 ## Calculadora de equivalente por pieza
-Solo si `unitId ≠ pieza`. Factor **unidad→pieza** (ej. kg/pza) por prioridad:
-1. **API** `GetPartNumber {id: partNumberId}` → `partNumberById.inventoryItemByPartNumberId.id` →
-   `GetAvailableUnits {inventoryItemId}` → `inventoryItemById.inventoryItemUnitConversionsByInventoryItemId
-   .nodes[].{factor, unitByUnitId.id}` (mismo patrón que `weight-quick-entry`/`unit-autoconvert`).
-2. Si no hay factor guardado → **input manual** editable.
+Solo si `unitId ≠ pieza`. Factor **unidad→pieza** (ej. kg/pza) por prioridad (v0.1.2 — **DOM-first**,
+porque el DOM refleja lo que el operador tiene/cambia en el mismo save, más fresco que la API):
+1. **DOM · Panel A** — modal *Editar NP*: `[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_PER_PART_COUNT_UNIT_DEFINITIONS"]`.
+   Fila con `<p>KGM Kilogramo / Part:</p>` (código = primer token, `isPerPartLabel`) + `input[type=number]` value.
+2. **DOM · tabla Units** — página del NP: `[data-steelhead-component-id="PART_NUMBER_PAGE_UNITS"]`.
+   Fila con `<a href="/Units/3969">` (match por `unitId` del href **o** por código) + `<p>1 KGM … / part</p>`
+   (factor = `parseLeadingNumber`).
+3. **API** `GetPartNumber {id}` → `partNumberById.inventoryItemByPartNumberId.id` →
+   `GetAvailableUnits {inventoryItemId}` → `…inventoryItemUnitConversionsByInventoryItemId.nodes[].{factor, unitByUnitId.id}`.
+4. Si nada → **input manual** editable.
 
-El equivalente se calcula sobre el **valor reconfirmado** que teclea el operador (no sobre el original)
-→ no revela el precio original y valida lo que el operador está capturando. `perPieceEquivalent = price × factor`.
+En los 4 casos el campo del factor queda **editable** y se muestra la **fuente** detectada. El equivalente se
+calcula sobre el **valor reconfirmado** que teclea el operador (no sobre el original) → no revela el precio
+original y valida lo que se está capturando. `perPieceEquivalent = price × factor`. Anclas de lectura DOM:
+`data-steelhead-component-id` (estables), no clases CSS hasheadas. Parsing puro en `price-confirm-core.js`
+(`unitCodeFromLabel`, `isPerPartLabel`, `parseLeadingNumber`) con golden tests.
 
 ## Decisiones de diseño
 - **Disparo:** todo guardado del modal (alta y cambio), no solo cambios.
@@ -57,6 +65,16 @@ El equivalente se calcula sobre el **valor reconfirmado** que teclea el operador
 - **Toggle** popup default ON, no persistente (estado en `window.__saPriceGuardEnabled`; reload → ON).
 - **Estado en `window`** (no closure) + latch idempotente `window.__saPriceGuardFetchPatched` +
   `window.__saPriceGuardInit`: sobrevive la re-evaluación del IIFE en cada acción del popup.
+
+## Lección: montaje dentro del MuiDialog (focus-trap / inert)
+**Síntoma (v0.1.0):** el modal aparecía pero el input de precio no aceptaba foco ni tecleo.
+**Causa:** el modal nativo "Part Number Price" es un `MuiDialog` que aplica **focus-trap** +
+`inert`/`aria-hidden` a todo lo que está FUERA del dialog. El overlay se montaba en `document.body`
+(fuera del trap) → visible pero no interactivo. **Fix (v0.1.1):** montar el overlay **dentro** del
+`.MuiDialog-container` nativo (`getNativePriceModal().closest('.MuiDialog-container')`, fallback
+`document.body`) → queda dentro del trap y no-inert. Mismo espíritu que la inyección de `surtido-guard`
+en `.MuiDialogContent-root`. **Regla:** cualquier UI propia que conviva con un MUI Dialog abierto debe
+montarse dentro del contenedor del dialog, no en `body`.
 
 ## Seguridad / robustez
 - Todo texto del payload va por `textContent` (helper `el()` con `text`) — no reintroduce el XSS

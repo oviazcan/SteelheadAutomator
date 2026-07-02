@@ -203,3 +203,32 @@ test('isPerPiece: null/undefined → true; id → false', () => {
   assert.equal(Core.isPerPiece(undefined), true);
   assert.equal(Core.isPerPiece(3969), false);
 });
+
+// ---------- parsing del factor desde el DOM (Panel A / tabla Units) ----------
+
+test('unitCodeFromLabel: primer token en mayúsculas', () => {
+  assert.equal(Core.unitCodeFromLabel('KGM Kilogramo / Part:'), 'KGM');
+  assert.equal(Core.unitCodeFromLabel('  lbr Libra / Part: '), 'LBR');
+  assert.equal(Core.unitCodeFromLabel('1 KGM Kilogramos / part'), '1'); // tabla: primer token es el número
+  assert.equal(Core.unitCodeFromLabel(''), '');
+});
+
+test('isPerPartLabel: detecta labels que terminan en "/ Part:" (Panel A)', () => {
+  assert.equal(Core.isPerPartLabel('KGM Kilogramo / Part:'), true);
+  assert.equal(Core.isPerPartLabel('CMK Centímetro Cuadrado / Part:'), true);
+  assert.equal(Core.isPerPartLabel('FOT ft Pie / Part:'), true);
+  assert.equal(Core.isPerPartLabel('KGM Kilogramo / Part'), true);
+  assert.equal(Core.isPerPartLabel('Per Part Count Unit Definitions:'), false);
+  assert.equal(Core.isPerPartLabel('1 KGM Kilogramos / part'), true); // ojo: la tabla usa "/ part" también
+  assert.equal(Core.isPerPartLabel(''), false);
+});
+
+test('parseLeadingNumber: primer número del texto (tabla Units / input value)', () => {
+  assert.equal(Core.parseLeadingNumber('1 KGM Kilogramos / part'), 1);
+  assert.equal(Core.parseLeadingNumber('200 CMK Centímetro Cuadrados / part'), 200);
+  assert.equal(Core.parseLeadingNumber('0.5'), 0.5);
+  assert.equal(Core.parseLeadingNumber('  1.1023  '), 1.1023);
+  assert.equal(Core.parseLeadingNumber(''), null);
+  assert.equal(Core.parseLeadingNumber('abc'), null);
+  assert.equal(Core.parseLeadingNumber(null), null);
+});
