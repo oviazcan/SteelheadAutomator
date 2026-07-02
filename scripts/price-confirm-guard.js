@@ -375,6 +375,9 @@ const PriceConfirmGuard = (() => {
           decision = 'block';
         }
         if (decision !== 'proceed') {
+          // Suprime el alert nativo "Error saving price" que SH dispara al ver nuestro error
+          // sintético (ventana corta: los errores de guardado legítimos siguen mostrándose).
+          window.__saPriceGuardSuppressUntil = Date.now() + 4000;
           toast('🔒 Guardado cancelado: la confirmación del precio no coincidió o falta divisa.', true);
           console.warn('[SA] PriceGuard: BLOQUEADO SaveManyPartNumberPrices');
           return new Response(
@@ -386,6 +389,22 @@ const PriceConfirmGuard = (() => {
       }
 
       return origFetch.apply(this, args);
+    };
+  }
+
+  // ── suprime el alert nativo de SH ("Error saving price") solo en la ventana posterior a un
+  //    bloqueo nuestro; fuera de esa ventana window.alert funciona normal. ──
+  function patchAlert() {
+    if (window.__saPriceGuardAlertPatched) return;
+    window.__saPriceGuardAlertPatched = true;
+    const origAlert = typeof window.alert === 'function' ? window.alert.bind(window) : null;
+    window.alert = function (msg) {
+      const until = window.__saPriceGuardSuppressUntil || 0;
+      if (Date.now() < until && Core().isSaveErrorAlert(msg)) {
+        console.log('[SA] PriceGuard: alert nativo suprimido tras bloqueo:', msg);
+        return;
+      }
+      if (origAlert) return origAlert(msg);
     };
   }
 
@@ -401,6 +420,7 @@ const PriceConfirmGuard = (() => {
     if (window.__saPriceGuardInit) return;
     window.__saPriceGuardInit = true;
     patchFetch(); // latch idempotente; solo actúa sobre SaveManyPartNumberPrices con el modal abierto
+    patchAlert(); // suprime el "Error saving price" nativo tras un bloqueo
     console.log('[SA] PriceConfirmGuard activo (default', isEnabled() ? 'ON' : 'OFF', ')');
   }
 

@@ -72,6 +72,12 @@
     return unitId == null;
   }
 
+  // El alert nativo que SH dispara ("Error saving price") cuando nuestro bloqueo devuelve un
+  // error sintético. Se suprime solo en la ventana posterior a un bloqueo (glue en el guard).
+  function isSaveErrorAlert(msg) {
+    return /saving\s+price/i.test(String(msg == null ? '' : msg));
+  }
+
   function unitLabel(unitId) {
     if (isPerPiece(unitId)) return 'pieza';
     return UNIT_BY_ID[unitId] || 'unidad #' + unitId;
@@ -121,6 +127,7 @@
     pricesMatch,
     perPieceEquivalent,
     isPerPiece,
+    isSaveErrorAlert,
     unitLabel,
     unitCodeFromLabel,
     isPerPartLabel,
