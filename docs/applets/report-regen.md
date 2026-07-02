@@ -1,6 +1,6 @@
 # Applet: `report-regen` (Regenerar Reportes)
 
-**Versión actual:** 0.2.0
+**Versión actual:** 0.3.0
 **Archivo:** `remote/scripts/report-regen.js`
 **Tipo:** `autoInject` + acción de popup. Inyecta un botón en el header secundario de Steelhead.
 **Permiso requerido:** `MANAGE_REPORTING` (gating en runtime, no sólo popup).
@@ -40,6 +40,31 @@ Hashes (al 2026-06-15):
 - `GenerateDuckDb`: `8f29d420…65eaa0`
 - `GetRecomputableAt`: `2da42344…6618e`
 - `JobQuery`: `e287b88e…6b36e`
+
+## v0.3.0 — tooltip "última regeneración" en el hover del botón
+
+Al pasar el mouse por el botón ♻️, el `title` nativo muestra —además del texto del estado— la
+**fecha-hora de la última regeneración del domain** y su antigüedad relativa
+(ej. `Última regeneración: 02 jul 2026, 03:45 p.m. (hace 2 h)`). Es el dato **server-side real**,
+no local: se lee de `JobQuery` (persisted query que el applet ya usa), en el campo
+`currentSession.userByUserId.domainByDomainId.latestDuckdbFileCreatedAt` (el mismo que consume
+`regenerate_duckdb.py` de Reportes SH en `read_state`).
+
+- **Cómo se obtiene sin job propio:** `JobQuery({ jobId: null })` → `extractLatestGeneratedAt` lee
+  `latestDuckdbFileCreatedAt`. Se guarda en `lastGeneratedAt`. Cuando hay job propio activo, el
+  `pollJobOnce` existente ya trae ese campo en la misma respuesta (no se duplica la llamada).
+- **Costo de red:** en estado `available` (poll cada 60s) se agrega 1 `JobQuery({jobId:null})` por
+  poll → 2 queries/min, trivial. En `regenerating`/`cooldown` se reusa el `JobQuery` del job.
+- **Fecha absoluta** vía `toLocaleString('es-MX', …)` (horario local del operador); **antigüedad
+  relativa** anclada al reloj del servidor (`Date.now()+skewMs`) con `formatRelativeAge`
+  (buckets min/h/d). Ambas puras y testeadas (`formatLastGenerated`, `formatRelativeAge`,
+  `extractLatestGeneratedAt` en `_internals`; 8 tests nuevos).
+- **Fail-safe:** si la respuesta no trae el campo (o la query falla transitoriamente), el tooltip
+  simplemente omite la línea de última regeneración — no rompe el botón ni su estado.
+- **Por qué `title` nativo y no una tooltip dark-mode propia:** el botón YA comunica todos sus
+  estados vía `btn.title`. Un `title` sobre NUESTRO propio botón no es UI que se pueda confundir con
+  la nativa de SH (la regla de dark-mode aplica a modales/paneles/popovers inyectados). Se mantiene
+  la consistencia con el resto del applet.
 
 ## Gating de permisos (lección de arquitectura)
 
