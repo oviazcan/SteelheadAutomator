@@ -577,3 +577,15 @@ Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (
 - `query AllCustomers` (hash `66e271f6a8a2...`)
 - `query AllSensorDashboards` (hash `432339f25bae...`)
 - `query SensorDashboardQuery` (hash `bde56bd609a2...`)
+
+## 2026-07-01 23:19 — 4 rotado(s)
+
+- Config version: `1.7.47`
+- OK: 173 / 179 · Tiempo: 140.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-01.json`
+
+**Rotados:**
+- `query Customer` (hash `96b214b5632d...`)
+- `query AllCustomers` (hash `66e271f6a8a2...`)
+- `query AllSensorDashboards` (hash `432339f25bae...`)
+- `query SensorDashboardQuery` (hash `bde56bd609a2...`)
