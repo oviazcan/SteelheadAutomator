@@ -712,7 +712,7 @@ const PNLifecycle = (() => {
     var completed = new Set(alreadyCompleted);
     var totalCount = selectedPNs.length;
     results.total = totalCount;
-    saveResume({ action: action, selectedPNs: selectedPNs, completed: Array.from(completed) });
+    saveResume({ action: action, selectedPNs: selectedPNs, completed: Array.from(completed), alsoValidate: deps.alsoValidate, includeArchivedToo: deps.includeArchivedToo });
 
     var acInfo = ACTION_LABELS[action] || { label: action };
     var drainPerPN = (hc() && hc().makePeriodicDrain) ? hc().makePeriodicDrain(50) : function() {};
@@ -725,7 +725,7 @@ const PNLifecycle = (() => {
       var errStr = results.errors ? ' — ' + results.errors + ' err' : '';
       setProgress(fraction, acInfo.label + ': ' + completed.size + '/' + totalCount + errStr);
       if (completed.size % 5 === 0 || completed.size === totalCount) {
-        saveResume({ action: action, selectedPNs: selectedPNs, completed: Array.from(completed) });
+        saveResume({ action: action, selectedPNs: selectedPNs, completed: Array.from(completed), alsoValidate: deps.alsoValidate, includeArchivedToo: deps.includeArchivedToo });
       }
     }
 
@@ -734,6 +734,10 @@ const PNLifecycle = (() => {
     await runPool(selectedPNs, async function(pn) {
       if (stopped) return;
       if (completed.has(pn.id)) return;
+      // Idempotencia: solo para acciones cuyo estado destino se conoce desde el slim
+      // (archived/label). validate/unvalidate dependen de opt-ins no presentes en el slim,
+      // y runOneItem ya es idempotente para ellas (tolera duplicado / borra solo lo que exista).
+      if ((action === 'archive' || action === 'unarchive') && core().isInTargetState(pn, action)) { tick(pn.id, true); return; }
 
       var itemResult;
       try {
@@ -755,7 +759,7 @@ const PNLifecycle = (() => {
 
     if (stopped) {
       results.stopped = true;
-      saveResume({ action: action, selectedPNs: selectedPNs, completed: Array.from(completed) });
+      saveResume({ action: action, selectedPNs: selectedPNs, completed: Array.from(completed), alsoValidate: deps.alsoValidate, includeArchivedToo: deps.includeArchivedToo });
       log('PNLifecycle detenido — ' + completed.size + '/' + totalCount + ' completados, resume guardado');
       showResult(results, action);
       return results;
@@ -798,8 +802,10 @@ const PNLifecycle = (() => {
       );
       if (doResume) {
         showProgressUI('Reanudando: ' + pending.length + ' pendientes...');
+        var resumeAlsoValidate     = prevResume.alsoValidate     !== undefined ? prevResume.alsoValidate     : alsoValidate;
+        var resumeIncludeArchived  = prevResume.includeArchivedToo !== undefined ? prevResume.includeArchivedToo : includeArchivedToo;
         return await executeAction(prevResume.selectedPNs, action,
-          { validacionNodeIds: validacionNodeIds, labelId: labelId, alsoValidate: alsoValidate },
+          { validacionNodeIds: validacionNodeIds, labelId: labelId, alsoValidate: resumeAlsoValidate, includeArchivedToo: resumeIncludeArchived },
           prevResume.completed, results);
       }
       clearResume();
@@ -844,7 +850,7 @@ const PNLifecycle = (() => {
 
     // 5. Execute
     return await executeAction(confirmed, action,
-      { validacionNodeIds: validacionNodeIds, labelId: labelId, alsoValidate: alsoValidate },
+      { validacionNodeIds: validacionNodeIds, labelId: labelId, alsoValidate: alsoValidate, includeArchivedToo: includeArchivedToo },
       [], results);
   }
 
