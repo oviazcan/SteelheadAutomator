@@ -105,6 +105,25 @@ test('buildArchiveInput agrega label preservando labels existentes', () => {
   assert.equal(inp.customerId, 9); assert.equal(inp.id, 5);
 });
 
+const { runOneItem } = require('../../remote/scripts/pn-lifecycle-core.js');
+test('validate: crea opt-in por cada node; tolera duplicado', async () => {
+  const calls = [];
+  const api = { query: async (op, v) => { calls.push([op, v.processNodeId ?? v.id ?? null]);
+    if (op === 'CreateProcessNodePartNumberOptInout' && v.processNodeId === 231174) throw new Error('unique constraint'); return {}; } };
+  const r = await runOneItem({ id:5 }, 'validate', api, { validacionNodeIds:[231176,231174], labelId:15646 });
+  assert.equal(r.status, 'ok');
+  assert.equal(calls.filter(c=>c[0]==='CreateProcessNodePartNumberOptInout').length, 2);
+});
+test('unvalidate: GetPartNumber luego Delete por opt-in de validación', async () => {
+  const api = { query: async (op, v) => {
+    if (op === 'GetPartNumber') return { partNumberById: { processNodePartNumberOptInoutsByPartNumberId: { nodes: [{id:100,processNodeId:231174},{id:101,processNodeId:999}] } } };
+    return {}; } };
+  const deleted = [];
+  const api2 = { query: async (op, v) => { if (op==='GetPartNumber') return api.query(op,v); if (op==='DeleteProcessNodePartNumberOptInOut') deleted.push(v.id); return {}; } };
+  const r = await runOneItem({ id:5 }, 'unvalidate', api2, { validacionNodeIds:[231176,231174], labelId:15646 });
+  assert.deepEqual(deleted, [100]);   // solo el opt-in de validación (100), no el 101
+});
+
 const { INCLUDE_FOR_ACTION, fetchPNsForAction } = require('../../remote/scripts/pn-lifecycle-core.js');
 test('mapa acción → includeArchived', () => {
   assert.equal(INCLUDE_FOR_ACTION.validate, 'NO');

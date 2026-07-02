@@ -140,6 +140,37 @@
     };
   }
 
+  const DUP_RE = /duplicate|unique|already|exists|violat|constraint/i;
+  async function runOneItem(pn, action, api, deps) {
+    const V = deps.validacionNodeIds, LABEL = deps.labelId;
+    try {
+      if (action === 'validate') {
+        for (const node of V) {
+          try { await api.query('CreateProcessNodePartNumberOptInout', buildValidationVars(pn.id, node)); }
+          catch (e) { if (!DUP_RE.test(String(e))) throw e; }
+        }
+        return { id: pn.id, status: 'ok' };
+      }
+      if (action === 'unarchive') {
+        await api.query('UpdatePartNumber', { id: pn.id, archivedAt: null });
+        if (deps.alsoValidate) for (const node of V) { try { await api.query('CreateProcessNodePartNumberOptInout', buildValidationVars(pn.id, node)); } catch (e) { if (!DUP_RE.test(String(e))) throw e; } }
+        return { id: pn.id, status: 'ok' };
+      }
+      if (action === 'unvalidate') {
+        const data = await api.query('GetPartNumber', { partNumberId: pn.id });
+        for (const oid of optInsToDelete(data?.partNumberById || {}, V)) await api.query('DeleteProcessNodePartNumberOptInOut', { id: oid });
+        return { id: pn.id, status: 'ok' };
+      }
+      if (action === 'archive') {
+        const data = await api.query('GetPartNumber', { partNumberId: pn.id });
+        await api.query('SavePartNumber', { input: [buildArchiveInput(data?.partNumberById || { id: pn.id, name: pn.name }, LABEL)] });
+        if (!pn.archived) await api.query('UpdatePartNumber', { id: pn.id, archivedAt: new Date().toISOString() });
+        return { id: pn.id, status: 'ok' };
+      }
+      return { id: pn.id, status: 'noop' };
+    } catch (e) { return { id: pn.id, status: 'error', error: String(e?.message || e).slice(0, 160) }; }
+  }
+
   const INCLUDE_FOR_ACTION = { validate: 'NO', unvalidate: 'NO', archive: 'NO', unarchive: 'EXCLUSIVELY' };
   async function pageAll(api, includeArchived, archivedFlag, onProgress, pageSize, seen, out, step, steps) {
     let offset = 0, total = null;
@@ -164,7 +195,7 @@
     return out;
   }
 
-  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify, isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput, INCLUDE_FOR_ACTION, fetchPNsForAction };
+  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify, isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput, INCLUDE_FOR_ACTION, fetchPNsForAction, DUP_RE, runOneItem };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SteelheadPNLifecycleCore = api;
 })(typeof window !== 'undefined' ? window : null);
