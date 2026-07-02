@@ -4,6 +4,26 @@ Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Mod
 
 > **Spec y plan de la 1.5.20:** [`docs/superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md`](../superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md) · [`docs/superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md`](../superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md)
 
+## Fix 2026-07-02 — Macro `RefrescarListas` (Module2 v14): dejar de pedir "conceder acceso" a cada catálogo viejo en Mac
+
+**Síntoma:** en Excel **para Mac**, al correr "Refrescar Listas" para importar el catálogo (`Catalogos_Steelhead_*.xlsx`), el sandbox pedía **conceder acceso archivo por archivo** a cada catálogo acumulado en Descargas, aunque no fuera el último (el que se quiere importar). Muy molesto; no pasa en Windows.
+
+**Causa raíz:** `BuscarMasReciente` (Module2) recorría TODOS los `Catalogos_Steelhead_*.xlsx` de la carpeta y llamaba `FileDateTime(fullPath)` sobre cada uno para hallar el más nuevo por mtime. En el sandbox de Excel para Mac, leer la metadata (`FileDateTime`) de un archivo NO autorizado dispara el diálogo "conceder acceso" **por cada archivo**. N catálogos viejos → N diálogos. (Windows no sandboxea `FileDateTime`.)
+
+**Fix (Module2 v14 · `vbas/Module2.txt`):** elegir el más reciente **solo por el nombre**, sin tocar disco. La extensión nombra los catálogos con fecha ISO — `Catalogos_Steelhead_YYYY-MM-DD.xlsx` (`catalog-fetcher.js:654`, `new Date().toISOString().slice(0,10)`) — que es ordenable como texto. `Dir()` solo lista nombres (no abre archivos), así el ÚNICO archivo que se toca —y para el que Mac pide acceso— es el ganador, hasta `Workbooks.Open`. Cambios:
+- `BuscarMasReciente`: sin `FileDateTime`; compara una clave derivada del nombre.
+- `ClaveOrdenCatalogo` (helper nuevo): `fecha ISO + contador` → `"2026-07-02|003"`. Maneja el sufijo ` (N)` de Chrome (varios el mismo día) eligiendo el N más alto (a 3 dígitos). Devuelve `""` si el nombre no calza el patrón (se ignora).
+- `NombreBase` (helper nuevo): reemplaza `Dir(found)` del diálogo "¿Usar este archivo?" (que también tocaba el archivo antes de tiempo) por extracción de basename con puro string.
+- `GrantAccessToMultipleFiles` NO se usa a propósito: **no habilita `Open`** en este Excel para Mac (nota en Module1, ExportarCSV v15.3).
+
+**Trade-off:** ahora "el último" se define por la fecha del NOMBRE, no por mtime. En uso normal (descargas en orden) es idéntico; solo diferiría si se copia/renombra un catálogo viejo a mano — y aun así la fecha del nombre es más fiel a "qué catálogo es".
+
+**Deploy de la plantilla (para que la que se DESCARGA traiga el fix):** la plantilla se sirve desde gh-pages `templates/Plantilla_CargaMasiva_v12.xlsm` (origen `main:remote/templates/`), **NO** desde Downloads. `deploy.sh` y el hook `pre-push` **solo** manejan `config.json` + `scripts/**.js`; los `.xlsm` de `templates/` se deployan **manual** en gh-pages, en el **mismo commit** que el bump de `config.version` (el hook exige que la version suba en cada push a gh-pages). El VBA del maestro se actualizó **trasplantando el `xl/vbaProject.bin`** (el `.xlsm` es un ZIP) desde la copia de trabajo ya corregida en Downloads: seguro porque `olevba -c` confirmó que el ÚNICO módulo que difería entre esa copia y el maestro era Module2 (v14 vs v13) — las hojas limpias del maestro no se tocan (`tools`→script ad-hoc `transplant.py` en scratchpad, `zipfile` preservando metadata; `unzip -t` + mismas entradas + `olevba` verifican). Config bump 1.7.50 → 1.7.51.
+
+**Pendiente:** la **versión de compatibilidad** (`Plantilla_CargaMasiva_v12_compatibilidad.xlsm`, Excel 2019) tiene el MISMO bug pero quedó en v13 — su `vbaProject.bin` difiere (Module1 compat para Excel 2019), así que **no** se puede trasplantar el bin de la normal; requiere abrirla en Excel y pegar Module2 v14. Run real del fix en la normal: pendiente confirmación del operador (el diálogo debe aparecer **una sola vez**, para el catálogo elegido).
+
+---
+
 ## Refactor completo (en curso) — F1 (config 1.6.40, 2026-06-06) — Módulos puros + golden tests
 
 **Spec/plan del refactor:** [`docs/superpowers/specs/2026-06-06-bulk-upload-refactor-design.md`](../superpowers/specs/2026-06-06-bulk-upload-refactor-design.md) · [`docs/superpowers/plans/2026-06-06-bulk-upload-refactor-F1.md`](../superpowers/plans/2026-06-06-bulk-upload-refactor-F1.md)
