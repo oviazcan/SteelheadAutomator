@@ -66,7 +66,35 @@
     };
   }
 
-  const api = { slimPN, matchesLabels, applyFilters, discoverFacets };
+  // adapta el slim al shape que espera buildCompositeKey (customerId, metalBase, labels[].name)
+  function adaptForClassify(pn) {
+    return { customerId: pn.customer?.id, name: pn.name, metalBase: pn.metal, labels: (pn.labels || []).map(l => l.name) };
+  }
+  function selectDuplicates(pns, deps) {
+    const { classify, nonFinishList, equivGroups, scoreFn } = deps;
+    const equivIndex = classify.buildEquivIndex(equivGroups || []);
+    const groups = new Map();
+    for (const pn of pns || []) {
+      const k = classify.buildCompositeKey(adaptForClassify(pn), nonFinishList || [], equivIndex);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(pn);
+    }
+    const score = scoreFn || ((pn) => pn.id);
+    const toTag = [], keep = [];
+    for (const g of groups.values()) {
+      if (g.length < 2) { keep.push(...g.map(p => p.id)); continue; }
+      const activos = g.filter(p => !p.archived);
+      const arch = g.filter(p => p.archived);
+      if (activos.length) { toTag.push(...arch.map(p => p.id)); keep.push(...activos.map(p => p.id)); }
+      else {
+        const sorted = [...arch].sort((a, b) => score(b) - score(a));
+        keep.push(sorted[0].id); toTag.push(...sorted.slice(1).map(p => p.id));
+      }
+    }
+    return { toTag, keep };
+  }
+
+  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SteelheadPNLifecycleCore = api;
 })(typeof window !== 'undefined' ? window : null);

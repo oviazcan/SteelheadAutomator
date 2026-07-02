@@ -58,3 +58,22 @@ test('discoverFacets: conteos por cliente y proceso', () => {
   assert.deepEqual(f.customers.find(c=>c.name==='Fisher'), {name:'Fisher',id:9,count:2});
   assert.equal(f.procesos.length, 2);
 });
+
+const classify = require('../../remote/scripts/bulk-upload-classify.js');
+const { selectDuplicates, adaptForClassify } = require('../../remote/scripts/pn-lifecycle-core.js');
+const NF = ['Muestras','Lote'];
+const EQ = [['Plata','Plata Flash']];
+const G = [
+  { id:1, name:'X', customer:{id:9}, metal:'Cobre', labels:[{name:'Plata'}], archived:false },      // activo
+  { id:2, name:'X', customer:{id:9}, metal:'Cobre', labels:[{name:'Plata Flash'}], archived:true },  // dup del activo (Plata≈Plata Flash)
+  { id:3, name:'Y', customer:{id:9}, metal:'Cobre', labels:[{name:'Zinc'}], archived:true },          // solo archivado, único
+  { id:4, name:'Z', customer:{id:8}, metal:'Acero', labels:[{name:'Zinc'}], archived:true },          // par archivado
+  { id:5, name:'Z', customer:{id:8}, metal:'Acero', labels:[{name:'Zinc'}], archived:true },          // par archivado
+];
+test('selectDuplicates: dup de activo + entre-archivados', () => {
+  const r = selectDuplicates(G, { classify, nonFinishList: NF, equivGroups: EQ, scoreFn: (pn)=>pn.id });
+  assert.ok(r.toTag.includes(2));            // dup del activo
+  assert.ok(!r.toTag.includes(1) && !r.toTag.includes(3)); // activo y único no
+  // par Z: conserva mayor score (id 5), marca 4
+  assert.ok(r.toTag.includes(4) && !r.toTag.includes(5));
+});
