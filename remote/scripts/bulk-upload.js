@@ -596,6 +596,21 @@ const BulkUpload = (() => {
   const saIdbDel = (k) => saIdbReq('readwrite', s => s.delete(k));
   const saIdbKeys = () => saIdbReq('readonly', s => s.getAllKeys());
 
+  // makeIdbSafe: normaliza un valor a una copia GARANTIZADA structured-clone-safe
+  // (== IndexedDB.put no truena). IDB serializa con structured clone, que es ESTRICTO:
+  // lanza DataCloneError SÍNCRONO ante funciones/DOM nodes/Symbols. El único call site
+  // que persiste un objeto CRUDO (no un JSON.stringify) es el historial de cargas, y
+  // loadLog arrastra valores no clonables del pipeline (p.ej. p.products con nodos del
+  // árbol de procesos) → el put reventaba y el catch se tragaba el error → "Sin cargas
+  // registradas" por semanas (bug 2026-06/07). El JSON round-trip los strip igual que el
+  // localStorage viejo (comportamiento tolerante), preservando todos los datos
+  // serializables (que es lo único que lee "Descargar CSV de corrección"). Fallback: si
+  // JSON truena (circular u otro), devuelve el original (no empeora vs. el guardado previo).
+  function makeIdbSafe(obj) {
+    try { return JSON.parse(JSON.stringify(obj)); }
+    catch (_) { return obj; }
+  }
+
   // Migración one-shot localStorage → IDB. Idempotente: si no hay claves en
   // localStorage, no-op. Se invoca al cargar el applet (al final del IIFE).
   // Best-effort: si IDB falla, deja localStorage intacto (compatibilidad
@@ -6811,7 +6826,10 @@ const BulkUpload = (() => {
         const history = (await saIdbGet('sa_load_history')) || [];
         history.unshift(loadLog);
         if (history.length > 20) history.length = 20;
-        await saIdbSet('sa_load_history', history);
+        // makeIdbSafe: IDB.put usa structured clone (estricto). loadLog arrastra valores
+        // no clonables del pipeline (p.products) → sin esto el put lanzaba DataCloneError
+        // que el catch de abajo se tragaba y el historial nunca persistía. Ver helper.
+        await saIdbSet('sa_load_history', makeIdbSafe(history));
         log('  Log guardado en historial (IndexedDB)');
       } catch (e) { warn('Error guardando log: ' + e.message); }
 
@@ -6854,7 +6872,7 @@ const BulkUpload = (() => {
   // ─── Helpers de clasificación (puros, exportados a window.BulkUploadHelpers) ───
 
 
-  const __helpers = { isNonFinishLabel, normLabel, buildEquivIndex, equivGroup, equivalentValues, metalCanonico, acabadosOrdenados, acabadosCanonicos, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates, chunkParts, makeChunkQuoteName };
+  const __helpers = { isNonFinishLabel, normLabel, buildEquivIndex, equivGroup, equivalentValues, metalCanonico, acabadosOrdenados, acabadosCanonicos, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates, chunkParts, makeChunkQuoteName, makeIdbSafe };
 
   // 1.2.12: getter para que window.BulkUpload.__state apunte siempre al state actual
   // (state se reasigna en nextRunId() así que un snapshot quedaría stale).

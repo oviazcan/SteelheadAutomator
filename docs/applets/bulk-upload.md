@@ -24,6 +24,22 @@ Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Mod
 
 ---
 
+## Fix 2026-07-02 — Historial de Cargas vacío ("Sin cargas registradas"): `DataCloneError` silencioso en el guardado a IDB
+
+**Síntoma:** popup → "Historial de Cargas" muestra **"Sin cargas registradas"** desde ~la migración a IDB (varias semanas), con la extensión **1.6.4 ya instalada** (la que lee de IDB). Las cargas se ejecutan bien (crean cotizaciones/PNs); solo el historial no aparece.
+
+**Causa raíz (confirmada por eliminación + empíricamente):** el guardado del historial era el **único** `saIdbSet` que persistía un **objeto crudo** (`saIdbSet('sa_load_history', history)`); TODOS los demás call sites guardan strings vía `JSON.stringify` (resume state L727, índice L681, marker L627). IndexedDB serializa con **structured clone** (estricto), no con JSON. `loadLog` arrastra valores **no clonables** del pipeline (p.ej. `p.products`, nodos del árbol de procesos con funciones/refs) → `store.put` lanza **`DataCloneError` SÍNCRONO** → el `catch` de "Error guardando log" (L6816) lo tragaba → el historial nunca persistía. El `localStorage` viejo usaba `JSON.stringify`, que **omite** funciones/símbolos silenciosamente (tolerante); la migración a structured clone rompió esa tolerancia sin que nadie lo notara (el guardado "parecía" funcionar).
+
+**Evidencia dura (IDB real de `app.gosteelhead.com`, perfil del operador):** `sa_storage/kv` contiene SOLO `sa_bulk_idb_migrated_v1` (el marker); `sa_load_history` = `undefined`; `localStorage.sa_load_history` ausente; `localStorage.sa_last_log` presente (sí hubo corridas). El marker (string ISO) se guardó bien → `saIdbSet` funciona para clonables; solo el objeto rico falla. Confirmación empírica en el navegador: `structuredClone({...fn})` lanza `DataCloneError` mientras `JSON.parse(JSON.stringify(...))` lo tolera. (La "validación 7 corridas" del 2026-06-07 fue en el perfil del dev, con objetos ya-JSON de la migración desde localStorage; ese historial nunca creció porque cada corrida nueva revienta el put sin sobrescribir.)
+
+**Fix:** helper `makeIdbSafe(obj)` = `JSON.parse(JSON.stringify(obj))` con fallback al original; se aplica en el `put` del historial → `saIdbSet('sa_load_history', makeIdbSafe(history))`. Replica la tolerancia del localStorage viejo (strip de no-serializables) preservando todos los datos que lee "Descargar CSV de corrección" (solo primitivos). Solo toca `remote/scripts/bulk-upload.js` (el lector `background.js` 1.6.4 ya está bien → **NO requiere republicar el .zip**). Tests: `tools/test/bulk-upload-history-idb.test.js` (4, incl. reproducción del bug con `structuredClone` como oráculo de IDB.put).
+
+**Qué se requiere para que siga funcionando:** (1) deploy del script a gh-pages (auto-actualiza en Chrome, sin zip); (2) el historial previo del operador **NO es recuperable** (nunca se guardó) — arranca de cero tras el fix; (3) si el historial se usa en **Safari/iPad**, propagar el fix al `safari/extension/main-bundle.js` (skill `safari-bundle-sync`). **Pendiente:** validación en vivo — la próxima corrida real del operador debe aparecer en "Historial de Cargas".
+
+**Deuda de test descubierta (separada, NO tocada aquí):** `node --test tools/test/*.test.js` da **54 fallos pre-existentes** — el harness `loadHelpers` de `bulk-upload-helpers.test.js` (y otros) solo carga `bulk-upload.js`, pero los helpers `classifyOnePN/rankCandidates/chunkParts/makeChunkQuoteName/...` se movieron a `bulk-upload-classify.js`/`-parse.js`/`-build.js` en F1 → salen `undefined` en `__helpers`. **No es bug de producción** (en el navegador cargan en orden vía `config.scripts`); es el harness que quedó desactualizado tras F1. Arreglar aparte: cargar los módulos hermanos en el sandbox del harness antes de `bulk-upload.js`.
+
+---
+
 ## Refactor completo (en curso) — F1 (config 1.6.40, 2026-06-06) — Módulos puros + golden tests
 
 **Spec/plan del refactor:** [`docs/superpowers/specs/2026-06-06-bulk-upload-refactor-design.md`](../superpowers/specs/2026-06-06-bulk-upload-refactor-design.md) · [`docs/superpowers/plans/2026-06-06-bulk-upload-refactor-F1.md`](../superpowers/plans/2026-06-06-bulk-upload-refactor-F1.md)
