@@ -55,6 +55,6 @@ test('applyFilters: sin criterios = todos', () => {
 });
 test('discoverFacets: conteos por cliente y proceso', () => {
   const f = discoverFacets(P);
-  assert.deepEqual(f.customers.find(c=>c.name==='Fisher'), {name:'Fisher',count:2});
+  assert.deepEqual(f.customers.find(c=>c.name==='Fisher'), {name:'Fisher',id:9,count:2});
   assert.equal(f.procesos.length, 2);
 });

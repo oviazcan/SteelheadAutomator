@@ -54,13 +54,14 @@
     const bump = (m, k) => { if (k) m.set(k, (m.get(k) || 0) + 1); };
     const cust = new Map(), metal = new Map(), proc = new Map(), lin = new Map(), dep = new Map(), lbl = new Map();
     for (const pn of pns || []) {
-      bump(cust, pn.customer?.name);
+      if (pn.customer?.name) cust.set(pn.customer.name, { id: pn.customer.id, count: (cust.get(pn.customer.name)?.count || 0) + 1 });
       bump(metal, pn.metal); bump(proc, pn.proceso); bump(lin, pn.linea); bump(dep, pn.departamento);
       for (const l of pn.labels || []) bump(lbl, l.name);
     }
     const toArr = (m) => [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name, 'es'));
     return {
-      customers: toArr(cust), metals: toArr(metal), procesos: toArr(proc),
+      customers: [...cust.entries()].map(([name, v]) => ({ name, id: v.id, count: v.count })).sort((a, b) => a.name.localeCompare(b.name, 'es')),
+      metals: toArr(metal), procesos: toArr(proc),
       lineas: toArr(lin), departamentos: toArr(dep), labels: toArr(lbl),
     };
   }
