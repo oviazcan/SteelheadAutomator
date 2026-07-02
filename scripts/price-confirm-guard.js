@@ -108,8 +108,48 @@ const PriceConfirmGuard = (() => {
 
   function money(x) { return '$' + Number(x).toFixed(2); }
 
-  // ── factor de conversión unidad→pieza: API-first (GetAvailableUnits) ──
-  async function resolveFactor(partNumberId, unitId) {
+  // ── factor de conversión unidad→pieza desde el DOM (más fresco que la API: refleja
+  //    lo que el operador tiene/cambia en el mismo save). Devuelve {factor, source} o null.
+  //    Fuente 1: Panel A del modal Edit Part Number (labels "CODE … / Part:" + input).
+  //    Fuente 2: tabla Units de la página del NP ("N CODE … / part" + href /Units/<id>). ──
+  function readFactorFromDOM(unitId, unitCode) {
+    const wantCode = String(unitCode || '').toUpperCase();
+    // Fuente 1: Panel A (Per Part Count Unit Definitions)
+    const panelA = document.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_PER_PART_COUNT_UNIT_DEFINITIONS"]');
+    if (panelA) {
+      const labels = panelA.querySelectorAll('p.MuiTypography-root, p');
+      for (const p of labels) {
+        const txt = p.textContent || '';
+        if (!Core().isPerPartLabel(txt)) continue;
+        if (Core().unitCodeFromLabel(txt) !== wantCode) continue;
+        const input = p.parentElement && p.parentElement.querySelector('input');
+        const f = input ? Core().parseLeadingNumber(input.value) : null;
+        if (f != null && f > 0) return { factor: f, source: 'modal Editar NP' };
+      }
+    }
+    // Fuente 2: tabla Units de la página del NP
+    const unitsTable = document.querySelector('[data-steelhead-component-id="PART_NUMBER_PAGE_UNITS"]');
+    if (unitsTable) {
+      const rows = unitsTable.querySelectorAll('tr');
+      for (const tr of rows) {
+        const a = tr.querySelector('a[href*="/Units/"]');
+        if (!a) continue;
+        const href = a.getAttribute('href') || '';
+        const byId = unitId != null && new RegExp('/Units/' + unitId + '(?:$|[^0-9])').test(href);
+        const byCode = Core().unitCodeFromLabel(a.textContent || '') === wantCode;
+        if (!byId && !byCode) continue;
+        const perPartP = tr.querySelector('td p.MuiTypography-root, td p');
+        const f = perPartP ? Core().parseLeadingNumber(perPartP.textContent || '') : null;
+        if (f != null && f > 0) return { factor: f, source: 'tabla Units del NP' };
+      }
+    }
+    return null;
+  }
+
+  // Factor por prioridad: DOM (Panel A / tabla Units) → API guardada. Devuelve {factor, source} o null.
+  async function resolveFactor(partNumberId, unitId, unitCode) {
+    const dom = readFactorFromDOM(unitId, unitCode);
+    if (dom) return dom;
     if (!api() || partNumberId == null || unitId == null) return null;
     try {
       const pnData = await api().query('GetPartNumber', { id: partNumberId }, 'GetPartNumber');
@@ -120,7 +160,7 @@ const PriceConfirmGuard = (() => {
       const nodes = unitsData?.inventoryItemById?.inventoryItemUnitConversionsByInventoryItemId?.nodes || [];
       const conv = nodes.find((c) => Number(c.unitByUnitId?.id) === Number(unitId));
       const f = conv ? Number(conv.factor) : null;
-      return Number.isFinite(f) && f > 0 ? f : null;
+      return Number.isFinite(f) && f > 0 ? { factor: f, source: 'guardado (API)' } : null;
     } catch (e) {
       console.warn('[SA] PriceGuard: no se pudo obtener el factor guardado:', e && e.message);
       return null;
@@ -226,15 +266,17 @@ const PriceConfirmGuard = (() => {
               el('span', { class: 'sa-pcg-sub', text: unitLbl + ' por pieza' }),
               el('span', { text: '→' }), equivSpan,
             ]));
-            const hint = el('div', { class: 'sa-pcg-sub', text: 'Buscando factor guardado…' });
+            const hint = el('div', { class: 'sa-pcg-sub', text: 'Buscando factor…' });
             calc.appendChild(hint);
             row.appendChild(calc);
-            // API-first: rellena el factor si está guardado; si no, queda editable (manual).
-            resolveFactor(line.partNumberId, line.unitId).then((f) => {
-              if (f != null && factorInput.value.trim() === '') { factorInput.value = String(f); }
-              hint.textContent = f != null
-                ? 'Factor guardado: ' + f + ' ' + unitLbl + '/pza (editable).'
-                : 'Sin factor guardado. Captura el factor manualmente si quieres el equivalente.';
+            // Prioridad DOM (Panel A / tabla Units) → API. Rellena el factor (editable) y muestra la fuente.
+            resolveFactor(line.partNumberId, line.unitId, unitLbl).then((res) => {
+              if (res && res.factor != null && factorInput.value.trim() === '') {
+                factorInput.value = String(res.factor);
+              }
+              hint.textContent = res
+                ? 'Factor detectado (' + res.source + '): ' + res.factor + ' ' + unitLbl + '/pza (editable).'
+                : 'Sin factor detectado. Captura el factor manualmente si quieres el equivalente.';
               recompute();
             });
           }
