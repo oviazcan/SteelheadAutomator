@@ -5,7 +5,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyOp, hasShape } = require('../hash-autopilot/hash-autopilot-core.mjs');
+const { classifyOp, hasShape, planDeploy, missingCoverage } = require('../hash-autopilot/hash-autopilot-core.mjs');
+
+const R = (op, verdict) => ({ op, verdict, cfgHash: 'old', liveHash: verdict === 'vigente' ? 'old' : 'new' });
 
 test('classifyOp: capturado igual al config → vigente', () => {
   assert.equal(classifyOp({ cfgHash: 'aaa', liveHash: 'aaa', http: 200, shapeOk: true }), 'vigente');
@@ -31,4 +33,36 @@ test('hasShape: llave ausente → false', () => {
 });
 test('hasShape: paths vacío → true (op sin shape declarado)', () => {
   assert.equal(hasShape({ anything: 1 }, []), true);
+});
+
+test('planDeploy: solo rotadoValidado va a toDeploy', () => {
+  const res = [R('A', 'rotadoValidado'), R('B', 'vigente'), R('C', 'sospechoso'), R('D', 'noCapturado')];
+  const p = planDeploy(res, {});
+  assert.deepEqual(p.toDeploy.map((x) => x.op), ['A']);
+  assert.deepEqual(p.suspicious.map((x) => x.op), ['C']);
+  assert.deepEqual(p.notCaptured.map((x) => x.op), ['D']);
+  assert.equal(p.massBrake, false);
+});
+test('planDeploy: >6 rotados dispara freno de masa (no deploya nada)', () => {
+  const res = Array.from({ length: 7 }, (_, i) => R('OP' + i, 'rotadoValidado'));
+  const p = planDeploy(res, {});
+  assert.equal(p.massBrake, true);
+  assert.deepEqual(p.toDeploy, []);
+  assert.match(p.reason, />6|freno|masa/i);
+});
+test('planDeploy: exactamente 6 rotados NO dispara freno', () => {
+  const res = Array.from({ length: 6 }, (_, i) => R('OP' + i, 'rotadoValidado'));
+  const p = planDeploy(res, {});
+  assert.equal(p.massBrake, false);
+  assert.equal(p.toDeploy.length, 6);
+});
+
+test('missingCoverage: detecta ops target sin receta', () => {
+  const recipes = { r1: { captures: ['AllCustomers'] }, r2: { captures: ['Customer'] } };
+  const target = ['AllCustomers', 'Customer', 'CurrentUser'];
+  assert.deepEqual(missingCoverage(recipes, target), ['CurrentUser']);
+});
+test('missingCoverage: todo cubierto → []', () => {
+  const recipes = { r1: { captures: ['A', 'B'] } };
+  assert.deepEqual(missingCoverage(recipes, ['A', 'B']), []);
 });
