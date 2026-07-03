@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ecoplating.steelhead-hash-autopilot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/run-hash-autopilot.sh</string>
+    </array>
+
+    <!-- Cada hora a :23 (sin Hour = todas las horas). El GATE POR RELEASE del
+         wrapper hace que las corridas sin build nuevo sean casi gratis (solo un
+         curl a /version.json); solo abre el navegador headless (~30s) cuando
+         Steelhead publica un release nuevo. Minuto :23 para no solaparse con el
+         validador (:17). Cubre las ops session-sensitive que validate-hashes.py
+         no puede validar desde Python. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>23</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-autopilot/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-autopilot/launchd.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Evitar que macOS mate el job por throttling en background. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
