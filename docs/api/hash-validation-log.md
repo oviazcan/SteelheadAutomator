@@ -663,3 +663,5 @@ Evidencia (investigación 2026-07-02):
 - **Deploy:** `config.json` 1.7.56 → 1.7.57 vía `tools/deploy.sh` (commit `73e5503` main / `dfb2728` gh-pages); invariante gh-pages↔main:remote/ byte-a-byte OK. También se publicó el **guard de lista vacía** del `catalog-fetcher` (bloquea la descarga si un catálogo crítico viene vacío por hash rotado, en vez de sobrescribir las listas buenas con vacíos al correr `RefrescarListas`). Tests: `tools/test/catalog-fetcher-health.test.js`.
 - **Bundle Safari:** no requiere rebundle — el bridge refresca `config.json` en runtime.
 - **⚠️ Lección / gap del validador:** **2 de 6 ops whitelisted rotaron el mismo día y el validador las skipeó → reportó `0 rotado`.** La whitelist enmascara rotaciones reales de ops session-sensitive. **Pendiente:** que el validador re-verifique periódicamente las whitelisted vía hash-scanner (no puede desde Python) o emita un recordatorio para escanearlas. Las 4 restantes (`CurrentUser`, `GetPurchaseOrder`, `AllSensorDashboards`, `SensorDashboardQuery`) quedaron **sin verificar** esta sesión (sus applets no reportan fallas; probablemente vigentes).
+
+## 2026-07-03 17:16 — 0 rotado(s) (launchd)
