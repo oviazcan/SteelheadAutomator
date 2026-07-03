@@ -641,3 +641,12 @@ Evidencia (investigación 2026-07-02):
 - **Applets que truenan:** bill-autofill, invoice-autofill
 - **usedBy (config):** bill-autofill
 - **Qué hace:** Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate
+
+## 2026-07-03 00:00 — RESUELTO: rotación `GetDomain`
+
+- **Op:** `query GetDomain` · applets afectados: `bill-autofill`, `invoice-autofill`
+- **Hash viejo:** `c0c242bcac011a6e72087bd0d0698dde5cf2fe8b247a51e4eb3b08c36299c866`
+- **Hash nuevo:** `86652dafed0174bb91b95e11cf8867ca13fb7303fd211471c221ead70ac8b1e1`
+- **Fuente:** `scan_results_2026-07-02_235711.json` (`scanResults.GetDomain.hash`; `previousHash` == hash viejo del config → rotación real confirmada)
+- **Deploy:** `config.json` 1.7.55 → 1.7.56 vía `tools/deploy.sh` (commit `9bb7313` main / `160c1d1` gh-pages); invariante gh-pages↔main:remote/ byte-a-byte OK.
+- **Bundle Safari:** no requiere rebundle — el bridge refresca `config.json` en runtime (rotación de hash no toca applets del bundle).
