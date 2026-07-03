@@ -1,0 +1,23 @@
+{
+  "_doc": "Secuencias MÍNIMAS de navegación para que el frontend dispare cada op y capturemos su sha256Hash. Organizado por pantalla (una navegación cubre varias ops). captures = ops que la receta debe capturar. validateVars/expectShape = para validar el hash nuevo re-ejecutándolo.",
+  "_domainDefault": "344",
+  "recipes": {
+    "customers-list": {
+      "steps": [{ "goto": "/Domains/{domain}/Customers" }],
+      "captures": ["AllCustomers"],
+      "validateVars": {
+        "AllCustomers": { "includeArchived": "NO", "includeAccountingFields": false, "orderBy": ["NAME_ASC"], "offset": 0, "first": 5, "searchQuery": "" }
+      },
+      "expectShape": { "AllCustomers": ["pagedData.nodes", "pagedData.totalCount"] }
+    },
+    "customer-detail": {
+      "steps": [
+        { "goto": "/Domains/{domain}/Customers" },
+        { "clickFirst": "a[href*='/Customers/']", "hrefMatches": "/Customers/\\d+" }
+      ],
+      "captures": ["Customer"],
+      "validateVars": { "Customer": {} },
+      "expectShape": { "Customer": [] }
+    }
+  }
+}

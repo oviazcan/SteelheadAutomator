@@ -1,0 +1,15 @@
+{
+  "name": "hash-autopilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Validación + regeneración desatendida de hashes session-sensitive de Steelhead",
+  "scripts": {
+    "start": "node hash-autopilot.mjs",
+    "dry-run": "node hash-autopilot.mjs --dry-run",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.57.0"
+  }
+}

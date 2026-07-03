@@ -25,6 +25,10 @@ surtido-guard-capture*.json
 # Validador de hashes — resultados diarios (ruido, no aportan al repo)
 tools/.hash-validation/
 
+# hash-autopilot — resultados diarios + estado del browser headless (no versionar)
+tools/.hash-autopilot/
+tools/hash-autopilot/.browser-state/
+
 # Excel temp lock files
 ~$*.xlsm
 ~$*.xlsx
