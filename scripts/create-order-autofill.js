@@ -4,10 +4,17 @@
 //
 // Reglas:
 //   - Razón Social  ← customer.customInputs.DatosFactura.RazonSocialVenta (match exacto contra <option>)
-//   - Divisa        ← customer.customInputs.DatosFactura.Divisa            (match exacto contra <option>)
+//   - Divisa        ← customer.customInputs.DatosFactura.Divisa            (match exacto/substring contra <option>)
 //   - Consolidar    ← ship-to-driven: marca checkbox si "Enviar a:" del modal contiene "javier rojo"
 //
-// Depende de: SteelheadAPI
+// Depende de: SteelheadAPI, CreateOrderAutofillCore (create-order-autofill-core.js)
+//
+// FIX 2026-07-03: la extracción del cliente ya NO depende del label-walk frágil
+// (findSingleValueByLabel hacía `return null` al toparse el input[role=combobox]
+// del react-select ANTES de hallar el singleValue → "(sin cliente)" → "sin idInDomain"
+// para TODOS los clientes). Ahora el cliente se elige por el singleValue que trae el
+// badge "(#N)" (único en el modal), y como red de seguridad se resuelve el idInDomain
+// por nombre vía CustomerSearchByName si faltara el badge. Ver bitácora + core.
 
 const CreateOrderAutofill = (() => {
   'use strict';
@@ -20,10 +27,12 @@ const CreateOrderAutofill = (() => {
   const ROJO_GOMEZ_RE = /javier\s*rojo/i;
 
   const api = () => window.SteelheadAPI;
+  const core = () => window.CreateOrderAutofillCore;
   const log = (m) => (api()?.log ? api().log(`[create-order-autofill] ${m}`) : console.log('[create-order-autofill]', m));
   const warn = (m) => (api()?.warn ? api().warn(`[create-order-autofill] ${m}`) : console.warn('[create-order-autofill]', m));
 
-  const _customerCache = new Map();
+  const _customerCache = new Map();   // idInDomain → customer
+  const _nameIdCache = new Map();     // normalizedName → idInDomain|null
   let observerActive = false;
   let debounceTimer = null;
   let state = {
@@ -119,9 +128,10 @@ const CreateOrderAutofill = (() => {
     return false;
   }
 
-  // Subir al MuiDialog/Paper que contiene el heading "Crear Orden de Venta"
-  // para anclar las búsquedas de cliente/shipTo SOLO dentro del modal y no del
-  // wizard padre "Recibir piezas del cliente" (que también trae un combo Cliente).
+  // Subir al MuiDialog/Paper que contiene el modal "Crear Orden de Venta" para anclar
+  // las búsquedas SOLO dentro del modal y no del wizard padre "Recibir piezas del
+  // cliente". Primero desde el heading; fallback desde los campos RJSF (garantiza un
+  // root siempre que los 3 ids existan, aunque el heading cambie de tag).
   function getModalRoot() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
@@ -131,21 +141,51 @@ const CreateOrderAutofill = (() => {
         if (cur.matches?.('[role="dialog"], [class*="MuiDialog"], [class*="MuiPaper"]')) return cur;
         cur = cur.parentElement;
       }
-      return h.closest('[role="dialog"], [class*="MuiPaper"]') || h.parentElement;
+      const anchored = h.closest('[role="dialog"], [class*="MuiPaper"]');
+      if (anchored) return anchored;
+    }
+    // Fallback: ascender desde un campo RJSF del modal.
+    const field = document.getElementById(RJSF_RAZON_ID) || document.getElementById(RJSF_DIVISA_ID);
+    if (field) {
+      const anchored = field.closest('[role="dialog"], [class*="MuiDialog"], [class*="MuiPaper"]');
+      if (anchored) return anchored;
     }
     return null;
   }
 
   // ── Extracción dentro del modal ──
 
+  // Junta los textos de todos los react-select singleValue del modal, quitando el
+  // avatar/imagen (que se pega al nombre: "C"+"CONTROLES..." → "CCONTROLES...").
+  function collectSingleValueTexts(root) {
+    const out = [];
+    const svs = root.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of svs) {
+      const clone = sv.cloneNode(true);
+      clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+      const t = (clone.textContent || '').trim();
+      if (t) out.push(t);
+    }
+    return out;
+  }
+
+  // Devuelve el nombre del cliente tal como aparece en el modal (con "(#N)" si lo trae).
+  // Primario: el singleValue con badge "(#N)" (único del Cliente, label-independiente).
+  // Fallback: label-anchored por si algún modal no mostrara el badge.
   function extractCustomerNameFromModal() {
     const root = getModalRoot();
     if (!root) return null;
+    const c = core();
+    if (c) {
+      const picked = c.pickCustomerFromSingleValues(collectSingleValueTexts(root));
+      if (picked) return picked.raw;
+    }
     const sv = findSingleValueByLabel(root, /^\s*cliente:?\s*$/i);
     if (!sv) return null;
     const clone = sv.cloneNode(true);
     clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
-    return cleanCustomerName((clone.textContent || '').trim());
+    const raw = (clone.textContent || '').trim();
+    return c ? c.cleanCustomerName(raw) : raw;
   }
 
   function extractShipToFromModal() {
@@ -156,48 +196,35 @@ const CreateOrderAutofill = (() => {
     return (sv.textContent || '').trim();
   }
 
-  // El singleValue del react-select absorbe badges sin whitespace
-  // ("SCHNEIDER ELECTRIC MEXICO (#1)Industrial"). Cortamos tras "(#N)".
-  function cleanCustomerName(raw) {
-    if (!raw) return raw;
-    const m = raw.match(/^(.+?\(#\d+\))/);
-    if (m) return m[1].trim();
-    return raw.trim();
-  }
-
-  function extractCustomerIdInDomain(rawName) {
-    const m = (rawName || '').match(/\(#(\d+)\)/);
-    return m ? parseInt(m[1], 10) : null;
-  }
-
   // Localiza un singleValue de react-select por su label de <p>label:</p>.
-  // Patrón replicado de invoice-autofill.findFieldContainerByPLabel: subimos al
-  // labelRoot (ancestro hijo único) y caminamos siblings hasta encontrar uno
-  // con [class*=singleValue] o con un combobox vacío (placeholder).
+  // Se prefiere la ÚLTIMA etiqueta que matchea (la del modal, no la del wizard padre)
+  // y se buscan singleValues en los siguientes hermanos. NO se hace bail al toparse el
+  // input[role=combobox] (ese bail rompía la extracción: el react-select SIEMPRE tiene
+  // el combobox junto al singleValue).
   function findSingleValueByLabel(root, labelRe) {
-    const candidates = root.querySelectorAll('p, label, span');
-    for (const el of candidates) {
+    const candidates = [];
+    for (const el of root.querySelectorAll('p, label, span')) {
       const raw = (el.textContent || '').trim();
       if (raw.length === 0 || raw.length > 40) continue;
       const cleaned = raw.replace(/[\s:*]+$/, '').trim();
       if (!labelRe.test(cleaned) && !labelRe.test(raw)) continue;
       if (el.querySelector('input, textarea, button, select')) continue;
-
-      // Ascender al labelRoot (mientras sea hijo único)
-      let labelRoot = el;
+      candidates.push(el);
+    }
+    // De la última a la primera (la del modal suele ser la última en el DOM).
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      let labelRoot = candidates[i];
       while (labelRoot.parentElement
         && labelRoot.parentElement.children.length === 1
         && labelRoot.parentElement.firstElementChild === labelRoot
         && !['BODY', 'HTML'].includes(labelRoot.parentElement.tagName)) {
         labelRoot = labelRoot.parentElement;
       }
-
       let cursor = labelRoot.nextElementSibling;
       let hops = 0;
       while (cursor && hops < 8) {
         const sv = cursor.querySelector('[class*="singleValue"], [class*="SingleValue"]');
         if (sv) return sv;
-        if (cursor.querySelector('input[role="combobox"]')) return null;
         cursor = cursor.nextElementSibling;
         hops++;
       }
@@ -222,24 +249,41 @@ const CreateOrderAutofill = (() => {
     }
   }
 
-  // ── Fills ──
-
-  function normalizeForMatch(s) {
-    return String(s || '')
-      .toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  // Fallback: resolver idInDomain desde el nombre del cliente (sin "(#N)") vía
+  // CustomerSearchByName. Solo se usa si el badge "(#N)" no estuviera presente.
+  async function resolveIdInDomainByName(rawName) {
+    const c = core();
+    const clean = (c ? c.cleanCustomerName(rawName) : String(rawName || ''))
+      .replace(/\s*\(#\d+\)\s*$/, '').trim();
+    if (!clean) return null;
+    const key = c ? c.normalizeForMatch(clean) : clean.toLowerCase();
+    if (_nameIdCache.has(key)) return _nameIdCache.get(key);
+    try {
+      const r = await SteelheadAPI.query('CustomerSearchByName', { searchText: clean, name: clean, query: clean, first: 12 });
+      const nodes = r?.searchCustomers?.nodes || [];
+      let hit = nodes.find(n => (c ? c.normalizeForMatch(n.name) : String(n.name || '').toLowerCase()) === key);
+      if (!hit && nodes.length === 1) hit = nodes[0];
+      const id = hit ? hit.idInDomain : null;
+      _nameIdCache.set(key, id);
+      return id;
+    } catch (err) {
+      warn(`resolveIdInDomainByName("${clean}") falló: ${err.message}`);
+      return null;
+    }
   }
+
+  // ── Fills ──
 
   function fillNativeSelectByText(sel, targetText) {
     if (!sel || !targetText) return { success: false, reason: 'sin select o target' };
-    const targetNorm = normalizeForMatch(targetText);
+    const c = core();
+    if (!c) return { success: false, reason: 'core no cargado' };
+    const targetNorm = c.normalizeForMatch(targetText);
     if (!targetNorm) return { success: false, reason: 'target vacío' };
 
     // Si ya está en el valor correcto, no tocamos
     const currentOpt = sel.options?.[sel.selectedIndex];
-    if (currentOpt && normalizeForMatch(currentOpt.text || '') === targetNorm) {
+    if (currentOpt && c.normalizeForMatch(currentOpt.text || '') === targetNorm) {
       return { success: true, filled: currentOpt.text, noop: true };
     }
 
@@ -248,23 +292,12 @@ const CreateOrderAutofill = (() => {
       return { success: false, reason: 'usuario tocó después de autofill' };
     }
 
-    let best = null, bestScore = -1;
-    for (const opt of sel.options) {
-      const txt = (opt.text || '').trim();
-      if (!txt) continue;
-      const norm = normalizeForMatch(txt);
-      let score = 0;
-      if (norm === targetNorm) score = 100;
-      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 60;
-      else {
-        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
-        for (const t of tokens) { if (norm.includes(t)) score += 8; }
-      }
-      if (score > bestScore) { bestScore = score; best = opt; }
+    const optionTexts = [...sel.options].map(o => o.text || '');
+    const match = c.scoreOptionMatch(optionTexts, targetText);
+    if (!match.pass) {
+      return { success: false, reason: `sin match (mejor score=${match.score})` };
     }
-    if (!best || bestScore < 60) {
-      return { success: false, reason: `sin match (mejor score=${bestScore})` };
-    }
+    const best = sel.options[match.index];
 
     const tracker = sel._valueTracker;
     if (tracker) tracker.setValue('');
@@ -293,8 +326,16 @@ const CreateOrderAutofill = (() => {
   // ── Run principal ──
 
   async function runAutofill(myRun, { customerName, shipTo, razonSel, divisaSel, consolidarChk }) {
-    const idInDomain = extractCustomerIdInDomain(customerName);
-    if (!idInDomain) {
+    let idInDomain = core() ? core().extractCustomerIdInDomain(customerName) : null;
+
+    // Fallback: si no vino el badge "(#N)", resolver por nombre.
+    if (idInDomain == null && customerName) {
+      idInDomain = await resolveIdInDomainByName(customerName);
+      if (isStale(myRun)) return;
+      if (idInDomain != null) log(`idInDomain resuelto por nombre → ${idInDomain}`);
+    }
+
+    if (idInDomain == null) {
       log(`sin idInDomain (cliente="${customerName}") — no autofill`);
       state.results = { razon: { ok: false, msg: 'sin idInDomain' }, divisa: { ok: false, msg: 'sin idInDomain' }, consolidar: null };
       renderPanel({ customerName, shipTo });
