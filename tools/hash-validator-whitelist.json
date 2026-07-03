@@ -14,13 +14,13 @@
     },
     {
       "operation": "Customer",
-      "reason": "Falso positivo verificado 2026-07-02: hash 96b214b5632d… idéntico en config y en scan-de-navegador con scanCount=50 y 655 responseFields (ejecuciones exitosas en vivo desde el frontend). Responde 'Must provide a query string' solo al cliente externo (Python + idp-token) del validador. Usado por invoice-autofill/create-order-autofill/weight-quick-entry vía SteelheadAPI in-page (credentials:include, mismo origen) → funciona. OJO: Customer SÍ rota de verdad de vez en cuando (875f→96b2 el 2026-06-25); si el scan muestra un hash DISTINTO al de config con status:changed+lastHttpStatus:200, es rotación real — quita esta entrada y actualiza config.",
-      "verifiedOn": "2026-07-02"
+      "reason": "Session-sensitive: responde 'Must provide a query string' al cliente externo (Python + idp-token) del validador aun con el hash vigente; funciona in-page (invoice-autofill/create-order-autofill/weight-quick-entry vía SteelheadAPI, credentials:include, mismo origen). OJO: Customer ROTA de verdad seguido (875f→96b2 el 2026-06-25; 96b2→12d6 el 2026-07-03). El validador NO puede distinguir rotación real de falso-positivo aquí → confirma SIEMPRE con hash-scanner/captura in-page: si el hash del frontend ≠ config, es rotación real, actualiza config. Hash vigente 2026-07-03: 12d69cd18ff3…",
+      "verifiedOn": "2026-07-03"
     },
     {
       "operation": "AllCustomers",
-      "reason": "Falso positivo verificado 2026-07-02: hash 66e271f6a8a2… estable 2 meses (mismo en todos los scans desde 2026-05-05), idéntico en config y scan con scanCount=30 y 489 responseFields en vivo. 'Must provide a query string' solo al cliente externo del validador. Usado por catalog-fetcher/portal-importer (carga-masiva) in-page → funciona.",
-      "verifiedOn": "2026-07-02"
+      "reason": "Session-sensitive: 'Must provide a query string' solo al cliente externo del validador; funciona in-page (catalog-fetcher/portal-importer, carga-masiva). ROTÓ el 2026-07-03 (66e271f6a8a2… → 8d4dfe69d305…) y el validador lo skipeó por esta whitelist → reportó 0 rotado mientras carga masiva traía 0 clientes. Confirma con captura in-page del hash del frontend (≠ config = rotación), NO con el 400 in-page (no discrimina). Hash vigente 2026-07-03: 8d4dfe69d305…",
+      "verifiedOn": "2026-07-03"
     },
     {
       "operation": "AllSensorDashboards",
