@@ -129,8 +129,46 @@ async function main() {
       console.log(`✗ auto-deploy falló (exit ${e.status ?? '?'}) — requiere revisión humana`);
     }
   }
-  // (Notificación por correo + escalamiento: Tasks 8-9.)
+  // Escalamiento (Task 9): recetas que no capturaron → señal para el cron de Claude.
+  if (!DRY && plan.notCaptured.length) {
+    writeNeedsAttention(plan.notCaptured, recipes, RUN_DATE);
+  }
+
+  // Notificación por correo (Task 8) — solo cuando hay algo que reportar.
+  if (!DRY) {
+    if (deployed) {
+      const detalle = plan.toDeploy.map((r) => `• ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash}`).join('\n');
+      notify('exito', `${plan.toDeploy.length} hash(es) rotado(s) regenerado(s)`, `hash-autopilot detectó y deployó:\n\n${detalle}\n\nconfig.json bumpeado + gh-pages actualizado.`);
+    } else if (plan.massBrake) {
+      const rotados = results.filter((r) => r.verdict === 'rotadoValidado').map((r) => r.op).join(', ');
+      notify('revision', 'freno de masa — no se deployó', `${plan.reason}.\n\nRotados: ${rotados}\n\nRevisa manualmente antes de deployar (posible captura corrupta o cambio grande de Steelhead).`);
+    }
+    if (plan.suspicious.length) {
+      notify('revision', `${plan.suspicious.length} hash(es) sospechoso(s)`, `Difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => `• ${r.op}`).join('\n')}\n\nRevisa con hash-scanner.`);
+    }
+    if (plan.notCaptured.length) {
+      notify('fallo', `${plan.notCaptured.length} op(s) no capturada(s)`, `Las recetas no dispararon estas ops (posible cambio de UI):\n${plan.notCaptured.map((r) => `• ${r.op}`).join('\n')}\n\nSe dejó señal para re-descubrir la receta.`);
+    }
+  }
   return { results, plan, deployed };
+}
+
+function notify(tipo, asunto, cuerpo) {
+  try { execFileSync(join(__dirname, 'autopilot-notify.sh'), [tipo, asunto, cuerpo], { stdio: 'inherit' }); }
+  catch (e) { console.log(`(notify falló: ${String(e).slice(0, 80)})`); }
+}
+
+function writeNeedsAttention(notCaptured, recipes, date) {
+  try {
+    mkdirSync(RESULTS_DIR, { recursive: true });
+    const findRecipe = (op) => Object.entries(recipes).find(([, r]) => (r.captures || []).includes(op));
+    const ops = notCaptured.map((r) => {
+      const rec = findRecipe(r.op);
+      return { op: r.op, recipeTried: rec ? rec[0] : null, steps: rec ? rec[1].steps : null, observed: 'la receta no disparó la op (0 capturas)' };
+    });
+    writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify({ date, ops }, null, 2));
+    console.log(`  señal de escalamiento escrita (${ops.length} op).`);
+  } catch (e) { console.log(`(no se pudo escribir needs-attention: ${String(e).slice(0, 80)})`); }
 }
 
 function persistResult(obj) {
