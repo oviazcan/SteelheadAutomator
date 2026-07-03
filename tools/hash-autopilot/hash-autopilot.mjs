@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
+import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
 import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
 import { readConfigHashes } from './config-io.mjs';
@@ -114,7 +115,22 @@ async function main() {
   if (plan.notCaptured.length) console.log(`· No capturados (receta por afinar): ${plan.notCaptured.map((r) => r.op).join(', ')}`);
 
   persistResult({ date: RUN_DATE, authFailed: false, results, plan });
-  // (Auto-deploy + notificación + escalamiento: Tasks 7-9.)
+
+  // Auto-deploy de los rotados validados (salvo dry-run / freno de masa).
+  let deployed = false;
+  if (!DRY && plan.toDeploy.length && !plan.massBrake) {
+    const pairs = plan.toDeploy.map((r) => `${r.op}=${r.liveHash}`);
+    console.log(`\n→ Auto-deploy: ${pairs.join(' ')}`);
+    try {
+      execFileSync(join(__dirname, 'autopilot-deploy.sh'), pairs, { stdio: 'inherit' });
+      deployed = true;
+      console.log('✓ deploy OK');
+    } catch (e) {
+      console.log(`✗ auto-deploy falló (exit ${e.status ?? '?'}) — requiere revisión humana`);
+    }
+  }
+  // (Notificación por correo + escalamiento: Tasks 8-9.)
+  return { results, plan, deployed };
 }
 
 function persistResult(obj) {
