@@ -1,6 +1,6 @@
 {
-  "version": "1.7.58",
-  "lastUpdated": "2026-07-03T15:03",
+  "version": "1.7.59",
+  "lastUpdated": "2026-07-03T15:18",
   "extensionVersion": "1.6.4",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -853,7 +853,7 @@
       "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta",
       "icon": "📝",
       "category": "Recibo",
-      "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill-core.js", "scripts/create-order-autofill.js"],
       "autoInject": true,
       "requiredPermissions": ["READ_RECEIVING"],
       "actions": [
