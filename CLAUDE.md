@@ -155,7 +155,7 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `receiver-date-override` | 0.5.68 | [`docs/applets/receiver-date-override.md`](docs/applets/receiver-date-override.md) |
 | `warehouse-location-prefill` | 0.5.80 | [`docs/applets/warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
 | `weight-quick-entry` | 0.5.81 | [`docs/applets/weight-quick-entry.md`](docs/applets/weight-quick-entry.md) |
-| `create-order-autofill` | 0.1.0 | [`docs/applets/create-order-autofill.md`](docs/applets/create-order-autofill.md) |
+| `create-order-autofill` | 0.1.1 (fix 2026-07-03: "sin idInDomain" para TODOS los clientes — la extracción del cliente ya NO usa el label-walk frágil que bailaba al topar el `input[role=combobox]`; ahora elige el singleValue con badge `(#N)` (`create-order-autofill-core.js` + golden test) + fallback `idInDomain` por nombre vía `CustomerSearchByName`. Pendiente run real) | [`docs/applets/create-order-autofill.md`](docs/applets/create-order-autofill.md) |
 | `unit-autoconvert` | 0.1.0 (código completo; pendiente validación en vivo) | [`docs/applets/unit-autoconvert.md`](docs/applets/unit-autoconvert.md) |
 | `archiver` (Archivador Masivo) | 1.0.0 (filtro por etiquetas AND/OR + archivar/desarchivar + fecha opcional + form en remoto; fase 2 pendiente: grupo/línea/departamento/proceso) | [`docs/applets/archiver.md`](docs/applets/archiver.md) |
 | `wo-mover` (mover OTs entre OVs) | 0.2.0 (solo reasigna encabezado vía `CreateUpdateWorkOrdersChecked`; la parte/PT queda en la OV origen y se asocia manual — la UI no expone la asociación por API) | [`docs/applets/wo-mover.md`](docs/applets/wo-mover.md) |

@@ -2,6 +2,25 @@
 
 Auto-llena las 3 Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `Consolidar por Producto`) del modal **"Crear Orden de Venta"** que sale en el flujo `/Receiving/CustomerParts → RECEIVE → +/Create`. Sustituye al canal write de OV customInputs que no existe en `ordendeventa.ts` (ver bitácoras `powertools-ordendeventa.md` y `powertools-facturacion.md`, ahora en el repo **SteelheadPowerTools**).
 
+## Fix 2026-07-03 (v0.1.1) — "sin idInDomain" para TODOS los clientes
+
+**Síntoma reportado:** el autofill de Razón Social y Divisa no funcionaba para ningún cliente. El panel mostraba `(sin cliente) → (sin shipTo)` y ambos campos `✗ sin idInDomain`.
+
+**Root cause (confirmado en vivo, no adivinado):**
+- El fetch `Customer` NO estaba roto (hash `12d69cd…` vigente; devuelve `DatosFactura` completo). El match de `<option>` tampoco (Divisa `"USD"` matchea `"USD - Dólar americano"` por substring, score 60; Razón string-largo matchea exacto, score 100). Todo eso se validó con lecturas en vivo.
+- El bug estaba **100% en la extracción del cliente del modal**. `findSingleValueByLabel` caminaba los hermanos del label "Cliente:" y hacía **`return null` al toparse un `input[role="combobox"]`** — pero el react-select SIEMPRE monta el combobox junto al singleValue, así que bailaba antes de leer el nombre. Resultado: `extractCustomerNameFromModal()` → `null` → sin `(#N)` que parsear → `sin idInDomain`. Como el layout del modal es idéntico para todo cliente, fallaba para **todos**.
+- Dato clave: el `(#N)` **sí está presente** en ese modal — `sv = "C" (avatar) + "CONTROLES Y MEDIDORES ESPECIALIZADOS (#10)"` = idInDomain 10. El avatar MUI pega su letra al nombre; `extractCustomerNameFromModal` ya lo quita con `[class*="Avatar"]`.
+
+**Fix:**
+1. **Extracción del cliente robusta y label-independiente**: se juntan los textos de TODOS los `[class*="singleValue"]` del modal (quitando avatar/svg/img) y se elige el ÚNICO que trae el badge `(#N)` (`Core.pickCustomerFromSingleValues`). Los demás singleValues del modal (Contacto, Facturar a, Enviar vía, Términos) no traen `(#N)`.
+2. `findSingleValueByLabel` (que aún usa el shipTo): se **quitó el bail del combobox** y ahora prefiere la ÚLTIMA etiqueta que matchea (la del modal, no la del wizard padre).
+3. `getModalRoot` con **fallback** ascendiendo desde un campo RJSF (garantiza root aunque el heading cambie de tag).
+4. **Fallback de `idInDomain` por nombre** vía `CustomerSearchByName` (`resolveIdInDomainByName`, cacheado) por si algún cliente/modal no mostrara el badge — cierra el pendiente "Cliente con `(#N)` no parseado".
+
+**Módulo puro nuevo** `create-order-autofill-core.js` (`window.CreateOrderAutofillCore` / `module.exports`): `normalizeForMatch`, `cleanCustomerName`, `extractCustomerIdInDomain`, `pickCustomerFromSingleValues`, `scoreOptionMatch`. Golden test `tools/test/create-order-autofill-core.test.js` (9 casos, incluye el caso Divisa `"USD"` vs `"USD - Dólar americano"`). El core va en `config.apps[].scripts` ANTES del applet.
+
+**Validación:** core 9/9 verde + réplica del singleValue real del modal → `pickCustomerFromSingleValues` saca `idInDomain: 10`. **Pendiente:** corrida real end-to-end en el modal (que el operador confirme que se llenan Razón Social + Divisa).
+
 ## Por qué DOM en lugar de hook
 Probamos 4 casts experimentales (`workOrderUpdates` paralelo, `customInputs` top-level, `receivedOrderCustomInputs` singular, `shipToAddress.customInputs`) en el hook low-code `getReceivedOrderCustomization` de Power Tools. Test Run pasaba en todos (la shape se generaba bien), pero **el backend nunca aplicó el customInput a la OV** — mismo failure mode documentado para `partNumberLabels` en `powertools-ordendeventa.md` (2026-05-15; repo SteelheadPowerTools). Steelhead solo respeta las claves declaradas explícitamente en su shape de backend; lo demás se silencia.
 
