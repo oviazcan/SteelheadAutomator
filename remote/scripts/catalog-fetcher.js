@@ -9,6 +9,84 @@ const CatalogFetcher = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // ── Guard de integridad: listas vacías por fallo de query (p.ej. hash rotado) ──
+  // Cuando Steelhead rota un persisted-query hash, api().query() lanza con
+  // "Must provide a query string." La lista queda vacía y —sin este guard— la
+  // plantilla se generaría con 0 items; al correr RefrescarListas SOBRESCRIBIRÍA
+  // las listas buenas con vacíos. Acumulamos los fallos y bloqueamos/avisamos
+  // ANTES de descargar. (Incidente 2026-07-03: rotaron AllCustomers y Customer →
+  // carga masiva trajo 0 clientes sin avisar.)
+  const HASH_ERR_RE = /must provide a query string|persistedquery(?:notfound)?/i;
+  let _fetchIssues = [];
+  function noteFetchIssue(catalog, op, e) {
+    const msg = String((e && e.message) || e || '');
+    const hashRotated = HASH_ERR_RE.test(msg);
+    _fetchIssues.push({ catalog, op, msg: msg.substring(0, 220), hashRotated });
+    return hashRotated;
+  }
+
+  // Catálogos "críticos": si alguno queda vacío es casi seguro un fallo de fetch,
+  // NO un dato real (el dominio siempre tiene clientes/procesos/productos/specs).
+  const CRITICAL_CATALOGS = [
+    { key: 'customers', label: 'Clientes' },
+    { key: 'processes', label: 'Procesos' },
+    { key: 'products',  label: 'Productos' },
+    { key: 'specs',     label: 'Especificaciones' },
+  ];
+
+  // PURA + testeable. Decide si la descarga es segura a partir de los catálogos
+  // obtenidos y los fallos registrados. level:
+  //  - 'block': algún catálogo crítico vacío → NO descargar (sobrescribiría listas buenas).
+  //  - 'warn' : hubo hash rotado pero los críticos traen datos → confirmar con el usuario.
+  //  - 'ok'   : todo bien.
+  function assessCatalogHealth(catalogs, issues) {
+    const c = catalogs || {};
+    const iss = Array.isArray(issues) ? issues : [];
+    const empties = CRITICAL_CATALOGS
+      .filter(cc => !Array.isArray(c[cc.key]) || c[cc.key].length === 0)
+      .map(cc => cc.label);
+    const hashRotated = iss.filter(i => i.hashRotated);
+    const otherErrors = iss.filter(i => !i.hashRotated);
+    let level = 'ok';
+    if (empties.length) level = 'block';
+    else if (hashRotated.length) level = 'warn';
+    return { level, empties, hashRotated, otherErrors };
+  }
+
+  // Arma el texto del aviso (PURO, testeable).
+  function buildHealthMessage(health) {
+    const lines = [];
+    lines.push(health.level === 'block'
+      ? '⚠️ CATÁLOGOS INCOMPLETOS — descarga cancelada'
+      : '⚠️ Aviso: hubo consultas con hash rotado');
+    lines.push('');
+    if (health.hashRotated.length) {
+      lines.push('Fallaron por HASH ROTADO (Steelhead actualizó su API):');
+      for (const i of health.hashRotated) lines.push(`  • ${i.catalog} (${i.op})`);
+      lines.push('');
+    }
+    if (health.empties.length) {
+      lines.push('Catálogos críticos que quedaron VACÍOS:');
+      for (const e of health.empties) lines.push(`  • ${e}`);
+      lines.push('');
+    }
+    if (health.otherErrors.length) {
+      lines.push('Otros errores de consulta:');
+      for (const i of health.otherErrors) lines.push(`  • ${i.catalog}: ${i.msg}`);
+      lines.push('');
+    }
+    if (health.level === 'block') {
+      lines.push('NO se generó el archivo para no sobrescribir tus listas buenas');
+      lines.push('con listas vacías al correr "RefrescarListas".');
+      lines.push('');
+      lines.push('Reporta al equipo para actualizar los hashes (config.json) y reintenta.');
+    } else {
+      lines.push('Los catálogos críticos SÍ traen datos, pero los de arriba saldrán');
+      lines.push('vacíos/incompletos. ¿Descargar de todos modos?');
+    }
+    return lines.join('\n');
+  }
+
   // ── CAT_Procesos: catálogo de procesos en un ARTÍCULO DE INVENTARIO (fuente de
   // verdad). Lo mantiene el applet proceso-calculator (agrega combinaciones nuevas
   // en vivo). Aquí lo bajamos para que RefrescarListas reconstruya la hoja
@@ -80,20 +158,32 @@ const CatalogFetcher = (() => {
   // ═══════════════════════════════════════════
 
   async function fetchAll() {
+    _fetchIssues = [];
     log('Catálogos dinámicos: consultando API...');
-    const [customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes, catProcesos] = await Promise.all([
-      fetchCustomers(),
-      fetchProcesses(),
-      fetchProducts(),
-      fetchLabels(),
-      fetchSpecs(),
-      fetchRacks(),
-      fetchUsers(),
-      fetchGroups(),
-      fetchPNInputSchema(),
-      fetchGeometryTypes(),
-      fetchCatProcesos()
-    ]);
+    // allSettled (no all): si un fetch SIN catch interno rota (SearchProducts,
+    // AllLabels, AllProcesses, AllRackTypes, SearchUsers), NO tumba todo el lote —
+    // lo registramos como issue y seguimos con su fallback vacío para poder avisar.
+    const jobs = [
+      ['Clientes', fetchCustomers, () => []],
+      ['Procesos', fetchProcesses, () => []],
+      ['Productos', fetchProducts, () => []],
+      ['Etiquetas', fetchLabels, () => []],
+      ['Especificaciones', fetchSpecs, () => []],
+      ['Racks', fetchRacks, () => ({ all: [], linea: [] })],
+      ['Usuarios', fetchUsers, () => []],
+      ['Grupos', fetchGroups, () => []],
+      ['Input Schema', fetchPNInputSchema, () => ({ metalBase: [], codigoSAT: [] })],
+      ['Tipos de Geometría', fetchGeometryTypes, () => []],
+      ['CAT_Procesos', fetchCatProcesos, () => []],
+    ];
+    const settled = await Promise.allSettled(jobs.map(([, fn]) => fn()));
+    const vals = settled.map((s, i) => {
+      if (s.status === 'fulfilled') return s.value;
+      noteFetchIssue(jobs[i][0], jobs[i][1].name || 'fetch', s.reason);
+      warn(`${jobs[i][0]}: fetch falló → ${String((s.reason && s.reason.message) || s.reason).substring(0, 120)}`);
+      return jobs[i][2]();
+    });
+    const [customers, processes, products, labels, specs, racks, users, groups, pnInputSchema, geometryTypes, catProcesos] = vals;
     log(`  ${customers.length} clientes, ${processes.length} procesos, ${products.length} productos`);
     log(`  ${labels.length} etiquetas, ${specs.length} specs, ${racks.linea.length}/${racks.all.length} racks`);
     log(`  ${users.length} usuarios, ${groups.length} grupos`);
@@ -115,6 +205,7 @@ const CatalogFetcher = (() => {
       const entries = Array.isArray(ci[CATPROC_KEY]) ? ci[CATPROC_KEY] : [];
       return entries;
     } catch (e) {
+      noteFetchIssue('CAT_Procesos', 'GetInventoryItem', e);
       warn(`GetInventoryItem (CatProcesos): ${String(e).substring(0, 120)}`);
       return [];
     }
@@ -133,6 +224,7 @@ const CatalogFetcher = (() => {
       const codigoSAT = props.DatosFacturacion?.properties?.CodigoSAT?.enum || [];
       return { metalBase: [...metalBase], codigoSAT: [...codigoSAT] };
     } catch (e) {
+      noteFetchIssue('Input Schema', 'GetPartNumbersInputSchema', e);
       warn(`GetPartNumbersInputSchema: ${String(e).substring(0, 100)}`);
       return { metalBase: [], codigoSAT: [] };
     }
@@ -157,6 +249,7 @@ const CatalogFetcher = (() => {
           searchQuery: ''
         });
       } catch (e) {
+        noteFetchIssue('Clientes', 'AllCustomers', e);
         warn(`AllCustomers offset ${offset}: ${String(e).substring(0, 120)}`);
         break;
       }
@@ -300,6 +393,7 @@ const CatalogFetcher = (() => {
           searchQuery: ''
         });
       } catch (e) {
+        noteFetchIssue('Especificaciones', 'AllSpecs', e);
         warn(`AllSpecs offset ${offset}: ${String(e).substring(0, 120)}`);
         break;
       }
@@ -411,7 +505,8 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchGroups() {
-    const data = await api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PNGroupSelect').catch(() => null);
+    const data = await api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PNGroupSelect')
+      .catch((e) => { noteFetchIssue('Grupos', 'PNGroupSelect', e); return null; });
     if (!data) return [];
     const nodes = data?.allPartNumberGroups?.nodes || data?.pagedData?.nodes || data?.partNumberGroups?.nodes || [];
     const seen = new Set();
@@ -437,6 +532,7 @@ const CatalogFetcher = (() => {
           orderBy: ['ID_DESC'], offset, first: PAGE, searchQuery: ''
         });
       } catch (e) {
+        noteFetchIssue('Tipos de Geometría', 'AllGeometryTypes', e);
         warn(`AllGeometryTypes offset ${offset}: ${String(e).substring(0, 120)}`);
         break;
       }
@@ -465,6 +561,26 @@ const CatalogFetcher = (() => {
     if (!window.XLSX) throw new Error('SheetJS (XLSX) no cargado');
 
     const catalogs = await fetchAll();
+
+    // Guard de integridad: si un catálogo crítico vino vacío (p.ej. hash rotado),
+    // NO generamos el archivo — evitamos que RefrescarListas borre las listas buenas.
+    const health = assessCatalogHealth(catalogs, _fetchIssues);
+    if (health.level === 'block') {
+      log('generateCatalogsFile ABORTADO por catálogos incompletos: ' + JSON.stringify({
+        empties: health.empties,
+        hashRotated: health.hashRotated.map(i => i.op),
+        otherErrors: health.otherErrors.map(i => i.op),
+      }));
+      alert(buildHealthMessage(health));
+      return { aborted: true, health };
+    }
+    if (health.level === 'warn') {
+      if (!confirm(buildHealthMessage(health))) {
+        log('generateCatalogsFile cancelado por el usuario (hash rotado en catálogos secundarios).');
+        return { aborted: true, health };
+      }
+      warn('Continuando pese a hash rotado en catálogos secundarios: ' + health.hashRotated.map(i => i.op).join(', '));
+    }
 
     // Create new workbook with catalog sheets matching the template's internal sheets
     const wb = XLSX.utils.book_new();
@@ -680,7 +796,7 @@ const CatalogFetcher = (() => {
     return counts;
   }
 
-  return { fetchAll, generateCatalogsFile, _comboFieldRank: comboFieldRank, _buildSpecComboEntries: buildSpecComboEntries, _splitSpecEntry: splitSpecEntry };
+  return { fetchAll, generateCatalogsFile, _comboFieldRank: comboFieldRank, _buildSpecComboEntries: buildSpecComboEntries, _splitSpecEntry: splitSpecEntry, _assessCatalogHealth: assessCatalogHealth, _buildHealthMessage: buildHealthMessage, _noteFetchIssue: noteFetchIssue };
 })();
 
 if (typeof window !== 'undefined') window.CatalogFetcher = CatalogFetcher;
