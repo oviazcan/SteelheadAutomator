@@ -628,3 +628,16 @@ Evidencia (investigación 2026-07-02):
   falso positivo (hash igual + `responseFields`/`scanCount>0` → whitelist, no tocar config).
 
 ## 2026-07-02 23:04 — 0 rotado(s) (launchd)
+
+## 2026-07-02 23:19 — 1 rotado(s)
+
+- Config version: `1.7.55`
+- OK: 175 / 182 · Tiempo: 137.4s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-02.json`
+
+**Rotados — applets que truenan:**
+
+#### ⚠️ `query GetDomain` · hash `c0c242bcac01…`
+- **Applets que truenan:** bill-autofill, invoice-autofill
+- **usedBy (config):** bill-autofill
+- **Qué hace:** Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate
