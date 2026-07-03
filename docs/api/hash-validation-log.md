@@ -626,3 +626,5 @@ Evidencia (investigación 2026-07-02):
   en `remote/scripts/*.js` + `knownOperations.usedBy`) y una sección **"cómo recuperar (acciones en
   el scan)"** que distingue rotación real (`status:changed`+`lastHttpStatus:200`, hash distinto) de
   falso positivo (hash igual + `responseFields`/`scanCount>0` → whitelist, no tocar config).
+
+## 2026-07-02 23:04 — 0 rotado(s) (launchd)
