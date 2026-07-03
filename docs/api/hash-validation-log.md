@@ -650,3 +650,5 @@ Evidencia (investigación 2026-07-02):
 - **Fuente:** `scan_results_2026-07-02_235711.json` (`scanResults.GetDomain.hash`; `previousHash` == hash viejo del config → rotación real confirmada)
 - **Deploy:** `config.json` 1.7.55 → 1.7.56 vía `tools/deploy.sh` (commit `9bb7313` main / `160c1d1` gh-pages); invariante gh-pages↔main:remote/ byte-a-byte OK.
 - **Bundle Safari:** no requiere rebundle — el bridge refresca `config.json` en runtime (rotación de hash no toca applets del bundle).
+
+## 2026-07-03 08:20 — 0 rotado(s) (launchd)
