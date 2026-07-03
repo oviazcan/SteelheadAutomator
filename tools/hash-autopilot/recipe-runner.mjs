@@ -22,6 +22,8 @@ export async function installInterceptor(page, sink) {
         sink.hashes[name] = hash;
         const d = datas[i] || datas[0] || {};
         if (d && d.data) sink.data[name] = d.data;
+        // responseOk: el frontend obtuvo data sin errors → el hash es válido de facto
+        if (d && d.data && !(d.errors && d.errors.length)) sink.responseOk[name] = true;
       }
     });
   });

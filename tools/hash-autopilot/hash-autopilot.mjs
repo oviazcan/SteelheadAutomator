@@ -3,13 +3,20 @@
 // recetas de click-recipes.json, intercepta /graphql y captura los hashes que el
 // frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
 import { chromium } from 'playwright';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
+import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
+import { readConfigHashes } from './config-io.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const CONFIG_PATH = join(__dirname, '../../remote/config.json');
+const RESULTS_DIR = join(__dirname, '../.hash-autopilot');
+// Ops session-sensitive que validate-hashes.py (idp-token) no puede validar bien.
+const TARGET_OPS = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrder', 'AllSensorDashboards', 'SensorDashboardQuery'];
+
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
 const domainArg = args.find((a) => a.startsWith('--domain='));
@@ -18,6 +25,9 @@ const domainNanoArg = args.find((a) => a.startsWith('--domain-nano='));
 const DOMAIN_NANO = domainNanoArg ? domainNanoArg.split('=')[1] : '1NFxmF';
 const onlyArg = args.find((a) => a.startsWith('--only='));
 const ONLY = onlyArg ? onlyArg.split('=')[1] : null;
+// Fecha inyectable (para tests/reproducibilidad); default hoy.
+const dateArg = args.find((a) => a.startsWith('--date='));
+const RUN_DATE = dateArg ? dateArg.split('=')[1] : new Date().toISOString().slice(0, 10);
 
 // Tokens OAuth de Reportes SH (steelhead_auth los mantiene frescos vía refresh).
 // El frontend usa react-oauth2-code-pkce → guarda los tokens en localStorage con
@@ -56,7 +66,7 @@ async function main() {
     state: randomUUID(), domainNano: DOMAIN_NANO,
   });
   const page = await context.newPage();
-  const sink = { hashes: {}, data: {} };
+  const sink = { hashes: {}, data: {}, responseOk: {} };
   await installInterceptor(page, sink);
 
   for (const [name, recipe] of Object.entries(recipes)) {
@@ -72,11 +82,46 @@ async function main() {
   }
 
   await browser.close();
-  console.log(`\nHashes capturados${DRY ? ' (dry-run)' : ''}:`);
-  console.log(JSON.stringify(sink.hashes, null, 2));
+
+  // Auth check: si no capturó NADA, la sesión no autenticó (tokens vencidos).
   if (Object.keys(sink.hashes).length === 0) {
-    console.log('\n⚠️ 0 capturas — la cookie no autenticó o las recetas no dispararon nada.');
+    console.log('\n⚠️ 0 capturas — la sesión no autenticó (¿tokens ROCP vencidos? corre steelhead_auth.py).');
+    persistResult({ date: RUN_DATE, authFailed: true, results: [], plan: null });
+    process.exitCode = 2;
+    return;
   }
+
+  // Clasificar cada op target: liveHash capturado vs config; validación por
+  // RESPUESTA capturada (responseOk = el frontend obtuvo data sin errors).
+  const cfgHashes = readConfigHashes(CONFIG_PATH);
+  const results = TARGET_OPS.map((op) => {
+    const liveHash = sink.hashes[op] ?? null;
+    const cfgHash = cfgHashes[op] ?? null;
+    const ok = !!sink.responseOk[op];
+    const verdict = classifyOp({ cfgHash, liveHash, http: ok ? 200 : null, shapeOk: ok });
+    return { op, cfgHash, liveHash, responseOk: ok, verdict };
+  });
+  const plan = planDeploy(results, {});
+
+  // Reporte
+  console.log(`\n=== hash-autopilot ${RUN_DATE}${DRY ? ' (dry-run)' : ''} ===`);
+  for (const r of results) {
+    const tag = { vigente: '✓ vigente', rotadoValidado: '🔺 ROTÓ', sospechoso: '⚠️ sospechoso', noCapturado: '· no capturado' }[r.verdict];
+    console.log(`  ${r.op.padEnd(22)} ${tag}${r.verdict === 'rotadoValidado' ? `  ${r.cfgHash?.slice(0, 8)}→${r.liveHash?.slice(0, 8)}` : ''}`);
+  }
+  if (plan.massBrake) console.log(`\n⚠️ ${plan.reason} — NO se deploya nada (revisión humana).`);
+  if (plan.toDeploy.length) console.log(`\n🔺 Rotados validados: ${plan.toDeploy.map((r) => r.op).join(', ')}${DRY ? ' (dry-run: no deploya)' : ''}`);
+  if (plan.notCaptured.length) console.log(`· No capturados (receta por afinar): ${plan.notCaptured.map((r) => r.op).join(', ')}`);
+
+  persistResult({ date: RUN_DATE, authFailed: false, results, plan });
+  // (Auto-deploy + notificación + escalamiento: Tasks 7-9.)
+}
+
+function persistResult(obj) {
+  try {
+    mkdirSync(RESULTS_DIR, { recursive: true });
+    writeFileSync(join(RESULTS_DIR, `${obj.date}.json`), JSON.stringify(obj, null, 2));
+  } catch (e) { console.log(`(no se pudo persistir resultado: ${String(e).slice(0, 80)})`); }
 }
 
 main().catch((e) => { console.error('fatal:', e); process.exit(1); });
