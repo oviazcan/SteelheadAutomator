@@ -77,12 +77,25 @@
     };
   }
 
+  // ¿La clase de un nodo denota el ROOT (paper/contenedor) de un MUI Dialog?
+  // Bug 2026-07-03: getModalRoot() usaba `[class*="MuiDialog"]` arrancando en el heading
+  // MISMO, cuya clase "MuiDialogTitle-root" contiene el substring "MuiDialog" → matcheaba
+  // el TÍTULO vacío y nunca subía al paper con los campos. El título/contenido/acciones
+  // (Title/Content/Actions) del diálogo NO son el root; solo el paper/contenedor lo es.
+  function isDialogRootClass(className) {
+    const cls = String(className || '');
+    if (!cls.includes('MuiDialog')) return false;               // paper genérico/accordion → no
+    if (/MuiDialog(Title|Content|Actions|ContentText)/.test(cls)) return false;  // subpartes → no
+    return true;                                                 // MuiDialog-paper / -container → sí
+  }
+
   const api = {
     normalizeForMatch,
     cleanCustomerName,
     extractCustomerIdInDomain,
     pickCustomerFromSingleValues,
-    scoreOptionMatch
+    scoreOptionMatch,
+    isDialogRootClass
   };
   if (typeof window !== 'undefined') window.CreateOrderAutofillCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
