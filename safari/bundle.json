@@ -1,6 +1,6 @@
 {
   "name": "Steelhead Automator — iPad",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Bundle de applets de Steelhead para iPad (empaquetado). 16 'directo' + 6 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router, wo-completer, wo-deadline) lanzables desde el popup + vale-almacen (botón flotante).",
   "matches": ["https://app.gosteelhead.com/*"],
   "_comment": "Lista blanca de applets (por id en config.json). build-safari.sh expande cada uno a sus scripts vía config.apps[].scripts, deduplica preservando orden (helpers antes) y concatena en main-bundle.js. Los primeros 16 son 'directo' del inventario (docs/architecture/ipad-applets-inventory.html). vale-almacen y auto-router se auto-inyectan con botón flotante (FAB); archiver, sensor-status-autofill y load-calculator NO tienen FAB. Todos los con-popup se lanzan desde el popup (Acciones) → storage(saCommand) → bridge → sa-dispatcher → función global. Los mensajes de lanzamiento viven en popup.js LAUNCHERS + sa-dispatcher.js LAUNCH_FN. Nota auto-router: en Chrome su trigger de popup (chrome.runtime.onMessage) está muerto en MAIN world y solo corre por el FAB; en Safari el dispatcher usa postMessage, así que el lanzador SÍ opera (openPanel requiere haber abierto el modal de ruteo; openBatch es autocontenido).",
