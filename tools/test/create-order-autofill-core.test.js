@@ -96,3 +96,28 @@ test('scoreOptionMatch: target vacío o options no-array → no match', () => {
   assert.equal(Core.scoreOptionMatch(['USD - Dólar americano'], '').pass, false);
   assert.equal(Core.scoreOptionMatch(null, 'USD').pass, false);
 });
+
+// Regresión del bug 2026-07-03 (v0.1.2): getModalRoot() arrancaba el match en el
+// heading MISMO, y su clase "MuiDialogTitle-root" contiene el substring "MuiDialog",
+// así que el selector `[class*="MuiDialog"]` matcheaba el TÍTULO (vacío) → svInRoot=0
+// → cliente=null → "sin idInDomain" para TODOS. El título/contenido/acciones del
+// diálogo NO son el root del modal; solo lo es el paper/contenedor.
+test('isDialogRootClass: el título del diálogo NO es el root (bug del substring MuiDialog)', () => {
+  assert.equal(Core.isDialogRootClass('MuiTypography-root MuiTypography-h6 MuiDialogTitle-root css-ohyacs'), false);
+  assert.equal(Core.isDialogRootClass('MuiDialogContent-root css-y'), false);
+  assert.equal(Core.isDialogRootClass('MuiDialogActions-root css-z'), false);
+  assert.equal(Core.isDialogRootClass('MuiDialogContentText-root'), false);
+});
+
+test('isDialogRootClass: el paper/contenedor del diálogo SÍ es root', () => {
+  assert.equal(Core.isDialogRootClass('MuiPaper-root MuiPaper-elevation24 MuiDialog-paper MuiDialog-paperScrollPaper css-x'), true);
+  assert.equal(Core.isDialogRootClass('MuiDialog-container MuiDialog-scrollPaper css-x'), true);
+  assert.equal(Core.isDialogRootClass('MuiDialog-paperFullScreen'), true);
+});
+
+test('isDialogRootClass: paper genérico (accordion) NO es root — evita quedarnos en el panel chico del RJSF', () => {
+  assert.equal(Core.isDialogRootClass('MuiPaper-root MuiAccordion-root'), false);
+  assert.equal(Core.isDialogRootClass('MuiContainer-root MuiContainer-maxWidthLg'), false);
+  assert.equal(Core.isDialogRootClass(''), false);
+  assert.equal(Core.isDialogRootClass(null), false);
+});

@@ -2,6 +2,22 @@
 
 Auto-llena las 3 Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `Consolidar por Producto`) del modal **"Crear Orden de Venta"** que sale en el flujo `/Receiving/CustomerParts → RECEIVE → +/Create`. Sustituye al canal write de OV customInputs que no existe en `ordendeventa.ts` (ver bitácoras `powertools-ordendeventa.md` y `powertools-facturacion.md`, ahora en el repo **SteelheadPowerTools**).
 
+## Fix 2026-07-03 (v0.1.2) — `getModalRoot()` devolvía el TÍTULO (substring `MuiDialog`)
+
+**Síntoma:** tras el fix v0.1.1, el panel SEGUÍA mostrando `(sin cliente) → (sin shipTo)` y `✗ sin idInDomain` para todos los clientes (reproducido en vivo con HUBBELL PRODUCTS MEXICO (#20)). El `singleValue` del cliente estaba presente en pantalla con su badge `(#20)`.
+
+**Root cause (confirmado con diagnóstico en vivo, no adivinado):** `getModalRoot()` arrancaba el ascenso **en el heading mismo** (`let cur = h`) y aceptaba como root cualquier `[class*="MuiDialog"]`. Pero el heading es un `<h2 class="MuiTypography-root MuiTypography-h6 MuiDialogTitle-root css-…">`, y **`MuiDialogTitle-root` contiene el substring `"MuiDialog"`** → matcheaba el TÍTULO (vacío) en la iteración 0 y lo devolvía como root. Diagnóstico:
+- `getModalRoot()` → `H2.MuiDialogTitle-root` (¡el título!), `svInRoot: 0`.
+- Los 7 `singleValue` del modal (incluido `HUBBELL PRODUCTS MEXICO (#20)`) vivían en el `MuiDialog-paper`, un nivel arriba del título. Por eso `collectSingleValueTexts(root)=[]` → `pickCustomerFromSingleValues([])=null` → `null` → "sin idInDomain". Como `extractShipToFromModal` también depende de `getModalRoot()`, el shipTo salía vacío igual.
+- Referencia que sí funcionaba: `weight-quick-entry` ancla al wizard **externo** ("Recibir piezas del cliente") y por eso resolvió `idInDomain=20` en el mismo modal (log `[WQE] usarLBS=false (via Customer idInDomain=20)`).
+
+**Fix:**
+1. `getModalRoot()` ahora arranca el ascenso **en `h.parentElement`** (nunca evalúa el heading, que es el cebo) y acepta como root **solo el paper/contenedor del diálogo** vía el nuevo `Core.isDialogRootClass` — que exige `"MuiDialog"` en la clase PERO excluye `MuiDialog{Title,Content,Actions,ContentText}` y el `MuiPaper` genérico (evita quedarse en el panel chico del accordion RJSF).
+2. El fallback desde el campo RJSF sube igual (past el paper del accordion y el `DialogContent`) hasta el `MuiDialog-paper`.
+3. Nuevo `Core.isDialogRootClass(className)` (puro, testeable) + 3 tests de regresión, incluida la clase EXACTA del bug (`…MuiDialogTitle-root…` → `false`).
+
+**Validación:** core **12/12 verde**. Dry-run del `getModalRoot` NUEVO contra el DOM real del modal → `rootFound:true` (clase `MuiDialog-paper`), `svInRoot:7`, `picked.idInDomain:20`, `rootHasEnviarA:true`. **Pendiente:** confirmar el autofill real de Razón Social + Divisa una vez deployado (depende de que el cliente tenga `DatosFactura.{RazonSocialVenta,Divisa}` configurado; HUBBELL puede no tenerlo aún).
+
 ## Fix 2026-07-03 (v0.1.1) — "sin idInDomain" para TODOS los clientes
 
 **Síntoma reportado:** el autofill de Razón Social y Divisa no funcionaba para ningún cliente. El panel mostraba `(sin cliente) → (sin shipTo)` y ambos campos `✗ sin idInDomain`.
