@@ -128,27 +128,47 @@ const CreateOrderAutofill = (() => {
     return false;
   }
 
-  // Subir al MuiDialog/Paper que contiene el modal "Crear Orden de Venta" para anclar
-  // las búsquedas SOLO dentro del modal y no del wizard padre "Recibir piezas del
-  // cliente". Primero desde el heading; fallback desde los campos RJSF (garantiza un
-  // root siempre que los 3 ids existan, aunque el heading cambie de tag).
+  // Subir al paper/contenedor del MUI Dialog que contiene el modal "Crear Orden de
+  // Venta" para anclar las búsquedas SOLO dentro del modal (no del wizard padre
+  // "Recibir piezas del cliente").
+  //
+  // FIX 2026-07-03 (v0.1.2): el heading es un <h2 class="...MuiDialogTitle-root...">,
+  // cuya clase contiene el substring "MuiDialog". El código viejo arrancaba el match
+  // EN el heading con `[class*="MuiDialog"]`, así que devolvía el TÍTULO (vacío) en la
+  // iteración 0 → svInRoot=0 → cliente=null → "sin idInDomain" para TODOS. Ahora se
+  // sube desde el PADRE del heading y se acepta como root solo el paper/contenedor del
+  // diálogo (Core.isDialogRootClass excluye Title/Content/Actions y el paper genérico
+  // del accordion RJSF).
+  function isDialogRoot(el) {
+    if (!el) return false;
+    if (el.matches?.('[role="dialog"]')) return true;
+    const c = core();
+    const cls = String(el.className || '');
+    return c
+      ? c.isDialogRootClass(cls)
+      : (cls.includes('MuiDialog') && !/MuiDialog(Title|Content|Actions|ContentText)/.test(cls));
+  }
+
   function getModalRoot() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
       if (!MODAL_HEADING_RE.test((h.textContent || '').trim())) continue;
-      let cur = h;
-      for (let i = 0; i < 12 && cur; i++) {
-        if (cur.matches?.('[role="dialog"], [class*="MuiDialog"], [class*="MuiPaper"]')) return cur;
+      // Arrancamos ARRIBA del heading: su propia clase MuiDialogTitle-root es un cebo.
+      let cur = h.parentElement;
+      for (let i = 0; i < 14 && cur; i++) {
+        if (isDialogRoot(cur)) return cur;
         cur = cur.parentElement;
       }
-      const anchored = h.closest('[role="dialog"], [class*="MuiPaper"]');
-      if (anchored) return anchored;
     }
-    // Fallback: ascender desde un campo RJSF del modal.
+    // Fallback: ascender desde un campo RJSF hasta el diálogo contenedor. Sube PAST el
+    // paper chico del accordion (que no lleva "MuiDialog") y el DialogContent.
     const field = document.getElementById(RJSF_RAZON_ID) || document.getElementById(RJSF_DIVISA_ID);
     if (field) {
-      const anchored = field.closest('[role="dialog"], [class*="MuiDialog"], [class*="MuiPaper"]');
-      if (anchored) return anchored;
+      let cur = field.parentElement;
+      for (let i = 0; i < 24 && cur; i++) {
+        if (isDialogRoot(cur)) return cur;
+        cur = cur.parentElement;
+      }
     }
     return null;
   }
