@@ -667,3 +667,29 @@ Evidencia (investigación 2026-07-02):
 ## 2026-07-03 17:16 — 0 rotado(s) (launchd)
 
 ## 2026-07-03 19:48 — 0 rotado(s) (launchd)
+
+## 2026-07-04 08:09 — 4 rotado(s)
+
+- Config version: `1.7.57`
+- OK: 174 / 182 · Tiempo: 2957.8s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-04.json`
+
+**Rotados — applets que truenan:**
+
+#### ⚠️ `query GetPartNumber` · hash `804dd8f7e65f…`
+- **Applets que truenan:** auditor, board-metal-tooltip, bulk-upload, file-uploader, load-calculator-modal, pn-lifecycle-core, po-reconciler, price-confirm-guard, spec-migrator, unit-autoconvert, weight-quick-entry, wo-deadline-changer
+
+#### ⚠️ `query InvoiceByIdInDomain` · hash `5844a41c37db…`
+- **Applets que truenan:** cfdi-attacher, invoice-auto-regen, invoice-autofill
+- **usedBy (config):** cfdi-attacher
+- **Qué hace:** Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)
+
+#### ⚠️ `query GetReceivedOrdersWithReceivedOrderLineItems` · hash `944ee7858fbb…`
+- **Applets que truenan:** invoice-autofill
+- **usedBy (config):** invoice-autofill
+- **Qué hace:** Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV
+
+#### ⚠️ `query GetProcessNode` · hash `fae7d1d1d4e5…`
+- **Applets que truenan:** process-canon, process-shared
+- **usedBy (config):** process-canon, process-deep-audit
+- **Qué hace:** Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo ra…
