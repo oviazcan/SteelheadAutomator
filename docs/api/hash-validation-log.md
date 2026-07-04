@@ -665,3 +665,5 @@ Evidencia (investigación 2026-07-02):
 - **⚠️ Lección / gap del validador:** **2 de 6 ops whitelisted rotaron el mismo día y el validador las skipeó → reportó `0 rotado`.** La whitelist enmascara rotaciones reales de ops session-sensitive. **Pendiente:** que el validador re-verifique periódicamente las whitelisted vía hash-scanner (no puede desde Python) o emita un recordatorio para escanearlas. Las 4 restantes (`CurrentUser`, `GetPurchaseOrder`, `AllSensorDashboards`, `SensorDashboardQuery`) quedaron **sin verificar** esta sesión (sus applets no reportan fallas; probablemente vigentes).
 
 ## 2026-07-03 17:16 — 0 rotado(s) (launchd)
+
+## 2026-07-03 19:48 — 0 rotado(s) (launchd)
