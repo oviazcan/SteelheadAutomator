@@ -40,7 +40,9 @@ echo "$(date '+%F %T') Release nuevo (${CUR_CODEID:0:8}) — corriendo hash-auto
 # ── Fase A: primero el validator (detecta stale de las 176 detectables) ──
 # Escribe tools/.hash-validation/<date>.json que el motor lee para planificar.
 echo "$(date '+%F %T') Corriendo validate-hashes.py (detección)…"
-"$PYTHON" "$REPO_ROOT/tools/validate-hashes.py" || echo "$(date '+%F %T') validate-hashes.py exit $? (stale o auth; el motor decide)"
+"$PYTHON" "$REPO_ROOT/tools/validate-hashes.py"
+VAL_RC=$?
+[ "$VAL_RC" != "0" ] && echo "$(date '+%F %T') validate-hashes.py exit $VAL_RC (stale o auth; el motor decide)"
 
 cd "$AUTOPILOT_DIR"
 "$NODE" hash-autopilot.mjs
