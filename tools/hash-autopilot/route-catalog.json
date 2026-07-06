@@ -1,0 +1,36 @@
+{
+  "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
+  "_domainDefault": "344",
+  "routes": {
+    "app-home": {
+      "type": "query",
+      "module": "Home",
+      "steps": [{ "goto": "/Domains/{domain}" }],
+      "captures": ["CurrentUser"]
+    },
+    "customers-list": {
+      "type": "query",
+      "module": "Customers",
+      "steps": [{ "goto": "/Domains/{domain}/Customers" }],
+      "captures": ["AllCustomers"]
+    },
+    "customer-detail": {
+      "type": "query",
+      "module": "Customers",
+      "steps": [
+        { "goto": "/Domains/{domain}/Customers" },
+        { "clickFirst": "a[href*='/Customers/']", "hrefMatches": "/Customers/\\d+" }
+      ],
+      "captures": ["Customer"]
+    },
+    "sensor-dashboards": {
+      "type": "query",
+      "module": "Sensors",
+      "steps": [
+        { "goto": "/Dashboards" },
+        { "clickFirst": "a[href*='ashboard']", "hrefMatches": "\\d" }
+      ],
+      "captures": ["AllSensorDashboards"]
+    }
+  }
+}
