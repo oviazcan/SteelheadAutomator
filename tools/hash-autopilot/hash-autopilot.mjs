@@ -4,7 +4,6 @@
 // route-catalog.json que las cubre (selectRoutes), abre chromium headless con la
 // cookie de sesión, corre SOLO esas rutas, intercepta /graphql y captura los
 // hashes que el frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
-import { chromium } from 'playwright';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -98,6 +97,10 @@ async function main() {
   if (knownNoRoute.size) console.log(`(hueco conocido sin ruta, Fase B — no se alerta: ${[...knownNoRoute].join(', ')})`);
 
   const tokens = loadTokens();
+  // Import dinámico de playwright: deja el módulo importable SIN la dependencia
+  // (tests puros de dateStrLocal, o entornos sin node_modules) — playwright solo
+  // se resuelve cuando main() realmente abre el navegador.
+  const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   await context.addInitScript(makeRocpInit(tokens, DOMAIN_NANO), {
