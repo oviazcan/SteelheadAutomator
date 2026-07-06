@@ -1,7 +1,9 @@
 // tools/hash-autopilot/hash-autopilot.mjs
-// Motor desatendido: abre chromium headless con la cookie de sesión, corre las
-// recetas de click-recipes.json, intercepta /graphql y captura los hashes que el
-// frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
+// Motor desatendido: lee el resultado del validator del día, calcula qué ops hay
+// que capturar (route-planner.opsToCapture), planea el set MÍNIMO de rutas de
+// route-catalog.json que las cubre (selectRoutes), abre chromium headless con la
+// cookie de sesión, corre SOLO esas rutas, intercepta /graphql y captura los
+// hashes que el frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
@@ -11,12 +13,23 @@ import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
 import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
 import { readConfigHashes } from './config-io.mjs';
+import { selectRoutes, opsToCapture, staleMutations } from './route-planner.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = join(__dirname, '../../remote/config.json');
 const RESULTS_DIR = join(__dirname, '../.hash-autopilot');
-// Ops session-sensitive que validate-hashes.py (idp-token) no puede validar bien.
-const TARGET_OPS = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrder', 'AllSensorDashboards', 'SensorDashboardQuery'];
+// Session-sensitive: el validator (idp-token) no las puede ver → se capturan
+// SIEMPRE que haya release. El resto se capturan solo si el validator las marcó stale.
+const SESSION_SENSITIVE = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrder', 'AllSensorDashboards', 'SensorDashboardQuery'];
+
+// Lee el JSON del validator del día (lo escribe validate-hashes.py). Si no existe
+// (no corrió, o corrió sin stale), devuelve {stale:[]} → solo session-sensitive.
+function loadValidatorResult(date) {
+  try {
+    const p = join(__dirname, '../.hash-validation', `${date}.json`);
+    return JSON.parse(readFileSync(p, 'utf8'));
+  } catch { return { stale: [] }; }
+}
 
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
@@ -56,10 +69,17 @@ function makeRocpInit(tokens, domainNano) {
 }
 
 async function main() {
-  const recipesDoc = JSON.parse(readFileSync(join(__dirname, 'click-recipes.json'), 'utf8'));
-  const recipes = recipesDoc.recipes;
-  const tokens = loadTokens();
+  const catalog = JSON.parse(readFileSync(join(__dirname, 'route-catalog.json'), 'utf8'));
+  const validatorResult = loadValidatorResult(RUN_DATE);
+  const wantOps = opsToCapture(validatorResult, SESSION_SENSITIVE);
+  const plan0 = selectRoutes(wantOps, catalog);
+  const staleMuts = staleMutations(validatorResult);
+  console.log(`Ops a capturar (${wantOps.length}): ${wantOps.join(', ')}`);
+  console.log(`Rutas seleccionadas (${plan0.routes.length}): ${plan0.routes.map((r) => r.id).join(', ') || '(ninguna)'}`);
+  if (plan0.uncovered.length) console.log(`⚠️ Queries stale SIN ruta en catálogo: ${plan0.uncovered.join(', ')} (Fase B)`);
+  if (staleMuts.length) console.log(`⚠️ Mutations stale (Fase C pendiente): ${staleMuts.join(', ')}`);
 
+  const tokens = loadTokens();
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   await context.addInitScript(makeRocpInit(tokens, DOMAIN_NANO), {
@@ -70,15 +90,15 @@ async function main() {
   const sink = { hashes: {}, data: {}, responseOk: {} };
   await installInterceptor(page, sink);
 
-  for (const [name, recipe] of Object.entries(recipes)) {
-    if (ONLY && !(recipe.captures || []).includes(ONLY)) continue;
+  for (const route of plan0.routes) {
+    if (ONLY && !(route.captures || []).includes(ONLY)) continue;
     try {
-      console.log(`→ receta "${name}" (captura: ${(recipe.captures || []).join(', ')})`);
-      await runRecipe(page, recipe, DOMAIN, sink);
-      const got = (recipe.captures || []).filter((op) => sink.hashes[op]);
+      console.log(`→ ruta "${route.id}" (captura: ${(route.captures || []).join(', ')})`);
+      await runRecipe(page, route, DOMAIN, sink);
+      const got = (route.captures || []).filter((op) => sink.hashes[op]);
       console.log(`   capturó: ${got.length ? got.join(', ') : '(nada aún)'}`);
     } catch (e) {
-      console.log(`  ⚠️ receta "${name}" falló: ${String(e).slice(0, 120)}`);
+      console.log(`  ⚠️ ruta "${route.id}" falló: ${String(e).slice(0, 120)}`);
     }
   }
 
@@ -95,7 +115,7 @@ async function main() {
   // Clasificar cada op target: liveHash capturado vs config; validación por
   // RESPUESTA capturada (responseOk = el frontend obtuvo data sin errors).
   const cfgHashes = readConfigHashes(CONFIG_PATH);
-  const results = TARGET_OPS.map((op) => {
+  const results = wantOps.map((op) => {
     const liveHash = sink.hashes[op] ?? null;
     const cfgHash = cfgHashes[op] ?? null;
     const ok = !!sink.responseOk[op];
@@ -129,9 +149,9 @@ async function main() {
       console.log(`✗ auto-deploy falló (exit ${e.status ?? '?'}) — requiere revisión humana`);
     }
   }
-  // Escalamiento (Task 9): recetas que no capturaron → señal para el cron de Claude.
+  // Escalamiento (Task 9): rutas que no capturaron → señal para el cron de Claude.
   if (!DRY && plan.notCaptured.length) {
-    writeNeedsAttention(plan.notCaptured, recipes, RUN_DATE);
+    writeNeedsAttention(plan.notCaptured, catalog.routes, RUN_DATE);
   }
 
   // Notificación por correo (Task 8) — solo cuando hay algo que reportar.
@@ -148,6 +168,12 @@ async function main() {
     }
     if (plan.notCaptured.length) {
       notify('fallo', `${plan.notCaptured.length} op(s) no capturada(s)`, `Las recetas no dispararon estas ops (posible cambio de UI):\n${plan.notCaptured.map((r) => `• ${r.op}`).join('\n')}\n\nSe dejó señal para re-descubrir la receta.`);
+    }
+    if (plan0.uncovered.length) {
+      notify('fallo', `${plan0.uncovered.length} query(s) stale sin ruta`, `El validator marcó estas queries rotadas pero no hay ruta en route-catalog.json (pendiente Fase B):\n${plan0.uncovered.map((op) => `• ${op}`).join('\n')}`);
+    }
+    if (staleMuts.length) {
+      notify('revision', `${staleMuts.length} mutation(s) rotada(s)`, `El validator marcó estas MUTATIONS rotadas. Fase C (ciclo sentinela) aún no implementada — captura manual por ahora:\n${staleMuts.map((op) => `• ${op}`).join('\n')}`);
     }
   }
   return { results, plan, deployed };
