@@ -230,7 +230,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.27';
+  const VERSION = '1.5.28';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -1635,13 +1635,22 @@ const BulkUpload = (() => {
   // Costo: ~N/200 queries para un dominio de N PNs (~250 para 50k).
   // Solo conviene cuando |CSV| > massiveThreshold (typically 1000). En CSV
   // chico, classifyPNs sigue el patrón on-demand de 1.0.0.
-  async function prefetchPNsByCustomer(customerIds, myRunId) {
+  async function prefetchPNsByCustomer(customerIds, myRunId, idShSet = null) {
     const cfg = bulkCfg();
     const pageSize = cfg.paging?.allPartNumbers?.first || 200;
     const maxResults = cfg.paging?.allPartNumbers?.massiveMaxResults || 100000;
     const customerSet = new Set(customerIds);
     const result = new Map();
     for (const cid of customerSet) result.set(cid, []);
+    // Retención adicional por id interno (= Id SH): PNs cuyo id ∈ idShSet se guardan
+    // aunque su cliente no esté en customerSet (carga por Id SH sin cliente). Se
+    // agrupan bajo su cliente REAL (bucket creado on-demand) para que el índice pnById
+    // aguas arriba los tome; conserva su customerId real para el apply posterior.
+    const wantById = (n) => idShSet != null && idShSet.has(String(n.id));
+    const pushNode = (bucket, shape) => {
+      if (!result.has(bucket)) result.set(bucket, []);
+      result.get(bucket).push(shape);
+    };
     // 1.2.13: el persisted query de AllPartNumbers NO devuelve archivedAt en su
     // selection set (verificado en consola 2026-05-21 — la respuesta solo trae
     // nodeId/id/createdAt/name/... sin archivedAt). Para distinguir activos de
@@ -1669,8 +1678,8 @@ const BulkUpload = (() => {
       for (const n of nodes) {
         activeIds.add(n.id);
         const cid = n.customerByCustomerId?.id || n.customerId;
-        if (cid != null && customerSet.has(cid)) {
-          result.get(cid).push(extractPNShape(n));
+        if ((cid != null && customerSet.has(cid)) || wantById(n)) {
+          pushNode(cid != null ? cid : '__idsh__', extractPNShape(n));
           kept++;
         }
       }
@@ -1709,10 +1718,10 @@ const BulkUpload = (() => {
       for (const n of nodes) {
         if (activeIds.has(n.id)) continue; // ya añadido en pasada NO
         const cid = n.customerByCustomerId?.id || n.customerId;
-        if (cid != null && customerSet.has(cid)) {
+        if ((cid != null && customerSet.has(cid)) || wantById(n)) {
           const shape = extractPNShape(n);
           shape.archivedAt = ARCHIVED_SENTINEL;
-          result.get(cid).push(shape);
+          pushNode(cid != null ? cid : '__idsh__', shape);
           keptArch++;
         }
       }
@@ -1811,8 +1820,14 @@ const BulkUpload = (() => {
   async function classifyPNs(parts, myRunId) {
     const cfg = bulkCfg();
     const massiveThreshold = cfg.dedup?.massiveThreshold ?? 1000;
-    const useMassive = parts.length > massiveThreshold;
-    log(`Clasificación: ${parts.length} filas — modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold})`);
+    // Filas identificadas por Id SH SIN nombre de PN necesitan el prefetch GLOBAL del
+    // dominio para resolver el PN por su id: el modo on-demand solo busca por NOMBRE, y
+    // una fila idSh sin PN no tiene nombre que buscar → nunca resolvería y caería a
+    // "DUPLICAR (viejo:null)". Forzamos MASIVO cuando hay ≥1 fila idSh sin PN (los idSh
+    // CON pn se resuelven por nombre en on-demand y no pagan el prefetch global).
+    const hasIdShWithoutName = parts.some(p => p.idSh && !p.pn);
+    const useMassive = parts.length > massiveThreshold || hasIdShWithoutName;
+    log(`Clasificación: ${parts.length} filas — modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold}${hasIdShWithoutName ? ', forzado por Id SH sin PN' : ''})`);
     return useMassive
       ? await classifyPNsMassive(parts, myRunId)
       : await classifyPNsOnDemand(parts, myRunId);
@@ -1825,7 +1840,11 @@ const BulkUpload = (() => {
     // 1.4.3: equivalencias semánticas (Estaño/Plata...) configurables.
     const equivIndex = buildEquivIndex(cfg.metalEquivalents);
     const customerIds = [...new Set(parts.map(p => p.customerId).filter(x => x != null))];
-    const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId);
+    // Ids internos (= Id SH del xlsm) a retener del prefetch global AUNQUE su cliente no
+    // esté en el CSV (carga por Id SH sin cliente). El prefetch los guarda por id y el
+    // match directo (línea `pnById.get(idSh)`) los resuelve → MODIFY con el PN real de SH.
+    const idShSet = new Set(parts.filter(p => p.idSh).map(p => String(parseInt(p.idSh, 10))));
+    const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId, idShSet);
 
     // v11: construir indice por id numerico para lookup rapido por idSh.
     const pnById = new Map();
@@ -3014,6 +3033,14 @@ const BulkUpload = (() => {
             wrap._renderSavedChip = renderSavedChip;
           } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
+          else if (r.status === 'error') {
+            // Antes caía en el catch-all `else` y se pintaba "DUPLICAR (viejo:null)",
+            // confundiendo un Id SH no resuelto con un duplicado. Mostrar el error real.
+            tdAct.className = 'dl9-dup';
+            tdAct.style.color = '#fca5a5';
+            tdAct.textContent = `⚠️ ERROR: ${r._errorMsg || 'fila inválida'}`;
+            tdAct.title = r._errorMsg || '';
+          }
           else {
             tdAct.className = 'dl9-dup';
             tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`;
