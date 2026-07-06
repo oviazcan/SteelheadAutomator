@@ -3572,15 +3572,19 @@ const BulkUpload = (() => {
       }
 
       // ── V10: Validate required per-line fields ──
-      const sinCliente = parts.filter(p => !p.cliente);
-      if (sinCliente.length) throw new Error(`${sinCliente.length} filas sin Cliente: ${sinCliente.slice(0, 3).map(p => p.pn).join(', ')}...`);
+      // idSh exime de Cliente: la fila identifica un PN EXISTENTE por su Id de Steelhead,
+      // que ya trae su propio cliente (se resuelve en la clasificación por idSh). Mismo
+      // criterio que classify (`if (!p.pn && !p.idSh) continue`). Solo es error una fila
+      // sin Cliente Y sin Id SH (no hay forma de ubicar ni crear el PN).
+      const sinCliente = parts.filter(p => !p.cliente && !p.idSh);
+      if (sinCliente.length) throw new Error(`${sinCliente.length} filas sin Cliente ni Id SH: ${sinCliente.slice(0, 3).map(p => p.pn || '(sin PN)').join(', ')}...`);
       // Proceso: vacío = copiar del PN existente (resuelto tras existence check).
       //          "-" = borrar (set null). Nombre = resolver a id.
       //          Validación per-row contra new/existing en el post-process tardío.
 
       // ── Resolve all unique customers (per-line, with cache) ──
       const customerCache = new Map(); // name → { id, name, addressId, contactId, invoiceTermsId }
-      const uniqueClientNames = [...new Set(parts.map(p => p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim()))];
+      const uniqueClientNames = [...new Set(parts.filter(p => p.cliente).map(p => p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim()))];
       log(`Clientes únicos en layout: ${uniqueClientNames.length}`);
       // 1.4.12: loop secuencial con feedback en panel (antes silent).
       setPanelPhase(`Resolviendo clientes (${uniqueClientNames.length})`);
@@ -3796,13 +3800,17 @@ const BulkUpload = (() => {
       for (const p of parts) {
         // null marker para vacío y "-" — se resuelven en post-process tras pnStatus
         p.processId = (!p.procesoOverride || isDash(p.procesoOverride)) ? null : processCache.get(p.procesoOverride);
-        const cname = p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim();
-        const cust = customerCache.get(cname);
-        p.customerId = cust.id;
-        p.customerName = cust.name;
-        p.customerAddressId = cust.addressId;
-        p.customerContactId = cust.contactId;
-        p.customerInvoiceTermsId = cust.invoiceTermsId;
+        // Filas por Id SH sin Cliente: el cliente (y su address/contact/terms) se resuelve
+        // del PN existente en la clasificaci\u00f3n por idSh; aqu\u00ed se dejan sin asignar (undefined).
+        if (p.cliente) {
+          const cname = p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim();
+          const cust = customerCache.get(cname);
+          p.customerId = cust.id;
+          p.customerName = cust.name;
+          p.customerAddressId = cust.addressId;
+          p.customerContactId = cust.contactId;
+          p.customerInvoiceTermsId = cust.invoiceTermsId;
+        }
       }
 
       // 1.2.11: detectar duplicados internos del CSV (mismo PN+customer en 2+ filas).
