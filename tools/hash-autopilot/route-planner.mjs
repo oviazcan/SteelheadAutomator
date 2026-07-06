@@ -25,3 +25,19 @@ export function selectRoutes(rotatedOps, catalog) {
   }
   return { routes: chosen, uncovered: [...pending] };
 }
+
+// Ops a capturar esta corrida: queries stale detectadas por el validator
+// UNIÓN las session-sensitive (que el validator no puede ver → siempre por release).
+// Las mutations stale NO se capturan en Fase A (no hay ciclo sentinela); se
+// reportan aparte con staleMutations().
+export function opsToCapture(validatorResult, sessionSensitive) {
+  const stale = (validatorResult && validatorResult.stale) || [];
+  const staleQueries = stale.filter((s) => s.kind !== 'mutation').map((s) => s.operation);
+  const set = new Set([...(sessionSensitive || []), ...staleQueries]);
+  return [...set].sort();
+}
+
+export function staleMutations(validatorResult) {
+  const stale = (validatorResult && validatorResult.stale) || [];
+  return stale.filter((s) => s.kind === 'mutation').map((s) => s.operation).sort();
+}

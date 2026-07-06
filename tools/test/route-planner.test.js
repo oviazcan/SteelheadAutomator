@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { selectRoutes } = require('../hash-autopilot/route-planner.mjs');
+const { opsToCapture, staleMutations } = require('../hash-autopilot/route-planner.mjs');
 
 const CATALOG = {
   routes: {
@@ -45,4 +46,35 @@ test('selectRoutes: desempate determinista por id alfabético', () => {
   } };
   const r = selectRoutes(['X'], cat);
   assert.deepEqual(r.routes.map((x) => x.id), ['alpha']);
+});
+
+const SESSION_SENSITIVE = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrder', 'AllSensorDashboards', 'SensorDashboardQuery'];
+
+test('opsToCapture: une stale-queries con session-sensitive, dedup y ordena', () => {
+  const vr = { stale: [
+    { kind: 'query', operation: 'GetWorkOrder' },
+    { kind: 'query', operation: 'AllCustomers' },      // ya en session-sensitive → dedup
+    { kind: 'mutation', operation: 'SaveQuoteLines' }, // mutation → excluida de captura
+  ] };
+  assert.deepEqual(
+    opsToCapture(vr, SESSION_SENSITIVE),
+    ['AllCustomers', 'AllSensorDashboards', 'CurrentUser', 'Customer', 'GetPurchaseOrder', 'GetWorkOrder', 'SensorDashboardQuery'],
+  );
+});
+
+test('opsToCapture: sin stale → solo session-sensitive (siempre por release)', () => {
+  assert.deepEqual(opsToCapture({ stale: [] }, SESSION_SENSITIVE), [...SESSION_SENSITIVE].sort());
+});
+
+test('opsToCapture: validatorResult sin campo stale → solo session-sensitive', () => {
+  assert.deepEqual(opsToCapture({}, SESSION_SENSITIVE), [...SESSION_SENSITIVE].sort());
+});
+
+test('staleMutations: devuelve solo las mutations stale, ordenadas', () => {
+  const vr = { stale: [
+    { kind: 'mutation', operation: 'SaveQuoteLines' },
+    { kind: 'query', operation: 'GetWorkOrder' },
+    { kind: 'mutation', operation: 'ArchivePart' },
+  ] };
+  assert.deepEqual(staleMutations(vr), ['ArchivePart', 'SaveQuoteLines']);
 });
