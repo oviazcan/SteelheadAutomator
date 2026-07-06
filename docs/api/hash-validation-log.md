@@ -693,3 +693,5 @@ Evidencia (investigación 2026-07-02):
 - **Applets que truenan:** process-canon, process-shared
 - **usedBy (config):** process-canon, process-deep-audit
 - **Qué hace:** Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo ra…
+
+## 2026-07-06 08:36 — 0 rotado(s) (launchd)
