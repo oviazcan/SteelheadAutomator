@@ -1,0 +1,5 @@
+{
+  "_doc": "Registro de objetos canario por tipo de entidad. Se puebla al SEMBRAR sentinelas reales en el ERP (ver docs/api/hash-fase-c-sembrado-sentinelas.md). marker = SENTINEL_MARKER que lleva el objeto (__SA_SENTINEL__). baseState = estado de reposo (normalmente 'archived'). Sin entrada para una entidad → el runner escala esa mutation en vez de ejecutarla a ciegas (fail-closed).",
+  "_marker": "__SA_SENTINEL__",
+  "entities": {}
+}
