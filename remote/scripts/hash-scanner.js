@@ -174,13 +174,14 @@ const HashScanner = (() => {
 
     console.log('[HashScanner] Captura iniciada — navega por Steelhead para capturar operaciones');
 
-    // Periodically persist results to survive page reloads
+    // Persistencia periódica para sobrevivir recargas. Usa el backup SLIM a localStorage
+    // (~KB) en vez de getResults completo vía chrome.storage (decenas de MB en scans grandes)
+    // — eso serializaba TODO el scan cada pocos segundos y trababa Steelhead (jank de UI).
     if (window.__saScanPersistInterval) clearInterval(window.__saScanPersistInterval);
     window.__saScanPersistInterval = setInterval(() => {
       if (!isScanning) return;
-      // Signal content script to persist results via custom event
-      document.dispatchEvent(new CustomEvent('sa-persist-scan'));
-    }, 5000); // cada 5s (defensa; el salvavidas real ante recarga es pagehide→localStorage)
+      try { localStorage.setItem('__sa_scan_backup', JSON.stringify(slimForBackup())); } catch (_) {}
+    }, 10000);
   }
 
   function stop() {
