@@ -1,6 +1,6 @@
 {
-  "version": "1.7.72",
-  "lastUpdated": "2026-07-07T08:53",
+  "version": "1.7.73",
+  "lastUpdated": "2026-07-07T09:23",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -921,6 +921,19 @@
       "requiredPermissions": [],
       "actions": [
         { "id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status" }
+      ]
+    },
+    {
+      "id": "sensor-graph-hide-all",
+      "name": "Auto-ocultar sensores en la gráfica",
+      "subtitle": "Al entrar a un Sensor Dashboard esconde todos los sensores para elegir uno",
+      "icon": "👁",
+      "category": "Producción",
+      "autoInject": true,
+      "scripts": ["scripts/sensor-graph-hide-all-core.js", "scripts/sensor-graph-hide-all.js"],
+      "requiredPermissions": [],
+      "actions": [
+        { "id": "toggle-sensor-graph-hide-all", "label": "Auto-ocultar sensores", "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)", "icon": "👁", "type": "toggle", "handler": "message", "message": "toggle-sensor-graph-hide-all", "fn": "SensorGraphHideAll.toggleFromPopup" }
       ]
     },
     {
