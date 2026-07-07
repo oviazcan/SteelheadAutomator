@@ -55,12 +55,28 @@
         }
       ],
       "captures": [
+        "AllCurrentMetalExchangeOptIns",
         "AllCustomerPortalAccessRequestsMinPayload",
+        "ChatUnreadCounts",
+        "CurrentDevice",
+        "CurrentUser",
+        "CurrentUserActiveSegments",
         "FirstScheduleBoard",
         "GetHomeData",
+        "GetPaginatedChatChannels",
+        "GetPdfTemplates",
+        "GetRecomputableAt",
         "GetRfqTurnaroundSettings",
+        "GetSonarChatChannels",
+        "GlobalUsers",
+        "JobQuery",
+        "LowInventoryAlertCount",
+        "MissedManagedAlerts",
+        "MyNotificationPreferences",
         "MyOpenTaskCount",
         "RfqSubmissionCount",
+        "UnreadNotificationCount",
+        "UsersToInvite",
         "VendorRfqUnreadRepliesCount"
       ]
     },
@@ -80,6 +96,18 @@
         "GetInventoryBatch",
         "GetInventoryBatchSpecsForInput",
         "GetRackLabels"
+      ]
+    },
+    "inventorytypes-list": {
+      "type": "query",
+      "module": "InventoryTypes",
+      "steps": [
+        {
+          "goto": "/InventoryTypes"
+        }
+      ],
+      "captures": [
+        "AllInventoryTypes"
       ]
     },
     "invoices-detail": {
@@ -226,6 +254,66 @@
         "Profile"
       ]
     },
+    "processes-detail": {
+      "type": "query",
+      "module": "Processes",
+      "steps": [
+        {
+          "goto": "/Processes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetProcessNode",
+        "GetProcessNodeParents",
+        "RecipeNodesToCascadeTo"
+      ]
+    },
+    "processes-list": {
+      "type": "query",
+      "module": "Processes",
+      "steps": [
+        {
+          "goto": "/Processes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetAllTagsQuery",
+        "ProcessesComponentQuery",
+        "UnreadEmailCount"
+      ]
+    },
+    "receiving-list": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        {
+          "goto": "/Receiving/CustomerParts"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "CountPendingAiReceivingEntryJobsForBadge",
+        "FindPartGroupQuery",
+        "GetRackTypes",
+        "ReceiveCustomerPartsTableDialogQuery",
+        "ReceivingBatchesQuery",
+        "ReceivingReceiversQuery",
+        "SearchCustomerPartNumberQuotes",
+        "SearchCustomerReceivedOrders",
+        "SearchLocationsOnPath"
+      ]
+    },
     "reporting-list": {
       "type": "query",
       "module": "Reporting",
@@ -251,6 +339,76 @@
         "GetReportingSettings",
         "JobQuery",
         "UIGetFileKey"
+      ]
+    },
+    "salesorders-detail": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        {
+          "goto": "/Domains/344/SalesOrders"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AddNewPartsTableDialogQuery",
+        "AddPartsPartNumbersQuery",
+        "AddReceivedPartsPartNumbersQuery",
+        "AddReceivedPartsQuery",
+        "AddReceivedPartsQuotesQuery",
+        "AllAcctDimensions",
+        "AllShipMethods",
+        "CalendarDaysQuery",
+        "CalendarYearsCoverageQuery",
+        "CheckDuplicatePO",
+        "CreateEditReceivedOrderDialogQuery",
+        "Customer",
+        "CustomerFinancialByCustomerId",
+        "CustomerSearchByName",
+        "DomainWorkingDaysQuery",
+        "DropShipCustomersQuery",
+        "GetAddPartsReceivedOrder",
+        "GetBomItemsInventoryItemStatus",
+        "GetBomProcessesForProcessSelect",
+        "GetCustomerByIdQuery",
+        "GetCustomerInfoForReceivedOrder",
+        "GetCustomerNameById",
+        "GetPartTransformsForReceivedOrderById",
+        "GetReceivedOrder",
+        "GetReceivedOrderCosts",
+        "GetRelatedChatChannels",
+        "InventoryAlertBannerAlertedItemsQuery",
+        "InventoryAlertBannerTreatmentPartNumberQuery",
+        "LinkedEntityBacklinks",
+        "MyAssignedTaskCount",
+        "PartNumberCreatableSelectGetPartNumbers",
+        "ReceivedOrderLowCode",
+        "ReceivedOrderLowCodeData",
+        "RouteReceivedOrders",
+        "SearchInvoiceTerms",
+        "SearchSectorsForSelect",
+        "SearchUsers"
+      ]
+    },
+    "salesorders-list": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        {
+          "goto": "/Domains/344/SalesOrders"
+        }
+      ],
+      "captures": [
+        "ActiveReceivedOrders",
+        "AllCustomerPortalAccessRequestsForBanner",
+        "CountPendingAiSalesOrderEntryJobsForBadge",
+        "CsvLowCode",
+        "CurrentUserDetails",
+        "DomainCustomerPortalTerms",
+        "GetFilterData"
       ]
     },
     "sensor-dashboards": {
