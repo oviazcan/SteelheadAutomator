@@ -87,7 +87,6 @@
         "CurrentDomainAddresses",
         "GetAccountDataForBill",
         "GetBillByIdInDomain",
-        "GetDomain",
         "GetPurchaseOrder",
         "GetPurchaseOrdersDataForBill",
         "GetTaxCodesForBill",
@@ -165,6 +164,19 @@
         "SearchSalesTaxes",
         "SearchTaxCodesSelect"
       ]
+    },
+    "domain-config": {
+      "type": "query",
+      "module": "Domain",
+      "steps": [
+        {
+          "goto": "/Domain"
+        }
+      ],
+      "captures": [
+        "GetDomain"
+      ],
+      "curated": true
     },
     "home-list": {
       "type": "query",
@@ -666,7 +678,6 @@
         "AddReceivedPartsQuery",
         "AddReceivedPartsQuotesQuery",
         "AllCurrentMetalExchangeOptIns",
-        "AllReceivers",
         "CalendarDaysQuery",
         "CountPendingAiReceivingEntryJobsForBadge",
         "CustomerFinancialByCustomerId",
@@ -689,6 +700,19 @@
         "SearchCustomerReceivedOrders",
         "SearchLocationsOnPath"
       ]
+    },
+    "receiving-receivers": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        {
+          "goto": "/Receiving/Receivers"
+        }
+      ],
+      "captures": [
+        "AllReceivers"
+      ],
+      "curated": true
     },
     "reporting-list": {
       "type": "query",
