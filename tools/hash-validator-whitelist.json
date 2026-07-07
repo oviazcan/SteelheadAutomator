@@ -31,6 +31,11 @@
       "operation": "SensorDashboardQuery",
       "reason": "Falso positivo verificado 2026-07-02: hash bde56bd609a2… estable 2 meses, idéntico en config y scan con ejecución en vivo (147 responseFields, variablesSample real). 'Must provide a query string' solo al cliente externo del validador. Usado por sensor-status-autofill in-page → funciona.",
       "verifiedOn": "2026-07-02"
+    },
+    {
+      "operation": "SaveManyPartNumberPrices",
+      "reason": "Falso positivo verificado 2026-07-07: el hash 9da1874e2ffd… es idéntico en config y en scan-de-navegador (el frontend ejecuta la mutation como SaveManyPartNumberPrices con ESE hash; bulk-upload in-page la usa y funciona). El validador solo-hash responde 'Must provide a query string' porque esta mutation no está pre-registrada en el APQ persistente del server (el frontend la registra con el texto en la 1a llamada de sesión). OJO: es una mutation CRÍTICA (precios); si algún día rota de verdad, el validador la skipeará por esta whitelist → confirma con hash-scanner (hash del frontend ≠ config = rotación real, actualiza config). Antes se llamaba SaveManyPNP_Quote/SaveManyPNP_PN (renombradas 2026-07-07).",
+      "verifiedOn": "2026-07-07"
     }
   ]
 }
