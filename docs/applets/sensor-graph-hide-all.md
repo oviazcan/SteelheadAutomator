@@ -114,8 +114,8 @@ Un combo dark-mode (`<select>`) que lista **solo los sensores NUMBER** (excluye 
   sensor → confirmar que la gráfica muestra solo ese (inline y en modo gráfica).
 
 ## Pendientes
-1. **Confirmar el fix de población (config 1.7.78)**: run real en primer plano — el combo debe **poblar** con los sensores
-   NUMBER (vía replay), aislar en ambas vistas + navegación 117↔119. (Todos/Ninguno ya se confirmaron OK; faltaba poblar.)
+1. ~~Confirmar el fix de población~~ ✅ **CONFIRMADO en vivo por el usuario (2026-07-07, config 1.7.78)**: el combo puebla
+   con los sensores NUMBER (vía replay), aislar + Todos/Ninguno funcionan. Fase 2 operativa end-to-end.
 2. Considerar persistir el toggle en `chrome.storage` (`sensorGraphHideAllEnabled`) si se quiere que OFF sobreviva reloads.
 3. Opcional: recordar el último sensor visto y dejarlo destachado por default (hoy esconde TODOS; el combo elige).
 4. (Bundle Safari/iPad) si se quiere la versión iPad, integrar vía `safari-bundle-sync`.
