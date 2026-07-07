@@ -7,8 +7,10 @@ para que el operador solo **destache el que quiere ver**. Sin esto, cada dashboa
 14+ series encimadas y hay que tachar una por una a mano en cada visita.
 
 ## Versión
-0.1.0 — **VALIDADO en vivo end-to-end** (config 1.7.73, gh-pages). Core 12/12 golden.
-Config `sensor-graph-hide-all` con `autoInject:true`.
+- **0.1.0** (Fase 1) — **VALIDADO en vivo end-to-end** (config 1.7.73). Auto-esconder todos al entrar.
+- **0.2.0** (Fase 2, config 1.7.77) — **combo para AISLAR un sensor NUMBER** en ambas vistas. Core 20/20 golden.
+  Isolate validado en vivo (14→1); combo/intercepción validados por tests + anclas DOM (ver §Validación Fase 2).
+Config `sensor-graph-hide-all` con `autoInject:true`. Scripts: `sensor-graph-hide-all-core.js` + `sensor-graph-hide-all.js`.
 
 ## Modelo (confirmado en vivo 2026-07-07, dashboard `/SensorDashboards/117` "Concentración de Plata")
 - El ojito de cada sensor en la tabla **"Current Values"** togglea si el sensor se plotea en la gráfica
@@ -71,8 +73,44 @@ propaga. **Self-healing**: se resuelve solo al recargar tras la propagación (ve
 (b) hardening en `background.js`: envolver cada `injectAppScripts` del loop en try/catch para que un app no tumbe a
 los demás (requiere republicar extensión — pendiente aparte).
 
+## Fase 2 — Combo para aislar un sensor (v0.2.0)
+Un combo dark-mode (`<select>`) que lista **solo los sensores NUMBER** (excluye BOOLEAN). Al elegir uno,
+**muestra solo ese y esconde los demás** (mismo mecanismo de ojitos). Aparece en **ambas vistas** (inline + modo gráfica).
+
+- **Fuente de datos:** intercepta `SensorDashboardQuery` (`patchFetch` → `Core.parseSensorDashboard`) → `{name, station, measurementType}`
+  por sensor. El `?type=NUMBER` nativo filtra la GRÁFICA pero **NO la tabla/ojitos** (verificado: con `type=BOOLEAN` siguen
+  los 14 ojitos), por eso el tipo por-sensor hay que sacarlo de la query, no de la URL.
+- **Ancla (ambas vistas):** `button[value="NUMBER"]` (bloque "Measurement Types") → `.closest('.MuiPaper-root')` → inserta la
+  barra del combo después. Semántico y a prueba de idioma. En modo gráfica hay 2 anclas (inline + diálogo) → un combo c/u.
+- **Aislar:** `getEyeRows()` mapea ojito → `closest('tr')` → nombre (link de la fila); `Core.planIsolation` decide show/hide;
+  poll acotado (clicar NO actualiza el DOM síncrono). Al aislar un numérico, si la gráfica está en `type=BOOLEAN` clickea NUMBER.
+- **Sincronía:** `Core.deriveComboValue(visibles, todos, numéricos)` recalcula el valor del combo desde el estado real de los
+  ojitos (0→Ninguno, todos→Todos, 1 numérico→ese, mezcla→placeholder). Los 2 combos reflejan lo mismo.
+- **Anti-loop del observer:** `populateCombos` sólo reconstruye opciones si cambia la firma (`dataset.saSig`); `syncCombos` setea
+  `sel.value` (propiedad, no muta el DOM). Un `MutationObserver` debounced inyecta/sincroniza; teardown al salir del dashboard.
+- **Blindaje:** la Fase 2 en `init` va en `try/catch` — un bug del combo NO tumba la Fase 1 ni al resto del app (además el
+  `try/catch` interno de `injectAppScripts` aísla errores de runtime del resto de apps auto-inyectados).
+- **Etiqueta:** por estación (`sensorLabel` → `stationByStationId.name`, ej. "T203-TI00-011 Plata Silvrex (B-1)"). Opciones:
+  `— elige sensor —` / `Todos` / `Ninguno` / cada sensor NUMBER. `textContent` (no innerHTML → sin XSS).
+
+### Validación Fase 2 (2026-07-07)
+- **Core 20/20 golden**: `filterNumericSensors`, `sensorLabel`, `deriveComboValue`, `planIsolation`, `normalizeName`,
+  **`parseSensorDashboard` contra la forma real** de SensorDashboardQuery (NUMBER+BOOLEAN) + pipeline parse→filterNumeric.
+- **DOM en vivo (síncrono)**: ✓ ancla `button[value="NUMBER"].closest('.MuiPaper-root')` existe + inserción del combo OK;
+  ✓ **aislar 1 sensor → exactamente ese visible (14→1)**, mapeo ojito→nombre correcto.
+- **No-regresión**: mi Fase 2 **no rompe el loop de auto-inject** — los breaks observados fueron transitorios en
+  índices ANTES de mi app (`create-order-autofill@28`, etc.), por warming del CDN / lifecycle del SW MV3, no por mi código.
+- **Pendiente (limitación de entorno)**: la intercepción real de `SensorDashboardQuery` (poblar el combo con NUMBER),
+  el observer que auto-inyecta el combo y el `<select>` visual **no** se ejercieron en vivo porque la tab de automatización
+  está `document.hidden` → Chrome throttlea timers **y fetch/microtasks** (async se cuelga). El parser está testeado contra
+  data real; falta el **run en primer plano** del operador: abrir un Sensor Dashboard → ver el combo poblado → elegir un
+  sensor → confirmar que la gráfica muestra solo ese (inline y en modo gráfica).
+
 ## Pendientes
-1. Considerar persistir el toggle en `chrome.storage` (`sensorGraphHideAllEnabled`) si el operador quiere que
-   OFF sobreviva reloads (hoy es no persistente, como los guards). El auto-inject ya respeta esa key si se setea.
-2. Opcional: recordar el último sensor visto y dejarlo destachado (hoy esconde TODOS; el operador elige uno).
-3. (Bundle Safari/iPad) si se quiere la versión iPad, integrar vía `safari-bundle-sync`.
+1. **Run real en primer plano de la Fase 2** (ver arriba): combo poblado + aislar en ambas vistas + navegación 117↔119.
+2. Considerar persistir el toggle en `chrome.storage` (`sensorGraphHideAllEnabled`) si se quiere que OFF sobreviva reloads.
+3. Opcional: recordar el último sensor visto y dejarlo destachado por default (hoy esconde TODOS; el combo elige).
+4. (Bundle Safari/iPad) si se quiere la versión iPad, integrar vía `safari-bundle-sync`.
+5. (Deuda ajena) el loop de auto-inject de `background.js` hace `break` si un fetch de script no es 200; tras cualquier
+   deploy (bump de versión) TODOS los scripts hacen cache-miss `?v=X` y algún fallo transitorio corta la cadena de apps
+   siguientes. Se auto-sana al calentar el CDN. Hardening: try/catch por-app en el loop (requiere republicar extensión).
