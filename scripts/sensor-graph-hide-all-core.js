@@ -46,11 +46,68 @@
     return 'latch';
   }
 
+  // ── Fase 2: combo para aislar UN sensor ────────────────────────────────────
+  // Normaliza nombres de sensor para hacer match robusto entre la respuesta de
+  // SensorDashboardQuery y el texto del DOM (los nombres traen espacios de más:
+  // p.ej. " T203-TI00-011 Concentración  de Plata Metálica").
+  function normalizeName(s) {
+    return (s == null ? '' : String(s)).replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  // Solo sensores NUMBER (excluye BOOLEAN/TEXT — no tienen sentido en la gráfica
+  // de línea). `sensors`: [{ name, station, measurementType }].
+  function filterNumericSensors(sensors) {
+    return (sensors || []).filter(function (s) { return s && s.measurementType === 'NUMBER'; });
+  }
+
+  // Etiqueta legible para el combo: la ESTACIÓN distingue mejor que el nombre
+  // (todos comparten "Concentración de Plata Metálica"). Fallback al nombre.
+  function sensorLabel(sensor) {
+    if (!sensor) return '';
+    const st = sensor.station && String(sensor.station).trim();
+    if (st) return st;
+    const nm = sensor.name && String(sensor.name).trim();
+    return nm || '(sensor)';
+  }
+
+  // Deriva el valor que debe mostrar el combo a partir del estado real de los
+  // ojitos (para sincronizar los combos entre sí y con toggles manuales).
+  //   0 visibles → 'NONE' · todos visibles → 'ALL' · exactamente 1 (numérico) → su nombre
+  //   cualquier otra mezcla → '' (placeholder)
+  // Nombres YA normalizados. `numericNames` = set de nombres numéricos (normalizados).
+  function deriveComboValue(state) {
+    const vis = state.visibleNames || [];
+    const all = state.allNames || [];
+    const num = state.numericNames || [];
+    if (all.length === 0) return '';
+    if (vis.length === 0) return 'NONE';
+    if (vis.length === all.length) return 'ALL';
+    if (vis.length === 1 && num.indexOf(vis[0]) !== -1) return vis[0];
+    return '';
+  }
+
+  // Plan de aislamiento: qué ojitos mostrar y cuáles esconder para una selección.
+  //   target: 'ALL' | 'NONE' | nombre-normalizado. `allNames` = todos los nombres (normalizados).
+  function planIsolation(target, allNames) {
+    const all = allNames || [];
+    if (target === 'ALL') return { show: all.slice(), hide: [] };
+    if (target === 'NONE' || !target) return { show: [], hide: all.slice() };
+    return {
+      show: all.filter(function (n) { return n === target; }),
+      hide: all.filter(function (n) { return n !== target; }),
+    };
+  }
+
   const api = {
     DASHBOARD_URL_RE,
     parseDashboardId,
     isDashboardPath,
     nextHideStep,
+    normalizeName,
+    filterNumericSensors,
+    sensorLabel,
+    deriveComboValue,
+    planIsolation,
   };
   if (typeof window !== 'undefined') window.SensorGraphHideAllCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

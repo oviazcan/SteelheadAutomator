@@ -142,7 +142,17 @@ const SensorGraphHideAll = (() => {
       'z-index:2147483600;background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;',
       'border-left:4px solid #13a36f;border-radius:10px;padding:12px 18px;font-size:14px;',
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
-      'box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw;}'
+      'box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw;}',
+      // Barra del combo (Fase 2) — dark-mode para distinguirla de la UI de SH.
+      '.sa-sgc-bar{display:flex;align-items:center;gap:10px;background:#1c2430;color:#e6e9ee;',
+      'border:1px solid #2b3645;border-left:4px solid #13a36f;border-radius:10px;',
+      'padding:10px 14px;margin:0 0 16px 0;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;}',
+      '.sa-sgc-label{font-weight:700;white-space:nowrap;}',
+      '.sa-sgc-select{flex:1;min-width:200px;max-width:520px;background:#141a23;color:#e6e9ee;',
+      'border:1px solid #2b3645;border-radius:8px;padding:8px 10px;font-size:13px;cursor:pointer;',
+      'font-family:inherit;}',
+      '.sa-sgc-select:focus{outline:none;border-color:#13a36f;}'
     ].join('');
     const s = document.createElement('style');
     s.id = 'sa-sgh-style';
@@ -171,28 +181,230 @@ const SensorGraphHideAll = (() => {
       window.addEventListener('popstate', fire);
     }
     window.addEventListener('sa-urlchange', function () {
-      if (onDashboard() && isEnabled()) scheduleHideSequence();
-      else stopPoll();
+      if (onDashboard()) {
+        if (isEnabled()) scheduleHideSequence();
+        observeForCombos();
+        scheduleComboWork();
+      } else {
+        stopPoll();
+        teardownCombos();
+      }
     });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Fase 2 — Combo para AISLAR un sensor (ver solo uno)
+  // ════════════════════════════════════════════════════════════════════════
+
+  // ── Intercepción de SensorDashboardQuery (fuente del tipo NUMBER/BOOLEAN) ──
+  // El ?type=NUMBER nativo filtra la GRÁFICA pero NO la tabla/ojitos (verificado),
+  // así que el tipo por-sensor hay que sacarlo de la query. Guardamos {name, station,
+  // measurementType} por sensor en un singleton (sobrevive re-inyección).
+  function patchFetch() {
+    if (window.__saSensorHideFetchPatched) return;
+    window.__saSensorHideFetchPatched = true;
+    const orig = window.fetch;
+    window.fetch = function (...args) {
+      const url = (args[0] && args[0].url) || args[0];
+      const body = args[1] && args[1].body;
+      let isSDQ = false;
+      if (typeof url === 'string' && url.indexOf('/graphql') !== -1 && typeof body === 'string') {
+        try { isSDQ = JSON.parse(body).operationName === 'SensorDashboardQuery'; } catch (_) {}
+      }
+      const p = orig.apply(this, args);
+      if (isSDQ) {
+        p.then(function (resp) {
+          resp.clone().json().then(function (j) { try { captureSensorMeta(j); } catch (_) {} }).catch(function () {});
+        }).catch(function () {});
+      }
+      return p;
+    };
+  }
+
+  function captureSensorMeta(j) {
+    const root = j && j.data && j.data.sensorDashboardByIdInDomain;
+    if (!root) return;
+    const nodes = (root.sensorDashboardMembersBySensorDashboardId &&
+      root.sensorDashboardMembersBySensorDashboardId.nodes) || [];
+    const list = [];
+    nodes.forEach(function (m) {
+      const s = m && m.sensorBySensorId; if (!s) return;
+      const st = s.sensorTypeBySensorTypeId || {};
+      const station = s.stationByStationId || {};
+      list.push({ name: s.name, station: station.name, measurementType: st.sensorMeasurementType });
+    });
+    window.__saSensorMeta = { dashKey: entryKey(), list: list };
+    scheduleComboWork();   // repoblar el combo ahora que llegó la data
+  }
+
+  // Lista de sensores NUMBER (o null si aún no capturamos la query).
+  function numericSensorList() {
+    const meta = window.__saSensorMeta;
+    if (!meta || !meta.list || meta.dashKey !== entryKey()) return null;
+    return Core().filterNumericSensors(meta.list).map(function (s) {
+      return { name: s.name, norm: Core().normalizeName(s.name), label: Core().sensorLabel(s) };
+    });
+  }
+
+  // ── Mapeo ojito → fila → nombre de sensor ──
+  function getEyeRows() {
+    return getToggles().map(function (btn) {
+      const tr = btn.closest('tr');
+      const cell = tr && (tr.querySelector('a') || tr.querySelector('td'));
+      const name = cell ? cell.textContent : '';
+      return { btn: btn, name: name, norm: Core().normalizeName(name), visible: isVisibleToggle(btn) };
+    }).filter(function (r) { return r.name; });
+  }
+
+  // ── Aislar (poll acotado: clicar NO actualiza el DOM síncrono; converge en ticks) ──
+  function applyIsolation(value) {
+    const key = entryKey();
+    // Garantizar modo NUMBER al aislar un sensor numérico (si no, no se plotea).
+    if (value && value !== 'ALL' && value !== 'NONE') {
+      const nb = document.querySelector('button[value="NUMBER"]');
+      if (nb && nb.getAttribute('aria-pressed') !== 'true') { try { nb.click(); } catch (_) {} }
+    }
+    if (window.__saSensorComboApply) clearInterval(window.__saSensorComboApply);
+    let attempts = 0;
+    window.__saSensorComboApply = setInterval(function () {
+      if (entryKey() !== key) { clearInterval(window.__saSensorComboApply); window.__saSensorComboApply = null; return; }
+      const rows = getEyeRows();
+      const all = rows.map(function (r) { return r.norm; });
+      const plan = Core().planIsolation(value, all);
+      const showSet = {}, hideSet = {};
+      plan.show.forEach(function (n) { showSet[n] = 1; });
+      plan.hide.forEach(function (n) { hideSet[n] = 1; });
+      let acted = false;
+      rows.forEach(function (r) {
+        if (showSet[r.norm] && !r.visible) { try { r.btn.click(); acted = true; } catch (_) {} }
+        else if (hideSet[r.norm] && r.visible) { try { r.btn.click(); acted = true; } catch (_) {} }
+      });
+      attempts++;
+      if (!acted || attempts >= MAX_ATTEMPTS) {
+        clearInterval(window.__saSensorComboApply); window.__saSensorComboApply = null;
+        window.__saSensorHideLastKey = key;   // fue elección del operador: Fase 1 no re-esconde
+        syncCombos();
+      }
+    }, POLL_MS);
+  }
+
+  // ── Combo UI ──
+  function buildComboBar() {
+    const bar = document.createElement('div');
+    bar.className = 'sa-sgc-bar';
+    const label = document.createElement('span');
+    label.className = 'sa-sgc-label';
+    label.textContent = '👁 Ver solo:';
+    const sel = document.createElement('select');
+    sel.className = 'sa-sgc-select';
+    sel.addEventListener('change', function () { onComboChange(sel.value); });
+    bar.appendChild(label);
+    bar.appendChild(sel);
+    return bar;
+  }
+
+  function onComboChange(value) {
+    if (value === '') return;            // placeholder: no-op
+    applyIsolation(value);
+  }
+
+  function injectCombos() {
+    const anchors = document.querySelectorAll('button[value="NUMBER"]');
+    anchors.forEach(function (nb) {
+      const paper = nb.closest('.MuiPaper-root');
+      if (!paper || !paper.parentElement) return;
+      if (paper.nextElementSibling && paper.nextElementSibling.classList &&
+        paper.nextElementSibling.classList.contains('sa-sgc-bar')) return;   // ya inyectado aquí
+      injectStyles();
+      paper.parentElement.insertBefore(buildComboBar(), paper.nextSibling);
+    });
+    populateCombos();
+    syncCombos();
+  }
+
+  function comboSignature() {
+    const nums = numericSensorList();
+    return nums ? nums.map(function (s) { return s.norm; }).join('|') : 'LOADING';
+  }
+
+  function populateCombos() {
+    const sig = comboSignature();
+    const nums = numericSensorList();
+    document.querySelectorAll('select.sa-sgc-select').forEach(function (sel) {
+      if (sel.dataset.saSig === sig) return;   // ya poblado con esta lista (evita loop del observer)
+      const current = sel.value;
+      sel.innerHTML = '';
+      const add = function (v, t) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+      add('', nums ? '— elige sensor —' : 'cargando sensores…');
+      add('ALL', 'Todos');
+      add('NONE', 'Ninguno');
+      if (nums) nums.forEach(function (s) { add(s.norm, s.label); });
+      sel.dataset.saSig = sig;
+      if (current && Array.prototype.some.call(sel.options, function (o) { return o.value === current; })) sel.value = current;
+    });
+  }
+
+  // Deriva el valor del combo desde el estado real de los ojitos y lo refleja en todos.
+  function syncCombos() {
+    const rows = getEyeRows();
+    const all = rows.map(function (r) { return r.norm; });
+    const vis = rows.filter(function (r) { return r.visible; }).map(function (r) { return r.norm; });
+    const nums = (numericSensorList() || []).map(function (s) { return s.norm; });
+    const val = Core().deriveComboValue({ visibleNames: vis, allNames: all, numericNames: nums });
+    document.querySelectorAll('select.sa-sgc-select').forEach(function (sel) {
+      const has = Array.prototype.some.call(sel.options, function (o) { return o.value === val; });
+      sel.value = has ? val : '';   // property set: no dispara el MutationObserver
+    });
+  }
+
+  let comboTimer = null;
+  function scheduleComboWork() {
+    if (comboTimer) return;
+    comboTimer = setTimeout(function () {
+      comboTimer = null;
+      try { if (onDashboard()) injectCombos(); } catch (_) {}
+    }, 200);
+  }
+
+  function observeForCombos() {
+    if (window.__saSensorComboObs) return;
+    const obs = new MutationObserver(function () { scheduleComboWork(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    window.__saSensorComboObs = obs;
+  }
+  function teardownCombos() {
+    if (window.__saSensorComboObs) { window.__saSensorComboObs.disconnect(); window.__saSensorComboObs = null; }
+    if (window.__saSensorComboApply) { clearInterval(window.__saSensorComboApply); window.__saSensorComboApply = null; }
   }
 
   function init() {
     if (window.__saSensorHideInit) return;
     window.__saSensorHideInit = true;
+    try { patchFetch(); } catch (_) {}          // solo actúa sobre SensorDashboardQuery
     installUrlChangeListener();
-    if (onDashboard() && isEnabled()) scheduleHideSequence();
-    console.log('[SA] SensorGraphHideAll activo (esconder sensores al entrar al dashboard)');
+    if (onDashboard()) {
+      if (isEnabled()) scheduleHideSequence();  // Fase 1
+      // Fase 2 blindada: un bug del combo NO debe tumbar la Fase 1 ni al resto del app.
+      try { observeForCombos(); scheduleComboWork(); } catch (e) { console.warn('[SA] combo init falló', e); }
+    }
+    console.log('[SA] SensorGraphHideAll activo (esconder al entrar + combo aislar sensor)');
   }
 
   return {
     init, toggleFromPopup,
+    // Fase 2 (para debug/validación manual):
+    _injectCombos: injectCombos, _applyIsolation: applyIsolation, _numericSensorList: numericSensorList,
     _getState: function () {
+      const nums = numericSensorList();
       return {
         enabled: isEnabled(),
         lastKey: window.__saSensorHideLastKey || null,
         onDashboard: onDashboard(),
         toggles: getToggles().length,
         visible: getVisibleToggles().length,
+        combos: document.querySelectorAll('select.sa-sgc-select').length,
+        numericSensors: nums ? nums.length : null,
+        metaCaptured: !!window.__saSensorMeta,
       };
     },
   };
