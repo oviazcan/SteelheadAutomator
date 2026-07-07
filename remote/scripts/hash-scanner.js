@@ -13,6 +13,32 @@ const HashScanner = (() => {
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
 
+  // ── Instrumentación de discovery (Fase B): pantalla + breadcrumb de click por op ──
+  const MAX_SCREENS_PER_OP = 5;
+  let lastClick = null; // { breadcrumb, ts }
+  let clickListener = null;
+
+  // Descripción corta y NO sensible del control clickeado: tag[role]:textoCorto.
+  // Trunca el texto a 40 chars; nunca incluye value/payloads.
+  function describeClickTarget(el) {
+    if (!el) return '(desconocido)';
+    const tag = (el.tagName || '').toLowerCase();
+    const role = typeof el.getAttribute === 'function' ? el.getAttribute('role') : null;
+    const rawText = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    const text = rawText.slice(0, 40);
+    return `${tag}${role ? `[${role}]` : ''}${text ? `:${text}` : ''}`;
+  }
+
+  // Anexa {pathname, breadcrumb} a entry.screens, dedup por pathname (sube count),
+  // cap MAX_SCREENS_PER_OP. Es la evidencia op→pantalla para el generador de catálogo.
+  function recordScreen(entry, pathname, breadcrumb) {
+    entry.screens = entry.screens || [];
+    const hit = entry.screens.find((s) => s.pathname === pathname);
+    if (hit) { hit.count++; return; }
+    if (entry.screens.length >= MAX_SCREENS_PER_OP) return;
+    entry.screens.push({ pathname, breadcrumb, count: 1 });
+  }
+
   const MAX_SAMPLES_PER_OP = 10;
   const MAX_RESPONSE_SAMPLES_PER_OP = 2;
 
@@ -87,6 +113,13 @@ const HashScanner = (() => {
     isScanning = true;
     originalFetch = window.fetch;
 
+    // Breadcrumb: registra el último control clickeado (captura fase para no
+    // perder clicks que hagan stopPropagation). Solo activo mientras se escanea.
+    clickListener = (ev) => {
+      try { lastClick = { breadcrumb: describeClickTarget(ev.target), ts: Date.now() }; } catch (_) {}
+    };
+    document.addEventListener('click', clickListener, true);
+
     window.fetch = async function (...args) {
       const [url, options] = args;
       const urlStr = typeof url === 'string' ? url : url?.url || '';
@@ -102,7 +135,9 @@ const HashScanner = (() => {
           const apolloVersion = (typeof headers.get === 'function')
             ? headers.get('apollographql-client-version')
             : (headers['apollographql-client-version'] || headers['Apollographql-Client-Version']);
-          const meta = { url: urlStr, apolloVersion };
+          const pathname = (typeof location !== 'undefined' && location.pathname) ? location.pathname : null;
+          const recentClick = (lastClick && Date.now() - lastClick.ts < 5000) ? lastClick.breadcrumb : null;
+          const meta = { url: urlStr, apolloVersion, pathname, breadcrumb: recentClick };
 
           const response = await originalFetch.apply(this, args);
           const httpStatus = response.status;
@@ -138,6 +173,7 @@ const HashScanner = (() => {
     if (!isScanning) return;
     if (originalFetch) window.fetch = originalFetch;
     isScanning = false;
+    if (clickListener) { document.removeEventListener('click', clickListener, true); clickListener = null; }
     if (window.__saScanPersistInterval) {
       clearInterval(window.__saScanPersistInterval);
       window.__saScanPersistInterval = null;
@@ -153,7 +189,8 @@ const HashScanner = (() => {
         responseSamples: [],
         errorSamples: [], errorCount: 0, lastHttpStatus: null,
         url: null, apolloVersion: null,
-        status: 'unknown', configKey: null
+        status: 'unknown', configKey: null,
+        screens: []
       };
     }
 
@@ -221,6 +258,11 @@ const HashScanner = (() => {
 
     if (meta?.url) entry.url = meta.url;
     if (meta?.apolloVersion) entry.apolloVersion = meta.apolloVersion;
+    if (meta?.pathname) {
+      const counter = { n: 0 };
+      const bc = meta.breadcrumb ? sanitizeValue(meta.breadcrumb, counter) : null;
+      recordScreen(entry, meta.pathname, bc);
+    }
 
     // Append to chronological event log (cap MAX_EVENT_LOG, drop oldest)
     eventLog.push({
@@ -380,7 +422,7 @@ const HashScanner = (() => {
   return {
     init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
     analyzeSchema, mergeSchema,
-    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, discovered, eventLog, knownHashMap, knownOpMap }
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, describeClickTarget, recordScreen, discovered, eventLog, knownHashMap, knownOpMap }
   };
 })();
 
