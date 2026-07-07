@@ -4,6 +4,20 @@ Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Mod
 
 > **Spec y plan de la 1.5.20:** [`docs/superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md`](../superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md) · [`docs/superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md`](../superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md)
 
+## Sesión 2026-07-06/07 — Carga por Id SH: hash rotado, fix de precio no deseado, robustez y fetch dirigido
+
+> Nota de drift: las entradas del **2026-07-03** (bugs en cadena del flujo Id SH: VBA `ExportarCSV` CSV vacío → v15.4, validador JS "sin Cliente", y "DUPLICAR vs MODIFICAR") viven en `stash@{0}` (el WIP de `feat/hash-autopilot` que el auto-deploy de hashes stasheó al mover el repo a `main`). Pendiente consolidarlas aquí. Los fixes ESTÁN deployados en producción; solo la doc quedó en el stash.
+
+Cuatro frentes, en orden de aparición:
+
+**1. Release de Steelhead rotó ~8 hashes (config 1.7.64).** Una carga por Id SH falló con 447× `GetPartNumber: "Must provide a query string"` en el apply. NO era el fix de idSh: solo hizo que el flujo LLEGARA al apply (que usa GetPartNumber intensivamente) y destapó la rotación. Detalle en `docs/api/hash-validation-log.md` (2026-07-06). Actualizados: GetPartNumber, InvoiceByIdInDomain, AllPartNumbers, ActiveReceivedOrders, GetReceivedOrder, ReceivingBatchesQuery (+ AllSensorDashboards/CurrentUser ya por autopilot).
+
+**2. Fix CRÍTICO — precio default tocado sin querer (v1.5.29).** Con `Precio default = V` (valor por defecto de la plantilla, columna M, que "Limpiar Datos" pone en V), una carga de SOLO specs re-designaba el precio default de 447 PNs al más reciente (`SetPartNumberPricesAsDefaultPrice` + unset del anterior), sin que el operador cargara ningún precio. **Fix:** el `needsRead` de default-price en SOLO_PN ahora exige `part.precio != null` — sin precio en la fila, NO se toca el default. Test 4/4. Operador: no revertir los 447 ya cambiados (el más reciente es aceptable).
+
+**3. Robustez B+C (v1.5.29).** (B) `steelhead-api.js` detecta `"Must provide a query string"`/`PersistedQueryNotFound` → marca `err.persistedQueryRotated`, lleva `window.__saRotatedOps` y avisa UNA vez por op (`🔴 HASH ROTADO: "X"…`) en vez de cientos de WARNs mudos. (C) `showResult` pinta un banner rojo si hubo rotación (título "⚠️ Detenido por HASH ROTADO") y agrega "PNs modificados: X / Y ⚠️" (= SavePartNumber OK real, no el "OK" del panel que sumaba desarchivados).
+
+**4. Mejoras — fetch dirigido + cliente/etiquetas (v1.5.30).** (M1) `fetchPNsByIdSh(idShSet)`: `GetPartNumber(id)` por cada Id SH único (runPool cap 8 + `periodicDrain` + `extractPNShape` slim) → Map id→shape, en `classifyPNs` antes de elegir modo. Reemplaza el hack de prefetch-global-con-retención; `classifyPNsMassive` ya NO escanea el dominio si `customerIds` vacío (100% Id SH). O(N idSh) vs O(dominio). CSVs SIN idSh: `idShNodes` vacío + early-return → comportamiento idéntico. (M2) `extractPNShape` captura `customerName`; `buildClassifiedRow` (idsh-direct) propaga `nodeCustomerName`+`nodeLabelObjs`; el preview muestra el **cliente real** y una columna **Etiquetas** con chips del color real de SH (`textContent`+color validado a hex, sin XSS). **Pendiente: validación en vivo del operador.**
+
 ## Fix 2026-07-02 — Macro `RefrescarListas` (Module2 v14): dejar de pedir "conceder acceso" a cada catálogo viejo en Mac
 
 **Síntoma:** en Excel **para Mac**, al correr "Refrescar Listas" para importar el catálogo (`Catalogos_Steelhead_*.xlsx`), el sandbox pedía **conceder acceso archivo por archivo** a cada catálogo acumulado en Descargas, aunque no fuera el último (el que se quiere importar). Muy molesto; no pasa en Windows.
