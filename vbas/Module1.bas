@@ -1,3 +1,4 @@
+Attribute VB_Name = "Module1"
 ' === MACRO 1: ExportarCSV (v15.4 — layout v12) ===
 ' V15.4 (2026-07-03): FIX carga por Id SH — CSV salía SIN DATOS cuando las filas se
 '   identifican por "Id SH" (col C) con "Número de parte" (col E) VACÍO (caso de uso legítimo:
