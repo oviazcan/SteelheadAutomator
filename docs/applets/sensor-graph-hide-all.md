@@ -7,8 +7,8 @@ para que el operador solo **destache el que quiere ver**. Sin esto, cada dashboa
 14+ series encimadas y hay que tachar una por una a mano en cada visita.
 
 ## Versión
-0.1.0 — código completo, core 12/12 golden, validación DOM en vivo parcial (ver §Validación).
-Config `sensor-graph-hide-all` con `autoInject:true`. **Pendiente: run real en pestaña en primer plano.**
+0.1.0 — **VALIDADO en vivo end-to-end** (config 1.7.73, gh-pages). Core 12/12 golden.
+Config `sensor-graph-hide-all` con `autoInject:true`.
 
 ## Modelo (confirmado en vivo 2026-07-07, dashboard `/SensorDashboards/117` "Concentración de Plata")
 - El ojito de cada sensor en la tabla **"Current Values"** togglea si el sensor se plotea en la gráfica
@@ -52,16 +52,27 @@ Default ON; OFF muestra todos de inmediato (`unhideAll`) y se reactiva al recarg
 
 ## Validación
 - **Core**: `tools/test/sensor-graph-hide-all-core.test.js` — 12/12 golden (`node --test`).
-- **DOM en vivo (2026-07-07, tab de automatización)**: ✓ selectores (14 toggles, clasificación por aria-label),
-  ✓ core+glue reales cargan sin errores + `init()` instala el poll + `nextHideStep`→'hide', ✓ la acción de esconder
-  lleva 14→0 en una pasada `forEach` (2 veces), ✓ clicar el ojito no dispara GraphQL (puro React).
-- **Caveat**: la pestaña de automatización estaba `document.hidden` (segundo plano) → Chrome **congela los timers**,
-  así que el `setInterval` del poll no tickeó en el test (sí lo hace en la pestaña en primer plano del operador).
-  Falta confirmar el ciclo completo auto-inject→esconder en un run real en foreground.
+- **End-to-end en vivo (2026-07-07, dashboard 117, extensión real config 1.7.73)**: ✓ la extensión **auto-inyecta**
+  el app (`window.SensorGraphHideAll`/`...Core` definidos por el background), ✓ el poll corrió y dejó **14/14
+  tachados** (`VisibilityOffIcon`, `visible:0`), ✓ **latcheó y detuvo el poll** (`pollStopped:true`, `lastKey` set →
+  no re-esconde lo que el operador destache), ✓ **sin regresión**: los apps que van DESPUÉS en el array
+  (`auto-router`, `surtido-guard`) siguen auto-inyectándose. Funcionó incluso con la tab en `document.hidden`.
+- **DOM (previo)**: selectores (14 toggles), clasificación por aria-label, esconder lleva 14→0 en una pasada
+  `forEach` (React re-renderiza async), clicar el ojito no dispara GraphQL (puro React).
+
+## Lección de deploy — propagación CDN + break del loop de auto-inject
+El auto-inject de `background.js` hace `break` del loop completo si `injectAppScripts` de UN app lanza, y
+`fetchScriptCode` **lanza si el fetch del script no es HTTP 200** (`background.js:37`). Al desplegar un app **nuevo**,
+`config.json` propaga al CDN de GitHub Pages ANTES que los `.js` nuevos (~1-2 min de lag). Durante esa ventana, el
+background ve el app en config pero su fetch del script da 404 → throw → **rompe el loop** → los apps que van
+DESPUÉS del nuevo en `config.apps` NO se auto-inyectan (aquí: `auto-router`, `surtido-guard`) hasta que el CDN
+propaga. **Self-healing**: se resuelve solo al recargar tras la propagación (verificado). Mitigaciones a futuro:
+(a) colocar apps nuevos al FINAL de `config.apps` para minimizar el radio del break durante su ventana de propagación;
+(b) hardening en `background.js`: envolver cada `injectAppScripts` del loop en try/catch para que un app no tumbe a
+los demás (requiere republicar extensión — pendiente aparte).
 
 ## Pendientes
-1. **Run real en primer plano**: abrir un Sensor Dashboard con la extensión desplegada y confirmar que esconde
-   todo al entrar + probar el toggle del popup + navegación entre dashboards (117↔119).
-2. Considerar persistir el toggle en `chrome.storage` (`sensorGraphHideAllEnabled`) si el operador quiere que
+1. Considerar persistir el toggle en `chrome.storage` (`sensorGraphHideAllEnabled`) si el operador quiere que
    OFF sobreviva reloads (hoy es no persistente, como los guards). El auto-inject ya respeta esa key si se setea.
-3. Opcional: recordar el último sensor visto y dejarlo destachado (hoy esconde TODOS; el operador elige uno).
+2. Opcional: recordar el último sensor visto y dejarlo destachado (hoy esconde TODOS; el operador elige uno).
+3. (Bundle Safari/iPad) si se quiere la versión iPad, integrar vía `safari-bundle-sync`.
