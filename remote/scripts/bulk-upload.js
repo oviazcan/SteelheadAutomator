@@ -4830,7 +4830,7 @@ const BulkUpload = (() => {
                 continue;
               }
               let qDataR;
-              try { ({ data: qDataR } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: existing.idInDomain, revisionNumber: 1 })); }
+              try { ({ data: qDataR } = await api().queryWithFallback('GetQuote', 'GetQuote', 'GetQuote', { idInDomain: existing.idInDomain, revisionNumber: 1 })); }
               catch (e) { errors.push(`GetQuote (resume) ${existing.idInDomain}: ${String(e).substring(0, 120)}`); continue; }
               const quoteR = qDataR?.quoteByIdInDomainAndRevisionNumber || qDataR?.quoteByIdInDomain;
               if (!quoteR) { warn(`  No se pudo leer quote #${existing.idInDomain} para reconstruir lookup.`); continue; }
@@ -4930,7 +4930,7 @@ const BulkUpload = (() => {
                 const existingPnpIds = (existingQuote.quotePartNumberPricesByQuoteId?.nodes || []).map(n => n.partNumberPriceByPartNumberPriceId?.id).filter(Boolean);
                 if (existingPnpIds.length) {
                   log(`  Limpiando ${existingPnpIds.length} PNPs viejos de la cotización...`);
-                  await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
+                  await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPartNumberPrices', 'SaveManyPartNumberPrices',
                     { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: false, partNumberPrices: [], partNumberPriceIdsToDelete: existingPnpIds, quotePartNumberPriceLineNumberOnlyUpdates: [] } });
                 }
               } catch (e) { warn(`Limpiar PNPs viejos: ${String(e).substring(0, 100)}`); }
@@ -4999,7 +4999,7 @@ const BulkUpload = (() => {
             // 1.4.25 Fix FF: sub-fase visible para SaveManyPNP batches.
             setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: SaveManyPNP batch ${bnum}/${pnpBatches} (${batch.length} PNs)`);
             try {
-              await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
+              await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPartNumberPrices', 'SaveManyPartNumberPrices',
                 { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
             } catch (e) { errors.push(`SaveManyPNP quote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); }
           }
@@ -5009,7 +5009,7 @@ const BulkUpload = (() => {
           // Re-read quote to populate pnLookup
           setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: leyendo quote para reconstruir lookup`);
           let qData;
-          try { ({ data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: thisQuoteIdInDomain, revisionNumber: 1 })); }
+          try { ({ data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote', 'GetQuote', { idInDomain: thisQuoteIdInDomain, revisionNumber: 1 })); }
           catch (e) { errors.push(`GetQuote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); continue; }
           const quote = qData?.quoteByIdInDomainAndRevisionNumber || qData?.quoteByIdInDomain;
           if (!quote) { errors.push(`No se pudo leer quote #${thisQuoteIdInDomain}.`); continue; }
@@ -5147,7 +5147,7 @@ const BulkUpload = (() => {
             try {
               await api().query('SaveManyPartNumberPrices', {
                 input: { quoteId: null, autoGenerateQuoteLines: false, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] }
-              }, 'SaveManyPNP_PN');
+              }, 'SaveManyPartNumberPrices');
               {
                 // 1.4.13: el totalBatches referenciaba `quotePnIds` que no existe en SOLO_PN,
                 // tiraba ReferenceError y se tragaba TODA la fase de precios standalone.
@@ -6768,7 +6768,7 @@ const BulkUpload = (() => {
         }
       }
       if (priceIdsForDefault.length) {
-        try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPNPricesDefault'); stats.defaultPriceSet = priceIdsForDefault.length; }
+        try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPartNumberPricesAsDefaultPrice'); stats.defaultPriceSet = priceIdsForDefault.length; }
         catch (e) { errors.push(`SetDefaultPrice: ${String(e).substring(0, 120)}`); }
       }
       for (const priceId of priceIdsToUnsetDefault) {
