@@ -222,17 +222,8 @@ const SensorGraphHideAll = (() => {
   }
 
   function captureSensorMeta(j) {
-    const root = j && j.data && j.data.sensorDashboardByIdInDomain;
-    if (!root) return;
-    const nodes = (root.sensorDashboardMembersBySensorDashboardId &&
-      root.sensorDashboardMembersBySensorDashboardId.nodes) || [];
-    const list = [];
-    nodes.forEach(function (m) {
-      const s = m && m.sensorBySensorId; if (!s) return;
-      const st = s.sensorTypeBySensorTypeId || {};
-      const station = s.stationByStationId || {};
-      list.push({ name: s.name, station: station.name, measurementType: st.sensorMeasurementType });
-    });
+    const list = Core().parseSensorDashboard(j);
+    if (!list) return;
     window.__saSensorMeta = { dashKey: entryKey(), list: list };
     scheduleComboWork();   // repoblar el combo ahora que llegó la data
   }
