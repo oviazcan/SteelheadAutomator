@@ -5,18 +5,10 @@
 const HashScanner = (() => {
   'use strict';
 
-  // Idempotencia (fix 2026-07-06): el background hace injectAppScripts (RE-EJECUTA este
-  // IIFE) en cada toggle/restart. Antes, cada re-ejecución creaba `discovered = {}` nuevo
-  // y BORRABA lo capturado en vivo → al detener/reiniciar se perdían operaciones. Ahora el
-  // estado vive en window.__saHashScannerState y se REUTILIZA entre re-ejecuciones del mismo
-  // MAIN world. (Un reload real de la página sí resetea el MAIN world y lo pierde — para eso
-  // está la persistencia a chrome.storage vía 'sa-persist-scan' + mergeResults.)
-  const _prev = (typeof window !== 'undefined' && window.__saHashScannerState) || null;
   let isScanning = false;
   let originalFetch = null;
-  const discovered = _prev ? _prev.discovered : {}; // operationName → { hash, count, firstSeen, lastSeen, variablesSamples, responseSchema, status, configKey }
-  const eventLog = _prev ? _prev.eventLog : [];
-  if (typeof window !== 'undefined') window.__saHashScannerState = { discovered, eventLog };
+  const discovered = {}; // operationName → { hash, count, firstSeen, lastSeen, variablesSamples, responseSchema, status, configKey }
+  const eventLog = [];
   const MAX_EVENT_LOG = 2000;
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
@@ -25,6 +17,7 @@ const HashScanner = (() => {
   const MAX_SCREENS_PER_OP = 5;
   let lastClick = null; // { breadcrumb, ts }
   let clickListener = null;
+  let pageHideHandler = null;
 
   // Descripción corta y NO sensible del control clickeado: tag[role]:textoCorto.
   // Trunca el texto a 40 chars; nunca incluye value/payloads.
@@ -128,6 +121,19 @@ const HashScanner = (() => {
     };
     document.addEventListener('click', clickListener, true);
 
+    // Restaurar backup del pagehide previo (lo capturado justo antes de una recarga,
+    // que el persist periódico no alcanzó a guardar). Se limpia tras restaurar.
+    try {
+      const bak = localStorage.getItem('__sa_scan_backup');
+      if (bak) { mergeResults(JSON.parse(bak)); localStorage.removeItem('__sa_scan_backup'); }
+    } catch (_) {}
+
+    // Salvavidas ante recarga/cierre: backup SLIM SÍNCRONO a localStorage. chrome.storage
+    // es async y NO completa en pagehide → sin esto, lo navegado en los segundos previos
+    // a una recarga se perdía (causa raíz del bug "recarga pierde el scan").
+    pageHideHandler = () => { try { localStorage.setItem('__sa_scan_backup', JSON.stringify(slimForBackup())); } catch (_) {} };
+    window.addEventListener('pagehide', pageHideHandler);
+
     window.fetch = async function (...args) {
       const [url, options] = args;
       const urlStr = typeof url === 'string' ? url : url?.url || '';
@@ -174,14 +180,7 @@ const HashScanner = (() => {
       if (!isScanning) return;
       // Signal content script to persist results via custom event
       document.dispatchEvent(new CustomEvent('sa-persist-scan'));
-    }, 5000); // Every 5s (era 15s — reduce la ventana de pérdida ante un reload)
-
-    // Persist best-effort JUSTO antes de un reload/navegación (pagehide). El guardado real es
-    // async (content.js → background → chrome.storage), así que no siempre completa, pero acota
-    // la pérdida de lo capturado desde el último tick de 5s. Idempotente (latch en window).
-    if (window.__saScanPagehide) window.removeEventListener('pagehide', window.__saScanPagehide);
-    window.__saScanPagehide = () => { if (isScanning) { try { document.dispatchEvent(new CustomEvent('sa-persist-scan')); } catch (e) {} } };
-    window.addEventListener('pagehide', window.__saScanPagehide);
+    }, 5000); // cada 5s (defensa; el salvavidas real ante recarga es pagehide→localStorage)
   }
 
   function stop() {
@@ -189,11 +188,11 @@ const HashScanner = (() => {
     if (originalFetch) window.fetch = originalFetch;
     isScanning = false;
     if (clickListener) { document.removeEventListener('click', clickListener, true); clickListener = null; }
+    if (pageHideHandler) { window.removeEventListener('pagehide', pageHideHandler); pageHideHandler = null; }
     if (window.__saScanPersistInterval) {
       clearInterval(window.__saScanPersistInterval);
       window.__saScanPersistInterval = null;
     }
-    if (window.__saScanPagehide) { window.removeEventListener('pagehide', window.__saScanPagehide); window.__saScanPagehide = null; }
     console.log('[HashScanner] Captura detenida');
   }
 
@@ -347,6 +346,16 @@ const HashScanner = (() => {
     return paths;
   }
 
+  // Backup mínimo para localStorage (pagehide): hash + screens + estado, SIN los samples
+  // pesados (evita exceder la cuota de localStorage en scans grandes).
+  function slimForBackup() {
+    const out = {};
+    for (const [op, v] of Object.entries(discovered)) {
+      out[op] = { hash: v.hash, count: v.count, status: v.status, configKey: v.configKey, screens: v.screens || [] };
+    }
+    return out;
+  }
+
   function getResults() {
     const ops = {};
     for (const [k, v] of Object.entries(discovered)) {
@@ -431,6 +440,14 @@ const HashScanner = (() => {
           if (existing.errorSamples.length >= 3) break;
           existing.errorSamples.push(es);
         }
+        // Merge screens (pantalla+breadcrumb por op) — dedup por pathname, cap MAX_SCREENS_PER_OP
+        existing.screens = existing.screens || [];
+        for (const s of (entry.screens || [])) {
+          const hit = existing.screens.find((x) => x.pathname === s.pathname);
+          if (hit) { hit.count += (s.count || 1); continue; }
+          if (existing.screens.length >= MAX_SCREENS_PER_OP) break;
+          existing.screens.push(s);
+        }
       }
     }
   }
@@ -438,7 +455,7 @@ const HashScanner = (() => {
   return {
     init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
     analyzeSchema, mergeSchema,
-    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, describeClickTarget, recordScreen, discovered, eventLog, knownHashMap, knownOpMap }
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, describeClickTarget, recordScreen, slimForBackup, discovered, eventLog, knownHashMap, knownOpMap }
   };
 })();
 
