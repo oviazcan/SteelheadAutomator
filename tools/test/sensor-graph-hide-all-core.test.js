@@ -112,3 +112,51 @@ test('planIsolation: ALL / NONE / aislar uno', () => {
   assert.deepStrictEqual(Core.planIsolation('s2', all), { show: ['s2'], hide: ['s1', 's3'] });
   assert.deepStrictEqual(Core.planIsolation('', all), { show: [], hide: ['s1', 's2', 's3'] });
 });
+
+// Fixture con la forma REAL de SensorDashboardQuery (confirmada en scan 2026-07-07),
+// mezclando NUMBER y BOOLEAN para verificar parse + filtro end-to-end.
+const SDQ_RESPONSE = {
+  data: {
+    sensorDashboardByIdInDomain: {
+      name: 'Concentración de Plata',
+      sensorDashboardMembersBySensorDashboardId: {
+        nodes: [
+          { sensorBySensorId: { name: ' T203-TI00-011 Concentración de Plata Metálica',
+            sensorTypeBySensorTypeId: { sensorMeasurementType: 'NUMBER' },
+            stationByStationId: { name: 'T203-TI00-011 Plata Silvrex (B-1)' } } },
+          { sensorBySensorId: { name: 'T204-TI00-017 Concentración de Plata Metálica',
+            sensorTypeBySensorTypeId: { sensorMeasurementType: 'NUMBER' },
+            stationByStationId: { name: 'T204-TI00-017 Plata Silversene (S-1) Flash' } } },
+          { sensorBySensorId: { name: 'EPP-01 Guantes puestos',
+            sensorTypeBySensorTypeId: { sensorMeasurementType: 'BOOLEAN' },
+            stationByStationId: { name: 'T203-TI00-011 Plata Silvrex (B-1)' } } },
+        ],
+      },
+    },
+  },
+};
+
+test('parseSensorDashboard: extrae name/station/type de la forma real', () => {
+  const list = Core.parseSensorDashboard(SDQ_RESPONSE);
+  assert.strictEqual(list.length, 3);
+  assert.deepStrictEqual(list[0], {
+    name: ' T203-TI00-011 Concentración de Plata Metálica',
+    station: 'T203-TI00-011 Plata Silvrex (B-1)',
+    measurementType: 'NUMBER',
+  });
+  assert.strictEqual(list[2].measurementType, 'BOOLEAN');
+});
+
+test('parseSensorDashboard: null si el shape no matchea (fail-safe)', () => {
+  assert.strictEqual(Core.parseSensorDashboard(null), null);
+  assert.strictEqual(Core.parseSensorDashboard({}), null);
+  assert.strictEqual(Core.parseSensorDashboard({ data: {} }), null);
+});
+
+test('pipeline parse→filterNumeric→label: solo NUMBER, etiqueta por estación', () => {
+  const list = Core.parseSensorDashboard(SDQ_RESPONSE);
+  const nums = Core.filterNumericSensors(list);
+  assert.strictEqual(nums.length, 2);   // excluye el BOOLEAN
+  assert.strictEqual(Core.sensorLabel(nums[0]), 'T203-TI00-011 Plata Silvrex (B-1)');
+  assert.strictEqual(Core.normalizeName(nums[0].name), 't203-ti00-011 concentración de plata metálica');
+});
