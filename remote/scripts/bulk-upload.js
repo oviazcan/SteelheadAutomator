@@ -230,7 +230,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.28';
+  const VERSION = '1.5.29';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -3415,7 +3415,17 @@ const BulkUpload = (() => {
     overlay.id = 'dl9-result-overlay';
     const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.join('\n')}</div>` : '';
     const lbl = quoteUrlLabel || 'ABRIR COTIZACIÓN';
-    modal.innerHTML = `<h2>${errors.length ? 'Completado con errores' : 'Completado OK'}</h2><div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
+    // Robustez B/C: banner prominente si steelhead-api detectó un hash de persisted query
+    // rotado durante la corrida (window.__saRotatedOps). Sin esto, un hash rotado (ej.
+    // GetPartNumber) produce cientos de fallos y el resumen se veía "Completado · OK: N"
+    // engañoso — ese N contaba desarchivados, NO SavePartNumber (que fallaba en bloque).
+    const _g = (typeof window !== 'undefined') ? window : {};
+    const rotOps = _g.__saRotatedOps ? Object.keys(_g.__saRotatedOps) : [];
+    const rotBanner = rotOps.length
+      ? `<div style="background:#7f1d1d;border:1px solid #ef4444;border-radius:8px;padding:10px 12px;margin-bottom:12px;color:#fecaca;font-size:13px;line-height:1.45">🔴 <b>HASH(ES) ROTADO(S): ${rotOps.join(', ')}</b><br>Steelhead dejó de aceptar esa(s) persisted query(ies) (<i>"Must provide a query string"</i>). Los cambios que dependían de ellas <b>NO se aplicaron</b>. Avisa al equipo para re-escanear (hash-scanner) y actualizar <code>config.json</code> — luego recarga la extensión y vuelve a correr.</div>`
+      : '';
+    const titulo = rotOps.length ? '⚠️ Detenido por HASH ROTADO' : (errors.length ? 'Completado con errores' : 'Completado OK');
+    modal.innerHTML = `<h2>${titulo}</h2>${rotBanner}<div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ' style="color:#fca5a5"' : ''}><b>PNs modificados:</b> ${stats.pnsModified ?? '—'}${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ` / ${stats.pnsExisting} ⚠️` : ''}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
     // 1.4.18 Fix BB: scope a `modal.querySelector` (no `document.getElementById`) + null
     // guards. Antes, en runs grandes el outer catch capturaba "Cannot set properties of
     // null (setting 'onclick')" tras completar el pipeline: el árbol React de Steelhead
@@ -3460,7 +3470,7 @@ const BulkUpload = (() => {
       if (currentUserName === '(desconocido)') warn('ControlCambios: CurrentUserActiveSegments no devolvió name del usuario.');
     } catch (e) { warn(`ControlCambios: fallo al obtener usuario actual: ${String(e).substring(0, 80)}`); }
     const errors = [];
-    const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
+    const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsModified: null, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
     // Cancellation token + panel: cada corrida obtiene un runId monotónico que
     // se propaga a runPool, withRetry, checkPNExistence y demás helpers async.
@@ -5972,6 +5982,10 @@ const BulkUpload = (() => {
         myRunId
       );
       bailIfStale(myRunId);
+      // Robustez C: exponer el conteo REAL de PNs modificados (SavePartNumber OK) al resumen,
+      // para que "PNs modificados" refleje la operación clave y no se confunda con "PNs existentes"
+      // (los que se intentaron) ni con el OK global del panel (que suma desarchivados).
+      stats.pnsModified = okSP;
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`);
       addPanelLog(`Enrich: ${okSP} OK, ${retrySP} retry`);
       if (resumeState) { resumeState.phase = 'enrich-done'; await persistResumeState(); }
@@ -6630,7 +6644,13 @@ const BulkUpload = (() => {
           const part = parts[i];
           const entry = pnLookup.get(i);
           if (!entry?.pn?.id) continue;
-          const needsRead = part.precioDefault || (!part.precioDefault && pnStatus[i].status === 'existing');
+          // 1.5.29 Fix (incidente 2026-07-06): el 'Precio default' (V/F) SOLO aplica si la fila
+          // trae un precio nuevo (part.precio != null). Sin precio, NO se toca el default del PN
+          // — el 'Precio default = V' es el valor por defecto de la plantilla (LimpiarDatos) y no
+          // debe re-designar/desmarcar el default de precios que el operador no cargó. Antes, una
+          // carga SOLO de specs con el V por defecto re-designaba el default de cientos de PNs al
+          // precio más reciente (447 PNs afectados en la corrida que lo destapó).
+          const needsRead = part.precio != null && (part.precioDefault || (!part.precioDefault && pnStatus[i].status === 'existing'));
           if (!needsRead) continue;
           priceReadTargets.push({ pnId: entry.pn.id, pnName: part.pn, precioDefault: !!part.precioDefault });
         }

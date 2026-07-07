@@ -104,14 +104,30 @@ const SteelheadAPI = (() => {
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
+      // Detección de persisted query rotada/deprecada: Steelhead responde HTTP 400
+      // "Must provide a query string." (o "PersistedQueryNotFound") cuando el sha256Hash
+      // que mandamos ya no está en su registry — típicamente porque rotó con un release
+      // del front. Marcamos el error (`persistedQueryRotated`) para que los applets aborten
+      // con un mensaje claro en vez de acumular cientos de fallos crípticos, avisamos UNA
+      // vez por operación, y llevamos un contador global consultable (window.__saRotatedOps).
+      const rotated = /must provide a query string|persistedquerynotfound/i.test(text);
+      if (rotated) {
+        const g = (typeof window !== 'undefined') ? window : globalThis;
+        g.__saRotatedOps = g.__saRotatedOps || {};
+        if (!g.__saRotatedOps[operationName]) {
+          g.__saRotatedOps[operationName] = 0;
+          warn(`🔴 HASH ROTADO: Steelhead ya no acepta la persisted query "${operationName}" ("Must provide a query string"). El hash en config.json quedó viejo (rotó con un release de Steelhead). Hay que re-escanear (hash-scanner) y actualizar config.json. Los applets que usan "${operationName}" van a fallar hasta entonces.`);
+        }
+        g.__saRotatedOps[operationName]++;
+      }
+      let detail = text;
       try {
         const parsed = JSON.parse(text);
-        if (Array.isArray(parsed.errors)) {
-          const msgs = parsed.errors.map((e, i) => `[${i + 1}] ${e.message}`).join(' | ');
-          throw new Error(`HTTP ${response.status} en ${operationName}: ${msgs.substring(0, 2000)}`);
-        }
-      } catch (_) { /* fall through */ }
-      throw new Error(`HTTP ${response.status} en ${operationName}: ${text.substring(0, 2000)}`);
+        if (Array.isArray(parsed.errors)) detail = parsed.errors.map((e, i) => `[${i + 1}] ${e.message}`).join(' | ');
+      } catch (_) { /* text no era JSON; usar crudo */ }
+      const err = new Error(`HTTP ${response.status} en ${operationName}: ${detail.substring(0, 2000)}`);
+      if (rotated) { err.persistedQueryRotated = true; err.rotatedOp = operationName; }
+      throw err;
     }
 
     const result = await response.json();
