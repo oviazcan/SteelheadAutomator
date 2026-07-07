@@ -228,6 +228,33 @@ const SensorGraphHideAll = (() => {
     scheduleComboWork();   // repoblar el combo ahora que llegó la data
   }
 
+  // Re-dispara SensorDashboardQuery si el hook NO alcanzó a capturarla (la query se
+  // dispara en la carga inicial ANTES de que el applet inyecte patchFetch). Los members
+  // (nombres+tipos) NO dependen del rango de fechas, así que pedimos una ventana chica.
+  function ensureSensorMeta() {
+    if (numericSensorList()) return;                       // ya hay data para esta entrada
+    if (window.__saSensorMetaFetching) return;             // ya en curso
+    const api = window.SteelheadAPI;
+    if (!api || typeof api.query !== 'function') return;   // sin API → dependemos del hook
+    const id = parseInt(Core().parseDashboardId(location.pathname), 10);
+    if (!id) return;
+    const key = entryKey();
+    window.__saSensorMetaFetching = true;
+    const before = new Date().toISOString();
+    const after = new Date(Date.now() - 3600 * 1000).toISOString();   // 1h: members completos, pocas mediciones
+    api.query('SensorDashboardQuery', { idInDomain: id, after: after, before: before, measurementType: 'NUMBER' })
+      .then(function (data) {
+        window.__saSensorMetaFetching = false;
+        if (entryKey() !== key) return;                    // navegamos: descartar
+        const list = Core().parseSensorDashboard({ data: data });
+        if (list && list.length) { window.__saSensorMeta = { dashKey: key, list: list }; scheduleComboWork(); }
+      })
+      .catch(function (e) {
+        window.__saSensorMetaFetching = false;
+        console.warn('[SA] combo: replay de SensorDashboardQuery falló:', e && e.message);
+      });
+  }
+
   // Lista de sensores NUMBER (o null si aún no capturamos la query).
   function numericSensorList() {
     const meta = window.__saSensorMeta;
@@ -311,6 +338,7 @@ const SensorGraphHideAll = (() => {
     });
     populateCombos();
     syncCombos();
+    if (!numericSensorList()) ensureSensorMeta();   // el hook no capturó → re-disparar la query
   }
 
   function comboSignature() {
