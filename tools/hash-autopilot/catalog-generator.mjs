@@ -42,14 +42,22 @@ export function generateCatalog(scanOps, opTypeOf) {
     const module = moduleFromPath(pathname);
     const { list, isDetail } = splitDetail(pathname);
     const id = routeId(module, isDetail);
-    const captures = [...g.ops].sort();
-    const type = captures.every((op) => opTypeOf(op) === 'query') ? 'query'
-      : captures.every((op) => opTypeOf(op) === 'mutation') ? 'mutation' : 'mixed';
     const steps = [{ goto: isDetail ? list : pathname }];
     if (isDetail || g.hadClick) steps.push({ clickFirst: 'a[href]', hrefMatches: '\\d' });
-    routes[id] = { type, module, steps, captures };
+    if (routes[id]) {
+      // Colisión de id: varios objetos de detalle del mismo módulo (cada uno con pathname
+      // único /Módulo/{id} pero mismo routeId). UNIR captures — no perder ops de los otros.
+      for (const op of g.ops) if (!routes[id].captures.includes(op)) routes[id].captures.push(op);
+    } else {
+      routes[id] = { type: 'query', module, steps, captures: [...g.ops] };
+    }
   }
-  // Reordenar por id para salida determinista.
+  // Tras unir colisiones: ordenar captures + calcular type; reordenar por id (determinista).
+  for (const r of Object.values(routes)) {
+    r.captures.sort();
+    r.type = r.captures.every((op) => opTypeOf(op) === 'query') ? 'query'
+      : r.captures.every((op) => opTypeOf(op) === 'mutation') ? 'mutation' : 'mixed';
+  }
   const ordered = {};
   for (const id of Object.keys(routes).sort()) ordered[id] = routes[id];
   return { routes: ordered };

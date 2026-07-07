@@ -39,6 +39,19 @@ test('generateCatalog: op sin screens se omite (no hay ruta que inferir)', () =>
   assert.deepEqual(Object.keys(cat.routes), []);
 });
 
+test('generateCatalog: varios objetos de detalle del mismo módulo (mismo id) → UNE captures (no sobrescribe)', () => {
+  // dos PN distintos abiertos: pathnames únicos /PartNumbers/111 y /222, ambos → id partnumbers-detail
+  const scanOps = {
+    GetPartNumber: { screens: [{ pathname: '/Domains/344/PartNumbers/111', breadcrumb: 'a:x', count: 5 }] },
+    GetPartNumberInventoryBatch: { screens: [{ pathname: '/Domains/344/PartNumbers/222', breadcrumb: 'a:y', count: 3 }] },
+  };
+  const cat = generateCatalog(scanOps, () => 'query');
+  const pd = cat.routes['partnumbers-detail'];
+  assert.ok(pd, 'debe existir partnumbers-detail');
+  assert.ok(pd.captures.includes('GetPartNumber'), 'no pierde GetPartNumber por la colisión de id');
+  assert.ok(pd.captures.includes('GetPartNumberInventoryBatch'));
+});
+
 test('generateCatalog: determinista — rutas ordenadas por id', () => {
   const scanOps = {
     ZebraQuery: { status: 'known', screens: [{ pathname: '/Domains/344/Zebra', count: 1 }] },

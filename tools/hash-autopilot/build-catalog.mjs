@@ -32,7 +32,15 @@ const generated = generateCatalog(scanOps, opTypeOf);
 // Fusión: preserva rutas existentes (validadas a mano en Fase A); añade/actualiza las del scan.
 const existing = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
 const mergedRoutes = { ...existing.routes };
-for (const [id, route] of Object.entries(generated.routes)) mergedRoutes[id] = route;
+for (const [id, route] of Object.entries(generated.routes)) {
+  if (mergedRoutes[id] && mergedRoutes[id].captures) {
+    // UNIR captures con la ruta existente — una pasada nueva no debe borrar ops que otra capturó.
+    const caps = [...new Set([...(mergedRoutes[id].captures || []), ...(route.captures || [])])].sort();
+    mergedRoutes[id] = { ...route, captures: caps };
+  } else {
+    mergedRoutes[id] = route;
+  }
+}
 const orderedRoutes = {};
 for (const id of Object.keys(mergedRoutes).sort()) orderedRoutes[id] = mergedRoutes[id];
 const merged = { ...existing, routes: orderedRoutes };
