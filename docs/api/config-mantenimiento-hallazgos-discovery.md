@@ -25,12 +25,19 @@ El frontend/applets envían la op con un `operationName` distinto al que el conf
 
 **Acción:** quitar las deprecadas del config; **migrar el código** de los applets que las llaman (p. ej. `bulk-upload` usa `GetQuote_v71/v8` → migrar a `GetQuote`/`GetQuoteSecondary`). Esto es un **fix de código**, no solo de hash — el autopilot NO lo cubre.
 
-## 3. Rotaciones confirmadas (hash cambió, misma query)
+## 3. Rotaciones confirmadas por el validador (server-side, 2026-07-07)
 
-_(Pendiente: completar con el resultado del validador `validate-hashes.py` contra el server. El análisis offline de scans dio falsos positivos por scans de releases previos; la lista real la confirma el validador.)_
+El validador (`validate-hashes.py`, autoritativo) reportó **6 stale** de 182. **El análisis offline de scans dio 9-18 falsos positivos** (scans de releases previos); el validador es la fuente de verdad.
 
-Candidata fuerte del discovery (hash nuevo capturado con HTTP 200):
-- `SpecFieldsAndOptions`: `d6faffae…` → `fc6242c2…` (la usa `catalog-fetcher`/RefrescarListas para cada spec; con el hash viejo, RefrescarListas de specs falla).
+Las 6 stale, clasificadas:
+- **Deprecadas / renames (4)** — requieren migrar CÓDIGO; el autopilot NO las cubre:
+  - `GetQuote_v71`, `GetQuote_v8` → migrar `bulk-upload` a `GetQuote` / `GetQuoteSecondary`.
+  - `SaveManyPNP_Quote`, `SaveManyPNP_PN` → migrar a `SaveManyPartNumberPrices`.
+- **Rotaciones reales (2)** — queries vigentes con hash nuevo; sus applets están ROTOS hasta capturar el hash nuevo (navegar a su pantalla con el scanner + `deploy.sh`):
+  - `AllReceivers` (`153f2cac…` stale) → pantalla de **Recibos / Receivers**.
+  - `GetDomain` (`86652daf…` stale) → **Facturación** (afecta `bill-autofill`, `invoice-autofill`).
+
+> **CORRECCIÓN:** `SpecFieldsAndOptions` **NO está rota** — su hash del config sigue válido server-side (el frontend usa otro hash válido en paralelo; Apollo acepta varias versiones registradas). El análisis offline de scans engañó; `catalog-fetcher` **NO está roto**. Lección: el validador manda sobre los scans.
 
 ## 4. ⚠️ Punto ciego del autopilot (limitación de diseño)
 
