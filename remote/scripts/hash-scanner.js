@@ -210,6 +210,11 @@ const HashScanner = (() => {
     }
 
     const entry = discovered[operationName];
+    // Normaliza arrays por si la entrada vino de un backup restaurado (defensa: evita undefined.map/.length)
+    entry.variablesSamples = entry.variablesSamples || [];
+    entry.responseSamples = entry.responseSamples || [];
+    entry.errorSamples = entry.errorSamples || [];
+    entry.screens = entry.screens || [];
     entry.count++;
     entry.lastSeen = new Date().toISOString();
     entry.hash = hash;
@@ -351,7 +356,10 @@ const HashScanner = (() => {
   function slimForBackup() {
     const out = {};
     for (const [op, v] of Object.entries(discovered)) {
-      out[op] = { hash: v.hash, count: v.count, status: v.status, configKey: v.configKey, screens: v.screens || [] };
+      // Incluye los arrays VACÍOS (no su contenido pesado): mergeResults/recordOperation
+      // los asumen presentes → sin esto, una entrada restaurada rompía con undefined.map.
+      out[op] = { hash: v.hash, count: v.count, status: v.status, configKey: v.configKey,
+        screens: v.screens || [], variablesSamples: [], responseSamples: [], errorSamples: [], errorCount: 0 };
     }
     return out;
   }
@@ -411,6 +419,7 @@ const HashScanner = (() => {
           existing.lastSeen = entry.lastSeen;
         }
         // Merge variable samples deduped by shape signature, up to MAX_SAMPLES_PER_OP
+        existing.variablesSamples = existing.variablesSamples || [];
         existing._sigs = existing._sigs || new Set(existing.variablesSamples.map(shapeSignature));
         for (const sample of (entry.variablesSamples || [])) {
           if (existing.variablesSamples.length >= MAX_SAMPLES_PER_OP) break;
