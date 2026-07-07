@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hashes obsoletos + estrategia de mutations</title>
+<style>
+  :root{ --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#5b6672; --line:#e3e7ec;
+    --accent:#13a36f; --accent-ink:#0c7d54; --chip:#eef2f6; --chip-ink:#334;
+    --red:#c0392b; --red-bg:#fdECEA; --amber:#b8860b; --amber-bg:#fcf6e3; --green:#0c7d54; --green-bg:#e9f7f0; }
+  @media (prefers-color-scheme: dark){ :root{ --bg:#0f141b; --card:#171e27; --ink:#e6e9ee; --muted:#9aa6b2; --line:#28303a;
+    --chip:#222c38; --chip-ink:#c7d2de; --red:#ff6b5b; --red-bg:#2a1512; --amber:#e3b341; --amber-bg:#2a2312; --green:#5fce9f; --green-bg:#16261e; } }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:1.7rem;margin:0 0 4px} .sub{color:var(--muted);margin:0 0 20px}
+  h2{font-size:1.2rem;margin:26px 0 6px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+  h3{font-size:1rem;margin:16px 0 4px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:12px 0}
+  code{background:var(--chip);padding:1px 6px;border-radius:5px;font-size:.88em;font-family:ui-monospace,Menlo,Consolas,monospace}
+  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:.92rem}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:.75rem;font-weight:700}
+  .p-red{background:var(--red-bg);color:var(--red)} .p-amber{background:var(--amber-bg);color:var(--amber)} .p-green{background:var(--green-bg);color:var(--green)}
+  .box{border-left:4px solid var(--accent);background:rgba(19,163,111,.06);border-radius:8px;padding:12px 14px;margin:12px 0}
+  .box.red{border-color:var(--red);background:var(--red-bg)} .box.amber{border-color:var(--amber);background:var(--amber-bg)}
+  ol,ul{margin:6px 0;padding-left:22px} li{margin:4px 0}
+  .scroll{overflow-x:auto}
+  .step{display:flex;gap:12px;align-items:baseline;margin:10px 0}
+  .num{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem}
+  .muted{color:var(--muted)} .mono{font-family:ui-monospace,Menlo,monospace;font-size:.85rem}
+  footer{color:var(--muted);font-size:.85rem;margin-top:28px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Hashes obsoletos: diagnóstico + estrategia de mutations</h1>
+  <p class="sub">Basado en el hash-scan general (validador server-side) + tus scans reales del frontend · 2026-07-07</p>
+
+  <h2>1. Las 4 que "te sigue pidiendo" — diagnóstico real</h2>
+  <div class="scroll"><table>
+    <tr><th>Query</th><th>Estado real</th><th>Acción</th></tr>
+    <tr><td class="mono">GetQuote_v71<br>GetQuote_v8</td><td><span class="pill p-red">DEPRECADAS</span><br>El frontend usa <code>GetQuote</code> (<span class="mono">86d7b49a</span>) + <code>GetQuoteSecondary</code> (<span class="mono">546aa58c</span>). El hash viejo <span class="mono">353b…</span> está muerto server-side.</td><td><b>Fix de código</b> (abajo). <code>bulk-upload</code> queda roto al leer cotizaciones hasta corregir.</td></tr>
+    <tr><td class="mono">GetPurchaseOrder<br>SensorDashboardQuery</td><td><span class="pill p-green">VIGENTES</span><br>Tus scans confirman que su hash = el del config. No rotaron.</td><td><b>Nada.</b> Aparecen porque son <i>session-sensitive</i> y el validador no las auto-valida (falso positivo del escalamiento).</td></tr>
+  </table></div>
+
+  <div class="box red">
+    <b>Por qué GetQuote falla aunque bulk-upload "ya tiene fallback":</b> la llamada es
+    <code>queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', vars)</code>. La firma es
+    <code>(operationName, hashKeyA, hashKeyB, variables)</code> — <b>solo 2 hashKeys</b>. El nombre de operación es
+    <code>GetQuote</code> (correcto), pero los <b>hashes</b> que usa son los de <code>v8</code>/<code>v71</code> (ambos <span class="mono">353b</span>, muertos).
+    Nunca intenta el hash nuevo de <code>GetQuote</code> porque <b>no está en el config</b>.
+  </div>
+
+  <h2>2. Mutations SaveManyPNP — no rotaron, son renames</h2>
+  <div class="box amber">
+    <code>SaveManyPNP_Quote</code> y <code>SaveManyPNP_PN</code> tienen hash <span class="mono">9da1874e</span> — <b>exactamente el que el frontend usa hoy como</b> <code>SaveManyPartNumberPrices</code>.
+    <b>No rotaron.</b> El validador las marca "stale" por un artefacto de Apollo APQ (prueba solo-hash, sin el texto → 400 "Must provide a query string"), pero <b>funcionan</b>.
+    Igual <code>SetPNPricesDefault</code> → <code>SetPartNumberPricesAsDefaultPrice</code>.
+  </div>
+  <p class="muted">Acción: cosmética — renombrar en el config a los nombres reales para silenciar los falsos positivos del validador. Sin urgencia; los applets funcionan.</p>
+
+  <h2>3. Las 22 mutations nunca capturadas — por reversibilidad</h2>
+  <p class="muted">Nunca se ejecutaron en tus scans, así que no tenemos su hash. Clasificadas por qué tan seguro es capturarlas:</p>
+  <div class="scroll"><table>
+    <tr><th>Grupo</th><th>#</th><th>Mutations</th><th>Cómo capturar sin afectar datos</th></tr>
+    <tr><td><span class="pill p-green">Create</span></td><td>10</td><td class="mono">CreateStationInputSchema, CreatePartNumberGroup, CreateWorkOrderLabel, CreateMaintenanceEvent, CreateInventoryItemUnitConversion, CreatePartNumberInputSchema, CreatePartNumberUserFile, CreateEmailLogReceivedOrder, CreateInvoiceEmailLog, CreateUpdateDeleteRoutes</td><td>Sentinela: crear sobre objeto de prueba → capturar → borrar. Reversible.</td></tr>
+    <tr><td><span class="pill p-green">Update</span></td><td>3</td><td class="mono">UpdatePartNumberSpecParam, UpdatePartNumberPerPerRackType, UpdateInventoryItemUnitConversion</td><td>Sentinela: leer valor actual → update → capturar → restaurar valor original.</td></tr>
+    <tr><td><span class="pill p-red">Delete/Archive</span></td><td>5</td><td class="mono">DeletePartNumberRackType, DeleteWorkOrderLabels, DeleteFolderById, UnsetPartNumberPriceAsDefaultPrice, ArchivePartNumberSpecAndParams</td><td><b>Destructivas.</b> NO auto-capturar. Captura pasiva (uso real) o manual supervisada.</td></tr>
+    <tr><td><span class="pill p-amber">Save/Apply</span></td><td>4</td><td class="mono">SavePartNumberRackTypes, ApplySpecsToPartNumber, AddParamsToPartNumber, GenerateDuckDb</td><td>Semi: requieren objeto sentinela + limpieza específica. Caso por caso.</td></tr>
+  </table></div>
+
+  <h2>4. Estrategia de captura de mutations SIN afectar datos</h2>
+  <div class="card">
+    <h3>① Captura pasiva <span class="pill p-green">cero riesgo · preferida</span></h3>
+    <p>El scanner corre durante el uso normal. Cuando el operador ejecuta una mutation <b>legítimamente</b> (guardar un precio, crear una etiqueta), el scanner captura su hash de paso. No se afecta ningún dato extra — es una operación que igual iba a ocurrir. Cubre las mutations frecuentes solas, con el tiempo.</p>
+  </div>
+  <div class="card">
+    <h3>② Sentinelas (Fase C) <span class="pill p-green">reversibles</span></h3>
+    <p>Para mutations raras y <b>reversibles</b> (Create, Update): un objeto de prueba dedicado marcado <code>__SA_SENTINEL__</code>. El ciclo: desarchivar → modificar/crear (dispara la mutation, captura el hash) → revertir/borrar. Salvaguardas: <b>fail-closed</b> si no es sentinela, <b>blast-radius ≤ 1</b>, journal idempotente para reparar si se interrumpe. Código ya listo (<code>sentinels.mjs</code>, <code>mutation-runner.mjs</code>), pendiente activar.</p>
+  </div>
+  <div class="card">
+    <h3>③ Destructivas <span class="pill p-red">nunca automático</span></h3>
+    <p><code>Delete*</code>, <code>Archive*</code>, <code>Unset*</code>: no se capturan con sentinelas automáticas. Solo <b>captura pasiva</b> (cuando el operador borra algo real) o <b>manual supervisada</b>. El autopilot las <b>escala</b> por correo si rotan, nunca las ejecuta.</p>
+  </div>
+
+  <h2>5. Plan de acción priorizado</h2>
+  <div class="step"><span class="num">1</span><div><b>Fix GetQuote</b> <span class="pill p-red">urgente</span> — añadir <code>GetQuote</code>=<span class="mono">86d7b49a</span> + <code>GetQuoteSecondary</code>=<span class="mono">546aa58c</span> al config, y corregir las 2 llamadas de <code>bulk-upload</code> a <code>queryWithFallback('GetQuote', 'GetQuote', 'GetQuote_v8', …)</code> para que use el hash nuevo. Deploy. <span class="muted">Desbloquea la lectura de cotizaciones.</span></div></div>
+  <div class="step"><span class="num">2</span><div><b>Renames cosméticos</b> <span class="pill p-amber">sin urgencia</span> — renombrar <code>SaveManyPNP_*</code>→<code>SaveManyPartNumberPrices</code>, <code>SetPNPricesDefault</code>→<code>SetPartNumberPricesAsDefaultPrice</code> en config + applets. Silencia los falsos positivos del validador.</div></div>
+  <div class="step"><span class="num">3</span><div><b>Session-sensitive</b> <span class="pill p-green">nada</span> — <code>GetPurchaseOrder</code>/<code>SensorDashboardQuery</code> están vigentes. Opcional: afinar el reporte para no listarlas como pendientes.</div></div>
+  <div class="step"><span class="num">4</span><div><b>Mutations</b> — captura pasiva de fondo + activar sentinelas (Fase C) para las reversibles cuando quieras. Destructivas siempre manuales.</div></div>
+
+  <footer>hash-autopilot v2 · análisis de hashes obsoletos y mutations · 2026-07-07</footer>
+</div>
+</body>
+</html>
