@@ -400,6 +400,7 @@
         "GetEquipment",
         "GetMaintenanceEvent",
         "GetMaintenanceNode",
+        "GetMaintenancePlan",
         "GetNextMaintenanceNodes",
         "MaintenanceNodeBoilerplateQuery",
         "SearchEquipments",
@@ -423,6 +424,7 @@
       "captures": [
         "AllEquipments",
         "AllMaintenanceEvents",
+        "AllMaintenancePlans",
         "CreateMaintenanceEventDialogQuery",
         "EquipmentNeedingMaintenance",
         "MaintenanceDashboardQuery",
@@ -445,14 +447,18 @@
       ],
       "captures": [
         "AllProcesses",
+        "AllStations",
         "AllUnitsAndConversionsForCompound",
         "ClassificationsOnSpec",
         "CreateEditPartNumberDialogQuery",
+        "CreateEditPartsPerRackTypeQuery",
         "DeletePartNumberLocation",
         "DomainGlAccountDefaults",
         "GeometryTypeSelect",
         "GetCreatePartNumberDialogSectionConfig",
+        "GetDerivedFromOptions",
         "GetDerivedRecipeNodesForDescriptions",
+        "GetDimension",
         "GetExpectedLaborCostsByPartNumber",
         "GetExpectedOutsourcingCostsByPartNumber",
         "GetExpectedStationCostsByPartNumber",
@@ -460,8 +466,10 @@
         "GetPartNumber",
         "GetPartNumberForPartNumberPage",
         "GetPartNumberGroup",
+        "GetPartNumberProcessAndSpecInfo",
         "GetRelatedChatChannels",
         "GetSpecFieldParamsDerivedFrom",
+        "GetSpecFieldParamsToEdit",
         "InventoryUsageLowCode",
         "LinkedEntityBacklinks",
         "LowInventoryAlertCount",
@@ -469,6 +477,7 @@
         "PartNumberDialogProcessQuery",
         "PartNumberGroupSelect",
         "RoutePartNumbers",
+        "SearchSampleSetsForSelect",
         "SearchStationsForTreatment"
       ]
     },
@@ -517,6 +526,8 @@
         "AllDashboardsAndCards",
         "AllProductsAndUsers",
         "AllTagsAndNodes",
+        "CreateManyProcessNodeUserContractRequirements",
+        "CreateManyRecipeNodeUserContractRequirements",
         "GetProcessNode",
         "GetProcessNodeParents",
         "GetProcessNodeSpecFields",
@@ -527,7 +538,8 @@
         "SearchSpecsForSelect",
         "SearchTags",
         "StationsByTreatmentId",
-        "UpdateProcessNode"
+        "UpdateProcessNode",
+        "UpdateRecipeNode"
       ]
     },
     "processes-list": {
@@ -706,16 +718,30 @@
         }
       ],
       "captures": [
+        "AddNewPartsTableDialogQuery",
+        "AddPartProcessQuery",
+        "AddPartsPartNumbersQuery",
+        "AddPartsTreatmentsQuery",
+        "AddReceivedPartsPartNumbersQuery",
+        "AddReceivedPartsQuery",
+        "AddReceivedPartsQuotesQuery",
+        "AllCurrentMetalExchangeOptIns",
         "AllReceivers",
+        "CalendarDaysQuery",
         "CountPendingAiReceivingEntryJobsForBadge",
         "CustomerFinancialByCustomerId",
         "CustomerSearchByName",
+        "EditPartNumberOptInOutsQuery",
         "FindPartGroupQuery",
+        "GetAddPartsReceivedOrder",
+        "GetCustomerByIdQuery",
         "GetCustomerNameById",
         "GetRackTypes",
         "PartNumberCreatableSelectGetPartNumbers",
         "ReceiveCustomerPartsTableDialogQuery",
         "ReceiveNewPartsQuery",
+        "ReceivedOrderLowCode",
+        "ReceivedOrderLowCodeData",
         "ReceivingBatchesQuery",
         "ReceivingPartsPartNumbersQuery",
         "ReceivingReceiversQuery",
@@ -939,7 +965,7 @@
       "module": "Specs",
       "steps": [
         {
-          "goto": "/Domains/344/Specs/46/Revisions"
+          "goto": "/Domains/344/Specs/397/Revisions"
         },
         {
           "clickFirst": "a[href]",
@@ -952,13 +978,18 @@
         "AllOwners",
         "AllProcesses",
         "AllSensorTypes",
+        "BulkApplySpecFieldParamsToPartNumbers",
+        "GetAllSpecFields",
+        "GetParamsBySpecAndField",
         "GetParentProcess",
         "GetParentProcessesForDefaultProcess",
         "GetSpec",
         "GetSpecField",
+        "GetSpecFieldParamById",
         "GetSpecFieldParamToEdit",
         "GetSpecFieldParamsDerivedFrom",
         "GetSpecFieldPartNumbers",
+        "GetSpecFieldSpecData",
         "GetSpecFieldSpecDetails",
         "GetSpecFieldTreatments",
         "GetSpecFieldWorkOrders",
@@ -967,6 +998,7 @@
         "LocationOptionsQuery",
         "RouteSpecs",
         "SearchSampleSetsForSelect",
+        "SearchSpecFieldParamDropdowns",
         "SearchSpecFields",
         "SearchUnits",
         "SpecRevisionsQuery"
@@ -1020,7 +1052,7 @@
       "module": "Stations",
       "steps": [
         {
-          "goto": "/Stations"
+          "goto": "/Stations/Settings/StationCustomInputs"
         },
         {
           "clickFirst": "a[href]",
@@ -1134,6 +1166,35 @@
       ],
       "captures": [
         "SearchUnitConversions"
+      ]
+    },
+    "uploadedfiles-list": {
+      "type": "query",
+      "module": "UploadedFiles",
+      "steps": [
+        {
+          "goto": "/Domains/344/UploadedFiles"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllUserFileFoldersQuery",
+        "ChatUnreadCounts",
+        "CurrentDevice",
+        "CurrentUserDetails",
+        "GetPaginatedChatChannels",
+        "GetPdfTemplates",
+        "GetSonarChatChannels",
+        "GlobalUsers",
+        "MissedManagedAlerts",
+        "PartNumberDirectSearch",
+        "SearchPartNumbers",
+        "SearchUserFilesQuery",
+        "UnreadNotificationCount",
+        "UsersToInvite"
       ]
     },
     "users-detail": {
@@ -1314,6 +1375,7 @@
         "AllWorkOrders",
         "CsvLowCode",
         "FilterSearch",
+        "GetFilterData",
         "WorkOrderInputSchema"
       ]
     }
