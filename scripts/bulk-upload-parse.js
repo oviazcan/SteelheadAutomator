@@ -207,9 +207,29 @@
     return { id: ps[0].id, espesorMiss: !!isEsp };
   }
 
+  // pickSpecParamPositional — elige el param de UN spec field a partir de SU segmento
+  // POSICIONAL del CSV (segmento[i] ↔ field[i]). Reemplaza a pickSpecParamId (que buscaba
+  // "cualquier segmento que matcheara cualquier param"): eso fallaba cuando dos fields
+  // comparten un param con el mismo nombre (p.ej. "No aplica" en 2 temperaturas) — el
+  // field equivocado se quedaba con el "No aplica" de otra columna. Incidente 2026-07-06.
+  //   - seg vacío/undefined  → null (NO aplicar este field; equivale a dos pipes seguidos)
+  //   - seg matchea un param → ese param
+  //   - seg no matchea y el field tiene 1 solo param → ese único (compat espesor v10/v11)
+  //   - seg no matchea y el field tiene >1 param → null + {unmatched:true} (no aplicar; el
+  //     caller loguea el error) para NO aplicar un valor equivocado por default.
+  function pickSpecParamPositional(params, seg) {
+    const ps = params || [];
+    const s = (seg == null ? '' : String(seg)).trim();
+    if (!ps.length || !s) return { id: null, unmatched: false };
+    const m = ps.find(p => p.name === s);
+    if (m) return { id: m.id, unmatched: false };
+    if (ps.length === 1) return { id: ps[0].id, unmatched: false };
+    return { id: null, unmatched: true };
+  }
+
   const api = {
     toBool, isDash, resolveStr, resolveNum, cell, cellNum, parseCSV, buildDimensions,
-    partHasEnrich, classifyRunIntent, resolveDimSelections, pickSpecParamId,
+    partHasEnrich, classifyRunIntent, resolveDimSelections, pickSpecParamId, pickSpecParamPositional,
     PRICE_UNIT_MAP, PREDICTIVE_MATERIALS, HEADER_KEYS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

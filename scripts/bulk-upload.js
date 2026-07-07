@@ -230,7 +230,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.31';
+  const VERSION = '1.5.32';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -241,7 +241,7 @@ const BulkUpload = (() => {
   if (!Parse || !Classify) {
     console.error('[bulk-upload] FALTA bulk-upload-parse.js / bulk-upload-classify.js en el array scripts de config.json');
   }
-  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections, pickSpecParamId } = Parse || {};
+  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections, pickSpecParamId, pickSpecParamPositional } = Parse || {};
   const {
     normLabel, isNonFinishLabel, buildEquivIndex, equivGroup, equivalentValues,
     acabadosOrdenados, acabadosCanonicos, metalCanonico, buildCompositeKey,
@@ -5445,14 +5445,17 @@ const BulkUpload = (() => {
           // coincida con alguno de los segmentos del CSV — sin asumir orden ni identificar
           // cuál field es cuál. Field de 1 param se auto-selecciona. Compat espesor v10/v11:
           // 1 segmento, matchea igual.
-          const segs = (cs.param || '').split(' | ').map(s => s.trim()).filter(Boolean);
+          // Fix 2026-07-06: mapeo POSICIONAL segmento[i] ↔ field[i] (ver STEP 6b y
+          // pickSpecParamPositional). NO filtrar vacíos: rompería la posición.
+          const segs = (cs.param || '').split(' | ').map(s => s.trim());
+          const fieldNodes6 = sd.specFieldSpecsBySpecId?.nodes || [];
           const dS = [], gS = [];
-          for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
+          for (let fi = 0; fi < fieldNodes6.length; fi++) {
+            const sf = fieldNodes6[fi];
             const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
             const fn = sf.specFieldBySpecFieldId?.name || '';
-            const isEsp = fn.toLowerCase().includes('espesor');
-            const { id: pid, espesorMiss } = pickSpecParamId(params, segs, isEsp);
-            if (espesorMiss && cs.param) errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`);
+            const { id: pid, unmatched } = pickSpecParamPositional(params, segs[fi]);
+            if (unmatched) errors.push(`"${cs.name}" campo "${fn}": "${(segs[fi] || '').trim()}" no matchea ningún parámetro del catálogo — no se aplicó.`);
             if (!pid) continue;
             // 1.4.38: regla nueva — SIEMPRE processNodeId=null. El param null es
             // genérico (se aplica a cualquier proceso) y sobrevive cambios de
@@ -6244,15 +6247,22 @@ const BulkUpload = (() => {
             const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
             if (!linked) continue;
             const sd = sfCache.get(si.id); if (!sd) continue;
+            // Fix CRÍTICO (incidente 2026-07-06): este STEP 6b (Sync params) elegía params[0]
+            // CIEGAMENTE para toda spec multi-param que NO fuera espesor (temperaturas, duración),
+            // ignorando los segmentos del CSV → aplicaba el 1er valor del catálogo en vez del
+            // pedido (p.ej. "No aplica" → 302-329, ">= 4 hrs." → ">= 1 hrs."). Ahora MAPEO
+            // POSICIONAL: segmento[i] ↔ field[i] (mismo orden que el catálogo que generó el CSV),
+            // matcheando el param por nombre exacto. NO filtramos vacíos para no desalinear la
+            // posición (segmento vacío = dos pipes = NO aplicar ese field).
+            const segs = (cs.param || '').split(' | ').map(x => x.trim());
+            const fieldNodes6b = sd.specFieldSpecsBySpecId?.nodes || [];
             const wantedSelections = [];
-            for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
+            for (let fi = 0; fi < fieldNodes6b.length; fi++) {
+              const sf = fieldNodes6b[fi];
               const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
               const fn = sf.specFieldBySpecFieldId?.name || '';
-              const isEsp = fn.toLowerCase().includes('espesor');
-              let pid;
-              if (params.length === 1) pid = params[0].id;
-              else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : params[0].id; }
-              else pid = params[0].id;
+              const { id: pid, unmatched } = pickSpecParamPositional(params, segs[fi]);
+              if (unmatched) errors.push(`"${cs.name}" campo "${fn}": "${(segs[fi] || '').trim()}" no matchea ningún parámetro del catálogo — no se aplicó.`);
               if (!pid) continue;
               wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
             }
@@ -6394,7 +6404,7 @@ const BulkUpload = (() => {
               );
               cleanupCounters.archived += idsToArchive.length;
               cleanupCounters.pnsTouched++;
-              log(`  PN "${part.pn}": archive ${idsToArchive.length} params (regla 1.4.38: solo conservar processNodeId=null)`);
+              log(`  PN "${part.pn || entry?.pn?.name || pnNode?.name || ''}": archive ${idsToArchive.length} params (regla 1.4.38: solo conservar processNodeId=null)`);
               const archivedSet = new Set(idsToArchive);
               allParams = allParams.filter(p => !archivedSet.has(p.id));
               existingPnFullCache.delete(entry.pn.id);
@@ -6415,7 +6425,7 @@ const BulkUpload = (() => {
             try {
               await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: allAdds.map(a => a.pa) } }, 'AddParamsToPartNumber');
               syncCounters.synced += allAdds.length;
-              log(`  PN "${part.pn}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
+              log(`  PN "${part.pn || entry?.pn?.name || pnNode?.name || ''}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
             } catch (eBatch) {
               if (isBail(eBatch)) throw eBatch;
               warn(`AddParams batch "${part.pn}" falló (${String(eBatch).substring(0, 80)}) — fallback uno-por-uno`);
