@@ -68,3 +68,47 @@ test('nextHideStep: latch cuando ya no quedan visibles (todos ocultos)', () => {
 test('nextHideStep: latch (da por vencido) si se agotan los intentos con visibles atorados', () => {
   assert.strictEqual(Core.nextHideStep({ ...base, visibleCount: 2, attempts: 8, maxAttempts: 8 }), 'latch');
 });
+
+// ── Fase 2: combo ───────────────────────────────────────────────────────────
+test('normalizeName: colapsa espacios de más y baja a minúsculas', () => {
+  assert.strictEqual(Core.normalizeName(' T203-TI00-011 Concentración  de Plata Metálica'), 't203-ti00-011 concentración de plata metálica');
+  assert.strictEqual(Core.normalizeName(null), '');
+  assert.strictEqual(Core.normalizeName('  A  B  '), 'a b');
+});
+
+test('filterNumericSensors: solo NUMBER, excluye BOOLEAN/TEXT', () => {
+  const sensors = [
+    { name: 'a', measurementType: 'NUMBER' },
+    { name: 'b', measurementType: 'BOOLEAN' },
+    { name: 'c', measurementType: 'NUMBER' },
+    { name: 'd', measurementType: 'TEXT' },
+  ];
+  assert.deepStrictEqual(Core.filterNumericSensors(sensors).map(s => s.name), ['a', 'c']);
+  assert.deepStrictEqual(Core.filterNumericSensors(null), []);
+});
+
+test('sensorLabel: prefiere la estación, fallback al nombre', () => {
+  assert.strictEqual(Core.sensorLabel({ name: 'T203-TI00-011 Concentración', station: 'T203-TI00-011 Plata Silvrex (B-1)' }), 'T203-TI00-011 Plata Silvrex (B-1)');
+  assert.strictEqual(Core.sensorLabel({ name: 'Solo Nombre', station: '' }), 'Solo Nombre');
+  assert.strictEqual(Core.sensorLabel({ name: '', station: null }), '(sensor)');
+});
+
+test('deriveComboValue: NONE / ALL / un sensor / mezcla', () => {
+  const all = ['s1', 's2', 's3'];
+  const num = ['s1', 's2', 's3'];
+  assert.strictEqual(Core.deriveComboValue({ visibleNames: [], allNames: all, numericNames: num }), 'NONE');
+  assert.strictEqual(Core.deriveComboValue({ visibleNames: ['s1', 's2', 's3'], allNames: all, numericNames: num }), 'ALL');
+  assert.strictEqual(Core.deriveComboValue({ visibleNames: ['s2'], allNames: all, numericNames: num }), 's2');
+  assert.strictEqual(Core.deriveComboValue({ visibleNames: ['s1', 's2'], allNames: all, numericNames: num }), '');
+  // 1 visible pero NO numérico (boolean) → placeholder, no lo ofrece el combo
+  assert.strictEqual(Core.deriveComboValue({ visibleNames: ['b1'], allNames: all.concat('b1'), numericNames: num }), '');
+  assert.strictEqual(Core.deriveComboValue({ visibleNames: [], allNames: [], numericNames: [] }), '');
+});
+
+test('planIsolation: ALL / NONE / aislar uno', () => {
+  const all = ['s1', 's2', 's3'];
+  assert.deepStrictEqual(Core.planIsolation('ALL', all), { show: ['s1', 's2', 's3'], hide: [] });
+  assert.deepStrictEqual(Core.planIsolation('NONE', all), { show: [], hide: ['s1', 's2', 's3'] });
+  assert.deepStrictEqual(Core.planIsolation('s2', all), { show: ['s2'], hide: ['s1', 's3'] });
+  assert.deepStrictEqual(Core.planIsolation('', all), { show: [], hide: ['s1', 's2', 's3'] });
+});
