@@ -1,6 +1,6 @@
 {
-  "version": "1.7.77",
-  "lastUpdated": "2026-07-07T11:21",
+  "version": "1.7.78",
+  "lastUpdated": "2026-07-07T11:33",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -192,7 +192,7 @@
         "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2",
         "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec",
         "AllSensorDashboards": "597eafd7bedf12072e68b2b1ac03f1088e2444a054e03340b1ee57a0116127ce",
-        "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a",
+        "SensorDashboardQuery": "038f482285493e4515999b3b3d32738c52cfa80b7fc2437efd48c6fa75a7d19a",
         "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705",
         "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e",
         "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e",
@@ -930,7 +930,7 @@
       "icon": "👁",
       "category": "Producción",
       "autoInject": true,
-      "scripts": ["scripts/sensor-graph-hide-all-core.js", "scripts/sensor-graph-hide-all.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/sensor-graph-hide-all-core.js", "scripts/sensor-graph-hide-all.js"],
       "requiredPermissions": [],
       "actions": [
         { "id": "toggle-sensor-graph-hide-all", "label": "Auto-ocultar sensores", "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)", "icon": "👁", "type": "toggle", "handler": "message", "message": "toggle-sensor-graph-hide-all", "fn": "SensorGraphHideAll.toggleFromPopup" }
