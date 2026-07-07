@@ -86,6 +86,26 @@
     return '';
   }
 
+  // Parsea la respuesta de SensorDashboardQuery → [{ name, station, measurementType }].
+  // Shape (confirmado en scan 2026-07-07): data.sensorDashboardByIdInDomain
+  //   .sensorDashboardMembersBySensorDashboardId.nodes[].sensorBySensorId
+  //   { name, sensorTypeBySensorTypeId.sensorMeasurementType, stationByStationId.name }.
+  // Devuelve null si el shape no matchea (fail-safe → el combo queda en "cargando…").
+  function parseSensorDashboard(json) {
+    const root = json && json.data && json.data.sensorDashboardByIdInDomain;
+    if (!root) return null;
+    const conn = root.sensorDashboardMembersBySensorDashboardId;
+    const nodes = (conn && conn.nodes) || [];
+    const list = [];
+    nodes.forEach(function (m) {
+      const s = m && m.sensorBySensorId; if (!s) return;
+      const st = s.sensorTypeBySensorTypeId || {};
+      const station = s.stationByStationId || {};
+      list.push({ name: s.name, station: station.name, measurementType: st.sensorMeasurementType });
+    });
+    return list;
+  }
+
   // Plan de aislamiento: qué ojitos mostrar y cuáles esconder para una selección.
   //   target: 'ALL' | 'NONE' | nombre-normalizado. `allNames` = todos los nombres (normalizados).
   function planIsolation(target, allNames) {
@@ -108,6 +128,7 @@
     sensorLabel,
     deriveComboValue,
     planIsolation,
+    parseSensorDashboard,
   };
   if (typeof window !== 'undefined') window.SensorGraphHideAllCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
