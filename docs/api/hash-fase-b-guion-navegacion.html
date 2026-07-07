@@ -3,46 +3,42 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Guion de navegación — Fase B (pasada final, 29 queries)</title>
+<title>Guion Fase B — última pasada (query · applet · acción)</title>
 <style>
   :root{
     --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#5b6672; --line:#e3e7ec;
-    --accent:#13a36f; --accent-ink:#0c7d54; --ok:#0c7d54; --ok-bg:#e9f7f0; --chip:#eef2f6; --chip-ink:#334;
+    --accent:#13a36f; --accent-ink:#0c7d54; --chip:#eef2f6; --chip-ink:#334; --app:#e7f0fb; --app-ink:#1f5fa8;
   }
   @media (prefers-color-scheme: dark){
     :root{ --bg:#0f141b; --card:#171e27; --ink:#e6e9ee; --muted:#9aa6b2; --line:#28303a;
-      --ok-bg:#16261e; --ok:#5fce9f; --chip:#222c38; --chip-ink:#c7d2de; }
+      --chip:#222c38; --chip-ink:#c7d2de; --app:#152538; --app-ink:#7fb0e6; }
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
-    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:880px;margin:0 auto;padding:32px 20px 80px}
-  header h1{font-size:1.6rem;margin:0 0 4px}
+    font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:30px 20px 80px}
+  header h1{font-size:1.55rem;margin:0 0 4px}
   header p{color:var(--muted);margin:0 0 8px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:16px 0}
-  h2{font-size:1.1rem;margin:0 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
-  .callout{border-left:4px solid var(--ok);background:var(--ok-bg);border-radius:8px;padding:12px 14px;margin:12px 0}
-  .callout b{color:var(--ok)}
-  ol.steps{padding-left:22px;margin:6px 0} ol.steps li{margin:5px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:16px 0}
+  h2{font-size:1.05rem;margin:0 0 6px;padding-bottom:8px;border-bottom:1px solid var(--line)}
   ul.check{list-style:none;padding:0;margin:6px 0}
-  ul.check>li{padding:10px 12px;border-radius:9px;margin:5px 0;border:1px solid var(--line)}
+  ul.check>li{padding:11px 12px;border-radius:9px;margin:6px 0;border:1px solid var(--line)}
   ul.check>li:hover{background:rgba(19,163,111,.05)}
-  .row{display:flex;gap:10px;align-items:flex-start}
-  .row input{margin-top:3px;width:18px;height:18px;accent-color:var(--accent);flex:0 0 auto;cursor:pointer}
-  .row label{cursor:pointer;flex:1;font-weight:600}
-  li.done{opacity:.55} li.done .row label{text-decoration:line-through}
-  .qs{margin:6px 0 0 28px;display:flex;flex-wrap:wrap;gap:6px}
-  .q{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;
-    background:var(--chip);color:var(--chip-ink);border-radius:6px;padding:2px 8px;white-space:nowrap}
-  .hint{margin:5px 0 0 28px;color:var(--muted);font-size:.85rem}
+  li.done{opacity:.5} li.done .act{text-decoration:line-through}
+  .top{display:flex;gap:10px;align-items:flex-start}
+  .top input{margin-top:3px;width:18px;height:18px;accent-color:var(--accent);flex:0 0 auto;cursor:pointer}
+  .act{cursor:pointer;flex:1;font-weight:600}
+  .meta{margin:7px 0 0 28px}
+  .q{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;background:var(--chip);color:var(--chip-ink);border-radius:6px;padding:2px 7px;margin:0 4px 4px 0;display:inline-block}
+  .app{font-size:.75rem;background:var(--app);color:var(--app-ink);border-radius:6px;padding:2px 7px;margin:0 4px 4px 0;display:inline-block}
+  .lbl{color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
   .bar{display:flex;align-items:center;gap:12px;margin:10px 0 0}
   .track{flex:1;height:8px;background:var(--line);border-radius:99px;overflow:hidden}
   .fill{height:100%;width:0;background:var(--accent);transition:width .25s}
-  .pct{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.85rem;min-width:58px;text-align:right}
+  .pct{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.85rem;min-width:56px;text-align:right}
   .reset{background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:.8rem}
-  details{margin-top:8px} summary{cursor:pointer;color:var(--accent-ink);font-weight:600;font-size:.9rem}
-  .all{columns:2;column-gap:24px;margin:8px 0 0;padding:0;list-style:none}
-  .all li{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;padding:2px 0;break-inside:avoid;color:var(--muted)}
+  .callout{border-left:4px solid var(--accent);background:rgba(19,163,111,.07);border-radius:8px;padding:11px 13px;margin:12px 0;font-size:.92rem}
+  .marg{opacity:.75}
   footer{color:var(--muted);font-size:.85rem;margin-top:22px;text-align:center}
   code{background:var(--chip);padding:1px 6px;border-radius:5px;font-size:.9em;font-family:ui-monospace,Menlo,monospace}
 </style>
@@ -50,101 +46,70 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Guion Fase B — pasada final</h1>
-    <p>Cobertura: <b>84/113 (74%)</b>. Faltan <b>29 queries</b>, casi todas en <b>diálogos de crear/editar</b> y <b>detalles/búsquedas</b> específicos. Cada acción abajo trae los <b>nombres exactos</b> que debe disparar — verifícalos.</p>
-    <div class="bar">
-      <div class="track"><div class="fill" id="fill"></div></div>
-      <span class="pct" id="pct">0%</span>
-      <button class="reset" id="reset">Reiniciar</button>
-    </div>
+    <h1>Guion Fase B — última pasada</h1>
+    <p>Cobertura <b>97/113 (86%)</b>. Faltan 16, pero <b>3 no las usa ningún applet</b> (irrelevantes). Enfócate en las <b>13 útiles</b>: cada acción trae <span class="q">query</span> + <span class="app">applet que la usa</span>.</p>
+    <div class="bar"><div class="track"><div class="fill" id="fill"></div></div><span class="pct" id="pct">0%</span><button class="reset" id="reset">Reiniciar</button></div>
   </header>
 
-  <div class="callout"><b>Cómo verificar:</b> en el popup del <b>hash-scanner</b> ves las ops capturadas; una query “aparece” cuando la disparas. Marca cada acción al hacerla; los <span class="q">chips</span> son los nombres a confirmar. Al final me pasas el <code>scan_results</code> y te digo cuáles entraron.</div>
+  <div class="callout"><b>Cómo leerlo:</b> el <span class="app">applet</span> te dice para qué sirve la query (qué automatiza) → así ubicas la pantalla. Recarga la extensión (1.7.75) e inicia captura; esto solo suma a lo ya capturado.</div>
 
   <div class="card">
-    <h2>Antes de empezar</h2>
-    <ol class="steps">
-      <li><code>chrome://extensions</code> → <b>reload</b> (scanner 1.7.75, ya va suave y no pierde el scan).</li>
-      <li>hash-scanner → <b>Iniciar captura</b>. No hace falta re-navegar lo anterior; esto solo suma.</li>
-    </ol>
+    <h2>13 queries útiles — por acción</h2>
+    <ul class="check" data-group>
+      <li><div class="top"><input type="checkbox"><span class="act">Abre una <b>cotización</b> de un PN (2 versiones de la query)</span></div>
+        <div class="meta"><span class="lbl">queries</span><span class="q">GetQuote_v71</span><span class="q">GetQuote_v8</span> <span class="lbl">de</span><span class="app">bulk-upload</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">En un PN: usa el <b>dropdown de grupo</b> y el <b>info financiero del cliente</b></span></div>
+        <div class="meta"><span class="q">PNGroupSelect</span><span class="q">CustomerFinancialById</span> <span class="lbl">de</span><span class="app">bulk-upload</span><span class="app">catalog-fetcher</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">Usa el <b>buscador de números de parte</b> (al subir archivo a un PN o reconciliar una PO)</span></div>
+        <div class="meta"><span class="q">SearchPartNumbers</span> <span class="lbl">de</span><span class="app">file-uploader</span><span class="app">po-reconciler</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">Abre una <b>especificación</b> y sus <b>campos/opciones</b></span></div>
+        <div class="meta"><span class="q">SpecFieldsAndOptions</span> <span class="lbl">de</span><span class="app">spec-migrator</span><span class="app">bulk-upload</span><span class="app">catalog-fetcher</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">Abre un <b>nodo de un proceso</b> (dentro del árbol)</span></div>
+        <div class="meta"><span class="q">ProcessNode</span> <span class="lbl">de</span><span class="app">process-canon</span><span class="app">auditor</span><span class="app">pn-lifecycle</span> …</div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">Abre el <b>modal de “piezas por carga” / Rack Types</b> (editar partes por rack)</span></div>
+        <div class="meta"><span class="q">CreateEditPartsPerRackTypeQuery</span> <span class="lbl">de</span><span class="app">load-calculator-modal</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">Abre el <b>modal de precio</b> de un PN o una <b>conversión de unidades</b></span></div>
+        <div class="meta"><span class="q">GetAvailableUnits</span> <span class="lbl">de</span><span class="app">price-confirm-guard</span><span class="app">unit-autoconvert</span><span class="app">weight-quick-entry</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act"><b>Inventario:</b> pantalla de <b>estatus de lotes</b> + <b>campos de un item</b></span></div>
+        <div class="meta"><span class="q">AllInventoryBatchStatuses</span><span class="q">GetInventoryItemInputSchema</span> <span class="lbl">de</span><span class="app">inventory-reset</span><span class="app">proceso-calculator</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">Pasa el <b>tooltip de metal</b> sobre una pieza en un <b>workboard</b> (lote de metal del PN)</span></div>
+        <div class="meta"><span class="q">GetPartNumberInventoryBatch</span> <span class="lbl">de</span><span class="app">board-metal-tooltip</span></div></li>
+
+      <li><div class="top"><input type="checkbox"><span class="act">Abre el <b>diálogo de nodo de mantenimiento</b> (paro de línea o FAB de vale de almacén)</span></div>
+        <div class="meta"><span class="q">OperatorMaintenanceNodeDialogQuery</span> <span class="lbl">de</span><span class="app">paros-linea</span><span class="app">vale-almacen</span></div></li>
+    </ul>
   </div>
 
-  <div class="card">
-    <h2>Acciones (con las queries exactas a capturar)</h2>
-    <ul class="check" data-group>
-      <li><div class="row"><input type="checkbox"><label>Cotizaciones — abre <b>1 cotización</b> (detalle)</label></div>
-        <div class="qs"><span class="q">GetQuote_v71</span><span class="q">GetQuote_v8</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>OV — abre 1 OV → pestaña <b>Documentos</b> y clic en <b>1 línea</b></label></div>
-        <div class="qs"><span class="q">GetReceivedOrderDocuments</span><span class="q">GetReceivedOrderLine</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Especificaciones — <b>edita 1 spec</b> (abre sus campos) y usa el <b>selector de spec</b></label></div>
-        <div class="qs"><span class="q">SpecFieldsAndOptions</span><span class="q">TempSpecFieldsAndOptions</span><span class="q">SearchSpecsForSelect</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Estación / Tratamiento — abre <b>config de estación</b> (campos) y un <b>tratamiento → estaciones</b></label></div>
-        <div class="qs"><span class="q">GetStationInputSchema</span><span class="q">StationsByTreatmentId</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Inventario — <b>crea/edita 1 lote</b> + abre <b>campos de un item</b> + entra al <b>inventario desde un PN</b></label></div>
-        <div class="qs"><span class="q">CreateEditInventoryBatchDialogQuery</span><span class="q">AllInventoryBatchStatuses</span><span class="q">GetInventoryItemInputSchema</span><span class="q">GetPartNumberInventoryBatch</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Diálogos “crear/editar” — abre el diálogo de: <b>proceso</b>, <b>tiempos de tratamiento</b>, <b>partes por rack</b>, <b>nodo de mantenimiento (operador)</b></label></div>
-        <div class="qs"><span class="q">CreateEditProcessDialogQuery</span><span class="q">CreateEditTreatmentTimesDialogQuery</span><span class="q">CreateEditPartsPerRackTypeQuery</span><span class="q">OperatorMaintenanceNodeDialogQuery</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Procesos — abre un <b>nodo del árbol</b> de un proceso</label></div>
-        <div class="qs"><span class="q">ProcessNode</span></div>
-        <div class="hint">distinto de GetProcessNode (que ya quedó); este sale al abrir un nodo interno.</div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Cliente — abre 1 cliente → pestaña <b>Financiero</b> + botón <b>enviar correo a contactos</b></label></div>
-        <div class="qs"><span class="q">CustomerFinancialById</span><span class="q">EmailCustomerContactsByCustomerIds</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Números de Parte — usa el <b>buscador de PN</b> (escribe algo) y el <b>selector de grupo</b></label></div>
-        <div class="qs"><span class="q">SearchPartNumbers</span><span class="q">PNGroupSelect</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Usuario — abre la <b>config de correos/notificaciones</b> de un usuario</label></div>
-        <div class="qs"><span class="q">GetUserEmailRecipients</span></div></li>
-
-      <li><div class="row"><input type="checkbox"><label>Sueltos — <b>unidades</b>, <b>dimensiones</b>, <b>filtro/búsqueda global</b>, <b>permisos</b>, <b>tags</b>, <b>ubicaciones programables</b> (surtido)</label></div>
-        <div class="qs"><span class="q">GetAvailableUnits</span><span class="q">GetDimension</span><span class="q">FilterSearch</span><span class="q">AllPermissionsEditManyPermissions</span><span class="q">AllTagsAndNodes</span><span class="q">SchedulablePartLocations</span></div>
-        <div class="hint">estos se disparan en varios lados; muchos salen de paso al abrir las pantallas de arriba.</div></li>
-    </ul>
-
-    <details>
-      <summary>Ver las 29 queries en lista plana (para tachar/verificar)</summary>
-      <ul class="all">
-        <li>AllInventoryBatchStatuses</li><li>AllPermissionsEditManyPermissions</li><li>AllTagsAndNodes</li>
-        <li>CreateEditInventoryBatchDialogQuery</li><li>CreateEditPartsPerRackTypeQuery</li><li>CreateEditProcessDialogQuery</li>
-        <li>CreateEditTreatmentTimesDialogQuery</li><li>CustomerFinancialById</li><li>EmailCustomerContactsByCustomerIds</li>
-        <li>FilterSearch</li><li>GetAvailableUnits</li><li>GetDimension</li><li>GetInventoryItemInputSchema</li>
-        <li>GetPartNumberInventoryBatch</li><li>GetQuote_v71</li><li>GetQuote_v8</li><li>GetReceivedOrderDocuments</li>
-        <li>GetReceivedOrderLine</li><li>GetStationInputSchema</li><li>GetUserEmailRecipients</li>
-        <li>OperatorMaintenanceNodeDialogQuery</li><li>PNGroupSelect</li><li>ProcessNode</li><li>SchedulablePartLocations</li>
-        <li>SearchPartNumbers</li><li>SearchSpecsForSelect</li><li>SpecFieldsAndOptions</li><li>StationsByTreatmentId</li>
-        <li>TempSpecFieldsAndOptions</li>
-      </ul>
-    </details>
+  <div class="card marg">
+    <h2>3 marginales — solo si sobra tiempo (ningún applet las usa)</h2>
+    <p style="color:var(--muted);margin:0 0 6px;font-size:.9rem">Si rotan, no truena ningún applet. No vale la pena perseguirlas; el autopilot las escalaría sin consecuencia.</p>
+    <div class="meta" style="margin-left:0"><span class="q">AllPermissionsEditManyPermissions</span><span class="q">GetReceivedOrderLine</span><span class="q">TempSpecFieldsAndOptions</span></div>
   </div>
 
   <div class="card">
     <h2>Al terminar</h2>
-    <ol class="steps">
-      <li><b>Detener</b> → <b>Descargar</b> el <code>scan_results</code> → dámelo.</li>
-      <li>Corro <code>build-catalog</code> (ya no pierde captures) → te reporto qué de las 29 entró y qué (si algo) sigue faltando, <b>por nombre</b>.</li>
-      <li>Con eso, el catálogo debería llegar cerca de 100% y lo activo en el autopilot.</li>
-    </ol>
+    <ol style="padding-left:22px;margin:6px 0"><li><b>Detener</b> → <b>Descargar</b> → dámelo.</li>
+    <li>Corro <code>build-catalog</code> y te reporto <b>por nombre</b> cuáles de las 13 entraron. Con eso deberíamos llegar a <b>110/113 (97%)</b> — las 3 marginales las dejamos fuera a propósito.</li></ol>
   </div>
 
-  <footer>hash-autopilot v2 · Fase B · pasada final — meta 113/113</footer>
+  <footer>hash-autopilot v2 · Fase B · última pasada — meta útil 110/113</footer>
 </div>
 <script>
-  const KEY='sa-faseb-guion-v3';
+  const KEY='sa-faseb-guion-v4';
   const boxes=[...document.querySelectorAll('ul.check input')];
   const fill=document.getElementById('fill'), pct=document.getElementById('pct');
   function save(){ localStorage.setItem(KEY, JSON.stringify(boxes.map(b=>b.checked))); }
-  function paint(){
-    boxes.forEach(b=>b.closest('li').classList.toggle('done', b.checked));
+  function paint(){ boxes.forEach(b=>b.closest('li').classList.toggle('done', b.checked));
     const n=boxes.filter(b=>b.checked).length, p=Math.round(n/boxes.length*100);
-    fill.style.width=p+'%'; pct.textContent=p+'% ('+n+'/'+boxes.length+')';
-  }
+    fill.style.width=p+'%'; pct.textContent=p+'% ('+n+'/'+boxes.length+')'; }
   try{ const s=JSON.parse(localStorage.getItem(KEY)||'[]'); boxes.forEach((b,i)=>b.checked=!!s[i]); }catch(e){}
   boxes.forEach(b=>b.addEventListener('change',()=>{paint();save();}));
   document.getElementById('reset').addEventListener('click',()=>{boxes.forEach(b=>b.checked=false);paint();save();});
