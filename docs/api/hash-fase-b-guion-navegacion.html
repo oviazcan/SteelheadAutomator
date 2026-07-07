@@ -47,18 +47,15 @@
 <div class="wrap">
   <header>
     <h1>Guion Fase B — última pasada</h1>
-    <p>Cobertura <b>97/113 (86%)</b>. Faltan 16, pero <b>3 no las usa ningún applet</b> (irrelevantes). Enfócate en las <b>13 útiles</b>: cada acción trae <span class="q">query</span> + <span class="app">applet que la usa</span>.</p>
+    <p>Cobertura <b>97/113 (86%)</b>. De las 16 faltantes, <b>5 se descartan</b> (3 sin applet + 2 deprecadas). Enfócate en las <b>11 útiles</b>: cada acción trae <span class="q">query</span> + <span class="app">applet que la usa</span>.</p>
     <div class="bar"><div class="track"><div class="fill" id="fill"></div></div><span class="pct" id="pct">0%</span><button class="reset" id="reset">Reiniciar</button></div>
   </header>
 
   <div class="callout"><b>Cómo leerlo:</b> el <span class="app">applet</span> te dice para qué sirve la query (qué automatiza) → así ubicas la pantalla. Recarga la extensión (1.7.75) e inicia captura; esto solo suma a lo ya capturado.</div>
 
   <div class="card">
-    <h2>13 queries útiles — por acción</h2>
+    <h2>11 queries útiles — por acción</h2>
     <ul class="check" data-group>
-      <li><div class="top"><input type="checkbox"><span class="act">Abre una <b>cotización</b> de un PN (2 versiones de la query)</span></div>
-        <div class="meta"><span class="lbl">queries</span><span class="q">GetQuote_v71</span><span class="q">GetQuote_v8</span> <span class="lbl">de</span><span class="app">bulk-upload</span></div></li>
-
       <li><div class="top"><input type="checkbox"><span class="act">En un PN: usa el <b>dropdown de grupo</b> y el <b>info financiero del cliente</b></span></div>
         <div class="meta"><span class="q">PNGroupSelect</span><span class="q">CustomerFinancialById</span> <span class="lbl">de</span><span class="app">bulk-upload</span><span class="app">catalog-fetcher</span></div></li>
 
@@ -89,21 +86,21 @@
   </div>
 
   <div class="card marg">
-    <h2>3 marginales — solo si sobra tiempo (ningún applet las usa)</h2>
-    <p style="color:var(--muted);margin:0 0 6px;font-size:.9rem">Si rotan, no truena ningún applet. No vale la pena perseguirlas; el autopilot las escalaría sin consecuencia.</p>
-    <div class="meta" style="margin-left:0"><span class="q">AllPermissionsEditManyPermissions</span><span class="q">GetReceivedOrderLine</span><span class="q">TempSpecFieldsAndOptions</span></div>
+    <h2>5 descartadas — no las persigas</h2>
+    <p style="color:var(--muted);margin:0 0 8px;font-size:.9rem"><b>Deprecadas</b> (ya no existen en el frontend; hoy son <code>GetQuote</code> / <code>GetQuoteSecondary</code>): <span class="q">GetQuote_v71</span><span class="q">GetQuote_v8</span></p>
+    <p style="color:var(--muted);margin:0;font-size:.9rem"><b>Sin applet</b> (si rotan no truena nada): <span class="q">AllPermissionsEditManyPermissions</span><span class="q">GetReceivedOrderLine</span><span class="q">TempSpecFieldsAndOptions</span></p>
   </div>
 
   <div class="card">
     <h2>Al terminar</h2>
     <ol style="padding-left:22px;margin:6px 0"><li><b>Detener</b> → <b>Descargar</b> → dámelo.</li>
-    <li>Corro <code>build-catalog</code> y te reporto <b>por nombre</b> cuáles de las 13 entraron. Con eso deberíamos llegar a <b>110/113 (97%)</b> — las 3 marginales las dejamos fuera a propósito.</li></ol>
+    <li>Corro <code>build-catalog</code> y te reporto <b>por nombre</b> cuáles de las 11 entraron. Con eso llegamos cerca de <b>108/113 (96%)</b> — las 5 descartadas quedan fuera a propósito.</li></ol>
   </div>
 
-  <footer>hash-autopilot v2 · Fase B · última pasada — meta útil 110/113</footer>
+  <footer>hash-autopilot v2 · Fase B · última pasada — meta útil 108/113</footer>
 </div>
 <script>
-  const KEY='sa-faseb-guion-v4';
+  const KEY='sa-faseb-guion-v5';
   const boxes=[...document.querySelectorAll('ul.check input')];
   const fill=document.getElementById('fill'), pct=document.getElementById('pct');
   function save(){ localStorage.setItem(KEY, JSON.stringify(boxes.map(b=>b.checked))); }
