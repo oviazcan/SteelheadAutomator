@@ -5,10 +5,18 @@
 const HashScanner = (() => {
   'use strict';
 
+  // Idempotencia (fix 2026-07-06): el background hace injectAppScripts (RE-EJECUTA este
+  // IIFE) en cada toggle/restart. Antes, cada re-ejecución creaba `discovered = {}` nuevo
+  // y BORRABA lo capturado en vivo → al detener/reiniciar se perdían operaciones. Ahora el
+  // estado vive en window.__saHashScannerState y se REUTILIZA entre re-ejecuciones del mismo
+  // MAIN world. (Un reload real de la página sí resetea el MAIN world y lo pierde — para eso
+  // está la persistencia a chrome.storage vía 'sa-persist-scan' + mergeResults.)
+  const _prev = (typeof window !== 'undefined' && window.__saHashScannerState) || null;
   let isScanning = false;
   let originalFetch = null;
-  const discovered = {}; // operationName → { hash, count, firstSeen, lastSeen, variablesSamples, responseSchema, status, configKey }
-  const eventLog = [];
+  const discovered = _prev ? _prev.discovered : {}; // operationName → { hash, count, firstSeen, lastSeen, variablesSamples, responseSchema, status, configKey }
+  const eventLog = _prev ? _prev.eventLog : [];
+  if (typeof window !== 'undefined') window.__saHashScannerState = { discovered, eventLog };
   const MAX_EVENT_LOG = 2000;
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
@@ -166,7 +174,14 @@ const HashScanner = (() => {
       if (!isScanning) return;
       // Signal content script to persist results via custom event
       document.dispatchEvent(new CustomEvent('sa-persist-scan'));
-    }, 15000); // Every 15 seconds
+    }, 5000); // Every 5s (era 15s — reduce la ventana de pérdida ante un reload)
+
+    // Persist best-effort JUSTO antes de un reload/navegación (pagehide). El guardado real es
+    // async (content.js → background → chrome.storage), así que no siempre completa, pero acota
+    // la pérdida de lo capturado desde el último tick de 5s. Idempotente (latch en window).
+    if (window.__saScanPagehide) window.removeEventListener('pagehide', window.__saScanPagehide);
+    window.__saScanPagehide = () => { if (isScanning) { try { document.dispatchEvent(new CustomEvent('sa-persist-scan')); } catch (e) {} } };
+    window.addEventListener('pagehide', window.__saScanPagehide);
   }
 
   function stop() {
@@ -178,6 +193,7 @@ const HashScanner = (() => {
       clearInterval(window.__saScanPersistInterval);
       window.__saScanPersistInterval = null;
     }
+    if (window.__saScanPagehide) { window.removeEventListener('pagehide', window.__saScanPagehide); window.__saScanPagehide = null; }
     console.log('[HashScanner] Captura detenida');
   }
 
