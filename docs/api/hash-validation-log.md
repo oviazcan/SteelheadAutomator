@@ -704,3 +704,27 @@ Evidencia (investigación 2026-07-02):
 - **Qué hace:** Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo ra…
 
 ## 2026-07-06 08:36 — 0 rotado(s) (launchd)
+
+## 2026-07-06 ~19:00 — Release Steelhead rotó ~8 hashes (destapado por bulk-upload idSh)
+
+**Cómo se detectó:** una carga masiva por Id SH (bulk-upload) falló con **447× `HTTP 400 GetPartNumber: "Must provide a query string."`** en el apply. El validador de la mañana (08:36) daba 0 rotados → la rotación fue **durante el día** (release de front entre 08:36 y ~18:30). El fix de idSh (v1.5.28) no causó el error: solo hizo que el flujo idSh **llegara** al apply, que usa `GetPartNumber` intensivamente, destapando la rotación.
+
+**Diagnóstico (playbook):** validador manual confirmó 4 STALE (`GetPartNumber`, `InvoiceByIdInDomain`, `GetReceivedOrdersWithReceivedOrderLineItems`, `GetProcessNode`). Re-scan con hash-scanner (2 exports de 92 ops) dio los hashes nuevos con status 200 → **rotación** (no deprecación). El scan además mostró ops que el front ya migró pero cuyo **hash viejo sigue vivo** (validador OK): `AllPartNumbers`, `ActiveReceivedOrders`, `GetReceivedOrder`, `ReceivingBatchesQuery` — se actualizan preventivamente.
+
+**Actualizados en `config.json` (bump 1.7.63 → 1.7.64):**
+| Op | viejo | nuevo | tipo |
+|---|---|---|---|
+| `GetPartNumber` | `804dd8f7…` | `8e3fdb52…` | 🔴 STALE (bulk-upload +12 applets) |
+| `InvoiceByIdInDomain` | `5844a41c…` | `c87fd9c2…` | 🔴 STALE (invoice-autofill) |
+| `AllPartNumbers` | `827be681…` | `02cfe381…` | 🟡 front migró (prefetch bulk-upload) |
+| `ActiveReceivedOrders` | `495ddfd6…` | `07d3e194…` | 🟡 |
+| `GetReceivedOrder` | `3b4ab8f1…` | `75e7219a…` | 🟡 |
+| `ReceivingBatchesQuery` | `5b0baf36…` | `55a06a30…` | 🟡 |
+
+**Ya vivos antes de este fix** (auto-deployados por hash-autopilot, sync main=gh-pages): `AllSensorDashboards` (`597eafd7…`), `CurrentUser` (`9ca864c4…`).
+
+**Pendientes (STALE, no capturados — faltó navegar su flujo en el scan):** `GetReceivedOrdersWithReceivedOrderLineItems` (invoice-autofill), `GetProcessNode` (process-canon). No bloquean bulk-upload; capturar navegando una OV-con-líneas y un proceso.
+
+**Bug del hash-scanner descubierto:** el usuario reportó que tuvo que **recargar la página** y el scanner solo capturó lo posterior al reload (se supone era "a prueba de reload"); además exportó **2 scans** en vez de 1. Pendiente de investigar en `hash-scanner.js`.
+
+**Robustez pendiente (pedida por el operador):** (B) bulk-upload debe **detectar el patrón `Must provide a query string` masivo** y avisar "hash rotado" en vez de 447 WARNs; (C) el resumen NO debe reportar "OK: 447" cuando `SavePartNumber`/specs/enrich fallaron (contaba desarchivados como OK).
