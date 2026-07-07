@@ -77,9 +77,16 @@ los demás (requiere republicar extensión — pendiente aparte).
 Un combo dark-mode (`<select>`) que lista **solo los sensores NUMBER** (excluye BOOLEAN). Al elegir uno,
 **muestra solo ese y esconde los demás** (mismo mecanismo de ojitos). Aparece en **ambas vistas** (inline + modo gráfica).
 
-- **Fuente de datos:** intercepta `SensorDashboardQuery` (`patchFetch` → `Core.parseSensorDashboard`) → `{name, station, measurementType}`
-  por sensor. El `?type=NUMBER` nativo filtra la GRÁFICA pero **NO la tabla/ojitos** (verificado: con `type=BOOLEAN` siguen
-  los 14 ojitos), por eso el tipo por-sensor hay que sacarlo de la query, no de la URL.
+- **Fuente de datos:** `{name, station, measurementType}` por sensor, de `SensorDashboardQuery` (`Core.parseSensorDashboard`).
+  El `?type=NUMBER` nativo filtra la GRÁFICA pero **NO la tabla/ojitos** (verificado: con `type=BOOLEAN` siguen los 14 ojitos),
+  por eso el tipo por-sensor hay que sacarlo de la query, no de la URL. **Dos vías:**
+  1. **Intercepción** (`patchFetch`): oportunista, capta refetches (Refresh/date/type/navegación).
+  2. **Replay** (`ensureSensorMeta` → `SteelheadAPI.query('SensorDashboardQuery', {idInDomain, after, before, measurementType:'NUMBER'})`):
+     **GARANTIZADO**. El hook se pierde la query de la **carga inicial** (se dispara ANTES de que el applet inyecte `patchFetch`)
+     → el combo se quedaba en "cargando sensores…" (bug confirmado en run real 2026-07-07). El replay lo resuelve: los *members*
+     (nombres+tipos) NO dependen del rango de fechas, así que pedimos una ventana de 1h (mediciones mínimas, member list completa).
+     Requiere `steelhead-api.js` en el app + el hash correcto en config. **El hash estaba ROTADO** (`bde56bd6…` viejo → actualizado
+     a `038f4822…` del scan 2026-07-07); sin eso el replay daría "Must provide a query string".
 - **Ancla (ambas vistas):** `button[value="NUMBER"]` (bloque "Measurement Types") → `.closest('.MuiPaper-root')` → inserta la
   barra del combo después. Semántico y a prueba de idioma. En modo gráfica hay 2 anclas (inline + diálogo) → un combo c/u.
 - **Aislar:** `getEyeRows()` mapea ojito → `closest('tr')` → nombre (link de la fila); `Core.planIsolation` decide show/hide;
@@ -107,7 +114,8 @@ Un combo dark-mode (`<select>`) que lista **solo los sensores NUMBER** (excluye 
   sensor → confirmar que la gráfica muestra solo ese (inline y en modo gráfica).
 
 ## Pendientes
-1. **Run real en primer plano de la Fase 2** (ver arriba): combo poblado + aislar en ambas vistas + navegación 117↔119.
+1. **Confirmar el fix de población (config 1.7.78)**: run real en primer plano — el combo debe **poblar** con los sensores
+   NUMBER (vía replay), aislar en ambas vistas + navegación 117↔119. (Todos/Ninguno ya se confirmaron OK; faltaba poblar.)
 2. Considerar persistir el toggle en `chrome.storage` (`sensorGraphHideAllEnabled`) si se quiere que OFF sobreviva reloads.
 3. Opcional: recordar el último sensor visto y dejarlo destachado por default (hoy esconde TODOS; el combo elige).
 4. (Bundle Safari/iPad) si se quiere la versión iPad, integrar vía `safari-bundle-sync`.
