@@ -2,35 +2,1382 @@
   "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
   "_domainDefault": "344",
   "routes": {
+    "account-list": {
+      "type": "query",
+      "module": "Account",
+      "steps": [
+        {
+          "goto": "/Account"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "ActiveTimersQuery",
+        "AllTimeOffTypesForSelect",
+        "CurrentUserQuery",
+        "MyNotificationPreferences",
+        "PayrollPeriodsForAccount",
+        "RecentlyEndedTimersQuery",
+        "UserActiveTimesheetSegments",
+        "UserTimeOffQuery",
+        "UserTimesheetQuery"
+      ]
+    },
+    "accounting-detail": {
+      "type": "query",
+      "module": "Accounting",
+      "steps": [
+        {
+          "goto": "/Domains/344/Accounting/Dimensions"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetDimension"
+      ]
+    },
+    "accounting-list": {
+      "type": "query",
+      "module": "Accounting",
+      "steps": [
+        {
+          "goto": "/Domains/344/Accounting"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllOutstandingBillsForTotals",
+        "AllOutstandingInvoicesForTotals",
+        "ArDashboardSummary",
+        "DimensionsQuery",
+        "GetAccounts",
+        "GetBankAccountsSummary",
+        "GetIncomeStatementData",
+        "PagedOutstandingBills",
+        "PagedOutstandingInvoices",
+        "ProfitAndLossFiscalConfig"
+      ]
+    },
     "app-home": {
       "type": "query",
       "module": "Home",
-      "steps": [{ "goto": "/Domains/{domain}" }],
-      "captures": ["CurrentUser"]
+      "steps": [
+        {
+          "goto": "/Domains/{domain}"
+        }
+      ],
+      "captures": [
+        "CurrentUser"
+      ]
     },
-    "customers-list": {
+    "bills-detail": {
       "type": "query",
-      "module": "Customers",
-      "steps": [{ "goto": "/Domains/{domain}/Customers" }],
-      "captures": ["AllCustomers"]
+      "module": "Bills",
+      "steps": [
+        {
+          "goto": "/Domains/344/Bills"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "CurrentDomainAddresses",
+        "GetAccountDataForBill",
+        "GetBillByIdInDomain",
+        "GetDomain",
+        "GetPurchaseOrder",
+        "GetPurchaseOrdersDataForBill",
+        "GetTaxCodesForBill",
+        "GetTaxInfo",
+        "GetVendor",
+        "GetVendorDataForBill",
+        "GetVendorPurchaseOrdersDataForBill",
+        "SearchProducts",
+        "SearchPurchaseOrdersForBill",
+        "SearchSalesTaxes",
+        "SearchVendors"
+      ]
+    },
+    "bills-list": {
+      "type": "query",
+      "module": "Bills",
+      "steps": [
+        {
+          "goto": "/Domains/344/Bills"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "SearchBills"
+      ]
     },
     "customer-detail": {
       "type": "query",
       "module": "Customers",
       "steps": [
-        { "goto": "/Domains/{domain}/Customers" },
-        { "clickFirst": "a[href*='/Customers/']", "hrefMatches": "/Customers/\\d+" }
+        {
+          "goto": "/Domains/{domain}/Customers"
+        },
+        {
+          "clickFirst": "a[href*='/Customers/']",
+          "hrefMatches": "/Customers/\\d+"
+        }
       ],
-      "captures": ["Customer"]
+      "captures": [
+        "Customer"
+      ]
+    },
+    "customers-detail": {
+      "type": "query",
+      "module": "Customers",
+      "steps": [
+        {
+          "goto": "/Domains/344/Customers"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "Customer",
+        "DomainById",
+        "GetCustomerInputSchema",
+        "GetCustomerPdfDefaultsForPage",
+        "RouteCustomers",
+        "UpdateCustomerInputs"
+      ]
+    },
+    "customers-list": {
+      "type": "query",
+      "module": "Customers",
+      "steps": [
+        {
+          "goto": "/Domains/344/Customers"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllCustomers",
+        "CreateEditCustomerDialogQuery",
+        "LatestCustomerInputSchema",
+        "SearchSalesTaxes",
+        "SearchTaxCodesSelect"
+      ]
+    },
+    "home-list": {
+      "type": "query",
+      "module": "Home",
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllCurrentMetalExchangeOptIns",
+        "AllCustomerPortalAccessRequestsMinPayload",
+        "AllSensorDashboards",
+        "ChatUnreadCounts",
+        "CurrentDevice",
+        "CurrentUser",
+        "CurrentUserActiveSegments",
+        "FirstScheduleBoard",
+        "GetHomeData",
+        "GetPaginatedChatChannels",
+        "GetPdfTemplates",
+        "GetRecomputableAt",
+        "GetRfqTurnaroundSettings",
+        "GetSonarChatChannels",
+        "GlobalUsers",
+        "JobQuery",
+        "LowInventoryAlertCount",
+        "MissedManagedAlerts",
+        "MyNotificationPreferences",
+        "MyOpenTaskCount",
+        "RfqSubmissionCount",
+        "UnreadEmailCount",
+        "UnreadNotificationCount",
+        "UsersToInvite",
+        "VendorRfqUnreadRepliesCount",
+        "WorkOrderDirectSearch"
+      ]
+    },
+    "inventorymanagement-list": {
+      "type": "query",
+      "module": "InventoryManagement",
+      "steps": [
+        {
+          "goto": "/InventoryManagement"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "InventoryBatchViewQuery",
+        "InventoryManagementFiltersQuery",
+        "InventoryManagementQuery",
+        "SearchInventoryItemsFilter"
+      ]
+    },
+    "inventorytypes-detail": {
+      "type": "query",
+      "module": "InventoryTypes",
+      "steps": [
+        {
+          "goto": "/InventoryTypes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "ChatUnreadCounts",
+        "CreateEditInventoryBatchDialogQuery",
+        "CreateEditInventoryItemDialogQuery",
+        "CurrentUser",
+        "CurrentUserActiveSegments",
+        "CurrentUserDetails",
+        "GetBlanketPoContractsForInventory",
+        "GetInventoryBatch",
+        "GetInventoryBatchSpecsForInput",
+        "GetInventoryItem",
+        "GetInventoryType",
+        "GetPaginatedChatChannels",
+        "GetPdfTemplates",
+        "GetQuoteInventoryItemsForInventory",
+        "GetRackLabels",
+        "GetSonarChatChannels",
+        "GlobalUsers",
+        "InventoryItemDimensionSelectionsForView",
+        "InventoryItemSpecsSummary",
+        "MissedManagedAlerts",
+        "MyNotificationPreferences",
+        "SearchInventoryItemBatches",
+        "SearchInventoryTypeItems",
+        "SearchMaterials",
+        "SearchTaxCodes",
+        "SearchVendors",
+        "UnreadNotificationCount",
+        "UsersToInvite"
+      ]
+    },
+    "inventorytypes-list": {
+      "type": "query",
+      "module": "InventoryTypes",
+      "steps": [
+        {
+          "goto": "/InventoryTypes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllInventoryTypes",
+        "ArchiveInventoryBatchStatus",
+        "ConfigureInventoryBatchStatusesQuery",
+        "GetInventoryInputSchema"
+      ]
+    },
+    "invoices-detail": {
+      "type": "query",
+      "module": "Invoices",
+      "steps": [
+        {
+          "goto": "/Domains/344/Invoices"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "ErrorsForInvoice",
+        "GetCustomerPdfConfigs",
+        "GetDomainByIdInvoice",
+        "GetPaymentLink",
+        "InvoiceByIdInDomain",
+        "RouteInvoices",
+        "UIGetIntegrationObject"
+      ]
+    },
+    "invoices-list": {
+      "type": "query",
+      "module": "Invoices",
+      "steps": [
+        {
+          "goto": "/Domains/344/Invoices"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "ActiveInvoicesPaged",
+        "AllAcctDimensions",
+        "AllCurrentDomainUsers",
+        "AllCurrentMetalExchangeOptIns",
+        "AllCustomerPortalAccessRequestsForBanner",
+        "AllReceivedOrdersForInvoicing",
+        "AllShipMethods",
+        "CannotInvoicePartsExist",
+        "CreateInvoiceSalesTaxDetails",
+        "CsvLowCode",
+        "CurrentUser",
+        "CurrentUserActiveSegments",
+        "DomainCustomerPortalTerms",
+        "DomainInvoiceDateSetting",
+        "EditInvoiceSalesTaxDetails",
+        "EmailCustomerContactsByCustomerIds",
+        "GetCustomerPdfConfigs",
+        "GetEmailDefaultByTypeAndSubType",
+        "GetEmailPortalAccessLink",
+        "GetIntegrationConfigs",
+        "GetInvoiceFilterData",
+        "GetOtherSolisOnSoWithNoProductionAssociations",
+        "GetPaymentLink",
+        "GetPdfConfigsByType",
+        "GetReceivedOrdersWithReceivedOrderLineItems",
+        "GetRecomputableAt",
+        "GetUserEmailRecipients",
+        "InvoiceByIdInDomain",
+        "InvoiceLowCode",
+        "InvoiceLowCodeData",
+        "InvoiceWithErrors",
+        "JobQuery",
+        "PackingSlipsForInvoicing",
+        "PreviousEmailConfiguration",
+        "ReceivedOrderLinesToCheck",
+        "RefreshSession",
+        "SearchAccounts",
+        "SearchInvoiceTerms",
+        "SearchSalesTaxes",
+        "UnpricedPartExist",
+        "UnreadEmailCount",
+        "UserEmailSettings"
+      ]
+    },
+    "maintenance-detail": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        {
+          "goto": "/Domains/344/Maintenance/Nodes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "EquipmentNeedingMaintenance",
+        "GetEquipment",
+        "GetMaintenanceEvent",
+        "GetMaintenanceNode",
+        "GetMaintenancePlan",
+        "GetNextMaintenanceNodes",
+        "MaintenanceNodeBoilerplateQuery",
+        "SearchEquipments",
+        "SearchInventoryItems",
+        "SearchSensors",
+        "SensorDashboardQuery"
+      ]
+    },
+    "maintenance-list": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        {
+          "goto": "/Domains/344/Maintenance"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllEquipments",
+        "AllMaintenanceEvents",
+        "AllMaintenancePlans",
+        "CreateMaintenanceEventDialogQuery",
+        "EquipmentNeedingMaintenance",
+        "MaintenanceDashboardQuery",
+        "SearchEquipments",
+        "SearchUsers",
+        "TopLevelMaintenanceNodes"
+      ]
+    },
+    "partnumbers-detail": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        {
+          "goto": "/PartNumbers"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllProcesses",
+        "AllStations",
+        "AllUnitsAndConversionsForCompound",
+        "ClassificationsOnSpec",
+        "CreateEditPartNumberDialogQuery",
+        "CreateEditPartsPerRackTypeQuery",
+        "DeletePartNumberLocation",
+        "DomainGlAccountDefaults",
+        "GeometryTypeSelect",
+        "GetCreatePartNumberDialogSectionConfig",
+        "GetDerivedFromOptions",
+        "GetDerivedRecipeNodesForDescriptions",
+        "GetDimension",
+        "GetExpectedLaborCostsByPartNumber",
+        "GetExpectedOutsourcingCostsByPartNumber",
+        "GetExpectedStationCostsByPartNumber",
+        "GetIntegrationConfigs",
+        "GetPartNumber",
+        "GetPartNumberForPartNumberPage",
+        "GetPartNumberGroup",
+        "GetPartNumberProcessAndSpecInfo",
+        "GetRelatedChatChannels",
+        "GetSpecFieldParamsDerivedFrom",
+        "GetSpecFieldParamsToEdit",
+        "InventoryUsageLowCode",
+        "LinkedEntityBacklinks",
+        "LowInventoryAlertCount",
+        "MyAssignedTaskCount",
+        "PartNumberDialogProcessQuery",
+        "PartNumberGroupSelect",
+        "RoutePartNumbers",
+        "SearchSampleSetsForSelect",
+        "SearchStationsForTreatment"
+      ]
+    },
+    "partnumbers-list": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        {
+          "goto": "/PartNumbers"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllAcctDimensions",
+        "AllCustomerPortalAccessRequestsForBanner",
+        "AllGeometryTypes",
+        "AllPartNumberGroups",
+        "AllPartNumbers",
+        "AllUnitsAndConversionsForCompound",
+        "CurrentUser",
+        "DomainCustomerPortalTerms",
+        "GetIntegrationConfigs",
+        "GetPartNumbersInputSchema",
+        "GetRecomputableAt",
+        "GetSelectedTreatmentsData",
+        "JobQuery",
+        "Profile"
+      ]
+    },
+    "processes-detail": {
+      "type": "mixed",
+      "module": "Processes",
+      "steps": [
+        {
+          "goto": "/Processes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllDashboardsAndCards",
+        "AllProductsAndUsers",
+        "AllTagsAndNodes",
+        "CreateManyProcessNodeUserContractRequirements",
+        "CreateManyRecipeNodeUserContractRequirements",
+        "GetProcessNode",
+        "GetProcessNodeParents",
+        "GetProcessNodeSpecFields",
+        "GetRootNodesCountForSharedNode",
+        "GetSpecFields",
+        "ProcessNodeDescriptionPartNumbersQuery",
+        "RecipeNodesToCascadeTo",
+        "SearchSpecsForSelect",
+        "SearchTags",
+        "StationsByTreatmentId",
+        "UpdateProcessNode",
+        "UpdateRecipeNode"
+      ]
+    },
+    "processes-list": {
+      "type": "query",
+      "module": "Processes",
+      "steps": [
+        {
+          "goto": "/Processes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "CreateEditProcessDialogQuery",
+        "GetAllTagsQuery",
+        "ProcessesComponentQuery",
+        "ProcessesWithTag",
+        "UnreadEmailCount"
+      ]
+    },
+    "purchasing-detail": {
+      "type": "query",
+      "module": "Purchasing",
+      "steps": [
+        {
+          "goto": "/Domains/344/Purchasing/PurchaseOrders"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetPoVendorQuotes",
+        "GetPurchaseOrderDetail",
+        "InventoryBatchesOnPurchaseOrder",
+        "RoutePurchaseOrders"
+      ]
+    },
+    "purchasing-list": {
+      "type": "query",
+      "module": "Purchasing",
+      "steps": [
+        {
+          "goto": "/Domains/344/Purchasing/PurchaseOrders"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetLatestPurchaseOrderStageRevision",
+        "GetPurchaseOrderIssueLimit",
+        "GetTaxInfo",
+        "PurchaseOrders"
+      ]
+    },
+    "quotes-detail": {
+      "type": "query",
+      "module": "Quotes",
+      "steps": [
+        {
+          "goto": "/Domains/344/Quotes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetDefaultProcessNode",
+        "GetFullTreatmentDataForQuote",
+        "GetGlobalUnitConversionForQuote",
+        "GetQuote",
+        "GetQuoteRelatedData",
+        "GetQuoteSecondary",
+        "QuotePartNumberHistoricalPrices",
+        "QuoteProcessNodeInfo",
+        "RouteQuotes",
+        "SavedPartNumberInfoForQuote",
+        "SearchInvoiceTerms"
+      ]
+    },
+    "quotes-list": {
+      "type": "query",
+      "module": "Quotes",
+      "steps": [
+        {
+          "goto": "/Domains/344/Quotes"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllQuotes",
+        "FileImportLowCode",
+        "GetQuote",
+        "QuoteImportData",
+        "RefreshSession"
+      ]
+    },
+    "racks-detail": {
+      "type": "query",
+      "module": "Racks",
+      "steps": [
+        {
+          "goto": "/Racks/Types"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "CreateEditRackTypeDialogQuery",
+        "GetRackType"
+      ]
+    },
+    "racks-list": {
+      "type": "query",
+      "module": "Racks",
+      "steps": [
+        {
+          "goto": "/Racks"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllEquipmentTypes",
+        "AllLabels",
+        "AllRackTypes",
+        "AllRacks",
+        "CreateEditRackTypeDialogQuery",
+        "EquipmentForRackQuery",
+        "FirstPlannableRackTypeQuery",
+        "RackDialogQuery",
+        "RouteRacks",
+        "SearchUnits",
+        "UsersBilledSegmentsRackTreeDataQuery"
+      ]
+    },
+    "receiving-detail": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        {
+          "goto": "/Receiving/Receivers"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetReceiver"
+      ]
+    },
+    "receiving-list": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        {
+          "goto": "/Receiving/CustomerParts"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AddNewPartsTableDialogQuery",
+        "AddPartProcessQuery",
+        "AddPartsPartNumbersQuery",
+        "AddPartsTreatmentsQuery",
+        "AddReceivedPartsPartNumbersQuery",
+        "AddReceivedPartsQuery",
+        "AddReceivedPartsQuotesQuery",
+        "AllCurrentMetalExchangeOptIns",
+        "AllReceivers",
+        "CalendarDaysQuery",
+        "CountPendingAiReceivingEntryJobsForBadge",
+        "CustomerFinancialByCustomerId",
+        "CustomerSearchByName",
+        "EditPartNumberOptInOutsQuery",
+        "FindPartGroupQuery",
+        "GetAddPartsReceivedOrder",
+        "GetCustomerByIdQuery",
+        "GetCustomerNameById",
+        "GetRackTypes",
+        "PartNumberCreatableSelectGetPartNumbers",
+        "ReceiveCustomerPartsTableDialogQuery",
+        "ReceiveNewPartsQuery",
+        "ReceivedOrderLowCode",
+        "ReceivedOrderLowCodeData",
+        "ReceivingBatchesQuery",
+        "ReceivingPartsPartNumbersQuery",
+        "ReceivingReceiversQuery",
+        "SearchCustomerPartNumberQuotes",
+        "SearchCustomerReceivedOrders",
+        "SearchLocationsOnPath"
+      ]
+    },
+    "reporting-list": {
+      "type": "query",
+      "module": "Reporting",
+      "steps": [
+        {
+          "goto": "/Reporting/View"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllReports",
+        "DuckDbContextQuery",
+        "GetPerspectiveDashboardComponents",
+        "GetPerspectiveDashboardFolders",
+        "GetPerspectiveDashboardRelations",
+        "GetPerspectiveDashboards",
+        "GetRecomputableAt",
+        "GetReportComponentsAndConfigs",
+        "GetReportingFilterSets",
+        "GetReportingSettings",
+        "JobQuery",
+        "UIGetFileKey"
+      ]
+    },
+    "salesorders-detail": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        {
+          "goto": "/Domains/344/SalesOrders"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AddNewPartsQuery",
+        "AddNewPartsTableDialogQuery",
+        "AddPartsPartNumbersQuery",
+        "AddReceivedPartsPartNumbersQuery",
+        "AddReceivedPartsQuery",
+        "AddReceivedPartsQuotesQuery",
+        "AllAcctDimensions",
+        "AllCurrentMetalExchangeOptIns",
+        "AllFileFoldersQuery",
+        "AllShipMethods",
+        "CalendarDaysQuery",
+        "CalendarYearsCoverageQuery",
+        "CheckDuplicatePO",
+        "CreateEditReceivedOrderDialogQuery",
+        "CreateReceivedOrderPartTransformQuery",
+        "Customer",
+        "CustomerFinancialByCustomerId",
+        "CustomerSearchByName",
+        "DomainWorkingDaysQuery",
+        "DropShipCustomersQuery",
+        "EditPartCountOnROWorkOrderQuery",
+        "GetAddPartsReceivedOrder",
+        "GetBomItemsInventoryItemStatus",
+        "GetBomProcessesForProcessSelect",
+        "GetCustomerByIdQuery",
+        "GetCustomerInfoForReceivedOrder",
+        "GetCustomerNameById",
+        "GetPartNumberData",
+        "GetPartNumberPriceData",
+        "GetPartTransformsForReceivedOrderById",
+        "GetPdfTemplateOutputV2",
+        "GetReceivedOrder",
+        "GetReceivedOrderCosts",
+        "GetReceivedOrderDocuments",
+        "GetReceivedOrderLowCodePdf",
+        "GetReceiverPdf",
+        "GetRelatedChatChannels",
+        "GetWorkOrderLowCodePdf",
+        "InventoryAlertBannerAlertedItemsQuery",
+        "InventoryAlertBannerTreatmentPartNumberQuery",
+        "LinkedEntityBacklinks",
+        "MyAssignedTaskCount",
+        "PartNumberCreatableSelectGetPartNumbers",
+        "ReceivedOrderLowCode",
+        "ReceivedOrderLowCodeData",
+        "RouteReceivedOrders",
+        "SearchInvoiceTerms",
+        "SearchPartNumberPrices",
+        "SearchPartTransforms",
+        "SearchProducts",
+        "SearchSectorsForSelect",
+        "SearchUnits",
+        "SearchUsers",
+        "SearchWorkOrdersToMoveToFromRo",
+        "WorkOrder"
+      ]
+    },
+    "salesorders-list": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        {
+          "goto": "/Domains/344/SalesOrders"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "ActiveReceivedOrders",
+        "AllCustomerPortalAccessRequestsForBanner",
+        "CountPendingAiSalesOrderEntryJobsForBadge",
+        "CsvLowCode",
+        "CurrentUserDetails",
+        "DomainCustomerPortalTerms",
+        "GetFilterData"
+      ]
+    },
+    "schedules-detail": {
+      "type": "query",
+      "module": "Schedules",
+      "steps": [
+        {
+          "goto": "/Schedules/454/ScheduleBoard"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetScheduleBoard",
+        "GetScheduleBoards",
+        "SchedulablePartLocations",
+        "ScheduleDomain",
+        "ScheduleInformationById",
+        "SearchAll"
+      ]
     },
     "sensor-dashboards": {
       "type": "query",
       "module": "Sensors",
       "steps": [
-        { "goto": "/Dashboards" },
-        { "clickFirst": "a[href*='ashboard']", "hrefMatches": "\\d" }
+        {
+          "goto": "/Dashboards"
+        },
+        {
+          "clickFirst": "a[href*='ashboard']",
+          "hrefMatches": "\\d"
+        }
       ],
-      "captures": ["AllSensorDashboards"]
+      "captures": [
+        "AllSensorDashboards"
+      ]
+    },
+    "sensordashboards-list": {
+      "type": "query",
+      "module": "SensorDashboards",
+      "steps": [
+        {
+          "goto": "/Domains/344/SensorDashboards"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllSensorDashboards"
+      ]
+    },
+    "sensors-list": {
+      "type": "query",
+      "module": "Sensors",
+      "steps": [
+        {
+          "goto": "/Domains/344/Sensors"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllSensors"
+      ]
+    },
+    "shipping-list": {
+      "type": "query",
+      "module": "Shipping",
+      "steps": [
+        {
+          "goto": "/Domains/344/Shipping"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllBillOfLadings",
+        "AllPackingSlips",
+        "GetEmailDefaultByTypeAndSubType",
+        "GetShippingDefaults",
+        "OrderFulfillmentQuery",
+        "RacksReadyForShipping",
+        "ReceivedOrdersReadyForShipping"
+      ]
+    },
+    "specs-detail": {
+      "type": "query",
+      "module": "Specs",
+      "steps": [
+        {
+          "goto": "/Domains/344/Specs/397/Revisions"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllClassifications",
+        "AllLabels",
+        "AllOwners",
+        "AllProcesses",
+        "AllSensorTypes",
+        "BulkApplySpecFieldParamsToPartNumbers",
+        "GetAllSpecFields",
+        "GetParamsBySpecAndField",
+        "GetParentProcess",
+        "GetParentProcessesForDefaultProcess",
+        "GetSpec",
+        "GetSpecField",
+        "GetSpecFieldParamById",
+        "GetSpecFieldParamToEdit",
+        "GetSpecFieldParamsDerivedFrom",
+        "GetSpecFieldPartNumbers",
+        "GetSpecFieldSpecData",
+        "GetSpecFieldSpecDetails",
+        "GetSpecFieldTreatments",
+        "GetSpecFieldWorkOrders",
+        "GetSpecInputSchema",
+        "GetSpecToEditInfo",
+        "LocationOptionsQuery",
+        "RouteSpecs",
+        "SearchSampleSetsForSelect",
+        "SearchSpecFieldParamDropdowns",
+        "SearchSpecFields",
+        "SearchUnits",
+        "SpecRevisionsQuery"
+      ]
+    },
+    "specs-list": {
+      "type": "query",
+      "module": "Specs",
+      "steps": [
+        {
+          "goto": "/Domains/344/Specs"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllClassifications",
+        "AllSampleSets",
+        "AllSpecFieldParamDropdowns",
+        "AllSpecFields",
+        "AllSpecInputSchemas",
+        "AllSpecs",
+        "CsvLowCode",
+        "GetSpecFieldParamDropdown",
+        "GetSpecInputSchema"
+      ]
+    },
+    "stations-detail": {
+      "type": "query",
+      "module": "Stations",
+      "steps": [
+        {
+          "goto": "/Stations"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetStation",
+        "PartsInStation",
+        "SearchCalendarsForSelect",
+        "SearchStationsForSelect"
+      ]
+    },
+    "stations-list": {
+      "type": "query",
+      "module": "Stations",
+      "steps": [
+        {
+          "goto": "/Stations/Settings/StationCustomInputs"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllStations",
+        "GetStationInputSchema"
+      ]
+    },
+    "tags-detail": {
+      "type": "query",
+      "module": "Tags",
+      "steps": [
+        {
+          "goto": "/Tags"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetTag"
+      ]
+    },
+    "tags-list": {
+      "type": "query",
+      "module": "Tags",
+      "steps": [
+        {
+          "goto": "/Tags"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "SearchTags"
+      ]
+    },
+    "treatments-detail": {
+      "type": "query",
+      "module": "Treatments",
+      "steps": [
+        {
+          "goto": "/Treatments"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "CreateEditTreatmentTimesDialogQuery",
+        "CreateStationTreatment",
+        "DeleteTreatmentStation",
+        "GetTreatment",
+        "SearchStationsForSelect",
+        "StationsForAddToTreatment",
+        "TreatmentDialogQuery",
+        "TreatmentSpecsSummary"
+      ]
+    },
+    "treatments-list": {
+      "type": "query",
+      "module": "Treatments",
+      "steps": [
+        {
+          "goto": "/Treatments"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllTreatmentGroups",
+        "AllTreatments"
+      ]
+    },
+    "units-detail": {
+      "type": "query",
+      "module": "Units",
+      "steps": [
+        {
+          "goto": "/Units"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetUnit"
+      ]
+    },
+    "units-list": {
+      "type": "query",
+      "module": "Units",
+      "steps": [
+        {
+          "goto": "/Units/Conversions"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "SearchUnitConversions"
+      ]
+    },
+    "uploadedfiles-list": {
+      "type": "query",
+      "module": "UploadedFiles",
+      "steps": [
+        {
+          "goto": "/Domains/344/UploadedFiles"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllUserFileFoldersQuery",
+        "ChatUnreadCounts",
+        "CurrentDevice",
+        "CurrentUserDetails",
+        "GetPaginatedChatChannels",
+        "GetPdfTemplates",
+        "GetSonarChatChannels",
+        "GlobalUsers",
+        "MissedManagedAlerts",
+        "PartNumberDirectSearch",
+        "SearchPartNumbers",
+        "SearchUserFilesQuery",
+        "UnreadNotificationCount",
+        "UsersToInvite"
+      ]
+    },
+    "users-detail": {
+      "type": "query",
+      "module": "Users",
+      "steps": [
+        {
+          "goto": "/Users"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "GetUserMFAStatus",
+        "UserDialogQuery",
+        "UserLayoutQuery",
+        "UserPageQuery"
+      ]
+    },
+    "users-list": {
+      "type": "query",
+      "module": "Users",
+      "steps": [
+        {
+          "goto": "/Users"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllPayrollPeriodsForSelect",
+        "AllUsersOnboarding",
+        "DomainUsersIdpStatus",
+        "GetAllAccessProfilesForSelect",
+        "GetCurrentContractFeatures",
+        "GetCurrentDomainIsRevenueBasedPricing",
+        "GetDomainUsersMFAStatus",
+        "GetPermissionDetailsQuery",
+        "GetUserAccessProfiles",
+        "GetUserManagedDomainFeatureMembers",
+        "GetUserManagedPermissions",
+        "PayrollPeriodsForUserTimesheet",
+        "TimesheetsPageQuery",
+        "UserEmploymentHistoryQuery",
+        "UserLaborRatesByUserId",
+        "UserProfile",
+        "UserSchedulePageQuery",
+        "UserTimeOffAllocationForUserQuery",
+        "UserTimesheetsPageActiveSegments"
+      ]
+    },
+    "vendors-list": {
+      "type": "query",
+      "module": "Vendors",
+      "steps": [
+        {
+          "goto": "/Domains/344/Vendors"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllVendors",
+        "GetVendorInputSchema"
+      ]
+    },
+    "workboards-detail": {
+      "type": "query",
+      "module": "Workboards",
+      "steps": [
+        {
+          "goto": "/Domains/344/Workboards"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "CalendarDaysQuery",
+        "CalendarYearsCoverageQuery",
+        "DomainWorkingDaysQuery",
+        "GetPartsInProcessNode4",
+        "GetRecipeWithEffectiveTreatmentsForParts",
+        "GetRelatedScheduleData",
+        "GetRelatedWorkboardData",
+        "GetWorkOrderDataWorkboard",
+        "GetWorkboardSensors",
+        "RouteWorkboards",
+        "WorkboardById",
+        "WorkboardsOrdered"
+      ]
+    },
+    "workboards-list": {
+      "type": "query",
+      "module": "Workboards",
+      "steps": [
+        {
+          "goto": "/Domains/344/Workboards"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllWorkboardFolders",
+        "AllWorkboards"
+      ]
+    },
+    "workorders-detail": {
+      "type": "query",
+      "module": "WorkOrders",
+      "steps": [
+        {
+          "goto": "/Domains/344/WorkOrders"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllLabels",
+        "BilledHoursQuery",
+        "CalendarDaysQuery",
+        "CalendarYearsCoverageQuery",
+        "CreateEditPartTransferAtDialogQuery",
+        "CurrentUser",
+        "CurrentUserActiveSegments",
+        "DomainWorkingDaysQuery",
+        "EmbeddedChatChannel",
+        "GetPartsTransfer",
+        "GetPartsTransferAccountAssociationData",
+        "GetPartsTransferComment",
+        "GetSensorsAtLocStation",
+        "GetWorkOrderOperatorInputs",
+        "GetWorkOrderPartsTransfers",
+        "GetWorkOrderStationParameters",
+        "GetWorkOrdersInputSchema",
+        "InventoryAlertBannerAlertedItemsQuery",
+        "InventorySection",
+        "OutsourcingCount",
+        "PartNumbersByWorkOrderIdInDomain",
+        "RevertPartTransferDialogQuery",
+        "RouteWorkOrders",
+        "SearchCompletedCastsQuery",
+        "SearchReceivedOrderQuery",
+        "SearchSalesOrderBOMItemsQuery",
+        "StationTreatmentByWorkOrder",
+        "SuperNodeActiveRecipeNodeSelectionQuery",
+        "WorkOrder",
+        "WorkOrderCertReportCount",
+        "WorkOrderDialogQuery",
+        "WorkOrderRelatedLinksCount",
+        "WorkPartsInfoWrapperQuery"
+      ]
+    },
+    "workorders-list": {
+      "type": "query",
+      "module": "WorkOrders",
+      "steps": [
+        {
+          "goto": "/Domains/344/WorkOrders"
+        },
+        {
+          "clickFirst": "a[href]",
+          "hrefMatches": "\\d"
+        }
+      ],
+      "captures": [
+        "AllWorkOrders",
+        "CsvLowCode",
+        "FilterSearch",
+        "GetFilterData",
+        "WorkOrderInputSchema"
+      ]
     }
   }
 }
