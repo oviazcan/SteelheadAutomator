@@ -25,16 +25,21 @@ function routeId(module, isDetail) {
   return `${module.toLowerCase()}${isDetail ? '-detail' : '-list'}`;
 }
 
+// Reemplaza el domain id concreto por el placeholder {domain} (portabilidad entre dominios;
+// el runner lo sustituye por el dominio de la sesión). El scan trae el domain del usuario (ej. 344).
+function withDomainPlaceholder(pathname) {
+  return pathname.replace(/\/Domains\/\d+(\/|$)/, '/Domains/{domain}$1');
+}
+
 export function generateCatalog(scanOps, opTypeOf) {
   // Agrupar ops por el pathname dominante (mayor count).
-  const byPath = {}; // pathname → { ops:Set, hadClick:bool }
+  const byPath = {}; // pathname → { ops:Set }
   for (const [op, entry] of Object.entries(scanOps || {})) {
     const screens = entry && entry.screens ? entry.screens : [];
     if (!screens.length) continue;
     const dom = screens.slice().sort((a, b) => (b.count || 0) - (a.count || 0))[0];
-    const g = byPath[dom.pathname] || (byPath[dom.pathname] = { ops: new Set(), hadClick: false });
+    const g = byPath[dom.pathname] || (byPath[dom.pathname] = { ops: new Set() });
     g.ops.add(op);
-    if (dom.breadcrumb) g.hadClick = true;
   }
 
   const routes = {};
@@ -42,8 +47,13 @@ export function generateCatalog(scanOps, opTypeOf) {
     const module = moduleFromPath(pathname);
     const { list, isDetail } = splitDetail(pathname);
     const id = routeId(module, isDetail);
-    const steps = [{ goto: isDetail ? list : pathname }];
-    if (isDetail || g.hadClick) steps.push({ clickFirst: 'a[href]', hrefMatches: '\\d' });
+    const steps = [{ goto: withDomainPlaceholder(isDetail ? list : pathname) }];
+    if (isDetail) {
+      // clickFirst ESPECÍFICO al módulo (patrón Fase A validado headless). El a[href] genérico
+      // clickeaba cualquier link con dígito (nav, footer…) → timeout de 30s en el runner.
+      // Los LISTADOS no llevan clickFirst: sus ops se disparan en el goto directo.
+      steps.push({ clickFirst: `a[href*='/${module}/']`, hrefMatches: `/${module}/\\d+` });
+    }
     if (routes[id]) {
       // Colisión de id: varios objetos de detalle del mismo módulo (cada uno con pathname
       // único /Módulo/{id} pero mismo routeId). UNIR captures — no perder ops de los otros.

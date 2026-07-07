@@ -8,10 +8,6 @@
       "steps": [
         {
           "goto": "/Account"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -31,11 +27,11 @@
       "module": "Accounting",
       "steps": [
         {
-          "goto": "/Domains/344/Accounting/Dimensions"
+          "goto": "/Domains/{domain}/Accounting/Dimensions"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Accounting/']",
+          "hrefMatches": "/Accounting/\\d+"
         }
       ],
       "captures": [
@@ -47,11 +43,7 @@
       "module": "Accounting",
       "steps": [
         {
-          "goto": "/Domains/344/Accounting"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Accounting"
         }
       ],
       "captures": [
@@ -84,11 +76,11 @@
       "module": "Bills",
       "steps": [
         {
-          "goto": "/Domains/344/Bills"
+          "goto": "/Domains/{domain}/Bills"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Bills/']",
+          "hrefMatches": "/Bills/\\d+"
         }
       ],
       "captures": [
@@ -114,11 +106,7 @@
       "module": "Bills",
       "steps": [
         {
-          "goto": "/Domains/344/Bills"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Bills"
         }
       ],
       "captures": [
@@ -146,11 +134,11 @@
       "module": "Customers",
       "steps": [
         {
-          "goto": "/Domains/344/Customers"
+          "goto": "/Domains/{domain}/Customers"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Customers/']",
+          "hrefMatches": "/Customers/\\d+"
         }
       ],
       "captures": [
@@ -167,11 +155,7 @@
       "module": "Customers",
       "steps": [
         {
-          "goto": "/Domains/344/Customers"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Customers"
         }
       ],
       "captures": [
@@ -188,10 +172,6 @@
       "steps": [
         {
           "goto": "/"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -229,10 +209,6 @@
       "steps": [
         {
           "goto": "/InventoryManagement"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -250,8 +226,8 @@
           "goto": "/InventoryTypes"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/InventoryTypes/']",
+          "hrefMatches": "/InventoryTypes/\\d+"
         }
       ],
       "captures": [
@@ -291,10 +267,6 @@
       "steps": [
         {
           "goto": "/InventoryTypes"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -309,11 +281,11 @@
       "module": "Invoices",
       "steps": [
         {
-          "goto": "/Domains/344/Invoices"
+          "goto": "/Domains/{domain}/Invoices"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Invoices/']",
+          "hrefMatches": "/Invoices/\\d+"
         }
       ],
       "captures": [
@@ -331,11 +303,7 @@
       "module": "Invoices",
       "steps": [
         {
-          "goto": "/Domains/344/Invoices"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Invoices"
         }
       ],
       "captures": [
@@ -388,11 +356,11 @@
       "module": "Maintenance",
       "steps": [
         {
-          "goto": "/Domains/344/Maintenance/Nodes"
+          "goto": "/Domains/{domain}/Maintenance/Nodes"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Maintenance/']",
+          "hrefMatches": "/Maintenance/\\d+"
         }
       ],
       "captures": [
@@ -414,11 +382,7 @@
       "module": "Maintenance",
       "steps": [
         {
-          "goto": "/Domains/344/Maintenance"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Maintenance"
         }
       ],
       "captures": [
@@ -441,8 +405,8 @@
           "goto": "/PartNumbers"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/PartNumbers/']",
+          "hrefMatches": "/PartNumbers/\\d+"
         }
       ],
       "captures": [
@@ -487,10 +451,6 @@
       "steps": [
         {
           "goto": "/PartNumbers"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -518,8 +478,8 @@
           "goto": "/Processes"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Processes/']",
+          "hrefMatches": "/Processes/\\d+"
         }
       ],
       "captures": [
@@ -548,10 +508,6 @@
       "steps": [
         {
           "goto": "/Processes"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -567,11 +523,11 @@
       "module": "Purchasing",
       "steps": [
         {
-          "goto": "/Domains/344/Purchasing/PurchaseOrders"
+          "goto": "/Domains/{domain}/Purchasing/PurchaseOrders"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Purchasing/']",
+          "hrefMatches": "/Purchasing/\\d+"
         }
       ],
       "captures": [
@@ -586,11 +542,7 @@
       "module": "Purchasing",
       "steps": [
         {
-          "goto": "/Domains/344/Purchasing/PurchaseOrders"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Purchasing/PurchaseOrders"
         }
       ],
       "captures": [
@@ -605,11 +557,11 @@
       "module": "Quotes",
       "steps": [
         {
-          "goto": "/Domains/344/Quotes"
+          "goto": "/Domains/{domain}/Quotes"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Quotes/']",
+          "hrefMatches": "/Quotes/\\d+"
         }
       ],
       "captures": [
@@ -631,11 +583,7 @@
       "module": "Quotes",
       "steps": [
         {
-          "goto": "/Domains/344/Quotes"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Quotes"
         }
       ],
       "captures": [
@@ -654,8 +602,8 @@
           "goto": "/Racks/Types"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Racks/']",
+          "hrefMatches": "/Racks/\\d+"
         }
       ],
       "captures": [
@@ -669,10 +617,6 @@
       "steps": [
         {
           "goto": "/Racks"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -697,8 +641,8 @@
           "goto": "/Receiving/Receivers"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Receiving/']",
+          "hrefMatches": "/Receiving/\\d+"
         }
       ],
       "captures": [
@@ -711,10 +655,6 @@
       "steps": [
         {
           "goto": "/Receiving/CustomerParts"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -756,10 +696,6 @@
       "steps": [
         {
           "goto": "/Reporting/View"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -782,11 +718,11 @@
       "module": "SalesOrders",
       "steps": [
         {
-          "goto": "/Domains/344/SalesOrders"
+          "goto": "/Domains/{domain}/SalesOrders"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/SalesOrders/']",
+          "hrefMatches": "/SalesOrders/\\d+"
         }
       ],
       "captures": [
@@ -852,11 +788,7 @@
       "module": "SalesOrders",
       "steps": [
         {
-          "goto": "/Domains/344/SalesOrders"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/SalesOrders"
         }
       ],
       "captures": [
@@ -877,8 +809,8 @@
           "goto": "/Schedules/454/ScheduleBoard"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Schedules/']",
+          "hrefMatches": "/Schedules/\\d+"
         }
       ],
       "captures": [
@@ -911,11 +843,7 @@
       "module": "SensorDashboards",
       "steps": [
         {
-          "goto": "/Domains/344/SensorDashboards"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/SensorDashboards"
         }
       ],
       "captures": [
@@ -927,11 +855,7 @@
       "module": "Sensors",
       "steps": [
         {
-          "goto": "/Domains/344/Sensors"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Sensors"
         }
       ],
       "captures": [
@@ -943,11 +867,7 @@
       "module": "Shipping",
       "steps": [
         {
-          "goto": "/Domains/344/Shipping"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Shipping"
         }
       ],
       "captures": [
@@ -965,11 +885,11 @@
       "module": "Specs",
       "steps": [
         {
-          "goto": "/Domains/344/Specs/397/Revisions"
+          "goto": "/Domains/{domain}/Specs/397/Revisions"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Specs/']",
+          "hrefMatches": "/Specs/\\d+"
         }
       ],
       "captures": [
@@ -1009,11 +929,7 @@
       "module": "Specs",
       "steps": [
         {
-          "goto": "/Domains/344/Specs"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Specs"
         }
       ],
       "captures": [
@@ -1036,8 +952,8 @@
           "goto": "/Stations"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Stations/']",
+          "hrefMatches": "/Stations/\\d+"
         }
       ],
       "captures": [
@@ -1053,10 +969,6 @@
       "steps": [
         {
           "goto": "/Stations/Settings/StationCustomInputs"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -1072,8 +984,8 @@
           "goto": "/Tags"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Tags/']",
+          "hrefMatches": "/Tags/\\d+"
         }
       ],
       "captures": [
@@ -1086,10 +998,6 @@
       "steps": [
         {
           "goto": "/Tags"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -1104,8 +1012,8 @@
           "goto": "/Treatments"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Treatments/']",
+          "hrefMatches": "/Treatments/\\d+"
         }
       ],
       "captures": [
@@ -1125,10 +1033,6 @@
       "steps": [
         {
           "goto": "/Treatments"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -1144,8 +1048,8 @@
           "goto": "/Units"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Units/']",
+          "hrefMatches": "/Units/\\d+"
         }
       ],
       "captures": [
@@ -1158,10 +1062,6 @@
       "steps": [
         {
           "goto": "/Units/Conversions"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -1173,11 +1073,7 @@
       "module": "UploadedFiles",
       "steps": [
         {
-          "goto": "/Domains/344/UploadedFiles"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/UploadedFiles"
         }
       ],
       "captures": [
@@ -1205,8 +1101,8 @@
           "goto": "/Users"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Users/']",
+          "hrefMatches": "/Users/\\d+"
         }
       ],
       "captures": [
@@ -1222,10 +1118,6 @@
       "steps": [
         {
           "goto": "/Users"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
         }
       ],
       "captures": [
@@ -1255,11 +1147,7 @@
       "module": "Vendors",
       "steps": [
         {
-          "goto": "/Domains/344/Vendors"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Vendors"
         }
       ],
       "captures": [
@@ -1272,11 +1160,11 @@
       "module": "Workboards",
       "steps": [
         {
-          "goto": "/Domains/344/Workboards"
+          "goto": "/Domains/{domain}/Workboards"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/Workboards/']",
+          "hrefMatches": "/Workboards/\\d+"
         }
       ],
       "captures": [
@@ -1299,11 +1187,7 @@
       "module": "Workboards",
       "steps": [
         {
-          "goto": "/Domains/344/Workboards"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/Workboards"
         }
       ],
       "captures": [
@@ -1316,11 +1200,11 @@
       "module": "WorkOrders",
       "steps": [
         {
-          "goto": "/Domains/344/WorkOrders"
+          "goto": "/Domains/{domain}/WorkOrders"
         },
         {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "clickFirst": "a[href*='/WorkOrders/']",
+          "hrefMatches": "/WorkOrders/\\d+"
         }
       ],
       "captures": [
@@ -1364,11 +1248,7 @@
       "module": "WorkOrders",
       "steps": [
         {
-          "goto": "/Domains/344/WorkOrders"
-        },
-        {
-          "clickFirst": "a[href]",
-          "hrefMatches": "\\d"
+          "goto": "/Domains/{domain}/WorkOrders"
         }
       ],
       "captures": [

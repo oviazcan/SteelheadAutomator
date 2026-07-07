@@ -21,16 +21,27 @@ test('generateCatalog: agrupa ops de la misma pantalla en UNA ruta (economía de
   const cat = generateCatalog(scanOps, typeOf);
   const customersRoute = Object.values(cat.routes).find((r) => r.module === 'Customers');
   assert.deepEqual(customersRoute.captures, ['AllCustomers', 'CustomerTags']); // ordenado
-  assert.deepEqual(customersRoute.steps, [{ goto: '/Domains/344/Customers' }]);
+  assert.deepEqual(customersRoute.steps, [{ goto: '/Domains/{domain}/Customers' }]);
   assert.equal(customersRoute.type, 'query');
 });
 
-test('generateCatalog: pathname con click → añade paso clickFirst genérico', () => {
+test('generateCatalog: ruta de DETALLE usa {domain} + clickFirst ESPECÍFICO al módulo (patrón Fase A que funciona headless)', () => {
   const scanOps = { GetBillByIdInDomain: { status: 'known', screens: [{ pathname: '/Domains/344/Bills/9', breadcrumb: 'a:Abrir bill', count: 2 }] } };
   const cat = generateCatalog(scanOps, typeOf);
   const r = Object.values(cat.routes)[0];
-  assert.equal(r.steps[0].goto, '/Domains/344/Bills'); // sube al listado (quita el id final)
-  assert.ok(r.steps.some((s) => s.clickFirst)); // hay un click para abrir el detalle
+  assert.equal(r.steps[0].goto, '/Domains/{domain}/Bills'); // {domain} placeholder, NO el 344 hardcodeado
+  const click = r.steps.find((s) => s.clickFirst);
+  assert.ok(click, 'hay clickFirst para abrir el detalle');
+  assert.equal(click.clickFirst, "a[href*='/Bills/']"); // ESPECÍFICO al módulo, no a[href] genérico
+  assert.equal(click.hrefMatches, '/Bills/\\d+');
+});
+
+test('generateCatalog: ruta de LISTADO (sin id final) NO añade clickFirst — goto directo (evita timeout headless)', () => {
+  const scanOps = { AllReceivers: { screens: [{ pathname: '/Receiving/CustomerParts', breadcrumb: 'a:x', count: 5 }] } };
+  const cat = generateCatalog(scanOps, () => 'query');
+  const r = Object.values(cat.routes)[0];
+  assert.equal(r.steps.length, 1, 'solo goto, sin clickFirst genérico');
+  assert.equal(r.steps[0].goto, '/Receiving/CustomerParts');
 });
 
 test('generateCatalog: op sin screens se omite (no hay ruta que inferir)', () => {
