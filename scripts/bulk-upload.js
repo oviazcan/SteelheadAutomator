@@ -230,7 +230,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.29';
+  const VERSION = '1.5.30';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -1635,22 +1635,13 @@ const BulkUpload = (() => {
   // Costo: ~N/200 queries para un dominio de N PNs (~250 para 50k).
   // Solo conviene cuando |CSV| > massiveThreshold (typically 1000). En CSV
   // chico, classifyPNs sigue el patrón on-demand de 1.0.0.
-  async function prefetchPNsByCustomer(customerIds, myRunId, idShSet = null) {
+  async function prefetchPNsByCustomer(customerIds, myRunId) {
     const cfg = bulkCfg();
     const pageSize = cfg.paging?.allPartNumbers?.first || 200;
     const maxResults = cfg.paging?.allPartNumbers?.massiveMaxResults || 100000;
     const customerSet = new Set(customerIds);
     const result = new Map();
     for (const cid of customerSet) result.set(cid, []);
-    // Retención adicional por id interno (= Id SH): PNs cuyo id ∈ idShSet se guardan
-    // aunque su cliente no esté en customerSet (carga por Id SH sin cliente). Se
-    // agrupan bajo su cliente REAL (bucket creado on-demand) para que el índice pnById
-    // aguas arriba los tome; conserva su customerId real para el apply posterior.
-    const wantById = (n) => idShSet != null && idShSet.has(String(n.id));
-    const pushNode = (bucket, shape) => {
-      if (!result.has(bucket)) result.set(bucket, []);
-      result.get(bucket).push(shape);
-    };
     // 1.2.13: el persisted query de AllPartNumbers NO devuelve archivedAt en su
     // selection set (verificado en consola 2026-05-21 — la respuesta solo trae
     // nodeId/id/createdAt/name/... sin archivedAt). Para distinguir activos de
@@ -1678,8 +1669,8 @@ const BulkUpload = (() => {
       for (const n of nodes) {
         activeIds.add(n.id);
         const cid = n.customerByCustomerId?.id || n.customerId;
-        if ((cid != null && customerSet.has(cid)) || wantById(n)) {
-          pushNode(cid != null ? cid : '__idsh__', extractPNShape(n));
+        if (cid != null && customerSet.has(cid)) {
+          result.get(cid).push(extractPNShape(n));
           kept++;
         }
       }
@@ -1718,10 +1709,10 @@ const BulkUpload = (() => {
       for (const n of nodes) {
         if (activeIds.has(n.id)) continue; // ya añadido en pasada NO
         const cid = n.customerByCustomerId?.id || n.customerId;
-        if ((cid != null && customerSet.has(cid)) || wantById(n)) {
+        if (cid != null && customerSet.has(cid)) {
           const shape = extractPNShape(n);
           shape.archivedAt = ARCHIVED_SENTINEL;
-          pushNode(cid != null ? cid : '__idsh__', shape);
+          result.get(cid).push(shape);
           keptArch++;
         }
       }
@@ -1771,6 +1762,7 @@ const BulkUpload = (() => {
       id: n.id,
       name: n.name,
       customerId: n.customerByCustomerId?.id || n.customerId,
+      customerName: n.customerByCustomerId?.name || null,
       metalBase,
       quoteIBMS,
       customInputs: ci || null,
@@ -1817,37 +1809,71 @@ const BulkUpload = (() => {
   //     por PN del CSV (patrón 1.0.0). Performance: ~|CSV| queries. Pase 1
   //     limitado a matches por nombre exacto (raro pero acotado en CSVs <
   //     1000 filas — diseño del día a día).
+  // Fetch DIRIGIDO de PNs por su Id SH (= id interno). GetPartNumber(id) trae el nodo completo
+  // (name, customerByCustomerId {id,name}, processNodeByDefaultProcessNodeId, customInputs,
+  // partNumberLabelsByPartNumberId {con color}, archivedAt) — mismo shape que AllPartNumbers, así
+  // que extractPNShape lo consume igual. Cuesta O(N idSh) queries en vez de escanear TODO el
+  // dominio (prefetch global): en dominios grandes es mucho más rápido y no depende de su tamaño.
+  // Slim (extractPNShape descarta lo pesado del full-fetch) + drain periódico del Apollo cache.
+  async function fetchPNsByIdSh(idShSet, myRunId) {
+    const ids = [...idShSet];
+    const byId = new Map();
+    if (!ids.length) return byId;
+    setPanelPhase(`Resolviendo ${ids.length} PN(s) por Id SH (fetch dirigido)`);
+    setPanelProgress(0, ids.length);
+    stopDatadogSessionReplay();
+    await runPool(ids, async (id, _idx, runIdLocal) => {
+      bailIfStale(runIdLocal);
+      try {
+        const d = await withRetry(
+          () => api().query('GetPartNumber', { partNumberId: id }),
+          `GetPartNumber idSh ${id}`, runIdLocal
+        );
+        const node = d?.partNumberById;
+        if (node && node.id != null) byId.set(String(node.id), extractPNShape(node));
+      } catch (e) {
+        if (isBail(e)) throw e;
+        warn(`Id SH ${id}: no resuelto (${String(e?.message || e).substring(0, 90)})`);
+      } finally {
+        periodicDrain();
+      }
+    }, 8, (d, t) => setPanelProgress(d, t), myRunId);
+    log(`Fetch dirigido por Id SH: ${byId.size}/${ids.length} PN(s) resueltos`);
+    return byId;
+  }
+
   async function classifyPNs(parts, myRunId) {
     const cfg = bulkCfg();
     const massiveThreshold = cfg.dedup?.massiveThreshold ?? 1000;
-    // Filas identificadas por Id SH SIN nombre de PN necesitan el prefetch GLOBAL del
-    // dominio para resolver el PN por su id: el modo on-demand solo busca por NOMBRE, y
-    // una fila idSh sin PN no tiene nombre que buscar → nunca resolvería y caería a
-    // "DUPLICAR (viejo:null)". Forzamos MASIVO cuando hay ≥1 fila idSh sin PN (los idSh
-    // CON pn se resuelven por nombre en on-demand y no pagan el prefetch global).
-    const hasIdShWithoutName = parts.some(p => p.idSh && !p.pn);
-    const useMassive = parts.length > massiveThreshold || hasIdShWithoutName;
-    log(`Clasificación: ${parts.length} filas — modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold}${hasIdShWithoutName ? ', forzado por Id SH sin PN' : ''})`);
+    // Filas con Id SH: se resuelven con FETCH DIRIGIDO (GetPartNumber por id), no escaneando el
+    // dominio. Trae el nodo completo por cada id único. Los idSh CON pn también se benefician
+    // (match por id exacto > heurística por nombre). El modo (masivo/on-demand) para el RESTO de
+    // filas (por nombre+cliente) lo decide SOLO el volumen — ya no se fuerza masivo por Id SH.
+    const idShSet = new Set(
+      parts.filter(p => p.idSh).map(p => String(parseInt(p.idSh, 10))).filter(s => s && s !== 'NaN')
+    );
+    const idShNodes = await fetchPNsByIdSh(idShSet, myRunId);
+    const useMassive = parts.length > massiveThreshold;
+    log(`Clasificación: ${parts.length} filas — ${idShSet.size ? `${idShNodes.size}/${idShSet.size} por Id SH + ` : ''}resto en modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold})`);
     return useMassive
-      ? await classifyPNsMassive(parts, myRunId)
-      : await classifyPNsOnDemand(parts, myRunId);
+      ? await classifyPNsMassive(parts, myRunId, idShNodes)
+      : await classifyPNsOnDemand(parts, myRunId, idShNodes);
   }
 
   // Modo masivo: prefetch global + classifier puro.
-  async function classifyPNsMassive(parts, myRunId) {
+  async function classifyPNsMassive(parts, myRunId, idShNodes = new Map()) {
     const cfg = bulkCfg();
     const nonFinishList = cfg.nonFinishLabelNames || [];
     // 1.4.3: equivalencias semánticas (Estaño/Plata...) configurables.
     const equivIndex = buildEquivIndex(cfg.metalEquivalents);
     const customerIds = [...new Set(parts.map(p => p.customerId).filter(x => x != null))];
-    // Ids internos (= Id SH del xlsm) a retener del prefetch global AUNQUE su cliente no
-    // esté en el CSV (carga por Id SH sin cliente). El prefetch los guarda por id y el
-    // match directo (línea `pnById.get(idSh)`) los resuelve → MODIFY con el PN real de SH.
-    const idShSet = new Set(parts.filter(p => p.idSh).map(p => String(parseInt(p.idSh, 10))));
-    const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId, idShSet);
+    // Solo prefetcheamos el dominio si hay filas por cliente que resolver. Si el CSV es 100%
+    // Id SH (sin cliente), el fetch dirigido (idShNodes) ya trajo todo → NO escaneamos el dominio.
+    const pnsByCustomer = customerIds.length ? await prefetchPNsByCustomer(customerIds, myRunId) : new Map();
 
-    // v11: construir indice por id numerico para lookup rapido por idSh.
-    const pnById = new Map();
+    // Índice por id: arranca con los nodos resueltos por Id SH (fetch dirigido) y suma los del
+    // prefetch por cliente. El match directo (`pnById.get(idSh)`) los resuelve → MODIFY.
+    const pnById = new Map(idShNodes);
     for (const [, nodes] of pnsByCustomer) {
       for (const n of nodes) { if (n.id != null) pnById.set(String(n.id), n); }
     }
@@ -1888,7 +1914,7 @@ const BulkUpload = (() => {
   // Modo día: una pasada paginada de AllPartNumbers con searchQuery=name por
   // PN del CSV; filtro client-side por customerId; mapeo a shape con
   // extractPNShape; llamada a classifyOnePN.
-  async function classifyPNsOnDemand(parts, myRunId) {
+  async function classifyPNsOnDemand(parts, myRunId, idShNodes = new Map()) {
     const cfg = bulkCfg();
     const nonFinishList = cfg.nonFinishLabelNames || [];
     // 1.4.3: equivalencias semánticas (Estaño/Plata...) configurables.
@@ -2005,8 +2031,10 @@ const BulkUpload = (() => {
       await new Promise(r => setTimeout(r, 0));
     }
 
-    // v11: construir indice por id para lookup por idSh en el modo on-demand.
-    const pnByIdOnDemand = new Map();
+    // Índice por id para lookup por idSh: arranca con los nodos del fetch dirigido (idShNodes)
+    // y suma los candidatos hallados por nombre. Así una fila idSh-only (sin pn, sin cliente)
+    // resuelve por idShNodes aunque no haya habido búsqueda por nombre.
+    const pnByIdOnDemand = new Map(idShNodes);
     for (const [, nodes] of candidatesByKey) {
       for (const n of nodes) { if (n.id != null) pnByIdOnDemand.set(String(n.id), n); }
     }
@@ -2089,6 +2117,10 @@ const BulkUpload = (() => {
         csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
         csvLabels: p.labels || [],
         csvMetalBase: p.metalBase || '',
+        // Mejora 2: cliente real + etiquetas (con color) del PN existente, para pintarlos en el
+        // preview cuando la fila se identifica por Id SH y el CSV no trae cliente ni etiquetas.
+        nodeCustomerName: node.customerName || null,
+        nodeLabelObjs: Array.isArray(node.labelObjs) ? node.labelObjs : [],
       };
     }
 
@@ -2264,7 +2296,10 @@ const BulkUpload = (() => {
           status: s.status,
           existingId: s.existingId || null,
           archivarAnterior: !!part.archivarAnterior,
-          customer: customerBase || '(sin cliente)',
+          // Mejora 2: cuando la fila se identifica por Id SH y el CSV no trae cliente, mostrar el
+          // cliente REAL del PN (del nodo resuelto) + sus etiquetas con color, como referencia.
+          customer: customerBase || s.nodeCustomerName || '(sin cliente)',
+          labelObjs: Array.isArray(s.nodeLabelObjs) ? s.nodeLabelObjs : [],
           changeSummary: changes.length ? changes.join(', ') : 'solo crear',
           qty: s.qty,
           precio: s.precio,
@@ -2422,8 +2457,8 @@ const BulkUpload = (() => {
       // Render thead
       const thead = modal.querySelector('#dl9-thead');
       const headerCells = isSoloPN
-        ? ['Sel', 'PN', 'Cliente', 'Acción', 'Datos a aplicar']
-        : ['Sel', 'PN', 'Cliente', 'Acción', 'Datos', 'Qty', 'Precio'];
+        ? ['Sel', 'PN', 'Cliente', 'Etiquetas', 'Acción', 'Datos a aplicar']
+        : ['Sel', 'PN', 'Cliente', 'Etiquetas', 'Acción', 'Datos', 'Qty', 'Precio'];
       const trh = document.createElement('tr');
       for (const cell of headerCells) {
         const th = document.createElement('th');
@@ -2617,6 +2652,27 @@ const BulkUpload = (() => {
           tdCust.style.color = '#94a3b8';
           tdCust.style.fontSize = '11px';
           tr.appendChild(tdCust);
+
+          // Mejora 2: columna Etiquetas — chips con el color real de Steelhead (labelByLabelId.color).
+          // textContent (no innerHTML) + color validado a hex → sin XSS.
+          const tdLabels = document.createElement('td');
+          tdLabels.style.padding = '3px 6px';
+          const labelObjs = Array.isArray(r.labelObjs) ? r.labelObjs : [];
+          if (labelObjs.length) {
+            for (const lo of labelObjs) {
+              const chip = document.createElement('span');
+              chip.textContent = lo.name;
+              const bg = (typeof lo.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(lo.color)) ? lo.color : '#475569';
+              chip.style.cssText = `display:inline-block;margin:1px 3px 1px 0;padding:1px 7px;border-radius:9px;background:${bg};color:#fff;font-size:10px;font-family:sans-serif;white-space:nowrap`;
+              tdLabels.appendChild(chip);
+            }
+          } else {
+            const dash = document.createElement('span');
+            dash.textContent = '—';
+            dash.style.cssText = 'color:#475569;font-size:11px';
+            tdLabels.appendChild(dash);
+          }
+          tr.appendChild(tdLabels);
 
           const tdAct = document.createElement('td');
           tdAct.style.padding = '3px 6px';
