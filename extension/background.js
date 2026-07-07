@@ -629,6 +629,12 @@ async function handleMessage(message, sender) {
             // Save final results before stopping
             const { ops: scanOps, eventLog: scanEvents } = window.HashScanner.getResults();
             window.HashScanner.stop();
+            // Guard anti-doble-export (fix 2026-07-06): si toggle-scan se dispara 2 veces
+            // seguidas (doble click / doble mensaje / re-inyección), no emitas 2 descargas.
+            if (window.__saExportedAt && (Date.now() - window.__saExportedAt) < 3000) {
+              return { started: false, finalResults: { ops: scanOps, eventLog: scanEvents }, message: 'Captura detenida (export ya emitido).', stats: window.HashScanner.getStats() };
+            }
+            window.__saExportedAt = Date.now();
             // Auto-export scan results on stop
             const _n1 = new Date();
             const _d1 = _n1.toLocaleDateString('en-CA');
