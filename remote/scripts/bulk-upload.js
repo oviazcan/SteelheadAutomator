@@ -230,7 +230,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.30';
+  const VERSION = '1.5.31';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -1826,7 +1826,7 @@ const BulkUpload = (() => {
       bailIfStale(runIdLocal);
       try {
         const d = await withRetry(
-          () => api().query('GetPartNumber', { partNumberId: id }),
+          () => api().query('GetPartNumber', { partNumberId: parseInt(id, 10) }),
           `GetPartNumber idSh ${id}`, runIdLocal
         );
         const node = d?.partNumberById;
