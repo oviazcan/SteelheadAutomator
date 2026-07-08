@@ -5,7 +5,7 @@
   "entities": {
     "partNumber": {
       "id": 3770957,
-      "screenPath": "/Domains/{domain}/PartNumbers/{id}",
+      "screenPath": "/PartNumbers/{id}",
       "marker": "Sentinela",
       "_para": [
         "UpdatePartNumber"
