@@ -97,7 +97,7 @@ async function main() {
   console.log(`Ops a capturar (${wantOps.length}): ${wantOps.join(', ')}`);
   console.log(`Rutas seleccionadas (${plan0.routes.length}): ${plan0.routes.map((r) => r.id).join(', ') || '(ninguna)'}`);
   if (plan0.uncovered.length) console.log(`⚠️ Queries stale SIN ruta en catálogo: ${plan0.uncovered.join(', ')} (Fase B)`);
-  if (staleMuts.length) console.log(`⚠️ Mutations stale (Fase C pendiente): ${staleMuts.join(', ')}`);
+  if (staleMuts.length) console.log(`⚠️ Mutations stale (Fase C — ciclo sentinela): ${staleMuts.join(', ')}`);
 
   // Ops que sabemos que aún NO tienen ruta (session-sensitive sin cobertura en el
   // catálogo) → hueco conocido pendiente de Fase B. Se loguean pero NO generan
@@ -147,6 +147,7 @@ async function main() {
       } catch (e) { console.log(`     no se pudo restaurar ${rep.entityType}: ${String(e).slice(0, 80)}`); }
     }
     for (const op of capturableMuts) {
+      if (ONLY && op !== ONLY) continue;
       const entityType = mutEntityType(op);
       if (DRY) { console.log(`→ (dry) ciclo mutation "${op}" sobre sentinela ${entityType} #${sentinelsConfig.entities[entityType].id}`); continue; }
       const route = { captures: [op], sentinel: { entityType } };
