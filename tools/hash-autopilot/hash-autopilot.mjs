@@ -44,6 +44,7 @@ function loadValidatorResult(date) {
 
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
+const NO_DEPLOY = args.includes('--no-deploy'); // ejecuta los ciclos pero NO deploya (validación supervisada)
 const domainArg = args.find((a) => a.startsWith('--domain='));
 const DOMAIN = domainArg ? domainArg.split('=')[1] : '344';
 const domainNanoArg = args.find((a) => a.startsWith('--domain-nano='));
@@ -195,7 +196,7 @@ async function main() {
 
   // Auto-deploy de los rotados validados (salvo dry-run / freno de masa).
   let deployed = false;
-  if (!DRY && plan.toDeploy.length && !plan.massBrake) {
+  if (!DRY && !NO_DEPLOY && plan.toDeploy.length && !plan.massBrake) {
     const pairs = plan.toDeploy.map((r) => `${r.op}=${r.liveHash}`);
     console.log(`\n→ Auto-deploy: ${pairs.join(' ')}`);
     try {
