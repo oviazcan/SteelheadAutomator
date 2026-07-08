@@ -65,6 +65,8 @@ const PnSpecsColumn = (() => {
       '.sa-pnspec-spec{margin:0 0 4px 0;}',
       '.sa-pnspec-spec:last-child{margin-bottom:0;}',
       '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;font-size:12px;}',
+      'a.sa-pnspec-spec-name{cursor:pointer;text-decoration:none;}',
+      'a.sa-pnspec-spec-name:hover{text-decoration:underline;}',
       '.sa-pnspec-param{display:inline-block;background:#eef6f2;border:1px solid #cfe6db;color:#14503a;',
       'border-radius:6px;padding:1px 6px;margin:2px 4px 0 0;font-size:11px;white-space:nowrap;}',
       '.sa-pnspec-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
@@ -218,7 +220,12 @@ const PnSpecsColumn = (() => {
     if (!specs.length) { const m = document.createElement('span'); m.className = 'sa-pnspec-muted'; m.textContent = 'sin specs'; td.appendChild(m); return; }
     specs.forEach(function (s) {
       const box = document.createElement('div'); box.className = 'sa-pnspec-spec';
-      const nm = document.createElement('span'); nm.className = 'sa-pnspec-spec-name'; nm.textContent = s.specName;
+      // Nombre de la spec = link a la spec (nueva pestaña → no pierde el filtro/scroll
+      // del dashboard). Si no se puede armar la URL, cae a texto plano.
+      const href = Core().specUrl(s);
+      const nm = document.createElement(href ? 'a' : 'span');
+      nm.className = 'sa-pnspec-spec-name'; nm.textContent = s.specName;
+      if (href) { nm.href = href; nm.target = '_blank'; nm.rel = 'noopener'; }
       box.appendChild(nm);
       if (!s.numericParams.length) {
         const none = document.createElement('span'); none.className = 'sa-pnspec-muted'; none.textContent = 'sin params num.';
@@ -226,7 +233,7 @@ const PnSpecsColumn = (() => {
       } else {
         s.numericParams.forEach(function (p) {
           const chip = document.createElement('span'); chip.className = 'sa-pnspec-param';
-          chip.textContent = p.range ? p.name + ': ' + p.range : p.name;
+          chip.textContent = p.value ? p.name + ': ' + p.value : p.name;
           box.appendChild(chip);
         });
       }
