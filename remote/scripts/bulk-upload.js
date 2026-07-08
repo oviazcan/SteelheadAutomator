@@ -3696,7 +3696,7 @@ const BulkUpload = (() => {
           const addr = relData?.customerById?.customerAddressesByCustomerId?.nodes || [];
           const cont = relData?.customerById?.customerContactsByCustomerId?.nodes || [];
           let invTerms = null;
-          try { const fin = await api().query('CustomerFinancialByCustomerId', { id: cid }, 'CustomerFinancialById'); invTerms = fin?.customerById?.invoiceTermsId || null; } catch (_) {}
+          try { const fin = await api().query('CustomerFinancialByCustomerId', { id: cid }, 'CustomerFinancialByCustomerId'); invTerms = fin?.customerById?.invoiceTermsId || null; } catch (_) {}
           if (!invTerms) {
             try { const t = await api().query('SearchInvoiceTerms', { termsLike: '%%' }); const tn = t?.allInvoiceTerms?.nodes || t?.pagedData?.nodes || t?.searchInvoiceTerms?.nodes || []; if (tn.length) invTerms = tn[0].id; } catch (_) {}
           }
@@ -3745,7 +3745,7 @@ const BulkUpload = (() => {
         api().query('AllRackTypes', {}),
         api().query('SearchUnits', {}),
         api().query('SearchProducts', { searchQuery: '%%', first: 500 }),
-        api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PNGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PNGroupSelect')).catch(() => null),
+        api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PartNumberGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PartNumberGroupSelect')).catch(() => null),
       ]);
 
       const labelByName = new Map(); for (const l of (labelsD?.allLabels?.nodes || [])) labelByName.set(l.name, l.id);
