@@ -1,6 +1,6 @@
 {
-  "version": "1.7.84",
-  "lastUpdated": "2026-07-08T09:12",
+  "version": "1.7.85",
+  "lastUpdated": "2026-07-08T10:20",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -110,7 +110,7 @@
         "SearchUnits": "1961ca85600a902498898502aeda031f270ff2b1289b3ef9fe43aaaefe97ceda",
         "SearchProducts": "b835021eff4113acd5529f63fa742a9b70373c62a5d9cb39f4203fe2bbba9f8a",
         "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91",
-        "GetPartNumber": "8e3fdb5255913558481b9cf934dbb1facae36e8efdc3c369ceb3e7ba27537efc",
+        "GetPartNumber": "5efd689d8d92151ea510256828f17cbe10b815dd8dce2bd1dd51ef55bb9a0faf",
         "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109",
         "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a",
         "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b",
@@ -933,6 +933,19 @@
       "requiredPermissions": [],
       "actions": [
         { "id": "toggle-sensor-graph-hide-all", "label": "Auto-ocultar sensores", "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)", "icon": "👁", "type": "toggle", "handler": "message", "message": "toggle-sensor-graph-hide-all", "fn": "SensorGraphHideAll.toggleFromPopup" }
+      ]
+    },
+    {
+      "id": "pn-specs-column",
+      "name": "Specs en Números de Parte",
+      "subtitle": "Columna de specs + parámetros numéricos de cada NP en el dashboard /PartNumbers",
+      "icon": "🧪",
+      "category": "Números de Parte",
+      "autoInject": true,
+      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/pn-specs-column-core.js", "scripts/pn-specs-column.js"],
+      "requiredPermissions": ["READ_PART_NUMBERS"],
+      "actions": [
+        { "id": "toggle-pn-specs-column", "label": "Specs en Números de Parte", "sublabel": "Columna de specs + params numéricos en /PartNumbers (1 consulta por NP visible; el toggle también vive en el header)", "icon": "🧪", "type": "toggle", "handler": "message", "message": "toggle-pn-specs-column", "fn": "PnSpecsColumn.toggleFromPopup" }
       ]
     },
     {
