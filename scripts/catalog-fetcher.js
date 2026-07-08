@@ -505,8 +505,8 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchGroups() {
-    const data = await api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PNGroupSelect')
-      .catch((e) => { noteFetchIssue('Grupos', 'PNGroupSelect', e); return null; });
+    const data = await api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PartNumberGroupSelect')
+      .catch((e) => { noteFetchIssue('Grupos', 'PartNumberGroupSelect', e); return null; });
     if (!data) return [];
     const nodes = data?.allPartNumberGroups?.nodes || data?.pagedData?.nodes || data?.partNumberGroups?.nodes || [];
     const seen = new Set();
