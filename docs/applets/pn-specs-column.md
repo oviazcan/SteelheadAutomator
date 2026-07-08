@@ -1,6 +1,6 @@
 # pn-specs-column — Specs + parámetros numéricos en el dashboard de Números de Parte
 
-**Versión:** 0.1.2 — **DEPLOYADO**. Core 15/15 golden + validado en vivo. **0.1.2** ajustes de estilo (encabezado hereda el look nativo; separador gris punteado; toggle más delgado). **0.1.1** corrige 2 bugs del primer run real (ver §Fixes 0.1.1). **0.1.0** deploy inicial.
+**Versión:** 0.2.0 — **DEPLOYADO**. Core 17/17 golden + validado con datos reales. **0.2.0** cambia el criterio de "numérico" (de `type===NUMBER` a "el valor trae dígitos") + spec como **link** (ver §0.2.0). **0.1.2** estilo (encabezado nativo, separador punteado, toggle delgado). **0.1.1** 2 bugs del run real (§Fixes 0.1.1). **0.1.0** deploy inicial.
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
@@ -84,6 +84,23 @@ Dos bugs reportados con screenshots (PNs `48186-064-50*` de SCHNEIDER ELECTRIC):
 **Bug #1 — la columna se desalineaba al filtrar/paginar.** El `<th>` se insertaba con `insertBefore(lastElementChild)` (posición *relativa*) una sola vez; al re-render de React el `<th>` viejo sobrevivía y React lo reposicionaba ("flotaba") mientras los `<td>` se recreaban en la penúltima → header y chips en columnas distintas. **Fix:** la columna es SIEMPRE la **última** celda (`appendChild`), **re-posicionada en cada sync** (`if (lastElementChild !== cell) appendChild`). Invariante: `<th>` y `<td>` siempre en la misma posición (última), sin importar cómo React reordene. Validado en vivo sobre la tabla MUI real (simulando re-render + flotar → `aligned:true`, índice 15/15).
 
 **Bug #2 — una spec ARCHIVADA (RC Ag) reaparecía; inconsistente con ASTM B700.** `extractSpecsWithNumericParams` (paso 2) creaba el bucket de la spec "al vuelo" desde un param activo. Al archivar una *spec* de un PN, Steelhead NO archiva cada `partNumberSpecFieldParam` → quedan params huérfanos activos apuntando a specs archivadas. RC Ag reaparecía (tenía un Espesor activo) pero ASTM B700 no (sin param activo) → la inconsistencia. **Fix:** `partNumberSpecsByPartNumberId` es la única fuente de verdad de specs activas; un param cuya spec no está en el mapa activo se **ignora** (no se inventan buckets). Golden test `NO resucita una spec ARCHIVADA…`.
+
+## 0.2.0 — criterio "el valor trae números" + link a la spec
+
+**Cambio de criterio (a pedido del usuario, verificado con el PN 3029783 real).** El filtro dejó de ser `specField.type === 'NUMBER'` y ahora es **"el parámetro tiene un valor numérico"**: el `specFieldParam.name` (valLabel — lo que Steelhead muestra) **contiene un dígito**, o hay `min/max/target`. Motivo: parámetros como **"Tiempo s/Corrosión Blanca/Roja"** (spec *Cámara Salina*) son `type: BOOLEAN` pero su valor es `"24 hrs."` / `"72 hrs."` → deben salir; con el criterio viejo no salían. Tabla de verdad (datos reales del PN 3029783):
+
+| Parámetro | type | valLabel | ¿sale? |
+|---|---|---|---|
+| Espesor | NUMBER | `5 - 8 µm` | ✓ |
+| Temperatura (Deshidrogenado) | NUMBER | `176 - 204 °C (375 ± 25 °F)` | ✓ |
+| Tiempo s/Corrosión Blanca | **BOOLEAN** | `24 hrs.` | ✓ |
+| Tiempo s/Corrosión Roja | **BOOLEAN** | `72 hrs.` | ✓ |
+| Adherencia | BOOLEAN | `Sí o No` | ✗ |
+| Instrumento de Medición | DROPDOWN | `Elección` | ✗ |
+
+El valor mostrado ahora es el **valLabel tal cual** (`24 hrs.`, `5 - 8 µm`) cuando trae dígitos; si no, se reconstruye de `min/max/target` (fallback). El campo del param pasó de `{name, min, max, target, unit, range}` a **`{name, value}`**.
+
+**Link a la spec.** El nombre de la spec es un `<a>` a **`/Domains/<domainId>/Specs/<idInDomain>/Revisions/<revisionNumber>`** (verificado vs los hrefs reales de la app; NO es `/Specs/<id>`), en **pestaña nueva** (no pierde el filtro del dashboard). `domainId`/`idInDomain`/`revisionNumber` salen de `specBySpecId`. Función pura `specUrl(spec)` (fallback a texto plano si faltan datos).
 
 ## Estilo 0.1.2 (integración visual)
 

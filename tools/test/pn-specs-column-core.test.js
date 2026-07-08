@@ -11,9 +11,12 @@ const Core = global.window.PnSpecsColumnCore;
 // ── Fixture fiel al shape real de GetPartNumber (PN con spec "E27550 (Plata)") ──
 // Reproduce: params DUPLICADOS (archivado + activo idéntico), tipos mezclados
 // (NUMBER/BOOLEAN/DROPDOWN), y una 2ª spec activa para probar agrupación multi-spec.
-function sfParam(fieldName, type, { min = null, max = null, target = null, unit = null, specId, specName } = {}) {
+// valLabel = specFieldParam.name (lo que Steelhead muestra: "5 - 8 µm", "24 hrs.",
+// "Sí o No"). Es el criterio de "numérico" (¿trae dígitos?), no el `type`.
+function sfParam(fieldName, type, { min = null, max = null, target = null, unit = null, valLabel = null, specId, specName } = {}) {
   return {
     specFieldParamBySpecFieldParamId: {
+      name: valLabel,
       minimumValue: min, maximumValue: max, targetValue: target,
       unitByUnitId: unit ? { name: unit } : null,
       specFieldSpecBySpecFieldSpecId: {
@@ -25,9 +28,9 @@ function sfParam(fieldName, type, { min = null, max = null, target = null, unit 
 }
 function node(archivedAt, inner) { return Object.assign({ archivedAt: archivedAt }, inner); }
 
-const SPEC_A = { id: 17395, name: 'E27550 (Plata)' };
-const SPEC_B = { id: 200, name: 'N24 (Níquel)' };
-const SPEC_ARCH = { id: 999, name: 'Spec Vieja (archivada)' };
+const SPEC_A = { id: 17395, domainId: 344, idInDomain: 49, revisionNumber: 2, name: 'E27550 (Plata)' };
+const SPEC_B = { id: 200, domainId: 344, idInDomain: 88, revisionNumber: 1, name: 'N24 (Níquel)' };
+const SPEC_ARCH = { id: 999, domainId: 344, idInDomain: 300, revisionNumber: 3, name: 'Spec Vieja (archivada)' };
 const UM = 'µm (micrómetro, micra)';
 
 const FIXTURE = {
@@ -118,14 +121,15 @@ test('extract: agrupa numéricos por spec, filtra archivados y no-numéricos', (
 
   const a = r.specs.find((s) => s.specId === 17395);
   assert.strictEqual(a.specName, 'E27550 (Plata)');
-  assert.strictEqual(a.numericParams.length, 1, 'solo Espesor; BOOLEAN/DROPDOWN fuera; dedup del duplicado activo');
+  assert.strictEqual(Core.specUrl(a), '/Domains/344/Specs/49/Revisions/2', 'URL del link a la spec');
+  assert.strictEqual(a.numericParams.length, 1, 'solo Espesor; los cualitativos fuera; dedup del duplicado activo');
   assert.strictEqual(a.numericParams[0].name, 'Espesor');
-  assert.strictEqual(a.numericParams[0].range, '1.27–3.5 µm');
+  assert.strictEqual(a.numericParams[0].value, '1.27–3.5 µm', 'sin valLabel → se reconstruye de min/max');
 
   const b = r.specs.find((s) => s.specId === 200);
   assert.strictEqual(b.numericParams.length, 2);
   assert.deepStrictEqual(b.numericParams.map((p) => p.name), ['Espesor Ni', 'Dureza']);
-  assert.strictEqual(b.numericParams[1].range, '= 450 HV');
+  assert.strictEqual(b.numericParams[1].value, '= 450 HV');
 });
 
 test('extract: el param archivado (histórico) nunca aparece', () => {
@@ -183,6 +187,39 @@ test('extract: NO resucita una spec ARCHIVADA aunque su param siga activo (bug 4
   assert.strictEqual(r.specs[0].specName, 'FTR00047 (Plata)');
   assert.strictEqual(r.totalNumericParams, 1, 'el param huérfano de RC Ag no cuenta');
   assert.strictEqual(Core.formatCellText(r), 'FTR00047 (Plata): Espesor 2–4.5 µm');
+});
+
+test('extract: criterio "el valor trae números" (PN 3029783 real) — NO por specField.type', () => {
+  // Datos reales: params BOOLEAN cuyo VALOR es numérico ("24 hrs." = cámara salina)
+  // SÍ deben salir; los cualitativos ("Sí o No", "Elección") NO. El type es irrelevante.
+  const SPEC = { id: 500, idInDomain: 111, name: 'RC Cámara Salina' };
+  const pn = {
+    partNumberById: {
+      partNumberSpecsByPartNumberId: { nodes: [{ archivedAt: null, specBySpecId: SPEC }] },
+      partNumberSpecFieldParamsByPartNumberId: { nodes: [
+        node(null, sfParam('Tiempo s/Corrosión Blanca', 'BOOLEAN', { valLabel: '24 hrs.', specId: SPEC.id, specName: SPEC.name })),
+        node(null, sfParam('Tiempo s/Corrosión Roja', 'BOOLEAN', { valLabel: '72 hrs.', specId: SPEC.id, specName: SPEC.name })),
+        node(null, sfParam('Temperatura (Deshidrogenado)', 'NUMBER', { valLabel: '176 - 204 °C (375 ± 25 °F)', specId: SPEC.id, specName: SPEC.name })),
+        node(null, sfParam('Adherencia', 'BOOLEAN', { valLabel: 'Sí o No', specId: SPEC.id, specName: SPEC.name })),
+        node(null, sfParam('Instrumento de Medición', 'DROPDOWN', { valLabel: 'Elección', specId: SPEC.id, specName: SPEC.name })),
+      ]},
+    },
+  };
+  const r = Core.extractSpecsWithNumericParams(pn);
+  assert.strictEqual(r.totalNumericParams, 3, '2 Tiempo (24/72 hrs.) + Temperatura; Adherencia/Instrumento fuera');
+  const names = r.specs[0].numericParams.map((p) => p.name);
+  assert.ok(names.includes('Tiempo s/Corrosión Blanca'), 'BOOLEAN "24 hrs." SÍ sale (cámara salina)');
+  assert.ok(!names.includes('Adherencia'), '"Sí o No" NO sale');
+  assert.ok(!names.includes('Instrumento de Medición'), '"Elección" NO sale');
+  assert.strictEqual(r.specs[0].numericParams[0].value, '24 hrs.', 'el valLabel se muestra tal cual');
+});
+
+test('specUrl: arma /Domains/<d>/Specs/<idInDomain>/Revisions/<rev>; null si falta lo esencial', () => {
+  assert.strictEqual(Core.specUrl({ specDomainId: 344, specIdInDomain: 49, specRevision: 2 }), '/Domains/344/Specs/49/Revisions/2');
+  assert.strictEqual(Core.specUrl({ specDomainId: 344, specIdInDomain: 49, specRevision: null }), '/Domains/344/Specs/49/Revisions');
+  assert.strictEqual(Core.specUrl({ specDomainId: null, specIdInDomain: 49, specRevision: 2 }), null);
+  assert.strictEqual(Core.specUrl({ specDomainId: 344, specIdInDomain: null }), null);
+  assert.strictEqual(Core.specUrl(null), null);
 });
 
 test('extract: fail-safe ante shape vacío/inesperado', () => {
