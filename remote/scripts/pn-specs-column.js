@@ -61,7 +61,7 @@ const PnSpecsColumn = (() => {
       // fuerza font-weight/color/background del texto → el encabezado se ve igual que
       // los nativos.
       'th.sa-pnspec-cell{border-left:1px dashed #c7ccd1 !important;white-space:nowrap;}',
-      'td.sa-pnspec-cell{border-left:1px dashed #c7ccd1 !important;vertical-align:top;min-width:180px;max-width:340px;}',
+      'td.sa-pnspec-cell{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;min-width:180px;max-width:340px;}',
       '.sa-pnspec-spec{margin:0 0 4px 0;}',
       '.sa-pnspec-spec:last-child{margin-bottom:0;}',
       '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;font-size:12px;}',
