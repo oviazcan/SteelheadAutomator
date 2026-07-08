@@ -130,6 +130,14 @@
       if (seen.has(key)) return;                              // dedup defensivo
       seen.add(key);
 
+      // FUENTE DE VERDAD = partNumberSpecs (paso 1). Si la spec del param NO está
+      // en el mapa de specs ACTIVAS, el param es "huérfano" de una spec archivada
+      // (Steelhead no archiva cada partNumberSpecFieldParam al archivar la spec) →
+      // se ignora. Sin esto, un param activo resucitaba una spec archivada
+      // (bug 48186-064-50MO: "RC Ag" archivada reaparecía por su Espesor activo).
+      const bucket = specMap.get(specId);
+      if (!bucket) return;
+
       const param = {
         name: field.name || '(parámetro)',
         min: min == null ? null : min,
@@ -138,14 +146,6 @@
         unit: unitSymbol(sfp.unitByUnitId && sfp.unitByUnitId.name),
       };
       param.range = formatRange(param);
-
-      // La spec puede no estar en partNumberSpecs (defensivo): la creamos al vuelo.
-      let bucket = specMap.get(specId);
-      if (!bucket) {
-        bucket = { specId: specId, specName: spec.name || '(spec)', numericParams: [] };
-        specMap.set(specId, bucket);
-        order.push(specId);
-      }
       bucket.numericParams.push(param);
       total++;
     });

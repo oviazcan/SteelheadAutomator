@@ -152,37 +152,53 @@ const PnSpecsColumn = (() => {
   // ════════════════════════════════════════════════════════════════════════
   function getTable() { return document.querySelector('table'); }
 
+  // La columna es SIEMPRE la ÚLTIMA celda de su fila, y se re-posiciona en cada
+  // sync. Motivo: al re-render de React (filtrar/paginar), el <th> inyectado
+  // "flota" a otra posición mientras los <td> se recrean en la penúltima → se
+  // desalineaban (header en una columna, chips en otra). Forzar "última celda"
+  // tanto en thead como en cada tr los mantiene siempre alineados, sin importar
+  // cómo React reordene sus propias columnas. Idempotente: appendChild solo actúa
+  // si la celda no es ya la última, así que en estado estable es no-op.
   function ensureHeaderCell(table) {
     const headRow = table.querySelector('thead tr');
-    if (!headRow || headRow.querySelector('.sa-pnspec-cell')) return;
-    const th = document.createElement('th');
-    th.className = 'sa-pnspec-cell';
-    th.textContent = COL_LABEL;
-    // Antes de la última columna (Acciones) para respetar Acciones-al-borde.
-    if (headRow.lastElementChild) headRow.insertBefore(th, headRow.lastElementChild);
-    else headRow.appendChild(th);
+    if (!headRow) return;
+    let th = headRow.querySelector(':scope > .sa-pnspec-cell');
+    if (!th) {
+      th = document.createElement('th');
+      th.className = 'sa-pnspec-cell';
+      th.textContent = COL_LABEL;
+    }
+    if (headRow.lastElementChild !== th) headRow.appendChild(th);   // (re)posiciona al final
+  }
+
+  function pendingCell(td) {
+    td.setAttribute('data-sa-state', 'pending');
+    td.textContent = '';
+    const s = document.createElement('span'); s.className = 'sa-pnspec-muted'; s.textContent = '⏳';
+    td.appendChild(s);
   }
 
   function ensureBodyCells(table) {
     const rows = table.querySelectorAll('tbody tr');
     const toFetch = [];
     rows.forEach(function (tr) {
-      if (tr.querySelector('.sa-pnspec-cell')) return;   // ya tiene la celda
-      const link = tr.querySelector('td a[href*="/PartNumbers/"]');
-      const pnId = link ? Core().parsePartNumberId(link.getAttribute('href') || link.href) : null;
-      const td = document.createElement('td');
-      td.className = 'sa-pnspec-cell';
-      if (pnId) {
-        td.setAttribute('data-sa-pnid', String(pnId));
-        const cached = cache().get(pnId);
-        if (cached) { renderCell(td, cached); }
-        else { td.setAttribute('data-sa-state', 'pending'); td.innerHTML = '<span class="sa-pnspec-muted">⏳</span>'; toFetch.push(pnId); }
-      } else {
-        td.setAttribute('data-sa-state', 'na');
-        td.innerHTML = '<span class="sa-pnspec-muted">—</span>';
+      let td = tr.querySelector(':scope > .sa-pnspec-cell');
+      if (!td) {
+        const link = tr.querySelector('td a[href*="/PartNumbers/"]');
+        const pnId = link ? Core().parsePartNumberId(link.getAttribute('href') || link.href) : null;
+        td = document.createElement('td');
+        td.className = 'sa-pnspec-cell';
+        if (pnId) {
+          td.setAttribute('data-sa-pnid', String(pnId));
+          const cached = cache().get(pnId);
+          if (cached) { renderCell(td, cached); }
+          else { pendingCell(td); toFetch.push(pnId); }
+        } else {
+          td.setAttribute('data-sa-state', 'na');
+          const s = document.createElement('span'); s.className = 'sa-pnspec-muted'; s.textContent = '—'; td.appendChild(s);
+        }
       }
-      if (tr.lastElementChild) tr.insertBefore(td, tr.lastElementChild);
-      else tr.appendChild(td);
+      if (tr.lastElementChild !== td) tr.appendChild(td);   // (re)posiciona al final
     });
     return toFetch;
   }
