@@ -27,9 +27,13 @@ export function resolveUrl(ent, id, domain) {
 // partNumber: el sentinela "Sentinela" vive ARCHIVADO. Togglear el checkbox
 // "Archived" (desarchivar→archivar) dispara UpdatePartNumber y deja el PN en su
 // estado original. loadObject verifica name="Sentinela" (isSentinel fail-closed).
-function archivedCheckbox(page) {
-  return page.locator('div.css-re0j1l', { hasText: 'Archived:' })
-    .locator('xpath=following-sibling::div[1]').locator('input[type="checkbox"]').first();
+async function openEditPartNumber(page) {
+  await page.getByRole('button', { name: /Editar Número de Parte/i }).first().click();
+  await page.locator('[role="dialog"]').filter({ hasText: 'Edit Part Number' }).first().waitFor({ timeout: 10000 });
+}
+async function saveDialog(page) {
+  await page.locator('[role="dialog"] button:has(svg[data-testid="SaveOutlinedIcon"])').first().click();
+  await page.waitForTimeout(2500);
 }
 const HANDLERS = {
   partNumber: {
@@ -39,16 +43,18 @@ const HANDLERS = {
         .locator('xpath=following-sibling::*[1]').first().textContent().catch(() => '')).trim();
       return { name };
     },
+    // El Save del modal Edit dispara SavePartNumber + UpdatePartNumber (confirmado por el usuario).
+    // Funciona con el PN archivado SIN desarchivar. Campo reversible: Notas Adicionales (vacío).
     async mutate(page) {
-      // desarchivar → dispara UpdatePartNumber (el sink del motor captura el hash)
-      await archivedCheckbox(page).click();
-      await page.waitForTimeout(1500);
+      await openEditPartNumber(page);
+      await page.locator('#root_NotasAdicionales').fill('SA-SENTINEL-CAPTURE');
+      await saveDialog(page);
     },
     async restore(page) {
-      // re-archivar SIEMPRE (dejar el PN como estaba: archivado)
-      const cb = archivedCheckbox(page);
-      const checked = await cb.isChecked().catch(() => true);
-      if (!checked) { await cb.click(); await page.waitForTimeout(1500); }
+      // vaciar Notas → Save: deja el PN como estaba (Notas vacío, estado archivado intacto)
+      await openEditPartNumber(page);
+      await page.locator('#root_NotasAdicionales').fill('');
+      await saveDialog(page);
     },
   },
 };
