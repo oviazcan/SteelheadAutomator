@@ -25,7 +25,7 @@ export function cycleNext(state, event) {
 // nulos → false (no mutar).
 export function isSentinel(obj) {
   if (!obj || typeof obj !== 'object') return false;
-  const hay = (s) => typeof s === 'string' && s.includes(SENTINEL_MARKER);
+  const hay = (s) => typeof s === 'string' && (s.includes(SENTINEL_MARKER) || /sentinela/i.test(s));
   if (hay(obj.name) || hay(obj.displayName)) return true;
   if (Array.isArray(obj.tags) && obj.tags.some(hay)) return true;
   if (obj.customInputs && typeof obj.customInputs === 'object') {

@@ -17,6 +17,12 @@ test('isSentinel: sin marca → false (fail-closed)', () => {
   assert.equal(isSentinel({}), false);
   assert.equal(isSentinel(null), false);
 });
+test('isSentinel: reconoce la palabra "Sentinela" en el nombre (marcador del usuario)', () => {
+  assert.equal(isSentinel({ name: 'PN Sentinela QA' }), true);
+  assert.equal(isSentinel({ name: 'sentinela' }), true);              // case-insensitive
+  assert.equal(isSentinel({ name: 'Nodo Sentinela archivado' }), true);
+  assert.equal(isSentinel({ name: 'Cliente Real 123' }), false);      // sigue fail-closed
+});
 
 test('strategyFor: Delete/Remove → ephemeral', () => {
   assert.equal(strategyFor('DeletePartNumber'), 'ephemeral-create-destroy');
