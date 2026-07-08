@@ -6552,7 +6552,7 @@ const BulkUpload = (() => {
       // entonces borramos el viejo y reinsertamos con el partsPerRack nuevo.
       async function upsertRack(rk) {
         try {
-          await withRetry(() => api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: [rk], partNumberRackTypeIdsToDelete: [] } }), `SaveRack PN ${rk.partNumberId}`, myRunId);
+          await withRetry(() => api().query('CreatePartNumberPerPerRackType', { partNumberId: rk.partNumberId, partsPerRack: rk.partsPerRack, rackTypeId: rk.rackTypeId }, 'CreatePartNumberPerPerRackType'), `CreateRack PN ${rk.partNumberId}`, myRunId);
         } catch (e2) {
           if (isDuplicateKeyError(e2)) {
             // V10: usar mutación dedicada UpdatePartNumberPerPerRackType (typo en el API real)
@@ -6580,34 +6580,19 @@ const BulkUpload = (() => {
       // queda registrado con su nombre+PN para reproducción.
       let rackBatchFailures = 0, rackIndividualFailures = 0;
       if (rackIn.length) {
-        // 1.4.25 Fix FF: panel progress + subPhase para batches de racks.
-        const rackTotalBatches = Math.ceil(rackIn.length / 50);
+        // V11: el frontend migró SavePartNumberRackTypes (batch) → CreatePartNumberPerPerRackType
+        // (individual). Ya no existe el batch: upsertRack crea cada rack y, si el (PN, rackType)
+        // ya existe (duplicate key), cae a UpdatePartNumberPerPerRackType. Secuencial con withRetry.
         setPanelProgress(0, rackIn.length);
-        for (let i = 0; i < rackIn.length; i += 50) {
-          const batch = rackIn.slice(i, i + 50);
-          const batchNum = Math.floor(i / 50) + 1;
-          setPanelSubPhase(`Racks batch ${batchNum}/${rackTotalBatches} (${batch.length} racks)`);
-          setPanelProgress(Math.min(i + batch.length, rackIn.length), rackIn.length);
+        for (let i = 0; i < rackIn.length; i++) {
+          const rk = rackIn[i];
+          if (i % 50 === 0) setPanelSubPhase(`Racks ${i + 1}-${Math.min(i + 50, rackIn.length)}/${rackIn.length}`);
+          setPanelProgress(i + 1, rackIn.length);
           try {
-            await withRetry(() => api().query('SavePartNumberRackTypes', { input: { partNumberRackTypes: batch, partNumberRackTypeIdsToDelete: [] } }), `SaveRack batch ${batchNum}`, myRunId);
-          } catch (e) {
-            rackBatchFailures++;
-            const errMsg = String(e).substring(0, 200);
-            if (isDuplicateKeyError(e)) {
-              log(`  Racks batch ${batchNum}: duplicados, upsertando uno por uno...`);
-            } else {
-              log(`  Racks batch ${batchNum} FAIL (${batch.length} racks): ${errMsg}`);
-              errors.push(`SavePartNumberRackTypes batch ${batchNum}: ${errMsg.substring(0, 120)}`);
-            }
-            // Fallback uno-por-uno para AMBOS casos (duplicate o cualquier otro error).
-            for (const rk of batch) {
-              try {
-                await upsertRack(rk);
-              } catch (e2) {
-                rackIndividualFailures++;
-                errors.push(`Rack PN ${rk.partNumberId} rackTypeId ${rk.rackTypeId}: ${String(e2).substring(0, 100)}`);
-              }
-            }
+            await upsertRack(rk);
+          } catch (e2) {
+            rackIndividualFailures++;
+            errors.push(`Rack PN ${rk.partNumberId} rackTypeId ${rk.rackTypeId}: ${String(e2).substring(0, 100)}`);
           }
         }
       }
