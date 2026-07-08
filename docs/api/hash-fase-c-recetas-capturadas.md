@@ -74,16 +74,15 @@ Una mutation solo revela su hash cuando se **ejecuta**. Para hacerlo sin ensucia
 | `DeleteFolderById` | `282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15` | carpeta de prueba (crear+borrar) |
 | `GenerateDuckDb` | `8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0` | ninguno (regenera snapshot) |
 
-## Faltantes (7) — receta pendiente de ejecutar
+## Estado: 20/22 confirmadas (2026-07-08) — ninguna rotó
 
-| Mutation | Sentinela + ciclo | Riesgo |
+Capturadas en pasadas posteriores (hash == config): `CreatePartNumberInputSchema`, `ArchivePartNumberSpecAndParams`, `CreateWorkOrderLabel`, `DeleteWorkOrderLabels`, `CreateInventoryItemUnitConversion`.
+
+**Faltan 2** (no se han disparado — hay que hacer la acción EXACTA, distinta de las parientes ya capturadas):
+
+| Mutation | Applet | Acción exacta que la dispara |
 |---|---|---|
-| `SavePartNumberRackTypes` | PN sentinela → guardar rack types | reversible |
-| `CreatePartNumberInputSchema` | PN sentinela → crear input schema | reversible |
-| `ApplySpecsToPartNumber` | PN sentinela → aplicar specs | reversible (revertir con Archive/quitar) |
-| `ArchivePartNumberSpecAndParams` | PN sentinela → archivar specs | ⚠️ **destructiva** — archiva specs; revertir a mano |
-| `CreateWorkOrderLabel` | etiqueta de WO de prueba → crear | par con Delete |
-| `DeleteWorkOrderLabels` | la etiqueta recién creada → borrar | cierra el par |
-| `CreateInventoryItemUnitConversion` | item inventario sentinela → crear conversión | par con Update (ya capturada) |
+| `SavePartNumberRackTypes` | bulk-upload | **Guardar** el panel de Rack Types del PN (≠ Delete/Update rack, que sí capturaste) |
+| `ApplySpecsToPartNumber` | spec-migrator | **Aplicar** una spec completa al PN (≠ editar params `UpdatePartNumberSpecParam`/`AddParamsToPartNumber`, que sí capturaste) |
 
-Al capturarlas: verificar hash == config. Si todas IGUAL → las 22 mutations quedan confirmadas vigentes.
+Al capturarlas: verificar hash == config. Si ambas IGUAL → las 22 mutations quedan confirmadas vigentes y el runbook de Fase C está completo.
