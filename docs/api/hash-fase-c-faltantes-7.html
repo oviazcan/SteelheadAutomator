@@ -22,6 +22,8 @@
   .top{display:flex;gap:10px;align-items:flex-start} .top input{margin-top:3px;width:18px;height:18px;accent-color:var(--accent);flex:0 0 auto;cursor:pointer}
   .act{cursor:pointer;flex:1;font-weight:600} .meta{margin:6px 0 0 28px}
   .q{font-family:ui-monospace,Menlo,monospace;font-size:.78rem;background:var(--chip);color:var(--chip-ink);border-radius:6px;padding:2px 7px;margin:0 4px 4px 0;display:inline-block}
+  .app{font-size:.74rem;background:#e7f0fb;color:#1f5fa8;border-radius:6px;padding:2px 7px;margin:0 4px 4px 0;display:inline-block}
+  @media (prefers-color-scheme: dark){ .app{background:#152538;color:#7fb0e6} }
   .warn{color:var(--red);font-weight:700;font-size:.8rem}
   .bar{display:flex;align-items:center;gap:12px;margin:10px 0 0}
   .track{flex:1;height:8px;background:var(--line);border-radius:99px;overflow:hidden} .fill{height:100%;width:0;background:var(--accent);transition:width .25s}
@@ -43,13 +45,13 @@
     <h2>PartNumber sentinela (desarchivar → modificar → re-archivar)</h2>
     <ul class="check" data-group>
       <li><div class="top"><input type="checkbox"><span class="act">Guarda <b>Rack Types</b> en el PN sentinela</span></div>
-        <div class="meta"><span class="q">SavePartNumberRackTypes</span></div></li>
+        <div class="meta"><span class="q">SavePartNumberRackTypes</span> <span class="app">bulk-upload</span></div></li>
       <li><div class="top"><input type="checkbox"><span class="act">Crea un <b>Input Schema</b> en el PN sentinela</span></div>
-        <div class="meta"><span class="q">CreatePartNumberInputSchema</span></div></li>
+        <div class="meta"><span class="q">CreatePartNumberInputSchema</span> <span class="app">bulk-upload</span></div></li>
       <li><div class="top"><input type="checkbox"><span class="act"><b>Aplica specs</b> al PN sentinela</span></div>
-        <div class="meta"><span class="q">ApplySpecsToPartNumber</span></div></li>
+        <div class="meta"><span class="q">ApplySpecsToPartNumber</span> <span class="app">spec-migrator</span></div></li>
       <li><div class="top"><input type="checkbox"><span class="act"><b>Archiva specs y params</b> del PN sentinela <span class="warn">⚠️ destructiva — hazla al final y revierte a mano</span></span></div>
-        <div class="meta"><span class="q">ArchivePartNumberSpecAndParams</span></div></li>
+        <div class="meta"><span class="q">ArchivePartNumberSpecAndParams</span> <span class="app">spec-migrator</span></div></li>
     </ul>
   </div>
 
@@ -57,9 +59,9 @@
     <h2>Etiqueta de WO sentinela (crear + borrar = par)</h2>
     <ul class="check" data-group>
       <li><div class="top"><input type="checkbox"><span class="act"><b>Crea</b> una etiqueta de WO de prueba</span></div>
-        <div class="meta"><span class="q">CreateWorkOrderLabel</span></div></li>
+        <div class="meta"><span class="q">CreateWorkOrderLabel</span> <span class="app">wo-deadline-changer</span></div></li>
       <li><div class="top"><input type="checkbox"><span class="act"><b>Borra</b> esa misma etiqueta (cierra el par)</span></div>
-        <div class="meta"><span class="q">DeleteWorkOrderLabels</span></div></li>
+        <div class="meta"><span class="q">DeleteWorkOrderLabels</span> <span class="app">wo-deadline-changer</span></div></li>
     </ul>
   </div>
 
@@ -67,7 +69,7 @@
     <h2>Item de inventario sentinela</h2>
     <ul class="check" data-group>
       <li><div class="top"><input type="checkbox"><span class="act"><b>Crea una conversión de unidad</b> en el item sentinela</span></div>
-        <div class="meta"><span class="q">CreateInventoryItemUnitConversion</span> <span style="color:var(--muted);font-size:.82rem">(el par Update ya lo capturaste)</span></div></li>
+        <div class="meta"><span class="q">CreateInventoryItemUnitConversion</span> <span class="app">unit-autoconvert</span><span class="app">weight-quick-entry</span> <span style="color:var(--muted);font-size:.82rem">(el par Update ya lo capturaste)</span></div></li>
     </ul>
   </div>
 

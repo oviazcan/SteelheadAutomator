@@ -13,6 +13,26 @@ Una mutation solo revela su hash cuando se **ejecuta**. Para hacerlo sin ensucia
 
 > Regla de oro: la mutation se ejecuta sobre un **sentinela marcado**, nunca sobre un objeto real. Verificar hash capturado == config → vigente. Si difiere → rotó (actualizar config).
 
+## Mapeo mutation → applet (referencia: qué automatiza cada una)
+
+| Mutation | Applet(s) |
+|---|---|
+| `CreateMaintenanceEvent` / `UpdateMaintenanceEvent` / `CreateMaintenanceEventComment` | paros-linea, vale-almacen |
+| `SavePartNumber` / `UpdatePartNumber` / `CreatePartNumberGroup` / `DeletePartNumberRackType` / `UnsetPartNumberPriceAsDefaultPrice` / `UpdatePartNumberPerPerRackType` | bulk-upload |
+| `UpdatePartNumberSpecParam` | spec-migrator |
+| `AddParamsToPartNumber` | bulk-upload, spec-migrator |
+| `CreatePartNumberUserFile` | file-uploader |
+| `CreateUpdateDeleteRoutes` | auto-router (api/engine/panel) |
+| `CreateEmailLogReceivedOrder` | po-comparator |
+| `CreateInvoiceEmailLog` | (ninguno en remote/scripts — frontend nativo) |
+| `CreateStationInputSchema` | load-calculator (stations) |
+| `UpdateInventoryItemUnitConversion` / `CreateInventoryItemUnitConversion` | unit-autoconvert, weight-quick-entry |
+| `DeleteFolderById` | report-liberator |
+| `GenerateDuckDb` | report-regen |
+| `SavePartNumberRackTypes` / `CreatePartNumberInputSchema` | bulk-upload |
+| `ApplySpecsToPartNumber` / `ArchivePartNumberSpecAndParams` | spec-migrator |
+| `CreateWorkOrderLabel` / `DeleteWorkOrderLabels` | wo-deadline-changer |
+
 ## Recetas confirmadas (hash 2026-07-08 — todas IGUAL al config → vigentes)
 
 ### Evento de mantenimiento (sentinela efímero: crear → comentar → actualizar)
