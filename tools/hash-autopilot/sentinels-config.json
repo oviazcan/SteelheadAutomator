@@ -4,35 +4,54 @@
   "domain": 344,
   "entities": {
     "partNumber": {
-      "id": 0,
+      "id": 3770957,
       "screenPath": "/Domains/{domain}/PartNumbers/{id}",
       "marker": "Sentinela",
-      "_para": ["UpdatePartNumber"],
-      "_estrategia": "archived-mutate-restore"
+      "_para": [
+        "UpdatePartNumber"
+      ],
+      "_estrategia": "archived-mutate-restore",
+      "groupId": 60822
     },
     "quote": {
-      "id": 0,
+      "id": 288,
       "screenPath": "/Domains/{domain}/Quotes/{id}",
       "marker": "Sentinela",
-      "_para": ["UpdateQuote"],
+      "_para": [
+        "UpdateQuote"
+      ],
       "_estrategia": "archived-mutate-restore"
     },
     "receivedOrder": {
-      "id": 0,
+      "id": 1585,
       "screenPath": "/Domains/{domain}/SalesOrders/{id}",
       "marker": "Sentinela",
-      "_para": ["CreateReceivedOrder"],
+      "_para": [
+        "CreateReceivedOrder"
+      ],
       "_estrategia": "create-capture-cleanup",
       "_nota": "Create no muta un existente: crea una OV nueva marcada 'Sentinela' y luego la archiva."
     },
     "maintenanceNode": {
-      "id": 0,
+      "id": 55,
       "screenPath": "/Maintenance/Nodes/{id}",
       "marker": "Sentinela",
       "archived": true,
-      "opsGroup": ["CreateMaintenanceEvent", "CreateMaintenanceEventComment", "UpdateMaintenanceEvent"],
-      "_estrategia": "nested-unarchive",
-      "_pendiente": "CREAR un nodo de mantenimiento dedicado llamado 'Sentinela' y dejarlo ARCHIVADO. Ciclo: desarchivar nodo → crear evento → comentar/actualizar → archivar evento → archivar nodo (Fase C.5)."
+      "opsGroup": [
+        "CreateMaintenanceEvent",
+        "CreateMaintenanceEventComment",
+        "UpdateMaintenanceEvent"
+      ],
+      "_estrategia": "nested-unarchive"
+    },
+    "workOrder": {
+      "id": 11677,
+      "screenPath": "/Domains/{domain}/WorkOrders/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "(futuras mutations de OT)"
+      ]
     }
-  }
+  },
+  "_dominio": "MTY/344 (los sentinelas viven en MTY)"
 }
