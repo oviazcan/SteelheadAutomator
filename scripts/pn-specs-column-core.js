@@ -109,11 +109,19 @@
       const sp = n.specBySpecId; if (!sp) return;
       const id = sp.id;
       if (specMap.has(id)) return;
-      specMap.set(id, { specId: id, specName: sp.name || '(spec)', numericParams: [] });
+      // domainId + idInDomain + revisionNumber → URL de la spec (ver specUrl()).
+      specMap.set(id, {
+        specId: id,
+        specDomainId: sp.domainId != null ? sp.domainId : null,
+        specIdInDomain: sp.idInDomain != null ? sp.idInDomain : null,
+        specRevision: sp.revisionNumber != null ? sp.revisionNumber : null,
+        specName: sp.name || '(spec)',
+        numericParams: [],
+      });
       order.push(id);
     });
 
-    // 2) Parámetros numéricos activos, agrupados por spec.
+    // 2) Parámetros con VALOR NUMÉRICO, agrupados por spec.
     const seen = new Set();
     let total = 0;
     const paramNodes = (pn.partNumberSpecFieldParamsByPartNumberId && pn.partNumberSpecFieldParamsByPartNumberId.nodes) || [];
@@ -122,12 +130,29 @@
       const sfp = n.specFieldParamBySpecFieldParamId; if (!sfp) return;
       const sfs = sfp.specFieldSpecBySpecFieldSpecId; if (!sfs) return;
       const field = sfs.specFieldBySpecFieldId; if (!field) return;
-      if (field.type !== 'NUMBER') return;                    // solo numéricos
+
+      // CRITERIO (verificado con datos reales, PN 3029783): el parámetro es "numérico"
+      // si su VALOR trae números — NO por el specField.type. El valLabel (specFieldParam
+      // .name, lo que Steelhead muestra: "5 - 8 µm", "24 hrs.", "176 - 204 °C") contiene
+      // un dígito, o hay min/max/target. Así "Tiempo s/Corrosión Blanca" (BOOLEAN, valor
+      // "24 hrs." = cámara salina) SÍ sale, y "Adherencia" ("Sí o No") NO.
+      const valLabel = (sfp.name || '').trim();
+      const hasDigit = /\d/.test(valLabel);
+      const hasNumFields = sfp.minimumValue != null || sfp.maximumValue != null || sfp.targetValue != null;
+      if (!hasDigit && !hasNumFields) return;
+
       const spec = sfs.specBySpecId || {};
       const specId = spec.id;
-      const min = sfp.minimumValue, max = sfp.maximumValue, target = sfp.targetValue;
-      const key = specId + '|' + (field.name || '') + '|' + min + '|' + max + '|' + target;
-      if (seen.has(key)) return;                              // dedup defensivo
+
+      // Valor a mostrar: el valLabel legible de Steelhead cuando trae número; si no,
+      // se reconstruye de min/max/target + unidad.
+      const value = hasDigit ? valLabel : formatRange({
+        min: sfp.minimumValue, max: sfp.maximumValue, target: sfp.targetValue,
+        unit: unitSymbol(sfp.unitByUnitId && sfp.unitByUnitId.name),
+      });
+
+      const key = specId + '|' + (field.name || '') + '|' + value;
+      if (seen.has(key)) return;                              // dedup
       seen.add(key);
 
       // FUENTE DE VERDAD = partNumberSpecs (paso 1). Si la spec del param NO está
@@ -138,15 +163,7 @@
       const bucket = specMap.get(specId);
       if (!bucket) return;
 
-      const param = {
-        name: field.name || '(parámetro)',
-        min: min == null ? null : min,
-        max: max == null ? null : max,
-        target: target == null ? null : target,
-        unit: unitSymbol(sfp.unitByUnitId && sfp.unitByUnitId.name),
-      };
-      param.range = formatRange(param);
-      bucket.numericParams.push(param);
+      bucket.numericParams.push({ name: field.name || '(parámetro)', value: value });
       total++;
     });
 
@@ -166,10 +183,20 @@
       const head = s.specName;
       if (!s.numericParams.length) return head + ': —';
       const parts = s.numericParams.map(function (p) {
-        return p.range ? p.name + ' ' + p.range : p.name;
+        return p.value ? p.name + ' ' + p.value : p.name;
       });
       return head + ': ' + parts.join(' · ');
     }).join('  |  ');
+  }
+
+  // URL de la spec en Steelhead: /Domains/<domainId>/Specs/<idInDomain>/Revisions/<rev>
+  // (verificado en vivo — el href real de las specs en la app; NO es /Specs/<id>).
+  // Devuelve null si faltan domainId o idInDomain (→ el glue cae a texto plano).
+  function specUrl(spec) {
+    if (!spec || spec.specDomainId == null || spec.specIdInDomain == null) return null;
+    let u = '/Domains/' + spec.specDomainId + '/Specs/' + spec.specIdInDomain + '/Revisions';
+    if (spec.specRevision != null) u += '/' + spec.specRevision;
+    return u;
   }
 
   const api = {
@@ -182,6 +209,7 @@
     formatRange,
     extractSpecsWithNumericParams,
     formatCellText,
+    specUrl,
   };
   if (typeof window !== 'undefined') window.PnSpecsColumnCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
