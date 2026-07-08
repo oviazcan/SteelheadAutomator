@@ -346,7 +346,6 @@
         "GetReceivedOrdersWithReceivedOrderLineItems",
         "GetRecomputableAt",
         "GetUserEmailRecipients",
-        "InvoiceByIdInDomain",
         "InvoiceLowCode",
         "InvoiceLowCodeData",
         "InvoiceWithErrors",
