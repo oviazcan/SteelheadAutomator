@@ -65,7 +65,9 @@ const PnSpecsColumn = (() => {
       '.sa-pnspec-spec{margin:0 0 4px 0;}',
       '.sa-pnspec-spec:last-child{margin-bottom:0;}',
       '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;font-size:12px;}',
-      'a.sa-pnspec-spec-name{cursor:pointer;text-decoration:none;}',
+      // Link a la spec en el azul de link de Steelhead (rgb(9,105,218)) para que se
+      // note clicable. Sin subrayar por default (como los links nativos) + hover.
+      'a.sa-pnspec-spec-name{color:#0969da;cursor:pointer;text-decoration:none;}',
       'a.sa-pnspec-spec-name:hover{text-decoration:underline;}',
       '.sa-pnspec-param{display:inline-block;background:#eef6f2;border:1px solid #cfe6db;color:#14503a;',
       'border-radius:6px;padding:1px 6px;margin:2px 4px 0 0;font-size:11px;white-space:nowrap;}',
