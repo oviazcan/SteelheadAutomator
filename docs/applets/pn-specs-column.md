@@ -1,6 +1,6 @@
 # pn-specs-column — Specs + parámetros numéricos en el dashboard de Números de Parte
 
-**Versión:** 0.1.0 — **DEPLOYADO** (config 1.7.85, gh-pages, byte-exact verificado 2026-07-08). Core 14/14 golden + validado en vivo contra producción. **Pendiente:** run real del applet **integrado** (toggle real → enriquecimiento de la página → paginación) — ver nota de validación abajo.
+**Versión:** 0.1.1 — **DEPLOYADO**. Core 15/15 golden + validado en vivo. **0.1.1** corrige 2 bugs del primer run real del usuario (ver §Fixes 0.1.1). **0.1.0** deploy inicial (config 1.7.85).
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
@@ -76,6 +76,14 @@ Importa `host-cleanup-shared.js`. Aplica porque el toggle ON dispara ~50 `GetPar
 - ✅ **DOM en vivo**: `findHeaderAnchor` encuentra el ancla; columna inyectada (th + 50 td con pnId); **sobrevive el render de React**.
 - ✅ **Deploy**: config 1.7.85 en vivo; `pn-specs-column-core.js` + `pn-specs-column.js` servidos **byte-exact** (sha256 verificado vs `main:remote/`); hash `GetPartNumber` nuevo y app presentes en el config servido.
 - ⏳ **Pendiente (run real integrado)**: el intento de correr el applet completo desde una tab automatizada se topó con el **throttling de Chrome en tabs sin foco** (los `fetch` a `/graphql` y a gh-pages se congelan en background) — NO es un problema del applet; las piezas (fetch `GetPartNumber` 200 + extract + DOM) se validaron por separado. **Validación final la hace el usuario en foreground**: recargar la extensión (`chrome://extensions` → reload) → `/PartNumbers` → activar el toggle **🧪 Specs num.** en el header → confirmar chips (ej. `E27550 (Plata): Espesor 1.27–3.5 µm`), paginación (observer re-inyecta) y el contador `done/total`.
+
+## Fixes 0.1.1 (primer run real del usuario, 2026-07-08)
+
+Dos bugs reportados con screenshots (PNs `48186-064-50*` de SCHNEIDER ELECTRIC):
+
+**Bug #1 — la columna se desalineaba al filtrar/paginar.** El `<th>` se insertaba con `insertBefore(lastElementChild)` (posición *relativa*) una sola vez; al re-render de React el `<th>` viejo sobrevivía y React lo reposicionaba ("flotaba") mientras los `<td>` se recreaban en la penúltima → header y chips en columnas distintas. **Fix:** la columna es SIEMPRE la **última** celda (`appendChild`), **re-posicionada en cada sync** (`if (lastElementChild !== cell) appendChild`). Invariante: `<th>` y `<td>` siempre en la misma posición (última), sin importar cómo React reordene. Validado en vivo sobre la tabla MUI real (simulando re-render + flotar → `aligned:true`, índice 15/15).
+
+**Bug #2 — una spec ARCHIVADA (RC Ag) reaparecía; inconsistente con ASTM B700.** `extractSpecsWithNumericParams` (paso 2) creaba el bucket de la spec "al vuelo" desde un param activo. Al archivar una *spec* de un PN, Steelhead NO archiva cada `partNumberSpecFieldParam` → quedan params huérfanos activos apuntando a specs archivadas. RC Ag reaparecía (tenía un Espesor activo) pero ASTM B700 no (sin param activo) → la inconsistencia. **Fix:** `partNumberSpecsByPartNumberId` es la única fuente de verdad de specs activas; un param cuya spec no está en el mapa activo se **ignora** (no se inventan buckets). Golden test `NO resucita una spec ARCHIVADA…`.
 
 ## Pendientes / Fase 2
 

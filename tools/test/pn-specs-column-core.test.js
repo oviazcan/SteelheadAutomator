@@ -160,6 +160,31 @@ test('extract: spec activa SIN params numéricos se incluye vacía', () => {
   assert.strictEqual(r.totalNumericParams, 0);
 });
 
+test('extract: NO resucita una spec ARCHIVADA aunque su param siga activo (bug 48186-064-50MO)', () => {
+  // Caso real: al archivar la SPEC de un PN, Steelhead NO archiva cada
+  // partNumberSpecFieldParam individual → quedan params "huérfanos" activos
+  // apuntando a una spec archivada. La fuente de verdad es partNumberSpecs.
+  const pn = {
+    partNumberById: {
+      partNumberSpecsByPartNumberId: { nodes: [
+        { archivedAt: null, specBySpecId: { id: 100, name: 'FTR00047 (Plata)' } },
+        { archivedAt: '2026-01-01T00:00:00Z', specBySpecId: { id: 200, name: 'RC Ag (Plata)' } },   // archivada
+        { archivedAt: '2026-01-02T00:00:00Z', specBySpecId: { id: 300, name: 'ASTM B700 (Plata)' } }, // archivada
+      ]},
+      partNumberSpecFieldParamsByPartNumberId: { nodes: [
+        node(null, sfParam('Espesor', 'NUMBER', { min: 2, max: 4.5, unit: UM, specId: 100, specName: 'FTR00047 (Plata)' })),
+        // param ACTIVO de RC Ag (spec ARCHIVADA) → NO debe aparecer
+        node(null, sfParam('Espesor', 'NUMBER', { min: 2, max: 6, unit: UM, specId: 200, specName: 'RC Ag (Plata)' })),
+      ]},
+    },
+  };
+  const r = Core.extractSpecsWithNumericParams(pn);
+  assert.strictEqual(r.specs.length, 1, 'solo la spec activa FTR00047');
+  assert.strictEqual(r.specs[0].specName, 'FTR00047 (Plata)');
+  assert.strictEqual(r.totalNumericParams, 1, 'el param huérfano de RC Ag no cuenta');
+  assert.strictEqual(Core.formatCellText(r), 'FTR00047 (Plata): Espesor 2–4.5 µm');
+});
+
 test('extract: fail-safe ante shape vacío/inesperado', () => {
   assert.deepStrictEqual(Core.extractSpecsWithNumericParams({}), { specs: [], totalNumericParams: 0 });
   assert.deepStrictEqual(Core.extractSpecsWithNumericParams(null), { specs: [], totalNumericParams: 0 });
