@@ -1,6 +1,6 @@
 # pn-specs-column — Specs + parámetros numéricos en el dashboard de Números de Parte
 
-**Versión:** 0.1.0 (código completo + core 14/14 golden + validado en vivo contra producción; **pendiente run real del applet integrado vía extensión + deploy**)
+**Versión:** 0.1.0 — **DEPLOYADO** (config 1.7.85, gh-pages, byte-exact verificado 2026-07-08). Core 14/14 golden + validado en vivo contra producción. **Pendiente:** run real del applet **integrado** (toggle real → enriquecimiento de la página → paginación) — ver nota de validación abajo.
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
@@ -74,7 +74,8 @@ Importa `host-cleanup-shared.js`. Aplica porque el toggle ON dispara ~50 `GetPar
 - ✅ **Core**: 14/14 golden + payload real (mayo) + **datos reales de hoy** vía fetch en vivo → `44068-205-01` → `E27550 (Plata): Espesor 1.27–3.5 µm` (excluye BOOLEAN/DROPDOWN/archivados). PN sin specs (`SWB-00496986`) → celda vacía correcta.
 - ✅ **Hash `GetPartNumber`**: el de config (`8e3fdb52…`) **ROTÓ** (HTTP 400 "Must provide a query string"). Capturado el nuevo del front: **`5efd689d…`** (HTTP 200 verificado). Actualizado en `config.json`.
 - ✅ **DOM en vivo**: `findHeaderAnchor` encuentra el ancla; columna inyectada (th + 50 td con pnId); **sobrevive el render de React**.
-- ⏳ **Pendiente**: run real del applet **integrado** vía la extensión (toggle real → enriquecimiento de la página completa → paginación → re-inyección por observer → chips renderizados) + **deploy**.
+- ✅ **Deploy**: config 1.7.85 en vivo; `pn-specs-column-core.js` + `pn-specs-column.js` servidos **byte-exact** (sha256 verificado vs `main:remote/`); hash `GetPartNumber` nuevo y app presentes en el config servido.
+- ⏳ **Pendiente (run real integrado)**: el intento de correr el applet completo desde una tab automatizada se topó con el **throttling de Chrome en tabs sin foco** (los `fetch` a `/graphql` y a gh-pages se congelan en background) — NO es un problema del applet; las piezas (fetch `GetPartNumber` 200 + extract + DOM) se validaron por separado. **Validación final la hace el usuario en foreground**: recargar la extensión (`chrome://extensions` → reload) → `/PartNumbers` → activar el toggle **🧪 Specs num.** en el header → confirmar chips (ej. `E27550 (Plata): Espesor 1.27–3.5 µm`), paginación (observer re-inyecta) y el contador `done/total`.
 
 ## Pendientes / Fase 2
 
