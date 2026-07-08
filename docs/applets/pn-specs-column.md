@@ -1,6 +1,6 @@
 # pn-specs-column — Specs + parámetros numéricos en el dashboard de Números de Parte
 
-**Versión:** 0.1.1 — **DEPLOYADO**. Core 15/15 golden + validado en vivo. **0.1.1** corrige 2 bugs del primer run real del usuario (ver §Fixes 0.1.1). **0.1.0** deploy inicial (config 1.7.85).
+**Versión:** 0.1.2 — **DEPLOYADO**. Core 15/15 golden + validado en vivo. **0.1.2** ajustes de estilo (encabezado hereda el look nativo; separador gris punteado; toggle más delgado). **0.1.1** corrige 2 bugs del primer run real (ver §Fixes 0.1.1). **0.1.0** deploy inicial.
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
@@ -84,6 +84,14 @@ Dos bugs reportados con screenshots (PNs `48186-064-50*` de SCHNEIDER ELECTRIC):
 **Bug #1 — la columna se desalineaba al filtrar/paginar.** El `<th>` se insertaba con `insertBefore(lastElementChild)` (posición *relativa*) una sola vez; al re-render de React el `<th>` viejo sobrevivía y React lo reposicionaba ("flotaba") mientras los `<td>` se recreaban en la penúltima → header y chips en columnas distintas. **Fix:** la columna es SIEMPRE la **última** celda (`appendChild`), **re-posicionada en cada sync** (`if (lastElementChild !== cell) appendChild`). Invariante: `<th>` y `<td>` siempre en la misma posición (última), sin importar cómo React reordene. Validado en vivo sobre la tabla MUI real (simulando re-render + flotar → `aligned:true`, índice 15/15).
 
 **Bug #2 — una spec ARCHIVADA (RC Ag) reaparecía; inconsistente con ASTM B700.** `extractSpecsWithNumericParams` (paso 2) creaba el bucket de la spec "al vuelo" desde un param activo. Al archivar una *spec* de un PN, Steelhead NO archiva cada `partNumberSpecFieldParam` → quedan params huérfanos activos apuntando a specs archivadas. RC Ag reaparecía (tenía un Espesor activo) pero ASTM B700 no (sin param activo) → la inconsistencia. **Fix:** `partNumberSpecsByPartNumberId` es la única fuente de verdad de specs activas; un param cuya spec no está en el mapa activo se **ignora** (no se inventan buckets). Golden test `NO resucita una spec ARCHIVADA…`.
+
+## Estilo 0.1.2 (integración visual)
+
+A pedido del usuario, la columna se integra al look nativo en vez de destacar en verde:
+- **Encabezado**: el `<th>` **hereda la `className` MUI** de un th nativo (en `ensureHeaderCell`) → texto idéntico (font/peso/color/padding). Verificado: `getComputedStyle` de mi th == nativo (12px / 600 / blanco / Roboto / left). El td también hereda la className de una celda nativa.
+- **Separador**: `border-left: 1px dashed #c7ccd1` (gris punteado sutil) en vez del verde sólido 3px. Se quitó el fondo verde de th/td (se veía como parche sobre el header oscuro).
+- **Toggle**: más delgado — `padding 2px 8px`, switch `26×14`, font 11px, sin el border-left grueso.
+- La señal "esto es de la extensión" queda en los **chips verdes** de los parámetros y en el toggle dark-mode.
 
 ## Pendientes / Fase 2
 
