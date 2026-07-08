@@ -179,27 +179,37 @@ async function main() {
     writeNeedsAttention(notCapturedNew, catalog.routes, RUN_DATE);
   }
 
-  // Notificación por correo (Task 8) — solo cuando hay algo que reportar.
+  // Notificación por correo — UN solo correo con el reporte completo de éxito/fallo.
+  // (Antes se mandaban hasta 6 correos separados; ahora se consolida en un reporte único.)
+  const uncoveredNew = plan0.uncovered.filter((op) => !knownNoRoute.has(op));
   if (!DRY) {
-    if (deployed) {
-      const detalle = plan.toDeploy.map((r) => `• ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash}`).join('\n');
-      notify('exito', `${plan.toDeploy.length} hash(es) rotado(s) regenerado(s)`, `hash-autopilot detectó y deployó:\n\n${detalle}\n\nconfig.json bumpeado + gh-pages actualizado.`);
-    } else if (plan.massBrake) {
+    const sec = [];
+    if (deployed && plan.toDeploy.length) {
+      sec.push(`✅ CORREGIDAS Y DEPLOYADAS (${plan.toDeploy.length}):\n${plan.toDeploy.map((r) => `   • ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash.slice(0, 8)}…`).join('\n')}`);
+    }
+    if (plan.massBrake) {
       const rotados = results.filter((r) => r.verdict === 'rotadoValidado').map((r) => r.op).join(', ');
-      notify('revision', 'freno de masa — no se deployó', `${plan.reason}.\n\nRotados: ${rotados}\n\nRevisa manualmente antes de deployar (posible captura corrupta o cambio grande de Steelhead).`);
+      sec.push(`⚠️ FRENO DE MASA — NO se deployó (${plan.reason}):\n   Rotados detectados: ${rotados}\n   Revisa manualmente (posible captura corrupta o cambio grande de Steelhead).`);
     }
     if (plan.suspicious.length) {
-      notify('revision', `${plan.suspicious.length} hash(es) sospechoso(s)`, `Difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => `• ${r.op}`).join('\n')}\n\nRevisa con hash-scanner.`);
+      sec.push(`⚠️ SOSPECHOSOS (${plan.suspicious.length}) — difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => `   • ${r.op}`).join('\n')}`);
     }
     if (notCapturedNew.length) {
-      notify('fallo', `${notCapturedNew.length} op(s) no capturada(s)`, `Las recetas no dispararon estas ops (posible cambio de UI):\n${notCapturedNew.map((r) => `• ${r.op}`).join('\n')}\n\nSe dejó señal para re-descubrir la receta.`);
+      sec.push(`❌ QUERIES NO CAPTURADAS (${notCapturedNew.length}) — la receta no disparó la op (por afinar la ruta):\n${notCapturedNew.map((r) => `   • ${r.op}`).join('\n')}`);
     }
-    const uncoveredNew = plan0.uncovered.filter((op) => !knownNoRoute.has(op));
     if (uncoveredNew.length) {
-      notify('fallo', `${uncoveredNew.length} query(s) stale sin ruta`, `El validator marcó estas queries rotadas pero no hay ruta en route-catalog.json (pendiente Fase B):\n${uncoveredNew.map((op) => `• ${op}`).join('\n')}`);
+      sec.push(`❌ QUERIES SIN RUTA (${uncoveredNew.length}) — stale sin ruta en route-catalog.json:\n${uncoveredNew.map((op) => `   • ${op}`).join('\n')}`);
     }
     if (staleMuts.length) {
-      notify('revision', `${staleMuts.length} mutation(s) rotada(s)`, `El validator marcó estas MUTATIONS rotadas. Fase C (ciclo sentinela) aún no implementada — captura manual por ahora:\n${staleMuts.map((op) => `• ${op}`).join('\n')}`);
+      sec.push(`🔧 MUTATIONS ROTADAS (${staleMuts.length}) — Fase C (ciclo sentinela) pendiente; captura manual por ahora:\n${staleMuts.map((op) => `   • ${op}`).join('\n')}`);
+    }
+    if (sec.length) {
+      const nCorregidas = deployed ? plan.toDeploy.length : 0;
+      const nPendientes = notCapturedNew.length + uncoveredNew.length + staleMuts.length + plan.suspicious.length;
+      const tipo = plan.massBrake ? 'revision' : nPendientes === 0 ? 'exito' : nCorregidas > 0 ? 'revision' : 'fallo';
+      const asunto = `hash-autopilot: ${nCorregidas} corregida(s), ${nPendientes} pendiente(s)`;
+      const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
+      notify(tipo, asunto, cuerpo);
     }
   }
   return { results, plan, deployed };
