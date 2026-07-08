@@ -60,14 +60,39 @@
     return (sensors || []).filter(function (s) { return s && s.measurementType === 'NUMBER'; });
   }
 
-  // Etiqueta legible para el combo: la ESTACIÓN distingue mejor que el nombre
-  // (todos comparten "Concentración de Plata Metálica"). Fallback al nombre.
+  // Colapsa espacios (los nombres del API traen espacios de más / iniciales)
+  // PRESERVANDO el casing — a diferencia de normalizeName, esto es para mostrar.
+  function collapseSpaces(s) {
+    return (s == null ? '' : String(s)).replace(/\s+/g, ' ').trim();
+  }
+
+  // Cola de la ESTACIÓN sin el prefijo de tokens que ya comparte con el NOMBRE del
+  // sensor (típicamente el código, p.ej. "T203-TI00-011"), para no repetirlo en la
+  // etiqueta. Compara token a token, case-insensitive, y devuelve el resto de la
+  // estación con su casing original. `name`/`station` ya vienen con espacios colapsados.
+  function stationTail(name, station) {
+    const nameToks = name ? name.split(' ') : [];
+    const stToks = station ? station.split(' ') : [];
+    let i = 0;
+    while (i < nameToks.length && i < stToks.length &&
+      nameToks[i].toLowerCase() === stToks[i].toLowerCase()) i++;
+    return stToks.slice(i).join(' ').trim();
+  }
+
+  // Etiqueta legible para el combo: el NOMBRE del sensor y, entre paréntesis, la
+  // ESTACIÓN — quitándole el prefijo (código) que ya aparece en el nombre para no
+  // duplicarlo. Ej.: name="T203-TI00-011 Concentración de Plata Metálica",
+  // station="T203-TI00-011 Plata Silvrex (B-1)"
+  //   → "T203-TI00-011 Concentración de Plata Metálica (Plata Silvrex (B-1))".
+  // Fallbacks: sin estación → solo el nombre; sin nombre → la estación; nada → "(sensor)".
   function sensorLabel(sensor) {
     if (!sensor) return '';
-    const st = sensor.station && String(sensor.station).trim();
-    if (st) return st;
-    const nm = sensor.name && String(sensor.name).trim();
-    return nm || '(sensor)';
+    const name = collapseSpaces(sensor.name);
+    const station = collapseSpaces(sensor.station);
+    if (!name) return station || '(sensor)';
+    if (!station) return name;
+    const tail = stationTail(name, station);
+    return tail ? name + ' (' + tail + ')' : name;
   }
 
   // Deriva el valor que debe mostrar el combo a partir del estado real de los
@@ -125,6 +150,8 @@
     nextHideStep,
     normalizeName,
     filterNumericSensors,
+    collapseSpaces,
+    stationTail,
     sensorLabel,
     deriveComboValue,
     planIsolation,
