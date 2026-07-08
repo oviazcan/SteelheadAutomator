@@ -13,6 +13,7 @@ import { installInterceptor, runRecipe } from './recipe-runner.mjs';
 import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { selectRoutes, opsToCapture, staleMutations } from './route-planner.mjs';
+import { pendingRepairs, journalClose } from './sentinels.mjs';
 
 // Fecha YYYY-MM-DD en hora LOCAL — debe coincidir con la que validate-hashes.py
 // usa para nombrar tools/.hash-validation/<date>.json (datetime.now(), local). NO
@@ -84,6 +85,15 @@ async function main() {
   const wantOps = opsToCapture(validatorResult, SESSION_SENSITIVE);
   const plan0 = selectRoutes(wantOps, catalog);
   const staleMuts = staleMutations(validatorResult);
+  // Fase C: mutations stale con sentinela declarado (entidad con la op en _para/opsGroup + id real).
+  const sentinelsConfig = JSON.parse(readFileSync(join(__dirname, 'sentinels-config.json'), 'utf8'));
+  const mutEntityType = (op) => {
+    for (const [type, e] of Object.entries(sentinelsConfig.entities || {})) {
+      if (e && e.id && ((e._para || []).includes(op) || (e.opsGroup || []).includes(op))) return type;
+    }
+    return null;
+  };
+  const capturableMuts = staleMuts.filter((op) => mutEntityType(op));
   console.log(`Ops a capturar (${wantOps.length}): ${wantOps.join(', ')}`);
   console.log(`Rutas seleccionadas (${plan0.routes.length}): ${plan0.routes.map((r) => r.id).join(', ') || '(ninguna)'}`);
   if (plan0.uncovered.length) console.log(`⚠️ Queries stale SIN ruta en catálogo: ${plan0.uncovered.join(', ')} (Fase B)`);
@@ -123,6 +133,31 @@ async function main() {
     }
   }
 
+  // ── Fase C: capturar mutations stale vía ciclos sentinela headless ──────────
+  if (capturableMuts.length) {
+    const { runMutationCycle } = await import('./mutation-runner.mjs');
+    const { makeDeps } = await import('./mutation-deps.mjs');
+    const deps = makeDeps(sentinelsConfig, sink);
+    // Reparar ciclos sucios de una corrida previa interrumpida ANTES de abrir nuevos.
+    for (const rep of pendingRepairs(deps.readJournal())) {
+      console.log(`  ⚠️ ciclo sentinela sucio previo: ${rep.entityType}/${rep.op} — restaurando`);
+      try {
+        await deps.doRestore(page, { sentinel: { entityType: rep.entityType } });
+        deps.writeJournal(journalClose(deps.readJournal(), rep.entityType));
+      } catch (e) { console.log(`     no se pudo restaurar ${rep.entityType}: ${String(e).slice(0, 80)}`); }
+    }
+    for (const op of capturableMuts) {
+      const entityType = mutEntityType(op);
+      if (DRY) { console.log(`→ (dry) ciclo mutation "${op}" sobre sentinela ${entityType} #${sentinelsConfig.entities[entityType].id}`); continue; }
+      const route = { captures: [op], sentinel: { entityType } };
+      try {
+        console.log(`→ ciclo mutation "${op}" sobre sentinela ${entityType}`);
+        const res = await runMutationCycle(page, route, sentinelsConfig, sink, deps);
+        console.log(`   ${res.captured ? 'capturó ' + op : 'no capturó (' + (res.reason || 'sin hash') + ')'}`);
+      } catch (e) { console.log(`  ⚠️ ciclo "${op}" falló: ${String(e).slice(0, 120)}`); }
+    }
+  }
+
   await browser.close();
 
   // Auth check: si no capturó NADA, la sesión no autenticó (tokens vencidos).
@@ -136,7 +171,7 @@ async function main() {
   // Clasificar cada op target: liveHash capturado vs config; validación por
   // RESPUESTA capturada (responseOk = el frontend obtuvo data sin errors).
   const cfgHashes = readConfigHashes(CONFIG_PATH);
-  const results = wantOps.map((op) => {
+  const results = [...wantOps, ...capturableMuts].map((op) => {
     const liveHash = sink.hashes[op] ?? null;
     const cfgHash = cfgHashes[op] ?? null;
     const ok = !!sink.responseOk[op];
