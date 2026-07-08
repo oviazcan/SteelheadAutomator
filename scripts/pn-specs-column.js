@@ -43,31 +43,32 @@ const PnSpecsColumn = (() => {
   function injectStyles() {
     if (document.getElementById('sa-pnspec-style')) return;
     const css = [
-      // Toggle en el header (UI nuestra → dark-mode compacto, distinguible de SH)
-      '.sa-pnspec-toggle{display:inline-flex;align-items:center;gap:8px;background:#1c2430;',
-      'color:#e6e9ee;border:1px solid #2b3645;border-left:3px solid #13a36f;border-radius:9px;',
-      'padding:6px 10px;margin:0 8px;font-size:12px;font-weight:600;cursor:pointer;user-select:none;',
-      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;}',
+      // Toggle en el header (UI nuestra → dark-mode; delgado para no abultar la barra)
+      '.sa-pnspec-toggle{display:inline-flex;align-items:center;gap:6px;background:#1c2430;',
+      'color:#e6e9ee;border:1px solid #2b3645;border-radius:6px;',
+      'padding:2px 8px;margin:0 8px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;line-height:1.35;}',
       '.sa-pnspec-toggle:hover{border-color:#13a36f;}',
-      '.sa-pnspec-sw{position:relative;width:34px;height:18px;border-radius:10px;',
+      '.sa-pnspec-sw{position:relative;width:26px;height:14px;border-radius:7px;',
       'background:#394452;transition:background .15s;flex:0 0 auto;}',
-      '.sa-pnspec-sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;',
+      '.sa-pnspec-sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;',
       'border-radius:50%;background:#e6e9ee;transition:transform .15s;}',
       '.sa-pnspec-toggle.on .sa-pnspec-sw{background:#13a36f;}',
-      '.sa-pnspec-toggle.on .sa-pnspec-sw::after{transform:translateX(16px);}',
-      '.sa-pnspec-count{font-weight:400;color:#9aa7b5;font-size:11px;}',
-      // Columna (enriquecimiento de la tabla de SH → clara, pero con acento verde)
-      'th.sa-pnspec-cell{border-left:3px solid #13a36f !important;background:rgba(19,163,111,.08) !important;',
-      'white-space:nowrap;font-weight:700;}',
-      'td.sa-pnspec-cell{border-left:3px solid #13a36f !important;background:rgba(19,163,111,.04);',
-      'font-size:12px;line-height:1.5;vertical-align:top;min-width:200px;max-width:340px;padding:6px 10px;}',
+      '.sa-pnspec-toggle.on .sa-pnspec-sw::after{transform:translateX(12px);}',
+      '.sa-pnspec-count{font-weight:400;color:#9aa7b5;font-size:10px;}',
+      // Columna: hereda el look nativo de la tabla (el th/td copia la className MUI);
+      // aquí solo el separador sutil (gris punteado) y el layout de los chips. NO se
+      // fuerza font-weight/color/background del texto → el encabezado se ve igual que
+      // los nativos.
+      'th.sa-pnspec-cell{border-left:1px dashed #c7ccd1 !important;white-space:nowrap;}',
+      'td.sa-pnspec-cell{border-left:1px dashed #c7ccd1 !important;vertical-align:top;min-width:180px;max-width:340px;}',
       '.sa-pnspec-spec{margin:0 0 4px 0;}',
       '.sa-pnspec-spec:last-child{margin-bottom:0;}',
-      '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;}',
+      '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;font-size:12px;}',
       '.sa-pnspec-param{display:inline-block;background:#eef6f2;border:1px solid #cfe6db;color:#14503a;',
       'border-radius:6px;padding:1px 6px;margin:2px 4px 0 0;font-size:11px;white-space:nowrap;}',
-      '.sa-pnspec-muted{color:#8a97a5;font-style:italic;}',
-      '.sa-pnspec-err{color:#b04a3a;}',
+      '.sa-pnspec-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
+      '.sa-pnspec-err{color:#b04a3a;font-size:12px;}',
       // Toast (dark-mode)
       '.sa-pnspec-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;',
       'background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;',
@@ -165,7 +166,11 @@ const PnSpecsColumn = (() => {
     let th = headRow.querySelector(':scope > .sa-pnspec-cell');
     if (!th) {
       th = document.createElement('th');
-      th.className = 'sa-pnspec-cell';
+      // Hereda la className MUI de un th nativo → el texto del encabezado se ve
+      // igual que los demás (mismo font/peso/color/padding). Nuestra marca es solo
+      // el separador punteado gris de `.sa-pnspec-cell`.
+      const nativeTh = headRow.querySelector('th:not(.sa-pnspec-cell)');
+      th.className = (nativeTh ? nativeTh.className + ' ' : '') + 'sa-pnspec-cell';
       th.textContent = COL_LABEL;
     }
     if (headRow.lastElementChild !== th) headRow.appendChild(th);   // (re)posiciona al final
@@ -187,7 +192,9 @@ const PnSpecsColumn = (() => {
         const link = tr.querySelector('td a[href*="/PartNumbers/"]');
         const pnId = link ? Core().parsePartNumberId(link.getAttribute('href') || link.href) : null;
         td = document.createElement('td');
-        td.className = 'sa-pnspec-cell';
+        // Hereda la className MUI de una celda nativa (padding/borde/tipografía de fila).
+        const nativeTd = tr.querySelector('td:not(.sa-pnspec-cell)');
+        td.className = (nativeTd ? nativeTd.className + ' ' : '') + 'sa-pnspec-cell';
         if (pnId) {
           td.setAttribute('data-sa-pnid', String(pnId));
           const cached = cache().get(pnId);
