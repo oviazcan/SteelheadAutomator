@@ -17,7 +17,7 @@ const PnSpecsColumn = (() => {
   const Cleanup = () => window.SteelheadHostCleanup;
 
   const STORAGE_KEY = 'sa_pn_specs_col_enabled';   // persistente entre sesiones
-  const COL_LABEL = 'Specs / Params num.';
+  const COL_LABEL = 'Especificaciones';
   const MAX_CONC = 4;              // GetPartNumber en paralelo (pesado)
   const MIN_GAP_MS = 130;          // ~7 req/s: no saturar el gateway
   const RETRY_BACKOFF = [0, 800, 2500];   // reintentos SOLO en transitorios
@@ -117,7 +117,7 @@ const PnSpecsColumn = (() => {
     wrap.id = 'sa-pnspec-toggle';
     wrap.title = 'Muestra las specs y parámetros numéricos de cada NP (hace 1 consulta por NP visible).';
     const sw = document.createElement('span'); sw.className = 'sa-pnspec-sw';
-    const txt = document.createElement('span'); txt.textContent = '🧪 Specs num.';
+    const txt = document.createElement('span'); txt.textContent = '🧪 Specs';
     const cnt = document.createElement('span'); cnt.className = 'sa-pnspec-count'; cnt.id = 'sa-pnspec-count';
     const mem = document.createElement('span'); mem.className = 'sa-pnspec-count'; mem.id = 'sa-pnspec-mem'; // el mem monitor escribe aquí
     wrap.appendChild(sw); wrap.appendChild(txt); wrap.appendChild(cnt); wrap.appendChild(mem);
