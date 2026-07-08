@@ -88,7 +88,7 @@ export function isSentinel(obj) {
   "entities": {
     "partNumber": { "id": 0, "screenPath": "/Domains/{domain}/PartNumbers/{id}", "marker": "Sentinela" },
     "quote":      { "id": 0, "screenPath": "/Domains/{domain}/Quotes/{id}", "marker": "Sentinela" },
-    "maintenanceNode": { "id": 0, "screenPath": "/Maintenance/Nodes/{id}", "marker": "Sentinela", "_pendiente": "crear nodo sentinela dedicado" }
+    "maintenanceNode": { "id": 0, "screenPath": "/Maintenance/Nodes/{id}", "marker": "Sentinela", "archived": true, "opsGroup": ["CreateMaintenanceEvent", "CreateMaintenanceEventComment", "UpdateMaintenanceEvent"], "_pendiente": "crear nodo sentinela dedicado ARCHIVADO (ciclo anidado — ver Fase C.5)" }
   }
 }
 ```
@@ -214,6 +214,63 @@ test('planMutationCapture: create-capture-cleanup corre si hay entidad', () => {
 - [ ] **Task 10:** Con el HTML del flujo de crear OV: `doMutate` crea una OV de prueba (marcada "Sentinela"); `doRestore` la **archiva/borra**. Test con `page` fake. Corrida supervisada: verificar que la OV creada quedó archivada (no en producción activa) + hash capturado + deploy + correo.
 
 ---
+
+## Fase C.5 — Nodo de mantenimiento (ciclo anidado "desarchivar-padre")
+
+> **Aclaración del usuario:** el nodo de mantenimiento **"Sentinela" vive ARCHIVADO**, y su ciclo es de **dos niveles**: `desarchivar el nodo → crear el evento → crear comentarios / actualizar el evento → archivar el evento → archivar el nodo`. Es la estrategia más rica: captura **varias mutations en un solo ciclo** (`CreateMaintenanceEvent`, `CreateMaintenanceEventComment`, `UpdateMaintenanceEvent`), y todo lo creado (evento) + el objeto padre (nodo) vuelven a estado archivado.
+
+> **PREREQUISITO:** crear un **nodo de mantenimiento dedicado** con "Sentinela" en el nombre y dejarlo **archivado**. (El scan manual previo usó un nodo existente; para automatizar se necesita uno sentinela propio, desechable.)
+
+### Task 12: Estrategia `nested-unarchive` en `sentinels.mjs`
+
+**Files:**
+- Modify: `tools/hash-autopilot/sentinels.mjs`
+- Test: `tools/test/sentinels-strategy.test.js`
+
+**Interfaces:**
+- Produces: `strategyFor` reconoce el grupo de mantenimiento como `nested-unarchive`; `planMutationCapture` acepta un **grupo** de ops (`opsGroup`) bajo un padre archivado, devolviendo `{action:'run', strategy:'nested-unarchive', parentId, ops}`.
+
+- [ ] **Step 1: Test que falla** — en `sentinels-strategy.test.js`:
+```javascript
+test('planMutationCapture: grupo de mantenimiento → nested-unarchive', () => {
+  const cfg = { entities: { maintenanceNode: { id: 0, opsGroup: ['CreateMaintenanceEvent','CreateMaintenanceEventComment','UpdateMaintenanceEvent'] } } };
+  const p = planMutationCapture('CreateMaintenanceEvent', cfg, 'maintenanceNode');
+  assert.equal(p.strategy, 'nested-unarchive');
+  assert.deepEqual(p.ops, ['CreateMaintenanceEvent','CreateMaintenanceEventComment','UpdateMaintenanceEvent']);
+});
+```
+- [ ] **Step 2: Correr y ver fallar.**
+- [ ] **Step 3: Implementar** — en `planMutationCapture`, si la entidad declara `opsGroup`, devolver `{action:'run', strategy:'nested-unarchive', entityType, parentId: ent.id, ops: ent.opsGroup}`.
+- [ ] **Step 4: Correr y ver pasar.**
+- [ ] **Step 5: Commit.**
+
+### Task 13: deps de mantenimiento (ciclo anidado, orden inverso al restaurar)
+
+**Files:**
+- Modify: `tools/hash-autopilot/mutation-deps.mjs`
+- Modify: `tools/hash-autopilot/mutation-runner.mjs` (soportar `nested-unarchive`: capturar múltiples ops en un ciclo)
+- Test: `tools/test/mutation-deps.test.js`
+
+**Interfaces:**
+- `loadObject(page, parentId) → nodo` — verificar `isSentinel` (nombre "Sentinela").
+- `doMutate` (nested): `unarchiveNode(parentId) → createEvent → createComment → updateEvent`, capturando del `sink` los hashes de las 3 ops.
+- `doRestore` (nested, **orden inverso, SIEMPRE en finally**): `archiveEvent → archiveNode`.
+
+- [ ] **Step 1: Test con `page` fake** — el ciclo desarchiva, crea, y al final deja llamadas de `archiveEvent`+`archiveNode` registradas:
+```javascript
+test('doMutate/doRestore de mantenimiento: desarchiva, opera, y restaura en orden inverso', async () => {
+  const calls = [];
+  const page = { goto: async () => {}, evaluate: async () => ({ name: 'Nodo Sentinela' }),
+    click: async (sel) => calls.push(sel) };
+  // ... makeDeps con la entidad maintenanceNode; correr doMutate luego doRestore
+  // assert: calls incluye unarchive antes de create, y archiveEvent antes de archiveNode en restore
+});
+```
+- [ ] **Step 2: Correr y ver fallar.**
+- [ ] **Step 3: Implementar** con el **HTML real** del flujo de mantenimiento (desarchivar nodo, crear evento, comentar, actualizar, archivar evento, archivar nodo). `doRestore` archiva evento y nodo en `finally`, en orden inverso a la creación.
+- [ ] **Step 4: Correr y ver pasar.**
+- [ ] **Step 5: Corrida SUPERVISADA** — verificar en el ERP que el nodo Y el evento quedaron **archivados** al final, y que se capturaron los 3 hashes. Deploy de los que difieran + correo consolidado.
+- [ ] **Step 6: Commit.**
 
 ## Fase C.4 — Activación al launchd
 
