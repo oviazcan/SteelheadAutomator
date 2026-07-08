@@ -10,6 +10,8 @@ para que el operador solo **destache el que quiere ver**. Sin esto, cada dashboa
 - **0.1.0** (Fase 1) — **VALIDADO en vivo end-to-end** (config 1.7.73). Auto-esconder todos al entrar.
 - **0.2.0** (Fase 2, config 1.7.77) — **combo para AISLAR un sensor NUMBER** en ambas vistas. Core 20/20 golden.
   Isolate validado en vivo (14→1); combo/intercepción validados por tests + anclas DOM (ver §Validación Fase 2).
+- **0.2.1** (fix etiqueta, 2026-07-07) — el combo mostraba **solo la estación**; ahora muestra **nombre del sensor +
+  estación entre paréntesis** sin repetir el código compartido (`sensorLabel`/`stationTail`, core 21/21 golden). Ver §Fase 2 "Etiqueta".
 Config `sensor-graph-hide-all` con `autoInject:true`. Scripts: `sensor-graph-hide-all-core.js` + `sensor-graph-hide-all.js`.
 
 ## Modelo (confirmado en vivo 2026-07-07, dashboard `/SensorDashboards/117` "Concentración de Plata")
@@ -97,8 +99,14 @@ Un combo dark-mode (`<select>`) que lista **solo los sensores NUMBER** (excluye 
   `sel.value` (propiedad, no muta el DOM). Un `MutationObserver` debounced inyecta/sincroniza; teardown al salir del dashboard.
 - **Blindaje:** la Fase 2 en `init` va en `try/catch` — un bug del combo NO tumba la Fase 1 ni al resto del app (además el
   `try/catch` interno de `injectAppScripts` aísla errores de runtime del resto de apps auto-inyectados).
-- **Etiqueta:** por estación (`sensorLabel` → `stationByStationId.name`, ej. "T203-TI00-011 Plata Silvrex (B-1)"). Opciones:
-  `— elige sensor —` / `Todos` / `Ninguno` / cada sensor NUMBER. `textContent` (no innerHTML → sin XSS).
+- **Etiqueta (v0.2.1):** **nombre del sensor + estación entre paréntesis**, quitándole a la estación el prefijo
+  (código, p.ej. `T203-TI00-011`) que ya aparece en el nombre para **no duplicarlo** — `sensorLabel` calcula el
+  prefijo de tokens compartido case-insensitive (`stationTail`) y compone `name + " (" + tail + ")"`. Ej.:
+  `"T203-TI00-011 Concentración de Plata Metálica (Plata Silvrex (B-1))"`. Antes (v0.2.0) mostraba **solo la
+  estación** (`stationByStationId.name`) — bug reportado por el operador (2026-07-07): el combo escondía el nombre
+  del sensor y solo se veía la estación. El `option.value` sigue siendo `norm` del **nombre** → el fix es puramente
+  visual, no toca el mecanismo de aislar. Opciones: `— elige sensor —` / `Todos` / `Ninguno` / cada sensor NUMBER.
+  `textContent` (no innerHTML → sin XSS).
 
 ### Validación Fase 2 (2026-07-07)
 - **Core 20/20 golden**: `filterNumericSensors`, `sensorLabel`, `deriveComboValue`, `planIsolation`, `normalizeName`,

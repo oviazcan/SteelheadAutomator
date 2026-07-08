@@ -87,10 +87,40 @@ test('filterNumericSensors: solo NUMBER, excluye BOOLEAN/TEXT', () => {
   assert.deepStrictEqual(Core.filterNumericSensors(null), []);
 });
 
-test('sensorLabel: prefiere la estación, fallback al nombre', () => {
-  assert.strictEqual(Core.sensorLabel({ name: 'T203-TI00-011 Concentración', station: 'T203-TI00-011 Plata Silvrex (B-1)' }), 'T203-TI00-011 Plata Silvrex (B-1)');
+test('sensorLabel: nombre del sensor + estación entre paréntesis, sin repetir el código', () => {
+  // Caso real: name y station comparten el código "T203-TI00-011" → aparece una sola vez.
+  assert.strictEqual(
+    Core.sensorLabel({ name: 'T203-TI00-011 Concentración de Plata Metálica', station: 'T203-TI00-011 Plata Silvrex (B-1)' }),
+    'T203-TI00-011 Concentración de Plata Metálica (Plata Silvrex (B-1))'
+  );
+  // Espacios de más / inicial en el nombre: se colapsan al mostrar.
+  assert.strictEqual(
+    Core.sensorLabel({ name: ' T110-TI00-012  Concentración de Plata Metálica', station: 'T110-TI00-012 Plata Silversene' }),
+    'T110-TI00-012 Concentración de Plata Metálica (Plata Silversene)'
+  );
+  // Estación sin sufijo entre paréntesis: sigue bien.
+  assert.strictEqual(
+    Core.sensorLabel({ name: 'T107-TI00-018 Concentración de Plata Metálica', station: 'T107-TI00-018 Plata Silvrex' }),
+    'T107-TI00-018 Concentración de Plata Metálica (Plata Silvrex)'
+  );
+  // Código DISTINTO entre name y station → no comparten prefijo → estación completa.
+  assert.strictEqual(
+    Core.sensorLabel({ name: 'T114-LI-01 Temperatura', station: 'T115-XX-02 Cromo Duro' }),
+    'T114-LI-01 Temperatura (T115-XX-02 Cromo Duro)'
+  );
+  // Estación == nombre completo (mismo prefijo consume todo): no agrega "()" vacío.
+  assert.strictEqual(Core.sensorLabel({ name: 'T1 Plata Silvrex', station: 'T1 Plata Silvrex' }), 'T1 Plata Silvrex');
+  // Fallbacks.
   assert.strictEqual(Core.sensorLabel({ name: 'Solo Nombre', station: '' }), 'Solo Nombre');
+  assert.strictEqual(Core.sensorLabel({ name: '', station: 'T1 Plata Silvrex (B-1)' }), 'T1 Plata Silvrex (B-1)');
   assert.strictEqual(Core.sensorLabel({ name: '', station: null }), '(sensor)');
+});
+
+test('stationTail: quita el prefijo de tokens compartido (case-insensitive), preserva casing del resto', () => {
+  assert.strictEqual(Core.stationTail('T203-TI00-011 Concentración', 'T203-TI00-011 Plata Silvrex (B-1)'), 'Plata Silvrex (B-1)');
+  assert.strictEqual(Core.stationTail('abc Plata', 'ABC Plata Silvrex'), 'Silvrex');   // case-insensitive + más de un token
+  assert.strictEqual(Core.stationTail('X Temperatura', 'Y Cromo'), 'Y Cromo');          // sin prefijo común
+  assert.strictEqual(Core.stationTail('T1 Plata Silvrex', 'T1 Plata Silvrex'), '');      // todo compartido
 });
 
 test('deriveComboValue: NONE / ALL / un sensor / mezcla', () => {
@@ -153,10 +183,11 @@ test('parseSensorDashboard: null si el shape no matchea (fail-safe)', () => {
   assert.strictEqual(Core.parseSensorDashboard({ data: {} }), null);
 });
 
-test('pipeline parse→filterNumeric→label: solo NUMBER, etiqueta por estación', () => {
+test('pipeline parse→filterNumeric→label: solo NUMBER, etiqueta sensor + estación', () => {
   const list = Core.parseSensorDashboard(SDQ_RESPONSE);
   const nums = Core.filterNumericSensors(list);
   assert.strictEqual(nums.length, 2);   // excluye el BOOLEAN
-  assert.strictEqual(Core.sensorLabel(nums[0]), 'T203-TI00-011 Plata Silvrex (B-1)');
+  assert.strictEqual(Core.sensorLabel(nums[0]), 'T203-TI00-011 Concentración de Plata Metálica (Plata Silvrex (B-1))');
+  assert.strictEqual(Core.sensorLabel(nums[1]), 'T204-TI00-017 Concentración de Plata Metálica (Plata Silversene (S-1) Flash)');
   assert.strictEqual(Core.normalizeName(nums[0].name), 't203-ti00-011 concentración de plata metálica');
 });
