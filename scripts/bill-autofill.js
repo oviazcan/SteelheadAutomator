@@ -453,7 +453,7 @@ const BillAutofill = (() => {
 
   async function fetchPODivisa(idInDomain) {
     try {
-      const data = await api().query('GetPurchaseOrder', { idInDomain, userIdFilter: state._userId || 0 }, 'GetPurchaseOrder');
+      const data = await api().query('GetPurchaseOrderDetail', { idInDomain, userIdFilter: state._userId || 0 }, 'GetPurchaseOrderDetail');
       const po = data?.purchaseOrderByIdInDomain;
       const divisa = po?.customInputs?.DatosReferencia?.Divisa || po?.customInputs?.Divisa || null;
 
