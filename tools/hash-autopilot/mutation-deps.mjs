@@ -42,9 +42,33 @@ async function archivedToggle(page) {
   await span.click();
   await page.waitForTimeout(2500);
 }
+// quote: se des/archiva desde el DASHBOARD (?archived=…&searchQuery=<id> filtra a la
+// fila exacta), y ESO dispara UpdateQuote — no la página del quote. El PN togglea inline;
+// el quote navega a otra URL para mutar. loadObject lee "Name" de la página del quote.
+function quoteRowBtn(page, id, label) {
+  return page.locator(`tr:has(a[href$="/Quotes/${id}"]) button[aria-label="${label}"]`).first();
+}
+// Unarchive/Archive de un quote abre un modal "Confirm … Quote" con NO/YES.
+// Hay que clickear YES para que la mutation (UpdateQuote) realmente se dispare.
+async function confirmYes(page) {
+  const yes = page.locator('[role="dialog"]').getByRole('button', { name: /^yes$/i }).first();
+  await yes.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  if (await yes.count().catch(() => 0)) await yes.click({ timeout: 8000 });
+}
+// El quote aparece en archived=true (si archivado) o archived=false (si activo). Busca
+// en ambos y devuelve {found, archived} + deja la page en el dashboard donde está.
+async function findQuoteDashboard(page, id, domain) {
+  for (const arch of [true, false]) {
+    await page.goto(`${BASE}/Domains/${domain}/Quotes?archived=${arch}&hasRfq=false&searchQuery=${id}`, { waitUntil: 'domcontentloaded' });
+    const row = page.locator(`tr:has(a[href$="/Quotes/${id}"])`).first();
+    await row.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+    if (await row.count().catch(() => 0)) return { found: true, archived: arch };
+  }
+  return { found: false, archived: null };
+}
 const HANDLERS = {
   partNumber: {
-    async load(page, url) {
+    async load(page, { url }) {
       // networkidle es frágil aquí (SPA con polling constante). Espera al ELEMENTO DEL NAME
       // (lo que verifica la identidad), no al botón — el name renderiza un instante después.
       await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -62,12 +86,39 @@ const HANDLERS = {
       if ((await archivedChecked(page)) === false) await archivedToggle(page);
     },
   },
+  quote: {
+    async load(page, { id, domain }) {
+      // el name link (a /Quotes/<id>/<rev>) de la fila del dashboard — confiable (la página
+      // del quote tiene otros <p>Name ambiguos). Robusto al estado: busca archivado o activo.
+      const { found } = await findQuoteDashboard(page, id, domain);
+      if (!found) return { name: '' };
+      const nameLink = page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first();
+      return { name: (await nameLink.textContent().catch(() => '')).trim() };
+    },
+    async mutate(page, { url }) {
+      // editar "Notas Externas" del quote → guardar dispara UpdateQuote (bulk-upload lo usa así)
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2500);
+      if (process.env.SA_DBG) {
+        const notasP = await page.locator('p.css-11abq7s', { hasText: 'Notas Externas' }).count().catch(() => -1);
+        const editIcons = await page.locator('button:has(svg[data-testid="EditOutlinedIcon"])').count().catch(() => -1);
+        console.log(`       [dbg] page quote: NotasExternas p=${notasP} · editIcons=${editIcons} · url=${url}`);
+        await page.screenshot({ path: '/tmp/sa-quote-page.png', fullPage: true }).catch(() => {});
+      }
+    },
+    async restore(_page) {
+      // (temporal) — se completa al ver el editor de notas
+    },
+  },
 };
 
 // ── Ensamblado de deps para runMutationCycle ────────────────────────────────
 export function makeDeps(config, _sink) {
   const domain = config.domain || 344;
-  const handlerFor = (route) => HANDLERS[route?.sentinel?.entityType];
+  const ctxFor = (type) => {
+    const ent = config.entities[type];
+    return { id: ent.id, domain, url: resolveUrl(ent, ent.id, domain) };
+  };
   return {
     readJournal() { try { return JSON.parse(readFileSync(JOURNAL_PATH, 'utf8')); } catch { return {}; } },
     writeJournal(j) { mkdirSync(dirname(JOURNAL_PATH), { recursive: true }); writeFileSync(JOURNAL_PATH, JSON.stringify(j, null, 2)); },
@@ -75,16 +126,18 @@ export function makeDeps(config, _sink) {
       const found = entityFor(config, id);
       const h = found && HANDLERS[found.type];
       if (!h) return null;
-      return h.load(page, resolveUrl(found.ent, id, domain));
+      return h.load(page, { id, domain, url: resolveUrl(found.ent, id, domain) });
     },
     async doMutate(page, route) {
-      const h = handlerFor(route);
-      if (!h) throw new Error(`sin handler DOM para entidad ${route?.sentinel?.entityType}`);
-      return h.mutate(page);
+      const type = route?.sentinel?.entityType;
+      const h = HANDLERS[type];
+      if (!h) throw new Error(`sin handler DOM para entidad ${type}`);
+      return h.mutate(page, ctxFor(type));
     },
     async doRestore(page, route) {
-      const h = handlerFor(route);
-      if (h && h.restore) return h.restore(page);
+      const type = route?.sentinel?.entityType;
+      const h = HANDLERS[type];
+      if (h && h.restore) return h.restore(page, ctxFor(type));
     },
   };
 }
