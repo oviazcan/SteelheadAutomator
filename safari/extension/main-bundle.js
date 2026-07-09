@@ -1,5 +1,5 @@
 // ==========================================================================
-// Steelhead Automator — iPad — main-bundle.js  (v0.5.2)
+// Steelhead Automator — iPad — main-bundle.js  (v0.5.3)
 // GENERADO por tools/build-safari.sh desde remote/scripts + config.json.
 // NO editar a mano: edita la fuente en remote/scripts/ y re-corre el build.
 // Cada applet va en su propio IIFE (scope aislado, como el new Function() del
@@ -50,7 +50,10 @@ if (typeof window.chrome === 'undefined') { window.chrome = {}; }
     'open-auto-router':        'AutoRouter.openPanel',
     'open-auto-router-batch':  'AutoRouter.openBatch',
     'open-wo-completer':       'WOCompleter.open',
-    'run-wo-deadline':         'WODeadlineChanger.run'
+    'run-wo-deadline':         'WODeadlineChanger.run',
+    // Kill-switch del candado de confirmación de precio (auto-inyectado, sin control en
+    // página): permite apagarlo/encenderlo desde el popup del iPad. Es un toggle.
+    'toggle-price-confirm-guard': 'PriceConfirmGuard.toggleFromPopup'
   };
 
   function resolveFn(action) {
@@ -219,14 +222,30 @@ const SteelheadAPI = (() => {
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
+      // Detección de persisted query rotada/deprecada: Steelhead responde HTTP 400
+      // "Must provide a query string." (o "PersistedQueryNotFound") cuando el sha256Hash
+      // que mandamos ya no está en su registry — típicamente porque rotó con un release
+      // del front. Marcamos el error (`persistedQueryRotated`) para que los applets aborten
+      // con un mensaje claro en vez de acumular cientos de fallos crípticos, avisamos UNA
+      // vez por operación, y llevamos un contador global consultable (window.__saRotatedOps).
+      const rotated = /must provide a query string|persistedquerynotfound/i.test(text);
+      if (rotated) {
+        const g = (typeof window !== 'undefined') ? window : globalThis;
+        g.__saRotatedOps = g.__saRotatedOps || {};
+        if (!g.__saRotatedOps[operationName]) {
+          g.__saRotatedOps[operationName] = 0;
+          warn(`🔴 HASH ROTADO: Steelhead ya no acepta la persisted query "${operationName}" ("Must provide a query string"). El hash en config.json quedó viejo (rotó con un release de Steelhead). Hay que re-escanear (hash-scanner) y actualizar config.json. Los applets que usan "${operationName}" van a fallar hasta entonces.`);
+        }
+        g.__saRotatedOps[operationName]++;
+      }
+      let detail = text;
       try {
         const parsed = JSON.parse(text);
-        if (Array.isArray(parsed.errors)) {
-          const msgs = parsed.errors.map((e, i) => `[${i + 1}] ${e.message}`).join(' | ');
-          throw new Error(`HTTP ${response.status} en ${operationName}: ${msgs.substring(0, 2000)}`);
-        }
-      } catch (_) { /* fall through */ }
-      throw new Error(`HTTP ${response.status} en ${operationName}: ${text.substring(0, 2000)}`);
+        if (Array.isArray(parsed.errors)) detail = parsed.errors.map((e, i) => `[${i + 1}] ${e.message}`).join(' | ');
+      } catch (_) { /* text no era JSON; usar crudo */ }
+      const err = new Error(`HTTP ${response.status} en ${operationName}: ${detail.substring(0, 2000)}`);
+      if (rotated) { err.persistedQueryRotated = true; err.rotatedOp = operationName; }
+      throw err;
     }
 
     const result = await response.json();
@@ -327,7 +346,7 @@ if (typeof window !== 'undefined') window.SteelheadAPI = SteelheadAPI;
 
 // ===== BEGIN config-seed (ignorado por --check) =====
 (function(){
-  window.REMOTE_CONFIG = {"version": "1.7.60", "lastUpdated": "2026-07-03T18:14", "extensionVersion": "1.6.4", "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip", "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html", "steelhead": {"baseUrl": "https://app.gosteelhead.com", "graphqlEndpoint": "/graphql", "keepAliveEndpoint": "/api/session/keep-alive", "apolloClientVersion": "4.0.8", "hashes": {"mutations": {"CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00", "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112", "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e", "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf", "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b", "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163", "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49", "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa", "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129", "UpdateQuote": "765fc26af87241f0f614a51fe3583e10d2f1765dafb1426402f69dcc79e33a8e", "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797", "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0", "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6", "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154", "SaveManyPNP_Quote": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SaveManyPNP_PN": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40", "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363", "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc", "CreateReceivedOrder": "c0ca8f0f56af7f5a306a1639184f66c627af19a2083f6d28caa6856bb71a5dea", "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9", "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57", "SetPNPricesDefault": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293", "UpdatePartNumber": "af584fa8ebb7487fc84de18fa3a5e360e99699a3280185fe98b840c157bbf2c7", "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202", "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419", "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394", "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4", "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8", "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953", "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0", "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174", "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b", "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261", "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce", "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4", "CreateUpdateReportWithPermissions": "6c7753a4bd5f3181b1fffa536833972a4959343da8461127155dd1dd76342bde", "DeleteFolderById": "282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15", "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0", "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022", "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3", "UpdateReceivedOrder": "d9e885763a3f65a6416ac0da3f4037562d6d8e6083dc34892158269d1f61c7b5", "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942", "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449", "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59", "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60", "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3", "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2", "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a", "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54", "UpdateMaintenanceNodeEvent": "39b3cdf27e06a37884bfb551376b23fca971f705fc6472fc495d34dfce69970c", "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84", "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856", "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334", "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c", "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce", "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03", "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb", "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b", "UpdateProcessNode": "4ceb26654b8cf409da36a45a2b1ea3bd3442fb3dcb9da06b51363d29e5f417c6", "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928", "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec", "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3", "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f", "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0", "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed", "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823", "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6", "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f"}, "queries": {"AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b", "GetStation": "912beb134cb89f78cf22fdfbe3fd6e59bc5160e11bdffde5d398506492831d41", "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce", "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380", "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143", "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2", "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3", "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc", "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f", "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac", "ActiveReceivedOrders": "495ddfd664c086fae12970195b03791b6c0f4f35ad1e3b87181351a047914890", "GetQuote_v8": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuote_v71": "353b456827ae3afe34bddc33deba29e1b772f4a7e3324a8a5b9fb2160c1fbf50", "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33", "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02", "CustomerFinancialById": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9", "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca", "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3", "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a", "AllProcesses": "acaa6a46bd1e47ff587ac28833302734d6b00e06c26292c268110ce406ba71e3", "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e", "SearchSpecsForSelect": "8e7723b3a4cf3e7b692999e45d20b7299952253089c7bf146d36ff2872507e2b", "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea", "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3", "SearchUnits": "1961ca85600a902498898502aeda031f270ff2b1289b3ef9fe43aaaefe97ceda", "SearchProducts": "b835021eff4113acd5529f63fa742a9b70373c62a5d9cb39f4203fe2bbba9f8a", "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91", "GetPartNumber": "804dd8f7e65f2f84661cf42637949a03ec0c2132e59048746edc9280cced7eec", "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109", "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a", "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b", "PNGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c", "Customer": "12d69cd18ff3ba1ac2174f2260cfdcfe1de894f9546ca531711a1c4010ebb257", "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5", "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9", "AllPartNumbers": "827be6815fa644ea35f4982ea8eca8a451500b078112e6e8244f505d0f1cfe09", "AllWorkOrders": "a8c2baab3cf24698bdbb951bddabab8bd383378391b1a2b1c296c63008bba8d7", "AllReceivers": "153f2cac87aa0c23fab030d9463c15b8d494ab7f935265cbdd06779cfe2a1ee3", "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf", "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c", "SearchInventoryItemBatches": "ae2466466ed3e84a2010c726a166c432c176c3d21be5be7ac71db6c1846b901b", "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09", "CheckDuplicatePO": "94e659bf6eea8d493f8ea67f950fd38371a5cb680d2622145d5df9dc63583b85", "CreateEditReceivedOrderDialogQuery": "5b01210ebe19943b899b9255cf84021e66ef8a851bac9f1ea0ce8beaa44e8e7d", "GetCustomerInfoForReceivedOrder": "be7c8dbeec701f49545d5f3685c448db57d043a7a2ebbe184ed642559abce9d5", "PartNumberCreatableSelectGetPartNumbers": "1d5714f35b4232eed5c3e89df5dd833c595d77df333ee3bc0f0f09c3a4f9b23a", "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14", "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a", "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120", "GetReceivedOrder": "3b4ab8f11af9f2603acfe5983499874219b8a7ba49efd07cdf6a079b2875b293", "GetAddPartsReceivedOrder": "677ae9cac761b748b85311b63a6cfa27065119b0a20f998005ef6baea6831b64", "WorkOrderDialogQuery": "5b7f715303297e64f32806d5361f388ab84e48827a9d3e0d09982b4ca9504f13", "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686", "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8", "GetReceivedOrderDocuments": "7d74c516daa9938572e482fb1ea012dce5eeb3bad2de63cecb1e5740a139e42d", "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156", "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520", "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0", "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db", "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de", "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7", "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d", "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e", "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb", "AllCustomers": "8d4dfe69d3050a16ad802015e6d14b6458db5266e62c67a2321d23b440086037", "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6", "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888", "ReceivingBatchesQuery": "5b0baf3614222571071456156a30f86a4ee2b786cc5b204872a2b6baeefe46de", "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4", "InvoiceByIdInDomain": "5844a41c37dbacf9e167342af54d8458d0e69082bfcdd92923fa7ed602b3dbfa", "CurrentUser": "9ca864c4b05315bc69881a0506a55ce96c44b102d40bb27f784d986d0dfb3a3c", "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c", "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0", "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c", "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac", "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830", "GetMaintenanceEvent": "be2a98642faeaa127dd66ac78f59716b030cc4dbeba7e9348fcde2d5bb074b2b", "UserDialogQuery": "843b5f4f236fd159b5d3912c434551cf2866a591e3c38babfdfb2fd6f7283959", "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63", "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83", "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f", "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de", "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0", "GetPurchaseOrder": "6d8626794b0b81e885f621fac214f825c3078931ad030ddd2299d227e530bcf6", "GetDomain": "86652dafed0174bb91b95e11cf8867ca13fb7303fd211471c221ead70ac8b1e1", "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57", "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0", "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d", "SearchPurchaseOrdersForBill": "e99dddad15827a5c6b2a342f236a60a462edcc406f9896a1b04800a76def929a", "GetPurchaseOrdersDataForBill": "a94f43960ae91e6f62332a9e3268f9789ccdd847c8951dbf27a7d2ff25c5565d", "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8", "GetVendor": "87ad05379932cc20b466a5ff3c3c33f8a8d27ca06bfdd0a423aa40f720c8f541", "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e", "GetReceivedOrdersWithReceivedOrderLineItems": "944ee7858fbb16d20952732005eb6c1138049ab97c64a34e15c0dfab19e2aa3e", "GetProcessNode": "fae7d1d1d4e5ceae7b3c4e4d138ce9027158c37a7266b68f75264ec1756adbfe", "ProcessNode": "72a77473ba27a4854aa25e147d651f864a3fb6cb8893c169a00f8fd90b9d3f4c", "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af", "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d", "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3", "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3", "CreateEditProcessDialogQuery": "de4bc7fb144adaf8d3e314a2849b0680b6107f228890a463e59b74ca7eb9a0c0", "GetTreatment": "87a9d9f60a00814e8573ec59c0817fc2d29777777aa592a7db221a339322a750", "AllTreatments": "69c99e3fbb343cf07c0b95189b32ae411228a154f06588a9c28c58f8da26220b", "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca", "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2", "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec", "AllSensorDashboards": "597eafd7bedf12072e68b2b1ac03f1088e2444a054e03340b1ee57a0116127ce", "SensorDashboardQuery": "bde56bd609a24b55ba5394d0ca65e36588b67088b90d0b358dbcac02577d2e5a", "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705", "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e", "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e", "WorkOrder": "14578a2f6b953fde230fc4f32bd7129992032ae31459019c93d64f9865ae0667", "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284"}}, "domain": {"id": 344, "dimensionIds": {"linea": 349, "departamento": 586}, "billingDefaults": {"departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado"}, "inputSchemaId_PN": 3932, "inputSchemaId_Quote": 659, "inputSchemaId_Bill": 27, "stagesRevisionId": 306, "ganadaStageId": 1212, "revertStageId": 1208, "geometryGenericaId": 831, "validacionProcessNodeIds": [231176, 231174], "unitIds": {"KGM": 3969, "LBR": 3972, "FTK": 4797, "CMK": 4907, "DMK": 3975, "FOT": 5148, "LM": 5150, "LO": 5348, "MTR": 3971}, "conversions": {"KGM_TO_LBR": 2.20462, "CMK_TO_FTK": 0.00107639, "LM_TO_FOT": 3.28084}, "geometryDimensions": {"LENGTH": 1284, "WIDTH": 1011, "HEIGHT": 1012, "OUTER_DIAM": 1013, "INNER_DIAM": 1014}, "empresas": {"ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México"}, "predictiveMaterials": {"PlataFina": 55113, "EstanoPuro": 55114, "Niquel": 55115, "Zinc": 55116, "Cobre": 55117, "Sterlingshield_S": 55118, "Epoxy_MT": 55119, "Epoxica_BT": 55120, "Epoxica_MT_Red": 55121}, "schneiderQueretaro": {"customerId": 176980, "shipToAddressId": 277022, "inputSchemaId": 559, "invoiceTermsId": 3142, "sectorId": 578, "shipMethodId": 4661, "poNumberRegex": "^1[14]\\d{8}$", "restantesOvName": "Restantes Schneider QRO"}, "processAudit": {"satelliteOverrides": {"include": [], "exclude": []}, "finishProductMap": {"EST": ["ESTAÑADO", "ESTAÑO"], "NIQ": ["NIQUELADO", "NIQUEL"], "NSU": ["NIQUEL SULFAMATO", "NIQUEL"], "NWO": ["NIQUEL WOOD", "NIQUEL"], "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"], "NBR": ["NIQUEL BRILLANTE", "NIQUEL"], "NCV": ["NIQUEL CHEVROL", "NIQUEL"], "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"], "CRO": ["CROMADO", "CROMO"], "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"], "PLA": ["PLATEADO", "PLATA"], "PLF": ["PLATA FLASH", "PLATA"], "COB": ["COBREADO", "COBRE"], "ZIN": ["ZINCADO", "ZINC"], "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"], "EST_T2": ["ESTAÑADO", "ESTAÑO"], "PAV": ["PAVONADO"], "FMS": ["FOSFATO MANGANESO"], "FZI": ["FOSFATO ZINC"], "AND": ["ANODIZADO"], "IRI": ["IRIDIZADO"], "BDP": ["BAÑO DE PASIVADO"], "BRI": ["BRILLO QUIMICO"], "PRE": ["PRELIMPIEZA", "LIMPIEZA"], "ROD": ["RODADO"], "REB": ["REBABADO", "REBARBADO"], "LES": ["LIMPIEZA ESPECIAL"], "DES": ["DESOXIDADO"], "PUL": ["PULIDO"], "ELE": ["ELECTROPULIDO"], "TIN": ["TINTURADO"], "ESM": ["ESMERILADO"], "SAB": ["SABLEADO"], "LMC": ["LIMPIEZA QUIMICA"], "NOX": ["NOX"], "LAV": ["LAVADO"], "DEC": ["DECAPADO"], "PAS": ["PASIVADO"], "ANT": ["ANTITARNISH"], "HOR": ["HORNEADO", "HORNO"], "FIB": ["FIBRADO"], "ENM": ["ENMASCARADO"], "DNM": ["DESENMASCARADO"], "ACE": ["ACEITADO"], "ABR": ["ABRILLANTADO"], "TRT": ["TRATAMIENTO TERMICO"], "EBT": ["EPOXICA BT"], "EMT": ["EPOXY MT"], "EMR": ["EPOXICA MR"], "CAZ": ["CAJA ZINC", "ZINC"], "CTR": ["CILINDRO TRADICIONAL"], "CVO": ["CILINDRO VOLTEO"], "CAM": ["CAMPANA"], "CAT": ["CATARINA"], "CNE": ["CILINDRO NEUMATICO"], "CNT": ["CILINDRO NETO"], "CRJ": ["CILINDRO ROJO"], "CTV": ["CILINDRO TV"], "CNN": ["CILINDRO NN"]}, "concurrency": {"audit": 5, "trees": 5, "parents": 5, "retryDelaysMs": [0, 1000, 2000]}, "duplicates": {"enabled": true, "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"], "ignoreNamePatterns": [], "ignoreIds": []}}, "specParamsBulk": {"concurrency": {"fetchDetails": 5, "editShape": 10}, "batchSize": 50, "retryDelaysMs": [1000, 2000, 4000], "labelMP": "MP", "impPrefixRegex": "^IMP", "page": {"first": 400}}, "bulkUpload": {"concurrency": {"savePartNumber": 8, "archive": 8, "sentinelPreQuoteArchive": 3}, "retry": {"delaysMs": [1000, 2000, 4000]}, "paging": {"allPartNumbers": {"first": 200, "maxResults": 1000, "massiveMaxResults": 50000}}, "preview": {"pageSize": 100}, "resume": {"maxEntries": 20, "purgeAgeDays": 7}, "nonFinishLabelNames": ["SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2", "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"], "metalEquivalents": [["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"], ["Plata", "Plata Flash"]], "dedup": {"massiveThreshold": 1000}, "chunking": {"defaultChunkSize": 250}, "debug": {"logPredictiveParse": true, "logPredictiveSampleRows": 20}}, "auditor": {"largeCustomers": [{"name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000}], "hardCapPns": 8000, "hardCapWithExclusions": 15000}}}, "portalLayouts": {"hubbell": {"name": "Hubbell Portal", "detection": {"requiredColumns": ["number", "status", "lineItem.itemNumber", "lineItem.materialCodeBuyer", "lineItem.materialDescription", "lineItem.netPrice", "lineItem.priceUnit", "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"], "minMatchRatio": 0.9}, "mapping": {"poNumber": "number", "status": "status", "customer": "customerAddressName", "currency": "currency", "date": "date", "lineNumber": "lineItem.itemNumber", "buyerCode": "lineItem.materialCodeBuyer", "description": "lineItem.note", "netPrice": "lineItem.netPrice", "priceUnit": "lineItem.priceUnit", "quantity": "lineItem.targetQuantity", "deliveryDate": "lineItem.schedule.deliveryDate", "unit": "lineItem.unit"}, "pnExtractor": {"type": "regex", "source": "description", "patterns": ["(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)", "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"]}, "statusFilter": {"activeValues": ["Nuevo"]}, "unitPriceFormula": "netPrice / priceUnit"}}, "unitAutoConvertEnabled": true, "apps": [{"id": "load-calculator", "name": "Calculadora de Piezas por Carga", "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types", "icon": "⚙️", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/load-calculator-engine.js", "scripts/load-calculator-stations.js", "scripts/load-calculator.js", "scripts/load-calculator-modal.js"], "requiredPermissions": [], "actions": [{"id": "open-station-config", "label": "Configurar Estaciones", "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea", "icon": "⚙️", "type": "primary", "handler": "message", "message": "open-station-config", "fn": "LoadCalculator.openStationConfig"}]}, {"id": "proceso-calculator", "name": "Calculadora de Procesos", "subtitle": "Sugiere Default Process al editar un NP", "icon": "🧮", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"], "requiredPermissions": []}, {"id": "carga-masiva", "name": "Carga Masiva", "subtitle": "Cotizaciones y NP", "icon": "📊", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"], "actions": [{"id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker"}, {"id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs"}, {"id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history"}]}, {"id": "hash-scanner", "name": "Explorador Steelhead", "subtitle": "Captura de APIs", "icon": "🔍", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"], "requiredPermissions": ["WRITE_USER_PERMISSIONS"], "actions": [{"id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan"}, {"id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results"}, {"id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config"}, {"id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge"}]}, {"id": "archiver", "name": "Archivador de PNs", "subtitle": "Por etiquetas, fecha y modo", "icon": "📦", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver"}]}, {"id": "auditor", "name": "Auditor de PNs", "subtitle": "Verificar calidad de datos", "icon": "🔎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor"}]}, {"id": "file-uploader", "name": "Cargador de Archivos", "subtitle": "Fotos y planos por PN", "icon": "📎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"], "requiredPermissions": ["READ_ALL_UPLOADED_FILES"], "actions": [{"id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files"}, {"id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup"}]}, {"id": "report-liberator", "name": "Liberador de Reportes", "subtitle": "Sacar reportes de carpetas", "icon": "📂", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator"}]}, {"id": "report-regen", "name": "Regenerar Reportes", "subtitle": "Fuerza el refresh global de la base de reportes", "icon": "♻️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup"}]}, {"id": "spec-migrator", "name": "Ajuste Masivo de Specs", "subtitle": "Migración y params pendientes", "icon": "🔀", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator.js"], "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"], "actions": [{"id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run"}, {"id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams"}, {"id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts"}, {"id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator"}]}, {"id": "inventory-reset", "name": "Reinicio de Inventario", "subtitle": "Archivar lotes y carga inicial", "icon": "🔄", "category": "Inventario", "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"], "requiredPermissions": ["READ_INVENTORY"], "actions": [{"id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset"}]}, {"id": "po-comparator", "name": "Validador OC vs OV", "subtitle": "Comparar orden de compra vs venta", "icon": "📋", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator"}]}, {"id": "po-reconciler", "name": "Reconciliador OV vs PO Schneider", "subtitle": "Rebalancear OVs temporales contra POs reales", "icon": "🧮", "category": "Órdenes de Venta", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "autoInject": true, "actions": [{"id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler"}]}, {"id": "wo-deadline", "name": "Gestión Masiva de OT", "subtitle": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run"}]}, {"id": "wo-mover", "name": "Mover OTs entre OVs", "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV", "icon": "↔️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"], "autoInject": true, "actions": [{"id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover"}]}, {"id": "wo-completer", "name": "Completar / Descompletar OTs", "subtitle": "Cerrar o revivir órdenes de trabajo desde un listado", "icon": "✅", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/wo-completer-engine.js", "scripts/wo-completer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "open-wo-completer", "label": "Completar / Descompletar OTs", "sublabel": "Pega un listado de OTs y ciérralas o revívelas", "icon": "✅", "type": "primary", "handler": "message", "message": "open-wo-completer", "fn": "WOCompleter.open"}]}, {"id": "cfdi-attacher", "name": "Adjuntar CFDI", "subtitle": "Auto-adjunta XML CFDI al enviar facturas", "icon": "📄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher"}]}, {"id": "invoice-auto-regen", "name": "Auto-regenerar Facturas", "subtitle": "Regenera PDF al detectar timbrado exitoso", "icon": "🔄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-auto-regen.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-auto-regen", "label": "Auto-regenerar Facturas", "sublabel": "Regenera PDF tras timbrado exitoso", "icon": "🔄", "type": "toggle", "handler": "message", "message": "toggle-invoice-auto-regen"}]}, {"id": "invoice-default-tab", "name": "Tab por defecto en Invoices", "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=", "icon": "📦", "category": "Facturación", "scripts": ["scripts/invoice-default-tab.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-default-tab", "label": "Tab por defecto Invoices", "sublabel": "Salta a Packing Slips al entrar a /Invoices", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-invoice-default-tab"}]}, {"id": "invoice-listing-marker", "name": "Marcadores de Facturas", "subtitle": "Resalta NC, montos cero y borradores en el listado", "icon": "🎯", "category": "Facturación", "scripts": ["scripts/invoice-listing-marker.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker"}]}, {"id": "portal-importer", "name": "Importador de Portales", "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)", "icon": "📥", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer"}]}, {"id": "paros-linea", "name": "Paro de Línea", "subtitle": "Registrar paros con cronómetro", "icon": "⚠️", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea"}, {"id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled"}]}, {"id": "vale-almacen", "name": "Vale de Almacén", "subtitle": "Surtido de material/equipo por usuario", "icon": "📦", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/vale-almacen-engine.js", "scripts/vale-almacen.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-vale-almacen", "label": "Emitir Vale de Almacén", "sublabel": "Registrar artículos entregados por usuario", "icon": "📦", "type": "primary", "handler": "message", "message": "open-vale-almacen", "fn": "ValeAlmacen.open"}]}, {"id": "weight-quick-entry", "name": "Peso Rápido", "subtitle": "Registra peso KG/LB desde el modal de recibo", "icon": "⚖️", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry"}]}, {"id": "unit-autoconvert", "name": "Auto-conversión de Unidades", "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP", "icon": "📐", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"], "autoInject": true, "requiredPermissions": []}, {"id": "price-confirm-guard", "name": "Candado de Confirmación de Precio", "subtitle": "Reconfirma el precio (tipo password) y exige divisa al guardar en el modal de precios", "icon": "🔒", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/price-confirm-core.js", "scripts/price-confirm-guard.js"], "autoInject": true, "requiredPermissions": [], "actions": [{"id": "toggle-price-confirm-guard", "label": "Candado de Precio", "sublabel": "Reconfirmar precio + divisa al guardar (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-price-confirm-guard", "fn": "PriceConfirmGuard.toggleFromPopup"}]}, {"id": "receiver-date-override", "name": "Fecha de Recibo", "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts", "icon": "📅", "category": "Recibo", "scripts": ["scripts/receiver-date-override.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override"}]}, {"id": "warehouse-location-prefill", "name": "Ubicación de Recibo", "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts", "icon": "📦", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill"}]}, {"id": "create-order-autofill", "name": "Crear OV — Autofill", "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta", "icon": "📝", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill-core.js", "scripts/create-order-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill"}]}, {"id": "bill-autofill", "name": "Bill Autofill", "subtitle": "Llenado automático de cuentas contables en Bills", "icon": "🧾", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"], "actions": [{"id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill"}]}, {"id": "invoice-autofill", "name": "Invoice Autofill", "subtitle": "Llenado automático de cuentas contables en Invoices", "icon": "🧮", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill"}]}, {"id": "process-canon", "name": "Canon de Procesos", "subtitle": "Auditar y normalizar nodos canónicos", "icon": "🏭", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"], "actions": [{"id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run"}, {"id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit"}]}, {"id": "spec-params-bulk", "name": "Carga masiva Spec Params", "subtitle": "Editar parámetros de specs vía XLSX", "icon": "🧪", "category": "Calidad", "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"], "requiredPermissions": [], "actions": [{"id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params"}, {"id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params"}]}, {"id": "sensor-status-autofill", "name": "Auto-asignar status (Sensor Dashboards)", "subtitle": "Marca 'Use for Status' en members de un dashboard", "icon": "📊", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"], "requiredPermissions": [], "actions": [{"id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status"}]}, {"id": "auto-router", "name": "Auto-Ruteador", "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción", "icon": "🔀", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/auto-router-engine.js", "scripts/auto-router-api.js", "scripts/auto-router-panel.js", "scripts/auto-router-batch.js", "scripts/board-metal-tooltip.js", "scripts/auto-router.js"], "requiredPermissions": [], "actions": [{"id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router"}, {"id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch"}]}, {"id": "surtido-guard", "name": "Candado de Surtido Programado", "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido", "icon": "🔒", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/surtido-guard-core.js", "scripts/surtido-guard.js"], "requiredPermissions": [], "actions": [{"id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup"}]}, {"id": "pn-lifecycle", "name": "Ciclo de vida de PNs", "subtitle": "Marcar validación de ingeniería, desarchivar, quitar validación o archivar (Borrado definitivo) PNs por lote, con filtros y dedup", "icon": "♻️", "category": "Números de Parte", "scripts": ["scripts/host-cleanup-shared.js", "scripts/steelhead-api.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-classify.js", "scripts/pn-lifecycle-core.js", "scripts/pn-lifecycle.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-pn-lifecycle", "label": "Ciclo de vida de PNs", "sublabel": "Filtrar, previsualizar y ejecutar acciones sobre PNs", "icon": "♻️", "type": "primary", "handler": "message", "message": "run-pn-lifecycle"}]}], "knownOperations": {"StationTreatmentByWorkOrder": {"type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router"}, "SearchStationsForTreatment": {"type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router"}, "CreateUpdateDeleteRoutes": {"type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router"}, "PartNumbersByWorkOrderIdInDomain": {"type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router"}, "GetPartNumberInventoryBatch": {"type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router"}, "GetInventoryBatch": {"type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router"}, "SchedulablePartLocations": {"type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router"}, "CreateQuote": {"type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva"}, "UpdateQuote": {"type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva"}, "SaveQuoteLines": {"type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva"}, "CreateQuoteStageChange": {"type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva"}, "SaveManyPartNumberPrices": {"type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva"}, "SavePartNumber": {"type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva"}, "SavePartNumberRackTypes": {"type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva"}, "SetPartNumberPricesAsDefaultPrice": {"type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva"}, "UpdatePartNumber": {"type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva"}, "CreatePartNumberGroup": {"type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva"}, "CustomerSearchByName": {"type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva"}, "CustomerFinancialByCustomerId": {"type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva"}, "GetQuote": {"type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva"}, "GetQuoteRelatedData": {"type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva"}, "SearchInvoiceTerms": {"type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva"}, "SearchUsers": {"type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva"}, "AllProcesses": {"type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva"}, "AllLabels": {"type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva"}, "DeleteWorkOrderLabels": {"type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline"}, "CreateWorkOrderLabel": {"type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline"}, "SearchSpecsForSelect": {"type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva"}, "TempSpecFieldsAndOptions": {"type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva"}, "AllRackTypes": {"type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva"}, "SearchUnits": {"type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert"}, "SearchProducts": {"type": "query", "description": "Buscar productos para líneas de cotización", "usedBy": "carga-masiva"}, "SearchPartNumbers": {"type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva"}, "PartNumberGroupSelect": {"type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva"}, "DeletePartNumberPrice": {"type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva"}, "DeletePartNumberRackType": {"type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva"}, "CreatePartNumberInputSchema": {"type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva"}, "GetDimension": {"type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva"}, "Customer": {"type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill"}, "AllInventoryTypes": {"type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset"}, "SearchInventoryTypeItems": {"type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset"}, "SearchInventoryItemBatches": {"type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset"}, "AllInventoryBatchStatuses": {"type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset"}, "CreateEditInventoryBatchDialogQuery": {"type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset"}, "SearchLocationsOnPath": {"type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill"}, "UpdateInventoryBatchesChecked": {"type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset"}, "CreateInventoryTransferEventGroups": {"type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset"}, "GetSpec": {"type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator"}, "SpecFieldsAndOptions": {"type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator"}, "ApplySpecsToPartNumber": {"type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator"}, "ArchivePartNumberSpecAndParams": {"type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator"}, "UpdatePartNumberSpecParam": {"type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator"}, "AddParamsToPartNumber": {"type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator"}, "FilterSearch": {"type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator"}, "AllReports": {"type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator"}, "CreateUpdateReportWithPermissions": {"type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator"}, "DeleteFolderById": {"type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator"}, "ArchiveReport": {"type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator"}, "CreateUpdateBill": {"type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill"}, "GetPurchaseOrder": {"type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain", "usedBy": "bill-autofill"}, "GetDomain": {"type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill"}, "SearchAccounts": {"type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill"}, "GetAccountDataForBill": {"type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill"}, "GetBillByIdInDomain": {"type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill"}, "GetPartNumbersInputSchema": {"type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva"}, "AllSpecs": {"type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva"}, "AllCustomers": {"type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva"}, "UpdateInventoryItemPredictedUsage": {"type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva"}, "ArchivePredictedInventoryUsage": {"type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash"}, "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {"type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva"}, "UpdatePartNumberPerPerRackType": {"type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva"}, "GetSpecFieldPartNumbers": {"type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator"}, "CheckDuplicatePO": {"type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator"}, "ActiveReceivedOrders": {"type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator"}, "GetReceivedOrder": {"type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator"}, "GetAddPartsReceivedOrder": {"type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler"}, "GetReceivedOrderLine": {"type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator"}, "GetReceivedOrderDocuments": {"type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator"}, "RouteReceivedOrders": {"type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator"}, "GetReceivedOrderCosts": {"type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator"}, "ReceivingBatchesQuery": {"type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator"}, "EmailCustomerContactsByCustomerIds": {"type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator"}, "GetEmailDefaultByTypeAndSubType": {"type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator"}, "GetUserEmailRecipients": {"type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator"}, "SaveReceivedOrderLinesAndItems": {"type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator"}, "SaveReceivedOrderPartTransforms": {"type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer"}, "UpdateReceivedOrder": {"type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler"}, "AddPartsToWorkOrders": {"type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler"}, "CreateUpdateWorkOrdersChecked": {"type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler"}, "SendEmailChecked": {"type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher"}, "CreateEmailLogReceivedOrder": {"type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator"}, "InvoiceByIdInDomain": {"type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher"}, "CreateInvoicePdf": {"type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher"}, "ActiveInvoicesPaged": {"type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen"}, "CreateInvoiceEmailLog": {"type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher"}, "CurrentUser": {"type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions"}, "CurrentUserDetails": {"type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea"}, "CurrentUserActiveSegments": {"type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload"}, "GlobalUsers": {"type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions"}, "CreateReceivedOrder": {"type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator"}, "CreateUserFile": {"type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader"}, "CreateReceivedOrderUserFile": {"type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator"}, "CreateEditReceivedOrderDialogQuery": {"type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator"}, "GetCustomerInfoForReceivedOrder": {"type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator"}, "PartNumberCreatableSelectGetPartNumbers": {"type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator"}, "SearchPartNumberPrices": {"type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator"}, "CreateMaintenanceEvent": {"type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea"}, "CreateMaintenanceNodeEvent": {"type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea"}, "CreateManySensorMeasurements": {"type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea"}, "UpdateMaintenanceEvent": {"type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea"}, "CreateMaintenanceEventComment": {"type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea"}, "CreateMaintenanceEventUserFile": {"type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea"}, "CreateMaintenanceEventDialogQuery": {"type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea"}, "OperatorMaintenanceNodeDialogQuery": {"type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea"}, "SearchEquipments": {"type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea"}, "WorkboardById": {"type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea"}, "AllEquipments": {"type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea, vale-almacen"}, "GetMaintenanceEvent": {"type": "query", "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)", "usedBy": "vale-almacen"}, "UpdateMaintenanceNodeEvent": {"type": "mutation", "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado", "usedBy": "vale-almacen"}, "UserDialogQuery": {"type": "query", "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)", "usedBy": "vale-almacen"}, "AllPermissionsEditManyPermissions": {"type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings"}, "GetAvailableUnits": {"type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "CreateInventoryItemUnitConversion": {"type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert"}, "UpdateInventoryItemUnitConversion": {"type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "InvoiceLowCodeData": {"type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill"}, "GetReceivedOrdersWithReceivedOrderLineItems": {"type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill"}, "CreateInvoiceAndUpdatePartTransferAccounts": {"type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill"}, "GetProcessNode": {"type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit"}, "CreateEditProcessDialogQuery": {"type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit"}, "GetTreatment": {"type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit"}, "AllTreatments": {"type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit"}, "CreateEditTreatmentTimesDialogQuery": {"type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit"}, "StationsByTreatmentId": {"type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit"}, "GetProcessNodeParents": {"type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit"}, "ProcessNode": {"type": "query", "description": "Lectura ligera de un process node (fallback de GetProcessNode)", "usedBy": "process-canon"}, "AllTagsAndNodes": {"type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon"}, "ProcessesComponentQuery": {"type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon"}, "ProcessesWithTag": {"type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon"}, "GetAllTagsQuery": {"type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon"}, "CreateProcessNode": {"type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon"}, "ProcureTree": {"type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon"}, "UpdateProcessNode": {"type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon"}, "UpdateReceiver": {"type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)"}, "CreateReceiverChecked": {"type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"}}, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm"};
+  window.REMOTE_CONFIG = {"version": "1.7.99", "lastUpdated": "2026-07-09T11:50", "extensionVersion": "1.6.5", "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip", "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html", "steelhead": {"baseUrl": "https://app.gosteelhead.com", "graphqlEndpoint": "/graphql", "keepAliveEndpoint": "/api/session/keep-alive", "apolloClientVersion": "4.0.8", "hashes": {"mutations": {"CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00", "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112", "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e", "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf", "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b", "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163", "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49", "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa", "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129", "UpdateQuote": "1663ac5630123533063c4a53e2186f6f4a04000d9f3a284e3c0deb1308218388", "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797", "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0", "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6", "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154", "SaveManyPartNumberPrices": "9da1874e2ffd2e36590f3a1ec1d6b9f021283d0f16d47d1023ac91f5cdb38638", "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40", "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363", "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc", "CreateReceivedOrder": "363cab20f9bd7fc89619e575de8d5a018cd2d59784081bef48fb77f9a41b07e5", "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9", "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57", "SetPartNumberPricesAsDefaultPrice": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293", "UpdatePartNumber": "8693c2300fd47ecf48e52f7041f611d7d05ee3b7e3f1e202737c6f5f2c6fad02", "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202", "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419", "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394", "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4", "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8", "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953", "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0", "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174", "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b", "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261", "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce", "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4", "CreateUpdateReportWithPermissions": "6c7753a4bd5f3181b1fffa536833972a4959343da8461127155dd1dd76342bde", "DeleteFolderById": "282f83cf9d56c8cb1c00308288cee23269c09c9d941e90624edfdcaed7affa15", "ArchiveReport": "796eb308074f1adbdb36ec5821a2bb6b311c2be85b85f7290ef301764db7bff0", "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022", "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3", "UpdateReceivedOrder": "d9e885763a3f65a6416ac0da3f4037562d6d8e6083dc34892158269d1f61c7b5", "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942", "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449", "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59", "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60", "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3", "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2", "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a", "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54", "UpdateMaintenanceNodeEvent": "39b3cdf27e06a37884bfb551376b23fca971f705fc6472fc495d34dfce69970c", "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84", "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856", "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334", "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c", "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce", "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03", "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb", "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b", "UpdateProcessNode": "4ceb26654b8cf409da36a45a2b1ea3bd3442fb3dcb9da06b51363d29e5f417c6", "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928", "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec", "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3", "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f", "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0", "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed", "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823", "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6", "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f"}, "queries": {"AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b", "GetStation": "912beb134cb89f78cf22fdfbe3fd6e59bc5160e11bdffde5d398506492831d41", "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce", "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380", "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143", "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2", "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3", "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc", "GetInventoryItem": "38a52d1ce2bbb2405b53a28500a273f015f11db393a0257622c8163b82bfc81f", "GetInventoryItemInputSchema": "b0ebb55c957c0d5870717e873b3baa5179b708362303fac82a8997bcf389fbac", "ActiveReceivedOrders": "07d3e1947485825b519c2f7755773d28532c313e23fab116f6b656a9f4a960d0", "GetQuote": "edda064a9286237d5bd33c100794a6d43f99f8dd91d01aaa12b20df6032124a9", "GetQuoteSecondary": "546aa58c4f63f2b4be2703dc5c8482a07f01e8b96176171bfa9e978ac605458d", "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33", "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02", "CustomerFinancialByCustomerId": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9", "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca", "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3", "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a", "AllProcesses": "acaa6a46bd1e47ff587ac28833302734d6b00e06c26292c268110ce406ba71e3", "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e", "SearchSpecsForSelect": "8e7723b3a4cf3e7b692999e45d20b7299952253089c7bf146d36ff2872507e2b", "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea", "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3", "SearchUnits": "1961ca85600a902498898502aeda031f270ff2b1289b3ef9fe43aaaefe97ceda", "SearchProducts": "b835021eff4113acd5529f63fa742a9b70373c62a5d9cb39f4203fe2bbba9f8a", "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91", "GetPartNumber": "5efd689d8d92151ea510256828f17cbe10b815dd8dce2bd1dd51ef55bb9a0faf", "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109", "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a", "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b", "PartNumberGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c", "Customer": "12d69cd18ff3ba1ac2174f2260cfdcfe1de894f9546ca531711a1c4010ebb257", "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5", "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9", "AllPartNumbers": "a63e7a6aa73b978bad844ed1f68ab2cac9e902e78a1c22f8d6339590fa8271d1", "AllWorkOrders": "aaeb9dc00e6a957a4a7320ec69c10874e2369319b37680a4f4f995fd4bdbbc99", "AllReceivers": "3839532d3bbc2cbc2326f640f2e2e8915b65aed2fbd057b18388d753278163dc", "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf", "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c", "SearchInventoryItemBatches": "ae2466466ed3e84a2010c726a166c432c176c3d21be5be7ac71db6c1846b901b", "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09", "CheckDuplicatePO": "94e659bf6eea8d493f8ea67f950fd38371a5cb680d2622145d5df9dc63583b85", "CreateEditReceivedOrderDialogQuery": "5b01210ebe19943b899b9255cf84021e66ef8a851bac9f1ea0ce8beaa44e8e7d", "GetCustomerInfoForReceivedOrder": "be7c8dbeec701f49545d5f3685c448db57d043a7a2ebbe184ed642559abce9d5", "PartNumberCreatableSelectGetPartNumbers": "1d5714f35b4232eed5c3e89df5dd833c595d77df333ee3bc0f0f09c3a4f9b23a", "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14", "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a", "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120", "GetReceivedOrder": "8cf1f210a04b3138cee9364440cc7de810908ffe1e564628e76c671a5054966e", "GetAddPartsReceivedOrder": "677ae9cac761b748b85311b63a6cfa27065119b0a20f998005ef6baea6831b64", "WorkOrderDialogQuery": "1c4f09ee81aaec381778f0a56c7c3f7f3f42f327232f2461b467eb36adf2ab63", "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686", "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8", "GetReceivedOrderDocuments": "7d74c516daa9938572e482fb1ea012dce5eeb3bad2de63cecb1e5740a139e42d", "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156", "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520", "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0", "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db", "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de", "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7", "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d", "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e", "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb", "AllCustomers": "8d4dfe69d3050a16ad802015e6d14b6458db5266e62c67a2321d23b440086037", "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6", "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888", "ReceivingBatchesQuery": "55a06a3013d465596d24cc3893f2c163a08f78c00d20a17d746e4cddce197d4e", "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4", "InvoiceByIdInDomain": "06a51d0363584477082a9d76c72080b4dea2b2797737c051760c1b33a791dfba", "CurrentUser": "0eff1bd5ce3e64d6c3b930465596e70f9c353f9801451a236532ab865cb7aa3c", "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c", "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0", "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c", "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac", "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830", "GetMaintenanceEvent": "be2a98642faeaa127dd66ac78f59716b030cc4dbeba7e9348fcde2d5bb074b2b", "UserDialogQuery": "843b5f4f236fd159b5d3912c434551cf2866a591e3c38babfdfb2fd6f7283959", "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63", "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83", "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f", "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de", "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0", "GetPurchaseOrderDetail": "dbc6c29ef8f1b523e6c9472bee4ca9a795e6d2bb284cfc3497b882b113dfb9de", "GetDomain": "b260943764f1ad8a8cca78af2fa010f6de7f5fffde0251fe1b02735f1402178d", "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57", "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0", "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d", "SearchPurchaseOrdersForBill": "e99dddad15827a5c6b2a342f236a60a462edcc406f9896a1b04800a76def929a", "GetPurchaseOrdersDataForBill": "a94f43960ae91e6f62332a9e3268f9789ccdd847c8951dbf27a7d2ff25c5565d", "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8", "GetVendor": "87ad05379932cc20b466a5ff3c3c33f8a8d27ca06bfdd0a423aa40f720c8f541", "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e", "GetReceivedOrdersWithReceivedOrderLineItems": "50974f9ba56a8846f001f1a25452fd3f6d0f99cf16c9db7d6d9a1f1b40155b9e", "GetProcessNode": "304ed72651c583baa333505f1b449419ac636dda1a4327de89a5a31a295c6054", "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af", "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d", "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3", "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3", "CreateEditProcessDialogQuery": "de4bc7fb144adaf8d3e314a2849b0680b6107f228890a463e59b74ca7eb9a0c0", "GetTreatment": "87a9d9f60a00814e8573ec59c0817fc2d29777777aa592a7db221a339322a750", "AllTreatments": "69c99e3fbb343cf07c0b95189b32ae411228a154f06588a9c28c58f8da26220b", "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca", "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2", "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec", "AllSensorDashboards": "597eafd7bedf12072e68b2b1ac03f1088e2444a054e03340b1ee57a0116127ce", "SensorDashboardQuery": "038f482285493e4515999b3b3d32738c52cfa80b7fc2437efd48c6fa75a7d19a", "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705", "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e", "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e", "WorkOrder": "fc41042ebaacfbfcc09a57d171a1c0f87580921bbdbb0cec86fa34a24a39255e", "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284"}}, "domain": {"id": 344, "dimensionIds": {"linea": 349, "departamento": 586}, "billingDefaults": {"departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado"}, "inputSchemaId_PN": 3932, "inputSchemaId_Quote": 659, "inputSchemaId_Bill": 27, "stagesRevisionId": 306, "ganadaStageId": 1212, "revertStageId": 1208, "geometryGenericaId": 831, "validacionProcessNodeIds": [231176, 231174], "unitIds": {"KGM": 3969, "LBR": 3972, "FTK": 4797, "CMK": 4907, "DMK": 3975, "FOT": 5148, "LM": 5150, "LO": 5348, "MTR": 3971}, "conversions": {"KGM_TO_LBR": 2.20462, "CMK_TO_FTK": 0.00107639, "LM_TO_FOT": 3.28084}, "geometryDimensions": {"LENGTH": 1284, "WIDTH": 1011, "HEIGHT": 1012, "OUTER_DIAM": 1013, "INNER_DIAM": 1014}, "empresas": {"ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México"}, "predictiveMaterials": {"PlataFina": 55113, "EstanoPuro": 55114, "Niquel": 55115, "Zinc": 55116, "Cobre": 55117, "Sterlingshield_S": 55118, "Epoxy_MT": 55119, "Epoxica_BT": 55120, "Epoxica_MT_Red": 55121}, "schneiderQueretaro": {"customerId": 176980, "shipToAddressId": 277022, "inputSchemaId": 559, "invoiceTermsId": 3142, "sectorId": 578, "shipMethodId": 4661, "poNumberRegex": "^1[14]\\d{8}$", "restantesOvName": "Restantes Schneider QRO"}, "processAudit": {"satelliteOverrides": {"include": [], "exclude": []}, "finishProductMap": {"EST": ["ESTAÑADO", "ESTAÑO"], "NIQ": ["NIQUELADO", "NIQUEL"], "NSU": ["NIQUEL SULFAMATO", "NIQUEL"], "NWO": ["NIQUEL WOOD", "NIQUEL"], "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"], "NBR": ["NIQUEL BRILLANTE", "NIQUEL"], "NCV": ["NIQUEL CHEVROL", "NIQUEL"], "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"], "CRO": ["CROMADO", "CROMO"], "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"], "PLA": ["PLATEADO", "PLATA"], "PLF": ["PLATA FLASH", "PLATA"], "COB": ["COBREADO", "COBRE"], "ZIN": ["ZINCADO", "ZINC"], "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"], "EST_T2": ["ESTAÑADO", "ESTAÑO"], "PAV": ["PAVONADO"], "FMS": ["FOSFATO MANGANESO"], "FZI": ["FOSFATO ZINC"], "AND": ["ANODIZADO"], "IRI": ["IRIDIZADO"], "BDP": ["BAÑO DE PASIVADO"], "BRI": ["BRILLO QUIMICO"], "PRE": ["PRELIMPIEZA", "LIMPIEZA"], "ROD": ["RODADO"], "REB": ["REBABADO", "REBARBADO"], "LES": ["LIMPIEZA ESPECIAL"], "DES": ["DESOXIDADO"], "PUL": ["PULIDO"], "ELE": ["ELECTROPULIDO"], "TIN": ["TINTURADO"], "ESM": ["ESMERILADO"], "SAB": ["SABLEADO"], "LMC": ["LIMPIEZA QUIMICA"], "NOX": ["NOX"], "LAV": ["LAVADO"], "DEC": ["DECAPADO"], "PAS": ["PASIVADO"], "ANT": ["ANTITARNISH"], "HOR": ["HORNEADO", "HORNO"], "FIB": ["FIBRADO"], "ENM": ["ENMASCARADO"], "DNM": ["DESENMASCARADO"], "ACE": ["ACEITADO"], "ABR": ["ABRILLANTADO"], "TRT": ["TRATAMIENTO TERMICO"], "EBT": ["EPOXICA BT"], "EMT": ["EPOXY MT"], "EMR": ["EPOXICA MR"], "CAZ": ["CAJA ZINC", "ZINC"], "CTR": ["CILINDRO TRADICIONAL"], "CVO": ["CILINDRO VOLTEO"], "CAM": ["CAMPANA"], "CAT": ["CATARINA"], "CNE": ["CILINDRO NEUMATICO"], "CNT": ["CILINDRO NETO"], "CRJ": ["CILINDRO ROJO"], "CTV": ["CILINDRO TV"], "CNN": ["CILINDRO NN"]}, "concurrency": {"audit": 5, "trees": 5, "parents": 5, "retryDelaysMs": [0, 1000, 2000]}, "duplicates": {"enabled": true, "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"], "ignoreNamePatterns": [], "ignoreIds": []}}, "specParamsBulk": {"concurrency": {"fetchDetails": 5, "editShape": 10}, "batchSize": 50, "retryDelaysMs": [1000, 2000, 4000], "labelMP": "MP", "impPrefixRegex": "^IMP", "page": {"first": 400}}, "bulkUpload": {"concurrency": {"savePartNumber": 8, "archive": 8, "sentinelPreQuoteArchive": 3}, "retry": {"delaysMs": [1000, 2000, 4000]}, "paging": {"allPartNumbers": {"first": 200, "maxResults": 1000, "massiveMaxResults": 50000}}, "preview": {"pageSize": 100}, "resume": {"maxEntries": 20, "purgeAgeDays": 7}, "nonFinishLabelNames": ["SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2", "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"], "metalEquivalents": [["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"], ["Plata", "Plata Flash"]], "dedup": {"massiveThreshold": 1000}, "chunking": {"defaultChunkSize": 250}, "debug": {"logPredictiveParse": true, "logPredictiveSampleRows": 20}}, "auditor": {"largeCustomers": [{"name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000}], "hardCapPns": 8000, "hardCapWithExclusions": 15000}}}, "portalLayouts": {"hubbell": {"name": "Hubbell Portal", "detection": {"requiredColumns": ["number", "status", "lineItem.itemNumber", "lineItem.materialCodeBuyer", "lineItem.materialDescription", "lineItem.netPrice", "lineItem.priceUnit", "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"], "minMatchRatio": 0.9}, "mapping": {"poNumber": "number", "status": "status", "customer": "customerAddressName", "currency": "currency", "date": "date", "lineNumber": "lineItem.itemNumber", "buyerCode": "lineItem.materialCodeBuyer", "description": "lineItem.note", "netPrice": "lineItem.netPrice", "priceUnit": "lineItem.priceUnit", "quantity": "lineItem.targetQuantity", "deliveryDate": "lineItem.schedule.deliveryDate", "unit": "lineItem.unit"}, "pnExtractor": {"type": "regex", "source": "description", "patterns": ["(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)", "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"]}, "statusFilter": {"activeValues": ["Nuevo"]}, "unitPriceFormula": "netPrice / priceUnit"}}, "unitAutoConvertEnabled": true, "apps": [{"id": "load-calculator", "name": "Calculadora de Piezas por Carga", "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types", "icon": "⚙️", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/load-calculator-engine.js", "scripts/load-calculator-stations.js", "scripts/load-calculator.js", "scripts/load-calculator-modal.js"], "requiredPermissions": [], "actions": [{"id": "open-station-config", "label": "Configurar Estaciones", "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea", "icon": "⚙️", "type": "primary", "handler": "message", "message": "open-station-config", "fn": "LoadCalculator.openStationConfig"}]}, {"id": "proceso-calculator", "name": "Calculadora de Procesos", "subtitle": "Sugiere Default Process al editar un NP", "icon": "🧮", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"], "requiredPermissions": []}, {"id": "carga-masiva", "name": "Carga Masiva", "subtitle": "Cotizaciones y NP", "icon": "📊", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"], "actions": [{"id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker"}, {"id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs"}, {"id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history"}]}, {"id": "hash-scanner", "name": "Explorador Steelhead", "subtitle": "Captura de APIs", "icon": "🔍", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"], "requiredPermissions": ["WRITE_USER_PERMISSIONS"], "actions": [{"id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan"}, {"id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results"}, {"id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config"}, {"id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge"}]}, {"id": "archiver", "name": "Archivador de PNs", "subtitle": "Por etiquetas, fecha y modo", "icon": "📦", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver"}]}, {"id": "auditor", "name": "Auditor de PNs", "subtitle": "Verificar calidad de datos", "icon": "🔎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor"}]}, {"id": "file-uploader", "name": "Cargador de Archivos", "subtitle": "Fotos y planos por PN", "icon": "📎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"], "requiredPermissions": ["READ_ALL_UPLOADED_FILES"], "actions": [{"id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files"}, {"id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup"}]}, {"id": "report-liberator", "name": "Liberador de Reportes", "subtitle": "Sacar reportes de carpetas", "icon": "📂", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator"}]}, {"id": "report-regen", "name": "Regenerar Reportes", "subtitle": "Fuerza el refresh global de la base de reportes", "icon": "♻️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup"}]}, {"id": "spec-migrator", "name": "Ajuste Masivo de Specs", "subtitle": "Migración y params pendientes", "icon": "🔀", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator.js"], "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"], "actions": [{"id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run"}, {"id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams"}, {"id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts"}, {"id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator"}]}, {"id": "inventory-reset", "name": "Reinicio de Inventario", "subtitle": "Archivar lotes y carga inicial", "icon": "🔄", "category": "Inventario", "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"], "requiredPermissions": ["READ_INVENTORY"], "actions": [{"id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset"}]}, {"id": "po-comparator", "name": "Validador OC vs OV", "subtitle": "Comparar orden de compra vs venta", "icon": "📋", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator"}]}, {"id": "po-reconciler", "name": "Reconciliador OV vs PO Schneider", "subtitle": "Rebalancear OVs temporales contra POs reales", "icon": "🧮", "category": "Órdenes de Venta", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "autoInject": true, "actions": [{"id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler"}]}, {"id": "wo-deadline", "name": "Gestión Masiva de OT", "subtitle": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run"}]}, {"id": "wo-mover", "name": "Mover OTs entre OVs", "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV", "icon": "↔️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"], "autoInject": true, "actions": [{"id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover"}]}, {"id": "wo-completer", "name": "Completar / Descompletar OTs", "subtitle": "Cerrar o revivir órdenes de trabajo desde un listado", "icon": "✅", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/wo-completer-engine.js", "scripts/wo-completer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "open-wo-completer", "label": "Completar / Descompletar OTs", "sublabel": "Pega un listado de OTs y ciérralas o revívelas", "icon": "✅", "type": "primary", "handler": "message", "message": "open-wo-completer", "fn": "WOCompleter.open"}]}, {"id": "cfdi-attacher", "name": "Adjuntar CFDI", "subtitle": "Auto-adjunta XML CFDI al enviar facturas", "icon": "📄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher"}]}, {"id": "invoice-auto-regen", "name": "Auto-regenerar Facturas", "subtitle": "Regenera PDF al detectar timbrado exitoso", "icon": "🔄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-auto-regen.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-auto-regen", "label": "Auto-regenerar Facturas", "sublabel": "Regenera PDF tras timbrado exitoso", "icon": "🔄", "type": "toggle", "handler": "message", "message": "toggle-invoice-auto-regen"}]}, {"id": "invoice-default-tab", "name": "Tab por defecto en Invoices", "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=", "icon": "📦", "category": "Facturación", "scripts": ["scripts/invoice-default-tab.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-default-tab", "label": "Tab por defecto Invoices", "sublabel": "Salta a Packing Slips al entrar a /Invoices", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-invoice-default-tab"}]}, {"id": "invoice-listing-marker", "name": "Marcadores de Facturas", "subtitle": "Resalta NC, montos cero y borradores en el listado", "icon": "🎯", "category": "Facturación", "scripts": ["scripts/invoice-listing-marker.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker"}]}, {"id": "portal-importer", "name": "Importador de Portales", "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)", "icon": "📥", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer"}]}, {"id": "paros-linea", "name": "Paro de Línea", "subtitle": "Registrar paros con cronómetro", "icon": "⚠️", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea"}, {"id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled"}]}, {"id": "vale-almacen", "name": "Vale de Almacén", "subtitle": "Surtido de material/equipo por usuario", "icon": "📦", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/vale-almacen-engine.js", "scripts/vale-almacen.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-vale-almacen", "label": "Emitir Vale de Almacén", "sublabel": "Registrar artículos entregados por usuario", "icon": "📦", "type": "primary", "handler": "message", "message": "open-vale-almacen", "fn": "ValeAlmacen.open"}]}, {"id": "weight-quick-entry", "name": "Peso Rápido", "subtitle": "Registra peso KG/LB desde el modal de recibo", "icon": "⚖️", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry"}]}, {"id": "unit-autoconvert", "name": "Auto-conversión de Unidades", "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP", "icon": "📐", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"], "autoInject": true, "requiredPermissions": []}, {"id": "price-confirm-guard", "name": "Candado de Confirmación de Precio", "subtitle": "Reconfirma el precio (tipo password) y exige divisa al guardar en el modal de precios", "icon": "🔒", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/price-confirm-core.js", "scripts/price-confirm-guard.js"], "autoInject": true, "requiredPermissions": [], "actions": [{"id": "toggle-price-confirm-guard", "label": "Candado de Precio", "sublabel": "Reconfirmar precio + divisa al guardar (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-price-confirm-guard", "fn": "PriceConfirmGuard.toggleFromPopup"}]}, {"id": "receiver-date-override", "name": "Fecha de Recibo", "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts", "icon": "📅", "category": "Recibo", "scripts": ["scripts/receiver-date-override.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override"}]}, {"id": "warehouse-location-prefill", "name": "Ubicación de Recibo", "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts", "icon": "📦", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill"}]}, {"id": "create-order-autofill", "name": "Crear OV — Autofill", "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta", "icon": "📝", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill-core.js", "scripts/create-order-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill"}]}, {"id": "bill-autofill", "name": "Bill Autofill", "subtitle": "Llenado automático de cuentas contables en Bills", "icon": "🧾", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"], "actions": [{"id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill"}]}, {"id": "invoice-autofill", "name": "Invoice Autofill", "subtitle": "Llenado automático de cuentas contables en Invoices", "icon": "🧮", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill"}]}, {"id": "process-canon", "name": "Canon de Procesos", "subtitle": "Auditar y normalizar nodos canónicos", "icon": "🏭", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"], "actions": [{"id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run"}, {"id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit"}]}, {"id": "spec-params-bulk", "name": "Carga masiva Spec Params", "subtitle": "Editar parámetros de specs vía XLSX", "icon": "🧪", "category": "Calidad", "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"], "requiredPermissions": [], "actions": [{"id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params"}, {"id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params"}]}, {"id": "sensor-status-autofill", "name": "Auto-asignar status (Sensor Dashboards)", "subtitle": "Marca 'Use for Status' en members de un dashboard", "icon": "📊", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"], "requiredPermissions": [], "actions": [{"id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status"}]}, {"id": "sensor-graph-hide-all", "name": "Auto-ocultar sensores en la gráfica", "subtitle": "Al entrar a un Sensor Dashboard esconde todos los sensores para elegir uno", "icon": "👁", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/sensor-graph-hide-all-core.js", "scripts/sensor-graph-hide-all.js"], "requiredPermissions": [], "actions": [{"id": "toggle-sensor-graph-hide-all", "label": "Auto-ocultar sensores", "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)", "icon": "👁", "type": "toggle", "handler": "message", "message": "toggle-sensor-graph-hide-all", "fn": "SensorGraphHideAll.toggleFromPopup"}]}, {"id": "pn-specs-column", "name": "Specs en Números de Parte", "subtitle": "Columna de specs + parámetros numéricos de cada NP en el dashboard /PartNumbers", "icon": "🧪", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/pn-specs-column-core.js", "scripts/pn-specs-column.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "toggle-pn-specs-column", "label": "Specs en Números de Parte", "sublabel": "Columna de specs + params numéricos en /PartNumbers (1 consulta por NP visible; el toggle también vive en el header)", "icon": "🧪", "type": "toggle", "handler": "message", "message": "toggle-pn-specs-column", "fn": "PnSpecsColumn.toggleFromPopup"}]}, {"id": "auto-router", "name": "Auto-Ruteador", "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción", "icon": "🔀", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/auto-router-engine.js", "scripts/auto-router-api.js", "scripts/auto-router-panel.js", "scripts/auto-router-batch.js", "scripts/board-metal-tooltip.js", "scripts/auto-router.js"], "requiredPermissions": [], "actions": [{"id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router"}, {"id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch"}]}, {"id": "surtido-guard", "name": "Candado de Surtido Programado", "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido", "icon": "🔒", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/surtido-guard-core.js", "scripts/surtido-guard.js"], "requiredPermissions": [], "actions": [{"id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup"}]}, {"id": "pn-lifecycle", "name": "Ciclo de vida de PNs", "subtitle": "Marcar validación de ingeniería, desarchivar, quitar validación o archivar (Borrado definitivo) PNs por lote, con filtros y dedup", "icon": "♻️", "category": "Números de Parte", "scripts": ["scripts/host-cleanup-shared.js", "scripts/steelhead-api.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-classify.js", "scripts/pn-lifecycle-core.js", "scripts/pn-lifecycle.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-pn-lifecycle", "label": "Ciclo de vida de PNs", "sublabel": "Filtrar, previsualizar y ejecutar acciones sobre PNs", "icon": "♻️", "type": "primary", "handler": "message", "message": "run-pn-lifecycle"}]}], "knownOperations": {"StationTreatmentByWorkOrder": {"type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router"}, "SearchStationsForTreatment": {"type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router"}, "CreateUpdateDeleteRoutes": {"type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router"}, "PartNumbersByWorkOrderIdInDomain": {"type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router"}, "GetPartNumberInventoryBatch": {"type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router"}, "GetInventoryBatch": {"type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router"}, "SchedulablePartLocations": {"type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router"}, "CreateQuote": {"type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva"}, "UpdateQuote": {"type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva"}, "SaveQuoteLines": {"type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva"}, "CreateQuoteStageChange": {"type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva"}, "SaveManyPartNumberPrices": {"type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva"}, "SavePartNumber": {"type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva"}, "SavePartNumberRackTypes": {"type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva"}, "SetPartNumberPricesAsDefaultPrice": {"type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva"}, "UpdatePartNumber": {"type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva"}, "CreatePartNumberGroup": {"type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva"}, "CustomerSearchByName": {"type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva"}, "CustomerFinancialByCustomerId": {"type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva"}, "GetQuote": {"type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva"}, "GetQuoteRelatedData": {"type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva"}, "SearchInvoiceTerms": {"type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva"}, "SearchUsers": {"type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva"}, "AllProcesses": {"type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva"}, "AllLabels": {"type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva"}, "DeleteWorkOrderLabels": {"type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline"}, "CreateWorkOrderLabel": {"type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline"}, "SearchSpecsForSelect": {"type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva"}, "TempSpecFieldsAndOptions": {"type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva"}, "AllRackTypes": {"type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva"}, "SearchUnits": {"type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert"}, "SearchProducts": {"type": "query", "description": "Buscar productos para líneas de cotización", "usedBy": "carga-masiva"}, "SearchPartNumbers": {"type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva"}, "PartNumberGroupSelect": {"type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva"}, "DeletePartNumberPrice": {"type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva"}, "DeletePartNumberRackType": {"type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva"}, "CreatePartNumberInputSchema": {"type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva"}, "GetDimension": {"type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva"}, "Customer": {"type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill"}, "AllInventoryTypes": {"type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset"}, "SearchInventoryTypeItems": {"type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset"}, "SearchInventoryItemBatches": {"type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset"}, "AllInventoryBatchStatuses": {"type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset"}, "CreateEditInventoryBatchDialogQuery": {"type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset"}, "SearchLocationsOnPath": {"type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill"}, "UpdateInventoryBatchesChecked": {"type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset"}, "CreateInventoryTransferEventGroups": {"type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset"}, "GetSpec": {"type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator"}, "SpecFieldsAndOptions": {"type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator"}, "ApplySpecsToPartNumber": {"type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator"}, "ArchivePartNumberSpecAndParams": {"type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator"}, "UpdatePartNumberSpecParam": {"type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator"}, "AddParamsToPartNumber": {"type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator"}, "FilterSearch": {"type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator"}, "AllReports": {"type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator"}, "CreateUpdateReportWithPermissions": {"type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator"}, "DeleteFolderById": {"type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator"}, "ArchiveReport": {"type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator"}, "CreateUpdateBill": {"type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill"}, "GetPurchaseOrderDetail": {"type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain (antes 'GetPurchaseOrder'; el front renombró la op, mismas variables idInDomain/userIdFilter)", "usedBy": "bill-autofill"}, "GetDomain": {"type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill"}, "SearchAccounts": {"type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill"}, "GetAccountDataForBill": {"type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill"}, "GetBillByIdInDomain": {"type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill"}, "GetPartNumbersInputSchema": {"type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva"}, "AllSpecs": {"type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva"}, "AllCustomers": {"type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva"}, "UpdateInventoryItemPredictedUsage": {"type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva"}, "ArchivePredictedInventoryUsage": {"type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash"}, "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {"type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva"}, "UpdatePartNumberPerPerRackType": {"type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva"}, "GetSpecFieldPartNumbers": {"type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator"}, "CheckDuplicatePO": {"type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator"}, "ActiveReceivedOrders": {"type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator"}, "GetReceivedOrder": {"type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator"}, "GetAddPartsReceivedOrder": {"type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler"}, "GetReceivedOrderLine": {"type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator"}, "GetReceivedOrderDocuments": {"type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator"}, "RouteReceivedOrders": {"type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator"}, "GetReceivedOrderCosts": {"type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator"}, "ReceivingBatchesQuery": {"type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator"}, "EmailCustomerContactsByCustomerIds": {"type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator"}, "GetEmailDefaultByTypeAndSubType": {"type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator"}, "GetUserEmailRecipients": {"type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator"}, "SaveReceivedOrderLinesAndItems": {"type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator"}, "SaveReceivedOrderPartTransforms": {"type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer"}, "UpdateReceivedOrder": {"type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler"}, "AddPartsToWorkOrders": {"type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler"}, "CreateUpdateWorkOrdersChecked": {"type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler"}, "SendEmailChecked": {"type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher"}, "CreateEmailLogReceivedOrder": {"type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator"}, "InvoiceByIdInDomain": {"type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher"}, "CreateInvoicePdf": {"type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher"}, "ActiveInvoicesPaged": {"type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen"}, "CreateInvoiceEmailLog": {"type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher"}, "CurrentUser": {"type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions"}, "CurrentUserDetails": {"type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea"}, "CurrentUserActiveSegments": {"type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload"}, "GlobalUsers": {"type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions"}, "CreateReceivedOrder": {"type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator"}, "CreateUserFile": {"type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader"}, "CreateReceivedOrderUserFile": {"type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator"}, "CreateEditReceivedOrderDialogQuery": {"type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator"}, "GetCustomerInfoForReceivedOrder": {"type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator"}, "PartNumberCreatableSelectGetPartNumbers": {"type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator"}, "SearchPartNumberPrices": {"type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator"}, "CreateMaintenanceEvent": {"type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea"}, "CreateMaintenanceNodeEvent": {"type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea"}, "CreateManySensorMeasurements": {"type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea"}, "UpdateMaintenanceEvent": {"type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea"}, "CreateMaintenanceEventComment": {"type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea"}, "CreateMaintenanceEventUserFile": {"type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea"}, "CreateMaintenanceEventDialogQuery": {"type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea"}, "OperatorMaintenanceNodeDialogQuery": {"type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea"}, "SearchEquipments": {"type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea"}, "WorkboardById": {"type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea"}, "AllEquipments": {"type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea, vale-almacen"}, "GetMaintenanceEvent": {"type": "query", "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)", "usedBy": "vale-almacen"}, "UpdateMaintenanceNodeEvent": {"type": "mutation", "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado", "usedBy": "vale-almacen"}, "UserDialogQuery": {"type": "query", "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)", "usedBy": "vale-almacen"}, "AllPermissionsEditManyPermissions": {"type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings"}, "GetAvailableUnits": {"type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "CreateInventoryItemUnitConversion": {"type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert"}, "UpdateInventoryItemUnitConversion": {"type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "InvoiceLowCodeData": {"type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill"}, "GetReceivedOrdersWithReceivedOrderLineItems": {"type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill"}, "CreateInvoiceAndUpdatePartTransferAccounts": {"type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill"}, "GetProcessNode": {"type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit"}, "CreateEditProcessDialogQuery": {"type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit"}, "GetTreatment": {"type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit"}, "AllTreatments": {"type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit"}, "CreateEditTreatmentTimesDialogQuery": {"type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit"}, "StationsByTreatmentId": {"type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit"}, "GetProcessNodeParents": {"type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit"}, "AllTagsAndNodes": {"type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon"}, "ProcessesComponentQuery": {"type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon"}, "ProcessesWithTag": {"type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon"}, "GetAllTagsQuery": {"type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon"}, "CreateProcessNode": {"type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon"}, "ProcureTree": {"type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon"}, "UpdateProcessNode": {"type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon"}, "UpdateReceiver": {"type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)"}, "CreateReceiverChecked": {"type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"}}, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm"};
   try { if (window.SteelheadAPI && window.SteelheadAPI.init) window.SteelheadAPI.init(window.REMOTE_CONFIG); } catch (e) {}
 })();
 // ===== END config-seed =====
@@ -2782,6 +2801,28 @@ if (typeof window !== 'undefined') {
     };
   }
 
+  // ¿El texto de un heading corresponde al modal de creación de OV? Steelhead lo
+  // rotula distinto según la pantalla que lo abre:
+  //   - "Crear Orden de Venta"  (ES) — flujo /Receiving/CustomerParts (recibir piezas)
+  //   - "Create Sales Order"    (EN) — flujo /Domains/<id>/SalesOrders ("New Sales Order")
+  // Aceptamos ambos idiomas (mismos IDs RJSF debajo, así que el resto del applet reúsa).
+  function isCreateOrderModalHeading(text) {
+    return /^\s*(?:crear\s+orden\s+de\s+venta|create\s+sales\s+order)\s*$/i
+      .test(String(text || '').trim());
+  }
+
+  // ¿La ruta (location.pathname, sin query) es una pantalla donde vive el modal de OV?
+  //   - /Receiving/CustomerParts   — flujo original (recibir piezas del cliente)
+  //   - /Domains/<id>/SalesOrders  — lista de Órdenes de Venta → botón "New Sales Order"
+  function matchesCreateOrderUrl(pathname) {
+    const p = String(pathname || '');
+    // SalesOrders: anclado al final (con slash opcional) → solo la LISTA, no las páginas
+    // de detalle de una OV (/Domains/<id>/SalesOrders/<n>). El modal "New Sales Order"
+    // abre sobre la lista sin cambiar la URL (query en location.search, no en pathname).
+    return /\/Receiving\/CustomerParts(?:\/|$)/.test(p)
+      || /\/Domains\/\d+\/SalesOrders\/?$/.test(p);
+  }
+
   // ¿La clase de un nodo denota el ROOT (paper/contenedor) de un MUI Dialog?
   // Bug 2026-07-03: getModalRoot() usaba `[class*="MuiDialog"]` arrancando en el heading
   // MISMO, cuya clase "MuiDialogTitle-root" contiene el substring "MuiDialog" → matcheaba
@@ -2800,6 +2841,8 @@ if (typeof window !== 'undefined') {
     extractCustomerIdInDomain,
     pickCustomerFromSingleValues,
     scoreOptionMatch,
+    isCreateOrderModalHeading,
+    matchesCreateOrderUrl,
     isDialogRootClass
   };
   if (typeof window !== 'undefined') window.CreateOrderAutofillCore = api;
@@ -2811,13 +2854,19 @@ if (typeof window !== 'undefined') {
 // ===== BEGIN scripts/create-order-autofill.js =====
 (function(){
 // Create Order Autofill
-// Auto-llena las 3 Entradas Personalizadas del modal "Crear Orden de Venta"
-// que sale en /Receiving/CustomerParts → "RECEIVE" → "+ / Create".
+// Auto-llena las Entradas Personalizadas del modal de creación de OV. Dos pantallas:
+//   1. /Receiving/CustomerParts → "RECEIVE" → "+ / Create"  → título "Crear Orden de Venta" (ES),
+//      cliente pre-cargado, expone "Enviar a:" (ship-to).
+//   2. /Domains/<id>/SalesOrders → "New Sales Order"          → título "Create Sales Order" (EN),
+//      cliente vacío (el operador lo elige a mano), SIN ship-to.
+// Mismos IDs RJSF en ambos modales (root_RazonSocialVenta / root_Divisa / root_ConsolidarPorProducto),
+// así que el mismo autofill sirve para los dos; solo cambia el gate de URL y el título.
 //
 // Reglas:
 //   - Razón Social  ← customer.customInputs.DatosFactura.RazonSocialVenta (match exacto contra <option>)
 //   - Divisa        ← customer.customInputs.DatosFactura.Divisa            (match exacto/substring contra <option>)
 //   - Consolidar    ← ship-to-driven: marca checkbox si "Enviar a:" del modal contiene "javier rojo"
+//                     (en la pantalla SalesOrders no hay ship-to → Consolidar no aplica, se omite)
 //
 // Depende de: SteelheadAPI, CreateOrderAutofillCore (create-order-autofill-core.js)
 //
@@ -2831,8 +2880,10 @@ if (typeof window !== 'undefined') {
 const CreateOrderAutofill = (() => {
   'use strict';
 
-  const URL_RE = /\/Receiving\/CustomerParts(?:\/|$)/;
-  const MODAL_HEADING_RE = /^\s*crear\s+orden\s+de\s+venta\s*$/i;
+  // Fallbacks locales por si el core no cargara (el core va ANTES en el array scripts,
+  // así que normalmente se usan sus helpers homónimos vía urlMatches()/headingMatches()).
+  const URL_RE = /\/Receiving\/CustomerParts(?:\/|$)|\/Domains\/\d+\/SalesOrders\/?$/;
+  const MODAL_HEADING_RE = /^\s*(?:crear\s+orden\s+de\s+venta|create\s+sales\s+order)\s*$/i;
   const RJSF_RAZON_ID = 'root_RazonSocialVenta';
   const RJSF_DIVISA_ID = 'root_Divisa';
   const RJSF_CONSOLIDAR_ID = 'root_ConsolidarPorProducto';
@@ -2842,6 +2893,15 @@ const CreateOrderAutofill = (() => {
   const core = () => window.CreateOrderAutofillCore;
   const log = (m) => (api()?.log ? api().log(`[create-order-autofill] ${m}`) : console.log('[create-order-autofill]', m));
   const warn = (m) => (api()?.warn ? api().warn(`[create-order-autofill] ${m}`) : console.warn('[create-order-autofill]', m));
+
+  const urlMatches = (p) => {
+    const c = core();
+    return c?.matchesCreateOrderUrl ? c.matchesCreateOrderUrl(p) : URL_RE.test(p);
+  };
+  const headingMatches = (t) => {
+    const c = core();
+    return c?.isCreateOrderModalHeading ? c.isCreateOrderModalHeading(t) : MODAL_HEADING_RE.test(t);
+  };
 
   const _customerCache = new Map();   // idInDomain → customer
   const _nameIdCache = new Map();     // normalizedName → idInDomain|null
@@ -2862,7 +2922,7 @@ const CreateOrderAutofill = (() => {
       return;
     }
     setupUrlListener();
-    log(`init en ${location.pathname} (matches=${URL_RE.test(location.pathname)})`);
+    log(`init en ${location.pathname} (matches=${urlMatches(location.pathname)})`);
     checkUrl();
   }
 
@@ -2881,7 +2941,7 @@ const CreateOrderAutofill = (() => {
   }
 
   function checkUrl() {
-    if (!URL_RE.test(location.pathname)) {
+    if (!urlMatches(location.pathname)) {
       removePanel();
       state.lastSig = null;
       return;
@@ -2935,7 +2995,7 @@ const CreateOrderAutofill = (() => {
   function isCreateOrderModal() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
-      if (MODAL_HEADING_RE.test((h.textContent || '').trim())) return true;
+      if (headingMatches((h.textContent || '').trim())) return true;
     }
     return false;
   }
@@ -2964,7 +3024,7 @@ const CreateOrderAutofill = (() => {
   function getModalRoot() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
-      if (!MODAL_HEADING_RE.test((h.textContent || '').trim())) continue;
+      if (!headingMatches((h.textContent || '').trim())) continue;
       // Arrancamos ARRIBA del heading: su propia clase MuiDialogTitle-root es un cebo.
       let cur = h.parentElement;
       for (let i = 0; i < 14 && cur; i++) {
@@ -3168,6 +3228,15 @@ const CreateOrderAutofill = (() => {
     }
 
     if (idInDomain == null) {
+      // Pantalla SalesOrders: el modal abre SIN cliente (el operador lo elige a mano).
+      // No mostramos panel de error mientras no haya cliente — esperamos en silencio a
+      // que lo seleccione (la firma cambia y re-dispara el scan). Solo reportamos error
+      // si SÍ hay nombre de cliente pero no pudimos resolver su idInDomain.
+      if (!customerName) {
+        log('modal abierto sin cliente elegido aún — esperando selección');
+        removePanel();
+        return;
+      }
       log(`sin idInDomain (cliente="${customerName}") — no autofill`);
       state.results = { razon: { ok: false, msg: 'sin idInDomain' }, divisa: { ok: false, msg: 'sin idInDomain' }, consolidar: null };
       renderPanel({ customerName, shipTo });
@@ -3203,10 +3272,12 @@ const CreateOrderAutofill = (() => {
         : { ok: false, msg: r.reason };
     }
 
-    // Consolidar (ship-to-driven, independiente del customer)
+    // Consolidar (ship-to-driven, independiente del customer). En la pantalla SalesOrders
+    // el modal NO expone "Enviar a:" → sin destino no aplica la regla Rojo Gómez; lo
+    // dejamos en el default RJSF (false) y lo marcamos como omitido, no como fallo.
     let consolidarResult;
     if (!shipTo) {
-      consolidarResult = { ok: false, msg: 'sin shipTo visible' };
+      consolidarResult = { ok: true, msg: 'no aplica (sin destino en esta pantalla)', skipped: true };
     } else if (ROJO_GOMEZ_RE.test(shipTo)) {
       const r = setCheckbox(consolidarChk, true);
       consolidarResult = r.success
@@ -9064,7 +9135,7 @@ const BillAutofill = (() => {
 
   async function fetchPODivisa(idInDomain) {
     try {
-      const data = await api().query('GetPurchaseOrder', { idInDomain, userIdFilter: state._userId || 0 }, 'GetPurchaseOrder');
+      const data = await api().query('GetPurchaseOrderDetail', { idInDomain, userIdFilter: state._userId || 0 }, 'GetPurchaseOrderDetail');
       const po = data?.purchaseOrderByIdInDomain;
       const divisa = po?.customInputs?.DatosReferencia?.Divisa || po?.customInputs?.Divisa || null;
 
@@ -17292,7 +17363,13 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
   // de una línea + selector "-LI" de otra). En vez de esconder líneas, el batch usa los
   // CAMBIOS REALES (effectiveChangeCount) para el conteo y el botón Aplicar: elegir la
   // línea donde ya está da 0 cambios; cualquier otra (incl. devolver a la original) aplica.
-  function destinationLines(candidatesByTreatment, sourceLine) {
+  // Líneas destino ofrecibles para re-rutear. Excluye la línea donde la orden YA
+  // está: la de su ruta activa sobre el selector de línea si existe (orden movida),
+  // o la línea default `sourceLine` si no hay ruta activa (orden fresca). Así el
+  // dropdown nunca ofrece la línea actual — y una orden movida T204→T205 vuelve a
+  // mostrar T204 para regresarla. `activeRoutes` es opcional (shape de
+  // StationTreatmentByWorkOrder.activeRoutes.nodes[]: {recipeNodeId, stationId, treatmentId}).
+  function destinationLines(candidatesByTreatment, sourceLine, activeRoutes) {
     const cbt = candidatesByTreatment || {};
     const selectorTreatments = [];
     for (const tId of Object.keys(cbt)) {
@@ -17306,6 +17383,16 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
       for (const tId of selectorTreatments) for (const s of cbt[tId]) {
         const c = extractLineCode(s.name); if (c) set.add(c);
       }
+      // Línea ACTUAL = la de la ruta activa sobre un selector; si no hay, la default.
+      let currentLine = sourceLine;
+      for (const a of (activeRoutes || [])) {
+        if (!a || !selectorTreatments.includes(String(a.treatmentId))) continue;
+        for (const tId of selectorTreatments) {
+          const st = (cbt[tId] || []).find((s) => s && s.id === a.stationId);
+          if (st) { const c = extractLineCode(st.name); if (c) currentLine = c; }
+        }
+      }
+      set.delete(currentLine);
     } else {
       for (const tId of Object.keys(cbt)) for (const s of (cbt[tId] || [])) {
         const code = extractLineCode(s && s.name); if (code) set.add(code);
@@ -20397,6 +20484,1908 @@ const WODeadlineChanger = (() => {
 if (typeof window !== 'undefined') window.WODeadlineChanger = WODeadlineChanger;
 })();
 // ===== END scripts/wo-deadline-changer.js =====
+
+// ===== BEGIN scripts/pn-specs-column-core.js =====
+(function(){
+// Specs en el dashboard de Números de Parte — módulo puro (sin DOM ni red).
+// Extrae, del response de `GetPartNumber`, las SPECS asociadas al NP y, bajo cada
+// una, sus PARÁMETROS NUMÉRICOS (specField.type === 'NUMBER') con rango y unidad.
+// Consumido por pn-specs-column.js (glue DOM) y por los golden tests.
+//
+// Por qué GetPartNumber y no AllPartNumbers (verificado 2026-07-08 contra los
+// payloads reales `docs/api/Payload: *.txt`): `AllPartNumbers` (el query del
+// dashboard) NO trae specs ni parámetros — sus 98 "SPEC" son texto libre en
+// customInputs.NotasAdicionales. Solo `GetPartNumber` expone el árbol de specs.
+// Son persisted queries (el shape lo fija el server) → sí o sí un 2º query por PN.
+//
+// Shapes (confirmados en el payload real, PN con spec "E27550 (Plata)"):
+//   data.partNumberById
+//     .partNumberSpecsByPartNumberId.nodes[]            ← specs asociadas
+//        { archivedAt, specBySpecId: { id, name } }
+//     .partNumberSpecFieldParamsByPartNumberId.nodes[]  ← parámetros
+//        { archivedAt,                                    (node: histórico si !=null)
+//          specFieldParamBySpecFieldParamId: {
+//            minimumValue, maximumValue, targetValue,
+//            unitByUnitId: { name },                      ("µm (micrómetro, micra)")
+//            specFieldSpecBySpecFieldSpecId: {
+//              specFieldBySpecFieldId: { name, type },    (type: NUMBER|BOOLEAN|DROPDOWN|TEXT)
+//              specBySpecId:      { id, name } } } }
+//
+// GOTCHA CLAVE — archivedAt: los params vienen DUPLICADOS (5 archivados + 5 activos
+// idénticos en el PN de referencia). Filtramos `node.archivedAt == null`; eso además
+// deduplica. Dedup extra defensivo por (specId, fieldName, min, max, target).
+(function () {
+  'use strict';
+
+  // ── Ruta: index de Part Numbers (NO la ficha /PartNumbers/:id) ──────────────
+  // El index es exactamente /PartNumbers (con o sin trailing slash / query).
+  // La ficha individual es /PartNumbers/<id> → ahí NO va la columna.
+  const PN_INDEX_RE = /(?:^|\/)PartNumbers\/?(?:[?#]|$)/i;
+  const PN_ID_RE = /\/PartNumbers\/(\d+)(?:[/?#]|$)/i;
+
+  function isPartNumbersIndexPath(pathname) {
+    if (typeof pathname !== 'string') return false;
+    return PN_INDEX_RE.test(pathname);
+  }
+
+  // Extrae el partNumberId del href del link de la celda "Nombre" (/PartNumbers/<id>).
+  function parsePartNumberId(href) {
+    if (typeof href !== 'string') return null;
+    const m = href.match(PN_ID_RE);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  // Símbolo corto de unidad: "µm (micrómetro, micra)" → "µm". Toma el primer token
+  // antes de un espacio o paréntesis; conserva casing/acentos. "" si no hay unidad.
+  function unitSymbol(unitName) {
+    if (unitName == null) return '';
+    const s = String(unitName).trim();
+    if (!s) return '';
+    const m = s.match(/^[^\s(]+/);
+    return m ? m[0] : s;
+  }
+
+  // Número "bonito": recorta ceros de coma flotante binaria sin romper enteros.
+  function fmtNum(n) {
+    if (n == null || n === '') return '';
+    const num = Number(n);
+    if (!isFinite(num)) return String(n);
+    // Redondea a 6 significativos y quita ceros de cola.
+    let s = num.toPrecision(6);
+    if (s.indexOf('.') !== -1) s = s.replace(/\.?0+$/, '');
+    // toPrecision puede meter notación científica para magnitudes extremas: acéptala.
+    return s;
+  }
+
+  // Rango legible de un parámetro numérico a partir de min/max/target + unidad.
+  //   target        → "= t u"      (objetivo puntual)
+  //   min && max    → "lo–hi u"
+  //   min solo      → "≥ lo u"
+  //   max solo      → "≤ hi u"
+  //   nada          → "" (sin límites capturados)
+  function formatRange(param) {
+    const u = param && param.unit ? ' ' + param.unit : '';
+    const has = (v) => v !== null && v !== undefined && v !== '';
+    if (param && has(param.target)) return '= ' + fmtNum(param.target) + u;
+    if (param && has(param.min) && has(param.max)) return fmtNum(param.min) + '–' + fmtNum(param.max) + u;
+    if (param && has(param.min)) return '≥ ' + fmtNum(param.min) + u;
+    if (param && has(param.max)) return '≤ ' + fmtNum(param.max) + u;
+    return '';
+  }
+
+  // ── Extracción principal ────────────────────────────────────────────────────
+  // Dado el response de GetPartNumber (objeto `data` o el `partNumberById` directo),
+  // devuelve:
+  //   { specs: [ { specId, specName, numericParams: [ { name, min, max, target, unit, range } ] } ],
+  //     totalNumericParams }
+  // - Solo specs ACTIVAS (node.archivedAt == null).
+  // - Solo params ACTIVOS y type === 'NUMBER'.
+  // - Params agrupados bajo su spec; specs sin params numéricos se incluyen vacías
+  //   (el usuario quiere VER la spec aunque no tenga numéricos).
+  // Fail-safe: shape inesperado → { specs: [], totalNumericParams: 0 }.
+  function extractSpecsWithNumericParams(input) {
+    const pn = (input && input.partNumberById) ? input.partNumberById
+             : (input && input.data && input.data.partNumberById) ? input.data.partNumberById
+             : input;
+    if (!pn || typeof pn !== 'object') return { specs: [], totalNumericParams: 0 };
+
+    // 1) Specs asociadas activas → mapa specId → { specId, specName, numericParams:[] }
+    const specMap = new Map();
+    const order = [];
+    const specNodes = (pn.partNumberSpecsByPartNumberId && pn.partNumberSpecsByPartNumberId.nodes) || [];
+    specNodes.forEach(function (n) {
+      if (!n || n.archivedAt != null) return;                 // histórico → fuera
+      const sp = n.specBySpecId; if (!sp) return;
+      const id = sp.id;
+      if (specMap.has(id)) return;
+      // domainId + idInDomain + revisionNumber → URL de la spec (ver specUrl()).
+      specMap.set(id, {
+        specId: id,
+        specDomainId: sp.domainId != null ? sp.domainId : null,
+        specIdInDomain: sp.idInDomain != null ? sp.idInDomain : null,
+        specRevision: sp.revisionNumber != null ? sp.revisionNumber : null,
+        specName: sp.name || '(spec)',
+        numericParams: [],
+      });
+      order.push(id);
+    });
+
+    // 2) Parámetros con VALOR NUMÉRICO, agrupados por spec.
+    const seen = new Set();
+    let total = 0;
+    const paramNodes = (pn.partNumberSpecFieldParamsByPartNumberId && pn.partNumberSpecFieldParamsByPartNumberId.nodes) || [];
+    paramNodes.forEach(function (n) {
+      if (!n || n.archivedAt != null) return;                 // histórico → fuera
+      const sfp = n.specFieldParamBySpecFieldParamId; if (!sfp) return;
+      const sfs = sfp.specFieldSpecBySpecFieldSpecId; if (!sfs) return;
+      const field = sfs.specFieldBySpecFieldId; if (!field) return;
+
+      // CRITERIO (verificado con datos reales, PN 3029783): el parámetro es "numérico"
+      // si su VALOR trae números — NO por el specField.type. El valLabel (specFieldParam
+      // .name, lo que Steelhead muestra: "5 - 8 µm", "24 hrs.", "176 - 204 °C") contiene
+      // un dígito, o hay min/max/target. Así "Tiempo s/Corrosión Blanca" (BOOLEAN, valor
+      // "24 hrs." = cámara salina) SÍ sale, y "Adherencia" ("Sí o No") NO.
+      const valLabel = (sfp.name || '').trim();
+      const hasDigit = /\d/.test(valLabel);
+      const hasNumFields = sfp.minimumValue != null || sfp.maximumValue != null || sfp.targetValue != null;
+      if (!hasDigit && !hasNumFields) return;
+
+      const spec = sfs.specBySpecId || {};
+      const specId = spec.id;
+
+      // Valor a mostrar: el valLabel legible de Steelhead cuando trae número; si no,
+      // se reconstruye de min/max/target + unidad.
+      const value = hasDigit ? valLabel : formatRange({
+        min: sfp.minimumValue, max: sfp.maximumValue, target: sfp.targetValue,
+        unit: unitSymbol(sfp.unitByUnitId && sfp.unitByUnitId.name),
+      });
+
+      const key = specId + '|' + (field.name || '') + '|' + value;
+      if (seen.has(key)) return;                              // dedup
+      seen.add(key);
+
+      // FUENTE DE VERDAD = partNumberSpecs (paso 1). Si la spec del param NO está
+      // en el mapa de specs ACTIVAS, el param es "huérfano" de una spec archivada
+      // (Steelhead no archiva cada partNumberSpecFieldParam al archivar la spec) →
+      // se ignora. Sin esto, un param activo resucitaba una spec archivada
+      // (bug 48186-064-50MO: "RC Ag" archivada reaparecía por su Espesor activo).
+      const bucket = specMap.get(specId);
+      if (!bucket) return;
+
+      bucket.numericParams.push({ name: field.name || '(parámetro)', value: value });
+      total++;
+    });
+
+    return { specs: order.map(function (id) { return specMap.get(id); }), totalNumericParams: total };
+  }
+
+  // Texto plano compacto para la celda (fallback / tooltip / tests). El glue DOM
+  // puede renderizar más rico, pero este es el contrato canónico verificable.
+  //   "E27550 (Plata): Espesor 1.27–3.5 µm"
+  //   varios params → separados por " · " ; varias specs → por "  |  "
+  //   spec sin numéricos → "E27550 (Plata): —"
+  //   nada → "—"
+  function formatCellText(result) {
+    const specs = (result && result.specs) || [];
+    if (!specs.length) return '—';
+    return specs.map(function (s) {
+      const head = s.specName;
+      if (!s.numericParams.length) return head + ': —';
+      const parts = s.numericParams.map(function (p) {
+        return p.value ? p.name + ' ' + p.value : p.name;
+      });
+      return head + ': ' + parts.join(' · ');
+    }).join('  |  ');
+  }
+
+  // URL de la spec en Steelhead: /Domains/<domainId>/Specs/<idInDomain>/Revisions/<rev>
+  // (verificado en vivo — el href real de las specs en la app; NO es /Specs/<id>).
+  // Devuelve null si faltan domainId o idInDomain (→ el glue cae a texto plano).
+  function specUrl(spec) {
+    if (!spec || spec.specDomainId == null || spec.specIdInDomain == null) return null;
+    let u = '/Domains/' + spec.specDomainId + '/Specs/' + spec.specIdInDomain + '/Revisions';
+    if (spec.specRevision != null) u += '/' + spec.specRevision;
+    return u;
+  }
+
+  const api = {
+    PN_INDEX_RE,
+    PN_ID_RE,
+    isPartNumbersIndexPath,
+    parsePartNumberId,
+    unitSymbol,
+    fmtNum,
+    formatRange,
+    extractSpecsWithNumericParams,
+    formatCellText,
+    specUrl,
+  };
+  if (typeof window !== 'undefined') window.PnSpecsColumnCore = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})();
+})();
+// ===== END scripts/pn-specs-column-core.js =====
+
+// ===== BEGIN scripts/pn-specs-column.js =====
+(function(){
+// Specs en el dashboard de Números de Parte — glue DOM.
+// En /PartNumbers agrega una COLUMNA "Specs / Params num." a la tabla y, con un
+// TOGGLE persistente en el header, enriquece cada NP visible con sus SPECS y sus
+// PARÁMETROS NUMÉRICOS (nombre + rango + unidad). La decisión pura vive en
+// PnSpecsColumnCore; aquí solo va el DOM, el fetch y el memory-hardening.
+//
+// Por qué un 2º query: `AllPartNumbers` (el del dashboard) NO trae specs/params
+// (verificado 2026-07-08). Solo `GetPartNumber` los expone → 1 query pesado por NP.
+// Por eso el enriquecimiento es OPT-IN (toggle) y con memory-hardening completo.
+//
+// Auto-inyectado (autoInject:true). Singleton en window.__saPnSpecs* para sobrevivir
+// la RE-INYECCIÓN del IIFE (background.js re-evalúa scripts en cada acción del popup).
+const PnSpecsColumn = (() => {
+  'use strict';
+
+  const Core = () => window.PnSpecsColumnCore;
+  const Cleanup = () => window.SteelheadHostCleanup;
+
+  const STORAGE_KEY = 'sa_pn_specs_col_enabled';   // persistente entre sesiones
+  const COL_LABEL = 'Especificaciones';
+  const MAX_CONC = 4;              // GetPartNumber en paralelo (pesado)
+  const MIN_GAP_MS = 130;          // ~7 req/s: no saturar el gateway
+  const RETRY_BACKOFF = [0, 800, 2500];   // reintentos SOLO en transitorios
+  const OBS_DEBOUNCE_MS = 160;
+
+  // ── Estado persistente / singleton ─────────────────────────────────────────
+  function isEnabled() {
+    try { return localStorage.getItem(STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+  function setEnabled(v) {
+    try { localStorage.setItem(STORAGE_KEY, v ? '1' : '0'); } catch (_) {}
+  }
+  function onIndex() { return Core().isPartNumbersIndexPath(location.pathname); }
+
+  // Cache slim por partNumberId: id → { specs, total } (NO el response completo).
+  function cache() {
+    if (!window.__saPnSpecsCache) window.__saPnSpecsCache = new Map();
+    return window.__saPnSpecsCache;
+  }
+
+  // ── Estilos (dark-mode para el toggle/toast — regla de diseño; la columna se
+  //    integra a la tabla clara de SH pero marcada con el acento verde) ────────
+  function injectStyles() {
+    if (document.getElementById('sa-pnspec-style')) return;
+    const css = [
+      // Toggle en el header (UI nuestra → dark-mode; delgado para no abultar la barra)
+      '.sa-pnspec-toggle{display:inline-flex;align-items:center;gap:6px;background:#1c2430;',
+      'color:#e6e9ee;border:1px solid #2b3645;border-radius:6px;',
+      'padding:2px 8px;margin:0 8px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;line-height:1.35;}',
+      '.sa-pnspec-toggle:hover{border-color:#13a36f;}',
+      '.sa-pnspec-sw{position:relative;width:26px;height:14px;border-radius:7px;',
+      'background:#394452;transition:background .15s;flex:0 0 auto;}',
+      '.sa-pnspec-sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;',
+      'border-radius:50%;background:#e6e9ee;transition:transform .15s;}',
+      '.sa-pnspec-toggle.on .sa-pnspec-sw{background:#13a36f;}',
+      '.sa-pnspec-toggle.on .sa-pnspec-sw::after{transform:translateX(12px);}',
+      '.sa-pnspec-count{font-weight:400;color:#9aa7b5;font-size:10px;}',
+      // Columna: hereda el look nativo de la tabla (el th/td copia la className MUI);
+      // aquí solo el separador sutil (gris punteado) y el layout de los chips. NO se
+      // fuerza font-weight/color/background del texto → el encabezado se ve igual que
+      // los nativos.
+      'th.sa-pnspec-cell{border-left:1px dashed #c7ccd1 !important;white-space:nowrap;}',
+      'td.sa-pnspec-cell{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;min-width:180px;max-width:340px;}',
+      '.sa-pnspec-spec{margin:0 0 4px 0;}',
+      '.sa-pnspec-spec:last-child{margin-bottom:0;}',
+      '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;font-size:12px;}',
+      // Link a la spec en el azul de link de Steelhead (rgb(9,105,218)) para que se
+      // note clicable. Sin subrayar por default (como los links nativos) + hover.
+      'a.sa-pnspec-spec-name{color:#0969da;cursor:pointer;text-decoration:none;}',
+      'a.sa-pnspec-spec-name:hover{text-decoration:underline;}',
+      '.sa-pnspec-param{display:inline-block;background:#eef6f2;border:1px solid #cfe6db;color:#14503a;',
+      'border-radius:6px;padding:1px 6px;margin:2px 4px 0 0;font-size:11px;white-space:nowrap;}',
+      '.sa-pnspec-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
+      '.sa-pnspec-err{color:#b04a3a;font-size:12px;}',
+      // Toast (dark-mode)
+      '.sa-pnspec-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;',
+      'background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;',
+      'border-radius:10px;padding:12px 18px;font-size:14px;max-width:80vw;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45);}',
+    ].join('');
+    const s = document.createElement('style');
+    s.id = 'sa-pnspec-style';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    injectStyles();
+    let el = document.getElementById('sa-pnspec-toast');
+    if (!el) { el = document.createElement('div'); el.id = 'sa-pnspec-toast'; el.className = 'sa-pnspec-toast'; document.body.appendChild(el); }
+    el.textContent = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { const e = document.getElementById('sa-pnspec-toast'); if (e) e.remove(); }, 4500);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Toggle en el header
+  // ════════════════════════════════════════════════════════════════════════
+  function findHeaderAnchor() {
+    // Ancla natural: el botón "NUEVO NÚMERO DE PARTE" (control propio del dashboard).
+    const btn = Array.prototype.slice.call(document.querySelectorAll('button, a'))
+      .find(function (b) { return /NUEVO NÚMERO DE PARTE/i.test((b.innerText || '').trim()); });
+    if (!btn) return null;
+    // Sube hasta el wrapper cuyo padre es la barra de controles (varios hijos).
+    let el = btn;
+    for (let i = 0; i < 6 && el.parentElement; i++) {
+      if (el.parentElement.children.length > 1) return { bar: el.parentElement, before: el };
+      el = el.parentElement;
+    }
+    return { bar: btn.parentElement, before: btn };
+  }
+
+  function buildToggle() {
+    injectStyles();
+    const wrap = document.createElement('div');
+    wrap.className = 'sa-pnspec-toggle' + (isEnabled() ? ' on' : '');
+    wrap.id = 'sa-pnspec-toggle';
+    wrap.title = 'Muestra las specs y parámetros numéricos de cada NP (hace 1 consulta por NP visible).';
+    const sw = document.createElement('span'); sw.className = 'sa-pnspec-sw';
+    const txt = document.createElement('span'); txt.textContent = '🧪 Specs';
+    const cnt = document.createElement('span'); cnt.className = 'sa-pnspec-count'; cnt.id = 'sa-pnspec-count';
+    const mem = document.createElement('span'); mem.className = 'sa-pnspec-count'; mem.id = 'sa-pnspec-mem'; // el mem monitor escribe aquí
+    wrap.appendChild(sw); wrap.appendChild(txt); wrap.appendChild(cnt); wrap.appendChild(mem);
+    wrap.addEventListener('click', function () { toggle(); });
+    return wrap;
+  }
+
+  function ensureToggle() {
+    if (!onIndex()) return;
+    if (document.getElementById('sa-pnspec-toggle')) return;   // ya está
+    const anchor = findHeaderAnchor();
+    if (!anchor) return;   // header aún no renderiza: el observer reintenta
+    anchor.bar.insertBefore(buildToggle(), anchor.before);
+    refreshToggleUI();
+  }
+
+  function refreshToggleUI() {
+    const t = document.getElementById('sa-pnspec-toggle');
+    if (t) t.classList.toggle('on', isEnabled());
+    updateCount();
+  }
+
+  function updateCount() {
+    const c = document.getElementById('sa-pnspec-count');
+    if (!c) return;
+    if (!isEnabled()) { c.textContent = ''; return; }
+    const total = document.querySelectorAll('td.sa-pnspec-cell').length;
+    const done = document.querySelectorAll('td.sa-pnspec-cell[data-sa-state="done"]').length;
+    const err = document.querySelectorAll('td.sa-pnspec-cell[data-sa-state="error"]').length;
+    c.textContent = total ? (done + err) + '/' + total : '';
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Columna
+  // ════════════════════════════════════════════════════════════════════════
+  function getTable() { return document.querySelector('table'); }
+
+  // La columna es SIEMPRE la ÚLTIMA celda de su fila, y se re-posiciona en cada
+  // sync. Motivo: al re-render de React (filtrar/paginar), el <th> inyectado
+  // "flota" a otra posición mientras los <td> se recrean en la penúltima → se
+  // desalineaban (header en una columna, chips en otra). Forzar "última celda"
+  // tanto en thead como en cada tr los mantiene siempre alineados, sin importar
+  // cómo React reordene sus propias columnas. Idempotente: appendChild solo actúa
+  // si la celda no es ya la última, así que en estado estable es no-op.
+  function ensureHeaderCell(table) {
+    const headRow = table.querySelector('thead tr');
+    if (!headRow) return;
+    let th = headRow.querySelector(':scope > .sa-pnspec-cell');
+    if (!th) {
+      th = document.createElement('th');
+      // Hereda la className MUI de un th nativo → el texto del encabezado se ve
+      // igual que los demás (mismo font/peso/color/padding). Nuestra marca es solo
+      // el separador punteado gris de `.sa-pnspec-cell`.
+      const nativeTh = headRow.querySelector('th:not(.sa-pnspec-cell)');
+      th.className = (nativeTh ? nativeTh.className + ' ' : '') + 'sa-pnspec-cell';
+      th.textContent = COL_LABEL;
+    }
+    if (headRow.lastElementChild !== th) headRow.appendChild(th);   // (re)posiciona al final
+  }
+
+  function pendingCell(td) {
+    td.setAttribute('data-sa-state', 'pending');
+    td.textContent = '';
+    const s = document.createElement('span'); s.className = 'sa-pnspec-muted'; s.textContent = '⏳';
+    td.appendChild(s);
+  }
+
+  function ensureBodyCells(table) {
+    const rows = table.querySelectorAll('tbody tr');
+    const toFetch = [];
+    rows.forEach(function (tr) {
+      let td = tr.querySelector(':scope > .sa-pnspec-cell');
+      if (!td) {
+        const link = tr.querySelector('td a[href*="/PartNumbers/"]');
+        const pnId = link ? Core().parsePartNumberId(link.getAttribute('href') || link.href) : null;
+        td = document.createElement('td');
+        // Hereda la className MUI de una celda nativa (padding/borde/tipografía de fila).
+        const nativeTd = tr.querySelector('td:not(.sa-pnspec-cell)');
+        td.className = (nativeTd ? nativeTd.className + ' ' : '') + 'sa-pnspec-cell';
+        if (pnId) {
+          td.setAttribute('data-sa-pnid', String(pnId));
+          const cached = cache().get(pnId);
+          if (cached) { renderCell(td, cached); }
+          else { pendingCell(td); toFetch.push(pnId); }
+        } else {
+          td.setAttribute('data-sa-state', 'na');
+          const s = document.createElement('span'); s.className = 'sa-pnspec-muted'; s.textContent = '—'; td.appendChild(s);
+        }
+      }
+      if (tr.lastElementChild !== td) tr.appendChild(td);   // (re)posiciona al final
+    });
+    return toFetch;
+  }
+
+  // Render seguro (sin innerHTML de datos: textContent → no XSS con nombres de spec).
+  function renderCell(td, result) {
+    td.setAttribute('data-sa-state', 'done');
+    td.textContent = '';
+    const specs = (result && result.specs) || [];
+    if (!specs.length) { const m = document.createElement('span'); m.className = 'sa-pnspec-muted'; m.textContent = 'sin specs'; td.appendChild(m); return; }
+    specs.forEach(function (s) {
+      const box = document.createElement('div'); box.className = 'sa-pnspec-spec';
+      // Nombre de la spec = link a la spec (nueva pestaña → no pierde el filtro/scroll
+      // del dashboard). Si no se puede armar la URL, cae a texto plano.
+      const href = Core().specUrl(s);
+      const nm = document.createElement(href ? 'a' : 'span');
+      nm.className = 'sa-pnspec-spec-name'; nm.textContent = s.specName;
+      if (href) { nm.href = href; nm.target = '_blank'; nm.rel = 'noopener'; }
+      box.appendChild(nm);
+      if (!s.numericParams.length) {
+        const none = document.createElement('span'); none.className = 'sa-pnspec-muted'; none.textContent = 'sin params num.';
+        box.appendChild(none);
+      } else {
+        s.numericParams.forEach(function (p) {
+          const chip = document.createElement('span'); chip.className = 'sa-pnspec-param';
+          chip.textContent = p.value ? p.name + ': ' + p.value : p.name;
+          box.appendChild(chip);
+        });
+      }
+      td.appendChild(box);
+    });
+  }
+
+  function renderError(td) {
+    td.setAttribute('data-sa-state', 'error');
+    td.textContent = '';
+    const e = document.createElement('span'); e.className = 'sa-pnspec-err'; e.textContent = '⚠️ error';
+    td.appendChild(e);
+  }
+
+  function removeColumn() {
+    document.querySelectorAll('.sa-pnspec-cell').forEach(function (el) { el.remove(); });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Enriquecimiento (pool con concurrencia + rate-limit + retry transitorio)
+  // ════════════════════════════════════════════════════════════════════════
+  function pool() {
+    if (!window.__saPnSpecsPool) window.__saPnSpecsPool = { queue: [], inFlight: 0, lastLaunch: 0, active: false, drain: null, count: 0 };
+    return window.__saPnSpecsPool;
+  }
+
+  function enqueue(ids) {
+    const p = pool();
+    const seen = new Set(p.queue);
+    ids.forEach(function (id) { if (!seen.has(id) && !cache().has(id)) { p.queue.push(id); seen.add(id); } });
+    pump();
+  }
+
+  function isTransient(err) {
+    if (!err) return false;
+    if (err.persistedQueryRotated) return false;   // hash rotado: reintentar no sirve
+    const m = (err.message || '').toLowerCase();
+    return /timeout|network|failed to fetch|50\d|429|aborted/.test(m);
+  }
+
+  async function fetchOne(pnId) {
+    const api = window.SteelheadAPI;
+    for (let attempt = 0; attempt < RETRY_BACKOFF.length; attempt++) {
+      if (attempt) await new Promise(function (r) { setTimeout(r, RETRY_BACKOFF[attempt]); });
+      try {
+        const data = await api.query('GetPartNumber', { partNumberId: pnId, usagesLimit: 0, usagesOffset: 0 });
+        const res = Core().extractSpecsWithNumericParams(data);
+        return { specs: res.specs, total: res.totalNumericParams };   // slim
+      } catch (e) {
+        if (attempt === RETRY_BACKOFF.length - 1 || !isTransient(e)) throw e;
+      }
+    }
+  }
+
+  function fillCells(pnId, result, isError) {
+    document.querySelectorAll('td.sa-pnspec-cell[data-sa-pnid="' + pnId + '"]').forEach(function (td) {
+      if (isError) renderError(td); else renderCell(td, result);
+    });
+    updateCount();
+  }
+
+  function pump() {
+    const p = pool();
+    if (!isEnabled() || !onIndex()) return;
+    const now = Date.now();
+    while (p.inFlight < MAX_CONC && p.queue.length) {
+      // rate-limit: separa los lanzamientos al menos MIN_GAP_MS
+      const wait = p.lastLaunch + MIN_GAP_MS - Date.now();
+      if (wait > 0) { setTimeout(pump, wait + 5); return; }
+      const pnId = p.queue.shift();
+      p.inFlight++;
+      p.lastLaunch = Date.now();
+      // Primer trabajo real del run → detener Datadog session replay (memory).
+      try { if (Cleanup() && !window.__sa_dd_stopped) Cleanup().stopDatadogSessionReplay(); } catch (_) {}
+      fetchOne(pnId).then(function (result) {
+        cache().set(pnId, result);
+        fillCells(pnId, result, false);
+      }).catch(function (e) {
+        fillCells(pnId, null, true);
+        if (e && e.persistedQueryRotated) toast('⚠️ El hash de GetPartNumber rotó — avísale a Claude para actualizarlo.');
+        else console.warn('[SA] pn-specs: GetPartNumber ' + pnId + ' falló:', e && e.message);
+      }).then(function () {
+        p.inFlight--;
+        p.count++;
+        // Drain de Apollo cada N PNs (memory EJE B).
+        try { if (p.drain) p.drain(); } catch (_) {}
+        pump();
+      });
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Memory hardening (EJE B): mem monitor + guardrail + periodic drain
+  // ════════════════════════════════════════════════════════════════════════
+  function startMonitor() {
+    const c = Cleanup();
+    if (!c) return;
+    const p = pool();
+    if (!p.drain && typeof c.makePeriodicDrain === 'function') p.drain = c.makePeriodicDrain(25);
+    if (window.__saPnSpecsMon || typeof c.createMemMonitor !== 'function') return;
+    window.__saPnSpecsMon = c.createMemMonitor({
+      getElement: function () { return document.getElementById('sa-pnspec-mem'); },
+      onGuardrail: function (pct) {
+        // 88%: aborta el enriquecimiento y avisa. Checkpoint > crash.
+        const p2 = pool(); p2.queue.length = 0;
+        toast('🛑 Memoria alta (' + pct + '%) — enriquecimiento pausado. Recarga la página si notas lentitud.');
+      },
+    });
+    window.__saPnSpecsMon.start();
+  }
+  function stopMonitor() {
+    if (window.__saPnSpecsMon) { try { window.__saPnSpecsMon.stop(); } catch (_) {} window.__saPnSpecsMon = null; }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Observer de la tabla (React re-renderiza al paginar/ordenar/filtrar)
+  // ════════════════════════════════════════════════════════════════════════
+  let obsTimer = null;
+  function scheduleSync() {
+    if (obsTimer) return;
+    obsTimer = setTimeout(function () { obsTimer = null; try { syncColumn(); } catch (_) {} }, OBS_DEBOUNCE_MS);
+  }
+
+  function syncColumn() {
+    if (!isEnabled() || !onIndex()) return;
+    ensureToggle();
+    const table = getTable();
+    if (!table) return;
+    injectStyles();
+    ensureHeaderCell(table);
+    const toFetch = ensureBodyCells(table);
+    if (toFetch.length) enqueue(toFetch);
+    updateCount();
+  }
+
+  function observe() {
+    if (window.__saPnSpecsObs) return;
+    const obs = new MutationObserver(function () { scheduleSync(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    window.__saPnSpecsObs = obs;
+  }
+  function teardownObserver() {
+    if (window.__saPnSpecsObs) { window.__saPnSpecsObs.disconnect(); window.__saPnSpecsObs = null; }
+    if (obsTimer) { clearTimeout(obsTimer); obsTimer = null; }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Activar / desactivar
+  // ════════════════════════════════════════════════════════════════════════
+  function activate() {
+    if (!onIndex()) return;
+    injectStyles();
+    startMonitor();
+    observe();
+    syncColumn();   // inyecta columna + encola los visibles
+  }
+
+  function deactivate() {
+    const p = pool();
+    p.queue.length = 0;     // cancela pendientes (in-flight terminan solos, baratos)
+    teardownObserver();
+    stopMonitor();
+    removeColumn();
+    refreshToggleUI();
+  }
+
+  function toggle() {
+    const next = !isEnabled();
+    setEnabled(next);
+    refreshToggleUI();
+    if (next) { toast('🧪 Specs num.: ACTIVADO — cargando specs de los NP visibles…'); activate(); }
+    else { toast('🧪 Specs num.: DESACTIVADO'); deactivate(); }
+    return { enabled: next };
+  }
+
+  // Handler para el popup de la extensión (además del toggle del header).
+  function toggleFromPopup() { return toggle(); }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Navegación SPA
+  // ════════════════════════════════════════════════════════════════════════
+  function installUrlChangeListener() {
+    if (!window.__saPnSpecsUrlListener) {
+      window.__saPnSpecsUrlListener = true;
+      const fire = function () { window.dispatchEvent(new Event('sa-urlchange')); };
+      ['pushState', 'replaceState'].forEach(function (m) {
+        const orig = history[m];
+        history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; };
+      });
+      window.addEventListener('popstate', fire);
+    }
+    window.addEventListener('sa-urlchange', function () {
+      if (onIndex()) {
+        ensureToggle();
+        observe();               // el observer siempre corre en el index (para el toggle)
+        if (isEnabled()) activate();
+      } else {
+        // Salimos del index: limpia todo (memory) — la cache slim se descarta.
+        deactivate();
+        cache().clear();
+      }
+    });
+  }
+
+  function init() {
+    if (window.__saPnSpecsInit) return;
+    window.__saPnSpecsInit = true;
+    installUrlChangeListener();
+    if (onIndex()) {
+      ensureToggle();
+      observe();                 // corre siempre en el index para mantener el toggle
+      if (isEnabled()) activate();
+    }
+    console.log('[SA] PnSpecsColumn activo (columna de specs/params num. en /PartNumbers)');
+  }
+
+  return {
+    init, toggleFromPopup, toggle,
+    _getState: function () {
+      const p = pool();
+      return {
+        enabled: isEnabled(), onIndex: onIndex(),
+        cells: document.querySelectorAll('td.sa-pnspec-cell').length,
+        done: document.querySelectorAll('td.sa-pnspec-cell[data-sa-state="done"]').length,
+        cached: cache().size, queue: p.queue.length, inFlight: p.inFlight,
+      };
+    },
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.PnSpecsColumn = PnSpecsColumn;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { PnSpecsColumn.init(); });
+  } else {
+    PnSpecsColumn.init();
+  }
+}
+})();
+// ===== END scripts/pn-specs-column.js =====
+
+// ===== BEGIN scripts/sensor-graph-hide-all-core.js =====
+(function(){
+// Auto-ocultar Sensores en la Gráfica — módulo puro (sin DOM ni red).
+// Detección de la página de Sensor Dashboard + máquina de decisión "esconder-una-
+// vez-por-entrada". Consumido por sensor-graph-hide-all.js (glue) y por los tests.
+//
+// Modelo (shapes confirmados en vivo 2026-07-07, dashboard /SensorDashboards/117):
+//   · El ojito de cada sensor en "Current Values" togglea si el sensor se plotea en
+//     la gráfica. Es PURO estado de React (0 mutaciones GraphQL) → se resetea a
+//     "todos visibles" en cada carga. Por eso hace falta re-esconder al entrar.
+//   · Botón visible  = <button aria-label="Hide this sensor in the graph.">  (svg VisibilityIcon)
+//   · Botón oculto   = <button aria-label="Show this sensor in the graph.">  (svg VisibilityOffIcon)
+//   · URL real: /Domains/<id>/Maintenance/SensorDashboards/<idInDomain>  (CamelCase).
+//
+// Contrato "una vez por entrada": se esconde todo al ENTRAR a un dashboard (cuando la
+// tabla ya renderizó). Una vez latcheada la entrada, NO se vuelve a pelear con el
+// operador: si destacha uno para verlo, o si le da Refresh Data, se respeta. Se
+// re-arma solo al navegar a otra entrada (otro pathname).
+(function () {
+  'use strict';
+
+  // URL de Sensor Dashboard. Acepta el slug con guión por si Steelhead lo rota
+  // (lección sensor-status-autofill: el path es CamelCase, sin guión, hoy).
+  const DASHBOARD_URL_RE = /\/sensor-?dashboards\/(\d+)(?:[/?#]|$)/i;
+
+  function parseDashboardId(pathname) {
+    if (typeof pathname !== 'string') return null;
+    const m = pathname.match(DASHBOARD_URL_RE);
+    return m ? m[1] : null;
+  }
+
+  function isDashboardPath(pathname) {
+    return parseDashboardId(pathname) !== null;
+  }
+
+  // Máquina de decisión del poll de entrada. Devuelve el siguiente paso:
+  //   'idle'  → no aplica (fuera de dashboard o desactivado): detener poll.
+  //   'done'  → esta entrada ya fue latcheada: no tocar (respeta al operador).
+  //   'wait'  → en dashboard, entrada nueva, tabla aún no renderiza: seguir esperando.
+  //   'hide'  → hay sensores visibles y quedan intentos: clic para esconderlos.
+  //   'latch' → ya no quedan visibles (o se agotaron intentos): registrar y detener.
+  // s: { onDashboard, enabled, sameEntry, toggleCount, visibleCount, attempts, maxAttempts }
+  function nextHideStep(s) {
+    if (!s.onDashboard || !s.enabled) return 'idle';
+    if (s.sameEntry) return 'done';
+    if (!s.toggleCount) return 'wait';
+    if (s.visibleCount > 0 && s.attempts < s.maxAttempts) return 'hide';
+    return 'latch';
+  }
+
+  // ── Fase 2: combo para aislar UN sensor ────────────────────────────────────
+  // Normaliza nombres de sensor para hacer match robusto entre la respuesta de
+  // SensorDashboardQuery y el texto del DOM (los nombres traen espacios de más:
+  // p.ej. " T203-TI00-011 Concentración  de Plata Metálica").
+  function normalizeName(s) {
+    return (s == null ? '' : String(s)).replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  // Solo sensores NUMBER (excluye BOOLEAN/TEXT — no tienen sentido en la gráfica
+  // de línea). `sensors`: [{ name, station, measurementType }].
+  function filterNumericSensors(sensors) {
+    return (sensors || []).filter(function (s) { return s && s.measurementType === 'NUMBER'; });
+  }
+
+  // Colapsa espacios (los nombres del API traen espacios de más / iniciales)
+  // PRESERVANDO el casing — a diferencia de normalizeName, esto es para mostrar.
+  function collapseSpaces(s) {
+    return (s == null ? '' : String(s)).replace(/\s+/g, ' ').trim();
+  }
+
+  // Cola de la ESTACIÓN sin el prefijo de tokens que ya comparte con el NOMBRE del
+  // sensor (típicamente el código, p.ej. "T203-TI00-011"), para no repetirlo en la
+  // etiqueta. Compara token a token, case-insensitive, y devuelve el resto de la
+  // estación con su casing original. `name`/`station` ya vienen con espacios colapsados.
+  function stationTail(name, station) {
+    const nameToks = name ? name.split(' ') : [];
+    const stToks = station ? station.split(' ') : [];
+    let i = 0;
+    while (i < nameToks.length && i < stToks.length &&
+      nameToks[i].toLowerCase() === stToks[i].toLowerCase()) i++;
+    return stToks.slice(i).join(' ').trim();
+  }
+
+  // Etiqueta legible para el combo: el NOMBRE del sensor y, entre paréntesis, la
+  // ESTACIÓN — quitándole el prefijo (código) que ya aparece en el nombre para no
+  // duplicarlo. Ej.: name="T203-TI00-011 Concentración de Plata Metálica",
+  // station="T203-TI00-011 Plata Silvrex (B-1)"
+  //   → "T203-TI00-011 Concentración de Plata Metálica (Plata Silvrex (B-1))".
+  // Fallbacks: sin estación → solo el nombre; sin nombre → la estación; nada → "(sensor)".
+  function sensorLabel(sensor) {
+    if (!sensor) return '';
+    const name = collapseSpaces(sensor.name);
+    const station = collapseSpaces(sensor.station);
+    if (!name) return station || '(sensor)';
+    if (!station) return name;
+    const tail = stationTail(name, station);
+    return tail ? name + ' (' + tail + ')' : name;
+  }
+
+  // Deriva el valor que debe mostrar el combo a partir del estado real de los
+  // ojitos (para sincronizar los combos entre sí y con toggles manuales).
+  //   0 visibles → 'NONE' · todos visibles → 'ALL' · exactamente 1 (numérico) → su nombre
+  //   cualquier otra mezcla → '' (placeholder)
+  // Nombres YA normalizados. `numericNames` = set de nombres numéricos (normalizados).
+  function deriveComboValue(state) {
+    const vis = state.visibleNames || [];
+    const all = state.allNames || [];
+    const num = state.numericNames || [];
+    if (all.length === 0) return '';
+    if (vis.length === 0) return 'NONE';
+    if (vis.length === all.length) return 'ALL';
+    if (vis.length === 1 && num.indexOf(vis[0]) !== -1) return vis[0];
+    return '';
+  }
+
+  // Parsea la respuesta de SensorDashboardQuery → [{ name, station, measurementType }].
+  // Shape (confirmado en scan 2026-07-07): data.sensorDashboardByIdInDomain
+  //   .sensorDashboardMembersBySensorDashboardId.nodes[].sensorBySensorId
+  //   { name, sensorTypeBySensorTypeId.sensorMeasurementType, stationByStationId.name }.
+  // Devuelve null si el shape no matchea (fail-safe → el combo queda en "cargando…").
+  function parseSensorDashboard(json) {
+    const root = json && json.data && json.data.sensorDashboardByIdInDomain;
+    if (!root) return null;
+    const conn = root.sensorDashboardMembersBySensorDashboardId;
+    const nodes = (conn && conn.nodes) || [];
+    const list = [];
+    nodes.forEach(function (m) {
+      const s = m && m.sensorBySensorId; if (!s) return;
+      const st = s.sensorTypeBySensorTypeId || {};
+      const station = s.stationByStationId || {};
+      list.push({ name: s.name, station: station.name, measurementType: st.sensorMeasurementType });
+    });
+    return list;
+  }
+
+  // Plan de aislamiento: qué ojitos mostrar y cuáles esconder para una selección.
+  //   target: 'ALL' | 'NONE' | nombre-normalizado. `allNames` = todos los nombres (normalizados).
+  function planIsolation(target, allNames) {
+    const all = allNames || [];
+    if (target === 'ALL') return { show: all.slice(), hide: [] };
+    if (target === 'NONE' || !target) return { show: [], hide: all.slice() };
+    return {
+      show: all.filter(function (n) { return n === target; }),
+      hide: all.filter(function (n) { return n !== target; }),
+    };
+  }
+
+  const api = {
+    DASHBOARD_URL_RE,
+    parseDashboardId,
+    isDashboardPath,
+    nextHideStep,
+    normalizeName,
+    filterNumericSensors,
+    collapseSpaces,
+    stationTail,
+    sensorLabel,
+    deriveComboValue,
+    planIsolation,
+    parseSensorDashboard,
+  };
+  if (typeof window !== 'undefined') window.SensorGraphHideAllCore = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})();
+})();
+// ===== END scripts/sensor-graph-hide-all-core.js =====
+
+// ===== BEGIN scripts/sensor-graph-hide-all.js =====
+(function(){
+// Auto-ocultar Sensores en la Gráfica — glue DOM.
+// Al entrar a un Sensor Dashboard, esconde TODOS los sensores de la gráfica
+// (deja todos los ojitos "tachados") para que el operador solo destache el que
+// quiere ver. La lógica de decisión pura vive en SensorGraphHideAllCore.
+//
+// Auto-inyectado (autoInject:true, molde de los guards). Sin fetch: esconder es
+// puro estado de React (0 mutaciones). Un poll acotado espera a que la tabla
+// "Current Values" renderice y clickea los ojitos visibles hasta que no quede
+// ninguno; luego LATCHEA la entrada y no vuelve a pelear con el operador.
+const SensorGraphHideAll = (() => {
+  'use strict';
+
+  const Core = () => window.SensorGraphHideAllCore;
+  const HIDE_ARIA = 'Hide this sensor in the graph.';   // botón de un sensor VISIBLE
+  const SHOW_ARIA = 'Show this sensor in the graph.';   // botón de un sensor OCULTO
+  const POLL_MS = 150;
+  const POLL_MAX_TICKS = 30;   // ~4.5s de ventana para esperar el render
+  const MAX_ATTEMPTS = 8;      // topes de clic (evita loop si un sensor no se esconde)
+
+  // ── Estado singleton (sobrevive la RE-INYECCIÓN del script) ──
+  // background.js → injectAppScripts RE-EVALÚA este IIFE en cada acción del popup
+  // (el script no está en el mapa `globals` de dedup). Si el flag / la clave latcheada
+  // vivieran en el closure, una re-inyección los reiniciaría y re-esconderíamos lo que
+  // el operador ya destachó. El singleton en `window` lo comparten todas las instancias.
+  // Default ON solo en la PRIMERA carga (undefined): un reload limpia window → vuelve a
+  // ON (no persistente, por diseño — igual que los guards).
+  if (window.__saSensorHideEnabled === undefined) window.__saSensorHideEnabled = true;
+  function isEnabled() { return window.__saSensorHideEnabled === true; }
+  function setEnabled(v) { window.__saSensorHideEnabled = !!v; }
+
+  function entryKey() { return location.pathname; }   // granularidad = dashboard (ignora ?type=)
+  function onDashboard() { return Core().isDashboardPath(location.pathname); }
+
+  // ── Detección de los ojitos ──
+  // Primario: por aria-label (específico de la gráfica de sensores, evita cazar otros
+  // íconos de ojo del sitio). Fallback (por si Steelhead traduce el aria): botones con
+  // el data-testid del ícono, que es a prueba de idioma.
+  function getToggles() {
+    const byAria = Array.prototype.slice.call(
+      document.querySelectorAll(
+        'button[aria-label="' + HIDE_ARIA + '"], button[aria-label="' + SHOW_ARIA + '"]'
+      )
+    );
+    if (byAria.length) return byAria;
+    return Array.prototype.slice.call(document.querySelectorAll('button')).filter(function (b) {
+      return b.querySelector('svg[data-testid="VisibilityIcon"], svg[data-testid="VisibilityOffIcon"]');
+    });
+  }
+  function isVisibleToggle(btn) {
+    const aria = btn.getAttribute('aria-label');
+    if (aria === HIDE_ARIA) return true;
+    if (aria === SHOW_ARIA) return false;
+    return !!btn.querySelector('svg[data-testid="VisibilityIcon"]');   // fallback por testid
+  }
+  function isHiddenToggle(btn) {
+    const aria = btn.getAttribute('aria-label');
+    if (aria === SHOW_ARIA) return true;
+    if (aria === HIDE_ARIA) return false;
+    return !!btn.querySelector('svg[data-testid="VisibilityOffIcon"]');
+  }
+  function getVisibleToggles() { return getToggles().filter(isVisibleToggle); }
+
+  // ── Poll de entrada ──
+  function stopPoll() {
+    if (window.__saSensorHidePoll) { clearInterval(window.__saSensorHidePoll); window.__saSensorHidePoll = null; }
+  }
+
+  function scheduleHideSequence() {
+    stopPoll();                       // cancela cualquier poll de una entrada previa
+    const key = entryKey();
+    let ticks = 0, attempts = 0, clickedAny = false;
+
+    window.__saSensorHidePoll = setInterval(function () {
+      ticks++;
+      // Bail si navegamos fuera de esta entrada o se desactivó mientras tanto.
+      if (entryKey() !== key || !onDashboard() || !isEnabled()) { stopPoll(); return; }
+
+      const toggles = getToggles();
+      const visible = getVisibleToggles();
+      const step = Core().nextHideStep({
+        onDashboard: true, enabled: true,
+        sameEntry: window.__saSensorHideLastKey === key,
+        toggleCount: toggles.length, visibleCount: visible.length,
+        attempts: attempts, maxAttempts: MAX_ATTEMPTS,
+      });
+
+      if (step === 'hide') {
+        // Clic a todos los visibles de este tick; React puede re-renderizar de forma
+        // async y dejar rezagados → los siguientes ticks re-consultan fresco y los
+        // atrapan. No latcheamos hasta que no quede ninguno (o se agoten los intentos).
+        visible.forEach(function (b) { try { b.click(); clickedAny = true; } catch (_) {} });
+        attempts++;
+        return;
+      }
+      if (step === 'latch') {
+        window.__saSensorHideLastKey = key;
+        if (clickedAny) toast('👁 Sensores ocultos en la gráfica — destacha el que quieras ver.');
+        stopPoll();
+        return;
+      }
+      if (step === 'wait') {
+        if (ticks >= POLL_MAX_TICKS) stopPoll();   // la tabla nunca renderizó: nos rendimos
+        return;
+      }
+      stopPoll();   // 'idle' | 'done'
+    }, POLL_MS);
+  }
+
+  // Restaura todos los sensores a visibles (usado al DESACTIVAR el toggle).
+  function unhideAll() {
+    let guard = 0;
+    while (guard++ < 300) {
+      const hidden = getToggles().filter(isHiddenToggle);
+      if (!hidden.length) break;
+      const before = hidden.length;
+      hidden.forEach(function (b) { try { b.click(); } catch (_) {} });
+      if (getToggles().filter(isHiddenToggle).length >= before) break;   // atorado: evita loop
+    }
+  }
+
+  // ── Toggle desde el popup (background llama window.SensorGraphHideAll.toggleFromPopup) ──
+  function toggleFromPopup() {
+    setEnabled(!isEnabled());
+    const on = isEnabled();
+    if (on) {
+      window.__saSensorHideLastKey = undefined;         // re-arma la entrada actual
+      if (onDashboard()) scheduleHideSequence();
+      toast('👁 Auto-ocultar sensores: ACTIVADO');
+    } else {
+      stopPoll();
+      if (onDashboard()) unhideAll();                   // mostrar todos de inmediato
+      toast('👁 Auto-ocultar sensores: DESACTIVADO (se reactiva al recargar).');
+    }
+    return { enabled: on };
+  }
+
+  // ── Toast (dark mode — regla de diseño: UI propia distinguible de la de SH) ──
+  function injectStyles() {
+    if (document.getElementById('sa-sgh-style')) return;
+    const css = [
+      '.sa-sgh-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);',
+      'z-index:2147483600;background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;',
+      'border-left:4px solid #13a36f;border-radius:10px;padding:12px 18px;font-size:14px;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
+      'box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw;}',
+      // Barra del combo (Fase 2) — dark-mode para distinguirla de la UI de SH.
+      '.sa-sgc-bar{display:flex;align-items:center;gap:10px;background:#1c2430;color:#e6e9ee;',
+      'border:1px solid #2b3645;border-left:4px solid #13a36f;border-radius:10px;',
+      'padding:10px 14px;margin:0 0 16px 0;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;}',
+      '.sa-sgc-label{font-weight:700;white-space:nowrap;}',
+      '.sa-sgc-select{flex:1;min-width:200px;max-width:520px;background:#141a23;color:#e6e9ee;',
+      'border:1px solid #2b3645;border-radius:8px;padding:8px 10px;font-size:13px;cursor:pointer;',
+      'font-family:inherit;}',
+      '.sa-sgc-select:focus{outline:none;border-color:#13a36f;}'
+    ].join('');
+    const s = document.createElement('style');
+    s.id = 'sa-sgh-style';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+  let toastTimer = null;
+  function toast(msg) {
+    injectStyles();
+    let el = document.getElementById('sa-sgh-toast');
+    if (!el) { el = document.createElement('div'); el.id = 'sa-sgh-toast'; el.className = 'sa-sgh-toast'; document.body.appendChild(el); }
+    el.textContent = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { const e = document.getElementById('sa-sgh-toast'); if (e) e.remove(); }, 4000);
+  }
+
+  // ── Navegación SPA: re-dispara al entrar a un dashboard, teardown al salir ──
+  function installUrlChangeListener() {
+    if (!window.__saSensorHideUrlListener) {
+      window.__saSensorHideUrlListener = true;
+      const fire = function () { window.dispatchEvent(new Event('sa-urlchange')); };
+      ['pushState', 'replaceState'].forEach(function (m) {
+        const orig = history[m];
+        history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; };
+      });
+      window.addEventListener('popstate', fire);
+    }
+    window.addEventListener('sa-urlchange', function () {
+      if (onDashboard()) {
+        if (isEnabled()) scheduleHideSequence();
+        observeForCombos();
+        scheduleComboWork();
+      } else {
+        stopPoll();
+        teardownCombos();
+      }
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Fase 2 — Combo para AISLAR un sensor (ver solo uno)
+  // ════════════════════════════════════════════════════════════════════════
+
+  // ── Intercepción de SensorDashboardQuery (fuente del tipo NUMBER/BOOLEAN) ──
+  // El ?type=NUMBER nativo filtra la GRÁFICA pero NO la tabla/ojitos (verificado),
+  // así que el tipo por-sensor hay que sacarlo de la query. Guardamos {name, station,
+  // measurementType} por sensor en un singleton (sobrevive re-inyección).
+  function patchFetch() {
+    if (window.__saSensorHideFetchPatched) return;
+    window.__saSensorHideFetchPatched = true;
+    const orig = window.fetch;
+    window.fetch = function (...args) {
+      const url = (args[0] && args[0].url) || args[0];
+      const body = args[1] && args[1].body;
+      let isSDQ = false;
+      if (typeof url === 'string' && url.indexOf('/graphql') !== -1 && typeof body === 'string') {
+        try { isSDQ = JSON.parse(body).operationName === 'SensorDashboardQuery'; } catch (_) {}
+      }
+      const p = orig.apply(this, args);
+      if (isSDQ) {
+        p.then(function (resp) {
+          resp.clone().json().then(function (j) { try { captureSensorMeta(j); } catch (_) {} }).catch(function () {});
+        }).catch(function () {});
+      }
+      return p;
+    };
+  }
+
+  function captureSensorMeta(j) {
+    const list = Core().parseSensorDashboard(j);
+    if (!list) return;
+    window.__saSensorMeta = { dashKey: entryKey(), list: list };
+    scheduleComboWork();   // repoblar el combo ahora que llegó la data
+  }
+
+  // Re-dispara SensorDashboardQuery si el hook NO alcanzó a capturarla (la query se
+  // dispara en la carga inicial ANTES de que el applet inyecte patchFetch). Los members
+  // (nombres+tipos) NO dependen del rango de fechas, así que pedimos una ventana chica.
+  function ensureSensorMeta() {
+    if (numericSensorList()) return;                       // ya hay data para esta entrada
+    if (window.__saSensorMetaFetching) return;             // ya en curso
+    const api = window.SteelheadAPI;
+    if (!api || typeof api.query !== 'function') return;   // sin API → dependemos del hook
+    const id = parseInt(Core().parseDashboardId(location.pathname), 10);
+    if (!id) return;
+    const key = entryKey();
+    window.__saSensorMetaFetching = true;
+    const before = new Date().toISOString();
+    const after = new Date(Date.now() - 3600 * 1000).toISOString();   // 1h: members completos, pocas mediciones
+    api.query('SensorDashboardQuery', { idInDomain: id, after: after, before: before, measurementType: 'NUMBER' })
+      .then(function (data) {
+        window.__saSensorMetaFetching = false;
+        if (entryKey() !== key) return;                    // navegamos: descartar
+        const list = Core().parseSensorDashboard({ data: data });
+        if (list && list.length) { window.__saSensorMeta = { dashKey: key, list: list }; scheduleComboWork(); }
+      })
+      .catch(function (e) {
+        window.__saSensorMetaFetching = false;
+        console.warn('[SA] combo: replay de SensorDashboardQuery falló:', e && e.message);
+      });
+  }
+
+  // Lista de sensores NUMBER (o null si aún no capturamos la query).
+  function numericSensorList() {
+    const meta = window.__saSensorMeta;
+    if (!meta || !meta.list || meta.dashKey !== entryKey()) return null;
+    return Core().filterNumericSensors(meta.list).map(function (s) {
+      return { name: s.name, norm: Core().normalizeName(s.name), label: Core().sensorLabel(s) };
+    });
+  }
+
+  // ── Mapeo ojito → fila → nombre de sensor ──
+  function getEyeRows() {
+    return getToggles().map(function (btn) {
+      const tr = btn.closest('tr');
+      const cell = tr && (tr.querySelector('a') || tr.querySelector('td'));
+      const name = cell ? cell.textContent : '';
+      return { btn: btn, name: name, norm: Core().normalizeName(name), visible: isVisibleToggle(btn) };
+    }).filter(function (r) { return r.name; });
+  }
+
+  // ── Aislar (poll acotado: clicar NO actualiza el DOM síncrono; converge en ticks) ──
+  function applyIsolation(value) {
+    const key = entryKey();
+    // Garantizar modo NUMBER al aislar un sensor numérico (si no, no se plotea).
+    if (value && value !== 'ALL' && value !== 'NONE') {
+      const nb = document.querySelector('button[value="NUMBER"]');
+      if (nb && nb.getAttribute('aria-pressed') !== 'true') { try { nb.click(); } catch (_) {} }
+    }
+    if (window.__saSensorComboApply) clearInterval(window.__saSensorComboApply);
+    let attempts = 0;
+    window.__saSensorComboApply = setInterval(function () {
+      if (entryKey() !== key) { clearInterval(window.__saSensorComboApply); window.__saSensorComboApply = null; return; }
+      const rows = getEyeRows();
+      const all = rows.map(function (r) { return r.norm; });
+      const plan = Core().planIsolation(value, all);
+      const showSet = {}, hideSet = {};
+      plan.show.forEach(function (n) { showSet[n] = 1; });
+      plan.hide.forEach(function (n) { hideSet[n] = 1; });
+      let acted = false;
+      rows.forEach(function (r) {
+        if (showSet[r.norm] && !r.visible) { try { r.btn.click(); acted = true; } catch (_) {} }
+        else if (hideSet[r.norm] && r.visible) { try { r.btn.click(); acted = true; } catch (_) {} }
+      });
+      attempts++;
+      if (!acted || attempts >= MAX_ATTEMPTS) {
+        clearInterval(window.__saSensorComboApply); window.__saSensorComboApply = null;
+        window.__saSensorHideLastKey = key;   // fue elección del operador: Fase 1 no re-esconde
+        syncCombos();
+      }
+    }, POLL_MS);
+  }
+
+  // ── Combo UI ──
+  function buildComboBar() {
+    const bar = document.createElement('div');
+    bar.className = 'sa-sgc-bar';
+    const label = document.createElement('span');
+    label.className = 'sa-sgc-label';
+    label.textContent = '👁 Ver solo:';
+    const sel = document.createElement('select');
+    sel.className = 'sa-sgc-select';
+    sel.addEventListener('change', function () { onComboChange(sel.value); });
+    bar.appendChild(label);
+    bar.appendChild(sel);
+    return bar;
+  }
+
+  function onComboChange(value) {
+    if (value === '') return;            // placeholder: no-op
+    applyIsolation(value);
+  }
+
+  function injectCombos() {
+    const anchors = document.querySelectorAll('button[value="NUMBER"]');
+    anchors.forEach(function (nb) {
+      const paper = nb.closest('.MuiPaper-root');
+      if (!paper || !paper.parentElement) return;
+      if (paper.nextElementSibling && paper.nextElementSibling.classList &&
+        paper.nextElementSibling.classList.contains('sa-sgc-bar')) return;   // ya inyectado aquí
+      injectStyles();
+      paper.parentElement.insertBefore(buildComboBar(), paper.nextSibling);
+    });
+    populateCombos();
+    syncCombos();
+    if (!numericSensorList()) ensureSensorMeta();   // el hook no capturó → re-disparar la query
+  }
+
+  function comboSignature() {
+    const nums = numericSensorList();
+    return nums ? nums.map(function (s) { return s.norm; }).join('|') : 'LOADING';
+  }
+
+  function populateCombos() {
+    const sig = comboSignature();
+    const nums = numericSensorList();
+    document.querySelectorAll('select.sa-sgc-select').forEach(function (sel) {
+      if (sel.dataset.saSig === sig) return;   // ya poblado con esta lista (evita loop del observer)
+      const current = sel.value;
+      sel.innerHTML = '';
+      const add = function (v, t) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+      add('', nums ? '— elige sensor —' : 'cargando sensores…');
+      add('ALL', 'Todos');
+      add('NONE', 'Ninguno');
+      if (nums) nums.forEach(function (s) { add(s.norm, s.label); });
+      sel.dataset.saSig = sig;
+      if (current && Array.prototype.some.call(sel.options, function (o) { return o.value === current; })) sel.value = current;
+    });
+  }
+
+  // Deriva el valor del combo desde el estado real de los ojitos y lo refleja en todos.
+  function syncCombos() {
+    const rows = getEyeRows();
+    const all = rows.map(function (r) { return r.norm; });
+    const vis = rows.filter(function (r) { return r.visible; }).map(function (r) { return r.norm; });
+    const nums = (numericSensorList() || []).map(function (s) { return s.norm; });
+    const val = Core().deriveComboValue({ visibleNames: vis, allNames: all, numericNames: nums });
+    document.querySelectorAll('select.sa-sgc-select').forEach(function (sel) {
+      const has = Array.prototype.some.call(sel.options, function (o) { return o.value === val; });
+      sel.value = has ? val : '';   // property set: no dispara el MutationObserver
+    });
+  }
+
+  let comboTimer = null;
+  function scheduleComboWork() {
+    if (comboTimer) return;
+    comboTimer = setTimeout(function () {
+      comboTimer = null;
+      try { if (onDashboard()) injectCombos(); } catch (_) {}
+    }, 200);
+  }
+
+  function observeForCombos() {
+    if (window.__saSensorComboObs) return;
+    const obs = new MutationObserver(function () { scheduleComboWork(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    window.__saSensorComboObs = obs;
+  }
+  function teardownCombos() {
+    if (window.__saSensorComboObs) { window.__saSensorComboObs.disconnect(); window.__saSensorComboObs = null; }
+    if (window.__saSensorComboApply) { clearInterval(window.__saSensorComboApply); window.__saSensorComboApply = null; }
+  }
+
+  function init() {
+    if (window.__saSensorHideInit) return;
+    window.__saSensorHideInit = true;
+    try { patchFetch(); } catch (_) {}          // solo actúa sobre SensorDashboardQuery
+    installUrlChangeListener();
+    if (onDashboard()) {
+      if (isEnabled()) scheduleHideSequence();  // Fase 1
+      // Fase 2 blindada: un bug del combo NO debe tumbar la Fase 1 ni al resto del app.
+      try { observeForCombos(); scheduleComboWork(); } catch (e) { console.warn('[SA] combo init falló', e); }
+    }
+    console.log('[SA] SensorGraphHideAll activo (esconder al entrar + combo aislar sensor)');
+  }
+
+  return {
+    init, toggleFromPopup,
+    // Fase 2 (para debug/validación manual):
+    _injectCombos: injectCombos, _applyIsolation: applyIsolation, _numericSensorList: numericSensorList,
+    _getState: function () {
+      const nums = numericSensorList();
+      return {
+        enabled: isEnabled(),
+        lastKey: window.__saSensorHideLastKey || null,
+        onDashboard: onDashboard(),
+        toggles: getToggles().length,
+        visible: getVisibleToggles().length,
+        combos: document.querySelectorAll('select.sa-sgc-select').length,
+        numericSensors: nums ? nums.length : null,
+        metaCaptured: !!window.__saSensorMeta,
+      };
+    },
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.SensorGraphHideAll = SensorGraphHideAll;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { SensorGraphHideAll.init(); });
+  } else {
+    SensorGraphHideAll.init();
+  }
+}
+})();
+// ===== END scripts/sensor-graph-hide-all.js =====
+
+// ===== BEGIN scripts/price-confirm-core.js =====
+(function(){
+// price-confirm-core.js — funciones PURAS del Candado de Confirmación de Precio.
+//
+// Dual-export: window.PriceConfirmCore (browser) / module.exports (node --test).
+// SIN dependencias de DOM, API ni closure. Opera sobre las `variables` de la mutación
+// SaveManyPartNumberPrices (modal nativo "Part Number Price") y valida la reconfirmación.
+(function (root) {
+  'use strict';
+
+  // Espejo de PRICE_UNIT_MAP de bulk-upload-parse.js (PZA → null se omite; el resto invertido).
+  // Refleja config.steelhead.domain.unitIds. Es fallback de display: el guard puede leer el
+  // label real del react-select del modal nativo.
+  const UNIT_BY_ID = {
+    3969: 'KGM',
+    3972: 'LBR',
+    5150: 'LM',
+    4907: 'CMK',
+    4797: 'FTK',
+    5348: 'LO',
+  };
+
+  // Aplana el payload a una fila por cada partNumberPriceLineItem (una unidad de reconfirmación).
+  function extractLines(variables) {
+    const pps = variables && variables.input && variables.input.partNumberPrices;
+    if (!Array.isArray(pps)) return [];
+    const out = [];
+    pps.forEach((pp, ppIndex) => {
+      const items = pp && pp.partNumberPriceLineItems;
+      if (!Array.isArray(items)) return;
+      const divisa =
+        (pp.customInputs && pp.customInputs.DatosPrecio && pp.customInputs.DatosPrecio.Divisa) || '';
+      items.forEach((li, liIndex) => {
+        out.push({
+          ppIndex,
+          liIndex,
+          partNumberId: pp.partNumberId,
+          title: (li && li.title) || '',
+          price: li && li.price,
+          divisa,
+          unitId: pp.unitId != null ? pp.unitId : null,
+          priceName: pp.priceName || '',
+        });
+      });
+    });
+    return out;
+  }
+
+  function hasDivisa(line) {
+    return !!(line && typeof line.divisa === 'string' && line.divisa.trim() !== '');
+  }
+
+  // Normaliza y compara numéricamente. Cadena vacía / no numérica nunca hace match.
+  // El input de reconfirmación usa punto decimal (como el modal nativo), no coma.
+  function pricesMatch(original, reconfirmRaw) {
+    const raw = String(reconfirmRaw == null ? '' : reconfirmRaw).trim();
+    if (raw === '') return false;
+    const a = Number(original);
+    const b = Number(raw);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    return a === b;
+  }
+
+  // price × factor. factor debe ser finito > 0; price finito. Si no, null (sin equivalente).
+  function perPieceEquivalent(price, factor) {
+    if (price == null || factor == null || price === '' || factor === '') return null;
+    const p = Number(price);
+    const f = Number(factor);
+    if (!Number.isFinite(p) || !Number.isFinite(f) || f <= 0) return null;
+    return p * f;
+  }
+
+  function isPerPiece(unitId) {
+    return unitId == null;
+  }
+
+  // El alert nativo que SH dispara ("Error saving price") cuando nuestro bloqueo devuelve un
+  // error sintético. Se suprime solo en la ventana posterior a un bloqueo (glue en el guard).
+  function isSaveErrorAlert(msg) {
+    return /saving\s+price/i.test(String(msg == null ? '' : msg));
+  }
+
+  function unitLabel(unitId) {
+    if (isPerPiece(unitId)) return 'pieza';
+    return UNIT_BY_ID[unitId] || 'unidad #' + unitId;
+  }
+
+  // Parsing del factor desde el DOM (glue en el guard):
+  //  - Panel A (modal Edit Part Number): labels "KGM Kilogramo / Part:" + input value.
+  //  - Tabla Units (página del NP): "1 KGM Kilogramos / part".
+  function unitCodeFromLabel(text) {
+    if (!text) return '';
+    return String(text).trim().split(/\s+/)[0].toUpperCase();
+  }
+  function isPerPartLabel(text) {
+    return /\/\s*part:?\s*$/i.test(String(text || '').trim());
+  }
+  function parseLeadingNumber(text) {
+    const n = parseFloat(String(text == null ? '' : text).trim());
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Precio convertido a todas las unidades disponibles del NP. El factor de cada unidad V es
+  // "unidades V por pieza" (V/pza). precio_por_pieza = precio × factor_de_la_unidad_capturada;
+  // precio_por_V = precio_por_pieza / factor_V. Devuelve [{code, unitPrice, isPriceUnit}] con
+  // 'pieza' primero, o [] si el precio o el factor de la unidad capturada no son válidos.
+  function buildEquivalences(opts) {
+    const o = opts || {};
+    const price = Number(o.price);
+    const puf = Number(o.priceUnitFactor);
+    if (o.price === '' || o.price == null || !Number.isFinite(price)) return [];
+    if (!Number.isFinite(puf) || puf <= 0) return [];
+    const ppp = price * puf;
+    const out = [{ code: 'pieza', unitPrice: ppp, isPriceUnit: o.priceUnitCode === 'pieza' }];
+    const factors = o.factorsByCode || {};
+    for (const code of Object.keys(factors)) {
+      if (code === 'pieza') continue;
+      const f = Number(factors[code]);
+      if (!Number.isFinite(f) || f <= 0) continue;
+      out.push({ code, unitPrice: ppp / f, isPriceUnit: code === o.priceUnitCode });
+    }
+    return out;
+  }
+
+  const api = {
+    UNIT_BY_ID,
+    extractLines,
+    hasDivisa,
+    pricesMatch,
+    perPieceEquivalent,
+    isPerPiece,
+    isSaveErrorAlert,
+    unitLabel,
+    unitCodeFromLabel,
+    isPerPartLabel,
+    parseLeadingNumber,
+    buildEquivalences,
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.PriceConfirmCore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/price-confirm-core.js =====
+
+// ===== BEGIN scripts/price-confirm-guard.js =====
+(function(){
+// Candado de Confirmación de Precio — intercepta el guardado del modal nativo
+// "Part Number Price" (SaveManyPartNumberPrices) y exige reconfirmar el precio
+// (estilo password) + divisa obligatoria, antes de dejar pasar la mutación.
+// La lógica pura vive en PriceConfirmCore. Glue DOM/red aquí.
+//
+// Gate: solo actúa si el modal nativo "Part Number Price" está abierto → NO intercepta
+// la carga masiva de bulk-upload (que dispara la misma mutación sin ese modal).
+const PriceConfirmGuard = (() => {
+  'use strict';
+
+  const Core = () => window.PriceConfirmCore;
+  const api = () => window.SteelheadAPI;
+
+  const SAVE_OP = 'SaveManyPartNumberPrices';
+  const MODAL_TITLE_RE = /Part\s*Number\s*Price/i;
+
+  // Estado del candado en `window` (singleton), NO en el closure: background.js re-evalúa
+  // este IIFE en cada acción del popup, y el interceptor de fetch queda latcheado a la
+  // instancia original. Un flag en closure haría el toggle inefectivo (lección surtido-guard).
+  if (window.__saPriceGuardEnabled === undefined) window.__saPriceGuardEnabled = true;
+  function isEnabled() { return window.__saPriceGuardEnabled === true; }
+  function setEnabled(v) { window.__saPriceGuardEnabled = !!v; }
+
+  // ── estilos dark-mode (prefijo sa-pcg-) ──
+  function injectStyles() {
+    if (document.getElementById('sa-pcg-style')) return;
+    // Modo OSCURO a propósito: los modales de Steelhead son claros; así el operador ve
+    // de un vistazo que este modal es de la extensión y no una pantalla nativa.
+    const css = `
+      .sa-pcg-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483641;display:flex;
+        align-items:center;justify-content:center;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+      .sa-pcg{background:#1c2430;width:min(560px,94vw);max-height:90vh;border-radius:12px;display:flex;
+        flex-direction:column;box-shadow:0 12px 44px rgba(0,0,0,.6);color:#e6e9ee;border:1px solid #33404f;}
+      .sa-pcg-hd{padding:14px 18px;border-bottom:1px solid #33404f;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .sa-pcg-hd h2{margin:0;font-size:16px;color:#f0f3f7;}
+      .sa-pcg-x{border:none;background:none;font-size:22px;cursor:pointer;color:#9aa7b5;line-height:1;}
+      .sa-pcg-x:hover{color:#e6e9ee;}
+      .sa-pcg-bd{padding:8px 18px 14px;overflow:auto;}
+      .sa-pcg-ft{padding:14px 18px;border-top:1px solid #33404f;display:flex;align-items:center;justify-content:flex-end;gap:10px;}
+      .sa-pcg-row{border:1px solid #2b3645;border-radius:10px;padding:12px 14px;margin:12px 0;background:#19212c;}
+      .sa-pcg-title{font-weight:600;color:#f0f3f7;font-size:14px;}
+      .sa-pcg-sub{font-size:12px;color:#9aa7b5;margin-top:2px;}
+      .sa-pcg-meta{display:flex;gap:18px;margin:10px 0 6px;flex-wrap:wrap;}
+      .sa-pcg-meta b{color:#f0f3f7;}
+      .sa-pcg-chip{display:inline-block;padding:3px 9px;border-radius:20px;background:#141a23;border:1px solid #3a4757;font-size:13px;}
+      .sa-pcg-chip.cur{border-color:#13a36f;color:#7ee0b8;}
+      .sa-pcg-lbl{font-size:12px;color:#c3ccd6;margin:8px 0 4px;}
+      .sa-pcg-in{width:100%;box-sizing:border-box;background:#141a23;color:#e6e9ee;border:1px solid #3a4757;
+        border-radius:8px;padding:9px 11px;font-size:15px;}
+      .sa-pcg-in::placeholder{color:#6f7c8b;}
+      .sa-pcg-in.ok{border-color:#13a36f;} .sa-pcg-in.bad{border-color:#e8513a;}
+      .sa-pcg-mark{margin-left:8px;font-weight:700;font-size:14px;}
+      .sa-pcg-mark.ok{color:#5fd0a0;} .sa-pcg-mark.bad{color:#ff7a7a;}
+      .sa-pcg-calc{margin-top:10px;padding-top:10px;border-top:1px dashed #2b3645;}
+      .sa-pcg-calc .r{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+      .sa-pcg-fin{width:120px;background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:8px;padding:7px 9px;font-size:14px;}
+      .sa-pcg-eq{font-weight:700;color:#7ee0b8;font-size:15px;}
+      .sa-pcg-equiv{display:flex;flex-direction:column;gap:2px;margin:4px 0;}
+      .sa-pcg-eqrow{display:flex;align-items:baseline;gap:8px;padding:4px 8px;border-radius:6px;}
+      .sa-pcg-eqrow.me{background:#14251d;border:1px solid #1f5c44;}
+      .sa-pcg-eqv{font-weight:700;color:#7ee0b8;font-size:15px;min-width:120px;}
+      .sa-pcg-equ{color:#c3ccd6;font-size:13px;}
+      .sa-pcg-nodiv{background:#3a1d1d;color:#f3c2c2;border:1px solid #6b2b2b;border-radius:8px;padding:9px 11px;margin:8px 0;font-size:13px;}
+      .sa-pcg-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;}
+      .sa-pcg-btn.primary{background:#13a36f;color:#fff;} .sa-pcg-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}
+      .sa-pcg-btn.ghost{background:#33404f;color:#dfe5ec;}
+      .sa-pcg-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;
+        background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;border-radius:10px;
+        padding:12px 18px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw;}
+      .sa-pcg-toast.err{border-left-color:#e8513a;}`;
+    const s = document.createElement('style');
+    s.id = 'sa-pcg-style';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function el(tag, attrs, kids) {
+    const e = document.createElement(tag);
+    if (attrs) for (const k of Object.keys(attrs)) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];
+      else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids || []) if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    return e;
+  }
+
+  let toastTimer = null;
+  function toast(msg, isErr) {
+    injectStyles();
+    let t = document.getElementById('sa-pcg-toast');
+    if (!t) { t = document.createElement('div'); t.id = 'sa-pcg-toast'; document.body.appendChild(t); }
+    t.className = 'sa-pcg-toast' + (isErr ? ' err' : '');
+    t.textContent = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { const e = document.getElementById('sa-pcg-toast'); if (e) e.remove(); }, 5000);
+  }
+
+  // ── detección del modal nativo "Part Number Price" abierto ──
+  // Devuelve el elemento del dialog (paper) que matchea, o null. Último match = topmost.
+  function getNativePriceModal() {
+    const dialogs = document.querySelectorAll('[role="dialog"], .MuiDialog-paper');
+    let found = null;
+    for (const d of dialogs) {
+      const titleEl = d.querySelector('.MuiDialogTitle-root');
+      const t = (titleEl ? titleEl.textContent : d.textContent) || '';
+      if (MODAL_TITLE_RE.test(t)) found = d;
+    }
+    return found;
+  }
+  function nativePriceModalOpen() { return !!getNativePriceModal(); }
+
+  function money(x) { return '$' + Number(x).toFixed(2); }
+  // Formato adaptativo: precios por unidad pueden ser muy chicos (0.005/cm²) → más decimales.
+  function fmtMoney(x) {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '—';
+    const abs = Math.abs(n);
+    const dec = abs >= 1 ? 2 : (abs >= 0.01 ? 4 : 6);
+    return '$' + n.toFixed(dec);
+  }
+
+  // Pinta la tabla de equivalencias (una fila por unidad; resalta la unidad capturada).
+  function renderEquiv(box, eqs, divisa) {
+    box.textContent = '';
+    if (!eqs || !eqs.length) { box.appendChild(el('div', { class: 'sa-pcg-sub', text: '—' })); return; }
+    for (const e of eqs) {
+      box.appendChild(el('div', { class: 'sa-pcg-eqrow' + (e.isPriceUnit ? ' me' : '') }, [
+        el('span', { class: 'sa-pcg-eqv', text: fmtMoney(e.unitPrice) + ' ' + divisa }),
+        el('span', { class: 'sa-pcg-equ', text: '/ ' + e.code + (e.isPriceUnit ? '  · capturado' : '') }),
+      ]));
+    }
+  }
+
+  // ── mapa COMPLETO de factores (unidad→pieza) del NP desde el DOM. Devuelve
+  //    {factorsByCode:{CODE:factor}, source} o null. Más fresco que la API (refleja lo que el
+  //    operador tiene/cambia en el mismo save).
+  //    Fuente 1: Panel A del modal Editar NP (labels "CODE … / Part:" + input).
+  //    Fuente 2: tabla Units de la página del NP ("N CODE … / part"). ──
+  function readAllFactorsFromDOM() {
+    const panelA = document.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_PER_PART_COUNT_UNIT_DEFINITIONS"]');
+    if (panelA) {
+      const factors = {};
+      panelA.querySelectorAll('p.MuiTypography-root, p').forEach((p) => {
+        const txt = p.textContent || '';
+        if (!Core().isPerPartLabel(txt)) return;
+        const code = Core().unitCodeFromLabel(txt);
+        const input = p.parentElement && p.parentElement.querySelector('input');
+        const f = input ? Core().parseLeadingNumber(input.value) : null;
+        if (code && f != null && f > 0) factors[code] = f;
+      });
+      if (Object.keys(factors).length) return { factorsByCode: factors, source: 'modal Editar NP' };
+    }
+    const unitsTable = document.querySelector('[data-steelhead-component-id="PART_NUMBER_PAGE_UNITS"]');
+    if (unitsTable) {
+      const factors = {};
+      unitsTable.querySelectorAll('tr').forEach((tr) => {
+        const a = tr.querySelector('a[href*="/Units/"]');
+        if (!a) return;
+        const code = Core().unitCodeFromLabel(a.textContent || '');
+        const perPartP = tr.querySelector('td p.MuiTypography-root, td p');
+        const f = perPartP ? Core().parseLeadingNumber(perPartP.textContent || '') : null;
+        if (code && f != null && f > 0) factors[code] = f;
+      });
+      if (Object.keys(factors).length) return { factorsByCode: factors, source: 'tabla Units del NP' };
+    }
+    return null;
+  }
+
+  // Mapa de factores por prioridad: DOM → API guardada. Devuelve {factorsByCode, source} o null.
+  async function resolveAllFactors(partNumberId) {
+    const dom = readAllFactorsFromDOM();
+    if (dom) return dom;
+    if (!api() || partNumberId == null) return null;
+    try {
+      const pnData = await api().query('GetPartNumber', { id: partNumberId }, 'GetPartNumber');
+      const invId = pnData?.partNumberById?.inventoryItemByPartNumberId?.id
+        || pnData?.partNumber?.inventoryItemByPartNumberId?.id;
+      if (!invId) return null;
+      const unitsData = await api().query('GetAvailableUnits', { inventoryItemId: invId }, 'GetAvailableUnits');
+      const nodes = unitsData?.inventoryItemById?.inventoryItemUnitConversionsByInventoryItemId?.nodes || [];
+      const factors = {};
+      for (const c of nodes) {
+        const code = Core().UNIT_BY_ID[Number(c.unitByUnitId?.id)];
+        const f = Number(c.factor);
+        if (code && Number.isFinite(f) && f > 0) factors[code] = f;
+      }
+      return Object.keys(factors).length ? { factorsByCode: factors, source: 'guardado (API)' } : null;
+    } catch (e) {
+      console.warn('[SA] PriceGuard: no se pudieron obtener los factores:', e && e.message);
+      return null;
+    }
+  }
+
+  // ── modal de confirmación → Promise<'proceed'|'block'> ──
+  function openConfirmModal(lines) {
+    injectStyles();
+    return new Promise((resolve) => {
+      document.getElementById('sa-pcg-ov')?.remove();
+      let done = false;
+      const rows = [];
+
+      const finish = (result) => {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', onKey, true);
+        document.getElementById('sa-pcg-ov')?.remove();
+        resolve(result);
+      };
+      const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish('block'); } };
+      document.addEventListener('keydown', onKey, true);
+
+      const confirmBtn = el('button', {
+        class: 'sa-pcg-btn primary', text: 'Confirmar y guardar', disabled: 'true',
+        onclick: () => { if (!confirmBtn.disabled) finish('proceed'); },
+      });
+
+      function recompute() {
+        let allOk = true;
+        for (const r of rows) {
+          const hasDiv = Core().hasDivisa(r.line);
+          const val = r.input ? r.input.value : '';
+          const okPrice = hasDiv && Core().pricesMatch(r.line.price, val);
+          if (r.input) {
+            const typed = String(val).trim() !== '';
+            r.input.classList.toggle('ok', okPrice);
+            r.input.classList.toggle('bad', typed && !okPrice);
+            r.mark.className = 'sa-pcg-mark' + (okPrice ? ' ok' : (typed ? ' bad' : ''));
+            r.mark.textContent = okPrice ? '✔ coincide' : (typed ? '✖ no coincide' : '');
+          }
+          if (r.equivBox) {
+            const priceUnitCode = Core().unitLabel(r.line.unitId);
+            const puf = Core().isPerPiece(r.line.unitId)
+              ? 1
+              : (r.priceUnitFactorInput ? Number(r.priceUnitFactorInput.value) : NaN);
+            const eqs = Core().buildEquivalences({
+              price: val, priceUnitCode, priceUnitFactor: puf, factorsByCode: r.factorsByCode || {},
+            });
+            renderEquiv(r.equivBox, eqs, r.line.divisa || '');
+          }
+          if (!(hasDiv && okPrice)) allOk = false;
+        }
+        confirmBtn.disabled = !allOk;
+      }
+
+      const bd = el('div', { class: 'sa-pcg-bd' });
+
+      lines.forEach((line) => {
+        const row = el('div', { class: 'sa-pcg-row' });
+        const r = { line, input: null, mark: null, priceUnitFactorInput: null, equivBox: null, factorsByCode: {} };
+        rows.push(r);
+
+        row.appendChild(el('div', { class: 'sa-pcg-title', text: line.title || ('PN ' + line.partNumberId) }));
+        const subBits = [];
+        if (line.priceName) subBits.push('Precio: ' + line.priceName);
+        if (line.partNumberId != null) subBits.push('PN ' + line.partNumberId);
+        if (subBits.length) row.appendChild(el('div', { class: 'sa-pcg-sub', text: subBits.join('  ·  ') }));
+
+        const unitLbl = Core().unitLabel(line.unitId);
+        const meta = el('div', { class: 'sa-pcg-meta' }, [
+          el('span', {}, ['Divisa: ', el('span', { class: 'sa-pcg-chip cur', text: line.divisa || '(ninguna)' })]),
+          el('span', {}, ['Unidad: ', el('span', { class: 'sa-pcg-chip', text: unitLbl })]),
+        ]);
+        row.appendChild(meta);
+
+        if (!Core().hasDivisa(line)) {
+          row.appendChild(el('div', {
+            class: 'sa-pcg-nodiv',
+            text: '⚠ Sin divisa seleccionada. No se puede guardar: cancela, selecciona la divisa en Steelhead y vuelve a guardar.',
+          }));
+        } else {
+          row.appendChild(el('div', { class: 'sa-pcg-lbl', text: 'Vuelve a capturar el precio (' + line.divisa + ' / ' + unitLbl + '):' }));
+          const wrap = el('div', { class: 'sa-pcg-calc r' });
+          const input = el('input', {
+            class: 'sa-pcg-in', type: 'text', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off',
+            oninput: recompute,
+          });
+          input.style.flex = '1';
+          const mark = el('span', { class: 'sa-pcg-mark' });
+          r.input = input; r.mark = mark;
+          wrap.appendChild(input); wrap.appendChild(mark);
+          row.appendChild(wrap);
+
+          // Equivalencias multi-unidad: el precio capturado convertido a todas las unidades del NP.
+          const calc = el('div', { class: 'sa-pcg-calc' });
+          calc.appendChild(el('div', { class: 'sa-pcg-lbl', text: 'Precio equivalente en otras unidades (validación):' }));
+          // Factor de la unidad capturada (editable) — solo si el precio NO es por pieza.
+          if (!Core().isPerPiece(line.unitId)) {
+            const pufInput = el('input', {
+              class: 'sa-pcg-fin', type: 'text', inputmode: 'decimal', placeholder: unitLbl + '/pza', autocomplete: 'off',
+              oninput: recompute,
+            });
+            r.priceUnitFactorInput = pufInput;
+            calc.appendChild(el('div', { class: 'r', style: 'margin-bottom:8px;' }, [
+              el('span', { class: 'sa-pcg-sub', text: 'Factor de la unidad capturada (' + unitLbl + '):' }),
+              pufInput, el('span', { class: 'sa-pcg-sub', text: unitLbl + ' por pieza' }),
+            ]));
+          }
+          const equivBox = el('div', { class: 'sa-pcg-equiv' });
+          r.equivBox = equivBox;
+          calc.appendChild(equivBox);
+          const hint = el('div', { class: 'sa-pcg-sub', text: 'Buscando factores…' });
+          calc.appendChild(hint);
+          row.appendChild(calc);
+          // Prioridad DOM (Panel A / tabla Units) → API. Prefill el factor de la unidad capturada.
+          resolveAllFactors(line.partNumberId).then((res) => {
+            r.factorsByCode = (res && res.factorsByCode) || {};
+            if (r.priceUnitFactorInput && r.priceUnitFactorInput.value.trim() === '') {
+              const puf = r.factorsByCode[unitLbl];
+              if (puf != null) r.priceUnitFactorInput.value = String(puf);
+            }
+            const n = Object.keys(r.factorsByCode).length;
+            hint.textContent = res
+              ? 'Factores detectados (' + res.source + '): ' + n + ' unidad(es).'
+              : (Core().isPerPiece(line.unitId)
+                  ? 'Sin factores de otras unidades para este NP.'
+                  : 'Sin factores detectados. Captura el factor de la unidad capturada para ver equivalencias.');
+            recompute();
+          });
+        }
+        bd.appendChild(row);
+      });
+
+      const ov = el('div', { id: 'sa-pcg-ov', class: 'sa-pcg-ov' });
+      ov.addEventListener('mousedown', (e) => { if (e.target === ov) finish('block'); });
+      const panel = el('div', { class: 'sa-pcg' }, [
+        el('div', { class: 'sa-pcg-hd' }, [
+          el('h2', { text: '🔒 Confirma el precio antes de guardar' }),
+          el('button', { class: 'sa-pcg-x', text: '×', onclick: () => finish('block') }),
+        ]),
+        bd,
+        el('div', { class: 'sa-pcg-ft' }, [
+          el('button', { class: 'sa-pcg-btn ghost', text: 'Cancelar', onclick: () => finish('block') }),
+          confirmBtn,
+        ]),
+      ]);
+      ov.appendChild(panel);
+      // Montar DENTRO del contenedor del dialog nativo: el MuiDialog aplica focus-trap +
+      // inert/aria-hidden a todo lo externo, y en document.body el input no recibe teclado.
+      // Dentro del contenedor (dentro del trap, no-inert) el foco y el tecleo funcionan.
+      const modal = getNativePriceModal();
+      const mount = (modal && (modal.closest('.MuiDialog-container') || modal.parentElement)) || document.body;
+      mount.appendChild(ov);
+      const first = bd.querySelector('input.sa-pcg-in');
+      if (first) first.focus();
+      recompute();
+    });
+  }
+
+  // ── interceptor de fetch: gate asíncrono sobre el guardado ──
+  function patchFetch() {
+    if (window.__saPriceGuardFetchPatched) return;
+    window.__saPriceGuardFetchPatched = true;
+    const origFetch = window.fetch;
+
+    window.fetch = async function (...args) {
+      const [url, opts] = args;
+      let op = null, vars = null;
+      if (typeof url === 'string' && url.includes('/graphql') && opts && typeof opts.body === 'string') {
+        try { const b = JSON.parse(opts.body); op = b.operationName; vars = b.variables; } catch (_) {}
+      }
+
+      if (op === SAVE_OP && isEnabled() && nativePriceModalOpen()) {
+        let decision = 'block';
+        try {
+          const lines = Core().extractLines(vars);
+          if (!lines.length) {
+            decision = 'proceed'; // nada que confirmar (no debería pasar con el modal abierto)
+          } else {
+            decision = await openConfirmModal(lines);
+          }
+        } catch (e) {
+          console.error('[SA] PriceGuard: error en la confirmación, fail-closed:', e);
+          decision = 'block';
+        }
+        if (decision !== 'proceed') {
+          // Suprime el alert nativo "Error saving price" que SH dispara al ver nuestro error
+          // sintético (ventana corta: los errores de guardado legítimos siguen mostrándose).
+          window.__saPriceGuardSuppressUntil = Date.now() + 4000;
+          toast('🔒 Guardado cancelado: la confirmación del precio no coincidió o falta divisa.', true);
+          console.warn('[SA] PriceGuard: BLOQUEADO SaveManyPartNumberPrices');
+          return new Response(
+            JSON.stringify({ errors: [{ message: 'Guardado cancelado por el Candado de Confirmación de Precio.' }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        toast('✅ Precio confirmado. Guardando…');
+      }
+
+      return origFetch.apply(this, args);
+    };
+  }
+
+  // ── suprime el alert nativo de SH ("Error saving price") solo en la ventana posterior a un
+  //    bloqueo nuestro; fuera de esa ventana window.alert funciona normal. ──
+  function patchAlert() {
+    if (window.__saPriceGuardAlertPatched) return;
+    window.__saPriceGuardAlertPatched = true;
+    const origAlert = typeof window.alert === 'function' ? window.alert.bind(window) : null;
+    window.alert = function (msg) {
+      const until = window.__saPriceGuardSuppressUntil || 0;
+      if (Date.now() < until && Core().isSaveErrorAlert(msg)) {
+        console.log('[SA] PriceGuard: alert nativo suprimido tras bloqueo:', msg);
+        return;
+      }
+      if (origAlert) return origAlert(msg);
+    };
+  }
+
+  // ── toggle desde el popup ──
+  function toggleFromPopup() {
+    setEnabled(!isEnabled());
+    const on = isEnabled();
+    toast(on ? '🔒 Candado de Precio: ACTIVADO' : '🔓 Candado de Precio: DESACTIVADO (hasta recargar)');
+    return { enabled: on };
+  }
+
+  function init() {
+    if (window.__saPriceGuardInit) return;
+    window.__saPriceGuardInit = true;
+    patchFetch(); // latch idempotente; solo actúa sobre SaveManyPartNumberPrices con el modal abierto
+    patchAlert(); // suprime el "Error saving price" nativo tras un bloqueo
+    console.log('[SA] PriceConfirmGuard activo (default', isEnabled() ? 'ON' : 'OFF', ')');
+  }
+
+  return {
+    init, isEnabled, toggleFromPopup,
+    _getState: () => ({ enabled: isEnabled(), patched: !!window.__saPriceGuardFetchPatched }),
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.PriceConfirmGuard = PriceConfirmGuard;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => PriceConfirmGuard.init());
+  } else {
+    PriceConfirmGuard.init();
+  }
+}
+})();
+// ===== END scripts/price-confirm-guard.js =====
 
 // ===== BEGIN sa-bootstrap.js =====
 (function(){

@@ -130,3 +130,6 @@ Un combo dark-mode (`<select>`) que lista **solo los sensores NUMBER** (excluye 
 5. (Deuda ajena) el loop de auto-inject de `background.js` hace `break` si un fetch de script no es 200; tras cualquier
    deploy (bump de versión) TODOS los scripts hacen cache-miss `?v=X` y algún fallo transitorio corta la cadena de apps
    siguientes. Se auto-sana al calentar el CDN. Hardening: try/catch por-app en el loop (requiere republicar extensión).
+
+## Safari/iPad (2026-07-09)
+Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`). **FAB-only**: `autoInject:true` auto-esconde los sensores al entrar al dashboard y expone el combo de aislar EN la página (control propio, sin lanzador de popup). Sin bloqueadores iOS (los ojitos son estado de React, 0 mutaciones; sin descarga/clipboard). Rebuild `tools/build-safari.sh` (build-safari test 10/10). **Requiere recompilar en Xcode** (bundle estático). Cierra el pendiente "(Bundle Safari/iPad) integrar vía `safari-bundle-sync`".

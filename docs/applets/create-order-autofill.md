@@ -59,7 +59,7 @@ Cerrado el pendiente "Segunda vista de creación de OV". El usuario indicó la p
 
 **Validación:** core 9/9 verde + réplica del singleValue real del modal → `pickCustomerFromSingleValues` saca `idInDomain: 10`. Deployado a gh-pages (config **1.7.59**, verificado en vivo byte-a-byte + `create-order-autofill-core.js` publicado HTTP 200). **Pendiente:** corrida real end-to-end en el modal (que el operador confirme que se llenan Razón Social + Divisa).
 
-**Safari/iPad:** el applet ya estaba en el bundle; el rebuild tomó el core nuevo (`tools/build-safari.sh`, bundle `0.5.0 → 0.5.1`, build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático).
+**Safari/iPad:** el applet ya estaba en el bundle; el rebuild tomó el core nuevo (`tools/build-safari.sh`, bundle `0.5.0 → 0.5.1`, build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático). **2026-07-09 (bundle 0.5.3):** el rebuild tomó también el cambio de la 2ª pantalla SalesOrders (gate URL + heading bilingüe); mismo requisito de recompilar en Xcode.
 
 ## Por qué DOM en lugar de hook
 Probamos 4 casts experimentales (`workOrderUpdates` paralelo, `customInputs` top-level, `receivedOrderCustomInputs` singular, `shipToAddress.customInputs`) en el hook low-code `getReceivedOrderCustomization` de Power Tools. Test Run pasaba en todos (la shape se generaba bien), pero **el backend nunca aplicó el customInput a la OV** — mismo failure mode documentado para `partNumberLabels` en `powertools-ordendeventa.md` (2026-05-15; repo SteelheadPowerTools). Steelhead solo respeta las claves declaradas explícitamente en su shape de backend; lo demás se silencia.

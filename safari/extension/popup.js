@@ -29,7 +29,8 @@
     { message: 'open-auto-router',        icon: '🔀', label: 'Auto-Ruteador',             sub: 'Re-rutear orden a otra línea (abre el modal de ruteo primero)' },
     { message: 'open-auto-router-batch',  icon: '🔀', label: 'Auto-Ruteador — Batch',     sub: 'Rutear varias órdenes (pega los números)' },
     { message: 'open-wo-completer',       icon: '✅', label: 'Completar / Descompletar OTs', sub: 'Pega un listado de OTs y ciérralas o revívelas' },
-    { message: 'run-wo-deadline',         icon: '⚙️', label: 'Gestionar OTs',              sub: 'Cambiar plazos y etiquetas masivamente' }
+    { message: 'run-wo-deadline',         icon: '⚙️', label: 'Gestionar OTs',              sub: 'Cambiar plazos y etiquetas masivamente' },
+    { message: 'toggle-price-confirm-guard', icon: '🔒', label: 'Candado de precio (on/off)', sub: 'Activa/desactiva el candado de confirmación de precio' }
   ];
 
   function getAll(keys) {

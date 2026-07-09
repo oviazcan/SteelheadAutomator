@@ -118,6 +118,7 @@ test('canal de lanzadores consistente: popup LAUNCHERS → dispatcher LAUNCH_FN 
     AutoRouter: 'scripts/auto-router.js',
     WOCompleter: 'scripts/wo-completer.js',
     WODeadlineChanger: 'scripts/wo-deadline-changer.js',
+    PriceConfirmGuard: 'scripts/price-confirm-guard.js',
   };
 
   for (const msg of popupMsgs) {

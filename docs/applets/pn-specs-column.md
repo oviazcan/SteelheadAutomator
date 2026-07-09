@@ -116,3 +116,6 @@ A pedido del usuario, la columna se integra al look nativo en vez de destacar en
 - Run real integrado (validar observer en paginación + guardrail de memoria con captura del mem monitor).
 - El hash de `GetPartNumber` rotó → probablemente afecta **otros applets** (bulk-upload, spec-migrator, auditor…). Conviene correr el skill `steelhead-hash-validator` / hash-scanner y registrar en `docs/api/hash-validation-log.md`.
 - Fase 2 posible: tooltip on-hover con TODOS los params (incl. booleanos) además de la columna numérica; recordar la última posición de scroll; incluir specs desde `partNumberSpecsByPartNumberId` aunque no tengan numéricos (ya se muestran con "sin params num.").
+
+## Safari/iPad (2026-07-09)
+Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`). Es **FAB-only**: `autoInject:true` pone el toggle en el header de `/PartNumbers` (control en página, no requiere lanzador de popup). Sin bloqueadores iOS (read-only, sin descarga/clipboard). Rebuild `tools/build-safari.sh` (build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático).

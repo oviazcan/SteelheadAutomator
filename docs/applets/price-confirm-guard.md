@@ -113,3 +113,6 @@ siguen visibles. Como un guardado legítimo no pasa por bloqueo, su `alert` nunc
 - Leer el factor del DOM (Panel A/B de `unit-autoconvert`) si ese modal está abierto en paralelo.
 - Persistir el toggle. Distinguir alta vs edición si se quisiera aplicar solo a cambios.
 - Deploy a `gh-pages` con `tools/deploy.sh` tras validación.
+
+## Safari/iPad (2026-07-09)
+Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`) por decisión explícita del usuario, **aunque sigue pendiente de validación en vivo + deploy a gh-pages**. Es `autoInject:true` (intercepta `SaveManyPartNumberPrices` con el modal nativo abierto) y **fail-safe** (deja pasar el fetch al confirmar; `Response` sintético al cancelar), con blast radius casi nulo en piso (editar precios de PN no es tarea de iPad). **Único auto-inyectado sin control en página** → se le cableó un **kill-switch en el popup** (`toggle-price-confirm-guard` → `PriceConfirmGuard.toggleFromPopup`, en `popup.js LAUNCHERS` + `sa-dispatcher.js LAUNCH_FN` + mapa del test `build-safari`) para poder apagarlo desde el iPad si molestara. Rebuild `tools/build-safari.sh` (test 10/10, cadena de lanzadores verde). **Requiere recompilar en Xcode** (bundle estático). Pendiente: validar en vivo en desktop y deployar a gh-pages; ahí el canal Chrome (donde sí se editan precios) quedaría cubierto.
