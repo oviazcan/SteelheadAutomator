@@ -96,17 +96,20 @@ const HANDLERS = {
       return { name: (await nameLink.textContent().catch(() => '')).trim() };
     },
     async mutate(page, { id, domain }) {
-      // DIAGNÓSTICO: navegar a la página del quote DESDE el dashboard (client-side; el goto
-      // directo a /Quotes/<id> sale vacío — el SPA no hidrata el deep-link a la cotización).
+      // navegar client-side a la página del quote (goto directo sale vacío) → clickear el Edit
+      // de "External Notes" (1er EditOutlinedIcon) → editor. DIAGNÓSTICO del editor.
       await findQuoteDashboard(page, id, domain);
       await page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first().click();
       await page.waitForTimeout(4000);
+      const editBtn = page.locator('button:has(svg[data-testid="EditOutlinedIcon"])').first();
+      await editBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+      await editBtn.click({ timeout: 15000 });
+      await page.waitForTimeout(1500);
       if (process.env.SA_DBG) {
-        const notasP = await page.locator('p', { hasText: 'Notas Externas' }).count().catch(() => -1);
-        const editIcons = await page.locator('button:has(svg[data-testid="EditOutlinedIcon"])').count().catch(() => -1);
-        const bodyLen = (await page.locator('body').innerText().catch(() => '')).length;
-        console.log(`       [dbg] client-nav: NotasExternas p=${notasP} · editIcons=${editIcons} · bodyLen=${bodyLen} · url=${page.url()}`);
-        await page.screenshot({ path: '/tmp/sa-quote-clientnav.png', fullPage: true }).catch(() => {});
+        const dlg = await page.locator('[role="dialog"]').count().catch(() => -1);
+        const ta = await page.locator('textarea').count().catch(() => -1);
+        console.log(`       [dbg] tras Edit External Notes: dialog=${dlg} textarea=${ta}`);
+        await page.screenshot({ path: '/tmp/sa-quote-noteedit.png', fullPage: true }).catch(() => {});
       }
     },
     async restore(_page) {
