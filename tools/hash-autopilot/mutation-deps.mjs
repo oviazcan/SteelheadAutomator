@@ -95,15 +95,18 @@ const HANDLERS = {
       const nameLink = page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first();
       return { name: (await nameLink.textContent().catch(() => '')).trim() };
     },
-    async mutate(page, { url }) {
-      // editar "Notas Externas" del quote → guardar dispara UpdateQuote (bulk-upload lo usa así)
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(2500);
+    async mutate(page, { id, domain }) {
+      // DIAGNÓSTICO: navegar a la página del quote DESDE el dashboard (client-side; el goto
+      // directo a /Quotes/<id> sale vacío — el SPA no hidrata el deep-link a la cotización).
+      await findQuoteDashboard(page, id, domain);
+      await page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first().click();
+      await page.waitForTimeout(4000);
       if (process.env.SA_DBG) {
-        const notasP = await page.locator('p.css-11abq7s', { hasText: 'Notas Externas' }).count().catch(() => -1);
+        const notasP = await page.locator('p', { hasText: 'Notas Externas' }).count().catch(() => -1);
         const editIcons = await page.locator('button:has(svg[data-testid="EditOutlinedIcon"])').count().catch(() => -1);
-        console.log(`       [dbg] page quote: NotasExternas p=${notasP} · editIcons=${editIcons} · url=${url}`);
-        await page.screenshot({ path: '/tmp/sa-quote-page.png', fullPage: true }).catch(() => {});
+        const bodyLen = (await page.locator('body').innerText().catch(() => '')).length;
+        console.log(`       [dbg] client-nav: NotasExternas p=${notasP} · editIcons=${editIcons} · bodyLen=${bodyLen} · url=${page.url()}`);
+        await page.screenshot({ path: '/tmp/sa-quote-clientnav.png', fullPage: true }).catch(() => {});
       }
     },
     async restore(_page) {
