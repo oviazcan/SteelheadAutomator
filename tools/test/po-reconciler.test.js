@@ -4,13 +4,37 @@
 const assert = require('assert');
 const path = require('path');
 
-// Stub the browser-only globals before requiring the applet
+// Stub the browser-only globals before requiring the applet.
+// El applet, al cargarse, monta su FAB tocando document.getElementById/createElement,
+// así que el stub de document debe cubrir esa superficie (no solo addEventListener).
+function mkEl() {
+  const el = {
+    style: {}, classList: { add() {}, remove() {}, toggle() {} },
+    appendChild() { return el; }, removeChild() { return el; }, append() {},
+    setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    addEventListener() {}, removeEventListener() {},
+    querySelector() { return null; }, querySelectorAll() { return []; },
+    remove() {}, click() {}, focus() {},
+    innerHTML: '', textContent: '', value: '', id: '', className: '',
+  };
+  return el;
+}
 global.window = {
   addEventListener: () => {},
   dispatchEvent: () => {},
 };
 global.chrome = { runtime: {} };
-global.document = { readyState: 'complete', addEventListener: () => {} };
+global.location = { href: 'https://app.gosteelhead.com/', hostname: 'app.gosteelhead.com', pathname: '/', search: '' };
+global.document = {
+  readyState: 'complete',
+  addEventListener: () => {},
+  getElementById: () => null,
+  querySelector: () => null,
+  querySelectorAll: () => [],
+  createElement: () => mkEl(),
+  head: { appendChild() {} },
+  body: { appendChild() {}, removeChild() {} },
+};
 global.history = {
   pushState: () => {},
   replaceState: () => {},
@@ -141,12 +165,25 @@ test('assignTempsToPOs cambia el orden si reduce piezas movidas', () => {
   assert.strictEqual(byTemp.T2, 'PO_B');
 });
 
-test('assignTempsToPOs devuelve issue fatal si cardinality mismatch', () => {
-  const temps = [{ ovId: 'T1', byPN: {} }, { ovId: 'T2', byPN: {} }];
-  const pos = [{ poNumber: 'P1', byPN: {} }];
+// ae42127 cambió la política de cardinality: MÁS POs que OVs temporales sigue
+// siendo fatal (cada PO con solape necesita una OV), pero MÁS OVs que POs ya NO
+// es fatal — hace "subset auto" (asigna las mejores, deja las sobrantes con warn).
+test('assignTempsToPOs: más POs que OVs temporales → fatal cardinality_pos_excess', () => {
+  const temps = [{ ovId: 'T1', name: 'Prod', byPN: { A: 10, B: 5 } }];
+  const pos = [{ poNumber: 'P1', byPN: { A: 10 } }, { poNumber: 'P2', byPN: { B: 5 } }];
   const result = E.assignTempsToPOs(temps, pos);
   assert.strictEqual(result.assignment, null);
-  assert.ok(result.issues.some(i => i.severity === 'fatal' && i.type === 'cardinality_mismatch'));
+  assert.ok(result.issues.some(i => i.severity === 'fatal' && i.type === 'cardinality_pos_excess'));
+});
+
+test('assignTempsToPOs: más OVs temporales que POs → subset auto (ae42127), no fatal', () => {
+  const temps = [{ ovId: 'T1', name: 'Prod', byPN: { A: 10 } }, { ovId: 'T2', name: 'Kit', byPN: { B: 5 } }];
+  const pos = [{ poNumber: 'P1', byPN: { A: 10 } }];
+  const result = E.assignTempsToPOs(temps, pos);
+  assert.strictEqual(result.assignment.length, 1);
+  assert.strictEqual(result.assignment[0].poNumber, 'P1');
+  assert.strictEqual(result.unassignedTemps.length, 1);
+  assert.ok(!result.issues.some(i => i.severity === 'fatal'));
 });
 
 test('computeMovesForPN sin diferencias devuelve []', () => {
@@ -275,10 +312,11 @@ test('buildPlan: sobrante con OV Restantes existente → no se crea', () => {
   assert.strictEqual(plan.restantes[0].toOvId, 999);
 });
 
-test('buildPlan: cardinality mismatch → plan vacío + issue fatal', () => {
+test('buildPlan: más POs que OVs temporales → plan vacío + issue fatal', () => {
+  // 2 POs con solape, 1 sola OV temporal → cardinality_pos_excess (fatal).
   const plan = E.buildPlan({
-    pos:   [{ poNumber: 'P1', byPN: {} }, { poNumber: 'P2', byPN: {} }],
-    temps: [{ ovId: 'T1', name: 'Producción', byPN: {} }],
+    pos:   [{ poNumber: 'P1', byPN: { A: 10 } }, { poNumber: 'P2', byPN: { B: 5 } }],
+    temps: [{ ovId: 'T1', name: 'Producción', byPN: { A: 10, B: 5 } }],
     restantesOV: null,
     config: { restantesOvName: 'Restantes Schneider QRO' },
   });

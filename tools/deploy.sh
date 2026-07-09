@@ -71,6 +71,23 @@ if [ -n "$DIRTY_NON_REMOTE" ]; then
   exit 1
 fi
 
+# --- gate de calidad: la suite DEBE estar verde antes de tocar producción ---
+# Evita deployar con tests rojos (bugs de producto o refactors que rompieron un
+# golden). Corre desde el worktree de main = lo que realmente se va a deployar.
+# Bypass de emergencia: SH_SKIP_TESTS=1 tools/deploy.sh "..."  (úsalo sabiendo por qué).
+if [ "${SH_SKIP_TESTS:-0}" = "1" ]; then
+  echo "⚠️  SH_SKIP_TESTS=1 — SALTANDO la suite de tests (bypass de emergencia)."
+elif [ -x "$MAINWT/tools/run-tests.sh" ]; then
+  echo "→ gate: corriendo la suite de tests (tools/run-tests.sh)…"
+  if ! "$MAINWT/tools/run-tests.sh"; then
+    echo "ERROR: la suite de tests está ROJA. Aborto el deploy (nada se bumpeó ni commiteó)." >&2
+    echo "       Arregla los rojos, o en emergencia: SH_SKIP_TESTS=1 tools/deploy.sh \"...\"" >&2
+    exit 1
+  fi
+else
+  echo "⚠️  tools/run-tests.sh no encontrado/ejecutable — deploy SIN gate de tests."
+fi
+
 # --- bump de versión en remote/config.json ---
 CFG="$MAINWT/remote/config.json"
 CUR="$(grep -E '"version"' "$CFG" | head -1 | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"

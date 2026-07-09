@@ -94,6 +94,16 @@ sed -i '' -E "s/(\"lastUpdated\"[[:space:]]*:[[:space:]]*\")[^\"]+\"/\1$NOW\"/" 
 node --check "$MAINWT/$SRCFILE" >/dev/null 2>&1 || die "el script aplicado no pasa node --check."
 echo "→ aplicado $SCRIPT_NAME + bump ${CUR} → ${NEW}"
 
+# 2b) gate de calidad: la suite debe estar verde CON el script de workbench ya
+# aplicado a main:remote. Si falla, `die` dispara el trap → restaura main + WIP.
+# Bypass de emergencia: SH_SKIP_TESTS=1 SH_ALLOW_DEPLOY=1 tools/wb-deploy.sh ...
+if [ "${SH_SKIP_TESTS:-0}" = "1" ]; then
+  echo "⚠️  SH_SKIP_TESTS=1 — SALTANDO la suite de tests (bypass de emergencia)."
+elif [ -x "$MAINWT/tools/run-tests.sh" ]; then
+  echo "→ gate: corriendo la suite de tests (tools/run-tests.sh)…"
+  "$MAINWT/tools/run-tests.sh" || die "suite de tests ROJA con el script aplicado (bypass: SH_SKIP_TESTS=1)."
+fi
+
 # 3) commit main (solo el script + config)
 G add "$SRCFILE" remote/config.json
 G commit -q -m "$MSG

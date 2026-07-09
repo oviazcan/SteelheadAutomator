@@ -63,7 +63,10 @@ function mkElementStub() {
 
 function loadAuditScript() {
   const code = fs.readFileSync(SCRIPT_PATH, 'utf8');
-  const window = { REMOTE_CONFIG: MOCK_CONFIG };
+  // SADuplicateTiers ya provisto → el IIFE no hace `await fetch(duplicate-tiers.js)`
+  // (que en el test tiraría → catch → return sin exportar). Solo lo usa el tier-scan,
+  // no parseCSV/parseRows/comparePartNumber, así que un stub vacío basta para arrancar.
+  const window = { REMOTE_CONFIG: MOCK_CONFIG, SADuplicateTiers: {} };
   // getElementById devuelve un stub (no null) para que openModal() automático del IIFE
   // no truene en el test runner cuando setea .onclick = ...
   const document = {
@@ -253,9 +256,12 @@ test('comparePartNumber: spec esperada pero no linkeada', () => {
   const part = mkPart({ specs: [{ name: 'Espesor', param: '10 µm' }] });
   const pn = mkPn();
   const issues = A.comparePartNumber(part, pn, catalogs);
-  assert.equal(issues.length, 1);
-  assert.equal(issues[0].field, 'spec');
-  assert.equal(issues[0].spec, 'Espesor');
+  // Un PN vacío frente a una spec CON param tiene DOS deficiencias, que el tool
+  // reporta por separado: la spec no linkeada y el spec-param faltante.
+  assert.equal(issues.length, 2);
+  const spec = issues.find((i) => i.field === 'spec');
+  assert.ok(spec && spec.spec === 'Espesor', 'issue de spec Espesor no linkeada');
+  assert.ok(issues.some((i) => i.field === 'specParam'), 'issue de spec-param faltante');
 });
 
 test('comparePartNumber: spec linkeada pero sin params', () => {

@@ -9,11 +9,21 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const SCRIPT_PATH = path.join(__dirname, '..', '..', 'remote', 'scripts', 'bulk-upload.js');
+const CLASSIFY_PATH = path.join(__dirname, '..', '..', 'remote', 'scripts', 'bulk-upload-classify.js');
+const CC_PATH = path.join(__dirname, '..', '..', 'remote', 'scripts', 'bulk-upload-cc.js');
 
 function loadHelpers() {
+  // Las funciones de clasificación migraron de bulk-upload.js (inline) al módulo
+  // puro bulk-upload-classify.js; bulk-upload.js las importa vía
+  // `window.SteelheadBulkClassify` (con fallback `|| {}`, por eso salían undefined
+  // en el sandbox). Inyectamos ambos módulos para que el export __helpers resuelva
+  // TODAS las funciones (extractPNShape sigue inline en bulk-upload.js). Así estos
+  // golden tests siguen corriendo contra el código vivo tras el refactor F1.
+  const cc = require(CC_PATH);
+  const classify = require(CLASSIFY_PATH);
   const code = fs.readFileSync(SCRIPT_PATH, 'utf8');
   const sandbox = {
-    window: {},
+    window: { SteelheadBulkClassify: classify, SteelheadBulkCC: cc },
     document: { getElementById: () => null, head: { appendChild: () => {} }, body: { appendChild: () => {} }, createElement: () => ({ appendChild: () => {}, classList: { add: () => {} } }) },
     console: { log: () => {}, warn: () => {}, error: () => {} },
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
@@ -52,8 +62,10 @@ test('isNonFinishLabel matches blacklist exactly', () => {
   assert.equal(H.isNonFinishLabel('CROMADO', NON_FINISH), false);
   assert.equal(H.isNonFinishLabel('', NON_FINISH), false);
   assert.equal(H.isNonFinishLabel(null, NON_FINISH), false);
-  // Case-sensitive match (igual que vienen en Steelhead)
-  assert.equal(H.isNonFinishLabel('smy', NON_FINISH), false);
+  // 1.4.x: el módulo bulk-upload-classify.js normaliza a upper (normLabel) → match
+  // CASE-INSENSITIVE. Confirmado por el golden vigente test_bulk_upload_classify.js.
+  // (Antes del refactor F1 era case-sensitive; este assert se actualizó con él.)
+  assert.equal(H.isNonFinishLabel('smy', NON_FINISH), true);
 });
 
 test('acabadosOrdenados filters blacklist, sorts, joins', () => {
@@ -860,19 +872,21 @@ test('1.2.12 Pase 1 — IBMS match con PN activo no marca wasArchived', () => {
   assert.equal(r.confidence, 'ibms-exacto');
 });
 
-test('1.2.12 Pase 3 — ignora archivados (sólo activos como candidatos)', () => {
+test('1.5.21 Pase 3 — archivados SÍ se consideran candidatos (revierte 1.2.12; se matchean para no duplicar)', () => {
   const H = loadHelpers();
-  // mismo name y labels pero distinto metalBase → Pase 3 (no composite)
+  // mismo name y labels pero distinto metalBase → Pase 3 (no composite).
+  // 1.5.21 cambió la política de 1.2.12: los archivados YA NO se ignoran; se
+  // matchean en todos los pases (MODIFY para desarchivar) para no crear duplicados.
   const csvRow = { customerId: 1, name: 'A', metalBase: 'CU', labels: ['NIQ'], quoteIBMS: '' };
   const pnsForCustomer = [
-    // archivado: NO debe aparecer como candidato
     { id: 100, name: 'A', metalBase: 'AL', labels: ['NIQ'], quoteIBMS: '', archivedAt: '2026-05-20T10:00:00Z' },
   ];
   const r = H.classifyOnePN(csvRow, pnsForCustomer, []);
-  assert.equal(r.classification, 'NEW');
-  assert.equal(r.pase, null);
-  assert.equal(r.candidates.length, 0);
-  assert.equal(r.wasArchived, false);
+  assert.equal(r.classification, 'MODIFY');
+  assert.equal(r.pase, 3);
+  assert.equal(r.targetPnId, 100);
+  assert.equal(r.candidates.length, 1);
+  assert.equal(r.wasArchived, true);
 });
 
 test('1.2.12 Pase 1 vs Pase 3 — IBMS archivado gana sobre name+labels activo (regresión loop auto-archive)', () => {
