@@ -5,6 +5,11 @@ Thumbs.db
 # Node
 node_modules/
 
+# Python (caches de pytest / bytecode)
+__pycache__/
+.pytest_cache/
+*.pyc
+
 # IDE
 .vscode/
 .idea/
@@ -22,12 +27,17 @@ scan_results_*.json
 # Capturas de tráfico GraphQL para diseño de applets (pueden traer datos productivos)
 surtido-guard-capture*.json
 
+# Capturas HTML de la SPA (dumps "Guardar como" con datos de clientes), mal ubicadas
+# en vbas/ (esa carpeta es para fuentes .bas de VBA, no HTML).
+vbas/*.html
+
 # Validador de hashes — resultados diarios (ruido, no aportan al repo)
 tools/.hash-validation/
 
 # hash-autopilot — resultados diarios + estado del browser headless (no versionar)
 tools/.hash-autopilot/
 tools/hash-autopilot/.browser-state/
+tools/hash-autopilot/.state/
 
 # Excel temp lock files
 ~$*.xlsm
