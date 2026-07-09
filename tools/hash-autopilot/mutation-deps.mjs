@@ -50,14 +50,22 @@ async function archivedToggle(page) {
 async function findQuoteDashboard(page, id, domain) {
   // el dashboard con searchQuery en la URL hidrata inconsistentemente (deep-link) → recargar
   // hasta que la fila aparezca. Busca en archivado y activo.
+  const dbg = process.env.SA_DBG;
   for (const arch of [true, false]) {
     for (let r = 0; r < 3; r++) {
       await page.goto(`${BASE}/Domains/${domain}/Quotes?archived=${arch}&hasRfq=false&searchQuery=${id}`, { waitUntil: 'domcontentloaded' });
+      // el dashboard puede quedarse en "Loading..." un rato → esperar a que se vaya primero
+      await page.locator('text=/^Loading/').first().waitFor({ state: 'hidden', timeout: 20000 }).catch(() => {});
       const ok = await page.locator(`tr:has(a[href$="/Quotes/${id}"])`).first()
-        .waitFor({ state: 'visible', timeout: 9000 }).then(() => true).catch(() => false);
+        .waitFor({ state: 'visible', timeout: 12000 }).then(() => true).catch(() => false);
+      if (dbg) {
+        const rows = await page.locator('tr:has(a[href*="/Quotes/"])').count().catch(() => -1);
+        console.log(`       [dbg] quote dash archived=${arch} try=${r} ok=${ok} rows=${rows}`);
+      }
       if (ok) return { found: true, archived: arch };
     }
   }
+  if (dbg) await page.screenshot({ path: '/tmp/sa-quote-dash.png', fullPage: true }).catch(() => {});
   return { found: false, archived: null };
 }
 // Editar "External Notes" del quote: navega client-side a la cotización (goto directo sale
