@@ -34,15 +34,16 @@
     },
     "maintenanceNode": {
       "id": 55,
-      "screenPath": "/Maintenance/Nodes/{id}",
+      "screenPath": "/Domains/{domain}/Maintenance",
       "marker": "Sentinela",
-      "archived": true,
+      "archived": false,
       "opsGroup": [
         "CreateMaintenanceEvent",
         "CreateMaintenanceEventComment",
         "UpdateMaintenanceEvent"
       ],
-      "_estrategia": "nested-unarchive"
+      "_estrategia": "create-event-capture",
+      "_nota": "Nodo ACTIVO (no archivado): el handler crea un evento sobre el nodo 'Sentinela' (New Maintenance Event -> Node -> combobox Sentinela -> Save & Begin), comenta y completa -> dispara los 3 hashes en un solo flujo; luego archiva el evento. El handler navega a /Maintenance (no al detalle del nodo) y elige el nodo por NOMBRE en el combobox (fail-closed)."
     },
     "workOrder": {
       "id": 11677,
@@ -53,5 +54,5 @@
       ]
     }
   },
-  "_dominio": "MTY/344 (los sentinelas viven en MTY)"
+  "_dominio": "TLC/344 (Toluca — los sentinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
 }

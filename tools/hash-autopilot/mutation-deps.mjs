@@ -146,6 +146,74 @@ async function archiveSentinelaOVs(page, domain) {
     await page.waitForTimeout(2000);
   }
 }
+// ── maintenanceNode: create-event-capture ──────────────────────────────────
+// Los 3 hashes (CreateMaintenanceEvent / CreateMaintenanceEventComment /
+// UpdateMaintenanceEvent) se disparan al CREAR un evento de mantenimiento sobre el
+// nodo sentinela y recorrer su ciclo (comentar + completar). UN solo flujo captura
+// los 3; como el sink es compartido en el run, cuando ya están los 3 los ciclos
+// siguientes hacen no-op (no crean otro evento). Al final se ARCHIVA el evento
+// (limpieza). Fail-closed: si no aparece la opción "Sentinela" en el combobox del
+// nodo, aborta SIN crear evento (no toca datos reales).
+const MAINT_OPS = ['CreateMaintenanceEvent', 'CreateMaintenanceEventComment', 'UpdateMaintenanceEvent'];
+async function archiveCurrentMaintenanceEvent(page) {
+  // Togglear el checkbox "Archived" del evento hace DOS cosas a la vez: dispara
+  // UpdateMaintenanceEvent (update de archivedAt — verificado con el sink, paralelo a
+  // UpdatePartNumber) Y archiva el evento (limpieza). CheckBoxOutlineBlankIcon = NO
+  // archivado → click archiva. Espera el POST async para que el hash se capture.
+  const box = page.locator('.MuiCheckbox-root:has(svg[data-testid="CheckBoxOutlineBlankIcon"])').first();
+  if (await box.count().catch(() => 0)) {
+    await box.scrollIntoViewIfNeeded().catch(() => {});
+    await box.click().catch(() => {});
+    await page.waitForTimeout(4000);
+    if (process.env.SA_DBG) console.log('       [dbg] maint: evento archivado → UpdateMaintenanceEvent + limpieza');
+    return true;
+  }
+  return false;
+}
+async function createMaintenanceEventOnSentinela(page, domain, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.hashes && MAINT_OPS.every((op) => sink.hashes[op])) {
+    if (dbg) console.log('       [dbg] maint: 3 ops ya en sink → skip (no crea otro evento)');
+    return;
+  }
+  await page.goto(`${BASE}/Domains/${domain}/Maintenance`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3000);
+  // "New Maintenance Event" (NO "New Maintenance Node" — desambiguar por texto; ambos usan AddBoxIcon)
+  await page.locator('button', { hasText: /New Maintenance Event/ }).first().click({ timeout: 20000 });
+  await page.waitForTimeout(2000);
+  const dialog = page.locator('[role="dialog"]').first();
+  await dialog.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+  if (dbg) console.log('       [dbg] maint: modal Nuevo Evento abierto');
+  // toggle "Node" del grupo (Event puede abrir por equipo o por nodo)
+  await dialog.locator('button', { hasText: /^Node$/ }).first().click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  // combobox react-select "Select a node": escribir "Sentinela" y elegir la opción (fail-closed)
+  const combo = dialog.locator('input[role="combobox"]').first();
+  await combo.click();
+  await combo.fill('Sentinela');
+  await page.waitForTimeout(2000);
+  const opt = page.locator('[role="option"]', { hasText: /Sentinela/i }).first();
+  if (!(await opt.count().catch(() => 0))) {
+    throw new Error('fail-closed: no apareció opción "Sentinela" en el combobox de nodo — no se crea evento');
+  }
+  await opt.click({ timeout: 8000 });
+  await page.waitForTimeout(800);
+  if (dbg) console.log('       [dbg] maint: nodo Sentinela seleccionado');
+  // Save & Begin → CreateMaintenanceEvent
+  await page.locator('button', { hasText: /Save & Begin/ }).first().click({ timeout: 12000 });
+  await page.waitForTimeout(4000);
+  if (dbg) console.log('       [dbg] maint: Save & Begin (evento creado)');
+  // comentario → Submit → CreateMaintenanceEventComment
+  await page.locator('textarea[placeholder="Write a comment..."]').first().fill('SA-SENTINEL-CAP').catch(() => {});
+  await page.locator('button', { hasText: /^Submit$/ }).first().click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (dbg) console.log('       [dbg] maint: comentario enviado');
+  // UpdateMaintenanceEvent + limpieza en UNA acción: togglear el checkbox "Archived"
+  // del evento (dispara el update de archivedAt Y archiva el evento). Ni "Complete
+  // Maintenance Event" ni "Save & Begin" disparan UpdateMaintenanceEvent (verificado
+  // con el sink); el toggle de Archived sí.
+  await archiveCurrentMaintenanceEvent(page);
+}
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -206,14 +274,40 @@ const HANDLERS = {
       await archiveSentinelaOVs(page, domain);
     },
   },
+  maintenanceNode: {
+    async load(page, { domain }) {
+      // create-event-capture: no muta un nodo existente, crea un EVENTO sobre el nodo
+      // sentinela. Verifica que la pantalla de Mantenimiento carga (botón "New
+      // Maintenance Event" presente) → contexto OK. La salvaguarda real es seleccionar
+      // el nodo "Sentinela" por nombre en el combobox (fail-closed si no aparece).
+      await page.goto(`${BASE}/Domains/${domain}/Maintenance`, { waitUntil: 'domcontentloaded' });
+      const btn = page.locator('button', { hasText: /New Maintenance Event/ }).first();
+      await btn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+      const ok = await page.locator('button', { hasText: /New Maintenance Event/ }).count().catch(() => 0);
+      if (process.env.SA_DBG) console.log(`       [dbg] maint dash: newEventBtn=${ok}`);
+      return { name: ok ? 'Sentinela (maint-capture)' : '' };
+    },
+    async mutate(page, { domain, sink }) {
+      // crear evento + comentar + completar sobre el nodo Sentinela → dispara los 3
+      await createMaintenanceEventOnSentinela(page, domain, sink);
+    },
+    async restore() {
+      // no-op: el mutate ya archiva el evento creado con el mismo toggle que dispara
+      // UpdateMaintenanceEvent (self-clean). Evitamos re-buscar un checkbox aquí para
+      // no clicar por error otro checkbox si la página navegó. Un run INTERRUMPIDO
+      // podría dejar un evento sin archivar (fuga menor, evento sentinela inofensivo).
+    },
+  },
 };
 
 // ── Ensamblado de deps para runMutationCycle ────────────────────────────────
-export function makeDeps(config, _sink) {
+export function makeDeps(config, sink) {
   const domain = config.domain || 344;
   const ctxFor = (type) => {
     const ent = config.entities[type];
-    return { id: ent.id, domain, url: resolveUrl(ent, ent.id, domain) };
+    // sink expuesto al handler (maintenanceNode lo usa para no crear un evento por
+    // cada op stale: un solo flujo captura los 3, los ciclos siguientes hacen no-op).
+    return { id: ent.id, domain, url: resolveUrl(ent, ent.id, domain), sink };
   };
   return {
     readJournal() { try { return JSON.parse(readFileSync(JOURNAL_PATH, 'utf8')); } catch { return {}; } },

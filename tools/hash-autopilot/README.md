@@ -27,13 +27,20 @@ Deps DOM en `mutation-deps.mjs`, orquestador en `mutation-runner.mjs`. Tras el l
 queries, corre un ciclo por mutation stale con sentinela declarado; las capturadas entran
 al mismo pipeline de deploy + al MISMO correo.
 
-Las 3 mutations del release 2026-07-08 (validadas end-to-end):
+Mutations cubiertas por ciclo sentinela (validadas end-to-end):
 
-| Mutation | Acción que la dispara (¡el sink es el juez!) |
-|---|---|
-| `UpdatePartNumber` | toggle del checkbox **"Archived"** del PN (NO el Save del modal → ese es `SavePartNumber`) |
-| `UpdateQuote` | editar **External Notes** de la cotización (NO archivar → eso es `ArchiveUnArchiveQuote`, ni está en config) |
-| `CreateReceivedOrder` | **crear** una OV "Sentinela" (modal Nueva OV) + archivarla después (create-capture-cleanup) |
+| Mutation | Sentinela | Acción que la dispara (¡el sink es el juez!) |
+|---|---|---|
+| `UpdatePartNumber` | PN #3770957 | toggle del checkbox **"Archived"** del PN (NO el Save del modal → ese es `SavePartNumber`) |
+| `UpdateQuote` | quote #288 | editar **External Notes** de la cotización (NO archivar → eso es `ArchiveUnArchiveQuote`, ni está en config) |
+| `CreateReceivedOrder` | OV nueva | **crear** una OV "Sentinela" (modal Nueva OV) + archivarla después (create-capture-cleanup) |
+| `CreateMaintenanceEvent` | nodo #55 | **New Maintenance Event → Node → combobox "Sentinela" → Save & Begin** |
+| `CreateMaintenanceEventComment` | nodo #55 | escribir en **"Write a comment…" → Submit** (dentro del evento) |
+| `UpdateMaintenanceEvent` | nodo #55 | toggle del checkbox **"Archived" del EVENTO** (NO completar el evento; el toggle además limpia) |
+
+Los 3 de mantenimiento se capturan en **un solo flujo** (crear evento → comentar → archivar) sobre el nodo sentinela ACTIVO; el sink es compartido, así que si las 3 están stale, el 1er ciclo captura las 3 y los siguientes hacen no-op. El nodo #55 **debe quedar activo (no archivado)** para que el combobox lo encuentre — el deep-link a un nodo archivado NO hidrata.
+
+**Dominio:** `344` es **TLC (Toluca)**, NO MTY — MTY es otro dominio sin datos aún. Todos los sentinelas viven en 344/TLC.
 
 Lecciones (todas costaron corridas):
 - **El sink es el juez**: la acción "obvia" casi siempre dispara OTRA mutation. `SA_DBG=1` imprime el sink tras cada ciclo → así se descubre la acción real.
@@ -91,6 +98,13 @@ El auto-deploy exige que el worktree esté en `main` y sin WIP ajeno en `remote/
 ## Estado / pendientes
 
 - Recetas afinadas: `AllCustomers`, `Customer`, `CurrentUser`, `AllSensorDashboards`.
-- Sin receta estable aún: `GetPurchaseOrder`, `SensorDashboardQuery` (el motor las
-  marca `noCapturado` → escala vía `ESCALATION.md`).
+- Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
+  `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
+  `UpdateMaintenanceEvent` (6/6 — Fase C completa para las entidades declaradas).
+- **Sin ruta que dispare la op (por afinar la receta, grupo A):** `GetPurchaseOrder`
+  (ruta `bills-detail`), `GetReceivedOrdersWithReceivedOrderLineItems` (`invoices-list`),
+  `SensorDashboardQuery` (`maintenance-detail`) — el motor las marca `noCapturado` →
+  escala vía `ESCALATION.md`. La ruta existe pero no gatilla la op (falta abrir el
+  registro/panel correcto).
+- Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Sentinela" activas rezagadas.
 - Pendiente: prueba de humo del correo real; cargar el launchd tras mergear a `main`.
