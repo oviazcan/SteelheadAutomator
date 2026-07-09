@@ -77,6 +77,28 @@
     };
   }
 
+  // ¿El texto de un heading corresponde al modal de creación de OV? Steelhead lo
+  // rotula distinto según la pantalla que lo abre:
+  //   - "Crear Orden de Venta"  (ES) — flujo /Receiving/CustomerParts (recibir piezas)
+  //   - "Create Sales Order"    (EN) — flujo /Domains/<id>/SalesOrders ("New Sales Order")
+  // Aceptamos ambos idiomas (mismos IDs RJSF debajo, así que el resto del applet reúsa).
+  function isCreateOrderModalHeading(text) {
+    return /^\s*(?:crear\s+orden\s+de\s+venta|create\s+sales\s+order)\s*$/i
+      .test(String(text || '').trim());
+  }
+
+  // ¿La ruta (location.pathname, sin query) es una pantalla donde vive el modal de OV?
+  //   - /Receiving/CustomerParts   — flujo original (recibir piezas del cliente)
+  //   - /Domains/<id>/SalesOrders  — lista de Órdenes de Venta → botón "New Sales Order"
+  function matchesCreateOrderUrl(pathname) {
+    const p = String(pathname || '');
+    // SalesOrders: anclado al final (con slash opcional) → solo la LISTA, no las páginas
+    // de detalle de una OV (/Domains/<id>/SalesOrders/<n>). El modal "New Sales Order"
+    // abre sobre la lista sin cambiar la URL (query en location.search, no en pathname).
+    return /\/Receiving\/CustomerParts(?:\/|$)/.test(p)
+      || /\/Domains\/\d+\/SalesOrders\/?$/.test(p);
+  }
+
   // ¿La clase de un nodo denota el ROOT (paper/contenedor) de un MUI Dialog?
   // Bug 2026-07-03: getModalRoot() usaba `[class*="MuiDialog"]` arrancando en el heading
   // MISMO, cuya clase "MuiDialogTitle-root" contiene el substring "MuiDialog" → matcheaba
@@ -95,6 +117,8 @@
     extractCustomerIdInDomain,
     pickCustomerFromSingleValues,
     scoreOptionMatch,
+    isCreateOrderModalHeading,
+    matchesCreateOrderUrl,
     isDialogRootClass
   };
   if (typeof window !== 'undefined') window.CreateOrderAutofillCore = api;
