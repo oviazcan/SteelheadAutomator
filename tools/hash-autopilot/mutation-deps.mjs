@@ -106,15 +106,18 @@ async function createSentinelaOV(page, domain) {
   await page.waitForTimeout(3500);
   if (dbg) console.log('       [dbg] Guardar clickeado');
 }
-async function archiveTopSentinelaOV(page, domain) {
-  // archivar la OV "Sentinela" más reciente (la recién creada; orderBy ID_DESC = 1a fila)
-  await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2500);
-  const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"], tr:has(td:has-text("Sentinela")) button[aria-label="Archive"]').first();
-  if (await archBtn.count().catch(() => 0)) {
+async function archiveSentinelaOVs(page, domain) {
+  // archivar TODAS las OV "Sentinela" activas (la 1594 de referencia está archivada → sólo
+  // aparecen las creadas por el ciclo). Loop hasta que no queden — evita acumular basura.
+  const dbg = process.env.SA_DBG;
+  for (let i = 0; i < 12; i++) {
+    await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"], tr:has(td:has-text("Sentinela")) button[aria-label="Archive"]').first();
+    if (!(await archBtn.count().catch(() => 0))) { if (dbg) console.log(`       [dbg] OVs Sentinela archivadas: ${i}`); break; }
     await archBtn.click({ timeout: 10000 });
     await page.waitForTimeout(1000);
-    const yes = page.locator('[role="dialog"]').getByRole('button', { name: /^(yes|sí|si|confirmar|archivar)$/i }).first();
+    const yes = page.locator('[role="dialog"]').getByRole('button', { name: /^(yes|sí|si|confirmar|archivar|archive)$/i }).first();
     if (await yes.count().catch(() => 0)) await yes.click().catch(() => {});
     await page.waitForTimeout(2000);
   }
@@ -175,8 +178,8 @@ const HANDLERS = {
       await createSentinelaOV(page, domain);
     },
     async restore(page, { domain }) {
-      // archivar la OV recién creada (limpieza)
-      await archiveTopSentinelaOV(page, domain);
+      // archivar TODAS las OV Sentinela creadas por el ciclo (limpieza) — SIEMPRE
+      await archiveSentinelaOVs(page, domain);
     },
   },
 };
