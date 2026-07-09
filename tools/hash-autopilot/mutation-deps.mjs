@@ -42,19 +42,9 @@ async function archivedToggle(page) {
   await span.click();
   await page.waitForTimeout(2500);
 }
-// quote: se des/archiva desde el DASHBOARD (?archived=…&searchQuery=<id> filtra a la
-// fila exacta), y ESO dispara UpdateQuote — no la página del quote. El PN togglea inline;
-// el quote navega a otra URL para mutar. loadObject lee "Name" de la página del quote.
-function quoteRowBtn(page, id, label) {
-  return page.locator(`tr:has(a[href$="/Quotes/${id}"]) button[aria-label="${label}"]`).first();
-}
-// Unarchive/Archive de un quote abre un modal "Confirm … Quote" con NO/YES.
-// Hay que clickear YES para que la mutation (UpdateQuote) realmente se dispare.
-async function confirmYes(page) {
-  const yes = page.locator('[role="dialog"]').getByRole('button', { name: /^yes$/i }).first();
-  await yes.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-  if (await yes.count().catch(() => 0)) await yes.click({ timeout: 8000 });
-}
+// quote: UpdateQuote se dispara al EDITAR las External Notes de la cotización (bulk-upload
+// lo usa así), NO al archivar (eso es ArchiveUnArchiveQuote, que ni está en config, verificado
+// por el sink). La página del quote sólo hidrata por navegación client-side desde el dashboard.
 // El quote aparece en archived=true (si archivado) o archived=false (si activo). Busca
 // en ambos y devuelve {found, archived} + deja la page en el dashboard donde está.
 async function findQuoteDashboard(page, id, domain) {
