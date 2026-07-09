@@ -81,22 +81,26 @@ async function createSentinelaOV(page, domain) {
   const dbg = process.env.SA_DBG;
   await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
-  await page.locator('button', { hasText: /Nueva Orden de Venta/ }).first().click({ timeout: 15000 });
-  await page.waitForTimeout(2000);
+  // botón crear OV: MuiButton-contained con AddIcon (independiente del idioma)
+  await page.locator('button.MuiButton-contained:has(svg[data-testid="AddIcon"])').first().click({ timeout: 15000 });
+  await page.waitForTimeout(2500);
   if (dbg) console.log('       [dbg] modal Nueva OV abierto');
-  await page.locator('input[placeholder*="Dejar en blanco"]').first().fill('Sentinela');
-  // Cliente (react-select): abrir → escribir → elegir ECOPLATING
-  const cliente = page.locator('p', { hasText: /^Cliente:/ }).locator('xpath=following-sibling::div[1]').locator('input[role="combobox"]').first();
+  // OC#: input con AssignmentIcon adornment (independiente del idioma)
+  await page.locator('.MuiInputBase-root:has(svg[data-testid="AssignmentIcon"]) input').first().fill('Sentinela');
+  // Cliente (react-select): label "Cliente:"/"Customer:" → el react-select siguiente
+  const cliente = page.locator('p', { hasText: /^(Cliente|Customer):/ }).locator('xpath=following-sibling::div[1]').locator('input[role="combobox"]').first();
   await cliente.click();
   await cliente.fill('ECOPLATING');
   await page.waitForTimeout(1800);
   await page.locator('[role="option"]', { hasText: 'ECOPLATING' }).first().click({ timeout: 8000 });
   if (dbg) console.log('       [dbg] OC# + Cliente listos');
-  // custom inputs obligatorios (RJSF <select> nativos)
-  await page.selectOption('#root_RazonSocialVenta', { label: 'ECO030618BR4 - ECOPLATING SA DE CV, 1 de Mayo 1803, Zona Industrial, Toluca, Estado de México, 50071, México' });
+  // custom inputs obligatorios (RJSF <select> por ids — NO se traducen); value ECOPLATING dinámico
+  const razonVal = await page.locator('#root_RazonSocialVenta option').filter({ hasText: 'ECOPLATING' }).first().getAttribute('value').catch(() => null);
+  if (razonVal) await page.selectOption('#root_RazonSocialVenta', razonVal);
   await page.selectOption('#root_Divisa', 'USD');
   if (dbg) console.log('       [dbg] Razón Social + Divisa');
-  await page.locator('button', { hasText: /^Guardar$/ }).first().click({ timeout: 15000 });
+  // Guardar/Save
+  await page.locator('button', { hasText: /^(Guardar|Save)$/ }).first().click({ timeout: 15000 });
   await page.waitForTimeout(3500);
   if (dbg) console.log('       [dbg] Guardar clickeado');
 }
@@ -104,7 +108,7 @@ async function archiveTopSentinelaOV(page, domain) {
   // archivar la OV "Sentinela" más reciente (la recién creada; orderBy ID_DESC = 1a fila)
   await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
-  const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"]').first();
+  const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"], tr:has(td:has-text("Sentinela")) button[aria-label="Archive"]').first();
   if (await archBtn.count().catch(() => 0)) {
     await archBtn.click({ timeout: 10000 });
     await page.waitForTimeout(1000);
@@ -153,12 +157,15 @@ const HANDLERS = {
   },
   receivedOrder: {
     async load(page, { domain }) {
-      // salvaguarda: existe una OV "Sentinela" de referencia en el dashboard OPEN (fail-closed)
-      await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(2500);
-      const cell = page.locator('tr:has(a[href*="/SalesOrders/"]) td').filter({ hasText: /Sentinela/ }).first();
-      await cell.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
-      return { name: (await cell.textContent().catch(() => '')).trim() };
+      // salvaguarda C.3 (create-capture-cleanup): NO requiere una OV existente (la 1594 de
+      // referencia está archivada). Verifica que el dashboard de OVs carga en el dominio correcto
+      // (botón crear OV = MuiButton-contained con AddIcon presente) → contexto OK, fail-closed.
+      // La OV se CREA marcada "Sentinela" y se archiva; la salvaguarda real es esa marca.
+      await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+      const hasNewBtn = await page.locator('button.MuiButton-contained:has(svg[data-testid="AddIcon"])').count().catch(() => 0);
+      if (process.env.SA_DBG) console.log(`       [dbg] OV dash: newBtn=${hasNewBtn}`);
+      return { name: hasNewBtn ? 'Sentinela (create-capture)' : '' };
     },
     async mutate(page, { domain }) {
       // crear una OV nueva "Sentinela" → dispara CreateReceivedOrder
