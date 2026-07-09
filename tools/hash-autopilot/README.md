@@ -17,6 +17,31 @@ falso-stale al cliente externo (idp-token). Ver diseño:
 4. Auto-deploya los `rotadoValidado` (con salvaguardas) y notifica por correo.
    Si una receta no captura, deja señal para el cron de Claude (ver `ESCALATION.md`).
 
+## Fase C: mutations vía ciclos sentinela (2026-07-08 ✅)
+
+Las MUTATIONS rotadas no se capturan navegando (no hay "receta" pasiva): hay que
+EJECUTARLAS. El motor corre ciclos **sentinela** headless sobre objetos de prueba
+(nombre "Sentinela", `sentinels-config.json`) — fail-closed (verifica identidad antes
+de mutar), reversible (restaura/limpia SIEMPRE en `finally`), con journal idempotente.
+Deps DOM en `mutation-deps.mjs`, orquestador en `mutation-runner.mjs`. Tras el loop de
+queries, corre un ciclo por mutation stale con sentinela declarado; las capturadas entran
+al mismo pipeline de deploy + al MISMO correo.
+
+Las 3 mutations del release 2026-07-08 (validadas end-to-end):
+
+| Mutation | Acción que la dispara (¡el sink es el juez!) |
+|---|---|
+| `UpdatePartNumber` | toggle del checkbox **"Archived"** del PN (NO el Save del modal → ese es `SavePartNumber`) |
+| `UpdateQuote` | editar **External Notes** de la cotización (NO archivar → eso es `ArchiveUnArchiveQuote`, ni está en config) |
+| `CreateReceivedOrder` | **crear** una OV "Sentinela" (modal Nueva OV) + archivarla después (create-capture-cleanup) |
+
+Lecciones (todas costaron corridas):
+- **El sink es el juez**: la acción "obvia" casi siempre dispara OTRA mutation. `SA_DBG=1` imprime el sink tras cada ciclo → así se descubre la acción real.
+- **Idioma**: el headless corre en INGLÉS aunque el usuario vea español → selectores estructurales (ids RJSF `root_*`, `data-testid` de iconos) o bilingües (`/Guardar|Save/`).
+- **Deep-links no hidratan**: `/Quotes/<id>` y dashboards con `searchQuery` en la URL salen vacíos o en "Loading…" → navegación client-side (clic desde el dashboard) o reintento esperando que "Loading…" desaparezca.
+- **React controlled inputs**: `fill` normal falla; usar el editor real (Markdown textarea) o `getByRole` falla con botones que tienen `startIcon` (usar `has-text`/estructural).
+- Flags: `--only=<Mutation>` aísla un ciclo; `SA_DBG=1` verbose + screenshots; `--no-deploy` corre los ciclos sin tocar config (el correo se suprime en modo prueba).
+
 ## Uso
 
 - Dry-run (clasifica, NO deploya ni notifica): `npm run dry-run`
