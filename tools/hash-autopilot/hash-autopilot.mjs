@@ -60,14 +60,14 @@ const RUN_DATE = dateArg ? dateArg.split('=')[1] : dateStrLocal(new Date());
 // prefijo ROCP_. Inyectándolos, la SPA arranca logueada sin el flujo OAuth
 // interactivo (que redirige a auth.gosteelhead.com en un contexto limpio).
 const TOKENS_PATH = '/Users/oviazcan/Projects/Ecoplating/Reportes SH/.cache/tokens.json';
-function loadTokens() {
+export function loadTokens() {
   const t = JSON.parse(readFileSync(TOKENS_PATH, 'utf8'));
   if (!t.access_token) throw new Error('access_token vacío en .cache/tokens.json — corre steelhead_auth.py');
   return { access: t.access_token, refresh: t.refresh_token, expEpoch: Number(t.expires_at) };
 }
 
 // addInitScript que puebla localStorage ROCP_* ANTES de que la app cargue.
-function makeRocpInit(tokens, domainNano) {
+export function makeRocpInit(tokens, domainNano) {
   return ({ access, refresh, expEpoch, state, domainNano }) => {
     const q = (s) => JSON.stringify(s); // ROCP guarda tokens como JSON string
     localStorage.setItem('ROCP_token', q(access));
