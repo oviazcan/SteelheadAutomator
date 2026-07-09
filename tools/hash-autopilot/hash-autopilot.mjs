@@ -31,7 +31,7 @@ const CONFIG_PATH = join(__dirname, '../../remote/config.json');
 const RESULTS_DIR = join(__dirname, '../.hash-autopilot');
 // Session-sensitive: el validator (idp-token) no las puede ver → se capturan
 // SIEMPRE que haya release. El resto se capturan solo si el validator las marcó stale.
-const SESSION_SENSITIVE = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrder', 'AllSensorDashboards', 'SensorDashboardQuery'];
+const SESSION_SENSITIVE = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrderDetail', 'AllSensorDashboards', 'SensorDashboardQuery'];
 
 // Lee el JSON del validator del día (lo escribe validate-hashes.py). Si no existe
 // (no corrió, o corrió sin stale), devuelve {stale:[]} → solo session-sensitive.

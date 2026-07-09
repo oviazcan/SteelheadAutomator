@@ -87,7 +87,7 @@
         "CurrentDomainAddresses",
         "GetAccountDataForBill",
         "GetBillByIdInDomain",
-        "GetPurchaseOrder",
+        "GetPurchaseOrderDetail",
         "GetPurchaseOrdersDataForBill",
         "GetTaxCodesForBill",
         "GetTaxInfo",

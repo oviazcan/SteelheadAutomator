@@ -1,7 +1,7 @@
 {
   "_doc": "Secuencias MÍNIMAS de navegación para que el frontend dispare cada op y capturemos su sha256Hash + la respuesta real. Organizado por pantalla (una navegación cubre varias ops). captures = ops que la receta debe capturar. La validación NO re-ejecuta el hash: usa la respuesta que el frontend ya obtuvo (si trajo data sin errors → el hash es válido). Por eso ya no se necesitan validateVars/expectShape.",
   "_domainDefault": "344",
-  "_pendientes": "GetPurchaseOrder (abrir una PO individual) y SensorDashboardQuery (abrir un dashboard de sensor específico) aún sin receta estable — el sistema las marca noCapturado y escala.",
+  "_pendientes": "GetPurchaseOrderDetail (PO individual, /Purchasing/PurchaseOrders/<id>), SensorDashboardQuery (dashboard sensor, /Maintenance/SensorDashboards/<id>) y GetReceivedOrdersWithReceivedOrderLineItems (Invoices→PackingSlips→'Crear Factura') NO se capturan headless: el deep-link no hidrata / la lista no rinde filas. CAPTURA VÍA hash-scanner en el navegador. El motor las marca noCapturado y escala.",
   "recipes": {
     "app-home": {
       "steps": [{ "goto": "/Domains/{domain}" }],
