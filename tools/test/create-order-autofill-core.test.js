@@ -97,6 +97,38 @@ test('scoreOptionMatch: target vacío o options no-array → no match', () => {
   assert.equal(Core.scoreOptionMatch(null, 'USD').pass, false);
 });
 
+// Segunda pantalla de creación de OV (2026-07-09): /Domains/<id>/SalesOrders →
+// "New Sales Order" → modal titulado "Create Sales Order" (EN). Mismos IDs RJSF que el
+// flujo Receiving, así que reúsa el autofill; solo cambia el gate de URL y el título.
+test('isCreateOrderModalHeading acepta ES ("Crear Orden de Venta") y EN ("Create Sales Order")', () => {
+  assert.equal(Core.isCreateOrderModalHeading('Crear Orden de Venta'), true);
+  assert.equal(Core.isCreateOrderModalHeading('  crear   orden  de  venta  '), true);
+  assert.equal(Core.isCreateOrderModalHeading('Create Sales Order'), true);
+  assert.equal(Core.isCreateOrderModalHeading('  CREATE SALES ORDER '), true);
+  // No confundir con títulos vecinos ni parciales
+  assert.equal(Core.isCreateOrderModalHeading('Create Sales Order Line'), false);
+  assert.equal(Core.isCreateOrderModalHeading('Sales Orders'), false);
+  assert.equal(Core.isCreateOrderModalHeading('Custom Inputs'), false);
+  assert.equal(Core.isCreateOrderModalHeading(''), false);
+  assert.equal(Core.isCreateOrderModalHeading(null), false);
+});
+
+test('matchesCreateOrderUrl gatea Receiving y la lista de SalesOrders', () => {
+  assert.equal(Core.matchesCreateOrderUrl('/Receiving/CustomerParts'), true);
+  assert.equal(Core.matchesCreateOrderUrl('/Receiving/CustomerParts/'), true);
+  assert.equal(Core.matchesCreateOrderUrl('/Domains/344/SalesOrders'), true);
+  assert.equal(Core.matchesCreateOrderUrl('/Domains/1/SalesOrders/'), true);
+  // pathname NO trae la query (?receivedOrderStatusFilter=OPEN vive en location.search)
+  assert.equal(Core.matchesCreateOrderUrl('/Domains/344/SalesOrders'), true);
+  // Rutas que NO deben gatear
+  assert.equal(Core.matchesCreateOrderUrl('/Domains/344/SalesOrders/9876'), false);
+  assert.equal(Core.matchesCreateOrderUrl('/Domains/344/WorkOrders'), false);
+  assert.equal(Core.matchesCreateOrderUrl('/Receiving/Dashboard'), false);
+  assert.equal(Core.matchesCreateOrderUrl('/Domains/abc/SalesOrders'), false);
+  assert.equal(Core.matchesCreateOrderUrl(''), false);
+  assert.equal(Core.matchesCreateOrderUrl(null), false);
+});
+
 // Regresión del bug 2026-07-03 (v0.1.2): getModalRoot() arrancaba el match en el
 // heading MISMO, y su clase "MuiDialogTitle-root" contiene el substring "MuiDialog",
 // así que el selector `[class*="MuiDialog"]` matcheaba el TÍTULO (vacío) → svInRoot=0
