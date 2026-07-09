@@ -10,10 +10,25 @@ const path = require('path');
 const ROOT = path.join(__dirname, '../..');
 const EXT = path.join(ROOT, 'safari/extension');
 
+// build-safari.sh REGENERA safari/extension/main-bundle.js in-place. Guardamos el
+// estado original y lo restauramos al terminar (test.after) para NO dejar el working
+// tree sucio: un bundle regenerado (aunque sea idéntico en intención) bloquea el
+// `git checkout gh-pages` de deploy.sh — que ahora corre esta suite como gate y
+// abortaba con "local changes would be overwritten". El test valida el build; no
+// le corresponde mutar un archivo trackeado.
+const BUNDLE_PATH = path.join(EXT, 'main-bundle.js');
+const MANIFEST_PATH = path.join(EXT, 'manifest.json');
+const _origBundle = fs.existsSync(BUNDLE_PATH) ? fs.readFileSync(BUNDLE_PATH) : null;
+const _origManifest = fs.existsSync(MANIFEST_PATH) ? fs.readFileSync(MANIFEST_PATH) : null;
+test.after(() => {
+  if (_origBundle !== null) fs.writeFileSync(BUNDLE_PATH, _origBundle);
+  if (_origManifest !== null) fs.writeFileSync(MANIFEST_PATH, _origManifest);
+});
+
 // Build una vez para toda la suite (determinístico).
 execSync('tools/build-safari.sh', { cwd: ROOT, stdio: 'pipe' });
-const bundle = fs.readFileSync(path.join(EXT, 'main-bundle.js'), 'utf8');
-const manifest = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
+const bundle = fs.readFileSync(BUNDLE_PATH, 'utf8');
+const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
 
 test('el concatenado es JS sintácticamente válido', () => {
   // node --check truena si hay error de sintaxis (p. ej. colisión de const top-level).
