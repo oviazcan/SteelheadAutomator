@@ -5,6 +5,17 @@
 // sin ERP real.
 import { planMutationCapture, isSentinel, journalOpen, journalClose } from './sentinels.mjs';
 
+// El POST de la mutation es async: el frontend la envía tras la acción DOM y el
+// interceptor la registra unos ms después. Poll sink.hashes[op] hasta timeout.
+async function waitForHash(sink, op, timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (sink.hashes[op]) return sink.hashes[op];
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return sink.hashes[op] || null;
+}
+
 export async function runMutationCycle(page, route, sentinelsConfig, sink, deps) {
   const op = (route.captures || [])[0];
   const entityType = route.sentinel?.entityType;
@@ -23,7 +34,7 @@ export async function runMutationCycle(page, route, sentinelsConfig, sink, deps)
     }
     // Disparar la mutación (el interceptor de sink captura el hash del frontend).
     await deps.doMutate(page, route);
-    const hash = sink.hashes[op] || null;
+    const hash = await waitForHash(sink, op, 8000);
     return { captured: !!hash, op, hash };
   } finally {
     // Restaurar SIEMPRE (aunque falle la captura); luego cerrar journal.

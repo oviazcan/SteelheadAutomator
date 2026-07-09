@@ -160,6 +160,7 @@ async function main() {
         console.log(`  ⚠️ ciclo "${op}" falló: ${String(e).slice(0, 120)}`);
         await page.screenshot({ path: `/tmp/sa-cycle-fail-${op}.png`, fullPage: true }).catch(() => {});
       }
+      if (process.env.SA_DBG) console.log(`   [dbg] sink tras ciclo: ${JSON.stringify(Object.keys(sink.hashes))}`);
     }
   }
 
