@@ -26,9 +26,13 @@ Se asume y acepta explícitamente: esto **no** resuelve la política MV3 de "no 
 ## Arquitectura
 
 ### Modelo de confianza
-- **Par de llaves ECDSA P-256 / SHA-256.** Elegido sobre Ed25519 por soporte universal de `crypto.subtle` en el service worker sin flags. Node firma con `dsaEncoding: 'ieee-p1363'` para producir la firma raw de 64 bytes que WebCrypto espera (NO DER).
-- **Llave privada:** `~/.config/steelhead-automator/signing-key.pem` (fuera del repo, solo en la máquina de deploy). Nunca se commitea. Path configurable vía env `SA_SIGNING_KEY` (fallback al default).
-- **Llave pública (SPKI base64):** embebida en la extensión (`extension/integrity-pubkey.js` → `self.SA_INTEGRITY_PUBKEY`). Es pública; se commitea. Se publica una vez con bump de `extensionVersion`.
+- **Par de llaves ECDSA P-256 / SHA-256.** Elegido sobre Ed25519 por soporte universal de `crypto.subtle` en el service worker sin flags.
+- **Llave privada: en GCP KMS (proyecto del CLIENTE), NO en un archivo local.** Decisión motivada por la **transición** (ver §"Handoff"). La privada se crea dentro de KMS (`EC_SIGN_P256_SHA256`) y **nunca sale del HSM**; no existe como archivo. Firmar = llamar `asymmetricSign`. Quién puede firmar lo controla **IAM** (rol `roles/cloudkms.signerVerifier`).
+  - KMS `asymmetricSign` para EC devuelve firma **ASN.1 DER** → `seal-config` la convierte a **raw r||s (IEEE P1363, 64 bytes)** que WebCrypto espera, antes de escribir `config.sig`.
+- **Backend de firma abstraído.** `seal-config` toma el firmante de una interfaz `sign(bytes)→Uint8Array`:
+  - `kms` (producción): llama GCP KMS vía `gcloud kms asymmetric-sign` o el cliente Node (`@google-cloud/kms`), usando las credenciales `gcloud` ya presentes en la máquina.
+  - `ephemeral` (tests): genera un par en memoria con WebCrypto y firma local — **nunca** se usa en deploy real. Permite construir/probar todo sin depender de GCP.
+- **Llave pública (SPKI base64):** se obtiene una vez de KMS (`gcloud kms keys versions get-public-key`) y se embebe en la extensión (`extension/integrity-pubkey.js` → `self.SA_INTEGRITY_PUBKEY`). Es pública; se commitea. Se publica una vez con bump de `extensionVersion`. **No cambia** aunque roten las personas con acceso IAM.
 
 ### Qué se firma
 - **`config.json` es el manifiesto raíz firmado.** Se le agrega:
@@ -62,23 +66,35 @@ Se usa idéntico en `background.js` y en el test (Node ≥18 trae `globalThis.cr
   1. Lee `remote/config.json`.
   2. Recalcula `scriptIntegrity` con el SHA-256 de cada script servido (lee de `remote/scripts/**` = lo que se espeja byte-a-byte a gh-pages).
   3. Escribe `scriptIntegrity` en `remote/config.json`.
-  4. Firma los bytes finales de `remote/config.json` con la privada → escribe `remote/config.sig`.
-  - Falla ruidosamente si no encuentra la llave privada (no debe producir un config sin firma válida).
+  4. Firma los bytes finales de `remote/config.json` vía el backend `kms` (GCP KMS `asymmetricSign` → DER→P1363) → escribe `remote/config.sig`.
+  - Falla ruidosamente si no puede firmar (sin acceso IAM/credenciales KMS): no debe producir un config sin firma válida.
 - Lo invocan **ambos** caminos de deploy tras el bump de versión: `tools/deploy.sh` y `tools/hash-autopilot/autopilot-deploy.sh`.
 - **`config.sig` se espeja a gh-pages** junto con `config.json` (agregar al conjunto que mira `deploy.sh` y el `pre-push`).
-- **Hook `pre-push` extendido** (`.githooks/pre-push`): además del espejo byte-a-byte + version-bump, valida que `config.sig` **verifique** contra `config.json` (usando la pública, vía un pequeño verificador Node). Backstop: aunque un camino de deploy olvide `seal`, el push a gh-pages se **bloquea**.
 
-### Rollout en 2 fases (evita brickear)
-1. **Fase 1:** generar llaves (`tools/gen-signing-key.mjs`, one-time) + agregar `seal` al deploy + deployar → gh-pages queda con `scriptIntegrity` + `config.sig`. La extensión **actual (sin verificación)** ignora los campos nuevos y sigue igual. Verificar en vivo que nada se rompió.
-2. **Fase 2:** publicar la extensión nueva (pública embebida + verificación fail-closed + break-glass en popup) con bump de `extension/manifest.json` version **y** `config.extensionVersion`. Como la firma ya está viva desde Fase 1, la verificación pasa. Distribuir el zip; usuarios recargan una vez.
+**Tres candados contra el fail-closed global** (un deploy con firma mala apagaría los applets de TODOS los que ya actualizaron):
+1. **Hook `pre-push` extendido** (`.githooks/pre-push`): además del espejo byte-a-byte + version-bump, valida que `config.sig` **verifique** contra `config.json` (con la pública, vía `tools/verify-config-sig.mjs`). Bloquea el push si la firma no cuadra — aunque un camino de deploy olvide `seal`.
+2. **Smoke-check post-deploy** (en `deploy.sh`/`deploy-status.sh`): tras publicar, baja `config.json` + `config.sig` **EN VIVO de gh-pages** y verifica la firma con la pública embebida **antes** de declarar el deploy exitoso. Si no verifica → el deploy grita FALLA en la terminal (no en las pantallas de los operadores). Cierra el hueco de "subí algo que no firma bien".
+3. **Break-glass** (§Flujo): toggle local por-usuario, última línea de defensa en un incidente; el arreglo real es re-deployar una firma correcta (arregla a todos de un jaque).
+
+### Rollout (evita brickear)
+- **Fase 0 — provisionar KMS (prerequisito de deploy real, NO bloquea construir):** crear el key ring + llave en el GCP del cliente, IAM a quienes deployan, sacar la pública. Todo el código y los tests se construyen antes con el backend `ephemeral`; KMS solo se necesita para el primer deploy real. Runbook en `docs/deploy-signing-setup.md`.
+- **Fase 1:** agregar `seal` (backend `kms`) al deploy + deployar → gh-pages queda con `scriptIntegrity` + `config.sig`. La extensión **actual (sin verificación)** ignora los campos nuevos y sigue igual → **nadie se bloquea**. Verificar en vivo (smoke-check) que nada se rompió.
+- **Fase 2:** publicar la extensión nueva (pública embebida + verificación fail-closed + break-glass en popup) con bump de `extension/manifest.json` version **y** `config.extensionVersion`. Como la firma ya está viva desde Fase 1, la verificación pasa. Quien no actualice sigue con la vieja (funciona igual, sin verificar); quien actualice, verifica. Distribuir el zip; usuarios recargan una vez.
+
+### Handoff / transición al equipo del cliente
+Objetivo del usuario: entregar el repo al equipo del cliente; primero deployan juntos, luego el usuario sale. La elección de KMS es por esto:
+- La llave vive en **el GCP del cliente** desde el día 1 (no en la máquina del consultor) → la propiedad es del cliente desde el arranque.
+- **Durante la transición:** el usuario y el equipo del cliente tienen IAM `signerVerifier` → ambos pueden deployar/firmar.
+- **Al salir el usuario:** se **quita su acceso IAM**. Nada que transferir, **sin re-key, sin republicar la extensión** (la pública embebida no cambia — solo cambia *quién* puede firmar). Contraste con llave local: entregar el `.pem` + posible re-key + republicar a todos.
+- El **hash-autopilot** headless usa las mismas credenciales GCP → sigue rotando+firmando sin la máquina del consultor.
 
 ## Componentes (archivos)
 
 | Archivo | Tipo | Qué hace |
 |---|---|---|
-| `tools/gen-signing-key.mjs` | nuevo | One-time: genera par ECDSA P-256, escribe privada al path local, imprime la pública SPKI base64 para embeber. |
-| `tools/seal-config.mjs` | nuevo | Recalcula `scriptIntegrity` + firma → escribe `config.sig`. |
-| `tools/verify-config-sig.mjs` | nuevo | Verificador standalone (lo usa el hook `pre-push`). |
+| `docs/deploy-signing-setup.md` | nuevo | Runbook one-time: comandos `gcloud` para crear el key ring + llave `EC_SIGN_P256_SHA256` en el GCP del cliente, dar IAM `signerVerifier`, y sacar la pública para embeber. |
+| `tools/seal-config.mjs` | nuevo | Recalcula `scriptIntegrity` + firma vía backend (`kms` prod / `ephemeral` test) → DER→P1363 → escribe `config.sig`. |
+| `tools/verify-config-sig.mjs` | nuevo | Verificador standalone con la pública embebida (lo usan el hook `pre-push` y el smoke-check post-deploy). |
 | `extension/integrity-verify.js` | nuevo | Módulo puro `SAIntegrity` (verify + sha256), compartido con tests. |
 | `extension/integrity-pubkey.js` | nuevo | `self.SA_INTEGRITY_PUBKEY = '<spki-b64>'`. |
 | `extension/background.js` | editar | `importScripts('integrity-verify.js','integrity-pubkey.js')` al tope (SW clásico, MV3 `{service_worker}` sin `type:module`); `loadConfig` verifica firma; `fetchScriptCode` verifica hash; break-glass. |
@@ -99,15 +115,17 @@ Se usa idéntico en `background.js` y en el test (Node ≥18 trae `globalThis.cr
 | `config.sig` no verifica | No se actualiza cachedConfig; no se inyecta nada; log SECURITY; popup puede mostrar "⚠️ integridad". |
 | Script hash mismatch | Ese script lanza; el applet falla; log SECURITY. |
 | Sin red | Usa config de storage **solo si** tenía verificación previa (`verifiedAt`). |
-| Falta la llave privada en deploy | `seal` falla ruidoso; deploy aborta (no publica config sin firmar). |
+| Sin acceso a KMS en deploy (IAM/credenciales) | `seal` falla ruidoso; deploy aborta (no publica config sin firmar). |
+| Firma mala llega a gh-pages | Smoke-check post-deploy la caza en la terminal antes de "éxito"; si se colara, break-glass por-usuario + re-deploy correcto. |
 | Falsa alarma en producción | Break-glass toggle en popup (local, off por default). |
 
 ## Pruebas
 
-- **Unitarias** (`tools/test/config-signing.test.js`, Node `node:test` + WebCrypto):
+- **Unitarias** (`tools/test/config-signing.test.js`, Node `node:test` + WebCrypto, backend `ephemeral` — sin GCP):
   - Generar par efímero, sellar un config de prueba, verificar → OK.
   - Voltear un byte de `config.json` → verify **falla**.
   - Alterar un hash en `scriptIntegrity` sin re-firmar → verify de firma **falla**.
+  - Conversión DER→P1363: una firma DER conocida convierte a los 64 bytes correctos y WebCrypto la acepta (cubre el path que usará KMS en prod).
   - `sha256Hex` determinístico contra vector conocido.
   - Script con hash correcto → `verifyScriptHash` true; alterado → false.
 - **Run-real (manual):**
@@ -117,6 +135,6 @@ Se usa idéntico en `background.js` y en el test (Node ≥18 trae `globalThis.cr
 ## Fuera de alcance (YAGNI)
 
 - Empacar los scripts en la extensión (convergencia con Safari) — alternativa documentada, no elegida.
-- Rotación de llaves / múltiples llaves / revocación — una sola llave por ahora; si se compromete la privada, se regenera y se republica la extensión.
+- **Revocar ACCESO** de una persona = quitar su rol IAM (inmediato, sin republicar). Cubierto por KMS. **Rotar la LLAVE** (nueva versión → nueva pública) sí requiere republicar la extensión con la nueva pública; se deja como procedimiento documentado, no automatizado. Multi-llave/overlap de rotación: fuera de alcance.
 - Firmar los scripts individualmente — el config-manifiesto firmado ya encadena la integridad de todos.
 - Los otros 4 ítems de seguridad (XSS innerHTML, rollback/tags, CSP, console.log) — pendientes aparte.
