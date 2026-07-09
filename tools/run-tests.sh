@@ -74,6 +74,18 @@ if [ "$fail" -eq 0 ]; then
 else
   echo "✗ suite ROJA — $pass verdes, $fail rojos:"
   for ff in "${failed_files[@]}"; do echo "    ✗ $ff"; done
-  echo "  Corre con -v para ver el detalle. NO deployar hasta verde."
+  # Re-corre cada rojo con salida visible: así el fallo se auto-diagnostica (útil en
+  # CI, donde no hay terminal para re-lanzarlo a mano). Solo en fallo, solo los rojos.
+  echo
+  echo "──────── detalle de los rojos ────────"
+  for ff in "${failed_files[@]}"; do
+    echo "═══ $ff ═══"
+    case "$ff" in
+      *.py) python3 -m pytest "$ff" 2>&1 | tail -30 ;;
+      *)    node --test "$ff" 2>&1 | tail -30 ;;
+    esac
+    echo
+  done
+  echo "NO deployar hasta verde."
   exit 1
 fi
