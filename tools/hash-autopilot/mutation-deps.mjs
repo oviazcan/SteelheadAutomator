@@ -72,6 +72,47 @@ async function editExternalNote(page, id, domain, value) {
   await dialog.getByRole('button', { name: /^save$/i }).first().click({ timeout: 10000 });
   await page.waitForTimeout(2500);
 }
+// ── receivedOrder (OV): create-capture-cleanup ─────────────────────────────
+// CreateReceivedOrder se dispara al CREAR una OV vacía (paso 1 del flujo, playbook
+// portal-importer). Cada corrida crea una OV "Sentinela" y archiva la recién creada
+// (limpieza). El modal pide OC#, Cliente y 2 custom inputs obligatorios (Razón Social, Divisa).
+const OV_DASH = (domain) => `${BASE}/Domains/${domain}/SalesOrders?limit=20&offset=0&orderBy=ID_DESC&receivedOrderStatusFilter=OPEN&searchQuery=Sentinela`;
+async function createSentinelaOV(page, domain) {
+  const dbg = process.env.SA_DBG;
+  await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500);
+  await page.getByRole('button', { name: /Nueva Orden de Venta/i }).first().click({ timeout: 15000 });
+  await page.waitForTimeout(2000);
+  if (dbg) console.log('       [dbg] modal Nueva OV abierto');
+  await page.locator('input[placeholder*="Dejar en blanco"]').first().fill('Sentinela');
+  // Cliente (react-select): abrir → escribir → elegir ECOPLATING
+  const cliente = page.locator('p', { hasText: /^Cliente:/ }).locator('xpath=following-sibling::div[1]').locator('input[role="combobox"]').first();
+  await cliente.click();
+  await cliente.fill('ECOPLATING');
+  await page.waitForTimeout(1800);
+  await page.locator('[role="option"]', { hasText: 'ECOPLATING' }).first().click({ timeout: 8000 });
+  if (dbg) console.log('       [dbg] OC# + Cliente listos');
+  // custom inputs obligatorios (RJSF <select> nativos)
+  await page.selectOption('#root_RazonSocialVenta', { label: 'ECO030618BR4 - ECOPLATING SA DE CV, 1 de Mayo 1803, Zona Industrial, Toluca, Estado de México, 50071, México' });
+  await page.selectOption('#root_Divisa', 'USD');
+  if (dbg) console.log('       [dbg] Razón Social + Divisa');
+  await page.getByRole('button', { name: /^Guardar$/i }).first().click({ timeout: 15000 });
+  await page.waitForTimeout(3500);
+  if (dbg) console.log('       [dbg] Guardar clickeado');
+}
+async function archiveTopSentinelaOV(page, domain) {
+  // archivar la OV "Sentinela" más reciente (la recién creada; orderBy ID_DESC = 1a fila)
+  await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500);
+  const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"]').first();
+  if (await archBtn.count().catch(() => 0)) {
+    await archBtn.click({ timeout: 10000 });
+    await page.waitForTimeout(1000);
+    const yes = page.locator('[role="dialog"]').getByRole('button', { name: /^(yes|sí|si|confirmar|archivar)$/i }).first();
+    if (await yes.count().catch(() => 0)) await yes.click().catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+}
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -108,6 +149,24 @@ const HANDLERS = {
     async restore(page, { id, domain }) {
       // restaurar el valor base del sentinela ('.') → deja el quote como estaba
       await editExternalNote(page, id, domain, '.');
+    },
+  },
+  receivedOrder: {
+    async load(page, { domain }) {
+      // salvaguarda: existe una OV "Sentinela" de referencia en el dashboard OPEN (fail-closed)
+      await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2500);
+      const cell = page.locator('tr:has(a[href*="/SalesOrders/"]) td').filter({ hasText: /Sentinela/ }).first();
+      await cell.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+      return { name: (await cell.textContent().catch(() => '')).trim() };
+    },
+    async mutate(page, { domain }) {
+      // crear una OV nueva "Sentinela" → dispara CreateReceivedOrder
+      await createSentinelaOV(page, domain);
+    },
+    async restore(page, { domain }) {
+      // archivar la OV recién creada (limpieza)
+      await archiveTopSentinelaOV(page, domain);
     },
   },
 };
