@@ -24,37 +24,42 @@ export function resolveUrl(ent, id, domain) {
 }
 
 // ── Handlers DOM por entidad ────────────────────────────────────────────────
-// partNumber: el sentinela "Sentinela" vive ARCHIVADO. Togglear el checkbox
-// "Archived" (desarchivar→archivar) dispara UpdatePartNumber y deja el PN en su
-// estado original. loadObject verifica name="Sentinela" (isSentinel fail-closed).
-async function openEditPartNumber(page) {
-  await page.getByRole('button', { name: /Editar Número de Parte/i }).first().click();
-  await page.locator('[role="dialog"]').filter({ hasText: 'Edit Part Number' }).first().waitFor({ timeout: 10000 });
+// partNumber: el sentinela "Sentinela" vive ARCHIVADO. El TOGGLE del checkbox
+// "Archived" dispara UpdatePartNumber (update de archivedAt) — NO el Save del modal
+// (ese dispara SavePartNumber, verificado por el sink). Desarchivar captura la mutation;
+// re-archivar restaura. loadObject verifica name="Sentinela" (isSentinel fail-closed).
+function archivedRow(page) {
+  return page.locator('div.css-re0j1l', { hasText: 'Archived:' })
+    .locator('xpath=following-sibling::div[1]').first();
 }
-async function saveDialog(page) {
-  await page.locator('[role="dialog"] button:has(svg[data-testid="SaveOutlinedIcon"])').first().click();
+async function archivedChecked(page) {
+  return archivedRow(page).locator('input[type="checkbox"]').first().isChecked().catch(() => null);
+}
+async function archivedToggle(page) {
+  // el input real está oculto (MUI) → se clickea el span visual .MuiCheckbox-root
+  const span = archivedRow(page).locator('.MuiCheckbox-root').first();
+  await span.scrollIntoViewIfNeeded().catch(() => {});
+  await span.click();
   await page.waitForTimeout(2500);
 }
 const HANDLERS = {
   partNumber: {
     async load(page, url) {
-      await page.goto(url, { waitUntil: 'networkidle' });
-      const name = (await page.locator('div.css-re0j1l', { hasText: 'Name:' })
-        .locator('xpath=following-sibling::*[1]').first().textContent().catch(() => '')).trim();
-      return { name };
+      // networkidle es frágil aquí (SPA con polling constante). Espera al ELEMENTO DEL NAME
+      // (lo que verifica la identidad), no al botón — el name renderiza un instante después.
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      const nameEl = page.locator('div.css-re0j1l', { hasText: 'Name:' })
+        .locator('xpath=following-sibling::*[1]').first();
+      await nameEl.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+      return { name: (await nameEl.textContent().catch(() => '')).trim() };
     },
-    // El Save del modal Edit dispara SavePartNumber + UpdatePartNumber (confirmado por el usuario).
-    // Funciona con el PN archivado SIN desarchivar. Campo reversible: Notas Adicionales (vacío).
     async mutate(page) {
-      await openEditPartNumber(page);
-      await page.locator('#root_NotasAdicionales').fill('SA-SENTINEL-CAPTURE');
-      await saveDialog(page);
+      // desarchivar → dispara UpdatePartNumber (el sink del motor captura el hash)
+      await archivedToggle(page);
     },
     async restore(page) {
-      // vaciar Notas → Save: deja el PN como estaba (Notas vacío, estado archivado intacto)
-      await openEditPartNumber(page);
-      await page.locator('#root_NotasAdicionales').fill('');
-      await saveDialog(page);
+      // dejar el PN ARCHIVADO como estaba (si quedó desarchivado, re-archivar) — SIEMPRE
+      if ((await archivedChecked(page)) === false) await archivedToggle(page);
     },
   },
 };
