@@ -53,6 +53,18 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
   fi
 
+  # 4) firma: config.sig debe verificar contra config.json con la pública embebida.
+  #    Solo actúa si hay pública real embebida (Fase 2+); pre-Fase-2 PUB='' → se salta.
+  PUB=$(node -e "globalThis.self={};require('./extension/integrity-pubkey.js');process.stdout.write(self.SA_INTEGRITY_PUBKEY||'')" 2>/dev/null || true)
+  if [ -n "$PUB" ]; then
+    git show "$local_sha:config.json" > /tmp/sa-pp-config.json 2>/dev/null || true
+    git show "$local_sha:config.sig"  > /tmp/sa-pp-config.sig  2>/dev/null || echo "" > /tmp/sa-pp-config.sig
+    if ! node tools/verify-config-sig.mjs /tmp/sa-pp-config.json /tmp/sa-pp-config.sig "$PUB" >/dev/null 2>&1; then
+      echo "  ✗ config.sig NO verifica contra config.json (¿olvidaste seal? usa tools/deploy.sh)"
+      bad=1
+    fi
+  fi
+
   if [ "$bad" -ne 0 ]; then
     echo ""
     echo "🛑 pre-push ABORTADO: gh-pages NO espeja $mainref:remote/ byte-a-byte, o la version no sube."
