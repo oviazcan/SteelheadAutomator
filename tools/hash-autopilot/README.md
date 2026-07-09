@@ -101,10 +101,17 @@ El auto-deploy exige que el worktree esté en `main` y sin WIP ajeno en `remote/
 - Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent` (6/6 — Fase C completa para las entidades declaradas).
-- **Sin ruta que dispare la op (por afinar la receta, grupo A):** `GetPurchaseOrder`
-  (ruta `bills-detail`), `GetReceivedOrdersWithReceivedOrderLineItems` (`invoices-list`),
-  `SensorDashboardQuery` (`maintenance-detail`) — el motor las marca `noCapturado` →
-  escala vía `ESCALATION.md`. La ruta existe pero no gatilla la op (falta abrir el
-  registro/panel correcto).
+- **🎯 OBJETIVO NORTE: CERO captura manual — todo debe auto-recuperarse headless sin
+  intervención humana.** Hoy 3 queries se quedan `noCapturado` porque el `page.goto`
+  directo NO hidrata el detalle y las listas no rinden filas en headless:
+  `GetPurchaseOrderDetail` (`/Purchasing/PurchaseOrders/<id>`), `SensorDashboardQuery`
+  (`/Maintenance/SensorDashboards/<id>`), `GetReceivedOrdersWithReceivedOrderLineItems`
+  (Invoices→PackingSlips→"Crear Factura"). **STOPGAP temporal** (NO la meta): capturarlas
+  con el hash-scanner en el navegador y deployar. **PENDIENTE real**: que el motor las
+  capture solo. Diagnóstico: las queries de detalle solo disparan por **navegación
+  client-side** (clic en `<Link>` de React Router dentro del SPA ya cargado) — `page.goto`
+  re-inicializa el SPA y no fetchea. Camino candidato: extender `recipe-runner` para
+  navegación client-side multi-paso (home hidratado → clic real en la fila/link) +
+  resolver la flakiness de hidratación headless. Es infra real, no un ajuste de receta.
 - Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Sentinela" activas rezagadas.
 - Pendiente: prueba de humo del correo real; cargar el launchd tras mergear a `main`.
