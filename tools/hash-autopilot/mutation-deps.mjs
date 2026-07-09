@@ -81,7 +81,7 @@ async function createSentinelaOV(page, domain) {
   const dbg = process.env.SA_DBG;
   await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
-  await page.getByRole('button', { name: /Nueva Orden de Venta/i }).first().click({ timeout: 15000 });
+  await page.locator('button', { hasText: /Nueva Orden de Venta/ }).first().click({ timeout: 15000 });
   await page.waitForTimeout(2000);
   if (dbg) console.log('       [dbg] modal Nueva OV abierto');
   await page.locator('input[placeholder*="Dejar en blanco"]').first().fill('Sentinela');
@@ -96,7 +96,7 @@ async function createSentinelaOV(page, domain) {
   await page.selectOption('#root_RazonSocialVenta', { label: 'ECO030618BR4 - ECOPLATING SA DE CV, 1 de Mayo 1803, Zona Industrial, Toluca, Estado de México, 50071, México' });
   await page.selectOption('#root_Divisa', 'USD');
   if (dbg) console.log('       [dbg] Razón Social + Divisa');
-  await page.getByRole('button', { name: /^Guardar$/i }).first().click({ timeout: 15000 });
+  await page.locator('button', { hasText: /^Guardar$/ }).first().click({ timeout: 15000 });
   await page.waitForTimeout(3500);
   if (dbg) console.log('       [dbg] Guardar clickeado');
 }
