@@ -156,7 +156,10 @@ async function main() {
         console.log(`→ ciclo mutation "${op}" sobre sentinela ${entityType}`);
         const res = await runMutationCycle(page, route, sentinelsConfig, sink, deps);
         console.log(`   ${res.captured ? 'capturó ' + op : 'no capturó (' + (res.reason || 'sin hash') + ')'}`);
-      } catch (e) { console.log(`  ⚠️ ciclo "${op}" falló: ${String(e).slice(0, 120)}`); }
+      } catch (e) {
+        console.log(`  ⚠️ ciclo "${op}" falló: ${String(e).slice(0, 120)}`);
+        await page.screenshot({ path: `/tmp/sa-cycle-fail-${op}.png`, fullPage: true }).catch(() => {});
+      }
     }
   }
 
@@ -246,7 +249,13 @@ async function main() {
       const tipo = plan.massBrake ? 'revision' : nPendientes === 0 ? 'exito' : nCorregidas > 0 ? 'revision' : 'fallo';
       const asunto = `hash-autopilot: ${nCorregidas} corregida(s), ${nPendientes} pendiente(s)`;
       const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
-      notify(tipo, asunto, cuerpo);
+      // Correo SOLO en corrida productiva. En modo prueba (--dry-run/--no-deploy/--only)
+      // no se notifica: son corridas de depuración y el reporte es parcial/engañoso.
+      if (DRY || NO_DEPLOY || ONLY) {
+        console.log(`  (correo suprimido — modo prueba. Asunto habría sido: "${asunto}")`);
+      } else {
+        notify(tipo, asunto, cuerpo);
+      }
     }
   }
   return { results, plan, deployed };
