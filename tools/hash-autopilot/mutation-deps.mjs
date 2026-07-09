@@ -76,7 +76,9 @@ async function editExternalNote(page, id, domain, value) {
 // CreateReceivedOrder se dispara al CREAR una OV vacía (paso 1 del flujo, playbook
 // portal-importer). Cada corrida crea una OV "Sentinela" y archiva la recién creada
 // (limpieza). El modal pide OC#, Cliente y 2 custom inputs obligatorios (Razón Social, Divisa).
-const OV_DASH = (domain) => `${BASE}/Domains/${domain}/SalesOrders?limit=20&offset=0&orderBy=ID_DESC&receivedOrderStatusFilter=OPEN&searchQuery=Sentinela`;
+// dashboard SIMPLE (sin searchQuery en la URL — el deep-link con searchQuery no hidrata las
+// filas). Las OV "Sentinela" (recientes, orderBy Created desc) salen al inicio; filtro por td.
+const OV_DASH = (domain) => `${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`;
 async function createSentinelaOV(page, domain) {
   const dbg = process.env.SA_DBG;
   await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
@@ -103,7 +105,7 @@ async function createSentinelaOV(page, domain) {
   if (dbg) console.log('       [dbg] Razón Social + Divisa');
   // Guardar/Save
   await page.locator('button', { hasText: /^(Guardar|Save)$/ }).first().click({ timeout: 15000 });
-  await page.waitForTimeout(3500);
+  await page.waitForTimeout(6000); // dar tiempo a que la OV nueva se indexe antes de archivarla
   if (dbg) console.log('       [dbg] Guardar clickeado');
 }
 async function archiveSentinelaOVs(page, domain) {
@@ -111,8 +113,18 @@ async function archiveSentinelaOVs(page, domain) {
   // aparecen las creadas por el ciclo). Loop hasta que no queden — evita acumular basura.
   const dbg = process.env.SA_DBG;
   for (let i = 0; i < 12; i++) {
-    await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2500);
+    // el dashboard de OVs a veces no hidrata las filas con goto directo → recargar hasta que sí
+    let ok = false;
+    for (let r = 0; r < 4 && !ok; r++) {
+      await page.goto(OV_DASH(domain), { waitUntil: 'domcontentloaded' });
+      ok = await page.locator('tr:has(a[href*="/SalesOrders/"])').first()
+        .waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
+    }
+    if (dbg && i === 0) {
+      const sentRows = await page.locator('tr:has(td:has-text("Sentinela"))').count().catch(() => -1);
+      console.log(`       [dbg] OV_DASH archivar: hydrated=${ok} sentRows=${sentRows}`);
+      await page.screenshot({ path: '/tmp/sa-ov-archive.png', fullPage: true }).catch(() => {});
+    }
     const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"], tr:has(td:has-text("Sentinela")) button[aria-label="Archive"]').first();
     if (!(await archBtn.count().catch(() => 0))) { if (dbg) console.log(`       [dbg] OVs Sentinela archivadas: ${i}`); break; }
     await archBtn.click({ timeout: 10000 });
