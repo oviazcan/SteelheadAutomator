@@ -50,7 +50,15 @@
     return got === String(expectedHex).toLowerCase();
   }
 
-  const api = { sha256Hex, verifyConfigSignature, verifyScriptHash };
+  // ¿Es seguro usar el config guardado (fallback offline)?
+  //  - Si NO estamos verificando (pública vacía pre-Fase-2, o break-glass): sí, como antes.
+  //  - Si SÍ verificamos (Fase 2): solo si ese config se verificó antes (tiene sello).
+  // Evita que un config cacheado en modo fail-open/bypass se sirva como si fuera verificado.
+  function shouldTrustOfflineConfig(verifying, hasVerifiedStamp) {
+    return !verifying || !!hasVerifiedStamp;
+  }
+
+  const api = { sha256Hex, verifyConfigSignature, verifyScriptHash, shouldTrustOfflineConfig };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof self !== 'undefined') self.SAIntegrity = api;
 })();

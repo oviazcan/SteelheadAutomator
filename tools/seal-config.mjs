@@ -35,9 +35,11 @@ export async function sealConfig({ configPath, sigPath, scriptsRootDir, signer }
   const integrity = await computeScriptIntegrity(config, scriptsRootDir);
   config.scriptIntegrity = integrity;
   const sealedText = JSON.stringify(config, null, 2) + '\n';
-  writeFileSync(configPath, sealedText);
+  // Firmar ANTES de escribir: si signer.sign() truena (p.ej. sin acceso KMS), no dejamos
+  // config.json mutado con un config.sig viejo/inconsistente en el worktree.
   const sigRaw = await signer.sign(new TextEncoder().encode(sealedText));
   const sigB64 = b64(sigRaw);
+  writeFileSync(configPath, sealedText);
   writeFileSync(sigPath, sigB64 + '\n');
   return { integrity, sigB64 };
 }

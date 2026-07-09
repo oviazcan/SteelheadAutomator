@@ -20,13 +20,14 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // ── Config ──
 async function loadConfig() {
+  const pub = self.SA_INTEGRITY_PUBKEY;
+  const verifying = !!pub && !(await integrityBypassed());
   try {
     const response = await fetch(CONFIG_URL, { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
 
-    const pub = self.SA_INTEGRITY_PUBKEY;
-    if (pub && !(await integrityBypassed())) {
+    if (verifying) {
       const sigResp = await fetch(`${REMOTE_BASE_URL}/config.sig`, { cache: 'no-cache' });
       const sigB64 = sigResp.ok ? (await sigResp.text()).trim() : '';
       const ok = await self.SAIntegrity.verifyConfigSignature(text, sigB64, pub);
@@ -38,13 +39,28 @@ async function loadConfig() {
     }
 
     cachedConfig = JSON.parse(text);
-    await chrome.storage.local.set({ config: cachedConfig, config_verified_at: Date.now() });
+    // Guarda el config para offline. `config_verified_at` SOLO se sella cuando de verdad
+    // se verificó la firma (no en fail-open/break-glass) — así el fallback offline en
+    // Fase 2 nunca sirve un config que no pasó verificación. Si NO se verificó, limpiamos
+    // el sello viejo (p.ej. tras encender break-glass) para no heredar confianza.
+    if (verifying) {
+      await chrome.storage.local.set({ config: cachedConfig, config_verified_at: Date.now() });
+    } else {
+      await chrome.storage.local.set({ config: cachedConfig });
+      await chrome.storage.local.remove('config_verified_at');
+    }
     return cachedConfig;
   } catch (err) {
     console.warn('[SA] Error cargando config:', err.message);
     const stored = await chrome.storage.local.get(['config', 'config_verified_at']);
-    // Fallback offline SOLO si venía de una verificación previa exitosa.
-    if (stored.config && stored.config_verified_at) { cachedConfig = stored.config; return cachedConfig; }
+    if (!stored.config) return cachedConfig;
+    // En Fase 2 solo confiamos en un config offline que se verificó antes (tiene sello);
+    // sin verificación (pre-Fase-2 / break-glass) mantenemos el comportamiento previo.
+    if (!self.SAIntegrity.shouldTrustOfflineConfig(verifying, !!stored.config_verified_at)) {
+      console.error('[SA] SECURITY: config en caché sin verificación previa — no se usa offline');
+      return cachedConfig;
+    }
+    cachedConfig = stored.config;
     return cachedConfig;
   }
 }

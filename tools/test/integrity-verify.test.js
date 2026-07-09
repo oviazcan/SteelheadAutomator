@@ -42,3 +42,12 @@ test('verifyScriptHash: correcto true, alterado false, vacío false', async () =
   assert.equal(await SAIntegrity.verifyScriptHash(code + ';', h), false);
   assert.equal(await SAIntegrity.verifyScriptHash(code, ''), false);
 });
+
+test('shouldTrustOfflineConfig: fail-open sin verificación; fail-closed en Fase 2 sin sello', () => {
+  // No verificando (pre-Fase-2 / break-glass) → confía como antes, con o sin sello
+  assert.equal(SAIntegrity.shouldTrustOfflineConfig(false, false), true);
+  assert.equal(SAIntegrity.shouldTrustOfflineConfig(false, true), true);
+  // Verificando (Fase 2) → solo si el config offline se verificó antes (tiene sello)
+  assert.equal(SAIntegrity.shouldTrustOfflineConfig(true, true), true);
+  assert.equal(SAIntegrity.shouldTrustOfflineConfig(true, false), false);
+});
