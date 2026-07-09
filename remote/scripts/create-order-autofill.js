@@ -1,11 +1,17 @@
 // Create Order Autofill
-// Auto-llena las 3 Entradas Personalizadas del modal "Crear Orden de Venta"
-// que sale en /Receiving/CustomerParts → "RECEIVE" → "+ / Create".
+// Auto-llena las Entradas Personalizadas del modal de creación de OV. Dos pantallas:
+//   1. /Receiving/CustomerParts → "RECEIVE" → "+ / Create"  → título "Crear Orden de Venta" (ES),
+//      cliente pre-cargado, expone "Enviar a:" (ship-to).
+//   2. /Domains/<id>/SalesOrders → "New Sales Order"          → título "Create Sales Order" (EN),
+//      cliente vacío (el operador lo elige a mano), SIN ship-to.
+// Mismos IDs RJSF en ambos modales (root_RazonSocialVenta / root_Divisa / root_ConsolidarPorProducto),
+// así que el mismo autofill sirve para los dos; solo cambia el gate de URL y el título.
 //
 // Reglas:
 //   - Razón Social  ← customer.customInputs.DatosFactura.RazonSocialVenta (match exacto contra <option>)
 //   - Divisa        ← customer.customInputs.DatosFactura.Divisa            (match exacto/substring contra <option>)
 //   - Consolidar    ← ship-to-driven: marca checkbox si "Enviar a:" del modal contiene "javier rojo"
+//                     (en la pantalla SalesOrders no hay ship-to → Consolidar no aplica, se omite)
 //
 // Depende de: SteelheadAPI, CreateOrderAutofillCore (create-order-autofill-core.js)
 //
@@ -19,8 +25,10 @@
 const CreateOrderAutofill = (() => {
   'use strict';
 
-  const URL_RE = /\/Receiving\/CustomerParts(?:\/|$)/;
-  const MODAL_HEADING_RE = /^\s*crear\s+orden\s+de\s+venta\s*$/i;
+  // Fallbacks locales por si el core no cargara (el core va ANTES en el array scripts,
+  // así que normalmente se usan sus helpers homónimos vía urlMatches()/headingMatches()).
+  const URL_RE = /\/Receiving\/CustomerParts(?:\/|$)|\/Domains\/\d+\/SalesOrders\/?$/;
+  const MODAL_HEADING_RE = /^\s*(?:crear\s+orden\s+de\s+venta|create\s+sales\s+order)\s*$/i;
   const RJSF_RAZON_ID = 'root_RazonSocialVenta';
   const RJSF_DIVISA_ID = 'root_Divisa';
   const RJSF_CONSOLIDAR_ID = 'root_ConsolidarPorProducto';
@@ -30,6 +38,15 @@ const CreateOrderAutofill = (() => {
   const core = () => window.CreateOrderAutofillCore;
   const log = (m) => (api()?.log ? api().log(`[create-order-autofill] ${m}`) : console.log('[create-order-autofill]', m));
   const warn = (m) => (api()?.warn ? api().warn(`[create-order-autofill] ${m}`) : console.warn('[create-order-autofill]', m));
+
+  const urlMatches = (p) => {
+    const c = core();
+    return c?.matchesCreateOrderUrl ? c.matchesCreateOrderUrl(p) : URL_RE.test(p);
+  };
+  const headingMatches = (t) => {
+    const c = core();
+    return c?.isCreateOrderModalHeading ? c.isCreateOrderModalHeading(t) : MODAL_HEADING_RE.test(t);
+  };
 
   const _customerCache = new Map();   // idInDomain → customer
   const _nameIdCache = new Map();     // normalizedName → idInDomain|null
@@ -50,7 +67,7 @@ const CreateOrderAutofill = (() => {
       return;
     }
     setupUrlListener();
-    log(`init en ${location.pathname} (matches=${URL_RE.test(location.pathname)})`);
+    log(`init en ${location.pathname} (matches=${urlMatches(location.pathname)})`);
     checkUrl();
   }
 
@@ -69,7 +86,7 @@ const CreateOrderAutofill = (() => {
   }
 
   function checkUrl() {
-    if (!URL_RE.test(location.pathname)) {
+    if (!urlMatches(location.pathname)) {
       removePanel();
       state.lastSig = null;
       return;
@@ -123,7 +140,7 @@ const CreateOrderAutofill = (() => {
   function isCreateOrderModal() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
-      if (MODAL_HEADING_RE.test((h.textContent || '').trim())) return true;
+      if (headingMatches((h.textContent || '').trim())) return true;
     }
     return false;
   }
@@ -152,7 +169,7 @@ const CreateOrderAutofill = (() => {
   function getModalRoot() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
-      if (!MODAL_HEADING_RE.test((h.textContent || '').trim())) continue;
+      if (!headingMatches((h.textContent || '').trim())) continue;
       // Arrancamos ARRIBA del heading: su propia clase MuiDialogTitle-root es un cebo.
       let cur = h.parentElement;
       for (let i = 0; i < 14 && cur; i++) {
@@ -356,6 +373,15 @@ const CreateOrderAutofill = (() => {
     }
 
     if (idInDomain == null) {
+      // Pantalla SalesOrders: el modal abre SIN cliente (el operador lo elige a mano).
+      // No mostramos panel de error mientras no haya cliente — esperamos en silencio a
+      // que lo seleccione (la firma cambia y re-dispara el scan). Solo reportamos error
+      // si SÍ hay nombre de cliente pero no pudimos resolver su idInDomain.
+      if (!customerName) {
+        log('modal abierto sin cliente elegido aún — esperando selección');
+        removePanel();
+        return;
+      }
       log(`sin idInDomain (cliente="${customerName}") — no autofill`);
       state.results = { razon: { ok: false, msg: 'sin idInDomain' }, divisa: { ok: false, msg: 'sin idInDomain' }, consolidar: null };
       renderPanel({ customerName, shipTo });
@@ -391,10 +417,12 @@ const CreateOrderAutofill = (() => {
         : { ok: false, msg: r.reason };
     }
 
-    // Consolidar (ship-to-driven, independiente del customer)
+    // Consolidar (ship-to-driven, independiente del customer). En la pantalla SalesOrders
+    // el modal NO expone "Enviar a:" → sin destino no aplica la regla Rojo Gómez; lo
+    // dejamos en el default RJSF (false) y lo marcamos como omitido, no como fallo.
     let consolidarResult;
     if (!shipTo) {
-      consolidarResult = { ok: false, msg: 'sin shipTo visible' };
+      consolidarResult = { ok: true, msg: 'no aplica (sin destino en esta pantalla)', skipped: true };
     } else if (ROJO_GOMEZ_RE.test(shipTo)) {
       const r = setCheckbox(consolidarChk, true);
       consolidarResult = r.success
