@@ -48,11 +48,15 @@ async function archivedToggle(page) {
 // El quote aparece en archived=true (si archivado) o archived=false (si activo). Busca
 // en ambos y devuelve {found, archived} + deja la page en el dashboard donde está.
 async function findQuoteDashboard(page, id, domain) {
+  // el dashboard con searchQuery en la URL hidrata inconsistentemente (deep-link) → recargar
+  // hasta que la fila aparezca. Busca en archivado y activo.
   for (const arch of [true, false]) {
-    await page.goto(`${BASE}/Domains/${domain}/Quotes?archived=${arch}&hasRfq=false&searchQuery=${id}`, { waitUntil: 'domcontentloaded' });
-    const row = page.locator(`tr:has(a[href$="/Quotes/${id}"])`).first();
-    await row.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-    if (await row.count().catch(() => 0)) return { found: true, archived: arch };
+    for (let r = 0; r < 3; r++) {
+      await page.goto(`${BASE}/Domains/${domain}/Quotes?archived=${arch}&hasRfq=false&searchQuery=${id}`, { waitUntil: 'domcontentloaded' });
+      const ok = await page.locator(`tr:has(a[href$="/Quotes/${id}"])`).first()
+        .waitFor({ state: 'visible', timeout: 9000 }).then(() => true).catch(() => false);
+      if (ok) return { found: true, archived: arch };
+    }
   }
   return { found: false, archived: null };
 }
