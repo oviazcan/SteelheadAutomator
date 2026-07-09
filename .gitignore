@@ -47,8 +47,14 @@ Plantilla_Cotizaciones_y_NP_v84_2.xlsm
 # Scratch payloads locales (samples de GraphQL/factura, etc.)
 /json
 
-# Estado de herramientas (Claude Code, plugin superpowers) — nunca versionar
-.claude/
+# Claude Code: el harness COMPARTIDO sí se versiona y se transmite con el clone
+# (.claude/commands/, .claude/agents/, .claude/hooks/, .claude/settings.json).
+# El estado LOCAL de cada máquina NO se versiona:
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+.claude/backups/
+.claude/worktree-locks/
 .superpowers/
 
 # config.json en la RAÍZ es una copia stale; el config real vive en remote/config.json

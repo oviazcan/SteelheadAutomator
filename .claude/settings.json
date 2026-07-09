@@ -1,0 +1,39 @@
+{
+  "//": "Config de PROYECTO versionada — se transmite con el clone. El estado local va en settings.local.json (gitignorado). Candado de convivencia entre sesiones: ver .claude/hooks/README.md",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-lock.sh\" check" }]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-lock.sh\" check" }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-lock.sh\" heartbeat" }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-lock.sh\" heartbeat" }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-lock.sh\" release" }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-guard.sh\"" }]
+      }
+    ]
+  }
+}
