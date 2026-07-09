@@ -81,8 +81,10 @@ async function createSentinelaOV(page, domain) {
   const dbg = process.env.SA_DBG;
   await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
-  // botón crear OV: MuiButton-contained con AddIcon (independiente del idioma)
-  await page.locator('button.MuiButton-contained:has(svg[data-testid="AddIcon"])').first().click({ timeout: 15000 });
+  // botón crear OV: el botón con AddIcon del header (independiente del idioma)
+  const newBtn = page.locator('button:has(svg[data-testid="AddIcon"])').first();
+  await newBtn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+  await newBtn.click({ timeout: 15000 });
   await page.waitForTimeout(2500);
   if (dbg) console.log('       [dbg] modal Nueva OV abierto');
   // OC#: input con AssignmentIcon adornment (independiente del idioma)
@@ -162,9 +164,10 @@ const HANDLERS = {
       // (botón crear OV = MuiButton-contained con AddIcon presente) → contexto OK, fail-closed.
       // La OV se CREA marcada "Sentinela" y se archiva; la salvaguarda real es esa marca.
       await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(3000);
-      const hasNewBtn = await page.locator('button.MuiButton-contained:has(svg[data-testid="AddIcon"])').count().catch(() => 0);
-      if (process.env.SA_DBG) console.log(`       [dbg] OV dash: newBtn=${hasNewBtn}`);
+      const newBtn = page.locator('button:has(svg[data-testid="AddIcon"])').first();
+      await newBtn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+      const hasNewBtn = await page.locator('button:has(svg[data-testid="AddIcon"])').count().catch(() => 0);
+      if (process.env.SA_DBG) console.log(`       [dbg] OV dash: addIcon btns=${hasNewBtn}`);
       return { name: hasNewBtn ? 'Sentinela (create-capture)' : '' };
     },
     async mutate(page, { domain }) {
