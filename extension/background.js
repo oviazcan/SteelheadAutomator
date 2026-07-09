@@ -6,22 +6,61 @@ const CONFIG_URL = `${REMOTE_BASE_URL}/config.json`;
 
 let cachedConfig = null;
 
+// Integridad de scripts remotos (firma + hash). Ver docs/superpowers/specs/2026-07-09-*.
+importScripts('integrity-verify.js', 'integrity-pubkey.js');
+
+async function integrityBypassed() {
+  const { sa_integrity_bypass } = await chrome.storage.local.get('sa_integrity_bypass');
+  return sa_integrity_bypass === true;
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.log(`[SA] Extension ${details.reason}: v${chrome.runtime.getManifest().version}`);
 });
 
 // ── Config ──
 async function loadConfig() {
+  const pub = self.SA_INTEGRITY_PUBKEY;
+  const verifying = !!pub && !(await integrityBypassed());
   try {
     const response = await fetch(CONFIG_URL, { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    cachedConfig = await response.json();
-    await chrome.storage.local.set({ config: cachedConfig });
+    const text = await response.text();
+
+    if (verifying) {
+      const sigResp = await fetch(`${REMOTE_BASE_URL}/config.sig`, { cache: 'no-cache' });
+      const sigB64 = sigResp.ok ? (await sigResp.text()).trim() : '';
+      const ok = await self.SAIntegrity.verifyConfigSignature(text, sigB64, pub);
+      if (!ok) {
+        console.error('[SA] SECURITY: firma de config inválida — no se inyecta nada');
+        // fail-closed: NO actualizamos cachedConfig con contenido no verificado
+        return cachedConfig; // conserva el último verificado (o null)
+      }
+    }
+
+    cachedConfig = JSON.parse(text);
+    // Guarda el config para offline. `config_verified_at` SOLO se sella cuando de verdad
+    // se verificó la firma (no en fail-open/break-glass) — así el fallback offline en
+    // Fase 2 nunca sirve un config que no pasó verificación. Si NO se verificó, limpiamos
+    // el sello viejo (p.ej. tras encender break-glass) para no heredar confianza.
+    if (verifying) {
+      await chrome.storage.local.set({ config: cachedConfig, config_verified_at: Date.now() });
+    } else {
+      await chrome.storage.local.set({ config: cachedConfig });
+      await chrome.storage.local.remove('config_verified_at');
+    }
     return cachedConfig;
   } catch (err) {
     console.warn('[SA] Error cargando config:', err.message);
-    const stored = await chrome.storage.local.get('config');
-    cachedConfig = stored.config || null;
+    const stored = await chrome.storage.local.get(['config', 'config_verified_at']);
+    if (!stored.config) return cachedConfig;
+    // En Fase 2 solo confiamos en un config offline que se verificó antes (tiene sello);
+    // sin verificación (pre-Fase-2 / break-glass) mantenemos el comportamiento previo.
+    if (!self.SAIntegrity.shouldTrustOfflineConfig(verifying, !!stored.config_verified_at)) {
+      console.error('[SA] SECURITY: config en caché sin verificación previa — no se usa offline');
+      return cachedConfig;
+    }
+    cachedConfig = stored.config;
     return cachedConfig;
   }
 }
@@ -35,7 +74,17 @@ async function fetchScriptCode(scriptPath) {
   const url = `${REMOTE_BASE_URL}/${scriptPath}?v=${config?.version || Date.now()}`;
   const response = await fetch(url, { cache: 'no-cache' });
   if (!response.ok) throw new Error(`HTTP ${response.status} cargando ${scriptPath}`);
-  return await response.text();
+  const code = await response.text();
+  const pub = self.SA_INTEGRITY_PUBKEY;
+  if (pub && !(await integrityBypassed())) {
+    const expected = config?.scriptIntegrity?.[scriptPath];
+    const ok = await self.SAIntegrity.verifyScriptHash(code, expected);
+    if (!ok) {
+      console.error(`[SA] SECURITY: hash de ${scriptPath} no coincide — no se ejecuta`);
+      throw new Error(`integridad: ${scriptPath}`);
+    }
+  }
+  return code;
 }
 
 async function injectAppScripts(tabId, appId) {

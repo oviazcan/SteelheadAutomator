@@ -68,7 +68,7 @@ Se usa idéntico en `background.js` y en el test (Node ≥18 trae `globalThis.cr
   3. Escribe `scriptIntegrity` en `remote/config.json`.
   4. Firma los bytes finales de `remote/config.json` vía el backend `kms` (GCP KMS `asymmetricSign` → DER→P1363) → escribe `remote/config.sig`.
   - Falla ruidosamente si no puede firmar (sin acceso IAM/credenciales KMS): no debe producir un config sin firma válida.
-- Lo invocan **ambos** caminos de deploy tras el bump de versión: `tools/deploy.sh` y `tools/hash-autopilot/autopilot-deploy.sh`.
+- Se invoca en `tools/deploy.sh` tras el bump de versión. **Corrección (impl 2026-07-09):** `tools/hash-autopilot/autopilot-deploy.sh` **llama a `tools/deploy.sh`**, así que hereda el `seal` automáticamente — NO se edita por separado.
 - **`config.sig` se espeja a gh-pages** junto con `config.json` (agregar al conjunto que mira `deploy.sh` y el `pre-push`).
 
 **Tres candados contra el fail-closed global** (un deploy con firma mala apagaría los applets de TODOS los que ya actualizaron):
@@ -101,7 +101,7 @@ Objetivo del usuario: entregar el repo al equipo del cliente; primero deployan j
 | `extension/manifest.json` | editar | Bump `version` (hoy 1.6.5). No requiere `web_accessible_resources` (los helpers los carga `importScripts`, no la página). |
 | `extension/popup.{html,js}` | editar | Toggle break-glass (default OFF). |
 | `tools/deploy.sh` | editar | Llamar `seal-config.mjs` tras el bump; espejar `config.sig`. |
-| `tools/hash-autopilot/autopilot-deploy.sh` | editar | Llamar `seal-config.mjs` antes de pushear. |
+| ~~`tools/hash-autopilot/autopilot-deploy.sh`~~ | **NO se toca** | Llama a `tools/deploy.sh`, hereda `seal` automáticamente. |
 | `.githooks/pre-push` | editar | Validar `config.sig` vs `config.json`; incluir `config.sig` en el espejo. |
 | `remote/config.json` | editar | Nuevo campo `scriptIntegrity` (lo escribe `seal`). |
 | `remote/config.sig` | generado | La firma (se commitea + espeja). |
@@ -138,3 +138,4 @@ Objetivo del usuario: entregar el repo al equipo del cliente; primero deployan j
 - **Revocar ACCESO** de una persona = quitar su rol IAM (inmediato, sin republicar). Cubierto por KMS. **Rotar la LLAVE** (nueva versión → nueva pública) sí requiere republicar la extensión con la nueva pública; se deja como procedimiento documentado, no automatizado. Multi-llave/overlap de rotación: fuera de alcance.
 - Firmar los scripts individualmente — el config-manifiesto firmado ya encadena la integridad de todos.
 - Los otros 4 ítems de seguridad (XSS innerHTML, rollback/tags, CSP, console.log) — pendientes aparte.
+- **Anti-rollback / freshness (tradeoff aceptado v1):** la firma cubre solo los bytes de `config.json`; el cliente no exige versión/timestamp monótonos. Un gh-pages comprometido podría **replayear** indefinidamente un `config.json`+`config.sig`+scripts viejos válidamente firmados (downgrade). El check "version debe subir" del `pre-push` protege el *deploy*, no lo que la extensión acepta en runtime. Detectado en el review final 2026-07-09; se acepta para v1. Mitigación futura: incluir un `notAfter`/`minVersion` firmado y rechazarlo en `background.js`.
