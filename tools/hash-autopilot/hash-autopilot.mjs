@@ -215,6 +215,18 @@ async function main() {
   // escalamiento y de la notificación — son estáticos, no un cambio de UI nuevo.
   const notCapturedNew = plan.notCaptured.filter((r) => !knownNoRoute.has(r.op));
 
+  // Mutations stale que el ciclo sentinela NO resolvió (sin handler DOM, o el ciclo
+  // no capturó el hash) → siguen requiriendo captura manual. Las que Fase C SÍ
+  // capturó/deployó ya salen en "CORREGIDAS Y DEPLOYADAS" y NO deben reportarse
+  // como pendientes (bug 2026-07-09: antes se listaban TODAS las staleMuts → el
+  // correo se contradecía "deployadas 2" vs "pendientes 3" y el asunto inflaba el
+  // conteo de pendientes).
+  const mutVerdict = (op) => (results.find((r) => r.op === op) || {}).verdict;
+  const pendingMuts = staleMuts.filter((op) => {
+    const v = mutVerdict(op);
+    return !v || v === 'noCapturado';
+  });
+
   // Escalamiento (Task 9): rutas que no capturaron → señal para el cron de Claude.
   if (!DRY && notCapturedNew.length) {
     writeNeedsAttention(notCapturedNew, catalog.routes, RUN_DATE);
@@ -241,12 +253,12 @@ async function main() {
     if (uncoveredNew.length) {
       sec.push(`❌ QUERIES SIN RUTA (${uncoveredNew.length}) — stale sin ruta en route-catalog.json:\n${uncoveredNew.map((op) => `   • ${op}`).join('\n')}`);
     }
-    if (staleMuts.length) {
-      sec.push(`🔧 MUTATIONS ROTADAS (${staleMuts.length}) — Fase C (ciclo sentinela) pendiente; captura manual por ahora:\n${staleMuts.map((op) => `   • ${op}`).join('\n')}`);
+    if (pendingMuts.length) {
+      sec.push(`🔧 MUTATIONS ROTADAS SIN CAPTURAR (${pendingMuts.length}) — el ciclo sentinela no las resolvió (sin handler DOM o el ciclo no capturó el hash); requieren captura manual:\n${pendingMuts.map((op) => `   • ${op}`).join('\n')}`);
     }
     if (sec.length) {
       const nCorregidas = deployed ? plan.toDeploy.length : 0;
-      const nPendientes = notCapturedNew.length + uncoveredNew.length + staleMuts.length + plan.suspicious.length;
+      const nPendientes = notCapturedNew.length + uncoveredNew.length + pendingMuts.length + plan.suspicious.length;
       const tipo = plan.massBrake ? 'revision' : nPendientes === 0 ? 'exito' : nCorregidas > 0 ? 'revision' : 'fallo';
       const asunto = `hash-autopilot: ${nCorregidas} corregida(s), ${nPendientes} pendiente(s)`;
       const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
