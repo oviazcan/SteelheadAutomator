@@ -6,6 +6,12 @@ import json
 import pytest
 
 import openpyxl as _openpyxl
+from pathlib import Path
+
+# Plantilla oficial versionada. Path RELATIVO al repo (antes estaba hardcodeado el
+# path absoluto de una máquina, lo que rompía el CI en otro entorno). pytest se corre
+# desde la raíz del repo, así que __file__.parent.parent es esa raíz.
+TEMPLATE = str(Path(__file__).resolve().parent.parent / "remote" / "templates" / "Plantilla_Cotizaciones_v11.xlsm")
 
 from tools.dual_source_recovery import (
     ROUND_MARKER_TOKENS,
@@ -656,7 +662,7 @@ class TestComputeFieldDiffs:
 
 class TestEmitV11Xlsx:
     def test_emits_one_row_per_correction(self, tmp_path):
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
 
         corrections = [{
@@ -681,7 +687,7 @@ class TestEmitV11Xlsx:
         assert ws.cell(row=9, column=7).value == "ABC-001"
 
     def test_omits_pns_without_diffs(self, tmp_path):
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
         emit_v11_xlsx(template_path=template, corrections=[], out_path=out)
 
@@ -693,7 +699,7 @@ class TestEmitV11Xlsx:
         """Output debe escribir etiquetas con su casing original (Title Case),
         no en upper. El applet bulk-upload v11 hace match case-sensitive contra
         catálogo de Steelhead que está en Title Case (`Plata`, `Estaño`)."""
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
         corrections = [{
             "idSH": "999",
@@ -718,7 +724,7 @@ class TestEmitV11Xlsx:
         """La plantilla v11 pre-llena Etiqueta 1-5 con '(seleccione)'. Cuando
         xlsm_labels tiene huecos intermedios (e.g., pos 4 vacía pero pos 5
         poblada), las celdas vacías deben quedar en blanco — no con '(seleccione)'."""
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
         corrections = [{
             "idSH": "1000",
@@ -745,7 +751,7 @@ class TestEmitV11Xlsx:
     def test_clears_label_cells_when_correction_has_no_labels_diff(self, tmp_path):
         """Si una correction NO trae diff de '_labels_', las celdas de Etiqueta
         1-5 deben quedar limpias (sin '(seleccione)' residual de la plantilla)."""
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
         corrections = [{
             "idSH": "2000",
@@ -768,7 +774,7 @@ class TestEmitV11Xlsx:
         """v1.0.3: si una correction NO trae diff de 'Metal base', la celda
         debe quedar limpia (sin '(seleccione o escriba)' residual). El
         placeholder del template rompe la fórmula CNE al abrir en Excel."""
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
         corrections = [{
             "idSH": "3000",
@@ -793,7 +799,7 @@ class TestEmitV11Xlsx:
         de metadata (bulk-upload las salta sola)."""
         import csv as _csv
 
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         xlsm_out = tmp_path / "out.xlsm"
         csv_out = tmp_path / "out.csv"
         corrections = [{
@@ -829,7 +835,7 @@ class TestEmitV11Xlsx:
     def test_writes_metal_base_when_diff_present(self, tmp_path):
         """v1.0.3: si la correction trae diff de 'Metal base' con action
         overwrite/fill, el valor de xlsm debe quedar en la celda."""
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
         corrections = [{
             "idSH": "3001",
@@ -852,7 +858,7 @@ class TestEmitV11Xlsx:
         ningún toggle — bulk-upload v11 los interpreta como instrucciones
         explícitas. Incidente 2026-05-28: "F" en col Archivado disparó STEP 8
         unarchive masivo (10,842 PNs desarchivados sin intención)."""
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
         out = tmp_path / "out.xlsm"
         corrections = [{
             "idSH": "3002",
@@ -905,7 +911,7 @@ class TestEmitJsonReport:
 
 class TestMainSmoke:
     def test_runs_end_to_end(self, tmp_path):
-        template = "/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/remote/templates/Plantilla_Cotizaciones_v11.xlsm"
+        template = TEMPLATE
 
         xlsm_srg = _make_xlsm(tmp_path, "srg.xlsm", [
             {"Cliente": "SCHNEIDER", "Número de parte": "ABC-001",
