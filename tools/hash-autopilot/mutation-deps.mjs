@@ -66,6 +66,22 @@ async function findQuoteDashboard(page, id, domain) {
   }
   return { found: false, archived: null };
 }
+// Editar "External Notes" del quote: navega client-side a la cotización (goto directo sale
+// vacío), abre el editor (1er EditOutlinedIcon → modal rich), cambia a Markdown (textarea
+// simple), escribe y guarda (SAVE). El SAVE dispara UpdateQuote (requiere cambio real).
+async function editExternalNote(page, id, domain, value) {
+  await findQuoteDashboard(page, id, domain);
+  await page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first().click();
+  await page.waitForTimeout(4000);
+  await page.locator('button:has(svg[data-testid="EditOutlinedIcon"])').first().click({ timeout: 15000 });
+  const dialog = page.locator('[role="dialog"]').first();
+  await dialog.waitFor({ state: 'visible', timeout: 10000 });
+  await dialog.getByText('Markdown', { exact: true }).click({ timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  await dialog.locator('textarea').first().fill(value);
+  await dialog.getByRole('button', { name: /^save$/i }).first().click({ timeout: 10000 });
+  await page.waitForTimeout(2500);
+}
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -96,24 +112,12 @@ const HANDLERS = {
       return { name: (await nameLink.textContent().catch(() => '')).trim() };
     },
     async mutate(page, { id, domain }) {
-      // navegar client-side a la página del quote (goto directo sale vacío) → clickear el Edit
-      // de "External Notes" (1er EditOutlinedIcon) → editor. DIAGNÓSTICO del editor.
-      await findQuoteDashboard(page, id, domain);
-      await page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first().click();
-      await page.waitForTimeout(4000);
-      const editBtn = page.locator('button:has(svg[data-testid="EditOutlinedIcon"])').first();
-      await editBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
-      await editBtn.click({ timeout: 15000 });
-      await page.waitForTimeout(1500);
-      if (process.env.SA_DBG) {
-        const dlg = await page.locator('[role="dialog"]').count().catch(() => -1);
-        const ta = await page.locator('textarea').count().catch(() => -1);
-        console.log(`       [dbg] tras Edit External Notes: dialog=${dlg} textarea=${ta}`);
-        await page.screenshot({ path: '/tmp/sa-quote-noteedit.png', fullPage: true }).catch(() => {});
-      }
+      // cambio real de External Notes → SAVE dispara UpdateQuote
+      await editExternalNote(page, id, domain, 'SA-SENTINEL-CAP');
     },
-    async restore(_page) {
-      // (temporal) — se completa al ver el editor de notas
+    async restore(page, { id, domain }) {
+      // restaurar el valor base del sentinela ('.') → deja el quote como estaba
+      await editExternalNote(page, id, domain, '.');
     },
   },
 };
