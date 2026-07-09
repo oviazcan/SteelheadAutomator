@@ -5,6 +5,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { webcrypto } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { derToP1363 } from './lib/der-to-p1363.mjs';
 
 const subtle = webcrypto.subtle;
 const b64 = (u8) => Buffer.from(u8).toString('base64');
@@ -49,4 +52,55 @@ export async function ephemeralSigner() {
       return new Uint8Array(sig); // WebCrypto ya da P1363
     }
   };
+}
+
+export function buildKmsArgs({ keyResource, inputFile, sigFile }) {
+  const parts = keyResource.split('/');
+  const idx = (k) => parts[parts.indexOf(k) + 1];
+  return [
+    'kms', 'asymmetric-sign',
+    '--digest-algorithm=sha256',
+    `--input-file=${inputFile}`,
+    `--signature-file=${sigFile}`,
+    `--version=${idx('cryptoKeyVersions')}`,
+    `--key=${idx('cryptoKeys')}`,
+    `--keyring=${idx('keyRings')}`,
+    `--location=${idx('locations')}`,
+    `--project=${idx('projects')}`
+  ];
+}
+
+function defaultGcloudSignDigest(digest, keyResource) {
+  // KMS firma un DIGEST: input-file = el sha256 (32 bytes); gcloud escribe la firma DER
+  // BINARIA a signature-file (no a stdout con utf8 → corrompería). Leemos binario.
+  const stamp = createHash('sha256').update(digest).digest('hex').slice(0, 12);
+  const inFile = `/tmp/sa-seal-in-${stamp}.bin`;
+  const sigFile = `/tmp/sa-seal-out-${stamp}.der`;
+  writeFileSync(inFile, digest);
+  execFileSync('gcloud', buildKmsArgs({ keyResource, inputFile: inFile, sigFile }), { stdio: 'inherit' });
+  return readFileSync(sigFile); // DER binario
+}
+
+export function kmsSigner({ keyResource, signDigest }) {
+  const doSign = signDigest || defaultGcloudSignDigest;
+  return {
+    async sign(bytes) {
+      const digest = createHash('sha256').update(Buffer.from(bytes)).digest();
+      const der = await doSign(digest, keyResource);
+      return derToP1363(new Uint8Array(der), 32);
+    }
+  };
+}
+
+// --- entrypoint CLI ---
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const arg = (n) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : null; };
+  const backend = arg('--backend') || 'kms';
+  const signer = backend === 'ephemeral'
+    ? await ephemeralSigner()
+    : kmsSigner({ keyResource: arg('--kms-key') });
+  const { sigB64 } = await sealConfig({
+    configPath: arg('--config'), sigPath: arg('--sig'), scriptsRootDir: arg('--scripts-dir'), signer
+  });
+  console.log(`[seal] config sellado + firmado (backend=${backend}). sig ${sigB64.slice(0, 16)}…`);
 }
