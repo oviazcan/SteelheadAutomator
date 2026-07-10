@@ -608,7 +608,7 @@ const BillAutofill = (() => {
         for (const child of parent.children) {
           if (child.contains(sv)) continue;
           const txt = child.textContent?.trim() || '';
-          if (/^vendor:?$/i.test(txt)) {
+          if (/^(?:vendor|proveedor):?$/i.test(txt)) {
             const clone = sv.cloneNode(true);
             clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
             const val = clone.textContent?.trim();
@@ -633,7 +633,7 @@ const BillAutofill = (() => {
         for (const child of parent.children) {
           if (child.contains(sv)) continue;
           const labelText = child.textContent?.trim() || '';
-          if (/divisa/i.test(labelText) && labelText.length < 50) {
+          if (/divisa|currency/i.test(labelText) && labelText.length < 50) {
             return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
           }
         }
@@ -649,7 +649,7 @@ const BillAutofill = (() => {
       if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
       let parent = select.parentElement;
       for (let d = 0; d < 6 && parent; d++) {
-        if (/divisa/i.test(parent.textContent || '') && parent.textContent.length < 300) {
+        if (/divisa|currency/i.test(parent.textContent || '') && parent.textContent.length < 300) {
           return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
         }
         parent = parent.parentElement;
@@ -703,7 +703,7 @@ const BillAutofill = (() => {
     for (const el of lineSection.querySelectorAll('label, span, div, td, th')) {
       if (el.closest('#sa-bill-autofill-panel')) continue;
       const txt = el.textContent?.trim() || '';
-      if (!/^name:?\s*$/i.test(txt) || txt.length > 10) continue;
+      if (!/^(?:name|nombre):?\s*$/i.test(txt) || txt.length > 10) continue;
 
       let found = false;
       // Check next siblings first (label and input are typically siblings)
@@ -742,7 +742,7 @@ const BillAutofill = (() => {
   function findLineItemsSection() {
     const headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div,p');
     for (const h of headings) {
-      if (/line\s*items?/i.test(h.textContent?.trim())) {
+      if (/line\s*items?|l[ií]neas?/i.test(h.textContent?.trim())) {
         return h.closest('section') || h.parentElement?.parentElement || h.parentElement;
       }
     }
