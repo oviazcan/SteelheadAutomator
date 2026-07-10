@@ -2,6 +2,15 @@
 
 **ANTES de empezar a escribir selectores o autollenadores DOM, pídele al usuario el wrapper HTML completo del bloque relevante** (el padre cercano que contiene tanto los labels visibles como los inputs/comboboxes). NO adivines la estructura iterando deploys — perdimos varias rondas en `invoice-autofill` (0.5.16 → 0.5.25) asumiendo `<label for>` cuando el modal manual usaba `<p>Label:</p>` con el field como SIBLING. Una sola inspección del wrapper hubiera resuelto todo en un commit.
 
+## Regla: anclajes de texto SIEMPRE bilingües (ES + EN)
+
+Todo anclaje que dependa de **texto visible del UI** de Steelhead debe matchear **español e inglés**. La UI de SH cambia de idioma por usuario/config, y a veces es **mixta** en el mismo modal (visto 2026-07-09: un modal muestra "Modo:" en ES y "Per Part Count Unit Definitions" en EN a la vez). Un anclaje mono-idioma se rompe silenciosamente al cambiar el locale.
+
+- Aplica a: headings de modal, botones ("Guardar"/"Save", "Cancelar"/"Cancel"), labels de campo, adornos ("/ Part:"/"/ Parte:", "Parts /"/"Partes /"), regex de detección de pantalla.
+- Patrón bueno: `create-order-autofill` → `isCreateOrderModalHeading` matchea `/crear orden de venta|create sales order/i`.
+- **No adivines la traducción:** obtén el string de AMBOS locales antes de anclar; si solo tienes uno, ánclalo y marca la deuda bilingüe en la bitácora.
+- Deuda conocida: `unit-autoconvert` (headingA EN-only, modoP ES-only, "/ Part:" EN-only). Audit repo-wide pendiente (task tracker + CLAUDE.md §"Trabajo con UI / DOM").
+
 ## Patrones de label en Steelhead vistos hasta ahora
 
 - **Forms RJSF (página invoice editada):** `<label class="control-label">` con input/select como sibling cercano. ID típicamente `root_<field>`.
