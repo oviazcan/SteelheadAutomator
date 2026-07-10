@@ -67,7 +67,7 @@ const InvoiceListingMarker = (() => {
     for (const div of candidates) {
       const txt = (div.textContent || '').trim();
       if (!/total\s*:/i.test(txt)) continue;
-      if (!/terms\s*:/i.test(txt)) continue;
+      if (!/terms\s*:|t[eé]rminos\s*:/i.test(txt)) continue;
       const m = txt.match(TOTAL_RE);
       if (!m) continue;
       const isParenNegative = !!(m[1] && m[3]);

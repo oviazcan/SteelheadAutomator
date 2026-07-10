@@ -109,7 +109,7 @@
     const headingA = findByText('p, span, strong, b, h1, h2, h3, h4, h5, h6, div, label', (t) =>
       /^per part count unit definitions:?\s*$/i.test(t));
     if (headingA) injectToggleNear(headingA, 'after');
-    const modoP = findByText('p.MuiTypography-root', (t) => /^modo:?$/i.test(t));
+    const modoP = findByText('p.MuiTypography-root', (t) => /^(?:modo|mode):?$/i.test(t));
     if (modoP) injectToggleNear(modoP.parentElement, 'before');
   }
 

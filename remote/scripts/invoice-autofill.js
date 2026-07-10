@@ -910,7 +910,7 @@ const InvoiceAutofill = (() => {
         for (const child of parent.children) {
           if (child.contains(sv)) continue;
           const labelText = child.textContent?.trim() || '';
-          if (/divisa/i.test(labelText) && labelText.length < 50) {
+          if (/divisa|currency/i.test(labelText) && labelText.length < 50) {
             return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
           }
         }
@@ -924,7 +924,7 @@ const InvoiceAutofill = (() => {
       if (!/mxn|peso|usd|d[oó]lar/i.test(val)) continue;
       let parent = select.parentElement;
       for (let d = 0; d < 6 && parent; d++) {
-        if (/divisa/i.test(parent.textContent || '') && parent.textContent.length < 300) {
+        if (/divisa|currency/i.test(parent.textContent || '') && parent.textContent.length < 300) {
           return /mxn|peso/i.test(val) ? 'MXN' : 'USD';
         }
         parent = parent.parentElement;

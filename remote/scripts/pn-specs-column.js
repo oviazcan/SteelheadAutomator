@@ -101,7 +101,7 @@ const PnSpecsColumn = (() => {
   function findHeaderAnchor() {
     // Ancla natural: el botón "NUEVO NÚMERO DE PARTE" (control propio del dashboard).
     const btn = Array.prototype.slice.call(document.querySelectorAll('button, a'))
-      .find(function (b) { return /NUEVO NÚMERO DE PARTE/i.test((b.innerText || '').trim()); });
+      .find(function (b) { return /nuevo\s+número\s+de\s+parte|new\s+part\s+number/i.test((b.innerText || '').trim()); });
     if (!btn) return null;
     // Sube hasta el wrapper cuyo padre es la barra de controles (varios hijos).
     let el = btn;

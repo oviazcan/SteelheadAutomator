@@ -217,7 +217,7 @@ const CreateOrderAutofill = (() => {
       const picked = c.pickCustomerFromSingleValues(collectSingleValueTexts(root));
       if (picked) return picked.raw;
     }
-    const sv = findSingleValueByLabel(root, /^\s*cliente:?\s*$/i);
+    const sv = findSingleValueByLabel(root, /^\s*(?:cliente|customer):?\s*$/i);
     if (!sv) return null;
     const clone = sv.cloneNode(true);
     clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());

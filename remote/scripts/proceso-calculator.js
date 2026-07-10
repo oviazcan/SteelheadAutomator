@@ -242,7 +242,7 @@ const ProcesosCalculator = (() => {
   const PROCESS_COMPONENT_ID = 'CREATE_PART_NUMBER_DIALOG_DEFAULT_PROCESS';
   const MODAL_HEADING_RE = /proceso\s*y\s*specs|edit\s*part\s*number/i;
   const MATERIAL_LABEL_RE = /^\s*(material|metal\s*base|metal)\s*:?\s*$/i;
-  const LINEA_LABEL_RE = /^\s*l[ií]nea\s*:?\s*$/i;
+  const LINEA_LABEL_RE = /^\s*(?:l[ií]nea|line)\s*:?\s*$/i;
 
   function _ctrlFrom(el) {
     if (!el || !el.querySelector) return null;
