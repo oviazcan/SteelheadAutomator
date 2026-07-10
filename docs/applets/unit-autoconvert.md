@@ -14,7 +14,7 @@ el patrón de `weight-quick-entry`) + aviso de recarga.
 
 ## Pantallas
 - **Panel A:** modal Edit Part Number → FACTORES Y PRECIO → "Per Part Count Unit Definitions"
-  (7 campos default: KGM, LBR, FTK, CMK, FOT, LM, LO; **DMK no tiene campo** → solo por API).
+  (default: KGM, LBR, FTK, CMK, FOT, LM, LO; **DMK ya se agregó como unidad parts-per → ahora también tiene campo** [2026-07-09], así que se DOM-llena como los demás; el path por API queda de fallback).
 - **Panel B:** modal "Definir Unidades Para <PN>" (tabla Unidad | Unidades/Parts | Parts/Unit).
 
 ## Decisiones
@@ -34,10 +34,10 @@ el patrón de `weight-quick-entry`) + aviso de recarga.
   fallback `GetPartNumber` por pnId.
 - Llamadas API serializadas (cola en `S.apiQueue`) para que blurs concurrentes no dupliquen conversiones.
 
-## Riesgo #1 a validar en vivo (BLOQUEANTE antes de exponer)
-- **SAVE del modal vs conversiones sin campo (DMK creado por API):** ¿el SAVE del modal hace
-  **merge** (DMK sobrevive) o **replace** (DMK se borra)? Probar: CMK→Tab crea DMK por API → SAVE →
-  recargar y verificar si DMK persiste. <RESULTADO: pendiente validación en vivo> — <acción tomada>.
+## Riesgo #1 — RESUELTO (2026-07-09, confirmado en vivo por el usuario)
+- **SAVE del modal hace MERGE, no replace:** el DMK creado por API **sobrevive** al SAVE y a la recarga. El riesgo destructivo queda descartado.
+- **Además, el usuario configuró DMK como unidad "parts per" → ahora DMK SIEMPRE aparece como campo en el modal (Panel A).** Consecuencia de diseño: como el enrutamiento DOM-vs-API es **dinámico** (`onFocusOut`→`findPeerInput`: si hay campo, DOM; si no, `missing`→API), **DMK ahora se DOM-llena automáticamente, sin cambio de código.** El path por API de DMK queda como fallback (prácticamente muerto), y el pendiente de `SearchUnits`/pinear el id de DMK se vuelve **innecesario**.
+- **Único cierre pendiente:** confirmar que la **etiqueta del campo DMK** matchee `findPeerInput` Panel A (`unit-autoconvert.js:157`, regex `/ Part:` + `Core.unitCodeFromText(label)==='DMK'`). Depende del formato exacto de la etiqueta que Steelhead renderiza para la unidad recién configurada → requiere el HTML del campo (ver §Pendientes).
 
 ## Watch-items de validación en vivo (salieron en code review)
 - **Scope modal vs ficha (eco de `proceso-calculator` v0.1.3/0.1.4):** `findPeerInput` Panel A escanea
@@ -51,6 +51,8 @@ el patrón de `weight-quick-entry`) + aviso de recarga.
   (verificado en el HTML provisto). Loguear `peerInput` en la 1ª validación para confirmar.
 
 ## Pendientes
-- Pinear `DMK` en `config.steelhead.domain.unitIds` (id confirmado: <PENDIENTE confirmar en vivo vía SearchUnits>).
-- Confirmar permisos: operador no-admin escribiendo `CreateInventoryItemUnitConversion`.
-- Deploy a `gh-pages` + bump `config.version` (Task 7 del plan, tras validación).
+- ~~Pinear `DMK` en `config.steelhead.domain.unitIds`~~ **YA NO APLICA** (DMK ahora es campo del modal → DOM, sin API/SearchUnits).
+- **Confirmar la etiqueta del campo DMK** contra `findPeerInput`/`unitCodeFromText` — pedir al usuario el HTML del wrapper del campo DMK en Panel A (y su fila en Panel B). Si el primer token de la etiqueta no es `DMK`, ajustar `Core.unitCodeFromText` o el matcher.
+- Confirmar permisos: operador no-admin escribiendo `CreateInventoryItemUnitConversion` (solo relevante para el fallback API de pares realmente ausentes; menos crítico ahora).
+- Validación en vivo de los conversores (Panel A/B, Superficie CMK↔DMK↔FTK ahora todo DOM) + los watch-items de code review.
+- Deploy a `gh-pages` + bump `config.version` (tras validación).
