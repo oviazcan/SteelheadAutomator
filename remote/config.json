@@ -1,6 +1,6 @@
 {
-  "version": "1.7.100",
-  "lastUpdated": "2026-07-09T23:11",
+  "version": "1.7.101",
+  "lastUpdated": "2026-07-11T22:31",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -147,7 +147,7 @@
         "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d",
         "AllQuotes": "2586de5e163de4830ed45194ecc1944a10cfc0e006cd9e3fa1557871ec3e469e",
         "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb",
-        "AllCustomers": "8d4dfe69d3050a16ad802015e6d14b6458db5266e62c67a2321d23b440086037",
+        "AllCustomers": "a45bcf6cbaccfbfc317d3264ce4f3e9bd8f896852cb89af989ad3f281fae3b33",
         "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6",
         "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888",
         "ReceivingBatchesQuery": "55a06a3013d465596d24cc3893f2c163a08f78c00d20a17d746e4cddce197d4e",
