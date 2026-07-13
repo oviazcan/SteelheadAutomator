@@ -4,7 +4,7 @@
 // route-catalog.json que las cubre (selectRoutes), abre chromium headless con la
 // cookie de sesión, corre SOLO esas rutas, intercepta /graphql y captura los
 // hashes que el frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
@@ -14,6 +14,7 @@ import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { selectRoutes, opsToCapture, staleMutations } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
+import { appletsForOp, formatOpLine } from './applet-attribution.mjs';
 
 // Fecha YYYY-MM-DD en hora LOCAL — debe coincidir con la que validate-hashes.py
 // usa para nombrar tools/.hash-validation/<date>.json (datetime.now(), local). NO
@@ -28,7 +29,25 @@ export function dateStrLocal(d) {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = join(__dirname, '../../remote/config.json');
+const SCRIPTS_DIR = join(__dirname, '../../remote/scripts');
 const RESULTS_DIR = join(__dirname, '../.hash-autopilot');
+
+// Carga el contenido de remote/scripts/*.js (nombre→fuente) para atribuir cada op
+// rota/no-capturada a los applets que TRUENAN. Fail-safe: si no hay scripts, {}.
+function loadScriptSources() {
+  const out = {};
+  try {
+    for (const f of readdirSync(SCRIPTS_DIR)) {
+      if (!f.endsWith('.js')) continue;
+      out[f.replace(/\.js$/, '')] = readFileSync(join(SCRIPTS_DIR, f), 'utf8');
+    }
+  } catch { /* sin carpeta de scripts → sin atribución */ }
+  return out;
+}
+function loadKnownOperations() {
+  try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')).knownOperations || {}; }
+  catch { return {}; }
+}
 // Session-sensitive: el validator (idp-token) no las puede ver → se capturan
 // SIEMPRE que haya release. El resto se capturan solo si el validator las marcó stale.
 const SESSION_SENSITIVE = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrderDetail', 'AllSensorDashboards', 'SensorDashboardQuery'];
@@ -236,25 +255,31 @@ async function main() {
   // (Antes se mandaban hasta 6 correos separados; ahora se consolida en un reporte único.)
   const uncoveredNew = plan0.uncovered.filter((op) => !knownNoRoute.has(op));
   if (!DRY) {
+    // Atribución op→applet: qué applets de remote/scripts truenan si la op rota/no
+    // se captura. Se resuelve por grep de los .js (fallback: config.knownOperations.usedBy).
+    const scriptSources = loadScriptSources();
+    const knownOps = loadKnownOperations();
+    const appletsOf = (op) => appletsForOp(op, scriptSources, (knownOps[op] || {}).usedBy || '');
+    const line = (op) => `   • ${formatOpLine(op, appletsOf(op))}`;
     const sec = [];
     if (deployed && plan.toDeploy.length) {
-      sec.push(`✅ CORREGIDAS Y DEPLOYADAS (${plan.toDeploy.length}):\n${plan.toDeploy.map((r) => `   • ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash.slice(0, 8)}…`).join('\n')}`);
+      sec.push(`✅ CORREGIDAS Y DEPLOYADAS (${plan.toDeploy.length}):\n${plan.toDeploy.map((r) => `   • ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash.slice(0, 8)}… — applets: ${appletsOf(r.op).join(', ') || '—'}`).join('\n')}`);
     }
     if (plan.massBrake) {
       const rotados = results.filter((r) => r.verdict === 'rotadoValidado').map((r) => r.op).join(', ');
       sec.push(`⚠️ FRENO DE MASA — NO se deployó (${plan.reason}):\n   Rotados detectados: ${rotados}\n   Revisa manualmente (posible captura corrupta o cambio grande de Steelhead).`);
     }
     if (plan.suspicious.length) {
-      sec.push(`⚠️ SOSPECHOSOS (${plan.suspicious.length}) — difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => `   • ${r.op}`).join('\n')}`);
+      sec.push(`⚠️ SOSPECHOSOS (${plan.suspicious.length}) — difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => line(r.op)).join('\n')}`);
     }
     if (notCapturedNew.length) {
-      sec.push(`❌ QUERIES NO CAPTURADAS (${notCapturedNew.length}) — la receta no disparó la op (por afinar la ruta):\n${notCapturedNew.map((r) => `   • ${r.op}`).join('\n')}`);
+      sec.push(`❌ QUERIES NO CAPTURADAS (${notCapturedNew.length}) — la receta no disparó la op (por afinar la ruta):\n${notCapturedNew.map((r) => line(r.op)).join('\n')}`);
     }
     if (uncoveredNew.length) {
-      sec.push(`❌ QUERIES SIN RUTA (${uncoveredNew.length}) — stale sin ruta en route-catalog.json:\n${uncoveredNew.map((op) => `   • ${op}`).join('\n')}`);
+      sec.push(`❌ QUERIES SIN RUTA (${uncoveredNew.length}) — stale sin ruta en route-catalog.json:\n${uncoveredNew.map((op) => line(op)).join('\n')}`);
     }
     if (pendingMuts.length) {
-      sec.push(`🔧 MUTATIONS ROTADAS SIN CAPTURAR (${pendingMuts.length}) — el ciclo sentinela no las resolvió (sin handler DOM o el ciclo no capturó el hash); requieren captura manual:\n${pendingMuts.map((op) => `   • ${op}`).join('\n')}`);
+      sec.push(`🔧 MUTATIONS ROTADAS SIN CAPTURAR (${pendingMuts.length}) — el ciclo sentinela no las resolvió (sin handler DOM o el ciclo no capturó el hash); requieren captura manual:\n${pendingMuts.map((op) => line(op)).join('\n')}`);
     }
     if (sec.length) {
       const nCorregidas = deployed ? plan.toDeploy.length : 0;
