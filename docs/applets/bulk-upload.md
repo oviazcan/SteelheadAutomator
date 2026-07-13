@@ -2,6 +2,9 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
+## Add 2026-07-13 (1.5.32) — aviso de REEMPLAZO de specs en el preview
+El operador podía sorprenderse: usar `-` en cualquiera de las 4 celdas de spec activa el **archive sentinel** (`hasArchiveSentinel`, `bulk-upload.js:5430`) → no solo agrega las specs listadas, sino que **archiva TODAS las que el PN ya tenga y no estén en el CSV** (reemplazo, no suma; solo borra en PN existentes). Fix: banner ámbar en `showPreview` (bajo la línea de conteos, junto al badge de intención F5) que cuenta las filas con `-` en specs y cuántas son PN existentes, y aclara "deja la celda VACÍA si solo quieres agregar". Mismo criterio de detección que la ejecución (`part.specs.some(s => s.name === '-')`). Aviso puro de UI, no toca la lógica de archivado. `renderPreview` no rompe si falla (try/catch).
+
 > **Spec y plan de la 1.5.20:** [`docs/superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md`](../superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md) · [`docs/superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md`](../superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md)
 
 ## Sesión 2026-07-06/07 — Carga por Id SH: hash rotado, fix de precio no deseado, robustez y fetch dirigido
