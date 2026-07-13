@@ -2406,10 +2406,33 @@ const BulkUpload = (() => {
         }
       } catch (_) { /* el badge nunca rompe el preview */ }
 
+      // Aviso de REEMPLAZO de specs (archive sentinel): una fila con "-" en cualquiera de
+      // sus specs archiva TODAS las specs que el PN ya tenga y NO estén en el CSV — es
+      // reemplazo, no suma. Solo borra de verdad en PN existentes. Mismo criterio que la
+      // ejecución (STEP 6b, hasArchiveSentinel). El operador debe saberlo antes de ejecutar.
+      let specReplaceWarn = '';
+      try {
+        let sentinelRows = 0, sentinelExisting = 0;
+        parts.forEach((p, i) => {
+          const has = Array.isArray(p.specs) && p.specs.length > 0 && p.specs.some(s => s && s.name === '-');
+          if (!has) return;
+          sentinelRows++;
+          if (pnStatus[i] && pnStatus[i].status === 'existing') sentinelExisting++;
+        });
+        if (sentinelRows > 0) {
+          specReplaceWarn = `<div style="background:#78350f;border:1px solid #f59e0b;color:#fde68a;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:12.5px;line-height:1.45">`
+            + `⚠️ <b>${sentinelRows}</b> fila(s) usan <code style="background:#0f172a;padding:0 4px;border-radius:3px">-</code> en specs → <b>REEMPLAZO, no suma</b>: se <b>archivarán</b> TODAS las specs que el PN ya tenga y que NO estén en el CSV`
+            + (sentinelExisting > 0 ? ` (<b>${sentinelExisting}</b> son PN existentes donde el borrado sí ocurre)` : ` — aplica solo si el PN ya existe`)
+            + `. Si solo quieres <b>agregar</b> specs sin borrar las demás, <b>deja esas celdas vacías</b> en vez de <code style="background:#0f172a;padding:0 4px;border-radius:3px">-</code>.`
+            + `</div>`;
+        }
+      } catch (_) { /* el aviso nunca rompe el preview */ }
+
       modal.style.background = modeBg;
       modal.innerHTML = `
         <h2 style="color:${modeColor}">Steelhead Automator v10 — ${modeLabel}</h2>
         <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup${intentBadge}${pendingCount > 0 ? ` · <span class="dl9-pending-chip"><b>${pendingCount}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">Solo pendientes</button>` : ''}</p>
+        ${specReplaceWarn}
         ${statsHtml}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center">
           <label style="font-size:12px;color:#94a3b8">Filtro:
