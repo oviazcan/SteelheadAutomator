@@ -130,7 +130,7 @@
       inputSchemaId: node.inputSchemaId, customInputs: node.customInputs || {},
       glAccountId: fk('glAccountByGlAccountId'), taxCodeId: fk('taxCodeByTaxCodeId'), certPdfTemplateId: node.certPdfTemplateId ?? null,
       userFileName: null, inventoryItemInput, isOneOff: false, isTemplatePartNumber: !!node.isTemplate, isCoupon: !!node.isCoupon, shipDisassembled: false,
-      descriptionMarkdown: node.descriptionMarkdown || '', customerFacingNotes: node.customerFacingNotes || '',
+      descriptionMarkdown: node.descriptionMarkdown || '', externalNotes: (node.externalNotes ?? node.customerFacingNotes) || '',
       labelIds, ownerIds: [], optInOuts: opt, defaults: dfl,
       inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
       partNumberSpecsToArchive: [], partNumberSpecsToUnarchive: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
