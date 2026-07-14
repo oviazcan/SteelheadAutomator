@@ -135,7 +135,9 @@ async function main() {
   // se resuelve cuando main() realmente abre el navegador.
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
+  // Viewport grande: los grids de MUI virtualizan y NO rinden filas en un viewport
+  // chico headless → sin filas no hay <Link> de detalle que clicar (captura fallaba).
+  const context = await browser.newContext({ viewport: { width: 1680, height: 1200 } });
   await context.addInitScript(makeRocpInit(tokens, DOMAIN_NANO), {
     access: tokens.access, refresh: tokens.refresh, expEpoch: tokens.expEpoch,
     state: randomUUID(), domainNano: DOMAIN_NANO,

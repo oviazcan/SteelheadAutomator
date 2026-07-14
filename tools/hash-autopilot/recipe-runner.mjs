@@ -47,16 +47,15 @@ export async function runRecipe(page, recipe, domain, sink, stepTimeoutMs = 2500
 
   for (const step of recipe.steps) {
     if (step.goto) {
-      await page.goto(url(step.goto), { waitUntil: 'domcontentloaded' });
+      // domcontentloaded es rápido; el SPA hidrata después. Timeout amplio (red lenta
+      // headless) y no-throw: seguimos aunque la carga no "complete" del todo.
+      await page.goto(url(step.goto), { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
     } else if (step.clickFirst) {
-      await page.waitForTimeout(2000);
-      const handle = await page.evaluateHandle(({ sel, reSrc }) => {
-        const re = reSrc ? new RegExp(reSrc) : null;
-        const els = [...document.querySelectorAll(sel)];
-        return els.find((a) => !re || re.test(a.getAttribute('href') || '')) || null;
-      }, { sel: step.clickFirst, reSrc: step.hrefMatches || null });
-      const el = handle.asElement();
-      if (el) await el.click();
+      // CLIENT-SIDE nav: espera ACTIVA a que la lista rinda el <Link> de detalle
+      // (headless tarda en hidratar + fetchear filas) y hace CLIC REAL → dispara la
+      // query de detalle sin re-bootstrapear el SPA (page.goto sí lo re-bootstrapea
+      // y por eso NO fetcheaba). Reintenta el clic hasta capturar o vencer.
+      await clickFirstMatching(page, step.clickFirst, step.hrefMatches || null, sink, need, stepTimeoutMs);
     }
     // espera activa: pollea hasta capturar las ops de la receta o vencer timeout
     const start = Date.now();
@@ -64,4 +63,37 @@ export async function runRecipe(page, recipe, domain, sink, stepTimeoutMs = 2500
       await page.waitForTimeout(600);
     }
   }
+}
+
+// Espera hasta timeoutMs a que aparezca un <a> que matchee sel (+ hrefMatches) y
+// hace CLIC REAL (client-side). Reintenta si la lista aún no rindió filas. Para en
+// cuanto captura las ops o vence. Devuelve true si logró clicar.
+async function clickFirstMatching(page, sel, hrefMatches, sink, need, timeoutMs) {
+  const haveAll = () => need.length > 0 && need.every((op) => sink && sink.hashes[op]);
+  const deadline = Date.now() + timeoutMs;
+  let clickedOnce = false;
+  while (Date.now() < deadline && !haveAll()) {
+    let handle = null;
+    try {
+      handle = await page.evaluateHandle(({ sel, reSrc }) => {
+        const re = reSrc ? new RegExp(reSrc) : null;
+        const els = [...document.querySelectorAll(sel)];
+        return els.find((a) => !re || re.test(a.getAttribute('href') || '')) || null;
+      }, { sel, reSrc: hrefMatches });
+      const el = handle.asElement();
+      if (el) {
+        await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+        await el.click({ timeout: 5000 });
+        clickedOnce = true;
+        // Tras clicar, dale una ventana a que dispare la query antes de reintentar.
+        const t = Date.now();
+        while (!haveAll() && Date.now() - t < 4000) await page.waitForTimeout(400);
+      } else {
+        await page.waitForTimeout(600); // lista aún sin filas → reintentar
+      }
+    } catch { await page.waitForTimeout(500); }
+    finally { if (handle) await handle.dispose().catch(() => {}); }
+    if (clickedOnce && haveAll()) break;
+  }
+  return clickedOnce;
 }
