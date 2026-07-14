@@ -214,6 +214,24 @@ async function createMaintenanceEventOnSentinela(page, domain, sink) {
   // con el sink); el toggle de Archived sí.
   await archiveCurrentMaintenanceEvent(page);
 }
+// receivedOrderEdit: UpdateReceivedOrder se dispara al GUARDAR el header de una OV
+// EXISTENTE en el modal "Edit Sales Order" (botón SAVE). Cambiamos el PO# (campo inocuo,
+// placeholder estable) y lo restauramos. Modal + PO# + SAVE VALIDADOS headless
+// (2026-07-14); el CICLO completo requiere una OV Sentinela real (id en config, hoy 0).
+// Deuda bilingüe: el placeholder "…PO# or PO Name" y el selector de NAME son EN-only.
+async function editSalesOrderPoAndSave(page, value) {
+  const openBtn = page.locator('button, [role="button"]').filter({ hasText: /edit sales order|editar orden de venta/i }).first();
+  await openBtn.scrollIntoViewIfNeeded().catch(() => {});
+  await openBtn.click({ timeout: 8000 }).catch(() => {});
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Sales Order|Editar Orden de Venta/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  const po = dialog.locator('input[placeholder*="PO#"], input[placeholder*="no PO"]').first();
+  await po.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  await po.fill(String(value)).catch(() => {});
+  // SAVE dispara UpdateReceivedOrder (requiere un cambio real en el header)
+  await dialog.locator('button').filter({ hasText: /^(SAVE|Guardar)$/i }).first().click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+}
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -272,6 +290,26 @@ const HANDLERS = {
     async restore(page, { domain }) {
       // archivar TODAS las OV Sentinela creadas por el ciclo (limpieza) — SIEMPRE
       await archiveSentinelaOVs(page, domain);
+    },
+  },
+  receivedOrderEdit: {
+    async load(page, { id, domain }) {
+      // OV EXISTENTE marcada "Sentinela" (edit-restore). Fail-closed: si el detalle NO
+      // contiene "Sentinela", name='' → runMutationCycle NO muta. (Selector fino del name
+      // por afinar con la OV real; el body-scan es la salvaguarda mínima + el gate por id.)
+      await page.goto(`${BASE}/Domains/${domain}/SalesOrders/${id}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+      const isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+      if (process.env.SA_DBG) console.log(`       [dbg] receivedOrderEdit load id=${id} isSentinela=${isSent}`);
+      return { name: isSent ? 'Sentinela' : '' };
+    },
+    async mutate(page) {
+      // cambio real del PO# → SAVE dispara UpdateReceivedOrder
+      await editSalesOrderPoAndSave(page, 'SA-SENTINEL-CAP');
+    },
+    async restore(page) {
+      // restaurar el PO# a vacío (base del sentinela) — SIEMPRE
+      await editSalesOrderPoAndSave(page, '');
     },
   },
   maintenanceNode: {
