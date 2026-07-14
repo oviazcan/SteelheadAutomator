@@ -1,5 +1,16 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.33 (2026-07-13): FIX CRÍTICO — SavePartNumberInput renombró
+//   `customerFacingNotes` → `externalNotes` (Steelhead Product Update). El campo
+//   viejo daba HTTP 400 "Field customerFacingNotes is not defined by type
+//   SavePartNumberInput" en la coerción de variables → TODAS las filas fallaban
+//   (Call A y Call B) → ninguna spec se aplicaba. Confirmado vía probe directo al
+//   /graphql (input:[{}] → required = {name,optInOuts,defaults}; identifierInput sin
+//   customerFacingNotes coerciona OK; externalNotes válido; GetPartNumber también
+//   regresa `externalNotes`, ej. PN 2300153 = "Welding C4"). Fix: rename en los 7
+//   inputs de SavePartNumber + leer preservación de `existingPnNode.externalNotes`
+//   (leer el nombre viejo daría undefined → borraría las notas de PNs existentes).
+//
 // VERSION 1.5.12 (2026-05-30): combinación no existente — modal blocking en
 //   resolución de procesos. En vez de throw inmediato cuando un nombre de
 //   proceso del CSV no existe en el catálogo de Steelhead (caso típico:
@@ -230,7 +241,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.32';
+  const VERSION = '1.5.33';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -4449,7 +4460,7 @@ const BulkUpload = (() => {
           geometryTypeId: null, userFileName: null, inventoryItemInput: null,
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
           isOneOff: false, isTemplatePartNumber: false, isCoupon: false, partNumberGroupId: groupId,
-          descriptionMarkdown: '', customerFacingNotes: '',
+          descriptionMarkdown: '', externalNotes: '',
           labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
           inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
           partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
@@ -4703,7 +4714,7 @@ const BulkUpload = (() => {
                 glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
                 partNumberGroupId: sentinelPnGroupId,
                 descriptionMarkdown: pnNode.descriptionMarkdown || '',
-                customerFacingNotes: pnNode.customerFacingNotes || '',
+                externalNotes: pnNode.externalNotes || '',
                 labelIds: sentExistingLabelIds, ownerIds: [], defaults: [], optInOuts: [],
                 inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
                 partNumberDimensions: sentExistingDims, partNumberLocations: [], dimensionCustomValueIds: sentExistingDimCustomValueIds,
@@ -5139,7 +5150,7 @@ const BulkUpload = (() => {
           if (!pnId) continue;
           pnLookup.set(i, {
             qpnp: null, pnp: null,
-            pn: { id: pnId, name: part.pn, customerId: part.customerId, defaultProcessNodeId: part.processId, customInputs: {}, descriptionMarkdown: '', customerFacingNotes: '', geometryTypeId: null, partNumberGroupId: null },
+            pn: { id: pnId, name: part.pn, customerId: part.customerId, defaultProcessNodeId: part.processId, customInputs: {}, descriptionMarkdown: '', externalNotes: '', geometryTypeId: null, partNumberGroupId: null },
             ql: null
           });
         }
@@ -5650,7 +5661,7 @@ const BulkUpload = (() => {
           const identifierInput = {
             id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId,
             descriptionMarkdown: existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? '',
-            customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
+            externalNotes: existingPnNode?.externalNotes ?? pn.externalNotes ?? '',
             customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {},
             inputSchemaId: runtimeInputSchemaId,
             labelIds: labelIdsToSend,
@@ -5880,7 +5891,7 @@ const BulkUpload = (() => {
         const pnInput = {
           id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? ''),
-          customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
+          externalNotes: existingPnNode?.externalNotes ?? pn.externalNotes ?? '',
           customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: runtimeInputSchemaId, labelIds: labelIdsToSend,
           partNumberGroupId: pnGroupId,
           geometryTypeId: resolvedGeometryTypeId,
@@ -5983,7 +5994,7 @@ const BulkUpload = (() => {
             id: pn.id, name: pnInput.name, customerId: pnInput.customerId,
             defaultProcessNodeId: pnInput.defaultProcessNodeId,
             descriptionMarkdown: pnInput.descriptionMarkdown,
-            customerFacingNotes: pnInput.customerFacingNotes,
+            externalNotes: pnInput.externalNotes,
             customInputs: pnInput.customInputs, inputSchemaId: pnInput.inputSchemaId,
             labelIds: pnInput.labelIds, partNumberGroupId: pnInput.partNumberGroupId,
             geometryTypeId: pnInput.geometryTypeId,
@@ -6404,7 +6415,7 @@ const BulkUpload = (() => {
               isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
               partNumberGroupId: cleanupPnGroupId,
               descriptionMarkdown: pnNode.descriptionMarkdown || '',
-              customerFacingNotes: pnNode.customerFacingNotes || '',
+              externalNotes: pnNode.externalNotes || '',
               labelIds: cleanupExistingLabelIds, ownerIds: [], defaults: [], optInOuts: cleanupOptInOuts,
               // 1.5.17: inventoryPredictedUsages queda [] a propósito — el campo es
               // additive/create-only (Call B ~5394 filtra existentes para no duplicar;
