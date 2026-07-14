@@ -9,10 +9,18 @@ export async function installInterceptor(page, sink) {
     const req = route.request();
     let body = null;
     try { body = req.postDataJSON(); } catch { try { body = JSON.parse(req.postData() || '{}'); } catch { body = null; } }
-    const resp = await route.fetch();
-    let json = null;
-    try { json = await resp.json(); } catch { json = null; }
-    await route.fulfill({ response: resp });
+    // Re-fetch + fulfill DEFENSIVO: si el re-fetch truena (blip de red, request
+    // abortada por navegación) NO debe tumbar toda la corrida. Deja pasar la
+    // request normal (continue) o la aborta; solo se pierde esa captura.
+    let resp = null, json = null;
+    try {
+      resp = await route.fetch();
+      try { json = await resp.json(); } catch { json = null; }
+      await route.fulfill({ response: resp });
+    } catch (e) {
+      try { await route.continue(); } catch { try { await route.abort(); } catch { /* route ya resuelta */ } }
+      return;
+    }
     const ops = Array.isArray(body) ? body : [body];
     const datas = Array.isArray(json) ? json : [json];
     ops.forEach((op, i) => {

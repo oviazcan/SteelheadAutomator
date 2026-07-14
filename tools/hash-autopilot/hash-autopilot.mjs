@@ -15,6 +15,9 @@ import { readConfigHashes } from './config-io.mjs';
 import { selectRoutes, opsToCapture, staleMutations } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
 import { appletsForOp, formatOpLine } from './applet-attribution.mjs';
+import { classifyProbe, summarizeProbes, gateByProbe } from './probe-classify.mjs';
+import { probeOnPage } from './probe-run.mjs';
+import { fetchProductUpdates, formatUpdatesContext } from './product-updates.mjs';
 
 // Fecha YYYY-MM-DD en hora LOCAL — debe coincidir con la que validate-hashes.py
 // usa para nombrar tools/.hash-validation/<date>.json (datetime.now(), local). NO
@@ -141,6 +144,17 @@ async function main() {
   const sink = { hashes: {}, data: {}, responseOk: {} };
   await installInterceptor(page, sink);
 
+  // Contexto ANTES de auto-corregir: leer /ProductUpdates para PISTAS de qué cambió
+  // en Steelhead (ayuda a entender/atribuir una rotación). Fail-safe: si truena,
+  // sigue sin contexto.
+  let productUpdates = { entries: [], snippet: '', title: '', url: '' };
+  try {
+    productUpdates = await fetchProductUpdates(page);
+    const nEnt = (productUpdates.entries || []).length;
+    console.log(`\n=== ProductUpdates (contexto) === ${nEnt} entrada(s) | bodyLen=${productUpdates.bodyLen || 0} | "${productUpdates.title || ''}" | ${productUpdates.url || ''}`);
+    if (nEnt) console.log(`   e.g.: ${(productUpdates.entries[0] || '').slice(0, 120)}`);
+  } catch (e) { console.log(`(ProductUpdates falló: ${String(e).slice(0, 80)} — sin contexto)`); }
+
   for (const route of plan0.routes) {
     if (ONLY && !(route.captures || []).includes(ONLY)) continue;
     try {
@@ -183,6 +197,35 @@ async function main() {
     }
   }
 
+  // ── Probe directo: señal PRIMARIA de rotación real ──────────────────────────
+  // Prueba el hash DEL CONFIG de cada op target directo contra /graphql (cookie de
+  // sesión, en la page ya autenticada). "Must provide a query string" = STALE de
+  // verdad. Distingue rotación real de "el page.goto no disparó la op" (falsa
+  // alarma que hacía llorar al correo). Fail-open si truena → gating desactivado.
+  let probeVerdicts = {};
+  try {
+    // CLAVE: quitar el interceptor ANTES de probar. Si sigue activo, captura las
+    // requests del propio probe (que llevan el hash DEL CONFIG) y contamina
+    // sink.hashes → classifyOp creería "capturado==config==vigente" en todas y el
+    // gating se quedaría sin notCaptured. El unroute deja la captura ya hecha intacta.
+    await page.unroute('**/*graphql*').catch(() => {});
+    // Estabilizar la page antes de probar: ir a un app page conocido (una receta
+    // pudo dejarla a media navegación fallida → "Execution context destroyed").
+    await page.goto(`https://app.gosteelhead.com/Domains/${DOMAIN}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(1500);
+    const cfgForProbe = readConfigHashes(CONFIG_PATH);
+    const probeEntries = [...new Set([...wantOps, ...plan0.uncovered])]
+      .filter((op) => cfgForProbe[op]).map((op) => [op, cfgForProbe[op]]);
+    if (probeEntries.length) {
+      const rawProbe = await probeOnPage(page, probeEntries);
+      const classified = rawProbe.map((r) => ({ op: r.op, verdict: classifyProbe(r) }));
+      for (const c of classified) probeVerdicts[c.op] = c.verdict;
+      const psum = summarizeProbes(classified);
+      console.log(`\n=== probe directo (señal primaria de rotación) ===`);
+      console.log(`  🔺 STALE real: ${psum.stale.join(', ') || '(ninguna)'} | ✓ vigentes: ${psum.vigente.length} | ⚠️ auth/unknown: ${psum.auth.length + psum.unknown.length}`);
+    }
+  } catch (e) { console.log(`(probe falló: ${String(e).slice(0, 80)} — fail-open, sin gating)`); probeVerdicts = {}; }
+
   await browser.close();
 
   // Auth check: si no capturó NADA, la sesión no autenticó (tokens vencidos).
@@ -215,7 +258,7 @@ async function main() {
   if (plan.toDeploy.length) console.log(`\n🔺 Rotados validados: ${plan.toDeploy.map((r) => r.op).join(', ')}${DRY ? ' (dry-run: no deploya)' : ''}`);
   if (plan.notCaptured.length) console.log(`· No capturados (receta por afinar): ${plan.notCaptured.map((r) => r.op).join(', ')}`);
 
-  persistResult({ date: RUN_DATE, authFailed: false, results, plan });
+  persistResult({ date: RUN_DATE, authFailed: false, results, plan, probeVerdicts, productUpdates: { entries: productUpdates.entries || [], url: productUpdates.url || '' } });
 
   // Auto-deploy de los rotados validados (salvo dry-run / freno de masa).
   let deployed = false;
@@ -234,6 +277,19 @@ async function main() {
   // escalamiento y de la notificación — son estáticos, no un cambio de UI nuevo.
   const notCapturedNew = plan.notCaptured.filter((r) => !knownNoRoute.has(r.op));
 
+  // Gating por probe (señal primaria): de las no-capturadas, separa rotación REAL
+  // (probe 'stale') de FALSA ALARMA (probe 'vigente' = el hash del config vive; el
+  // page.goto solo no disparó la op). Las vigentes se SUPRIMEN (fin del "cry wolf");
+  // stale + no-concluyentes (auth/unknown/sin probe) se escalan. probeVerdicts vacío
+  // = fail-open (todo se escala como antes). Las 'stale' que no capturamos son las
+  // ROTACIONES REALES que urge atender (habrían cazado SearchUnits/GetInventoryItem).
+  const gate = gateByProbe(notCapturedNew.map((r) => r.op), probeVerdicts);
+  const escalateSet = new Set([...gate.realStale, ...gate.unconfirmed]);
+  const notCapturedEscalate = notCapturedNew.filter((r) => escalateSet.has(r.op));
+  const realStaleRows = notCapturedNew.filter((r) => gate.realStale.includes(r.op));
+  const unconfirmedRows = notCapturedNew.filter((r) => gate.unconfirmed.includes(r.op));
+  if (gate.falseAlarms.length) console.log(`  (falsas alarmas suprimidas — probe=vigente: ${gate.falseAlarms.join(', ')})`);
+
   // Mutations stale que el ciclo sentinela NO resolvió (sin handler DOM, o el ciclo
   // no capturó el hash) → siguen requiriendo captura manual. Las que Fase C SÍ
   // capturó/deployó ya salen en "CORREGIDAS Y DEPLOYADAS" y NO deben reportarse
@@ -247,8 +303,10 @@ async function main() {
   });
 
   // Escalamiento (Task 9): rutas que no capturaron → señal para el cron de Claude.
-  if (!DRY && notCapturedNew.length) {
-    writeNeedsAttention(notCapturedNew, catalog.routes, RUN_DATE);
+  // Solo las escalables (rotación real + no-concluyentes); las falsas alarmas
+  // (probe=vigente) NO gastan el cron.
+  if (!DRY && notCapturedEscalate.length) {
+    writeNeedsAttention(notCapturedEscalate, catalog.routes, RUN_DATE);
   }
 
   // Notificación por correo — UN solo correo con el reporte completo de éxito/fallo.
@@ -272,9 +330,14 @@ async function main() {
     if (plan.suspicious.length) {
       sec.push(`⚠️ SOSPECHOSOS (${plan.suspicious.length}) — difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => line(r.op)).join('\n')}`);
     }
-    if (notCapturedNew.length) {
-      sec.push(`❌ QUERIES NO CAPTURADAS (${notCapturedNew.length}) — la receta no disparó la op (por afinar la ruta):\n${notCapturedNew.map((r) => line(r.op)).join('\n')}`);
+    if (realStaleRows.length) {
+      sec.push(`🔺 ROTACIONES REALES SIN CAPTURAR (${realStaleRows.length}) — el probe confirma el hash del config MUERTO y el motor no capturó el nuevo (captura pendiente por scan/receta). URGE:\n${realStaleRows.map((r) => line(r.op)).join('\n')}`);
     }
+    if (unconfirmedRows.length) {
+      sec.push(`❓ NO CAPTURADAS, PROBE NO CONCLUYENTE (${unconfirmedRows.length}) — ni se capturó ni el probe pudo confirmar (auth/red). Revisar:\n${unconfirmedRows.map((r) => line(r.op)).join('\n')}`);
+    }
+    // Las falsas alarmas (probe=vigente) NO van al correo — son el ruido que
+    // causaba el "cry wolf". Quedan solo en el log de consola (arriba).
     if (uncoveredNew.length) {
       sec.push(`❌ QUERIES SIN RUTA (${uncoveredNew.length}) — stale sin ruta en route-catalog.json:\n${uncoveredNew.map((op) => line(op)).join('\n')}`);
     }
@@ -283,10 +346,11 @@ async function main() {
     }
     if (sec.length) {
       const nCorregidas = deployed ? plan.toDeploy.length : 0;
-      const nPendientes = notCapturedNew.length + uncoveredNew.length + pendingMuts.length + plan.suspicious.length;
+      const nPendientes = notCapturedEscalate.length + uncoveredNew.length + pendingMuts.length + plan.suspicious.length;
       const tipo = plan.massBrake ? 'revision' : nPendientes === 0 ? 'exito' : nCorregidas > 0 ? 'revision' : 'fallo';
       const asunto = `hash-autopilot: ${nCorregidas} corregida(s), ${nPendientes} pendiente(s)`;
-      const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
+      const ctx = formatUpdatesContext(productUpdates);
+      const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}${ctx ? '\n\n' + ctx : ''}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
       // Correo SOLO en corrida productiva. En modo prueba (--dry-run/--no-deploy/--only)
       // no se notifica: son corridas de depuración y el reporte es parcial/engañoso.
       if (DRY || NO_DEPLOY || ONLY) {

@@ -53,3 +53,23 @@ export function summarizeProbes(results) {
 export function buildProbeBody(op, cfgHash) {
   return { operationName: op, variables: {}, extensions: { persistedQuery: { version: 1, sha256Hash: cfgHash } } };
 }
+
+// gateByProbe(notCapturedOps, probeVerdicts) → { realStale, falseAlarms, unconfirmed }.
+// El motor usa esto para ESCALAR bien: de las ops que no capturó,
+//   · probe 'stale'   → ROTACIÓN REAL sin capturar → ESCALAR (urgente).
+//   · probe 'vigente' → FALSA ALARMA (el hash del config vive; el page.goto solo no
+//     disparó la op) → SUPRIMIR (no llorar).
+//   · sin probe / 'auth' / 'unknown' → no concluir → ESCALAR por si acaso (fail-safe).
+// probeVerdicts: { op: 'stale'|'vigente'|'auth'|'unknown' }. Vacío = fail-open
+// (todo cae a unconfirmed → se escala como antes, sin suprimir nada).
+export function gateByProbe(notCapturedOps, probeVerdicts) {
+  const v = probeVerdicts || {};
+  const realStale = [], falseAlarms = [], unconfirmed = [];
+  for (const op of notCapturedOps || []) {
+    const verd = v[op];
+    if (verd === 'stale') realStale.push(op);
+    else if (verd === 'vigente') falseAlarms.push(op);
+    else unconfirmed.push(op);
+  }
+  return { realStale: realStale.sort(), falseAlarms: falseAlarms.sort(), unconfirmed: unconfirmed.sort() };
+}
