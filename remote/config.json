@@ -1,6 +1,6 @@
 {
-  "version": "1.7.108",
-  "lastUpdated": "2026-07-14T10:04",
+  "version": "1.7.109",
+  "lastUpdated": "2026-07-14T10:32",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -84,7 +84,7 @@
       },
       "queries": {
         "AllStations": "5bd4ae33ce18fa881fb447217b831b9492176319ffc14520333acbf014117d3b",
-        "GetStation": "912beb134cb89f78cf22fdfbe3fd6e59bc5160e11bdffde5d398506492831d41",
+        "GetStation": "a41cfd01d2e5f218add4c8c5d4179b198d7ccf6ab8a361f346a252ec46c6ca52",
         "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce",
         "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380",
         "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143",
@@ -153,7 +153,7 @@
         "ReceivingBatchesQuery": "55a06a3013d465596d24cc3893f2c163a08f78c00d20a17d746e4cddce197d4e",
         "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4",
         "InvoiceByIdInDomain": "06a51d0363584477082a9d76c72080b4dea2b2797737c051760c1b33a791dfba",
-        "CurrentUser": "0eff1bd5ce3e64d6c3b930465596e70f9c353f9801451a236532ab865cb7aa3c",
+        "CurrentUser": "0c1911e444f0c2c35f267eadc010dca0307577812cecb3f19edba28b0529aeee",
         "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c",
         "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0",
         "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c",
