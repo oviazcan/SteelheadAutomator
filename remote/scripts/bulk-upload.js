@@ -1,5 +1,32 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.35 (2026-07-14): FIX CRÍTICO — colisión de spec dejaba el PN SIN spec.
+//   El call dedicado de reemplazo de colisión (1.5.22) mandaba archive-claimer +
+//   apply-new en UN SavePartNumber; con el SH nuevo la op NO es atómica: archivaba la
+//   vieja pero el apply de la nueva tronaba con HTTP 500 message-less (unique constraint
+//   pn_id+specFieldId) → PN con 0 specs activas (PÉRDIDA DE DATOS, confirmada con probe
+//   read-only). Fix: 2 calls (archivar vieja → aplicar nueva con el campo libre) +
+//   compensación (si el apply falla, desarchivar la vieja). Cero pérdida. Ver bitácora.
+//
+// VERSION 1.5.34 (2026-07-13): FIX — SOLO_PN creaba precio $0 en cargas de specs.
+//   La condición del bloque de precios standalone (`part.precio === null && !part.qty`)
+//   dejaba pasar filas SIN precio cuando Cantidad traía el default 1 (toda la plantilla
+//   lo trae) → creaba precio $0 y STEP 8 lo fijaba como default, PISANDO el precio real
+//   del PN. El hash rotado de SaveManyPartNumberPrices lo enmascaraba (fallaba con 400
+//   "Must provide a query string" antes de corromper). Fix: en SOLO_PN solo se crea
+//   precio si `part.precio != null` (precio explícito); Cantidad ya no lo dispara.
+//
+// VERSION 1.5.33 (2026-07-13): FIX CRÍTICO — SavePartNumberInput renombró
+//   `customerFacingNotes` → `externalNotes` (Steelhead Product Update). El campo
+//   viejo daba HTTP 400 "Field customerFacingNotes is not defined by type
+//   SavePartNumberInput" en la coerción de variables → TODAS las filas fallaban
+//   (Call A y Call B) → ninguna spec se aplicaba. Confirmado vía probe directo al
+//   /graphql (input:[{}] → required = {name,optInOuts,defaults}; identifierInput sin
+//   customerFacingNotes coerciona OK; externalNotes válido; GetPartNumber también
+//   regresa `externalNotes`, ej. PN 2300153 = "Welding C4"). Fix: rename en los 7
+//   inputs de SavePartNumber + leer preservación de `existingPnNode.externalNotes`
+//   (leer el nombre viejo daría undefined → borraría las notas de PNs existentes).
+//
 // VERSION 1.5.12 (2026-05-30): combinación no existente — modal blocking en
 //   resolución de procesos. En vez de throw inmediato cuando un nombre de
 //   proceso del CSV no existe en el catálogo de Steelhead (caso típico:
@@ -230,7 +257,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.27';
+  const VERSION = '1.5.35';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -241,7 +268,7 @@ const BulkUpload = (() => {
   if (!Parse || !Classify) {
     console.error('[bulk-upload] FALTA bulk-upload-parse.js / bulk-upload-classify.js en el array scripts de config.json');
   }
-  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections, pickSpecParamId } = Parse || {};
+  const { toBool, isDash, resolveStr, resolveNum, parseCSV, buildDimensions, resolveDimSelections, pickSpecParamId, pickSpecParamPositional } = Parse || {};
   const {
     normLabel, isNonFinishLabel, buildEquivIndex, equivGroup, equivalentValues,
     acabadosOrdenados, acabadosCanonicos, metalCanonico, buildCompositeKey,
@@ -595,6 +622,21 @@ const BulkUpload = (() => {
   const saIdbSet = (k, v) => saIdbReq('readwrite', s => s.put(v, k));
   const saIdbDel = (k) => saIdbReq('readwrite', s => s.delete(k));
   const saIdbKeys = () => saIdbReq('readonly', s => s.getAllKeys());
+
+  // makeIdbSafe: normaliza un valor a una copia GARANTIZADA structured-clone-safe
+  // (== IndexedDB.put no truena). IDB serializa con structured clone, que es ESTRICTO:
+  // lanza DataCloneError SÍNCRONO ante funciones/DOM nodes/Symbols. El único call site
+  // que persiste un objeto CRUDO (no un JSON.stringify) es el historial de cargas, y
+  // loadLog arrastra valores no clonables del pipeline (p.ej. p.products con nodos del
+  // árbol de procesos) → el put reventaba y el catch se tragaba el error → "Sin cargas
+  // registradas" por semanas (bug 2026-06/07). El JSON round-trip los strip igual que el
+  // localStorage viejo (comportamiento tolerante), preservando todos los datos
+  // serializables (que es lo único que lee "Descargar CSV de corrección"). Fallback: si
+  // JSON truena (circular u otro), devuelve el original (no empeora vs. el guardado previo).
+  function makeIdbSafe(obj) {
+    try { return JSON.parse(JSON.stringify(obj)); }
+    catch (_) { return obj; }
+  }
 
   // Migración one-shot localStorage → IDB. Idempotente: si no hay claves en
   // localStorage, no-op. Se invoca al cargar el applet (al final del IIFE).
@@ -1747,6 +1789,7 @@ const BulkUpload = (() => {
       id: n.id,
       name: n.name,
       customerId: n.customerByCustomerId?.id || n.customerId,
+      customerName: n.customerByCustomerId?.name || null,
       metalBase,
       quoteIBMS,
       customInputs: ci || null,
@@ -1793,27 +1836,71 @@ const BulkUpload = (() => {
   //     por PN del CSV (patrón 1.0.0). Performance: ~|CSV| queries. Pase 1
   //     limitado a matches por nombre exacto (raro pero acotado en CSVs <
   //     1000 filas — diseño del día a día).
+  // Fetch DIRIGIDO de PNs por su Id SH (= id interno). GetPartNumber(id) trae el nodo completo
+  // (name, customerByCustomerId {id,name}, processNodeByDefaultProcessNodeId, customInputs,
+  // partNumberLabelsByPartNumberId {con color}, archivedAt) — mismo shape que AllPartNumbers, así
+  // que extractPNShape lo consume igual. Cuesta O(N idSh) queries en vez de escanear TODO el
+  // dominio (prefetch global): en dominios grandes es mucho más rápido y no depende de su tamaño.
+  // Slim (extractPNShape descarta lo pesado del full-fetch) + drain periódico del Apollo cache.
+  async function fetchPNsByIdSh(idShSet, myRunId) {
+    const ids = [...idShSet];
+    const byId = new Map();
+    if (!ids.length) return byId;
+    setPanelPhase(`Resolviendo ${ids.length} PN(s) por Id SH (fetch dirigido)`);
+    setPanelProgress(0, ids.length);
+    stopDatadogSessionReplay();
+    await runPool(ids, async (id, _idx, runIdLocal) => {
+      bailIfStale(runIdLocal);
+      try {
+        const d = await withRetry(
+          () => api().query('GetPartNumber', { partNumberId: parseInt(id, 10) }),
+          `GetPartNumber idSh ${id}`, runIdLocal
+        );
+        const node = d?.partNumberById;
+        if (node && node.id != null) byId.set(String(node.id), extractPNShape(node));
+      } catch (e) {
+        if (isBail(e)) throw e;
+        warn(`Id SH ${id}: no resuelto (${String(e?.message || e).substring(0, 90)})`);
+      } finally {
+        periodicDrain();
+      }
+    }, 8, (d, t) => setPanelProgress(d, t), myRunId);
+    log(`Fetch dirigido por Id SH: ${byId.size}/${ids.length} PN(s) resueltos`);
+    return byId;
+  }
+
   async function classifyPNs(parts, myRunId) {
     const cfg = bulkCfg();
     const massiveThreshold = cfg.dedup?.massiveThreshold ?? 1000;
+    // Filas con Id SH: se resuelven con FETCH DIRIGIDO (GetPartNumber por id), no escaneando el
+    // dominio. Trae el nodo completo por cada id único. Los idSh CON pn también se benefician
+    // (match por id exacto > heurística por nombre). El modo (masivo/on-demand) para el RESTO de
+    // filas (por nombre+cliente) lo decide SOLO el volumen — ya no se fuerza masivo por Id SH.
+    const idShSet = new Set(
+      parts.filter(p => p.idSh).map(p => String(parseInt(p.idSh, 10))).filter(s => s && s !== 'NaN')
+    );
+    const idShNodes = await fetchPNsByIdSh(idShSet, myRunId);
     const useMassive = parts.length > massiveThreshold;
-    log(`Clasificación: ${parts.length} filas — modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold})`);
+    log(`Clasificación: ${parts.length} filas — ${idShSet.size ? `${idShNodes.size}/${idShSet.size} por Id SH + ` : ''}resto en modo ${useMassive ? 'MASIVO (prefetch global)' : 'DÍA (on-demand)'} (threshold=${massiveThreshold})`);
     return useMassive
-      ? await classifyPNsMassive(parts, myRunId)
-      : await classifyPNsOnDemand(parts, myRunId);
+      ? await classifyPNsMassive(parts, myRunId, idShNodes)
+      : await classifyPNsOnDemand(parts, myRunId, idShNodes);
   }
 
   // Modo masivo: prefetch global + classifier puro.
-  async function classifyPNsMassive(parts, myRunId) {
+  async function classifyPNsMassive(parts, myRunId, idShNodes = new Map()) {
     const cfg = bulkCfg();
     const nonFinishList = cfg.nonFinishLabelNames || [];
     // 1.4.3: equivalencias semánticas (Estaño/Plata...) configurables.
     const equivIndex = buildEquivIndex(cfg.metalEquivalents);
     const customerIds = [...new Set(parts.map(p => p.customerId).filter(x => x != null))];
-    const pnsByCustomer = await prefetchPNsByCustomer(customerIds, myRunId);
+    // Solo prefetcheamos el dominio si hay filas por cliente que resolver. Si el CSV es 100%
+    // Id SH (sin cliente), el fetch dirigido (idShNodes) ya trajo todo → NO escaneamos el dominio.
+    const pnsByCustomer = customerIds.length ? await prefetchPNsByCustomer(customerIds, myRunId) : new Map();
 
-    // v11: construir indice por id numerico para lookup rapido por idSh.
-    const pnById = new Map();
+    // Índice por id: arranca con los nodos resueltos por Id SH (fetch dirigido) y suma los del
+    // prefetch por cliente. El match directo (`pnById.get(idSh)`) los resuelve → MODIFY.
+    const pnById = new Map(idShNodes);
     for (const [, nodes] of pnsByCustomer) {
       for (const n of nodes) { if (n.id != null) pnById.set(String(n.id), n); }
     }
@@ -1854,7 +1941,7 @@ const BulkUpload = (() => {
   // Modo día: una pasada paginada de AllPartNumbers con searchQuery=name por
   // PN del CSV; filtro client-side por customerId; mapeo a shape con
   // extractPNShape; llamada a classifyOnePN.
-  async function classifyPNsOnDemand(parts, myRunId) {
+  async function classifyPNsOnDemand(parts, myRunId, idShNodes = new Map()) {
     const cfg = bulkCfg();
     const nonFinishList = cfg.nonFinishLabelNames || [];
     // 1.4.3: equivalencias semánticas (Estaño/Plata...) configurables.
@@ -1971,8 +2058,10 @@ const BulkUpload = (() => {
       await new Promise(r => setTimeout(r, 0));
     }
 
-    // v11: construir indice por id para lookup por idSh en el modo on-demand.
-    const pnByIdOnDemand = new Map();
+    // Índice por id para lookup por idSh: arranca con los nodos del fetch dirigido (idShNodes)
+    // y suma los candidatos hallados por nombre. Así una fila idSh-only (sin pn, sin cliente)
+    // resuelve por idShNodes aunque no haya habido búsqueda por nombre.
+    const pnByIdOnDemand = new Map(idShNodes);
     for (const [, nodes] of candidatesByKey) {
       for (const n of nodes) { if (n.id != null) pnByIdOnDemand.set(String(n.id), n); }
     }
@@ -2055,6 +2144,10 @@ const BulkUpload = (() => {
         csvRowKey: (p.pn ? p.pn.toUpperCase() : `__idsh:${p.idSh}`) + '|' + (p.customerId ?? ''),
         csvLabels: p.labels || [],
         csvMetalBase: p.metalBase || '',
+        // Mejora 2: cliente real + etiquetas (con color) del PN existente, para pintarlos en el
+        // preview cuando la fila se identifica por Id SH y el CSV no trae cliente ni etiquetas.
+        nodeCustomerName: node.customerName || null,
+        nodeLabelObjs: Array.isArray(node.labelObjs) ? node.labelObjs : [],
       };
     }
 
@@ -2230,7 +2323,10 @@ const BulkUpload = (() => {
           status: s.status,
           existingId: s.existingId || null,
           archivarAnterior: !!part.archivarAnterior,
-          customer: customerBase || '(sin cliente)',
+          // Mejora 2: cuando la fila se identifica por Id SH y el CSV no trae cliente, mostrar el
+          // cliente REAL del PN (del nodo resuelto) + sus etiquetas con color, como referencia.
+          customer: customerBase || s.nodeCustomerName || '(sin cliente)',
+          labelObjs: Array.isArray(s.nodeLabelObjs) ? s.nodeLabelObjs : [],
           changeSummary: changes.length ? changes.join(', ') : 'solo crear',
           qty: s.qty,
           precio: s.precio,
@@ -2337,10 +2433,33 @@ const BulkUpload = (() => {
         }
       } catch (_) { /* el badge nunca rompe el preview */ }
 
+      // Aviso de REEMPLAZO de specs (archive sentinel): una fila con "-" en cualquiera de
+      // sus specs archiva TODAS las specs que el PN ya tenga y NO estén en el CSV — es
+      // reemplazo, no suma. Solo borra de verdad en PN existentes. Mismo criterio que la
+      // ejecución (STEP 6b, hasArchiveSentinel). El operador debe saberlo antes de ejecutar.
+      let specReplaceWarn = '';
+      try {
+        let sentinelRows = 0, sentinelExisting = 0;
+        parts.forEach((p, i) => {
+          const has = Array.isArray(p.specs) && p.specs.length > 0 && p.specs.some(s => s && s.name === '-');
+          if (!has) return;
+          sentinelRows++;
+          if (pnStatus[i] && pnStatus[i].status === 'existing') sentinelExisting++;
+        });
+        if (sentinelRows > 0) {
+          specReplaceWarn = `<div style="background:#78350f;border:1px solid #f59e0b;color:#fde68a;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:12.5px;line-height:1.45">`
+            + `⚠️ <b>${sentinelRows}</b> fila(s) usan <code style="background:#0f172a;padding:0 4px;border-radius:3px">-</code> en specs → <b>REEMPLAZO, no suma</b>: se <b>archivarán</b> TODAS las specs que el PN ya tenga y que NO estén en el CSV`
+            + (sentinelExisting > 0 ? ` (<b>${sentinelExisting}</b> son PN existentes donde el borrado sí ocurre)` : ` — aplica solo si el PN ya existe`)
+            + `. Si solo quieres <b>agregar</b> specs sin borrar las demás, <b>deja esas celdas vacías</b> en vez de <code style="background:#0f172a;padding:0 4px;border-radius:3px">-</code>.`
+            + `</div>`;
+        }
+      } catch (_) { /* el aviso nunca rompe el preview */ }
+
       modal.style.background = modeBg;
       modal.innerHTML = `
         <h2 style="color:${modeColor}">Steelhead Automator v10 — ${modeLabel}</h2>
         <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup${intentBadge}${pendingCount > 0 ? ` · <span class="dl9-pending-chip"><b>${pendingCount}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">Solo pendientes</button>` : ''}</p>
+        ${specReplaceWarn}
         ${statsHtml}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center">
           <label style="font-size:12px;color:#94a3b8">Filtro:
@@ -2388,8 +2507,8 @@ const BulkUpload = (() => {
       // Render thead
       const thead = modal.querySelector('#dl9-thead');
       const headerCells = isSoloPN
-        ? ['Sel', 'PN', 'Cliente', 'Acción', 'Datos a aplicar']
-        : ['Sel', 'PN', 'Cliente', 'Acción', 'Datos', 'Qty', 'Precio'];
+        ? ['Sel', 'PN', 'Cliente', 'Etiquetas', 'Acción', 'Datos a aplicar']
+        : ['Sel', 'PN', 'Cliente', 'Etiquetas', 'Acción', 'Datos', 'Qty', 'Precio'];
       const trh = document.createElement('tr');
       for (const cell of headerCells) {
         const th = document.createElement('th');
@@ -2583,6 +2702,27 @@ const BulkUpload = (() => {
           tdCust.style.color = '#94a3b8';
           tdCust.style.fontSize = '11px';
           tr.appendChild(tdCust);
+
+          // Mejora 2: columna Etiquetas — chips con el color real de Steelhead (labelByLabelId.color).
+          // textContent (no innerHTML) + color validado a hex → sin XSS.
+          const tdLabels = document.createElement('td');
+          tdLabels.style.padding = '3px 6px';
+          const labelObjs = Array.isArray(r.labelObjs) ? r.labelObjs : [];
+          if (labelObjs.length) {
+            for (const lo of labelObjs) {
+              const chip = document.createElement('span');
+              chip.textContent = lo.name;
+              const bg = (typeof lo.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(lo.color)) ? lo.color : '#475569';
+              chip.style.cssText = `display:inline-block;margin:1px 3px 1px 0;padding:1px 7px;border-radius:9px;background:${bg};color:#fff;font-size:10px;font-family:sans-serif;white-space:nowrap`;
+              tdLabels.appendChild(chip);
+            }
+          } else {
+            const dash = document.createElement('span');
+            dash.textContent = '—';
+            dash.style.cssText = 'color:#475569;font-size:11px';
+            tdLabels.appendChild(dash);
+          }
+          tr.appendChild(tdLabels);
 
           const tdAct = document.createElement('td');
           tdAct.style.padding = '3px 6px';
@@ -2999,6 +3139,14 @@ const BulkUpload = (() => {
             wrap._renderSavedChip = renderSavedChip;
           } else if (r.status === 'new') { tdAct.className = 'dl9-new'; tdAct.textContent = 'CREAR NUEVO'; }
           else if (r.status === 'existing') { tdAct.className = 'dl9-exist'; tdAct.textContent = `MODIFICAR (id:${r.existingId})`; }
+          else if (r.status === 'error') {
+            // Antes caía en el catch-all `else` y se pintaba "DUPLICAR (viejo:null)",
+            // confundiendo un Id SH no resuelto con un duplicado. Mostrar el error real.
+            tdAct.className = 'dl9-dup';
+            tdAct.style.color = '#fca5a5';
+            tdAct.textContent = `⚠️ ERROR: ${r._errorMsg || 'fila inválida'}`;
+            tdAct.title = r._errorMsg || '';
+          }
           else {
             tdAct.className = 'dl9-dup';
             tdAct.textContent = `DUPLICAR${r.archivarAnterior ? ' + ARCHIVAR' : ''} (viejo:${r.existingId})`;
@@ -3373,7 +3521,17 @@ const BulkUpload = (() => {
     overlay.id = 'dl9-result-overlay';
     const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.join('\n')}</div>` : '';
     const lbl = quoteUrlLabel || 'ABRIR COTIZACIÓN';
-    modal.innerHTML = `<h2>${errors.length ? 'Completado con errores' : 'Completado OK'}</h2><div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
+    // Robustez B/C: banner prominente si steelhead-api detectó un hash de persisted query
+    // rotado durante la corrida (window.__saRotatedOps). Sin esto, un hash rotado (ej.
+    // GetPartNumber) produce cientos de fallos y el resumen se veía "Completado · OK: N"
+    // engañoso — ese N contaba desarchivados, NO SavePartNumber (que fallaba en bloque).
+    const _g = (typeof window !== 'undefined') ? window : {};
+    const rotOps = _g.__saRotatedOps ? Object.keys(_g.__saRotatedOps) : [];
+    const rotBanner = rotOps.length
+      ? `<div style="background:#7f1d1d;border:1px solid #ef4444;border-radius:8px;padding:10px 12px;margin-bottom:12px;color:#fecaca;font-size:13px;line-height:1.45">🔴 <b>HASH(ES) ROTADO(S): ${rotOps.join(', ')}</b><br>Steelhead dejó de aceptar esa(s) persisted query(ies) (<i>"Must provide a query string"</i>). Los cambios que dependían de ellas <b>NO se aplicaron</b>. Avisa al equipo para re-escanear (hash-scanner) y actualizar <code>config.json</code> — luego recarga la extensión y vuelve a correr.</div>`
+      : '';
+    const titulo = rotOps.length ? '⚠️ Detenido por HASH ROTADO' : (errors.length ? 'Completado con errores' : 'Completado OK');
+    modal.innerHTML = `<h2>${titulo}</h2>${rotBanner}<div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ' style="color:#fca5a5"' : ''}><b>PNs modificados:</b> ${stats.pnsModified ?? '—'}${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ` / ${stats.pnsExisting} ⚠️` : ''}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
     // 1.4.18 Fix BB: scope a `modal.querySelector` (no `document.getElementById`) + null
     // guards. Antes, en runs grandes el outer catch capturaba "Cannot set properties of
     // null (setting 'onclick')" tras completar el pipeline: el árbol React de Steelhead
@@ -3418,7 +3576,7 @@ const BulkUpload = (() => {
       if (currentUserName === '(desconocido)') warn('ControlCambios: CurrentUserActiveSegments no devolvió name del usuario.');
     } catch (e) { warn(`ControlCambios: fallo al obtener usuario actual: ${String(e).substring(0, 80)}`); }
     const errors = [];
-    const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
+    const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsModified: null, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
 
     // Cancellation token + panel: cada corrida obtiene un runId monotónico que
     // se propaga a runPool, withRetry, checkPNExistence y demás helpers async.
@@ -3557,15 +3715,19 @@ const BulkUpload = (() => {
       }
 
       // ── V10: Validate required per-line fields ──
-      const sinCliente = parts.filter(p => !p.cliente);
-      if (sinCliente.length) throw new Error(`${sinCliente.length} filas sin Cliente: ${sinCliente.slice(0, 3).map(p => p.pn).join(', ')}...`);
+      // idSh exime de Cliente: la fila identifica un PN EXISTENTE por su Id de Steelhead,
+      // que ya trae su propio cliente (se resuelve en la clasificación por idSh). Mismo
+      // criterio que classify (`if (!p.pn && !p.idSh) continue`). Solo es error una fila
+      // sin Cliente Y sin Id SH (no hay forma de ubicar ni crear el PN).
+      const sinCliente = parts.filter(p => !p.cliente && !p.idSh);
+      if (sinCliente.length) throw new Error(`${sinCliente.length} filas sin Cliente ni Id SH: ${sinCliente.slice(0, 3).map(p => p.pn || '(sin PN)').join(', ')}...`);
       // Proceso: vacío = copiar del PN existente (resuelto tras existence check).
       //          "-" = borrar (set null). Nombre = resolver a id.
       //          Validación per-row contra new/existing en el post-process tardío.
 
       // ── Resolve all unique customers (per-line, with cache) ──
       const customerCache = new Map(); // name → { id, name, addressId, contactId, invoiceTermsId }
-      const uniqueClientNames = [...new Set(parts.map(p => p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim()))];
+      const uniqueClientNames = [...new Set(parts.filter(p => p.cliente).map(p => p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim()))];
       log(`Clientes únicos en layout: ${uniqueClientNames.length}`);
       // 1.4.12: loop secuencial con feedback en panel (antes silent).
       setPanelPhase(`Resolviendo clientes (${uniqueClientNames.length})`);
@@ -3584,7 +3746,7 @@ const BulkUpload = (() => {
           const addr = relData?.customerById?.customerAddressesByCustomerId?.nodes || [];
           const cont = relData?.customerById?.customerContactsByCustomerId?.nodes || [];
           let invTerms = null;
-          try { const fin = await api().query('CustomerFinancialByCustomerId', { id: cid }, 'CustomerFinancialById'); invTerms = fin?.customerById?.invoiceTermsId || null; } catch (_) {}
+          try { const fin = await api().query('CustomerFinancialByCustomerId', { id: cid }, 'CustomerFinancialByCustomerId'); invTerms = fin?.customerById?.invoiceTermsId || null; } catch (_) {}
           if (!invTerms) {
             try { const t = await api().query('SearchInvoiceTerms', { termsLike: '%%' }); const tn = t?.allInvoiceTerms?.nodes || t?.pagedData?.nodes || t?.searchInvoiceTerms?.nodes || []; if (tn.length) invTerms = tn[0].id; } catch (_) {}
           }
@@ -3633,7 +3795,7 @@ const BulkUpload = (() => {
         api().query('AllRackTypes', {}),
         api().query('SearchUnits', {}),
         api().query('SearchProducts', { searchQuery: '%%', first: 500 }),
-        api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PNGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PNGroupSelect')).catch(() => null),
+        api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PartNumberGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PartNumberGroupSelect')).catch(() => null),
       ]);
 
       const labelByName = new Map(); for (const l of (labelsD?.allLabels?.nodes || [])) labelByName.set(l.name, l.id);
@@ -3781,13 +3943,17 @@ const BulkUpload = (() => {
       for (const p of parts) {
         // null marker para vacío y "-" — se resuelven en post-process tras pnStatus
         p.processId = (!p.procesoOverride || isDash(p.procesoOverride)) ? null : processCache.get(p.procesoOverride);
-        const cname = p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim();
-        const cust = customerCache.get(cname);
-        p.customerId = cust.id;
-        p.customerName = cust.name;
-        p.customerAddressId = cust.addressId;
-        p.customerContactId = cust.contactId;
-        p.customerInvoiceTermsId = cust.invoiceTermsId;
+        // Filas por Id SH sin Cliente: el cliente (y su address/contact/terms) se resuelve
+        // del PN existente en la clasificaci\u00f3n por idSh; aqu\u00ed se dejan sin asignar (undefined).
+        if (p.cliente) {
+          const cname = p.cliente.split(/\s*[\u2014\u2013]\s*|\s+[-]\s+/)[0].trim();
+          const cust = customerCache.get(cname);
+          p.customerId = cust.id;
+          p.customerName = cust.name;
+          p.customerAddressId = cust.addressId;
+          p.customerContactId = cust.contactId;
+          p.customerInvoiceTermsId = cust.invoiceTermsId;
+        }
       }
 
       // 1.2.11: detectar duplicados internos del CSV (mismo PN+customer en 2+ filas).
@@ -4310,7 +4476,7 @@ const BulkUpload = (() => {
           geometryTypeId: null, userFileName: null, inventoryItemInput: null,
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
           isOneOff: false, isTemplatePartNumber: false, isCoupon: false, partNumberGroupId: groupId,
-          descriptionMarkdown: '', customerFacingNotes: '',
+          descriptionMarkdown: '', externalNotes: '',
           labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
           inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
           partNumberDimensions: [], partNumberLocations: [], dimensionCustomValueIds: [],
@@ -4564,7 +4730,7 @@ const BulkUpload = (() => {
                 glAccountId: null, taxCodeId: null, certPdfTemplateId: null,
                 partNumberGroupId: sentinelPnGroupId,
                 descriptionMarkdown: pnNode.descriptionMarkdown || '',
-                customerFacingNotes: pnNode.customerFacingNotes || '',
+                externalNotes: pnNode.externalNotes || '',
                 labelIds: sentExistingLabelIds, ownerIds: [], defaults: [], optInOuts: [],
                 inventoryPredictedUsages: [], specsToApply: [], paramsToApply: [],
                 partNumberDimensions: sentExistingDims, partNumberLocations: [], dimensionCustomValueIds: sentExistingDimCustomValueIds,
@@ -4714,7 +4880,7 @@ const BulkUpload = (() => {
                 continue;
               }
               let qDataR;
-              try { ({ data: qDataR } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: existing.idInDomain, revisionNumber: 1 })); }
+              try { ({ data: qDataR } = await api().queryWithFallback('GetQuote', 'GetQuote', 'GetQuote', { idInDomain: existing.idInDomain, revisionNumber: 1 })); }
               catch (e) { errors.push(`GetQuote (resume) ${existing.idInDomain}: ${String(e).substring(0, 120)}`); continue; }
               const quoteR = qDataR?.quoteByIdInDomainAndRevisionNumber || qDataR?.quoteByIdInDomain;
               if (!quoteR) { warn(`  No se pudo leer quote #${existing.idInDomain} para reconstruir lookup.`); continue; }
@@ -4814,7 +4980,7 @@ const BulkUpload = (() => {
                 const existingPnpIds = (existingQuote.quotePartNumberPricesByQuoteId?.nodes || []).map(n => n.partNumberPriceByPartNumberPriceId?.id).filter(Boolean);
                 if (existingPnpIds.length) {
                   log(`  Limpiando ${existingPnpIds.length} PNPs viejos de la cotización...`);
-                  await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
+                  await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPartNumberPrices', 'SaveManyPartNumberPrices',
                     { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: false, partNumberPrices: [], partNumberPriceIdsToDelete: existingPnpIds, quotePartNumberPriceLineNumberOnlyUpdates: [] } });
                 }
               } catch (e) { warn(`Limpiar PNPs viejos: ${String(e).substring(0, 100)}`); }
@@ -4883,7 +5049,7 @@ const BulkUpload = (() => {
             // 1.4.25 Fix FF: sub-fase visible para SaveManyPNP batches.
             setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: SaveManyPNP batch ${bnum}/${pnpBatches} (${batch.length} PNs)`);
             try {
-              await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPNP_Quote', 'SaveManyPNP_PN',
+              await api().queryWithFallback('SaveManyPartNumberPrices', 'SaveManyPartNumberPrices', 'SaveManyPartNumberPrices',
                 { input: { quoteId: thisQuoteId, autoGenerateQuoteLines: true, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] } });
             } catch (e) { errors.push(`SaveManyPNP quote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); }
           }
@@ -4893,7 +5059,7 @@ const BulkUpload = (() => {
           // Re-read quote to populate pnLookup
           setPanelSubPhase(`Quote ${quoteSeq}/${totalChunks}: leyendo quote para reconstruir lookup`);
           let qData;
-          try { ({ data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote_v8', 'GetQuote_v71', { idInDomain: thisQuoteIdInDomain, revisionNumber: 1 })); }
+          try { ({ data: qData } = await api().queryWithFallback('GetQuote', 'GetQuote', 'GetQuote', { idInDomain: thisQuoteIdInDomain, revisionNumber: 1 })); }
           catch (e) { errors.push(`GetQuote ${thisQuoteIdInDomain}: ${String(e).substring(0, 120)}`); continue; }
           const quote = qData?.quoteByIdInDomainAndRevisionNumber || qData?.quoteByIdInDomain;
           if (!quote) { errors.push(`No se pudo leer quote #${thisQuoteIdInDomain}.`); continue; }
@@ -5000,7 +5166,7 @@ const BulkUpload = (() => {
           if (!pnId) continue;
           pnLookup.set(i, {
             qpnp: null, pnp: null,
-            pn: { id: pnId, name: part.pn, customerId: part.customerId, defaultProcessNodeId: part.processId, customInputs: {}, descriptionMarkdown: '', customerFacingNotes: '', geometryTypeId: null, partNumberGroupId: null },
+            pn: { id: pnId, name: part.pn, customerId: part.customerId, defaultProcessNodeId: part.processId, customInputs: {}, descriptionMarkdown: '', externalNotes: '', geometryTypeId: null, partNumberGroupId: null },
             ql: null
           });
         }
@@ -5010,7 +5176,12 @@ const BulkUpload = (() => {
         const pnpWithPrice = [];
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
-          if (part.precio === null && !part.qty) continue; // no price data
+          // 1.5.34: SOLO crear precio standalone si hay PRECIO explícito. Antes la
+          // condición `&& !part.qty` dejaba pasar filas sin precio cuando Cantidad
+          // traía el default 1 (toda la plantilla lo trae) → creaba un precio $0 y
+          // en STEP 8 lo fijaba como default, PISANDO el precio real del PN. En una
+          // carga de specs (columna Precio vacía) NO se debe tocar precios.
+          if (part.precio == null) continue; // sin precio explícito → no tocar precios
           const entry = pnLookup.get(i); if (!entry) continue;
           pnpWithPrice.push({
             partNumberId: entry.pn.id,
@@ -5031,7 +5202,7 @@ const BulkUpload = (() => {
             try {
               await api().query('SaveManyPartNumberPrices', {
                 input: { quoteId: null, autoGenerateQuoteLines: false, partNumberPrices: batch, partNumberPriceIdsToDelete: [], quotePartNumberPriceLineNumberOnlyUpdates: [] }
-              }, 'SaveManyPNP_PN');
+              }, 'SaveManyPartNumberPrices');
               {
                 // 1.4.13: el totalBatches referenciaba `quotePnIds` que no existe en SOLO_PN,
                 // tiraba ReferenceError y se tragaba TODA la fase de precios standalone.
@@ -5329,14 +5500,17 @@ const BulkUpload = (() => {
           // coincida con alguno de los segmentos del CSV — sin asumir orden ni identificar
           // cuál field es cuál. Field de 1 param se auto-selecciona. Compat espesor v10/v11:
           // 1 segmento, matchea igual.
-          const segs = (cs.param || '').split(' | ').map(s => s.trim()).filter(Boolean);
+          // Fix 2026-07-06: mapeo POSICIONAL segmento[i] ↔ field[i] (ver STEP 6b y
+          // pickSpecParamPositional). NO filtrar vacíos: rompería la posición.
+          const segs = (cs.param || '').split(' | ').map(s => s.trim());
+          const fieldNodes6 = sd.specFieldSpecsBySpecId?.nodes || [];
           const dS = [], gS = [];
-          for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
+          for (let fi = 0; fi < fieldNodes6.length; fi++) {
+            const sf = fieldNodes6[fi];
             const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
             const fn = sf.specFieldBySpecFieldId?.name || '';
-            const isEsp = fn.toLowerCase().includes('espesor');
-            const { id: pid, espesorMiss } = pickSpecParamId(params, segs, isEsp);
-            if (espesorMiss && cs.param) errors.push(`"${cs.name}" "${fn}": "${cs.param}" no encontrado.`);
+            const { id: pid, unmatched } = pickSpecParamPositional(params, segs[fi]);
+            if (unmatched) errors.push(`"${cs.name}" campo "${fn}": "${(segs[fi] || '').trim()}" no matchea ningún parámetro del catálogo — no se aplicó.`);
             if (!pid) continue;
             // 1.4.38: regla nueva — SIEMPRE processNodeId=null. El param null es
             // genérico (se aplica a cualquier proceso) y sobrevive cambios de
@@ -5508,7 +5682,7 @@ const BulkUpload = (() => {
           const identifierInput = {
             id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId,
             descriptionMarkdown: existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? '',
-            customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
+            externalNotes: existingPnNode?.externalNotes ?? pn.externalNotes ?? '',
             customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {},
             inputSchemaId: runtimeInputSchemaId,
             labelIds: labelIdsToSend,
@@ -5738,7 +5912,7 @@ const BulkUpload = (() => {
         const pnInput = {
           id: pn.id, name: resolvedPnName, customerId: (pn.customerByCustomerId?.id ?? pn.customerId) || part.customerId, defaultProcessNodeId: pnProcessId,
           descriptionMarkdown: resolveStr(part.descripcion, existingPnNode?.descriptionMarkdown ?? pn.descriptionMarkdown ?? ''),
-          customerFacingNotes: existingPnNode?.customerFacingNotes ?? pn.customerFacingNotes ?? '',
+          externalNotes: existingPnNode?.externalNotes ?? pn.externalNotes ?? '',
           customInputs: mergedCI || existingPnNode?.customInputs || pn.customInputs || {}, inputSchemaId: runtimeInputSchemaId, labelIds: labelIdsToSend,
           partNumberGroupId: pnGroupId,
           geometryTypeId: resolvedGeometryTypeId,
@@ -5841,7 +6015,7 @@ const BulkUpload = (() => {
             id: pn.id, name: pnInput.name, customerId: pnInput.customerId,
             defaultProcessNodeId: pnInput.defaultProcessNodeId,
             descriptionMarkdown: pnInput.descriptionMarkdown,
-            customerFacingNotes: pnInput.customerFacingNotes,
+            externalNotes: pnInput.externalNotes,
             customInputs: pnInput.customInputs, inputSchemaId: pnInput.inputSchemaId,
             labelIds: pnInput.labelIds, partNumberGroupId: pnInput.partNumberGroupId,
             geometryTypeId: pnInput.geometryTypeId,
@@ -5872,30 +6046,75 @@ const BulkUpload = (() => {
               }
               archiveClaimerLinkId = activeSpecLinkBySpecId.get(cx.claimerSpecId) || null;
             }
+            // 1.5.35: reemplazo de colisión en DOS calls con red de seguridad. Antes
+            // (1.5.22) se mandaba archive-claimer + apply-new en UN solo SavePartNumber
+            // ("mismo mecanismo que el archive sentinel que SH ya acepta"). Con el SH
+            // nuevo esa op NO es atómica: SH archiva la vieja pero el apply de la nueva
+            // truena con HTTP 500 message-less (probable violación del unique constraint
+            // pn_id+specFieldId al insertar la nueva antes de archivar la vieja) y el PN
+            // queda SIN spec (vieja archivada, nueva no aplicada = PÉRDIDA DE DATOS).
+            // Confirmado con probe read-only 2026-07-14: 23121-60A, 22760-100A, 23217-60A,
+            // 23218-100A, 80451-747-02, 40517-329-21 quedaron con 0 specs activas.
+            // Fix: (A) archivar SOLO al claimer (archive-only sí es confiable en SH), (B)
+            // con el specField libre aplicar la nueva, (C) si B falla, DESARCHIVAR la
+            // vieja (compensación) para no dejar el PN pelón. Cero pérdida garantizada:
+            // termina con la spec nueva, o conserva la vieja, nunca ninguna.
+            const applyNewSpec = () => api().query('SavePartNumber', {
+              input: [{
+                ...baseInput,
+                specsToApply: cx.unarchiveLinkId ? [] : [cx.entry],
+                partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : [],
+                partNumberSpecsToArchive: []
+              }]
+            });
             try {
-              await withRetry(
-                () => api().query('SavePartNumber', {
-                  input: [{
-                    ...baseInput,
-                    specsToApply: cx.unarchiveLinkId ? [] : [cx.entry],
-                    partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : [],
-                    // reemplazo: archiva al claimer linkeado para liberar el specField (mismo
-                    // mecanismo que el archive sentinel, que ya se sabe que SH acepta en un call).
-                    partNumberSpecsToArchive: archiveClaimerLinkId ? [archiveClaimerLinkId] : []
-                  }]
-                }),
-                `SavePartNumber colisión "${pnInput.name}/${cx.specName}"`,
-                myRunId
-              );
               if (archiveClaimerLinkId) {
-                stats.specsCollisionReplaced = (stats.specsCollisionReplaced || 0) + 1;
-                log(`  -> "${pnInput.name}/${cx.specName}": reemplazó la spec vieja en "${cx.sfName}" (OK)`);
-              } else {
-                log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+                // (A) liberar el specField archivando SOLO al claimer (sin apply en el mismo call).
+                await withRetry(
+                  () => api().query('SavePartNumber', {
+                    input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [], partNumberSpecsToArchive: [archiveClaimerLinkId] }]
+                  }),
+                  `SavePartNumber archive-claimer "${pnInput.name}/${cx.sfName}"`,
+                  myRunId
+                );
               }
-            } catch (eExtra) {
-              if (isBail(eExtra)) throw eExtra;
-              errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}" reclamado por ${cx.claimerKind === 'linked' ? 'spec ya linkeada' : 'otra spec del CSV'}): ${String(eExtra).substring(0, 120)}`);
+              try {
+                // (B) con el campo libre, aplicar la nueva.
+                await withRetry(applyNewSpec, `SavePartNumber apply-new "${pnInput.name}/${cx.specName}"`, myRunId);
+                if (archiveClaimerLinkId) {
+                  stats.specsCollisionReplaced = (stats.specsCollisionReplaced || 0) + 1;
+                  log(`  -> "${pnInput.name}/${cx.specName}": reemplazó la spec vieja en "${cx.sfName}" (OK, 2 calls)`);
+                } else {
+                  log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+                }
+              } catch (eApply) {
+                if (isBail(eApply)) throw eApply;
+                if (archiveClaimerLinkId) {
+                  // (C) compensación: el apply falló DESPUÉS de archivar la vieja → restaurarla
+                  // para que el PN no quede sin spec en ese campo.
+                  const claimerName = activeSpecNameBySpecId.get(cx.claimerSpecId) || 'previa';
+                  try {
+                    await withRetry(
+                      () => api().query('SavePartNumber', {
+                        input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [archiveClaimerLinkId], partNumberSpecsToArchive: [] }]
+                      }),
+                      `SavePartNumber restore-claimer "${pnInput.name}/${cx.sfName}"`,
+                      myRunId
+                    );
+                    errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}"): el apply de la nueva falló (${String(eApply).substring(0, 80)}) — se RESTAURÓ la spec previa "${claimerName}" (SIN pérdida; la nueva NO se aplicó, revisar).`);
+                  } catch (eRestore) {
+                    if (isBail(eRestore)) throw eRestore;
+                    errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}"): apply falló Y el restore de "${claimerName}" también (${String(eRestore).substring(0, 60)}) — el PN puede haber quedado SIN spec en ese campo. REVISAR MANUALMENTE (link archivado #${archiveClaimerLinkId}).`);
+                  }
+                } else {
+                  errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}" reclamado por ${cx.claimerKind === 'linked' ? 'spec ya linkeada' : 'otra spec del CSV'}): ${String(eApply).substring(0, 120)}`);
+                }
+                state.counters.errors++;
+              }
+            } catch (eArchive) {
+              if (isBail(eArchive)) throw eArchive;
+              // El archive del claimer falló → la vieja sigue activa, SIN pérdida. Reportar.
+              errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (no se pudo archivar la spec previa en "${cx.sfName}"): ${String(eArchive).substring(0, 120)}`);
               state.counters.errors++;
             }
           }
@@ -5922,6 +6141,10 @@ const BulkUpload = (() => {
         myRunId
       );
       bailIfStale(myRunId);
+      // Robustez C: exponer el conteo REAL de PNs modificados (SavePartNumber OK) al resumen,
+      // para que "PNs modificados" refleje la operación clave y no se confunda con "PNs existentes"
+      // (los que se intentaron) ni con el OK global del panel (que suma desarchivados).
+      stats.pnsModified = okSP;
       log(`  SavePartNumber: ${okSP} OK, ${retrySP} retry`);
       addPanelLog(`Enrich: ${okSP} OK, ${retrySP} retry`);
       if (resumeState) { resumeState.phase = 'enrich-done'; await persistResumeState(); }
@@ -6124,15 +6347,22 @@ const BulkUpload = (() => {
             const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
             if (!linked) continue;
             const sd = sfCache.get(si.id); if (!sd) continue;
+            // Fix CRÍTICO (incidente 2026-07-06): este STEP 6b (Sync params) elegía params[0]
+            // CIEGAMENTE para toda spec multi-param que NO fuera espesor (temperaturas, duración),
+            // ignorando los segmentos del CSV → aplicaba el 1er valor del catálogo en vez del
+            // pedido (p.ej. "No aplica" → 302-329, ">= 4 hrs." → ">= 1 hrs."). Ahora MAPEO
+            // POSICIONAL: segmento[i] ↔ field[i] (mismo orden que el catálogo que generó el CSV),
+            // matcheando el param por nombre exacto. NO filtramos vacíos para no desalinear la
+            // posición (segmento vacío = dos pipes = NO aplicar ese field).
+            const segs = (cs.param || '').split(' | ').map(x => x.trim());
+            const fieldNodes6b = sd.specFieldSpecsBySpecId?.nodes || [];
             const wantedSelections = [];
-            for (const sf of (sd.specFieldSpecsBySpecId?.nodes || [])) {
+            for (let fi = 0; fi < fieldNodes6b.length; fi++) {
+              const sf = fieldNodes6b[fi];
               const params = sf.defaultValues?.nodes || []; if (!params.length) continue;
               const fn = sf.specFieldBySpecFieldId?.name || '';
-              const isEsp = fn.toLowerCase().includes('espesor');
-              let pid;
-              if (params.length === 1) pid = params[0].id;
-              else if (isEsp && cs.param) { const m = params.find(p => p.name === cs.param); pid = m ? m.id : params[0].id; }
-              else pid = params[0].id;
+              const { id: pid, unmatched } = pickSpecParamPositional(params, segs[fi]);
+              if (unmatched) errors.push(`"${cs.name}" campo "${fn}": "${(segs[fi] || '').trim()}" no matchea ningún parámetro del catálogo — no se aplicó.`);
               if (!pid) continue;
               wantedSelections.push({ specFieldId: sf.specFieldBySpecFieldId?.id, specFieldParamId: pid, isGeneric: !!sf.isGeneric });
             }
@@ -6251,7 +6481,7 @@ const BulkUpload = (() => {
               isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
               partNumberGroupId: cleanupPnGroupId,
               descriptionMarkdown: pnNode.descriptionMarkdown || '',
-              customerFacingNotes: pnNode.customerFacingNotes || '',
+              externalNotes: pnNode.externalNotes || '',
               labelIds: cleanupExistingLabelIds, ownerIds: [], defaults: [], optInOuts: cleanupOptInOuts,
               // 1.5.17: inventoryPredictedUsages queda [] a propósito — el campo es
               // additive/create-only (Call B ~5394 filtra existentes para no duplicar;
@@ -6274,7 +6504,7 @@ const BulkUpload = (() => {
               );
               cleanupCounters.archived += idsToArchive.length;
               cleanupCounters.pnsTouched++;
-              log(`  PN "${part.pn}": archive ${idsToArchive.length} params (regla 1.4.38: solo conservar processNodeId=null)`);
+              log(`  PN "${part.pn || entry?.pn?.name || pnNode?.name || ''}": archive ${idsToArchive.length} params (regla 1.4.38: solo conservar processNodeId=null)`);
               const archivedSet = new Set(idsToArchive);
               allParams = allParams.filter(p => !archivedSet.has(p.id));
               existingPnFullCache.delete(entry.pn.id);
@@ -6295,7 +6525,7 @@ const BulkUpload = (() => {
             try {
               await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: allAdds.map(a => a.pa) } }, 'AddParamsToPartNumber');
               syncCounters.synced += allAdds.length;
-              log(`  PN "${part.pn}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
+              log(`  PN "${part.pn || entry?.pn?.name || pnNode?.name || ''}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
             } catch (eBatch) {
               if (isBail(eBatch)) throw eBatch;
               warn(`AddParams batch "${part.pn}" falló (${String(eBatch).substring(0, 80)}) — fallback uno-por-uno`);
@@ -6580,7 +6810,13 @@ const BulkUpload = (() => {
           const part = parts[i];
           const entry = pnLookup.get(i);
           if (!entry?.pn?.id) continue;
-          const needsRead = part.precioDefault || (!part.precioDefault && pnStatus[i].status === 'existing');
+          // 1.5.29 Fix (incidente 2026-07-06): el 'Precio default' (V/F) SOLO aplica si la fila
+          // trae un precio nuevo (part.precio != null). Sin precio, NO se toca el default del PN
+          // — el 'Precio default = V' es el valor por defecto de la plantilla (LimpiarDatos) y no
+          // debe re-designar/desmarcar el default de precios que el operador no cargó. Antes, una
+          // carga SOLO de specs con el V por defecto re-designaba el default de cientos de PNs al
+          // precio más reciente (447 PNs afectados en la corrida que lo destapó).
+          const needsRead = part.precio != null && (part.precioDefault || (!part.precioDefault && pnStatus[i].status === 'existing'));
           if (!needsRead) continue;
           priceReadTargets.push({ pnId: entry.pn.id, pnName: part.pn, precioDefault: !!part.precioDefault });
         }
@@ -6632,7 +6868,7 @@ const BulkUpload = (() => {
         }
       }
       if (priceIdsForDefault.length) {
-        try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPNPricesDefault'); stats.defaultPriceSet = priceIdsForDefault.length; }
+        try { await api().query('SetPartNumberPricesAsDefaultPrice', { partNumberPriceIds: priceIdsForDefault }, 'SetPartNumberPricesAsDefaultPrice'); stats.defaultPriceSet = priceIdsForDefault.length; }
         catch (e) { errors.push(`SetDefaultPrice: ${String(e).substring(0, 120)}`); }
       }
       for (const priceId of priceIdsToUnsetDefault) {
@@ -6811,7 +7047,10 @@ const BulkUpload = (() => {
         const history = (await saIdbGet('sa_load_history')) || [];
         history.unshift(loadLog);
         if (history.length > 20) history.length = 20;
-        await saIdbSet('sa_load_history', history);
+        // makeIdbSafe: IDB.put usa structured clone (estricto). loadLog arrastra valores
+        // no clonables del pipeline (p.products) → sin esto el put lanzaba DataCloneError
+        // que el catch de abajo se tragaba y el historial nunca persistía. Ver helper.
+        await saIdbSet('sa_load_history', makeIdbSafe(history));
         log('  Log guardado en historial (IndexedDB)');
       } catch (e) { warn('Error guardando log: ' + e.message); }
 
@@ -6854,7 +7093,7 @@ const BulkUpload = (() => {
   // ─── Helpers de clasificación (puros, exportados a window.BulkUploadHelpers) ───
 
 
-  const __helpers = { isNonFinishLabel, normLabel, buildEquivIndex, equivGroup, equivalentValues, metalCanonico, acabadosOrdenados, acabadosCanonicos, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates, chunkParts, makeChunkQuoteName };
+  const __helpers = { isNonFinishLabel, normLabel, buildEquivIndex, equivGroup, equivalentValues, metalCanonico, acabadosOrdenados, acabadosCanonicos, buildCompositeKey, rankCandidates, classifyOnePN, extractPNShape, dedupModifyTargets, detectCsvDuplicates, chunkParts, makeChunkQuoteName, makeIdbSafe };
 
   // 1.2.12: getter para que window.BulkUpload.__state apunte siempre al state actual
   // (state se reasigna en nextRunId() así que un snapshot quedaría stale).
