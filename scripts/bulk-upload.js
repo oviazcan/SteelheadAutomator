@@ -1,5 +1,13 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.35 (2026-07-14): FIX CRÍTICO — colisión de spec dejaba el PN SIN spec.
+//   El call dedicado de reemplazo de colisión (1.5.22) mandaba archive-claimer +
+//   apply-new en UN SavePartNumber; con el SH nuevo la op NO es atómica: archivaba la
+//   vieja pero el apply de la nueva tronaba con HTTP 500 message-less (unique constraint
+//   pn_id+specFieldId) → PN con 0 specs activas (PÉRDIDA DE DATOS, confirmada con probe
+//   read-only). Fix: 2 calls (archivar vieja → aplicar nueva con el campo libre) +
+//   compensación (si el apply falla, desarchivar la vieja). Cero pérdida. Ver bitácora.
+//
 // VERSION 1.5.34 (2026-07-13): FIX — SOLO_PN creaba precio $0 en cargas de specs.
 //   La condición del bloque de precios standalone (`part.precio === null && !part.qty`)
 //   dejaba pasar filas SIN precio cuando Cantidad traía el default 1 (toda la plantilla
@@ -249,7 +257,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.34';
+  const VERSION = '1.5.35';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -6038,30 +6046,75 @@ const BulkUpload = (() => {
               }
               archiveClaimerLinkId = activeSpecLinkBySpecId.get(cx.claimerSpecId) || null;
             }
+            // 1.5.35: reemplazo de colisión en DOS calls con red de seguridad. Antes
+            // (1.5.22) se mandaba archive-claimer + apply-new en UN solo SavePartNumber
+            // ("mismo mecanismo que el archive sentinel que SH ya acepta"). Con el SH
+            // nuevo esa op NO es atómica: SH archiva la vieja pero el apply de la nueva
+            // truena con HTTP 500 message-less (probable violación del unique constraint
+            // pn_id+specFieldId al insertar la nueva antes de archivar la vieja) y el PN
+            // queda SIN spec (vieja archivada, nueva no aplicada = PÉRDIDA DE DATOS).
+            // Confirmado con probe read-only 2026-07-14: 23121-60A, 22760-100A, 23217-60A,
+            // 23218-100A, 80451-747-02, 40517-329-21 quedaron con 0 specs activas.
+            // Fix: (A) archivar SOLO al claimer (archive-only sí es confiable en SH), (B)
+            // con el specField libre aplicar la nueva, (C) si B falla, DESARCHIVAR la
+            // vieja (compensación) para no dejar el PN pelón. Cero pérdida garantizada:
+            // termina con la spec nueva, o conserva la vieja, nunca ninguna.
+            const applyNewSpec = () => api().query('SavePartNumber', {
+              input: [{
+                ...baseInput,
+                specsToApply: cx.unarchiveLinkId ? [] : [cx.entry],
+                partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : [],
+                partNumberSpecsToArchive: []
+              }]
+            });
             try {
-              await withRetry(
-                () => api().query('SavePartNumber', {
-                  input: [{
-                    ...baseInput,
-                    specsToApply: cx.unarchiveLinkId ? [] : [cx.entry],
-                    partNumberSpecsToUnarchive: cx.unarchiveLinkId ? [cx.unarchiveLinkId] : [],
-                    // reemplazo: archiva al claimer linkeado para liberar el specField (mismo
-                    // mecanismo que el archive sentinel, que ya se sabe que SH acepta en un call).
-                    partNumberSpecsToArchive: archiveClaimerLinkId ? [archiveClaimerLinkId] : []
-                  }]
-                }),
-                `SavePartNumber colisión "${pnInput.name}/${cx.specName}"`,
-                myRunId
-              );
               if (archiveClaimerLinkId) {
-                stats.specsCollisionReplaced = (stats.specsCollisionReplaced || 0) + 1;
-                log(`  -> "${pnInput.name}/${cx.specName}": reemplazó la spec vieja en "${cx.sfName}" (OK)`);
-              } else {
-                log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+                // (A) liberar el specField archivando SOLO al claimer (sin apply en el mismo call).
+                await withRetry(
+                  () => api().query('SavePartNumber', {
+                    input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [], partNumberSpecsToArchive: [archiveClaimerLinkId] }]
+                  }),
+                  `SavePartNumber archive-claimer "${pnInput.name}/${cx.sfName}"`,
+                  myRunId
+                );
               }
-            } catch (eExtra) {
-              if (isBail(eExtra)) throw eExtra;
-              errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}" reclamado por ${cx.claimerKind === 'linked' ? 'spec ya linkeada' : 'otra spec del CSV'}): ${String(eExtra).substring(0, 120)}`);
+              try {
+                // (B) con el campo libre, aplicar la nueva.
+                await withRetry(applyNewSpec, `SavePartNumber apply-new "${pnInput.name}/${cx.specName}"`, myRunId);
+                if (archiveClaimerLinkId) {
+                  stats.specsCollisionReplaced = (stats.specsCollisionReplaced || 0) + 1;
+                  log(`  -> "${pnInput.name}/${cx.specName}": reemplazó la spec vieja en "${cx.sfName}" (OK, 2 calls)`);
+                } else {
+                  log(`  -> "${pnInput.name}/${cx.specName}": call colisionante OK`);
+                }
+              } catch (eApply) {
+                if (isBail(eApply)) throw eApply;
+                if (archiveClaimerLinkId) {
+                  // (C) compensación: el apply falló DESPUÉS de archivar la vieja → restaurarla
+                  // para que el PN no quede sin spec en ese campo.
+                  const claimerName = activeSpecNameBySpecId.get(cx.claimerSpecId) || 'previa';
+                  try {
+                    await withRetry(
+                      () => api().query('SavePartNumber', {
+                        input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [archiveClaimerLinkId], partNumberSpecsToArchive: [] }]
+                      }),
+                      `SavePartNumber restore-claimer "${pnInput.name}/${cx.sfName}"`,
+                      myRunId
+                    );
+                    errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}"): el apply de la nueva falló (${String(eApply).substring(0, 80)}) — se RESTAURÓ la spec previa "${claimerName}" (SIN pérdida; la nueva NO se aplicó, revisar).`);
+                  } catch (eRestore) {
+                    if (isBail(eRestore)) throw eRestore;
+                    errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}"): apply falló Y el restore de "${claimerName}" también (${String(eRestore).substring(0, 60)}) — el PN puede haber quedado SIN spec en ese campo. REVISAR MANUALMENTE (link archivado #${archiveClaimerLinkId}).`);
+                  }
+                } else {
+                  errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (specField "${cx.sfName}" reclamado por ${cx.claimerKind === 'linked' ? 'spec ya linkeada' : 'otra spec del CSV'}): ${String(eApply).substring(0, 120)}`);
+                }
+                state.counters.errors++;
+              }
+            } catch (eArchive) {
+              if (isBail(eArchive)) throw eArchive;
+              // El archive del claimer falló → la vieja sigue activa, SIN pérdida. Reportar.
+              errors.push(`Spec colisionante "${pnInput.name}/${cx.specName}" (no se pudo archivar la spec previa en "${cx.sfName}"): ${String(eArchive).substring(0, 120)}`);
               state.counters.errors++;
             }
           }
