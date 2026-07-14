@@ -728,3 +728,40 @@ Evidencia (investigación 2026-07-02):
 **Bug del hash-scanner descubierto:** el usuario reportó que tuvo que **recargar la página** y el scanner solo capturó lo posterior al reload (se supone era "a prueba de reload"); además exportó **2 scans** en vez de 1. Pendiente de investigar en `hash-scanner.js`.
 
 **Robustez pendiente (pedida por el operador):** (B) bulk-upload debe **detectar el patrón `Must provide a query string` masivo** y avisar "hash rotado" en vez de 447 WARNs; (C) el resumen NO debe reportar "OK: 447" cuando `SavePartNumber`/specs/enrich fallaron (contaba desarchivados como OK).
+
+## 2026-07-14 10:37 — 6 rotado(s) corregidos + 2 por la sesión de main (deploy 1.7.110)
+
+**Corrida:** manual (sesión workbench). Doble validación convergente por dos caminos de auth:
+- **probe headless** (`probe-config-hashes.mjs`, auth del frontend ROCP) → 6 queries STALE.
+- **`validate-hashes.py`** (idp-token) → confirmó las 6 queries **y** sumó 1 mutation (`UpdateReceivedOrder`; el probe no prueba mutations por seguridad). 112 queries + 68 mutations probadas.
+- **Falsas alarmas descartadas:** `AllPartNumbers` y `StationTreatmentByWorkOrder` salieron *vigentes* (eran inconclusos "auth" del probe headless — necesita masa crítica de queries para hidratar; con 1 sola cae en auth). `GetInventoryItem`/`SearchUnits` ya arreglados en 1.7.103.
+
+**Fuente de hashes nuevos:** `~/Downloads/scan_results_2026-07-14_101907.json` (6 queries) + `..._102838.json` (trae `UpdateReceivedOrder`). Todos `status:changed, http:200, errorCount:0, responseFields:sí` → rotación real (no deprecación). **Verificado antes de deployar:** re-corrí el probe con los 6 hashes nuevos aplicados → **0 STALE, 111 vigentes**.
+
+**Corregidos en `config.json` (bump 1.7.109 → 1.7.110, commit main `e6564e3`, gh-pages `82699b5`):**
+
+| Op | tipo | viejo | nuevo | applets |
+|---|---|---|---|---|
+| `AllQuotes` | query | `2586de5e…` | `40ee4d1c…` | bulk-upload |
+| `AllStations` | query | `5bd4ae33…` | `83451625…` | load-calculator |
+| `CreateEditReceivedOrderDialogQuery` | query | `5b01210e…` | `b7187e08…` | ov-operations |
+| `GetAddPartsReceivedOrder` | query | `677ae9ca…` | `05e2272a…` | po-reconciler |
+| `GetDomain` | query | `b2609437…` | `c96d6772…` | bill-autofill, invoice-autofill |
+| `UpdateReceivedOrder` | mutation | `d9e88576…` | `b3602b2d…` | ov-operations, po-reconciler |
+
+**Coordinación (dos sesiones):** la sesión de `main` arregló en paralelo `GetStation` (`a41cfd01…`) y `CurrentUser` (`0c1911e4…`) vía hash-autopilot (commit `78944ac`, bump → 1.7.109). Su `GetStation` **coincide exacto con mi scan** (misma fuente de verdad). No re-tocados. main quedó limpio y sincronizado antes de mi deploy (sin colisión de push).
+
+### Self-healing — estado y mapa de recetas (pendiente fase B)
+Ninguno de los 7 ops rotados tenía receta de captura headless en `click-recipes.json` → el motor los **detecta** (probe) pero **no los auto-captura**; la captura del hash nuevo aún dependió del hash-scanner manual. El scan aporta la pantalla que dispara cada op (base para construir las recetas):
+
+| Op | pantalla que la dispara | receta a construir |
+|---|---|---|
+| `AllQuotes` | `/Domains/{d}/Quotes` | goto lista |
+| `AllStations` | `/Stations` | goto lista |
+| `GetDomain` | `/Domain` | goto |
+| `GetStation` | `/Stations/{id}` (fila de `/Stations`) | client-side nav (clic en fila) |
+| `CreateEditReceivedOrderDialogQuery` | SalesOrder detalle → botón "Editar Orden de Venta" | clic interacción |
+| `GetAddPartsReceivedOrder` | SalesOrder detalle → botón "Agregar Piezas (Tabla)" | clic interacción |
+| `UpdateReceivedOrder` | SalesOrder → botón "Guardar" | **mutation → ciclo sentinela** (no navegable) |
+
+Las 3 de goto (`AllQuotes`/`AllStations`/`GetDomain`) son las candidatas más fáciles; las de detalle necesitan el WIP de navegación client-side de `wt/hash-selfheal` (viewport 1680×1200 + clic real en `<Link>`, sin re-`goto`), aún sin validar en vivo. `UpdateReceivedOrder` requiere declarar sentinela (patrón Fase C).
