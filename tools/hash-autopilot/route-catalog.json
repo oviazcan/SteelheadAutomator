@@ -1,7 +1,29 @@
 {
   "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
   "_domainDefault": "344",
+  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder"],
+  "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
   "routes": {
+    "salesorders-ro-edit": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        { "goto": "/Domains/{domain}/SalesOrders" },
+        { "clickFirst": "a[href*='/SalesOrders/']", "hrefMatches": "/SalesOrders/\\d+" },
+        { "clickButton": "edit sales order|editar orden de venta" }
+      ],
+      "captures": ["CreateEditReceivedOrderDialogQuery"]
+    },
+    "salesorders-ro-addparts": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        { "goto": "/Domains/{domain}/SalesOrders" },
+        { "clickFirst": "a[href*='/SalesOrders/']", "hrefMatches": "/SalesOrders/\\d+" },
+        { "clickButton": "add parts \\(table\\)|agregar piezas \\(tabla\\)" }
+      ],
+      "captures": ["GetAddPartsReceivedOrder"]
+    },
     "account-list": {
       "type": "query",
       "module": "Account",
@@ -683,7 +705,6 @@
         "CustomerSearchByName",
         "EditPartNumberOptInOutsQuery",
         "FindPartGroupQuery",
-        "GetAddPartsReceivedOrder",
         "GetCustomerByIdQuery",
         "GetCustomerNameById",
         "GetRackTypes",
@@ -762,7 +783,6 @@
         "CalendarDaysQuery",
         "CalendarYearsCoverageQuery",
         "CheckDuplicatePO",
-        "CreateEditReceivedOrderDialogQuery",
         "CreateReceivedOrderPartTransformQuery",
         "Customer",
         "CustomerFinancialByCustomerId",
@@ -770,7 +790,6 @@
         "DomainWorkingDaysQuery",
         "DropShipCustomersQuery",
         "EditPartCountOnROWorkOrderQuery",
-        "GetAddPartsReceivedOrder",
         "GetBomItemsInventoryItemStatus",
         "GetBomProcessesForProcessSelect",
         "GetCustomerByIdQuery",

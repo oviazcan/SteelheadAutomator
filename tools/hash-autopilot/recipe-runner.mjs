@@ -56,6 +56,12 @@ export async function runRecipe(page, recipe, domain, sink, stepTimeoutMs = 2500
       // query de detalle sin re-bootstrapear el SPA (page.goto sí lo re-bootstrapea
       // y por eso NO fetcheaba). Reintenta el clic hasta capturar o vencer.
       await clickFirstMatching(page, step.clickFirst, step.hrefMatches || null, sink, need, stepTimeoutMs);
+    } else if (step.clickButton) {
+      // Clic en un BOTÓN por TEXTO (abre un modal cuyo schema/query es la op a
+      // capturar; p.ej. "Edit Sales Order" → CreateEditReceivedOrderDialogQuery,
+      // "Add Parts (Table)" → GetAddPartsReceivedOrder). El regex es BILINGÜE ES+EN
+      // (el headless corre en INGLÉS, pero el operador puede verlo en español).
+      await clickButtonMatching(page, step.clickButton, sink, need, stepTimeoutMs);
     }
     // espera activa: pollea hasta capturar las ops de la receta o vencer timeout
     const start = Date.now();
@@ -90,6 +96,48 @@ async function clickFirstMatching(page, sel, hrefMatches, sink, need, timeoutMs)
         while (!haveAll() && Date.now() - t < 4000) await page.waitForTimeout(400);
       } else {
         await page.waitForTimeout(600); // lista aún sin filas → reintentar
+      }
+    } catch { await page.waitForTimeout(500); }
+    finally { if (handle) await handle.dispose().catch(() => {}); }
+    if (clickedOnce && haveAll()) break;
+  }
+  return clickedOnce;
+}
+
+// Matcher PURO (testeable sin browser): ¿el texto de un botón matchea el patrón
+// bilingüe? Case-insensitive, tolera espacios (el innerText headless llega en
+// MAYÚSCULAS por text-transform, y con \s colapsables).
+export function buttonTextMatches(text, reSrc) {
+  if (!text || !reSrc) return false;
+  try { return new RegExp(reSrc, 'i').test(String(text).trim().replace(/\s+/g, ' ')); }
+  catch { return false; }
+}
+
+// Espera hasta timeoutMs a que aparezca un <button>/[role=button] cuyo texto matchee
+// reSrc (BILINGÜE ES+EN, case-insensitive) y lo CLICA → abre el modal cuyo schema/query
+// es la op a capturar. Reintenta si el botón aún no rindió. Para al capturar o vencer.
+async function clickButtonMatching(page, reSrc, sink, need, timeoutMs) {
+  const haveAll = () => need.length > 0 && need.every((op) => sink && sink.hashes[op]);
+  const deadline = Date.now() + timeoutMs;
+  let clickedOnce = false;
+  while (Date.now() < deadline && !haveAll()) {
+    let handle = null;
+    try {
+      handle = await page.evaluateHandle((src) => {
+        const re = new RegExp(src, 'i');
+        const els = [...document.querySelectorAll('button, [role="button"], a.MuiButton-root')];
+        return els.find((b) => re.test(((b.innerText || b.textContent || '').trim().replace(/\s+/g, ' ')))) || null;
+      }, reSrc);
+      const el = handle.asElement();
+      if (el) {
+        await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+        await el.click({ timeout: 5000 });
+        clickedOnce = true;
+        // Tras abrir el modal, ventana para que dispare su query antes de reintentar.
+        const t = Date.now();
+        while (!haveAll() && Date.now() - t < 4000) await page.waitForTimeout(400);
+      } else {
+        await page.waitForTimeout(600); // el botón aún no rinde → reintentar
       }
     } catch { await page.waitForTimeout(500); }
     finally { if (handle) await handle.dispose().catch(() => {}); }

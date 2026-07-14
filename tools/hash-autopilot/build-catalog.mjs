@@ -27,10 +27,12 @@ const queries = config.steelhead.hashes.queries || {};
 const mutations = config.steelhead.hashes.mutations || {};
 const opTypeOf = (op) => (op in mutations ? 'mutation' : 'query');
 
-const generated = generateCatalog(scanOps, opTypeOf);
-
 // Fusión: preserva rutas existentes (validadas a mano en Fase A); añade/actualiza las del scan.
 const existing = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
+// Ops que requieren INTERACCIÓN (clic en botón para abrir un modal) NO se auto-agrupan
+// por pathname: viven en rutas MANUALES con paso `clickButton`. Ver `_interactionOps`.
+const interactionOps = new Set(existing._interactionOps || []);
+const generated = generateCatalog(scanOps, opTypeOf, interactionOps);
 const mergedRoutes = { ...existing.routes };
 for (const [id, route] of Object.entries(generated.routes)) {
   if (mergedRoutes[id] && mergedRoutes[id].captures) {

@@ -31,10 +31,16 @@ function withDomainPlaceholder(pathname) {
   return pathname.replace(/\/Domains\/\d+(\/|$)/, '/Domains/{domain}$1');
 }
 
-export function generateCatalog(scanOps, opTypeOf) {
+export function generateCatalog(scanOps, opTypeOf, interactionOps = new Set()) {
   // Agrupar ops por el pathname dominante (mayor count).
   const byPath = {}; // pathname → { ops:Set }
   for (const [op, entry] of Object.entries(scanOps || {})) {
+    // Ops que requieren INTERACCIÓN (clic en botón para abrir un modal) NO se agrupan
+    // por pathname: navegar a la pantalla NO las dispara. Viven en rutas MANUALES con
+    // paso `clickButton` (ver route-catalog `_interactionOps`). Si se agruparan aquí,
+    // selectRoutes elegiría la ruta de pathname (que NO las captura) y nunca correría
+    // la ruta de interacción.
+    if (interactionOps && interactionOps.has && interactionOps.has(op)) continue;
     const screens = entry && entry.screens ? entry.screens : [];
     if (!screens.length) continue;
     const dom = screens.slice().sort((a, b) => (b.count || 0) - (a.count || 0))[0];

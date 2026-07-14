@@ -71,3 +71,20 @@ test('generateCatalog: determinista — rutas ordenadas por id', () => {
   const ids = Object.keys(generateCatalog(scanOps, typeOf).routes);
   assert.deepEqual(ids, [...ids].sort());
 });
+
+test('generateCatalog: interactionOps se EXCLUYEN del agrupamiento por pathname (viven en rutas manuales clickButton)', () => {
+  const scanOps = {
+    // op de interacción: el scan la vio en el detalle de la OV (breadcrumb button:) pero
+    // navegar ahí NO la dispara — requiere clic en botón.
+    GetAddPartsReceivedOrder: { screens: [{ pathname: '/Domains/344/SalesOrders/1697', breadcrumb: 'button:Agregar Piezas (Tabla)', count: 6 }] },
+    // op normal de la misma pantalla: SÍ debe agruparse.
+    GetReceivedOrder: { screens: [{ pathname: '/Domains/344/SalesOrders/1697', breadcrumb: 'a:x', count: 2 }] },
+  };
+  // sin interactionOps: se agrupa normal
+  const sinExcl = Object.values(generateCatalog(scanOps, () => 'query').routes).flatMap((r) => r.captures);
+  assert.ok(sinExcl.includes('GetAddPartsReceivedOrder'), 'sin interactionOps la op se agrupa por pathname');
+  // con interactionOps: la op de interacción NO aparece en ninguna ruta auto-generada
+  const conExcl = Object.values(generateCatalog(scanOps, () => 'query', new Set(['GetAddPartsReceivedOrder'])).routes).flatMap((r) => r.captures);
+  assert.ok(!conExcl.includes('GetAddPartsReceivedOrder'), 'interactionOp EXCLUIDA del agrupamiento por pathname');
+  assert.ok(conExcl.includes('GetReceivedOrder'), 'las demás ops de la misma pantalla siguen agrupándose');
+});
