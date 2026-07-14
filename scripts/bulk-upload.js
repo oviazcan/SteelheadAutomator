@@ -1,5 +1,13 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.34 (2026-07-13): FIX — SOLO_PN creaba precio $0 en cargas de specs.
+//   La condición del bloque de precios standalone (`part.precio === null && !part.qty`)
+//   dejaba pasar filas SIN precio cuando Cantidad traía el default 1 (toda la plantilla
+//   lo trae) → creaba precio $0 y STEP 8 lo fijaba como default, PISANDO el precio real
+//   del PN. El hash rotado de SaveManyPartNumberPrices lo enmascaraba (fallaba con 400
+//   "Must provide a query string" antes de corromper). Fix: en SOLO_PN solo se crea
+//   precio si `part.precio != null` (precio explícito); Cantidad ya no lo dispara.
+//
 // VERSION 1.5.33 (2026-07-13): FIX CRÍTICO — SavePartNumberInput renombró
 //   `customerFacingNotes` → `externalNotes` (Steelhead Product Update). El campo
 //   viejo daba HTTP 400 "Field customerFacingNotes is not defined by type
@@ -241,7 +249,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.33';
+  const VERSION = '1.5.34';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -5160,7 +5168,12 @@ const BulkUpload = (() => {
         const pnpWithPrice = [];
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
-          if (part.precio === null && !part.qty) continue; // no price data
+          // 1.5.34: SOLO crear precio standalone si hay PRECIO explícito. Antes la
+          // condición `&& !part.qty` dejaba pasar filas sin precio cuando Cantidad
+          // traía el default 1 (toda la plantilla lo trae) → creaba un precio $0 y
+          // en STEP 8 lo fijaba como default, PISANDO el precio real del PN. En una
+          // carga de specs (columna Precio vacía) NO se debe tocar precios.
+          if (part.precio == null) continue; // sin precio explícito → no tocar precios
           const entry = pnLookup.get(i); if (!entry) continue;
           pnpWithPrice.push({
             partNumberId: entry.pn.id,
