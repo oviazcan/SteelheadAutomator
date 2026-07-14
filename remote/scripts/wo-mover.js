@@ -11,7 +11,7 @@
 const WOMover = (() => {
   'use strict';
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
 
   const api = () => window.SteelheadAPI;
   const ovops = () => window.OVOperations;
@@ -537,7 +537,7 @@ const WOMover = (() => {
       startedAt: wo.startedAt ?? null,
       receivedOrderId: parseInt(destReceivedOrderId, 10),
       description: wo.descriptionMarkdown ?? '',
-      customerFacingNotes: wo.customerFacingNotes ?? '',
+      externalNotes: wo.externalNotes ?? wo.customerFacingNotes ?? '',
       type: wo.type || 'MAKE_TO_ORDER',
       blockPartialShipments: !!wo.blockPartialShipments,
       labelIds,

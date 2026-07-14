@@ -1619,7 +1619,7 @@ const POReconciler = (() => {
         startedAt: new Date().toISOString(),
         receivedOrderId: ovId,
         description: '',
-        customerFacingNotes: '',
+        externalNotes: '',
         type: 'MAKE_TO_ORDER',
         blockPartialShipments: false,
         labelIds: [],
