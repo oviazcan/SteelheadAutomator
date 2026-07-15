@@ -523,6 +523,22 @@ decisión pendiente — ver §5.7.
 
 ## 5. Preguntas abiertas para el usuario
 
+### Decisiones tomadas (2026-07-15)
+
+- **§5.1 Servidor:** EQUIPO FÍSICO DEDICADO (no VPS). Pendiente definir CUÁL
+  equipo y su SO (Mac mini → sigue con `launchd`; mini-PC Linux → `systemd`).
+- **§5.2 Auth:** REFRESH TOKEN DEDICADO DEL SERVIDOR (Opción A) — el equipo
+  tiene su propio token, nunca compartido con la laptop. Elimina la carrera.
+- **§5.7 Cron diario `hash-validator-daily`:** SE APAGA. Aclaración de
+  arquitectura: NO son dos sistemas por diseño sino por historia — el
+  `hash-validator-daily` (cron de Claude, solo detecta+notifica) es REDUNDANTE
+  hoy porque el `hash-autopilot` ya corre el validador embebido (Capa 2) Y
+  además repara. La meta del usuario ("un solo cron, todo migrado") se cumple
+  migrando SOLO el `hash-autopilot` (que es el completo) y apagando el viejo →
+  UN solo sistema autónomo en el servidor, sin duplicación ni carrera de token.
+
+### Pendientes
+
 Estas son decisiones que Claude no puede tomar por su cuenta — necesitan tu
 criterio de negocio/operación antes de planear la implementación:
 
