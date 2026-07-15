@@ -46,7 +46,16 @@ const SteelheadAPI = (() => {
     return { message: `Log copiado (${lines.length} líneas)` };
   }
 
-  function log(msg)  { const s = `[SA] ${msg}`; console.log(s); _pushLog(s); }
+  // Gate de ruido en consola (audit pre-producción #5). El `console.log` informativo se
+  // suprime por default en producción; la PERSISTENCIA (ring buffer + sa_last_log) se
+  // mantiene SIEMPRE, así que copyLastLog() conserva el diagnóstico post-mortem. `warn`
+  // queda SIEMPRE visible (son señales de problema reales). Activar en vivo sin re-deploy:
+  //   localStorage.sa_debug = '1'   (en la consola del tab)   — o config.debug === true.
+  function _debugOn() {
+    try { if (localStorage.getItem('sa_debug') === '1') return true; } catch (_) {}
+    return config?.debug === true;
+  }
+  function log(msg)  { const s = `[SA] ${msg}`; if (_debugOn()) console.log(s); _pushLog(s); }
   function warn(msg) { const s = `[SA] WARN: ${msg}`; console.warn(s); _pushLog(s); }
 
   function _pushLog(s) {

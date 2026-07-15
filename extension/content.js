@@ -4,7 +4,8 @@
 
 (function () {
   'use strict';
-  console.log('[SteelheadAutomator] Content script activado en', window.location.href);
+  // Ruido por-carga gateado (audit pre-producción #5). Activar: localStorage.sa_debug='1'.
+  try { if (localStorage.getItem('sa_debug') === '1') console.log('[SteelheadAutomator] Content script activado en', window.location.href); } catch (_) {}
 
   // Communicate CFDI Attacher enabled state to MAIN world via data attribute
   chrome.storage.local.get('cfdiAttacherEnabled', (data) => {
