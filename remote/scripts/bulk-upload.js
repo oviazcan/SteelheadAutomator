@@ -1,5 +1,11 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.38 (2026-07-15): FIX — "Spec no encontrada" con la spec presente por
+//   codificación de acentos. El catálogo guarda NFC; un CSV exportado puede traer acentos
+//   DESCOMPUESTOS (NFD) que no matchean byte-a-byte. Fix: normalizar nombres de spec (NFC +
+//   trim) al construir specByName y en TODO specByName.get (helper nk()). Incidente: RC MnPO4
+//   (…Medición…) spec 21540 activa, no matcheaba. Tolerante (nunca rompe un match correcto).
+//
 // VERSION 1.5.37 (2026-07-14): FEAT #4 — troceo SOLO_PN in-app. El bloque de ejecución
 //   (Paso1→STEP8) se envuelve en un for sobre lotes de ~1000 filas (config soloBatch.size,
 //   default 1000) SOLO en modo SOLO_PN con >batchSize filas. Entre lotes: checkpoint
@@ -277,7 +283,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.37';
+  const VERSION = '1.5.38';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -3845,7 +3851,14 @@ const BulkUpload = (() => {
         const more = unknownLabelNames.size > 10 ? ` (+${unknownLabelNames.size - 10} más)` : '';
         warn(`⚠️ ${unknownLabelNames.size} etiqueta(s) en el CSV no existen en el catálogo de Steelhead: ${list}${more}. Las filas afectadas se cargarán SIN esas etiquetas y aparecerán en el reporte de errores.`);
       }
-      const specByName = new Map(); for (const s of specsAll) if (s?.name) specByName.set(s.name, s);
+      // 1.5.38: normalizar nombres de spec (NFC + trim) para el match. El catálogo de SH
+      //   guarda NFC; un CSV exportado puede traer acentos DESCOMPUESTOS (NFD: "ó" = o + ´)
+      //   que se ven idénticos pero NO matchean byte-a-byte → "Spec no encontrada" con la
+      //   spec presente y activa (incidente 2026-07-15: RC MnPO4 (…Medición…), spec 21540).
+      //   nk() se aplica al build del mapa Y a TODO specByName.get. Tolerante: nunca rompe
+      //   un match correcto, solo lo vuelve robusto a la codificación de acentos.
+      const nk = (s) => (s == null ? '' : String(s)).normalize('NFC').trim();
+      const specByName = new Map(); for (const s of specsAll) if (s?.name) specByName.set(nk(s.name), s);
       const rackTypeByName = new Map(); for (const rt of (racksD?.pagedData?.nodes || racksD?.allRackTypes?.nodes || [])) rackTypeByName.set(rt.name, rt);
       unitNodes = unitsD?.pagedData?.nodes || unitsD?.searchUnits?.nodes || [];
       // V10: build unitById map for Espesor mils support
@@ -4072,7 +4085,7 @@ const BulkUpload = (() => {
         for (const sn of uniqueSpecs) {
           bailIfStale(myRunId);
           if (isDash(sn)) { specDone++; setPanelProgress(specDone, specCount); continue; }
-          const si = specByName.get(sn); if (!si) { warn(`Spec "${sn}" no encontrada.`); specDone++; setPanelProgress(specDone, specCount); continue; }
+          const si = specByName.get(nk(sn)); if (!si) { warn(`Spec "${sn}" no encontrada.`); specDone++; setPanelProgress(specDone, specCount); continue; }
           setPanelSubPhase(`Spec: ${sn}`);
           if (!sfCache.has(si.id)) {
             // V10: AllSpecs embed no devuelve params para todos los field types (e.g. DROPDOWN
@@ -4112,7 +4125,7 @@ const BulkUpload = (() => {
         const sfMap = new Map(); // sfId → { sfName, specNames: [] }
         for (const cs of (parts[i].specs || [])) {
           if (isDash(cs.name)) continue;
-          const si = specByName.get(cs.name); if (!si) continue;
+          const si = specByName.get(nk(cs.name)); if (!si) continue;
           for (const { sfId, sfName } of _sfIdsForSpec(si.id)) {
             if (!sfMap.has(sfId)) sfMap.set(sfId, { sfName, specNames: [] });
             sfMap.get(sfId).specNames.push(cs.name);
@@ -4730,7 +4743,7 @@ const BulkUpload = (() => {
               const wantedSpecIds = new Set();
               for (const cs of target.part.specs) {
                 if (isDash(cs.name)) continue;
-                const si = specByName.get(cs.name);
+                const si = specByName.get(nk(cs.name));
                 if (si) wantedSpecIds.add(si.id);
               }
               const archiveIds = [];
@@ -5559,7 +5572,7 @@ const BulkUpload = (() => {
         const specsToApply = [];
         for (const cs of part.specs) {
           if (isDash(cs.name)) continue; // "-" mezclado o solo: no se aplica (archive sentinel maneja el resto)
-          const si = specByName.get(cs.name); if (!si) { errors.push(`Spec "${cs.name}" no encontrada.`); continue; }
+          const si = specByName.get(nk(cs.name)); if (!si) { errors.push(`Spec "${cs.name}" no encontrada.`); continue; }
           wantedSpecIds.add(si.id);
           specNameById.set(si.id, cs.name);
           const sd = sfCache.get(si.id); if (!sd) continue;
@@ -6450,7 +6463,7 @@ const BulkUpload = (() => {
           const processedSpecFields = new Set();
           for (const cs of part.specs) {
             if (isDash(cs.name)) continue;
-            const si = specByName.get(cs.name); if (!si) continue;
+            const si = specByName.get(nk(cs.name)); if (!si) continue;
             const linked = linkedSpecs.find(s => s.specBySpecId?.id === si.id && !s.archivedAt);
             if (!linked) continue;
             const sd = sfCache.get(si.id); if (!sd) continue;
