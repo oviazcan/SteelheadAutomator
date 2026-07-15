@@ -1,5 +1,14 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.39 (2026-07-15): FIX crítico — "Cannot access 'pnLookup' before initialization"
+//   (FATAL) al ejecutar con troceo SOLO_PN activo (>1000 filas; destapado en corrida real de
+//   20k NP). El wrapper de lotes #4 (1.5.37) hacía `pnLookup.clear()` al inicio del cuerpo del
+//   for, pero `pnLookup` se declara con `const` más abajo EN ESE MISMO for → temporal dead zone.
+//   parts/pnStatus sí se resetean ahí (scope superior); pnLookup es local al for y cada lote ya
+//   crea un Map nuevo por iteración → el clear era redundante además de fatal. Fix: quitarlo.
+//   Solo afectaba modo troceo (doBatch=true); monolítico (<1000 filas) nunca ejecutaba la línea.
+//   Regresión: tools/test/bulk-upload-pnlookup-tdz.test.js.
+//
 // VERSION 1.5.38 (2026-07-15): FIX — "Spec no encontrada" con la spec presente por
 //   codificación de acentos. El catálogo guarda NFC; un CSV exportado puede traer acentos
 //   DESCOMPUESTOS (NFD) que no matchean byte-a-byte. Fix: normalizar nombres de spec (NFC +
@@ -283,7 +292,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.38';
+  const VERSION = '1.5.39';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -4509,7 +4518,10 @@ const BulkUpload = (() => {
         if (doBatch) {
           parts.length = 0; parts.push(...partsFullSnapshot.slice(rangeStart, rangeEnd));
           pnStatus.length = 0; pnStatus.push(...pnStatusFullSnapshot.slice(rangeStart, rangeEnd));
-          pnLookup.clear();
+          // NO clarear pnLookup aquí: se declara con `const` MÁS ABAJO, en este mismo cuerpo
+          // del for → cada lote ya obtiene un Map nuevo por iteración. Tocarlo aquí lanzaba
+          // TDZ "Cannot access 'pnLookup' before initialization" (bug 1.5.39, solo con troceo
+          // activo). parts/pnStatus SÍ van aquí porque son de scope superior; pnLookup es local.
           log(`  ${SteelheadBulkBatch.batchLabel(b, soloRanges.length)}: filas ${rangeStart + 1}-${rangeEnd} (${rangeEnd - rangeStart} PNs)`);
         }
 
