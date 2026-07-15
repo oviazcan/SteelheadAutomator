@@ -606,7 +606,7 @@
       "subtitle": "Comparar orden de compra vs venta",
       "icon": "📋",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"],
       "requiredPermissions": ["READ_RECEIVED_ORDERS"],
       "actions": [
         { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
@@ -741,7 +741,7 @@
       "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)",
       "icon": "📥",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"],
       "requiredPermissions": ["READ_RECEIVED_ORDERS"],
       "actions": [
         { "id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer" }
