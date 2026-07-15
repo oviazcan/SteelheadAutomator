@@ -18,6 +18,20 @@ const InvoiceAutoRegen = (() => {
   let enabled = true;
   let _origFetch = null;
 
+  // Gate de ruido en consola (audit pre-producción #5): sombrea `console` localmente
+  // dentro de este IIFE (poller de fondo que corre en cada carga de facturas). Los
+  // console.log informativos se suprimen salvo localStorage.sa_debug==='1'; warn/error
+  // quedan siempre visibles. No altera las ~28 llamadas existentes (args, incl. %c
+  // styling, pasan intactos). Activar en vivo: localStorage.sa_debug='1'.
+  const _saDebug = () => { try { return localStorage.getItem('sa_debug') === '1'; } catch (_) { return false; } };
+  const console = {
+    log:   (...a) => { if (_saDebug()) window.console.log(...a); },
+    info:  (...a) => { if (_saDebug()) window.console.info(...a); },
+    debug: (...a) => { if (_saDebug()) window.console.debug(...a); },
+    warn:  (...a) => window.console.warn(...a),
+    error: (...a) => window.console.error(...a),
+  };
+
   // Registry de sha256Hash por operationName, llenado en tiempo real desde el
   // interceptor. Vive en window para sobrevivir doble-load del script.
   const hashRegistry = window.__autoRegenHashRegistryMap || (window.__autoRegenHashRegistryMap = new Map());
