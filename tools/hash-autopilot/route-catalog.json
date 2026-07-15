@@ -1,10 +1,11 @@
 {
   "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
   "_domainDefault": "344",
-  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder"],
+  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems"],
   "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
   "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail"],
   "_docManualRoute": "Ops de DETALLE cuya ruta auto-generada apuntaba MAL (hrefMatches por module, no por sub-entidad: /Purchasing/PurchaseOrders/<id> NO matchea /Purchasing/\\d+; y colision de routeId Maintenance/Nodes vs Maintenance/SensorDashboards). Rutas manuales validadas headless 2026-07-14. El generador las excluye del auto-agrupamiento (union con _interactionOps).",
+  "_docInvoiceSafety": "SEGURIDAD (ruta invoices-packingslips-addinvoice): clica 'Add Invoice' (aria-label, icono NoteAddIcon) de un packing slip → abre el modal de facturación que dispara GetReceivedOrdersWithReceivedOrderLineItems (query de LECTURA). Usa clickFirst por SELECTOR aria-label, no clickButton por texto. NUNCA extender a clicar 'Crear Factura' (DescriptionOutlinedIcon) ni ningún submit — CREARÍA una factura real. La receta solo abre el modal; el navegador se cierra sin guardar. Validada headless 2026-07-15, cero escrituras confirmado.",
   "routes": {
     "maintenance-sensordashboards-detail": {
       "type": "query",
@@ -351,6 +352,17 @@
         "UIGetIntegrationObject"
       ]
     },
+    "invoices-packingslips-addinvoice": {
+      "type": "query",
+      "module": "Invoices",
+      "steps": [
+        { "goto": "/Domains/{domain}/Invoices?mode=PackingSlips&roOffset=0" },
+        { "clickFirst": "span[aria-label=\"Add Invoice\"] button" }
+      ],
+      "captures": [
+        "GetReceivedOrdersWithReceivedOrderLineItems"
+      ]
+    },
     "invoices-list": {
       "type": "query",
       "module": "Invoices",
@@ -384,7 +396,6 @@
         "GetOtherSolisOnSoWithNoProductionAssociations",
         "GetPaymentLink",
         "GetPdfConfigsByType",
-        "GetReceivedOrdersWithReceivedOrderLineItems",
         "GetRecomputableAt",
         "GetUserEmailRecipients",
         "InvoiceLowCode",
