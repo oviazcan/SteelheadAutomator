@@ -1,8 +1,19 @@
 # Applet `auto-router` — Auto-Ruteador de Órdenes
 
-> Versión: **0.2.0** (Fase 1 — motor + panel single-order + idempotencia + fix load-before-save).
-> Estado: **VALIDADO en vivo** (config 1.6.88). Run real OK: re-ruteo single-order graba correctamente.
-> Pendiente: Fase 2 (batch multi-orden), Fase 3 (auto-fill del modal nativo).
+> Versión: **0.2.0** (bitácora). **OJO discrepancia (confirmada 2026-07-15):** la constante
+> `VERSION` dentro de `remote/scripts/auto-router.js` sigue en `'0.1.0'` — nunca se bumpeó según
+> avanzaron las fases; el applet evolucionó vía bumps de `config.json` (deploys), no del literal
+> del script. No fuerces un número "corregido" en el código sin que alguien lo revise a propósito;
+> este doc usa `config.json`/gh-pages como fuente de verdad de qué está vivo.
+> Estado: **Fases 1, 2, 2b y 3 implementadas y deployadas** (motor + panel single-order + batch
+> multi-orden + captura desde el board + ruteo directo sin modal nativo + "rutear todas" + tooltip
+> de metal base en el board). **VALIDADO en vivo** solo hasta donde el doc lo registra explícitamente:
+> config 1.6.88 (re-ruteo single-order) y config 1.7.4 (tooltip enriquecido). Los deploys 1.7.5→1.7.10
+> (perf, fixes de selección, dark mode de modales) están confirmados como **deployados en gh-pages**
+> (`git log gh-pages --oneline -- scripts/auto-router*.js`) pero sin confirmación de run real
+> registrada en esta bitácora — ver §"Deploys posteriores (confirmado gh-pages)".
+> Config más reciente confirmado en gh-pages a 2026-07-15: **1.7.10** (`auto-router-panel.js`, dark mode).
+> Pendiente: Fase 0 (fidelidad opcional del test), validación en vivo de los deploys 1.7.5-1.7.10.
 
 ## Lección crítica: load-before-save (fix 1.6.88)
 El re-ruteo "no se grababa" si el modal de ruteo nativo se cerraba antes de aplicar. **Causa raíz**
@@ -185,6 +196,29 @@ auto-ruteador) y programar con `CreateManyScheduleTasks`/`CreateManyStationTasks
 - Golden test: 13/13 (34 rutas exactas + `effectiveChangeCount`/`currentLineCode`/`destinationLines` actualizado).
 
 **"Rutear todas" reinterpretado (1.7.6).** El FAB sin selección ahora rutea solo la **estación activa** (`?stationId` de la URL, que el selector de estación del board cambia), NO todo el board. CAP `REROUTE_STATION_CAP = 60`: arriba del cap pide selección (cargar cientos de árboles martillaría `/graphql`).
+
+## Deploys posteriores (confirmado gh-pages, `git log gh-pages -- scripts/auto-router*.js`)
+
+**Limpiar selección al cambiar de estación, no solo de board (config 1.7.7, commit `8032343`).**
+`auto-router.js`: `boardSelection` se limpiaba solo al cambiar `location.pathname` (cambio de board).
+El selector de **estación** dentro del mismo board (`?stationId=` en la URL) también debe limpiarla
+— si no, el badge/FAB del FAB 🔀 arrastraba selección "fantasma" de la estación anterior al cambiar
+de estación sin cambiar de board.
+
+**Dark mode de los modales inyectados (config 1.7.9 y 1.7.10).** Los dos modales propios del applet
+se restylearon a tema oscuro, en línea con la regla de diseño del repo (UI propia de la extensión
+SIEMPRE dark mode, para que el operador distinga de un vistazo que es UI nuestra y no una pantalla
+nativa de Steelhead, que son claras):
+- `auto-router-batch.js` → config **1.7.9**, commit `6822fa2` ("modal batch en modo oscuro").
+- `auto-router-panel.js` → config **1.7.10**, commit `f8456a8` ("modal panel single en modo oscuro").
+
+Sin detalle adicional capturado más allá del mensaje de commit (no hay nota de paleta específica
+distinta del estándar `#1c2430`/`#e6e9ee`/`#141a23`/`#13a36f` del repo); confirmar contraste en el
+próximo run real si hiciera falta ajuste.
+
+**Nota de cobertura:** ninguno de estos cuatro deploys (1.7.7, 1.7.9, 1.7.10, y tampoco 1.7.5/1.7.6
+documentados arriba en "Fixes 2026-06-24") tiene una entrada de "VALIDADO en vivo" registrada en esta
+bitácora — quedan como deployados-pero-no-confirmados-en-uso hasta que se anote lo contrario.
 
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
