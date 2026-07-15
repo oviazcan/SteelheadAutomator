@@ -503,6 +503,35 @@ const BillAutofill = (() => {
       .trim();
   }
 
+  // ¿El `name` de una cuenta denota la divisa `cur`? El catálogo NO es uniforme: la
+  // mayoría trae el código ISO ("... 1140 USD"), pero otras usan la nomenclatura contable
+  // mexicana "M.N." (Moneda Nacional = pesos), p.ej. "... 1177 M.N.". Un `includes('nacional')`
+  // sobre el name normalizado NO cubre "M.N." (normaliza a "m n"). Gemelo de la función en
+  // invoice-autofill.js (bug Hubbell 2026-07-15). Para "M.N." se exige el punto (`M.`) o la
+  // forma pegada `MN`, así unas iniciales "M N" sueltas (razón social) no se leen como MXN.
+  function nameMatchesCurrency(name, cur) {
+    const raw = String(name || '');
+    const n = normalizeForMatch(raw);
+    const c = String(cur || '').toUpperCase().trim();
+    if (!c) return false;
+    if (c === 'MXN') {
+      return /\bmxn\b/i.test(raw)
+          || /\bmxp\b/i.test(raw)              // código ISO viejo del peso
+          || /\bpesos?\b/.test(n)
+          || /moneda\s*nacional/.test(n)
+          || /\bnacional\b/.test(n)
+          || /\bm\.\s*n\.?/i.test(raw)         // "M.N.", "M. N.", "M.N"
+          || /\bmn\b/i.test(raw);              // "MN" pegado
+    }
+    if (c === 'USD') {
+      return /\busd\b/i.test(raw)
+          || /\bd[oó]lar(?:es)?\b/i.test(raw)  // dólar / dólares / dolar
+          || /\bdollars?\b/i.test(raw)
+          || /us\s*\$/i.test(raw);
+    }
+    return new RegExp(`\\b${c}\\b`, 'i').test(raw);
+  }
+
   function tokenOverlapScore(target, candidate) {
     const targetTokens = normalizeForMatch(target).split(' ').filter(t => t.length > 2);
     const candidateNorm = normalizeForMatch(candidate);
@@ -531,8 +560,11 @@ const BillAutofill = (() => {
 
       if (currency) {
         const cur = currency.toUpperCase();
-        const hasUsd = nameLower.includes('usd') || nameLower.includes('dolar') || nameLower.includes('dollar');
-        const hasMxn = nameLower.includes('mxn') || nameLower.includes('peso') || nameLower.includes('nacional');
+        // name CRUDO (no nameLower): nameMatchesCurrency normaliza internamente y además
+        // checa el crudo para reconocer "M.N." (Moneda Nacional = pesos), que al normalizar
+        // se vuelve "m n" e "includes('nacional')" no lo pescaría.
+        const hasUsd = nameMatchesCurrency(a.name, 'USD');
+        const hasMxn = nameMatchesCurrency(a.name, 'MXN');
         if (cur === 'USD' && hasUsd) score += 30;
         if (cur === 'MXN' && hasMxn) score += 30;
         if (cur === 'USD' && hasMxn) score -= 40;
