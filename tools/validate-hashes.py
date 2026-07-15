@@ -31,6 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "remote" / "config.json"
 OUT_DIR = REPO_ROOT / "tools" / ".hash-validation"
 WHITELIST_PATH = REPO_ROOT / "tools" / "hash-validator-whitelist.json"
+MASKED_OPS_PATH = REPO_ROOT / "tools" / "hash-autopilot" / "masked-ops.json"
 REPORTES_SH = Path("/Users/oviazcan/Projects/Ecoplating/Reportes SH")
 REPORTES_SH_SCRIPTS = REPORTES_SH / "scripts"
 
@@ -116,11 +117,19 @@ def main() -> int:
     queries = hashes_block.get("queries", {})
     mutations = hashes_block.get("mutations", {})
 
-    # Carga whitelist de falsos positivos conocidos. Operaciones aquí no se
-    # reportan como STALE — solo como 'skipped'. La única forma confiable de
-    # validarlas es con el scan-de-navegador.
+    # Ops ENMASCARADAS (session-sensitive) desde la FUENTE ÚNICA DE VERDAD:
+    # tools/hash-autopilot/masked-ops.json. Este cliente externo (idp-token) no las
+    # puede validar de forma confiable (Steelhead responde "Must provide a query
+    # string" a clientes que no son el Apollo del navegador, a veces intermitente) →
+    # se reportan como 'skipped', nunca STALE. El hash-autopilot headless las
+    # RECAPTURA SIEMPRE (misma lista → skipeamos EXACTAMENTE lo que el motor cubre,
+    # sin huecos). Fallback al viejo hash-validator-whitelist.json solo si masked-ops
+    # no existe (defensa transicional).
     whitelist_ops = set()
-    if WHITELIST_PATH.exists():
+    if MASKED_OPS_PATH.exists():
+        mo = json.loads(MASKED_OPS_PATH.read_text())
+        whitelist_ops = set(mo.get("queries", [])) | set(mo.get("mutations", []))
+    elif WHITELIST_PATH.exists():
         wl = json.loads(WHITELIST_PATH.read_text())
         whitelist_ops = {entry["operation"] for entry in wl.get("falseStale", [])}
 

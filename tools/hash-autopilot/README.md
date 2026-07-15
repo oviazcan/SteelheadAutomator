@@ -82,9 +82,13 @@ steelhead_auth.py".
 
 ## Agendado (launchd)
 
-`tools/run-hash-autopilot.sh` (wrapper con **gate por release**: solo abre el
-navegador si Steelhead publicó un build nuevo) + el plist
-`tools/launchd/com.ecoplating.steelhead-hash-autopilot.plist` (cada hora a :23).
+`tools/run-hash-autopilot.sh` + el plist
+`tools/launchd/com.ecoplating.steelhead-hash-autopilot.plist` (cada hora a :23). El
+wrapper corre en **dos capas**: (1) refresca el ROCP + recaptura las **enmascaradas**
+(`--masked-only`) **SIEMPRE**, sin gate; (2) el **escaneo completo** (validate-hashes.py
++ motor completo) solo si hay **release nuevo** (gate por code-id). Nota: el validador
+NO tiene plist propio — corre embebido en la capa 2 de este wrapper (el plist
+`com.ecoplating.steelhead-hash-validator.plist` de `tools/launchd/` está huérfano).
 
 **Activar (una vez, con el repo en `main`):**
 ```bash
@@ -95,12 +99,35 @@ launchctl list | grep hash-autopilot
 El auto-deploy exige que el worktree esté en `main` y sin WIP ajeno en `remote/`
 (salvaguarda de `autopilot-deploy.sh`); si no, avisa por correo en vez de deployar.
 
+## Refresh-siempre de enmascaradas (2026-07-15)
+
+Las ops "enmascaradas" (session-sensitive) rotan **sin dejar señal para el validador
+Python** (el idp-token da falso-stale intermitente) → antes solo se detectaban cuando
+truenan (p.ej. `AllCustomers` el 2026-07-03: carga masiva con 0 clientes, validador
+reportó "0 rotado"). Ahora se **recapturan SIEMPRE**, desacopladas del gate por release:
+
+- **Fuente ÚNICA de verdad:** `masked-ops.json` (5 queries + 1 mutation de precios).
+  El validador Python (`validate-hashes.py`) skipea EXACTAMENTE esta lista; el motor
+  la recaptura → sin huecos. Elimina el desajuste histórico entre la vieja
+  `hash-validator-whitelist.json` y el array `SESSION_SENSITIVE` hardcodeado, y purgó
+  la op muerta `GetPurchaseOrder`.
+- **Modo `--masked-only`:** recaptura solo las enmascaradas, sin depender del validador
+  ni de stale. Lo corre `run-hash-autopilot.sh` en CADA tick, ANTES del gate por
+  release (el escaneo completo sigue tras el gate). Validado en vivo 2026-07-15:
+  capturó las 5 queries, probe 5 vigentes / 0 stale.
+- **Mutation de precios** (`SaveManyPartNumberPrices`): por ciclo **sentinela**
+  (`partNumberPrice` en `sentinels-config.json`, hoy **id:0 = andamiaje inactivo**).
+  Para activar: crear un PN "Sentinela" con precio, poner su id, y completar el handler
+  DOM `partNumberPrice` en `mutation-deps.mjs` (hoy `mutate`/`restore` fail-closed).
+
 ## Estado / pendientes
 
-- Recetas afinadas: `AllCustomers`, `Customer`, `CurrentUser`, `AllSensorDashboards`.
+- Enmascaradas recapturadas siempre (masked-ops.json): `AllCustomers`, `Customer`,
+  `CurrentUser`, `AllSensorDashboards`, `SensorDashboardQuery` + mutation
+  `SaveManyPartNumberPrices` (sentinela andamiado, pendiente PN Sentinela).
 - Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
-  `UpdateMaintenanceEvent` (6/6 — Fase C completa para las entidades declaradas).
+  `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
 - **🎯 OBJETIVO NORTE: CERO captura manual — todo debe auto-recuperarse headless sin
   intervención humana.** Hoy 3 queries se quedan `noCapturado` porque el `page.goto`
   directo NO hidrata el detalle y las listas no rinden filas en headless:

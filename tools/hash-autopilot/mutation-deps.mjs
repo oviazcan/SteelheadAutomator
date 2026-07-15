@@ -317,6 +317,24 @@ const HANDLERS = {
       await editSalesOrderPoAndSave(page, '');
     },
   },
+  partNumberPrice: {
+    // ANDAMIAJE (id:0 en sentinels-config → nunca se invoca hasta activarlo).
+    // SaveManyPartNumberPrices (precios) se captura ejecutando un guardado de precio
+    // sobre un PN "Sentinela". El `load` reusa lo conocido (navegar al PN, verificar
+    // name="Sentinela" fail-closed); `mutate`/`restore` quedan FAIL-CLOSED hasta capturar
+    // el HTML real del modal "Part Number Price" — no ejecutamos un guardado a ciegas.
+    async load(page, { url }) {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      const nameEl = page.locator('div.css-re0j1l', { hasText: 'Name:' })
+        .locator('xpath=following-sibling::*[1]').first();
+      await nameEl.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+      return { name: (await nameEl.textContent().catch(() => '')).trim() };
+    },
+    async mutate() {
+      throw new Error('partNumberPrice.mutate PENDIENTE: capturar el HTML del modal "Part Number Price" y completar el handler antes de activar el id del PN Sentinela (hoy fail-closed — no se guarda un precio a ciegas)');
+    },
+    async restore() { /* no-op: sin mutate no hay nada que restaurar */ },
+  },
   maintenanceNode: {
     async load(page, { domain }) {
       // create-event-capture: no muta un nodo existente, crea un EVENTO sobre el nodo

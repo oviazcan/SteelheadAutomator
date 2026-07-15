@@ -41,3 +41,24 @@ export function staleMutations(validatorResult) {
   const stale = (validatorResult && validatorResult.stale) || [];
   return stale.filter((s) => s.kind === 'mutation').map((s) => s.operation).sort();
 }
+
+// Normaliza el JSON de masked-ops.json a listas defensivas. Una op es
+// "enmascarada" (session-sensitive) cuando el validador Python NO la puede
+// validar → el motor headless la recaptura SIEMPRE.
+export function maskedQueries(maskedOps) {
+  return [...new Set((maskedOps && maskedOps.queries) || [])].sort();
+}
+export function maskedMutations(maskedOps) {
+  return [...new Set((maskedOps && maskedOps.mutations) || [])].sort();
+}
+
+// Mutations a capturar por ciclo sentinela esta corrida:
+//  - modo completo: las enmascaradas (SIEMPRE — el validador las skipea, solo el
+//    sentinela las cubre) UNIÓN las stale del validador.
+//  - modo masked-only: SOLO las enmascaradas (ignora el validador).
+// El caller filtra luego por "sentinela activo" (id real ≠ 0). Determinista.
+export function mutationsToCapture(validatorResult, masked, { maskedOnly = false } = {}) {
+  const m = masked || [];
+  if (maskedOnly) return [...new Set(m)].sort();
+  return [...new Set([...m, ...staleMutations(validatorResult)])].sort();
+}

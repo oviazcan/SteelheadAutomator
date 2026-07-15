@@ -55,6 +55,16 @@
       "_estrategia": "create-event-capture",
       "_nota": "Nodo ACTIVO (no archivado): el handler crea un evento sobre el nodo 'Sentinela' (New Maintenance Event -> Node -> combobox Sentinela -> Save & Begin), comenta y completa -> dispara los 3 hashes en un solo flujo; luego archiva el evento. El handler navega a /Maintenance (no al detalle del nodo) y elige el nodo por NOMBRE en el combobox (fail-closed)."
     },
+    "partNumberPrice": {
+      "id": 0,
+      "screenPath": "/PartNumbers/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "SaveManyPartNumberPrices"
+      ],
+      "_estrategia": "price-save-restore",
+      "_nota": "ANDAMIAJE — id:0 = INACTIVO (mutEntityType lo SKIPEA por id falsy → el motor NO muta). SaveManyPartNumberPrices es la mutation de PRECIOS: su hash solo se captura EJECUTANDO un guardado de precio (no se detecta pasivamente). Estrategia price-save-restore: sobre un PN 'Sentinela' con precio, abrir el modal 'Part Number Price', cambiar el valor y GUARDAR (dispara SaveManyPartNumberPrices), luego RESTAURAR el precio anterior. PARA ACTIVAR: (1) crear/elegir un PN de prueba con 'Sentinela' en el nombre y un precio; (2) poner su id aquí; (3) capturar el HTML del modal de precio y completar el handler DOM 'partNumberPrice' en mutation-deps.mjs (hoy mutate/restore son FAIL-CLOSED: lanzan error si se invocan sin el DOM real). OJO: price-confirm-guard intercepta esta MISMA mutation en el navegador del operador (exige reconfirmar el precio); el sentinela headless corre en su propia sesión aislada, no choca."
+    },
     "workOrder": {
       "id": 11677,
       "screenPath": "/Domains/{domain}/WorkOrders/{id}",

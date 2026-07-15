@@ -12,7 +12,7 @@ import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
 import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
 import { readConfigHashes } from './config-io.mjs';
-import { selectRoutes, opsToCapture, staleMutations } from './route-planner.mjs';
+import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
 import { appletsForOp, formatOpLine } from './applet-attribution.mjs';
 import { classifyProbe, summarizeProbes, gateByProbe } from './probe-classify.mjs';
@@ -51,9 +51,18 @@ function loadKnownOperations() {
   try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')).knownOperations || {}; }
   catch { return {}; }
 }
-// Session-sensitive: el validator (idp-token) no las puede ver → se capturan
-// SIEMPRE que haya release. El resto se capturan solo si el validator las marcó stale.
-const SESSION_SENSITIVE = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrderDetail', 'AllSensorDashboards', 'SensorDashboardQuery'];
+// Session-sensitive ("enmascaradas"): el validator (idp-token) no las puede ver de
+// forma confiable → el motor headless las recaptura SIEMPRE. Fuente ÚNICA de verdad:
+// masked-ops.json (la MISMA lista que el validador skipea → sin huecos). Fail-safe:
+// si el archivo falta o está corrupto, listas vacías (el motor solo capturaría las
+// stale que marque el validator).
+function loadMaskedOps() {
+  try { return JSON.parse(readFileSync(join(__dirname, 'masked-ops.json'), 'utf8')); }
+  catch { return { queries: [], mutations: [] }; }
+}
+const MASKED_OPS = loadMaskedOps();
+const SESSION_SENSITIVE = maskedQueries(MASKED_OPS);
+const MASKED_MUTATIONS = maskedMutations(MASKED_OPS);
 
 // Lee el JSON del validator del día (lo escribe validate-hashes.py). Si no existe
 // (no corrió, o corrió sin stale), devuelve {stale:[]} → solo session-sensitive.
@@ -73,6 +82,11 @@ const domainNanoArg = args.find((a) => a.startsWith('--domain-nano='));
 const DOMAIN_NANO = domainNanoArg ? domainNanoArg.split('=')[1] : '1NFxmF';
 const onlyArg = args.find((a) => a.startsWith('--only='));
 const ONLY = onlyArg ? onlyArg.split('=')[1] : null;
+// --masked-only: recaptura SOLO las ops enmascaradas (session-sensitive de
+// masked-ops.json), sin depender del validador ni de stale. Lo corre el wrapper en
+// CADA tick, ANTES del gate por release, para que las enmascaradas se refresquen
+// siempre (no esperar a que truenen). El escaneo completo sigue tras el gate.
+const MASKED_ONLY = args.includes('--masked-only');
 // Fecha inyectable (para tests/reproducibilidad); default hoy.
 const dateArg = args.find((a) => a.startsWith('--date='));
 const RUN_DATE = dateArg ? dateArg.split('=')[1] : dateStrLocal(new Date());
@@ -104,7 +118,9 @@ export function makeRocpInit(tokens, domainNano) {
 
 async function main() {
   const catalog = JSON.parse(readFileSync(join(__dirname, 'route-catalog.json'), 'utf8'));
-  const validatorResult = loadValidatorResult(RUN_DATE);
+  // masked-only: ignora el validador (recaptura solo las enmascaradas). Completo:
+  // lee el resultado del validador del día para sumar las stale detectables por idp-token.
+  const validatorResult = MASKED_ONLY ? { stale: [] } : loadValidatorResult(RUN_DATE);
   const wantOps = opsToCapture(validatorResult, SESSION_SENSITIVE);
   const plan0 = selectRoutes(wantOps, catalog);
   const staleMuts = staleMutations(validatorResult);
@@ -116,7 +132,13 @@ async function main() {
     }
     return null;
   };
-  const capturableMuts = staleMuts.filter((op) => mutEntityType(op));
+  // Mutations a capturar por ciclo sentinela: las enmascaradas (SIEMPRE — el validador
+  // las skipea, solo el sentinela las cubre) + las stale del validador (modo completo).
+  // Filtradas a las que tienen sentinela ACTIVO (id real ≠ 0); las de id:0 se omiten
+  // (andamiaje pendiente de que el usuario cree el objeto Sentinela).
+  const capturableMuts = mutationsToCapture(validatorResult, MASKED_MUTATIONS, { maskedOnly: MASKED_ONLY })
+    .filter((op) => mutEntityType(op));
+  console.log(`Modo: ${MASKED_ONLY ? 'MASKED-ONLY (solo enmascaradas, sin gate)' : 'completo'}`);
   console.log(`Ops a capturar (${wantOps.length}): ${wantOps.join(', ')}`);
   console.log(`Rutas seleccionadas (${plan0.routes.length}): ${plan0.routes.map((r) => r.id).join(', ') || '(ninguna)'}`);
   if (plan0.uncovered.length) console.log(`⚠️ Queries stale SIN ruta en catálogo: ${plan0.uncovered.join(', ')} (Fase B)`);

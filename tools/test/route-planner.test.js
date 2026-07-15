@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { selectRoutes } = require('../hash-autopilot/route-planner.mjs');
 const { opsToCapture, staleMutations } = require('../hash-autopilot/route-planner.mjs');
+const { maskedQueries, maskedMutations, mutationsToCapture } = require('../hash-autopilot/route-planner.mjs');
 
 const CATALOG = {
   routes: {
@@ -77,4 +78,47 @@ test('staleMutations: devuelve solo las mutations stale, ordenadas', () => {
     { kind: 'mutation', operation: 'ArchivePart' },
   ] };
   assert.deepEqual(staleMutations(vr), ['ArchivePart', 'SaveQuoteLines']);
+});
+
+// ── masked-ops (session-sensitive unificadas) ──────────────────────────────
+const MASKED = {
+  queries: ['AllCustomers', 'Customer', 'CurrentUser', 'AllSensorDashboards', 'SensorDashboardQuery'],
+  mutations: ['SaveManyPartNumberPrices'],
+};
+
+test('maskedQueries/maskedMutations: extraen, dedup y ordenan; defensivos ante undefined', () => {
+  assert.deepEqual(maskedQueries(MASKED), ['AllCustomers', 'AllSensorDashboards', 'CurrentUser', 'Customer', 'SensorDashboardQuery']);
+  assert.deepEqual(maskedMutations(MASKED), ['SaveManyPartNumberPrices']);
+  assert.deepEqual(maskedQueries(undefined), []);
+  assert.deepEqual(maskedMutations({}), []);
+});
+
+test('opsToCapture con masked-only: validatorResult vacío + maskedQueries → solo enmascaradas', () => {
+  // El modo masked-only reusa opsToCapture pasando stale vacío → devuelve exactamente
+  // las queries enmascaradas (ignora cualquier stale del validador).
+  assert.deepEqual(opsToCapture({ stale: [] }, maskedQueries(MASKED)), maskedQueries(MASKED));
+});
+
+test('mutationsToCapture modo completo: enmascaradas UNIÓN stale del validador, dedup+orden', () => {
+  const vr = { stale: [
+    { kind: 'mutation', operation: 'UpdateReceivedOrder' },
+    { kind: 'mutation', operation: 'SaveManyPartNumberPrices' }, // ya enmascarada → dedup
+    { kind: 'query', operation: 'GetWorkOrder' },                 // query → no cuenta
+  ] };
+  assert.deepEqual(
+    mutationsToCapture(vr, maskedMutations(MASKED)),
+    ['SaveManyPartNumberPrices', 'UpdateReceivedOrder'],
+  );
+});
+
+test('mutationsToCapture modo masked-only: SOLO enmascaradas, ignora stale del validador', () => {
+  const vr = { stale: [{ kind: 'mutation', operation: 'UpdateReceivedOrder' }] };
+  assert.deepEqual(
+    mutationsToCapture(vr, maskedMutations(MASKED), { maskedOnly: true }),
+    ['SaveManyPartNumberPrices'],
+  );
+});
+
+test('mutationsToCapture: sin enmascaradas ni stale → []', () => {
+  assert.deepEqual(mutationsToCapture({ stale: [] }, []), []);
 });
