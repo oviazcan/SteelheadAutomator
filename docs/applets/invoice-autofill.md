@@ -1,6 +1,13 @@
 # `invoice-autofill` — bitácora completa
 
-Ciclos documentados: 0.5.26 → 0.5.34 (modal manual) + 0.5.60 → 0.5.63 (PS-embedded) + 0.5.64 (modal OV/PS rediseñado: AR Account label, income commit, gate del panel). Para deploy y reglas generales, ver `../../CLAUDE.md`. Para patrones de DOM, ver `../architecture/dom-patterns.md`.
+Ciclos documentados: 0.5.26 → 0.5.34 (modal manual) + 0.5.60 → 0.5.63 (PS-embedded) + 0.5.64 (modal OV/PS rediseñado: AR Account label, income commit, gate del panel) + 0.5.65 (AR matcher: divisa "M.N."). Para deploy y reglas generales, ver `../../CLAUDE.md`. Para patrones de DOM, ver `../architecture/dom-patterns.md`.
+
+## Lección 0.5.65 (AR matcher reconoce "M.N." = Moneda Nacional, no solo el código ISO)
+Bug reportado 2026-07-15: al facturar a **Hubbell** el applet marcaba "sin cuenta AR para MXN" y no resolvía la CXC. Root cause: `findBestARAccount` filtraba las cuentas AR con un **filtro DURO** `/\bMXN\b/i` sobre el `name`. La cuenta de Hubbell se llama `0105-0001-0001-0204 · Hubbell Products Mexico S. de R.L. 1177 M.N.` — el catálogo **no es uniforme**: la mayoría de cuentas traen el código ISO ("... 1140 USD", "... 1200 MXN"), pero otras usan la nomenclatura contable mexicana **"M.N."** (Moneda Nacional = pesos). `/\bMXN\b/` no matchea "M.N." → `byCurrency` vacío → `sin_cuenta_AR_para_MXN`.
+- **Fix:** helper `nameMatchesCurrency(name, cur)` reconoce las variantes. **MXN**: `MXN`, `MXP` (ISO viejo), `pesos?`, `moneda nacional`, `nacional`, `M.N.`/`M. N.`/`M.N`, `MN` pegado. **USD**: `USD`, `dólar(es)`/`dolar`, `dollar(s)`, `US$`. Reemplaza el `reCur` duro en el filtro `byCurrency`.
+- **Guard anti-falso-positivo:** para "M.N." se exige el **punto** (`\bm\.\s*n\.?`) o la forma pegada `\bmn\b`. Así una razón social con iniciales "M N" sueltas (espacios sin puntos, ej. "Grupo M N Industrial USD") **no** se lee como MXN por accidente. La divisa a resolver ya viene del form/SO/cliente, así que el matcher solo desempata dentro del pool receivable.
+- **Contraste con `bill-autofill`:** su `findBestAPAccount` usa **scoring** (no filtro duro) y ya reconocía `usd/dolar/dollar` y `mxn/peso/nacional` — pero tampoco cubre la abreviatura "M.N." (normaliza a "m n", no a "nacional"). Es menos crítico ahí porque el scoring no elimina la candidata, solo no le suma bonus. **Deuda pendiente:** portar `nameMatchesCurrency` a `bill-autofill` para el mismo caso.
+- **Test:** `tools/test/invoice-ar-currency-match.test.js` **extrae la función real** del applet (conteo de llaves, no copia) y ejerce Hubbell + no-regresión USD/MXN + el guard "M N". 7/7.
 
 ## Auto-fill que reacciona a cambios del usuario (modal manual de Invoice, 0.5.26 → 0.5.34)
 
