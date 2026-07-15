@@ -166,6 +166,20 @@ echo "→ push origin main gh-pages"
 G push origin main
 G push origin gh-pages
 
+# --- tag de release (ancla de rollback) ---
+# Cada deploy queda anclado a un tag vX.Y.Z sobre el commit de main del bump, para
+# poder revertir gh-pages a un estado conocido con tools/rollback.sh. Aditivo y
+# tolerante: si el tag falla, el deploy YA se completó (no se aborta). El fallo dentro
+# del `if` no dispara `set -e`.
+TAG="v$NEW"
+if G rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+  echo "⚠️  tag $TAG ya existe — no se re-crea (¿re-deploy de la misma versión?)"
+elif G tag -a "$TAG" -m "deploy $NEW: $MSG" main && G push origin "$TAG"; then
+  echo "→ tag $TAG creado y pusheado (rollback: tools/rollback.sh $TAG)"
+else
+  echo "⚠️  no pude crear/pushear el tag $TAG (el deploy YA quedó vivo). Créalo a mano si quieres el ancla."
+fi
+
 # --- verificación ---
 echo
 if [ -n "$CHECK_SCRIPT" ] && [ -x "$MAINWT/tools/check-deploy.sh" ]; then
