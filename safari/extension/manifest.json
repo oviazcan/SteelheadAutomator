@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 26 applets: auto-inyectados (FAB/gate propio) + 7 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router, wo-completer, wo-deadline, price-confirm-guard kill-switch) lanzables desde el popup + vale-almacen (botón flotante). v0.5.3: +pn-specs-column, +sensor-graph-hide-all, +price-confirm-guard; create-order-autofill actualizado (2ª pantalla SalesOrders).",
-  "version": "0.5.4",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 26 applets: auto-inyectados (FAB/gate propio) + 7 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router, wo-completer, wo-deadline, price-confirm-guard kill-switch) lanzables desde el popup + vale-almacen (botón flotante). v0.5.3: +pn-specs-column, +sensor-graph-hide-all, +price-confirm-guard; create-order-autofill actualizado (2ª pantalla SalesOrders). v0.5.5: rebundle tras deploy 1.7.120 — toma fixes en applets ya-en-bundle (gate console.log en steelhead-api/invoice-auto-regen; XSS escape en wo-deadline; fix auto-router destinationLines/bug Image #6). Sin cambios de lista (INTEGRABLE=0).",
+  "version": "0.5.5",
   "permissions": [
     "storage",
     "tabs"
