@@ -1,5 +1,16 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.36 (2026-07-14): FIX CRÍTICO REAL — el 500 al aplicar spec era por
+//   partNumberSpecFieldParams HUÉRFANOS. SH archiva el LINK de una spec pero deja VIVOS
+//   sus specFieldParams (placeholders specFieldParamId=null); ocupan el specField, así que
+//   aplicar cualquier spec nueva sobre ese campo viola el unique constraint pn_id+specFieldId
+//   → HTTP 500 message-less → el PN queda SIN spec. (La hipótesis 1.5.35 de "archive+apply
+//   no-atómico" era insuficiente: no archivaba los params.) Fix: en el Call B de enrich y en
+//   el path de colisión, poblar partNumberSpecFieldParamsToArchive con los params activos de
+//   los specFields destino antes de aplicar la spec. Confirmado + validado headless con
+//   mutación real (PN 23121-60A: archivar 5 params huérfanos → aplicar E27551 = HTTP 200,
+//   PN sano). Al RE-CARGAR el archivo, los PNs rotos se sanan solos (campo libre → apply OK).
+//
 // VERSION 1.5.35 (2026-07-14): FIX CRÍTICO — colisión de spec dejaba el PN SIN spec.
 //   El call dedicado de reemplazo de colisión (1.5.22) mandaba archive-claimer +
 //   apply-new en UN SavePartNumber; con el SH nuevo la op NO es atómica: archivaba la
@@ -257,7 +268,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.35';
+  const VERSION = '1.5.36';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -5624,6 +5635,32 @@ const BulkUpload = (() => {
           log(`  "${pn.name}": ${conflictingExtras.length} spec(s) colisionante(s) → calls dedicados (${conflictingExtras.map(c => `"${c.specName}" ⊥ "${c.sfName}"`).join(', ')})`);
         }
 
+        // 1.5.36: FIX CRÍTICO — archivar los partNumberSpecFieldParams "huérfanos" que
+        // ocupan los specFields que las specs del CSV van a aplicar. SH archiva el LINK de
+        // una spec pero deja VIVOS sus specFieldParams (placeholders con specFieldParamId=null);
+        // ocupan el specField, así que aplicar una spec nueva sobre el mismo campo viola el
+        // unique constraint pn_id+specFieldId → HTTP 500 message-less → el PN queda SIN spec.
+        // El cleanup 1.4.38 (STEP 6b) NO los cacha (los salta por no tener specFieldParam) y
+        // corre DESPUÉS del apply que ya tronó. La detección de colisión (arriba) sólo mira
+        // specs linkeadas ACTIVAS, no los params de specs archivadas → la nueva pasa como
+        // "winner" y Call B truena. Confirmado + fix validado headless 2026-07-14 (PN 23121-60A:
+        // archivar los 5 params huérfanos → aplicar E27551 = HTTP 200, PN sano). El colisión
+        // path (más abajo) hace lo análogo para el claimer ACTIVO.
+        const spfParamsToArchiveIds = [];
+        if (existingPnNode && specsToApplyFiltered.length) {
+          const applyingSfIds = new Set();
+          for (const s of specsToApplyFiltered) for (const { sfId } of _sfIdsForSpec(s.specId)) if (sfId != null) applyingSfIds.add(sfId);
+          for (const p of (existingPnNode.partNumberSpecFieldParamsByPartNumberId?.nodes || [])) {
+            if (p.archivedAt) continue;
+            const sfId = p.specFieldId ?? p.specFieldParamBySpecFieldParamId?.specFieldSpecBySpecFieldSpecId?.specFieldBySpecFieldId?.id;
+            if (sfId != null && applyingSfIds.has(sfId)) spfParamsToArchiveIds.push(p.id);
+          }
+          if (spfParamsToArchiveIds.length) {
+            stats.orphanSpecFieldParamsArchived = (stats.orphanSpecFieldParamsArchived || 0) + spfParamsToArchiveIds.length;
+            log(`  "${pn.name}": ${spfParamsToArchiveIds.length} specFieldParam(s) previo(s) → archivar para liberar el campo antes de aplicar la spec`);
+          }
+        }
+
         // 1.5.13: preserve-on-missing para customInputs. En modo SOLO_PN el pnLookup
         // sintético tiene `customInputs: {}` (línea 4708) — sin este fallback al
         // existingPnNode, mergeCustomInputs arrancaba desde {} y borraba todo lo que
@@ -5923,7 +5960,7 @@ const BulkUpload = (() => {
           specsToApply: specsToApplyFiltered, isCoupon: false, isOneOff: false, isTemplatePartNumber: false, optInOuts, ownerIds: [], defaults: [],
           dimensionCustomValueIds: dimValueIdsToSend,
           paramsToApply: [], partNumberDimensions: dims, partNumberLocations: [],
-          partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: [], partNumberSpecFieldParamsToUnarchive: [],
+          partNumberSpecClassificationsToUpdate: [], partNumberSpecFieldParamUpdates: [], partNumberSpecFieldParamsToArchive: spfParamsToArchiveIds, partNumberSpecFieldParamsToUnarchive: [],
           partNumberSpecsToArchive: partNumberSpecsToArchiveIds, partNumberSpecsToUnarchive: partNumberSpecsToUnarchiveIds, specFieldParamUpdates: [],
           glAccountId: null, taxCodeId: null, certPdfTemplateId: null, userFileName: null
         };
@@ -6059,6 +6096,18 @@ const BulkUpload = (() => {
             // con el specField libre aplicar la nueva, (C) si B falla, DESARCHIVAR la
             // vieja (compensación) para no dejar el PN pelón. Cero pérdida garantizada:
             // termina con la spec nueva, o conserva la vieja, nunca ninguna.
+            // 1.5.36: además del LINK, archivar los partNumberSpecFieldParams ACTIVOS del
+            // claimer — si no, siguen ocupando el specField y el apply de la nueva viola el
+            // unique constraint pn_id+specFieldId → HTTP 500 (misma causa raíz que Call B).
+            const claimerParamIds = [];
+            if (existingPnNode && archiveClaimerLinkId && cx.claimerSpecId != null) {
+              const claimerSfIds = new Set(_sfIdsForSpec(cx.claimerSpecId).map(x => x.sfId).filter(v => v != null));
+              for (const p of (existingPnNode.partNumberSpecFieldParamsByPartNumberId?.nodes || [])) {
+                if (p.archivedAt) continue;
+                const sfId = p.specFieldId ?? p.specFieldParamBySpecFieldParamId?.specFieldSpecBySpecFieldSpecId?.specFieldBySpecFieldId?.id;
+                if (sfId != null && claimerSfIds.has(sfId)) claimerParamIds.push(p.id);
+              }
+            }
             const applyNewSpec = () => api().query('SavePartNumber', {
               input: [{
                 ...baseInput,
@@ -6069,10 +6118,10 @@ const BulkUpload = (() => {
             });
             try {
               if (archiveClaimerLinkId) {
-                // (A) liberar el specField archivando SOLO al claimer (sin apply en el mismo call).
+                // (A) liberar el specField: archivar el claimer LINK + sus specFieldParams activos.
                 await withRetry(
                   () => api().query('SavePartNumber', {
-                    input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [], partNumberSpecsToArchive: [archiveClaimerLinkId] }]
+                    input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [], partNumberSpecsToArchive: [archiveClaimerLinkId], partNumberSpecFieldParamsToArchive: claimerParamIds }]
                   }),
                   `SavePartNumber archive-claimer "${pnInput.name}/${cx.sfName}"`,
                   myRunId
@@ -6096,7 +6145,7 @@ const BulkUpload = (() => {
                   try {
                     await withRetry(
                       () => api().query('SavePartNumber', {
-                        input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [archiveClaimerLinkId], partNumberSpecsToArchive: [] }]
+                        input: [{ ...baseInput, specsToApply: [], partNumberSpecsToUnarchive: [archiveClaimerLinkId], partNumberSpecsToArchive: [], partNumberSpecFieldParamsToUnarchive: claimerParamIds }]
                       }),
                       `SavePartNumber restore-claimer "${pnInput.name}/${cx.sfName}"`,
                       myRunId
