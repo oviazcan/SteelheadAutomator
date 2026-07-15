@@ -33,14 +33,14 @@
       "_nota": "Create no muta un existente: crea una OV nueva marcada 'Sentinela' y luego la archiva."
     },
     "receivedOrderEdit": {
-      "id": 0,
+      "id": 1594,
       "screenPath": "/Domains/{domain}/SalesOrders/{id}",
       "marker": "Sentinela",
       "_para": [
         "UpdateReceivedOrder"
       ],
       "_estrategia": "edit-restore",
-      "_nota": "id:0 = INACTIVO (el motor lo skipea; e.id falsy). Pon el id de una OV EXISTENTE con 'Sentinela' en el nombre para ACTIVAR la captura de UpdateReceivedOrder. El handler abre 'Edit Sales Order' → cambia el PO# → SAVE (dispara la mutation) → restaura el PO# a vacío. Modal+PO#+SAVE validados headless 2026-07-14; el CICLO completo (mutate+restore sobre OV Sentinela) queda PENDIENTE de validar."
+      "_nota": "OV Sentinela 1594 (nombre 'Sentinela'). DEBE estar DESARCHIVADA para hidratar; si se archiva, el load da isSentinela=false y el ciclo ABORTA fail-closed (no muta) → desarchivarla para reactivar. El handler abre 'Edit Sales Order' → cambia el PO# → SAVE (dispara UpdateReceivedOrder) → restaura el PO# a vacío. CICLO VALIDADO headless 2026-07-15: capturó d9e88576→b3602b2d y el restore dejó el PO# vacío (verificado)."
     },
     "maintenanceNode": {
       "id": 55,

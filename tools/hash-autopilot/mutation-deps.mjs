@@ -295,11 +295,16 @@ const HANDLERS = {
   receivedOrderEdit: {
     async load(page, { id, domain }) {
       // OV EXISTENTE marcada "Sentinela" (edit-restore). Fail-closed: si el detalle NO
-      // contiene "Sentinela", name='' → runMutationCycle NO muta. (Selector fino del name
-      // por afinar con la OV real; el body-scan es la salvaguarda mínima + el gate por id.)
+      // contiene "Sentinela", name='' → runMutationCycle NO muta ni restaura.
+      // Espera ACTIVA a que el nombre renderice: el detalle de OV hidrata tarde y un
+      // timeout fijo daba FALSO NEGATIVO (isSentinela=false sobre una OV que SÍ lo es).
       await page.goto(`${BASE}/Domains/${domain}/SalesOrders/${id}`, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(3000);
-      const isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+      let isSent = false;
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline && !isSent) {
+        isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+        if (!isSent) await page.waitForTimeout(500);
+      }
       if (process.env.SA_DBG) console.log(`       [dbg] receivedOrderEdit load id=${id} isSentinela=${isSent}`);
       return { name: isSent ? 'Sentinela' : '' };
     },

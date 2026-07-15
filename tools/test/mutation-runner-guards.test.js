@@ -17,14 +17,18 @@ test('escala destructiva sin tocar nada', async () => {
   assert.equal(r.escalated, true);
 });
 
-test('aborta y NO muta si el objeto cargado no es sentinela (fail-closed)', async () => {
-  let mutated = false;
+test('aborta y NO muta NI restaura si el objeto cargado no es sentinela (fail-closed)', async () => {
+  let mutated = false, restored = false;
   const r = await runMutationCycle(fakePage(), route, cfg, { hashes: {} }, {
     loadObject: async () => ({ name: 'OV Real de Cliente' }), // sin marca
     readJournal: () => ({}), writeJournal: () => {},
     doMutate: async () => { mutated = true; },
+    doRestore: async () => { restored = true; },
   });
   assert.equal(mutated, false);
+  // un restore que MUTA (p.ej. receivedOrderEdit hace SAVE) NUNCA debe correr sobre un
+  // objeto NO verificado como sentinela — si no, el fail-closed del mutate sería inútil.
+  assert.equal(restored, false, 'no restaurar objetos no verificados como sentinela');
   assert.equal(r.captured, false);
   assert.match(r.reason, /no.*sentinela|identidad/i);
 });
@@ -41,10 +45,10 @@ test('captura el hash cuando el objeto ES sentinela y la mutación se dispara', 
   assert.equal(r.hash, 'newhash123');
 });
 
-test('restaura SIEMPRE (finally) aunque la captura falle', async () => {
+test('restaura (finally) si verificó identidad, aunque la captura falle', async () => {
   let restored = false;
   await runMutationCycle(fakePage(), route, cfg, { hashes: {} }, {
-    loadObject: async () => ({ name: `OV __SA_SENTINEL__` }),
+    loadObject: async () => ({ name: `OV __SA_SENTINEL__` }), // ES sentinela → verified
     readJournal: () => ({}), writeJournal: () => {},
     doMutate: async () => { throw new Error('mutación falló'); },
     doRestore: async () => { restored = true; },
