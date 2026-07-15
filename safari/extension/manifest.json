@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Steelhead Automator — iPad",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 26 applets: auto-inyectados (FAB/gate propio) + 7 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router, wo-completer, wo-deadline, price-confirm-guard kill-switch) lanzables desde el popup + vale-almacen (botón flotante). v0.5.3: +pn-specs-column, +sensor-graph-hide-all, +price-confirm-guard; create-order-autofill actualizado (2ª pantalla SalesOrders).",
+  "version": "0.5.4",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://app.gosteelhead.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://app.gosteelhead.com/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://app.gosteelhead.com/*"
+      ],
+      "js": [
+        "main-bundle.js"
+      ],
+      "run_at": "document_idle",
+      "world": "MAIN",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

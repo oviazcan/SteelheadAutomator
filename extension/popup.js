@@ -832,4 +832,16 @@ document.addEventListener('DOMContentLoaded', () => {
     applyViewMode(newMode);
     chrome.storage.local.set({ sa_view_mode: newMode });
   }
+
+  // Break-glass de integridad (emergencia): toggle local, default OFF. Solo lo setea
+  // la extensión (chrome.storage.local); un atacante remoto no puede tocarlo.
+  (async function initIntegrityBypass() {
+    const el = document.getElementById('sa-integrity-bypass');
+    if (!el) return;
+    const { sa_integrity_bypass } = await chrome.storage.local.get('sa_integrity_bypass');
+    el.checked = sa_integrity_bypass === true;
+    el.addEventListener('change', () => {
+      chrome.storage.local.set({ sa_integrity_bypass: el.checked });
+    });
+  })();
 });

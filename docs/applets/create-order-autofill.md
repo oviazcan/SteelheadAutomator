@@ -1,6 +1,65 @@
 # `create-order-autofill` — bitácora
 
-Auto-llena las 3 Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `Consolidar por Producto`) del modal **"Crear Orden de Venta"** que sale en el flujo `/Receiving/CustomerParts → RECEIVE → +/Create`. Sustituye al canal write de OV customInputs que no existe en `ordendeventa.ts` (ver bitácoras `powertools-ordendeventa.md` y `powertools-facturacion.md`, ahora en el repo **SteelheadPowerTools**).
+Auto-llena las Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `Consolidar por Producto`) del modal de creación de OV. Sustituye al canal write de OV customInputs que no existe en `ordendeventa.ts` (ver bitácoras `powertools-ordendeventa.md` y `powertools-facturacion.md`, ahora en el repo **SteelheadPowerTools**).
+
+**Dos pantallas cubiertas** (mismos IDs RJSF debajo → mismo autofill):
+1. `/Receiving/CustomerParts → RECEIVE → +/Create` — título **"Crear Orden de Venta"** (ES). Cliente pre-cargado; expone **"Enviar a:"** (ship-to) → maneja Consolidar.
+2. `/Domains/<id>/SalesOrders → "New Sales Order"` — título **"Create Sales Order"** (EN). Cliente **vacío** al abrir (el operador lo elige a mano); **sin ship-to** → Consolidar no aplica.
+
+## Add 2026-07-09 (v0.1.3) — segunda pantalla: lista de Órdenes de Venta ("New Sales Order")
+
+Cerrado el pendiente "Segunda vista de creación de OV". El usuario indicó la pantalla `https://app.gosteelhead.com/Domains/344/SalesOrders?receivedOrderStatusFilter=OPEN` con el botón **"New Sales Order"** que abre el modal **"Create Sales Order"** (mismos IDs RJSF `root_RazonSocialVenta`/`root_Divisa`/`root_VerificadaPor`/`root_ConsolidarPorProducto`).
+
+**Diferencias del modal nuevo vs. el de Receiving (confirmadas con el HTML real que pasó el usuario):**
+- **Título en inglés** ("Create Sales Order") vs. español ("Crear Orden de Venta"). El heading vive en un `<h2 …MuiDialogTitle-root…>` con `<div>Create Sales Order</div>` adentro; el paper del diálogo trae `role="dialog"` → `getModalRoot()` ancla sin cambios.
+- **Cliente vacío al abrir** (react-select con placeholder "Select..."). No hay `singleValue` con `(#N)` hasta que el operador elige → el applet **espera en silencio** (antes mostraba panel "✗ sin idInDomain"); cuando llega la selección el `MutationObserver` (childList) dispara el re-scan, la firma cambia y corre el autofill.
+- **Sin "Enviar a:"** → Consolidar se marca como **omitido** (gris "no aplica (sin destino en esta pantalla)"), no como fallo rojo. Misma consecuencia neta que en Receiving cuando el destino no es Rojo Gómez (checkbox queda en el default RJSF=false).
+- Campo extra `root_VerificadaPor` (select "Anhuar Silva / Roberto Orozco / Sergio Hernández"): **no se autollena** (no hay fuente en `DatosFactura`; es quién verificó la venta). No rompe la firma del modal (esta exige presencia de los 3 IDs, no ausencia de otros).
+
+**Cambios (todos mínimos, mismos selectores):**
+1. `matchesCreateOrderUrl(pathname)` (core, nuevo): gatea `/Receiving/CustomerParts(/|$)` **o** `/Domains/<id>/SalesOrders/?$` (anclado al final → solo la LISTA, no páginas de detalle `/SalesOrders/<n>`; el modal abre sobre la lista sin cambiar la URL, la query vive en `location.search`).
+2. `isCreateOrderModalHeading(text)` (core, nuevo): acepta ES **y** EN.
+3. El glue usa esos helpers vía `urlMatches()`/`headingMatches()` (fallback a regex local si el core no cargara). Las constantes `URL_RE`/`MODAL_HEADING_RE` quedan solo como fallback, en sync con el core.
+4. Panel silencioso mientras no haya cliente elegido; Consolidar omitido sin ship-to.
+
+**Validación:** core **14/14 verde** (2 tests nuevos: heading ES/EN + gate de URL incl. rechazo de `/SalesOrders/9876` y dominio no-numérico). **Pendiente:** run real en la pantalla SalesOrders (que el operador confirme Razón Social + Divisa al elegir un cliente con `DatosFactura` configurado).
+
+## Fix 2026-07-03 (v0.1.2) — `getModalRoot()` devolvía el TÍTULO (substring `MuiDialog`)
+
+**Síntoma:** tras el fix v0.1.1, el panel SEGUÍA mostrando `(sin cliente) → (sin shipTo)` y `✗ sin idInDomain` para todos los clientes (reproducido en vivo con HUBBELL PRODUCTS MEXICO (#20)). El `singleValue` del cliente estaba presente en pantalla con su badge `(#20)`.
+
+**Root cause (confirmado con diagnóstico en vivo, no adivinado):** `getModalRoot()` arrancaba el ascenso **en el heading mismo** (`let cur = h`) y aceptaba como root cualquier `[class*="MuiDialog"]`. Pero el heading es un `<h2 class="MuiTypography-root MuiTypography-h6 MuiDialogTitle-root css-…">`, y **`MuiDialogTitle-root` contiene el substring `"MuiDialog"`** → matcheaba el TÍTULO (vacío) en la iteración 0 y lo devolvía como root. Diagnóstico:
+- `getModalRoot()` → `H2.MuiDialogTitle-root` (¡el título!), `svInRoot: 0`.
+- Los 7 `singleValue` del modal (incluido `HUBBELL PRODUCTS MEXICO (#20)`) vivían en el `MuiDialog-paper`, un nivel arriba del título. Por eso `collectSingleValueTexts(root)=[]` → `pickCustomerFromSingleValues([])=null` → `null` → "sin idInDomain". Como `extractShipToFromModal` también depende de `getModalRoot()`, el shipTo salía vacío igual.
+- Referencia que sí funcionaba: `weight-quick-entry` ancla al wizard **externo** ("Recibir piezas del cliente") y por eso resolvió `idInDomain=20` en el mismo modal (log `[WQE] usarLBS=false (via Customer idInDomain=20)`).
+
+**Fix:**
+1. `getModalRoot()` ahora arranca el ascenso **en `h.parentElement`** (nunca evalúa el heading, que es el cebo) y acepta como root **solo el paper/contenedor del diálogo** vía el nuevo `Core.isDialogRootClass` — que exige `"MuiDialog"` en la clase PERO excluye `MuiDialog{Title,Content,Actions,ContentText}` y el `MuiPaper` genérico (evita quedarse en el panel chico del accordion RJSF).
+2. El fallback desde el campo RJSF sube igual (past el paper del accordion y el `DialogContent`) hasta el `MuiDialog-paper`.
+3. Nuevo `Core.isDialogRootClass(className)` (puro, testeable) + 3 tests de regresión, incluida la clase EXACTA del bug (`…MuiDialogTitle-root…` → `false`).
+
+**Validación:** core **12/12 verde**. Dry-run del `getModalRoot` NUEVO contra el DOM real del modal → `rootFound:true` (clase `MuiDialog-paper`), `svInRoot:7`, `picked.idInDomain:20`, `rootHasEnviarA:true`. **Pendiente:** confirmar el autofill real de Razón Social + Divisa una vez deployado (depende de que el cliente tenga `DatosFactura.{RazonSocialVenta,Divisa}` configurado; HUBBELL puede no tenerlo aún).
+
+## Fix 2026-07-03 (v0.1.1) — "sin idInDomain" para TODOS los clientes
+
+**Síntoma reportado:** el autofill de Razón Social y Divisa no funcionaba para ningún cliente. El panel mostraba `(sin cliente) → (sin shipTo)` y ambos campos `✗ sin idInDomain`.
+
+**Root cause (confirmado en vivo, no adivinado):**
+- El fetch `Customer` NO estaba roto (hash `12d69cd…` vigente; devuelve `DatosFactura` completo). El match de `<option>` tampoco (Divisa `"USD"` matchea `"USD - Dólar americano"` por substring, score 60; Razón string-largo matchea exacto, score 100). Todo eso se validó con lecturas en vivo.
+- El bug estaba **100% en la extracción del cliente del modal**. `findSingleValueByLabel` caminaba los hermanos del label "Cliente:" y hacía **`return null` al toparse un `input[role="combobox"]`** — pero el react-select SIEMPRE monta el combobox junto al singleValue, así que bailaba antes de leer el nombre. Resultado: `extractCustomerNameFromModal()` → `null` → sin `(#N)` que parsear → `sin idInDomain`. Como el layout del modal es idéntico para todo cliente, fallaba para **todos**.
+- Dato clave: el `(#N)` **sí está presente** en ese modal — `sv = "C" (avatar) + "CONTROLES Y MEDIDORES ESPECIALIZADOS (#10)"` = idInDomain 10. El avatar MUI pega su letra al nombre; `extractCustomerNameFromModal` ya lo quita con `[class*="Avatar"]`.
+
+**Fix:**
+1. **Extracción del cliente robusta y label-independiente**: se juntan los textos de TODOS los `[class*="singleValue"]` del modal (quitando avatar/svg/img) y se elige el ÚNICO que trae el badge `(#N)` (`Core.pickCustomerFromSingleValues`). Los demás singleValues del modal (Contacto, Facturar a, Enviar vía, Términos) no traen `(#N)`.
+2. `findSingleValueByLabel` (que aún usa el shipTo): se **quitó el bail del combobox** y ahora prefiere la ÚLTIMA etiqueta que matchea (la del modal, no la del wizard padre).
+3. `getModalRoot` con **fallback** ascendiendo desde un campo RJSF (garantiza root aunque el heading cambie de tag).
+4. **Fallback de `idInDomain` por nombre** vía `CustomerSearchByName` (`resolveIdInDomainByName`, cacheado) por si algún cliente/modal no mostrara el badge — cierra el pendiente "Cliente con `(#N)` no parseado".
+
+**Módulo puro nuevo** `create-order-autofill-core.js` (`window.CreateOrderAutofillCore` / `module.exports`): `normalizeForMatch`, `cleanCustomerName`, `extractCustomerIdInDomain`, `pickCustomerFromSingleValues`, `scoreOptionMatch`. Golden test `tools/test/create-order-autofill-core.test.js` (9 casos, incluye el caso Divisa `"USD"` vs `"USD - Dólar americano"`). El core va en `config.apps[].scripts` ANTES del applet.
+
+**Validación:** core 9/9 verde + réplica del singleValue real del modal → `pickCustomerFromSingleValues` saca `idInDomain: 10`. Deployado a gh-pages (config **1.7.59**, verificado en vivo byte-a-byte + `create-order-autofill-core.js` publicado HTTP 200). **Pendiente:** corrida real end-to-end en el modal (que el operador confirme que se llenan Razón Social + Divisa).
+
+**Safari/iPad:** el applet ya estaba en el bundle; el rebuild tomó el core nuevo (`tools/build-safari.sh`, bundle `0.5.0 → 0.5.1`, build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático). **2026-07-09 (bundle 0.5.3):** el rebuild tomó también el cambio de la 2ª pantalla SalesOrders (gate URL + heading bilingüe); mismo requisito de recompilar en Xcode.
 
 ## Por qué DOM en lugar de hook
 Probamos 4 casts experimentales (`workOrderUpdates` paralelo, `customInputs` top-level, `receivedOrderCustomInputs` singular, `shipToAddress.customInputs`) en el hook low-code `getReceivedOrderCustomization` de Power Tools. Test Run pasaba en todos (la shape se generaba bien), pero **el backend nunca aplicó el customInput a la OV** — mismo failure mode documentado para `partNumberLabels` en `powertools-ordendeventa.md` (2026-05-15; repo SteelheadPowerTools). Steelhead solo respeta las claves declaradas explícitamente en su shape de backend; lo demás se silencia.
@@ -19,9 +78,9 @@ Conclusión: el canal viable es DOM-fill desde la extensión.
 
 ## Detección del modal
 
-- **URL gate**: `/\/Receiving\/CustomerParts(?:\/|$)/`. La URL no cambia durante todo el flujo (lista → modal full-screen "Recibir piezas del cliente" → modal anidado "Crear Orden de Venta"), por eso el gate es por path.
-- **MutationObserver** en `document.body` (debounce 350ms) ejecuta `scanForModal`.
-- **Firma única del modal anidado**: presencia simultánea de `#root_RazonSocialVenta`, `#root_Divisa`, `#root_ConsolidarPorProducto` (los tres IDs del RJSF de Entradas Personalizadas). Más doble check con `MODAL_HEADING_RE = /^\s*crear\s+orden\s+de\s+venta\s*$/i` (filtra falsos positivos si Steelhead reusa los mismos IDs en otra pantalla).
+- **URL gate** (`core.matchesCreateOrderUrl`): `/Receiving/CustomerParts(/|$)` (flujo Receiving; la URL no cambia lista → modal full-screen "Recibir piezas del cliente" → modal anidado "Crear Orden de Venta") **o** `/Domains/<id>/SalesOrders/?$` (lista de OVs → "New Sales Order"; anclado al final para no gatear detalle `/SalesOrders/<n>`).
+- **MutationObserver** en `document.body` (debounce 350ms) ejecuta `scanForModal`. En la pantalla SalesOrders el cliente se elige DENTRO del modal → el childList del `singleValue` que monta el react-select dispara el re-scan.
+- **Firma única del modal**: presencia simultánea de `#root_RazonSocialVenta`, `#root_Divisa`, `#root_ConsolidarPorProducto` (los tres IDs del RJSF de Entradas Personalizadas). Más doble check con `core.isCreateOrderModalHeading` (acepta "Crear Orden de Venta" ES y "Create Sales Order" EN; filtra falsos positivos si Steelhead reusa los mismos IDs en otra pantalla).
 - **`getModalRoot()`** sube del heading "Crear Orden de Venta" al `[role="dialog"]` / `[class*="MuiPaper"]` para anclar las búsquedas de `Cliente:` y `Enviar a:` SOLO dentro del modal. Sin esto, el `<p>Cliente:</p>` del wizard padre (gris atrás) compite y el extractor podía elegir el equivocado.
 
 ## idInDomain por parseo de `(#N)`
@@ -49,7 +108,7 @@ El singleValue del react-select de Cliente trae el sufijo `(#1)` con el `idInDom
 
 ## Pendientes derivados
 
-- **Segunda vista de creación de OV**: existe otra pantalla en Steelhead (no documentada aún) donde también se crean OVs sin pasar por Receiving. Cuando el usuario la indique, agregar su URL al gate y validar que los selectores RJSF son los mismos (probablemente sí — RJSF reusa el mismo schema del ReceivedOrder).
+- ~~**Segunda vista de creación de OV**~~ **RESUELTO 2026-07-09 (v0.1.3)**: es `/Domains/<id>/SalesOrders` → "New Sales Order" → modal "Create Sales Order". Selectores RJSF idénticos (confirmado); solo se amplió el gate de URL + el heading bilingüe. Ver sección "Add 2026-07-09".
 - **Toggle en popup**: la action `toggle-create-order-autofill` está declarada en `config.json` pero el handler en `extension/background.js` no está implementado (mismo patrón que `invoice-autofill`). Si en el futuro se quiere toggle real, agregar handler + listener en `content.js` + bumpear `extensionVersion` y republicar zip.
 - **Consolidación por shipTo generalizable**: hoy `ROJO_GOMEZ_RE` está hardcodeado en el script. Si aparecen más plantas/clientes que requieran consolidación, mover la lista de patrones a `config.json.domain.consolidacionShipTos: string[]`.
 - **Cliente con `(#N)` no parseado**: si Steelhead deja de mostrar el sufijo `(#N)` en algún cliente, el applet cae al fallback "sin idInDomain" y no autollena. Mitigación: interceptar la respuesta de `AllCustomers` (o la query que pobla el combo) y cachear `name → idInDomain` como segunda fuente.

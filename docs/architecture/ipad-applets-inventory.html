@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventario de portabilidad de applets a Safari/iPad</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#fff; --ink:#1c2430; --ink-soft:#55606e; --line:#e4e8ee;
+    --accent:#13a36f; --accent-ink:#0c7a52; --code-bg:#1c2430; --code-ink:#e6e9ee;
+    --warn-bg:#fff6ed; --warn-line:#f0a35a; --warn-ink:#8a4b12;
+    --note-bg:#eef4ff; --note-line:#7aa7f0; --note-ink:#274a86;
+    --tip-bg:#ecfaf3; --tip-line:#13a36f; --tip-ink:#0c6f49; --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
+  .wrap{max-width:1000px; margin:0 auto; padding:40px 22px 80px}
+  h1,h2,h3{text-wrap:balance; line-height:1.25; letter-spacing:-.01em}
+  p,li{text-wrap:pretty}
+  a{color:var(--accent-ink); text-decoration:none} a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.9em; background:#eef1f5; padding:1px 6px; border-radius:6px}
+
+  header.hero{background:linear-gradient(135deg,#1c2430,#27384a); color:#eef2f6; border-radius:var(--radius);
+    padding:30px; box-shadow:0 1px 2px rgba(0,0,0,.06), 0 10px 30px rgba(28,36,48,.18)}
+  .eyebrow{display:inline-block; font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:#9fe9c8; background:rgba(19,163,111,.16); padding:5px 11px; border-radius:999px}
+  header.hero h1{margin:14px 0 8px; font-size:26px; color:#fff}
+  header.hero p{margin:0; color:#b9c4d0; font-size:14.5px}
+
+  /* Stat cards */
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:18px 0 4px}
+  .stat{background:var(--card); border-radius:14px; padding:16px 18px; text-align:center;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05)}
+  .stat .num{font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1}
+  .stat .lbl{font-size:12px; color:var(--ink-soft); margin-top:6px; font-weight:600}
+  .stat.ok .num{color:var(--accent-ink)} .stat.mid .num{color:var(--warn-ink)} .stat.no .num{color:var(--ink-soft)} .stat.hi .num{color:var(--accent)}
+
+  section.card{background:var(--card); border-radius:var(--radius); padding:24px 26px; margin:18px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 22px rgba(0,0,0,.06)}
+  section.card > h2:first-child{margin-top:0}
+  h2{font-size:20px} h3{font-size:16px; margin:18px 0 6px}
+  ul.tight{padding-left:20px} ul.tight li{margin:6px 0}
+
+  /* Table */
+  .legend{display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 12px; font-size:12.5px; color:var(--ink-soft)}
+  .cmp{overflow-x:auto; border-radius:12px; box-shadow:0 0 0 1px var(--line)}
+  table{border-collapse:collapse; width:100%; font-size:13px}
+  thead th{position:sticky; top:0; text-align:left; padding:10px 12px; background:#eef1f5; font-weight:700;
+    border-bottom:1px solid var(--line); white-space:nowrap}
+  tbody td{padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover td{background:#fafcfe}
+  td.dim{font-weight:700; white-space:nowrap}
+  td.deps,td.apis{font-size:12px; color:var(--ink-soft); min-width:120px}
+  td.nota{font-size:12px; color:var(--ink-soft); min-width:260px}
+  .b{font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:999px; white-space:nowrap}
+  .b.ok{background:#e3f6ee; color:#0c7a52} .b.mid{background:#fff6ed; color:#8a4b12} .b.no{background:#eef1f5; color:#55606e}
+  .v{font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:999px}
+  .v.hi{background:#13a36f; color:#fff} .v.me{background:#dcefe6; color:#0c6f49} .v.lo{background:#eef1f5; color:#8a93a0}
+
+  .callout{border-radius:12px; padding:13px 16px; margin:14px 0; font-size:14.5px}
+  .callout p{margin:6px 0} .callout p:first-child{margin-top:0} .callout p:last-child{margin-bottom:0}
+  .callout .label{font-weight:700}
+  .note{background:var(--note-bg); color:var(--note-ink); box-shadow:inset 3px 0 0 0 var(--note-line)}
+  .warn{background:var(--warn-bg); color:var(--warn-ink); box-shadow:inset 3px 0 0 0 var(--warn-line)}
+  .tip{background:var(--tip-bg); color:var(--tip-ink); box-shadow:inset 3px 0 0 0 var(--tip-line)}
+
+  pre{margin:12px 0; background:var(--code-bg); color:var(--code-ink); border-radius:12px; padding:15px 16px;
+    overflow-x:auto; font-size:12.5px; line-height:1.5}
+  pre code{background:none; padding:0; color:inherit}
+  .pill{display:inline-block; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px;
+    background:#e3f6ee; color:var(--accent-ink); margin:3px 4px 0 0}
+  footer{margin-top:34px; padding-top:18px; color:var(--ink-soft); font-size:13px; text-align:center; box-shadow:inset 0 1px 0 var(--line)}
+  footer a{color:var(--ink-soft); text-decoration:underline}
+  @media (max-width:680px){ .stats{grid-template-columns:repeat(2,1fr)} .wrap{padding:26px 16px 60px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Inventario · Safari/iPad</span>
+    <h1>Portabilidad de applets a Safari/iPad</h1>
+    <p>Clasificación de los 33 applets de SteelheadAutomator para el bundle de iPad. Generado por análisis multi-agente (descubrir → clasificar → plan del bundle).</p>
+  </header>
+
+  <div class="stats">
+    <div class="stat ok"><div class="num">16</div><div class="lbl">Directos (bundle v1)</div></div>
+    <div class="stat mid"><div class="num">6</div><div class="lbl">Con popup (fase 2)</div></div>
+    <div class="stat no"><div class="num">11</div><div class="lbl">No aplica (escritorio)</div></div>
+    <div class="stat hi"><div class="num">8</div><div class="lbl">Valor alto (todos directos)</div></div>
+  </div>
+
+  <section class="card">
+    <h2>Actualización · Bundle v0.5.0 — canal de lanzadores del popup + 6 con-popup</h2>
+    <p>Se resolvió la infraestructura de "applets con interfaz" en Safari <strong>sin tocar el código de los applets</strong>. El popup manda el comando a la tab con <code>tabs.sendMessage(tabId,{__saCmd,action,nonce})</code> (fallback a <code>storage.local</code>); <code>bridge.js</code> (mundo aislado) lo recibe con <code>runtime.onMessage</code> y lo reenvía al MAIN world por <code>postMessage</code>; y <code>safari/sa-dispatcher.js</code> resuelve la acción a la función global del applet vía <strong>allowlist</strong> + fallback a <code>config.actions[].fn</code>. <strong>Ojo:</strong> <code>storage.onChanged</code> NO dispara en el content script de iPadOS (por eso el canal es <code>tabs.sendMessage</code>, no storage).</p>
+    <p>Con esto <strong>entraron al bundle</strong>: <code>vale-almacen</code> (botón flotante) y las 6 "con-popup" <code>archiver</code>, <code>sensor-status-autofill</code>, <code>load-calculator</code>, <code>auto-router</code>, <code>wo-completer</code> y <code>wo-deadline</code> (lanzadas desde el popup). Total: <strong>23 applets</strong>, 8 lanzadores. Regresión en <code>tools/test/build-safari.test.js</code>. La integración de applets nuevos la automatiza <code>tools/safari-bundle-scan.py</code> + la skill <code>safari-bundle-sync</code>.</p>
+    <div class="callout warn"><p><span class="label">Gotcha auto-router:</span> en Chrome su trigger de popup (<code>chrome.runtime.onMessage</code>) está muerto en el MAIN world y solo corre por el FAB; en Safari el dispatcher usa <code>postMessage</code>, así que los lanzadores <strong>sí operan</strong>. Peso del bundle: <strong>~940 KB</strong> (todos los iPads objetivo son nuevos, sin problema de memoria).</p></div>
+  </section>
+
+  <section class="card">
+    <h2>Resumen</h2>
+    <p>El <strong>48 % de los applets son portables como content script directo</strong>. Los <strong>8 de valor alto son todos "directo" y de esfuerzo bajo/medio</strong>, así que el Bundle v1 puede ser ambicioso sin tocar la arquitectura de popup. <strong>La ruta crítica es la infraestructura de empaquetado</strong> (wrapper Xcode + build script), no adaptar el código de los applets.</p>
+    <div class="callout note"><p><span class="label">Insight:</span> los applets que pediste para iPad (mejoras de UI, autofills, colores, bloqueo, paros de línea, XML en facturas) caen casi todos en "directo". Los de popup son fase 2; los descartados son herramientas de escritorio (carga masiva, auditorías batch, importadores con descarga de archivos).</p></div>
+  </section>
+
+  <section class="card">
+    <h2>Tabla maestra</h2>
+    <div class="legend">
+      <span><span class="b ok">directo</span> content script casi tal cual</span>
+      <span><span class="b mid">con-popup</span> requiere portar popup</span>
+      <span><span class="b no">no-aplica</span> escritorio</span>
+      <span>·</span>
+      <span><span class="v hi">alto</span> <span class="v me">medio</span> <span class="v lo">bajo</span> valor en iPad</span>
+    </div>
+    <div class="cmp">
+      <table>
+        <thead><tr><th>Applet</th><th>Portabilidad</th><th>Valor</th><th>Esfuerzo</th><th>Dependencias</th><th>APIs de riesgo iOS</th><th>Nota</th></tr></thead>
+        <tbody>
+<tr><td class="dim">create-order-autofill</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>bajo</td><td class="deps">scripts/steelhead-api.js</td><td class="apis">—</td><td class="nota">Autofill puro de DOM (selects nativos + checkbox RJSF) que se activa solo al detectar el modal &#x27;Crear OV&#x27; via MutationObserver; no hay file I/O ni APIs de extensión. El toggle del popup puede omitirse dejándolo siempre-ON sin perder funcionalidad principal.</td></tr>
+<tr><td class="dim">invoice-listing-marker</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>bajo</td><td class="deps">—</td><td class="apis">—</td><td class="nota">Colorea visualmente filas del listado de facturas (monto cero en rojo, notas de crédito en amarillo, borradores con chip gris) usando solo MutationObserver y requestAnimationFrame. Sin dependencias ni APIs de riesgo; el valor es alto porque el operador en iPad identifica de un vistazo el estado de cada factura.</td></tr>
+<tr><td class="dim">paros-linea</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>medio</td><td class="deps">steelhead-api.js</td><td class="apis">—</td><td class="nota">El botón flotante (FAB) se auto-inyecta en Workboards/WorkOrders y el operador lo toca directamente para abrir el modal con cronómetro — el flujo completo no requiere popup. El upload de evidencia usa `input[type=file]` disparado desde un onclick (gesto de usuario real), compatible con Safari iOS. Esfuerzo medio por la riqueza del modal (cronómetro, comentarios, update en vuelo de equipo) y la carga de catálogos paginada.</td></tr>
+<tr><td class="dim">proceso-calculator</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>bajo</td><td class="deps">steelhead-api.js</td><td class="apis">—</td><td class="nota">Patrón content-script canónico: MutationObserver que inyecta el ícono 🧮 junto al combobox Default Process y abre un modal en DOM. Sin popup, sin APIs de archivos, sin chrome.*, sin IndexedDB. Porteable casi sin cambios como content_script world:MAIN en Safari.</td></tr>
+<tr><td class="dim">receiver-date-override</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>bajo</td><td class="deps">—</td><td class="apis">—</td><td class="nota">Sin dependencia de SteelheadAPI; solo intercept nativo de fetch y DOM puro. Inyecta campo date + time con chips &#x27;Hoy/Ayer&#x27; en el modal de recibo e intercepta CreateReceiverChecked para hacer follow-up UpdateReceiver con la fecha elegida. Es el applet de menor fricción para portar y de alto valor para operadores de recibo en iPad.</td></tr>
+<tr><td class="dim">surtido-guard</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>bajo</td><td class="deps">scripts/steelhead-api.js, scripts/surtido-guard-core.js</td><td class="apis">—</td><td class="nota">El POC de este patrón exacto (content script world:MAIN interceptando window.fetch) ya fue validado en Safari/iPadOS. Sin APIs de riesgo: parchea fetch, manipula DOM e inyecta CSS. El toggle del popup invoca SurtidoGuard.toggleFromPopup directamente, patrón compatible con Safari Web Extensions.</td></tr>
+<tr><td class="dim">warehouse-location-prefill</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>bajo</td><td class="deps">steelhead-api.js</td><td class="apis">—</td><td class="nota">Inyecta un combobox de ubicación (con lazy-load de catálogo Aduana y paginación) en el modal de recibo e intercepta CreateReceiverChecked para inyectar locationId en todos los debitAccounts. El flujo completo no usa el popup (solo data-attribute de habilitado). Sin APIs de riesgo; MutationObserver y fetch-intercept son totalmente compatibles con Safari iOS.</td></tr>
+<tr><td class="dim">weight-quick-entry</td><td><span class="b ok">directo</span></td><td><span class="v hi">alto</span></td><td>bajo</td><td class="deps">steelhead-api.js</td><td class="apis">—</td><td class="nota">Parchea window.fetch e inyecta campos de peso KG/LB en el modal de recibo via MutationObserver; la preferencia del cliente se resuelve interceptando ReceivingPartsPartNumbersQuery. El toggle del popup solo activa/desactiva el applet — el núcleo corre completamente con autoInject. Sin APIs de riesgo en Safari iOS.</td></tr>
+<tr><td class="dim">bill-autofill</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>bajo</td><td class="deps">scripts/steelhead-api.js</td><td class="apis">—</td><td class="nota">Intercepta window.fetch (MAIN world) y auto-rellena cuenta AP, divisa y TC al detectar Create/Edit Bill. El localStorage que usa es el del sitio en MAIN world (no API de extensión), sin riesgo en Safari iOS. Toggle del popup puede volverse siempre-ON.</td></tr>
+<tr><td class="dim">cfdi-attacher</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>bajo</td><td class="deps">scripts/steelhead-api.js</td><td class="apis">—</td><td class="nota">Intercepta window.fetch para cachear datos CFDI e inyecta un checkbox en el diálogo de envío de correo de factura. Sin APIs de riesgo en el flujo principal; el flujo de upload usa FormData + fetch nativo que Safari iOS soporta sin problema.</td></tr>
+<tr><td class="dim">invoice-auto-regen</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>medio</td><td class="deps">scripts/steelhead-api.js</td><td class="apis">navigator.clipboard</td><td class="nota">Inyecta banner en el header de Invoices y ejecuta regen batch vía clicks DOM programáticos; navigator.clipboard solo aparece en funciones de diagnóstico (dumpManualPdfPayload/dumpManualPair) fuera del flujo operativo, pero el alto volumen de paginación DOM puede ser lento en iPad.</td></tr>
+<tr><td class="dim">invoice-autofill</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>bajo</td><td class="deps">scripts/steelhead-api.js</td><td class="apis">—</td><td class="nota">Mismo patrón que bill-autofill: intercepta fetch, rellena cuenta CXC e ingresos/descuentos en /Invoices y /PackingSlips. Sin localStorage ni file I/O; porta como content script puro con toggle como siempre-ON.</td></tr>
+<tr><td class="dim">invoice-default-tab</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>bajo</td><td class="deps">—</td><td class="apis">—</td><td class="nota">Parche mínimo de history.pushState/replaceState + MutationObserver que auto-clickea el tab &#x27;Packing Slips&#x27; al entrar a /Invoices sin parámetro mode. Sin dependencias externas ni APIs de riesgo; entra al bundle como content_script sin cambios.</td></tr>
+<tr><td class="dim">report-regen</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>bajo</td><td class="deps">steelhead-api.js</td><td class="apis">—</td><td class="nota">Mismo patrón arquitectónico validado por el POC de surtido-guard: autoInject + parche de window.fetch para interceptar CurrentUser/Profile + MutationObserver + inyección de botón en el header. Sin APIs de riesgo; entra al bundle como content script casi sin cambios.</td></tr>
+<tr><td class="dim">unit-autoconvert</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>bajo</td><td class="deps">steelhead-api.js, unit-autoconvert-core.js</td><td class="apis">—</td><td class="nota">Sin popup (popup=false); parchea fetch, instala MutationObserver y listener de focusout — todo estándar en Safari iOS. Requiere bundlear los tres scripts en orden (core → api → main). Valor en iPad limitado: editar conversiones de unidades de un NP es tarea administrativa de back-office, poco común en piso.</td></tr>
+<tr><td class="dim">wo-mover</td><td><span class="b ok">directo</span></td><td><span class="v me">medio</span></td><td>bajo</td><td class="deps">steelhead-api.js, host-cleanup-shared.js, ov-operations.js</td><td class="apis">chrome.runtime.onMessage</td><td class="nota">FAB auto-inyectado en el detalle de cada OV con UI completa self-contained en el content script; chrome.runtime?.onMessage?.addListener? usa optional chaining y falla silenciosamente sin romper el flujo. Candidato directo si se incluye ov-operations.js en el bundle; un supervisor en piso puede necesitar reasignar OTs entre OVs desde iPad.</td></tr>
+<tr><td class="dim">archiver</td><td><span class="b mid">con-popup</span></td><td><span class="v me">medio</span></td><td>medio</td><td class="deps">steelhead-api.js, host-cleanup-shared.js</td><td class="apis">—</td><td class="nota">Solo usa localStorage (compatible con Safari iOS) y GraphQL vía fetch nativo. El panel de filtros (etiquetas AND/OR, modo archivar/desarchivar, fecha) se construye en la página al recibir el mensaje del popup — portar ese flujo a Safari Web Extension popup es el trabajo principal. Sin APIs de riesgo.</td></tr>
+<tr><td class="dim">auto-router</td><td><span class="b mid">con-popup</span></td><td><span class="v me">medio</span></td><td>medio</td><td class="deps">scripts/steelhead-api.js</td><td class="apis">—</td><td class="nota">La capa autoInject (interceptor fetch + FAB + rastreo de selección del board) llega directo como content script. Las acciones del popup usan chrome.runtime.onMessage con optional chaining — soportado en Safari Web Extensions con fallback seguro si no existe. Usa alert()/confirm() nativos que funcionan en Safari iOS. El panel batch con textarea es funcional en touch aunque menos ergonómico que en desktop.</td></tr>
+<tr><td class="dim">load-calculator</td><td><span class="b mid">con-popup</span></td><td><span class="v me">medio</span></td><td>medio</td><td class="deps">steelhead-api.js, load-calculator-engine.js, load-calculator-stations.js</td><td class="apis">—</td><td class="nota">La Fase 2 (load-calculator-modal.js) es un interceptor de window.fetch puro que inyecta cálculo de piezas/carga dentro del modal nativo de Rack Types — porteable como &#x27;directo&#x27;. La Fase 1 (Configurador de Estaciones) se dispara exclusivamente desde la acción del popup (openStationConfig), así que el applet completo requiere portar el popup. Sin APIs de riesgo en ninguno de los scripts.</td></tr>
+<tr><td class="dim">sensor-status-autofill</td><td><span class="b mid">con-popup</span></td><td><span class="v me">medio</span></td><td>medio</td><td class="deps">scripts/steelhead-api.js</td><td class="apis">—</td><td class="nota">Se activa solo desde el popup (autoInject=false); el script inyecta un FAB y modales DOM puros sin APIs exclusivas de desktop. Para portar a iPad hay que mapear la acción del popup al equivalente de Safari Web Extension; el código de autofill en sí no requiere cambios.</td></tr>
+<tr><td class="dim">report-liberator</td><td><span class="b mid">con-popup</span></td><td><span class="v lo">bajo</span></td><td>medio</td><td class="deps">steelhead-api.js</td><td class="apis">navigator.clipboard.writeText (requiere permiso explícito en Safari iOS; funcional con user gesture pero presenta diálogo de confirmación)</td><td class="nota">Técnicamente portable (solo mutaciones GraphQL y UI de selección en DOM), pero es tarea administrativa esporádica sin valor en piso. El único riesgo real es navigator.clipboard para copiar el log, que puede requerir confirmación del usuario en iOS.</td></tr>
+<tr><td class="dim">wo-deadline</td><td><span class="b mid">con-popup</span></td><td><span class="v lo">bajo</span></td><td>medio</td><td class="deps">steelhead-api.js</td><td class="apis">—</td><td class="nota">Sin APIs de riesgo en Safari iOS (solo input type=date e inputs estándar); UI dark-mode técnicamente portable. Se dispara desde popup y es gestión masiva de fechas/etiquetas de OTs — tarea administrativa que raramente se hace en piso desde un iPad.</td></tr>
+<tr><td class="dim">auditor</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js, host-cleanup-shared.js, duplicate-tiers.js</td><td class="apis">Blob+URL.createObjectURL+a.download (descarga programática de CSV/JSON; a.download ignorado en Safari iOS)</td><td class="nota">Auditoría batch de miles de PNs en dos pases (corre hasta ~10 min) con descarga de CSV/JSON vía a.download, que no funciona confiablemente en Safari iOS. Tarea administrativa de escritorio sin sentido en iPad.</td></tr>
+<tr><td class="dim">carga-masiva</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js, host-cleanup-shared.js, bulk-upload-cc.js, bulk-upload-parse.js, bulk-upload-classify.js</td><td class="apis">IndexedDB; URL.createObjectURL+anchor.download; navigator.clipboard; FileReader</td><td class="nota">Herramienta de carga masiva desde archivos Excel/CSV con procesos de 10–30 min, historial en IndexedDB, descarga de reporte XLSX con anchor.download y navigator.clipboard. Múltiples APIs problemáticas en iOS y flujo de larga duración incompatible con iPad; sin valor operativo en tablet.</td></tr>
+<tr><td class="dim">file-uploader</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js, host-cleanup-shared.js, file-uploader-core.js</td><td class="apis">Blob+URL.createObjectURL+a.download (reporte de errores CSV); &lt;input type=file&gt; (convención de nombre &lt;PN&gt;__&lt;descriptor&gt; desde Files app es impracticable para cargas masivas en iPad)</td><td class="nota">Carga masiva de archivos nombrados por convención desde el sistema de archivos local; flujo de escritorio. Blob+a.download para el reporte de errores no funciona en iOS. El backfill de portadas también requiere CSV local.</td></tr>
+<tr><td class="dim">hash-scanner</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js</td><td class="apis">URL.createObjectURL+anchor.download</td><td class="nota">Herramienta exclusiva de developer para capturar hashes de GraphQL persisted queries. El export usa chrome.scripting.executeScript (background.js) que inyecta código en la página para descargar config.json y scan_results vía Blob+anchor.download. Cero valor para operadores de piso en iPad.</td></tr>
+<tr><td class="dim">inventory-reset</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js</td><td class="apis">FileReader / &lt;input type=file&gt;; navigator.clipboard</td><td class="nota">Operación destructiva e irreversible de reinicio masivo de inventario desde archivo CSV: archiva lotes activos y crea nuevos. Es tarea de escritorio/admin sin sentido en piso; el file picker y clipboard no son APIs de riesgo técnico en Safari iOS pero la operación en sí no aplica para iPad.</td></tr>
+<tr><td class="dim">po-comparator</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js, claude-api.js, ov-operations.js</td><td class="apis">FileReader / &lt;input type=file&gt;; window.open</td><td class="nota">Comparador de órdenes de compra (PDF) vs OVs de Steelhead con parseo vía Claude API; flujo multistep de escritorio con file picker y vista lateral via window.open(). ov-operations.js también usa window.open para abrir el PDF en panel lateral. Sin valor en iPad.</td></tr>
+<tr><td class="dim">po-reconciler</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js, claude-api.js, po-comparator.js, scripts/lib/pdf.min.js</td><td class="apis">FileReader / &lt;input type=file&gt;; chrome.runtime.onMessage; URL.createObjectURL + &lt;a download&gt;</td><td class="nota">FAB auto-inyectado pero el workflow completo (carga de varios PDFs de POs Schneider, parseo con Claude/pdf.js, wizard de plan 4 pasos, descarga de bitácora CSV) es puro escritorio. La descarga con &lt;a download&gt; + Blob no funciona en Safari iOS. Tarea de conciliación contable que nunca se haría en piso.</td></tr>
+<tr><td class="dim">portal-importer</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">scripts/steelhead-api.js, scripts/claude-api.js, scripts/lib/xlsx.full.min.js, scripts/ov-operations.js, scripts/po-comparator.js</td><td class="apis">chrome.storage.local; navigator.clipboard</td><td class="nota">Flujo de escritorio pesado: carga un XLS de portal de cliente, infiere columnas con Claude API (requiere API key configurada), y crea/adopta OVs en batch multi-paso. El valor en iPad es nulo porque importar archivos XLS de portales de clientes es una tarea de oficina, no de piso.</td></tr>
+<tr><td class="dim">process-canon</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">scripts/steelhead-api.js, scripts/process-shared.js, scripts/process-deep-audit.js</td><td class="apis">a.download + URL.createObjectURL (descarga XLSX generada por process-deep-audit — no funcional en Safari iOS)</td><td class="nota">Herramienta de configuración masiva de nodos de proceso usada por ingeniería en escritorio; ambas acciones (Auditar + Auditoría profunda) requieren popup. La auditoría profunda genera descargas XLSX via anchor.click() que no funcionan en Safari iOS.</td></tr>
+<tr><td class="dim">spec-migrator</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">steelhead-api.js, host-cleanup-shared.js</td><td class="apis">Blob+URL.createObjectURL+a.download (exportación XLSX; a.download ignorado en Safari iOS); &lt;input type=file&gt; (importación CSV para validate-duplicate-params); navigator.clipboard.writeText (copiar logs)</td><td class="nota">Migración masiva de specs con importación de CSV y exportación de XLSX vía a.download, que falla en Safari iOS. Herramienta administrativa de configuración de escritorio con localStorage para checkpoint y memory hardening; sin sentido en iPad.</td></tr>
+<tr><td class="dim">spec-params-bulk</td><td><span class="b no">no-aplica</span></td><td><span class="v lo">bajo</span></td><td>alto</td><td class="deps">scripts/steelhead-api.js, scripts/spec-shared.js</td><td class="apis">a.download + URL.createObjectURL (descarga XLSX — no funcional en Safari iOS); &lt;input type=&#x27;file&#x27;&gt; (subida de XLSX editado); window.XLSX / SheetJS (dependencia externa a bundlear)</td><td class="nota">Flujo completo descargar→editar→cargar XLSX que solo tiene sentido en escritorio con Excel; la descarga vía anchor.click()+createObjectURL no funciona en Safari iOS y la carga requiere el usuario tener el archivo editado disponible.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Bundle v1 recomendado</h2>
+    <p>Todos los "directo" (16). Excluir <code>invoice-auto-regen</code> si el iPad objetivo es viejo (A12 o anterior) por su DOM-paginado intensivo.</p>
+    <h3>Valor alto (8)</h3>
+    <p><span class="pill">surtido-guard</span><span class="pill">weight-quick-entry</span><span class="pill">receiver-date-override</span><span class="pill">warehouse-location-prefill</span><span class="pill">create-order-autofill</span><span class="pill">proceso-calculator</span><span class="pill">invoice-listing-marker</span><span class="pill">paros-linea</span></p>
+    <h3>Valor medio (8)</h3>
+    <p><span class="pill">report-regen</span><span class="pill">invoice-default-tab</span><span class="pill">cfdi-attacher</span><span class="pill">invoice-autofill</span><span class="pill">bill-autofill</span><span class="pill">wo-mover</span><span class="pill">unit-autoconvert</span><span class="pill">invoice-auto-regen</span></p>
+    <h3>Orden de carga (por capas de dependencia)</h3>
+    <pre><code>── Capa 1: helpers base
+   steelhead-api.js
+   host-cleanup-shared.js        (solo wo-mover lo usa en v1)
+── Capa 2: helpers de 2º nivel (dependen de capa 1 / lógica pura)
+   ov-operations.js              (requerido por wo-mover)
+   unit-autoconvert-core.js
+   surtido-guard-core.js
+── Capa 3: applets sin dependencias propias
+   invoice-default-tab.js · invoice-listing-marker.js · receiver-date-override.js
+── Capa 4: applets que usan steelhead-api (orden libre)
+   proceso-calculator · report-regen · cfdi-attacher · invoice-auto-regen
+   paros-linea · weight-quick-entry · warehouse-location-prefill
+   create-order-autofill · bill-autofill · invoice-autofill
+── Capa 5: applets que usan helpers de capa 2
+   wo-mover (tras host-cleanup-shared + ov-operations)
+   unit-autoconvert (tras unit-autoconvert-core)
+   surtido-guard (tras surtido-guard-core)</code></pre>
+    <div class="callout tip"><p><span class="label">Bridge (ISOLATED world):</span> el <code>content.js</code> actual se reusa con 2 cambios: polyfill <code>const chrome = browser ?? chrome</code> y quitar el bloque de hash-scanner. Los applets ya leen sus flags vía <code>document.documentElement.dataset.*</code> — ese mecanismo no cambia.</p></div>
+  </section>
+
+  <section class="card">
+    <h2>Fase 2 — applets con popup</h2>
+    <p>Cuatro de valor medio valen el esfuerzo de portar el popup; <code>report-liberator</code> y <code>wo-deadline</code> (valor bajo) solo se suman si el popup ya está hecho.</p>
+    <ul class="tight">
+      <li><strong>auto-router</strong> — la capa autoInject (FAB + intercept fetch) entra como v1; las acciones (reglas, batch) requieren <code>popup.html</code> con <code>browser.runtime.sendMessage</code>.</li>
+      <li><strong>archiver</strong> — funciona desde el popup (formulario de filtros). Sin cambios en <code>archiver.js</code>, solo mapear la acción al popup de Safari.</li>
+      <li><strong>load-calculator</strong> — la Fase 2 (modal nativo) es intercept fetch puro → puede subir a v1; el Configurador de Estaciones requiere popup.</li>
+      <li><strong>sensor-status-autofill</strong> — FAB y modales DOM; solo cambia el trigger a <code>browser.runtime.sendMessage</code>.</li>
+    </ul>
+    <div class="callout note"><p>El <code>popup.html</code> MV3 de Chrome funciona en Safari Web Extension sin cambios de estructura (solo <code>browser.*</code>); en iOS aparece como hoja emergente desde el ícono de extensiones.</p></div>
+  </section>
+
+  <section class="card">
+    <h2>Riesgos transversales</h2>
+    <div class="callout warn"><p><span class="label">⚠️ <code>a.download</code> + <code>URL.createObjectURL</code> (bloqueador iOS):</span> Safari iOS ignora el atributo <code>download</code> de las anclas. Es el motivo por el que <strong>8 de los 11 descartados</strong> quedan fuera (carga-masiva, auditor, file-uploader, spec-migrator, etc.). No hay workaround limpio desde un content script.</p></div>
+    <ul class="tight">
+      <li><strong><code>navigator.clipboard</code></strong> — en iOS presenta diálogo de confirmación (requiere gesto). Afecta a applets ya fuera de v1; en <code>invoice-auto-regen</code> está solo en helpers de diagnóstico → no bloquea.</li>
+      <li><strong><code>chrome.storage</code> → <code>browser.storage</code></strong> — solo en el bridge; polyfill de una línea. Los applets no usan <code>chrome.*</code> directo.</li>
+      <li><strong><code>chrome.runtime.onMessage</code> en MAIN world</strong> (wo-mover, auto-router) — restringido en MAIN world igual que Chrome; el mensaje va al ISOLATED world y se reenvía con <code>window.postMessage</code>. Ya usan optional chaining → fallan silencioso. El relay va en el bridge; el applet no cambia.</li>
+      <li><strong>Modelo de deploy (rebuild obligatorio)</strong> — sin código remoto: editar <code>remote/scripts</code> → build script regenera el bundle → archivar en Xcode → distribuir (MDM/TestFlight). <strong>Releases por lote</strong> (3-5 fixes) + tags <code>safari/vX.Y</code>.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>Arquitectura del bundle (recomendación)</h2>
+    <p>Mantener <code>remote/scripts/*.js</code> y <code>config.json</code> como <strong>única fuente de verdad</strong> y agregar un build script que genera el bundle:</p>
+    <pre><code>tools/build-safari.sh
+  1. Lee config.json → scripts[] de los applets en la lista blanca "safari"
+  2. Resuelve el orden topológico (capas de arriba)
+  3. Concatena en Resources/main-bundle.js (cada applet en IIFE; helpers como globals)
+  4. Escribe el manifest: bridge.js (ISOLATED) + main-bundle.js (world:MAIN)
+  5. Bumpea la versión en Info.plist</code></pre>
+    <div class="callout note">
+      <p><span class="label">Por qué un solo bundle concatenado (no 16 content_scripts, no loader):</span> 16 entradas fragmentan sin beneficio (Steelhead es un SPA, mismo <code>matches</code>); y un loader que evalúe scripts en runtime <strong>violaría la Guideline 2.5.2</strong> de Apple (revisan el comportamiento, no solo la fuente). El bundle estático concatenado es el único camino seguro.</p>
+    </div>
+    <h3>Incógnitas por validar antes de v1</h3>
+    <ul class="tight">
+      <li><strong>iPadOS mínimo:</strong> <code>world:"MAIN"</code> confirmado en el POC, pero requiere iPadOS 16+/17 (en iPadOS 15 no existe en content_scripts). Confirmar el parque de iPads.</li>
+      <li><strong>Peso/parse del bundle</strong> (~300-500 KB con 16 applets + helpers) en iPads A12 o anteriores — perfilar.</li>
+      <li><strong>Distribución:</strong> MDM + empresa (Apple Developer Enterprise $299/año) vs TestFlight interno (gratis con Developer $99, pero pasa revisión). Definir antes del wrapper Xcode.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Generado por el workflow <code>ipad-applets-port-inventory</code> (9 agentes) ·
+    fuente <a href="ipad-applets-inventory.md">ipad-applets-inventory.md</a> ·
+    decisión base <a href="ipad-surtido-guard-decision.html">Safari vs PWA</a> ·
+    guía de build <a href="../deploy-safari.html">deploy-safari</a>.
+  </footer>
+
+</div>
+</body>
+</html>

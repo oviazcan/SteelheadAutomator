@@ -1,4 +1,15 @@
-' === MACRO 1: ExportarCSV (v15.3 — layout v12) ===
+' === MACRO 1: ExportarCSV (v15.4 — layout v12) ===
+' V15.4 (2026-07-03): FIX carga por Id SH — CSV salía SIN DATOS cuando las filas se
+'   identifican por "Id SH" (col C) con "Número de parte" (col E) VACÍO (caso de uso legítimo:
+'   actualizar PNs EXISTENTES por su ID de Steelhead, no dar de alta por nombre). Bug: el
+'   guard de rango ya contaba Id SH (lastR = max(lastPN, lastID)) y por eso no saltaba
+'   "No hay filas de datos", PERO el volcado real filtraba filas SOLO por PN
+'   (`If Trim(PN) = "" Then GoTo NextK`) → nOut = 0 → CSV con metadata + header y cero filas.
+'   Inconsistencia interna: el rango reconocía Id SH pero la escritura lo ignoraba. Ahora el
+'   criterio de "fila con datos" es PN <> "" OR Id SH <> "" en los TRES puntos (conteo nOut,
+'   loop de escritura, aviso SOLO_PN > 2000), idéntico al parser downstream
+'   (`bulk-upload.js`: `if (!pn && !idShEarly) continue`). Además la clave de orden desempata
+'   por Id SH para que las filas solo-IdSH salgan deterministas. Ver §§2, 4, 6 y HasRowData.
 ' V15.3 (2026-06-18): FIX Mac DEFINITIVO — vuelve a SaveAs nativo (como el legacy v10/v11/v84).
 '   Los intentos v15.1/v15.2 fallaron en Mac: ADODB.Stream → "error 429 (ActiveX can't create
 '   object)" porque ADODB es COM solo-Windows; y Open ... For Binary → "error 75 (Path/File access
@@ -112,7 +123,8 @@ Sub ExportarCSV()
     If Not esCotizacion Then
         Dim nData As Long
         For r = DATA_START To lastR
-            If Trim(CStr(ws.Cells(r, COL_PN).Value)) <> "" Then nData = nData + 1
+            ' Fila con datos = PN o Id SH (igual que el volcado §6 y el parser downstream)
+            If HasRowData(CStr(ws.Cells(r, COL_PN).Value), CStr(ws.Cells(r, COL_IDSH).Value)) Then nData = nData + 1
         Next r
         If nData > 2000 Then
             If MsgBox(nData & " filas SOLO_PN exceden 2,000 recomendadas." & vbCrLf & _
@@ -156,7 +168,10 @@ Sub ExportarCSV()
     ReDim idx(1 To n): ReDim keys(1 To n)
     For k = 1 To n
         idx(k) = k
-        keys(k) = UCase(Trim(CStr(data(k, COL_CLIENTE)))) & "|" & UCase(Trim(CStr(data(k, COL_PN))))
+        ' Orden por (Cliente, PN); desempate por Id SH para que las filas solo-IdSH
+        ' (Cliente y PN vacíos) salgan deterministas en vez de en orden arbitrario.
+        keys(k) = UCase(Trim(CStr(data(k, COL_CLIENTE)))) & "|" & _
+                  UCase(Trim(CStr(data(k, COL_PN)))) & "|" & Trim(CStr(data(k, COL_IDSH)))
     Next k
     If n >= 2 Then QSortIdx idx, keys, 1, n
 
@@ -175,7 +190,7 @@ Sub ExportarCSV()
 
     Dim nOut As Long: nOut = 0
     For k = 1 To n
-        If Trim(CStr(data(idx(k), COL_PN))) <> "" Then nOut = nOut + 1
+        If HasRowData(CStr(data(idx(k), COL_PN)), CStr(data(idx(k), COL_IDSH))) Then nOut = nOut + 1
     Next k
 
     Const METAROWS As Long = 7                  ' 1 fila modo + 6 labels de metadata
@@ -202,7 +217,8 @@ Sub ExportarCSV()
     Dim outRow As Long: outRow = METAROWS + 1
     For k = 1 To n
         ri = idx(k)
-        If Trim(CStr(data(ri, COL_PN))) = "" Then GoTo NextK
+        ' Exportar la fila si tiene PN o Id SH (carga por nombre O por Id de Steelhead)
+        If Not HasRowData(CStr(data(ri, COL_PN)), CStr(data(ri, COL_IDSH))) Then GoTo NextK
         outRow = outRow + 1
         For i = 1 To nc
             t = outTyp(i): col = outCol(i)
@@ -288,6 +304,13 @@ SaveErr:
 End Sub
 
 ' ===========================  Helpers  ===========================
+
+' Una fila cuenta como "con datos" si trae Número de parte O Id SH. Mismo criterio que el
+' parser downstream (bulk-upload.js: `if (!pn && !idShEarly) continue`). El Id SH identifica
+' un PN EXISTENTE en Steelhead, así que una fila solo-IdSH (sin PN) es válida y debe exportarse.
+Private Function HasRowData(ByVal pn As String, ByVal idsh As String) As Boolean
+    HasRowData = (Trim$(pn) <> "") Or (Trim$(idsh) <> "")
+End Function
 
 Private Sub AddOut(h As Collection, oc As Collection, ot As Collection, used As Collection, _
                    ByVal hdr As String, ByVal col As Long, ByVal typ As Long)

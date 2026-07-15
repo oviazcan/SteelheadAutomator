@@ -1,6 +1,19 @@
-' === MACRO 2: RefrescarListas (v13) ===
+' === MACRO 2: RefrescarListas (v14) ===
 ' Lee catálogos desde archivo externo "Catalogos_Steelhead_*.xlsx"
 ' generado por la extensión Chrome "Actualizar Catálogos"
+'
+' V14 (2026-07-02): FIX Mac — dejar de pedir "conceder acceso" a CADA catálogo viejo.
+'   En el sandbox de Excel para Mac, FileDateTime() sobre un archivo que el sandbox no
+'   ha autorizado dispara el diálogo de "conceder acceso" POR CADA archivo. Como
+'   BuscarMasReciente recorría TODOS los "Catalogos_Steelhead_*.xlsx" de la carpeta
+'   llamando FileDateTime a cada uno, el usuario tenía que conceder acceso a cada
+'   catálogo acumulado en Descargas aunque no fuera el último. Ahora el más reciente se
+'   elige comparando SOLO el nombre — la extensión los nombra con la fecha ISO
+'   (Catalogos_Steelhead_YYYY-MM-DD.xlsx, + sufijo " (N)" de Chrome cuando hay varios el
+'   mismo día), que es ordenable como texto. Dir() solo lista nombres (nunca abre
+'   archivos), así el ÚNICO archivo que se toca —y para el que Mac pide acceso— es el
+'   ganador, cuando RefrescarListas lo abre. GrantAccessToMultipleFiles NO se usa: no
+'   habilita Open en este Excel para Mac (ver nota en Module1).
 '
 ' V13 (2026-06-15): la hoja CAT_Procesos deja de ser fuente de verdad local.
 '   Ahora se reconstruye desde Steelhead (artículo de inventario 900192, que mantiene
@@ -154,7 +167,7 @@ Private Function BuscarArchivoCatalogos() As String
     If found <> "" Then
         Dim resp As VbMsgBoxResult
         resp = MsgBox("Archivo de cat" & ChrW(225) & "logos encontrado:" & vbCrLf & vbCrLf & _
-            Dir(found) & vbCrLf & _
+            NombreBase(found) & vbCrLf & _
             "(" & found & ")" & vbCrLf & vbCrLf & _
             ChrW(191) & "Usar este archivo?" & vbCrLf & vbCrLf & _
             "S" & ChrW(237) & " = Usar este archivo" & vbCrLf & _
@@ -187,31 +200,86 @@ Private Function BuscarArchivoCatalogos() As String
     End If
 End Function
 
+' Elige el catálogo MÁS RECIENTE de la carpeta SIN leer metadata de cada archivo.
+' Clave: comparar SOLO el nombre. FileDateTime() sobre cada archivo dispararía en
+' Mac el diálogo "conceder acceso" por cada uno (ver encabezado V14). Dir() solo
+' devuelve nombres —no abre archivos— así que aquí no se toca el disco; el ganador
+' se abre (y se pide acceso a él una sola vez) hasta RefrescarListas -> Workbooks.Open.
 Private Function BuscarMasReciente(folderPath As String) As String
     Dim fileName As String
     Dim bestFile As String
-    Dim bestDate As Date
+    Dim bestKey As String
 
     bestFile = ""
-    bestDate = 0
+    bestKey = ""
 
     On Error Resume Next
     fileName = Dir(folderPath & Application.PathSeparator & "Catalogos_Steelhead_*.xlsx")
     On Error GoTo 0
 
     Do While fileName <> ""
-        Dim fullPath As String
-        fullPath = folderPath & Application.PathSeparator & fileName
-        Dim fDate As Date
-        fDate = FileDateTime(fullPath)
-        If fDate > bestDate Then
-            bestDate = fDate
-            bestFile = fullPath
+        Dim k As String
+        k = ClaveOrdenCatalogo(fileName)
+        If k <> "" Then
+            If k > bestKey Then
+                bestKey = k
+                bestFile = folderPath & Application.PathSeparator & fileName
+            End If
         End If
         fileName = Dir()
     Loop
 
     BuscarMasReciente = bestFile
+End Function
+
+' Deriva una clave ordenable a partir del NOMBRE del archivo (sin tocar el disco):
+'   "Catalogos_Steelhead_2026-07-02.xlsx"     -> "2026-07-02|000"
+'   "Catalogos_Steelhead_2026-07-02 (3).xlsx" -> "2026-07-02|003"
+' Fecha ISO (comparable como texto) + contador de duplicados de Chrome (" (N)")
+' a 3 dígitos, de modo que el más nuevo del día (mayor N) gane. Devuelve "" si el
+' nombre no calza el patrón esperado (ese archivo se ignora en la comparación).
+Private Function ClaveOrdenCatalogo(ByVal fileName As String) As String
+    Const PREFIX As String = "Catalogos_Steelhead_"
+    Const EXT As String = ".xlsx"
+
+    ClaveOrdenCatalogo = ""
+
+    If Left$(fileName, Len(PREFIX)) <> PREFIX Then Exit Function
+    If LCase$(Right$(fileName, Len(EXT))) <> EXT Then Exit Function
+
+    ' Núcleo entre el prefijo y la extensión: "2026-07-02" o "2026-07-02 (3)"
+    Dim core As String
+    core = Mid$(fileName, Len(PREFIX) + 1, Len(fileName) - Len(PREFIX) - Len(EXT))
+    If Len(core) < 10 Then Exit Function
+
+    Dim datePart As String
+    datePart = Left$(core, 10)               ' YYYY-MM-DD
+
+    ' Contador de duplicados de Chrome: " (N)" tras la fecha (0 si no hay sufijo)
+    Dim counter As Long
+    counter = 0
+    Dim rest As String, op As Long, cp As Long
+    rest = Mid$(core, 11)
+    op = InStr(rest, "(")
+    cp = InStr(rest, ")")
+    If op > 0 And cp > op Then
+        Dim numStr As String
+        numStr = Mid$(rest, op + 1, cp - op - 1)
+        If IsNumeric(numStr) Then counter = CLng(numStr)
+    End If
+
+    ClaveOrdenCatalogo = datePart & "|" & Format$(counter, "000")
+End Function
+
+' Nombre base de una ruta, con puro string (sin Dir(), que en Mac tocaría el archivo).
+Private Function NombreBase(ByVal fullPath As String) As String
+    Dim p As Long
+    p = InStrRev(fullPath, Application.PathSeparator)
+    If p > 0 Then
+        NombreBase = Mid$(fullPath, p + 1)
+    Else
+        NombreBase = fullPath
+    End If
 End Function
 
 ' === HELPER: obtiene una hoja del catálogo, devuelve Nothing si no existe ===

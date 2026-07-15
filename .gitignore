@@ -5,6 +5,11 @@ Thumbs.db
 # Node
 node_modules/
 
+# Python (caches de pytest / bytecode)
+__pycache__/
+.pytest_cache/
+*.pyc
+
 # IDE
 .vscode/
 .idea/
@@ -19,8 +24,20 @@ node_modules/
 # Scan results (contain Steelhead invoice tokens)
 scan_results_*.json
 
+# Capturas de tráfico GraphQL para diseño de applets (pueden traer datos productivos)
+surtido-guard-capture*.json
+
+# Capturas HTML de la SPA (dumps "Guardar como" con datos de clientes), mal ubicadas
+# en vbas/ (esa carpeta es para fuentes .bas de VBA, no HTML).
+vbas/*.html
+
 # Validador de hashes — resultados diarios (ruido, no aportan al repo)
 tools/.hash-validation/
+
+# hash-autopilot — resultados diarios + estado del browser headless (no versionar)
+tools/.hash-autopilot/
+tools/hash-autopilot/.browser-state/
+tools/hash-autopilot/.state/
 
 # Excel temp lock files
 ~$*.xlsm
@@ -30,8 +47,14 @@ Plantilla_Cotizaciones_y_NP_v84_2.xlsm
 # Scratch payloads locales (samples de GraphQL/factura, etc.)
 /json
 
-# Estado de herramientas (Claude Code, plugin superpowers) — nunca versionar
-.claude/
+# Claude Code: el harness COMPARTIDO sí se versiona y se transmite con el clone
+# (.claude/commands/, .claude/agents/, .claude/hooks/, .claude/settings.json).
+# El estado LOCAL de cada máquina NO se versiona:
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+.claude/backups/
+.claude/worktree-locks/
 .superpowers/
 
 # config.json en la RAÍZ es una copia stale; el config real vive en remote/config.json
@@ -51,3 +74,7 @@ docs/api/Payload: *.txt
 
 # Migración one-time de customInputs (snapshots/resume con data de PNs)
 tools/.fix-custominputs/
+
+# Proyecto Xcode generado por el converter de Safari (artefacto de build, no source).
+# El source versionado es safari/extension/ ; safari/xcode/ se regenera con el converter.
+safari/xcode/

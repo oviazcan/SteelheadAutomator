@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sembrado de sentinelas — Fase C (hash-autopilot)</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#5b6672; --line:#e3e7ec;
+    --accent:#13a36f; --accent-ink:#0c7d54;
+    --warn:#b5541f; --warn-bg:#fff4ec; --crit:#c0392b; --crit-bg:#fdecea; --crit-line:#f2c2bc;
+    --code:#0f1620; --code-ink:#e6e9ee;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f141b; --card:#171e27; --ink:#e6e9ee; --muted:#9aa6b2; --line:#28303a;
+      --warn-bg:#2a2016; --warn:#e0a678; --crit-bg:#2a1715; --crit:#e07a6f; --crit-line:#5a2b26; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 20px 80px}
+  header h1{font-size:1.7rem;margin:0 0 4px}
+  header p{color:var(--muted);margin:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:18px 0}
+  h2{font-size:1.15rem;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:1rem;margin:16px 0 6px}
+  .callout{border-left:4px solid var(--warn);background:var(--warn-bg);border-radius:8px;padding:12px 14px;margin:14px 0}
+  .callout.crit{border-left-color:var(--crit);background:var(--crit-bg)}
+  .callout .tag{font-weight:800;color:var(--crit);letter-spacing:.02em}
+  ol,ul{padding-left:22px} li{margin:5px 0}
+  ol.sec{counter-reset:s;list-style:none;padding-left:0}
+  ol.sec>li{counter-increment:s;position:relative;padding:6px 0 6px 40px;margin:4px 0}
+  ol.sec>li::before{content:counter(s);position:absolute;left:0;top:6px;width:26px;height:26px;border-radius:50%;
+    background:var(--accent);color:#fff;font-weight:700;font-size:.85rem;display:grid;place-items:center}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:.92rem}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.03em}
+  td.n{font-variant-numeric:tabular-nums;font-weight:700;color:var(--accent-ink);text-align:center;white-space:nowrap}
+  tr.top td{background:rgba(19,163,111,.07)}
+  code{background:rgba(127,127,127,.14);padding:1px 6px;border-radius:5px;font-size:.9em;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .mark{color:var(--crit);font-weight:700}
+  pre{position:relative;background:var(--code);color:var(--code-ink);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:10px 0}
+  pre code{background:none;padding:0;color:inherit;font-size:.85rem;line-height:1.5}
+  .copy{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+    color:var(--code-ink);border-radius:7px;padding:3px 10px;font-size:.75rem;cursor:pointer}
+  .copy:hover{background:rgba(255,255,255,.2)}
+  .no li{color:var(--muted)} .no b{color:var(--ink)}
+  footer{color:var(--muted);font-size:.85rem;margin-top:24px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Sembrado de sentinelas — Fase C</h1>
+    <p>Objetos canario que dejan al <b>hash-autopilot</b> regenerar el hash de una mutation rotada sin tocar datos reales.</p>
+  </header>
+
+  <div class="callout crit">
+    <span class="tag">⚠ POR QUÉ IMPORTA LA PRECISIÓN</span> — El ciclo corre <b>desatendido en producción</b>. Si un sentinela se confunde con un objeto real, el autopilot mutaría datos productivos. Las salvaguardas de código (<code>isSentinel</code> fail-closed, blast-radius, journal) son la última línea; <b>el sembrado correcto es la primera.</b>
+  </div>
+
+  <div class="card">
+    <h2>Principios de seguridad — no negociables</h2>
+    <ol class="sec">
+      <li><b>Nunca uses un objeto real.</b> Crea uno nuevo dedicado, que no participe en ninguna operación.</li>
+      <li><b>Marca inequívoca:</b> el objeto lleva el literal <code class="mark">__SA_SENTINEL__</code> en su nombre (o tags/customInput). Sin ella, el runner <b>se rehúsa a mutar</b>.</li>
+      <li><b>Uno por tipo de entidad.</b> El blast-radius es ≤1.</li>
+      <li><b>En reposo = archivado.</b> El ciclo lo desarchiva, muta y re-archiva; entre corridas siempre archivado.</li>
+      <li><b>Sin dependencias.</b> Nada ligado a datos reales (OV sin partes, PN sin inventario…).</li>
+      <li><b>Solo mutations reversibles.</b> Las destructivas (<code>Delete/Remove</code>) <b>escalan</b> — no se siembra sentinela para ellas.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Qué sembrar primero — priorización (58 reversibles)</h2>
+    <p style="color:var(--muted);margin:0 0 8px">Cada sentinela cubre TODAS las mutations reversibles de su entidad. Los <b>6 primeros</b> cubren 33/58 (57%).</p>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>#</th><th>Entidad (sentinela)</th><th>Muts</th><th>Ejemplos clave</th></tr></thead>
+      <tbody>
+        <tr class="top"><td class="n">1</td><td><b>PartNumber</b></td><td class="n">12</td><td>SavePartNumber, UpdatePartNumber, AddParamsToPartNumber</td></tr>
+        <tr class="top"><td class="n">2</td><td><b>ReceivedOrder</b></td><td class="n">6</td><td>CreateReceivedOrder, SaveReceivedOrderLinesAndItems</td></tr>
+        <tr class="top"><td class="n">3</td><td><b>Quote</b></td><td class="n">5</td><td>CreateQuote, SaveQuoteLines, UpdateQuote</td></tr>
+        <tr class="top"><td class="n">4</td><td><b>MaintenanceEvent</b></td><td class="n">4</td><td>CreateMaintenanceEvent, UpdateMaintenanceEvent</td></tr>
+        <tr class="top"><td class="n">5</td><td><b>InventoryItem</b></td><td class="n">3</td><td>UpdateInventoryItemInputs</td></tr>
+        <tr class="top"><td class="n">6</td><td><b>WorkOrder</b></td><td class="n">3</td><td>CreateUpdateWorkOrdersChecked, AddPartsToWorkOrders</td></tr>
+        <tr><td class="n">7</td><td>Station · Invoice · Report · MaintenanceNode · ProcessNode</td><td class="n">2</td><td>c/u — +10 mutations → 43/58 (74%)</td></tr>
+        <tr><td class="n">8</td><td>Route · Spec · User · InventoryBatch · Inventory · Bill · Part · PartsTransfer</td><td class="n">1</td><td>colas</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="color:var(--muted);font-size:.88rem;margin:8px 0 0"><b>7 reversibles sin entidad clara</b> (clasificar al sembrar): Sensor, SensorDashboard, Receiver, GeometryType, PartNumberPrice. <b>11 no cubiertas por v1</b> (5 destructivas + 6 prefijo no estándar) → <b>escalan</b> por correo, seguro.</p>
+  </div>
+
+  <div class="card">
+    <h2>Procedimiento por entidad</h2>
+    <ol class="sec">
+      <li>Identifica la entidad y una mutation reversible que la toque (ej. <code>ReceivedOrder</code> ← <code>SaveReceivedOrderLinesAndItems</code>).</li>
+      <li>Crea el objeto canario en el ERP con la marca en el nombre:
+        <pre><button class="copy">copiar</button><code>ZZZ __SA_SENTINEL__ no-tocar (hash-autopilot)</code></pre>
+        El prefijo <code>ZZZ</code> lo manda al fondo de los listados.
+      </li>
+      <li>Déjalo <b>archivado</b> (estado base).</li>
+      <li>Regístralo en <code>tools/hash-autopilot/sentinels-config.json</code>:
+        <pre><button class="copy">copiar</button><code>{
+  "entities": {
+    "ReceivedOrder": {
+      "id": "&lt;idInDomain-o-nano-del-sentinela&gt;",
+      "marker": "__SA_SENTINEL__",
+      "baseState": "archived",
+      "module": "ReceivedOrders"
+    }
+  }
+}</code></pre>
+      </li>
+      <li>Verifica identidad:
+        <pre><button class="copy">copiar</button><code>node -e "import('./tools/hash-autopilot/sentinels.mjs').then(m =&gt; \
+  console.log('isSentinel:', m.isSentinel({ name: 'ZZZ __SA_SENTINEL__ no-tocar' })))"
+# → isSentinel: true</code></pre>
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Mantenimiento & qué NO hacer</h2>
+    <ul>
+      <li>Tras cada corrida real, confirma que el sentinela quedó <b>archivado</b> (la verificación post-ciclo alerta si no).</li>
+      <li>Journal con entrada <code>dirty</code> persistente → ciclo interrumpido; el siguiente run <b>repara</b> primero.</li>
+    </ul>
+    <ul class="no">
+      <li>❌ No marques un objeto <b>real</b> como sentinela “temporalmente”.</li>
+      <li>❌ No siembres sentinela para <b>Delete/Remove</b> (escalan por diseño).</li>
+      <li>❌ No dejes el sentinela <b>desarchivado</b> ni con relaciones a datos reales.</li>
+      <li>❌ No reutilices un sentinela entre <b>tipos de entidad</b> distintos.</li>
+    </ul>
+    <div class="callout"><b>Recuerda:</b> sembrar un sentinela no dispara nada por sí mismo. El ciclo de una entidad solo corre si esa mutation <b>rotó</b> (lo marca el validator) — el sentinela solo habilita la captura segura cuando haga falta.</div>
+  </div>
+
+  <footer>hash-autopilot v2 · Fase C · ciclo sentinela — 84% de las mutations cubribles, resto escala seguro</footer>
+</div>
+<script>
+  document.querySelectorAll('.copy').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const code=btn.parentElement.querySelector('code').innerText;
+      navigator.clipboard.writeText(code).then(()=>{ const t=btn.textContent; btn.textContent='✓ copiado'; setTimeout(()=>btn.textContent=t,1200); });
+    });
+  });
+</script>
+</body>
+</html>

@@ -11,6 +11,31 @@
       "operation": "GetPurchaseOrder",
       "reason": "Mismo patrón: hash idéntico en config y scan con 12 invocaciones exitosas en pantalla Bills, pero responde 'Must provide a query string' desde scripts externos.",
       "verifiedOn": "2026-05-23"
+    },
+    {
+      "operation": "Customer",
+      "reason": "Session-sensitive: responde 'Must provide a query string' al cliente externo (Python + idp-token) del validador aun con el hash vigente; funciona in-page (invoice-autofill/create-order-autofill/weight-quick-entry vía SteelheadAPI, credentials:include, mismo origen). OJO: Customer ROTA de verdad seguido (875f→96b2 el 2026-06-25; 96b2→12d6 el 2026-07-03). El validador NO puede distinguir rotación real de falso-positivo aquí → confirma SIEMPRE con hash-scanner/captura in-page: si el hash del frontend ≠ config, es rotación real, actualiza config. Hash vigente 2026-07-03: 12d69cd18ff3…",
+      "verifiedOn": "2026-07-03"
+    },
+    {
+      "operation": "AllCustomers",
+      "reason": "Session-sensitive: 'Must provide a query string' solo al cliente externo del validador; funciona in-page (catalog-fetcher/portal-importer, carga-masiva). ROTÓ el 2026-07-03 (66e271f6a8a2… → 8d4dfe69d305…) y el validador lo skipeó por esta whitelist → reportó 0 rotado mientras carga masiva traía 0 clientes. Confirma con captura in-page del hash del frontend (≠ config = rotación), NO con el 400 in-page (no discrimina). Hash vigente 2026-07-03: 8d4dfe69d305…",
+      "verifiedOn": "2026-07-03"
+    },
+    {
+      "operation": "AllSensorDashboards",
+      "reason": "Falso positivo verificado 2026-07-02: hash 432339f25bae… estable 2 meses, idéntico en config y scan con ejecución en vivo (source 'config + escaneada', 93 responseFields). 'Must provide a query string' solo al cliente externo del validador. Usado por sensor-status-autofill in-page → funciona.",
+      "verifiedOn": "2026-07-02"
+    },
+    {
+      "operation": "SensorDashboardQuery",
+      "reason": "Falso positivo verificado 2026-07-02: hash bde56bd609a2… estable 2 meses, idéntico en config y scan con ejecución en vivo (147 responseFields, variablesSample real). 'Must provide a query string' solo al cliente externo del validador. Usado por sensor-status-autofill in-page → funciona.",
+      "verifiedOn": "2026-07-02"
+    },
+    {
+      "operation": "SaveManyPartNumberPrices",
+      "reason": "Falso positivo verificado 2026-07-07: el hash 9da1874e2ffd… es idéntico en config y en scan-de-navegador (el frontend ejecuta la mutation como SaveManyPartNumberPrices con ESE hash; bulk-upload in-page la usa y funciona). El validador solo-hash responde 'Must provide a query string' porque esta mutation no está pre-registrada en el APQ persistente del server (el frontend la registra con el texto en la 1a llamada de sesión). OJO: es una mutation CRÍTICA (precios); si algún día rota de verdad, el validador la skipeará por esta whitelist → confirma con hash-scanner (hash del frontend ≠ config = rotación real, actualiza config). Antes se llamaba SaveManyPNP_Quote/SaveManyPNP_PN (renombradas 2026-07-07).",
+      "verifiedOn": "2026-07-07"
     }
   ]
 }

@@ -1,0 +1,33 @@
+name: tests
+
+# Gate de calidad en CI: corre la MISMA suite que el gate local (tools/run-tests.sh)
+# en cada push/PR que toque código. Complementa el gate de deploy.sh — así un push
+# con la suite roja se marca en rojo aunque alguien se salte el gate local.
+on:
+  push:
+    branches-ignore: [gh-pages]      # gh-pages es el deploy aplanado, sin tools/test/
+    paths:                           # solo corre si cambia código (no en bumps de config/hashes)
+      - 'remote/scripts/**'
+      - 'tools/**'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - 'remote/scripts/**'
+      - 'tools/**'
+      - '.github/workflows/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'      # matchea el entorno local del dev (3.9.x)
+      - name: Instalar deps de los tests Python
+        run: python -m pip install --quiet pytest openpyxl
+      - name: Correr la suite completa
+        run: bash tools/run-tests.sh

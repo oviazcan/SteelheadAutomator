@@ -1,0 +1,121 @@
+# pn-specs-column — Specs + parámetros numéricos en el dashboard de Números de Parte
+
+**Versión:** 0.2.0 — **DEPLOYADO**. Core 17/17 golden + validado con datos reales. **0.2.0** cambia el criterio de "numérico" (de `type===NUMBER` a "el valor trae dígitos") + spec como **link** (ver §0.2.0). **0.1.2** estilo (encabezado nativo, separador punteado, toggle delgado). **0.1.1** 2 bugs del run real (§Fixes 0.1.1). **0.1.0** deploy inicial.
+**Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
+
+## Qué hace
+
+En el dashboard `https://app.gosteelhead.com/PartNumbers`, agrega una **columna "Specs / Params num."** a la tabla y, con un **toggle persistente en el header** (junto a "NUEVO NÚMERO DE PARTE"), enriquece cada NP visible con:
+
+- las **specs asociadas** al NP (`E27550 (Plata)`, …), y
+- bajo cada una, sus **parámetros NUMÉRICOS** (`specField.type === 'NUMBER'`) con **nombre + rango + unidad** (ej. `Espesor 1.27–3.5 µm`).
+
+Excluye BOOLEAN / DROPDOWN / TEXT (el usuario pidió explícitamente **numéricos**) y los parámetros/specs **archivados**.
+
+## Decisión de diseño (respuesta a la pregunta original del usuario)
+
+> «¿`AllPartNumbers` ya trae el dato para no hacer doble query?»
+
+**No.** Verificado 2026-07-08 contra los payloads reales (`docs/api/Payload: *.txt`):
+
+- `AllPartNumbers` (el query del dashboard) **NO trae specs ni parámetros**. Sus 98 `"SPEC"` son texto libre en `customInputs.NotasAdicionales`.
+- `GetPartNumberForPartNumberPage` (liviano) tampoco: solo id/name/customer/labels.
+- **Solo `GetPartNumber`** (pesado, 504 campos) expone el árbol de specs.
+- Son **persisted queries** (el shape lo fija el server) → no se le pueden "agregar" campos a `AllPartNumbers`. **Sí o sí un 2º query por NP.**
+
+Por eso el enriquecimiento es **opt-in** (toggle) y con memory-hardening completo: con el toggle ON se hace 1 `GetPartNumber` por cada NP visible (~50/página).
+
+## Modelo de datos (dónde vive cada cosa en `GetPartNumber`)
+
+```
+data.partNumberById
+  .partNumberSpecsByPartNumberId.nodes[]            ← specs asociadas
+     { archivedAt, specBySpecId: { id, name } }
+  .partNumberSpecFieldParamsByPartNumberId.nodes[]  ← parámetros
+     { archivedAt,                                    (node: histórico si != null)
+       specFieldParamBySpecFieldParamId: {
+         minimumValue, maximumValue, targetValue,
+         unitByUnitId: { name },                      ("µm (micrómetro, micra)")
+         specFieldSpecBySpecFieldSpecId: {
+           specFieldBySpecFieldId: { name, type },    (type: NUMBER|BOOLEAN|DROPDOWN|TEXT)
+           specBySpecId:      { id, name } } } }
+```
+
+- `specField.name` = nombre del parámetro (**Espesor**), NO `specFieldParam.name` (ese es el rango, `"1.27 - 3.5 µm"`).
+- `specField.type` = discriminador numérico/booleano.
+- Variables usadas: `{ partNumberId, usagesLimit: 0, usagesOffset: 0 }` — `usagesLimit:0` aligera el response (no necesitamos los usos del PN).
+
+### GOTCHA clave — `archivedAt` (duplicados)
+
+Los params vienen **DUPLICADOS**: en el PN de referencia (44068-205-01), 5 archivados + 5 activos idénticos. Filtramos `node.archivedAt == null`; eso además **deduplica**. Dedup extra defensivo por `(specId, fieldName, min, max, target)`.
+
+## Arquitectura
+
+| Archivo | Rol |
+|---|---|
+| `remote/scripts/pn-specs-column-core.js` | Motor puro (sin DOM/red): `isPartNumbersIndexPath`, `parsePartNumberId`, `unitSymbol`, `fmtNum`, `formatRange`, `extractSpecsWithNumericParams`, `formatCellText`. Dual node/browser. |
+| `remote/scripts/pn-specs-column.js` | Glue DOM: toggle persistente, columna en la MUI table, MutationObserver, pool de `GetPartNumber`, memory-hardening. |
+| `tools/test/pn-specs-column-core.test.js` | 14 golden tests. |
+
+- **Toggle persistente**: `localStorage['sa_pn_specs_col_enabled']` = `'1'`/`'0'`, **default OFF** (no sorprender con 50 queries pesados). Toggle DOM en el header + acción de popup (`PnSpecsColumn.toggleFromPopup`).
+- **Columna**: `<th>` + `<td>` por fila insertados **antes de la última columna** (Acciones). Marcados `.sa-pnspec-cell` para idempotencia. `partNumberId` sale del `<a href="/PartNumbers/:id">` de la celda Nombre.
+- **React/MUI**: la tabla es `MuiTable-root` controlada por React. Un `MutationObserver` (debounce 160ms) re-inyecta la columna al paginar/ordenar/filtrar. **Validado en vivo:** insertar `<td>` extra al final de cada `<tr>` **sobrevive** el render de React (50/50 celdas persisten).
+- **Estilo**: toggle/toast en **dark-mode** (UI nuestra, regla de diseño); la columna se integra a la tabla clara de SH pero **marcada con acento verde** (`border-left:3px #13a36f`) para señalar que es enriquecimiento de la extensión. Render con `textContent` (no innerHTML de datos → no XSS con nombres de spec).
+
+## Memory hardening (skill `memory-hardening-applets`)
+
+Importa `host-cleanup-shared.js`. Aplica porque el toggle ON dispara ~50 `GetPartNumber` pesados por página y se re-dispara al paginar.
+
+**EJE A (propia):** cache **slim** por `partNumberId` (`window.__saPnSpecsCache` Map → solo `{specs, total}`, no el response de 504 campos); cache se limpia al **navegar fuera** del index; teardown de columna/observer/pool al desactivar.
+**EJE B (host):** `stopDatadogSessionReplay()` al primer fetch real; `createMemMonitor` con guardrail @88% → vacía la cola de enriquecimiento + toast (checkpoint > crash); `makePeriodicDrain(25)` (Apollo) al final de cada worker; pool con `MAX_CONC=4` + `MIN_GAP_MS=130` (~7 req/s) + retry `[0,800,2500]` solo en transitorios.
+
+## Estado de validación (2026-07-08)
+
+- ✅ **Core**: 14/14 golden + payload real (mayo) + **datos reales de hoy** vía fetch en vivo → `44068-205-01` → `E27550 (Plata): Espesor 1.27–3.5 µm` (excluye BOOLEAN/DROPDOWN/archivados). PN sin specs (`SWB-00496986`) → celda vacía correcta.
+- ✅ **Hash `GetPartNumber`**: el de config (`8e3fdb52…`) **ROTÓ** (HTTP 400 "Must provide a query string"). Capturado el nuevo del front: **`5efd689d…`** (HTTP 200 verificado). Actualizado en `config.json`.
+- ✅ **DOM en vivo**: `findHeaderAnchor` encuentra el ancla; columna inyectada (th + 50 td con pnId); **sobrevive el render de React**.
+- ✅ **Deploy**: config 1.7.85 en vivo; `pn-specs-column-core.js` + `pn-specs-column.js` servidos **byte-exact** (sha256 verificado vs `main:remote/`); hash `GetPartNumber` nuevo y app presentes en el config servido.
+- ⏳ **Pendiente (run real integrado)**: el intento de correr el applet completo desde una tab automatizada se topó con el **throttling de Chrome en tabs sin foco** (los `fetch` a `/graphql` y a gh-pages se congelan en background) — NO es un problema del applet; las piezas (fetch `GetPartNumber` 200 + extract + DOM) se validaron por separado. **Validación final la hace el usuario en foreground**: recargar la extensión (`chrome://extensions` → reload) → `/PartNumbers` → activar el toggle **🧪 Specs num.** en el header → confirmar chips (ej. `E27550 (Plata): Espesor 1.27–3.5 µm`), paginación (observer re-inyecta) y el contador `done/total`.
+
+## Fixes 0.1.1 (primer run real del usuario, 2026-07-08)
+
+Dos bugs reportados con screenshots (PNs `48186-064-50*` de SCHNEIDER ELECTRIC):
+
+**Bug #1 — la columna se desalineaba al filtrar/paginar.** El `<th>` se insertaba con `insertBefore(lastElementChild)` (posición *relativa*) una sola vez; al re-render de React el `<th>` viejo sobrevivía y React lo reposicionaba ("flotaba") mientras los `<td>` se recreaban en la penúltima → header y chips en columnas distintas. **Fix:** la columna es SIEMPRE la **última** celda (`appendChild`), **re-posicionada en cada sync** (`if (lastElementChild !== cell) appendChild`). Invariante: `<th>` y `<td>` siempre en la misma posición (última), sin importar cómo React reordene. Validado en vivo sobre la tabla MUI real (simulando re-render + flotar → `aligned:true`, índice 15/15).
+
+**Bug #2 — una spec ARCHIVADA (RC Ag) reaparecía; inconsistente con ASTM B700.** `extractSpecsWithNumericParams` (paso 2) creaba el bucket de la spec "al vuelo" desde un param activo. Al archivar una *spec* de un PN, Steelhead NO archiva cada `partNumberSpecFieldParam` → quedan params huérfanos activos apuntando a specs archivadas. RC Ag reaparecía (tenía un Espesor activo) pero ASTM B700 no (sin param activo) → la inconsistencia. **Fix:** `partNumberSpecsByPartNumberId` es la única fuente de verdad de specs activas; un param cuya spec no está en el mapa activo se **ignora** (no se inventan buckets). Golden test `NO resucita una spec ARCHIVADA…`.
+
+## 0.2.0 — criterio "el valor trae números" + link a la spec
+
+**Cambio de criterio (a pedido del usuario, verificado con el PN 3029783 real).** El filtro dejó de ser `specField.type === 'NUMBER'` y ahora es **"el parámetro tiene un valor numérico"**: el `specFieldParam.name` (valLabel — lo que Steelhead muestra) **contiene un dígito**, o hay `min/max/target`. Motivo: parámetros como **"Tiempo s/Corrosión Blanca/Roja"** (spec *Cámara Salina*) son `type: BOOLEAN` pero su valor es `"24 hrs."` / `"72 hrs."` → deben salir; con el criterio viejo no salían. Tabla de verdad (datos reales del PN 3029783):
+
+| Parámetro | type | valLabel | ¿sale? |
+|---|---|---|---|
+| Espesor | NUMBER | `5 - 8 µm` | ✓ |
+| Temperatura (Deshidrogenado) | NUMBER | `176 - 204 °C (375 ± 25 °F)` | ✓ |
+| Tiempo s/Corrosión Blanca | **BOOLEAN** | `24 hrs.` | ✓ |
+| Tiempo s/Corrosión Roja | **BOOLEAN** | `72 hrs.` | ✓ |
+| Adherencia | BOOLEAN | `Sí o No` | ✗ |
+| Instrumento de Medición | DROPDOWN | `Elección` | ✗ |
+
+El valor mostrado ahora es el **valLabel tal cual** (`24 hrs.`, `5 - 8 µm`) cuando trae dígitos; si no, se reconstruye de `min/max/target` (fallback). El campo del param pasó de `{name, min, max, target, unit, range}` a **`{name, value}`**.
+
+**Link a la spec.** El nombre de la spec es un `<a>` a **`/Domains/<domainId>/Specs/<idInDomain>/Revisions/<revisionNumber>`** (verificado vs los hrefs reales de la app; NO es `/Specs/<id>`), en **pestaña nueva** (no pierde el filtro del dashboard). `domainId`/`idInDomain`/`revisionNumber` salen de `specBySpecId`. Función pura `specUrl(spec)` (fallback a texto plano si faltan datos).
+
+## Estilo 0.1.2 (integración visual)
+
+A pedido del usuario, la columna se integra al look nativo en vez de destacar en verde:
+- **Encabezado**: el `<th>` **hereda la `className` MUI** de un th nativo (en `ensureHeaderCell`) → texto idéntico (font/peso/color/padding). Verificado: `getComputedStyle` de mi th == nativo (12px / 600 / blanco / Roboto / left). El td también hereda la className de una celda nativa.
+- **Separador**: `border-left: 1px dashed #c7ccd1` (gris punteado sutil) en vez del verde sólido 3px. Se quitó el fondo verde de th/td (se veía como parche sobre el header oscuro).
+- **Toggle**: más delgado — `padding 2px 8px`, switch `26×14`, font 11px, sin el border-left grueso.
+- La señal "esto es de la extensión" queda en los **chips verdes** de los parámetros y en el toggle dark-mode.
+
+## Pendientes / Fase 2
+
+- **Deploy** (`tools/deploy.sh` con `--check pn-specs-column`). El toggle default OFF hace el deploy seguro (nadie ve queries extra sin activar).
+- Run real integrado (validar observer en paginación + guardrail de memoria con captura del mem monitor).
+- El hash de `GetPartNumber` rotó → probablemente afecta **otros applets** (bulk-upload, spec-migrator, auditor…). Conviene correr el skill `steelhead-hash-validator` / hash-scanner y registrar en `docs/api/hash-validation-log.md`.
+- Fase 2 posible: tooltip on-hover con TODOS los params (incl. booleanos) además de la columna numérica; recordar la última posición de scroll; incluir specs desde `partNumberSpecsByPartNumberId` aunque no tengan numéricos (ya se muestran con "sin params num.").
+
+## Safari/iPad (2026-07-09)
+Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`). Es **FAB-only**: `autoInject:true` pone el toggle en el header de `/PartNumbers` (control en página, no requiere lanzador de popup). Sin bloqueadores iOS (read-only, sin descarga/clipboard). Rebuild `tools/build-safari.sh` (build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático).

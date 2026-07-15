@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decisión — Distribución de la extensión iPad (10+ dispositivos)</title>
+<style>
+  :root{ --bg:#f4f6f8; --card:#fff; --ink:#1c2430; --ink-soft:#55606e; --line:#e4e8ee;
+    --accent:#13a36f; --accent-ink:#0c7a52; --code-bg:#1c2430;
+    --warn-bg:#fff6ed; --warn-line:#f0a35a; --warn-ink:#8a4b12;
+    --note-bg:#eef4ff; --note-line:#7aa7f0; --note-ink:#274a86;
+    --tip-bg:#ecfaf3; --tip-line:#13a36f; --tip-ink:#0c6f49; --ra-tint:#f0fbf6; --radius:18px; }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font-size:16px; line-height:1.6;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
+  .wrap{max-width:900px; margin:0 auto; padding:40px 22px 80px}
+  h1,h2,h3{text-wrap:balance; line-height:1.25; letter-spacing:-.01em}
+  p,li{text-wrap:pretty}
+  a{color:var(--accent-ink); text-decoration:none} a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.9em; background:#eef1f5; padding:1px 6px; border-radius:6px}
+  header.hero{background:linear-gradient(135deg,#1c2430,#27384a); color:#eef2f6; border-radius:var(--radius);
+    padding:30px; box-shadow:0 1px 2px rgba(0,0,0,.06), 0 10px 30px rgba(28,36,48,.18)}
+  .eyebrow{display:inline-block; font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:#9fe9c8; background:rgba(19,163,111,.16); padding:5px 11px; border-radius:999px}
+  header.hero h1{margin:14px 0 8px; font-size:26px; color:#fff}
+  header.hero p{margin:0;color:#b9c4d0;font-size:14.5px}
+  .verdict{margin:18px 0 0; padding:18px 20px; background:var(--card); border-radius:14px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 22px rgba(0,0,0,.06)}
+  .verdict h2{margin:0 0 6px; font-size:14px; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.05em}
+  .verdict p{margin:6px 0; font-size:15.5px}
+  section.card{background:var(--card); border-radius:var(--radius); padding:24px 26px; margin:18px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 22px rgba(0,0,0,.06)}
+  section.card>h2:first-child{margin-top:0} h2{font-size:20px} h3{font-size:15.5px;margin:16px 0 6px}
+  ul.tight{padding-left:20px} ul.tight li{margin:6px 0}
+  .cmp{overflow-x:auto;border-radius:12px;box-shadow:0 0 0 1px var(--line);margin:8px 0}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  thead th{text-align:left;padding:11px 13px;background:#eef1f5;font-weight:700;border-bottom:1px solid var(--line);white-space:nowrap}
+  thead th.rec{background:#e3f6ee;color:var(--accent-ink)}
+  tbody td{padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  tbody tr:last-child td{border-bottom:0} tbody tr:hover td{background:#fafcfe}
+  td.dim{font-weight:600;white-space:nowrap} td.rec{background:var(--ra-tint)}
+  .yes{color:var(--accent-ink);font-weight:700} .no{color:#b3402f;font-weight:700} .mid{color:var(--warn-ink);font-weight:700}
+  .callout{border-radius:12px;padding:13px 16px;margin:14px 0;font-size:14.5px}
+  .callout p{margin:6px 0} .callout p:first-child{margin-top:0} .callout p:last-child{margin-bottom:0}
+  .callout .label{font-weight:700}
+  .note{background:var(--note-bg);color:var(--note-ink);box-shadow:inset 3px 0 0 0 var(--note-line)}
+  .warn{background:var(--warn-bg);color:var(--warn-ink);box-shadow:inset 3px 0 0 0 var(--warn-line)}
+  .tip{background:var(--tip-bg);color:var(--tip-ink);box-shadow:inset 3px 0 0 0 var(--tip-line)}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:8px 0}
+  .steps li{counter-increment:s;position:relative;padding:10px 0 10px 40px;box-shadow:inset 0 -1px 0 var(--line)}
+  .steps li:last-child{box-shadow:none}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:8px;width:26px;height:26px;border-radius:50%;
+    background:var(--accent);color:#fff;font-weight:700;font-size:13px;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+  .cost{font-variant-numeric:tabular-nums}
+  footer{margin-top:34px;padding-top:18px;color:var(--ink-soft);font-size:13px;text-align:center;box-shadow:inset 0 1px 0 var(--line)}
+  @media(max-width:600px){.wrap{padding:26px 16px 60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <span class="eyebrow">Decisión de distribución · iPad · 60 dispositivos</span>
+    <h1>Cómo distribuir la extensión a los 60 iPads</h1>
+    <p>Extensión Safari interna (Steelhead) para el piso, herramienta que se hereda. Basado en: <strong>60 iPads corporativos</strong> · sin Intune para operadores · D-U-N-S disponible.</p>
+  </header>
+
+  <div class="verdict">
+    <h2>Recomendación</h2>
+    <p><strong>Cuenta Apple Developer <em>Organization</em> ($99/año) + Apple Business Manager (gratis) + un MDM barato</strong>, distribuyendo la app por el MDM. Con D-U-N-S e iPads corporativos ya pueden montar la ruta corporativa completa. El MDM la instala y actualiza silenciosamente, sin expiración.</p>
+    <p style="color:var(--ink-soft);font-size:14px"><strong>Costo estimado año 1 (60 iPads):</strong> $99 (cuenta) + MDM (según proveedor) ≈ <strong>$820/año</strong> con la opción recomendada (Mosyle), hasta ~$2,250/año con el MDM más completo. La cuenta ($99) es fija; el MDM escala por dispositivo.</p>
+  </div>
+
+  <section class="card" style="box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 22px rgba(0,0,0,.06),inset 5px 0 0 0 var(--accent)">
+    <h2>¿Qué ganamos con este esquema?</h2>
+    <h3>1) Las automatizaciones llegan al piso (en iPad)</h3>
+    <p>Las mismas mejoras que ya usamos en escritorio, ahora en las tablets del piso. Entre las que se portan:</p>
+    <ul class="tight">
+      <li><strong>Candado de surtido programado</strong> — impide mover piezas no programadas al siguiente proceso.</li>
+      <li><strong>Vales de almacén simplificados</strong> <span style="color:var(--warn-ink);font-weight:600">(en desarrollo)</span> — agiliza la emisión y captura de vales en almacén.</li>
+      <li><strong>Captura rápida de peso</strong> y <strong>prellenado de ubicación de almacén</strong>.</li>
+      <li><strong>Autollenado de recepción</strong> (fecha y datos) para agilizar la entrada de material.</li>
+      <li><strong>Registro de paros de línea</strong> desde el piso.</li>
+      <li><strong>Adjuntar CFDI/XML en facturas</strong> y utilidades de facturación.</li>
+      <li>…entre otras — <strong>16 automatizaciones</strong> en total, más las que sigamos sumando (como los vales).</li>
+    </ul>
+    <h3>2) Gestión centralizada de los 60 iPads (mucho más que instalar la extensión)</h3>
+    <p>El mismo esquema (Apple Business Manager + MDM) sirve para <strong>administrar profesionalmente toda la flota</strong>, algo que hoy no existe:</p>
+    <ul class="tight">
+      <li><strong>Actualizar el sistema operativo</strong> de los 60 iPads de forma remota — parches de seguridad al día, sin recogerlos.</li>
+      <li><strong>Bloquear funciones</strong> no deseadas (cámara, ajustes, tienda de apps) para evitar uso indebido.</li>
+      <li><strong>Asegurar que solo se use el explorador/app indicado</strong> (modo controlado / kiosco) — el operador no se distrae ni instala cosas ajenas.</li>
+      <li><strong>Seguridad</strong>: borrado remoto si un iPad se pierde o roba; políticas de contraseña.</li>
+      <li><strong>Configuración uniforme e inventario</strong> de todos los dispositivos desde un solo panel.</li>
+    </ul>
+    <div class="callout tip"><p><span class="label">En resumen:</span> no solo desplegamos la herramienta — dejamos montada la <strong>base para administrar los 60 iPads como flota corporativa</strong> (SO, seguridad, restricciones). La inversión rinde más allá de la extensión.</p></div>
+  </section>
+
+  <section class="card">
+    <h2>1 · La cuenta: empresa, no consultor</h2>
+    <div class="cmp"><table>
+      <thead><tr><th>Factor</th><th>Individual (consultor)</th><th class="rec">Organization (empresa) ✓</th></tr></thead>
+      <tbody>
+        <tr><td class="dim">Costo</td><td class="cost">$99/año</td><td class="rec cost">$99/año (igual)</td></tr>
+        <tr><td class="dim">Requisito</td><td>Apple ID personal</td><td class="rec">D-U-N-S <span class="yes">(ya lo tienen)</span></td></tr>
+        <tr><td class="dim">A nombre de</td><td>Ti</td><td class="rec">La empresa</td></tr>
+        <tr><td class="dim">Habilita ABM / MDM</td><td class="no">No</td><td class="rec"><span class="yes">Sí</span></td></tr>
+        <tr><td class="dim">Sobrevive al handoff</td><td class="no">No — queda atada a ti</td><td class="rec"><span class="yes">Sí</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout note"><p><span class="label">Por qué:</span> es el mismo criterio que definió toda la arquitectura — <strong>el handoff</strong>. Con cuenta personal, si te vas nadie puede renovar/actualizar y la app muere. La de empresa sobrevive y es la única que habilita distribución interna. Como ya tienen D-U-N-S, pueden crearla de una vez.</p></div>
+  </section>
+
+  <section class="card">
+    <h2>2 · Método de distribución</h2>
+    <div class="cmp"><table>
+      <thead><tr><th>Método</th><th>Revisión Apple</th><th>Veredicto</th></tr></thead>
+      <tbody>
+        <tr><td class="dim">App Store público</td><td>Sí (estricta)</td><td class="no">No — es interna</td></tr>
+        <tr><td class="dim">Unlisted App</td><td>Sí (1 vez)</td><td class="mid">Pública por link; innecesario</td></tr>
+        <tr><td class="dim">Custom App (via ABM)</td><td>Sí (privada, laxa)</td><td class="yes">✓ Ruta recomendada</td></tr>
+        <tr><td class="dim">TestFlight</td><td>Interna: no</td><td class="mid">Ideal para el <strong>piloto</strong>; expira 90 días</td></tr>
+        <tr><td class="dim">Enterprise ($299, in-house)</td><td>No</td><td class="no">Apple restringe elegibilidad</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout tip"><p><span class="label">El punto clave (conecta con el bridge):</span> la revisión de Apple solo aplica cuando cambia el <strong>código</strong> de un applet (poco frecuente). Los <strong>hashes</strong> —lo que rota seguido— se actualizan <strong>en caliente</strong> por el bridge (<code>git push</code> a gh-pages), <strong>sin recompilar ni revisión</strong>. Así que la revisión NO es cuello de botella del mantenimiento diario.</p></div>
+  </section>
+
+  <section class="card">
+    <h2>3 · Beneficios del MDM</h2>
+    <ul class="tight">
+      <li><strong>Instalación silenciosa</strong> en los 10+ iPads — sin cable, sin App Store, sin que el operador toque nada.</li>
+      <li><strong>Updates remotos</strong>: recompilas el bundle → lo empujas a todos de golpe.</li>
+      <li><strong>Sin expiración</strong> percibida (renueva/reinstala solo — adiós al sideload de 7 días).</li>
+      <li><strong>Gestión</strong>: restricciones, reinstalación si se borra, inventario, perfiles.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>4 · Qué MDM elegir (menor costo)</h2>
+    <p>Como no tienen Intune para los operadores, hay que elegir uno. Costos <em>aproximados</em> para <strong>60 iPads</strong> (verificar precios vigentes; la mayoría cobra por dispositivo/mes):</p>
+    <div class=”cmp”><table>
+      <thead><tr><th>MDM</th><th>~$/disp/mes</th><th>Anual (60)</th><th>Notas</th></tr></thead>
+      <tbody>
+        <tr><td class=”dim”>Apple Configurator</td><td class=”cost”>$0</td><td class=”cost”>$0</td><td><strong>Manual por cable</strong> — <span class=”no”>inviable a 60</span> para instalar/actualizar.</td></tr>
+        <tr><td class=”dim”>Mosyle</td><td class=”cost”>~$1</td><td class=”cost yes”>~$720</td><td class=”yes”>Especializado en Apple. <strong>Mejor costo/beneficio.</strong></td></tr>
+        <tr><td class=”dim”>Jamf Now</td><td class=”cost”>~$2</td><td class=”cost”>~$1,440</td><td>Simple; flotas chicas-medianas.</td></tr>
+        <tr><td class=”dim”>Apple Business Essentials</td><td class=”cost”>~$3</td><td class=”cost”>~$2,150</td><td>De Apple, integra directo con ABM. Lo más “oficial”, cero fricción.</td></tr>
+        <tr><td class=”dim”>Jamf Pro / Kandji</td><td class=”cost”>$3+</td><td class=”cost”>$2,150+</td><td>Para flotas grandes; overkill.</td></tr>
+      </tbody>
+    </table></div>
+    <div class=”callout note”><p><span class=”label”>Recomendación a 60 iPads:</span> <strong>Mosyle</strong> (~$720/año, menor costo real) o <strong>Apple Business Essentials</strong> (~$2,150/año) si prefieren todo dentro del ecosistema Apple sin fricción de integración. A esta escala <strong>Apple Configurator ya no es viable</strong> (60 iPads a mano por cable, cada update).</p></div>
+  </section>
+
+  <section class="card">
+    <h2>5 · Plan de pasos</h2>
+    <ol class="steps">
+      <li><strong>Crear la cuenta Apple Developer Organization</strong> ($99/año) con el D-U-N-S de la empresa.</li>
+      <li><strong>Inscribirse en Apple Business Manager</strong> (gratis) y vincular los iPads corporativos (Device Enrollment).</li>
+      <li><strong>Elegir y montar el MDM</strong> (Mosyle / Business Essentials) y enrolar los 10+ iPads.</li>
+      <li><strong>Publicar la app como Custom App</strong> (via ABM) — pasa una revisión privada inicial.</li>
+      <li><strong>El MDM la empuja</strong> a todos los iPads. Updates de código → nueva versión; hashes → en caliente por el bridge.</li>
+    </ol>
+    <div class="callout tip"><p><span class="label">Mientras tramitan (piloto ya):</span> con la cuenta de empresa, usen <strong>TestFlight</strong> para meter la app a más operadores y validar en paralelo, antes de tener el MDM listo. O sigan con el sideload actual (recordando que expira cada 7 días).</p></div>
+  </section>
+
+  <section class="card">
+    <h2>6 · Costo total estimado (año 1, 60 iPads)</h2>
+    <div class="cmp"><table>
+      <thead><tr><th>Concepto</th><th>Costo/año</th></tr></thead>
+      <tbody>
+        <tr><td class="dim">Apple Developer Organization</td><td class="cost">$99 (fijo)</td></tr>
+        <tr><td class="dim">Apple Business Manager</td><td class="cost yes">$0</td></tr>
+        <tr><td class="dim">MDM · 60 iPads (Mosyle ~$720 / Business Essentials ~$2,150)</td><td class="cost">~$720 – $2,150</td></tr>
+        <tr><td class="dim">Mac para TI (Xcode) — reasignada $0 · usada ~$300–450 · nueva ~$599 (una sola vez)</td><td class="cost">$0 – $599</td></tr>
+        <tr><td class="dim" style="font-weight:700">Total recomendado año 1 (Mosyle + Mac usada/nueva)</td><td class="cost" style="font-weight:700">≈ $820 – $1,420 · luego ~$820/año</td></tr>
+        <tr><td class="dim">Alternativa con Apple Business Essentials</td><td class="cost">≈ $2,850 año 1 · luego ~$2,250/año</td></tr>
+      </tbody>
+    </table></div>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin-top:8px">La cuenta ($99) no cambia con el número de iPads; el MDM sí (por dispositivo). Recurrente ~$820/año ≈ <strong>$14/iPad/año</strong> con Mosyle. La Mac es un costo <strong>único</strong> (o $0 si se reasigna una existente).</p>
+  </section>
+
+  <section class="card">
+    <h2>7 · Continuidad y requisitos (independencia del consultor)</h2>
+    <ul class="tight">
+      <li><strong>Administrado por la empresa, no por el consultor:</strong> el esquema (cuenta Apple de Eco, ABM y MDM) lo administra <strong>Max Sierra, Jefe de TI</strong>. La cuenta va a nombre de <strong>Ecoplating</strong> con su D-U-N-S; el consultor no queda en el camino crítico.</li>
+      <li><strong>Requiere una Mac (para Xcode):</strong> compilar/actualizar la app de iPad exige Xcode, que solo corre en macOS. La Mac del consultor es personal y se retira con él. <span class="mid">No existe forma oficial de compilar apps iOS sin una Mac</span> (Xcode Cloud o CI en la nube igual requieren una Mac para el proyecto y la firma). <strong>Opciones (de menor a mayor costo):</strong> (a) reasignar una Mac existente de la empresa a TI; (b) conseguir una <strong>Mac usada</strong> (Apple Silicon M1 o posterior — p. ej. un Mac mini M1 ~$300–450, una sola vez); o (c) un <strong>Mac mini nuevo (~$599)</strong>. No necesita ser potente, solo compatible con una versión reciente de macOS.</li>
+      <li><strong>Lado escritorio (Chrome) — sin inversión:</strong> la versión de escritorio ya opera y se actualiza sola con el proceso actual (publicación web); <strong>no requiere Apple, MDM ni Mac</strong>. Aun así, se capacitará a Max para dar mantenimiento a <strong>ambos canales</strong> (Chrome de escritorio e iPad Safari) y quedar autosuficiente.</li>
+    </ul>
+    <div class="callout tip"><p><span class="label">En una frase:</span> el costo recurrente (~$820/año) es del canal <strong>iPad</strong>; el escritorio no cuesta extra. La Mac es lo único que cambia si se quiere que TI mantenga el iPad de forma autónoma.</p></div>
+  </section>
+
+  <footer>
+    Decisión de distribución · complementa <a href="ipad-surtido-guard-decision.html">Safari vs PWA</a> ·
+    inventario <a href="ipad-applets-inventory.html">portabilidad de applets</a> ·
+    build <a href="../deploy-safari.html">deploy-safari</a>. Costos aproximados; verificar precios vigentes.
+  </footer>
+</div>
+</body>
+</html>

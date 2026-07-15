@@ -67,6 +67,9 @@ Prioridad: (1) línea inferible del nombre del nodo raíz (`T\d{2,3}` → match 
 5. Emitir vale con 2-3 líneas + comentario general + 1 foto → en SH el evento `…/MaintenanceEvents/<idInDomain>` tiene `completedAt`, las cantidades en el paso, los `[VALE]…[/VALE]` (verificar con `parseAllLines`), el comentario general, "Asignado"=quien recoge, y la foto.
 6. `ValeAlmacen._state()` en window para depurar (`surtimientoNodes`, `articleCatalog`, `activeEvent`, `lines`).
 
+## Safari/iPad (bundle)
+Incluido en el bundle Safari/iPad (`safari/bundle.json`) desde **v0.3.0**. Es "directo": el **FAB 📦 se auto-inyecta** en las pantallas permitidas, así que no necesita popup para el flujo normal. Además hay un **lanzador en el popup** ("Emitir Vale de Almacén"). Canal de lanzamiento (fix de la sesión 2026-07-01): `popup → tabs.sendMessage(tabId,{__saCmd}) → bridge.js runtime.onMessage → postMessage → sa-dispatcher.js → ValeAlmacen.open` (allowlist `LAUNCH_FN`). **Ojo:** `storage.onChanged` NO dispara en el content script de iPadOS, así que el canal viejo (storage-only) no funcionaba; ahora es `tabs.sendMessage` con storage de fallback. Compatible con iOS: sin `a.download`/`chrome.*`/IndexedDB; la evidencia usa `<input type=file>` (cámara del iPad) con gesto de usuario. Los hashes viven en gh-pages (el bridge los refresca en runtime), así que el bundle no se re-hornea al rotar hashes.
+
 ## Pendientes / mejoras futuras
 - Fase 2: ejecutar también el paso "Confirmación de Entrega" (sensores boolean/text) para marcar entregado.
 - Validar cantidad entera cuando `mustBeInteger` (hoy solo `>0`).

@@ -1,29 +1,55 @@
 // Create Order Autofill
-// Auto-llena las 3 Entradas Personalizadas del modal "Crear Orden de Venta"
-// que sale en /Receiving/CustomerParts → "RECEIVE" → "+ / Create".
+// Auto-llena las Entradas Personalizadas del modal de creación de OV. Dos pantallas:
+//   1. /Receiving/CustomerParts → "RECEIVE" → "+ / Create"  → título "Crear Orden de Venta" (ES),
+//      cliente pre-cargado, expone "Enviar a:" (ship-to).
+//   2. /Domains/<id>/SalesOrders → "New Sales Order"          → título "Create Sales Order" (EN),
+//      cliente vacío (el operador lo elige a mano), SIN ship-to.
+// Mismos IDs RJSF en ambos modales (root_RazonSocialVenta / root_Divisa / root_ConsolidarPorProducto),
+// así que el mismo autofill sirve para los dos; solo cambia el gate de URL y el título.
 //
 // Reglas:
 //   - Razón Social  ← customer.customInputs.DatosFactura.RazonSocialVenta (match exacto contra <option>)
-//   - Divisa        ← customer.customInputs.DatosFactura.Divisa            (match exacto contra <option>)
+//   - Divisa        ← customer.customInputs.DatosFactura.Divisa            (match exacto/substring contra <option>)
 //   - Consolidar    ← ship-to-driven: marca checkbox si "Enviar a:" del modal contiene "javier rojo"
+//                     (en la pantalla SalesOrders no hay ship-to → Consolidar no aplica, se omite)
 //
-// Depende de: SteelheadAPI
+// Depende de: SteelheadAPI, CreateOrderAutofillCore (create-order-autofill-core.js)
+//
+// FIX 2026-07-03: la extracción del cliente ya NO depende del label-walk frágil
+// (findSingleValueByLabel hacía `return null` al toparse el input[role=combobox]
+// del react-select ANTES de hallar el singleValue → "(sin cliente)" → "sin idInDomain"
+// para TODOS los clientes). Ahora el cliente se elige por el singleValue que trae el
+// badge "(#N)" (único en el modal), y como red de seguridad se resuelve el idInDomain
+// por nombre vía CustomerSearchByName si faltara el badge. Ver bitácora + core.
 
 const CreateOrderAutofill = (() => {
   'use strict';
 
-  const URL_RE = /\/Receiving\/CustomerParts(?:\/|$)/;
-  const MODAL_HEADING_RE = /^\s*crear\s+orden\s+de\s+venta\s*$/i;
+  // Fallbacks locales por si el core no cargara (el core va ANTES en el array scripts,
+  // así que normalmente se usan sus helpers homónimos vía urlMatches()/headingMatches()).
+  const URL_RE = /\/Receiving\/CustomerParts(?:\/|$)|\/Domains\/\d+\/SalesOrders\/?$/;
+  const MODAL_HEADING_RE = /^\s*(?:crear\s+orden\s+de\s+venta|create\s+sales\s+order)\s*$/i;
   const RJSF_RAZON_ID = 'root_RazonSocialVenta';
   const RJSF_DIVISA_ID = 'root_Divisa';
   const RJSF_CONSOLIDAR_ID = 'root_ConsolidarPorProducto';
   const ROJO_GOMEZ_RE = /javier\s*rojo/i;
 
   const api = () => window.SteelheadAPI;
+  const core = () => window.CreateOrderAutofillCore;
   const log = (m) => (api()?.log ? api().log(`[create-order-autofill] ${m}`) : console.log('[create-order-autofill]', m));
   const warn = (m) => (api()?.warn ? api().warn(`[create-order-autofill] ${m}`) : console.warn('[create-order-autofill]', m));
 
-  const _customerCache = new Map();
+  const urlMatches = (p) => {
+    const c = core();
+    return c?.matchesCreateOrderUrl ? c.matchesCreateOrderUrl(p) : URL_RE.test(p);
+  };
+  const headingMatches = (t) => {
+    const c = core();
+    return c?.isCreateOrderModalHeading ? c.isCreateOrderModalHeading(t) : MODAL_HEADING_RE.test(t);
+  };
+
+  const _customerCache = new Map();   // idInDomain → customer
+  const _nameIdCache = new Map();     // normalizedName → idInDomain|null
   let observerActive = false;
   let debounceTimer = null;
   let state = {
@@ -41,7 +67,7 @@ const CreateOrderAutofill = (() => {
       return;
     }
     setupUrlListener();
-    log(`init en ${location.pathname} (matches=${URL_RE.test(location.pathname)})`);
+    log(`init en ${location.pathname} (matches=${urlMatches(location.pathname)})`);
     checkUrl();
   }
 
@@ -60,7 +86,7 @@ const CreateOrderAutofill = (() => {
   }
 
   function checkUrl() {
-    if (!URL_RE.test(location.pathname)) {
+    if (!urlMatches(location.pathname)) {
       removePanel();
       state.lastSig = null;
       return;
@@ -114,38 +140,89 @@ const CreateOrderAutofill = (() => {
   function isCreateOrderModal() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
-      if (MODAL_HEADING_RE.test((h.textContent || '').trim())) return true;
+      if (headingMatches((h.textContent || '').trim())) return true;
     }
     return false;
   }
 
-  // Subir al MuiDialog/Paper que contiene el heading "Crear Orden de Venta"
-  // para anclar las búsquedas de cliente/shipTo SOLO dentro del modal y no del
-  // wizard padre "Recibir piezas del cliente" (que también trae un combo Cliente).
+  // Subir al paper/contenedor del MUI Dialog que contiene el modal "Crear Orden de
+  // Venta" para anclar las búsquedas SOLO dentro del modal (no del wizard padre
+  // "Recibir piezas del cliente").
+  //
+  // FIX 2026-07-03 (v0.1.2): el heading es un <h2 class="...MuiDialogTitle-root...">,
+  // cuya clase contiene el substring "MuiDialog". El código viejo arrancaba el match
+  // EN el heading con `[class*="MuiDialog"]`, así que devolvía el TÍTULO (vacío) en la
+  // iteración 0 → svInRoot=0 → cliente=null → "sin idInDomain" para TODOS. Ahora se
+  // sube desde el PADRE del heading y se acepta como root solo el paper/contenedor del
+  // diálogo (Core.isDialogRootClass excluye Title/Content/Actions y el paper genérico
+  // del accordion RJSF).
+  function isDialogRoot(el) {
+    if (!el) return false;
+    if (el.matches?.('[role="dialog"]')) return true;
+    const c = core();
+    const cls = String(el.className || '');
+    return c
+      ? c.isDialogRootClass(cls)
+      : (cls.includes('MuiDialog') && !/MuiDialog(Title|Content|Actions|ContentText)/.test(cls));
+  }
+
   function getModalRoot() {
     const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
     for (const h of heads) {
-      if (!MODAL_HEADING_RE.test((h.textContent || '').trim())) continue;
-      let cur = h;
-      for (let i = 0; i < 12 && cur; i++) {
-        if (cur.matches?.('[role="dialog"], [class*="MuiDialog"], [class*="MuiPaper"]')) return cur;
+      if (!headingMatches((h.textContent || '').trim())) continue;
+      // Arrancamos ARRIBA del heading: su propia clase MuiDialogTitle-root es un cebo.
+      let cur = h.parentElement;
+      for (let i = 0; i < 14 && cur; i++) {
+        if (isDialogRoot(cur)) return cur;
         cur = cur.parentElement;
       }
-      return h.closest('[role="dialog"], [class*="MuiPaper"]') || h.parentElement;
+    }
+    // Fallback: ascender desde un campo RJSF hasta el diálogo contenedor. Sube PAST el
+    // paper chico del accordion (que no lleva "MuiDialog") y el DialogContent.
+    const field = document.getElementById(RJSF_RAZON_ID) || document.getElementById(RJSF_DIVISA_ID);
+    if (field) {
+      let cur = field.parentElement;
+      for (let i = 0; i < 24 && cur; i++) {
+        if (isDialogRoot(cur)) return cur;
+        cur = cur.parentElement;
+      }
     }
     return null;
   }
 
   // ── Extracción dentro del modal ──
 
+  // Junta los textos de todos los react-select singleValue del modal, quitando el
+  // avatar/imagen (que se pega al nombre: "C"+"CONTROLES..." → "CCONTROLES...").
+  function collectSingleValueTexts(root) {
+    const out = [];
+    const svs = root.querySelectorAll('[class*="singleValue"], [class*="SingleValue"]');
+    for (const sv of svs) {
+      const clone = sv.cloneNode(true);
+      clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+      const t = (clone.textContent || '').trim();
+      if (t) out.push(t);
+    }
+    return out;
+  }
+
+  // Devuelve el nombre del cliente tal como aparece en el modal (con "(#N)" si lo trae).
+  // Primario: el singleValue con badge "(#N)" (único del Cliente, label-independiente).
+  // Fallback: label-anchored por si algún modal no mostrara el badge.
   function extractCustomerNameFromModal() {
     const root = getModalRoot();
     if (!root) return null;
-    const sv = findSingleValueByLabel(root, /^\s*cliente:?\s*$/i);
+    const c = core();
+    if (c) {
+      const picked = c.pickCustomerFromSingleValues(collectSingleValueTexts(root));
+      if (picked) return picked.raw;
+    }
+    const sv = findSingleValueByLabel(root, /^\s*(?:cliente|customer):?\s*$/i);
     if (!sv) return null;
     const clone = sv.cloneNode(true);
     clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
-    return cleanCustomerName((clone.textContent || '').trim());
+    const raw = (clone.textContent || '').trim();
+    return c ? c.cleanCustomerName(raw) : raw;
   }
 
   function extractShipToFromModal() {
@@ -156,48 +233,35 @@ const CreateOrderAutofill = (() => {
     return (sv.textContent || '').trim();
   }
 
-  // El singleValue del react-select absorbe badges sin whitespace
-  // ("SCHNEIDER ELECTRIC MEXICO (#1)Industrial"). Cortamos tras "(#N)".
-  function cleanCustomerName(raw) {
-    if (!raw) return raw;
-    const m = raw.match(/^(.+?\(#\d+\))/);
-    if (m) return m[1].trim();
-    return raw.trim();
-  }
-
-  function extractCustomerIdInDomain(rawName) {
-    const m = (rawName || '').match(/\(#(\d+)\)/);
-    return m ? parseInt(m[1], 10) : null;
-  }
-
   // Localiza un singleValue de react-select por su label de <p>label:</p>.
-  // Patrón replicado de invoice-autofill.findFieldContainerByPLabel: subimos al
-  // labelRoot (ancestro hijo único) y caminamos siblings hasta encontrar uno
-  // con [class*=singleValue] o con un combobox vacío (placeholder).
+  // Se prefiere la ÚLTIMA etiqueta que matchea (la del modal, no la del wizard padre)
+  // y se buscan singleValues en los siguientes hermanos. NO se hace bail al toparse el
+  // input[role=combobox] (ese bail rompía la extracción: el react-select SIEMPRE tiene
+  // el combobox junto al singleValue).
   function findSingleValueByLabel(root, labelRe) {
-    const candidates = root.querySelectorAll('p, label, span');
-    for (const el of candidates) {
+    const candidates = [];
+    for (const el of root.querySelectorAll('p, label, span')) {
       const raw = (el.textContent || '').trim();
       if (raw.length === 0 || raw.length > 40) continue;
       const cleaned = raw.replace(/[\s:*]+$/, '').trim();
       if (!labelRe.test(cleaned) && !labelRe.test(raw)) continue;
       if (el.querySelector('input, textarea, button, select')) continue;
-
-      // Ascender al labelRoot (mientras sea hijo único)
-      let labelRoot = el;
+      candidates.push(el);
+    }
+    // De la última a la primera (la del modal suele ser la última en el DOM).
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      let labelRoot = candidates[i];
       while (labelRoot.parentElement
         && labelRoot.parentElement.children.length === 1
         && labelRoot.parentElement.firstElementChild === labelRoot
         && !['BODY', 'HTML'].includes(labelRoot.parentElement.tagName)) {
         labelRoot = labelRoot.parentElement;
       }
-
       let cursor = labelRoot.nextElementSibling;
       let hops = 0;
       while (cursor && hops < 8) {
         const sv = cursor.querySelector('[class*="singleValue"], [class*="SingleValue"]');
         if (sv) return sv;
-        if (cursor.querySelector('input[role="combobox"]')) return null;
         cursor = cursor.nextElementSibling;
         hops++;
       }
@@ -222,24 +286,41 @@ const CreateOrderAutofill = (() => {
     }
   }
 
-  // ── Fills ──
-
-  function normalizeForMatch(s) {
-    return String(s || '')
-      .toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  // Fallback: resolver idInDomain desde el nombre del cliente (sin "(#N)") vía
+  // CustomerSearchByName. Solo se usa si el badge "(#N)" no estuviera presente.
+  async function resolveIdInDomainByName(rawName) {
+    const c = core();
+    const clean = (c ? c.cleanCustomerName(rawName) : String(rawName || ''))
+      .replace(/\s*\(#\d+\)\s*$/, '').trim();
+    if (!clean) return null;
+    const key = c ? c.normalizeForMatch(clean) : clean.toLowerCase();
+    if (_nameIdCache.has(key)) return _nameIdCache.get(key);
+    try {
+      const r = await SteelheadAPI.query('CustomerSearchByName', { searchText: clean, name: clean, query: clean, first: 12 });
+      const nodes = r?.searchCustomers?.nodes || [];
+      let hit = nodes.find(n => (c ? c.normalizeForMatch(n.name) : String(n.name || '').toLowerCase()) === key);
+      if (!hit && nodes.length === 1) hit = nodes[0];
+      const id = hit ? hit.idInDomain : null;
+      _nameIdCache.set(key, id);
+      return id;
+    } catch (err) {
+      warn(`resolveIdInDomainByName("${clean}") falló: ${err.message}`);
+      return null;
+    }
   }
+
+  // ── Fills ──
 
   function fillNativeSelectByText(sel, targetText) {
     if (!sel || !targetText) return { success: false, reason: 'sin select o target' };
-    const targetNorm = normalizeForMatch(targetText);
+    const c = core();
+    if (!c) return { success: false, reason: 'core no cargado' };
+    const targetNorm = c.normalizeForMatch(targetText);
     if (!targetNorm) return { success: false, reason: 'target vacío' };
 
     // Si ya está en el valor correcto, no tocamos
     const currentOpt = sel.options?.[sel.selectedIndex];
-    if (currentOpt && normalizeForMatch(currentOpt.text || '') === targetNorm) {
+    if (currentOpt && c.normalizeForMatch(currentOpt.text || '') === targetNorm) {
       return { success: true, filled: currentOpt.text, noop: true };
     }
 
@@ -248,23 +329,12 @@ const CreateOrderAutofill = (() => {
       return { success: false, reason: 'usuario tocó después de autofill' };
     }
 
-    let best = null, bestScore = -1;
-    for (const opt of sel.options) {
-      const txt = (opt.text || '').trim();
-      if (!txt) continue;
-      const norm = normalizeForMatch(txt);
-      let score = 0;
-      if (norm === targetNorm) score = 100;
-      else if (norm.includes(targetNorm) || targetNorm.includes(norm)) score = 60;
-      else {
-        const tokens = targetNorm.split(' ').filter(t => t.length > 2);
-        for (const t of tokens) { if (norm.includes(t)) score += 8; }
-      }
-      if (score > bestScore) { bestScore = score; best = opt; }
+    const optionTexts = [...sel.options].map(o => o.text || '');
+    const match = c.scoreOptionMatch(optionTexts, targetText);
+    if (!match.pass) {
+      return { success: false, reason: `sin match (mejor score=${match.score})` };
     }
-    if (!best || bestScore < 60) {
-      return { success: false, reason: `sin match (mejor score=${bestScore})` };
-    }
+    const best = sel.options[match.index];
 
     const tracker = sel._valueTracker;
     if (tracker) tracker.setValue('');
@@ -293,8 +363,25 @@ const CreateOrderAutofill = (() => {
   // ── Run principal ──
 
   async function runAutofill(myRun, { customerName, shipTo, razonSel, divisaSel, consolidarChk }) {
-    const idInDomain = extractCustomerIdInDomain(customerName);
-    if (!idInDomain) {
+    let idInDomain = core() ? core().extractCustomerIdInDomain(customerName) : null;
+
+    // Fallback: si no vino el badge "(#N)", resolver por nombre.
+    if (idInDomain == null && customerName) {
+      idInDomain = await resolveIdInDomainByName(customerName);
+      if (isStale(myRun)) return;
+      if (idInDomain != null) log(`idInDomain resuelto por nombre → ${idInDomain}`);
+    }
+
+    if (idInDomain == null) {
+      // Pantalla SalesOrders: el modal abre SIN cliente (el operador lo elige a mano).
+      // No mostramos panel de error mientras no haya cliente — esperamos en silencio a
+      // que lo seleccione (la firma cambia y re-dispara el scan). Solo reportamos error
+      // si SÍ hay nombre de cliente pero no pudimos resolver su idInDomain.
+      if (!customerName) {
+        log('modal abierto sin cliente elegido aún — esperando selección');
+        removePanel();
+        return;
+      }
       log(`sin idInDomain (cliente="${customerName}") — no autofill`);
       state.results = { razon: { ok: false, msg: 'sin idInDomain' }, divisa: { ok: false, msg: 'sin idInDomain' }, consolidar: null };
       renderPanel({ customerName, shipTo });
@@ -330,10 +417,12 @@ const CreateOrderAutofill = (() => {
         : { ok: false, msg: r.reason };
     }
 
-    // Consolidar (ship-to-driven, independiente del customer)
+    // Consolidar (ship-to-driven, independiente del customer). En la pantalla SalesOrders
+    // el modal NO expone "Enviar a:" → sin destino no aplica la regla Rojo Gómez; lo
+    // dejamos en el default RJSF (false) y lo marcamos como omitido, no como fallo.
     let consolidarResult;
     if (!shipTo) {
-      consolidarResult = { ok: false, msg: 'sin shipTo visible' };
+      consolidarResult = { ok: true, msg: 'no aplica (sin destino en esta pantalla)', skipped: true };
     } else if (ROJO_GOMEZ_RE.test(shipTo)) {
       const r = setCheckbox(consolidarChk, true);
       consolidarResult = r.success

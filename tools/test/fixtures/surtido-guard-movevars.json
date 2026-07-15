@@ -1,0 +1,17 @@
+{
+  "_comment": "Variables REALES de WorkOrderMovePartsData (single, modal) y MoveMultipleFromWorkboardData (drag) — shape capturado 2026-06-26, datos sintéticos. Puente account -> {recipeNodeId, workOrderId}.",
+  "moveDataCalls": [
+    {
+      "op": "WorkOrderMovePartsData",
+      "vars": { "workOrderId": 5001, "fromRecipeNodeId": 7001, "partNumberIds": [3616247], "stationId": 15751, "partsTransferAccountIds": [1001], "rackId": -1 }
+    },
+    {
+      "op": "WorkOrderMovePartsData",
+      "vars": { "workOrderId": 5002, "fromRecipeNodeId": 7001, "partNumberIds": [3616248], "stationId": 15751, "partsTransferAccountIds": [1002], "rackId": -1 }
+    },
+    {
+      "op": "MoveMultipleFromWorkboardData",
+      "vars": { "partNumberIds": [3616249], "workOrderIds": [5003], "fromRecipeNodeIds": [7003], "partsTransferAccountIds": [1003] }
+    }
+  ]
+}

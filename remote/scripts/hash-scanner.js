@@ -13,6 +13,33 @@ const HashScanner = (() => {
   let knownHashMap = {}; // hash → configKey
   let knownOpMap = {};   // configKey → hash
 
+  // ── Instrumentación de discovery (Fase B): pantalla + breadcrumb de click por op ──
+  const MAX_SCREENS_PER_OP = 5;
+  let lastClick = null; // { breadcrumb, ts }
+  let clickListener = null;
+  let pageHideHandler = null;
+
+  // Descripción corta y NO sensible del control clickeado: tag[role]:textoCorto.
+  // Trunca el texto a 40 chars; nunca incluye value/payloads.
+  function describeClickTarget(el) {
+    if (!el) return '(desconocido)';
+    const tag = (el.tagName || '').toLowerCase();
+    const role = typeof el.getAttribute === 'function' ? el.getAttribute('role') : null;
+    const rawText = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    const text = rawText.slice(0, 40);
+    return `${tag}${role ? `[${role}]` : ''}${text ? `:${text}` : ''}`;
+  }
+
+  // Anexa {pathname, breadcrumb} a entry.screens, dedup por pathname (sube count),
+  // cap MAX_SCREENS_PER_OP. Es la evidencia op→pantalla para el generador de catálogo.
+  function recordScreen(entry, pathname, breadcrumb) {
+    entry.screens = entry.screens || [];
+    const hit = entry.screens.find((s) => s.pathname === pathname);
+    if (hit) { hit.count++; return; }
+    if (entry.screens.length >= MAX_SCREENS_PER_OP) return;
+    entry.screens.push({ pathname, breadcrumb, count: 1 });
+  }
+
   const MAX_SAMPLES_PER_OP = 10;
   const MAX_RESPONSE_SAMPLES_PER_OP = 2;
 
@@ -87,6 +114,26 @@ const HashScanner = (() => {
     isScanning = true;
     originalFetch = window.fetch;
 
+    // Breadcrumb: registra el último control clickeado (captura fase para no
+    // perder clicks que hagan stopPropagation). Solo activo mientras se escanea.
+    clickListener = (ev) => {
+      try { lastClick = { breadcrumb: describeClickTarget(ev.target), ts: Date.now() }; } catch (_) {}
+    };
+    document.addEventListener('click', clickListener, true);
+
+    // Restaurar backup del pagehide previo (lo capturado justo antes de una recarga,
+    // que el persist periódico no alcanzó a guardar). Se limpia tras restaurar.
+    try {
+      const bak = localStorage.getItem('__sa_scan_backup');
+      if (bak) { mergeResults(JSON.parse(bak)); localStorage.removeItem('__sa_scan_backup'); }
+    } catch (_) {}
+
+    // Salvavidas ante recarga/cierre: backup SLIM SÍNCRONO a localStorage. chrome.storage
+    // es async y NO completa en pagehide → sin esto, lo navegado en los segundos previos
+    // a una recarga se perdía (causa raíz del bug "recarga pierde el scan").
+    pageHideHandler = () => { try { localStorage.setItem('__sa_scan_backup', JSON.stringify(slimForBackup())); } catch (_) {} };
+    window.addEventListener('pagehide', pageHideHandler);
+
     window.fetch = async function (...args) {
       const [url, options] = args;
       const urlStr = typeof url === 'string' ? url : url?.url || '';
@@ -102,7 +149,9 @@ const HashScanner = (() => {
           const apolloVersion = (typeof headers.get === 'function')
             ? headers.get('apollographql-client-version')
             : (headers['apollographql-client-version'] || headers['Apollographql-Client-Version']);
-          const meta = { url: urlStr, apolloVersion };
+          const pathname = (typeof location !== 'undefined' && location.pathname) ? location.pathname : null;
+          const recentClick = (lastClick && Date.now() - lastClick.ts < 5000) ? lastClick.breadcrumb : null;
+          const meta = { url: urlStr, apolloVersion, pathname, breadcrumb: recentClick };
 
           const response = await originalFetch.apply(this, args);
           const httpStatus = response.status;
@@ -125,19 +174,22 @@ const HashScanner = (() => {
 
     console.log('[HashScanner] Captura iniciada — navega por Steelhead para capturar operaciones');
 
-    // Periodically persist results to survive page reloads
+    // Persistencia periódica para sobrevivir recargas. Usa el backup SLIM a localStorage
+    // (~KB) en vez de getResults completo vía chrome.storage (decenas de MB en scans grandes)
+    // — eso serializaba TODO el scan cada pocos segundos y trababa Steelhead (jank de UI).
     if (window.__saScanPersistInterval) clearInterval(window.__saScanPersistInterval);
     window.__saScanPersistInterval = setInterval(() => {
       if (!isScanning) return;
-      // Signal content script to persist results via custom event
-      document.dispatchEvent(new CustomEvent('sa-persist-scan'));
-    }, 15000); // Every 15 seconds
+      try { localStorage.setItem('__sa_scan_backup', JSON.stringify(slimForBackup())); } catch (_) {}
+    }, 10000);
   }
 
   function stop() {
     if (!isScanning) return;
     if (originalFetch) window.fetch = originalFetch;
     isScanning = false;
+    if (clickListener) { document.removeEventListener('click', clickListener, true); clickListener = null; }
+    if (pageHideHandler) { window.removeEventListener('pagehide', pageHideHandler); pageHideHandler = null; }
     if (window.__saScanPersistInterval) {
       clearInterval(window.__saScanPersistInterval);
       window.__saScanPersistInterval = null;
@@ -153,11 +205,17 @@ const HashScanner = (() => {
         responseSamples: [],
         errorSamples: [], errorCount: 0, lastHttpStatus: null,
         url: null, apolloVersion: null,
-        status: 'unknown', configKey: null
+        status: 'unknown', configKey: null,
+        screens: []
       };
     }
 
     const entry = discovered[operationName];
+    // Normaliza arrays por si la entrada vino de un backup restaurado (defensa: evita undefined.map/.length)
+    entry.variablesSamples = entry.variablesSamples || [];
+    entry.responseSamples = entry.responseSamples || [];
+    entry.errorSamples = entry.errorSamples || [];
+    entry.screens = entry.screens || [];
     entry.count++;
     entry.lastSeen = new Date().toISOString();
     entry.hash = hash;
@@ -221,6 +279,11 @@ const HashScanner = (() => {
 
     if (meta?.url) entry.url = meta.url;
     if (meta?.apolloVersion) entry.apolloVersion = meta.apolloVersion;
+    if (meta?.pathname) {
+      const counter = { n: 0 };
+      const bc = meta.breadcrumb ? sanitizeValue(meta.breadcrumb, counter) : null;
+      recordScreen(entry, meta.pathname, bc);
+    }
 
     // Append to chronological event log (cap MAX_EVENT_LOG, drop oldest)
     eventLog.push({
@@ -289,6 +352,19 @@ const HashScanner = (() => {
     return paths;
   }
 
+  // Backup mínimo para localStorage (pagehide): hash + screens + estado, SIN los samples
+  // pesados (evita exceder la cuota de localStorage en scans grandes).
+  function slimForBackup() {
+    const out = {};
+    for (const [op, v] of Object.entries(discovered)) {
+      // Incluye los arrays VACÍOS (no su contenido pesado): mergeResults/recordOperation
+      // los asumen presentes → sin esto, una entrada restaurada rompía con undefined.map.
+      out[op] = { hash: v.hash, count: v.count, status: v.status, configKey: v.configKey,
+        screens: v.screens || [], variablesSamples: [], responseSamples: [], errorSamples: [], errorCount: 0 };
+    }
+    return out;
+  }
+
   function getResults() {
     const ops = {};
     for (const [k, v] of Object.entries(discovered)) {
@@ -344,6 +420,7 @@ const HashScanner = (() => {
           existing.lastSeen = entry.lastSeen;
         }
         // Merge variable samples deduped by shape signature, up to MAX_SAMPLES_PER_OP
+        existing.variablesSamples = existing.variablesSamples || [];
         existing._sigs = existing._sigs || new Set(existing.variablesSamples.map(shapeSignature));
         for (const sample of (entry.variablesSamples || [])) {
           if (existing.variablesSamples.length >= MAX_SAMPLES_PER_OP) break;
@@ -373,6 +450,14 @@ const HashScanner = (() => {
           if (existing.errorSamples.length >= 3) break;
           existing.errorSamples.push(es);
         }
+        // Merge screens (pantalla+breadcrumb por op) — dedup por pathname, cap MAX_SCREENS_PER_OP
+        existing.screens = existing.screens || [];
+        for (const s of (entry.screens || [])) {
+          const hit = existing.screens.find((x) => x.pathname === s.pathname);
+          if (hit) { hit.count += (s.count || 1); continue; }
+          if (existing.screens.length >= MAX_SCREENS_PER_OP) break;
+          existing.screens.push(s);
+        }
       }
     }
   }
@@ -380,7 +465,7 @@ const HashScanner = (() => {
   return {
     init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
     analyzeSchema, mergeSchema,
-    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, discovered, eventLog, knownHashMap, knownOpMap }
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, describeClickTarget, recordScreen, slimForBackup, discovered, eventLog, knownHashMap, knownOpMap }
   };
 })();
 

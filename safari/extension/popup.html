@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{ --bg:#1c2430; --panel:#222c3a; --ink:#e6e9ee; --soft:#9aa6b5; --line:#2b3645;
+         --accent:#13a36f; --input:#141a23; }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{min-width:300px; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:14px;
+    -webkit-font-smoothing:antialiased; padding:14px 14px 10px}
+  header{display:flex; align-items:center; gap:9px; margin-bottom:4px}
+  header .logo{width:26px;height:26px;border-radius:7px;background:var(--accent);display:grid;place-items:center;font-size:15px}
+  header h1{font-size:15px; margin:0; font-weight:700; letter-spacing:-.01em}
+  header .sub{font-size:11px; color:var(--soft); margin-top:1px}
+  .hint{font-size:11.5px; color:var(--soft); margin:8px 2px 10px; line-height:1.45}
+  ul{list-style:none; margin:0; padding:0; border-radius:12px; overflow:hidden;
+     background:var(--panel); box-shadow:inset 0 0 0 1px var(--line)}
+  li{display:flex; align-items:center; justify-content:space-between; gap:12px;
+     padding:11px 13px; box-shadow:inset 0 -1px 0 var(--line)}
+  li:last-child{box-shadow:none}
+  .name{font-size:13.5px; line-height:1.25}
+  .name small{display:block; color:var(--soft); font-size:11px; margin-top:1px}
+  /* switch */
+  .sw{position:relative; flex:none; width:42px; height:25px; cursor:pointer}
+  .sw input{position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer}
+  .slider{position:absolute; inset:0; background:var(--input); border-radius:999px;
+    box-shadow:inset 0 0 0 1px var(--line); transition:background-color .18s cubic-bezier(.2,0,0,1)}
+  .slider::before{content:""; position:absolute; top:3px; left:3px; width:19px; height:19px; border-radius:50%;
+    background:#cdd6e0; transition:transform .18s cubic-bezier(.2,0,0,1), background-color .18s}
+  .sw input:checked + .slider{background:var(--accent)}
+  .sw input:checked + .slider::before{transform:translateX(17px); background:#fff}
+  /* sección de acciones (lanzadores) */
+  .sect{display:flex; align-items:center; gap:8px; margin:16px 2px 8px; color:var(--soft);
+    font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase}
+  .sect::after{content:""; flex:1; height:1px; background:var(--line)}
+  li.act{cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background-color .12s}
+  li.act:hover,li.act:active,li.act:focus{background:#26313f; outline:none}
+  li.act .ic{flex:none; width:30px; height:30px; border-radius:8px; background:var(--input);
+    box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; font-size:15px}
+  li.act .name{flex:1}
+  li.act .chev{flex:none; color:var(--soft); font-size:20px; line-height:1; font-weight:600}
+  footer{margin-top:12px; text-align:center; color:var(--soft); font-size:10.5px}
+</style>
+</head>
+<body>
+  <header>
+    <span class="logo">🔧</span>
+    <div><h1>Steelhead Automator</h1><div class="sub">iPad · activar / desactivar</div></div>
+  </header>
+  <div class="hint">Apaga un applet para esta y las próximas cargas. El candado de surtido y los applets sin interruptor corren siempre activos.</div>
+  <ul id="toggles"></ul>
+  <div class="sect">Acciones</div>
+  <div class="hint" style="margin-top:0">Abre un applet con interfaz. Se muestra sobre la página de Steelhead.</div>
+  <ul id="launchers"></ul>
+  <footer id="ver">v—</footer>
+  <script src="popup.js"></script>
+</body>
+</html>

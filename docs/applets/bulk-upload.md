@@ -2,7 +2,60 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
+## Add 2026-07-13 (1.5.32) — aviso de REEMPLAZO de specs en el preview
+El operador podía sorprenderse: usar `-` en cualquiera de las 4 celdas de spec activa el **archive sentinel** (`hasArchiveSentinel`, `bulk-upload.js:5430`) → no solo agrega las specs listadas, sino que **archiva TODAS las que el PN ya tenga y no estén en el CSV** (reemplazo, no suma; solo borra en PN existentes). Fix: banner ámbar en `showPreview` (bajo la línea de conteos, junto al badge de intención F5) que cuenta las filas con `-` en specs y cuántas son PN existentes, y aclara "deja la celda VACÍA si solo quieres agregar". Mismo criterio de detección que la ejecución (`part.specs.some(s => s.name === '-')`). Aviso puro de UI, no toca la lógica de archivado. `renderPreview` no rompe si falla (try/catch).
+
 > **Spec y plan de la 1.5.20:** [`docs/superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md`](../superpowers/specs/2026-06-04-bulk-upload-actualizacion-precios-y-control-cambios-design.md) · [`docs/superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md`](../superpowers/plans/2026-06-04-bulk-upload-precios-control-cambios.md)
+
+## Sesión 2026-07-06/07 — Carga por Id SH: hash rotado, fix de precio no deseado, robustez y fetch dirigido
+
+> Nota de drift: las entradas del **2026-07-03** (bugs en cadena del flujo Id SH: VBA `ExportarCSV` CSV vacío → v15.4, validador JS "sin Cliente", y "DUPLICAR vs MODIFICAR") viven en `stash@{0}` (el WIP de `feat/hash-autopilot` que el auto-deploy de hashes stasheó al mover el repo a `main`). Pendiente consolidarlas aquí. Los fixes ESTÁN deployados en producción; solo la doc quedó en el stash.
+
+Cuatro frentes, en orden de aparición:
+
+**1. Release de Steelhead rotó ~8 hashes (config 1.7.64).** Una carga por Id SH falló con 447× `GetPartNumber: "Must provide a query string"` en el apply. NO era el fix de idSh: solo hizo que el flujo LLEGARA al apply (que usa GetPartNumber intensivamente) y destapó la rotación. Detalle en `docs/api/hash-validation-log.md` (2026-07-06). Actualizados: GetPartNumber, InvoiceByIdInDomain, AllPartNumbers, ActiveReceivedOrders, GetReceivedOrder, ReceivingBatchesQuery (+ AllSensorDashboards/CurrentUser ya por autopilot).
+
+**2. Fix CRÍTICO — precio default tocado sin querer (v1.5.29).** Con `Precio default = V` (valor por defecto de la plantilla, columna M, que "Limpiar Datos" pone en V), una carga de SOLO specs re-designaba el precio default de 447 PNs al más reciente (`SetPartNumberPricesAsDefaultPrice` + unset del anterior), sin que el operador cargara ningún precio. **Fix:** el `needsRead` de default-price en SOLO_PN ahora exige `part.precio != null` — sin precio en la fila, NO se toca el default. Test 4/4. Operador: no revertir los 447 ya cambiados (el más reciente es aceptable).
+
+**3. Robustez B+C (v1.5.29).** (B) `steelhead-api.js` detecta `"Must provide a query string"`/`PersistedQueryNotFound` → marca `err.persistedQueryRotated`, lleva `window.__saRotatedOps` y avisa UNA vez por op (`🔴 HASH ROTADO: "X"…`) en vez de cientos de WARNs mudos. (C) `showResult` pinta un banner rojo si hubo rotación (título "⚠️ Detenido por HASH ROTADO") y agrega "PNs modificados: X / Y ⚠️" (= SavePartNumber OK real, no el "OK" del panel que sumaba desarchivados).
+
+**4. Mejoras — fetch dirigido + cliente/etiquetas (v1.5.30).** (M1) `fetchPNsByIdSh(idShSet)`: `GetPartNumber(id)` por cada Id SH único (runPool cap 8 + `periodicDrain` + `extractPNShape` slim) → Map id→shape, en `classifyPNs` antes de elegir modo. Reemplaza el hack de prefetch-global-con-retención; `classifyPNsMassive` ya NO escanea el dominio si `customerIds` vacío (100% Id SH). O(N idSh) vs O(dominio). CSVs SIN idSh: `idShNodes` vacío + early-return → comportamiento idéntico. (M2) `extractPNShape` captura `customerName`; `buildClassifiedRow` (idsh-direct) propaga `nodeCustomerName`+`nodeLabelObjs`; el preview muestra el **cliente real** y una columna **Etiquetas** con chips del color real de SH (`textContent`+color validado a hex, sin XSS). **Pendiente: validación en vivo del operador.**
+
+## Fix 2026-07-02 — Macro `RefrescarListas` (Module2 v14): dejar de pedir "conceder acceso" a cada catálogo viejo en Mac
+
+**Síntoma:** en Excel **para Mac**, al correr "Refrescar Listas" para importar el catálogo (`Catalogos_Steelhead_*.xlsx`), el sandbox pedía **conceder acceso archivo por archivo** a cada catálogo acumulado en Descargas, aunque no fuera el último (el que se quiere importar). Muy molesto; no pasa en Windows.
+
+**Causa raíz:** `BuscarMasReciente` (Module2) recorría TODOS los `Catalogos_Steelhead_*.xlsx` de la carpeta y llamaba `FileDateTime(fullPath)` sobre cada uno para hallar el más nuevo por mtime. En el sandbox de Excel para Mac, leer la metadata (`FileDateTime`) de un archivo NO autorizado dispara el diálogo "conceder acceso" **por cada archivo**. N catálogos viejos → N diálogos. (Windows no sandboxea `FileDateTime`.)
+
+**Fix (Module2 v14 · `vbas/Module2.txt`):** elegir el más reciente **solo por el nombre**, sin tocar disco. La extensión nombra los catálogos con fecha ISO — `Catalogos_Steelhead_YYYY-MM-DD.xlsx` (`catalog-fetcher.js:654`, `new Date().toISOString().slice(0,10)`) — que es ordenable como texto. `Dir()` solo lista nombres (no abre archivos), así el ÚNICO archivo que se toca —y para el que Mac pide acceso— es el ganador, hasta `Workbooks.Open`. Cambios:
+- `BuscarMasReciente`: sin `FileDateTime`; compara una clave derivada del nombre.
+- `ClaveOrdenCatalogo` (helper nuevo): `fecha ISO + contador` → `"2026-07-02|003"`. Maneja el sufijo ` (N)` de Chrome (varios el mismo día) eligiendo el N más alto (a 3 dígitos). Devuelve `""` si el nombre no calza el patrón (se ignora).
+- `NombreBase` (helper nuevo): reemplaza `Dir(found)` del diálogo "¿Usar este archivo?" (que también tocaba el archivo antes de tiempo) por extracción de basename con puro string.
+- `GrantAccessToMultipleFiles` NO se usa a propósito: **no habilita `Open`** en este Excel para Mac (nota en Module1, ExportarCSV v15.3).
+
+**Trade-off:** ahora "el último" se define por la fecha del NOMBRE, no por mtime. En uso normal (descargas en orden) es idéntico; solo diferiría si se copia/renombra un catálogo viejo a mano — y aun así la fecha del nombre es más fiel a "qué catálogo es".
+
+**Deploy de la plantilla (para que la que se DESCARGA traiga el fix):** la plantilla se sirve desde gh-pages `templates/Plantilla_CargaMasiva_v12.xlsm` (origen `main:remote/templates/`), **NO** desde Downloads. `deploy.sh` y el hook `pre-push` **solo** manejan `config.json` + `scripts/**.js`; los `.xlsm` de `templates/` se deployan **manual** en gh-pages, en el **mismo commit** que el bump de `config.version` (el hook exige que la version suba en cada push a gh-pages). El VBA del maestro se actualizó **trasplantando el `xl/vbaProject.bin`** (el `.xlsm` es un ZIP) desde la copia de trabajo ya corregida en Downloads: seguro porque `olevba -c` confirmó que el ÚNICO módulo que difería entre esa copia y el maestro era Module2 (v14 vs v13) — las hojas limpias del maestro no se tocan (`tools`→script ad-hoc `transplant.py` en scratchpad, `zipfile` preservando metadata; `unzip -t` + mismas entradas + `olevba` verifican). Config bump 1.7.50 → 1.7.51.
+
+**Pendiente:** la **versión de compatibilidad** (`Plantilla_CargaMasiva_v12_compatibilidad.xlsm`, Excel 2019) tiene el MISMO bug pero quedó en v13 — su `vbaProject.bin` difiere (Module1 compat para Excel 2019), así que **no** se puede trasplantar el bin de la normal; requiere abrirla en Excel y pegar Module2 v14. Run real del fix en la normal: pendiente confirmación del operador (el diálogo debe aparecer **una sola vez**, para el catálogo elegido).
+
+---
+
+## Fix 2026-07-02 — Historial de Cargas vacío ("Sin cargas registradas"): `DataCloneError` silencioso en el guardado a IDB
+
+**Síntoma:** popup → "Historial de Cargas" muestra **"Sin cargas registradas"** desde ~la migración a IDB (varias semanas), con la extensión **1.6.4 ya instalada** (la que lee de IDB). Las cargas se ejecutan bien (crean cotizaciones/PNs); solo el historial no aparece.
+
+**Causa raíz (confirmada por eliminación + empíricamente):** el guardado del historial era el **único** `saIdbSet` que persistía un **objeto crudo** (`saIdbSet('sa_load_history', history)`); TODOS los demás call sites guardan strings vía `JSON.stringify` (resume state L727, índice L681, marker L627). IndexedDB serializa con **structured clone** (estricto), no con JSON. `loadLog` arrastra valores **no clonables** del pipeline (p.ej. `p.products`, nodos del árbol de procesos con funciones/refs) → `store.put` lanza **`DataCloneError` SÍNCRONO** → el `catch` de "Error guardando log" (L6816) lo tragaba → el historial nunca persistía. El `localStorage` viejo usaba `JSON.stringify`, que **omite** funciones/símbolos silenciosamente (tolerante); la migración a structured clone rompió esa tolerancia sin que nadie lo notara (el guardado "parecía" funcionar).
+
+**Evidencia dura (IDB real de `app.gosteelhead.com`, perfil del operador):** `sa_storage/kv` contiene SOLO `sa_bulk_idb_migrated_v1` (el marker); `sa_load_history` = `undefined`; `localStorage.sa_load_history` ausente; `localStorage.sa_last_log` presente (sí hubo corridas). El marker (string ISO) se guardó bien → `saIdbSet` funciona para clonables; solo el objeto rico falla. Confirmación empírica en el navegador: `structuredClone({...fn})` lanza `DataCloneError` mientras `JSON.parse(JSON.stringify(...))` lo tolera. (La "validación 7 corridas" del 2026-06-07 fue en el perfil del dev, con objetos ya-JSON de la migración desde localStorage; ese historial nunca creció porque cada corrida nueva revienta el put sin sobrescribir.)
+
+**Fix:** helper `makeIdbSafe(obj)` = `JSON.parse(JSON.stringify(obj))` con fallback al original; se aplica en el `put` del historial → `saIdbSet('sa_load_history', makeIdbSafe(history))`. Replica la tolerancia del localStorage viejo (strip de no-serializables) preservando todos los datos que lee "Descargar CSV de corrección" (solo primitivos). Solo toca `remote/scripts/bulk-upload.js` (el lector `background.js` 1.6.4 ya está bien → **NO requiere republicar el .zip**). Tests: `tools/test/bulk-upload-history-idb.test.js` (4, incl. reproducción del bug con `structuredClone` como oráculo de IDB.put).
+
+**Qué se requiere para que siga funcionando:** (1) deploy del script a gh-pages (auto-actualiza en Chrome, sin zip); (2) el historial previo del operador **NO es recuperable** (nunca se guardó) — arranca de cero tras el fix; (3) si el historial se usa en **Safari/iPad**, propagar el fix al `safari/extension/main-bundle.js` (skill `safari-bundle-sync`). **Pendiente:** validación en vivo — la próxima corrida real del operador debe aparecer en "Historial de Cargas".
+
+**Deuda de test descubierta (separada, NO tocada aquí):** `node --test tools/test/*.test.js` da **54 fallos pre-existentes** — el harness `loadHelpers` de `bulk-upload-helpers.test.js` (y otros) solo carga `bulk-upload.js`, pero los helpers `classifyOnePN/rankCandidates/chunkParts/makeChunkQuoteName/...` se movieron a `bulk-upload-classify.js`/`-parse.js`/`-build.js` en F1 → salen `undefined` en `__helpers`. **No es bug de producción** (en el navegador cargan en orden vía `config.scripts`); es el harness que quedó desactualizado tras F1. Arreglar aparte: cargar los módulos hermanos en el sandbox del harness antes de `bulk-upload.js`.
+
+---
 
 ## Refactor completo (en curso) — F1 (config 1.6.40, 2026-06-06) — Módulos puros + golden tests
 

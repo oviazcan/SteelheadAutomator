@@ -464,8 +464,304 @@ Deploy `tools/deploy.sh "fix(hashes): rotación 6 ops (scan 2026-06-25)" --check
 - `query GetQuoteRelatedData` (hash `572c489092ca...`)
 - `query WorkOrderDialogQuery` (hash `4d745ead94ba...`)
 
-## 2026-06-30 13:18 — 0 rotado(s) (manual)
+## 2026-06-26 11:49 — corrección (1 de 2 rotados resuelto)
 
-- Config version: `1.7.34`
-- OK: 171 / 173 (2 skipped whitelist: `CurrentUser`, `GetPurchaseOrder`) · Tiempo: 111.6s
+**Corrida**: manual (agente de corrección de hashes). Fuente: `~/Downloads/scan_results_2026-06-26_114407.json`. Validación previa: `tools/.hash-validation/2026-06-26.json` (config 1.7.19, 2 stale).
+
+| Operación | viejo (8 chars) | nuevo (8 chars) | usedBy | estado |
+|---|---|---|---|---|
+| `WorkOrderDialogQuery` | `4d745ead` | `5b7f7153` | wo-mover | ✅ corregido + verificado en server (HTTP 400 `$workOrderId` required → hash existe) |
+| `GetQuoteRelatedData` | `572c489` | — | carga-masiva (catalog-fetcher, bulk-upload) | ⏳ **pendiente** — el scan no capturó la operación en vivo; el único hash previo en vivo (`04cc75ea`, jun-1) también está rotado |
+
+Deploy `tools/deploy.sh "fix(hashes): WorkOrderDialogQuery rotó (scan 2026-06-26) → 5b7f7153" --check wo-mover`: 1.7.19 → **1.7.20** + `lastUpdated 2026-06-26T11:49` (commit main `f2924e1`, gh-pages `ab5b35b`). Publicado en vivo (GitHub Pages, verificado por polling: `version:1.7.20`; invariante byte-a-byte OK).
+
+Re-validación post-deploy (config 1.7.20): **OK 170 / 173 · STALE 1** (`GetQuoteRelatedData`) · SKIPPED 2 (whitelist: `CurrentUser`, `GetPurchaseOrder`).
+
+**Pendiente `GetQuoteRelatedData`:** correr el hash-scanner abriendo una **cotización (Quote)** en Steelhead (carga de direcciones/contactos del cliente) para que el front nativo dispare la operación y el scanner capture el hash nuevo. Luego repetir bump+deploy.
+
+## 2026-06-26 11:57 — `GetQuoteRelatedData` resuelto (0 rotados)
+
+Scan nuevo `~/Downloads/scan_results_2026-06-26_115519.json` capturó la operación en vivo (status `changed`, HTTP 200):
+
+| Operación | viejo (8 chars) | nuevo (8 chars) | usedBy | estado |
+|---|---|---|---|---|
+| `GetQuoteRelatedData` | `572c489` | `02b8cf87` | carga-masiva (catalog-fetcher, bulk-upload) | ✅ corregido + verificado en server (HTTP 400 `$customerId` required → hash existe) |
+
+Deploy `tools/deploy.sh "fix(hashes): GetQuoteRelatedData rotó (scan 2026-06-26) → 02b8cf87" --check bulk-upload`: 1.7.20 → **1.7.21** + `lastUpdated 2026-06-26T11:57` (commit main `402544e` gh-pages). Publicado en vivo (polling: `version:1.7.21`; invariante byte-a-byte OK).
+
+Re-validación final (config 1.7.21): **OK 171 / 173 · STALE 0** · SKIPPED 2 (whitelist: `CurrentUser`, `GetPurchaseOrder`). ✅ **Ambas rotaciones del 2026-06-25 resueltas.**
+
+## 2026-06-26 16:51 — 0 rotado(s) (launchd)
+
+## 2026-06-26 22:20 — 2 rotado(s)
+
+- Config version: `1.7.23`
+- OK: 169 / 173 · Tiempo: 177.6s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-26.json`
+
+**Rotados:**
+- `query GetPurchaseOrdersDataForBill` (hash `ad098de458c4...`)
+- `mutation CreateInventoryTransferEventGroups` (hash `21bf4eb2b1b2...`)
+
+## 2026-06-28 03:19 — 2 rotado(s)
+
+- Config version: `1.7.23`
+- OK: 169 / 173 · Tiempo: 172.2s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-28.json`
+
+**Rotados:**
+- `query GetPurchaseOrdersDataForBill` (hash `ad098de458c4...`)
+- `mutation CreateInventoryTransferEventGroups` (hash `21bf4eb2b1b2...`)
+
+## 2026-06-29 08:27 — 0 rotado(s) (launchd)
+
+## 2026-06-29 14:19 — Reparación: deploy config 1.7.26 (2 rotados re-capturados del scan)
+
+**Corrida**: manual (sesión de la feature `file-uploader` display-image, skill `steelhead-hash-validator`). El usuario pidió corregir de paso los rotados aprovechando el scan de hoy.
+
+**Resultado pre-reparación (config 1.7.25): 169 ok / 2 stale / 2 skipped / 0 unknown / 0 auth** en 102.1s. Resultado `tools/.hash-validation/2026-06-29.json`.
+
+| Operación | viejo → nuevo | usedBy | Fuente del hash nuevo |
+|---|---|---|---|
+| `GetPurchaseOrdersDataForBill` (query) | `ad098de4…` → `a94f4396…` | bill-autofill | scan `2026-06-29_135728` (`scanResults`, no `apiKnowledge`) |
+| `CreateInventoryTransferEventGroups` (mutation) | `21bf4eb2…` → `901d61bf…` | inventory-reset | scan `2026-06-29_135728` (`scanResults`) |
+
+- **Probe puntual al server (antes de editar):** ambos hashes viejos → `"Must provide a query string"` (STALE 1/1); ambos nuevos → HTTP 400 de variables (hash existe en el registry, OK).
+- **Discrepancia con launchd:** la entrada `2026-06-29 08:27 — 0 rotado(s) (launchd)` reportó 0 con el **mismo** config 1.7.25; la corrida manual de las 14:00 detectó 2 stale, confirmados con probe. Consistente con flapping/rollout escalonado (canary) del server, como `GetDomain` el 19/22 jun — NO bug del validador. (Estos 2 ya venían reportados stale el 26 y 28 jun, sin reparar hasta hoy.)
+- **`AllSensorDashboards` NO se tocó:** el scan trae un hash distinto al de config, pero el validador en vivo lo da **OK** (el server aún acepta el del config; el front migró a otro hash sin rotar el viejo). `sensor-status-autofill` no está roto. Sin cambio — defensa contra falsos positivos del diff scan-vs-config.
+- Deploy `tools/deploy.sh --check bill-autofill`: 1.7.25 → **1.7.26** (commit main `3500b8d`, gh-pages `e80fe8c`). Publicado en vivo (GitHub Pages sirve config 1.7.26 con ambos hashes nuevos, verificado por curl).
+
+## 2026-06-29 21:19 — 0 rotado(s) (launchd)
+
+## 2026-06-29 23:30 — 0 rotado(s) (launchd)
+
+## 2026-06-30 22:19 — 2 rotado(s)
+
+- Config version: `1.7.37`
+- OK: 172 / 176 · Tiempo: 128.4s
 - Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-30.json`
+
+**Rotados:**
+- `query InvoiceByIdInDomain` (hash `f18f1274740a...`)
+- `query GetVendor` (hash `efb7af012290...`)
+
+## 2026-06-30 23:19 — 2 rotado(s)
+
+- Config version: `1.7.39`
+- OK: 175 / 179 · Tiempo: 144.8s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-06-30.json`
+
+**Rotados:**
+- `query InvoiceByIdInDomain` (hash `f18f1274740a...`)
+- `query GetVendor` (hash `efb7af012290...`)
+
+## 2026-07-01 00:18 — 2 resueltos (fix manual + deploy)
+
+- Rotación detectada el 2026-06-30 en `InvoiceByIdInDomain` (usedBy `cfdi-attacher`) y `GetVendor`.
+- Hashes nuevos recuperados del scan `~/Downloads/scan_results_2026-06-30_233100.json`
+  (`previousHash` = hash viejo del config en ambos, `status: changed`, `lastHttpStatus: 200`):
+  - `InvoiceByIdInDomain`: `f18f1274740a…` → **`5844a41c37db…`**
+  - `GetVendor`: `efb7af012290…` → **`87ad05379932…`**
+- Deploy `tools/deploy.sh`: 1.7.43 → **1.7.44** (commit main `21e45a5`, gh-pages `340d915`).
+  El otro agente había avanzado 1.7.39→1.7.43 con el applet `vale-almacen` (ortogonal, sin tocar hashes).
+- Post-deploy: validador `177 ok / 0 stale / 2 skipped` (whitelist `CurrentUser`, `GetPurchaseOrder`), exit 0.
+- Safari/iPad: **NO requiere rebundle.** La advertencia de `deploy.sh` (`build-safari.sh --check`) es un falso positivo para cambios de solo-hash: `bridge.js` fetchea `config.json` de gh-pages en runtime y `sa-bootstrap.js` → `SteelheadAPI.init()` re-instala los hashes en caliente (ver `safari/sa-bootstrap.js:5` — "REFRESCA con el config en vivo (hashes que rotaron)"). El bundle solo se rehornea cuando cambia el **código** de un applet (`remote/scripts/`), no cuando solo rotan hashes en `config.json`. Verificado en vivo por el usuario (2026-07-01).
+
+## 2026-07-01 22:00 — 3 rotado(s)
+
+- Config version: `1.7.46`
+- OK: 161 / 179 · Tiempo: 2022.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-01.json`
+
+**Rotados:**
+- `query AllCustomers` (hash `66e271f6a8a2...`)
+- `query AllSensorDashboards` (hash `432339f25bae...`)
+- `query SensorDashboardQuery` (hash `bde56bd609a2...`)
+
+## 2026-07-01 23:19 — 4 rotado(s)
+
+- Config version: `1.7.47`
+- OK: 173 / 179 · Tiempo: 140.5s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-01.json`
+
+**Rotados:**
+- `query Customer` (hash `96b214b5632d...`)
+- `query AllCustomers` (hash `66e271f6a8a2...`)
+- `query AllSensorDashboards` (hash `432339f25bae...`)
+- `query SensorDashboardQuery` (hash `bde56bd609a2...`)
+
+## 2026-07-02 00:55 — 4 "rotado(s)" DIAGNOSTICADOS COMO FALSOS POSITIVOS (whitelist)
+
+- Config version: `1.7.49` · Validador: 173 ok / 4 "stale" / 2 skipped (antes de whitelist).
+- Ops marcadas: `Customer`, `AllCustomers`, `AllSensorDashboards`, `SensorDashboardQuery`.
+  Todas con reason `Must provide a query string` (3 corridas consecutivas, consistente).
+
+### Diagnóstico: NO hay rotación. Hashes de `config.json` correctos. **No se tocó config ni se deployó.**
+
+Evidencia (investigación 2026-07-02):
+1. **Estabilidad histórica**: `AllCustomers`/`AllSensorDashboards`/`SensorDashboardQuery`
+   tienen el MISMO hash en los 75 scans desde 2026-05-05 (2 meses). `Customer` estable
+   desde 2026-06-25 (`875f…`→`96b2…`, rotación real de ese día). Ningún scan post-alerta
+   trae un hash nuevo → no existe hash de reemplazo.
+2. **Prueba en vivo (scan `scan_results_2026-07-02_003120.json`, tomado DESPUÉS de la alerta)**:
+   las 4 ops ejecutaron exitosamente en el navegador con los MISMOS hashes de config —
+   `Customer` scanCount=50 / 655 responseFields, `AllCustomers` scanCount=30 / 489,
+   `AllSensorDashboards` 93 responseFields, `SensorDashboardQuery` 147 + variablesSample real.
+3. **Probe hash-only externo consistente** (6/6 "Must provide") vs control `GetVendor`
+   (6/6 resuelve "Variable $idInDomain…") → no es LRU intermitente.
+4. **Root cause**: el validador es un **cliente externo** (Python + `x-steelhead-idp-token`).
+   Steelhead responde `Must provide a query string` a clientes que no son el frontend Apollo
+   del browser para ciertas ops sensibles a sesión. Nuestros applets corren **in-page**
+   (`fetch` `credentials:'include'`, mismo origen) → funcionan. Mismo patrón exacto que
+   `CurrentUser` y `GetPurchaseOrder` (ya en whitelist desde 2026-05-23).
+
+### Acciones
+- **Whitelist ampliada** (`tools/hash-validator-whitelist.json`): +`Customer`, +`AllCustomers`,
+  +`AllSensorDashboards`, +`SensorDashboardQuery` con la evidencia del scan y `verifiedOn:2026-07-02`.
+  Post-whitelist el validador da **173 ok / 0 stale / 6 skipped → exit 0**.
+  ⚠️ Nota en la entrada de `Customer`: SÍ rota de verdad ocasionalmente — si un scan futuro
+  muestra hash DISTINTO con `status:changed`+`lastHttpStatus:200`, es rotación real, quitar de whitelist.
+- **Notificación enriquecida**: `tools/notify-stale-hashes.sh` + nuevo `tools/hash-stale-report.py`.
+  Ahora el issue/email/bitácora listan, por op rotada, **qué applets truenan** (grep de op citada
+  en `remote/scripts/*.js` + `knownOperations.usedBy`) y una sección **"cómo recuperar (acciones en
+  el scan)"** que distingue rotación real (`status:changed`+`lastHttpStatus:200`, hash distinto) de
+  falso positivo (hash igual + `responseFields`/`scanCount>0` → whitelist, no tocar config).
+
+## 2026-07-02 23:04 — 0 rotado(s) (launchd)
+
+## 2026-07-02 23:19 — 1 rotado(s)
+
+- Config version: `1.7.55`
+- OK: 175 / 182 · Tiempo: 137.4s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-02.json`
+
+**Rotados — applets que truenan:**
+
+#### ⚠️ `query GetDomain` · hash `c0c242bcac01…`
+- **Applets que truenan:** bill-autofill, invoice-autofill
+- **usedBy (config):** bill-autofill
+- **Qué hace:** Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate
+
+## 2026-07-03 00:00 — RESUELTO: rotación `GetDomain`
+
+- **Op:** `query GetDomain` · applets afectados: `bill-autofill`, `invoice-autofill`
+- **Hash viejo:** `c0c242bcac011a6e72087bd0d0698dde5cf2fe8b247a51e4eb3b08c36299c866`
+- **Hash nuevo:** `86652dafed0174bb91b95e11cf8867ca13fb7303fd211471c221ead70ac8b1e1`
+- **Fuente:** `scan_results_2026-07-02_235711.json` (`scanResults.GetDomain.hash`; `previousHash` == hash viejo del config → rotación real confirmada)
+- **Deploy:** `config.json` 1.7.55 → 1.7.56 vía `tools/deploy.sh` (commit `9bb7313` main / `160c1d1` gh-pages); invariante gh-pages↔main:remote/ byte-a-byte OK.
+- **Bundle Safari:** no requiere rebundle — el bridge refresca `config.json` en runtime (rotación de hash no toca applets del bundle).
+
+## 2026-07-03 08:20 — 0 rotado(s) (launchd)
+
+## 2026-07-03 13:16 — RESUELTO: rotación `AllCustomers` + `Customer` (NO detectada por el validador — whitelist)
+
+- **Síntoma reportado por el operador:** carga masiva traía **0 clientes**.
+- **Ops rotadas:** `query AllCustomers` (catalog-fetcher / portal-importer, carga-masiva) y `query Customer` (invoice-autofill, create-order-autofill, weight-quick-entry).
+  - **AllCustomers:** viejo `66e271f6a8a2…` → nuevo `8d4dfe69d3050a16ad802015e6d14b6458db5266e62c67a2321d23b440086037` (validado in-page HTTP 200, 80 clientes).
+  - **Customer:** viejo `96b214b5632d…` → nuevo `12d69cd18ff3ba1ac2174f2260cfdcfe1de894f9546ca531711a1c4010ebb257`.
+- **Cómo se detectó:** el `validate-hashes.py` de esta mañana (08:20) dio **`0 rotado(s)`** porque **ambas ops están en `hash-validator-whitelist.json`** (falsos-positivos session-sensitive verificados el 2026-07-02). La rotación se confirmó **capturando el `sha256Hash` que el frontend envía in-page** (interceptor de `fetch` en la tab de Steelhead) y comparándolo con el config — el método del hash-scanner. El test `400 "Must provide a query string"` in-page **NO discrimina** para estas ops (da 400 aun con el hash viejo whitelisted); la señal fiable es el hash capturado ≠ config.
+- **Deploy:** `config.json` 1.7.56 → 1.7.57 vía `tools/deploy.sh` (commit `73e5503` main / `dfb2728` gh-pages); invariante gh-pages↔main:remote/ byte-a-byte OK. También se publicó el **guard de lista vacía** del `catalog-fetcher` (bloquea la descarga si un catálogo crítico viene vacío por hash rotado, en vez de sobrescribir las listas buenas con vacíos al correr `RefrescarListas`). Tests: `tools/test/catalog-fetcher-health.test.js`.
+- **Bundle Safari:** no requiere rebundle — el bridge refresca `config.json` en runtime.
+- **⚠️ Lección / gap del validador:** **2 de 6 ops whitelisted rotaron el mismo día y el validador las skipeó → reportó `0 rotado`.** La whitelist enmascara rotaciones reales de ops session-sensitive. **Pendiente:** que el validador re-verifique periódicamente las whitelisted vía hash-scanner (no puede desde Python) o emita un recordatorio para escanearlas. Las 4 restantes (`CurrentUser`, `GetPurchaseOrder`, `AllSensorDashboards`, `SensorDashboardQuery`) quedaron **sin verificar** esta sesión (sus applets no reportan fallas; probablemente vigentes).
+
+## 2026-07-03 15:03 — RESUELTO: rotación `CurrentUser` + `AllSensorDashboards` (detectadas por hash-autopilot)
+
+- **Cómo se detectaron:** primer uso del prototipo **`hash-autopilot`** (motor Playwright headless con auth por inyección de tokens ROCP en localStorage; ver `docs/superpowers/specs/2026-07-03-hash-autopilot-design.md`). Al capturar el tráfico real del frontend Apollo, ambas ops usaban un hash **ausente** del config → rotación confirmada (no multi-variante: cada op usa 1 solo hash; respuesta del frontend con `data` OK).
+- **CurrentUser:** `18c6574c779e…` → `9ca864c4b05315bc69881a0506a55ce96c44b102d40bb27f784d986d0dfb3a3c` (`report-regen`; la nota del config lo daba "deprecada 2026-04-27" pero el frontend HOY lo ejecuta con éxito → nota obsoleta).
+- **AllSensorDashboards:** `432339f25bae…` → `597eafd7bedf12072e68b2b1ac03f1088e2444a054e03340b1ee57a0116127ce` (`sensor-status-autofill`, estaba roto).
+- **Deploy:** `config.json` 1.7.57 → 1.7.58 vía `tools/deploy.sh` (commit `b7e8360` main / `505df75` gh-pages).
+- **Por qué el idp-token NO las detectaba:** son session-bound — dan "Must provide a query string" al cliente Python (idp-token) aun vigentes (a diferencia de `AllCustomers`/`Customer`, que sí son validables por idp-token con variables reales). Solo el Apollo real del frontend (navegador con sesión OAuth) las resuelve → de ahí el motor headless del hash-autopilot.
+- **Pendiente:** `GetPurchaseOrder` + `SensorDashboardQuery` (recetas de captura aún por afinar); Tasks 6-10 del hash-autopilot (validación por respuesta capturada, auto-deploy, notify, escalamiento, launchd).
+
+## 2026-07-03 17:16 — 0 rotado(s) (launchd)
+
+## 2026-07-03 19:48 — 0 rotado(s) (launchd)
+
+## 2026-07-04 08:09 — 4 rotado(s)
+
+- Config version: `1.7.57`
+- OK: 174 / 182 · Tiempo: 2957.8s
+- Resultado: `/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/.hash-validation/2026-07-04.json`
+
+**Rotados — applets que truenan:**
+
+#### ⚠️ `query GetPartNumber` · hash `804dd8f7e65f…`
+- **Applets que truenan:** auditor, board-metal-tooltip, bulk-upload, file-uploader, load-calculator-modal, pn-lifecycle-core, po-reconciler, price-confirm-guard, spec-migrator, unit-autoconvert, weight-quick-entry, wo-deadline-changer
+
+#### ⚠️ `query InvoiceByIdInDomain` · hash `5844a41c37db…`
+- **Applets que truenan:** cfdi-attacher, invoice-auto-regen, invoice-autofill
+- **usedBy (config):** cfdi-attacher
+- **Qué hace:** Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)
+
+#### ⚠️ `query GetReceivedOrdersWithReceivedOrderLineItems` · hash `944ee7858fbb…`
+- **Applets que truenan:** invoice-autofill
+- **usedBy (config):** invoice-autofill
+- **Qué hace:** Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV
+
+#### ⚠️ `query GetProcessNode` · hash `fae7d1d1d4e5…`
+- **Applets que truenan:** process-canon, process-shared
+- **usedBy (config):** process-canon, process-deep-audit
+- **Qué hace:** Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo ra…
+
+## 2026-07-06 08:36 — 0 rotado(s) (launchd)
+
+## 2026-07-06 ~19:00 — Release Steelhead rotó ~8 hashes (destapado por bulk-upload idSh)
+
+**Cómo se detectó:** una carga masiva por Id SH (bulk-upload) falló con **447× `HTTP 400 GetPartNumber: "Must provide a query string."`** en el apply. El validador de la mañana (08:36) daba 0 rotados → la rotación fue **durante el día** (release de front entre 08:36 y ~18:30). El fix de idSh (v1.5.28) no causó el error: solo hizo que el flujo idSh **llegara** al apply, que usa `GetPartNumber` intensivamente, destapando la rotación.
+
+**Diagnóstico (playbook):** validador manual confirmó 4 STALE (`GetPartNumber`, `InvoiceByIdInDomain`, `GetReceivedOrdersWithReceivedOrderLineItems`, `GetProcessNode`). Re-scan con hash-scanner (2 exports de 92 ops) dio los hashes nuevos con status 200 → **rotación** (no deprecación). El scan además mostró ops que el front ya migró pero cuyo **hash viejo sigue vivo** (validador OK): `AllPartNumbers`, `ActiveReceivedOrders`, `GetReceivedOrder`, `ReceivingBatchesQuery` — se actualizan preventivamente.
+
+**Actualizados en `config.json` (bump 1.7.63 → 1.7.64):**
+| Op | viejo | nuevo | tipo |
+|---|---|---|---|
+| `GetPartNumber` | `804dd8f7…` | `8e3fdb52…` | 🔴 STALE (bulk-upload +12 applets) |
+| `InvoiceByIdInDomain` | `5844a41c…` | `c87fd9c2…` | 🔴 STALE (invoice-autofill) |
+| `AllPartNumbers` | `827be681…` | `02cfe381…` | 🟡 front migró (prefetch bulk-upload) |
+| `ActiveReceivedOrders` | `495ddfd6…` | `07d3e194…` | 🟡 |
+| `GetReceivedOrder` | `3b4ab8f1…` | `75e7219a…` | 🟡 |
+| `ReceivingBatchesQuery` | `5b0baf36…` | `55a06a30…` | 🟡 |
+
+**Ya vivos antes de este fix** (auto-deployados por hash-autopilot, sync main=gh-pages): `AllSensorDashboards` (`597eafd7…`), `CurrentUser` (`9ca864c4…`).
+
+**Pendientes (STALE, no capturados — faltó navegar su flujo en el scan):** `GetReceivedOrdersWithReceivedOrderLineItems` (invoice-autofill), `GetProcessNode` (process-canon). No bloquean bulk-upload; capturar navegando una OV-con-líneas y un proceso.
+
+**Bug del hash-scanner descubierto:** el usuario reportó que tuvo que **recargar la página** y el scanner solo capturó lo posterior al reload (se supone era "a prueba de reload"); además exportó **2 scans** en vez de 1. Pendiente de investigar en `hash-scanner.js`.
+
+**Robustez pendiente (pedida por el operador):** (B) bulk-upload debe **detectar el patrón `Must provide a query string` masivo** y avisar "hash rotado" en vez de 447 WARNs; (C) el resumen NO debe reportar "OK: 447" cuando `SavePartNumber`/specs/enrich fallaron (contaba desarchivados como OK).
+
+## 2026-07-14 10:37 — 6 rotado(s) corregidos + 2 por la sesión de main (deploy 1.7.110)
+
+**Corrida:** manual (sesión workbench). Doble validación convergente por dos caminos de auth:
+- **probe headless** (`probe-config-hashes.mjs`, auth del frontend ROCP) → 6 queries STALE.
+- **`validate-hashes.py`** (idp-token) → confirmó las 6 queries **y** sumó 1 mutation (`UpdateReceivedOrder`; el probe no prueba mutations por seguridad). 112 queries + 68 mutations probadas.
+- **Falsas alarmas descartadas:** `AllPartNumbers` y `StationTreatmentByWorkOrder` salieron *vigentes* (eran inconclusos "auth" del probe headless — necesita masa crítica de queries para hidratar; con 1 sola cae en auth). `GetInventoryItem`/`SearchUnits` ya arreglados en 1.7.103.
+
+**Fuente de hashes nuevos:** `~/Downloads/scan_results_2026-07-14_101907.json` (6 queries) + `..._102838.json` (trae `UpdateReceivedOrder`). Todos `status:changed, http:200, errorCount:0, responseFields:sí` → rotación real (no deprecación). **Verificado antes de deployar:** re-corrí el probe con los 6 hashes nuevos aplicados → **0 STALE, 111 vigentes**.
+
+**Corregidos en `config.json` (bump 1.7.109 → 1.7.110, commit main `e6564e3`, gh-pages `82699b5`):**
+
+| Op | tipo | viejo | nuevo | applets |
+|---|---|---|---|---|
+| `AllQuotes` | query | `2586de5e…` | `40ee4d1c…` | bulk-upload |
+| `AllStations` | query | `5bd4ae33…` | `83451625…` | load-calculator |
+| `CreateEditReceivedOrderDialogQuery` | query | `5b01210e…` | `b7187e08…` | ov-operations |
+| `GetAddPartsReceivedOrder` | query | `677ae9ca…` | `05e2272a…` | po-reconciler |
+| `GetDomain` | query | `b2609437…` | `c96d6772…` | bill-autofill, invoice-autofill |
+| `UpdateReceivedOrder` | mutation | `d9e88576…` | `b3602b2d…` | ov-operations, po-reconciler |
+
+**Coordinación (dos sesiones):** la sesión de `main` arregló en paralelo `GetStation` (`a41cfd01…`) y `CurrentUser` (`0c1911e4…`) vía hash-autopilot (commit `78944ac`, bump → 1.7.109). Su `GetStation` **coincide exacto con mi scan** (misma fuente de verdad). No re-tocados. main quedó limpio y sincronizado antes de mi deploy (sin colisión de push).
+
+### Self-healing — estado y mapa de recetas (pendiente fase B)
+Ninguno de los 7 ops rotados tenía receta de captura headless en `click-recipes.json` → el motor los **detecta** (probe) pero **no los auto-captura**; la captura del hash nuevo aún dependió del hash-scanner manual. El scan aporta la pantalla que dispara cada op (base para construir las recetas):
+
+| Op | pantalla que la dispara | receta a construir |
+|---|---|---|
+| `AllQuotes` | `/Domains/{d}/Quotes` | goto lista |
+| `AllStations` | `/Stations` | goto lista |
+| `GetDomain` | `/Domain` | goto |
+| `GetStation` | `/Stations/{id}` (fila de `/Stations`) | client-side nav (clic en fila) |
+| `CreateEditReceivedOrderDialogQuery` | SalesOrder detalle → botón "Editar Orden de Venta" | clic interacción |
+| `GetAddPartsReceivedOrder` | SalesOrder detalle → botón "Agregar Piezas (Tabla)" | clic interacción |
+| `UpdateReceivedOrder` | SalesOrder → botón "Guardar" | **mutation → ciclo sentinela** (no navegable) |
+
+Las 3 de goto (`AllQuotes`/`AllStations`/`GetDomain`) son las candidatas más fáciles; las de detalle necesitan el WIP de navegación client-side de `wt/hash-selfheal` (viewport 1680×1200 + clic real en `<Link>`, sin re-`goto`), aún sin validar en vivo. `UpdateReceivedOrder` requiere declarar sentinela (patrón Fase C).

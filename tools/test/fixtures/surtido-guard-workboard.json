@@ -1,0 +1,11 @@
+{
+  "_comment": "GetRelatedWorkboardData.data (recorte allRecipeNodes) — shape REAL, datos sintéticos. 7001 es el nodo objetivo de surtido (con prefijo de línea); 7002/7003 no lo son.",
+  "allRecipeNodes": {
+    "nodes": [
+      { "id": 7001, "name": "T109 Preparando Surtido en Almacén", "__typename": "RecipeNode" },
+      { "id": 7002, "name": "T109 Recibo de Orden", "__typename": "RecipeNode" },
+      { "id": 7003, "name": "Listo para Preparar Surtido", "__typename": "RecipeNode" }
+    ],
+    "__typename": "RecipeNodesConnection"
+  }
+}

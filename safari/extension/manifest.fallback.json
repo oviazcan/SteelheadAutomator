@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Steelhead Automator — iPad",
+  "description": "Bundle de applets para iPad. Variante PLAN B (sin world:MAIN; inyecta el bundle vía <script> tag).",
+  "version": "0.1.0",
+  "host_permissions": [
+    "https://app.gosteelhead.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://app.gosteelhead.com/*"],
+      "js": ["bridge.js", "sg-inject.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["main-bundle.js"],
+      "matches": ["https://app.gosteelhead.com/*"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

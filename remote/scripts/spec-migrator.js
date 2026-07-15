@@ -3523,7 +3523,7 @@ const SpecMigrator = (() => {
       geometryTypeId: detail.geometryTypeId || null,
       partNumberGroupId: detail.partNumberGroupId || null,
       descriptionMarkdown: detail.descriptionMarkdown || '',
-      customerFacingNotes: detail.customerFacingNotes || '',
+      externalNotes: (detail.externalNotes ?? detail.customerFacingNotes) || '',
     };
     return {
       pnId: pnNode.id,
@@ -3826,7 +3826,7 @@ const SpecMigrator = (() => {
         isOneOff: false, isTemplatePartNumber: false, isCoupon: false,
         partNumberGroupId: d.partNumberGroupId || null,
         descriptionMarkdown: d.descriptionMarkdown || '',
-        customerFacingNotes: d.customerFacingNotes || '',
+        externalNotes: (d.externalNotes ?? d.customerFacingNotes) || '',
         labelIds: [], ownerIds: [], defaults: [], optInOuts: [],
         inventoryPredictedUsages: [],
         specsToApply: [],

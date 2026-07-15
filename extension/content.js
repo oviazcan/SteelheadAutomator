@@ -50,15 +50,12 @@
     }
   });
 
-  // Auto-restart hash scanner if it was active before page reload
-  chrome.storage.local.get(['sa_scanning'], (data) => {
-    if (!data.sa_scanning) return;
-    console.log('[SteelheadAutomator] Scanner was active — auto-restarting after page load');
-    // Wait for page to settle, then ask background to re-inject and start scanner
-    setTimeout(() => {
-      chrome.runtime.sendMessage({ action: 'auto-restart-scan' });
-    }, 1500);
-  });
+  // NOTA (fix 2026-07-06): el auto-restart del hash-scanner tras un reload lo maneja
+  // EXCLUSIVAMENTE background.js (chrome.tabs.onUpdated, status 'complete'). Antes había
+  // TAMBIÉN un auto-restart aquí (page-load → setTimeout → 'auto-restart-scan'), y los dos
+  // corrían concurrentes: re-inyectaban el scanner 2 veces y, como el script reseteaba su
+  // `discovered` en cada re-inyección, en ciertas secuencias el mergeResults de lo capturado
+  // antes del reload no se aplicaba → se perdía. Un solo mecanismo = sin race.
 
   // Listen for periodic scan persistence requests from MAIN world
   document.addEventListener('sa-persist-scan', () => {

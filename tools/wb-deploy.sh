@@ -94,8 +94,31 @@ sed -i '' -E "s/(\"lastUpdated\"[[:space:]]*:[[:space:]]*\")[^\"]+\"/\1$NOW\"/" 
 node --check "$MAINWT/$SRCFILE" >/dev/null 2>&1 || die "el script aplicado no pasa node --check."
 echo "→ aplicado $SCRIPT_NAME + bump ${CUR} → ${NEW}"
 
+# 2b) gate de calidad: la suite debe estar verde CON el script de workbench ya
+# aplicado a main:remote. Si falla, `die` dispara el trap → restaura main + WIP.
+# Bypass de emergencia: SH_SKIP_TESTS=1 SH_ALLOW_DEPLOY=1 tools/wb-deploy.sh ...
+if [ "${SH_SKIP_TESTS:-0}" = "1" ]; then
+  echo "⚠️  SH_SKIP_TESTS=1 — SALTANDO la suite de tests (bypass de emergencia)."
+elif [ -x "$MAINWT/tools/run-tests.sh" ]; then
+  echo "→ gate: corriendo la suite de tests (tools/run-tests.sh)…"
+  "$MAINWT/tools/run-tests.sh" || die "suite de tests ROJA con el script aplicado (bypass: SH_SKIP_TESTS=1)."
+fi
+
+# 2c) sellar: scriptIntegrity + firma (config.sig). Mismo candado que deploy.sh — este
+# path NO llama a deploy.sh, así que debe sellar por su cuenta (si no, en Fase 2 pushearía
+# un config.json bumpeado con config.sig viejo/ausente y el pre-push lo bloquearía).
+if [ -n "${SA_KMS_KEY:-}" ]; then
+  echo "→ seal: scriptIntegrity + firma KMS"
+  node "$MAINWT/tools/seal-config.mjs" --config "$MAINWT/remote/config.json" \
+    --sig "$MAINWT/remote/config.sig" --scripts-dir "$MAINWT/remote/scripts" \
+    --backend kms --kms-key "$SA_KMS_KEY" || die "seal falló (¿acceso KMS?)."
+else
+  echo "⚠️  SA_KMS_KEY no seteada — deploy SIN firmar (pre-Fase-0)."
+fi
+
 # 3) commit main (solo el script + config)
 G add "$SRCFILE" remote/config.json
+[ -f "$MAINWT/remote/config.sig" ] && G add remote/config.sig || true
 G commit -q -m "$MSG
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>" || die "commit main falló."
@@ -104,6 +127,9 @@ echo "→ commit main: $(G log --oneline -1)"
 # 4) espejo gh-pages (set servido ∪ lo ya presente) + commit
 G checkout gh-pages >/dev/null 2>&1 || die "no pude checkout gh-pages."
 G show main:remote/config.json > "$MAINWT/config.json"
+if G cat-file -e main:remote/config.sig 2>/dev/null; then
+  G show main:remote/config.sig > "$MAINWT/config.sig"
+fi
 { G show main:remote/config.json | grep -oE '"scripts/[^"]+\.js"' | tr -d '"'
   G ls-tree -r --name-only gh-pages -- scripts/ ; } | sort -u | while IFS= read -r rel; do
   [ -n "$rel" ] || continue
@@ -112,6 +138,7 @@ G show main:remote/config.json > "$MAINWT/config.json"
   fi
 done
 G add scripts config.json
+[ -f "$MAINWT/config.sig" ] && G add config.sig || true
 G diff --cached --quiet || G commit -q -m "deploy: $SCRIPT_NAME ($MSG) + bump $NEW"
 G checkout main >/dev/null 2>&1 || die "no pude regresar a main (revisa el worktree)."
 echo "→ gh-pages espejado y commiteado"

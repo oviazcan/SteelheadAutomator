@@ -151,6 +151,46 @@ test('intervalos de polling por estado', () => {
   assert.strictEqual(RR.pickPollIntervalMs('loading'), 15000);
 });
 
+// ── formatLastGenerated / formatRelativeAge / extractLatestGeneratedAt (v0.3.0 tooltip) ──
+test('formatLastGenerated: null/inválido → null', () => {
+  assert.strictEqual(RR.formatLastGenerated(null), null);
+  assert.strictEqual(RR.formatLastGenerated(''), null);
+  assert.strictEqual(RR.formatLastGenerated('no-es-fecha'), null);
+});
+
+test('formatLastGenerated: ISO válido devuelve string no vacío', () => {
+  const out = RR.formatLastGenerated('2026-07-02T21:45:00Z');
+  assert.strictEqual(typeof out, 'string');
+  assert.ok(out.length > 0);
+});
+
+test('formatRelativeAge: buckets minuto/hora/día', () => {
+  const now = Date.parse('2026-07-02T12:00:00Z');
+  assert.strictEqual(RR.formatRelativeAge('2026-07-02T11:59:30Z', now), 'hace un momento'); // <1 min
+  assert.strictEqual(RR.formatRelativeAge('2026-07-02T11:55:00Z', now), 'hace 5 min');
+  assert.strictEqual(RR.formatRelativeAge('2026-07-02T09:00:00Z', now), 'hace 3 h');
+  assert.strictEqual(RR.formatRelativeAge('2026-06-30T12:00:00Z', now), 'hace 2 d');
+});
+
+test('formatRelativeAge: futuro o inválido → cadena vacía', () => {
+  const now = Date.parse('2026-07-02T12:00:00Z');
+  assert.strictEqual(RR.formatRelativeAge('2026-07-02T12:05:00Z', now), '');
+  assert.strictEqual(RR.formatRelativeAge('no-es-fecha', now), '');
+  assert.strictEqual(RR.formatRelativeAge(null, now), '');
+});
+
+test('extractLatestGeneratedAt: lee domainByDomainId.latestDuckdbFileCreatedAt', () => {
+  const data = { currentSession: { userByUserId: { domainByDomainId: { latestDuckdbFileCreatedAt: '2026-07-02T21:45:00Z' } } } };
+  assert.strictEqual(RR.extractLatestGeneratedAt(data), '2026-07-02T21:45:00Z');
+});
+
+test('extractLatestGeneratedAt: respuesta incompleta → null (fail-safe)', () => {
+  assert.strictEqual(RR.extractLatestGeneratedAt(null), null);
+  assert.strictEqual(RR.extractLatestGeneratedAt({}), null);
+  assert.strictEqual(RR.extractLatestGeneratedAt({ currentSession: {} }), null);
+  assert.strictEqual(RR.extractLatestGeneratedAt({ currentSession: { userByUserId: { domainByDomainId: {} } } }), null);
+});
+
 // ── evalAllowed (gating reactivo v0.2.0) ────────────────────────────────────
 test('evalAllowed: admin pasa sin importar perms', () => {
   assert.strictEqual(RR.evalAllowed({ isAdmin: true, perms: [] }, ['MANAGE_REPORTING']), true);

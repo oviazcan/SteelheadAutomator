@@ -56,6 +56,40 @@ for s in d.get("stale", []):
 PY
 )"
 
+# Bloques ENRIQUECIDOS: por cada op rotada, applets que truenan + descripción +
+# flag de whitelist (falso-positivo probable). Ver tools/hash-stale-report.py.
+STALE_MD="$(python3 "$REPO_ROOT/tools/hash-stale-report.py" "$RESULT_JSON" --format md 2>/dev/null || echo "$STALE_BULLETS")"
+STALE_PLAIN="$(python3 "$REPO_ROOT/tools/hash-stale-report.py" "$RESULT_JSON" --format plain 2>/dev/null || echo "$STALE_BULLETS")"
+
+# Acciones de recuperación (mismas para issue/email/bitácora). Responde:
+# "qué acciones hacer en el scan para recuperar los hashes rotados".
+read -r -d '' RECOVERY_STEPS <<'STEPS' || true
+Cómo recuperar (acciones en el scan):
+
+1. Abre Steelhead con la extensión cargada y haz HARD-RELOAD (Cmd+Shift+R) para
+   bustear el cache del bundle del frontend.
+2. Navega a las pantallas de los APPLETS AFECTADOS (listados arriba) para que el
+   frontend dispare esas operaciones. Guía por op típica:
+     - Customer / AllCustomers  -> Clientes, detalle de cliente, o una factura.
+     - SensorDashboardQuery / AllSensorDashboards -> sección Sensor Dashboards.
+     - (en general: la pantalla donde el applet afectado hace su trabajo)
+3. Corre el applet HASH-SCANNER -> "Iniciar scan" -> navega por esas pantallas
+   -> descarga scan_results_*.json (queda en ~/Downloads, NUNCA en el repo).
+4. Abre el scan y para CADA op rotada localiza su entrada (busca por operationName):
+     * ROTACIÓN REAL -> la entrada trae "status":"changed" + "lastHttpStatus":200
+       y su "hash" DIFIERE del de config.json. Ese hash es el nuevo: cópialo.
+     * FALSO POSITIVO -> el "hash" del scan es IGUAL al de config.json y la entrada
+       trae responseFields / scanCount>0 (source "...escaneada"). El hash funciona
+       en el navegador; el validador (cliente externo) da un falso "Must provide".
+       NO toques config.json -> agrega la op a tools/hash-validator-whitelist.json.
+5. Si hubo ROTACIÓN REAL: reemplaza el hash viejo por el nuevo en remote/config.json,
+   bumpea "version" + "lastUpdated", y deploya con:
+       tools/deploy.sh "fix(hashes): rotación <op>"
+6. Re-corre el validador para confirmar 0 stale:
+       cd "/Users/oviazcan/Projects/Ecoplating/Reportes SH" \
+         && python3 /Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/validate-hashes.py
+STEPS
+
 # ── 1. GitHub issue ──────────────────────────────────────────────────────────
 if command -v gh >/dev/null 2>&1; then
   ISSUE_BODY=$(cat <<EOF
@@ -67,15 +101,14 @@ Detección automática del cron \`steelhead-hash-validator\` ($TODAY $TIMESTAMP)
 - **OK**: $OK_COUNT / $TOTAL
 - **Tiempo**: ${ELAPSED}s
 
-## Hashes rotados
-$STALE_BULLETS
+## Hashes rotados — applets que truenan
+$STALE_MD
 
-## Acción
-1. Abrir Steelhead en navegador con la extensión cargada
-2. Correr el applet \`hash-scanner\` para re-extraer hashes
-3. Actualizar \`remote/config.json\` con los nuevos hashes
-4. Bumpear \`version\` en \`config.json\`
-5. Deploy a \`gh-pages\` siguiendo procedimiento de \`CLAUDE.md\`
+> 🟡 = op en whitelist (\`tools/hash-validator-whitelist.json\`): falso-positivo
+> probable del validador. El hash es válido en el navegador; **verifica en el
+> scan antes de tocar \`config.json\`**.
+
+## $RECOVERY_STEPS
 
 ## JSON completo
 \`\`\`json
@@ -98,15 +131,19 @@ fi
 # ── 2. Email vía Mail.app ────────────────────────────────────────────────────
 EMAIL_BODY="Detección automática del cron de validación de hashes ($TODAY $TIMESTAMP).
 
-Hashes rotados ($STALE_COUNT):
-$STALE_BULLETS
+HASHES ROTADOS ($STALE_COUNT) — QUÉ APPLETS TRUENAN:
+$STALE_PLAIN
+
+Nota: las ops marcadas [FALSO POSITIVO probable — en whitelist] tienen hash
+válido en el navegador; el validador (cliente externo) da 'Must provide'. NO
+toques config.json para esas — verifícalas en el scan.
 
 Stats:
 - Config version: $CONFIG_VER
 - OK: $OK_COUNT / $TOTAL
 - Tiempo: ${ELAPSED}s
 
-Acción: correr hash-scanner en navegador y actualizar config.json.
+$RECOVERY_STEPS
 
 JSON: $RESULT_JSON"
 
@@ -116,9 +153,15 @@ for _addr in "${EMAIL_RECIPIENTS[@]}"; do
   RECIPIENT_LINES+="        make new to recipient at end of to recipients with properties {address:\"$_addr\"}"$'\n'
 done
 
+# Sanitiza el body para incrustarlo en una string de AppleScript: escapa primero
+# los backslashes y luego las comillas dobles (el body ahora trae rutas con
+# comillas y snippets JSON tipo "status":"changed" que romperían la string).
+EMAIL_BODY_AS="${EMAIL_BODY//\\/\\\\}"
+EMAIL_BODY_AS="${EMAIL_BODY_AS//\"/\\\"}"
+
 osascript <<EOF
 tell application "Mail"
-    set newMessage to make new outgoing message with properties {subject:"[Steelhead] $STALE_COUNT hash(es) rotado(s) — $TODAY", content:"$EMAIL_BODY", visible:false}
+    set newMessage to make new outgoing message with properties {subject:"[Steelhead] $STALE_COUNT hash(es) rotado(s) — $TODAY", content:"$EMAIL_BODY_AS", visible:false}
     tell newMessage
 $RECIPIENT_LINES        send
     end tell
@@ -136,8 +179,9 @@ mkdir -p "$(dirname "$LOG_FILE")"
   echo "- OK: $OK_COUNT / $TOTAL · Tiempo: ${ELAPSED}s"
   echo "- Resultado: \`$RESULT_JSON\`"
   echo ""
-  echo "**Rotados:**"
-  echo "$STALE_BULLETS"
+  echo "**Rotados — applets que truenan:**"
+  echo ""
+  echo "$STALE_MD"
 } >> "$LOG_FILE"
 echo "  ✓ Bitácora actualizada: $LOG_FILE"
 

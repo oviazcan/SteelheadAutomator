@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decisión — Candado de surtido en iPad: Safari Web Extension vs PWA</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#ffffff; --ink:#1c2430; --ink-soft:#55606e; --line:#e4e8ee;
+    --accent:#13a36f; --accent-ink:#0c7a52; --code-bg:#1c2430; --code-ink:#e6e9ee;
+    --warn-bg:#fff6ed; --warn-line:#f0a35a; --warn-ink:#8a4b12;
+    --note-bg:#eef4ff; --note-line:#7aa7f0; --note-ink:#274a86;
+    --tip-bg:#ecfaf3; --tip-line:#13a36f; --tip-ink:#0c6f49;
+    --crit-bg:#fdecec; --crit-ink:#9b2424; --ra-tint:#f0fbf6;
+    --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:40px 22px 80px}
+  h1,h2,h3{text-wrap:balance; line-height:1.25; letter-spacing:-0.01em}
+  p,li{text-wrap:pretty}
+  a{color:var(--accent-ink); text-decoration:none} a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.9em;
+    background:#eef1f5; padding:1px 6px; border-radius:6px}
+
+  header.hero{
+    background:linear-gradient(135deg,#1c2430,#27384a); color:#eef2f6; border-radius:var(--radius);
+    padding:30px; box-shadow:0 1px 2px rgba(0,0,0,.06), 0 10px 30px rgba(28,36,48,.18);
+  }
+  .eyebrow{display:inline-block; font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:#9fe9c8; background:rgba(19,163,111,.16); padding:5px 11px; border-radius:999px}
+  header.hero h1{margin:14px 0 8px; font-size:27px; color:#fff}
+  .meta{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+  .pill{font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:999px;
+    background:rgba(255,255,255,.08); color:#cdd6e0}
+  .pill.win{background:var(--accent); color:#fff}
+
+  .verdict{margin:18px 0 0; padding:18px 20px; background:var(--card); border-radius:14px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 22px rgba(0,0,0,.06)}
+  .verdict h2{margin:0 0 6px; font-size:15px; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.05em}
+  .verdict p{margin:0; font-size:15.5px}
+
+  nav.toc{margin:24px 0 8px; padding:16px 18px; background:var(--card); border-radius:14px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05)}
+  nav.toc strong{font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft)}
+  nav.toc ol{margin:10px 0 0; padding-left:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:5px 18px}
+  nav.toc a{display:flex; gap:9px; padding:5px 6px; border-radius:8px; color:var(--ink)}
+  nav.toc a:hover{background:var(--bg); text-decoration:none}
+  nav.toc a .n{font-variant-numeric:tabular-nums; color:var(--accent-ink); font-weight:700; min-width:1.4em}
+
+  section.card{background:var(--card); border-radius:var(--radius); padding:24px 26px; margin:18px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 22px rgba(0,0,0,.06)}
+  section.card > h2:first-child{margin-top:0}
+  h2{font-size:20px} h3{font-size:16px}
+  ul.tight{padding-left:20px} ul.tight li{margin:7px 0}
+
+  /* Comparison table */
+  .cmp{overflow-x:auto; margin:10px 0 4px; border-radius:12px; box-shadow:0 0 0 1px var(--line)}
+  table{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums}
+  thead th{position:sticky; top:0; text-align:left; padding:12px 14px; background:#eef1f5; font-weight:700;
+    border-bottom:1px solid var(--line)}
+  thead th.ra{background:#e3f6ee; color:var(--accent-ink)}
+  thead th.rc{color:var(--ink-soft)}
+  tbody td{padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top}
+  tbody tr:last-child td{border-bottom:0}
+  td.dim{font-weight:600; color:var(--ink)}
+  td.ra{background:var(--ra-tint)}
+  tbody tr:hover td{background:#fafcfe} tbody tr:hover td.ra{background:#e8f8f0}
+
+  .callout{border-radius:12px; padding:13px 16px; margin:14px 0; font-size:14.5px}
+  .callout p{margin:6px 0} .callout p:first-child{margin-top:0} .callout p:last-child{margin-bottom:0}
+  .callout .label{font-weight:700}
+  .note{background:var(--note-bg); color:var(--note-ink); box-shadow:inset 3px 0 0 0 var(--note-line)}
+  .warn{background:var(--warn-bg); color:var(--warn-ink); box-shadow:inset 3px 0 0 0 var(--warn-line)}
+  .tip{background:var(--tip-bg); color:var(--tip-ink); box-shadow:inset 3px 0 0 0 var(--tip-line)}
+
+  /* Two-column pros/cons + insight */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:8px 0}
+  .mini{border-radius:13px; padding:16px 18px; box-shadow:0 1px 2px rgba(0,0,0,.04), 0 3px 12px rgba(0,0,0,.05)}
+  .mini h3{margin:0 0 6px} .mini.a{background:var(--ra-tint); box-shadow:inset 0 0 0 1px #cdeede}
+  .mini.c{background:#fbfbfc; box-shadow:inset 0 0 0 1px var(--line)}
+  .mini .tag{font-size:11.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase}
+  .mini.a .tag{color:var(--accent-ink)} .mini.c .tag{color:var(--ink-soft)}
+
+  /* Risks */
+  .risk{padding:14px 16px; margin:12px 0; border-radius:12px; background:var(--card);
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 3px 12px rgba(0,0,0,.05)}
+  .risk.crit{box-shadow:inset 4px 0 0 0 #d9534f, 0 3px 12px rgba(0,0,0,.05)}
+  .sev{display:inline-block; font-size:11px; font-weight:800; letter-spacing:.04em; padding:3px 9px;
+    border-radius:999px; margin-right:8px; vertical-align:middle}
+  .sev.crit{background:var(--crit-bg); color:var(--crit-ink)}
+  .sev.pre{background:var(--warn-bg); color:var(--warn-ink)}
+  .sev.hand{background:var(--note-bg); color:var(--note-ink)}
+  .sev.proc{background:#eef1f5; color:var(--ink-soft)}
+  .risk p{margin:8px 0 0; font-size:14.5px}
+
+  /* Phases timeline */
+  .phase{display:flex; gap:14px; padding:14px 0; box-shadow:inset 0 -1px 0 var(--line)}
+  .phase:last-child{box-shadow:none}
+  .phase .when{flex:none; width:120px; font-weight:700; font-size:13.5px; color:var(--accent-ink)}
+  .phase .what{font-size:14.5px}
+
+  footer{margin-top:34px; padding-top:18px; color:var(--ink-soft); font-size:13px; text-align:center;
+    box-shadow:inset 0 1px 0 var(--line)}
+  footer a{color:var(--ink-soft); text-decoration:underline}
+  @media (max-width:600px){ .cols{grid-template-columns:1fr} nav.toc ol{grid-template-columns:1fr} .wrap{padding:26px 16px 60px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Decisión de arquitectura · ADR</span>
+    <h1>Candado de surtido en iPad: Safari Web Extension vs PWA</h1>
+    <div class="meta">
+      <span class="pill win">✓ DECIDIDO — Ruta A</span>
+      <span class="pill">2026-06-29</span>
+      <span class="pill win">POC Fase 1 VALIDADA ✓ · Safari iPad</span>
+      <span class="pill">Análisis: 10 agentes + red-team</span>
+    </div>
+  </header>
+
+  <div class="verdict">
+    <h2>Decisión</h2>
+    <p>Portar <code>surtido-guard</code> a iPad como <strong>Safari Web Extension</strong> (solo el candado), <strong>no</strong> como PWA. La PWA choca con CORS probablemente cerrado y auth per-operador sin camino; la extensión reutiliza ~100% del JS y es inmune a la rotación de hashes. El red-team confirma la Ruta A.</p>
+  </div>
+
+  <nav class="toc">
+    <strong>Contenido</strong>
+    <ol>
+      <li><a href="#ctx"><span class="n">·</span> Contexto</a></li>
+      <li><a href="#tldr"><span class="n">1</span> Decisión (TL;DR)</a></li>
+      <li><a href="#insight"><span class="n">2</span> El insight clave</a></li>
+      <li><a href="#tabla"><span class="n">3</span> Tabla comparativa</a></li>
+      <li><a href="#riesgos"><span class="n">4</span> Riesgos a gestionar</a></li>
+      <li><a href="#plan"><span class="n">5</span> Plan por fases</a></li>
+      <li><a href="#dist"><span class="n">6</span> Distribución</a></li>
+      <li><a href="#abiertas"><span class="n">7</span> Decisiones abiertas</a></li>
+    </ol>
+  </nav>
+
+  <section class="card" id="ctx">
+    <h2>Contexto</h2>
+    <p>Se pide replicar el <strong>bloqueo preventivo</strong> de <code>surtido-guard</code> (impedir mover piezas no programadas en "Preparando Surtido en Almacén") en <strong>iPad, 10+ dispositivos</strong>. Chrome iOS no soporta extensiones; el factor de decisión declarado por el dueño es la <strong>mantenibilidad/handoff</strong> (el autor principal no estará 100% a futuro).</p>
+    <div class="cols">
+      <div class="mini a"><span class="tag">Ruta A</span><h3>Safari Web Extension</h3><p>Portar la extensión: el candado sigue siendo un <em>interceptor sobre la pantalla nativa</em> de Steelhead.</p></div>
+      <div class="mini c"><span class="tag">Ruta C</span><h3>PWA propia</h3><p>Una app nuestra que <em>reemplaza</em> la pantalla de surtido y hace el movimiento vía API.</p></div>
+    </div>
+  </section>
+
+  <section class="card" id="tldr">
+    <h2>1 · Decisión (TL;DR)</h2>
+    <p><strong>Ruta A — Safari Web Extension, solo el candado.</strong> La Ruta C tiene dos bloqueadores que pueden tumbarla antes de escribir código: <strong>CORS probablemente cerrado</strong> en <code>app.gosteelhead.com/graphql</code> para orígenes externos, y <strong>auth per-operador sin camino documentado</strong> (el refresh token rota en cada uso → no sirve para 10 operadores concurrentes; requeriría un backend proxy = nuevo conocimiento tribal, justo lo que se quiere evitar).</p>
+    <p>La Ruta A reutiliza <strong>~100% del JS del candado</strong> (autocontenido: solo parchea <code>window.fetch</code>), tiene camino técnico claro, y su mayor costo operativo (recompilar en Xcode por cada fix) está acotado por un hallazgo clave: el candado es <strong>inmune a la rotación de hashes de Apollo</strong> (intercepta por <code>operationName</code>, no por hash) — el dolor de mantenimiento más frecuente del proyecto <strong>no lo afecta</strong>.</p>
+  </section>
+
+  <section class="card" id="insight">
+    <h2>2 · El insight clave: candado ≠ reemplazo del flujo</h2>
+    <div class="cols">
+      <div class="mini a"><span class="tag">Ruta A — interceptor</span>
+        <p>El operador sigue usando la pantalla nativa de Steelhead; el candado solo parcha <code>fetch</code> y bloquea <code>CreateManyPartsTransfersChecked</code> si la pieza no está programada. Invisible cuando no interviene. <strong>Cero curva de adopción.</strong></p></div>
+      <div class="mini c"><span class="tag">Ruta C — reemplazo</span>
+        <p>Tendría que replicar listado del workboard, estado de programación, modal de mover, paginación, refresh, errores — y depender de CORS abierto o un backend proxy. Multiplica el alcance <strong>×5-10</strong> y crea <em>drift</em> silencioso.</p></div>
+    </div>
+    <div class="callout note"><p>Confundir "candado" con "reemplazo de flujo" es lo que infla a la Ruta C en el papel.</p></div>
+  </section>
+
+  <section class="card" id="tabla">
+    <h2>3 · Tabla comparativa</h2>
+    <p class="placeholder" style="color:var(--ink-soft);font-size:13px;margin:0 0 8px">Cifras corregidas tras red-team.</p>
+    <div class="cmp">
+      <table>
+        <thead><tr><th>Dimensión</th><th class="ra">Ruta A — Safari Ext ✓</th><th class="rc">Ruta C — PWA</th></tr></thead>
+        <tbody>
+          <tr><td class="dim">Costo año 0 (dinero)</td><td class="ra">$99 (Apple Developer)</td><td>$0</td></tr>
+          <tr><td class="dim">Costo año 0 (dev)</td><td class="ra">32-54 h</td><td>92-184 h <em>(si CORS y auth se resuelven)</em></td></tr>
+          <tr><td class="dim">Recurrente anual (dinero)</td><td class="ra">$99 + $240-480 opc. (MDM)</td><td>$70-320 hosting (+ proxy si aplica)</td></tr>
+          <tr><td class="dim">Recurrente anual (dev)</td><td class="ra">4-16 h/año (inmune a hashes)</td><td>17-59 h/año (hashes + drift de UI)</td></tr>
+          <tr><td class="dim">Mantenimiento/mes estable</td><td class="ra">5-8 h</td><td>8-12 h (sin proxy) / 15-20 h (con proxy)</td></tr>
+          <tr><td class="dim">Tiempo a fix en prod</td><td class="ra">1-3 h (build + TestFlight)</td><td>minutos (git push)</td></tr>
+          <tr><td class="dim">Exposición a rotación de hashes</td><td class="ra"><strong>Ninguna</strong> (por <code>operationName</code>)</td><td>Alta (queries activas)</td></tr>
+          <tr><td class="dim">Bloqueadores pre-inversión</td><td class="ra">Ninguno técnico ($99)</td><td>CORS + OAuth client externo (depende de Steelhead)</td></tr>
+          <tr><td class="dim">Stack para el sucesor</td><td class="ra">JS + Xcode (nuevo) + distribución iOS</td><td>JS + hosting estático (familiar)</td></tr>
+          <tr><td class="dim">Instalación en iPads</td><td class="ra">App (TestFlight 1-click / MDM silencioso)</td><td>URL en Safari (sin instalación)</td></tr>
+          <tr><td class="dim">Riesgo de colapso pre-prod</td><td class="ra">Bajo (camino mapeado)</td><td>Alto (2 incógnitas externas)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout note"><p><span class="label">Nota:</span> el "57 commits / 16 rotaciones en junio" del borrador estaba inflado (incluía 27 corridas automáticas de launchd con exit 0). Las rotaciones que <strong>requirieron fix humano fueron ~10 en junio</strong> (~2.5/semana). El argumento de fondo se mantiene: la Ruta A no las sufre; la Ruta C sí.</p></div>
+  </section>
+
+  <section class="card" id="riesgos">
+    <h2>4 · Riesgos a gestionar</h2>
+    <p>El veredicto del red-team confirma la Ruta A, con estas correcciones:</p>
+
+    <div class="risk crit"><span class="sev crit">CRÍTICO</span><strong>Inmunidad a hashes es PARCIAL — fail-safe silencioso.</strong>
+      <p>El <em>enforcement</em> (bloqueo de <code>CreateManyPartsTransfersChecked</code>) es inmune a hashes. Pero el <strong>mapa de programadas</strong> se construye parseando <code>GetRelatedScheduleData</code> (<code>buildScheduledAccountSet</code>). Si Steelhead cambia ese <em>schema de respuesta</em>, el parser devuelve un <code>Set</code> vacío <strong>sin excepción</strong> → por diseño fail-safe el candado <strong>deja de bloquear sin avisar</strong>. → <strong>Pendiente: telemetría/alerta cuando el set de programadas sale vacío</strong> en un board de surtido. Aplica a Chrome y a iPad.</p></div>
+
+    <div class="risk"><span class="sev pre">PRE-PROD</span><strong>Distribución sin MDM duele.</strong>
+      <p>Builds TestFlight expiran a 90 días; sin MDM, cada uno de los 10 operadores debe reinstalar → en la práctica 2-4 quedan en versión expirada y el candado "desaparece" sin que sepan por qué. Decidir MDM <strong>antes</strong> de producción, no después (ver §6).</p></div>
+
+    <div class="risk"><span class="sev hand">HANDOFF</span><strong>Curva de Xcode para el sucesor: 3-5 días</strong> (no 1-2).
+      <p>Firma, certificados y provisioning profiles son crípticos para alguien JS-only. → <strong>Pendiente: <code>docs/deploy-safari</code> con capturas</strong> de los pasos de Xcode/firma, no solo comandos.</p></div>
+
+    <div class="risk"><span class="sev hand">HANDOFF</span><strong>Divergencia <code>remote/</code> ↔ <code>safari/extension/</code>.</strong>
+      <p>Un sucesor podría actualizar el candado para Chrome y olvidar re-sincronizar Safari. → <strong>Mitigado</strong>: <code>tools/deploy.sh</code> ahora emite un warning si los <code>.js</code> difieren. <code>safari/sync-scripts.sh</code> es paso obligatorio antes de cada rebuild.</p></div>
+
+    <div class="risk"><span class="sev proc">PROCEDIMIENTO</span><strong>El test de CORS no funciona en iPad solo</strong> (no hay DevTools en iPadOS).
+      <p>Correrlo desde Safari de una Mac contra el endpoint, o vía Web Inspector remoto (iPad por USB). Solo relevante si se reconsidera la Ruta C.</p></div>
+  </section>
+
+  <section class="card" id="plan">
+    <h2>5 · Plan por fases <span style="font-weight:400;font-size:14px;color:var(--ink-soft)">(el POC ya existe)</span></h2>
+    <div class="phase"><div class="when">Fase 0 · hoy<br><span style="font-weight:400;color:var(--ink-soft)">5 min</span></div>
+      <div class="what">Confirmar la versión de iPadOS de los iPads. Si ≥17, <code>world:"MAIN"</code> directo; si &lt;17, usar el <strong>plan B</strong> ya incluido (<code>manifest.fallback.json</code> + <code>sg-inject.js</code>).</div></div>
+    <div class="phase"><div class="when" style="color:var(--accent-ink)">Fase 1 · ✓ HECHA<br><span style="font-weight:400;color:var(--ink-soft)">2026-06-30</span></div>
+      <div class="what">Converter → firma (Apple ID gratis) → instalado en un iPad. <strong><code>world:"MAIN"</code> intercepta <code>fetch</code> en Safari/iPadOS</strong>, login OAuth OK y <strong>bloqueo de pieza no programada confirmado</strong>. Pendiente menor: validar una pieza PROGRAMADA (que no se bloquee).</div></div>
+    <div class="phase"><div class="when">Fase 2 · si pasa</div>
+      <div class="what">Cuenta Apple Developer ($99), decidir toggle (§7), decidir distribución (§6), agendar la telemetría del fail-safe (riesgo #1), guía de deploy con capturas.</div></div>
+  </section>
+
+  <section class="card" id="dist">
+    <h2>6 · Decisión de distribución <span style="font-weight:400;font-size:14px;color:var(--ink-soft)">(10+ iPads)</span></h2>
+    <ul class="tight">
+      <li><strong>TestFlight:</strong> 1-click por iPad, sin App Store Review (internal testing ≤100), pero expira a 90 días y sin MDM genera reinstalaciones manuales por operador.</li>
+      <li><strong>MDM (Jamf Now/Mosyle, ~$2-4/disp/mes):</strong> push silencioso, sin expiración percibida. <strong>Recomendado para 10+.</strong></li>
+      <li><strong>Opción D (híbrida, para validación inicial):</strong> con la planta accesible, un técnico hace sideload directo (<code>Product → Run</code>) en los 10 iPads cada 90 días (~15 min total). Más simple que gestionar 10 cuentas TestFlight durante los primeros 2-3 meses.</li>
+    </ul>
+  </section>
+
+  <section class="card" id="abiertas">
+    <h2>7 · Decisiones abiertas <span style="font-weight:400;font-size:14px;color:var(--ink-soft)">(requieren input del dueño)</span></h2>
+    <div class="callout warn">
+      <p><span class="label">¿El MVP de iPad arranca con toggle o default-ON permanente?</span> El POC actual es <strong>default-ON sin toggle</strong> (el bloqueo es lo crítico a validar). Agregar toggle en Safari ≠ trivial: requiere <code>popup.html</code>/<code>popup.js</code> + background con messaging (la UX del popup en Safari difiere de Chrome). Suma ~1-2 días. <strong>Recomendación:</strong> validar el POC default-ON primero; decidir el toggle después.</p>
+    </div>
+    <div class="callout note"><p><span class="label">Distribución:</span> TestFlight vs MDM vs Opción D (ver §6).</p></div>
+  </section>
+
+  <footer>
+    Generado por el workflow <code>ipad-surtido-guard-analysis</code> (10 agentes) + red-team ·
+    POC: <a href="../deploy-safari.html">guía de build Safari</a> ·
+    bitácora <a href="../applets/surtido-guard.md">surtido-guard</a> ·
+    fuente <code>remote/scripts/surtido-guard*.js</code>.
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,68 @@
+{
+  "_doc": "Objetos de prueba SENTINELA (su nombre contiene 'Sentinela') sobre los que el hash-autopilot ejecuta ciclos de captura de mutations en Fase C. NUNCA apuntar a datos reales. Reemplaza los id:0 por los IDs reales de tus sentinelas antes de correr una captura.",
+  "_seguridad": "El runner verifica DOBLE: el id viene de aquí Y el objeto cargado debe pasar isSentinel (nombre con 'Sentinela'). Si no, escala sin mutar.",
+  "domain": 344,
+  "entities": {
+    "partNumber": {
+      "id": 3770957,
+      "screenPath": "/PartNumbers/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "UpdatePartNumber"
+      ],
+      "_estrategia": "archived-mutate-restore",
+      "groupId": 60822
+    },
+    "quote": {
+      "id": 288,
+      "screenPath": "/Domains/{domain}/Quotes/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "UpdateQuote"
+      ],
+      "_estrategia": "archived-mutate-restore"
+    },
+    "receivedOrder": {
+      "id": 1585,
+      "screenPath": "/Domains/{domain}/SalesOrders/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "CreateReceivedOrder"
+      ],
+      "_estrategia": "create-capture-cleanup",
+      "_nota": "Create no muta un existente: crea una OV nueva marcada 'Sentinela' y luego la archiva."
+    },
+    "receivedOrderEdit": {
+      "id": 1594,
+      "screenPath": "/Domains/{domain}/SalesOrders/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "UpdateReceivedOrder"
+      ],
+      "_estrategia": "edit-restore",
+      "_nota": "OV Sentinela 1594 (nombre 'Sentinela'). DEBE estar DESARCHIVADA para hidratar; si se archiva, el load da isSentinela=false y el ciclo ABORTA fail-closed (no muta) → desarchivarla para reactivar. El handler abre 'Edit Sales Order' → cambia el PO# → SAVE (dispara UpdateReceivedOrder) → restaura el PO# a vacío. CICLO VALIDADO headless 2026-07-15: capturó d9e88576→b3602b2d y el restore dejó el PO# vacío (verificado)."
+    },
+    "maintenanceNode": {
+      "id": 55,
+      "screenPath": "/Domains/{domain}/Maintenance",
+      "marker": "Sentinela",
+      "archived": false,
+      "opsGroup": [
+        "CreateMaintenanceEvent",
+        "CreateMaintenanceEventComment",
+        "UpdateMaintenanceEvent"
+      ],
+      "_estrategia": "create-event-capture",
+      "_nota": "Nodo ACTIVO (no archivado): el handler crea un evento sobre el nodo 'Sentinela' (New Maintenance Event -> Node -> combobox Sentinela -> Save & Begin), comenta y completa -> dispara los 3 hashes en un solo flujo; luego archiva el evento. El handler navega a /Maintenance (no al detalle del nodo) y elige el nodo por NOMBRE en el combobox (fail-closed)."
+    },
+    "workOrder": {
+      "id": 11677,
+      "screenPath": "/Domains/{domain}/WorkOrders/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "(futuras mutations de OT)"
+      ]
+    }
+  },
+  "_dominio": "TLC/344 (Toluca — los sentinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
+}

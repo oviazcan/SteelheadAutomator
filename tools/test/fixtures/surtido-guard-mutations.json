@@ -1,0 +1,31 @@
+{
+  "_comment": "Variables REALES de CreateManyPartsTransfersChecked — shape capturado 2026-06-26, datos sintéticos. Cuatro escenarios.",
+  "moveScheduled": {
+    "partsTransferEventsPayload": {
+      "partsTransferEvents": [
+        { "partsTransfers": [ { "fromAccountId": 1001, "type": "STEP", "partCount": 55, "toAccount": { "recipeNodeId": 7002, "locationId": 27244, "stationId": null } } ] }
+      ]
+    }
+  },
+  "moveNotScheduled": {
+    "partsTransferEventsPayload": {
+      "partsTransferEvents": [
+        { "partsTransfers": [ { "fromAccountId": 1002, "type": "STEP", "partCount": 55, "toAccount": { "recipeNodeId": 7002, "locationId": 27244, "stationId": null } } ] }
+      ]
+    }
+  },
+  "moveOutOfScope": {
+    "partsTransferEventsPayload": {
+      "partsTransferEvents": [
+        { "partsTransfers": [ { "fromAccountId": 1003, "type": "STEP", "partCount": 10, "toAccount": { "recipeNodeId": 7001, "locationId": 27244, "stationId": null } } ] }
+      ]
+    }
+  },
+  "moveUnknownAccount": {
+    "partsTransferEventsPayload": {
+      "partsTransferEvents": [
+        { "partsTransfers": [ { "fromAccountId": 9999, "type": "STEP", "partCount": 10, "toAccount": { "recipeNodeId": 7002, "locationId": 27244, "stationId": null } } ] }
+      ]
+    }
+  }
+}

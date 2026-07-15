@@ -1,0 +1,39 @@
+{
+  "_comment": "GetRelatedScheduleData.data — shape REAL (capturado 2026-06-29), datos sintéticos. Account 1001 (WO 5001) está programado; 1002/1003 no aparecen.",
+  "allSchedules": {
+    "nodes": [
+      {
+        "id": 454,
+        "name": "Programa Diario",
+        "validScheduleTasks": {
+          "nodes": [
+            {
+              "stationId": 12090,
+              "treatmentId": 98620,
+              "scheduleTaskElementsByScheduleTaskId": {
+                "nodes": [
+                  {
+                    "recipeNodeId": 7001,
+                    "partNumberId": 3616247,
+                    "associatedPartsTransferAccounts": {
+                      "nodes": [
+                        { "id": 1001, "workOrderId": 5001, "__typename": "PartsTransferAccount" }
+                      ],
+                      "__typename": "PartsTransferAccountsConnection"
+                    },
+                    "__typename": "ScheduleTaskElement"
+                  }
+                ],
+                "__typename": "ScheduleTaskElementsConnection"
+              },
+              "__typename": "ScheduleTask"
+            }
+          ],
+          "__typename": "ScheduleTasksConnection"
+        },
+        "__typename": "Schedule"
+      }
+    ],
+    "__typename": "SchedulesConnection"
+  }
+}
