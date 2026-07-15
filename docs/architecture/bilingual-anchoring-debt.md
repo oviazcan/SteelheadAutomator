@@ -1,0 +1,75 @@
+# Deuda de anclajes bilingües ES+EN — mapa completo (2026-07-15)
+
+Barrido repo-wide de `remote/scripts/*.js` cerrando el pendiente del audit 2026-07-09 (que
+cortó por límite de gasto). Regla del repo: **todo anclaje a texto visible de la UI de
+Steelhead debe matchear ES+EN** (SH cambia de idioma por usuario/config, a veces mixto). Un
+anclaje mono-idioma se rompe **silenciosamente** al cambiar el locale.
+
+**Estado:** 25 anclajes mono-idioma en 12 applets. El resto del repo (la mayoría de autofills
+de recepción, y ~50 scripts API-driven) está **limpio** o ya bilingüe.
+
+## ⚠️ Regla dura: NO adivinar traducciones
+
+El CLAUDE.md prohíbe inventar la traducción del otro locale. Para hardenizar cada gate hace
+falta **el string real** del idioma faltante (obsérvalo en producción con el locale cambiado,
+o pásame el **wrapper HTML del modal** para anclar por `data-testid`/estructura, que es
+idioma-independiente y NO necesita traducción). Las columnas "hipótesis" abajo son **solo
+pistas para que las confirmes**, no valores a codificar.
+
+## 🔴 PRIORIDAD 1 — Seguridad (el candado deja de proteger)
+
+| Applet | archivo:línea | Ancla actual | Idioma | Impacto si cambia el locale |
+|---|---|---|---|---|
+| **surtido-guard** | `surtido-guard.js:197` | `/Tareas Programadas:/i` | solo ES | Con SH en inglés, el candado **no detecta** las tarjetas programadas → **no marca verde ni bloquea** el surtido no programado. Falla de seguridad silenciosa. |
+| **surtido-guard** | `surtido-guard.js:207` | `/Proceso:/i` | solo ES | Igual — el guard no ancla el proceso. |
+
+> Nota: surtido-guard **sí** es bilingüe en su detección de modal (`:141` "Desde Nodo:"/"From
+> Node:", botones `:175-176`). La deuda son solo estos dos labels de tarjeta. Ideal: anclar por
+> estructura/testid de la tarjeta (pásame el HTML de una tarjeta con "Tareas Programadas").
+
+## 🟡 PRIORIDAD 2 — Autofills/guards principales (dejan de dispararse)
+
+| Applet | archivo:línea | Ancla actual | Idioma | Hipótesis a confirmar |
+|---|---|---|---|---|
+| invoice-autofill | `:857`, `:233` | `/creating\|editing\|create\|edit\|new invoice for/i` | solo EN | ¿"Creando/Nueva Factura para"? |
+| price-confirm-guard | `price-confirm-guard.js:15` | `/Part\s*Number\s*Price/i` (título modal) | solo EN | ¿"Precio de Número de Parte"? |
+| cfdi-attacher | `:125`, `:133`, `:148` | `/send invoice email/i`, `/send invoice/i` | solo EN | ¿"Enviar Correo de Factura"? |
+| unit-autoconvert | `:110` | `/per part count unit definitions/i` | solo EN | ¿string ES del encabezado? |
+| unit-autoconvert | `:144`, `:157` | `"/ Part:"` | solo EN | ¿"/ Parte:"? |
+| unit-autoconvert-core | `:55` | `/^\s*parts\s*\//i` ("Parts /") | solo EN | ¿"Partes /"? |
+| create-order-autofill | `create-order-autofill.js:231` | `/enviar a:/i` | solo ES | ¿"Ship to:"? (hay evidencia interna: `invoice-autofill.js:1822` ya ancla `ship to`↔`enviar a` — **confirmable rápido**) |
+| invoice-auto-regen | `:415` | `=== 'CREAR FACTURA'` (botón) | solo ES | ¿"CREATE INVOICE"? (evidencia: `HEADING_RE` create/crear) |
+| invoice-auto-regen | `:979` | `/^confirmar$/i` | solo ES | ¿/^confirm$/? |
+| invoice-auto-regen | `:398`, `:409` | `=== 'Invoices'` (heading) | solo EN | ¿"Facturas"? |
+
+## 🟢 PRIORIDAD 3 — Labels secundarios (menor impacto)
+
+| Applet | archivo:línea | Ancla actual | Idioma | Hipótesis |
+|---|---|---|---|---|
+| proceso-calculator | `:241` | `/^default process:?$/i` | solo EN | ¿"Proceso Predeterminado:"? |
+| bill-autofill | `:162` | `/create bill\|edit bill/i` | solo EN | ¿"Crear/Editar Factura de Proveedor"? |
+| price-confirm-core | `:78` | `/saving price/i` (alert) | solo EN | ¿"Error al guardar precio"? |
+| price-confirm-core | `:94` | `"/ part:"` | solo EN | ¿"/ Parte:"? |
+| invoice-autofill | `:1020`, `:1092`, `:1712` | `"Line #N"`, `"Line #N - PN"` | solo EN | ¿"Línea #N"? |
+| invoice-autofill | `:1036`, `:1102` | `/income account/i`, `/^income$/i` | solo EN | ¿"Cuenta de Ingresos"/"Ingresos"? |
+| invoice-autofill | `:2005` | `/accounts?_?receivable/i` | solo EN | constante — confirmar si SH la traduce |
+| cfdi-attacher | `:167` | `/^(Logo\|Attach PDFs?\|Visible to Others)$/` | solo EN | ¿traducciones de las filas? |
+| invoice-auto-regen | `:930` | `=== 'Close'` (botón) | solo EN | ¿"Cerrar"? |
+| invoice-default-tab | `invoice-default-tab.js:12` | `/packing slips/i` | solo EN | ¿"Notas de Empaque"? |
+| load-calculator-modal | `:251` | `/rack type/i` (título modal) | solo EN | ¿"Tipo de Rack"? |
+
+## Cómo cerrar la deuda (para cada fila)
+
+1. **Preferido — anclar por estructura idioma-independiente:** si el modal/tarjeta tiene un
+   `data-testid`, `id` estable o icono con `aria`/testid (como ya hacen `report-regen`,
+   `sensor-graph-hide-all`, `invoice-listing-marker`), reanclar ahí. No necesita traducción.
+   Requiere que me pases el **wrapper HTML** del bloque.
+2. **Alternativa — texto bilingüe:** confirmar el string del otro locale (observándolo en SH
+   con el idioma cambiado) y ampliar la regex a `/(es|en)/i`. NO codificar la hipótesis.
+
+## Limpios / ya bilingües (referencia)
+
+Autofills de recepción (`receiver-date-override`, `warehouse-location-prefill`,
+`weight-quick-entry` = patrón bueno), `bill-autofill` (salvo `:162`), la mayoría de
+`invoice-autofill`, `create-order-autofill` (salvo `:231`), `pn-specs-column`,
+`report-regen` (ancla por testid). Los ~50 scripts API-driven no anclan texto de SH.
