@@ -598,6 +598,38 @@ const InvoiceAutofill = (() => {
       .trim();
   }
 
+  // ¿El `name` de una cuenta denota la divisa `cur`? El catálogo NO es uniforme:
+  // muchas cuentas traen el código ISO ("... 1140 USD", "... 1200 MXN"), pero otras
+  // usan la nomenclatura contable mexicana "M.N." (Moneda Nacional = pesos) — p.ej.
+  // "Hubbell Products Mexico S. de R.L. 1177 M.N.". Un filtro duro `/\bMXN\b/` descarta
+  // esas cuentas por completo (bug reportado 2026-07-15: AR no resolvía a Hubbell).
+  // Reconocemos las variantes en español además del ISO. Nota de seguridad: para "M.N."
+  // exigimos el punto (`M.` con `\.`) o la forma pegada `MN`, así una razón social con
+  // iniciales "M N" sueltas (espacios, sin puntos) NO se lee como MXN por accidente.
+  function nameMatchesCurrency(name, cur) {
+    const raw = String(name || '');
+    const n = normalizeForMatch(raw);
+    const c = String(cur || '').toUpperCase().trim();
+    if (!c) return false;
+    if (c === 'MXN') {
+      return /\bmxn\b/i.test(raw)
+          || /\bmxp\b/i.test(raw)              // código ISO viejo del peso
+          || /\bpesos?\b/.test(n)
+          || /moneda\s*nacional/.test(n)
+          || /\bnacional\b/.test(n)
+          || /\bm\.\s*n\.?/i.test(raw)         // "M.N.", "M. N.", "M.N"
+          || /\bmn\b/i.test(raw);              // "MN" pegado
+    }
+    if (c === 'USD') {
+      return /\busd\b/i.test(raw)
+          || /\bd[oó]lar(?:es)?\b/i.test(raw)  // dólar / dólares / dolar
+          || /\bdollars?\b/i.test(raw)
+          || /us\s*\$/i.test(raw);
+    }
+    // Otras divisas (raro en este dominio): match por código ISO tal cual.
+    return new RegExp(`\\b${c}\\b`, 'i').test(raw);
+  }
+
   // Resolución determinística de cuenta CXC:
   //   1. cuentas[] del customer.DatosContables filtradas por DivisaContable === currency
   //   2. orden descendente por CuentaContable (numeración más alta = más reciente)
@@ -642,10 +674,11 @@ const InvoiceAutofill = (() => {
     }
 
     // No exigimos que el name TERMINE en la divisa — algunas cuentas la traen al final
-    // pero otras la mezclan con el número ("... 1128 USD" vs "... USD 1128"). Basta con
-    // que la divisa aparezca como token (word boundary) en el name.
-    const reCur = new RegExp(`\\b${cur}\\b`, 'i');
-    const byCurrency = pool.filter(a => reCur.test(String(a?.name || '')));
+    // pero otras la mezclan con el número ("... 1128 USD" vs "... USD 1128"). Además el
+    // catálogo mezcla ISO ("MXN"/"USD") con nomenclatura contable ("M.N."=pesos,
+    // "Dólares"), así que reconocemos ambas vía nameMatchesCurrency (no un `\bMXN\b` duro
+    // que descarta "... 1177 M.N.").
+    const byCurrency = pool.filter(a => nameMatchesCurrency(a?.name, cur));
     if (byCurrency.length === 0) {
       return {
         account: null, ambiguous: false,
