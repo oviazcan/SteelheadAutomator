@@ -491,6 +491,9 @@ const BulkUpload = (() => {
   const ARCHIVED_SENTINEL = 'archived';
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
+  // Escape HTML para datos de CSV/GraphQL interpolados en innerHTML de modales (audit #2).
+  // Módulo-level (los `safe`/`safe()` locales de otras funciones no alcanzan estos sinks).
+  const escHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   let onProgress = () => {};
   function setProgressCallback(fn) { onProgress = fn; }
@@ -828,11 +831,11 @@ const BulkUpload = (() => {
         <h2>Corrida previa detectada</h2>
         <p class="dl9-sub">Este mismo CSV se intentó procesar antes. Puedes reanudar desde donde quedó o empezar de cero.</p>
         <div class="dl9-stats">
-          <div class="dl9-stat"><b>Modo:</b> ${prev.mode || '?'}</div>
-          <div class="dl9-stat"><b>Fase actual:</b> ${prev.phase || '?'}</div>
+          <div class="dl9-stat"><b>Modo:</b> ${escHtml(prev.mode || '?')}</div>
+          <div class="dl9-stat"><b>Fase actual:</b> ${escHtml(prev.phase || '?')}</div>
           <div class="dl9-stat"><b>PNs completados:</b> ${completed}</div>
           <div class="dl9-stat"><b>PNs con error:</b> ${failed}</div>
-          <div class="dl9-stat"><b>Cliente(s):</b> ${prev.customerScope || '?'}</div>
+          <div class="dl9-stat"><b>Cliente(s):</b> ${escHtml(prev.customerScope || '?')}</div>
           <div class="dl9-stat"><b>Última actualización:</b> ${since}</div>
         </div>
         <div class="dl9-btnrow">
@@ -2442,12 +2445,12 @@ const BulkUpload = (() => {
             <div class="dl9-stat"><b>Procesos:</b> ${info.processCount || '?'}</div>
            </div>`
         : `<div class="dl9-stats">
-            <div class="dl9-stat"><b>Layout:</b> ${header.quoteName || '?'}</div>
+            <div class="dl9-stat"><b>Layout:</b> ${escHtml(header.quoteName || '?')}</div>
             <div class="dl9-stat"><b>Clientes:</b> ${info.customerCount || '?'} (1 cot c/u)</div>
-            <div class="dl9-stat"><b>Asignado:</b> ${info.assigneeName || '(auto)'}</div>
+            <div class="dl9-stat"><b>Asignado:</b> ${escHtml(info.assigneeName || '(auto)')}</div>
             <div class="dl9-stat"><b>Procesos:</b> ${info.processCount || '?'}</div>
             <div class="dl9-stat"><b>Divisa:</b> per-línea</div>
-            <div class="dl9-stat"><b>Empresa:</b> ${header.empresaEmisora || 'ECO'}</div>
+            <div class="dl9-stat"><b>Empresa:</b> ${escHtml(header.empresaEmisora || 'ECO')}</div>
            </div>`;
 
       // 5) Custom dropdown options HTML (built without innerHTML interpolation of row data)
@@ -3429,11 +3432,11 @@ const BulkUpload = (() => {
       modal.innerHTML = `
         <h2 style="color:#f59e0b">⚠️ Cotización ya existe</h2>
         <p style="color:#e2e8f0;font-size:13px;margin:12px 0">
-          Ya existe una cotización con el nombre <b>"${quoteName}"</b> para el cliente <b>${customerName}</b>:
+          Ya existe una cotización con el nombre <b>"${escHtml(quoteName)}"</b> para el cliente <b>${escHtml(customerName)}</b>:
         </p>
         <div style="background:#0f172a;padding:12px;border-radius:6px;margin-bottom:12px;font-size:12px;color:#94a3b8">
           <div><b style="color:#e2e8f0">Cotización #${existing.idInDomain}</b></div>
-          <div>Nombre: ${existing.name}</div>
+          <div>Nombre: ${escHtml(existing.name)}</div>
           <div>Creada: ${new Date(existing.createdAt).toLocaleDateString('es-MX')}</div>
         </div>
         <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">¿Qué quieres hacer?</p>
@@ -3560,7 +3563,7 @@ const BulkUpload = (() => {
     const prevResult = document.getElementById('dl9-result-overlay'); if (prevResult) removeOverlay(prevResult);
     injectStyles(); const { overlay, modal } = createOverlay();
     overlay.id = 'dl9-result-overlay';
-    const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.join('\n')}</div>` : '';
+    const errH = errors.length ? `<h3 class="dl9-err">Errores (${errors.length})</h3><div style="max-height:150px;overflow-y:auto;font-size:12px;color:#f87171;white-space:pre-wrap">${errors.map(escHtml).join('\n')}</div>` : '';
     const lbl = quoteUrlLabel || 'ABRIR COTIZACIÓN';
     // Robustez B/C: banner prominente si steelhead-api detectó un hash de persisted query
     // rotado durante la corrida (window.__saRotatedOps). Sin esto, un hash rotado (ej.
@@ -3572,7 +3575,7 @@ const BulkUpload = (() => {
       ? `<div style="background:#7f1d1d;border:1px solid #ef4444;border-radius:8px;padding:10px 12px;margin-bottom:12px;color:#fecaca;font-size:13px;line-height:1.45">🔴 <b>HASH(ES) ROTADO(S): ${rotOps.join(', ')}</b><br>Steelhead dejó de aceptar esa(s) persisted query(ies) (<i>"Must provide a query string"</i>). Los cambios que dependían de ellas <b>NO se aplicaron</b>. Avisa al equipo para re-escanear (hash-scanner) y actualizar <code>config.json</code> — luego recarga la extensión y vuelve a correr.</div>`
       : '';
     const titulo = rotOps.length ? '⚠️ Detenido por HASH ROTADO' : (errors.length ? 'Completado con errores' : 'Completado OK');
-    modal.innerHTML = `<h2>${titulo}</h2>${rotBanner}<div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${stats.quoteName} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ' style="color:#fca5a5"' : ''}><b>PNs modificados:</b> ${stats.pnsModified ?? '—'}${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ` / ${stats.pnsExisting} ⚠️` : ''}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
+    modal.innerHTML = `<h2>${titulo}</h2>${rotBanner}<div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${escHtml(stats.quoteName)} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ' style="color:#fca5a5"' : ''}><b>PNs modificados:</b> ${stats.pnsModified ?? '—'}${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ` / ${stats.pnsExisting} ⚠️` : ''}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
     // 1.4.18 Fix BB: scope a `modal.querySelector` (no `document.getElementById`) + null
     // guards. Antes, en runs grandes el outer catch capturaba "Cannot set properties of
     // null (setting 'onclick')" tras completar el pipeline: el árbol React de Steelhead
