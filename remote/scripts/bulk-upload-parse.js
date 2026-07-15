@@ -217,12 +217,32 @@
   //   - seg no matchea y el field tiene 1 solo param → ese único (compat espesor v10/v11)
   //   - seg no matchea y el field tiene >1 param → null + {unmatched:true} (no aplicar; el
   //     caller loguea el error) para NO aplicar un valor equivocado por default.
+  // numSig — firma numérica de un valor tipo "5.0 - 8.0 µm": los números canónicos (float,
+  // "5.0"→"5") en orden + la unidad (letras no-numéricas, p.ej. "µm"/"mils"/"°c") para NO
+  // cruzar unidades distintas. Devuelve null si no hay números (no comparable numéricamente).
+  function numSig(str) {
+    const nums = (String(str).match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+    if (!nums.length) return null;
+    const unit = String(str).replace(/[\d.\s-]+/g, '').toLowerCase();
+    return nums.join('|') + '#' + unit;
+  }
+
   function pickSpecParamPositional(params, seg) {
     const ps = params || [];
     const s = (seg == null ? '' : String(seg)).trim();
     if (!ps.length || !s) return { id: null, unmatched: false };
-    const m = ps.find(p => p.name === s);
+    // 1) exacto tolerante a espacios: trim AMBOS lados. El catálogo de SH a veces guarda el
+    //    nombre del parámetro con espacios sobrantes (incidente 20k: BURNDY = " 8 - 12 µm").
+    const m = ps.find(p => String(p.name).trim() === s);
     if (m) return { id: m.id, unmatched: false };
+    // 2) fallback numérico: mismos números en el mismo orden y misma unidad ("5 - 8 µm" ≡
+    //    "5.0 - 8.0 µm"; incidente 20k: ASTM B545). SOLO si UN único param coincide → evita
+    //    elegir el equivocado cuando dos params colapsan a la misma firma.
+    const key = numSig(s);
+    if (key) {
+      const hits = ps.filter(p => numSig(String(p.name)) === key);
+      if (hits.length === 1) return { id: hits[0].id, unmatched: false };
+    }
     if (ps.length === 1) return { id: ps[0].id, unmatched: false };
     return { id: null, unmatched: true };
   }
