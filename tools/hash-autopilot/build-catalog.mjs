@@ -29,10 +29,12 @@ const opTypeOf = (op) => (op in mutations ? 'mutation' : 'query');
 
 // Fusión: preserva rutas existentes (validadas a mano en Fase A); añade/actualiza las del scan.
 const existing = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
-// Ops que requieren INTERACCIÓN (clic en botón para abrir un modal) NO se auto-agrupan
-// por pathname: viven en rutas MANUALES con paso `clickButton`. Ver `_interactionOps`.
-const interactionOps = new Set(existing._interactionOps || []);
-const generated = generateCatalog(scanOps, opTypeOf, interactionOps);
+// Ops con RUTA MANUAL que NO deben auto-agruparse por pathname:
+//  · _interactionOps: requieren clic en botón (modal) — la navegación no las dispara.
+//  · _manualRouteOps: su ruta de detalle auto-generada apunta MAL (hrefMatches por module
+//    en vez de sub-entidad, o colisión de routeId). Ver route-catalog `_docManualRoute`.
+const manualOps = new Set([...(existing._interactionOps || []), ...(existing._manualRouteOps || [])]);
+const generated = generateCatalog(scanOps, opTypeOf, manualOps);
 const mergedRoutes = { ...existing.routes };
 for (const [id, route] of Object.entries(generated.routes)) {
   if (mergedRoutes[id] && mergedRoutes[id].captures) {

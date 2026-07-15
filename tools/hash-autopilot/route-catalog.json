@@ -3,7 +3,27 @@
   "_domainDefault": "344",
   "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder"],
   "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
+  "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail"],
+  "_docManualRoute": "Ops de DETALLE cuya ruta auto-generada apuntaba MAL (hrefMatches por module, no por sub-entidad: /Purchasing/PurchaseOrders/<id> NO matchea /Purchasing/\\d+; y colision de routeId Maintenance/Nodes vs Maintenance/SensorDashboards). Rutas manuales validadas headless 2026-07-14. El generador las excluye del auto-agrupamiento (union con _interactionOps).",
   "routes": {
+    "maintenance-sensordashboards-detail": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        { "goto": "/Domains/{domain}/SensorDashboards" },
+        { "clickFirst": "a[href*='ensorDashboard']", "hrefMatches": "ensorDashboards?/\\d+" }
+      ],
+      "captures": ["SensorDashboardQuery"]
+    },
+    "purchasing-po-detail": {
+      "type": "query",
+      "module": "Purchasing",
+      "steps": [
+        { "goto": "/Domains/{domain}/Purchasing/PurchaseOrders" },
+        { "clickFirst": "a[href*='/Purchasing/']", "hrefMatches": "/Purchasing/PurchaseOrders/\\d+" }
+      ],
+      "captures": ["GetPurchaseOrderDetail"]
+    },
     "salesorders-ro-edit": {
       "type": "query",
       "module": "SalesOrders",
@@ -109,7 +129,6 @@
         "CurrentDomainAddresses",
         "GetAccountDataForBill",
         "GetBillByIdInDomain",
-        "GetPurchaseOrderDetail",
         "GetPurchaseOrdersDataForBill",
         "GetTaxCodesForBill",
         "GetTaxInfo",
@@ -406,8 +425,7 @@
         "MaintenanceNodeBoilerplateQuery",
         "SearchEquipments",
         "SearchInventoryItems",
-        "SearchSensors",
-        "SensorDashboardQuery"
+        "SearchSensors"
       ]
     },
     "maintenance-list": {
@@ -565,7 +583,6 @@
       ],
       "captures": [
         "GetPoVendorQuotes",
-        "GetPurchaseOrderDetail",
         "InventoryBatchesOnPurchaseOrder",
         "RoutePurchaseOrders"
       ]
