@@ -7,10 +7,37 @@ const PortalImporter = (() => {
   const api = () => window.SteelheadAPI;
   const claude = () => window.ClaudeAPI;
   const ops = () => window.OVOperations;
+  const hc = () => window.SteelheadHostCleanup || null;  // módulo de host-cleanup (opcional)
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  let memMonitor = null;  // EJE B: monitor de heap del tab (createMemMonitor)
+
   const MAPPING_STORAGE_KEY = 'sa_pn_mapping';
+
+  // ── Host Memory Guards (EJE B: memory-hardening-applets) ──────
+  // No-op si host-cleanup-shared.js no está cargado (todo vía optional chaining).
+  // portal-importer no tiene flag propio de cancelación (sin `stopped`/`cancelled`
+  // module-level ni pool con abort) — el flujo es 100% secuencial vía modales, así
+  // que el guardrail solo puede avisar; el usuario decide cerrar/recargar.
+  function startHostGuards() {
+    const cleanup = hc();
+    if (!cleanup) return;
+    try { cleanup.stopDatadogSessionReplay(); } catch (_) { /* defensa */ }
+    if (!memMonitor) {
+      memMonitor = cleanup.createMemMonitor({
+        getElement: () => null,   // sin badge de % en este applet
+        onGuardrail: (pct) => {
+          try { alert(`⚠ Memoria al ${pct}%. Se detuvo el proceso; recarga la pestaña.`); } catch (_) {}
+        },
+      });
+    }
+    try { memMonitor.reset(); memMonitor.start(); } catch (_) {}
+  }
+
+  function stopMemMonitor() { try { memMonitor?.stop(); } catch (_) {} }
+
+  function drainHostCache() { try { hc()?.apolloCacheDrain?.(); } catch (_) {} }
 
   // ── XLS Parsing ────────────────────────────────────────────
 
@@ -577,8 +604,10 @@ Reglas:
   async function buildAuditRows(pos, customerId, layoutId) {
     log('Analizando estado de cada PO...');
     const rows = [];
+    const drain = hc()?.makePeriodicDrain(50) || (() => {});  // EJE B: drena Apollo cada 50 POs
 
     for (const po of pos) {
+      drain();
       const row = { po, action: 'skip', candidate: null, existingOrderId: null };
 
       try {
@@ -1246,89 +1275,96 @@ Reglas:
   async function runWithUI() {
     log('=== Portal Importer iniciando ===');
     claude().resetUsage();
+    startHostGuards();  // EJE B: detiene Datadog + arranca monitor de heap al iniciar el run real
 
-    const file = await showFilePicker();
-    if (!file) { log('Cancelado en file picker'); return { cancelled: true }; }
-
-    let parsed;
     try {
-      parsed = await parseXLS(file);
-    } catch (e) {
-      alert('Error leyendo XLS: ' + e.message);
-      return { error: e.message };
-    }
+      const file = await showFilePicker();
+      if (!file) { log('Cancelado en file picker'); return { cancelled: true }; }
 
-    const detection = detectLayout(parsed.headers);
-    const choice = await showLayoutConfirmation(detection, parsed.headers);
-    if (!choice) return { cancelled: true };
-
-    let layout;
-    let layoutId;
-    if (choice === 'detected' && detection) {
-      layout = detection.layout;
-      layoutId = detection.id;
-    } else {
+      let parsed;
       try {
-        layout = await inferLayoutWithClaude(parsed.headers, parsed.rows);
-        layoutId = 'claude-inferred';
-        log(`Layout inferido por Claude`);
+        parsed = await parseXLS(file);
       } catch (e) {
-        alert('Error infiriendo layout con Claude: ' + e.message);
+        alert('Error leyendo XLS: ' + e.message);
         return { error: e.message };
       }
-    }
 
-    const pos = groupByPO(parsed.rows, parsed.headers, layout);
-    if (pos.length === 0) {
-      alert('No se detectaron POs en el archivo.');
-      return { error: 'no POs' };
-    }
+      const detection = detectLayout(parsed.headers);
+      const choice = await showLayoutConfirmation(detection, parsed.headers);
+      if (!choice) return { cancelled: true };
 
-    let customerId = window.POComparator?.getCustomerIdFromURL() || null;
-    if (customerId) {
-      log(`Cliente detectado desde URL: #${customerId}`);
-    } else {
-      log('URL sin customerId — buscando cliente en Steelhead por el nombre del XLS...');
-      const resolved = await resolveCustomerFromXLS(pos);
-      if (resolved && confirm(`La URL no trae customerId. Cliente inferido del XLS:\n\n  ${resolved.name} (id ${resolved.id})\n\n¿Usar éste?`)) {
-        customerId = resolved.id;
-        log(`Cliente resuelto desde XLS: ${resolved.name} (#${customerId})`);
+      let layout;
+      let layoutId;
+      if (choice === 'detected' && detection) {
+        layout = detection.layout;
+        layoutId = detection.id;
       } else {
-        const xlsName = pos.map(p => p.customer).find(Boolean) || '';
-        const picked = await showCustomerPicker(xlsName);
-        if (!picked) {
-          log('Abortado: usuario canceló el picker de clientes');
-          return { cancelled: true };
+        try {
+          layout = await inferLayoutWithClaude(parsed.headers, parsed.rows);
+          layoutId = 'claude-inferred';
+          log(`Layout inferido por Claude`);
+        } catch (e) {
+          alert('Error infiriendo layout con Claude: ' + e.message);
+          return { error: e.message };
         }
-        customerId = picked.id;
-        log(`Cliente seleccionado manualmente: ${picked.name} (#${customerId})`);
       }
-    }
 
-    // Enrich lines with stored mapping table entries (buyerCode → known PN)
-    await enrichLinesWithMapping(pos, customerId, layoutId);
+      const pos = groupByPO(parsed.rows, parsed.headers, layout);
+      if (pos.length === 0) {
+        alert('No se detectaron POs en el archivo.');
+        return { error: 'no POs' };
+      }
 
-    const mode = await showModeSelector(pos);
-    if (!mode) return { cancelled: true };
-
-    // Store parsedData for source viewer (with PO column index)
-    const poColumnIndex = parsed.headers.indexOf(layout.mapping.poNumber);
-    const parsedData = { headers: parsed.headers, rows: parsed.rows, poColumnIndex };
-
-    try {
-      if (mode === 'single') {
-        return await processSingleMode(pos, layout, layoutId, file, parsedData, customerId);
+      let customerId = window.POComparator?.getCustomerIdFromURL() || null;
+      if (customerId) {
+        log(`Cliente detectado desde URL: #${customerId}`);
       } else {
-        return await processBulkMode(pos, layout, layoutId, file, parsedData, customerId);
+        log('URL sin customerId — buscando cliente en Steelhead por el nombre del XLS...');
+        const resolved = await resolveCustomerFromXLS(pos);
+        if (resolved && confirm(`La URL no trae customerId. Cliente inferido del XLS:\n\n  ${resolved.name} (id ${resolved.id})\n\n¿Usar éste?`)) {
+          customerId = resolved.id;
+          log(`Cliente resuelto desde XLS: ${resolved.name} (#${customerId})`);
+        } else {
+          const xlsName = pos.map(p => p.customer).find(Boolean) || '';
+          const picked = await showCustomerPicker(xlsName);
+          if (!picked) {
+            log('Abortado: usuario canceló el picker de clientes');
+            return { cancelled: true };
+          }
+          customerId = picked.id;
+          log(`Cliente seleccionado manualmente: ${picked.name} (#${customerId})`);
+        }
       }
-    } catch (e) {
-      warn(`Flujo interrumpido: ${e.message}`);
-      try { ops().removeOverlay(); } catch (_) {}
-      const copy = confirm(`Error en el flujo: ${e.message}\n\n¿Copiar log al portapapeles?`);
-      if (copy) {
-        try { await navigator.clipboard.writeText(api().getLog().join('\n')); } catch (_) {}
+
+      // Enrich lines with stored mapping table entries (buyerCode → known PN)
+      await enrichLinesWithMapping(pos, customerId, layoutId);
+
+      const mode = await showModeSelector(pos);
+      if (!mode) return { cancelled: true };
+
+      // Store parsedData for source viewer (with PO column index)
+      const poColumnIndex = parsed.headers.indexOf(layout.mapping.poNumber);
+      const parsedData = { headers: parsed.headers, rows: parsed.rows, poColumnIndex };
+
+      try {
+        if (mode === 'single') {
+          return await processSingleMode(pos, layout, layoutId, file, parsedData, customerId);
+        } else {
+          return await processBulkMode(pos, layout, layoutId, file, parsedData, customerId);
+        }
+      } catch (e) {
+        warn(`Flujo interrumpido: ${e.message}`);
+        try { ops().removeOverlay(); } catch (_) {}
+        const copy = confirm(`Error en el flujo: ${e.message}\n\n¿Copiar log al portapapeles?`);
+        if (copy) {
+          try { await navigator.clipboard.writeText(api().getLog().join('\n')); } catch (_) {}
+        }
+        return { error: e.message };
       }
-      return { error: e.message };
+    } finally {
+      // EJE B: garantiza parar el monitor + drenar Apollo pase lo que pase (cancel/error/éxito)
+      stopMemMonitor();
+      drainHostCache();
     }
   }
 
