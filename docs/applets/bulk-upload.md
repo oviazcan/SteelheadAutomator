@@ -2,6 +2,23 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
+## Fix 2026-07-15 (retry AddParams) — incidente 20k: 429 sin reintento [config 1.7.121, DEPLOYADO]
+Corrida real de 20 831 NP → 19 errores. Diagnóstico y fix (verificado en vivo):
+- **18/19 = HTTP 429 (rate-limit de SH).** Root cause principal: `AddParamsToPartNumber`
+  (batch `bulk-upload.js:6661` + fallback `:6670`) **NO estaba envuelto en `withRetry`** → los
+  429/503/network escapaban al 1er intento (12 errores: spec `40004-014-01 (Estaño)` params
+  32594227/32596235). `SavePartNumber` sí tenía retry. Idempotente vía exclusion-constraint
+  (re-apply de param presente → skip silencioso). **FIX:** `withRetry` en batch y fallback.
+- **PN vacío en el reporte** (`AddParams ""`, `Archive dups ""`): los `errors.push` usaban
+  `part.pn` (vacío en la fase de sync) aunque los logs de ÉXITO ya usaban el fallback. **FIX:**
+  errores usan `part.pn || entry?.pn?.name || pnNode?.name || '?'` → el reporte dice QUÉ PN re-correr.
+- **6 "Archive dups" agotaron los 3 reintentos** por rate-limit SOSTENIDO → **+4º backoff (8s)**
+  en `retry.delaysMs` (`[1000,2000,4000,8000]`), ~15s con jitter antes de rendirse.
+- El **1 HTTP 500 restante** (colisión spec `48108-047-56*` / "Apariencia Homogénea") ya se maneja
+  bien: restaura la spec previa sin pérdida (solo revisar manual).
+- **Re-correr el mismo CSV es idempotente** (los ya-aplicados se saltan por exclusion-constraint;
+  los 19 fallidos reintentan). Con el fix vivo, esos 429 ahora se reintentan solos.
+
 ## Add 2026-07-13 (1.5.32) — aviso de REEMPLAZO de specs en el preview
 El operador podía sorprenderse: usar `-` en cualquiera de las 4 celdas de spec activa el **archive sentinel** (`hasArchiveSentinel`, `bulk-upload.js:5430`) → no solo agrega las specs listadas, sino que **archiva TODAS las que el PN ya tenga y no estén en el CSV** (reemplazo, no suma; solo borra en PN existentes). Fix: banner ámbar en `showPreview` (bajo la línea de conteos, junto al badge de intención F5) que cuenta las filas con `-` en specs y cuántas son PN existentes, y aclara "deja la celda VACÍA si solo quieres agregar". Mismo criterio de detección que la ejecución (`part.specs.some(s => s.name === '-')`). Aviso puro de UI, no toca la lógica de archivado. `renderPreview` no rompe si falla (try/catch).
 
