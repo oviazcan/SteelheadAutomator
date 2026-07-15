@@ -1,6 +1,6 @@
 # Bitácora — `wo-completer` (Completar / Descompletar OTs)
 
-**Versión actual:** 0.1.0 (**deployado** en config `1.7.38` el 2026-06-30 — app + 3 hashes + 2 scripts en vivo y verificados; **pendiente run real**)
+**Versión actual:** 0.1.0 (el applet no tiene constante `VERSION` interna; el estado de deploy se referencia por versión de `config.json`). **Deployado** en config `1.7.38` el 2026-06-30 — app + 3 hashes + 2 scripts en vivo y verificados. **Fix posterior en config `1.7.39`** (2026-06-30, deploy `139b450`, commit feature `e0a83c5`): **pendiente run real**
 **Categoría:** Órdenes de Trabajo · **Popup** (`fn: WOCompleter.open`, sin `autoInject`)
 **Diseño:** [`docs/superpowers/specs/2026-06-30-wo-completer-design.md`](../superpowers/specs/2026-06-30-wo-completer-design.md)
 
@@ -42,6 +42,7 @@ completando y luego descompletando una OT). Confirmado byte-a-byte por los golde
 - **Decisión de producto:** se completa **todo lo que la OT tenga en piezas, sin validar el nodo** (el nodo
   igual se muestra en el preview para detectar a simple vista algo a medio proceso).
 - **Idempotencia:** completar hace skip si `completedAt`/sin cuentas; descompletar hace skip si no hay COMPLETE vivo.
+- **Fix `open()` sin valor de retorno (config `1.7.39`, 2026-06-30):** el handler genérico de `background.js` que invoca `fn: WOCompleter.open` toma el valor de retorno del `fn` como resultado; si es `undefined` lo trata como `{error:'Sin resultado'}` y el popup lanzaba un `alert` espurio aunque el panel sí abría bien. Fix: `open()` ahora retorna `{ok:true}` (o `{ok:true, alreadyOpen:true}` si el panel ya estaba abierto). Deploy `139b450`, commit feature `e0a83c5`.
 
 ## Hashes (agregados a `config.steelhead.hashes`)
 - queries: `WorkOrder`, `GetWorkOrderPartsTransfers`
