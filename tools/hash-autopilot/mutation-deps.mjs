@@ -232,6 +232,53 @@ async function editSalesOrderPoAndSave(page, value) {
   await dialog.locator('button').filter({ hasText: /^(SAVE|Guardar)$/i }).first().click({ timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(2000);
 }
+// ── partNumberPrice: captura-y-aborta (precios) ─────────────────────────────
+// Captura el hash de SaveManyPartNumberPrices SIN persistir. Marca la op en
+// sink.abortOps (el interceptor la aborta tras leer el hash), abre el modal "Part
+// Number Price" (botón "+" AddCircleOutlineIcon de la sección de precios), llena los
+// required mínimos (Divisa) + un precio, y clica "Save" → la mutation sale, el
+// interceptor registra el hash y ABORTA el request → cero escritura. Selectores del
+// HTML real (2026-07-15): título "Part Number Price"; select RJSF #root_DatosPrecio_Divisa
+// (required, USD/MXN); input decimal del precio; botón Save data-testid=SaveOutlinedIcon.
+async function savePriceSentinelaAborted(page, sink, ctx = {}) {
+  const dbg = process.env.SA_DBG;
+  // MARCAR la op ANTES de cualquier clic que pueda disparar el Save → el interceptor
+  // aborta (cero persistencia) aunque el Save salga antes de lo previsto.
+  if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
+  // PRE-CALENTAR la SPA: el detalle del PN se queda en "Loading..." con page.goto
+  // directo (SPA fría); navegar primero a la LISTA /PartNumbers calienta la sección y
+  // luego el detalle hidrata (validado headless 2026-07-15). Espera activa al name.
+  await page.goto(`${BASE}/PartNumbers`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForTimeout(5000);
+  if (ctx.url) await page.goto(ctx.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log('       [dbg] PN detalle hidratado');
+  // TODO(selector): localizar el botón que abre el modal "Part Number Price". Los
+  // AddCircleOutlineIcon TOP-LEVEL del detalle abren "Part Number OEMs" (verificado
+  // 2026-07-15), NO precio. El botón de precio vive en la sección de precios (posible
+  // acordeón colapsado / scroll). PENDIENTE: contexto del usuario. Por eso la entidad
+  // queda id:0 (inactiva) hasta afinar este selector — este handler NO se invoca aún.
+  const openBtn = page.locator('button:has(svg[data-testid="AddCircleOutlineIcon"])').first();
+  await openBtn.scrollIntoViewIfNeeded().catch(() => {});
+  await openBtn.click({ timeout: 12000 });
+  // fail-closed: verificar que abrió el modal CORRECTO ("Part Number Price").
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Part Number Price/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 15000 });
+  if (dbg) console.log('       [dbg] modal Part Number Price abierto');
+  // Divisa (REQUIRED): sin ella RJSF valida en cliente y el Save NO envía la mutation.
+  await dialog.locator('#root_DatosPrecio_Divisa').selectOption('USD').catch(() => {});
+  // precio > 0 (el input arranca en "0"; por si 0 no valida). NO persiste (se aborta).
+  await dialog.locator('input[inputmode="decimal"]').first().fill('0.01').catch(() => {});
+  await page.waitForTimeout(600);
+  if (dbg) console.log('       [dbg] Divisa=USD + precio 0.01 → clic Save (se abortará)');
+  await dialog.locator('button:has(svg[data-testid="SaveOutlinedIcon"])').first().click({ timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+}
+
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -318,11 +365,11 @@ const HANDLERS = {
     },
   },
   partNumberPrice: {
-    // ANDAMIAJE (id:0 en sentinels-config → nunca se invoca hasta activarlo).
-    // SaveManyPartNumberPrices (precios) se captura ejecutando un guardado de precio
-    // sobre un PN "Sentinela". El `load` reusa lo conocido (navegar al PN, verificar
-    // name="Sentinela" fail-closed); `mutate`/`restore` quedan FAIL-CLOSED hasta capturar
-    // el HTML real del modal "Part Number Price" — no ejecutamos un guardado a ciegas.
+    // SaveManyPartNumberPrices (precios) se captura CON CAPTURA-Y-ABORTA: marcamos la
+    // mutation en sink.abortOps ANTES del "Save" → el interceptor registra el sha256Hash
+    // que el frontend IBA a enviar y ABORTA el request → NUNCA llega al server → cero
+    // persistencia (no se guarda un precio real). Sin respuesta → sin responseOk → el motor
+    // la trata 'sospechoso' si difiere del config (notifica, NO auto-deploya: precios = ojo humano).
     async load(page, { url }) {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       const nameEl = page.locator('div.css-re0j1l', { hasText: 'Name:' })
@@ -330,10 +377,14 @@ const HANDLERS = {
       await nameEl.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
       return { name: (await nameEl.textContent().catch(() => '')).trim() };
     },
-    async mutate() {
-      throw new Error('partNumberPrice.mutate PENDIENTE: capturar el HTML del modal "Part Number Price" y completar el handler antes de activar el id del PN Sentinela (hoy fail-closed — no se guarda un precio a ciegas)');
+    async mutate(page, ctx) {
+      await savePriceSentinelaAborted(page, ctx.sink, ctx);
     },
-    async restore() { /* no-op: sin mutate no hay nada que restaurar */ },
+    async restore(page, { sink }) {
+      // El Save se ABORTÓ → no se persistió ningún precio → nada que restaurar.
+      // Solo desmarcar la op (higiene del sink) para no abortar requests futuras.
+      if (sink && sink.abortOps) sink.abortOps.delete('SaveManyPartNumberPrices');
+    },
   },
   maintenanceNode: {
     async load(page, { domain }) {

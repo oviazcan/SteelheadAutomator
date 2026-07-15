@@ -64,9 +64,9 @@ test('masked-ops: cada mutation enmascarada tiene un sentinela declarado (aunque
   }
 });
 
-test('sentinels-config: SaveManyPartNumberPrices andamiado como partNumberPrice con id:0 (inactivo)', () => {
+test('sentinels-config: SaveManyPartNumberPrices andamiado (id:0, inactivo hasta afinar el selector del botón)', () => {
   const e = sentinels.entities.partNumberPrice;
   assert.ok(e, 'falta la entidad partNumberPrice');
-  assert.equal(e.id, 0, 'partNumberPrice debe quedar INACTIVO (id:0) hasta crear el PN Sentinela');
+  assert.equal(e.id, 0, 'partNumberPrice queda INACTIVO (id:0) hasta fijar el selector del botón de precio');
   assert.ok((e._para || []).includes('SaveManyPartNumberPrices'));
 });

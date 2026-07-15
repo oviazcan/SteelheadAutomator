@@ -52,13 +52,16 @@ export function maskedMutations(maskedOps) {
   return [...new Set((maskedOps && maskedOps.mutations) || [])].sort();
 }
 
-// Mutations a capturar por ciclo sentinela esta corrida:
-//  - modo completo: las enmascaradas (SIEMPRE — el validador las skipea, solo el
-//    sentinela las cubre) UNIÓN las stale del validador.
-//  - modo masked-only: SOLO las enmascaradas (ignora el validador).
+// Mutations a capturar por ciclo sentinela esta corrida. Las mutations se capturan
+// EJECUTÁNDOLAS sobre un sentinela (aunque sea con captura-y-aborta) → tienen costo y
+// un riesgo residual > queries. Por eso:
+//  - modo masked-only (cada tick, cada hora): NO captura mutations — solo queries
+//    enmascaradas (baratas, cero efecto). Evita ejecutar el ciclo de escritura 24×/día.
+//  - modo completo (por release, poco frecuente): las enmascaradas (el validador las
+//    skipea, solo el sentinela las cubre) UNIÓN las stale del validador.
 // El caller filtra luego por "sentinela activo" (id real ≠ 0). Determinista.
 export function mutationsToCapture(validatorResult, masked, { maskedOnly = false } = {}) {
+  if (maskedOnly) return [];
   const m = masked || [];
-  if (maskedOnly) return [...new Set(m)].sort();
   return [...new Set([...m, ...staleMutations(validatorResult)])].sort();
 }

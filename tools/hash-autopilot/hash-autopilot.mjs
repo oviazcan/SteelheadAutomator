@@ -165,7 +165,7 @@ async function main() {
     state: randomUUID(), domainNano: DOMAIN_NANO,
   });
   const page = await context.newPage();
-  const sink = { hashes: {}, data: {}, responseOk: {} };
+  const sink = { hashes: {}, data: {}, responseOk: {}, abortOps: new Set() };
   await installInterceptor(page, sink);
 
   // Contexto ANTES de auto-corregir: leer /ProductUpdates para PISTAS de qué cambió

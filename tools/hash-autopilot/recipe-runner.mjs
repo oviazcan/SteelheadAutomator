@@ -3,12 +3,38 @@
 // de navegación mínimas para que el frontend dispare cada op y capturemos su hash.
 const BASE = 'https://app.gosteelhead.com';
 
+// PURO (testeable): dado el body de un POST a /graphql y el set de ops a
+// "capturar-y-abortar", decide si abortar y qué hash(es) registrar. Para mutations
+// de ESCRITURA (precios): capturamos el sha256Hash que el frontend IBA a enviar y
+// ABORTAMOS el request → NUNCA llega al server → cero efecto (no se guarda el precio).
+export function shouldAbortAndCapture(body, abortOps) {
+  const out = { abort: false, captures: {} };
+  if (!abortOps || !abortOps.size) return out;
+  const ops = Array.isArray(body) ? body : [body];
+  for (const op of ops) {
+    const name = op && op.operationName;
+    const hash = op && op.extensions && op.extensions.persistedQuery && op.extensions.persistedQuery.sha256Hash;
+    if (name && abortOps.has(name)) { out.abort = true; if (hash) out.captures[name] = hash; }
+  }
+  return out;
+}
+
 // Registra op→{hash,data} de cada POST a /graphql que pase por la page.
 export async function installInterceptor(page, sink) {
   await page.route('**/*graphql*', async (route) => {
     const req = route.request();
     let body = null;
     try { body = req.postDataJSON(); } catch { try { body = JSON.parse(req.postData() || '{}'); } catch { body = null; } }
+    // Captura-y-aborta (mutations de escritura en sink.abortOps, p.ej. precios): registra
+    // el hash y ABORTA el request ANTES del fetch → el server NUNCA lo recibe (cero
+    // persistencia). Sin respuesta → sin responseOk → el motor la trata 'sospechoso' si
+    // difiere del config (notifica, NO auto-deploya): confirmación humana para precios.
+    const ab = shouldAbortAndCapture(body, sink.abortOps);
+    if (ab.abort) {
+      Object.assign(sink.hashes, ab.captures);
+      try { await route.abort(); } catch { /* route ya resuelta */ }
+      return;
+    }
     // Re-fetch + fulfill DEFENSIVO: si el re-fetch truena (blip de red, request
     // abortada por navegación) NO debe tumbar toda la corrida. Deja pasar la
     // request normal (continue) o la aborta; solo se pierde esa captura.
