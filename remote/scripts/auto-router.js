@@ -8,7 +8,11 @@
 // · Atiende el mensaje 'open-auto-router' del popup.
 //
 // Depende de: SteelheadAPI, AutoRouterAPI, AutoRouterEngine, AutoRouterPanel,
-//             ProcessShared (opcional), SteelheadHostCleanup (panel).
+//             ProcessShared (opcional).
+// NOTA (audit memoria #113): NO usa SteelheadHostCleanup (el comentario previo lo declaraba
+//   pero nunca se importó ni invocó). auto-router-batch.js tiene pool propio (concurrencia 3)
+//   y state=fresh() al cerrar, pero sin Datadog stop / Apollo drain / mem monitor. Candidato a
+//   ADOPTAR el shared si "Rutear TODAS" (cap 60 WOs, cada una carga su árbol) presiona memoria.
 
 const AutoRouter = (() => {
   'use strict';
