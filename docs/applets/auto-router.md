@@ -220,6 +220,27 @@ próximo run real si hiciera falta ajuste.
 documentados arriba en "Fixes 2026-06-24") tiene una entrada de "VALIDADO en vivo" registrada en esta
 bitácora — quedan como deployados-pero-no-confirmados-en-uso hasta que se anote lo contrario.
 
+## Fix 2026-07-15 — `destinationLines` seguía excluyendo la línea origen (regresión silenciosa)
+
+**Síntoma:** el golden test `auto-router-engine.test.js` estaba **ROJO** (`destinationLines` devolvía
+`['T107','T110','T205']`, el test esperaba `['T107','T110','T204','T205']` — faltaba la origen T204).
+La nota "Golden test: 13/13" de los fixes 1.7.6 se registró **sin correr la suite**: nunca estuvo verde
+tras ese commit. (Es exactamente el modo de fallo que `tools/run-tests.sh` existe para atrapar.)
+
+**Causa raíz:** el commit `0d223c3` documentó el nuevo diseño ("ofrecer TODAS las líneas, el conteo lo
+da `effectiveChangeCount`"), agregó `effectiveChangeCount`/`currentLineCode`, los adoptó en
+`auto-router-batch.js` (L50, L317) y reescribió el test — **pero dejó en el engine el bloque viejo de
+exclusión `set.delete(currentLine)` y su comentario**. El único caller (`auto-router-batch.js:280`)
+llama `destinationLines(cbt, wo.sourceLine)` **sin `activeRoutes`**, así que la exclusión borraba la
+línea origen (`sourceLine`) del dropdown → el bug Image #6 seguía vivo en producción: una orden en T204
+no ofrecía T204 para regresarla.
+
+**Fix:** se quitó el bloque de exclusión (`currentLine` + `set.delete`) y el param muerto `activeRoutes`
+de la firma; el comentario contradictorio se unificó. `destinationLines(candidatesByTreatment, sourceLine)`
+ahora devuelve **todas** las líneas del selector. **Golden test 13/13 REAL (verificado con `run-tests.sh`),
+suite 62/0.** No hay caller que dependa de la exclusión. Pendiente: deploy (el engine `remote/scripts` de
+`main` tiene la misma regresión; llevar el fix por `main` y coordinar con la versión viva).
+
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
 - **Momentum** de enjuagues: best-effort por diseño (≈50% exacto en genéricos; las 22 rutas críticas son
