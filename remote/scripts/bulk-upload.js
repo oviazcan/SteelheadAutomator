@@ -545,7 +545,11 @@ const BulkUpload = (() => {
         sentinelPreQuoteArchive: d.concurrency?.sentinelPreQuoteArchive ?? d.concurrency?.savePartNumber ?? 3,
       },
       retry: {
-        delaysMs: d.retry?.delaysMs ?? [1000, 2000, 4000],
+        // 4º escalón (8s) agregado tras el incidente 20k 2026-07-15: 6 "Archive dups"
+        // agotaron los 3 reintentos por un rate-limit (429) SOSTENIDO de SH (>7s). Con
+        // jitter ±25% el total sube a ~15s antes de rendirse. Solo penaliza a los que
+        // ya iban a fallar (los OK no reintentan).
+        delaysMs: d.retry?.delaysMs ?? [1000, 2000, 4000, 8000],
       },
       paging: {
         allPartNumbersFirst: d.paging?.allPartNumbers?.first ?? 200,
@@ -6645,7 +6649,7 @@ const BulkUpload = (() => {
               existingPnFullCache.delete(entry.pn.id);
             } catch (e) {
               if (isBail(e)) throw e;
-              errors.push(`Archive dups "${part.pn}": ${String(e).substring(0, 120)}`);
+              errors.push(`Archive dups "${part.pn || entry?.pn?.name || pnNode?.name || '?'}": ${String(e).substring(0, 120)}`);
             }
           }
 
@@ -6657,24 +6661,39 @@ const BulkUpload = (() => {
           for (const [csName, adds] of insertsBySpec) for (const pa of adds) allAdds.push({ csName, pa });
           if (allAdds.length) {
             if (isStale(myRunIdLocal)) return;
+            // Nombre resoluble del PN para logs Y errores (antes los errors.push usaban
+            // `part.pn`, vacío en esta fase → "AddParams '' ..." ilegible en el reporte).
+            const pnLabel = part.pn || entry?.pn?.name || pnNode?.name || '?';
             try {
-              await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: allAdds.map(a => a.pa) } }, 'AddParamsToPartNumber');
+              // withRetry: AddParamsToPartNumber NO reintentaba en 429/503/network → esos
+              // escapaban al primer intento (incidente 20k 2026-07-15: 12 errores 429 del
+              // spec Estaño). Idempotente: un re-apply de un param ya presente cae a
+              // exclusion-constraint → NO-retryable → fallback uno-por-uno (skip silencioso).
+              await withRetry(
+                () => api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: allAdds.map(a => a.pa) } }, 'AddParamsToPartNumber'),
+                `AddParams batch "${pnLabel}"`,
+                myRunIdLocal
+              );
               syncCounters.synced += allAdds.length;
-              log(`  PN "${part.pn || entry?.pn?.name || pnNode?.name || ''}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
+              log(`  PN "${pnLabel}": ${allAdds.length} params nuevos sincronizados (batch, processNodeId=null)`);
             } catch (eBatch) {
               if (isBail(eBatch)) throw eBatch;
-              warn(`AddParams batch "${part.pn}" falló (${String(eBatch).substring(0, 80)}) — fallback uno-por-uno`);
+              warn(`AddParams batch "${pnLabel}" falló (${String(eBatch).substring(0, 80)}) — fallback uno-por-uno`);
               for (const { csName, pa } of allAdds) {
                 if (isStale(myRunIdLocal)) return;
                 try {
-                  await api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber');
+                  await withRetry(
+                    () => api().query('AddParamsToPartNumber', { input: { partNumberId: entry.pn.id, paramsToApply: [pa] } }, 'AddParamsToPartNumber'),
+                    `AddParams "${pnLabel}" param ${pa.specFieldParamId}`,
+                    myRunIdLocal
+                  );
                   syncCounters.synced++;
                 } catch (e) {
                   const msg = String(e);
                   if (msg.includes('exclusion constraint') || msg.includes('conflicting key') || msg.includes('23P01')) {
                     // Skip silencioso — ya presente (race con otro worker o un retry).
                   } else {
-                    errors.push(`AddParams "${part.pn}" spec "${csName}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
+                    errors.push(`AddParams "${pnLabel}" spec "${csName}" param ${pa.specFieldParamId}: ${msg.substring(0, 120)}`);
                   }
                 }
               }
