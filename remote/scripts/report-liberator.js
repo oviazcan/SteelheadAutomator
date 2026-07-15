@@ -5,6 +5,8 @@
 const ReportLiberator = (() => {
   'use strict';
 
+  const escHtml = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
   const api = () => window.SteelheadAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
@@ -135,7 +137,7 @@ const ReportLiberator = (() => {
       const rowsHTML = reports.map((r, i) =>
         `<tr>
           <td><input type="checkbox" class="sa-rlib-check" data-idx="${i}" checked></td>
-          <td>${r.name || '(sin nombre)'}</td>
+          <td>${escHtml(r.name || '(sin nombre)')}</td>
           <td style="color:#64748b">${r.id}</td>
           <td style="color:#10b981">${r.folderId}</td>
         </tr>`
@@ -217,7 +219,7 @@ const ReportLiberator = (() => {
           const isArchived = r.archivedAt != null;
           return `<tr>
             <td><input type="checkbox" class="sa-rlib-ucheck" data-idx="${i}"></td>
-            <td>${r.name || '(sin nombre)'}</td>
+            <td>${escHtml(r.name || '(sin nombre)')}</td>
             <td style="color:#64748b">${r.id}</td>
             <td style="color:${isArchived ? '#f59e0b' : '#64748b'}">${isArchived ? 'archivado' : 'activo'}</td>
           </tr>`;
@@ -269,7 +271,7 @@ const ReportLiberator = (() => {
           const isArchived = r.archivedAt != null;
           return `<tr>
             <td><input type="checkbox" class="sa-rlib-ucheck" data-idx="${i}"></td>
-            <td>${r.name || '(sin nombre)'}</td>
+            <td>${escHtml(r.name || '(sin nombre)')}</td>
             <td style="color:#64748b">${r.id}</td>
             <td style="color:${isArchived ? '#f59e0b' : '#64748b'}">${hasArchivedField ? (isArchived ? 'archivado' : 'activo') : '?'}</td>
           </tr>`;
@@ -333,7 +335,7 @@ const ReportLiberator = (() => {
         const reportCount = f.reportsByFolderId?.nodes?.length || 0;
         return `<tr>
           <td><input type="checkbox" class="sa-rlib-fcheck" data-idx="${i}" ${reportCount === 0 ? 'checked' : ''}></td>
-          <td>${f.name || '(sin nombre)'}</td>
+          <td>${escHtml(f.name || '(sin nombre)')}</td>
           <td style="color:#64748b">${f.id}</td>
           <td style="color:${reportCount > 0 ? '#f59e0b' : '#10b981'}">${reportCount}</td>
         </tr>`;
@@ -411,7 +413,7 @@ const ReportLiberator = (() => {
 
     let errorsHTML = '';
     if (results.errors.length > 0) {
-      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escHtml(e)}</div>`).join('');
       errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
     }
 

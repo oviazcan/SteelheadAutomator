@@ -9,6 +9,17 @@ const WODeadlineChanger = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // Escapa texto de GraphQL (nombres de clientes/productos/procesos/PNs/labels/errores)
+  // antes de interpolarlo en innerHTML — vector cross-user (dato lo escribe otro usuario).
+  const escHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // Sanitiza un color de label (hex "#rrggbb"/"#rgb" o nombre CSS simple) antes de
+  // meterlo crudo en style="background:...". Si no matchea, cae a un color default.
+  function safeColor(color) {
+    const c = String(color ?? '');
+    return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]+$/.test(c) ? c : '#475569';
+  }
+
   function labelTextColor(hex) {
     const c = hex.replace('#', '');
     const r = parseInt(c.substring(0, 2), 16);
@@ -410,7 +421,8 @@ const WODeadlineChanger = (() => {
 
       const addChipsHTML = woLabelCatalog.map(l => {
         const fg = labelTextColor(l.color);
-        return `<span class="sa-wod-label-chip" data-label-id="${l.id}" data-action="add" style="background:${l.color};color:${fg}">${l.name}</span>`;
+        const bg = safeColor(l.color);
+        return `<span class="sa-wod-label-chip" data-label-id="${escHtml(l.id)}" data-action="add" style="background:${bg};color:${fg}">${escHtml(l.name)}</span>`;
       }).join('');
 
       const seenCust = new Set();
@@ -418,7 +430,7 @@ const WODeadlineChanger = (() => {
         .filter(c => { if (seenCust.has(c.id)) return false; seenCust.add(c.id); return true; })
         .filter(c => countByCustomer[c.id])
         .sort((a, b) => (countByCustomer[b.id] || 0) - (countByCustomer[a.id] || 0))
-        .map(c => `<option value="${c.id}">${c.name} (${countByCustomer[c.id] || 0})</option>`)
+        .map(c => `<option value="${escHtml(c.id)}">${escHtml(c.name)} (${countByCustomer[c.id] || 0})</option>`)
         .join('');
 
       const seenProd = new Set();
@@ -426,13 +438,13 @@ const WODeadlineChanger = (() => {
         .filter(p => { if (seenProd.has(p.id)) return false; seenProd.add(p.id); return true; })
         .filter(p => countByProduct[p.id])
         .sort((a, b) => (countByProduct[b.id] || 0) - (countByProduct[a.id] || 0))
-        .map(p => `<option value="${p.id}">${p.name} (${countByProduct[p.id] || 0})</option>`)
+        .map(p => `<option value="${escHtml(p.id)}">${escHtml(p.name)} (${countByProduct[p.id] || 0})</option>`)
         .join('');
 
       const processOpts = allProcesses
         .filter(p => countByProcess[p.id])
         .sort((a, b) => (countByProcess[b.id] || 0) - (countByProcess[a.id] || 0))
-        .map(p => `<option value="${p.id}">${p.name} (${countByProcess[p.id] || 0})</option>`)
+        .map(p => `<option value="${escHtml(p.id)}">${escHtml(p.name)} (${countByProcess[p.id] || 0})</option>`)
         .join('');
 
       const preCustomer = uiDefaults.customerId || '';
@@ -531,8 +543,9 @@ const WODeadlineChanger = (() => {
         }
         container.innerHTML = [...presentLabels.values()].map(l => {
           const fg = labelTextColor(l.color);
+          const bg = safeColor(l.color);
           const sel = labelsToRemove.has(l.id) ? ' chip-selected' : '';
-          return `<span class="sa-wod-label-chip chip-remove${sel}" data-label-id="${l.id}" data-action="remove" style="background:${l.color};color:${fg}">${l.name}</span>`;
+          return `<span class="sa-wod-label-chip chip-remove${sel}" data-label-id="${escHtml(l.id)}" data-action="remove" style="background:${bg};color:${fg}">${escHtml(l.name)}</span>`;
         }).join('');
         for (const id of labelsToRemove) {
           if (!presentLabels.has(id)) labelsToRemove.delete(id);
@@ -574,20 +587,22 @@ const WODeadlineChanger = (() => {
             if (!pn) return '';
             const labelsHTML = pn.labels.map(l => {
               const fg = labelTextColor(l.color);
-              return `<span class="wo-label" style="background:${l.color};color:${fg}">${l.name}</span>`;
+              const bg = safeColor(l.color);
+              return `<span class="wo-label" style="background:${bg};color:${fg}">${escHtml(l.name)}</span>`;
             }).join('');
-            return `<div class="wo-pn">${pn.name} ${labelsHTML}</div>`;
+            return `<div class="wo-pn">${escHtml(pn.name)} ${labelsHTML}</div>`;
           }).join('');
 
           const roName = wo.receivedOrderByReceivedOrderId?.name || '';
-          const roDisplay = roName ? `<div class="wo-ro">${roName}</div>` : '';
+          const roDisplay = roName ? `<div class="wo-ro">${escHtml(roName)}</div>` : '';
           const isSelected = selected.has(wo.id);
 
           const woLabels = extractWOLabels(wo, woLabelCatalog);
           const woLabelsHTML = woLabels.length > 0
             ? `<div style="margin-top:3px">${woLabels.map(l => {
                 const fg = labelTextColor(l.color);
-                return `<span class="wo-label" style="background:${l.color};color:${fg}">${l.name}</span>`;
+                const bg = safeColor(l.color);
+                return `<span class="wo-label" style="background:${bg};color:${fg}">${escHtml(l.name)}</span>`;
               }).join('')}</div>`
             : '';
 
@@ -956,7 +971,7 @@ const WODeadlineChanger = (() => {
 
     let errHTML = '';
     if (allErrors.length > 0) {
-      errHTML = `<div style="margin-top:12px;font-size:11px;color:#fca5a5">${allErrors.slice(0, 10).join('<br>')}</div>`;
+      errHTML = `<div style="margin-top:12px;font-size:11px;color:#fca5a5">${allErrors.slice(0, 10).map(escHtml).join('<br>')}</div>`;
     }
 
     md.innerHTML = `

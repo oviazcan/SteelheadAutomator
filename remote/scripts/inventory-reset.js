@@ -9,6 +9,9 @@ const InventoryReset = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // Escape for safe interpolation into innerHTML (text and double-quoted attributes)
+  const escHtml = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
   // Normalize for matching: strip accents, collapse spaces, lowercase
   function normalizeKey(s) {
     return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -261,8 +264,8 @@ const InventoryReset = (() => {
       const typesHTML = types.map(t => {
         const checked = preSelected.some(ps => t.name.toLowerCase().includes(ps.toLowerCase())) ? 'checked' : '';
         return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;cursor:pointer">
-          <input type="checkbox" class="sa-invr-type" value="${t.id}" data-name="${t.name}" ${checked}>
-          ${t.name}
+          <input type="checkbox" class="sa-invr-type" value="${t.id}" data-name="${escHtml(t.name)}" ${checked}>
+          ${escHtml(t.name)}
         </label>`;
       }).join('');
 
@@ -510,14 +513,14 @@ const InventoryReset = (() => {
 
     let noMatchHTML = '';
     if (results.created.noMatch.length > 0) {
-      const items = results.created.noMatch.slice(0, 20).map(n => `<div style="font-size:11px;color:#94a3b8;padding:1px 0">${n}</div>`).join('');
+      const items = results.created.noMatch.slice(0, 20).map(n => `<div style="font-size:11px;color:#94a3b8;padding:1px 0">${escHtml(n)}</div>`).join('');
       const more = results.created.noMatch.length > 20 ? `<div style="font-size:11px;color:#64748b">... y ${results.created.noMatch.length - 20} más</div>` : '';
       noMatchHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#f59e0b;font-weight:600;margin-bottom:4px">Sin match (${results.created.noMatch.length}):</div>${items}${more}</div>`;
     }
 
     let errorsHTML = '';
     if (results.created.errors.length > 0) {
-      const items = results.created.errors.slice(0, 10).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      const items = results.created.errors.slice(0, 10).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escHtml(e)}</div>`).join('');
       errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores de creación (${results.created.errors.length}):</div>${items}</div>`;
     }
 

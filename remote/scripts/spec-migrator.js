@@ -9,6 +9,22 @@ const SpecMigrator = (() => {
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
 
+  // ── Shared HTML-escape helper (XSS hardening) ──
+  // Alias to dupEscHtml (defined further below, in the duplicate-params-validator
+  // section) — function declarations hoist within this IIFE's scope, so the
+  // reference resolves fine even though it's used before its textual definition.
+  // One helper for the WHOLE file: the "dup*" section already used dupEscHtml
+  // correctly; the older modals (showConfigForm, showProgressUI, search dropdowns,
+  // conflict summaries) did not — this alias lets them use the same escaping
+  // without touching the already-working dup section.
+  const escHtml = (s) => dupEscHtml(s);
+
+  // Validates a CSS color value before interpolating into an inline style
+  // attribute (e.g. label.color from GraphQL) — hex or a plain color keyword,
+  // else falls back to a safe default.
+  const safeColor = (c, fallback = '#475569') =>
+    (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]+$/.test(c)) ? c : fallback;
+
   // ── Parse spec from current URL ──
   function parseSpecFromURL() {
     const url = window.location.href;
@@ -268,9 +284,9 @@ const SpecMigrator = (() => {
       ov.id = 'sa-specm-overlay';
       ov.className = 'sa-specm-overlay';
       ov.innerHTML = `<div class="sa-specm-modal" style="background:#1a1a2e">
-        <h2 style="color:#8b5cf6" id="sa-specm-title">${title}</h2>
+        <h2 style="color:#8b5cf6" id="sa-specm-title">${escHtml(title)}</h2>
         <div class="sa-specm-bar"><div class="sa-specm-bar-fill" id="sa-specm-bar" style="width:0%"></div></div>
-        <div class="sa-specm-progress" id="sa-specm-text">${msg}</div>
+        <div class="sa-specm-progress" id="sa-specm-text">${escHtml(msg)}</div>
       </div>`;
       document.body.appendChild(ov);
     } else {
@@ -308,7 +324,7 @@ const SpecMigrator = (() => {
         <h2 style="color:#8b5cf6">🔀 Migrador de Specs</h2>
         <div style="background:#0f172a;padding:12px;border-radius:8px;margin-bottom:16px">
           <div style="font-size:11px;color:#94a3b8">Spec actual:</div>
-          <div style="font-size:14px;font-weight:600;color:#e2e8f0">${sourceSpec.name}</div>
+          <div style="font-size:14px;font-weight:600;color:#e2e8f0">${escHtml(sourceSpec.name)}</div>
           <div style="font-size:12px;color:#8b5cf6;margin-top:4px">${pnCount} números de parte asignados</div>
           ${sourceSpec.archivedAt ? '<div style="font-size:11px;color:#f59e0b;margin-top:4px">⚠️ Spec archivada</div>' : ''}
         </div>
@@ -383,7 +399,7 @@ const SpecMigrator = (() => {
               dropdown.innerHTML = '<div class="sa-specm-dropdown-item" style="color:#64748b">Sin resultados</div>';
             } else {
               dropdown.innerHTML = active.map(s =>
-                `<div class="sa-specm-dropdown-item" data-id="${s.id}" data-name="${s.name}">${s.name}${s.revisionName ? ' - Rev. ' + s.revisionName : ''}</div>`
+                `<div class="sa-specm-dropdown-item" data-id="${s.id}" data-name="${escHtml(s.name)}">${escHtml(s.name)}${s.revisionName ? ' - Rev. ' + escHtml(s.revisionName) : ''}</div>`
               ).join('');
               dropdown.querySelectorAll('.sa-specm-dropdown-item[data-id]').forEach(item => {
                 item.addEventListener('click', () => selectTargetSpec(parseInt(item.dataset.id), item.dataset.name));
@@ -465,11 +481,11 @@ const SpecMigrator = (() => {
             // Show radio buttons for each multi-param field
             let html = '';
             for (const mpf of multiParamFields) {
-              html += `<div style="margin-bottom:12px"><div style="font-size:12px;color:#8b5cf6;font-weight:600;margin-bottom:4px">${mpf.fieldName}:</div>`;
+              html += `<div style="margin-bottom:12px"><div style="font-size:12px;color:#8b5cf6;font-weight:600;margin-bottom:4px">${escHtml(mpf.fieldName)}:</div>`;
               html += mpf.params.map(p =>
                 `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;cursor:pointer">
-                  <input type="radio" name="sa-specm-field-${mpf.fieldName}" value="${p.id}" data-generic="${mpf.isGeneric}">
-                  <span>${p.name}</span>
+                  <input type="radio" name="sa-specm-field-${escHtml(mpf.fieldName)}" value="${p.id}" data-generic="${mpf.isGeneric}">
+                  <span>${escHtml(p.name)}</span>
                   <span class="sa-specm-classif" data-param-id="${p.id}" data-field-id="${mpf.specFieldId}" style="font-size:10px;color:#64748b;margin-left:auto"></span>
                 </label>`
               ).join('');
@@ -501,7 +517,7 @@ const SpecMigrator = (() => {
             paramsDiv.querySelectorAll('input[type="radio"]').forEach(r => r.addEventListener('change', checkAllSelected));
           }
         } catch (e) {
-          paramsDiv.innerHTML = `<div style="font-size:12px;color:#ef4444">Error: ${e.message}</div>`;
+          paramsDiv.innerHTML = `<div style="font-size:12px;color:#ef4444">Error: ${escHtml(e.message)}</div>`;
         }
       }
 
@@ -570,7 +586,7 @@ const SpecMigrator = (() => {
 
     let errorsHTML = '';
     if (results.errors.length > 0) {
-      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escHtml(e)}</div>`).join('');
       errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
     }
 
@@ -591,7 +607,7 @@ const SpecMigrator = (() => {
         </div>
       </div>
       <div style="font-size:12px;color:#94a3b8;margin-bottom:8px">
-        ${results.sourceSpecName} → ${results.targetSpecName}
+        ${escHtml(results.sourceSpecName)} → ${escHtml(results.targetSpecName)}
       </div>
       ${errorsHTML}
       <div class="sa-specm-btnrow" style="margin-top:16px">
@@ -691,7 +707,7 @@ const SpecMigrator = (() => {
               dropdown.innerHTML = '<div class="sa-specm-dropdown-item" style="color:#64748b">Sin resultados</div>';
             } else {
               dropdown.innerHTML = active.map(s =>
-                `<div class="sa-specm-dropdown-item" data-id="${s.id}" data-name="${s.name}">${s.name}${s.revisionName ? ' - Rev. ' + s.revisionName : ''}</div>`
+                `<div class="sa-specm-dropdown-item" data-id="${s.id}" data-name="${escHtml(s.name)}">${escHtml(s.name)}${s.revisionName ? ' - Rev. ' + escHtml(s.revisionName) : ''}</div>`
               ).join('');
               dropdown.querySelectorAll('.sa-specm-dropdown-item[data-id]').forEach(item => {
                 item.addEventListener('click', () => {
@@ -778,20 +794,20 @@ const SpecMigrator = (() => {
       const pnListHTML = pns.map(pn =>
         `<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0;cursor:pointer">
           <input type="checkbox" class="sa-pp-pn-cb" data-id="${pn.id}" checked>
-          <span style="color:#e2e8f0">${pn.name || pn.id}</span>
+          <span style="color:#e2e8f0">${escHtml(pn.name || pn.id)}</span>
         </label>`
       ).join('');
 
       const paramRadios = params.map((p, idx) =>
         `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;cursor:pointer">
-          <input type="radio" name="sa-pp-param" value="${p.id}" data-name="${p.name}" ${idx === 0 ? 'checked' : ''}>
-          <span style="color:#e2e8f0">${p.name}${p.isDefault ? ' <span style="color:#4ade80;font-size:10px">(default)</span>' : ''}</span>
+          <input type="radio" name="sa-pp-param" value="${p.id}" data-name="${escHtml(p.name)}" ${idx === 0 ? 'checked' : ''}>
+          <span style="color:#e2e8f0">${escHtml(p.name)}${p.isDefault ? ' <span style="color:#4ade80;font-size:10px">(default)</span>' : ''}</span>
         </label>`
       ).join('');
 
       md.innerHTML = `
-        <h2 style="color:#f59e0b;font-size:16px">🔧 ${fieldName}</h2>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Spec: ${specName} · ${pns.length} PNs sin asignar</div>
+        <h2 style="color:#f59e0b;font-size:16px">🔧 ${escHtml(fieldName)}</h2>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Spec: ${escHtml(specName)} · ${pns.length} PNs sin asignar</div>
 
         <div style="margin-bottom:16px">
           <div style="font-size:13px;color:#cbd5e1;font-weight:600;margin-bottom:6px">Parámetro a asignar:</div>
@@ -916,7 +932,7 @@ const SpecMigrator = (() => {
               dropdown.innerHTML = '<div class="sa-specm-dropdown-item" style="color:#64748b">Sin resultados</div>';
             } else {
               dropdown.innerHTML = results.map(r =>
-                `<div class="sa-specm-dropdown-item" data-id="${r.identifier}" data-name="${r.display}">${r.display}</div>`
+                `<div class="sa-specm-dropdown-item" data-id="${r.identifier}" data-name="${escHtml(r.display)}">${escHtml(r.display)}</div>`
               ).join('');
               dropdown.querySelectorAll('.sa-specm-dropdown-item[data-id]').forEach(item => {
                 item.addEventListener('click', () => {
@@ -1222,14 +1238,14 @@ const SpecMigrator = (() => {
 
     let errorsHTML = '';
     if (results.errors.length > 0) {
-      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escHtml(e)}</div>`).join('');
       errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
     }
 
     const uniqueConflicts = [...new Set(results.conflicts)];
     let conflictsHTML = '';
     if (uniqueConflicts.length > 0) {
-      const items = uniqueConflicts.slice(0, 20).map(n => `<div style="font-size:11px;color:#fbbf24;padding:1px 0">${n}</div>`).join('');
+      const items = uniqueConflicts.slice(0, 20).map(n => `<div style="font-size:11px;color:#fbbf24;padding:1px 0">${escHtml(n)}</div>`).join('');
       conflictsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#f59e0b;font-weight:600;margin-bottom:4px">PNs con params conflictivos (${uniqueConflicts.length} únicos):</div><div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Estos PNs tienen el mismo spec field en 2+ specs. Resolver manualmente en Steelhead.</div>${items}${uniqueConflicts.length > 20 ? `<div style="font-size:11px;color:#94a3b8;padding:1px 0">... y ${uniqueConflicts.length - 20} más (ver log)</div>` : ''}</div>`;
     }
 
@@ -1793,22 +1809,22 @@ const SpecMigrator = (() => {
       const cardsHTML = conflicts.map((c, idx) => {
         const specsHTML = c.specs.map(s =>
           `<label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer">
-            <input type="checkbox" class="sa-cr-spec" data-pn="${idx}" data-pnspecid="${s.pnSpecId}" data-specid="${s.specId}" data-specname="${s.specName}" checked>
-            <span style="color:#e2e8f0">${s.specName}</span>
+            <input type="checkbox" class="sa-cr-spec" data-pn="${idx}" data-pnspecid="${s.pnSpecId}" data-specid="${s.specId}" data-specname="${escHtml(s.specName)}" checked>
+            <span style="color:#e2e8f0">${escHtml(s.specName)}</span>
           </label>`
         ).join('');
 
         const labelsHTML = (c.labels || []).map(l =>
-          `<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${l.color};color:#fff;white-space:nowrap">${l.name}</span>`
+          `<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${safeColor(l.color)};color:#fff;white-space:nowrap">${escHtml(l.name)}</span>`
         ).join('');
         const processHTML = c.process
-          ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Proceso: <span style="color:#cbd5e1">${c.process}</span></div>`
+          ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">Proceso: <span style="color:#cbd5e1">${escHtml(c.process)}</span></div>`
           : '';
 
         return `<div class="sa-cr-card" data-idx="${idx}" style="background:#0f172a;border-radius:8px;padding:14px 16px;margin-bottom:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="font-size:14px;font-weight:700;color:#e2e8f0">${c.pnName}</span>
+              <span style="font-size:14px;font-weight:700;color:#e2e8f0">${escHtml(c.pnName)}</span>
               <a href="https://app.gosteelhead.com/PartNumbers/${c.pnId}" target="_blank" style="color:#60a5fa;font-size:12px;text-decoration:none" title="Abrir en Steelhead">🔗</a>
               ${labelsHTML}
             </div>
@@ -1817,7 +1833,7 @@ const SpecMigrator = (() => {
             </label>
           </div>
           ${processHTML}
-          <div style="font-size:11px;color:#64748b;margin-bottom:8px;margin-top:4px">Fields compartidos: ${c.sharedFields.join(', ')}</div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;margin-top:4px">Fields compartidos: ${escHtml(c.sharedFields.join(', '))}</div>
           <div class="sa-cr-specs-container" data-pn="${idx}">${specsHTML}</div>
           <div class="sa-cr-archive-label" data-pn="${idx}" style="font-size:11px;color:#f59e0b;margin-top:6px"></div>
         </div>`;
@@ -1969,7 +1985,7 @@ const SpecMigrator = (() => {
 
     let errorsHTML = '';
     if (results.errors.length > 0) {
-      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${e}</div>`).join('');
+      const items = results.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escHtml(e)}</div>`).join('');
       errorsHTML = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600;margin-bottom:4px">Errores (${results.errors.length}):</div>${items}</div>`;
     }
 

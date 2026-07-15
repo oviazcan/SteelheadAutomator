@@ -341,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (type === 'view-load-history') {
       renderLoadHistory(container, data);
     } else {
-      container.innerHTML = `<pre style="font-size:10px;white-space:pre-wrap">${JSON.stringify(data, null, 2)}</pre>`;
+      container.innerHTML = `<pre style="font-size:10px;white-space:pre-wrap">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
     }
   }
 
@@ -365,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <ul class="op-list">
         ${entries.map(([name, info]) => `
           <li class="op-item">
-            <span class="op-name">${name}</span>
+            <span class="op-name">${escapeHtml(name)}</span>
             <span class="op-badge ${info.status}">${info.status}</span>
             <div class="op-meta">Hash: ${(info.hash || '').substring(0, 16)}... | x${info.count || 1}${info.configKey ? ' | config: ' + info.configKey : ''}</div>
           </li>`).join('')}
@@ -392,11 +392,11 @@ document.addEventListener('DOMContentLoaded', () => {
       <ul class="op-list">
         ${(Array.isArray(ops) ? ops : []).map(op => `
           <li class="op-item">
-            <span class="op-name">${op.operationName}</span>
+            <span class="op-name">${escapeHtml(op.operationName)}</span>
             <span class="op-badge ${op.type}">${op.type}</span>
-            <span class="op-badge" style="background:${sourceColors[op.source] || '#999'}22;color:${sourceColors[op.source] || '#999'}">${op.source}</span>
-            <div class="op-meta">${op.description || '(sin descripción)'}${op.scanCount ? ' | x' + op.scanCount : ''}</div>
-            ${op.responseFields ? `<div class="op-meta" style="color:#0d9488">Campos: ${op.responseFields.slice(0, 5).join(', ')}${op.responseFields.length > 5 ? '...' : ''}</div>` : ''}
+            <span class="op-badge" style="background:${sourceColors[op.source] || '#999'}22;color:${sourceColors[op.source] || '#999'}">${escapeHtml(op.source)}</span>
+            <div class="op-meta">${escapeHtml(op.description || '(sin descripción)')}${op.scanCount ? ' | x' + op.scanCount : ''}</div>
+            ${op.responseFields ? `<div class="op-meta" style="color:#0d9488">Campos: ${escapeHtml(op.responseFields.slice(0, 5).join(', '))}${op.responseFields.length > 5 ? '...' : ''}</div>` : ''}
           </li>`).join('')}
       </ul>`;
   }
@@ -704,10 +704,10 @@ document.addEventListener('DOMContentLoaded', () => {
           return `
             <li class="op-item" style="cursor:pointer" data-load-id="${h.id}">
               <div style="display:flex;justify-content:space-between;align-items:center">
-                <span class="op-name">${h.mode} — ${h.quoteName || ''}</span>
+                <span class="op-name">${escapeHtml(h.mode)} — ${escapeHtml(h.quoteName || '')}</span>
                 ${statusBadge}
               </div>
-              <div class="op-meta">${dateStr} | ${h.partsCount || h.parts?.length || '?'} PNs | ${h.customerName || ''}</div>
+              <div class="op-meta">${dateStr} | ${h.partsCount || h.parts?.length || '?'} PNs | ${escapeHtml(h.customerName || '')}</div>
               <div class="op-meta">Creados: ${h.stats?.pnsCreated || 0} | Existentes: ${h.stats?.pnsExisting || 0} | Errores: ${h.errors?.length || 0}</div>
               <button class="btn" style="margin-top:6px;padding:6px 10px;font-size:11px" data-download-id="${h.id}">
                 📥 Descargar CSV de corrección
