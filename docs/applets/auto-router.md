@@ -161,8 +161,10 @@ no ofrecía T204 para regresarla.
 **Fix:** se quitó el bloque de exclusión (`currentLine` + `set.delete`) y el param muerto `activeRoutes`
 de la firma; el comentario contradictorio se unificó. `destinationLines(candidatesByTreatment, sourceLine)`
 ahora devuelve **todas** las líneas del selector. **Golden test 13/13 REAL (verificado con `run-tests.sh`),
-suite 62/0.** No hay caller que dependa de la exclusión. Pendiente: deploy (el engine `remote/scripts` de
-`main` tiene la misma regresión; llevar el fix por `main` y coordinar con la versión viva).
+suite 62/0.** No hay caller que dependa de la exclusión. **DEPLOYADO a producción (config 1.7.120,
+tag `v1.7.120`, 2026-07-15); `auto-router-engine.js` en vivo ya sin `set.delete`.** El golden de `main`
+era la versión vieja (esperaba exclusión) → al deployar se actualizó al golden correcto; el batch de
+`main` ya usaba `effectiveChangeCount` (L50/L317), así que el comportamiento quedó coherente.
 
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
