@@ -8,6 +8,8 @@ const POComparator = (() => {
   const claude = () => window.ClaudeAPI;
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
+  const hc = () => window.SteelheadHostCleanup || null;  // módulo de host-cleanup (opcional)
+  let memMonitor = null;
 
   // ── PDF Parsing ──────────────────────────────────────────────
 
@@ -1419,6 +1421,34 @@ Reglas:
     log(`Notificacion de error de cliente enviada a ${toEmails.length} destinatarios internos`);
   }
 
+  // ── Memory Hardening (EJE B — host cleanup compartido) ───────
+  // No-op si SteelheadHostCleanup no está cargado (optional-chaining en cada
+  // llamada). Ver remote/scripts/host-cleanup-shared.js y el patrón canónico
+  // en archiver.js. Se arranca al iniciar el wizard real (runWithUI), no al
+  // solo cargar el script.
+
+  function startHostGuards() {
+    const cleanup = hc();
+    if (!cleanup) return;
+    try { cleanup.stopDatadogSessionReplay(); } catch (_) { /* defensa */ }
+    if (!memMonitor) {
+      memMonitor = cleanup.createMemMonitor({
+        getElement: () => null,  // po-comparator no tiene badge de % en su UI
+        onGuardrail: (pct) => {
+          // No hay flag de cancelación propio en este applet (sin `stopped`/
+          // `cancelled`/`abort*` — el wizard es PDF-por-PDF con confirmación
+          // manual en cada paso, no un runPool largo). Fail-safe: avisar y
+          // dejar que el usuario recargue la pestaña.
+          try { alert(`⚠ Memoria al ${pct}%. Se detuvo el proceso; recarga la pestaña.`); } catch (_) {}
+        },
+      });
+    }
+    try { memMonitor.reset(); memMonitor.start(); } catch (_) {}
+  }
+
+  function stopMemMonitor() { try { memMonitor?.stop(); } catch (_) {} }
+  function drainHostCache() { try { hc()?.apolloCacheDrain?.(); } catch (_) {} }
+
   // ── Main UI Entry Point ─────────────────────────────────────
 
   async function processOneFile(file, fileIndex, totalFiles) {
@@ -1612,20 +1642,28 @@ Reglas:
   async function runWithUI() {
     log('=== PO Comparator UI iniciando ===');
     claude().resetUsage();
+    startHostGuards();  // EJE B: detener Datadog + monitor de heap del wizard
 
-    // Step 1: File picker (supports multiple)
-    const files = await showFilePicker();
-    if (!files) { log('Cancelado por el usuario'); return { cancelled: true }; }
+    try {
+      // Step 1: File picker (supports multiple)
+      const files = await showFilePicker();
+      if (!files) { log('Cancelado por el usuario'); return { cancelled: true }; }
 
-    const results = [];
-    for (let i = 0; i < files.length; i++) {
-      const r = await processOneFile(files[i], i, files.length);
-      results.push(r);
-      if (r?.cancelled) break;
+      const results = [];
+      const drain = hc()?.makePeriodicDrain(50) || (() => {});  // EJE B: drena Apollo del host
+      for (let i = 0; i < files.length; i++) {
+        const r = await processOneFile(files[i], i, files.length);
+        results.push(r);
+        drain();
+        if (r?.cancelled) break;
+      }
+
+      log('=== PO Comparator UI completado ===');
+      return results.length === 1 ? results[0] : { batch: true, results };
+    } finally {
+      stopMemMonitor();   // EJE B: garantiza parar el monitor pase lo que pase
+      drainHostCache();
     }
-
-    log('=== PO Comparator UI completado ===');
-    return results.length === 1 ? results[0] : { batch: true, results };
   }
 
   // ── Public API ───────────────────────────────────────────────

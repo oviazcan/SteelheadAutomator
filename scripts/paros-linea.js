@@ -8,6 +8,16 @@
 const ParosLinea = (() => {
   'use strict';
 
+  // Gate de ruido en consola (audit #5): sombrea `console` local — log/info se suprimen
+  // salvo localStorage.sa_debug==='1'; warn/error siempre visibles.
+  const _saDebug = () => { try { return localStorage.getItem('sa_debug') === '1'; } catch (_) { return false; } };
+  const console = {
+    log:   (...a) => { if (_saDebug()) window.console.log(...a); },
+    info:  (...a) => { if (_saDebug()) window.console.info(...a); },
+    debug: (...a) => { if (_saDebug()) window.console.debug(...a); },
+    warn:  (...a) => window.console.warn(...a),
+    error: (...a) => window.console.error(...a),
+  };
   const api = () => window.SteelheadAPI;
   const cfg = () => window.REMOTE_CONFIG;
 
