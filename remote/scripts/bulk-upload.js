@@ -1,5 +1,14 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.37 (2026-07-14): FEAT #4 — troceo SOLO_PN in-app. El bloque de ejecución
+//   (Paso1→STEP8) se envuelve en un for sobre lotes de ~1000 filas (config soloBatch.size,
+//   default 1000) SOLO en modo SOLO_PN con >batchSize filas. Entre lotes: checkpoint
+//   (resumeState.completedSoloBatches) + drain de Apollo (memory-hardening). Requiere
+//   bulk-upload-batch.js en el array scripts de config.json; si falta, degrada a corrida
+//   monolítica (doBatch=false). NO-REGRESIÓN: sin troceo el for corre 1 iteración
+//   byte-idéntica (COTIZACIÓN+NP y SOLO_PN chico intactos). Función pura planBatchRanges
+//   con golden test. NO auto-reload (resume no auto-continúa al recargar).
+//
 // VERSION 1.5.36 (2026-07-14): FIX CRÍTICO REAL — el 500 al aplicar spec era por
 //   partNumberSpecFieldParams HUÉRFANOS. SH archiva el LINK de una spec pero deja VIVOS
 //   sus specFieldParams (placeholders specFieldParamId=null); ocupan el specField, así que
@@ -268,7 +277,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.36';
+  const VERSION = '1.5.37';
   const api = () => window.SteelheadAPI;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
@@ -292,6 +301,12 @@ const BulkUpload = (() => {
   // si no (transición/fallback), cae al inline. makePeriodicDrain drena el Apollo cache
   // del host cada 50 PNs en el pool de enrich (antes NO se drenaba periódicamente ahí).
   const HostCleanup = window.SteelheadHostCleanup || null;
+  // #4 troceo SOLO_PN: si falta el script en config.json, degradar a "sin troceo"
+  // (doBatch=false) en vez de tronar el applet completo para AMBOS modos.
+  const SteelheadBulkBatch = window.SteelheadBulkBatch || null;
+  if (!SteelheadBulkBatch) {
+    console.error('[bulk-upload] FALTA bulk-upload-batch.js en el array scripts de config.json — troceo SOLO_PN deshabilitado (fallback: corrida monolítica sin trocear).');
+  }
   const periodicDrain = HostCleanup ? HostCleanup.makePeriodicDrain(50) : () => {};
 
   // 1.4.20: stop AGRESIVO de Datadog. Versión 1.4.19 llamaba solo a
@@ -3700,6 +3715,8 @@ const BulkUpload = (() => {
           // Apollo cache). Para CSVs > 3000 PNs, eso disparaba OOM en
           // cada ciclo aunque solo faltaran ~200 PNs reales.
           syncParamsCompletedPNs: [],
+          // #4: índices (0-based sobre soloRanges) de lotes que ya completaron Paso1/5→Paso5a/5.
+          completedSoloBatches: [],
           lastUpdatedAt: new Date().toISOString(),
         };
         await persistResumeState();
@@ -3723,6 +3740,7 @@ const BulkUpload = (() => {
         if (!Array.isArray(resumeState.syncParamsCompletedPNs)) {
           resumeState.syncParamsCompletedPNs = [];
         }
+        if (!Array.isArray(resumeState.completedSoloBatches)) resumeState.completedSoloBatches = [];
       }
 
       // ── V10: Validate required per-line fields ──
@@ -4441,6 +4459,46 @@ const BulkUpload = (() => {
       const empresaKey = (header.empresaEmisora || 'ECO').toUpperCase();
       const empresaStr = DOMAIN.empresas[empresaKey] || DOMAIN.empresas.ECO;
       const validDays = parseInt(header.validaDias) || 30;
+
+      // #4 troceo SOLO_PN: envuelve el bloque de ejecución (Paso1→STEP8) en un for
+      // sobre lotes. NO-REGRESIÓN: doBatch solo es true para SOLO_PN con
+      // parts.length>batchSize; si no, planBatchRanges devuelve [[0,parts.length]] →
+      // el for corre 1 iteración con rangeStart=0 sin tocar parts/pnStatus/pnLookup →
+      // comportamiento IDÉNTICO al pre-troceo. baseSetPanelPhase se captura ANTES del
+      // shadow por lote.
+      const soloBatchCfgSize = bulkCfg().soloBatch?.size;
+      const batchSize = (SteelheadBulkBatch && SteelheadBulkBatch.isValidSize(soloBatchCfgSize)) ? soloBatchCfgSize : 1000;
+      const doBatch = !!SteelheadBulkBatch && isSoloPN && SteelheadBulkBatch.isValidSize(batchSize) && parts.length > batchSize;
+      const soloRanges = SteelheadBulkBatch
+        ? SteelheadBulkBatch.planBatchRanges(parts.length, doBatch ? batchSize : null)
+        : [[0, parts.length]];
+      if (doBatch) {
+        log(`  SOLO_PN: troceando ${parts.length} filas en ${soloRanges.length} lotes de ~${batchSize}`);
+        addPanelLog(`Troceo SOLO_PN: ${soloRanges.length} lotes de ~${batchSize} filas`);
+      }
+      const partsFullSnapshot = parts.slice();
+      const pnStatusFullSnapshot = pnStatus.slice();
+      const baseSetPanelPhase = setPanelPhase;
+
+      try {
+      for (let __soloBatchIdx = 0; __soloBatchIdx < soloRanges.length; __soloBatchIdx++) {
+        const [rangeStart, rangeEnd] = soloRanges[__soloBatchIdx];
+        const b = __soloBatchIdx;
+        if (doBatch && Array.isArray(resumeState?.completedSoloBatches) && resumeState.completedSoloBatches.includes(b)) {
+          log(`  ${SteelheadBulkBatch.batchLabel(b, soloRanges.length)}: ya completado en corrida previa — saltando.`);
+          continue;
+        }
+        // shadow local de setPanelPhase con prefijo "Lote k/M —" para TODO lo que corra
+        // dentro de este lote (cierra sobre enrichWorker/step6bWorker/archiveWorker que se
+        // declaran abajo). Sin troceo (batchPrefix='') es passthrough — mismo texto.
+        const batchPrefix = doBatch ? `${SteelheadBulkBatch.batchLabel(b, soloRanges.length)} — ` : '';
+        const setPanelPhase = (text) => baseSetPanelPhase(batchPrefix + text);
+        if (doBatch) {
+          parts.length = 0; parts.push(...partsFullSnapshot.slice(rangeStart, rangeEnd));
+          pnStatus.length = 0; pnStatus.push(...pnStatusFullSnapshot.slice(rangeStart, rangeEnd));
+          pnLookup.clear();
+          log(`  ${SteelheadBulkBatch.batchLabel(b, soloRanges.length)}: filas ${rangeStart + 1}-${rangeEnd} (${rangeEnd - rangeStart} PNs)`);
+        }
 
       if (!isSoloPN) {
         setPanelPhase('Paso 1/9: Preparando cotizaciones...'); setProgressBar(5);
@@ -5173,7 +5231,7 @@ const BulkUpload = (() => {
           const part = parts[i]; const status = pnStatus[i];
           let pnId;
           if (status.status === 'existing') { pnId = status.existingId; stats.pnsExisting++; }
-          else { pnId = newPnIds.get(i); }
+          else { pnId = newPnIds.get(rangeStart + i); }
           if (!pnId) continue;
           pnLookup.set(i, {
             qpnp: null, pnp: null,
@@ -5266,7 +5324,7 @@ const BulkUpload = (() => {
         if (st.status !== 'existing' || !p.predictiveUsage.length) continue;
         const e = pnLookup.get(i); if (!e?.pn?.id) continue;
         if (seenPredFetch.has(e.pn.id)) continue;
-        const resumeKey = `${i}|${p.pn}|${p.customerId}`;
+        const resumeKey = `${rangeStart + i}|${p.pn}|${p.customerId}`;
         if (resumeCompletedSet.has(resumeKey)) { predFetchSkippedByResume++; continue; }
         seenPredFetch.add(e.pn.id);
         predictedFetchTargets.push({ pnId: e.pn.id, name: e.pn.name || p.pn });
@@ -5330,7 +5388,7 @@ const BulkUpload = (() => {
         // Resume: si esta fila (rowIdx-aware) ya quedó completada en una corrida previa, brincarla.
         // 1.2.11: clave de resume incluye rowIdx para que duplicados name+customerId no se brinquen
         // por culpa de uno solo del grupo haber sido completado.
-        const resumeKey = `${idx}|${part.pn}|${part.customerId}`;
+        const resumeKey = `${rangeStart + idx}|${part.pn}|${part.customerId}`;
         if (resumeCompletedSet.has(resumeKey)) {
           okSP++;
           state.counters.ok++;
@@ -5708,7 +5766,7 @@ const BulkUpload = (() => {
           log(`  "${part.pn}": Group → ${prevGroupForLog || 'null'} a ${pnGroupIdEarly || 'null'} (csv="${part.pnGroup || ''}")`);
         }
 
-        const identifierKey = `${idx}|${part.pn}|${part.customerId}`;
+        const identifierKey = `${rangeStart + idx}|${part.pn}|${part.customerId}`;
         if (!resumeIdentifierSet.has(identifierKey)) {
           // 1.5.13: preserve-on-missing en Call A para descriptionMarkdown,
           // customerFacingNotes, customInputs y geometryTypeId. En SOLO_PN el
@@ -6174,7 +6232,7 @@ const BulkUpload = (() => {
         // 1.4.13: solo persiste si pnSucceeded — un PN con SavePartNumber fallado se
         // reintentará en la próxima reanudación en lugar de quedar como false-completed.
         if (pnSucceeded && resumeState) {
-          const rkey = `${idx}|${part.pn}|${part.customerId}`;
+          const rkey = `${rangeStart + idx}|${part.pn}|${part.customerId}`;
           resumeState.completedPNs.push(rkey);
           if ((okSP + retrySP) % 50 === 0) {
             persistResumeState().catch(() => {});
@@ -6337,7 +6395,7 @@ const BulkUpload = (() => {
         const entry = pnLookup.get(i);
         if (!entry?.pn?.id) return;
         // 1.4.24 Fix EE: skip si esta fila ya completó STEP 6b en corrida previa.
-        const rkey = `${i}|${part.pn}|${part.customerId}`;
+        const rkey = `${rangeStart + i}|${part.pn}|${part.customerId}`;
         if (syncParamsCompletedSet.has(rkey)) return;
         setPanelSubPhase(`Sync params: ${part.pn}`);
         let workerError = null;
@@ -6985,6 +7043,25 @@ const BulkUpload = (() => {
         bailIfStale(myRunId);
       }
       if (pnsToUnarchive.length) log(`  Desarchivados: ${stats.unarchived || 0}`);
+
+        // #4: checkpoint + drain de fin de lote. Solo con doBatch (el path sin troceo
+        // nunca entra aquí). Persiste el índice de lote completado + recicla el RSS del
+        // host (Apollo cache) antes del siguiente lote.
+        if (doBatch) {
+          if (!Array.isArray(resumeState.completedSoloBatches)) resumeState.completedSoloBatches = [];
+          if (!resumeState.completedSoloBatches.includes(b)) resumeState.completedSoloBatches.push(b);
+          await persistResumeState().catch(() => {});
+          if (HostCleanup) { try { HostCleanup.apolloCacheDrain(); } catch (_) {} }
+          log(`  ${SteelheadBulkBatch.batchLabel(b, soloRanges.length)}: completado (checkpoint + drain)`);
+          addPanelLog(`${SteelheadBulkBatch.batchLabel(b, soloRanges.length)} completado`);
+        }
+      } // end for (troceo SOLO_PN)
+      } finally {
+        // Restaura el contenido FULL para que STEP 9/10 (reporte, historial, modal final)
+        // vean TODAS las filas. No-op cuando doBatch nunca mutó parts/pnStatus.
+        parts.length = 0; parts.push(...partsFullSnapshot);
+        pnStatus.length = 0; pnStatus.push(...pnStatusFullSnapshot);
+      }
 
       // STEP 9 (1.5.26): mover las cotizaciones creadas al stage "Ganada". Esto las marca
       // como "active" → quedan BLOQUEADAS para edición. Para re-editar/retomar hay que aplicar
