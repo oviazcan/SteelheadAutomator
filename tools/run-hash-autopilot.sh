@@ -44,6 +44,26 @@ echo "$(date '+%F %T') Corriendo validate-hashes.py (detección)…"
 VAL_RC=$?
 [ "$VAL_RC" != "0" ] && echo "$(date '+%F %T') validate-hashes.py exit $VAL_RC (stale o auth; el motor decide)"
 
+# ── Fase A.5: REFRESCAR el ROCP (force) ANTES del motor — fix del authFailed recurrente ──
+# El motor inyecta el access token en el localStorage del SPA headless. Si está por vencer,
+# el SPA lo refresca en su localStorage EFÍMERO → ROTA el refresh token (Authentik) y lo
+# PIERDE al cerrar el navegador → la próxima corrida usa un refresh ya invalidado →
+# authFailed silencioso. Refrescar aquí garantiza un access FRESCO (~8h) → el SPA NO
+# refresca durante la corrida (minutos) → no rota. steelhead_auth persiste el refresh
+# rotado en tokens.json. Fail-RUIDOSO: si el refresh no es posible, avisa y NO abre el
+# navegador (en vez de fingir authFailed y quemar el gate por release).
+REPORTES_SH="${REPORTES_SH:-/Users/oviazcan/Projects/Ecoplating/Reportes SH}"
+echo "$(date '+%F %T') Refrescando ROCP (force) antes del motor…"
+REFRESH_OUT="$( cd "$REPORTES_SH" && "$PYTHON" -c "import sys; sys.path.insert(0,'scripts'); from steelhead_auth import get_access_token; get_access_token(force_refresh=True)" 2>&1 )"
+if [ $? -ne 0 ]; then
+  echo "$(date '+%F %T') FATAL: refresh del ROCP falló — NO abro el navegador (evito authFailed silencioso):" >&2
+  printf '%s\n' "$REFRESH_OUT" | tail -3 >&2
+  "$AUTOPILOT_DIR/autopilot-notify.sh" fallo "AUTH caída (refresh ROCP revocado)" \
+    "El refresh token ROCP se revocó (invalid_grant). El motor NO corrió y el release NO se marca (reintenta al próximo). Re-pega cookie/refresh en 'Reportes SH/.env' y corre steelhead_auth.py." 2>/dev/null || true
+  exit 2
+fi
+echo "$(date '+%F %T') ROCP fresco ✓ (access ~8h) — el SPA no refrescará durante la corrida"
+
 cd "$AUTOPILOT_DIR"
 "$NODE" hash-autopilot.mjs
 RC=$?
