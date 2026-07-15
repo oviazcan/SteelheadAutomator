@@ -265,18 +265,14 @@
   // (selectores de línea). NO la unión de todos los tratamientos (los enjuagues
   // arrastran ~25 líneas). Fallback a la unión si no hay selector de línea.
   //
-  // Se ofrecen TODAS (incluida la origen/actual): NO se excluye ninguna. Detectar "la
-  // línea actual" es ambiguo (una orden movida tiene activeRoutes mixtas: tinas físicas
-  // de una línea + selector "-LI" de otra). En vez de esconder líneas, el batch usa los
+  // Se ofrecen TODAS las líneas del selector (incluida la origen/actual): NO se excluye
+  // ninguna. Detectar "la línea actual" es ambiguo (una orden movida tiene activeRoutes
+  // mixtas: tinas físicas de una línea + selector "-LI" de otra), así que esconder líneas
+  // rompía el caso "devolver la orden a su línea original" (bug Image #6: una orden movida
+  // T204→T205 ya no mostraba T204 para regresarla). En vez de esconder, el batch usa los
   // CAMBIOS REALES (effectiveChangeCount) para el conteo y el botón Aplicar: elegir la
   // línea donde ya está da 0 cambios; cualquier otra (incl. devolver a la original) aplica.
-  // Líneas destino ofrecibles para re-rutear. Excluye la línea donde la orden YA
-  // está: la de su ruta activa sobre el selector de línea si existe (orden movida),
-  // o la línea default `sourceLine` si no hay ruta activa (orden fresca). Así el
-  // dropdown nunca ofrece la línea actual — y una orden movida T204→T205 vuelve a
-  // mostrar T204 para regresarla. `activeRoutes` es opcional (shape de
-  // StationTreatmentByWorkOrder.activeRoutes.nodes[]: {recipeNodeId, stationId, treatmentId}).
-  function destinationLines(candidatesByTreatment, sourceLine, activeRoutes) {
+  function destinationLines(candidatesByTreatment, sourceLine) {
     const cbt = candidatesByTreatment || {};
     const selectorTreatments = [];
     for (const tId of Object.keys(cbt)) {
@@ -290,16 +286,6 @@
       for (const tId of selectorTreatments) for (const s of cbt[tId]) {
         const c = extractLineCode(s.name); if (c) set.add(c);
       }
-      // Línea ACTUAL = la de la ruta activa sobre un selector; si no hay, la default.
-      let currentLine = sourceLine;
-      for (const a of (activeRoutes || [])) {
-        if (!a || !selectorTreatments.includes(String(a.treatmentId))) continue;
-        for (const tId of selectorTreatments) {
-          const st = (cbt[tId] || []).find((s) => s && s.id === a.stationId);
-          if (st) { const c = extractLineCode(st.name); if (c) currentLine = c; }
-        }
-      }
-      set.delete(currentLine);
     } else {
       for (const tId of Object.keys(cbt)) for (const s of (cbt[tId] || [])) {
         const code = extractLineCode(s && s.name); if (code) set.add(code);
