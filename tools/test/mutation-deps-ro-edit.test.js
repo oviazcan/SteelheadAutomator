@@ -23,9 +23,11 @@ test('receivedOrderEdit: declara UpdateReceivedOrder con estrategia edit-restore
   assert.equal(e.marker, 'Sentinela');
 });
 
-test('receivedOrderEdit: id:0 lo deja INACTIVO (el motor NO corre el ciclo → no muta)', () => {
-  assert.equal(config.entities.receivedOrderEdit.id, 0, 'placeholder id:0');
-  assert.equal(gateType(config, 'UpdateReceivedOrder'), null, 'con id:0 el gate NO activa el ciclo');
+test('receivedOrderEdit: id ACTIVO (OV Sentinela 1594 validada) → el gate activa el ciclo', () => {
+  // Ciclo validado headless 2026-07-15 sobre la OV Sentinela 1594 (capturó
+  // UpdateReceivedOrder d9e88576→b3602b2d; restore dejó el PO# vacío). id real, no placeholder.
+  assert.ok(config.entities.receivedOrderEdit.id > 0, 'id real (OV Sentinela), no placeholder 0');
+  assert.equal(gateType(config, 'UpdateReceivedOrder'), 'receivedOrderEdit', 'con id real el gate ACTIVA el ciclo');
 });
 
 test('receivedOrderEdit: con un id real, el gate lo activa y entityFor resuelve el handler', () => {
