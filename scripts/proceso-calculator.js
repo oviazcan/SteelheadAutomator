@@ -123,7 +123,7 @@ const ProcesosCalculator = (() => {
   // ════════════════════════════════════════════════════════════════════════
   // catalogStore — customInputs.CatProcesos del artículo de inventario (RMW)
   //   Leer:   GetInventoryItem {id} → inventoryItemById.customInputs.CatProcesos
-  //   Schema: GetInventoryItemInputSchema {inventoryTypeId} → latest…ForType.id
+  //   Schema: GetInventoryInputSchema {inventoryTypeId} → latest…ForType.id (renombrada de GetInventoryItemInputSchema 2026-07-15)
   //   Escribir: UpdateInventoryItemInputs {itemId, inputSchemaId, customInputs}
   // ════════════════════════════════════════════════════════════════════════
   const _cat = { ci: null, entries: null, loadedAt: 0 };
