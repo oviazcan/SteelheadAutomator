@@ -780,3 +780,11 @@ Validador manual (config 1.7.124): 175 ok / 4 stale / 1 skipped / 0 unknown / 0 
 | `SaveManyPartNumberPrices` | mutation | skipped (whitelist, sentinela precios). | — |
 
 **Chrome:** recargar extensión (config cachea ~5 min). **Safari/iPad:** el renombre tocó CÓDIGO de applets (catalog-fetcher, bulk-upload) → requiere rebundle si se usan en iPad (el bridge solo refresca hashes, no el código).
+
+## 2026-07-16 (cont.) — UpdateProcessNode reparado (deploy 1.7.126); CreateProcessNode pendiente
+
+Capturado headless con captura-y-aborta (editor de proceso /Processes/213861 → Edit → editar nodo → Save, con TODA mutation abortada = cero persistencia): `UpdateProcessNode` `4ceb2665…`→`00eb1116…`, validado contra server (HTTP 400 `$id required` = existe). Deploy 1.7.126.
+
+**CreateProcessNode: pendiente** — el botón "New Child Node" no es clickable headless (probablemente requiere seleccionar un nodo padre del árbol primero). Falta el flujo exacto para dispararla.
+
+**Cambio estructural (mismo día):** se QUITÓ el gate por release del wrapper — el validador corre en cada tick (detección proactiva sin depender de un release), tras comprobar con SearchProducts que el gate no protege contra rotaciones.
