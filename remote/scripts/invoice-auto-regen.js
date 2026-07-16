@@ -409,7 +409,7 @@ const InvoiceAutoRegen = (() => {
     let best = null, bestSize = 0;
     for (const el of all) {
       if (el.children.length > 0) continue;
-      if (el.textContent.trim() !== 'Invoices') continue;
+      if (!/^(invoices|facturas)$/i.test(el.textContent.trim())) continue;
       if (!_isHeadingLike(el)) continue;
       const size = parseFloat(window.getComputedStyle(el).fontSize) || 0;
       if (size > bestSize) { best = el; bestSize = size; }
@@ -420,13 +420,13 @@ const InvoiceAutoRegen = (() => {
     // 1. Heading semántico exacto "Invoices"
     const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
     for (const h of headings) {
-      if (h.textContent && h.textContent.trim() === 'Invoices') return h;
+      if (h.textContent && /^(invoices|facturas)$/i.test(h.textContent.trim())) return h;
     }
     // 2. Anclado al botón "CREAR FACTURA" del panel derecho
     const buttons = document.querySelectorAll('button, a, [role="button"]');
     for (const btn of buttons) {
       const t = (btn.textContent || '').trim().toUpperCase();
-      if (t !== 'CREAR FACTURA') continue;
+      if (t !== 'CREAR FACTURA' && t !== 'CREATE INVOICE') continue;
       let node = btn;
       for (let i = 0; i < 8 && node; i++) {
         const found = _findExactInvoicesNode(node);
@@ -941,7 +941,7 @@ const InvoiceAutoRegen = (() => {
   function _findCloseButton() {
     const btns = document.querySelectorAll('button');
     for (const b of btns) {
-      if (b.textContent && b.textContent.trim() === 'Close') return b;
+      if (b.textContent && /^(close|cerrar)$/i.test(b.textContent.trim())) return b;
     }
     return null;
   }
@@ -990,7 +990,7 @@ const InvoiceAutoRegen = (() => {
     svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     console.log('[AutoRegen DOM] Click disparado al icono regenerar — esperando submodal de confirmación…');
 
-    const confirmBtn = await _waitForButton(/^confirmar$/i, 5000);
+    const confirmBtn = await _waitForButton(/^(confirmar|confirm)$/i, 5000);
     if (!confirmBtn) {
       const w = window.__autoRegenPdfWaiter;
       if (w) { clearTimeout(w.timer); window.__autoRegenPdfWaiter = null; }
