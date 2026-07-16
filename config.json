@@ -1,6 +1,6 @@
 {
-  "version": "1.7.122",
-  "lastUpdated": "2026-07-15T22:26",
+  "version": "1.7.123",
+  "lastUpdated": "2026-07-15T22:35",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -178,7 +178,7 @@
         "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e",
         "GetReceivedOrdersWithReceivedOrderLineItems": "50974f9ba56a8846f001f1a25452fd3f6d0f99cf16c9db7d6d9a1f1b40155b9e",
         "Customer": "74f53734d68cc7b5dbadd4e9f436e11e3ca9b935031411713f3fe75d1a1c5631",
-        "GetProcessNode": "304ed72651c583baa333505f1b449419ac636dda1a4327de89a5a31a295c6054",
+        "GetProcessNode": "3c570c9045a631877f87e94aa196434a299d81e0b4385b3167b796f5bbe7ce32",
         "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af",
         "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d",
         "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3",
