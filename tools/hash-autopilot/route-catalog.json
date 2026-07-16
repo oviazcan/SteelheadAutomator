@@ -326,8 +326,7 @@
       "captures": [
         "AllInventoryTypes",
         "ArchiveInventoryBatchStatus",
-        "ConfigureInventoryBatchStatusesQuery",
-        "GetInventoryInputSchema"
+        "ConfigureInventoryBatchStatusesQuery"
       ]
     },
     "invoices-detail": {
