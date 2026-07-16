@@ -1,7 +1,7 @@
 {
   "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
   "_domainDefault": "344",
-  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems"],
+  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems", "GetAvailableUnits", "SpecFieldsAndOptions"],
   "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
   "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail"],
   "_docManualRoute": "Ops de DETALLE cuya ruta auto-generada apuntaba MAL (hrefMatches por module, no por sub-entidad: /Purchasing/PurchaseOrders/<id> NO matchea /Purchasing/\\d+; y colision de routeId Maintenance/Nodes vs Maintenance/SensorDashboards). Rutas manuales validadas headless 2026-07-14. El generador las excluye del auto-agrupamiento (union con _interactionOps).",
@@ -350,6 +350,41 @@
         "InvoiceByIdInDomain",
         "RouteInvoices",
         "UIGetIntegrationObject"
+      ]
+    },
+    "inventory-input-schema": {
+      "type": "query",
+      "module": "InventoryTypes",
+      "steps": [
+        { "goto": "/InventoryTypes/InventoryItemInputSchema" }
+      ],
+      "captures": [
+        "GetInventoryInputSchema"
+      ]
+    },
+    "partnumber-units-definenew": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        { "goto": "/PartNumbers" },
+        { "goto": "/PartNumbers/3770957" },
+        { "clickButton": "define new|definir" }
+      ],
+      "captures": [
+        "GetAvailableUnits"
+      ]
+    },
+    "partnumber-add-spec": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        { "goto": "/PartNumbers" },
+        { "goto": "/PartNumbers/3770957" },
+        { "clickButton": "add spec|agregar spec" },
+        { "selectFirstOption": "[role=\"dialog\"] input[role=\"combobox\"]" }
+      ],
+      "captures": [
+        "SpecFieldsAndOptions"
       ]
     },
     "invoices-packingslips-addinvoice": {

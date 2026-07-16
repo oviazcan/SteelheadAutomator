@@ -15,6 +15,8 @@ const EXPECTED = {
   SensorDashboardQuery: 'maintenance-sensordashboards-detail',
   GetPurchaseOrderDetail: 'purchasing-po-detail',
   GetReceivedOrdersWithReceivedOrderLineItems: 'invoices-packingslips-addinvoice',
+  GetAvailableUnits: 'partnumber-units-definenew',
+  SpecFieldsAndOptions: 'partnumber-add-spec',
 };
 
 test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', () => {
@@ -24,7 +26,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 5 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 7 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });

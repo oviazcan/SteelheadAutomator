@@ -88,6 +88,12 @@ export async function runRecipe(page, recipe, domain, sink, stepTimeoutMs = 2500
       // "Add Parts (Table)" → GetAddPartsReceivedOrder). El regex es BILINGÜE ES+EN
       // (el headless corre en INGLÉS, pero el operador puede verlo en español).
       await clickButtonMatching(page, step.clickButton, sink, need, stepTimeoutMs);
+    } else if (step.selectFirstOption) {
+      // Abre un react-select (clic en el combobox) y elige su PRIMERA opción → algunos
+      // queries solo se disparan al SELECCIONAR (p.ej. "Add Spec" → elegir un spec del
+      // dropdown dispara SpecFieldsAndOptions). step.selectFirstOption = selector del input
+      // combobox (típ. '[role="dialog"] input[role="combobox"]').
+      await selectFirstOptionMatching(page, step.selectFirstOption, sink, need, stepTimeoutMs);
     }
     // espera activa: pollea hasta capturar las ops de la receta o vencer timeout
     const start = Date.now();
@@ -170,4 +176,27 @@ async function clickButtonMatching(page, reSrc, sink, need, timeoutMs) {
     if (clickedOnce && haveAll()) break;
   }
   return clickedOnce;
+}
+
+// Abre un react-select (clic en su input combobox) y elige la PRIMERA opción del
+// listbox → dispara la query que carga los datos de esa selección. Reintenta hasta
+// capturar `need` o vencer. Es LECTURA (no guarda) — solo poblar el dropdown y elegir.
+async function selectFirstOptionMatching(page, comboSel, sink, need, timeoutMs) {
+  const haveAll = () => need.length > 0 && need.every((op) => sink && sink.hashes[op]);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && !haveAll()) {
+    try {
+      const combo = page.locator(comboSel).first();
+      if (await combo.count()) {
+        await combo.click({ timeout: 5000 });
+        await page.waitForTimeout(1500); // dejar que el listbox renderice las opciones
+        const opt = page.locator('[role="option"]').first();
+        if (await opt.count()) await opt.click({ timeout: 5000 });
+        const t = Date.now();
+        while (!haveAll() && Date.now() - t < 4000) await page.waitForTimeout(400);
+      } else {
+        await page.waitForTimeout(600); // el combobox aún no rinde → reintentar
+      }
+    } catch { await page.waitForTimeout(500); }
+  }
 }
