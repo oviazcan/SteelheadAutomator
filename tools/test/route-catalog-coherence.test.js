@@ -20,6 +20,7 @@ const EXPECTED = {
   GetInventoryInputSchema: 'inventory-input-schema',
   AllInventoryBatchStatuses: 'receiving-customerparts-status',
   GetPartNumberInventoryBatch: 'receiving-batch-detail',
+  OperatorMaintenanceNodeDialogQuery: 'maintenance-event-complete-step',
 };
 
 test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', () => {
@@ -29,7 +30,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 10 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 11 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });
