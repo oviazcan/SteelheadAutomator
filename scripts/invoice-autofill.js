@@ -228,10 +228,15 @@ const InvoiceAutofill = (() => {
     //   - root_DatosContables_Divisa      (selector de divisa de la FACTURA; OJO: NO
     //     es root_DatosContables_DivisaUSD/DivisaMXN, que son flags del cliente)
     //   - root_DatosContables_exchangeRate (TC de la factura)
-    //   - heading "Creating/Editing/New Invoice for X"
+    //   - heading "…invoice for X" / "…factura para X" — ancla en invoice/factura + for/para,
+    //     ignorando el verbo que traduzcan (Creating/Creando/Generando…)
+    //   - droppable de líneas de la factura (data-rfd, idioma-INDEPENDIENTE) — el ancla más robusta
     const hasInvoiceHeading = [...document.querySelectorAll('h1,h2,h3,h4,[class*="MuiTypography-h"]')]
-      .some(h => /(?:creating|editing|new|create|edit)\s+invoice\s+for\b/i.test(h.textContent || ''));
-    const found = !!(divisaInput || tcInput || hasInvoiceHeading);
+      .some(h => /(?:invoice|factura)\s+(?:for|para)\b/i.test(h.textContent || ''));
+    // Ancla 100% idioma-independiente: el droppable/draggable de líneas de factura (react-beautiful-dnd)
+    // solo existe en el editor de factura montado; sobrevive la traducción del modal y el bug de caché.
+    const hasInvoiceLines = !!document.querySelector('[data-rfd-droppable-id="ro-invoice-lines-droppable"], [data-rfd-draggable-id^="ro-invoice-line"]');
+    const found = !!(divisaInput || tcInput || hasInvoiceHeading || hasInvoiceLines);
 
     if (!found) {
       // Modal "Create Invoice Manually" — overlay sin RJSF. Maneja su propio flow.
@@ -854,7 +859,10 @@ const InvoiceAutofill = (() => {
       // Fallback: si no hubo text nodes directos, usa textContent y luego corta
       // en separadores conocidos
       if (!txt) txt = h.textContent?.trim() || '';
-      const m = txt.match(/^(?:creating|editing|create|edit|new)\s+invoice\s+for\s+(.+?)$/i);
+      // Ancla en "invoice for X" / "factura para X" (ignora el verbo que traduzcan:
+      // Creating/Creando/Generando…). El nombre real del cliente también llega por la API
+      // (state.customerName de InvoiceLowCodeData/customerById) como respaldo idioma-indep.
+      const m = txt.match(/(?:invoice|factura)\s+(?:for|para)\s+(.+?)$/i);
       if (m && m[1]) {
         let name = m[1].trim();
         // Si vemos botones contaminando ("MOGULView Customer..."), insertar espacios
