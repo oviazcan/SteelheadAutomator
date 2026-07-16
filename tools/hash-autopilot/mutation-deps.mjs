@@ -257,12 +257,14 @@ async function savePriceSentinelaAborted(page, sink, ctx = {}) {
     await page.waitForTimeout(2000);
   }
   if (dbg) console.log('       [dbg] PN detalle hidratado');
-  // TODO(selector): localizar el botón que abre el modal "Part Number Price". Los
-  // AddCircleOutlineIcon TOP-LEVEL del detalle abren "Part Number OEMs" (verificado
-  // 2026-07-15), NO precio. El botón de precio vive en la sección de precios (posible
-  // acordeón colapsado / scroll). PENDIENTE: contexto del usuario. Por eso la entidad
-  // queda id:0 (inactiva) hasta afinar este selector — este handler NO se invoca aún.
-  const openBtn = page.locator('button:has(svg[data-testid="AddCircleOutlineIcon"])').first();
+  // El botón "+" de precio vive en la fila "Pricing" del detalle: un div.css-xd9ivb
+  // cuyo label (div.css-re0j1l) es "Pricing" + el IconButton AddCircleOutlineIcon.
+  // Esto lo DISTINGUE de los "+" de OEMs (mismo icono, otra fila). Bilingüe (Pricing/Precios).
+  // HIJO DIRECTO (>): un css-xd9ivb ANCESTRO engloba OEMs+Pricing y capturaría ambos "+";
+  // anclar al css-xd9ivb cuyo hijo directo ES el label "Pricing" toma SOLO su botón.
+  const openBtn = page.locator(
+    'div.css-xd9ivb:has(> div.css-re0j1l:text-matches("^(Pricing|Precios)$", "i")) > button:has(svg[data-testid="AddCircleOutlineIcon"])'
+  ).first();
   await openBtn.scrollIntoViewIfNeeded().catch(() => {});
   await openBtn.click({ timeout: 12000 });
   // fail-closed: verificar que abrió el modal CORRECTO ("Part Number Price").

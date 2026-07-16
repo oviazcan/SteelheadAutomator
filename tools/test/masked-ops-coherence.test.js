@@ -64,9 +64,11 @@ test('masked-ops: cada mutation enmascarada tiene un sentinela declarado (aunque
   }
 });
 
-test('sentinels-config: SaveManyPartNumberPrices andamiado (id:0, inactivo hasta afinar el selector del botón)', () => {
+test('sentinels-config: SaveManyPartNumberPrices INACTIVO (id:0) — el modal individual captura otra variante que bulk-upload', () => {
+  // Hallazgo 2026-07-15: el modal "Part Number Price" usa 72946d4d… pero bulk-upload
+  // usa el BATCH 9da1874e… (config) → el sentinela del modal capturaría el hash equivocado.
   const e = sentinels.entities.partNumberPrice;
   assert.ok(e, 'falta la entidad partNumberPrice');
-  assert.equal(e.id, 0, 'partNumberPrice queda INACTIVO (id:0) hasta fijar el selector del botón de precio');
+  assert.equal(e.id, 0, 'partNumberPrice queda INACTIVO (id:0): captura la variante del modal, no la de bulk-upload');
   assert.ok((e._para || []).includes('SaveManyPartNumberPrices'));
 });
