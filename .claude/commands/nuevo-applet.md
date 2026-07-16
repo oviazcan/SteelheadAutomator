@@ -18,6 +18,18 @@ Pasos:
    fila al índice de applets de CLAUDE.md.
 5. Registra el applet en `remote/config.json` (`apps[]`). El bump de config es hot file:
    hazlo en una pasada corta y coordina si hay otra sesión (regla de trabajo paralelo).
+6. **Ruta de regeneración de hash (OBLIGATORIO si el applet introduce un hash nuevo).**
+   Por CADA hash de persisted query que agregues a `config.json`, documenta su **ruta de
+   auto-captura headless** para que el `hash-autopilot` la regenere sola cuando rote:
+   - **Query** → agrega/verifica una ruta en `tools/hash-autopilot/route-catalog.json`
+     (`goto` a la pantalla; `clickFirst`/`clickButton` si requiere abrir un modal). Si la
+     op solo se dispara desde una interacción (no navegando), agrégala a `_interactionOps`.
+   - **Mutation** → declara un sentinela en `tools/hash-autopilot/sentinels-config.json`
+     (objeto de prueba "Sentinela") con su handler DOM en `mutation-deps.mjs`; para
+     escrituras que NO deban persistir, usa **captura-y-aborta** (`sink.abortOps`).
+   - Confirma la ruta en vivo (`node hash-autopilot.mjs --only=<Op> --dry-run` o
+     `--no-deploy` para mutations) y déjala anotada en la bitácora del applet.
+   **Un hash sin ruta de regeneración es deuda** (cae en captura manual con hash-scanner).
 
 Reglas: código y variables en inglés; docs y UI en español; batching de PNs en grupos de 20.
 NO deployes — deja el andamiaje listo y los tests verdes. Reporta qué creaste.
