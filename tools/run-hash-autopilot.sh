@@ -9,10 +9,12 @@
 #     rotaron. Es barato (pocas rutas). Objetivo: NO esperar a que truenen — esas ops
 #     rotan sin dejar señal para el validador (p.ej. AllCustomers el 2026-07-03, que
 #     dejó la carga masiva con 0 clientes y el validador reportó "0 rotado").
-#   CAPA 2 · ESCANEO COMPLETO — con GATE POR RELEASE: solo si Steelhead publicó un
-#     build nuevo corre validate-hashes.py (detecta las ~170 detectables por idp-token)
-#     + el motor completo (enmascaradas + stale del validador). Así el escaneo pesado
-#     corre casi gratis (los hashes solo rotan con un release del frontend).
+#   CAPA 2 · DETECCIÓN — SIEMPRE (cada tick, SIN gate por release, 2026-07-16): corre
+#     validate-hashes.py (detecta las ~170 por idp-token; barato: Python sin navegador)
+#     y, SOLO si hay stale, dispara el motor completo (enmascaradas + stale) que
+#     auto-captura + deploya. Antes se condicionaba a un "release nuevo", pero los hashes
+#     ROTAN sin que el code-id de /version.json cambie (SearchProducts el 2026-07-16
+#     rotó, el gate no disparó, catalog-fetcher tronó sin aviso) → el gate no protege.
 #
 # El motor auto-deploya los rotados validados SOLO si el repo está en main y sin WIP
 # ajeno (salvaguardas de autopilot-deploy.sh); si no, avisa por correo.
@@ -62,33 +64,27 @@ echo "$(date '+%F %T') Recaptura de enmascaradas (--masked-only)…"
 MASKED_RC=$?
 [ "$MASKED_RC" != "0" ] && echo "$(date '+%F %T') masked-only exit $MASKED_RC (auth o deploy; ver correo)"
 
-# ── Gate por release: el ESCANEO COMPLETO solo corre con build nuevo ────────
-RELEASE_FILE="$STATE_DIR/last-release.txt"
-CUR_CODEID="$(curl -s -m 15 https://app.gosteelhead.com/version.json 2>/dev/null | "$PYTHON" -c 'import json,sys;print(json.load(sys.stdin).get("code-id",""))' 2>/dev/null || echo "")"
-PREV_CODEID="$(cat "$RELEASE_FILE" 2>/dev/null || echo "")"
-if [ -z "$CUR_CODEID" ]; then
-  echo "$(date '+%F %T') WARN: no pude leer code-id de /version.json — corro escaneo completo de todos modos (defensivo)."
-elif [ "$CUR_CODEID" = "$PREV_CODEID" ]; then
-  echo "$(date '+%F %T') Sin release nuevo (code-id ${CUR_CODEID:0:8}) — escaneo completo skip (las enmascaradas YA corrieron)."
-  exit "$MASKED_RC"
-fi
-
-echo "$(date '+%F %T') Release nuevo (${CUR_CODEID:0:8}) — escaneo completo…"
-
-# ── Fase A: validator (detecta stale de las detectables por idp-token) ──
+# ── DETECCIÓN SIEMPRE (SIN gate por release) ────────────────────────────────
+# Antes el escaneo completo se condicionaba a un "release nuevo" (code-id de
+# /version.json). PERO los hashes ROTAN sin que ese code-id cambie de forma detectable:
+# el 2026-07-16 SearchProducts rotó, el gate NO disparó, y el Actualizador de Catálogos
+# tronó sin aviso. Conclusión del operador: el gate por release no hace diferencia para
+# hashes rotados. → El validador corre en CADA tick (barato: Python puro, sin navegador,
+# ~2 min); si detecta stale, dispara el motor completo para auto-capturar y deployar.
 # Escribe tools/.hash-validation/<date>.json que el motor lee para planificar.
-echo "$(date '+%F %T') Corriendo validate-hashes.py (detección)…"
+echo "$(date '+%F %T') Corriendo validate-hashes.py (detección — SIEMPRE, sin gate)…"
 "$PYTHON" "$REPO_ROOT/tools/validate-hashes.py"
 VAL_RC=$?
-[ "$VAL_RC" != "0" ] && echo "$(date '+%F %T') validate-hashes.py exit $VAL_RC (stale o auth; el motor decide)"
-
-# ── Fase B: motor completo (enmascaradas + stale del validador) ──
-cd "$AUTOPILOT_DIR"
-"$NODE" hash-autopilot.mjs
-RC=$?
-
-# Marca este release como procesado salvo que la auth se haya caído (exit 2).
-if [ "$RC" != "2" ] && [ -n "$CUR_CODEID" ]; then
-  echo "$CUR_CODEID" > "$RELEASE_FILE"
+if [ "$VAL_RC" = "2" ]; then
+  echo "$(date '+%F %T') validate-hashes.py exit 2 (auth roto) — ver correo; NO abro el motor." >&2
+  exit 2
 fi
-exit "$RC"
+if [ "$VAL_RC" = "1" ]; then
+  # Hay stale → motor completo (enmascaradas + stale del validador) → auto-captura + deploy + correo.
+  echo "$(date '+%F %T') Stale detectado → motor completo (auto-captura + deploy)…"
+  cd "$AUTOPILOT_DIR"
+  "$NODE" hash-autopilot.mjs
+  exit $?
+fi
+echo "$(date '+%F %T') 0 stale (las enmascaradas ya se recapturaron en la capa 1)."
+exit "$MASKED_RC"
