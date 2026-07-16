@@ -1,6 +1,6 @@
 {
-  "version": "1.7.127",
-  "lastUpdated": "2026-07-16T16:09",
+  "version": "1.7.128",
+  "lastUpdated": "2026-07-16T16:12",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -69,7 +69,7 @@
         "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c",
         "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce",
         "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03",
-        "CreateProcessNode": "a437bd9c28f9bbc3d181d6e0c86d856882a4fcf5fff783d7c9ed2368a73cbfdb",
+        "CreateProcessNode": "9d7fe3d3c97b77d33790a5e5c53197f95badd5ff0f12feebbebf0126a03bbcd4",
         "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b",
         "UpdateProcessNode": "00eb11163759348d3bbfb5bc570a6d00c7ee6b9f23fe6a16928ff2d5c725bab6",
         "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928",
