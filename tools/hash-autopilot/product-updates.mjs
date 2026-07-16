@@ -16,21 +16,41 @@ export async function fetchProductUpdates(page, limit = 8) {
   // El changelog es un SPA route: espera a que aparezca contenido real (poll hasta
   // ~8s), no un timeout fijo — igual que el resto del app tarda en hidratar.
   try {
-    await page.waitForFunction(() => (document.body && document.body.innerText || '').trim().length > 400, { timeout: 8000 });
-  } catch { try { await page.waitForTimeout(2500); } catch {} }
+    // El changelog renderiza vía "markdown renderer" que tarda: "Loading markdown
+    // renderer..." repetido ya supera 400 chars, así que bodyLen NO basta. Esperar al
+    // ancla real del changelog ("STEELHEAD PRODUCT UPDATES") y a que se vaya el loader.
+    await page.waitForFunction(() => {
+      const t = (document.body && document.body.innerText) || '';
+      return /STEELHEAD PRODUCT UPDATES/i.test(t) && !/Loading markdown renderer/i.test(t);
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1500);
+  } catch { try { await page.waitForTimeout(3000); } catch {} }
   return page.evaluate((limit) => {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    let entries = [];
-    // Candidatos típicos de un changelog: article / cards con "update|release|changelog|note".
-    const sel = 'article, [class*="update" i], [class*="release" i], [class*="changelog" i], [class*="note" i], [class*="card" i], li';
-    for (const c of document.querySelectorAll(sel)) {
-      const txt = clean(c.innerText || c.textContent);
-      if (txt && txt.length > 25 && txt.length < 900) entries.push(txt);
-      if (entries.length >= limit * 4) break;
-    }
-    entries = [...new Set(entries)].slice(0, limit);
     const bodyText = clean(document.body ? document.body.innerText : '');
-    const snippet = bodyText.slice(0, 2500);
+    // GUARD: confirmar que ES la página real del changelog (ancla estable "STEELHEAD
+    // PRODUCT UPDATES" o el <title>). Sin esto, un selector amplio captura basura de
+    // otras secciones (búsqueda, sugerencias del asistente AI) cuando el changelog no
+    // cargó — que es lo que ensuciaba el correo. Si no es la página correcta → vacío.
+    const ANCHOR = 'STEELHEAD PRODUCT UPDATES';
+    const aidx = bodyText.toUpperCase().indexOf(ANCHOR);
+    // Exigir el ancla EN EL BODY (el changelog realmente cargó). El <title> "Product
+    // Updates" está aunque el markdown no haya renderizado → no basta. Sin ancla → vacío
+    // (evita mandar "Loading markdown renderer..." o basura de otras secciones al correo).
+    if (aidx === -1) return { entries: [], snippet: '', title: document.title || '', url: location.href, bodyLen: bodyText.length };
+    // Contenido del changelog = desde el ancla en adelante (descarta header/nav/precios de metales).
+    const content = aidx >= 0 ? clean(bodyText.slice(aidx + ANCHOR.length)) : bodyText;
+    // Partir en entradas por bloque de fecha ("JULY 15, 2026"): fecha → texto del update.
+    const dateRe = /([A-Z][a-zA-Z]+ \d{1,2}, \d{4})/g;
+    const parts = content.split(dateRe);
+    const entries = [];
+    for (let i = 1; i < parts.length - 1; i += 2) {
+      const date = clean(parts[i]);
+      const body = clean(parts[i + 1]);
+      if (body) entries.push(`${date}: ${body.length > 280 ? body.slice(0, 280) + '…' : body}`);
+      if (entries.length >= limit) break;
+    }
+    const snippet = content.slice(0, 2000);
     return { entries, snippet, title: document.title || '', url: location.href, bodyLen: bodyText.length };
   }, limit).catch(() => ({ entries: [], snippet: '', title: '', url: '', bodyLen: 0 }));
 }
