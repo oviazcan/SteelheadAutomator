@@ -16,16 +16,19 @@ o pásame el **wrapper HTML del modal** para anclar por `data-testid`/estructura
 idioma-independiente y NO necesita traducción). Las columnas "hipótesis" abajo son **solo
 pistas para que las confirmes**, no valores a codificar.
 
-## 🔴 PRIORIDAD 1 — Seguridad (el candado deja de proteger)
+## ✅ CORRECCIÓN (2026-07-16) — surtido-guard NO es riesgo de seguridad
 
-| Applet | archivo:línea | Ancla actual | Idioma | Impacto si cambia el locale |
-|---|---|---|---|---|
-| **surtido-guard** | `surtido-guard.js:197` | `/Tareas Programadas:/i` | solo ES | Con SH en inglés, el candado **no detecta** las tarjetas programadas → **no marca verde ni bloquea** el surtido no programado. Falla de seguridad silenciosa. |
-| **surtido-guard** | `surtido-guard.js:207` | `/Proceso:/i` | solo ES | Igual — el guard no ancla el proceso. |
+Revisión anterior lo marcó P1 por error. Verificado en código: el **bloqueo** de surtido-guard es
+**100% API-driven** — `surtido-guard.js:102-113` llama `Core().evaluateMove(vars, ctx())` comparando
+el `fromAccountId` de la mutación `CreateManyPartsTransfersChecked` contra `scheduledAccountIds`
+(construido de `GetRelatedScheduleData` / `BOARD_SCHEDULE_OP`, líneas 118-122). **No usa texto de UI**,
+así que **el candado bloquea en cualquier idioma**. La detección de modal también es bilingüe
+(`:141` "Desde Nodo:"/"From Node:", botones `:175-176`).
 
-> Nota: surtido-guard **sí** es bilingüe en su detección de modal (`:141` "Desde Nodo:"/"From
-> Node:", botones `:175-176`). La deuda son solo estos dos labels de tarjeta. Ideal: anclar por
-> estructura/testid de la tarjeta (pásame el HTML de una tarjeta con "Tareas Programadas").
+Las cadenas mono-ES `/Tareas Programadas:/i` (`:197`) y `/Proceso:/i` (`:207`) alimentan **solo el
+marcado VERDE visual** de tarjetas programadas (`decorateCards`, Task 7). Con SH en inglés el verde no
+se pinta — **cosmético, no de seguridad**. Fix opcional (P3): anclar por `data-testid`/estructura de la
+tarjeta (requiere el HTML de una tarjeta con "Tareas Programadas") o agregar el label EN.
 
 ## 🟡 PRIORIDAD 2 — Autofills/guards principales (dejan de dispararse)
 
