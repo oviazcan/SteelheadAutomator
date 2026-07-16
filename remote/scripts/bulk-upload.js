@@ -3845,7 +3845,7 @@ const BulkUpload = (() => {
         fetchAllSpecsFull(),
         api().query('AllRackTypes', {}),
         api().query('SearchUnits', {}),
-        api().query('SearchProducts', { searchQuery: '%%', first: 500 }),
+        api().query('SearchProductsComprehensive', { searchQuery: '%%', first: 500 }),
         api().query('PartNumberGroupSelect', { partNumberGroupLike: '%%', first: 500 }, 'PartNumberGroupSelect').catch(() => api().query('PartNumberGroupSelect', {}, 'PartNumberGroupSelect')).catch(() => null),
       ]);
 
