@@ -788,3 +788,9 @@ Capturado headless con captura-y-aborta (editor de proceso /Processes/213861 →
 **CreateProcessNode: pendiente** — el botón "New Child Node" no es clickable headless (probablemente requiere seleccionar un nodo padre del árbol primero). Falta el flujo exacto para dispararla.
 
 **Cambio estructural (mismo día):** se QUITÓ el gate por release del wrapper — el validador corre en cada tick (detección proactiva sin depender de un release), tras comprobar con SearchProducts que el gate no protege contra rotaciones.
+
+## 2026-07-16 (cierre) — CreateProcessNode reparado (deploy 1.7.128); LOS 4 ROTADOS RESUELTOS
+
+`CreateProcessNode` `a437bd9c…`→`9d7fe3d3…`, validado (HTTP 400 `$type required` = existe). Capturado headless con captura-y-aborta: /Processes/213861 → Edit → "New Child Node" → modal Name="Prueba" → Save (toda mutation abortada). **Lección DOM:** el botón "New Child Node" vive en y~1350 (fuera del viewport 1200) Y Playwright lo consideraba cubierto por barra sticky → NI scrollIntoView NI clic por coordenadas NI force funcionaron; SÍ funcionó `element.click()` por `page.evaluate` (dispara el onClick de React ignorando overlays) + viewport alto (1700). Patrón útil para futuros botones "no accionables".
+
+**Cierre 2026-07-16:** los 4 rotados resueltos — SearchProducts→SearchProductsComprehensive + CreateEditProcessDialogQuery (1.7.125), UpdateProcessNode (1.7.126), CreateProcessNode (1.7.128). Gate por release quitado (validador corre siempre).
