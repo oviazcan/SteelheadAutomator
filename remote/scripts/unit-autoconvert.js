@@ -132,9 +132,12 @@
     if (tr) {
       const nameP = tr.querySelector('td p.MuiTypography-root');
       if (!nameP) return null;
-      // descartar el input recíproco (Parts / X)
+      // Descartar el input recíproco (Parts / X). Idioma-independiente: la fila tiene 2 inputs
+      // — el 1º es el directo (Unidades/Parts), el 2º el recíproco. Discriminamos por POSICIÓN
+      // (sobrevive traducir "Parts"→"Partes"), con fallback al texto del adorno "Parts /".
+      const rowInputs = [...tr.querySelectorAll('input')];
       const adorn = (input.closest('td')?.querySelector('.MuiInputAdornment-root')?.textContent) || '';
-      if (Core.isReciprocalAdornment(adorn)) return null;
+      if (rowInputs.indexOf(input) >= 1 || Core.isReciprocalAdornment(adorn)) return null;
       return { panel: 'B', code: Core.unitCodeFromText(nameP.textContent) };
     }
     // Panel A: label hermano que termina en "/ Part:"
@@ -165,10 +168,13 @@
     for (const tr of rows) {
       const nameP = tr.querySelector('td p.MuiTypography-root');
       if (!nameP || Core.unitCodeFromText(nameP.textContent) !== code) continue;
-      const inputs = tr.querySelectorAll('input');
-      for (const inp of inputs) {
-        const adorn = (inp.closest('td')?.querySelector('.MuiInputAdornment-root')?.textContent) || '';
-        if (!Core.isReciprocalAdornment(adorn)) return inp; // Unidades/Parts
+      const inputs = [...tr.querySelectorAll('input')];
+      // El input DIRECTO (Unidades/Parts) es el 1º de la fila; el recíproco (Parts/Unidad) el 2º.
+      // Por POSICIÓN (idioma-indep) con fallback al adorno "Parts /".
+      for (let i = 0; i < inputs.length; i++) {
+        const adorn = (inputs[i].closest('td')?.querySelector('.MuiInputAdornment-root')?.textContent) || '';
+        if (i >= 1 || Core.isReciprocalAdornment(adorn)) continue; // recíproco → saltar
+        return inputs[i]; // directo (Unidades/Parts)
       }
     }
     return null;
