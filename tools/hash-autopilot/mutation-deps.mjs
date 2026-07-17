@@ -297,14 +297,13 @@ async function openQuotesListAndFind(page, id, domain) {
 }
 
 // quotePrice: SaveManyPartNumberPrices BATCH (9da1874e, el que usa bulk-upload), distinto
-// del modal individual (72946d). Se dispara desde la COTIZACIÓN sentinela #288. Flujo confirmado
-// vía wrapper HTML del operador (2026-07-17): abrir el quote client-side → 'Edit this Part' pone
-// la línea en modo edición (Divisa#root_DatosPrecio_Divisa editable + input de precio
-// inputmode=decimal habilitado + botón 'Save Parts') → llenar Divisa=USD + precio>0 (SIN un
-// cambio real el 'Save Parts' queda DISABLED y no manda el batch) → 'Save Parts' → captura-y-aborta.
-// PRECONDICIÓN: el quote #288 DEBE estar ACTIVO (desarchivado); archivado = read-only, campos
-// disabled (ese era el bloqueo histórico, no la "hidratación lenta"). El price-confirm-guard NO
-// aplica headless (sin extensión) ni a este flujo (guard = modal individual 'Part Number Price').
+// del modal individual (72946d). Se dispara desde la COTIZACIÓN sentinela #288. FLUJO REAL del
+// operador (2026-07-17): abrir el quote client-side → clic 'Edit this Part' (lapicito) → 'Save
+// Parts' se HABILITA solo → clic 'Save Parts' SIN editar nada → dispara el batch "tiro por viaje".
+// CLAVE: NO tocar Divisa/precio — editar rompe el estado y Save Parts se deshabilita (por eso la
+// captura fallaba antes). PRECONDICIÓN: el quote #288 DEBE estar ACTIVO (desarchivado); archivado
+// = read-only. El price-confirm-guard NO aparece (guard = modal individual 'Part Number Price', no
+// este 'Save Parts' del quote) y en headless no hay extensión.
 async function savePartsQuoteAborted(page, sink, { id, domain }) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
@@ -312,22 +311,23 @@ async function savePartsQuoteAborted(page, sink, { id, domain }) {
   if (!found) throw new Error('quotePrice: el link del quote sentinela no apareció en la lista (¿archivado? ¿no hidrató?)');
   await page.locator(`a[href*="/Quotes/${id}/"]`).first().click({ timeout: 10000 }).catch(() => {});
   await page.locator('[aria-label="Edit this Part"]').first().waitFor({ state: 'visible', timeout: 25000 });
-  if (dbg) console.log('       [dbg] quote abierto → Edit this Part');
-  await page.evaluate(() => { const d = [...document.querySelectorAll('[aria-label="Edit this Part"]')][0]; if (d) d.click(); });
-  // modo edición: Divisa (required) + precio → habilita 'Save Parts'.
-  const divisa = page.locator('#root_DatosPrecio_Divisa').first();
-  await divisa.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
-  await divisa.selectOption('USD').catch(() => {});
-  // precio: input inputmode=decimal HABILITADO (los type=number de Datos de Planificación
-  // están disabled). Cambio real del precio → NO persiste (se aborta).
-  await page.locator('input[inputmode="decimal"]:not([disabled])').first().fill('1.5').catch(() => {});
-  await page.waitForTimeout(800);
-  if (dbg) console.log('       [dbg] Divisa=USD + precio=1.5 → Save Parts');
-  // 'Save Parts' → SaveManyPartNumberPrices → interceptor captura y ABORTA. Reintenta el clic
-  // (solo si el botón NO está disabled) hasta capturar o vencer.
+  if (dbg) console.log('       [dbg] quote abierto → Edit this Part (sin editar nada)');
+  // Click REAL de Playwright (force: el div puede quedar "cubierto" para el hit-test, pero el
+  // click dispara el handler React; evaluate().click() a veces no lo activa → Save Parts no se
+  // habilitaba). Fallback a evaluate si el force falla.
+  await page.locator('[aria-label="Edit this Part"]').first().click({ force: true, timeout: 10000 }).catch(async () => {
+    await page.evaluate(() => { const d = [...document.querySelectorAll('[aria-label="Edit this Part"]')][0]; if (d) d.click(); });
+  });
+  await page.waitForTimeout(1500);
+  if (dbg) {
+    const st = await page.evaluate(() => [...document.querySelectorAll('button')].filter((b) => /^Save Parts$/i.test((b.textContent || '').trim())).map((b) => b.disabled)).catch(() => []);
+    console.log(`       [dbg] tras Edit: Save Parts botones=${JSON.stringify(st)}`);
+  }
+  // 'Save Parts' se habilita solo tras 'Edit this Part'. Clic REAL (force) tal cual (SIN editar)
+  // → dispara SaveManyPartNumberPrices → interceptor captura y ABORTA. Reintenta hasta capturar.
   const d2 = Date.now() + 25000;
   while (Date.now() < d2 && !(sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices)) {
-    await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => /^Save Parts$/i.test((x.textContent || '').trim())); if (b && !b.disabled) b.click(); });
+    await page.locator('button').filter({ hasText: /^Save Parts$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(2000);
   }
   if (dbg) console.log(`       [dbg] Save Parts → ${sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices ? 'CAPTURADO' : 'sin hash aún'}`);
