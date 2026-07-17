@@ -1185,7 +1185,8 @@ const SpecMigrator = (() => {
             const batchResults = await Promise.allSettled(batch.map(pnId => {
               const pnName = remainingPNs.find(p => p.id === pnId)?.name || pnId;
               return addSingleParamToPN(pnId, field.specFieldId, choice.paramId, field.isGeneric)
-                .then(status => ({ status, name: pnName }));
+                .then(status => ({ status, name: pnName }))
+                .catch(e => { throw new Error(`PN "${pnName}" [${pnId}] — ${field.specName}/${field.fieldName} → ${choice.paramName}: ${String(e?.message || e)}`); });
             }));
             for (const r of batchResults) {
               if (r.status === 'fulfilled') {
@@ -1193,7 +1194,7 @@ const SpecMigrator = (() => {
                 else if (r.value.status === 'conflict') results.conflicts.push(r.value.name);
                 else results.skippedPNs++;
               } else {
-                results.errors.push(`${String(r.reason).substring(0, 150)}`);
+                results.errors.push(`${String(r.reason).substring(0, 400)}`);
               }
             }
           }
