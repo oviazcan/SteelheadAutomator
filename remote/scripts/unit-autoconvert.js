@@ -141,7 +141,7 @@
     const fc = input.closest('.MuiFormControl-root');
     if (fc && fc.parentElement) {
       const labelP = fc.parentElement.querySelector(':scope > p.MuiTypography-root');
-      if (labelP && /\/\s*part:?\s*$/i.test(labelP.textContent.trim())) {
+      if (labelP && /\/\s*parts?:?\s*$/i.test(labelP.textContent.trim())) {
         return { panel: 'A', code: Core.unitCodeFromText(labelP.textContent) };
       }
     }
@@ -154,7 +154,7 @@
       const labels = document.querySelectorAll('p.MuiTypography-root');
       for (const p of labels) {
         const t = p.textContent.trim();
-        if (/\/\s*part:?\s*$/i.test(t) && Core.unitCodeFromText(t) === code) {
+        if (/\/\s*parts?:?\s*$/i.test(t) && Core.unitCodeFromText(t) === code) {
           return p.parentElement.querySelector('input');
         }
       }
