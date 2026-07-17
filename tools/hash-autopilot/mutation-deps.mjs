@@ -281,39 +281,54 @@ async function savePriceSentinelaAborted(page, sink, ctx = {}) {
   await page.waitForTimeout(3000);
 }
 
+// Navegación CLIENT-SIDE a la lista de Quotes. HALLAZGO 2026-07-17: el dashboard de quotes
+// NO hidrata por deep-link (searchQuery sale vacío, tanto headless como en navegador real);
+// SÍ hidrata navegando dentro del SPA ya cargado (home → clic al link /Quotes → la lista
+// rinde filas). El quote sentinela #288 (nombre 'Sentinela', reciente) aparece en la 1ª
+// página de la lista ACTIVA. Devuelve true si el <a> del quote {id} (con rev) aparece.
+async function openQuotesListAndFind(page, id, domain) {
+  await page.goto(`${BASE}/Domains/${domain}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForTimeout(3000);
+  await page.locator('a[href$="/Quotes"]').first().click({ timeout: 12000 }).catch(async () => {
+    await page.goto(`${BASE}/Domains/${domain}/Quotes`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  });
+  return page.locator(`a[href*="/Quotes/${id}/"]`).first()
+    .waitFor({ state: 'visible', timeout: 25000 }).then(() => true).catch(() => false);
+}
+
 // quotePrice: SaveManyPartNumberPrices BATCH (9da1874e, el que usa bulk-upload), distinto
-// del modal individual (72946d). Se dispara desde la COTIZACIÓN sentinela #288. El quote NO
-// hidrata por deep-link → se navega client-side desde el dashboard (patrón findQuoteDashboard,
-// validado con UpdateQuote) y se ABRE el quote (clic el <a> con rev). Luego "Edit this Part"
-// de la línea del PN activa el botón "Save Parts", cuyo clic manda el batch → captura-y-aborta.
-// DOM confirmado por el operador 2026-07-16. Usa DOM click() (evaluate) porque el div
-// aria-label="Edit this Part" y "Save Parts" viven en zonas que Playwright da por cubiertas.
+// del modal individual (72946d). Se dispara desde la COTIZACIÓN sentinela #288. Flujo confirmado
+// vía wrapper HTML del operador (2026-07-17): abrir el quote client-side → 'Edit this Part' pone
+// la línea en modo edición (Divisa#root_DatosPrecio_Divisa editable + input de precio
+// inputmode=decimal habilitado + botón 'Save Parts') → llenar Divisa=USD + precio>0 (SIN un
+// cambio real el 'Save Parts' queda DISABLED y no manda el batch) → 'Save Parts' → captura-y-aborta.
+// PRECONDICIÓN: el quote #288 DEBE estar ACTIVO (desarchivado); archivado = read-only, campos
+// disabled (ese era el bloqueo histórico, no la "hidratación lenta"). El price-confirm-guard NO
+// aplica headless (sin extensión) ni a este flujo (guard = modal individual 'Part Number Price').
 async function savePartsQuoteAborted(page, sink, { id, domain }) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
-  const { found } = await findQuoteDashboard(page, id, domain);
-  if (!found) throw new Error('quotePrice: no aparece el quote sentinela en el dashboard (sistema lento / no hidrató)');
-  await page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first().click({ timeout: 10000 }).catch(() => {});
-  let ok = false;
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline && !ok) {
-    ok = await page.evaluate(() => document.querySelectorAll('[aria-label="Edit this Part"]').length > 0).catch(() => false);
-    if (!ok) await page.waitForTimeout(1500);
-  }
-  if (!ok) throw new Error('quotePrice: el quote no hidrató ("Edit this Part" ausente)');
+  const found = await openQuotesListAndFind(page, id, domain);
+  if (!found) throw new Error('quotePrice: el link del quote sentinela no apareció en la lista (¿archivado? ¿no hidrató?)');
+  await page.locator(`a[href*="/Quotes/${id}/"]`).first().click({ timeout: 10000 }).catch(() => {});
+  await page.locator('[aria-label="Edit this Part"]').first().waitFor({ state: 'visible', timeout: 25000 });
   if (dbg) console.log('       [dbg] quote abierto → Edit this Part');
   await page.evaluate(() => { const d = [...document.querySelectorAll('[aria-label="Edit this Part"]')][0]; if (d) d.click(); });
-  // ESPERA ACTIVA a que aparezca "Save Parts" (Edit this Part lo activa; el sistema puede
-  // ser lento → un timeout fijo lo perdía). Reintenta el clic hasta capturar la mutation.
+  // modo edición: Divisa (required) + precio → habilita 'Save Parts'.
+  const divisa = page.locator('#root_DatosPrecio_Divisa').first();
+  await divisa.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  await divisa.selectOption('USD').catch(() => {});
+  // precio: input inputmode=decimal HABILITADO (los type=number de Datos de Planificación
+  // están disabled). Cambio real del precio → NO persiste (se aborta).
+  await page.locator('input[inputmode="decimal"]:not([disabled])').first().fill('1.5').catch(() => {});
+  await page.waitForTimeout(800);
+  if (dbg) console.log('       [dbg] Divisa=USD + precio=1.5 → Save Parts');
+  // 'Save Parts' → SaveManyPartNumberPrices → interceptor captura y ABORTA. Reintenta el clic
+  // (solo si el botón NO está disabled) hasta capturar o vencer.
   const d2 = Date.now() + 25000;
   while (Date.now() < d2 && !(sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices)) {
-    const has = await page.evaluate(() => [...document.querySelectorAll('button')].some((x) => (x.textContent || '').includes('Save Parts'))).catch(() => false);
-    if (has) {
-      await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Save Parts')); if (b) b.click(); });
-      await page.waitForTimeout(3000);
-    } else {
-      await page.waitForTimeout(1500);
-    }
+    await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => /^Save Parts$/i.test((x.textContent || '').trim())); if (b && !b.disabled) b.click(); });
+    await page.waitForTimeout(2000);
   }
   if (dbg) console.log(`       [dbg] Save Parts → ${sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices ? 'CAPTURADO' : 'sin hash aún'}`);
 }
@@ -470,7 +485,9 @@ const HANDLERS = {
     // se encarga el mutate (savePartsQuoteAborted). id COMPARTIDO con 'quote' (288): entityFor
     // devuelve 'quote' para el load, pero el ciclo usa entityType='quotePrice' para mutate/restore.
     async load(page, { id, domain }) {
-      const { found } = await findQuoteDashboard(page, id, domain);
+      // client-side (deep-link no hidrata). El link con rev sólo aparece si el quote está
+      // ACTIVO (desarchivado) — fail-closed: si no aparece, name='' → el ciclo NO muta.
+      const found = await openQuotesListAndFind(page, id, domain);
       return { name: found ? 'Sentinela' : '' };
     },
     async mutate(page, ctx) { await savePartsQuoteAborted(page, ctx.sink, ctx); },
@@ -537,8 +554,13 @@ export function makeDeps(config, sink) {
   return {
     readJournal() { try { return JSON.parse(readFileSync(JOURNAL_PATH, 'utf8')); } catch { return {}; } },
     writeJournal(j) { mkdirSync(dirname(JOURNAL_PATH), { recursive: true }); writeFileSync(JOURNAL_PATH, JSON.stringify(j, null, 2)); },
-    async loadObject(page, id) {
-      const found = entityFor(config, id);
+    async loadObject(page, id, entityType) {
+      // entityType explícito gana sobre entityFor: necesario cuando DOS entidades comparten
+      // id (quote y quotePrice = #288) — el ciclo sabe cuál handler de load usar. Sin él,
+      // entityFor devolvería el primero (quote/deep-link) y no el correcto (quotePrice/client-side).
+      const found = (entityType && config.entities[entityType])
+        ? { type: entityType, ent: config.entities[entityType] }
+        : entityFor(config, id);
       const h = found && HANDLERS[found.type];
       if (!h) return null;
       return h.load(page, { id, domain, url: resolveUrl(found.ent, id, domain) });
