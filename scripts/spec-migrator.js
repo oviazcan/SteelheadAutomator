@@ -1029,6 +1029,11 @@ const SpecMigrator = (() => {
 
     // Phase 3: For each spec, fetch fields via SpecFieldsAndOptions
     const results = { assigned: 0, skippedFields: 0, skippedPNs: 0, conflicts: [], errors: [], autoAssigned: 0, assisted: 0 };
+    // Diagnóstico: contexto de cada PN que cae en "ya tenían param" (exclusion
+    // constraint). Al final hacemos GetPartNumber por cada uno para revelar si la
+    // fila del param está ARCHIVADA (choca con el índice único aunque searchPartNumbers
+    // lo liste como pendiente) — confirma la causa raíz sin escribir nada.
+    const skipContexts = [];
     const BATCH = 20;
 
     const specFields = [];
@@ -1132,7 +1137,7 @@ const SpecMigrator = (() => {
           updateProgress(`${field.fieldName}: ${pi + 1}-${Math.min(pi + PBATCH, field.pns.length)}/${field.pns.length}`, pct);
           const batchResults = await Promise.allSettled(batch.map(pn =>
             addSingleParamToPN(pn.id, field.specFieldId, param.id, field.isGeneric)
-              .then(status => ({ status, name: pn.name || pn.id }))
+              .then(status => ({ status, name: pn.name || pn.id, __pnId: pn.id }))
               // Instrumentación diagnóstica: el error crudo NO trae el PN ni el field.
               // Lo envolvemos con contexto (PN + spec/field/param) para que el modal y
               // el reporte digan EXACTAMENTE qué combinación rompió el server.
@@ -1145,7 +1150,10 @@ const SpecMigrator = (() => {
                 fieldConflicts++;
                 results.conflicts.push(r.value.name);
               }
-              else results.skippedPNs++;
+              else {
+                results.skippedPNs++;
+                skipContexts.push({ pnId: r.value.__pnId, pnName: r.value.name, specFieldId: field.specFieldId, specFieldParamId: param.id, specName: field.specName, fieldName: field.fieldName });
+              }
             } else {
               results.errors.push(`${String(r.reason).substring(0, 400)}`);
             }
@@ -1185,14 +1193,17 @@ const SpecMigrator = (() => {
             const batchResults = await Promise.allSettled(batch.map(pnId => {
               const pnName = remainingPNs.find(p => p.id === pnId)?.name || pnId;
               return addSingleParamToPN(pnId, field.specFieldId, choice.paramId, field.isGeneric)
-                .then(status => ({ status, name: pnName }))
+                .then(status => ({ status, name: pnName, __pnId: pnId }))
                 .catch(e => { throw new Error(`PN "${pnName}" [${pnId}] — ${field.specName}/${field.fieldName} → ${choice.paramName}: ${String(e?.message || e)}`); });
             }));
             for (const r of batchResults) {
               if (r.status === 'fulfilled') {
                 if (r.value.status === 'ok') results.assigned++;
                 else if (r.value.status === 'conflict') results.conflicts.push(r.value.name);
-                else results.skippedPNs++;
+                else {
+                  results.skippedPNs++;
+                  skipContexts.push({ pnId: r.value.__pnId, pnName: r.value.name, specFieldId: field.specFieldId, specFieldParamId: choice.paramId, specName: field.specName, fieldName: field.fieldName });
+                }
               } else {
                 results.errors.push(`${String(r.reason).substring(0, 400)}`);
               }
@@ -1222,6 +1233,34 @@ const SpecMigrator = (() => {
       log(`  PNs conflictivos (${unique.length} únicos): ${unique.slice(0, 30).join(', ')}${unique.length > 30 ? ` ... y ${unique.length - 30} más` : ''}`);
     }
     log(`Errores: ${results.errors.length}`);
+
+    // Diagnóstico read-only de los PNs que cayeron en "ya tenían param" (exclusion
+    // constraint). Revela por qué searchPartNumbers los lista como pendientes pero
+    // AddParams choca: buscamos la fila del field en el PN y mostramos su archivedAt.
+    // Si sale archivada, la fix es DESARCHIVAR (no insertar). NO escribe nada.
+    if (skipContexts.length) {
+      log(`\n=== DIAGNÓSTICO: ${skipContexts.length} PN(s) "ya tenían param" (colisión de constraint) — inspección read-only ===`);
+      for (const s of skipContexts) {
+        try {
+          const pn = await getPNDetail(s.pnId);
+          const allRows = pn?.partNumberSpecFieldParamsByPartNumberId?.nodes || [];
+          // Filas del MISMO field (activas y archivadas) para ver el panorama completo.
+          let rows = allRows.filter(p => p.specFieldParamBySpecFieldParamId?.specFieldSpecBySpecFieldSpecId?.specFieldBySpecFieldId?.id === s.specFieldId);
+          if (!rows.length) rows = allRows.filter(p => p.specFieldParamBySpecFieldParamId?.id === s.specFieldParamId);
+          if (!rows.length) {
+            log(`  ${s.pnName} — ${s.specName}/${s.fieldName}: SIN fila para ese field/param en GetPartNumber (constraint por otra causa)`);
+          } else {
+            for (const p of rows) {
+              const pName = p.specFieldParamBySpecFieldParamId?.name || '?';
+              const wanted = p.specFieldParamBySpecFieldParamId?.id === s.specFieldParamId ? ' [ESTE es el que se intentó]' : '';
+              log(`  ${s.pnName} — ${s.specName}/${s.fieldName} → "${pName}"${wanted}: archivedAt=${p.archivedAt ? p.archivedAt + ' (ARCHIVADO)' : 'NULL (ACTIVO)'}, processNodeId=${p.processNodeId ?? 'null'}, rowId=${p.id}`);
+            }
+          }
+        } catch (e) {
+          log(`  ${s.pnName}: diagnóstico falló — ${String(e?.message || e).substring(0, 120)}`);
+        }
+      }
+    }
 
     showPendingParamsSummary(results);
     return results;
