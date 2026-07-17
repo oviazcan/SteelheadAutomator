@@ -72,10 +72,34 @@ Si `SA_KMS_KEY` no está seteada, `deploy.sh` avisa y deploya **sin firmar** (ú
 El hook `pre-push` + el smoke-check post-deploy son los candados que evitan publicar una
 firma mala.
 
-## Nota sobre el formato de firma de gcloud
+## Nota sobre el formato de firma de gcloud — ✅ RESUELTO (2026-07-17, primera corrida real)
 `gcloud kms asymmetric-sign` escribe la firma **DER binaria** al `--signature-file`.
 `tools/seal-config.mjs` la lee binaria y la convierte a raw r||s (IEEE P1363, 64 bytes)
 con `tools/lib/der-to-p1363.mjs` — que es lo que WebCrypto verifica en la extensión.
-**Verifica en la primera corrida real** que el comando exacto de tu versión de `gcloud`
-produzca DER (algunas versiones tienen banderas distintas para el output); ajusta
-`buildKmsArgs`/`defaultGcloudSignDigest` si hiciera falta.
+
+**Bug encontrado y corregido en la primera corrida real:** el backend `kmsSigner`
+pre-calculaba `SHA256(mensaje)` y le pasaba ese digest a gcloud con `--digest-algorithm=sha256
+--input-file=<digest>`. Pero gcloud con `--digest-algorithm` **hashea él mismo el input-file**,
+así que firmaba `SHA256(SHA256(msg))` (doble hash) → la firma **no verificaba**. Comprobado en
+vivo: firmar el **mensaje crudo** → `verify=true`; firmar el digest → `verify=false`. Fix:
+`defaultGcloudSign` escribe el **mensaje** al `--input-file` (no el digest) y deja que gcloud
+haga el sha256. Contrato de `kmsSigner` cambió de `signDigest` → `signMessage`. Tests
+actualizados; seal real verifica de punta a punta.
+
+## Pública real (proyecto steelhead-ecoplating) — para embeber en Fase 2
+Key ring `steelhead-automator`, key `config-signing` v1 (`EC_SIGN_P256_SHA256`):
+```
+SA_INTEGRITY_PUBKEY = 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhoH81jmmh5d0Lg+GBmqlMMm39gLEyMJDRX+fKcGYNfsg/Uc9uUT9ri+CK/7aKF0gt9MPKqj/yH6Y4P6XGqFayw=='
+```
+`SA_KMS_KEY = projects/steelhead-ecoplating/locations/global/keyRings/steelhead-automator/cryptoKeys/config-signing/cryptoKeyVersions/1`
+
+## ⚠️ Orden de rollout y dependencia del cron (leer antes de activar)
+La Fase 1 (primer deploy firmado, deja `config.sig` en gh-pages) sólo debe activarse cuando
+**TODOS los que deployan tengan `SA_KMS_KEY` en su entorno** — incluido el **cron de
+hash-autopilot** (corre `deploy.sh`, hereda el seal). Si el autopilot deploya **sin**
+`SA_KMS_KEY` después de que exista `config.sig`, dejará `config.sig` inconsistente y el
+`pre-push` (backstop) **bloqueará su push** → el autopilot fallaría. Coordinar con esa sesión:
+exportar `SA_KMS_KEY` en el entorno del cron **antes** de la Fase 1.
+- **Embeber la pública** (`extension/integrity-pubkey.js`) + republicar el `.zip` = **Fase 2**,
+  y va **DESPUÉS** de Fase 1: si se republica con la pública embebida y aún NO hay `config.sig`
+  en gh-pages, la extensión nueva verificaría un config sin firma → **fail-closed bloquea todo**.
