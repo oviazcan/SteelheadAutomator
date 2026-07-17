@@ -1,49 +1,64 @@
-# Escalamiento hash-autopilot → Claude
+# Escalamiento Nivel B — re-descubrimiento de recetas rotas
 
 Cuando el motor no logra capturar una op (la receta dejó de disparar la query
 porque Steelhead movió la UI), escribe `tools/.hash-autopilot/needs-attention.json`
-y manda correo. Un **cron condicional de Claude** atiende esa señal para
-re-descubrir la receta — SOLO cuando existe (no gasta tokens en días limpios).
+y manda correo. El **Nivel B** intenta re-descubrir esa receta **solo** y, falle o no,
+manda un correo con el **trace detallado** de cada acción intentada (para mejorar el
+sistema). Diseño completo: `docs/superpowers/specs/2026-07-17-nivel-b-escalacion-design.md`.
 
-## Crear el cron (una vez)
+## Mecanismo (launchd local, NO CronCreate)
 
-Correr en una sesión de Claude Code con el skill `steelhead-hash-validator`
-disponible. Usa `CronCreate` (durable) con este prompt:
+- `tools/launchd/com.ecoplating.steelhead-escalation.plist` corre `tools/run-escalation.sh`
+  **a :53** (30 min después del motor, :23). Local porque el re-descubrimiento necesita el
+  navegador, los tokens ROCP y el repo — todo en la Mac (un cloud agent no los tiene).
+- `run-escalation.sh` hace **gate**: si no hay `needs-attention.json` → sale en <1s (cero costo
+  en días limpios). Marca idempotente diaria (`escalation-tried-<fecha>`) para no re-loop.
+  Refresca el ROCP (fail-ruidoso) y corre `claude -p` con `escalation-prompt.md`.
 
-```
-Revisa si existe el archivo tools/.hash-autopilot/needs-attention.json en
-/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator.
-- Si NO existe → termina sin hacer nada (no gastes tokens).
-- Si existe:
-  1. Invoca la skill steelhead-hash-validator.
-  2. Para cada op listada, abre Steelhead con claude-in-chrome (o el motor de
-     hash-autopilot en headed) e instala el interceptor de fetch; navega para
-     re-descubrir la MÍNIMA secuencia que dispara esa op (1 intento acotado,
-     tope de ~15 acciones de browser).
-  3. Si la encuentras: actualiza tools/hash-autopilot/click-recipes.json con la
-     receta nueva, corre `node tools/hash-autopilot/hash-autopilot.mjs` (sin
-     --dry-run) para que regenere/deploye si rotó, y manda correo "reparado"
-     (tools/hash-autopilot/autopilot-notify.sh exito ...).
-  4. Si NO la encuentras: manda correo "necesito ayuda: cambió el shape/UI de X"
-     (autopilot-notify.sh fallo ...).
-  5. Borra tools/.hash-autopilot/needs-attention.json al terminar (en ambos casos).
+**Activar (una vez, paso manual del operador tras una prueba supervisada verde):**
+```bash
+cp tools/launchd/com.ecoplating.steelhead-escalation.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ecoplating.steelhead-escalation.plist
+launchctl list | grep escalation
 ```
 
-Programar poco después del launchd horario del motor (que corre a :23). Ej.
-`CronCreate` a :53 de cada hora, durable.
+## Flujo por capas (intenta auto → escala rico)
+
+El agente (`claude -p`, prompt en `escalation-prompt.md`):
+1. Lee `needs-attention.json` (enriquecido: op + receta vieja completa `module`/`steps`/`captures`).
+2. Re-descubre con Playwright headless (infra del motor), **tope ~15 acciones/op**, registrando
+   cada intento en el trace.
+3. **Si halla la receta:** actualiza `route-catalog.json`, corre la suite, deja que
+   `hash-autopilot.mjs --only=<op>` capture+deploye (con sus candados). Correo "reparado".
+4. **Si no:** correo "necesito ayuda" con el trace detallado + diagnóstico. NO toca recetas.
+
+**Guardrails:** read-only sobre SH (nunca confirma escrituras) · nunca edita `config.json` ·
+tests antes de deployar · idempotente · auth fail-safe.
+
+## El trace (requisito del operador)
+
+`tools/.hash-autopilot/escalation-trace-<fecha>.json` + resumen en el correo. Cada acción:
+`{ op, step, action, target, selectorTried, observed, opFired, screenshot }`. Módulo puro
+`escalation-trace.mjs` (`newTrace`/`addAction`/`summarizeForEmail`/`outcomeByOp`). Es la pieza
+que hace el sistema mejorable: cada fallo documentado afina el prompt/heurísticas.
 
 ## Formato de needs-attention.json
 
 ```json
 {
-  "date": "2026-07-03",
+  "date": "2026-07-17",
   "ops": [
-    { "op": "GetPurchaseOrder", "recipeTried": null, "steps": null,
+    { "op": "SensorDashboardQuery", "recipeTried": "maintenance-sensordashboards-detail",
+      "module": "Maintenance", "steps": [ ... ], "captures": ["SensorDashboardQuery"],
       "observed": "la receta no disparó la op (0 capturas)" }
   ]
 }
 ```
+`recipeTried`/`steps` null = la op ni tenía receta (crear desde cero).
 
-Si `recipeTried` es null, la op ni siquiera tiene receta en `click-recipes.json`
-(hay que crearla desde cero). Si trae `steps`, la receta existía pero dejó de
-funcionar (la UI cambió) — usa esos steps como punto de partida.
+## Prueba supervisada (antes de cargar el launchd)
+
+Fabrica un `needs-attention.json` con una op cuya receta SIGA funcionando y corre
+`tools/run-escalation.sh` a mano en una sesión supervisada; verifica: gate deja pasar →
+claude re-descubre/confirma → trace escrito → correo con el resumen → la marca idempotente
+evita el segundo run. Borra el needs-attention de prueba al terminar.

@@ -100,6 +100,12 @@ launchctl list | grep hash-autopilot
 El auto-deploy exige que el worktree esté en `main` y sin WIP ajeno en `remote/`
 (salvaguarda de `autopilot-deploy.sh`); si no, avisa por correo en vez de deployar.
 
+**Segundo launchd — Nivel B (escalación de recetas rotas):**
+`tools/launchd/com.ecoplating.steelhead-escalation.plist` corre `tools/run-escalation.sh`
+**a :53** (30 min después del motor). Cuando una receta deja de capturar (`needs-attention.json`),
+intenta re-descubrirla sola vía `claude -p` y manda correo con el trace detallado. Gate por
+señal → cero costo en días limpios. Ver `ESCALATION.md`. Carga = paso manual del operador.
+
 ## Refresh-siempre de enmascaradas (2026-07-15)
 
 Las ops "enmascaradas" (session-sensitive) rotan **sin dejar señal para el validador
