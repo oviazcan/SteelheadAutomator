@@ -281,6 +281,43 @@ async function savePriceSentinelaAborted(page, sink, ctx = {}) {
   await page.waitForTimeout(3000);
 }
 
+// quotePrice: SaveManyPartNumberPrices BATCH (9da1874e, el que usa bulk-upload), distinto
+// del modal individual (72946d). Se dispara desde la COTIZACIÓN sentinela #288. El quote NO
+// hidrata por deep-link → se navega client-side desde el dashboard (patrón findQuoteDashboard,
+// validado con UpdateQuote) y se ABRE el quote (clic el <a> con rev). Luego "Edit this Part"
+// de la línea del PN activa el botón "Save Parts", cuyo clic manda el batch → captura-y-aborta.
+// DOM confirmado por el operador 2026-07-16. Usa DOM click() (evaluate) porque el div
+// aria-label="Edit this Part" y "Save Parts" viven en zonas que Playwright da por cubiertas.
+async function savePartsQuoteAborted(page, sink, { id, domain }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
+  const { found } = await findQuoteDashboard(page, id, domain);
+  if (!found) throw new Error('quotePrice: no aparece el quote sentinela en el dashboard (sistema lento / no hidrató)');
+  await page.locator(`tr:has(a[href$="/Quotes/${id}"]) a[href*="/Quotes/${id}/"]`).first().click({ timeout: 10000 }).catch(() => {});
+  let ok = false;
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline && !ok) {
+    ok = await page.evaluate(() => document.querySelectorAll('[aria-label="Edit this Part"]').length > 0).catch(() => false);
+    if (!ok) await page.waitForTimeout(1500);
+  }
+  if (!ok) throw new Error('quotePrice: el quote no hidrató ("Edit this Part" ausente)');
+  if (dbg) console.log('       [dbg] quote abierto → Edit this Part');
+  await page.evaluate(() => { const d = [...document.querySelectorAll('[aria-label="Edit this Part"]')][0]; if (d) d.click(); });
+  // ESPERA ACTIVA a que aparezca "Save Parts" (Edit this Part lo activa; el sistema puede
+  // ser lento → un timeout fijo lo perdía). Reintenta el clic hasta capturar la mutation.
+  const d2 = Date.now() + 25000;
+  while (Date.now() < d2 && !(sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices)) {
+    const has = await page.evaluate(() => [...document.querySelectorAll('button')].some((x) => (x.textContent || '').includes('Save Parts'))).catch(() => false);
+    if (has) {
+      await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Save Parts')); if (b) b.click(); });
+      await page.waitForTimeout(3000);
+    } else {
+      await page.waitForTimeout(1500);
+    }
+  }
+  if (dbg) console.log(`       [dbg] Save Parts → ${sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -386,6 +423,20 @@ const HANDLERS = {
       // El Save se ABORTÓ → no se persistió ningún precio → nada que restaurar.
       // Solo desmarcar la op (higiene del sink) para no abortar requests futuras.
       if (sink && sink.abortOps) sink.abortOps.delete('SaveManyPartNumberPrices');
+    },
+  },
+  quotePrice: {
+    // load: verifica que el quote sentinela existe (fail-closed). NO abre el quote — de eso
+    // se encarga el mutate (savePartsQuoteAborted). id COMPARTIDO con 'quote' (288): entityFor
+    // devuelve 'quote' para el load, pero el ciclo usa entityType='quotePrice' para mutate/restore.
+    async load(page, { id, domain }) {
+      const { found } = await findQuoteDashboard(page, id, domain);
+      return { name: found ? 'Sentinela' : '' };
+    },
+    async mutate(page, ctx) { await savePartsQuoteAborted(page, ctx.sink, ctx); },
+    async restore(page, ctx) {
+      // Save Parts se ABORTÓ → nada persistió → nada que restaurar. Solo desmarcar la op.
+      if (ctx.sink && ctx.sink.abortOps) ctx.sink.abortOps.delete('SaveManyPartNumberPrices');
     },
   },
   maintenanceNode: {

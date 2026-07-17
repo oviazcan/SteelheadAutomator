@@ -64,11 +64,18 @@ test('masked-ops: cada mutation enmascarada tiene un sentinela declarado (aunque
   }
 });
 
-test('sentinels-config: SaveManyPartNumberPrices INACTIVO (id:0) — el modal individual captura otra variante que bulk-upload', () => {
-  // Hallazgo 2026-07-15: el modal "Part Number Price" usa 72946d4d… pero bulk-upload
-  // usa el BATCH 9da1874e… (config) → el sentinela del modal capturaría el hash equivocado.
-  const e = sentinels.entities.partNumberPrice;
-  assert.ok(e, 'falta la entidad partNumberPrice');
-  assert.equal(e.id, 0, 'partNumberPrice queda INACTIVO (id:0): captura la variante del modal, no la de bulk-upload');
-  assert.ok((e._para || []).includes('SaveManyPartNumberPrices'));
+test('sentinels-config: SaveManyPartNumberPrices apunta al flujo de cotización (quotePrice), no al modal individual', () => {
+  // El batch (9da1874e, el de bulk-upload) se dispara desde la cotización sentinela #288
+  // ("Edit this Part" → "Save Parts"), NO desde el modal individual (72946d, variante equivocada).
+  // quotePrice es la entidad correcta y declara la op; su handler (savePartsQuoteAborted) está
+  // escrito y abre el quote in vivo, PERO quedó desactivado (id:0) en 2026-07-16 con el último
+  // 15% bloqueado (Save Parts no dispara la mutation headless sin un cambio real en la línea).
+  // Ver _nota de quotePrice. Ambas variantes (quotePrice y partNumberPrice) quedan inactivas
+  // hasta resolver el disparo del batch o capturar el hash con hash-scanner en el navegador real.
+  const qp = sentinels.entities.quotePrice;
+  assert.ok(qp, 'falta la entidad quotePrice');
+  assert.ok((qp._para || []).includes('SaveManyPartNumberPrices'), 'quotePrice debe declarar SaveManyPartNumberPrices');
+  assert.equal(qp._estrategia, 'quote-saveparts-abort', 'quotePrice usa la estrategia de cotización (no el modal)');
+  // partNumberPrice (modal individual, variante equivocada 72946d) también inactivo.
+  assert.equal(sentinels.entities.partNumberPrice.id, 0, 'partNumberPrice (modal) queda inactivo');
 });

@@ -65,6 +65,16 @@
       "_estrategia": "price-save-abort",
       "_nota": "INACTIVO (id:0). HALLAZGO 2026-07-15: SaveManyPartNumberPrices tiene DOS variantes (mismo operationName, distinto query text → hashes distintos): MODAL INDIVIDUAL 'Part Number Price' = 72946d4d… (lo que capturaba el handler savePriceSentinelaAborted, el EQUIVOCADO); BATCH de BULK-UPLOAD = 9da1874e… (el del config, el que importa). FLUJO CORRECTO DEL BATCH (dado por el operador 2026-07-16, DOM confirmado): ir a la COTIZACIÓN SENTINELA /Domains/344/Quotes/288 → clic '[aria-label=\"Edit this Part\"]' de la línea del PN Sentinela → aparece el botón 'Save Parts' (contained, SaveOutlinedIcon) → clic 'Save Parts' → dispara SaveManyPartNumberPrices BATCH → captura-y-aborta (sink.abortOps). BLOQUEO ACTUAL (2026-07-16, 3 intentos): el dashboard de quotes NO hidrata headless (rows=0 con searchQuery; el deep-link /Quotes/288 tampoco) — mismo bloqueador de hidratación de listas headless. PENDIENTE: resolver la hidratación del quote (candidato para el entorno de servidor, o navegación client-side robusta) → reescribir el handler al flujo de cotización (NO el modal individual) → poner id:288 (entidad quote) + validar. price-confirm-guard NO interfiere. Handler modal-individual (savePriceSentinelaAborted) sirve solo para la variante del modal, que NO nos interesa."
     },
+    "quotePrice": {
+      "id": 0,
+      "screenPath": "/Domains/{domain}/Quotes/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "SaveManyPartNumberPrices"
+      ],
+      "_estrategia": "quote-saveparts-abort",
+      "_nota": "id:0 INACTIVO. Handler savePartsQuoteAborted al ~85% (2026-07-16): SÍ abre el quote sentinela #288 client-side (findQuoteDashboard, VALIDADO en vivo — el dashboard encontró el quote y lo abrió con rows=1) + hace 'Edit this Part' + clic 'Save Parts', todo con captura-y-aborta. BLOQUEO del último 15%: 'Save Parts' NO dispara SaveManyPartNumberPrices headless — diagnóstico: sin un CAMBIO real en la línea el Save Parts no guarda (0 mutations tras el clic); y tras 'Edit this Part' NO se habilitan inputs de precio editables (0 inputs decimal enabled) → falta entender qué hace exactamente 'Edit this Part' (¿abre panel/modal con otros selectores? ¿requiere editar la Divisa u otro campo?) y qué cambiar para que Save Parts mande el batch. PENDIENTE: (1) descubrir el campo a editar; o (2) capturar el hash con hash-scanner/claude-in-chrome en el navegador real (donde el flujo del operador funciona). Hash vigente hoy: 9da1874e (no urge). id COMPARTIDO con 'quote' (288). Reemplaza a partNumberPrice (modal individual, variante equivocada 72946d)."
+    },
     "workOrder": {
       "id": 11677,
       "screenPath": "/Domains/{domain}/WorkOrders/{id}",
