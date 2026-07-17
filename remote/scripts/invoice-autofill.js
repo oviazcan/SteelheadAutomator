@@ -799,7 +799,16 @@ const InvoiceAutofill = (() => {
       targetPrefix = isGeneral ? PREFIX_VENTAS_GENERAL : PREFIX_VENTAS_CERO;
     }
 
-    const expected = allAccounts.find(a => String(a.accountNumber || '').startsWith(targetPrefix));
+    // Puede coexistir una cuenta-grupo (p.ej. "0401-0001", NO imputable) con su hoja
+    // imputable ("0401-0001-0000-0000"). Un find() simple agarra la primera del arreglo,
+    // que puede ser el grupo → SH luego no deja imputar y el combo queda a medias.
+    // Preferimos la HOJA MÁS ESPECÍFICA (accountNumber más largo) que empiece con el
+    // prefijo: es la imputable, y su número completo hace que el dropdown de SH filtre
+    // exacto a ella (mejora el amarre). No hardcodea la hoja; es un principio contable.
+    const prefixMatches = allAccounts.filter(a => String(a.accountNumber || '').startsWith(targetPrefix));
+    const expected = prefixMatches.length
+      ? prefixMatches.reduce((b, a) => String(a.accountNumber || '').length > String(b.accountNumber || '').length ? a : b)
+      : null;
 
     let productSuggested = null;
     if (productId != null) {
@@ -1222,7 +1231,24 @@ const InvoiceAutofill = (() => {
 
     if (options.length === 0) return { success: false, method: 'fallback', reason: 'no hay opciones tras click' };
 
-    return pickBestOption(options, targetAccountName);
+    const res = pickBestOption(options, targetAccountName);
+    if (!res.success || !res.best) return res;
+
+    // Amarre determinista (idioma-independiente): si react-select cerró el menú, la
+    // opción quedó seleccionada. Si el menú sigue abierto tras el mousedown, la
+    // selección quedó "a medio hacer" (síntoma reportado: el combo abierto con el
+    // texto tecleado, sin singleValue). Confirmamos con Enter sobre la focusedOption
+    // que pickBestOption ya resaltó (mouseover), que es exactamente `best`.
+    const menuOpen = () => document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]');
+    await sleep(160);
+    if (menuOpen() && inputEl) {
+      inputEl.focus();
+      for (const type of ['keydown', 'keyup']) {
+        inputEl.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+      }
+      await sleep(120);
+    }
+    return res;
   }
 
   function pickBestOption(options, targetAccountName) {
@@ -1252,12 +1278,24 @@ const InvoiceAutofill = (() => {
     // onMouseDown→preventDefault para no perder focus, y selecciona ahí). Un
     // .click() sintético solo no disparaba el commit → la opción quedaba "a medio
     // seleccionar": el texto tecleado persistía en el input y el menú abierto, sin
-    // singleValue. Disparamos la secuencia completa mousedown→mouseup→click.
+    // singleValue. Para AMARRARLO de forma determinista: primero resaltamos la
+    // opción (mousemove/mouseover → react-select la marca como focusedOption), y
+    // recién entonces disparamos la secuencia pointer+mouse. Así, si el mousedown
+    // no cierra el menú, clickAndSelectOption puede confirmar con Enter sobre esta
+    // MISMA focusedOption (ver el fallback allá). Idioma-independiente.
     const fireMouse = (el, type) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, view: window }));
+    const firePointer = (el, type) => {
+      try { el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true, view: window })); }
+      catch { /* PointerEvent no soportado en el entorno → los mouse events bastan */ }
+    };
+    fireMouse(best, 'mousemove');
+    fireMouse(best, 'mouseover');
+    firePointer(best, 'pointerdown');
     fireMouse(best, 'mousedown');
     fireMouse(best, 'mouseup');
+    firePointer(best, 'pointerup');
     best.click();
-    return { success: true, filled: targetAccountName, method: 'visual' };
+    return { success: true, filled: targetAccountName, method: 'visual', best };
   }
 
   // Localiza el container del field que sigue al <p>label</p>.
