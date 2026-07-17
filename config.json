@@ -1,6 +1,6 @@
 {
-  "version": "1.7.137",
-  "lastUpdated": "2026-07-17T00:31",
+  "version": "1.7.138",
+  "lastUpdated": "2026-07-17T08:51",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -132,7 +132,7 @@
         "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14",
         "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a",
         "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120",
-        "GetReceivedOrder": "8cf1f210a04b3138cee9364440cc7de810908ffe1e564628e76c671a5054966e",
+        "GetReceivedOrder": "844854a938061daab8212a5f9374fe3c9de10932604269b958019d7d31312d7d",
         "GetAddPartsReceivedOrder": "05e2272ab769f3e69e4a7a740045da07a6b3082b01d98f287f4a136de2235e63",
         "WorkOrderDialogQuery": "1c4f09ee81aaec381778f0a56c7c3f7f3f42f327232f2461b467eb36adf2ab63",
         "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686",
