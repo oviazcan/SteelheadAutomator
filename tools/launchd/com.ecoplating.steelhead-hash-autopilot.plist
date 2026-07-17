@@ -10,6 +10,19 @@
         <string>/Users/oviazcan/Projects/Ecoplating/SteelheadAutomator/tools/run-hash-autopilot.sh</string>
     </array>
 
+    <!-- Firma de integridad (Fase 1). deploy.sh sella config.sig con GCP KMS SOLO si
+         SA_KMS_KEY está en el entorno; sin ella deploya sin firmar (fail-open). Como el
+         cron auto-deploya, DEBE tener SA_KMS_KEY o dejaría config.sig inconsistente y el
+         pre-push bloquearía el push (el autopilot fallaría). Es la RUTA del recurso KMS,
+         no la llave privada: firmar exige el permiso IAM cloudkms…useToSign, concedido
+         solo a oviazcan@gmail.com. Ver docs/deploy-signing-setup.md. Los deploys MANUALES
+         también requieren exportar esta misma variable una vez que config.sig exista. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SA_KMS_KEY</key>
+        <string>projects/steelhead-ecoplating/locations/global/keyRings/steelhead-automator/cryptoKeys/config-signing/cryptoKeyVersions/1</string>
+    </dict>
+
     <!-- Cada hora a :23 (sin Hour = todas las horas). El GATE POR RELEASE del
          wrapper hace que las corridas sin build nuevo sean casi gratis (solo un
          curl a /version.json); solo abre el navegador headless (~30s) cuando
