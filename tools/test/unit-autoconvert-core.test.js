@@ -9,8 +9,19 @@ test('computePeers: peso KGM → LBR', () => {
   assert.deepEqual(Core.computePeers('KGM', 2.85), [{ code: 'LBR', value: 6.2832 }]);
 });
 
-test('computePeers: peso LBR → KGM (round-trip)', () => {
-  assert.deepEqual(Core.computePeers('LBR', 6.2832), [{ code: 'KGM', value: 2.85 }]);
+test('computePeers: peso LBR → KG (round-trip)', () => {
+  assert.deepEqual(Core.computePeers('LBR', 6.2832), [{ code: 'KG', value: 2.85 }]);
+});
+
+test('computePeers: peso KG (código real de SH) → LBR', () => {
+  assert.deepEqual(Core.computePeers('KG', 2.85), [{ code: 'LBR', value: 6.2832 }]);
+});
+
+test('canonCode: SH muestra "KG" (no el UN/CEFACT "KGM") — ambos resuelven al grupo peso', () => {
+  assert.equal(Core.unitCodeFromText('KG (kilogramos) / Part:'), 'KG');
+  assert.equal(Core.unitCodeFromText('KGM Kilogramo / Part:'), 'KG');
+  assert.equal(Core.isConvertible('KG'), true);
+  assert.deepEqual(Core.computePeers('KGM', 2.85), [{ code: 'LBR', value: 6.2832 }]);
 });
 
 test('computePeers: superficie CMK → DMK, FTK (orden DMK luego FTK)', () => {
@@ -53,7 +64,7 @@ test('round4: redondea a 4 decimales y recorta ceros', () => {
 });
 
 test('unitCodeFromText: primer token en mayúsculas', () => {
-  assert.equal(Core.unitCodeFromText('KGM Kilogramo / Part:'), 'KGM');
+  assert.equal(Core.unitCodeFromText('KGM Kilogramo / Part:'), 'KG'); // KGM canoniza a KG
   assert.equal(Core.unitCodeFromText('CMK Centímetro Cuadrado'), 'CMK');
   assert.equal(Core.unitCodeFromText('  lbr libra '), 'LBR');
   assert.equal(Core.unitCodeFromText(''), '');
