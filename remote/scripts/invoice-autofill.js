@@ -592,6 +592,39 @@ const InvoiceAutofill = (() => {
     return state.allAccounts;
   }
 
+  // SearchAccounts '%%' está limitado a ~500 filas y de las cuentas de ingreso/descuento
+  // sólo alcanza los GRUPOS padre (0401-0000-0000-0000), NO las HOJAS imputables
+  // (0401-0001-0000-0000 = Ventas Tasa General) que quedan fuera del top-500. Sin la hoja,
+  // resolveLineAccount marca "No resuelto (0401-0001)" aunque hasSalesAccounts sea true
+  // (el grupo 0401-0000 sí llegó). Traemos dirigido las ramas 0401/0402 (pocas filas, sin
+  // truncar) y las mergeamos al catálogo. Idempotente: no-op si ya hay hojas de esa rama.
+  async function ensureIncomeAccounts() {
+    const hasLeafFor = (p) => state.allAccounts.some(a => {
+      const n = String(a.accountNumber || '');
+      return n.startsWith(p + '-') && !/-0000-0000-0000$/.test(n);
+    });
+    const already = new Set(state.allAccounts.map(a => String(a.accountNumber || '')));
+    for (const p of ['0401', '0402']) {
+      if (hasLeafFor(p)) continue;
+      let nodes = [];
+      // LIKE empieza-con y, si el server no lo interpreta así, contiene.
+      for (const q of [p + '%', '%' + p + '-%']) {
+        try {
+          const data = await api().query('SearchAccounts', { searchQuery: q }, 'SearchAccounts');
+          nodes = data?.searchAcctAccounts?.nodes || [];
+        } catch (err) { warn(`ensureIncomeAccounts '${q}': ${err.message}`); nodes = []; }
+        if (nodes.length > 0) break;
+      }
+      let added = 0;
+      for (const n of nodes) {
+        const num = String(n.accountNumber || '');
+        if (num && !already.has(num)) { state.allAccounts.push(n); already.add(num); added++; }
+      }
+      log(`ensureIncomeAccounts '${p}': +${added} (catálogo ${state.allAccounts.length})`);
+    }
+    return state.allAccounts;
+  }
+
   // ── Account Resolution ──
 
   function normalizeForMatch(str) {
@@ -1218,8 +1251,10 @@ const InvoiceAutofill = (() => {
     }
 
     let options = [];
-    for (let i = 0; i < 10; i++) {
-      await sleep(200);
+    // Hasta ~6s (rompe apenas hay opciones): tolera el sistema lento reportado, donde el
+    // menú tardaba más que la ventana previa (2s) y el amarre no alcanzaba a dispararse.
+    for (let i = 0; i < 24; i++) {
+      await sleep(250);
       const menu = document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]')
         || container.querySelector('[class*="menu"], [class*="Menu"]')
         || document.querySelector('[class*="menu"], [class*="Menu"]');
@@ -1240,13 +1275,18 @@ const InvoiceAutofill = (() => {
     // texto tecleado, sin singleValue). Confirmamos con Enter sobre la focusedOption
     // que pickBestOption ya resaltó (mouseover), que es exactamente `best`.
     const menuOpen = () => document.querySelector('[class*="menuList"], [class*="MenuList"], [class*="menu-list"]');
-    await sleep(160);
-    if (menuOpen() && inputEl) {
-      inputEl.focus();
-      for (const type of ['keydown', 'keyup']) {
-        inputEl.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+    // Ante sistema lento, el mousedown puede no cerrar el menú a la primera (la opción
+    // reportada "Hubbell ya no se clickea, con actualizar sí"). Reintentamos el Enter sobre
+    // la focusedOption ya resaltada, con espera creciente, hasta que el menú cierre (amarre).
+    for (let i = 0; i < 4 && menuOpen(); i++) {
+      await sleep(180 + i * 200);
+      if (!menuOpen()) break;
+      if (inputEl) {
+        inputEl.focus();
+        for (const type of ['keydown', 'keyup']) {
+          inputEl.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+        }
       }
-      await sleep(120);
     }
     return res;
   }
@@ -2198,6 +2238,12 @@ const InvoiceAutofill = (() => {
     if (lines.length > 0 && !hasSalesAccounts(accountsData)) {
       log('allAccounts sin cuentas de ventas (0401/0402) — esperando catálogo completo…');
       accountsData = await ensureSalesAccountsLoaded();
+      state.allAccounts = accountsData;
+    }
+    // Aunque hasSalesAccounts sea true (llegó el grupo 0401-0000), las HOJAS imputables
+    // (0401-0001…) suelen faltar por el truncado a 500 de SearchAccounts '%%' → traerlas dirigido.
+    if (lines.length > 0) {
+      accountsData = await ensureIncomeAccounts();
       state.allAccounts = accountsData;
     }
 
