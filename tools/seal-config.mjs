@@ -72,23 +72,26 @@ export function buildKmsArgs({ keyResource, inputFile, sigFile }) {
   ];
 }
 
-function defaultGcloudSignDigest(digest, keyResource) {
-  // KMS firma un DIGEST: input-file = el sha256 (32 bytes); gcloud escribe la firma DER
-  // BINARIA a signature-file (no a stdout con utf8 → corrompería). Leemos binario.
-  const stamp = createHash('sha256').update(digest).digest('hex').slice(0, 12);
+function defaultGcloudSign(message, keyResource) {
+  // gcloud con --digest-algorithm=sha256 HASHEA el input-file localmente y firma ESE digest.
+  // Por eso le pasamos el MENSAJE crudo (config sellado), NO un sha256 pre-calculado: si le
+  // diéramos el digest, gcloud lo re-hashearía (doble hash) y la firma no verificaría
+  // (comprobado en vivo: firmar mensaje→verify OK, firmar digest→verify FALSE). gcloud escribe
+  // la firma DER BINARIA a signature-file (no a stdout con utf8 → corrompería). Leemos binario.
+  const stamp = createHash('sha256').update(message).digest('hex').slice(0, 12);
   const inFile = `/tmp/sa-seal-in-${stamp}.bin`;
   const sigFile = `/tmp/sa-seal-out-${stamp}.der`;
-  writeFileSync(inFile, digest);
+  writeFileSync(inFile, Buffer.from(message));
   execFileSync('gcloud', buildKmsArgs({ keyResource, inputFile: inFile, sigFile }), { stdio: 'inherit' });
   return readFileSync(sigFile); // DER binario
 }
 
-export function kmsSigner({ keyResource, signDigest }) {
-  const doSign = signDigest || defaultGcloudSignDigest;
+export function kmsSigner({ keyResource, signMessage }) {
+  const doSign = signMessage || defaultGcloudSign;
   return {
     async sign(bytes) {
-      const digest = createHash('sha256').update(Buffer.from(bytes)).digest();
-      const der = await doSign(digest, keyResource);
+      // Pasamos el MENSAJE (no su digest): gcloud con --digest-algorithm=sha256 hace el sha256.
+      const der = await doSign(Buffer.from(bytes), keyResource);
       return derToP1363(new Uint8Array(der), 32);
     }
   };

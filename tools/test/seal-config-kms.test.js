@@ -20,21 +20,22 @@ test('buildKmsArgs arma los flags correctos', async () => {
   assert.match(s, /--project=P/);
 });
 
-test('kmsSigner pasa el sha256 del payload al firmante y convierte DER→64B', async () => {
+test('kmsSigner pasa el PAYLOAD crudo (no el digest) al firmante y convierte DER→64B', async () => {
   const { kmsSigner } = await import('../seal-config.mjs');
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const payload = new TextEncoder().encode('config-bytes');
-  const expectedDigest = createHash('sha256').update(Buffer.from(payload)).digest();
-  let gotDigest = null;
-  const fakeSignDigest = (digest) => {
-    gotDigest = digest;
+  let gotMessage = null;
+  const fakeSign = (message) => {
+    gotMessage = message;
     return nodeSign('sha256', Buffer.from('x'), { key: privateKey, dsaEncoding: 'der' }); // cualquier DER válido
   };
   const signer = kmsSigner({
     keyResource: 'projects/P/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1',
-    signDigest: fakeSignDigest
+    signMessage: fakeSign
   });
   const raw = await signer.sign(payload);
   assert.equal(raw.length, 64);
-  assert.deepEqual(new Uint8Array(gotDigest), new Uint8Array(expectedDigest));
+  // gcloud (--digest-algorithm=sha256) hashea el input, así que se le pasa el MENSAJE crudo,
+  // no un sha256 pre-calculado — de lo contrario gcloud re-hashearía (doble hash).
+  assert.deepEqual(new Uint8Array(gotMessage), new Uint8Array(payload));
 });

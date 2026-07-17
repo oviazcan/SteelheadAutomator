@@ -42,7 +42,8 @@ Mientras `SA_INTEGRITY_PUBKEY=''`, TODO se comporta idéntico al actual (fail-op
 
 ## Estado
 - **Código completo** (Tasks 1-10, TDD, backend `ephemeral` en tests). Suite verde.
-- **Pendiente (manual del usuario):** Fase 0 (KMS) + Fase 2 (republicar extensión). Confirmar el formato de salida de `gcloud` en la primera corrida real (ver nota en el runbook).
+- **Fase 0 (KMS) HECHA (2026-07-17):** key ring `steelhead-automator` + key `config-signing` v1 (EC_SIGN_P256_SHA256) en proyecto `steelhead-ecoplating`, IAM `signerVerifier` a oviazcan@gmail.com, pública extraída. **Bug del backend corregido**: `kmsSigner` firmaba el `SHA256(mensaje)` y gcloud lo re-hasheaba (`--digest-algorithm=sha256` hashea el input) → doble hash → firma no verificaba. Fix: pasar el **mensaje crudo** a gcloud (`signDigest`→`signMessage`). Comprobado end-to-end con la llave real (seal → verify OK). Ver runbook.
+- **Pendiente (coordinar, NO unilateral):** Fase 1 (activar deploy firmado — requiere `SA_KMS_KEY` en el entorno del **cron de hash-autopilot**, si no su próximo deploy sin firmar rompe el `pre-push`; ver runbook §rollout) + Fase 2 (embeber pública + republicar extensión, **DESPUÉS** de Fase 1).
 
 ## Interacción con otros sistemas
 - **hash-autopilot:** su `autopilot-deploy.sh` **llama a `tools/deploy.sh`**, así que hereda el `seal` automáticamente — no se tocó por separado. Necesita acceso IAM a KMS cuando corre headless (mismo proyecto del cliente).
