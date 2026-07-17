@@ -1133,6 +1133,10 @@ const SpecMigrator = (() => {
           const batchResults = await Promise.allSettled(batch.map(pn =>
             addSingleParamToPN(pn.id, field.specFieldId, param.id, field.isGeneric)
               .then(status => ({ status, name: pn.name || pn.id }))
+              // Instrumentación diagnóstica: el error crudo NO trae el PN ni el field.
+              // Lo envolvemos con contexto (PN + spec/field/param) para que el modal y
+              // el reporte digan EXACTAMENTE qué combinación rompió el server.
+              .catch(e => { throw new Error(`PN "${pn.name || pn.id}" [${pn.id}] — ${field.specName}/${field.fieldName} → ${param.name}: ${String(e?.message || e)}`); })
           ));
           for (const r of batchResults) {
             if (r.status === 'fulfilled') {
@@ -1143,7 +1147,7 @@ const SpecMigrator = (() => {
               }
               else results.skippedPNs++;
             } else {
-              results.errors.push(`${String(r.reason).substring(0, 150)}`);
+              results.errors.push(`${String(r.reason).substring(0, 400)}`);
             }
           }
         }
