@@ -598,21 +598,23 @@ const InvoiceAutofill = (() => {
   // resolveLineAccount marca "No resuelto (0401-0001)" aunque hasSalesAccounts sea true
   // (el grupo 0401-0000 sí llegó). Traemos dirigido las ramas 0401/0402 (pocas filas, sin
   // truncar) y las mergeamos al catálogo. Idempotente: no-op si ya hay hojas de esa rama.
-  async function ensureIncomeAccounts() {
+  async function ensureBranchAccounts(prefixes, { force = false } = {}) {
     const hasLeafFor = (p) => state.allAccounts.some(a => {
       const n = String(a.accountNumber || '');
       return n.startsWith(p + '-') && !/-0000-0000-0000$/.test(n);
     });
     const already = new Set(state.allAccounts.map(a => String(a.accountNumber || '')));
-    for (const p of ['0401', '0402']) {
-      if (hasLeafFor(p)) continue;
+    for (const p of prefixes) {
+      // income: si ya hay hojas de la rama, están todas (son pocas) → skip. AR: force=true
+      // porque puede haber ALGUNAS hojas 0105 pero faltar la del cliente específico.
+      if (!force && hasLeafFor(p)) continue;
       let nodes = [];
       // LIKE empieza-con y, si el server no lo interpreta así, contiene.
       for (const q of [p + '%', '%' + p + '-%']) {
         try {
           const data = await api().query('SearchAccounts', { searchQuery: q }, 'SearchAccounts');
           nodes = data?.searchAcctAccounts?.nodes || [];
-        } catch (err) { warn(`ensureIncomeAccounts '${q}': ${err.message}`); nodes = []; }
+        } catch (err) { warn(`ensureBranchAccounts '${q}': ${err.message}`); nodes = []; }
         if (nodes.length > 0) break;
       }
       let added = 0;
@@ -620,10 +622,11 @@ const InvoiceAutofill = (() => {
         const num = String(n.accountNumber || '');
         if (num && !already.has(num)) { state.allAccounts.push(n); already.add(num); added++; }
       }
-      log(`ensureIncomeAccounts '${p}': +${added} (catálogo ${state.allAccounts.length})`);
+      log(`ensureBranchAccounts '${p}': +${added} (catálogo ${state.allAccounts.length})`);
     }
     return state.allAccounts;
   }
+  async function ensureIncomeAccounts() { return ensureBranchAccounts(['0401', '0402']); }
 
   // ── Account Resolution ──
 
@@ -2280,7 +2283,17 @@ const InvoiceAutofill = (() => {
     log(`Divisa (invoice): ${currency} (${currencySource}), TC: ${exchangeRate}`);
 
     // AR account
-    const arResult = findBestARAccount(state.customer, currency, accountsData);
+    let arResult = findBestARAccount(state.customer, currency, accountsData);
+    // La cuenta AR del cliente (rama 0105) puede faltar por el mismo truncado a 500 de
+    // SearchAccounts '%%' → "sin_cuenta_AR..." en la 1ª pasada, que antes sólo se corregía
+    // con "actualizar". Si no resolvió por FALTA de cuenta (no por ambigüedad tooMany),
+    // traemos dirigida la rama AR completa y reintentamos, para que quede desde el inicio.
+    if (!arResult.account && !arResult.tooMany && /^(sin_cuenta_AR|allAcctAccounts_vacio)/.test(arResult.reason || '')) {
+      await ensureBranchAccounts(['0105'], { force: true });
+      accountsData = state.allAccounts;
+      arResult = findBestARAccount(state.customer, currency, accountsData);
+      log(`AR reintento tras traer rama 0105: ${arResult.account?.accountNumber || arResult.reason}`);
+    }
 
     // Lines + cuenta de ingreso/descuento por línea (lines ya extraídas arriba)
     const lineAccounts = lines.map(line => {
