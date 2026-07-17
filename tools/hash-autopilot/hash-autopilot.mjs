@@ -260,7 +260,10 @@ async function main() {
       .map((op) => [op, sink.hashes[op]]);
     if (abortEntries.length) {
       const rawAbort = await probeOnPage(page, abortEntries);
-      for (const r of rawAbort) if (classifyProbe(r) === 'vigente') abortLiveVigente[r.op] = true;
+      // 'vigente' SOLO por error de validación de variables (hash registrado, NO ejecutó).
+      // Si el probe trajo `data`, la mutation SÍ ejecutó con variables vacías (no debería
+      // pasar: son input!) → NO validar por esta vía (fail-safe: queda 'sospechoso' → humano).
+      for (const r of rawAbort) if (classifyProbe(r) === 'vigente' && !r.hasData) abortLiveVigente[r.op] = true;
       console.log(`  probe liveHash (captura-y-aborta): vigente=${Object.keys(abortLiveVigente).join(', ') || '(ninguno)'}`);
     }
   } catch (e) { console.log(`(probe falló: ${String(e).slice(0, 80)} — fail-open, sin gating)`); probeVerdicts = {}; abortLiveVigente = {}; }
