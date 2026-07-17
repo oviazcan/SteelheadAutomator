@@ -1,75 +1,117 @@
-# Deuda de anclajes bilingües ES+EN — mapa completo (2026-07-15)
+# Deuda de anclajes bilingües ES+EN — estado verificado (re-auditado 2026-07-17)
 
-Barrido repo-wide de `remote/scripts/*.js` cerrando el pendiente del audit 2026-07-09 (que
-cortó por límite de gasto). Regla del repo: **todo anclaje a texto visible de la UI de
-Steelhead debe matchear ES+EN** (SH cambia de idioma por usuario/config, a veces mixto). Un
-anclaje mono-idioma se rompe **silenciosamente** al cambiar el locale.
+Barrido repo-wide de `remote/scripts/*.js`. Regla del repo: **todo anclaje a texto visible de
+la UI de Steelhead debe matchear ES+EN** (SH cambia de idioma por usuario/config, a veces
+mixto). Un anclaje mono-idioma se rompe **silenciosamente** al cambiar el locale.
 
-**Estado:** 25 anclajes mono-idioma en 12 applets. El resto del repo (la mayoría de autofills
-de recepción, y ~50 scripts API-driven) está **limpio** o ya bilingüe.
+**Estado (2026-07-17):** ~7 clusters **cerrados** desde el mapa viejo; **8 anclas de deuda
+real** restantes (4 P2 + 4 P3), todas bloqueadas por evidencia (string del otro locale o
+wrapper HTML). Cero falla de seguridad activa (surtido-guard aclarado). Ver detalle abajo.
 
-## ⚠️ Regla dura: NO adivinar traducciones
+> **Por qué esta re-auditoría.** El mapa original (2026-07-15, commit `069ebab`) quedó
+> **desfasado**: entre el 07-16 y el 07-17 se deployaron ~7 clusters de anclaje bilingüe/
+> idioma-indep que ese mapa no reflejaba, y además **exageraba** la severidad de surtido-guard
+> (lo marcaba P1 "no bloquea"; en realidad el bloqueo es idioma-indep — ver abajo). Este
+> archivo verifica **contra los archivos**, no contra el mapa viejo.
 
-El CLAUDE.md prohíbe inventar la traducción del otro locale. Para hardenizar cada gate hace
-falta **el string real** del idioma faltante (obsérvalo en producción con el locale cambiado,
-o pásame el **wrapper HTML del modal** para anclar por `data-testid`/estructura, que es
-idioma-independiente y NO necesita traducción). Las columnas "hipótesis" abajo son **solo
-pistas para que las confirmes**, no valores a codificar.
+## ⚠️ Regla dura: NO adivinar traducciones ni estructura DOM
 
-## 🔴 PRIORIDAD 1 — Seguridad (el candado deja de proteger)
+El CLAUDE.md prohíbe (a) inventar la traducción del otro locale, y (b) adivinar la estructura
+DOM en vez de pedir el wrapper HTML. Para cerrar cada fila restante hace falta **evidencia
+real**: el string del idioma faltante (observado en SH con el locale cambiado) **o** el
+**wrapper HTML** del bloque (para reanclar por `data-testid`/`id`/estructura, que es
+idioma-indep). Las hipótesis de traducción abajo son **solo pistas a confirmar**, NO valores a
+codificar. Barrido repo-wide 2026-07-17: **ninguna** de las traducciones faltantes existe ya
+como ancla bilingüe en otro applet → no hay atajo por evidencia interna.
 
-| Applet | archivo:línea | Ancla actual | Idioma | Impacto si cambia el locale |
-|---|---|---|---|---|
-| **surtido-guard** | `surtido-guard.js:197` | `/Tareas Programadas:/i` | solo ES | Con SH en inglés, el candado **no detecta** las tarjetas programadas → **no marca verde ni bloquea** el surtido no programado. Falla de seguridad silenciosa. |
-| **surtido-guard** | `surtido-guard.js:207` | `/Proceso:/i` | solo ES | Igual — el guard no ancla el proceso. |
+---
 
-> Nota: surtido-guard **sí** es bilingüe en su detección de modal (`:141` "Desde Nodo:"/"From
-> Node:", botones `:175-176`). La deuda son solo estos dos labels de tarjeta. Ideal: anclar por
-> estructura/testid de la tarjeta (pásame el HTML de una tarjeta con "Tareas Programadas").
+## ✅ CERRADO desde el mapa viejo (verificado en archivo + commit)
 
-## 🟡 PRIORIDAD 2 — Autofills/guards principales (dejan de dispararse)
+| Cluster | Antes (mapa viejo) | Cómo quedó anclado ahora | Commit |
+|---|---|---|---|
+| **price-confirm-guard** gate | `/Part Number Price/i` (título modal, EN) | `[id^="root_DatosPrecio"]` — schema RJSF idioma-indep | `24e9f1c` |
+| **invoice-autofill** gate/heading | `/…new invoice for/i` (EN) | gate por `root_DatosContables_*` + `HEADING_RE` bilingüe + "invoice for/factura para" | `f48c7df` |
+| **invoice-auto-regen** ×4 | `Invoices`, `CREAR FACTURA`, `confirmar`, `Close` (mezcla mono) | `invoices\|facturas`, `CREAR FACTURA\|CREATE INVOICE`, `confirmar\|confirm`, `close\|cerrar` | `98fa9fc` |
+| **cfdi-attacher** gate + inserción | `/send invoice email/i`, filas por texto EN | `data-testid` SendIcon/EmailOutlinedIcon + fila por `.MuiSwitch-root` (texto EN solo fallback muerto) | `c567310` |
+| **create-order-autofill** ship-to | `/enviar a:/i` (ES) | `Enviar a:`/`Ship To:` bilingüe (label EN observado) | `1fc1d8c` |
+| **unit-autoconvert** Panel B + modo | `"/ Part:"` recíproco, `Modo` (mono) | recíproco por **POSICIÓN** (idioma-indep) + `modo\|mode` bilingüe | `3a09516`, `7c067d5` |
+| **surtido-guard** BLOQUEO | (mapa lo marcaba P1 "no bloquea") | el bloqueo NO es text-anchored — ver corrección abajo | (ya estaba) |
 
-| Applet | archivo:línea | Ancla actual | Idioma | Hipótesis a confirmar |
-|---|---|---|---|---|
-| invoice-autofill | `:857`, `:233` | `/creating\|editing\|create\|edit\|new invoice for/i` | solo EN | ¿"Creando/Nueva Factura para"? |
-| price-confirm-guard | `price-confirm-guard.js:15` | `/Part\s*Number\s*Price/i` (título modal) | solo EN | ¿"Precio de Número de Parte"? |
-| cfdi-attacher | `:125`, `:133`, `:148` | `/send invoice email/i`, `/send invoice/i` | solo EN | ¿"Enviar Correo de Factura"? |
-| unit-autoconvert | `:110` | `/per part count unit definitions/i` | solo EN | ¿string ES del encabezado? |
-| unit-autoconvert | `:144`, `:157` | `"/ Part:"` | solo EN | ¿"/ Parte:"? |
-| unit-autoconvert-core | `:55` | `/^\s*parts\s*\//i` ("Parts /") | solo EN | ¿"Partes /"? |
-| create-order-autofill | `create-order-autofill.js:231` | `/enviar a:/i` | solo ES | ¿"Ship to:"? (hay evidencia interna: `invoice-autofill.js:1822` ya ancla `ship to`↔`enviar a` — **confirmable rápido**) |
-| invoice-auto-regen | `:415` | `=== 'CREAR FACTURA'` (botón) | solo ES | ¿"CREATE INVOICE"? (evidencia: `HEADING_RE` create/crear) |
-| invoice-auto-regen | `:979` | `/^confirmar$/i` | solo ES | ¿/^confirm$/? |
-| invoice-auto-regen | `:398`, `:409` | `=== 'Invoices'` (heading) | solo EN | ¿"Facturas"? |
+### 🔧 Corrección de severidad: surtido-guard NO tiene falla de seguridad en inglés
 
-## 🟢 PRIORIDAD 3 — Labels secundarios (menor impacto)
+El mapa viejo decía "con SH en inglés el candado no marca verde **ni bloquea**". **Falso.**
+Verificado en `surtido-guard.js`:
 
-| Applet | archivo:línea | Ancla actual | Idioma | Hipótesis |
-|---|---|---|---|---|
-| proceso-calculator | `:241` | `/^default process:?$/i` | solo EN | ¿"Proceso Predeterminado:"? |
-| bill-autofill | `:162` | `/create bill\|edit bill/i` | solo EN | ¿"Crear/Editar Factura de Proveedor"? |
-| price-confirm-core | `:78` | `/saving price/i` (alert) | solo EN | ¿"Error al guardar precio"? |
-| price-confirm-core | `:94` | `"/ part:"` | solo EN | ¿"/ Parte:"? |
-| invoice-autofill | `:1020`, `:1092`, `:1712` | `"Line #N"`, `"Line #N - PN"` | solo EN | ¿"Línea #N"? |
-| invoice-autofill | `:1036`, `:1102` | `/income account/i`, `/^income$/i` | solo EN | ¿"Cuenta de Ingresos"/"Ingresos"? |
-| invoice-autofill | `:2005` | `/accounts?_?receivable/i` | solo EN | constante — confirmar si SH la traduce |
-| cfdi-attacher | `:167` | `/^(Logo\|Attach PDFs?\|Visible to Others)$/` | solo EN | ¿traducciones de las filas? |
-| invoice-auto-regen | `:930` | `=== 'Close'` (botón) | solo EN | ¿"Cerrar"? |
-| invoice-default-tab | `invoice-default-tab.js:12` | `/packing slips/i` | solo EN | ¿"Notas de Empaque"? |
-| load-calculator-modal | `:251` | `/rack type/i` (título modal) | solo EN | ¿"Tipo de Rack"? |
+- **El bloqueo real es API-driven / idioma-indep.** `modalShouldBlock()` (:146) decide con
+  `surtidoNodeIds` y `scheduledAccountIds`, sets construidos desde las respuestas GraphQL
+  (`GetRelatedScheduleData`, `BOARD_RECIPENODES_OP`). El agrisado del modal `applyModalGuard()`
+  ancla el diálogo con `findMoveDialog()` (:141) que **ya es bilingüe** (`Desde Nodo:`/`From
+  Node:`, `Mover Piezas`/`Move Parts`) y los botones con `mover`/`move`, `imprimir y mover`/
+  `print and` (:175-176). **Con SH en inglés, el candado sigue bloqueando.**
+- **Lo único mono-idioma ES es el marcado verde cosmético** (`decorateCards()` :195-212), que
+  ancla `/Tareas Programadas:?/i` (:197) y `/Proceso:/i`+`/WO:/i` (:207) solo para pintar un
+  acento verde en las tarjetas programadas. Si SH está en inglés, las tarjetas **no reciben el
+  tinte verde**; el bloqueo no se afecta. → **Deuda real: P3 cosmético**, no P1 seguridad.
 
-## Cómo cerrar la deuda (para cada fila)
+---
 
-1. **Preferido — anclar por estructura idioma-independiente:** si el modal/tarjeta tiene un
-   `data-testid`, `id` estable o icono con `aria`/testid (como ya hacen `report-regen`,
-   `sensor-graph-hide-all`, `invoice-listing-marker`), reanclar ahí. No necesita traducción.
-   Requiere que me pases el **wrapper HTML** del bloque.
-2. **Alternativa — texto bilingüe:** confirmar el string del otro locale (observándolo en SH
-   con el idioma cambiado) y ampliar la regex a `/(es|en)/i`. NO codificar la hipótesis.
+## 🔴 Deuda real restante (verificada, mono-idioma, sin evidencia interna para cerrar)
 
-## Limpios / ya bilingües (referencia)
+Prioridad por **impacto funcional** (deja de dispararse el autofill/guard), no por locale.
 
-Autofills de recepción (`receiver-date-override`, `warehouse-location-prefill`,
-`weight-quick-entry` = patrón bueno), `bill-autofill` (salvo `:162`), la mayoría de
-`invoice-autofill`, `create-order-autofill` (salvo `:231`), `pn-specs-column`,
-`report-regen` (ancla por testid). Los ~50 scripts API-driven no anclan texto de SH.
+> **Falso positivo corregido (re-verificación 2026-07-17).** El grep-por-línea marcó
+> `proceso-calculator:259` `/^default process:?$/i` como deuda, pero `findProcessControl()`
+> (:255) **ya ancla idioma-indep como PRIMARIO** por `[data-steelhead-component-id=
+> "CREATE_PART_NUMBER_DIALOG_DEFAULT_PROCESS"]` (:257); el texto es solo fallback. **NO es
+> deuda.** Lección: verificar la función completa, no la línea aislada del grep. → quedan **8**
+> anclas reales.
+
+### 🧩 El patrón de cierre que ya usa el repo: `data-steelhead-component-id`
+
+SH expone contenedores con `data-steelhead-component-id="…"` — atributo **idioma-indep y
+estable**, ya usado en producción (`proceso-calculator` VIVO ancla `CREATE_PART_NUMBER_DIALOG_
+DEFAULT_PROCESS`/`_LABELS`/`_ACCOUNTING_DIMENSIONS`; `price-confirm-guard` usa
+`CREATE_PART_NUMBER_DIALOG_PER_PART_COUNT_UNIT_DEFINITIONS` y `PART_NUMBER_PAGE_UNITS`). **La
+vía de cierre preferida** para las anclas de los modales *Editar NP* es reanclar por este id
+(primario) con el texto como fallback, tal como `findProcessControl()`. Requiere confirmar el
+id en el locale/estado real (varios aún no validados en vivo).
+
+### P2 — el applet deja de funcionar en el otro locale
+
+| # | Applet | archivo:línea | Ancla actual | Impacto | Cómo cerrar (evidencia/vía) |
+|---|---|---|---|---|---|
+| 1 | **bill-autofill** | `bill-autofill.js:162` | `/create bill\|edit bill/i` (gate por heading) | En español NO detecta el editor Create/Edit Bill → **no autollena** (divisa/TC/cuentas). El gemelo `invoice-autofill` ya migró a gate `root_DatosContables_*`. | HTML del modal Bill, **o** confirmar que `root_DatosContables_Divisa` (que bill-autofill ya lee/llena, :94/:107/:120) aparece **solo** en el editor dentro de `/Bills` → gate aditivo idioma-indep (espejo del gemelo, no regresa). |
+| 2 | **invoice-autofill** | `:1089` `/^income account$/i`, `:1155` `/^income$/i` | columna/label "Income Account" | En español no ubica la columna de cuenta de ingreso → **no llena** ingreso/descuento por línea. | invoice-autofill NO usa `component-id`/`testid` (verificado) → necesita el **string ES** de "Income Account" y "Income". |
+| 3 | **unit-autoconvert** | `:110` heading (Panel A), `:147` `/\/\s*parts?:?\s*$/i` | encabezado + label "/ Part:" del Panel A | En español el toggle del Panel A no se inyecta / no llena. (El Panel B ya es idioma-indep; el Panel A no tiene par de inputs para discriminar por posición.) | **Vía concreta:** reanclar `tryInjectToggles` al contenedor `[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_PER_PART_COUNT_UNIT_DEFINITIONS"]` (el mismo que ya usa price-confirm-guard) como **fallback aditivo** del heading de texto. Falta validar el id en un locale full-ES. El `/ Part:` de `:147` (routing de auto-fill) aún necesitaría string ES o HTML. |
+
+### P3 — degradación menor / fail-safe
+
+| # | Applet | archivo:línea | Ancla actual | Impacto | Evidencia que falta |
+|---|---|---|---|---|---|
+| 4 | **surtido-guard** | `:197` `/Tareas Programadas:/i`, `:207` `/Proceso:/i` | marcado verde de tarjetas | Cosmético: sin tinte verde en inglés (el bloqueo funciona). | HTML de una tarjeta con "Tareas Programadas" para anclar por estructura/testid. |
+| 5 | **price-confirm-core** | `:77` `/saving price/i`, `:95` `/\/ part:/i` (Panel A) | suprimir alert nativo + parseo de factor | Fail-safe: en español el factor DOM se salta y **degrada a la API** (no bloquea). El contenedor ya es idioma-indep (`data-steelhead-component-id`). | Strings ES: alert "Error saving price" y adorno "/ Part:". |
+| 6 | **invoice-autofill** | `:1058`, `:1797` | `"Line #N"` (parseo header + idempotencia) | En español no reconoce el header de línea → riesgo de doble-inserción / no parsea. | String ES de "Line #N" (¿"Línea #N"?). |
+| 7 | **invoice-default-tab** | `invoice-default-tab.js:12` | `/^packing slips$/i` (tab) | En español no autoclickea el tab (el usuario lo hace a mano). El gate de redirección ya es idioma-indep (URL + `?mode`). | String ES "Packing Slips" (¿"Notas de Empaque"?) **o** HTML del tab (para anclar por href/`mode`). |
+| 8 | **load-calculator-modal** | `:251` `/rack type/i` | anclar el modal de Rack Types | En español no encuentra el modal → no calcula. Se dispara por `CreateEditPartsPerRackTypeQuery` (API, idioma-indep); solo el `findModal()` depende del texto. `h2#form-dialog-title` (el id) ya es idioma-indep. | HTML del modal para reanclar por `#form-dialog-title` + estructura sin el texto "rack type". Revisar si el modal expone `data-steelhead-component-id` (varios modales de NP lo hacen). |
+
+### No es deuda (aclaración)
+
+- `invoice-autofill.js:711` `/receivable/i` **no** ancla texto de UI: filtra el enum
+  `acctAccountTypeByTypeId.category` de la API (no lo traduce el locale del usuario).
+
+---
+
+## Cómo cerrar cada fila (recordatorio de método)
+
+1. **Preferido — anclar por estructura idioma-indep** (`data-testid`, `id` estable, icono con
+   `aria`/testid, o **posición** cuando hay par de inputs). No necesita traducción. Requiere el
+   **wrapper HTML** del bloque.
+2. **Alternativa — texto bilingüe:** confirmar el string del otro locale observándolo en SH con
+   el idioma cambiado y ampliar la regex. **NO codificar la hipótesis.**
+
+## Cómo entregar la evidencia (para el usuario)
+
+Lo más rápido para cerrar varias de un jalón: con SH en el **locale contrario** al de tu cuenta,
+manda para cada pantalla el **wrapper HTML** del bloque (el padre cercano con labels + inputs).
+Prioriza por impacto: **P2 #1–#4** primero. Un solo HTML por modal cierra la fila en un commit.
