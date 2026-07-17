@@ -1,6 +1,6 @@
 {
-  "version": "1.7.135",
-  "lastUpdated": "2026-07-16T23:06",
+  "version": "1.7.136",
+  "lastUpdated": "2026-07-16T23:40",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -579,7 +579,7 @@
       "subtitle": "Migración y params pendientes",
       "icon": "🔀",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator.js"],
+      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator-normalize.js", "scripts/spec-migrator.js"],
       "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"],
       "actions": [
         { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run" },
