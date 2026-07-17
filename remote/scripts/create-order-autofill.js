@@ -228,7 +228,10 @@ const CreateOrderAutofill = (() => {
   function extractShipToFromModal() {
     const root = getModalRoot();
     if (!root) return null;
-    const sv = findSingleValueByLabel(root, /^\s*enviar\s+a:?\s*$/i);
+    // Bilingüe: "Enviar a:" (ES) y "Ship To:" (EN, label real de SH observado en las pantallas
+    // de facturación); si SH se muestra en inglés, el ancla mono-ES no encontraba el ship-to
+    // → Consolidar no se marcaba. El OR no rompe el caso ES.
+    const sv = findSingleValueByLabel(root, /^\s*(?:enviar\s+a|ship\s+to):?\s*$/i);
     if (!sv) return null;
     return (sv.textContent || '').trim();
   }
