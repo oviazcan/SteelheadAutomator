@@ -1,6 +1,6 @@
 {
-  "version": "1.7.141",
-  "lastUpdated": "2026-07-17T12:19",
+  "version": "1.7.142",
+  "lastUpdated": "2026-07-17T12:51",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -39,8 +39,6 @@
         "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394",
         "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4",
         "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8",
-        "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797",
-        "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9",
         "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953",
         "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0",
         "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174",
@@ -177,7 +175,6 @@
         "GetVendor": "87ad05379932cc20b466a5ff3c3c33f8a8d27ca06bfdd0a423aa40f720c8f541",
         "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e",
         "GetReceivedOrdersWithReceivedOrderLineItems": "f10d92898977064d1facaba234d78c852cbd20893d76f4ad031cc92ada7383ae",
-        "Customer": "74f53734d68cc7b5dbadd4e9f436e11e3ca9b935031411713f3fe75d1a1c5631",
         "GetProcessNode": "3c570c9045a631877f87e94aa196434a299d81e0b4385b3167b796f5bbe7ce32",
         "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af",
         "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d",
@@ -200,8 +197,15 @@
     },
     "domain": {
       "id": 344,
-      "dimensionIds": { "linea": 349, "departamento": 586 },
-      "billingDefaults": { "departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado" },
+      "dimensionIds": {
+        "linea": 349,
+        "departamento": 586
+      },
+      "billingDefaults": {
+        "departmentName": "Producción",
+        "departmentValueId": 182,
+        "codigoSAT": "73181106 - Servicios de enchapado"
+      },
       "inputSchemaId_PN": 3932,
       "inputSchemaId_Quote": 659,
       "inputSchemaId_Bill": 27,
@@ -209,7 +213,10 @@
       "ganadaStageId": 1212,
       "revertStageId": 1208,
       "geometryGenericaId": 831,
-      "validacionProcessNodeIds": [231176, 231174],
+      "validacionProcessNodeIds": [
+        231176,
+        231174
+      ],
       "unitIds": {
         "KGM": 3969,
         "LBR": 3972,
@@ -266,75 +273,226 @@
           "exclude": []
         },
         "finishProductMap": {
-          "EST": ["ESTAÑADO", "ESTAÑO"],
-          "NIQ": ["NIQUELADO", "NIQUEL"],
-          "NSU": ["NIQUEL SULFAMATO", "NIQUEL"],
-          "NWO": ["NIQUEL WOOD", "NIQUEL"],
-          "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"],
-          "NBR": ["NIQUEL BRILLANTE", "NIQUEL"],
-          "NCV": ["NIQUEL CHEVROL", "NIQUEL"],
-          "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"],
-          "CRO": ["CROMADO", "CROMO"],
-          "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"],
-          "PLA": ["PLATEADO", "PLATA"],
-          "PLF": ["PLATA FLASH", "PLATA"],
-          "COB": ["COBREADO", "COBRE"],
-          "ZIN": ["ZINCADO", "ZINC"],
-          "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"],
-          "EST_T2": ["ESTAÑADO", "ESTAÑO"],
-          "PAV": ["PAVONADO"],
-          "FMS": ["FOSFATO MANGANESO"],
-          "FZI": ["FOSFATO ZINC"],
-          "AND": ["ANODIZADO"],
-          "IRI": ["IRIDIZADO"],
-          "BDP": ["BAÑO DE PASIVADO"],
-          "BRI": ["BRILLO QUIMICO"],
-          "PRE": ["PRELIMPIEZA", "LIMPIEZA"],
-          "ROD": ["RODADO"],
-          "REB": ["REBABADO", "REBARBADO"],
-          "LES": ["LIMPIEZA ESPECIAL"],
-          "DES": ["DESOXIDADO"],
-          "PUL": ["PULIDO"],
-          "ELE": ["ELECTROPULIDO"],
-          "TIN": ["TINTURADO"],
-          "ESM": ["ESMERILADO"],
-          "SAB": ["SABLEADO"],
-          "LMC": ["LIMPIEZA QUIMICA"],
-          "NOX": ["NOX"],
-          "LAV": ["LAVADO"],
-          "DEC": ["DECAPADO"],
-          "PAS": ["PASIVADO"],
-          "ANT": ["ANTITARNISH"],
-          "HOR": ["HORNEADO", "HORNO"],
-          "FIB": ["FIBRADO"],
-          "ENM": ["ENMASCARADO"],
-          "DNM": ["DESENMASCARADO"],
-          "ACE": ["ACEITADO"],
-          "ABR": ["ABRILLANTADO"],
-          "TRT": ["TRATAMIENTO TERMICO"],
-          "EBT": ["EPOXICA BT"],
-          "EMT": ["EPOXY MT"],
-          "EMR": ["EPOXICA MR"],
-          "CAZ": ["CAJA ZINC", "ZINC"],
-          "CTR": ["CILINDRO TRADICIONAL"],
-          "CVO": ["CILINDRO VOLTEO"],
-          "CAM": ["CAMPANA"],
-          "CAT": ["CATARINA"],
-          "CNE": ["CILINDRO NEUMATICO"],
-          "CNT": ["CILINDRO NETO"],
-          "CRJ": ["CILINDRO ROJO"],
-          "CTV": ["CILINDRO TV"],
-          "CNN": ["CILINDRO NN"]
+          "EST": [
+            "ESTAÑADO",
+            "ESTAÑO"
+          ],
+          "NIQ": [
+            "NIQUELADO",
+            "NIQUEL"
+          ],
+          "NSU": [
+            "NIQUEL SULFAMATO",
+            "NIQUEL"
+          ],
+          "NWO": [
+            "NIQUEL WOOD",
+            "NIQUEL"
+          ],
+          "NEL": [
+            "NIQUEL ELECTROLITICO",
+            "NIQUEL"
+          ],
+          "NBR": [
+            "NIQUEL BRILLANTE",
+            "NIQUEL"
+          ],
+          "NCV": [
+            "NIQUEL CHEVROL",
+            "NIQUEL"
+          ],
+          "NCR": [
+            "NIQUEL CROMO",
+            "NIQUEL",
+            "CROMO"
+          ],
+          "CRO": [
+            "CROMADO",
+            "CROMO"
+          ],
+          "CRD": [
+            "CROMO DECORATIVO",
+            "CROMADO",
+            "CROMO"
+          ],
+          "PLA": [
+            "PLATEADO",
+            "PLATA"
+          ],
+          "PLF": [
+            "PLATA FLASH",
+            "PLATA"
+          ],
+          "COB": [
+            "COBREADO",
+            "COBRE"
+          ],
+          "ZIN": [
+            "ZINCADO",
+            "ZINC"
+          ],
+          "ZNQ": [
+            "ZINC NIQUEL",
+            "ZINC",
+            "NIQUEL"
+          ],
+          "EST_T2": [
+            "ESTAÑADO",
+            "ESTAÑO"
+          ],
+          "PAV": [
+            "PAVONADO"
+          ],
+          "FMS": [
+            "FOSFATO MANGANESO"
+          ],
+          "FZI": [
+            "FOSFATO ZINC"
+          ],
+          "AND": [
+            "ANODIZADO"
+          ],
+          "IRI": [
+            "IRIDIZADO"
+          ],
+          "BDP": [
+            "BAÑO DE PASIVADO"
+          ],
+          "BRI": [
+            "BRILLO QUIMICO"
+          ],
+          "PRE": [
+            "PRELIMPIEZA",
+            "LIMPIEZA"
+          ],
+          "ROD": [
+            "RODADO"
+          ],
+          "REB": [
+            "REBABADO",
+            "REBARBADO"
+          ],
+          "LES": [
+            "LIMPIEZA ESPECIAL"
+          ],
+          "DES": [
+            "DESOXIDADO"
+          ],
+          "PUL": [
+            "PULIDO"
+          ],
+          "ELE": [
+            "ELECTROPULIDO"
+          ],
+          "TIN": [
+            "TINTURADO"
+          ],
+          "ESM": [
+            "ESMERILADO"
+          ],
+          "SAB": [
+            "SABLEADO"
+          ],
+          "LMC": [
+            "LIMPIEZA QUIMICA"
+          ],
+          "NOX": [
+            "NOX"
+          ],
+          "LAV": [
+            "LAVADO"
+          ],
+          "DEC": [
+            "DECAPADO"
+          ],
+          "PAS": [
+            "PASIVADO"
+          ],
+          "ANT": [
+            "ANTITARNISH"
+          ],
+          "HOR": [
+            "HORNEADO",
+            "HORNO"
+          ],
+          "FIB": [
+            "FIBRADO"
+          ],
+          "ENM": [
+            "ENMASCARADO"
+          ],
+          "DNM": [
+            "DESENMASCARADO"
+          ],
+          "ACE": [
+            "ACEITADO"
+          ],
+          "ABR": [
+            "ABRILLANTADO"
+          ],
+          "TRT": [
+            "TRATAMIENTO TERMICO"
+          ],
+          "EBT": [
+            "EPOXICA BT"
+          ],
+          "EMT": [
+            "EPOXY MT"
+          ],
+          "EMR": [
+            "EPOXICA MR"
+          ],
+          "CAZ": [
+            "CAJA ZINC",
+            "ZINC"
+          ],
+          "CTR": [
+            "CILINDRO TRADICIONAL"
+          ],
+          "CVO": [
+            "CILINDRO VOLTEO"
+          ],
+          "CAM": [
+            "CAMPANA"
+          ],
+          "CAT": [
+            "CATARINA"
+          ],
+          "CNE": [
+            "CILINDRO NEUMATICO"
+          ],
+          "CNT": [
+            "CILINDRO NETO"
+          ],
+          "CRJ": [
+            "CILINDRO ROJO"
+          ],
+          "CTV": [
+            "CILINDRO TV"
+          ],
+          "CNN": [
+            "CILINDRO NN"
+          ]
         },
         "concurrency": {
           "audit": 5,
           "trees": 5,
           "parents": 5,
-          "retryDelaysMs": [0, 1000, 2000]
+          "retryDelaysMs": [
+            0,
+            1000,
+            2000
+          ]
         },
         "duplicates": {
           "enabled": true,
-          "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"],
+          "includeSources": [
+            "main",
+            "satellite",
+            "rt",
+            "subprocess",
+            "stepshipping"
+          ],
           "ignoreNamePatterns": [],
           "ignoreIds": []
         }
@@ -345,10 +503,16 @@
           "editShape": 10
         },
         "batchSize": 50,
-        "retryDelaysMs": [1000, 2000, 4000],
+        "retryDelaysMs": [
+          1000,
+          2000,
+          4000
+        ],
         "labelMP": "MP",
         "impPrefixRegex": "^IMP",
-        "page": { "first": 400 }
+        "page": {
+          "first": 400
+        }
       },
       "bulkUpload": {
         "concurrency": {
@@ -357,7 +521,11 @@
           "sentinelPreQuoteArchive": 3
         },
         "retry": {
-          "delaysMs": [1000, 2000, 4000]
+          "delaysMs": [
+            1000,
+            2000,
+            4000
+          ]
         },
         "paging": {
           "allPartNumbers": {
@@ -374,12 +542,29 @@
           "purgeAgeDays": 7
         },
         "nonFinishLabelNames": [
-          "SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2",
-          "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"
+          "SMY",
+          "STX",
+          "SXC",
+          "SRG",
+          "SCM",
+          "SQ1",
+          "SQ2",
+          "NP desconocido",
+          "En desarrollo",
+          "Muestras",
+          "Lote",
+          "Obsoleto"
         ],
         "metalEquivalents": [
-          ["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"],
-          ["Plata", "Plata Flash"]
+          [
+            "Estaño",
+            "Estaño s/Aluminio",
+            "Estaño s/Cobre"
+          ],
+          [
+            "Plata",
+            "Plata Flash"
+          ]
         ],
         "dedup": {
           "massiveThreshold": 1000
@@ -394,7 +579,10 @@
       },
       "auditor": {
         "largeCustomers": [
-          { "name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000 }
+          {
+            "name": "SCHNEIDER ELECTRIC MEXICO",
+            "estimatedPns": 12000
+          }
         ],
         "hardCapPns": 8000,
         "hardCapWithExclusions": 15000
@@ -406,10 +594,15 @@
       "name": "Hubbell Portal",
       "detection": {
         "requiredColumns": [
-          "number", "status", "lineItem.itemNumber",
-          "lineItem.materialCodeBuyer", "lineItem.materialDescription",
-          "lineItem.netPrice", "lineItem.priceUnit",
-          "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"
+          "number",
+          "status",
+          "lineItem.itemNumber",
+          "lineItem.materialCodeBuyer",
+          "lineItem.materialDescription",
+          "lineItem.netPrice",
+          "lineItem.priceUnit",
+          "lineItem.targetQuantity",
+          "lineItem.schedule.deliveryDate"
         ],
         "minMatchRatio": 0.9
       },
@@ -436,7 +629,11 @@
           "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"
         ]
       },
-      "statusFilter": { "activeValues": ["Nuevo"] },
+      "statusFilter": {
+        "activeValues": [
+          "Nuevo"
+        ]
+      },
       "unitPriceFormula": "netPrice / priceUnit"
     }
   },
@@ -477,7 +674,10 @@
       "icon": "🧮",
       "category": "Números de Parte",
       "autoInject": true,
-      "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/proceso-calculator.js"
+      ],
       "requiredPermissions": []
     },
     {
@@ -486,14 +686,65 @@
       "subtitle": "Cotizaciones y NP",
       "icon": "📊",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload-batch.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"],
-      "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/bulk-upload-cc.js",
+        "scripts/bulk-upload-parse.js",
+        "scripts/bulk-upload-classify.js",
+        "scripts/bulk-upload-batch.js",
+        "scripts/bulk-upload.js",
+        "scripts/catalog-fetcher.js"
+      ],
+      "requiredPermissions": [
+        "READ_PART_NUMBERS",
+        "READ_QUOTES"
+      ],
       "actions": [
-        { "id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker" },
-        { "id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos." },
-        { "id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos." },
-        { "id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs" },
-        { "id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history" }
+        {
+          "id": "upload-csv",
+          "label": "Cargar CSV",
+          "sublabel": "Subir cotizaciones y números de parte",
+          "icon": "📊",
+          "type": "primary",
+          "handler": "file-picker"
+        },
+        {
+          "id": "download-template",
+          "label": "Descargar Plantilla v12 (Excel 2021+)",
+          "sublabel": "Base + catálogos frescos",
+          "icon": "📥",
+          "handler": "open-url",
+          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm",
+          "afterMessage": "update-catalogs",
+          "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."
+        },
+        {
+          "id": "download-template-compat",
+          "label": "Versión de compatibilidad (Excel 2019)",
+          "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores",
+          "icon": "📥",
+          "handler": "open-url",
+          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm",
+          "afterMessage": "update-catalogs",
+          "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."
+        },
+        {
+          "id": "update-catalogs",
+          "label": "Actualizar Catálogos",
+          "sublabel": "Descarga datos frescos de Steelhead",
+          "icon": "📋",
+          "handler": "message",
+          "message": "update-catalogs"
+        },
+        {
+          "id": "load-history",
+          "label": "Historial de Cargas",
+          "sublabel": "Ver cargas anteriores y descargar CSV de corrección",
+          "icon": "📜",
+          "handler": "message",
+          "message": "view-load-history"
+        }
       ]
     },
     {
@@ -502,13 +753,48 @@
       "subtitle": "Captura de APIs",
       "icon": "🔍",
       "category": "Herramientas",
-      "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"],
-      "requiredPermissions": ["WRITE_USER_PERMISSIONS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/hash-scanner.js",
+        "scripts/api-knowledge.js"
+      ],
+      "requiredPermissions": [
+        "WRITE_USER_PERMISSIONS"
+      ],
       "actions": [
-        { "id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan" },
-        { "id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results" },
-        { "id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config" },
-        { "id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge" }
+        {
+          "id": "toggle-scan",
+          "label": "Iniciar Captura",
+          "sublabel": "Interceptar requests GraphQL",
+          "icon": "🔍",
+          "type": "primary",
+          "handler": "message",
+          "message": "toggle-scan"
+        },
+        {
+          "id": "view-results",
+          "label": "Ver Resultados",
+          "sublabel": "Hashes y schemas descubiertos",
+          "icon": "📊",
+          "handler": "message",
+          "message": "view-scan-results"
+        },
+        {
+          "id": "export-config",
+          "label": "Exportar Config",
+          "sublabel": "Config.json con hashes actualizados",
+          "icon": "💾",
+          "handler": "message",
+          "message": "export-config"
+        },
+        {
+          "id": "api-knowledge",
+          "label": "APIs Conocidas",
+          "sublabel": "Operaciones que el sistema domina",
+          "icon": "🧠",
+          "handler": "message",
+          "message": "show-api-knowledge"
+        }
       ]
     },
     {
@@ -517,10 +803,24 @@
       "subtitle": "Por etiquetas, fecha y modo",
       "icon": "📦",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"],
-      "requiredPermissions": ["READ_PART_NUMBERS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/archiver.js"
+      ],
+      "requiredPermissions": [
+        "READ_PART_NUMBERS"
+      ],
       "actions": [
-        { "id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver" }
+        {
+          "id": "run-archiver",
+          "label": "Archivar / Desarchivar PNs",
+          "sublabel": "Por etiquetas, fecha (opcional) y modo",
+          "icon": "📦",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-archiver"
+        }
       ]
     },
     {
@@ -529,10 +829,25 @@
       "subtitle": "Verificar calidad de datos",
       "icon": "🔎",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"],
-      "requiredPermissions": ["READ_PART_NUMBERS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/duplicate-tiers.js",
+        "scripts/auditor.js"
+      ],
+      "requiredPermissions": [
+        "READ_PART_NUMBERS"
+      ],
       "actions": [
-        { "id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor" }
+        {
+          "id": "run-auditor",
+          "label": "Auditar PNs",
+          "sublabel": "Seleccionar criterios y ejecutar",
+          "icon": "🔎",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-auditor"
+        }
       ]
     },
     {
@@ -541,11 +856,35 @@
       "subtitle": "Fotos y planos por PN",
       "icon": "📎",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"],
-      "requiredPermissions": ["READ_ALL_UPLOADED_FILES"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/file-uploader-core.js",
+        "scripts/file-uploader.js"
+      ],
+      "requiredPermissions": [
+        "READ_ALL_UPLOADED_FILES"
+      ],
       "actions": [
-        { "id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files" },
-        { "id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup" }
+        {
+          "id": "upload-files",
+          "label": "Subir Archivos",
+          "sublabel": "Seleccionar archivos nombrados como el PN",
+          "icon": "📎",
+          "type": "primary",
+          "handler": "message",
+          "message": "upload-pn-files"
+        },
+        {
+          "id": "backfill-display",
+          "label": "Marcar Portadas desde CSV",
+          "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.",
+          "icon": "★",
+          "type": "secondary",
+          "handler": "message",
+          "message": "backfill-display-images",
+          "fn": "FileUploader.runBackfillFromPopup"
+        }
       ]
     },
     {
@@ -554,10 +893,23 @@
       "subtitle": "Sacar reportes de carpetas",
       "icon": "📂",
       "category": "Herramientas",
-      "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"],
-      "requiredPermissions": ["MANAGE_REPORTING"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/report-liberator.js"
+      ],
+      "requiredPermissions": [
+        "MANAGE_REPORTING"
+      ],
       "actions": [
-        { "id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator" }
+        {
+          "id": "run-report-liberator",
+          "label": "Liberar Reportes",
+          "sublabel": "Quitar folderId de los reportes seleccionados",
+          "icon": "📂",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-report-liberator"
+        }
       ]
     },
     {
@@ -567,10 +919,24 @@
       "icon": "♻️",
       "category": "Herramientas",
       "autoInject": true,
-      "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"],
-      "requiredPermissions": ["MANAGE_REPORTING"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/report-regen.js"
+      ],
+      "requiredPermissions": [
+        "MANAGE_REPORTING"
+      ],
       "actions": [
-        { "id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup" }
+        {
+          "id": "trigger-report-regen",
+          "label": "Regenerar Reportes Ahora",
+          "sublabel": "Refresh global de la base (respeta el cooldown del domain)",
+          "icon": "♻️",
+          "type": "primary",
+          "handler": "message",
+          "message": "trigger-report-regen",
+          "fn": "ReportRegen.triggerFromPopup"
+        }
       ]
     },
     {
@@ -579,13 +945,54 @@
       "subtitle": "Migración y params pendientes",
       "icon": "🔀",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator-normalize.js", "scripts/spec-migrator.js"],
-      "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/spec-migrator-normalize.js",
+        "scripts/spec-migrator.js"
+      ],
+      "requiredPermissions": [
+        "READ_SPECS",
+        "WRITE_SPECS"
+      ],
       "actions": [
-        { "id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run" },
-        { "id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams" },
-        { "id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts" },
-        { "id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator" }
+        {
+          "id": "run-spec-migrator",
+          "label": "Migrar Specs",
+          "sublabel": "Desde la spec actual en pantalla",
+          "icon": "🔀",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-spec-migrator",
+          "fn": "SpecMigrator.run"
+        },
+        {
+          "id": "assign-pending-params",
+          "label": "Asignar Params Pendientes",
+          "sublabel": "Detectar y asignar params faltantes en PNs",
+          "icon": "📋",
+          "handler": "message",
+          "message": "assign-pending-params",
+          "fn": "SpecMigrator.assignPendingParams"
+        },
+        {
+          "id": "resolve-conflicts",
+          "label": "Resolver Conflictos",
+          "sublabel": "Detectar PNs con specs duplicadas y archivar",
+          "icon": "⚔️",
+          "handler": "message",
+          "message": "resolve-conflicts",
+          "fn": "SpecMigrator.resolveConflicts"
+        },
+        {
+          "id": "validate-duplicate-params",
+          "label": "Validar params duplicados",
+          "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante",
+          "icon": "🧹",
+          "handler": "message",
+          "message": "validate-duplicate-params",
+          "fn": "SpecMigrator.runDuplicateParamsValidator"
+        }
       ]
     },
     {
@@ -594,10 +1001,23 @@
       "subtitle": "Archivar lotes y carga inicial",
       "icon": "🔄",
       "category": "Inventario",
-      "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"],
-      "requiredPermissions": ["READ_INVENTORY"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/inventory-reset.js"
+      ],
+      "requiredPermissions": [
+        "READ_INVENTORY"
+      ],
       "actions": [
-        { "id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset" }
+        {
+          "id": "run-inventory-reset",
+          "label": "Reiniciar Inventario",
+          "sublabel": "Archivar lotes y cargar desde CSV",
+          "icon": "🔄",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-inventory-reset"
+        }
       ]
     },
     {
@@ -606,10 +1026,26 @@
       "subtitle": "Comparar orden de compra vs venta",
       "icon": "📋",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"],
-      "requiredPermissions": ["READ_RECEIVED_ORDERS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/claude-api.js",
+        "scripts/ov-operations.js",
+        "scripts/po-comparator.js"
+      ],
+      "requiredPermissions": [
+        "READ_RECEIVED_ORDERS"
+      ],
       "actions": [
-        { "id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator" }
+        {
+          "id": "run-po-comparator",
+          "label": "Validar OC vs OV",
+          "sublabel": "Subir PDF y comparar contra Steelhead",
+          "icon": "📋",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-po-comparator"
+        }
       ]
     },
     {
@@ -618,11 +1054,27 @@
       "subtitle": "Rebalancear OVs temporales contra POs reales",
       "icon": "🧮",
       "category": "Órdenes de Venta",
-      "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"],
-      "requiredPermissions": ["READ_RECEIVED_ORDERS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/claude-api.js",
+        "scripts/po-comparator.js",
+        "scripts/lib/pdf.min.js",
+        "scripts/po-reconciler.js"
+      ],
+      "requiredPermissions": [
+        "READ_RECEIVED_ORDERS"
+      ],
       "autoInject": true,
       "actions": [
-        { "id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler" }
+        {
+          "id": "run-po-reconciler",
+          "label": "Reconciliar Schneider QRO",
+          "sublabel": "Subir PDFs de PO y rebalancear OVs temp",
+          "icon": "🧮",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-po-reconciler"
+        }
       ]
     },
     {
@@ -631,10 +1083,24 @@
       "subtitle": "Cambiar plazos y etiquetas masivamente",
       "icon": "⚙️",
       "category": "Órdenes de Trabajo",
-      "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"],
-      "requiredPermissions": ["READ_WORK_ORDER"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/wo-deadline-changer.js"
+      ],
+      "requiredPermissions": [
+        "READ_WORK_ORDER"
+      ],
       "actions": [
-        { "id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run" }
+        {
+          "id": "run-wo-deadline",
+          "label": "Gestionar OTs",
+          "sublabel": "Cambiar plazos y etiquetas masivamente",
+          "icon": "⚙️",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-wo-deadline",
+          "fn": "WODeadlineChanger.run"
+        }
       ]
     },
     {
@@ -643,11 +1109,27 @@
       "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV",
       "icon": "↔️",
       "category": "Órdenes de Trabajo",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"],
-      "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/ov-operations.js",
+        "scripts/wo-mover.js"
+      ],
+      "requiredPermissions": [
+        "READ_RECEIVED_ORDERS",
+        "READ_WORK_ORDER"
+      ],
       "autoInject": true,
       "actions": [
-        { "id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover" }
+        {
+          "id": "run-wo-mover",
+          "label": "Mover OTs",
+          "sublabel": "Reasignar OTs de esta OV a otra",
+          "icon": "↔️",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-wo-mover"
+        }
       ]
     },
     {
@@ -656,10 +1138,26 @@
       "subtitle": "Cerrar o revivir órdenes de trabajo desde un listado",
       "icon": "✅",
       "category": "Órdenes de Trabajo",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/wo-completer-engine.js", "scripts/wo-completer.js"],
-      "requiredPermissions": ["READ_WORK_ORDER"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/wo-completer-engine.js",
+        "scripts/wo-completer.js"
+      ],
+      "requiredPermissions": [
+        "READ_WORK_ORDER"
+      ],
       "actions": [
-        { "id": "open-wo-completer", "label": "Completar / Descompletar OTs", "sublabel": "Pega un listado de OTs y ciérralas o revívelas", "icon": "✅", "type": "primary", "handler": "message", "message": "open-wo-completer", "fn": "WOCompleter.open" }
+        {
+          "id": "open-wo-completer",
+          "label": "Completar / Descompletar OTs",
+          "sublabel": "Pega un listado de OTs y ciérralas o revívelas",
+          "icon": "✅",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-wo-completer",
+          "fn": "WOCompleter.open"
+        }
       ]
     },
     {
@@ -668,11 +1166,24 @@
       "subtitle": "Auto-adjunta XML CFDI al enviar facturas",
       "icon": "📄",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/cfdi-attacher.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_INVOICING"],
+      "requiredPermissions": [
+        "READ_INVOICING"
+      ],
       "actions": [
-        { "id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher" }
+        {
+          "id": "toggle-cfdi-attacher",
+          "label": "Adjuntar CFDI",
+          "sublabel": "Auto-adjunta XML(s) al enviar email de factura",
+          "icon": "📄",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-cfdi-attacher"
+        }
       ]
     },
     {
@@ -729,10 +1240,20 @@
       "subtitle": "Resalta NC, montos cero y borradores en el listado",
       "icon": "🎯",
       "category": "Facturación",
-      "scripts": ["scripts/invoice-listing-marker.js"],
+      "scripts": [
+        "scripts/invoice-listing-marker.js"
+      ],
       "autoInject": true,
       "actions": [
-        { "id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker" }
+        {
+          "id": "toggle-invoice-listing-marker",
+          "label": "Marcadores de Facturas",
+          "sublabel": "Colorea NC, montos cero y borradores",
+          "icon": "🎯",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-invoice-listing-marker"
+        }
       ]
     },
     {
@@ -741,10 +1262,28 @@
       "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)",
       "icon": "📥",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"],
-      "requiredPermissions": ["READ_RECEIVED_ORDERS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/claude-api.js",
+        "scripts/lib/xlsx.full.min.js",
+        "scripts/ov-operations.js",
+        "scripts/po-comparator.js",
+        "scripts/portal-importer.js"
+      ],
+      "requiredPermissions": [
+        "READ_RECEIVED_ORDERS"
+      ],
       "actions": [
-        { "id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer" }
+        {
+          "id": "run-portal-importer",
+          "label": "Importar Portal",
+          "sublabel": "Subir XLS y procesar POs",
+          "icon": "📥",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-portal-importer"
+        }
       ]
     },
     {
@@ -753,12 +1292,33 @@
       "subtitle": "Registrar paros con cronómetro",
       "icon": "⚠️",
       "category": "Producción",
-      "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/paros-linea.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_MAINTENANCE"],
+      "requiredPermissions": [
+        "READ_MAINTENANCE"
+      ],
       "actions": [
-        { "id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea" },
-        { "id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled" }
+        {
+          "id": "open-paros-linea",
+          "label": "Iniciar Paro de Línea",
+          "sublabel": "Mostrar modal de captura",
+          "icon": "⚠️",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-paros-linea"
+        },
+        {
+          "id": "toggle-paros-linea",
+          "label": "Botón flotante",
+          "sublabel": "Activar/desactivar botón flotante en Steelhead",
+          "icon": "🔘",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-paros-linea-enabled"
+        }
       ]
     },
     {
@@ -767,11 +1327,26 @@
       "subtitle": "Surtido de material/equipo por usuario",
       "icon": "📦",
       "category": "Producción",
-      "scripts": ["scripts/steelhead-api.js", "scripts/vale-almacen-engine.js", "scripts/vale-almacen.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/vale-almacen-engine.js",
+        "scripts/vale-almacen.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_MAINTENANCE"],
+      "requiredPermissions": [
+        "READ_MAINTENANCE"
+      ],
       "actions": [
-        { "id": "open-vale-almacen", "label": "Emitir Vale de Almacén", "sublabel": "Registrar artículos entregados por usuario", "icon": "📦", "type": "primary", "handler": "message", "message": "open-vale-almacen", "fn": "ValeAlmacen.open" }
+        {
+          "id": "open-vale-almacen",
+          "label": "Emitir Vale de Almacén",
+          "sublabel": "Registrar artículos entregados por usuario",
+          "icon": "📦",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-vale-almacen",
+          "fn": "ValeAlmacen.open"
+        }
       ]
     },
     {
@@ -780,11 +1355,24 @@
       "subtitle": "Registra peso KG/LB desde el modal de recibo",
       "icon": "⚖️",
       "category": "Recibo",
-      "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/weight-quick-entry.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_RECEIVING"],
+      "requiredPermissions": [
+        "READ_RECEIVING"
+      ],
       "actions": [
-        { "id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry" }
+        {
+          "id": "toggle-weight-quick-entry",
+          "label": "Peso Rápido",
+          "sublabel": "Campos de peso en modal de recibo",
+          "icon": "⚖️",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-weight-quick-entry"
+        }
       ]
     },
     {
@@ -793,7 +1381,11 @@
       "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP",
       "icon": "📐",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/unit-autoconvert-core.js",
+        "scripts/unit-autoconvert.js"
+      ],
       "autoInject": true,
       "requiredPermissions": []
     },
@@ -803,7 +1395,11 @@
       "subtitle": "Reconfirma el precio (tipo password) y exige divisa al guardar en el modal de precios",
       "icon": "🔒",
       "category": "Números de Parte",
-      "scripts": ["scripts/steelhead-api.js", "scripts/price-confirm-core.js", "scripts/price-confirm-guard.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/price-confirm-core.js",
+        "scripts/price-confirm-guard.js"
+      ],
       "autoInject": true,
       "requiredPermissions": [],
       "actions": [
@@ -825,11 +1421,23 @@
       "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts",
       "icon": "📅",
       "category": "Recibo",
-      "scripts": ["scripts/receiver-date-override.js"],
+      "scripts": [
+        "scripts/receiver-date-override.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_RECEIVING"],
+      "requiredPermissions": [
+        "READ_RECEIVING"
+      ],
       "actions": [
-        { "id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override" }
+        {
+          "id": "toggle-receiver-date-override",
+          "label": "Fecha de Recibo",
+          "sublabel": "Editar fecha real desde el modal",
+          "icon": "📅",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-receiver-date-override"
+        }
       ]
     },
     {
@@ -838,11 +1446,24 @@
       "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts",
       "icon": "📦",
       "category": "Recibo",
-      "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/warehouse-location-prefill.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_RECEIVING"],
+      "requiredPermissions": [
+        "READ_RECEIVING"
+      ],
       "actions": [
-        { "id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill" }
+        {
+          "id": "toggle-warehouse-location-prefill",
+          "label": "Ubicación de Recibo",
+          "sublabel": "Prellenado de ubicación inicial al recibir",
+          "icon": "📦",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-warehouse-location-prefill"
+        }
       ]
     },
     {
@@ -851,11 +1472,25 @@
       "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta",
       "icon": "📝",
       "category": "Recibo",
-      "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill-core.js", "scripts/create-order-autofill.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/create-order-autofill-core.js",
+        "scripts/create-order-autofill.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_RECEIVING"],
+      "requiredPermissions": [
+        "READ_RECEIVING"
+      ],
       "actions": [
-        { "id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill" }
+        {
+          "id": "toggle-create-order-autofill",
+          "label": "Crear OV — Autofill",
+          "sublabel": "Auto-llena Entradas Personalizadas al crear OV",
+          "icon": "📝",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-create-order-autofill"
+        }
       ]
     },
     {
@@ -864,11 +1499,24 @@
       "subtitle": "Llenado automático de cuentas contables en Bills",
       "icon": "🧾",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/bill-autofill.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"],
+      "requiredPermissions": [
+        "READ_ACCOUNTS_PAYABLE"
+      ],
       "actions": [
-        { "id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill" }
+        {
+          "id": "toggle-bill-autofill",
+          "label": "Bill Autofill",
+          "sublabel": "Auto-llenar cuentas AP y gastos en Bills",
+          "icon": "🧾",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-bill-autofill"
+        }
       ]
     },
     {
@@ -877,11 +1525,24 @@
       "subtitle": "Llenado automático de cuentas contables en Invoices",
       "icon": "🧮",
       "category": "Facturación",
-      "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/invoice-autofill.js"
+      ],
       "autoInject": true,
-      "requiredPermissions": ["READ_INVOICING"],
+      "requiredPermissions": [
+        "READ_INVOICING"
+      ],
       "actions": [
-        { "id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill" }
+        {
+          "id": "toggle-invoice-autofill",
+          "label": "Invoice Autofill",
+          "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices",
+          "icon": "🧮",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-invoice-autofill"
+        }
       ]
     },
     {
@@ -890,10 +1551,32 @@
       "subtitle": "Auditar y normalizar nodos canónicos",
       "icon": "🏭",
       "category": "Producción",
-      "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/process-shared.js",
+        "scripts/process-canon.js",
+        "scripts/process-deep-audit.js"
+      ],
       "actions": [
-        { "id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run" },
-        { "id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit" }
+        {
+          "id": "run-process-canon",
+          "label": "Auditar Procesos",
+          "sublabel": "Detectar y corregir patrón canónico de 9 nodos",
+          "icon": "🏭",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-process-canon",
+          "fn": "ProcessCanon.run"
+        },
+        {
+          "id": "run-process-deep-audit",
+          "label": "Auditoría profunda",
+          "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX",
+          "icon": "🔬",
+          "type": "secondary",
+          "handler": "message",
+          "message": "run-process-deep-audit"
+        }
       ]
     },
     {
@@ -902,11 +1585,31 @@
       "subtitle": "Editar parámetros de specs vía XLSX",
       "icon": "🧪",
       "category": "Calidad",
-      "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/spec-shared.js",
+        "scripts/spec-params-bulk.js"
+      ],
       "requiredPermissions": [],
       "actions": [
-        { "id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params" },
-        { "id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params" }
+        {
+          "id": "download-spec-params",
+          "label": "Descargar XLSX",
+          "sublabel": "Filtrar specs y bajar plantilla editable",
+          "icon": "📥",
+          "type": "primary",
+          "handler": "message",
+          "message": "download-spec-params"
+        },
+        {
+          "id": "upload-spec-params",
+          "label": "Cargar XLSX editado",
+          "sublabel": "Subir archivo y aplicar diffs en batch",
+          "icon": "📤",
+          "type": "secondary",
+          "handler": "message",
+          "message": "upload-spec-params"
+        }
       ]
     },
     {
@@ -915,10 +1618,21 @@
       "subtitle": "Marca 'Use for Status' en members de un dashboard",
       "icon": "📊",
       "category": "Producción",
-      "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/sensor-status-autofill.js"
+      ],
       "requiredPermissions": [],
       "actions": [
-        { "id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status" }
+        {
+          "id": "assign-sensor-status",
+          "label": "Asignar status",
+          "sublabel": "Auto-asigna o elige candidato para cada member",
+          "icon": "📊",
+          "type": "primary",
+          "handler": "message",
+          "message": "assign-sensor-status"
+        }
       ]
     },
     {
@@ -928,10 +1642,23 @@
       "icon": "👁",
       "category": "Producción",
       "autoInject": true,
-      "scripts": ["scripts/steelhead-api.js", "scripts/sensor-graph-hide-all-core.js", "scripts/sensor-graph-hide-all.js"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/sensor-graph-hide-all-core.js",
+        "scripts/sensor-graph-hide-all.js"
+      ],
       "requiredPermissions": [],
       "actions": [
-        { "id": "toggle-sensor-graph-hide-all", "label": "Auto-ocultar sensores", "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)", "icon": "👁", "type": "toggle", "handler": "message", "message": "toggle-sensor-graph-hide-all", "fn": "SensorGraphHideAll.toggleFromPopup" }
+        {
+          "id": "toggle-sensor-graph-hide-all",
+          "label": "Auto-ocultar sensores",
+          "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)",
+          "icon": "👁",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-sensor-graph-hide-all",
+          "fn": "SensorGraphHideAll.toggleFromPopup"
+        }
       ]
     },
     {
@@ -941,10 +1668,26 @@
       "icon": "🧪",
       "category": "Números de Parte",
       "autoInject": true,
-      "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/pn-specs-column-core.js", "scripts/pn-specs-column.js"],
-      "requiredPermissions": ["READ_PART_NUMBERS"],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/pn-specs-column-core.js",
+        "scripts/pn-specs-column.js"
+      ],
+      "requiredPermissions": [
+        "READ_PART_NUMBERS"
+      ],
       "actions": [
-        { "id": "toggle-pn-specs-column", "label": "Specs en Números de Parte", "sublabel": "Columna de specs + params numéricos en /PartNumbers (1 consulta por NP visible; el toggle también vive en el header)", "icon": "🧪", "type": "toggle", "handler": "message", "message": "toggle-pn-specs-column", "fn": "PnSpecsColumn.toggleFromPopup" }
+        {
+          "id": "toggle-pn-specs-column",
+          "label": "Specs en Números de Parte",
+          "sublabel": "Columna de specs + params numéricos en /PartNumbers (1 consulta por NP visible; el toggle también vive en el header)",
+          "icon": "🧪",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-pn-specs-column",
+          "fn": "PnSpecsColumn.toggleFromPopup"
+        }
       ]
     },
     {
@@ -965,8 +1708,24 @@
       ],
       "requiredPermissions": [],
       "actions": [
-        { "id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router" },
-        { "id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch" }
+        {
+          "id": "open-auto-router",
+          "label": "Auto-Ruteador",
+          "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)",
+          "icon": "🔀",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-auto-router"
+        },
+        {
+          "id": "open-auto-router-batch",
+          "label": "Auto-Ruteador — Batch",
+          "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)",
+          "icon": "🔀",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-auto-router-batch"
+        }
       ]
     },
     {
@@ -983,7 +1742,16 @@
       ],
       "requiredPermissions": [],
       "actions": [
-        { "id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup" }
+        {
+          "id": "toggle-surtido-guard",
+          "label": "Candado de Surtido",
+          "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)",
+          "icon": "🔒",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-surtido-guard",
+          "fn": "SurtidoGuard.toggleFromPopup"
+        }
       ]
     },
     {
@@ -1000,157 +1768,738 @@
         "scripts/pn-lifecycle-core.js",
         "scripts/pn-lifecycle.js"
       ],
-      "requiredPermissions": ["READ_PART_NUMBERS"],
+      "requiredPermissions": [
+        "READ_PART_NUMBERS"
+      ],
       "actions": [
-        { "id": "run-pn-lifecycle", "label": "Ciclo de vida de PNs", "sublabel": "Filtrar, previsualizar y ejecutar acciones sobre PNs", "icon": "♻️", "type": "primary", "handler": "message", "message": "run-pn-lifecycle" }
+        {
+          "id": "run-pn-lifecycle",
+          "label": "Ciclo de vida de PNs",
+          "sublabel": "Filtrar, previsualizar y ejecutar acciones sobre PNs",
+          "icon": "♻️",
+          "type": "primary",
+          "handler": "message",
+          "message": "run-pn-lifecycle"
+        }
       ]
     }
   ],
   "knownOperations": {
-    "StationTreatmentByWorkOrder": { "type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router" },
-    "SearchStationsForTreatment": { "type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router" },
-    "CreateUpdateDeleteRoutes": { "type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router" },
-    "PartNumbersByWorkOrderIdInDomain": { "type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router" },
-    "GetPartNumberInventoryBatch": { "type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router" },
-    "GetInventoryBatch": { "type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router" },
-    "SchedulablePartLocations": { "type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router" },
-    "CreateQuote": { "type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva" },
-    "UpdateQuote": { "type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva" },
-    "SaveQuoteLines": { "type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva" },
-    "CreateQuoteStageChange": { "type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva" },
-    "SaveManyPartNumberPrices": { "type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva" },
-    "SavePartNumber": { "type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva" },
-    "SavePartNumberRackTypes": { "type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva" },
-    "SetPartNumberPricesAsDefaultPrice": { "type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva" },
-    "UpdatePartNumber": { "type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva" },
-    "CreatePartNumberGroup": { "type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva" },
-    "CustomerSearchByName": { "type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva" },
-    "CustomerFinancialByCustomerId": { "type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva" },
-    "GetQuote": { "type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva" },
-    "GetQuoteRelatedData": { "type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva" },
-    "SearchInvoiceTerms": { "type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva" },
-    "SearchUsers": { "type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva" },
-    "AllProcesses": { "type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva" },
-    "AllLabels": { "type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva" },
-    "DeleteWorkOrderLabels": { "type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline" },
-    "CreateWorkOrderLabel": { "type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline" },
-    "SearchSpecsForSelect": { "type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva" },
-    "TempSpecFieldsAndOptions": { "type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva" },
-    "AllRackTypes": { "type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva" },
-    "SearchUnits": { "type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert" },
-    "SearchProductsComprehensive": { "type": "query", "description": "Buscar productos (renombrada de SearchProducts 2026-07-16; misma key searchProducts.nodes + var offset opcional)", "usedBy": "carga-masiva, wo-deadline-changer" },
-    "SearchPartNumbers": { "type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva" },
-    "PartNumberGroupSelect": { "type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva" },
-    "DeletePartNumberPrice": { "type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva" },
-    "DeletePartNumberRackType": { "type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva" },
-    "CreatePartNumberInputSchema": { "type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva" },
-    "GetDimension": { "type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva" },
-    "Customer": { "type": "query", "description": "Obtener cliente con direcciones, contactos y datos completos", "usedBy": "carga-masiva" },
-    "AllInventoryTypes": { "type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset" },
-    "SearchInventoryTypeItems": { "type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset" },
-    "SearchInventoryItemBatches": { "type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset" },
-    "AllInventoryBatchStatuses": { "type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset" },
-    "CreateEditInventoryBatchDialogQuery": { "type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset" },
-    "SearchLocationsOnPath": { "type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill" },
-    "UpdateInventoryBatchesChecked": { "type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset" },
-    "CreateInventoryTransferEventGroups": { "type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset" },
-    "GetSpec": { "type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator" },
-    "SpecFieldsAndOptions": { "type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator" },
-    "ApplySpecsToPartNumber": { "type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator" },
-    "ArchivePartNumberSpecAndParams": { "type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator" },
-    "UpdatePartNumberSpecParam": { "type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator" },
-    "AddParamsToPartNumber": { "type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator" },
-    "FilterSearch": { "type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator" },
-    "AllReports": { "type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator" },
-    "CreateUpdateReportWithPermissions": { "type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator" },
-    "DeleteFolderById": { "type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator" },
-    "ArchiveReport": { "type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator" },
-    "CreateUpdateBill": { "type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill" },
-    "GetPurchaseOrderDetail": { "type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain (antes 'GetPurchaseOrder'; el front renombró la op, mismas variables idInDomain/userIdFilter)", "usedBy": "bill-autofill" },
-    "GetDomain": { "type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill" },
-    "SearchAccounts": { "type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill" },
-    "GetAccountDataForBill": { "type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill" },
-    "GetBillByIdInDomain": { "type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill" },
-    "GetPartNumbersInputSchema": { "type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva" },
-    "AllSpecs": { "type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva" },
-    "AllCustomers": { "type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva" },
-    "UpdateInventoryItemPredictedUsage": { "type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva" },
-    "ArchivePredictedInventoryUsage": { "type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash" },
-    "ChangePredictedInventoryUsagesWithRecipeNodeCascade": { "type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva" },
-    "UpdatePartNumberPerPerRackType": { "type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva" },
-    "GetSpecFieldPartNumbers": { "type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator" },
-    "CheckDuplicatePO": { "type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator" },
-    "ActiveReceivedOrders": { "type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator" },
-    "GetReceivedOrder": { "type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator" },
-    "GetAddPartsReceivedOrder": { "type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler" },
-    "GetReceivedOrderLine": { "type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator" },
-    "GetReceivedOrderDocuments": { "type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator" },
-    "RouteReceivedOrders": { "type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator" },
-    "GetReceivedOrderCosts": { "type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator" },
-    "ReceivingBatchesQuery": { "type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator" },
-    "EmailCustomerContactsByCustomerIds": { "type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator" },
-    "GetEmailDefaultByTypeAndSubType": { "type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator" },
-    "GetUserEmailRecipients": { "type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator" },
-    "SaveReceivedOrderLinesAndItems": { "type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator" },
-    "SaveReceivedOrderPartTransforms": { "type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer" },
-    "UpdateReceivedOrder": { "type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler" },
-    "AddPartsToWorkOrders": { "type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler" },
-    "CreateUpdateWorkOrdersChecked": { "type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler" },
-    "SendEmailChecked": { "type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher" },
-    "CreateEmailLogReceivedOrder": { "type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator" },
-    "InvoiceByIdInDomain": { "type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher" },
-    "CreateInvoicePdf": { "type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher" },
-    "ActiveInvoicesPaged": { "type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen" },
-    "CreateInvoiceEmailLog": { "type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher" },
-    "CurrentUser": { "type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions" },
-    "CurrentUserDetails": { "type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea" },
-    "CurrentUserActiveSegments": { "type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload" },
-    "GlobalUsers": { "type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions" },
-    "CreateReceivedOrder": { "type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator" },
-    "CreateUserFile": { "type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader" },
-    "CreateReceivedOrderUserFile": { "type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator" },
-    "CreateEditReceivedOrderDialogQuery": { "type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator" },
-    "GetCustomerInfoForReceivedOrder": { "type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator" },
-    "PartNumberCreatableSelectGetPartNumbers": { "type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator" },
-    "SearchPartNumberPrices": { "type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator" },
-    "CreateMaintenanceEvent": { "type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea" },
-    "CreateMaintenanceNodeEvent": { "type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea" },
-    "CreateManySensorMeasurements": { "type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea" },
-    "UpdateMaintenanceEvent": { "type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea" },
-    "CreateMaintenanceEventComment": { "type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea" },
-    "CreateMaintenanceEventUserFile": { "type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea" },
-    "CreateMaintenanceEventDialogQuery": { "type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea" },
-    "OperatorMaintenanceNodeDialogQuery": { "type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea" },
-    "SearchEquipments": { "type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea" },
-    "WorkboardById": { "type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea" },
-    "AllEquipments": { "type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea, vale-almacen" },
-    "GetMaintenanceEvent": { "type": "query", "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)", "usedBy": "vale-almacen" },
-    "UpdateMaintenanceNodeEvent": { "type": "mutation", "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado", "usedBy": "vale-almacen" },
-    "UserDialogQuery": { "type": "query", "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)", "usedBy": "vale-almacen" },
-    "AllPermissionsEditManyPermissions": { "type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings" },
-    "GetAvailableUnits": { "type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert" },
-    "CreateInventoryItemUnitConversion": { "type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert" },
-    "UpdateInventoryItemUnitConversion": { "type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert" },
-    "InvoiceLowCodeData": { "type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill" },
-    "GetReceivedOrdersWithReceivedOrderLineItems": { "type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill" },
-    "CreateInvoiceAndUpdatePartTransferAccounts": { "type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill" },
-    "Customer": { "type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill" },
-    "GetProcessNode": { "type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit" },
-    "CreateEditProcessDialogQuery": { "type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit" },
-    "GetTreatment": { "type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit" },
-    "AllTreatments": { "type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit" },
-    "CreateEditTreatmentTimesDialogQuery": { "type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit" },
-    "StationsByTreatmentId": { "type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit" },
-    "GetProcessNodeParents": { "type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit" },
-    "AllTagsAndNodes": { "type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon" },
-    "ProcessesComponentQuery": { "type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon" },
-    "ProcessesWithTag": { "type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon" },
-    "GetAllTagsQuery": { "type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon" },
-    "CreateProcessNode": { "type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon" },
-    "ProcureTree": { "type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon" },
-    "UpdateProcessNode": { "type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon" },
-    "UpdateReceiver": { "type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)" },
-    "CreateReceiverChecked": { "type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)" }
+    "StationTreatmentByWorkOrder": {
+      "type": "query",
+      "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.",
+      "usedBy": "auto-router"
+    },
+    "SearchStationsForTreatment": {
+      "type": "query",
+      "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.",
+      "usedBy": "auto-router"
+    },
+    "CreateUpdateDeleteRoutes": {
+      "type": "mutation",
+      "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).",
+      "usedBy": "auto-router"
+    },
+    "PartNumbersByWorkOrderIdInDomain": {
+      "type": "query",
+      "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).",
+      "usedBy": "auto-router"
+    },
+    "GetPartNumberInventoryBatch": {
+      "type": "query",
+      "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.",
+      "usedBy": "auto-router"
+    },
+    "GetInventoryBatch": {
+      "type": "query",
+      "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).",
+      "usedBy": "auto-router"
+    },
+    "SchedulablePartLocations": {
+      "type": "query",
+      "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).",
+      "usedBy": "auto-router"
+    },
+    "CreateQuote": {
+      "type": "mutation",
+      "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)",
+      "usedBy": "carga-masiva"
+    },
+    "UpdateQuote": {
+      "type": "mutation",
+      "description": "Actualizar notas externas/internas de cotización",
+      "usedBy": "carga-masiva"
+    },
+    "SaveQuoteLines": {
+      "type": "mutation",
+      "description": "Asignar productos a líneas de cotización",
+      "usedBy": "carga-masiva"
+    },
+    "CreateQuoteStageChange": {
+      "type": "mutation",
+      "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.",
+      "usedBy": "carga-masiva"
+    },
+    "SaveManyPartNumberPrices": {
+      "type": "mutation",
+      "description": "Vincular PNs a cotización con precios y divisa (batch de 20)",
+      "usedBy": "carga-masiva"
+    },
+    "SavePartNumber": {
+      "type": "mutation",
+      "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)",
+      "usedBy": "carga-masiva"
+    },
+    "SavePartNumberRackTypes": {
+      "type": "mutation",
+      "description": "Asignar racks a números de parte",
+      "usedBy": "carga-masiva"
+    },
+    "SetPartNumberPricesAsDefaultPrice": {
+      "type": "mutation",
+      "description": "Marcar precios como default para un PN",
+      "usedBy": "carga-masiva"
+    },
+    "UpdatePartNumber": {
+      "type": "mutation",
+      "description": "Archivar números de parte (archivedAt)",
+      "usedBy": "carga-masiva"
+    },
+    "CreatePartNumberGroup": {
+      "type": "mutation",
+      "description": "Crear grupo/familia de números de parte",
+      "usedBy": "carga-masiva"
+    },
+    "CustomerSearchByName": {
+      "type": "query",
+      "description": "Buscar clientes por nombre para dropdowns y resolución",
+      "usedBy": "carga-masiva"
+    },
+    "CustomerFinancialByCustomerId": {
+      "type": "query",
+      "description": "Obtener términos de facturación del cliente",
+      "usedBy": "carga-masiva"
+    },
+    "GetQuote": {
+      "type": "query",
+      "description": "Obtener cotización completa con líneas, QPNPs y PNs",
+      "usedBy": "carga-masiva"
+    },
+    "GetQuoteRelatedData": {
+      "type": "query",
+      "description": "Obtener direcciones y contactos del cliente para cotización",
+      "usedBy": "carga-masiva"
+    },
+    "SearchInvoiceTerms": {
+      "type": "query",
+      "description": "Buscar términos de facturación disponibles",
+      "usedBy": "carga-masiva"
+    },
+    "SearchUsers": {
+      "type": "query",
+      "description": "Buscar usuarios/vendedores para asignar a cotización",
+      "usedBy": "carga-masiva"
+    },
+    "AllProcesses": {
+      "type": "query",
+      "description": "Listar procesos/workflows disponibles (no archivados)",
+      "usedBy": "carga-masiva"
+    },
+    "AllLabels": {
+      "type": "query",
+      "description": "Listar etiquetas para números de parte",
+      "usedBy": "carga-masiva"
+    },
+    "DeleteWorkOrderLabels": {
+      "type": "mutation",
+      "description": "Eliminar todas las etiquetas de una OT",
+      "usedBy": "wo-deadline"
+    },
+    "CreateWorkOrderLabel": {
+      "type": "mutation",
+      "description": "Asignar una etiqueta a una OT",
+      "usedBy": "wo-deadline"
+    },
+    "SearchSpecsForSelect": {
+      "type": "query",
+      "description": "Buscar especificaciones con campos y parámetros",
+      "usedBy": "carga-masiva"
+    },
+    "TempSpecFieldsAndOptions": {
+      "type": "query",
+      "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN",
+      "usedBy": "carga-masiva"
+    },
+    "AllRackTypes": {
+      "type": "query",
+      "description": "Listar tipos de rack disponibles",
+      "usedBy": "carga-masiva"
+    },
+    "SearchUnits": {
+      "type": "query",
+      "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)",
+      "usedBy": "carga-masiva, unit-autoconvert"
+    },
+    "SearchProductsComprehensive": {
+      "type": "query",
+      "description": "Buscar productos (renombrada de SearchProducts 2026-07-16; misma key searchProducts.nodes + var offset opcional)",
+      "usedBy": "carga-masiva, wo-deadline-changer"
+    },
+    "SearchPartNumbers": {
+      "type": "query",
+      "description": "Buscar PNs existentes por nombre (verificar duplicados)",
+      "usedBy": "carga-masiva"
+    },
+    "PartNumberGroupSelect": {
+      "type": "query",
+      "description": "Listar grupos de números de parte",
+      "usedBy": "carga-masiva"
+    },
+    "DeletePartNumberPrice": {
+      "type": "mutation",
+      "description": "Borrar un precio de PN por ID",
+      "usedBy": "carga-masiva"
+    },
+    "DeletePartNumberRackType": {
+      "type": "mutation",
+      "description": "Borrar un rack de PN por ID",
+      "usedBy": "carga-masiva"
+    },
+    "CreatePartNumberInputSchema": {
+      "type": "mutation",
+      "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)",
+      "usedBy": "carga-masiva"
+    },
+    "GetDimension": {
+      "type": "query",
+      "description": "Obtener valores de dimensión contable (Línea, Departamento)",
+      "usedBy": "carga-masiva"
+    },
+    "Customer": {
+      "type": "query",
+      "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }",
+      "usedBy": "invoice-autofill, create-order-autofill"
+    },
+    "AllInventoryTypes": {
+      "type": "query",
+      "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)",
+      "usedBy": "inventory-reset"
+    },
+    "SearchInventoryTypeItems": {
+      "type": "query",
+      "description": "Listar items de un tipo de inventario (paginado)",
+      "usedBy": "inventory-reset"
+    },
+    "SearchInventoryItemBatches": {
+      "type": "query",
+      "description": "Listar lotes activos de un item de inventario",
+      "usedBy": "inventory-reset"
+    },
+    "AllInventoryBatchStatuses": {
+      "type": "query",
+      "description": "Listar estatus de lotes de inventario por tipo",
+      "usedBy": "inventory-reset"
+    },
+    "CreateEditInventoryBatchDialogQuery": {
+      "type": "query",
+      "description": "Obtener el inputSchemaId genérico para creación de lotes",
+      "usedBy": "inventory-reset"
+    },
+    "SearchLocationsOnPath": {
+      "type": "query",
+      "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)",
+      "usedBy": "inventory-reset, warehouse-location-prefill"
+    },
+    "UpdateInventoryBatchesChecked": {
+      "type": "mutation",
+      "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)",
+      "usedBy": "inventory-reset"
+    },
+    "CreateInventoryTransferEventGroups": {
+      "type": "mutation",
+      "description": "Crear lotes de inventario nuevos (carga inicial)",
+      "usedBy": "inventory-reset"
+    },
+    "GetSpec": {
+      "type": "query",
+      "description": "Obtener spec por idInDomain+revision con sus PNs asignados",
+      "usedBy": "spec-migrator"
+    },
+    "SpecFieldsAndOptions": {
+      "type": "query",
+      "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)",
+      "usedBy": "carga-masiva, spec-migrator"
+    },
+    "ApplySpecsToPartNumber": {
+      "type": "mutation",
+      "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections",
+      "usedBy": "spec-migrator"
+    },
+    "ArchivePartNumberSpecAndParams": {
+      "type": "mutation",
+      "description": "Archivar/desarchivar spec y sus params a nivel PN",
+      "usedBy": "spec-migrator"
+    },
+    "UpdatePartNumberSpecParam": {
+      "type": "mutation",
+      "description": "Archivar un param individual de un PN (cambia archivedAt)",
+      "usedBy": "spec-migrator"
+    },
+    "AddParamsToPartNumber": {
+      "type": "mutation",
+      "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'",
+      "usedBy": "carga-masiva, spec-migrator"
+    },
+    "FilterSearch": {
+      "type": "query",
+      "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards",
+      "usedBy": "spec-migrator"
+    },
+    "AllReports": {
+      "type": "query",
+      "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)",
+      "usedBy": "report-liberator"
+    },
+    "CreateUpdateReportWithPermissions": {
+      "type": "mutation",
+      "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)",
+      "usedBy": "report-liberator"
+    },
+    "DeleteFolderById": {
+      "type": "mutation",
+      "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)",
+      "usedBy": "report-liberator"
+    },
+    "ArchiveReport": {
+      "type": "mutation",
+      "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)",
+      "usedBy": "report-liberator"
+    },
+    "CreateUpdateBill": {
+      "type": "mutation",
+      "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)",
+      "usedBy": "bill-autofill"
+    },
+    "GetPurchaseOrderDetail": {
+      "type": "query",
+      "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain (antes 'GetPurchaseOrder'; el front renombró la op, mismas variables idInDomain/userIdFilter)",
+      "usedBy": "bill-autofill"
+    },
+    "GetDomain": {
+      "type": "query",
+      "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate",
+      "usedBy": "bill-autofill"
+    },
+    "SearchAccounts": {
+      "type": "query",
+      "description": "Buscar cuentas contables por texto (%query%)",
+      "usedBy": "bill-autofill"
+    },
+    "GetAccountDataForBill": {
+      "type": "query",
+      "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills",
+      "usedBy": "bill-autofill"
+    },
+    "GetBillByIdInDomain": {
+      "type": "query",
+      "description": "Obtener bill por idInDomain con líneas y customInputs",
+      "usedBy": "bill-autofill"
+    },
+    "GetPartNumbersInputSchema": {
+      "type": "query",
+      "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)",
+      "usedBy": "carga-masiva"
+    },
+    "AllSpecs": {
+      "type": "query",
+      "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)",
+      "usedBy": "carga-masiva"
+    },
+    "AllCustomers": {
+      "type": "query",
+      "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName",
+      "usedBy": "carga-masiva"
+    },
+    "UpdateInventoryItemPredictedUsage": {
+      "type": "mutation",
+      "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)",
+      "usedBy": "carga-masiva"
+    },
+    "ArchivePredictedInventoryUsage": {
+      "type": "mutation",
+      "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)",
+      "usedBy": "archive-predictive-dash"
+    },
+    "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {
+      "type": "mutation",
+      "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a",
+      "usedBy": "carga-masiva"
+    },
+    "UpdatePartNumberPerPerRackType": {
+      "type": "mutation",
+      "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)",
+      "usedBy": "carga-masiva"
+    },
+    "GetSpecFieldPartNumbers": {
+      "type": "query",
+      "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.",
+      "usedBy": "spec-migrator"
+    },
+    "CheckDuplicatePO": {
+      "type": "query",
+      "description": "Buscar OVs por nombre/PO para detección de duplicados",
+      "usedBy": "po-comparator"
+    },
+    "ActiveReceivedOrders": {
+      "type": "query",
+      "description": "Listar órdenes de venta activas con filtros y paginación",
+      "usedBy": "po-comparator"
+    },
+    "GetReceivedOrder": {
+      "type": "query",
+      "description": "Detalle completo de una orden de venta por idInDomain",
+      "usedBy": "po-comparator"
+    },
+    "GetAddPartsReceivedOrder": {
+      "type": "query",
+      "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain",
+      "usedBy": "po-reconciler"
+    },
+    "GetReceivedOrderLine": {
+      "type": "query",
+      "description": "Detalle de una línea específica de OV",
+      "usedBy": "po-comparator"
+    },
+    "GetReceivedOrderDocuments": {
+      "type": "query",
+      "description": "Documentos adjuntos de una orden de venta",
+      "usedBy": "po-comparator"
+    },
+    "RouteReceivedOrders": {
+      "type": "query",
+      "description": "Datos mínimos de OVs por lista de IDs",
+      "usedBy": "po-comparator"
+    },
+    "GetReceivedOrderCosts": {
+      "type": "query",
+      "description": "Desglose de costos de una orden de venta",
+      "usedBy": "po-comparator"
+    },
+    "ReceivingBatchesQuery": {
+      "type": "query",
+      "description": "Batches de recibo con datos de discrepancia",
+      "usedBy": "po-comparator"
+    },
+    "EmailCustomerContactsByCustomerIds": {
+      "type": "query",
+      "description": "Contactos de correo del cliente por ID",
+      "usedBy": "po-comparator"
+    },
+    "GetEmailDefaultByTypeAndSubType": {
+      "type": "query",
+      "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)",
+      "usedBy": "po-comparator"
+    },
+    "GetUserEmailRecipients": {
+      "type": "query",
+      "description": "Lista de destinatarios internos para emails",
+      "usedBy": "po-comparator"
+    },
+    "SaveReceivedOrderLinesAndItems": {
+      "type": "mutation",
+      "description": "Crear/actualizar líneas y items de OV",
+      "usedBy": "po-comparator"
+    },
+    "SaveReceivedOrderPartTransforms": {
+      "type": "mutation",
+      "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)",
+      "usedBy": "portal-importer"
+    },
+    "UpdateReceivedOrder": {
+      "type": "mutation",
+      "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)",
+      "usedBy": "po-comparator, po-reconciler"
+    },
+    "AddPartsToWorkOrders": {
+      "type": "mutation",
+      "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId",
+      "usedBy": "po-reconciler"
+    },
+    "CreateUpdateWorkOrdersChecked": {
+      "type": "mutation",
+      "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)",
+      "usedBy": "po-reconciler"
+    },
+    "SendEmailChecked": {
+      "type": "mutation",
+      "description": "Enviar email con plantilla, adjuntos y links",
+      "usedBy": "po-comparator, cfdi-attacher"
+    },
+    "CreateEmailLogReceivedOrder": {
+      "type": "mutation",
+      "description": "Registrar envío de email en historial de OV",
+      "usedBy": "po-comparator"
+    },
+    "InvoiceByIdInDomain": {
+      "type": "query",
+      "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)",
+      "usedBy": "cfdi-attacher"
+    },
+    "CreateInvoicePdf": {
+      "type": "mutation",
+      "description": "Generar PDF de factura para adjuntar en email",
+      "usedBy": "cfdi-attacher"
+    },
+    "ActiveInvoicesPaged": {
+      "type": "query",
+      "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)",
+      "usedBy": "invoice-auto-regen"
+    },
+    "CreateInvoiceEmailLog": {
+      "type": "mutation",
+      "description": "Registrar envío de email de factura en historial",
+      "usedBy": "cfdi-attacher"
+    },
+    "CurrentUser": {
+      "type": "query",
+      "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).",
+      "usedBy": "permissions"
+    },
+    "CurrentUserDetails": {
+      "type": "query",
+      "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).",
+      "usedBy": "paros-linea"
+    },
+    "CurrentUserActiveSegments": {
+      "type": "query",
+      "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).",
+      "usedBy": "bulk-upload"
+    },
+    "GlobalUsers": {
+      "type": "query",
+      "description": "Listar todos los usuarios del dominio (paginado)",
+      "usedBy": "permissions"
+    },
+    "CreateReceivedOrder": {
+      "type": "mutation",
+      "description": "Crear nueva orden de venta con custom inputs",
+      "usedBy": "po-comparator"
+    },
+    "CreateUserFile": {
+      "type": "mutation",
+      "description": "Registrar archivo subido en el sistema de archivos",
+      "usedBy": "po-comparator, file-uploader"
+    },
+    "CreateReceivedOrderUserFile": {
+      "type": "mutation",
+      "description": "Enlazar archivo a una orden de venta",
+      "usedBy": "po-comparator"
+    },
+    "CreateEditReceivedOrderDialogQuery": {
+      "type": "query",
+      "description": "Schema de inputs y defaults del dominio para crear/editar OV",
+      "usedBy": "po-comparator"
+    },
+    "GetCustomerInfoForReceivedOrder": {
+      "type": "query",
+      "description": "Contactos, direcciones, invoice terms y defaults de un cliente",
+      "usedBy": "po-comparator"
+    },
+    "PartNumberCreatableSelectGetPartNumbers": {
+      "type": "query",
+      "description": "Buscar PNs por nombre con filtro de cliente",
+      "usedBy": "po-comparator"
+    },
+    "SearchPartNumberPrices": {
+      "type": "query",
+      "description": "Buscar precios de un PN para un cliente",
+      "usedBy": "po-comparator"
+    },
+    "CreateMaintenanceEvent": {
+      "type": "mutation",
+      "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)",
+      "usedBy": "paros-linea"
+    },
+    "CreateMaintenanceNodeEvent": {
+      "type": "mutation",
+      "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)",
+      "usedBy": "paros-linea"
+    },
+    "CreateManySensorMeasurements": {
+      "type": "mutation",
+      "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento",
+      "usedBy": "paros-linea"
+    },
+    "UpdateMaintenanceEvent": {
+      "type": "mutation",
+      "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)",
+      "usedBy": "paros-linea"
+    },
+    "CreateMaintenanceEventComment": {
+      "type": "mutation",
+      "description": "Agregar comentario al historial del evento de mantenimiento",
+      "usedBy": "paros-linea"
+    },
+    "CreateMaintenanceEventUserFile": {
+      "type": "mutation",
+      "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)",
+      "usedBy": "paros-linea"
+    },
+    "CreateMaintenanceEventDialogQuery": {
+      "type": "query",
+      "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)",
+      "usedBy": "paros-linea"
+    },
+    "OperatorMaintenanceNodeDialogQuery": {
+      "type": "query",
+      "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador",
+      "usedBy": "paros-linea"
+    },
+    "SearchEquipments": {
+      "type": "query",
+      "description": "Buscar equipos (líneas, máquinas) por nombre parcial",
+      "usedBy": "paros-linea"
+    },
+    "WorkboardById": {
+      "type": "query",
+      "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)",
+      "usedBy": "paros-linea"
+    },
+    "AllEquipments": {
+      "type": "query",
+      "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)",
+      "usedBy": "paros-linea, vale-almacen"
+    },
+    "GetMaintenanceEvent": {
+      "type": "query",
+      "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)",
+      "usedBy": "vale-almacen"
+    },
+    "UpdateMaintenanceNodeEvent": {
+      "type": "mutation",
+      "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado",
+      "usedBy": "vale-almacen"
+    },
+    "UserDialogQuery": {
+      "type": "query",
+      "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)",
+      "usedBy": "vale-almacen"
+    },
+    "AllPermissionsEditManyPermissions": {
+      "type": "query",
+      "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción",
+      "usedBy": "popup-settings"
+    },
+    "GetAvailableUnits": {
+      "type": "query",
+      "description": "Obtener unidades disponibles y conversiones existentes de un inventory item",
+      "usedBy": "weight-quick-entry, unit-autoconvert"
+    },
+    "CreateInventoryItemUnitConversion": {
+      "type": "mutation",
+      "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)",
+      "usedBy": "weight-quick-entry, unit-autoconvert"
+    },
+    "UpdateInventoryItemUnitConversion": {
+      "type": "mutation",
+      "description": "Actualizar factor de conversión existente de un inventory item",
+      "usedBy": "weight-quick-entry, unit-autoconvert"
+    },
+    "InvoiceLowCodeData": {
+      "type": "query",
+      "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio",
+      "usedBy": "invoice-autofill"
+    },
+    "GetReceivedOrdersWithReceivedOrderLineItems": {
+      "type": "query",
+      "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV",
+      "usedBy": "invoice-autofill"
+    },
+    "CreateInvoiceAndUpdatePartTransferAccounts": {
+      "type": "mutation",
+      "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)",
+      "usedBy": "invoice-autofill"
+    },
+    "GetProcessNode": {
+      "type": "query",
+      "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}",
+      "usedBy": "process-canon, process-deep-audit"
+    },
+    "CreateEditProcessDialogQuery": {
+      "type": "query",
+      "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}",
+      "usedBy": "process-deep-audit"
+    },
+    "GetTreatment": {
+      "type": "query",
+      "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}",
+      "usedBy": "process-deep-audit"
+    },
+    "AllTreatments": {
+      "type": "query",
+      "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)",
+      "usedBy": "process-deep-audit"
+    },
+    "CreateEditTreatmentTimesDialogQuery": {
+      "type": "query",
+      "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}",
+      "usedBy": "process-deep-audit"
+    },
+    "StationsByTreatmentId": {
+      "type": "query",
+      "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}",
+      "usedBy": "process-deep-audit"
+    },
+    "GetProcessNodeParents": {
+      "type": "query",
+      "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}",
+      "usedBy": "process-deep-audit"
+    },
+    "AllTagsAndNodes": {
+      "type": "query",
+      "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS",
+      "usedBy": "process-canon"
+    },
+    "ProcessesComponentQuery": {
+      "type": "query",
+      "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.",
+      "usedBy": "process-canon"
+    },
+    "ProcessesWithTag": {
+      "type": "query",
+      "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.",
+      "usedBy": "process-canon"
+    },
+    "GetAllTagsQuery": {
+      "type": "query",
+      "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.",
+      "usedBy": "process-canon"
+    },
+    "CreateProcessNode": {
+      "type": "mutation",
+      "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id",
+      "usedBy": "process-canon"
+    },
+    "ProcureTree": {
+      "type": "mutation",
+      "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto",
+      "usedBy": "process-canon"
+    },
+    "UpdateProcessNode": {
+      "type": "mutation",
+      "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)",
+      "usedBy": "process-canon"
+    },
+    "UpdateReceiver": {
+      "type": "mutation",
+      "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt",
+      "usedBy": "receiver-date-override (follow-up POST)"
+    },
+    "CreateReceiverChecked": {
+      "type": "mutation",
+      "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)",
+      "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"
+    }
   },
   "scripts": [
     "scripts/steelhead-api.js",
@@ -1161,5 +2510,81 @@
     "scripts/bulk-upload.js",
     "scripts/catalog-fetcher.js"
   ],
-  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm"
+  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm",
+  "scriptIntegrity": {
+    "scripts/api-knowledge.js": "ae05a48d18b2e989e9a8a51be1693183f9e191b47a80cf05457c99325930b13d",
+    "scripts/archiver.js": "f90382b4786080edc370bae87729af9b45efc38152190a2f9691bb3a4115403b",
+    "scripts/auditor.js": "c0bb4771b29d1046f819b98885a089f5af330219227a24a9e9c67ebf634e2f22",
+    "scripts/auto-router-api.js": "c40507b25bc923f0b0e5bece16bcc93ba9db8740f63d6d2be0b0612d59f89099",
+    "scripts/auto-router-batch.js": "985feb74c421a7661c2366435412686b1495405094181bbbf72b832c391938ac",
+    "scripts/auto-router-engine.js": "72dce77ad562d657b8793d0a0bd27b110d4d0791c11886aaf8ff33cf0ab57700",
+    "scripts/auto-router-panel.js": "07020fbd82ced16bc38e22a2a406d1e8ffc177a51f3993c4a7d03faf106e0f49",
+    "scripts/auto-router.js": "6a2eed28ed8beb5b63fbb9022e56f5f5bf49ea788fad545bb76a6a830caae74c",
+    "scripts/bill-autofill.js": "e9e0fdb42ae6afff2795eb44637ea0d54b072f43a9e415ce80524405e44885a9",
+    "scripts/board-metal-tooltip.js": "5f57e72f2e1918285c45d8ac638cca43594c6326f86d3e7f26da1094698cc4ae",
+    "scripts/bulk-upload-batch.js": "93ff56929eea67f5c79c35404601e827b785ab43d3fed633d2047ff3a7b2767e",
+    "scripts/bulk-upload-cc.js": "20722ceedaec6208892cbff51fb1264d34a278ce7a41a3c5b4b6bb67d35b0a49",
+    "scripts/bulk-upload-classify.js": "6ed19f27028976a39ff19ffc08705696f599c9c8559b70f234ab7a5557743abf",
+    "scripts/bulk-upload-parse.js": "0a73d18f1301add0c1db9c6ccc885fdb67f81826211b483b22325aed22b38c0f",
+    "scripts/bulk-upload.js": "1699aeef5d9e9c2b74855a1fa86d51bbca310858d42cccf51152e1d0f629f04b",
+    "scripts/catalog-fetcher.js": "48f3f8a55ea94e7fa8626c95688cb7e9de7877fa14f7e5a52dda1490731cca63",
+    "scripts/cfdi-attacher.js": "60540f77492441d17606eb54a444c8f86f90bd0e147f7d06220a071887deee19",
+    "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c",
+    "scripts/create-order-autofill-core.js": "188557e7ecf9759423ec54d4d0364dc33bf1303006b518c491e10ecabd7d0484",
+    "scripts/create-order-autofill.js": "0981d9c51fa47fbab3ced3850af0c06dd429454eda3340b0da7b8330ee7327d7",
+    "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077",
+    "scripts/file-uploader-core.js": "6c0456776bfe8b56c6e9c4447841a7f2c99e007c8d2624884285601b7bc5f175",
+    "scripts/file-uploader.js": "90fc7df26dc2d40fda4ca487957bc0d34f67a64d50dcab40b98e32dace0150d7",
+    "scripts/hash-scanner.js": "0231fe5649b9eca4f56853eac94e950c30a38c518889bf622c444c8eb3a8f6a5",
+    "scripts/host-cleanup-shared.js": "08a289903b13c93408163a11882ff6fc4f58021401846ba360c7501ba9ebb34e",
+    "scripts/inventory-reset.js": "3440af034dd81af0ff0ad9ee140c3b44130d704c648c1a5639dd73acc6ff5e60",
+    "scripts/invoice-auto-regen.js": "1b9270137b711a54e9aa2864bea18ac5718d20a4f61544ab2ccb61546d9a9955",
+    "scripts/invoice-autofill.js": "cb67f9103ef102cdc37ed15770f0cb4a90d8d39d8380407b8a9601a0ed1cd458",
+    "scripts/invoice-default-tab.js": "5a36d228824bebdfeb4107e5456ec6a014da64341a2601be00f22f1e82bfceed",
+    "scripts/invoice-listing-marker.js": "c2edcceddbfc662c76a165368a63c97cc9c14fbfe97e522d7c4e5e55ff723862",
+    "scripts/lib/pdf.min.js": "978fd1b2d134a98e98966186a97777bebf87d8e770dadab1ece3687e21a5aa6c",
+    "scripts/lib/xlsx.full.min.js": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99",
+    "scripts/load-calculator-engine.js": "87983ec94eb5cbb48570cff4e8c92cbf03511cd25c762cd16eb3047f6b9ed671",
+    "scripts/load-calculator-modal.js": "6aed18d824efae4ff7f78660113dd7be766eb350c8eeefc39502a31b8cc3310e",
+    "scripts/load-calculator-stations.js": "417ebe274fd3a649fcc70c02bc122afb3d57db5e2c53a9cb9bb24e0ecf43ef06",
+    "scripts/load-calculator.js": "bf06e3cd6ed5063b62b5b62c9ef13ecf9546b2093d40320f450058576658b111",
+    "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c",
+    "scripts/paros-linea.js": "b10074bbcb58bb1ce41d80b5333e4f75d01fbfd272d9fc37cb0134f6a0419e35",
+    "scripts/pn-lifecycle-core.js": "cefb0b8e28f16746c5604039ed64487234e91e725f5f7c2cef7be92de14fae15",
+    "scripts/pn-lifecycle.js": "4abb8ea05dfbfcc46186f62a4750874b0e310247720504ee1aba8afc62e2303b",
+    "scripts/pn-specs-column-core.js": "05b8aa288daff29b82ed1dc7a23a246b5794c8912f4dfe8eaf22e816eed478a4",
+    "scripts/pn-specs-column.js": "1d44e2f95e1eff0c0e2e06d646ec85577f3c14a692d4e17196f6be51948c1137",
+    "scripts/po-comparator.js": "4e3d620cc06665c8a6b29626ec113874f150c5f7d4472978095a25d2fc53fb1f",
+    "scripts/po-reconciler.js": "6a9c20833558a3805f721c09a63511d05057b3606d3d9e12a520d5e9738839c6",
+    "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a",
+    "scripts/price-confirm-core.js": "ff1f019a0379a253fb7616e815c625d91a6876da2cc91df6a3e6c2a38c275cda",
+    "scripts/price-confirm-guard.js": "2e5a685b6802b75535181a45e8d2e7dc8365f6b92920e8ec3672097d2c3124a4",
+    "scripts/proceso-calculator.js": "77ce4fb6bec243aefbf90123bbc13c218d7ed0492c12d16011c25d5cc9f62a42",
+    "scripts/process-canon.js": "9d82354d4e914ccdf1f96c9eb89fd5789c522c880dd544963b648db2abf5b16a",
+    "scripts/process-deep-audit.js": "4345457ec845f95b46975f86cb4405de404a59f63d2322b8a74fb6ee97114dc5",
+    "scripts/process-shared.js": "4b67a9cdc261aeb7cde1498d6399af288b883b6537de0a80b41dd16f1060a1fb",
+    "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b",
+    "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409",
+    "scripts/report-regen.js": "2f8bb3bbdea0074525b3b383c102d8ec3a649050596a7a9ae4c2a91cc2f6bad7",
+    "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
+    "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
+    "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
+    "scripts/spec-migrator-normalize.js": "11873800f3805139c2ffc8f9f25dc36efb8ec575f9e84b3ce96638a76072ffdb",
+    "scripts/spec-migrator.js": "0ea0a1ce778ac237c15c3dd7b53a18597a3254289f87d09386415a30ad3d2ac1",
+    "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b",
+    "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
+    "scripts/steelhead-api.js": "60030bcd08ec1ca19893cf66e0675fc43f49ebb0fec4a3f3b5eb18da9c3dffda",
+    "scripts/surtido-guard-core.js": "c2632afbc845d8a047274ddf2667782768868da9d0fb6ec4e78fe122f90a60f5",
+    "scripts/surtido-guard.js": "f7bab2985792ca34d0a5909aaed95b34d4252217a36462b81774b7a2bd359022",
+    "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633",
+    "scripts/unit-autoconvert.js": "8bc66f93da1101a965edda8d1e847369224795c611efe16e8e0c05dffe08193a",
+    "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
+    "scripts/vale-almacen.js": "a16893b2c5491349610c1e62f620b4f804bab9620ea0dcc1715e057109125a99",
+    "scripts/warehouse-location-prefill.js": "e50128e0a0d0c36279cbd85bef87597814bef20e77ea53c1c206ef44dfc2f5a0",
+    "scripts/weight-quick-entry.js": "9710caa9ecc4e81f97b6aa2e68565e0de2abf720ccd7cdf7ef8e30ac5f8a2b42",
+    "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
+    "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9",
+    "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
+    "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd"
+  }
 }
