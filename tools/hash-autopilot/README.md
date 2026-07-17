@@ -133,12 +133,16 @@ reportó "0 rotado"). Ahora se **recapturan SIEMPRE**, desacopladas del gate por
   (sentinela `workOrderPartCount` = OV #1603 "Sentinela" → OT #13678; handler
   `saveWoPartCountAborted` en `mutation-deps.mjs`). A diferencia de las de precios
   (`partNumberPrice`/`quotePrice`, andamiadas/bloqueadas por hidratación del quote), la OV
-  **SÍ hidrata headless** → el ciclo captura de punta a punta. Clasifica **'sospechoso'** (sin
-  `responseOk` porque el request se aborta) → el motor lo REPORTA con el diff pero **NO
-  auto-deploya**: deploy **MANUAL** (escritura = ojo humano, como precios). Ancla del botón
-  idioma-independiente: `button[aria-label]:has(svg[data-testid="IsoIcon"])`. **Verificada en
-  vivo 2026-07-17**: el hash rotó `a5cc8991…`→`70d5a792…` (probe directo: el server reconoce
-  `70d5a792`, `a5cc8991` da "Must provide a query string"), deployado a mano (config 1.7.140).
+  **SÍ hidrata headless** → el ciclo captura de punta a punta. **AUTO-DEPLOYABLE** (2026-07-17):
+  como el request se aborta no hay `responseOk`, pero el motor **prueba el liveHash capturado
+  con variables vacías** (validación de tipos, **sin ejecutar la escritura**) — si el server lo
+  reconoce (`classifyProbe` 'vigente') `isValidatedCapture` lo trata como OK → `rotadoValidado`
+  → **auto-deploy** (mismas salvaguardas que las queries: freno de masa + `autopilot-deploy.sh`).
+  Fail-safe: si el probe no confirma (stale/auth/unknown) queda 'sospechoso' → revisión humana.
+  Ancla del botón idioma-independiente: `button[aria-label]:has(svg[data-testid="IsoIcon"])`.
+  **Verificada en vivo**: el hash rotó `a5cc8991…`→`70d5a792…` (probe directo: el server reconoce
+  `70d5a792`, `a5cc8991` da "Must provide a query string"), 1er deploy a mano (config 1.7.140) y
+  el path de auto-deploy validado end-to-end (config revertido → el motor lo clasifica 🔺 ROTÓ).
 - **🎯 OBJETIVO NORTE: CERO captura manual — todo debe auto-recuperarse headless sin
   intervención humana.** Hoy 3 queries se quedan `noCapturado` porque el `page.goto`
   directo NO hidrata el detalle y las listas no rinden filas en headless:

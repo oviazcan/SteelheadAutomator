@@ -445,8 +445,10 @@ const HANDLERS = {
     // SaveManyPartNumberPrices (precios) se captura CON CAPTURA-Y-ABORTA: marcamos la
     // mutation en sink.abortOps ANTES del "Save" → el interceptor registra el sha256Hash
     // que el frontend IBA a enviar y ABORTA el request → NUNCA llega al server → cero
-    // persistencia (no se guarda un precio real). Sin respuesta → sin responseOk → el motor
-    // la trata 'sospechoso' si difiere del config (notifica, NO auto-deploya: precios = ojo humano).
+    // persistencia (no se guarda un precio real). Sin respuesta no hay responseOk, pero el
+    // motor PRUEBA el liveHash (variables vacías, sin ejecutar) → si el server lo reconoce se
+    // auto-deploya como cualquier hash (isValidatedCapture); si no, 'sospechoso' → revisión.
+    // El hash es solo el identificador de la query: deployarlo NO cambia ningún precio real.
     async load(page, { url }) {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       const nameEl = page.locator('div.css-re0j1l', { hasText: 'Name:' })

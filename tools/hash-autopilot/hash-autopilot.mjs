@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
-import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
+import { classifyOp, planDeploy, isValidatedCapture } from './hash-autopilot-core.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
@@ -165,7 +165,7 @@ async function main() {
     state: randomUUID(), domainNano: DOMAIN_NANO,
   });
   const page = await context.newPage();
-  const sink = { hashes: {}, data: {}, responseOk: {}, abortOps: new Set() };
+  const sink = { hashes: {}, data: {}, responseOk: {}, abortOps: new Set(), abortedOps: new Set() };
   await installInterceptor(page, sink);
 
   // Contexto ANTES de auto-corregir: leer /ProductUpdates para PISTAS de qué cambió
@@ -227,6 +227,7 @@ async function main() {
   // verdad. Distingue rotación real de "el page.goto no disparó la op" (falsa
   // alarma que hacía llorar al correo). Fail-open si truena → gating desactivado.
   let probeVerdicts = {};
+  let abortLiveVigente = {}; // ops de captura-y-aborta cuyo liveHash el server reconoce (validadas)
   try {
     // CLAVE: quitar el interceptor ANTES de probar. Si sigue activo, captura las
     // requests del propio probe (que llevan el hash DEL CONFIG) y contamina
@@ -248,7 +249,21 @@ async function main() {
       console.log(`\n=== probe directo (señal primaria de rotación) ===`);
       console.log(`  🔺 STALE real: ${psum.stale.join(', ') || '(ninguna)'} | ✓ vigentes: ${psum.vigente.length} | ⚠️ auth/unknown: ${psum.auth.length + psum.unknown.length}`);
     }
-  } catch (e) { console.log(`(probe falló: ${String(e).slice(0, 80)} — fail-open, sin gating)`); probeVerdicts = {}; }
+    // Validar el liveHash de las mutations capturadas por CAPTURA-Y-ABORTA: como el
+    // request se abortó no hubo responseOk. Probar el liveHash directo (variables VACÍAS
+    // → error de validación de tipos, NO ejecuta la escritura) — si el server lo reconoce
+    // (classifyProbe 'vigente') el hash es VÁLIDO → isValidatedCapture lo trata como OK →
+    // classifyOp lo marca rotadoValidado → AUTO-DEPLOY (sin ojo humano; el request nunca
+    // escribió). Fail-safe: si el probe no confirma (stale/auth/unknown), queda sospechoso.
+    const abortEntries = [...sink.abortedOps]
+      .filter((op) => sink.hashes[op] && sink.hashes[op] !== cfgForProbe[op])
+      .map((op) => [op, sink.hashes[op]]);
+    if (abortEntries.length) {
+      const rawAbort = await probeOnPage(page, abortEntries);
+      for (const r of rawAbort) if (classifyProbe(r) === 'vigente') abortLiveVigente[r.op] = true;
+      console.log(`  probe liveHash (captura-y-aborta): vigente=${Object.keys(abortLiveVigente).join(', ') || '(ninguno)'}`);
+    }
+  } catch (e) { console.log(`(probe falló: ${String(e).slice(0, 80)} — fail-open, sin gating)`); probeVerdicts = {}; abortLiveVigente = {}; }
 
   await browser.close();
 
@@ -266,7 +281,9 @@ async function main() {
   const results = [...wantOps, ...capturableMuts].map((op) => {
     const liveHash = sink.hashes[op] ?? null;
     const cfgHash = cfgHashes[op] ?? null;
-    const ok = !!sink.responseOk[op];
+    // OK = el frontend obtuvo data (responseOk) O el probe del liveHash confirmó que el
+    // server lo reconoce (captura-y-aborta, sin respuesta que inspeccionar).
+    const ok = isValidatedCapture({ responseOk: sink.responseOk[op], abortProbeVigente: abortLiveVigente[op] });
     const verdict = classifyOp({ cfgHash, liveHash, http: ok ? 200 : null, shapeOk: ok });
     return { op, cfgHash, liveHash, responseOk: ok, verdict };
   });

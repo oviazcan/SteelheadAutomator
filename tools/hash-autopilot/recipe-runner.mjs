@@ -25,13 +25,18 @@ export async function installInterceptor(page, sink) {
     const req = route.request();
     let body = null;
     try { body = req.postDataJSON(); } catch { try { body = JSON.parse(req.postData() || '{}'); } catch { body = null; } }
-    // Captura-y-aborta (mutations de escritura en sink.abortOps, p.ej. precios): registra
-    // el hash y ABORTA el request ANTES del fetch → el server NUNCA lo recibe (cero
-    // persistencia). Sin respuesta → sin responseOk → el motor la trata 'sospechoso' si
-    // difiere del config (notifica, NO auto-deploya): confirmación humana para precios.
+    // Captura-y-aborta (mutations de escritura en sink.abortOps, p.ej. AddPartsToWorkOrders,
+    // precios): registra el hash y ABORTA el request ANTES del fetch → el server NUNCA lo
+    // recibe (cero persistencia). Sin respuesta no hay responseOk, pero el motor luego PRUEBA
+    // el liveHash (variables vacías, sin ejecutar) → si el server lo reconoce, se auto-deploya
+    // igual que las queries (isValidatedCapture); si no, queda 'sospechoso' → revisión humana.
     const ab = shouldAbortAndCapture(body, sink.abortOps);
     if (ab.abort) {
       Object.assign(sink.hashes, ab.captures);
+      // Registrar las ops capturadas-y-abortadas → el motor luego PRUEBA su liveHash
+      // (variables vacías, sin ejecutar la escritura) para validarlas y poder
+      // auto-deployarlas aunque no haya responseOk (ver isValidatedCapture).
+      if (sink.abortedOps) for (const name of Object.keys(ab.captures)) sink.abortedOps.add(name);
       try { await route.abort(); } catch { /* route ya resuelta */ }
       return;
     }

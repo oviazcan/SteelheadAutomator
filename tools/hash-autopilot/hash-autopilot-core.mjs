@@ -21,6 +21,22 @@ export function classifyOp({ cfgHash, liveHash, http, shapeOk }) {
   return 'sospechoso';
 }
 
+// ¿Hay evidencia suficiente de que el liveHash capturado es VÁLIDO (el server lo
+// reconoce) para tratarlo como respuesta-OK en classifyOp? Dos fuentes independientes:
+//  (a) responseOk: el frontend re-ejecutó la op y obtuvo `data` sin errors (queries y
+//      mutations que devuelven data).
+//  (b) abortProbeVigente: para CAPTURA-Y-ABORTA (el request se ABORTA → nunca hay
+//      respuesta que inspeccionar), un probe directo del liveHash con variables VACÍAS
+//      devolvió un error de validación de variables (classifyProbe → 'vigente') → el hash
+//      SÍ está en el registry del server. NO ejecuta la escritura: variables vacías fallan
+//      la validación de tipos ANTES del resolver (p.ej. AddPartsToWorkOrders → "$input …
+//      was not provided"). Cualquiera de las dos basta para AUTO-DEPLOYAR un hash rotado
+//      — el hash es solo el identificador de la persisted query; su validez no depende de
+//      las variables que luego pase el applet.
+export function isValidatedCapture({ responseOk = false, abortProbeVigente = false } = {}) {
+  return !!responseOk || !!abortProbeVigente;
+}
+
 // Decide qué se deploya a partir de los results clasificados. Freno de masa:
 // si > massBrakeThreshold ops rotaron en una corrida, NO deploya nada (defiende
 // contra captura corrupta / cookie de otro dominio) y pide revisión humana.
