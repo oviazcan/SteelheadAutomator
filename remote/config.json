@@ -1,6 +1,6 @@
 {
-  "version": "1.7.139",
-  "lastUpdated": "2026-07-17T10:14",
+  "version": "1.7.140",
+  "lastUpdated": "2026-07-17T10:22",
   "extensionVersion": "1.6.5",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -54,7 +54,7 @@
         "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022",
         "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3",
         "UpdateReceivedOrder": "b3602b2de6fb4924d15af4d70404d0ab5246c5deaf36c314f071018a7bbb679f",
-        "AddPartsToWorkOrders": "a5cc89918bc6b3f0d1e4ea9e976970246c9a4eaccec933849da437527c760942",
+        "AddPartsToWorkOrders": "70d5a792c93ace37a1e15f7d0a8201cb77cf8b796ad5129c7660ffef52e1129f",
         "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449",
         "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59",
         "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60",
