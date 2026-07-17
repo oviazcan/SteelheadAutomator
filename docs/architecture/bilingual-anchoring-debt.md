@@ -8,6 +8,26 @@ anclaje mono-idioma se rompe **silenciosamente** al cambiar el locale.
 **Estado:** 25 anclajes mono-idioma en 12 applets. El resto del repo (la mayoría de autofills
 de recepción, y ~50 scripts API-driven) está **limpio** o ya bilingüe.
 
+## ✅ CERRADOS 2026-07-16 — anclaje ESTRUCTURAL (idioma-independiente, deploy 1.7.129/1.7.132)
+
+Reanclados por estructura/`id`/testid (NO texto), así que sobreviven traducción y el bug de caché:
+
+| Applet | Antes (mono-EN) | Ahora (idioma-indep) |
+|---|---|---|
+| **cfdi-attacher** `:125/:133/:148` (gate) | `/send invoice email/i` | heading EN **O** ≥2 `tr .MuiSwitch-root` + `[data-testid=SendIcon\|EmailOutlinedIcon]` |
+| **cfdi-attacher** `:167` (inserción de fila) | texto `Logo\|Attach PDFs\|Visible to Others` | última `<tr>` con `.MuiSwitch-root` (fallback al texto EN) |
+| **price-confirm-guard** `:15` (gate, SEGURIDAD) | `/Part Number Price/i` | título EN **O** `[id^="root_DatosPrecio"]` (schema RJSF exclusivo del modal de precio) |
+| **unit-autoconvert** `:144/:157` (Panel A) | `/ Part:` (singular) | `/ Parts?:/` (tolera singular/plural EN; el gate del toggle ya tenía respaldo bilingüe `modoP`) |
+
+**invoice-autofill** (deploy 1.7.130): NO era deuda de anclaje sino **bug funcional** — el react-select
+no amarraba la opción (AR + income). Resuelto con resaltar→verificar→`Enter` (determinista, idioma-indep).
+
+### 🔴 Deuda restante que SÍ requiere el string del otro idioma (NO adivinar)
+
+Para cerrar estos hace falta **observar el string traducido** (poner el navegador en el otro locale y capturar):
+- **unit-autoconvert**: `/ Part:` → ¿`/ Parte:`?  ·  `Parts /` (core `:55`, recíproco) → ¿`Partes /`?  ·  `Per Part Count Unit Definitions` → ¿string ES?
+- Resto de la tabla P2/P3 de abajo (create-order `Enviar a:`, bill-autofill `Create Bill`, proceso-calculator `Default Process:`, invoice-default-tab `Packing Slips`, load-calculator-modal `Rack Type`, etc.).
+
 ## ⚠️ Regla dura: NO adivinar traducciones
 
 El CLAUDE.md prohíbe inventar la traducción del otro locale. Para hardenizar cada gate hace
