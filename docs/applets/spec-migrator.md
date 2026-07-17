@@ -9,9 +9,54 @@ Scripts: `steelhead-api.js` + `spec-migrator.js`. Sin VERSION constant exportado
 | Acción | Función | Origen |
 |---|---|---|
 | `run-spec-migrator` (Migrar Specs) | `SpecMigrator.run` | original 2024 |
-| `assign-pending-params` (Asignar Params Pendientes) | `SpecMigrator.assignPendingParams` | original 2024 |
+| `assign-pending-params` (Asignar Params Pendientes) | `SpecMigrator.assignPendingParams` | original 2024 + **normalización de falsos pendientes 2026-07-16 (config 1.7.136)** |
 | `resolve-conflicts` (Resolver Conflictos) | `SpecMigrator.resolveConflicts` | original 2024 |
 | `validate-duplicate-params` (Validar params duplicados) | `SpecMigrator.runDuplicateParamsValidator` | **0.5.5 — 2026-05-26, bump config 1.5.4** |
+
+---
+
+# `assign-pending-params` — Normalización de "falsos pendientes" por revisión de spec (2026-07-16, config 1.7.136, VALIDADO EN VIVO)
+
+## Síntoma
+
+Corrida de "Asignar Params Pendientes" sobre 113 specs externas: **14 params daban error**. Primera corrida: `Errores: 14` con `HTTP 500 en AddParamsToPartNumber: [1] undefined`. Re-corridas: `0 errores, 14 "ya tenían param", 0 asignados` — pero **los 14 seguían apareciendo como pendientes** corrida tras corrida (limbo: ni asignados ni asignables). Specs afectadas: RC Ni, RC Sn, RC Pasivado, RC Decapado, RC Brill 61 (fields booleanos/elección: Adherencia, Apariencia Homogénea, Primeras Piezas, Instrumento de Medición).
+
+## Causa raíz (confirmada con diagnóstico `GetPartNumber` read-only)
+
+**Falso pendiente por desajuste de `specFieldParamId` entre revisiones de la spec.** La spec se revisó y sus params se recrearon con **nuevos IDs pero mismo nombre** ("Sí o No", "Elección"). Resultado en cada PN afectado: hay una fila **ACTIVA** (`archivedAt=NULL`, `processNodeId=null`) del param con ID **viejo**, mientras el catálogo vigente (Fase 3 `getSpecFields`) usa el ID **nuevo**.
+
+- **`GetSpecFieldPartNumbers` (`searchPartNumbers`, Fase 4)** compara por `specFieldParamId` exacto → no encuentra el ID nuevo → marca el PN **pendiente** (falso).
+- **`AddParamsToPartNumber`** valida el constraint por `specFieldId` (el contenedor del field) → el field ya está ocupado por el param viejo activo → **choca** (`23P01` exclusion constraint). **Bajo carga** (pool del bulk-upload + 2373 asignaciones en la misma ventana) el mismo choque salió como **HTTP 500 "mudo"** (`errors[0].message === undefined`, excepción no controlada del resolver); **en frío**, como `23P01` limpio → clasificado "ya tenían param".
+
+**El bulk-upload NO tuvo la culpa.** Su regla 1.4.38 ("1 param vivo por SpecField = el del CSV") normaliza esto cuando el PN pasa por el CSV con esa spec. Estos 14 quedaron con el ID viejo porque **no pasaron por esa normalización** (specs RC no incluidas en la carga). Verás en el diagnóstico filas archivadas de `2026-05-26`/`2026-06-25` = limpiezas 1.4.38 previas.
+
+## Fix — normalización con preview + rollback
+
+`assign-pending-params`, tras la Fase 5, **diagnostica** cada skip (`GetPartNumber` → `SpecMigratorNormalize.extractFieldRows` → `planFieldNormalization`) y, si detecta normalizables, ofrece un **modal de preview** ("🔧 Normalizar params (revisión de spec)"). Al confirmar, por cada uno:
+1. **Archiva** la fila activa vieja — `UpdatePartNumberSpecParam{id, archivedAt:ISO}`.
+2. **Repone** el param del catálogo vigente — `addSingleParamToPN` (field ya libre → `AddParams` no choca; mismo patrón probado del bulk-upload STEP 6b).
+3. **Rollback** si (2) falla — `UpdatePartNumberSpecParam{id, archivedAt:null}` (desarchiva, no deja el field vacío).
+
+**Salvaguardas:**
+- **Guard de equivalencia** (`planFieldNormalization`): solo migra si el nombre del param activo == nombre del catálogo (tolerante a mayúsculas/espacios). Si difieren → `non-equivalent`, **no se toca** (nunca cambia el valor).
+- **`ambiguous`** (2+ activos en el field) → lo deja a `validate-duplicate-params`, no toca.
+- **`no-active`** → pendiente real (no falso) → no toca.
+- Ejecución **secuencial** (14 PNs), preview obligatorio antes de cualquier escritura, todo reversible.
+
+## Lógica pura + test
+
+Módulo nuevo **`remote/scripts/spec-migrator-normalize.js`** (`window.SpecMigratorNormalize`): `planFieldNormalization(fieldRows, {newParamId, newParamName})` → `normalize | already | non-equivalent | no-active | ambiguous`; `extractFieldRows(pnNode, specFieldId)` extrae filas activas+archivadas de un field desde `GetPartNumber`. Golden **`tools/test/spec-migrator-normalize.test.js` 10/10** (incluye el caso real 211394C).
+
+## Instrumentación derivada (también deployada)
+
+- **`steelhead-api.js`**: cuando el server responde `!ok` con `errors[]` pero **sin `message`** (500 "mudo"), ya no colapsa a `[1] undefined` — preserva el error completo (`JSON.stringify(e)`) para poder diagnosticar. No afecta el caso normal (con `message`), así que los matchers `conflicting`/`exclusion` siguen igual.
+- **`assign-pending-params`**: los errores ahora incluyen `PN + spec/field → param` (antes se perdían el PN); truncado subido a 400 chars.
+
+## Estado
+
+- **VALIDADO EN VIVO 2026-07-16 (config 1.7.136, tag `v1.7.136`):** el usuario normalizó los 14 y una re-corrida arrojó **0 pendientes** (⟹ 14 OK, 0 rollback, 0 errores — un rollback habría dejado el PN pendiente).
+- PNs normalizados: `211394C` (RC Ni ×4), `236D1009P4SM` (RC Sn ×3), `40515-303-02`/`40515-429-01` (RC Pasivado ×2 c/u), `MONTE 20` (RC Decapado ×2, sin filas archivadas — caso "solo activa vieja"), `S1A30125` (RC Brill 61 ×1).
+- **Reversibilidad:** cada normalización archivó un `rowId` recuperable con `UpdatePartNumberSpecParam{id, archivedAt:null}` (quedan en el log de la corrida).
 
 ---
 
