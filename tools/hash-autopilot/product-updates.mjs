@@ -46,7 +46,9 @@ export async function fetchProductUpdates(page, limit = 8) {
     const entries = [];
     for (let i = 1; i < parts.length - 1; i += 2) {
       const date = clean(parts[i]);
-      const body = clean(parts[i + 1]);
+      // quitar el header de sección repetido "PRODUCT ENHANCEMENT HIGHLIGHTS" (ruido
+      // idéntico en cada entrada). Inline: page.evaluate no ve funciones del módulo Node.
+      const body = clean(parts[i + 1]).replace(/\s*PRODUCT ENHANCEMENT HIGHLIGHTS\s*/gi, ' ').replace(/\s+/g, ' ').trim();
       if (body) entries.push(`${date}: ${body.length > 280 ? body.slice(0, 280) + '…' : body}`);
       if (entries.length >= limit) break;
     }
@@ -55,11 +57,19 @@ export async function fetchProductUpdates(page, limit = 8) {
   }, limit).catch(() => ({ entries: [], snippet: '', title: '', url: '', bodyLen: 0 }));
 }
 
+// Quita el header de sección repetido que Steelhead antepone a cada update
+// ("PRODUCT ENHANCEMENT HIGHLIGHTS") — es ruido idéntico en toda entrada. PURO.
+// Defensa en profundidad: fetchProductUpdates ya lo quita en la fuente, pero
+// resultados persistidos viejos (JSON) pueden traerlo → se limpia también al formatear.
+export function stripUpdateBoilerplate(text) {
+  return (text || '').replace(/\s*PRODUCT ENHANCEMENT HIGHLIGHTS\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+}
+
 // formatUpdatesContext(updates, maxEntries) → bloque de texto para el correo/log.
 // PURO (testeable). Vacío si no hay pistas.
 export function formatUpdatesContext(updates, maxEntries = 5) {
   const u = updates || {};
-  const entries = (u.entries || []).slice(0, maxEntries);
+  const entries = (u.entries || []).slice(0, maxEntries).map(stripUpdateBoilerplate);
   if (entries.length) {
     return `📰 CONTEXTO — ProductUpdates (posibles cambios recientes de Steelhead):\n${entries.map((e) => `   • ${e.length > 220 ? e.slice(0, 220) + '…' : e}`).join('\n')}`;
   }

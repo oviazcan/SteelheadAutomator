@@ -1,7 +1,24 @@
 // tools/test/product-updates.test.js — parte PURA del contexto de ProductUpdates.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatUpdatesContext } = require('../hash-autopilot/product-updates.mjs');
+const { formatUpdatesContext, stripUpdateBoilerplate } = require('../hash-autopilot/product-updates.mjs');
+
+test('stripUpdateBoilerplate: quita "PRODUCT ENHANCEMENT HIGHLIGHTS" del cuerpo', () => {
+  const e = 'JULY 15, 2026: PRODUCT ENHANCEMENT HIGHLIGHTS AI RECEIVING UNIT CONVERSIONS AI receiving now pre-fills…';
+  const out = stripUpdateBoilerplate(e);
+  assert.ok(!/PRODUCT ENHANCEMENT HIGHLIGHTS/i.test(out));
+  assert.match(out, /^JULY 15, 2026: AI RECEIVING/);
+});
+test('stripUpdateBoilerplate: sin boilerplate → intacto (colapsa espacios)', () => {
+  assert.equal(stripUpdateBoilerplate('JULY 7, 2026: New quotes page'), 'JULY 7, 2026: New quotes page');
+  assert.equal(stripUpdateBoilerplate(''), '');
+  assert.equal(stripUpdateBoilerplate(null), '');
+});
+test('formatUpdatesContext: limpia el boilerplate de cada entrada', () => {
+  const out = formatUpdatesContext({ entries: ['JULY 14, 2026: PRODUCT ENHANCEMENT HIGHLIGHTS AUTO-INVOICE EXCLUSIONS A new checkbox…'] });
+  assert.ok(!/PRODUCT ENHANCEMENT HIGHLIGHTS/i.test(out));
+  assert.match(out, /AUTO-INVOICE EXCLUSIONS/);
+});
 
 test('formatUpdatesContext: enlista entradas (hasta el máximo)', () => {
   const out = formatUpdatesContext({ entries: ['Nueva pantalla de Customers', 'Cambios en Inventory'] }, 5);
