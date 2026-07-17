@@ -105,7 +105,10 @@ const PriceConfirmGuard = (() => {
     for (const d of dialogs) {
       const titleEl = d.querySelector('.MuiDialogTitle-root');
       const t = (titleEl ? titleEl.textContent : d.textContent) || '';
-      if (MODAL_TITLE_RE.test(t)) found = d;
+      // Ancla idioma-independiente (SEGURIDAD): el schema RJSF de precio (root_DatosPrecio_*)
+      // solo existe en este modal → el candado se activa aunque traduzcan "Part Number Price".
+      const hasPriceSchema = !!d.querySelector('[id^="root_DatosPrecio"]');
+      if (MODAL_TITLE_RE.test(t) || hasPriceSchema) found = d;
     }
     return found;
   }
