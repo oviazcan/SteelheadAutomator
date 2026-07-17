@@ -260,11 +260,18 @@ async function main() {
       .map((op) => [op, sink.hashes[op]]);
     if (abortEntries.length) {
       const rawAbort = await probeOnPage(page, abortEntries);
-      // 'vigente' SOLO por error de validación de variables (hash registrado, NO ejecutó).
-      // Si el probe trajo `data`, la mutation SÍ ejecutó con variables vacías (no debería
-      // pasar: son input!) → NO validar por esta vía (fail-safe: queda 'sospechoso' → humano).
-      for (const r of rawAbort) if (classifyProbe(r) === 'vigente' && !r.hasData) abortLiveVigente[r.op] = true;
-      console.log(`  probe liveHash (captura-y-aborta): vigente=${Object.keys(abortLiveVigente).join(', ') || '(ninguno)'}`);
+      // ADEMÁS probar el hash DEL CONFIG: solo es ROTACIÓN si el config está MUERTO. Si el
+      // config sigue vigente, liveHash≠cfg pero AMBOS registrados = DOS VARIANTES de la misma
+      // op (mismo operationName, distinto query text), NO una rotación → auto-deployar el
+      // liveHash pisaría la variante que el config usa (lección SaveManyPartNumberPrices
+      // 2026-07-17: el 'Save Parts' del quote da otra variante que el batch de bulk-upload).
+      const rawCfg = await probeOnPage(page, abortEntries.map(([op]) => [op, cfgForProbe[op]]).filter(([, h]) => h));
+      const cfgStale = {};
+      for (const r of rawCfg) cfgStale[r.op] = classifyProbe(r) === 'stale';
+      // 'vigente' SOLO por error de validación (hash registrado, NO ejecutó; !hasData) Y el
+      // config MUERTO (cfgStale). Fail-safe: cualquier duda → 'sospechoso' → revisión humana.
+      for (const r of rawAbort) if (classifyProbe(r) === 'vigente' && !r.hasData && cfgStale[r.op]) abortLiveVigente[r.op] = true;
+      console.log(`  probe liveHash (captura-y-aborta): vigente+cfgMuerto=${Object.keys(abortLiveVigente).join(', ') || '(ninguno)'}`);
     }
   } catch (e) { console.log(`(probe falló: ${String(e).slice(0, 80)} — fail-open, sin gating)`); probeVerdicts = {}; abortLiveVigente = {}; }
 
