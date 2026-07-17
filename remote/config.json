@@ -1,6 +1,6 @@
 {
-  "version": "1.7.145",
-  "lastUpdated": "2026-07-17T13:44",
+  "version": "1.7.146",
+  "lastUpdated": "2026-07-17T13:56",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2577,7 +2577,7 @@
     "scripts/surtido-guard-core.js": "c2632afbc845d8a047274ddf2667782768868da9d0fb6ec4e78fe122f90a60f5",
     "scripts/surtido-guard.js": "f7bab2985792ca34d0a5909aaed95b34d4252217a36462b81774b7a2bd359022",
     "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633",
-    "scripts/unit-autoconvert.js": "8bc66f93da1101a965edda8d1e847369224795c611efe16e8e0c05dffe08193a",
+    "scripts/unit-autoconvert.js": "58e71c8f99d4c4b87df6170787cf6725ceb94c37b6cb2edef7170e16fe1ba9ad",
     "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
     "scripts/vale-almacen.js": "a16893b2c5491349610c1e62f620b4f804bab9620ea0dcc1715e057109125a99",
     "scripts/warehouse-location-prefill.js": "e50128e0a0d0c36279cbd85bef87597814bef20e77ea53c1c206ef44dfc2f5a0",
