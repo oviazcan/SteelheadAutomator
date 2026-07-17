@@ -37,6 +37,7 @@ Mutations cubiertas por ciclo sentinela (validadas end-to-end):
 | `CreateMaintenanceEvent` | nodo #55 | **New Maintenance Event → Node → combobox "Sentinela" → Save & Begin** |
 | `CreateMaintenanceEventComment` | nodo #55 | escribir en **"Write a comment…" → Submit** (dentro del evento) |
 | `UpdateMaintenanceEvent` | nodo #55 | toggle del checkbox **"Archived" del EVENTO** (NO completar el evento; el toggle además limpia) |
+| `AddPartsToWorkOrders` | OV #1603 → OT #13678 | **CAPTURA-Y-ABORTA** (escritura): modal **"Ajustar Cantidad de Piezas de OT"** (icono IsoIcon) → cambiar el *Conteo Deseado* → **Guardar**. El Save dispara **SOLO** `AddPartsToWorkOrders`; `MovePartsToRecipeNodeId`/`SearchLocationsOnPath` son queries de **preview** del modal (no del Save, no escriben). Cero persistencia (OT sigue 1/1). |
 
 Los 3 de mantenimiento se capturan en **un solo flujo** (crear evento → comentar → archivar) sobre el nodo sentinela ACTIVO; el sink es compartido, así que si las 3 están stale, el 1er ciclo captura las 3 y los siguientes hacen no-op. El nodo #55 **debe quedar activo (no archivado)** para que el combobox lo encuentre — el deep-link a un nodo archivado NO hidrata.
 
@@ -128,6 +129,16 @@ reportó "0 rotado"). Ahora se **recapturan SIEMPRE**, desacopladas del gate por
 - Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
+- **Mutation por CAPTURA-Y-ABORTA validada headless END-TO-END: `AddPartsToWorkOrders`**
+  (sentinela `workOrderPartCount` = OV #1603 "Sentinela" → OT #13678; handler
+  `saveWoPartCountAborted` en `mutation-deps.mjs`). A diferencia de las de precios
+  (`partNumberPrice`/`quotePrice`, andamiadas/bloqueadas por hidratación del quote), la OV
+  **SÍ hidrata headless** → el ciclo captura de punta a punta. Clasifica **'sospechoso'** (sin
+  `responseOk` porque el request se aborta) → el motor lo REPORTA con el diff pero **NO
+  auto-deploya**: deploy **MANUAL** (escritura = ojo humano, como precios). Ancla del botón
+  idioma-independiente: `button[aria-label]:has(svg[data-testid="IsoIcon"])`. **Verificada en
+  vivo 2026-07-17**: el hash rotó `a5cc8991…`→`70d5a792…` (probe directo: el server reconoce
+  `70d5a792`, `a5cc8991` da "Must provide a query string"), deployado a mano (config 1.7.140).
 - **🎯 OBJETIVO NORTE: CERO captura manual — todo debe auto-recuperarse headless sin
   intervención humana.** Hoy 3 queries se quedan `noCapturado` porque el `page.goto`
   directo NO hidrata el detalle y las listas no rinden filas en headless:

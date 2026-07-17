@@ -318,6 +318,44 @@ async function savePartsQuoteAborted(page, sink, { id, domain }) {
   if (dbg) console.log(`       [dbg] Save Parts → ${sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
+// workOrderPartCount: AddPartsToWorkOrders vía CAPTURA-Y-ABORTA. La mutation se dispara al
+// GUARDAR el modal "Ajustar Cantidad de Piezas de OT" (icono IsoIcon) de una OT en el detalle
+// de la OV Sentinela #1603. Marca la op en abortOps ANTES de tocar el DOM → el interceptor
+// registra el sha256Hash y ABORTA el request → cero persistencia (la OT no cambia de conteo,
+// verificado: sigue 1/1). Ancla del botón IDIOMA-INDEPENDIENTE (aria-label PRESENTE + IsoIcon;
+// el otro IsoIcon de la sección BOM no tiene aria-label; NO usa el texto). Verificado en vivo
+// 2026-07-17 (hash rotó a5cc8991→70d5a792). Ver sentinels-config.json entidad workOrderPartCount.
+async function saveWoPartCountAborted(page, sink, { url }) {
+  const dbg = process.env.SA_DBG;
+  // MARCAR la op ANTES de cualquier clic que pueda disparar el Save → aborta aunque salga antes.
+  if (sink && sink.abortOps) sink.abortOps.add('AddPartsToWorkOrders');
+  // navegar al detalle de la OV; hidrata tarde headless → espera ACTIVA al name "Sentinela".
+  await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
+    await page.waitForTimeout(1500);
+  }
+  if (dbg) console.log('       [dbg] OV detalle hidratado');
+  // botón IsoIcon "Ajustar Cantidad" — idioma-independiente: aria-label presente + IsoIcon.
+  const isoBtn = page.locator('button[aria-label]:has(svg[data-testid="IsoIcon"])').first();
+  await isoBtn.waitFor({ state: 'visible', timeout: 15000 });
+  await isoBtn.scrollIntoViewIfNeeded().catch(() => {});
+  await isoBtn.click({ timeout: 10000 });
+  // fail-closed: verificar que abrió el modal CORRECTO ("Ajustar Cantidad"/"Adjust…" bilingüe).
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Ajustar Cantidad|Adjust/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 15000 });
+  if (dbg) console.log('       [dbg] modal Ajustar Cantidad abierto');
+  // cambiar el "Conteo Deseado" a un valor != actual → habilita Guardar y construye la mutation.
+  // NO persiste (se aborta). El input es el único del dialog; fill maneja el setter de React.
+  await dialog.locator('input').first().fill('2').catch(() => {});
+  await page.waitForTimeout(700);
+  // Guardar/Save (bilingüe) → dispara AddPartsToWorkOrders → el interceptor captura y ABORTA.
+  await dialog.locator('button').filter({ hasText: /^(Guardar|Save)$/i }).first().click({ timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (dbg) console.log(`       [dbg] Save → ${sink && sink.hashes && sink.hashes.AddPartsToWorkOrders ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -437,6 +475,26 @@ const HANDLERS = {
     async restore(page, ctx) {
       // Save Parts se ABORTÓ → nada persistió → nada que restaurar. Solo desmarcar la op.
       if (ctx.sink && ctx.sink.abortOps) ctx.sink.abortOps.delete('SaveManyPartNumberPrices');
+    },
+  },
+  workOrderPartCount: {
+    // load: verifica que la OV Sentinela hidrata + su nombre contiene 'Sentinela' (isSentinel
+    // fail-closed). Si no hidrata / no es Sentinela → name='' → runMutationCycle NO muta.
+    async load(page, { url }) {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      let isSent = false;
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline && !isSent) {
+        isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+        if (!isSent) await page.waitForTimeout(500);
+      }
+      if (process.env.SA_DBG) console.log(`       [dbg] workOrderPartCount load isSentinela=${isSent}`);
+      return { name: isSent ? 'Sentinela' : '' };
+    },
+    async mutate(page, ctx) { await saveWoPartCountAborted(page, ctx.sink, ctx); },
+    async restore(page, { sink }) {
+      // Save abortado → nada persistió → nada que restaurar. Solo desmarcar la op (higiene del sink).
+      if (sink && sink.abortOps) sink.abortOps.delete('AddPartsToWorkOrders');
     },
   },
   maintenanceNode: {
