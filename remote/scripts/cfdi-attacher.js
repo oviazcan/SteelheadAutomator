@@ -122,7 +122,12 @@ const CfdiAttacher = (() => {
           if (node.nodeType !== 1) continue;
           // Look for the email dialog — has heading "Send Invoice Email"
           const heading = node.querySelector?.('h2, h3, h4, h5, h6, [class*="heading"]');
-          if (heading && /send\s+invoice\s+email/i.test(heading.textContent)) {
+          const headingMatch = heading && /send\s+invoice\s+email/i.test(heading.textContent);
+          // Idioma-independiente: el modal de email de factura tiene ≥2 toggles MuiSwitch
+          // (Logo/Attach PDF/Visible) + un icono Send o Email. Sobrevive la traducción.
+          const structMatch = (node.querySelectorAll?.('tr .MuiSwitch-root, tr [class*="Switch-root"]').length || 0) >= 2
+            && !!node.querySelector?.('[data-testid="SendIcon"], [data-testid="EmailOutlinedIcon"]');
+          if (headingMatch || structMatch) {
             injectCheckbox(node);
             return;
           }
@@ -145,9 +150,10 @@ const CfdiAttacher = (() => {
     const existing = document.querySelector('[role="dialog"], .MuiDialog-paper');
     if (existing) {
       const h = existing.querySelector('h2, h3, h4, h5, h6, [class*="heading"]');
-      if (h && /send\s+(invoice|.*invoices)/i.test(h.textContent)) {
-        injectCheckbox(existing);
-      }
+      const headingMatch = h && /send\s+(invoice|.*invoices)/i.test(h.textContent);
+      const structMatch = (existing.querySelectorAll('tr .MuiSwitch-root, tr [class*="Switch-root"]').length || 0) >= 2
+        && !!existing.querySelector('[data-testid="SendIcon"], [data-testid="EmailOutlinedIcon"]');
+      if (headingMatch || structMatch) injectCheckbox(existing);
     }
   }
 
@@ -160,12 +166,18 @@ const CfdiAttacher = (() => {
 
     // Steelhead email dialog uses a MUI Table with <tr> rows for each toggle
     // (Logo, Attach PDF, Visible to Others). Find the last toggle row.
+    // Idioma-independiente: las filas de toggle son las <tr> que contienen un MuiSwitch.
+    // La última de ellas es "Visible to Others" (o su traducción) → insertamos después.
+    // Sobrevive la traducción de los labels y el bug de caché. Fallback al texto EN.
     let lastToggleRow = null;
     const rows = dialog.querySelectorAll('tr');
     for (const tr of rows) {
-      const text = tr.textContent?.trim();
-      if (/^(Logo|Attach PDFs?|Visible to Others)$/.test(text.replace(/\s+/g, ' '))) {
-        lastToggleRow = tr;
+      if (tr.querySelector('.MuiSwitch-root, [class*="Switch-root"]')) lastToggleRow = tr;
+    }
+    if (!lastToggleRow) {
+      for (const tr of rows) {
+        const text = (tr.textContent || '').trim().replace(/\s+/g, ' ');
+        if (/^(Logo|Attach PDFs?|Visible to Others)$/i.test(text)) lastToggleRow = tr;
       }
     }
 
