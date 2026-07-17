@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 26 applets: auto-inyectados (FAB/gate propio) + 7 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router, wo-completer, wo-deadline, price-confirm-guard kill-switch) lanzables desde el popup + vale-almacen (botón flotante). v0.5.3: +pn-specs-column, +sensor-graph-hide-all, +price-confirm-guard; create-order-autofill actualizado (2ª pantalla SalesOrders). v0.5.5: rebundle tras deploy 1.7.120 — toma fixes en applets ya-en-bundle (gate console.log en steelhead-api/invoice-auto-regen; XSS escape en wo-deadline; fix auto-router destinationLines/bug Image #6). Sin cambios de lista (INTEGRABLE=0). v0.5.6: rebundle tras 1.7.121 — toma B5.2 (gate console.log en weight-quick-entry/warehouse/paros-linea) + C2 (host-cleanup en po-comparator).",
-  "version": "0.5.6",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 26 applets: auto-inyectados (FAB/gate propio) + 7 'con-popup' (archiver, sensor-status-autofill, load-calculator, auto-router, wo-completer, wo-deadline, price-confirm-guard kill-switch) lanzables desde el popup + vale-almacen (botón flotante). v0.5.3: +pn-specs-column, +sensor-graph-hide-all, +price-confirm-guard; create-order-autofill actualizado (2ª pantalla SalesOrders). v0.5.5: rebuild para tomar el blindaje idioma-independiente de cfdi-attacher (gate/inserción por MuiSwitch+SendIcon), price-confirm-guard (gate por root_DatosPrecio) y unit-autoconvert (Panel A plural) + el fix de amarre del react-select en invoice-autofill (AR+income).",
+  "version": "0.5.5",
   "permissions": [
     "storage",
     "tabs"
