@@ -54,6 +54,25 @@ export function planDeploy(results, opts = {}) {
   return { toDeploy: rotated, suspicious, notCaptured, massBrake: false, reason: null };
 }
 
+// Construye el payload de needs-attention.json (Nivel B). Enriquece cada op con
+// la receta vieja COMPLETA (module + steps + captures) para dar al re-descubridor
+// un punto de partida. op sin receta → recipeTried/steps null (crear desde cero).
+export function buildNeedsAttention(notCaptured, recipes, date) {
+  const find = (op) => Object.entries(recipes || {}).find(([, r]) => (r.captures || []).includes(op));
+  const ops = (notCaptured || []).map((r) => {
+    const rec = find(r.op);
+    return {
+      op: r.op,
+      recipeTried: rec ? rec[0] : null,
+      module: rec ? (rec[1].module || null) : null,
+      steps: rec ? (rec[1].steps || null) : null,
+      captures: rec ? (rec[1].captures || null) : null,
+      observed: 'la receta no disparó la op (0 capturas)',
+    };
+  });
+  return { date, ops };
+}
+
 // Ops target que ninguna receta captura (huecos del mapa click-recipes.json).
 export function missingCoverage(recipes, targetOps) {
   const covered = new Set();

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
-import { classifyOp, planDeploy, isValidatedCapture } from './hash-autopilot-core.mjs';
+import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention } from './hash-autopilot-core.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
@@ -422,13 +422,9 @@ function notify(tipo, asunto, cuerpo) {
 function writeNeedsAttention(notCaptured, recipes, date) {
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
-    const findRecipe = (op) => Object.entries(recipes).find(([, r]) => (r.captures || []).includes(op));
-    const ops = notCaptured.map((r) => {
-      const rec = findRecipe(r.op);
-      return { op: r.op, recipeTried: rec ? rec[0] : null, steps: rec ? rec[1].steps : null, observed: 'la receta no disparó la op (0 capturas)' };
-    });
-    writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify({ date, ops }, null, 2));
-    console.log(`  señal de escalamiento escrita (${ops.length} op).`);
+    const payload = buildNeedsAttention(notCaptured, recipes, date);
+    writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify(payload, null, 2));
+    console.log(`  señal de escalamiento escrita (${payload.ops.length} op).`);
   } catch (e) { console.log(`(no se pudo escribir needs-attention: ${String(e).slice(0, 80)})`); }
 }
 
