@@ -28,4 +28,5 @@ fi
 
 touch "$TRIED_MARK"   # marca idempotente ANTES de correr (evita loop si claude cuelga)
 cd "$REPO_ROOT"
-claude -p "$(cat "$PROMPT")" --dangerously-skip-permissions 2>&1 | tee "$STATE_DIR/escalation-last.log"
+# CLAUDE_BIN permite inyectar un stub en pruebas supervisadas; default = claude real.
+"${CLAUDE_BIN:-claude}" -p "$(cat "$PROMPT")" --dangerously-skip-permissions 2>&1 | tee "$STATE_DIR/escalation-last.log"
