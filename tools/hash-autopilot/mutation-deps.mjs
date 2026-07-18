@@ -232,54 +232,13 @@ async function editSalesOrderPoAndSave(page, value) {
   await dialog.locator('button').filter({ hasText: /^(SAVE|Guardar)$/i }).first().click({ timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(2000);
 }
-// ── partNumberPrice: captura-y-aborta (precios) ─────────────────────────────
-// Captura el hash de SaveManyPartNumberPrices SIN persistir. Marca la op en
-// sink.abortOps (el interceptor la aborta tras leer el hash), abre el modal "Part
-// Number Price" (botón "+" AddCircleOutlineIcon de la sección de precios), llena los
-// required mínimos (Divisa) + un precio, y clica "Save" → la mutation sale, el
-// interceptor registra el hash y ABORTA el request → cero escritura. Selectores del
-// HTML real (2026-07-15): título "Part Number Price"; select RJSF #root_DatosPrecio_Divisa
-// (required, USD/MXN); input decimal del precio; botón Save data-testid=SaveOutlinedIcon.
-async function savePriceSentinelaAborted(page, sink, ctx = {}) {
-  const dbg = process.env.SA_DBG;
-  // MARCAR la op ANTES de cualquier clic que pueda disparar el Save → el interceptor
-  // aborta (cero persistencia) aunque el Save salga antes de lo previsto.
-  if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
-  // PRE-CALENTAR la SPA: el detalle del PN se queda en "Loading..." con page.goto
-  // directo (SPA fría); navegar primero a la LISTA /PartNumbers calienta la sección y
-  // luego el detalle hidrata (validado headless 2026-07-15). Espera activa al name.
-  await page.goto(`${BASE}/PartNumbers`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  await page.waitForTimeout(5000);
-  if (ctx.url) await page.goto(ctx.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
-    if (await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
-    await page.waitForTimeout(2000);
-  }
-  if (dbg) console.log('       [dbg] PN detalle hidratado');
-  // El botón "+" de precio vive en la fila "Pricing" del detalle: un div.css-xd9ivb
-  // cuyo label (div.css-re0j1l) es "Pricing" + el IconButton AddCircleOutlineIcon.
-  // Esto lo DISTINGUE de los "+" de OEMs (mismo icono, otra fila). Bilingüe (Pricing/Precios).
-  // HIJO DIRECTO (>): un css-xd9ivb ANCESTRO engloba OEMs+Pricing y capturaría ambos "+";
-  // anclar al css-xd9ivb cuyo hijo directo ES el label "Pricing" toma SOLO su botón.
-  const openBtn = page.locator(
-    'div.css-xd9ivb:has(> div.css-re0j1l:text-matches("^(Pricing|Precios)$", "i")) > button:has(svg[data-testid="AddCircleOutlineIcon"])'
-  ).first();
-  await openBtn.scrollIntoViewIfNeeded().catch(() => {});
-  await openBtn.click({ timeout: 12000 });
-  // fail-closed: verificar que abrió el modal CORRECTO ("Part Number Price").
-  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Part Number Price/i }).first();
-  await dialog.waitFor({ state: 'visible', timeout: 15000 });
-  if (dbg) console.log('       [dbg] modal Part Number Price abierto');
-  // Divisa (REQUIRED): sin ella RJSF valida en cliente y el Save NO envía la mutation.
-  await dialog.locator('#root_DatosPrecio_Divisa').selectOption('USD').catch(() => {});
-  // precio > 0 (el input arranca en "0"; por si 0 no valida). NO persiste (se aborta).
-  await dialog.locator('input[inputmode="decimal"]').first().fill('0.01').catch(() => {});
-  await page.waitForTimeout(600);
-  if (dbg) console.log('       [dbg] Divisa=USD + precio 0.01 → clic Save (se abortará)');
-  await dialog.locator('button:has(svg[data-testid="SaveOutlinedIcon"])').first().click({ timeout: 10000 }).catch(() => {});
-  await page.waitForTimeout(3000);
-}
+// ── partNumberPrice (modal individual): RETIRADO 2026-07-17 ──────────────────
+// El handler savePriceSentinelaAborted (modal "Part Number Price" individual) se
+// eliminó al UNIFICAR Steelhead las dos variantes de SaveManyPartNumberPrices en un
+// solo hash (72946d4d…, ver config.json). La captura de precios vive en el flujo de
+// COTIZACIÓN: quotePrice #288 → savePartsQuoteAborted, validado end-to-end headless
+// 2026-07-17. El andamiaje id:0 del modal era deuda redundante (nunca se ejecutaba:
+// mutEntityType lo saltaba por id falsy). Ver sentinels-config.json entidad quotePrice.
 
 // Navegación CLIENT-SIDE a la lista de Quotes. HALLAZGO 2026-07-17: el dashboard de quotes
 // NO hidrata por deep-link (searchQuery sale vacío, tanto headless como en navegador real);
@@ -296,8 +255,9 @@ async function openQuotesListAndFind(page, id, domain) {
     .waitFor({ state: 'visible', timeout: 25000 }).then(() => true).catch(() => false);
 }
 
-// quotePrice: SaveManyPartNumberPrices BATCH (9da1874e, el que usa bulk-upload), distinto
-// del modal individual (72946d). Se dispara desde la COTIZACIÓN sentinela #288. FLUJO REAL del
+// quotePrice: SaveManyPartNumberPrices — hash unificado VIVO 72946d4d (Steelhead fusionó las
+// dos variantes el 2026-07-17; el viejo batch 9da1874e murió y el 'individual' 72946d quedó como
+// el único). Se dispara desde la COTIZACIÓN sentinela #288. FLUJO REAL del
 // operador (2026-07-17): abrir el quote client-side → clic 'Edit this Part' (lapicito) → 'Save
 // Parts' se HABILITA solo → clic 'Save Parts' SIN editar nada → dispara el batch "tiro por viaje".
 // CLAVE: NO tocar Divisa/precio — editar rompe el estado y Save Parts se deshabilita (por eso la
@@ -454,30 +414,6 @@ const HANDLERS = {
     async restore(page) {
       // restaurar el PO# a vacío (base del sentinela) — SIEMPRE
       await editSalesOrderPoAndSave(page, '');
-    },
-  },
-  partNumberPrice: {
-    // SaveManyPartNumberPrices (precios) se captura CON CAPTURA-Y-ABORTA: marcamos la
-    // mutation en sink.abortOps ANTES del "Save" → el interceptor registra el sha256Hash
-    // que el frontend IBA a enviar y ABORTA el request → NUNCA llega al server → cero
-    // persistencia (no se guarda un precio real). Sin respuesta no hay responseOk, pero el
-    // motor PRUEBA el liveHash (variables vacías, sin ejecutar) → si el server lo reconoce se
-    // auto-deploya como cualquier hash (isValidatedCapture); si no, 'sospechoso' → revisión.
-    // El hash es solo el identificador de la query: deployarlo NO cambia ningún precio real.
-    async load(page, { url }) {
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      const nameEl = page.locator('div.css-re0j1l', { hasText: 'Name:' })
-        .locator('xpath=following-sibling::*[1]').first();
-      await nameEl.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
-      return { name: (await nameEl.textContent().catch(() => '')).trim() };
-    },
-    async mutate(page, ctx) {
-      await savePriceSentinelaAborted(page, ctx.sink, ctx);
-    },
-    async restore(page, { sink }) {
-      // El Save se ABORTÓ → no se persistió ningún precio → nada que restaurar.
-      // Solo desmarcar la op (higiene del sink) para no abortar requests futuras.
-      if (sink && sink.abortOps) sink.abortOps.delete('SaveManyPartNumberPrices');
     },
   },
   quotePrice: {
