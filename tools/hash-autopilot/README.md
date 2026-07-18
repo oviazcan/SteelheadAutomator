@@ -122,48 +122,59 @@ reportó "0 rotado"). Ahora se **recapturan SIEMPRE**, desacopladas del gate por
   ni de stale. Lo corre `run-hash-autopilot.sh` en CADA tick, ANTES del gate por
   release (el escaneo completo sigue tras el gate). Validado en vivo 2026-07-15:
   capturó las 5 queries, probe 5 vigentes / 0 stale.
-- **Mutation de precios** (`SaveManyPartNumberPrices`): por ciclo **sentinela**
-  (`partNumberPrice` en `sentinels-config.json`, hoy **id:0 = andamiaje inactivo**).
-  Para activar: crear un PN "Sentinela" con precio, poner su id, y completar el handler
-  DOM `partNumberPrice` en `mutation-deps.mjs` (hoy `mutate`/`restore` fail-closed).
+- **Mutation de precios** (`SaveManyPartNumberPrices`): por ciclo **sentinela** sobre la
+  COTIZACIÓN `quotePrice` #288 (handler `savePartsQuoteAborted`), **validado end-to-end
+  headless 2026-07-17**. Steelhead **unificó** las dos variantes en un solo hash (`72946d4d…`);
+  el andamiaje del modal individual (`partNumberPrice` id:0) se **retiró** (2026-07-17).
 
-## Endurecimiento de rutas de descubrimiento — pendientes (2026-07-17)
+## Endurecimiento de rutas de descubrimiento — cierre (2026-07-17, 2ª pasada)
 
-Lecciones y follow-ups de la sesión que cerró `AddPartsToWorkOrders` y `SaveManyPartNumberPrices`:
+Follow-ups de la sesión que cerró `AddPartsToWorkOrders` y `SaveManyPartNumberPrices`. Estado
+tras la revisión contra el CÓDIGO (varios ya estaban resueltos en el código pero no en la doc):
 
-1. **Generalizar la navegación CLIENT-SIDE al resto de queries que no hidratan por deep-link.**
-   HALLAZGO: el deep-link (`page.goto` con searchQuery) NO hidrata las listas/detalles headless,
-   pero navegar DENTRO del SPA ya cargado (home → clic al `<a>` del módulo → la lista rinde filas)
-   SÍ. El helper `openQuotesListAndFind` (mutation-deps.mjs) lo resuelve para quotes. Aplicar el
-   MISMO patrón a las 3 del "objetivo norte": `GetPurchaseOrderDetail`, `SensorDashboardQuery`,
-   `GetReceivedOrdersWithReceivedOrderLineItems` (extender `recipe-runner` con un paso "abrir lista
-   client-side → clic en la fila" en vez de `goto` directo).
-2. **`evaluate().click()` NO activa handlers React; usar Playwright `click({force})`.** Fue lo que
-   destrabó `Save Parts` del quote. Auditar handlers de `mutation-deps.mjs` que aún usen
-   `page.evaluate(()=>el.click())` y migrarlos a `locator().click({force})` si no disparan.
-3. **Probe de SHAPE por op (no solo de registro).** El probe con variables vacías confirma que el
-   hash está REGISTRADO, no que acepta el `input` que el applet manda. Para `SaveManyPartNumberPrices`
-   hubo que probar el shape a mano (`partNumberPrices` array) para distinguir dos variantes. Añadir
-   un probe opcional que valide el shape real del applet antes de auto-deployar ops sensibles.
-4. **Ops con MÚLTIPLES variantes (mismo operationName, distinto query text).** El hardening
-   "auto-deploy solo si el cfg está MUERTO" ya evita pisar la variante viva. Falta: detectar y
-   documentar qué ops tienen variantes (hoy: `SaveManyPartNumberPrices` unificó batch+individual;
-   el viejo `partNumberPrice` id:0 quedó redundante — decidir si se retira).
-5. **Sentinelas de escritura DEBEN quedar ACTIVOS (desarchivados).** Regla confirmada: OV #1594,
-   nodo #55, quote #288. Un sentinela archivado sale read-only y el ciclo aborta fail-closed. Añadir
-   un check en `cleanup-sentinela-ovs.mjs` (o similar) que ALERTE si un sentinela declarado quedó
-   archivado, en vez de solo fallar silenciosamente.
-6. **Nivel B — validar el `claude -p` REAL + auth del cron.** El arnés está verde (prueba con stub),
-   pero falta: (a) confirmar que `claude -p` está autenticado en el entorno del launchd; (b) evitar
-   que el cron se pise con una sesión interactiva en `main` (el binario `claude` NO respeta el
-   worktree-lock de la función) — considerar correr el Nivel B en un worktree dedicado; (c) iterar el
-   prompt de re-descubrimiento según los traces reales.
+1. **Navegación CLIENT-SIDE al resto de queries — ✅ HECHO + VALIDADO EN VIVO 3/3 (2026-07-17).**
+   `recipe-runner.mjs` ya tiene los pasos client-side (`clickFirst`/`clickButton`/`selectFirstOption`:
+   clic REAL en el `<a>`/botón sin re-bootstrapear el SPA). Las 3 del "objetivo norte" ya usan
+   `clickFirst`: `purchasing-po-detail`, `maintenance-sensordashboards-detail`,
+   `invoices-packingslips-addinvoice`. **Validación headless (2026-07-17): las 3 CAPTURAN con
+   `responseOk`, hashes == config (vigentes).** El objetivo norte ya no cae en captura manual.
+2. **`evaluate().click()` → Playwright `click({force})` — ✅ HECHO (verificado).** Auditado
+   `mutation-deps.mjs`: `click({force})` es la ruta PRIMARIA en `savePartsQuoteAborted` (Edit this
+   Part + Save Parts) y `saveWoPartCountAborted`. El único `page.evaluate(()=>el.click())` que queda
+   es un **fallback** dentro de un `.catch()` (correcto). Nada que migrar.
+3. **Probe de SHAPE por op — DECISIÓN: YAGNI documentado (no se implementa).** El riesgo que lo
+   motivó (dos variantes de `SaveManyPartNumberPrices`) YA lo cubren tres salvaguardas: (a) `responseOk`
+   para queries; (b) `abortProbeVigente` **+ config MUERTO** para captura-y-aborta (no se auto-deploya
+   el liveHash si el config sigue vivo → no pisa la variante viva); (c) freno de masa. Un probe de shape
+   del *input* exigiría un catálogo frágil de inputs por-applet (se rompe cuando el applet cambia) para
+   un beneficio marginal. Se reabre solo si aparece un caso que las 3 salvaguardas no cubran.
+4. **Ops con MÚLTIPLES variantes — ✅ HECHO.** `SaveManyPartNumberPrices` unificó batch+individual en
+   `72946d4d…`; el andamiaje redundante `partNumberPrice` id:0 (+ handler `savePriceSentinelaAborted`)
+   se **retiró** de `sentinels-config.json` y `mutation-deps.mjs`. Test `masked-ops-coherence` blinda
+   que no reaparezca. El hardening "auto-deploy solo si el cfg está MUERTO" sigue cubriendo variantes.
+5. **Alerta de sentinela declarado archivado — ✅ HECHO.** Módulo puro `sentinel-health.mjs`
+   (`classifyCycleOutcomes`/`formatSentinelAlert`, 6 tests): cuando un ciclo aborta por identidad
+   (sentinela ARCHIVADO → read-only → `isSentinel`=false), el motor lo reporta como sección
+   **🚨 SENTINELA ROTO/ARCHIVADO** en el correo (antes: abort silencioso a consola) con la acción
+   de desarchivar. Cuenta como pendiente en el asunto.
+6. **Nivel B — `claude -p` REAL + auth del cron — 🔶 PARCIAL (a/b hechos; c = corrida real).**
+   (a) ✅ **BUG encontrado y corregido:** en el entorno del launchd `claude` NO resolvía (PATH sin
+   `~/.local/bin`; `claude` es una FUNCIÓN shell del `.zshrc` que el cron no carga). `run-escalation.sh`
+   ahora antepone `~/.local/bin` al PATH → el binario real resuelve. `claude -p` confirmado autenticado.
+   (b) ✅ **Anti-colisión:** en vez de un worktree con estado compartido (el `needs-attention.json` es
+   local/gitignored a `main`), si `worktree-lock.sh occupied` detecta una sesión interactiva en `main`
+   el wrapper **pospone al próximo tick** (sin marcar idempotente → reintenta en 1h; `ESCALATION_FORCE=1`
+   lo salta en pruebas). El binario directo no respeta el worktree-lock, así que este gate lo suple.
+   El wrapper además **notifica** si `claude -p` sale != 0 (antes fallaba en silencio).
+   (c) ⏳ **Corrida real supervisada:** disparar `run-escalation.sh` con un `needs-attention.json` de
+   prueba (op VIGENTE, sin deploy; correo a un solo buzón vía `SA_NOTIFY_DEST`) para ver el flujo
+   end-to-end del agente e iterar el prompt según el trace real.
 
 ## Estado / pendientes
 
 - Enmascaradas recapturadas siempre (masked-ops.json): `AllCustomers`, `Customer`,
   `CurrentUser`, `AllSensorDashboards`, `SensorDashboardQuery` + mutation
-  `SaveManyPartNumberPrices` (sentinela andamiado, pendiente PN Sentinela).
+  `SaveManyPartNumberPrices` (sentinela `quotePrice` #288, validado end-to-end 2026-07-17).
 - Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
@@ -181,17 +192,16 @@ Lecciones y follow-ups de la sesión que cerró `AddPartsToWorkOrders` y `SaveMa
   **Verificada en vivo**: el hash rotó `a5cc8991…`→`70d5a792…` (probe directo: el server reconoce
   `70d5a792`, `a5cc8991` da "Must provide a query string"), 1er deploy a mano (config 1.7.140) y
   el path de auto-deploy validado end-to-end (config revertido → el motor lo clasifica 🔺 ROTÓ).
-- **🎯 OBJETIVO NORTE: CERO captura manual — todo debe auto-recuperarse headless sin
-  intervención humana.** Hoy 3 queries se quedan `noCapturado` porque el `page.goto`
-  directo NO hidrata el detalle y las listas no rinden filas en headless:
-  `GetPurchaseOrderDetail` (`/Purchasing/PurchaseOrders/<id>`), `SensorDashboardQuery`
-  (`/Maintenance/SensorDashboards/<id>`), `GetReceivedOrdersWithReceivedOrderLineItems`
-  (Invoices→PackingSlips→"Crear Factura"). **STOPGAP temporal** (NO la meta): capturarlas
-  con el hash-scanner en el navegador y deployar. **PENDIENTE real**: que el motor las
-  capture solo. Diagnóstico: las queries de detalle solo disparan por **navegación
-  client-side** (clic en `<Link>` de React Router dentro del SPA ya cargado) — `page.goto`
-  re-inicializa el SPA y no fetchea. Camino candidato: extender `recipe-runner` para
-  navegación client-side multi-paso (home hidratado → clic real en la fila/link) +
-  resolver la flakiness de hidratación headless. Es infra real, no un ajuste de receta.
+- **🎯 OBJETIVO NORTE: CERO captura manual — ✅ ALCANZADO para las 3 queries de detalle
+  (VALIDADO EN VIVO 2026-07-17).** Las 3 que caían en captura manual ya se auto-capturan
+  headless por **navegación client-side** (clic REAL en el `<Link>`/botón dentro del SPA ya
+  cargado — `page.goto` re-inicializa el SPA y no fetchea; el clic client-side sí):
+  `GetPurchaseOrderDetail` (ruta `purchasing-po-detail`), `SensorDashboardQuery`
+  (`maintenance-sensordashboards-detail`), `GetReceivedOrdersWithReceivedOrderLineItems`
+  (`invoices-packingslips-addinvoice`). Validación headless: **3/3 capturan con `responseOk`,
+  hashes == config**. El STOPGAP del hash-scanner ya NO es necesario para estas. `recipe-runner`
+  soporta `clickFirst`/`clickButton`/`selectFirstOption` (navegación client-side multi-paso).
 - Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Sentinela" activas rezagadas.
-- Pendiente: prueba de humo del correo real; cargar el launchd tras mergear a `main`.
+  Salud de sentinelas: `sentinel-health.mjs` alerta si un sentinela declarado quedó archivado.
+- Correo real: prueba de humo ✅ hecha (2026-07-17). Launchd de escalación: ✅ cargado.
+- Pendiente: **corrida real supervisada del Nivel B** (`claude -p`) — arnés y wrapper listos.
