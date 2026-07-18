@@ -164,6 +164,15 @@ const BillAutofill = (() => {
         break;
       }
     }
+    // Fallback idioma-independiente (por si SH traduce el título "Create/Edit Bill" o lo cambia):
+    // el editor de Bill es el ÚNICO diálogo dentro de /Bills que monta el form RJSF de datos
+    // contables (`root_DatosContables_Divisa`, verificado en el HTML del modal 2026-07-17).
+    // Acotado a /Bills + [role=dialog] para no dispararse en la pantalla de Facturas (que usa
+    // el mismo `root_DatosContables_*`). Aditivo: no altera el match por texto en inglés.
+    if (!found && BILL_URL_RE.test(location.pathname) &&
+        document.querySelector('[role="dialog"] #' + RJSF_DIVISA_ID)) {
+      found = true;
+    }
 
     if (!found) {
       if (billFormVisible) {
