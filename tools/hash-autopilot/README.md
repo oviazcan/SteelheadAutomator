@@ -127,6 +127,38 @@ reportó "0 rotado"). Ahora se **recapturan SIEMPRE**, desacopladas del gate por
   Para activar: crear un PN "Sentinela" con precio, poner su id, y completar el handler
   DOM `partNumberPrice` en `mutation-deps.mjs` (hoy `mutate`/`restore` fail-closed).
 
+## Endurecimiento de rutas de descubrimiento — pendientes (2026-07-17)
+
+Lecciones y follow-ups de la sesión que cerró `AddPartsToWorkOrders` y `SaveManyPartNumberPrices`:
+
+1. **Generalizar la navegación CLIENT-SIDE al resto de queries que no hidratan por deep-link.**
+   HALLAZGO: el deep-link (`page.goto` con searchQuery) NO hidrata las listas/detalles headless,
+   pero navegar DENTRO del SPA ya cargado (home → clic al `<a>` del módulo → la lista rinde filas)
+   SÍ. El helper `openQuotesListAndFind` (mutation-deps.mjs) lo resuelve para quotes. Aplicar el
+   MISMO patrón a las 3 del "objetivo norte": `GetPurchaseOrderDetail`, `SensorDashboardQuery`,
+   `GetReceivedOrdersWithReceivedOrderLineItems` (extender `recipe-runner` con un paso "abrir lista
+   client-side → clic en la fila" en vez de `goto` directo).
+2. **`evaluate().click()` NO activa handlers React; usar Playwright `click({force})`.** Fue lo que
+   destrabó `Save Parts` del quote. Auditar handlers de `mutation-deps.mjs` que aún usen
+   `page.evaluate(()=>el.click())` y migrarlos a `locator().click({force})` si no disparan.
+3. **Probe de SHAPE por op (no solo de registro).** El probe con variables vacías confirma que el
+   hash está REGISTRADO, no que acepta el `input` que el applet manda. Para `SaveManyPartNumberPrices`
+   hubo que probar el shape a mano (`partNumberPrices` array) para distinguir dos variantes. Añadir
+   un probe opcional que valide el shape real del applet antes de auto-deployar ops sensibles.
+4. **Ops con MÚLTIPLES variantes (mismo operationName, distinto query text).** El hardening
+   "auto-deploy solo si el cfg está MUERTO" ya evita pisar la variante viva. Falta: detectar y
+   documentar qué ops tienen variantes (hoy: `SaveManyPartNumberPrices` unificó batch+individual;
+   el viejo `partNumberPrice` id:0 quedó redundante — decidir si se retira).
+5. **Sentinelas de escritura DEBEN quedar ACTIVOS (desarchivados).** Regla confirmada: OV #1594,
+   nodo #55, quote #288. Un sentinela archivado sale read-only y el ciclo aborta fail-closed. Añadir
+   un check en `cleanup-sentinela-ovs.mjs` (o similar) que ALERTE si un sentinela declarado quedó
+   archivado, en vez de solo fallar silenciosamente.
+6. **Nivel B — validar el `claude -p` REAL + auth del cron.** El arnés está verde (prueba con stub),
+   pero falta: (a) confirmar que `claude -p` está autenticado en el entorno del launchd; (b) evitar
+   que el cron se pise con una sesión interactiva en `main` (el binario `claude` NO respeta el
+   worktree-lock de la función) — considerar correr el Nivel B en un worktree dedicado; (c) iterar el
+   prompt de re-descubrimiento según los traces reales.
+
 ## Estado / pendientes
 
 - Enmascaradas recapturadas siempre (masked-ops.json): `AllCustomers`, `Customer`,
