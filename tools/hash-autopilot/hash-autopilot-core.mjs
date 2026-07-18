@@ -73,6 +73,20 @@ export function buildNeedsAttention(notCaptured, recipes, date) {
   return { date, ops };
 }
 
+// Poda de needs-attention.json: quita las ops que un run posterior YA resolvió (capturó
+// ✓ vigente o deployó el rotado). Evita que el Nivel B gaste una corrida confirmando algo
+// ya arreglado — el motor escribe needs-attention.json SOLO cuando hay algo que escalar,
+// así que si un tick posterior recaptura bien, el archivo VIEJO persistía indefinidamente
+// (hallazgo de la corrida real 2026-07-17). Devuelve el payload podado, o null si ya no
+// quedan ops (el caller borra el archivo). resolvedOps vacío → payload intacto.
+export function pruneNeedsAttention(payload, resolvedOps) {
+  if (!payload || !Array.isArray(payload.ops)) return null;
+  const resolved = new Set(resolvedOps || []);
+  const remaining = payload.ops.filter((o) => o && !resolved.has(o.op));
+  if (remaining.length === 0) return null;
+  return { ...payload, ops: remaining };
+}
+
 // Ops target que ninguna receta captura (huecos del mapa click-recipes.json).
 export function missingCoverage(recipes, targetOps) {
   const covered = new Set();

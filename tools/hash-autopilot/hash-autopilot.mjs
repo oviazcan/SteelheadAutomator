@@ -4,13 +4,13 @@
 // route-catalog.json que las cubre (selectRoutes), abre chromium headless con la
 // cookie de sesión, corre SOLO esas rutas, intercepta /graphql y captura los
 // hashes que el frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
-import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention } from './hash-autopilot-core.mjs';
+import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention } from './hash-autopilot-core.mjs';
 import { classifyCycleOutcomes, formatSentinelAlert } from './sentinel-health.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
@@ -421,6 +421,17 @@ async function main() {
       }
     }
   }
+  // Auto-limpieza del needs-attention: si este run resolvió ops que estaban escaladas en un
+  // needs-attention PREVIO (capturó ✓ vigente o deployó el rotado), quitarlas del archivo (o
+  // borrarlo si queda vacío) → el Nivel B no gasta una corrida confirmando algo ya arreglado
+  // (hallazgo de la corrida real 2026-07-17). Idempotente: sin archivo o sin cambios, no hace nada.
+  if (!DRY) {
+    const resolvedOps = [
+      ...results.filter((r) => r.verdict === 'vigente').map((r) => r.op),
+      ...(deployed ? plan.toDeploy.map((r) => r.op) : []),
+    ];
+    if (resolvedOps.length) pruneNeedsAttentionFile(resolvedOps);
+  }
   return { results, plan, deployed };
 }
 
@@ -436,6 +447,21 @@ function writeNeedsAttention(notCaptured, recipes, date) {
     writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify(payload, null, 2));
     console.log(`  señal de escalamiento escrita (${payload.ops.length} op).`);
   } catch (e) { console.log(`(no se pudo escribir needs-attention: ${String(e).slice(0, 80)})`); }
+}
+
+// Poda del needs-attention.json de las ops que ESTE run ya resolvió. writeNeedsAttention
+// solo se llama cuando hay algo que escalar, así que un archivo VIEJO persistía aunque un
+// tick posterior recapturara bien; esto lo limpia (hallazgo corrida real 2026-07-17).
+function pruneNeedsAttentionFile(resolvedOps) {
+  const p = join(RESULTS_DIR, 'needs-attention.json');
+  let payload;
+  try { payload = JSON.parse(readFileSync(p, 'utf8')); } catch { return; } // no existe/corrupto → nada
+  const before = Array.isArray(payload.ops) ? payload.ops.length : 0;
+  const pruned = pruneNeedsAttention(payload, resolvedOps);
+  try {
+    if (pruned === null) { rmSync(p); if (before) console.log('  needs-attention.json limpiado (ops escaladas ya resueltas).'); }
+    else if (pruned.ops.length !== before) { writeFileSync(p, JSON.stringify(pruned, null, 2)); console.log(`  needs-attention.json podado: ${before}→${pruned.ops.length} ops pendientes.`); }
+  } catch (e) { console.log(`(no se pudo podar needs-attention: ${String(e).slice(0, 80)})`); }
 }
 
 function persistResult(obj) {

@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture } = require('../hash-autopilot/hash-autopilot-core.mjs');
+const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention } = require('../hash-autopilot/hash-autopilot-core.mjs');
 
 const R = (op, verdict) => ({ op, verdict, cfgHash: 'old', liveHash: verdict === 'vigente' ? 'old' : 'new' });
 
@@ -84,4 +84,26 @@ test('missingCoverage: detecta ops target sin receta', () => {
 test('missingCoverage: todo cubierto → []', () => {
   const recipes = { r1: { captures: ['A', 'B'] } };
   assert.deepEqual(missingCoverage(recipes, ['A', 'B']), []);
+});
+
+test('pruneNeedsAttention: quita las ops resueltas y deja las pendientes', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }, { op: 'B' }, { op: 'C' }] };
+  const pruned = pruneNeedsAttention(payload, ['A', 'C']);
+  assert.deepEqual(pruned.ops.map((o) => o.op), ['B']);
+  assert.equal(pruned.date, 'd', 'preserva el resto del payload');
+});
+
+test('pruneNeedsAttention: todas resueltas → null (el caller borra el archivo)', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }, { op: 'B' }] };
+  assert.equal(pruneNeedsAttention(payload, ['A', 'B']), null);
+});
+
+test('pruneNeedsAttention: resolvedOps vacío → payload intacto', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }] };
+  assert.deepEqual(pruneNeedsAttention(payload, []).ops.map((o) => o.op), ['A']);
+});
+
+test('pruneNeedsAttention: payload nulo / sin ops → null (fail-safe)', () => {
+  assert.equal(pruneNeedsAttention(null, ['A']), null);
+  assert.equal(pruneNeedsAttention({ date: 'd' }, ['A']), null);
 });
