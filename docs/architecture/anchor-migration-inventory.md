@@ -170,3 +170,32 @@ solo aplica donde hay `data-testid`/`root_*`/`aria`/`href`/código.
 | `unit-autoconvert.js:109` | HAY HTML — recipe estructural (single input/unit + code) | Panel A: encabezado 'Per Part Count Unit Definitions:'  |
 | `unit-autoconvert.js:144` | HAY HTML — idem | Panel A: label hermano del input terminado en '/ Part:' |
 | `unit-autoconvert.js:160` | HAY HTML — idem | Panel A (dentro de findPeerInput): mismo label '/ Part: |
+
+
+## ✔️ Cierre de las 12 deudas mono-idioma + ruido (2026-07-17)
+
+### Migradas a estructura (código commiteado en workbench)
+| ancla | cómo quedó | commit |
+|---|---|---|
+| `unit-autoconvert:109/144/160` (Panel A) | `Core.isConvertible(código)` + estructura (no "/ Part:"); heading con fallback estructural `findPanelAContainer` | `7c26367` |
+| `cfdi-attacher:138` | 3er path de detección usa el `structMatch` idioma-indep (MuiSwitch+testid) | `7689327` |
+| `bill-autofill:162` | gate con fallback `[role=dialog] #root_DatosContables_Divisa` | `0d9e9e6` |
+
+### Resueltas como NO-deuda (documentadas, sin código)
+| ancla | por qué |
+|---|---|
+| `invoice-autofill:1089` (Income Account) | SH **no traduce** esa etiqueta (confirmado por el usuario); sin handle → texto EN es el techo |
+| `invoice-autofill:1801` ("Line #N") | EN no-traducido (HTML muestra "Line Items"/"Line 1" en inglés en instancia ES) |
+| `auto-router-batch:26` ("Listo para procesar") | **NO es traducción de UI de SH**: el nombre del nodo lo crea NUESTRO tooling (`CreateProcessNode`), es dato del tenant; además hay fallback por frecuencia. Opción futura idioma-indep: incluir `node.type==='SCANNER_NODE'` en el shape de `recipeNodes` (hoy no lo trae) |
+| `invoice-autofill:1125/1164` (ruido) | regex `Total: $X` — **"Total" es cognado ES/EN idéntico**, no falla al traducir |
+| `invoice-autofill:1155` (ruido) | `<p>INCOME</p>` es enum fijo en mayúsculas (no traducido), análogo a `ACCOUNTS_RECEIVABLE` |
+
+### Bloqueadas por evidencia (necesitan HTML/string — batch de captura)
+| ancla | qué necesito |
+|---|---|
+| `surtido-guard:197/207` | **wrapper HTML de una tarjeta del Workboard** con "Tareas Programadas:" (para anclar la tarjeta por estructura y pintar el verde idioma-indep) |
+| `load-calculator-modal:251` | **HTML del modal de Rack Types** (tiene `h2#form-dialog-title`; reanclar por estructura sin "rack type") |
+| `proceso-calculator:241` | **HTML de la ficha del PN** (vista sin modal) alrededor del combobox "Default Process:" (¿hay `component-id`/handle en la ficha como en el modal?) |
+| `invoice-default-tab:12` | **HTML de la barra de tabs** en `/Domains/N/Invoices` (para anclar el tab por `href`/`mode` en vez de "Packing Slips") |
+| `price-confirm-guard:406` | **string ES** del alert nativo "Error saving price" (observarlo con SH en español; es fail-safe cosmético, prioridad baja) |
+| `sensor-graph-hide-all:14` | **HTML del contenedor** "Current Values" (para scopear el testid `VisibilityIcon` y hacerlo primario sin perder precisión) |
