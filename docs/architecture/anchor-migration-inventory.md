@@ -133,3 +133,40 @@ El inventario lo generó un fan-out de 50 agentes; al revisar a mano el set `str
   verificar cada función** (¿lee/llena el mismo campo RJSF?). Pase focalizado, no en lote.
 - ✅ **bill-autofill:162** — el gate ya tiene fallback estructural `#root_DatosContables_Divisa`
   (hecho 2026-07-17); dejar el texto como primario (ambos funcionan).
+
+
+## 🎯 Scorecard (reframe 2026-07-17) — el trabajo está mayormente HECHO
+
+De las 73 anclas de SH-texto, **61 ya cumplen el estándar** y solo ~12 son deuda genuina:
+
+| estado | # | qué significa |
+|---|---|---|
+| ✅ ya idioma-indep | 10 | anclan por testid/id/aria/role/url/código — nada que hacer |
+| ✅ ya bilingüe (ES+EN) | 51 | cumplen el estándar como **último recurso legítimo**; solo "suben" a structural si el HTML revela un handle (la mayoría NO lo tiene: solo texto + CSS hasheado) |
+| 🔧 deuda real (mono-idioma) | 12 | necesitan el string del otro locale **o** un handle vía HTML |
+| ⚪ ruido | 3 | reclasificar |
+
+**Verdad de ingeniería:** "blindar TODO a HTML" topa donde SH no expone handle. Para los campos
+tipo `Vendor:`, `Divisa:`, `Invoice Date:` el HTML del modal muestra **solo texto + clase
+hasheada** → el texto bilingüe **es** la respuesta compliant, no un fallo. Subir a structural
+solo aplica donde hay `data-testid`/`root_*`/`aria`/`href`/código.
+
+### Deuda real restante (12 mono-idioma) — qué necesita cada una
+
+| ancla | necesita | nota |
+|---|---|---|
+| `auto-router-batch.js:26` | canon/tag del nodo "listo para procesar" (docs/processes) | Nombre de nodo del árbol de proceso/receta de SH: paso  |
+| `bill-autofill.js:162` | — | Heading del modal "Create Bill" / "Edit Bill" |
+| `cfdi-attacher.js:138` | — | Heading de un dialog anidado detectado más profundo en  |
+| `invoice-autofill.js:1089` | string ES o confirmar no-traduce | columna de tabla "Income Account" en la sub-table de da |
+| `invoice-autofill.js:1801` | string ES ("Line #N") | header de línea manual "Line #N" (modal Create Invoice  |
+| `invoice-default-tab.js:12` | string ES o HTML del tab (href/mode) | Tab "Packing Slips" en /Domains/{N}/Invoices |
+| `load-calculator-modal.js:251` | HTML del modal (reanclar por #form-dialog-title) | Heading del modal de Rack Types (h2#form-dialog-title)  |
+| `price-confirm-guard.js:406` | string ES del alert | Alert nativo de SH tras guardado fallido ('Error saving |
+| `proceso-calculator.js:241` | HTML de la ficha (¿component-id en vista sin modal?) | Label del combobox de proceso en la ficha del PN (vista |
+| `sensor-graph-hide-all.js:14` | — | Botón ojito de fila de sensor en la tabla 'Current Valu |
+| `surtido-guard.js:197` | HTML de tarjeta del board | Texto de tarjeta del Workboard 'Tareas Programadas:' (a |
+| `surtido-guard.js:207` | HTML de tarjeta del board | Texto de tarjeta del Workboard 'Proceso:' y 'WO:' (usad |
+| `unit-autoconvert.js:109` | HAY HTML — recipe estructural (single input/unit + code) | Panel A: encabezado 'Per Part Count Unit Definitions:'  |
+| `unit-autoconvert.js:144` | HAY HTML — idem | Panel A: label hermano del input terminado en '/ Part:' |
+| `unit-autoconvert.js:160` | HAY HTML — idem | Panel A (dentro de findPeerInput): mismo label '/ Part: |
