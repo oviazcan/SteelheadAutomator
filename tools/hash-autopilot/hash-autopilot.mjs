@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
 import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention } from './hash-autopilot-core.mjs';
+import { classifyCycleOutcomes, formatSentinelAlert } from './sentinel-health.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
@@ -192,6 +193,9 @@ async function main() {
   }
 
   // ── Fase C: capturar mutations stale vía ciclos sentinela headless ──────────
+  // Acumula el desenlace de cada ciclo para detectar SENTINELAS ROTOS/ARCHIVADOS
+  // (identidad no verificada → antes abortaba en silencio; ahora alerta en el correo).
+  const cycleOutcomes = [];
   if (capturableMuts.length) {
     const { runMutationCycle } = await import('./mutation-runner.mjs');
     const { makeDeps } = await import('./mutation-deps.mjs');
@@ -213,6 +217,7 @@ async function main() {
         console.log(`→ ciclo mutation "${op}" sobre sentinela ${entityType}`);
         const res = await runMutationCycle(page, route, sentinelsConfig, sink, deps);
         console.log(`   ${res.captured ? 'capturó ' + op : 'no capturó (' + (res.reason || 'sin hash') + ')'}`);
+        cycleOutcomes.push({ ...res, op, entityType, sentinelId: sentinelsConfig.entities[entityType]?.id });
       } catch (e) {
         console.log(`  ⚠️ ciclo "${op}" falló: ${String(e).slice(0, 120)}`);
         await page.screenshot({ path: `/tmp/sa-cycle-fail-${op}.png`, fullPage: true }).catch(() => {});
@@ -371,6 +376,11 @@ async function main() {
     const appletsOf = (op) => appletsForOp(op, scriptSources, (knownOps[op] || {}).usedBy || '');
     const line = (op) => `   • ${formatOpLine(op, appletsOf(op))}`;
     const sec = [];
+    // Sentinela ROTO/ARCHIVADO (identidad no verificada en Fase C): un sentinela declarado
+    // que quedó archivado hace abortar su ciclo en silencio. Alerta accionable (desarchivar).
+    const sentinelBroken = classifyCycleOutcomes(cycleOutcomes).broken;
+    const sentinelAlert = formatSentinelAlert(sentinelBroken);
+    if (sentinelAlert) sec.push(sentinelAlert);
     if (deployed && plan.toDeploy.length) {
       sec.push(`✅ CORREGIDAS Y DEPLOYADAS (${plan.toDeploy.length}):\n${plan.toDeploy.map((r) => `   • ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash.slice(0, 8)}… — applets: ${appletsOf(r.op).join(', ') || '—'}`).join('\n')}`);
     }
@@ -397,7 +407,7 @@ async function main() {
     }
     if (sec.length) {
       const nCorregidas = deployed ? plan.toDeploy.length : 0;
-      const nPendientes = notCapturedEscalate.length + uncoveredNew.length + pendingMuts.length + plan.suspicious.length;
+      const nPendientes = notCapturedEscalate.length + uncoveredNew.length + pendingMuts.length + plan.suspicious.length + sentinelBroken.length;
       const tipo = plan.massBrake ? 'revision' : nPendientes === 0 ? 'exito' : nCorregidas > 0 ? 'revision' : 'fallo';
       const asunto = `hash-autopilot: ${nCorregidas} corregida(s), ${nPendientes} pendiente(s)`;
       const ctx = formatUpdatesContext(productUpdates);
