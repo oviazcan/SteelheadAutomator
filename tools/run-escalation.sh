@@ -42,6 +42,12 @@ fi
 
 touch "$TRIED_MARK"   # marca idempotente ANTES de correr (evita loop si claude cuelga)
 cd "$REPO_ROOT"
+# El Nivel B corre con el login claude.ai (SUSCRIPCIÓN), NO con ANTHROPIC_API_KEY: si hay una
+# API key en el entorno toma PRECEDENCIA y, sin saldo, claude -p muere con "Credit balance is
+# too low" (visto en vivo 2026-07-17). Unset-earla hace que use el login claude.ai (probado:
+# responde). En el launchd real normalmente no está (no carga el .zshrc), pero esto lo blinda
+# si se hereda. Para usar la API key en su lugar, exporta SA_KEEP_API_KEY=1 (y recárgala).
+[ "${SA_KEEP_API_KEY:-0}" = "1" ] || unset ANTHROPIC_API_KEY
 # CLAUDE_BIN permite inyectar un stub en pruebas supervisadas; default = claude real (resuelto
 # vía ~/.local/bin, ver PATH arriba). --dangerously-skip-permissions: corrida desatendida.
 "${CLAUDE_BIN:-claude}" -p "$(cat "$PROMPT")" --dangerously-skip-permissions 2>&1 | tee "$STATE_DIR/escalation-last.log"
