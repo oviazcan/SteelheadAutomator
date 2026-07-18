@@ -166,9 +166,21 @@ tras la revisión contra el CÓDIGO (varios ya estaban resueltos en el código p
    el wrapper **pospone al próximo tick** (sin marcar idempotente → reintenta en 1h; `ESCALATION_FORCE=1`
    lo salta en pruebas). El binario directo no respeta el worktree-lock, así que este gate lo suple.
    El wrapper además **notifica** si `claude -p` sale != 0 (antes fallaba en silencio).
-   (c) ⏳ **Corrida real supervisada:** disparar `run-escalation.sh` con un `needs-attention.json` de
-   prueba (op VIGENTE, sin deploy; correo a un solo buzón vía `SA_NOTIFY_DEST`) para ver el flujo
-   end-to-end del agente e iterar el prompt según el trace real.
+   (c) ✅ **Corrida real supervisada — HECHA 2026-07-17.** Se disparó con un `needs-attention.json`
+   de prueba (`SensorDashboardQuery`, op vigente; correo solo a un buzón). El agente re-descubrió la
+   op reusando la infra del motor, confirmó que la receta dispara (hash == config), escribió el
+   **trace**, mandó **un** correo, borró el needs-attention y **respetó los guardrails** (read-only,
+   sin editar recetas, sin deploy, **cero git** → no pisó la sesión interactiva de `main`). Dos
+   hallazgos que solo la corrida real reveló: (1) el binario `claude` no resolvía en el entorno del
+   cron (fix del PATH, arriba); (2) `claude -p` moría con `Credit balance is too low` — una
+   `ANTHROPIC_API_KEY` sin saldo tomaba precedencia → el wrapper ahora la `unset`-ea para usar el
+   login **claude.ai** (`SA_KEEP_API_KEY=1` lo invierte). Ambos corregidos y re-validados en vivo.
+
+**7. Auto-limpiar `needs-attention.json` al recapturar — ✅ HECHO (hallazgo de la corrida real).**
+   El motor escribe `needs-attention.json` solo cuando hay algo que escalar, así que si un tick
+   recaptura ✓ una op previamente escalada, el archivo VIEJO persistía → el Nivel B gastaba una
+   corrida confirmando algo ya resuelto. `pruneNeedsAttention` (puro, 4 tests) + integración: al
+   final del run se podan las ops resueltas (✓ vigente o deployadas); si queda vacío se borra.
 
 ## Estado / pendientes
 
@@ -204,4 +216,6 @@ tras la revisión contra el CÓDIGO (varios ya estaban resueltos en el código p
 - Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Sentinela" activas rezagadas.
   Salud de sentinelas: `sentinel-health.mjs` alerta si un sentinela declarado quedó archivado.
 - Correo real: prueba de humo ✅ hecha (2026-07-17). Launchd de escalación: ✅ cargado.
-- Pendiente: **corrida real supervisada del Nivel B** (`claude -p`) — arnés y wrapper listos.
+- Nivel B: ✅ **corrida real validada end-to-end 2026-07-17** (re-descubrimiento + trace + correo +
+  guardrails). Wrapper corre con el login claude.ai (no la API key sin saldo). Auto-limpia el
+  needs-attention al recapturar. **No quedan pendientes accionables del hash-autopilot.**
