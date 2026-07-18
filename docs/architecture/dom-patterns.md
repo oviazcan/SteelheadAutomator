@@ -2,14 +2,46 @@
 
 **ANTES de empezar a escribir selectores o autollenadores DOM, pídele al usuario el wrapper HTML completo del bloque relevante** (el padre cercano que contiene tanto los labels visibles como los inputs/comboboxes). NO adivines la estructura iterando deploys — perdimos varias rondas en `invoice-autofill` (0.5.16 → 0.5.25) asumiendo `<label for>` cuando el modal manual usaba `<p>Label:</p>` con el field como SIBLING. Una sola inspección del wrapper hubiera resuelto todo en un commit.
 
-## Regla: anclajes de texto SIEMPRE bilingües (ES + EN)
+## Regla: anclar por ESTRUCTURA idioma-indep; el texto es último recurso (estándar 2026-07-17)
 
-Todo anclaje que dependa de **texto visible del UI** de Steelhead debe matchear **español e inglés**. La UI de SH cambia de idioma por usuario/config, y a veces es **mixta** en el mismo modal (visto 2026-07-09: un modal muestra "Modo:" en ES y "Per Part Count Unit Definitions" en EN a la vez). Un anclaje mono-idioma se rompe silenciosamente al cambiar el locale.
+Todo anclaje al UI de Steelhead debe ser **idioma-independiente** siempre que sea posible. La
+UI de SH cambia de idioma por usuario/config y a veces es **mixta** en el mismo modal, así que
+cualquier dependencia de texto visible es frágil por diseño — **incluso el texto bilingüe** (no
+cubre un tercer idioma ni un cambio de wording de SH). El objetivo es **blindar a futuro**, no
+solo tapar el locale de hoy.
 
-- Aplica a: headings de modal, botones ("Guardar"/"Save", "Cancelar"/"Cancel"), labels de campo, adornos ("/ Part:"/"/ Parte:", "Parts /"/"Partes /"), regex de detección de pantalla.
-- Patrón bueno: `create-order-autofill` → `isCreateOrderModalHeading` matchea `/crear orden de venta|create sales order/i`.
-- **No adivines la traducción:** obtén el string de AMBOS locales antes de anclar; si solo tienes uno, ánclalo y marca la deuda bilingüe en la bitácora.
-- Deuda conocida: `unit-autoconvert` (headingA EN-only, modoP ES-only, "/ Part:" EN-only). Audit repo-wide pendiente (task tracker + CLAUDE.md §"Trabajo con UI / DOM").
+### Jerarquía de anclaje (usa el primero disponible; nunca bajes de nivel sin necesidad)
+
+1. **Handles semánticos estables** — lo mejor:
+   - `data-steelhead-component-id="…"` (contenedores; ej. `CREATE_PART_NUMBER_DIALOG_DEFAULT_PROCESS`, `PART_NUMBER_PAGE_UNITS`).
+   - `data-testid="…"` (iconos MUI: `SendIcon`, `TodayIcon`, `CheckBoxIcon`, `DeleteIcon`…).
+   - ids RJSF `root_<field>` (`root_DatosContables_Divisa`, `root_DatosPrecio_*`), `id="form-dialog-title"`.
+   - `aria-label`, `role` (`dialog`, `tab`, `combobox`), `input[type=…]`, `href`/patrón de URL.
+   - **Datos idioma-indep**: códigos de unidad (KGM/LBR/DMK…), IDs, `option[value]` (`USD`/`MXN`).
+2. **Posición estructural relativa a (1)** — cuando (1) acota el bloque: "el `input[type=number]`
+   dentro del panel", "el `<p>` cuyo 1er token es un código de unidad", "la última `<th>`",
+   "el 2º input de la fila = recíproco" (patrón por POSICIÓN de `unit-autoconvert` Panel B).
+3. **Texto bilingüe ES+EN** — **solo** donde SH no expone ningún handle estable. Con **ambos**
+   strings confirmados (nunca adivinar la traducción). Marca la deuda si solo tienes uno.
+4. ❌ **NUNCA** clases CSS hasheadas (`css-q6y9ln`, `css-4w3ppi`, emotion/MUI) — regeneran en
+   cada build de SH; son **más** frágiles que el texto.
+
+### Realidad a aceptar
+
+- **No todo elemento tiene handle estable.** Ej.: la columna "Income Account" (invoice-autofill)
+  solo tiene texto + clase hasheada + react-select de id dinámico. Ahí "volverlo HTML" = anclar
+  por **posición** (frágil) o texto bilingüe. No inventes estructura que SH no da.
+- **Evidencia primero (regla dura):** antes de reanclar, pide/consigue el **wrapper HTML** del
+  bloque. No adivines ni la estructura ni la traducción.
+- Hallazgo 2026-07-17: los **modales contables** de SH (Bill, líneas de factura, unit
+  definitions) renderizan sus **etiquetas en inglés** aun con la instancia en español (solo los
+  datos salen en ES). No urge traducir esos anclajes, pero **sí** conviene migrarlos a
+  estructura cuando el handle existe (ej. bill-gate → `#root_DatosContables_Divisa`).
+
+Patrón bueno de referencia: `proceso-calculator.findProcessControl()` (component-id primario +
+texto fallback), `report-regen`/`sensor-graph-hide-all` (por `data-testid`), `bill-autofill`
+gate (fallback `[role=dialog] #root_DatosContables_Divisa`). Inventario y estado de migración
+en [`bilingual-anchoring-debt.md`](bilingual-anchoring-debt.md).
 
 ## Patrones de label en Steelhead vistos hasta ahora
 
