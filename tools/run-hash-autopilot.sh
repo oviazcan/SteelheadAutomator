@@ -39,6 +39,29 @@ AUTOPILOT_DIR="$REPO_ROOT/tools/hash-autopilot"
 STATE_DIR="$REPO_ROOT/tools/.hash-autopilot"
 mkdir -p "$STATE_DIR"
 
+# ── LATIDO (heartbeat) — prueba de vida del cron, empujada al git REMOTO ─────
+# Un watchdog en GitHub Actions (corre en la NUBE, no en esta Mac) vigila su frescura:
+# si el latido deja de llegar (Mac apagada/dormida, launchd descargado, wrapper muerto
+# antes de empezar) abre un issue. Es la ÚNICA señal que cubre "el cron local dejó de
+# correr" — el resto de alertas son reactivas (el motor avisa CUANDO corre). Se emite AL
+# INICIO (antes del refresh auth) → refleja "el launchd disparó", independiente de si la
+# captura luego tiene éxito (una auth caída ya la avisa el motor por su cuenta).
+# Plumbing (commit-tree + push --force a una rama HUÉRFANA ops/heartbeat) → NO toca el
+# branch/working-tree/índice del motor (que commitea en main). --no-verify: el latido no
+# es un deploy (el pre-push solo valida gh-pages, pero lo saltamos por higiene).
+# Best-effort: si el push falla (blip de red), no rompe la corrida.
+emit_heartbeat() {
+  ( cd "$REPO_ROOT" 2>/dev/null || exit 0
+    ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    blob="$(printf 'hash-autopilot heartbeat\nutc=%s\nhost=%s\n' "$ts" "$(hostname 2>/dev/null || echo unknown)" | git hash-object -w --stdin 2>/dev/null)" || exit 0
+    tree="$(printf '100644 blob %s\theartbeat.txt\n' "$blob" | git mktree 2>/dev/null)" || exit 0
+    commit="$(GIT_AUTHOR_NAME='sh-autopilot' GIT_AUTHOR_EMAIL='autopilot@local' GIT_COMMITTER_NAME='sh-autopilot' GIT_COMMITTER_EMAIL='autopilot@local' git commit-tree "$tree" -m "heartbeat $ts" 2>/dev/null)" || exit 0
+    git push --no-verify --force origin "${commit}:refs/heads/ops/heartbeat" >/dev/null 2>&1 || true
+  ) || true
+}
+echo "$(date '+%F %T') Latido (heartbeat → ops/heartbeat)…"
+emit_heartbeat
+
 # ── Refrescar el ROCP (force) ANTES de abrir cualquier navegador ────────────
 # El motor inyecta el access token en el localStorage del SPA headless. Si está por
 # vencer, el SPA lo refresca en su localStorage EFÍMERO → ROTA el refresh token

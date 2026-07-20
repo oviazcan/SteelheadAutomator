@@ -1,0 +1,80 @@
+name: hash-autopilot heartbeat watchdog
+
+# Vigía del GAP-1 de autonomía: corre en la NUBE de GitHub (NO en la Mac del operador),
+# lee el latido que el motor empuja a la rama `ops/heartbeat` en cada corrida
+# (tools/run-hash-autopilot.sh → emit_heartbeat) y ABRE un issue si el latido dejó de
+# llegar. Detecta "el cron local murió / la Mac se apagó o durmió / el launchd se
+# descargó" — la única falla que ninguna alerta reactiva del motor cubre (esas avisan
+# CUANDO el motor corre; si NO corre, sólo este vigía externo se entera).
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'   # cada 2 h (minuto :17, fuera del :00 congestionado)
+  workflow_dispatch: {}        # correr a mano para probar
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: heartbeat-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluar frescura del latido
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const THRESHOLD_HOURS = 3;                 // el motor corre 1×/h; >3h = algo murió
+            const LABEL = 'watchdog';
+            const TITLE = '🚨 hash-autopilot: el motor dejó de emitir latido';
+            const { owner, repo } = context.repo;
+
+            // 1) Leer el último commit de ops/heartbeat.
+            let branch;
+            try {
+              branch = await github.rest.repos.getBranch({ owner, repo, branch: 'ops/heartbeat' });
+            } catch (e) {
+              core.warning('La rama ops/heartbeat no existe todavía — el motor aún no emitió un latido. Nada que vigilar.');
+              return;
+            }
+            const when = new Date(branch.data.commit.commit.committer.date);
+            const ageH = (Date.now() - when.getTime()) / 3600000;
+            core.info(`Último latido: ${when.toISOString()} — hace ${ageH.toFixed(1)}h (umbral ${THRESHOLD_HOURS}h).`);
+
+            // 2) ¿Hay ya un issue de watchdog abierto? (para no spamear: uno solo, se comenta.)
+            const open = (await github.rest.issues.listForRepo({ owner, repo, state: 'open', labels: LABEL }))
+              .data.find(i => i.title === TITLE);
+
+            if (ageH > THRESHOLD_HOURS) {
+              const body = [
+                `El motor del **hash-autopilot** no emite latido desde hace **${ageH.toFixed(1)} h** (umbral ${THRESHOLD_HOURS} h).`,
+                ``,
+                `- Último latido: \`${when.toISOString()}\``,
+                `- Verificado por el watchdog: \`${new Date().toISOString()}\``,
+                ``,
+                `**Probable causa:** la Mac está apagada/dormida, el launchd \`com.ecoplating.steelhead-hash-autopilot\` se descargó, o \`run-hash-autopilot.sh\` muere antes de emitir el latido.`,
+                ``,
+                `**Qué revisar:** \`launchctl list | grep hash-autopilot\`, que la Mac esté despierta, y los logs en \`tools/.hash-autopilot/\`.`,
+              ].join('\n');
+              if (open) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: open.number,
+                  body: `Sigue sin latido — ${ageH.toFixed(1)} h sin señal (${new Date().toISOString()}).` });
+                core.setFailed(`Sin latido hace ${ageH.toFixed(1)}h (issue #${open.number} ya abierto).`);
+              } else {
+                const created = await github.rest.issues.create({ owner, repo, title: TITLE, body, labels: [LABEL] });
+                core.setFailed(`Sin latido hace ${ageH.toFixed(1)}h → issue #${created.data.number} creado.`);
+              }
+            } else {
+              // Latido fresco → auto-resolver el issue si estaba abierto (el sistema revivió).
+              if (open) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: open.number,
+                  body: `✅ Latido restablecido — hace ${ageH.toFixed(1)} h. Cerrando automáticamente.` });
+                await github.rest.issues.update({ owner, repo, issue_number: open.number, state: 'closed' });
+                core.info(`Issue #${open.number} cerrado (latido restablecido).`);
+              }
+              core.info('Latido fresco — el sistema está vivo. OK.');
+            }
