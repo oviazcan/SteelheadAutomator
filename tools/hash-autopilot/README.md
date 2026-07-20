@@ -182,6 +182,27 @@ tras la revisión contra el CÓDIGO (varios ya estaban resueltos en el código p
    corrida confirmando algo ya resuelto. `pruneNeedsAttention` (puro, 4 tests) + integración: al
    final del run se podan las ops resueltas (✓ vigente o deployadas); si queda vacío se borra.
 
+## Watchdog de latido (heartbeat externo) — resuelve el GAP-1 de autonomía
+
+El sistema era **ciego a su propia muerte**: todas las alertas son reactivas (el motor avisa
+CUANDO corre). Si el cron local dejaba de correr —Mac apagada/dormida, launchd descargado,
+wrapper muerto antes de empezar— nadie se enteraba. El watchdog cubre eso y **vive FUERA de la
+Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo que debe vigilar.
+
+- **Latido:** `run-hash-autopilot.sh` (`emit_heartbeat`) empuja AL INICIO de cada corrida un
+  commit huérfano con timestamp a la rama `ops/heartbeat` (plumbing `commit-tree` +
+  `push --force --no-verify` → NO toca main/working-tree/índice). Best-effort. Refleja "el
+  launchd disparó", independiente de si la captura luego tiene éxito (una auth caída ya la
+  avisa el motor por su cuenta).
+- **Vigía:** `.github/workflows/heartbeat-watchdog.yml` corre en la nube de GitHub (cron
+  `17 */2 * * *`, cada 2 h). Si el latido tiene >3 h → abre/actualiza un issue con label
+  `watchdog` (email al operador) y falla el job; si el latido revive → cierra el issue solo.
+  `workflow_dispatch` para probar a mano.
+- **Validado en vivo 2026-07-20:** los 3 caminos — fresco (success, sin issue), viejo 5 h
+  (failure + crea issue), restaurado (success + cierra el issue).
+- **Matiz honesto:** el cron de GitHub Actions se retrasa a veces (minutos, ocasionalmente
+  >1 h); sirve para "no corrió en 2-3 h", NO para detección al minuto. El umbral de 3 h da margen.
+
 ## Estado / pendientes
 
 - Enmascaradas recapturadas siempre (masked-ops.json): `AllCustomers`, `Customer`,
