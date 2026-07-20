@@ -58,7 +58,9 @@ const SurtidoGuard = (() => {
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
       'box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw;}',
       '.sa-sg-toast.err{border-left-color:#e8513a;}',
-      '.sa-sg-green{box-shadow:inset 5px 0 0 0 #13a36f !important;}',
+      // Acento verde VISIBLE: barra izquierda + tinte de fondo (el box-shadow solo era casi
+      // invisible sobre el cuerpo blanco de la tarjeta). El tinte se aplica al div de contenido.
+      '.sa-sg-green{box-shadow:inset 6px 0 0 0 #13a36f !important;background:rgba(19,163,111,.12) !important;border-radius:4px;}',
       '.sa-sg-msg{background:#3a1d1d;color:#f3c2c2;border:1px solid #6b2b2b;border-radius:8px;',
       'padding:10px 12px;margin:10px 0;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}'
     ].join('');
@@ -194,7 +196,22 @@ const SurtidoGuard = (() => {
   // NOTA: se refina con el HTML real de la tarjeta (selector de contenedor) en validación en vivo.
   function decorateCards() {
     if (!isWorkboardPage()) return;
-    const re = /Tareas Programadas:?/i;
+    const re = /Tareas Programadas:?/i;   // señal de "programada" (única señal de UI; deuda bilingüe)
+    // ── Anclaje idioma-indep: cada tarjeta del Workboard expone el link de OV con
+    //    data-steelhead-component-id estable. Subimos al div de CONTENIDO (flex 1 1), que es
+    //    donde el tinte verde queda visible (el cuerpo blanco de la tarjeta no lo taparía).
+    const soLinks = document.querySelectorAll(
+      '[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]'
+    );
+    let resolved = 0;
+    soLinks.forEach((soLink) => {
+      const content = soLink.closest('div[style*="flex: 1 1"]');
+      if (!content) return;
+      resolved++;
+      content.classList.toggle('sa-sg-green', re.test(content.textContent || ''));
+    });
+    if (resolved) return;   // solo cortamos si de verdad marcamos por component-id
+    // ── Fallback (sin component-id o sin div de contenido): TreeWalker por "Tareas Programadas:".
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
       acceptNode: (n) => re.test(n.nodeValue || '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
     });

@@ -20,6 +20,11 @@ const InvoiceDefaultTab = (() => {
   }
 
   function findPackingSlipsTab() {
+    // Idioma-indep: el toggle button del tab expone value="packing-slips" (atributo estable,
+    // no traducible). Verificado en el DOM del listado de facturas.
+    const byValue = document.querySelector('button[value="packing-slips"], [role="tab"][value="packing-slips"]');
+    if (byValue) return byValue;
+    // Fallback por texto (por si el atributo cambiara).
     const candidates = document.querySelectorAll('button, [role="tab"], a');
     for (const el of candidates) {
       const txt = (el.textContent || '').trim();

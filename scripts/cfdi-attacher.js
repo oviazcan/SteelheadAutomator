@@ -135,7 +135,12 @@ const CfdiAttacher = (() => {
           const dialog = node.querySelector?.('[class*="dialog"], [class*="modal"], [role="dialog"]');
           if (dialog) {
             const h = dialog.querySelector('h2, h3, h4, h5, h6, [class*="heading"]');
-            if (h && /send\s+(invoice|.*invoices)/i.test(h.textContent)) {
+            const dHeadingMatch = h && /send\s+(invoice|.*invoices)/i.test(h.textContent);
+            // Mismo structMatch idioma-independiente que los otros dos paths (≥2 MuiSwitch +
+            // icono Send/Email por data-testid) — sobrevive la traducción del heading.
+            const dStructMatch = (dialog.querySelectorAll('tr .MuiSwitch-root, tr [class*="Switch-root"]').length || 0) >= 2
+              && !!dialog.querySelector('[data-testid="SendIcon"], [data-testid="EmailOutlinedIcon"]');
+            if (dHeadingMatch || dStructMatch) {
               injectCheckbox(dialog);
               return;
             }

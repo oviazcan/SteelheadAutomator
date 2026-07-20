@@ -240,6 +240,8 @@ const ProcesosCalculator = (() => {
   // Label EXACTO del combobox de proceso (evita matchear el heading "PROCESO Y SPECS").
   const PROCESS_LABEL_RE = /^\s*default\s*process\s*:?\s*$/i;
   const PROCESS_COMPONENT_ID = 'CREATE_PART_NUMBER_DIALOG_DEFAULT_PROCESS';
+  // Ficha del NP (vista sin modal): el bloque "Process Setup" con el combobox Default Process.
+  const FICHA_PROCESS_COMPONENT_ID = 'PART_NUMBER_PAGE_PROCESS_SETUP';
   const MODAL_HEADING_RE = /proceso\s*y\s*specs|edit\s*part\s*number/i;
   const MATERIAL_LABEL_RE = /^\s*(material|metal\s*base|metal)\s*:?\s*$/i;
   const LINEA_LABEL_RE = /^\s*(?:l[ií]nea|line)\s*:?\s*$/i;
@@ -256,6 +258,11 @@ const ProcesosCalculator = (() => {
     // 1) Modal: contenedor estable por component-id.
     const c1 = _ctrlFrom(document.querySelector(`[data-steelhead-component-id="${PROCESS_COMPONENT_ID}"]`));
     if (c1) return c1;
+    // 1b) Ficha (vista sin modal): contenedor estable por component-id. El 1er combobox del
+    // bloque "Process Setup" es el Default Process (los demás son estaciones de la tabla de
+    // nodos). Idioma-indep: sustituye el fallback por texto "Default Process:".
+    const c1b = _ctrlFrom(document.querySelector(`[data-steelhead-component-id="${FICHA_PROCESS_COMPONENT_ID}"]`));
+    if (c1b) return c1b;
     // 2) Label EXACTO "Default Process:" → primer ancestro que contenga el combobox.
     const els = document.querySelectorAll('p, label, span');
     for (const el of els) {
