@@ -211,6 +211,16 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 - Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
+- **Mutations de REPORTES por CAPTURA-Y-ABORTA — VALIDADAS 4/4 headless (2026-07-20):**
+  `GenerateDuckDb` (botón "Regenerate Database" en `/Reporting/Databases`), `DeleteFolderById`,
+  `CreateUpdateReportWithPermissions`, `ArchiveReport` (los 3 en `/Reporting/Edit`). Entidades
+  `reportGenerateDb`/`reportFolderDelete`/`reportSaveAsNew`/`reportArchive` en sentinels-config.
+  **Requisito:** una CARPETA "Sentinela" + un REPORTE "Sentinela" **persistentes** (activos) en
+  `/Reporting/Edit` — el flujo de captura manual del operador los consume, así que deben quedar
+  vivos para el ciclo. Anclaje SIN clases jss (son dinámicas): filtro "Filter queries..." +
+  evaluate-mark (svg[aria-label] cuya fila innerText==="Sentinela"). Gate `capture-abort` en
+  `sentinels.mjs` permite correr destructivas (Delete…) y no-auto (Generate…) porque el abort da
+  cero efecto. Rotaron 2026-07-20; corregidas por scan (config 1.7.149) + GenerateDuckDb 1.7.151.
 - **Mutation por CAPTURA-Y-ABORTA validada headless END-TO-END: `AddPartsToWorkOrders`**
   (sentinela `workOrderPartCount` = OV #1603 "Sentinela" → OT #13678; handler
   `saveWoPartCountAborted` en `mutation-deps.mjs`). A diferencia de las de precios
