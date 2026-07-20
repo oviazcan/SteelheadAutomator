@@ -199,3 +199,26 @@ solo aplica donde hay `data-testid`/`root_*`/`aria`/`href`/código.
 | `invoice-default-tab:12` | **HTML de la barra de tabs** en `/Domains/N/Invoices` (para anclar el tab por `href`/`mode` en vez de "Packing Slips") |
 | `price-confirm-guard:406` | **string ES** del alert nativo "Error saving price" (observarlo con SH en español; es fail-safe cosmético, prioridad baja) |
 | `sensor-graph-hide-all:14` | **HTML del contenedor** "Current Values" (para scopear el testid `VisibilityIcon` y hacerlo primario sin perder precisión) |
+
+
+## ✔️ Cierre con el HTML del usuario (2026-07-20)
+
+El usuario pasó el HTML de las pantallas pendientes. Hallazgo transversal: **`data-steelhead-component-id`
+es un atributo REAL y vivo** en toda la UI de NP/Workboard. Vocabulario confirmado (útil a futuro):
+`PART_NUMBER_PAGE_PROCESS_SETUP`, `_PROCESS_DEFINITION`, `_PART_NUMBER_INSTRUCTIONS`, `_PROCESS_FILES`,
+`PART_NUMBER_PAGE_UNITS`, `CREATE_PART_NUMBER_DIALOG_DEFAULT_PROCESS`/`_OPT_IN_OUT`/`_MANAGE_SPECS`/
+`_PER_PART_COUNT_UNIT_DEFINITIONS`, `WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK`.
+
+### Migradas a estructura (código commiteado)
+| ancla | cómo quedó |
+|---|---|
+| **proceso-calculator:241** (ficha) | `findProcessControl` ahora prueba `[data-steelhead-component-id="PART_NUMBER_PAGE_PROCESS_SETUP"]` (1er combobox = Default Process) antes del texto. Idioma-indep. |
+| **invoice-default-tab:12** | `findPackingSlipsTab` ancla `button[value="packing-slips"]` (atributo estable), texto como fallback. |
+
+### Pendientes con hallazgo (necesitan trabajo focalizado, no cierre trivial)
+| ancla | hallazgo |
+|---|---|
+| **load-calculator-modal:251** | **BUG real**: el modal de *Edit* dice "…that can fit on **T204-FL01**" (sin "rack type"), así que `/rack type/i` **no lo matchea**. El modal NO tiene `component-id`; el título es `h2#form-dialog-title`. Ambos (create/edit) comparten "that can fit on". Fix pendiente: anclar por el diálogo tras `CreateEditPartsPerRackTypeQuery` + `#form-dialog-title`, o ampliar a "that can fit on" (aún EN). |
+| **surtido-guard:197/207** (verde) | Tengo el HTML de tarjeta (`WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK` existe en cada tarjeta). PERO el usuario reporta que **no pinta verde aunque la clase `sa-sg-green` SÍ se aplica** → es (también) un **bug de CSS/placement**: la clase cae en un `<div>` interno cuyo verde no se ve contra el cuerpo blanco de la tarjeta. Necesita fix de estilo (pintar borde/acento visible) + validación, aparte del anclaje. |
+| **sensor-graph-hide-all:14** | El diseño actual (aria-label primario + `data-testid` VisibilityIcon/Off fallback) es correcto; en la tabla "Current Values" cada fila tiene UN ojito. Sin `component-id` en el contenedor. **Se deja como está** (ya degrada idioma-indep). |
+| **price-confirm-guard:406** (alert) | El usuario no pudo reproducir el alert en español ("no me salió"). Fail-safe cosmético; **sin evidencia del string ES, se deja**. |
