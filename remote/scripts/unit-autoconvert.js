@@ -102,13 +102,33 @@
     return match;
   }
 
+  // Panel A por ESTRUCTURA (idioma-indep): el MuiPaper que contiene inputs de unidad
+  // convertibles (fuera de tabla), sin depender del texto del encabezado.
+  function findPanelAContainer() {
+    const inputs = document.querySelectorAll('.MuiPaper-root input');
+    for (const inp of inputs) {
+      if (inp.closest('tr.MuiTableRow-root')) continue;
+      const fc = inp.closest('.MuiFormControl-root');
+      const labelP = fc && fc.parentElement && fc.parentElement.querySelector(':scope > p.MuiTypography-root');
+      const code = labelP ? Core.unitCodeFromText(labelP.textContent) : '';
+      if (code && Core.isConvertible(code)) return inp.closest('.MuiPaper-root');
+    }
+    return null;
+  }
+
   function tryInjectToggles() {
     if (killSwitchOff()) return;
-    // Panel A: el encabezado es texto EXACTO "Per Part Count Unit Definitions:" (anclado
-    // para no agarrar un wrapper). Selector amplio: no dependemos del tag/clase exactos.
+    // Panel A: encabezado por texto EXACTO "Per Part Count Unit Definitions:" (primario, conserva
+    // la posición exacta del toggle en EN). FALLBACK estructural idioma-indep: si SH traduce el
+    // encabezado, ubicamos el contenedor por sus inputs de unidad convertibles.
     const headingA = findByText('p, span, strong, b, h1, h2, h3, h4, h5, h6, div, label', (t) =>
       /^per part count unit definitions:?\s*$/i.test(t));
-    if (headingA) injectToggleNear(headingA, 'after');
+    if (headingA) {
+      injectToggleNear(headingA, 'after');
+    } else {
+      const panelA = findPanelAContainer();
+      if (panelA) injectToggleNear(panelA.querySelector(':scope > p') || panelA.firstElementChild || panelA, 'after');
+    }
     const modoP = findByText('p.MuiTypography-root', (t) => /^(?:modo|mode):?$/i.test(t));
     if (modoP) injectToggleNear(modoP.parentElement, 'before');
   }
@@ -140,12 +160,15 @@
       if (rowInputs.indexOf(input) >= 1 || Core.isReciprocalAdornment(adorn)) return null;
       return { panel: 'B', code: Core.unitCodeFromText(nameP.textContent) };
     }
-    // Panel A: label hermano que termina en "/ Part:"
+    // Panel A: label hermano cuyo 1er token es un código de unidad CONVERTIBLE (KG/LBR/DMK/…).
+    // Idioma-indep: NO depende del texto "/ Part:" (que SH podría traducir a "/ Parte:").
+    // El código de unidad no se traduce; isConvertible ya excluye no-convertibles (LO, etc.).
     const fc = input.closest('.MuiFormControl-root');
     if (fc && fc.parentElement) {
       const labelP = fc.parentElement.querySelector(':scope > p.MuiTypography-root');
-      if (labelP && /\/\s*parts?:?\s*$/i.test(labelP.textContent.trim())) {
-        return { panel: 'A', code: Core.unitCodeFromText(labelP.textContent) };
+      const code = labelP ? Core.unitCodeFromText(labelP.textContent) : '';
+      if (code && Core.isConvertible(code)) {
+        return { panel: 'A', code };
       }
     }
     return null;
@@ -156,10 +179,12 @@
     if (panel === 'A') {
       const labels = document.querySelectorAll('p.MuiTypography-root');
       for (const p of labels) {
-        const t = p.textContent.trim();
-        if (/\/\s*parts?:?\s*$/i.test(t) && Core.unitCodeFromText(t) === code) {
-          return p.parentElement.querySelector('input');
-        }
+        // Distinguir Panel A de Panel B por ESTRUCTURA (idioma-indep): los labels de Panel B
+        // viven en una fila de tabla; los de Panel A no. Antes se usaba el texto "/ Part:".
+        if (p.closest('tr.MuiTableRow-root')) continue;
+        if (Core.unitCodeFromText(p.textContent) !== code) continue;
+        const inp = p.parentElement && p.parentElement.querySelector('input');
+        if (inp) return inp;
       }
       return null;
     }
