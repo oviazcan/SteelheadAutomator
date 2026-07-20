@@ -1,6 +1,6 @@
 {
-  "version": "1.7.146",
-  "lastUpdated": "2026-07-17T13:56",
+  "version": "1.7.147",
+  "lastUpdated": "2026-07-19T23:52",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -141,7 +141,7 @@
         "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0",
         "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db",
         "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de",
-        "AllReports": "53af42871901bae2c8bc8b96a048e07dc2ab016ca2fd72bd8adf68a92f8eb5c7",
+        "AllReports": "1f83add2747f8e0949a47ea4b6f95a67f8e1948a07fad9a5cf543d1ab4b8c00c",
         "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d",
         "AllQuotes": "40ee4d1cda66a7103f70df6c782f44d7b601420c4ea41c35aff27b46415f60d8",
         "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb",
@@ -189,8 +189,8 @@
         "AllSensorDashboards": "597eafd7bedf12072e68b2b1ac03f1088e2444a054e03340b1ee57a0116127ce",
         "SensorDashboardQuery": "038f482285493e4515999b3b3d32738c52cfa80b7fc2437efd48c6fa75a7d19a",
         "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705",
-        "GetRecomputableAt": "2da42344f14943872515c6a28544c6a0a0764a591fe42e95f79d73f80ed6618e",
-        "JobQuery": "e287b88e563452832a1f52dd832d506cdf94b62ce5dadc3e679561be3f66b36e",
+        "GetRecomputableAt": "c2483e87e8a5a0a2fe62e401bfd18506f05c0ee73c9905522e5e11053b7c3d05",
+        "JobQuery": "86432972dfe6ea75c523515801993374044dc99e909778024904a02e9ef1b4e3",
         "WorkOrder": "fc41042ebaacfbfcc09a57d171a1c0f87580921bbdbb0cec86fa34a24a39255e",
         "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284"
       }
