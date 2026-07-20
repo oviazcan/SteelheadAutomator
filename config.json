@@ -1,6 +1,6 @@
 {
-  "version": "1.7.147",
-  "lastUpdated": "2026-07-19T23:52",
+  "version": "1.7.148",
+  "lastUpdated": "2026-07-20T09:06",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -33,7 +33,7 @@
         "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9",
         "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57",
         "SetPartNumberPricesAsDefaultPrice": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293",
-        "UpdatePartNumber": "8693c2300fd47ecf48e52f7041f611d7d05ee3b7e3f1e202737c6f5f2c6fad02",
+        "UpdatePartNumber": "a2c3fb5491160f6539d4a52dba9894e9fa070ac4c55d309b1538a9f21405a67b",
         "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202",
         "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419",
         "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394",
