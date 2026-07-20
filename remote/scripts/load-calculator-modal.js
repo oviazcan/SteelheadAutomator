@@ -247,8 +247,16 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
   // ───────────────────────── DOM del modal ─────────────────────────
   function findModal() {
     const titles = document.querySelectorAll('h2#form-dialog-title, [id="form-dialog-title"]');
+    const pn = ((ctx && ctx.pnName) || '').trim();
     for (const t of titles) {
-      if (/rack type/i.test(t.textContent || '')) return t.closest('[role="dialog"]') || t.parentElement;
+      const txt = t.textContent || '';
+      // Idioma-indep: el título de este modal SIEMPRE incluye el NÚMERO DE PARTE (dato, no
+      // traducible) — "…number of <PN> that can fit on <rack|estación>". El '/rack type/i' viejo
+      // NO matcheaba el modal de EDIT ("…that can fit on T204-FL01"). Fallback a la frase EN
+      // invariante ("that can fit on" / "setting for number of") por si ctx aún no tiene el PN.
+      if ((pn && txt.includes(pn)) || /that can fit on|setting for number of|rack type/i.test(txt)) {
+        return t.closest('[role="dialog"]') || t.parentElement;
+      }
     }
     return null;
   }

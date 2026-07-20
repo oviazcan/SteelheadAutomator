@@ -222,3 +222,15 @@ es un atributo REAL y vivo** en toda la UI de NP/Workboard. Vocabulario confirma
 | **surtido-guard:197/207** (verde) | Tengo el HTML de tarjeta (`WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK` existe en cada tarjeta). PERO el usuario reporta que **no pinta verde aunque la clase `sa-sg-green` SÍ se aplica** → es (también) un **bug de CSS/placement**: la clase cae en un `<div>` interno cuyo verde no se ve contra el cuerpo blanco de la tarjeta. Necesita fix de estilo (pintar borde/acento visible) + validación, aparte del anclaje. |
 | **sensor-graph-hide-all:14** | El diseño actual (aria-label primario + `data-testid` VisibilityIcon/Off fallback) es correcto; en la tabla "Current Values" cada fila tiene UN ojito. Sin `component-id` en el contenedor. **Se deja como está** (ya degrada idioma-indep). |
 | **price-confirm-guard:406** (alert) | El usuario no pudo reproducir el alert en español ("no me salió"). Fail-safe cosmético; **sin evidencia del string ES, se deja**. |
+
+
+## ✔️ Fixes focalizados (2026-07-20) — surtido-guard verde + load-calc-modal bug
+
+| ancla | fix |
+|---|---|
+| **surtido-guard:197/207** (verde) | (1) **CSS**: el acento pasó de `box-shadow inset 5px` (casi invisible sobre el cuerpo blanco) a **barra izquierda 6px + tinte de fondo `rgba(19,163,111,.12)`** → verde visible. (2) **Anclaje idioma-indep**: `decorateCards` itera las tarjetas por `[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]` y aplica el verde al div de contenido (`flex 1 1`); "Tareas Programadas:" queda solo como señal de "programada" (deuda bilingüe menor). TreeWalker viejo como fallback. Pendiente validación visual en vivo. |
+| **load-calculator-modal:251** | **BUG resuelto**: `findModal` ancla por el **número de parte** del título (`ctx.pnName`, dato idioma-indep — el título siempre dice "…number of \<PN\> that can fit on…"), con fallback a la frase EN invariante. El `/rack type/i` viejo NO matcheaba el modal de **Edit** ("…that can fit on T204-FL01"). Ahora cubre create Y edit, y sobrevive traducción. |
+
+**Estado final de las 6 pantallas del batch:** proceso-calculator ✅, invoice-default-tab ✅,
+surtido-guard verde ✅ (pend. validación visual), load-calc-modal ✅, sensor-graph-hide-all
+(se deja, ya idioma-indep), price-confirm alert (sin repro ES, se deja).
