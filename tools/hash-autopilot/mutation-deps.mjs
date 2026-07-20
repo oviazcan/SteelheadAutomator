@@ -331,6 +331,108 @@ async function saveWoPartCountAborted(page, sink, { url }) {
   if (dbg) console.log(`       [dbg] Save → ${sink && sink.hashes && sink.hashes.AddPartsToWorkOrders ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
+// ── Mutations de REPORTES (captura-y-aborta) ────────────────────────────────
+// Las 4 mutations del módulo Reporting rotaron el 2026-07-20 (report-liberator usa las 3 de
+// /Reporting/Edit; report-regen usa GenerateDuckDb). Se recapturan por CAPTURA-Y-ABORTA: se
+// marca la op en sink.abortOps ANTES de clicar el disparador → el interceptor registra el
+// sha256Hash y ABORTA el request → CERO efecto (no borra carpeta, no archiva, no crea reporte,
+// no regenera la DB). Doble candado: el loadObject verifica que existe el objeto "Sentinela"
+// (isSentinel fail-closed) + el abort. Selectores idioma-independientes por data-testid/aria-label
+// (el DOM real los trae en inglés aunque la UI esté en español); botones de modal bilingües.
+// Flujo y DOM confirmados por el operador 2026-07-20.
+const REPORTING_EDIT = '/Reporting/Edit';
+
+// Fila (div.jss24) del árbol de "Saved Reports" cuyo nombre normalizado es EXACTAMENTE
+// "Sentinela" y que contiene el icono de acción dado (Delete folder = carpeta; Archive
+// report = reporte). El :text-is normaliza whitespace → distingue "Sentinela" exacto.
+function reportingRowSentinela(page, ariaLabel) {
+  return page.locator(`div.jss24:has(div.jss50:text-is("Sentinela")):has(svg[aria-label="${ariaLabel}"])`).first();
+}
+
+// GenerateDuckDb: botón "Regenerate Database" (CloudDownloadIcon) en /Reporting/Databases.
+async function generateDuckDbAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('GenerateDuckDb');
+  await page.goto(`${BASE}/Reporting/Databases`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const btnSel = 'button:has(svg[data-testid="CloudDownloadIcon"])';
+  await page.locator(btnSel).first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  const deadline = Date.now() + 25000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.GenerateDuckDb)) {
+    await page.locator(btnSel).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Regenerate DB → ${sink && sink.hashes && sink.hashes.GenerateDuckDb ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// DeleteFolderById: basura de la carpeta "Sentinela" → modal "Delete Folder" → Delete.
+async function deleteFolderSentinelaAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('DeleteFolderById');
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const row = reportingRowSentinela(page, 'Delete folder');
+  await row.waitFor({ state: 'visible', timeout: 25000 });
+  const del = row.locator('svg[data-testid="DeleteOutlinedIcon"][aria-label="Delete folder"]').first();
+  await del.scrollIntoViewIfNeeded().catch(() => {});
+  await del.click({ force: true, timeout: 10000 });
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Delete Folder|Eliminar carpeta/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 12000 });
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.DeleteFolderById)) {
+    await dialog.locator('button').filter({ hasText: /^(Delete|Eliminar)$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Delete Folder → ${sink && sink.hashes && sink.hashes.DeleteFolderById ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// CreateUpdateReportWithPermissions: "Guardar informe" (SaveIcon) → nombre "Sentinela" → "Guardar como nuevo".
+async function saveReportAsNewAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('CreateUpdateReportWithPermissions');
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const saveBtn = page.locator('button:has(svg[data-testid="SaveIcon"])').first();
+  await saveBtn.waitFor({ state: 'visible', timeout: 25000 });
+  await saveBtn.click({ force: true, timeout: 10000 });
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Guardar informe|Save Report/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 12000 });
+  // input de NOMBRE (MUI, no los react-select de carpeta/permisos) → "Sentinela".
+  await dialog.locator('input.MuiOutlinedInput-input').first().fill('Sentinela').catch(() => {});
+  await page.waitForTimeout(500);
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.CreateUpdateReportWithPermissions)) {
+    await dialog.locator('button').filter({ hasText: /Guardar como nuevo|Save as New/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Save as New → ${sink && sink.hashes && sink.hashes.CreateUpdateReportWithPermissions ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// ArchiveReport: archivar la línea del reporte "Sentinela" (ArchiveIcon) → confirmar "Sí"/"Yes".
+async function archiveReportSentinelaAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('ArchiveReport');
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const row = reportingRowSentinela(page, 'Archive report');
+  await row.waitFor({ state: 'visible', timeout: 25000 });
+  const arch = row.locator('svg[data-testid="ArchiveIcon"][aria-label="Archive report"]').first();
+  await arch.scrollIntoViewIfNeeded().catch(() => {});
+  await arch.click({ force: true, timeout: 10000 });
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /archive this report|archivar/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 12000 });
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.ArchiveReport)) {
+    await dialog.locator('button').filter({ hasText: /^(Sí|Si|Yes)$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Archive Report → ${sink && sink.hashes && sink.hashes.ArchiveReport ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// Load compartido: verifica que la fila "Sentinela" del tipo dado existe (isSentinel fail-closed).
+async function loadReportingRow(page, ariaLabel) {
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const ok = await reportingRowSentinela(page, ariaLabel)
+    .waitFor({ state: 'visible', timeout: 25000 }).then(() => 1).catch(() => 0);
+  return { name: ok ? 'Sentinela' : '' };
+}
+
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -475,6 +577,39 @@ const HANDLERS = {
       // no clicar por error otro checkbox si la página navegó. Un run INTERRUMPIDO
       // podría dejar un evento sin archivar (fuga menor, evento sentinela inofensivo).
     },
+  },
+  // ── REPORTES (captura-y-aborta) — cero efecto, restore solo desmarca la op del sink ──
+  reportGenerateDb: {
+    async load(page) {
+      await page.goto(`${BASE}/Reporting/Databases`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const ok = await page.locator('button:has(svg[data-testid="CloudDownloadIcon"])').first()
+        .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      return { name: ok ? 'Sentinela (regenerate-db capture-abort)' : '' };
+    },
+    async mutate(page, { sink }) { await generateDuckDbAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('GenerateDuckDb'); },
+  },
+  reportFolderDelete: {
+    async load(page) { return loadReportingRow(page, 'Delete folder'); },
+    async mutate(page, { sink }) { await deleteFolderSentinelaAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('DeleteFolderById'); },
+  },
+  reportSaveAsNew: {
+    async load(page) {
+      // No requiere el reporte Sentinela existente (crea uno nuevo y aborta): verifica el
+      // botón "Guardar informe" (contexto del editor de reportes) → isSentinel fail-closed.
+      await page.goto(`${BASE}/Reporting/Edit`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const ok = await page.locator('button:has(svg[data-testid="SaveIcon"])').first()
+        .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      return { name: ok ? 'Sentinela (save-as-new capture-abort)' : '' };
+    },
+    async mutate(page, { sink }) { await saveReportAsNewAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('CreateUpdateReportWithPermissions'); },
+  },
+  reportArchive: {
+    async load(page) { return loadReportingRow(page, 'Archive report'); },
+    async mutate(page, { sink }) { await archiveReportSentinelaAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('ArchiveReport'); },
   },
 };
 

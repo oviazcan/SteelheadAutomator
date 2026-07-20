@@ -82,6 +82,46 @@
       ],
       "_estrategia": "capture-abort",
       "_nota": "OV Sentinela 1603 (nombre 'Sentinela'), contiene la OT #13678. AddPartsToWorkOrders se dispara al GUARDAR el modal 'Ajustar Cantidad de Piezas de OT' (icono IsoIcon) de la OT en el detalle de la OV → CAPTURA-Y-ABORTA (sink.abortOps): el handler marca la op ANTES de clicar Guardar, el interceptor registra el sha256Hash y ABORTA el request → cero persistencia (la OT sigue en Cant. 1/1, verificado). DOBLE candado: la OV se llama 'Sentinela' (isSentinel fail-closed) + aborta. Ancla del botón IDIOMA-INDEPENDIENTE: 'button[aria-label]:has(svg[data-testid=\"IsoIcon\"])' (el otro IsoIcon de la sección BOM NO tiene aria-label → no matchea; NO se usa el TEXTO del aria-label, solo su presencia). Input: único del dialog (Playwright fill maneja el setter React); Guardar/Save bilingüe. AUTO-DEPLOYABLE: como el request se aborta no hay responseOk, pero el motor PRUEBA el liveHash capturado con variables VACÍAS (validación de tipos, sin ejecutar la escritura) y si el server lo reconoce (classifyProbe 'vigente') lo trata como validado → rotadoValidado → AUTO-DEPLOY (cero escritura en todo el ciclo; ver isValidatedCapture). VERIFICADO EN VIVO 2026-07-17: hash rotó a5cc8991→70d5a792 (probe directo: reconoce 70d5a792, a5cc8991 da 'Must provide a query string'); primer deploy a mano, y el path de auto-deploy validado end-to-end (config revertido → 'rotadoValidado'). usedBy: po-reconciler, wo-completer."
+    },
+    "reportGenerateDb": {
+      "id": "reporting-generate-db",
+      "screenPath": "/Reporting/Databases",
+      "marker": "(botón global, sin objeto)",
+      "_para": [
+        "GenerateDuckDb"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "GenerateDuckDb (usedBy report-regen) por CAPTURA-Y-ABORTA en /Reporting/Databases → botón 'Regenerate Database' (svg[data-testid=\"CloudDownloadIcon\"]). Se marca la op en abortOps ANTES de clicar → el interceptor aborta → NO regenera la DB. Sin objeto Sentinela (botón global); el load verifica el botón presente. id string (no numérico) — no se usa en la URL, solo para pasar el gate (mutEntityType exige id truthy). Rotó 2026-07-20 (cfg 8f29d420 muerto). El gate 'no-auto' (Generate… no matchea prefijos) lo permite por _estrategia:capture-abort."
+    },
+    "reportFolderDelete": {
+      "id": "reporting-folder-sentinela",
+      "screenPath": "/Reporting/Edit",
+      "marker": "Sentinela",
+      "_para": [
+        "DeleteFolderById"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "DeleteFolderById (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre la CARPETA 'Sentinela' del árbol de Saved Reports en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Sentinela') + svg[aria-label='Delete folder']. Clic basura → modal 'Delete Folder' → botón Delete/Eliminar → aborta (NO borra). Doble candado: fila anclada a 'Sentinela' exacto (isSentinel) + abort. Destructiva (Delete…): el gate la permite SOLO por _estrategia:capture-abort. Rotó 2026-07-20 (cfg 282f83cf muerto). Requiere una carpeta 'Sentinela' persistente en /Reporting/Edit."
+    },
+    "reportSaveAsNew": {
+      "id": "reporting-save-as-new",
+      "screenPath": "/Reporting/Edit",
+      "marker": "Sentinela",
+      "_para": [
+        "CreateUpdateReportWithPermissions"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "CreateUpdateReportWithPermissions (usedBy report-liberator) por CAPTURA-Y-ABORTA en /Reporting/Edit → botón 'Guardar informe'/'Save Report' (svg[data-testid=\"SaveIcon\"]) → modal → input nombre (MuiOutlinedInput) = 'Sentinela' → botón 'Guardar como nuevo'/'Save as New' → aborta (NO crea el reporte). No requiere objeto existente; el load verifica el botón 'Guardar informe'. Rotó 2026-07-20 (cfg 6c7753a4 muerto)."
+    },
+    "reportArchive": {
+      "id": "reporting-report-sentinela",
+      "screenPath": "/Reporting/Edit",
+      "marker": "Sentinela",
+      "_para": [
+        "ArchiveReport"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "ArchiveReport (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre el REPORTE 'Sentinela' en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Sentinela') + svg[aria-label='Archive report']. Clic archivar → modal 'Confirmar' ('Are you sure you wish to archive this report?') → botón 'Sí'/'Yes' → aborta (NO archiva). Doble candado: fila 'Sentinela' exacta + abort. Rotó 2026-07-20 (cfg 796eb308 muerto). Requiere un reporte 'Sentinela' persistente en /Reporting/Edit."
     }
   },
   "_dominio": "TLC/344 (Toluca — los sentinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
