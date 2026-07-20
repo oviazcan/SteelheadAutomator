@@ -342,11 +342,25 @@ async function saveWoPartCountAborted(page, sink, { url }) {
 // Flujo y DOM confirmados por el operador 2026-07-20.
 const REPORTING_EDIT = '/Reporting/Edit';
 
-// Fila (div.jss24) del árbol de "Saved Reports" cuyo nombre normalizado es EXACTAMENTE
-// "Sentinela" y que contiene el icono de acción dado (Delete folder = carpeta; Archive
-// report = reporte). El :text-is normaliza whitespace → distingue "Sentinela" exacto.
-function reportingRowSentinela(page, ariaLabel) {
-  return page.locator(`div.jss24:has(div.jss50:text-is("Sentinela")):has(svg[aria-label="${ariaLabel}"])`).first();
+// Aísla la fila "Sentinela" del árbol de Saved Reports. Las clases jssNN del DOM que dio el
+// operador son JSS DINÁMICAS (cambian por sesión) → NO se pueden usar. Se FILTRA por
+// "Filter queries..." (el árbol es largo/virtualizado; la fila no está en el DOM hasta filtrar)
+// y se ancla por aria-label + innerText de la fila vía evaluate-mark: se marca con data-sa-rep
+// el svg[aria-label] cuya fila (ancestro) innerText==="Sentinela". Verificado headless 2026-07-20
+// (hit 1/1 tras filtrar, con la carpeta+reporte "Sentinela" persistentes creados por el operador).
+async function filterReportTree(page, term) {
+  const f = page.locator('input[placeholder*="ilter quer" i], input[placeholder*="iltrar" i]').first();
+  if (await f.count().catch(() => 0)) { await f.fill(term).catch(() => {}); await page.waitForTimeout(2000); }
+}
+async function markSentinelaAction(page, ariaLabel) {
+  return page.evaluate((aria) => {
+    document.querySelectorAll('[data-sa-rep]').forEach((e) => e.removeAttribute('data-sa-rep'));
+    for (const svg of document.querySelectorAll(`svg[aria-label="${aria}"]`)) {
+      let el = svg;
+      for (let i = 0; i < 6 && el; i++) { el = el.parentElement; if (el && el.innerText && el.innerText.trim() === 'Sentinela') { svg.setAttribute('data-sa-rep', '1'); return true; } }
+    }
+    return false;
+  }, ariaLabel).catch(() => false);
 }
 
 // GenerateDuckDb: botón "Regenerate Database" (CloudDownloadIcon) en /Reporting/Databases.
@@ -369,13 +383,13 @@ async function deleteFolderSentinelaAborted(page, sink) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('DeleteFolderById');
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  const row = reportingRowSentinela(page, 'Delete folder');
-  await row.waitFor({ state: 'visible', timeout: 25000 });
-  const del = row.locator('svg[data-testid="DeleteOutlinedIcon"][aria-label="Delete folder"]').first();
-  await del.scrollIntoViewIfNeeded().catch(() => {});
-  await del.click({ force: true, timeout: 10000 });
-  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Delete Folder|Eliminar carpeta/i }).first();
-  await dialog.waitFor({ state: 'visible', timeout: 12000 });
+  await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  await filterReportTree(page, 'Sentinela');
+  if (!(await markSentinelaAction(page, 'Delete folder'))) { if (dbg) console.log('       [dbg] carpeta Sentinela no hallada'); return; }
+  await page.locator('[data-sa-rep="1"]').scrollIntoViewIfNeeded().catch(() => {});
+  await page.locator('[data-sa-rep="1"]').click({ force: true, timeout: 10000 }).catch(() => {});
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Delete Folder|Eliminar/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.DeleteFolderById)) {
     await dialog.locator('button').filter({ hasText: /^(Delete|Eliminar)$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
@@ -410,13 +424,13 @@ async function archiveReportSentinelaAborted(page, sink) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('ArchiveReport');
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  const row = reportingRowSentinela(page, 'Archive report');
-  await row.waitFor({ state: 'visible', timeout: 25000 });
-  const arch = row.locator('svg[data-testid="ArchiveIcon"][aria-label="Archive report"]').first();
-  await arch.scrollIntoViewIfNeeded().catch(() => {});
-  await arch.click({ force: true, timeout: 10000 });
+  await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  await filterReportTree(page, 'Sentinela');
+  if (!(await markSentinelaAction(page, 'Archive report'))) { if (dbg) console.log('       [dbg] reporte Sentinela no hallado'); return; }
+  await page.locator('[data-sa-rep="1"]').scrollIntoViewIfNeeded().catch(() => {});
+  await page.locator('[data-sa-rep="1"]').click({ force: true, timeout: 10000 }).catch(() => {});
   const dialog = page.locator('[role="dialog"]').filter({ hasText: /archive this report|archivar/i }).first();
-  await dialog.waitFor({ state: 'visible', timeout: 12000 });
+  await dialog.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.ArchiveReport)) {
     await dialog.locator('button').filter({ hasText: /^(Sí|Si|Yes)$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
@@ -428,9 +442,9 @@ async function archiveReportSentinelaAborted(page, sink) {
 // Load compartido: verifica que la fila "Sentinela" del tipo dado existe (isSentinel fail-closed).
 async function loadReportingRow(page, ariaLabel) {
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  const ok = await reportingRowSentinela(page, ariaLabel)
-    .waitFor({ state: 'visible', timeout: 25000 }).then(() => 1).catch(() => 0);
-  return { name: ok ? 'Sentinela' : '' };
+  await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  await filterReportTree(page, 'Sentinela');
+  return { name: (await markSentinelaAction(page, ariaLabel)) ? 'Sentinela' : '' };
 }
 
 const HANDLERS = {
