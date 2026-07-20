@@ -203,15 +203,15 @@ const SurtidoGuard = (() => {
     const soLinks = document.querySelectorAll(
       '[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]'
     );
-    if (soLinks.length) {
-      soLinks.forEach((soLink) => {
-        const content = soLink.closest('div[style*="flex: 1 1"]');
-        if (!content) return;
-        content.classList.toggle('sa-sg-green', re.test(content.textContent || ''));
-      });
-      return;
-    }
-    // ── Fallback (DOM sin el component-id): TreeWalker por texto "Tareas Programadas:".
+    let resolved = 0;
+    soLinks.forEach((soLink) => {
+      const content = soLink.closest('div[style*="flex: 1 1"]');
+      if (!content) return;
+      resolved++;
+      content.classList.toggle('sa-sg-green', re.test(content.textContent || ''));
+    });
+    if (resolved) return;   // solo cortamos si de verdad marcamos por component-id
+    // ── Fallback (sin component-id o sin div de contenido): TreeWalker por "Tareas Programadas:".
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
       acceptNode: (n) => re.test(n.nodeValue || '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
     });
