@@ -1,6 +1,6 @@
 {
-  "version": "1.7.150",
-  "lastUpdated": "2026-07-20T15:36",
+  "version": "1.7.151",
+  "lastUpdated": "2026-07-20T15:54",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -74,7 +74,7 @@
         "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec",
         "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3",
         "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f",
-        "GenerateDuckDb": "8f29d420e186dce3f1617c80e2b890a18fe3db49288c44f38345a7d26a65eaa0",
+        "GenerateDuckDb": "f412b9eca03309b5ea9cfa20090b4f0c75f1e30632b6a02cda119fde3418daa0",
         "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed",
         "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823",
         "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6",
