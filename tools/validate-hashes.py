@@ -27,6 +27,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Fuentes de hashes ADEMÁS de la extensión (Reportes SH + PowerTools). hash_sources
+# vive en tools/ (mismo dir que este script) → lo aseguramos en sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hash_sources import load_external_sources, build_validation_items  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "remote" / "config.json"
 OUT_DIR = REPO_ROOT / "tools" / ".hash-validation"
@@ -133,11 +138,14 @@ def main() -> int:
         wl = json.loads(WHITELIST_PATH.read_text())
         whitelist_ops = {entry["operation"] for entry in wl.get("falseStale", [])}
 
-    items: list[tuple[str, str, str]] = []  # (kind, opName, hash)
-    for op, h in queries.items():
-        items.append(("query", op, h))
-    for op, h in mutations.items():
-        items.append(("mutation", op, h))
+    # Unir las 3 fuentes que consumen la API de Steelhead con hashes propios:
+    #   extension (config.json) + reportes-sh (steelhead_client.py) + powertools (sync/*.py).
+    # Dedup por (op, hash): cada par único se prueba UNA vez; las fuentes que lo usan
+    # se listan en entry["sources"]. Así un hash que solo usa Reportes SH/PowerTools se
+    # detecta igual (incidente 2026-07-20: GenerateDuckDb rotó y RSH quedó con el muerto).
+    external = load_external_sources()
+    ext_src_counts = {src: len(ops) for src, ops in external.items()}
+    items = build_validation_items(queries, mutations, external)  # [{kind,operation,hash,sources}]
 
     total = len(items)
     ok: list[dict] = []
@@ -146,13 +154,17 @@ def main() -> int:
     unknown: list[dict] = []
     auth_errors: list[dict] = []
 
-    print(f"Validando {total} hashes ({len(queries)} queries + {len(mutations)} mutations)...")
+    ext_desc = ", ".join(f"{src}={n}" for src, n in ext_src_counts.items()) or "ninguna externa"
+    print(f"Validando {total} hashes únicos por (op,hash). "
+          f"Fuentes: extension={len(queries) + len(mutations)}, {ext_desc}")
     if whitelist_ops:
         print(f"Whitelist activa: {len(whitelist_ops)} operación(es) (falsos positivos conocidos)")
     started = time.time()
-    for idx, (kind, op, h) in enumerate(items, 1):
+    for idx, item in enumerate(items, 1):
+        kind, op, h, sources = item["kind"], item["operation"], item["hash"], item["sources"]
+        src_tag = ",".join(sources)
         klass, reason = _probe(client.session, url, headers, op, h)
-        entry = {"kind": kind, "operation": op, "hash": h, "reason": reason}
+        entry = {"kind": kind, "operation": op, "hash": h, "sources": sources, "reason": reason}
         # Whitelist: si un op está marcado como falso-positivo-conocido y el
         # validador lo reporta stale, lo bajamos a 'skipped' (no alerta).
         if klass == "stale" and op in whitelist_ops:
@@ -164,7 +176,7 @@ def main() -> int:
             ok.append(entry)
         elif klass == "stale":
             stale.append(entry)
-            print(f"  [STALE] {kind} {op}: {reason}")
+            print(f"  [STALE] {kind} {op} [{src_tag}]: {reason}")
         elif klass == "auth":
             auth_errors.append(entry)
             print(f"  [AUTH] {op}: {reason}")
@@ -211,7 +223,7 @@ def main() -> int:
         print()
         print("STALE:")
         for s in stale:
-            print(f"  - {s['kind']} {s['operation']}")
+            print(f"  - {s['kind']} {s['operation']} [{','.join(s.get('sources', []))}]")
         return 1
     if auth_errors:
         return 2
