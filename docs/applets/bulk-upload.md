@@ -2,6 +2,36 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
+## feat 1.5.40 (2026-07-20) — Fast-path SOLO_PRECIO [implementado, flag OFF, PENDIENTE validación en vivo]
+Cuando una corrida solo cambia **precios** de PN que **ya existen** (cero enriquecimiento: ni
+specs/params/racks/dims/labels/predictivos), el atajo **salta STEP 6 (enrich)** e va directo a
+precios + STEP 8.
+
+**Por qué importa.** STEP 6 corre `runPool(parts, enrichWorker, …)` (`bulk-upload.js`) que pega
+**`SavePartNumber` por CADA PN existente** aunque no haya nada que aplicar — N round-trips ~0.4s
+c/u (miles de PN = minutos perdidos). Peor: ese `SavePartNumber` hace **REPLACE** de arrays, así
+que saltarlo en solo-precio no es solo más rápido, es **más seguro** (no toca specs/dims que el
+CSV no trae). STEP 6a/6b/7 ya son no-ops naturales en este caso (sus candidatos filtran por
+arrays vacíos), así que **el único guard nuevo es alrededor del `runPool` de STEP 6**.
+
+**Diseño (mínimamente invasivo).**
+- La **decisión** es pura y testeada: `Parse.planSoloPrecioFastPath(runIntent, flag)` — true SOLO
+  con el flag ON y `runIntent === 'SOLO_PRECIO'` (de `classifyRunIntent`, que es por **corrida
+  completa**: una sola fila con enrich, o un solo PN nuevo, desactiva el atajo → protege contra
+  pérdida de datos). Golden test `tools/test/bulk-upload-solo-precio-fastpath.test.js` (13 casos,
+  incl. 2 invariantes de seguridad + cobertura de `classifyRunIntent`, que antes no tenía test).
+- `runIntent` vivía solo en `showPreview` (UI, badge) y **nunca llegaba a `execute()`**; se
+  **recalcula** dentro de `execute()` sobre `parts`/`pnStatus` ya filtrados a lo que el operador
+  confirmó (`allExisting` = todas las filas seleccionadas son `existing`).
+- **Feature-flag `SOLO_PRECIO_FASTPATH_ENABLED = false`** (patrón `F2C_WRITE_ENABLED`): con el flag
+  OFF la rama `if (!fastPathSoloPrecio)` SIEMPRE entra → pipeline **byte-idéntico** al previo.
+  `pnLookup`, creación de precio (`SaveManyPartNumberPrices`), STEP 8 (default + archive), resume
+  (`phase='enrich-done'` se marca igual) y el snapshot/restore del `finally` quedan **intactos**.
+
+**Pendiente:** validación en vivo (activar el flag en una corrida solo-precio controlada;
+confirmar que NO se llama `SavePartNumber` de enrich y que el precio + default se aplican bien) →
+si OK, activar flag ON + deploy. Hasta entonces vive en `workbench` (código inocuo, no deployado).
+
 ## Fix 2026-07-15 (retry AddParams) — incidente 20k: 429 sin reintento [config 1.7.121, DEPLOYADO]
 Corrida real de 20 831 NP → 19 errores. Diagnóstico y fix (verificado en vivo):
 - **18/19 = HTTP 429 (rate-limit de SH).** Root cause principal: `AddParamsToPartNumber`
@@ -70,7 +100,7 @@ Cuatro frentes, en orden de aparición:
 
 **Qué se requiere para que siga funcionando:** (1) deploy del script a gh-pages (auto-actualiza en Chrome, sin zip); (2) el historial previo del operador **NO es recuperable** (nunca se guardó) — arranca de cero tras el fix; (3) si el historial se usa en **Safari/iPad**, propagar el fix al `safari/extension/main-bundle.js` (skill `safari-bundle-sync`). **Pendiente:** validación en vivo — la próxima corrida real del operador debe aparecer en "Historial de Cargas".
 
-**Deuda de test descubierta (separada, NO tocada aquí):** `node --test tools/test/*.test.js` da **54 fallos pre-existentes** — el harness `loadHelpers` de `bulk-upload-helpers.test.js` (y otros) solo carga `bulk-upload.js`, pero los helpers `classifyOnePN/rankCandidates/chunkParts/makeChunkQuoteName/...` se movieron a `bulk-upload-classify.js`/`-parse.js`/`-build.js` en F1 → salen `undefined` en `__helpers`. **No es bug de producción** (en el navegador cargan en orden vía `config.scripts`); es el harness que quedó desactualizado tras F1. Arreglar aparte: cargar los módulos hermanos en el sandbox del harness antes de `bulk-upload.js`.
+**Deuda de test (descubierta 1.5.30, ~~54 fallos del harness~~ — ✅ RESUELTA 2026-07-08, commit `test+ci: arregla tests rojos + gate de tests en deploy`):** el harness `loadHelpers` de `bulk-upload-helpers.test.js` cargaba solo `bulk-upload.js`, pero los helpers `classifyOnePN/rankCandidates/chunkParts/…` se movieron a `bulk-upload-classify.js`/`-parse.js`/`-build.js` en F1 → salían `undefined`. **Ya corregido:** `loadHelpers` carga los módulos hermanos (`CLASSIFY_PATH`, etc.) antes de `bulk-upload.js`. **Estado actual (verificado 2026-07-20):** `bulk-upload-helpers.test.js` **58/58** y la suite completa `node --test tools/test/*.test.js` **759/759, 0 fallos**. Nunca fue bug de producción (en el navegador los módulos cargan en orden vía `config.scripts`).
 
 ---
 

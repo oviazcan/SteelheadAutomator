@@ -142,6 +142,17 @@
     return 'ALTA';
   }
 
+  // planSoloPrecioFastPath — gate PURO del atajo de solo-precio (feat 1.5.40).
+  // Devuelve true SOLO cuando el feature-flag está encendido Y la corrida es exactamente
+  // 'SOLO_PRECIO' (todos los PN existen, hay precio, y NINGÚN enriquecimiento — ver
+  // classifyRunIntent). Cuando devuelve true, el flujo puede saltar los STEPs de
+  // enriquecimiento (specs/params/racks/dims) e ir directo a precios (STEP 7b/8).
+  // Con el flag apagado es SIEMPRE false → el pipeline corre idéntico al comportamiento
+  // previo (no-regresión). Es puro a propósito: toda la decisión de riesgo es testeable.
+  function planSoloPrecioFastPath(runIntent, flagEnabled) {
+    return !!flagEnabled && runIntent === 'SOLO_PRECIO';
+  }
+
   // resolveDimSelections — compone el array final de dimensionCustomValueIds que
   // SavePartNumber recibe (semántica REPLACE), preservando por TIPO de dimensión.
   //
@@ -249,7 +260,7 @@
 
   const api = {
     toBool, isDash, resolveStr, resolveNum, cell, cellNum, parseCSV, buildDimensions,
-    partHasEnrich, classifyRunIntent, resolveDimSelections, pickSpecParamId, pickSpecParamPositional,
+    partHasEnrich, classifyRunIntent, planSoloPrecioFastPath, resolveDimSelections, pickSpecParamId, pickSpecParamPositional,
     PRICE_UNIT_MAP, PREDICTIVE_MATERIALS, HEADER_KEYS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
