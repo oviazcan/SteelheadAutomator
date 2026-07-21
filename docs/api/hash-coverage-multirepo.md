@@ -68,18 +68,36 @@ también estaba muerto en RSH; arreglado el mismo día, ver abajo.)
 (*) `GetPerspectiveDashboardComponents` NO salió en las 18 (validó ok con su hash
 actual) — se lista aquí solo por familia; verificar.
 
-### Plan de fix (pendiente, requiere confirmación del usuario)
+### Estado de captura (2026-07-21)
 
-Los 2 `Get*` de dashboards ya tienen hash nuevo (capturados de `/Reporting/View`).
-Los ~16 restantes se capturan navegando:
-- **queries** (`GetInsightsReportDetails`, `GetInsightsReportColumnConfigs`,
-  `ReportVariables`, `GetPerspectiveDashboardComponents`): abrir la UI que las
-  dispara y leer el hash del request (mismo método que `SearchSpecsForSelect`).
-- **mutations** (`Create/Update/Archive/Delete` de dashboards/components/folders/
-  variables): **captura-y-aborta** (marcar la op, clic Guardar, abortar el
-  request antes de que persista) — patrón del `hash-autopilot`.
+**Arreglados (3):** `GetPerspectiveDashboards`, `GetPerspectiveDashboardFolders`
+(commit RSH `9a8f3d1`) + `GenerateDuckDb` (commit `3c69434`). Los 2 dashboards se
+capturaron de la carga de `/Reporting/View` y se verificaron vivos contra el
+server.
 
-Luego reemplazar los 18 en `Reportes SH/scripts/steelhead_client.py`.
+**Bloqueo de la captura manual para los 16 restantes** (por qué NO se pudo vía
+Claude-in-Chrome automatizado):
+1. **Screenshots/read_page fallan en `/Reporting/*`**: la página nunca alcanza
+   `document_idle` (polling de reportes) → `executeScript` timeout. Solo
+   `javascript_tool` responde.
+2. **Apollo cachea las queries de carga**: `GetPerspectiveDashboardComponents`,
+   `GetInsights*` y `ReportVariables` se disparan al CARGAR la vista. El hook de
+   `fetch` se instala POST-carga (no hay forma de inyectarlo pre-carga con la
+   extensión) → clics client-side no re-disparan (cache) y no se capturan.
+3. **Las 12 mutations** requieren disparar una escritura real (captura-y-aborta).
+
+**Vías robustas para los 16 (elegir una):**
+- **(recomendada) hash-scanner** — el operador abre Steelhead con la extensión,
+  corre el applet "Hash Scanner", navega Reporting/Insights + **crea/edita un
+  dashboard y una variable de prueba** (dispara queries + mutations); el scanner
+  intercepta pre-carga y captura TODO. Descargar `scan_results_*.json` y
+  extraer los 16 por `operationName`.
+- **hash-autopilot headless** — agregar recetas para las 16 (Playwright instala
+  el interceptor PRE-navegación → sí captura las queries de carga; mutations vía
+  sentinelas captura-y-aborta). Es el patrón de raíz reutilizable, pero requiere
+  integrar Reportes SH como fuente del autopilot (hoy solo cubre la extensión).
+
+Luego reemplazar los 16 en `Reportes SH/scripts/steelhead_client.py`.
 
 ## Ya arreglado el 2026-07-21
 
