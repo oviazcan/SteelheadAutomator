@@ -125,11 +125,30 @@
     return { block: false, reason: 'out-of-scope-or-unknown', blocked: [] };
   }
 
+  // ── Marcado de tarjetas del Workboard (capa 4) ──
+  // Señal DOM "programada" (única señal visible; anclada BILINGÜE ES+EN). La tarjeta NO programada
+  // (sin esta señal) es la que NO se puede mover → se pinta naranja.
+  const SCHEDULED_CARD_SIGNAL_RE = /Tareas Programadas:?|Scheduled tasks:?/i;
+  function hasScheduledCardSignal(text) { return SCHEDULED_CARD_SIGNAL_RE.test(String(text == null ? '' : text)); }
+
+  // Salvaguarda anti-falsa-alarma: si NINGUNA tarjeta reconoce la señal DOM pero la API SÍ reporta
+  // programadas (scheduledApiCount>0), la señal DOM se rompió (locale/HTML no cubierto) → no marcar
+  // (evita pintar TODAS de naranja). Con al menos una programada reconocida, o sin programadas en la
+  // API, se confía en la señal DOM.
+  function isDomSignalBroken(anyCardScheduled, scheduledApiCount) {
+    return !anyCardScheduled && (scheduledApiCount || 0) > 0;
+  }
+  // Marca naranja (no-movible) sii la tarjeta no está programada y la señal DOM no está rota.
+  function shouldMarkNotMovable(isScheduled, domSignalBroken) {
+    return domSignalBroken ? false : !isScheduled;
+  }
+
   const api = {
     SOURCE_NODE_NAME_MATCH, BOARD_SCHEDULE_OP, BOARD_RECIPENODES_OP, MOVE_DATA_OPS, MOVE_MUTATION_OP,
     normalize,
     buildScheduledAccountSet, buildSurtidoNodeSet, indexAccountNodeFromMoveVars,
-    extractStepTransfers, shouldBlockMove, evaluateMove
+    extractStepTransfers, shouldBlockMove, evaluateMove,
+    SCHEDULED_CARD_SIGNAL_RE, hasScheduledCardSignal, isDomSignalBroken, shouldMarkNotMovable
   };
   if (typeof window !== 'undefined') window.SurtidoGuardCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
