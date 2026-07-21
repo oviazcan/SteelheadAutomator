@@ -203,6 +203,33 @@ const PNLifecycle = (() => {
       h2.textContent = '🔄 PN Lifecycle — Configuración';
       md.appendChild(h2);
 
+      // Origen de PNs: escanear todo el dominio (+ filtros) o pegar Id SH directos.
+      const srcTitle = document.createElement('p');
+      srcTitle.style.cssText = 'font-size:12px;color:#9ab0b8;margin:0 0 8px';
+      srcTitle.textContent = 'Origen de los PNs:';
+      md.appendChild(srcTitle);
+
+      const srcWrap = document.createElement('div');
+      srcWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:14px';
+      [
+        { value: 'scan',  label: 'Escanear dominio con filtros', sub: 'Trae todos los PNs y filtras por cliente/proceso/metal/etiquetas' },
+        { value: 'paste', label: 'Pegar IDs de PN',              sub: 'Pega los Id SH (numéricos) — va directo al preview, sin filtros' },
+      ].forEach((s, i) => {
+        const lbl = document.createElement('label');
+        lbl.style.cssText = 'display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#e6e9ee';
+        const rb = document.createElement('input');
+        rb.type = 'radio'; rb.name = 'plc-source'; rb.value = s.value;
+        if (i === 0) rb.checked = true;
+        rb.style.marginTop = '3px';
+        const bEl = document.createElement('b'); bEl.textContent = s.label;
+        const sEl = document.createElement('span');
+        sEl.style.cssText = 'color:#6b7a88;font-size:11px'; sEl.textContent = ' — ' + s.sub;
+        const w = document.createElement('span'); w.append(bEl, sEl);
+        lbl.append(rb, w);
+        srcWrap.appendChild(lbl);
+      });
+      md.appendChild(srcWrap);
+
       // Radios de acción
       const actTitle = document.createElement('p');
       actTitle.style.cssText = 'font-size:12px;color:#9ab0b8;margin:0 0 8px';
@@ -261,6 +288,21 @@ const PNLifecycle = (() => {
       inclArchivedRow.append(inclArchivedCb, iaLbl);
       md.appendChild(inclArchivedRow);
 
+      // Textarea de IDs pegados — solo visible en modo "paste".
+      const pasteRow = document.createElement('div');
+      pasteRow.style.cssText = 'display:none;margin-bottom:14px';
+      const pasteLbl = document.createElement('p');
+      pasteLbl.style.cssText = 'font-size:11px;color:#9ab0b8;margin:0 0 4px';
+      pasteLbl.textContent = 'Id SH de los PNs (uno por línea, o separados por coma/espacio). Los renglones no numéricos se ignoran con aviso.';
+      const pasteTa = document.createElement('textarea');
+      pasteTa.id = 'plc-paste'; pasteTa.className = 'plc-input';
+      pasteTa.style.cssText += ';min-height:120px;resize:vertical;font-family:ui-monospace,monospace';
+      pasteTa.placeholder = '12345\n67890\n...';
+      const pasteCount = document.createElement('div');
+      pasteCount.style.cssText = 'font-size:11px;color:#13a36f;margin-top:4px;min-height:14px';
+      pasteRow.append(pasteLbl, pasteTa, pasteCount);
+      md.appendChild(pasteRow);
+
       const hint = document.createElement('p');
       hint.style.cssText = 'font-size:11px;color:#4d6370;margin-bottom:6px';
       hint.textContent = 'Después podrás filtrar por cliente, proceso, metal y etiquetas antes de ejecutar.';
@@ -278,20 +320,50 @@ const PNLifecycle = (() => {
       ov.appendChild(md);
       document.body.appendChild(ov);
 
+      const currentSource = () => md.querySelector('input[name="plc-source"]:checked').value;
+
       const onActionChange = () => {
         const v = md.querySelector('input[name="plc-action"]:checked').value;
-        alsoValidateRow.style.display  = v === 'unarchive' ? 'flex'  : 'none';
-        inclArchivedRow.style.display  = v === 'archive'   ? 'flex'  : 'none';
+        const isPaste = currentSource() === 'paste';
+        alsoValidateRow.style.display = v === 'unarchive' ? 'flex' : 'none';
+        // "incluir ya archivados" solo aplica al SCAN de archive; en paste el operador ya dice qué IDs.
+        inclArchivedRow.style.display = (v === 'archive' && !isPaste) ? 'flex' : 'none';
       };
+
+      const recountPaste = () => {
+        if (!pasteTa.value.trim()) { pasteCount.textContent = ''; return; }
+        const r = core().parsePastedIds(pasteTa.value);
+        const parts = [r.ids.length + ' ID(s) válidos'];
+        if (r.invalid.length) parts.push(r.invalid.length + ' ignorados');
+        pasteCount.textContent = parts.join(' · ');
+      };
+
+      const onSourceChange = () => {
+        const isPaste = currentSource() === 'paste';
+        pasteRow.style.display = isPaste ? 'block' : 'none';
+        hint.style.display = isPaste ? 'none' : 'block';
+        execBtn.textContent = isPaste ? 'RESOLVER IDs' : 'BUSCAR PNs';
+        onActionChange();
+      };
+
       md.querySelectorAll('input[name="plc-action"]').forEach(r => { r.onchange = onActionChange; });
-      onActionChange();
+      md.querySelectorAll('input[name="plc-source"]').forEach(r => { r.onchange = onSourceChange; });
+      pasteTa.addEventListener('input', recountPaste);
+      onSourceChange();
 
       cancelBtn.onclick = () => { ov.parentNode.removeChild(ov); resolve(null); };
       execBtn.onclick = () => {
+        const source = currentSource();
+        if (source === 'paste') {
+          const r = core().parsePastedIds(pasteTa.value);
+          if (!r.ids.length) { alert('No hay Id SH numéricos válidos en el texto pegado.'); return; }
+        }
         const result = {
-          action:           md.querySelector('input[name="plc-action"]:checked').value,
-          alsoValidate:     alsoValidateCb.checked,
+          action:             md.querySelector('input[name="plc-action"]:checked').value,
+          alsoValidate:       alsoValidateCb.checked,
           includeArchivedToo: inclArchivedCb.checked,
+          source:             source,
+          pastedText:         pasteTa.value,
         };
         ov.parentNode.removeChild(ov);
         resolve(result);
@@ -537,7 +609,7 @@ const PNLifecycle = (() => {
     archive:    { label: 'Archivar',                color: '#dc2626' },
   };
 
-  function showPreview(pns, action) {
+  function showPreview(pns, action, metaArg) {
     var MAX_ROWS = 500;
     var trimmed  = pns.length > MAX_ROWS;
     var displayed = trimmed ? pns.slice(0, MAX_ROWS) : pns;
@@ -560,6 +632,27 @@ const PNLifecycle = (() => {
       sub.style.cssText = 'font-size:12px;color:#9ab0b8;margin:0 0 10px';
       sub.textContent = pns.length + ' PNs seleccionados.';
       md.appendChild(sub);
+
+      // Avisos del modo "paste": Id no resueltos + renglones ignorados (textContent, sin XSS).
+      var meta = metaArg || {};
+      var notFound = meta.notFound || [];
+      var invalid = meta.invalid || [];
+      if (notFound.length || invalid.length) {
+        var warnBox = document.createElement('div');
+        warnBox.style.cssText = 'background:#2a1f14;border:1px solid #7a4d15;border-radius:6px;padding:8px 10px;margin:0 0 10px;font-size:11px;color:#e0b070';
+        if (notFound.length) {
+          var wl1 = document.createElement('div');
+          wl1.textContent = '⚠ ' + notFound.length + ' Id no encontrados: ' + notFound.slice(0, 30).join(', ') + (notFound.length > 30 ? ' …' : '');
+          warnBox.appendChild(wl1);
+        }
+        if (invalid.length) {
+          var wl2 = document.createElement('div');
+          wl2.style.marginTop = notFound.length ? '4px' : '0';
+          wl2.textContent = '⚠ ' + invalid.length + ' renglones ignorados (no numéricos): ' + invalid.slice(0, 20).join(', ') + (invalid.length > 20 ? ' …' : '');
+          warnBox.appendChild(wl2);
+        }
+        md.appendChild(warnBox);
+      }
 
       if (trimmed) {
         var tw = document.createElement('p');
@@ -781,6 +874,8 @@ const PNLifecycle = (() => {
     var action           = opts.action;
     var alsoValidate     = !!opts.alsoValidate;
     var includeArchivedToo = !!opts.includeArchivedToo;
+    var source           = opts.source || 'scan';
+    var pastedText       = opts.pastedText || '';
 
     var DOMAIN = api().getDomain() || {};
     var validacionNodeIds = DOMAIN.validacionProcessNodeIds || [231176, 231174];
@@ -809,6 +904,39 @@ const PNLifecycle = (() => {
           prevResume.completed, results);
       }
       clearResume();
+    }
+
+    // ── ORIGEN: PEGAR IDs ── resolución dirigida por Id SH, SALTA filtros, va directo a preview.
+    if (source === 'paste') {
+      var parsed = core().parsePastedIds(pastedText);
+      if (!parsed.ids.length) { alert('No hay Id SH numéricos válidos en el texto pegado.'); return { cancelled: true }; }
+      log('PNLifecycle: acción=' + action + ' · origen=paste · ' + parsed.ids.length + ' IDs (' + parsed.invalid.length + ' ignorados)');
+      setProgress(0, 'Resolviendo ' + parsed.ids.length + ' PN(s) por Id SH...');
+
+      var drainPaste = (hc() && hc().makePeriodicDrain) ? hc().makePeriodicDrain(50) : function() {};
+      var res = await core().fetchPNsByIds(parsed.ids, api(), function(p) {
+        var fraction = p.total > 0 ? Math.min(p.processed / p.total, 1) : null;
+        setProgress(fraction, 'Resolviendo PNs... ' + p.processed + '/' + p.total + ' (' + p.found + ' encontrados)');
+      }, { concurrency: 4, drain: drainPaste, isStopped: function() { return stopped; } });
+
+      if (stopped) { results.stopped = true; showResult(results, action); return results; }
+      log('  ' + res.found.length + ' resueltos, ' + res.notFound.length + ' no encontrados');
+
+      if (!res.found.length) {
+        alert('Ninguno de los ' + parsed.ids.length + ' Id SH se pudo resolver.\nNo encontrados: ' + res.notFound.slice(0, 30).join(', '));
+        return { cancelled: true };
+      }
+
+      var confirmedPaste = await showPreview(res.found, action, { notFound: res.notFound, invalid: parsed.invalid });
+      if (!confirmedPaste) { log('Cancelado en preview (paste).'); return { cancelled: true }; }
+
+      results.total = confirmedPaste.length;
+      results.notFound = res.notFound;
+      results.invalidTokens = parsed.invalid;
+      // includeArchivedToo no aplica en paste (el operador ya especificó los IDs exactos).
+      return await executeAction(confirmedPaste, action,
+        { validacionNodeIds: validacionNodeIds, labelId: labelId, alsoValidate: alsoValidate, includeArchivedToo: false },
+        [], results);
     }
 
     log('PNLifecycle: acción=' + action + ', alsoValidate=' + alsoValidate + ', includeArchivedToo=' + includeArchivedToo);
