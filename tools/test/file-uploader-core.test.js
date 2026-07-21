@@ -49,6 +49,69 @@ test('extractPNName: archivo sin extensión devuelve el nombre tal cual', () => 
   assert.equal(Core.extractPNName('ABC123'), 'ABC123');
 });
 
+// ── extractPNName: convención de guion SIMPLE <PN>_<VISTA>_<num> (Cowork) ─────
+// Códigos de vista en whitelist (config.fileUploader.viewCodes). Caso real que
+// disparó esto: NAT1219802_LIZ_02.JPG / MFR8991502_SUP_01.JPG → "PN no encontrado"
+// porque el applet tomaba el nombre completo como PN (usaba solo "__" doble).
+// Glosario oficial (Instructivo de Fotografía de Piezas, §5): códigos fijos de 3 letras.
+const VC = ['FRO', 'POS', 'LIZ', 'LDE', 'SUP', 'INF', 'ISO'];
+
+test('extractPNName: quita _<VISTA>_<num> cuando la vista está registrada (caso Collado)', () => {
+  assert.equal(Core.extractPNName('NAT1219802_LIZ_02.JPG', VC), 'NAT1219802');
+  assert.equal(Core.extractPNName('NAT1219802_SUP_01.JPG', VC), 'NAT1219802');
+  assert.equal(Core.extractPNName('MFR8991502_LDE_02.JPG', VC), 'MFR8991502');
+});
+
+test('extractPNName: el código de vista es case-insensitive', () => {
+  assert.equal(Core.extractPNName('NAT1219802_liz_02.jpg', VC), 'NAT1219802');
+});
+
+test('extractPNName: acepta viewCodes como string "LIZ, LDE, SUP"', () => {
+  assert.equal(Core.extractPNName('NAT1219802_SUP_01.JPG', 'LIZ, LDE, SUP'), 'NAT1219802');
+});
+
+test('extractPNName: SIN viewCodes = comportamiento viejo (nombre completo, sin partir por _ simple)', () => {
+  assert.equal(Core.extractPNName('NAT1219802_LIZ_02.JPG'), 'NAT1219802_LIZ_02');
+});
+
+test('extractPNName: código de vista NO registrado NO se quita (fail-safe, no mislink)', () => {
+  assert.equal(Core.extractPNName('NAT1219802_XYZ_02.jpg', VC), 'NAT1219802_XYZ_02');
+});
+
+test('extractPNName: NP con "_" interno sobrevive (protege los 57/23,926 con guion bajo)', () => {
+  assert.equal(Core.extractPNName('ABC_12_LIZ_03.jpg', VC), 'ABC_12');
+  // sin vista al final: el "_12" NO es <VISTA>_<num> → el NP queda íntegro
+  assert.equal(Core.extractPNName('ABC_12.jpg', VC), 'ABC_12');
+});
+
+test('extractPNName: el "__" doble sigue teniendo prioridad aunque haya viewCodes', () => {
+  assert.equal(Core.extractPNName('VXC084N528YF53EC__front.jpg', VC), 'VXC084N528YF53EC');
+  assert.equal(Core.extractPNName('80255-553-01__plano.pdf', VC), '80255-553-01');
+});
+
+// ── unregisteredViewCode: pista para el reporte de "no encontrados" ──────────
+test('unregisteredViewCode: reporta el código NO registrado que parece vista', () => {
+  assert.equal(Core.unregisteredViewCode('NAT1219802_XYZ_02.jpg', VC), 'XYZ');
+});
+
+test('unregisteredViewCode: null si la vista SÍ está registrada', () => {
+  assert.equal(Core.unregisteredViewCode('NAT1219802_LIZ_02.jpg', VC), null);
+  assert.equal(Core.unregisteredViewCode('NAT1219802_liz_02.jpg', VC), null);
+});
+
+test('unregisteredViewCode: null si no parece view-coded o usa "__"', () => {
+  assert.equal(Core.unregisteredViewCode('VXC084N528YF53EC.jpg', VC), null);
+  assert.equal(Core.unregisteredViewCode('ABC__front.jpg', VC), null);
+  assert.equal(Core.unregisteredViewCode('ABC_12.jpg', VC), null);
+});
+
+// ── normViewCodes ────────────────────────────────────────────────────────────
+test('normViewCodes: array y string → Set en MAYÚSCULAS, sin vacíos', () => {
+  assert.deepEqual([...Core.normViewCodes(['liz', ' LDE ', ''])].sort(), ['LDE', 'LIZ']);
+  assert.deepEqual([...Core.normViewCodes('liz, lde')].sort(), ['LDE', 'LIZ']);
+  assert.equal(Core.normViewCodes(null).size, 0);
+});
+
 // ── selectMatchingPNs ───────────────────────────────────────────────────────
 test('selectMatchingPNs: devuelve TODOS los homónimos exactos, no solo el primero', () => {
   const nodes = [

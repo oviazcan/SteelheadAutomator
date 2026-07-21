@@ -1,6 +1,6 @@
 # file-uploader — Cargador de Archivos
 
-**Versión actual:** 0.2.0 (carga masiva inteligente — pendiente deploy + run real)
+**Versión actual:** 0.5.0 (soporte de convención `<PN>_<VISTA>_<num>` de guion simple; whitelist completa FRO/POS/LIZ/LDE/SUP/INF/ISO)
 **Scripts:** `remote/scripts/steelhead-api.js`, `remote/scripts/file-uploader-core.js`, `remote/scripts/file-uploader.js`
 **Tests:** `tools/test/file-uploader-core.test.js` (18 golden, núcleo puro)
 **Handler:** `extension/background.js` → `upload-pn-files` (input `multiple`, no `webkitdirectory`)
@@ -18,12 +18,21 @@ Flujo por archivo: `POST /api/files` (binario) → `CreateUserFile` (registrar) 
 - **`file-uploader.js`** — orquestador (efectos). Agrupa archivos por PN, pagina la búsqueda, lee existentes, sube 1 vez y vincula a cada homónimo faltante. UI en dark mode + resumen no bloqueante.
 
 ## Convención de nombres (lo que produce Cowork)
-```
-<PN>__<descriptor>.<ext>
-```
+Se soportan **dos** convenciones (el extractor elige sola):
+
+**A) Doble guion bajo** `<PN>__<descriptor>.<ext>`
 - `VXC084N528YF53EC__front.jpg`, `80255-553-01__plano.pdf`
-- Doble guion bajo `__`. Sin `__` = el nombre completo (sin extensión) es el PN.
+- Doble guion bajo `__`. Corta en el primer `__`.
 - **Varios archivos por PN** = varios descriptores: `<PN>__front.jpg`, `<PN>__back.jpg`, `<PN>__plano.pdf`.
+
+**B) Guion simple con código de vista** `<PN>_<VISTA>_<consecutivo>.<ext>` (v0.5.0)
+- `NAT1219802_LIZ_02.JPG`, `MFR8991502_SUP_01.JPG` — foto por vista.
+- **Glosario oficial** (Instructivo de Fotografía de Piezas §5, "códigos fijos de tres letras") = `config.fileUploader.viewCodes`: **FRO** frente · **POS** atrás · **LIZ** lado izq. · **LDE** lado der. · **SUP** arriba · **INF** abajo · **ISO** perspectiva 3/4. Consecutivo `##` de 2 dígitos en el orden que pide la categoría (A/B/C/D). El instructivo obliga a reemplazar por `-` los caracteres no válidos del PN (espacio `" ' / \ : * ? < > |`), pero NO el `_`.
+- Se quita el sufijo `_<VISTA>_<num>` **solo si `<VISTA>` está en la whitelist** (case-insensitive). El PN es todo lo anterior.
+- **Whitelist obligatoria (no adivinar):** sin ella cortaríamos por error los **57/23,926** PNs de TLC que ya llevan `_` en su propio nombre. Un código de vista NO registrado ⇒ el nombre completo se toma como PN ⇒ "no encontrado" **con pista accionable** en el resumen (`unregisteredViewCode` sugiere agregar el código al config). Fail-safe: nunca mislink.
+- Varios archivos por PN = varias vistas: `<PN>_LIZ_02.jpg`, `<PN>_SUP_01.jpg`, `<PN>_LDE_04.jpg`.
+
+Sin ninguno de los dos separadores: el nombre completo (sin extensión) es el PN.
 
 ## Hallazgos validados en vivo (sesión 2026-06-25)
 Verificado contra el ERP (PN real `3027533` = `VXC084N528YF53EC`, TLC) y la DuckDB:
@@ -84,6 +93,7 @@ Integrado `host-cleanup-shared.js` (en el array de `scripts`). Aplica para el du
 - **CSS propio obligatorio (bug 2026-06-26).** El applet usaba las clases `.dl9-*` pero NO inyectaba su CSS; ese CSS lo definen otros applets (archiver/po-comparator/bulk-upload) cada uno con su `<style>`. file-uploader corre **aislado** (su array no incluye a ninguno de esos), así que el overlay de progreso y el resumen se creaban **invisibles** (sin `position:fixed`/fondo/centrado). Síntoma: "no mostró nada de resumen". La v0.1.0 lo tapaba con `alert()`. **Fix:** `ensureStyles()` inyecta un `<style id="sa-uploader-styles">` propio (idempotente) — no depender de otro applet. **Regla general:** cualquier applet que use clases `dl9-*` debe inyectar su propio CSS. La lógica de negocio NO estaba rota (se verificó en vivo que las fotos sí se vincularon, incl. fan-out a homónimos); era 100% un problema de UI.
 
 ## Historial
+- **0.5.0 (2026-07-20):** soporte de la convención de guion simple `<PN>_<VISTA>_<consecutivo>` (además del `__` doble). Caso raíz: fotos de Collado `NAT1219802_LIZ_02.JPG` / `MFR8991502_SUP_01.JPG` daban "6 PN no encontrados" porque el extractor solo cortaba en `__` doble y tomaba el nombre completo como PN (los PNs `NAT1219802`/`MFR8991502` sí existen — confirmado en DuckDB TLC). `extractPNName(filename, viewCodes)` quita `_<VISTA>_<num>` solo si `<VISTA>` está en la whitelist `config.fileUploader.viewCodes` (protege los 57 PNs con `_` interno). `unregisteredViewCode` + resumen enriquecido: un código de vista no registrado se sugiere agregar al config en vez de un "no encontrado" mudo. Whitelist completa del Instructivo de Fotografía (§5): FRO/POS/LIZ/LDE/SUP/INF/ISO. Núcleo puro +15 golden (33 total).
 - **0.4.2 (2026-06-26):** `isTransientError` también reintenta `AbortError`/`aborted` (corte de red a media request). Validado: run de 500 con 1 solo error = un `AbortError` por desconexión del usuario; ahora el retry lo recupera. 22 golden tests.
 - **0.4.1 (2026-06-26):** fix HTTP 502 — `gate()` rate-limit (120ms) + `withRetry()` backoff en transitorios (`isTransientError` + 4 golden tests). Sin esto, ~72% de un run de 1159 falló con 502. Pendiente: deploy + re-validar escala.
 - **0.4.0 (2026-06-26):** memory hardening con `host-cleanup-shared` (slim, Datadog stop, mem monitor + guardrail 88% con checkpoint, drain cada 50). Para el full run. Pendiente: deploy (config estructural → `deploy.sh`).
