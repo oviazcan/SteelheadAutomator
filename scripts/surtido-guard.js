@@ -246,6 +246,14 @@ const SurtidoGuard = (() => {
     window.__saSurtidoGuardObs = obs;
   }
 
+  // Pinta el verde de INMEDIATO + reintentos escalonados. Sin esto, el primer decorate solo
+  // ocurría cuando el MutationObserver detectaba un cambio; en un Workboard virtualizado (que
+  // monta las tarjetas progresivamente) eso tardaba mucho en aparecer. decorateCards es
+  // idempotente (toggle), así que reintentar es seguro.
+  function kickDecorate() {
+    [0, 150, 400, 900, 1800, 3000].forEach((ms) => setTimeout(() => { try { decorateCards(); } catch (_) {} }, ms));
+  }
+
   // ── Memory hardening: teardown al salir del board ──
   function installUrlChangeListener() {
     if (!window.__saSurtidoGuardUrlListener) {
@@ -258,7 +266,7 @@ const SurtidoGuard = (() => {
       window.addEventListener('popstate', fire);
     }
     window.addEventListener('sa-urlchange', () => {
-      if (isWorkboardPage()) { observeDom(); }
+      if (isWorkboardPage()) { injectStyles(); observeDom(); kickDecorate(); }
       else { teardownOnLeave(); }
     });
   }
@@ -280,6 +288,7 @@ const SurtidoGuard = (() => {
     if (!isWorkboardPage()) return;
     injectStyles();
     observeDom();
+    kickDecorate();                // pinta el verde ya, sin esperar al primer MutationObserver
     console.log('[SA] SurtidoGuard activo en', location.pathname);
   }
 
