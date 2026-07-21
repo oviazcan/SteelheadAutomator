@@ -38,6 +38,14 @@ Hashes en `steelhead.hashes.mutations`: `CreateProcessNodePartNumberOptInout` `f
 - Dedup por QuoteIBMS+nombre SIN acabado infla falsos positivos (mismo NP, acabado distinto = PN distinto). La regla canónica exige cliente+nombre+metal+acabado.
 - **Modo "Pegar IDs" (v0.2.0):** `GetPartNumber(id)` trae el mismo shape que `AllPartNumbers` PERO expone `archivedAt` (el nodo de `AllPartNumbers` no) → en paste el `archived` del slim es el estado REAL, más preciso que el override que infiere el scan del `includeArchived`. Por eso se puede pegar una mezcla de activos y archivados y cada acción (incl. archive/unarchive con su `isInTargetState`) se comporta bien por-PN. `includeArchivedToo` no aplica en paste (el operador ya dio los IDs exactos). El resume opera sobre PNs YA resueltos, así que es agnóstico al origen (paste o scan).
 
+## Safari / iPad (bundle v0.5.8)
+Integrado al bundle Safari como **con-popup** (no tiene FAB): se lanza desde el popup
+(`run-pn-lifecycle` → `PNLifecycle.openConfigAndRun`, cableado en `safari/extension/popup.js`
+LAUNCHERS + `safari/sa-dispatcher.js` LAUNCH_FN). El operador de iPad usa el **modo Pegar IDs**
+(ligero); el modo Escanear existe pero es pesado (tiene guardrail de memoria). **Limitación iOS:**
+la descarga del JSON de resultado no opera en Safari/iPad — el resultado igual se ve en pantalla
+(la descarga es marginal, el flujo core no depende de ella). Recompilar en Xcode tras el rebuild.
+
 ## Pendientes / fase 2 (no bloqueantes)
 - Piloto en vivo por acción.
 - Filtro por QuoteIBMS (el slim lo trae; `applyFilters`/UI aún no lo exponen — YAGNI por ahora).

@@ -35,6 +35,7 @@
     'open-auto-router-batch':  'AutoRouter.openBatch',
     'open-wo-completer':       'WOCompleter.open',
     'run-wo-deadline':         'WODeadlineChanger.run',
+    'run-pn-lifecycle':        'PNLifecycle.openConfigAndRun',
     // Kill-switch del candado de confirmación de precio (auto-inyectado, sin control en
     // página): permite apagarlo/encenderlo desde el popup del iPad. Es un toggle.
     'toggle-price-confirm-guard': 'PriceConfirmGuard.toggleFromPopup'
