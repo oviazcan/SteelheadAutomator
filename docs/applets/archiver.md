@@ -65,6 +65,21 @@ Previo 1.1.0 — **feedback de progreso** (barra en carga + ejecución): % real 
 ## Fase 2 (pendiente)
 - Filtro por **grupo de partes**, **línea** y **departamento** (dimensiones contables personalizables; cada PN tiene ambas), y **proceso**. Requieren investigar la fuente del dato (vienen vacíos en el listado; probablemente `GetPartNumber` por PN). Definir costo/memoria antes de integrarlos.
 
+## Pendiente (2026-07-01) — reorientar hacia validación de ingeniería
+Omar pidió **ajustar el applet de desarchivar para priorizar la marca de validación de
+ingeniería por encima de archivar/desarchivar**, más otros ajustes por definir. Contexto:
+en el one-shot `tools/unarchive-non-schneider.js` se descubrió/validó lo relevante:
+- Mutación **granular** `CreateProcessNodePartNumberOptInout` (hash `f6fe26e4…`, vars
+  `{partNumberId, processNodeId, processNodeOccurrence:1, cancelOthers:false}`) marca la
+  validación de ingeniería (nodes `[231176, 231174]`) SIN tocar el resto del PN — a
+  diferencia del `enableValidation` actual del archiver, que usa `SavePartNumber` (REPLACE:
+  borra labels/proceso/dims/specs/customInputs). **Migrar el archiver a la granular.**
+- `includeArchived:'EXCLUSIVELY'` trae SOLO archivados en 1 pasada → el archiver puede
+  dejar el diff de 2 pasadas (deuda de `auditor.js`).
+- Etiqueta `Borrado definitivo` = labelId **15646** (dominio TLC id 344).
+- **Falta capturar** la mutación granular de etiquetado de PN (no está en ningún scan;
+  solo hay `CreateWorkOrderLabel`/`DeleteWorkOrderLabels` de WOs).
+
 ## Spec / plan
 - Spec: `docs/superpowers/specs/2026-06-03-archiver-label-filter-design.md`
 - Plan: `docs/superpowers/plans/2026-06-03-archiver-label-filter.md`

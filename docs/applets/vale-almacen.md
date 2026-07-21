@@ -2,7 +2,7 @@
 
 **Versión actual:** 0.1.2 (fix: la emisión de un vale = **solo la solicitud** → llena los sensores del paso 0, lo completa (ya NO lo archiva) y **deja el evento VIVO** —sin `completedAt`—. Almacén surte/confirma después, fuera del applet; el evento solo se cierra al DESCARTAR. Ver §"Lección: `archivedAt` deshace, no completa" y §"El vale = solo la solicitud"). 0.1.0 = código completo + golden tests.
 **Archivos:** `remote/scripts/vale-almacen.js` (FAB + panel + API), `remote/scripts/vale-almacen-engine.js` (motor puro), `tools/test/vale-almacen-engine.test.js` (19 tests).
-**Config:** app `vale-almacen` en `apps[]`; hashes nuevos `GetMaintenanceEvent`, `UpdateMaintenanceNodeEvent`, `UserDialogQuery`; bump `1.7.20`.
+**Config:** app `vale-almacen` en `apps[]`; hashes nuevos `GetMaintenanceEvent`, `UpdateMaintenanceNodeEvent`, `UserDialogQuery`; bump inicial `1.7.35` (ver §"Deploys confirmados en gh-pages" abajo — la referencia previa a `1.7.20` en esta bitácora era incorrecta).
 
 ## Qué hace
 Botón flotante 📦 (dark mode) sobre pantallas de Producción / Mantenimiento / Tableros de sensores / Inventario que emite un **vale de almacén** = evento de mantenimiento sobre un nodo de tipo "Surtimiento". Captura múltiples líneas `(artículo + cantidad + usuario asignado)`, registra la persona que recoge el vale en el campo "Asignado" del evento, y deja cada asignación como **comentario estructurado y parseable** para reconstruir después la BD de entregas por usuario (detectar abusos, p. ej. cuánto EPP se le entregó a alguien).
@@ -69,6 +69,23 @@ Prioridad: (1) línea inferible del nombre del nodo raíz (`T\d{2,3}` → match 
 
 ## Safari/iPad (bundle)
 Incluido en el bundle Safari/iPad (`safari/bundle.json`) desde **v0.3.0**. Es "directo": el **FAB 📦 se auto-inyecta** en las pantallas permitidas, así que no necesita popup para el flujo normal. Además hay un **lanzador en el popup** ("Emitir Vale de Almacén"). Canal de lanzamiento (fix de la sesión 2026-07-01): `popup → tabs.sendMessage(tabId,{__saCmd}) → bridge.js runtime.onMessage → postMessage → sa-dispatcher.js → ValeAlmacen.open` (allowlist `LAUNCH_FN`). **Ojo:** `storage.onChanged` NO dispara en el content script de iPadOS, así que el canal viejo (storage-only) no funcionaba; ahora es `tabs.sendMessage` con storage de fallback. Compatible con iOS: sin `a.download`/`chrome.*`/IndexedDB; la evidencia usa `<input type=file>` (cámara del iPad) con gesto de usuario. Los hashes viven en gh-pages (el bridge los refresca en runtime), así que el bundle no se re-hornea al rotar hashes.
+
+## Deploys confirmados en gh-pages (`git log gh-pages -- scripts/vale-almacen*.js`)
+
+Secuencia real (más nuevo primero), reemplaza la referencia suelta a `1.7.20` que traía esta bitácora:
+
+| Config | Commit | Qué cambió | Versión bitácora |
+|---|---|---|---|
+| **1.7.43** | `b417e5c` | fix: vale = solo la solicitud — re-deploy con los cambios reales de `vale-almacen.js` (llena paso 0, lo completa, deja el evento vivo) | 0.1.2 |
+| 1.7.42 | `95448cf` | fix: footer emitido — re-deploy de `vale-almacen-engine.js` con los cambios reales (`buildFooterComment` pasa de `completedAt:` a `emitido:`) | 0.1.2 |
+| **1.7.37** | `81733ce` | fix: catálogo del paso 0 incluye artículos `TEXT`/`BOOLEAN` (ej. guantes EPP), no solo `NUMBER` | 0.1.1 |
+| **1.7.36** | `7977121` | fix: valida equipo a nivel evento + muestra la unidad del artículo en el typeahead | 0.1.1 |
+| **1.7.35** | `818d5fd` | feat: deploy inicial del applet — evento de mantenimiento sobre nodo Surtimiento + hashes `GetMaintenanceEvent`/`UpdateMaintenanceNodeEvent`/`UserDialogQuery` | 0.1.0 |
+
+Los dos deploys de config `1.7.42`/`1.7.43` (mismo día, 30-jun, minutos aparte) son el mismo trabajo
+de fondo que ya documenta §"Lección: `archivedAt` deshace, no completa" (fix v0.1.1/v0.1.2) — se
+listan por separado aquí porque tocaron archivos distintos (`vale-almacen-engine.js` vs
+`vale-almacen.js`) en commits de deploy distintos.
 
 ## Pendientes / mejoras futuras
 - Fase 2: ejecutar también el paso "Confirmación de Entrega" (sensores boolean/text) para marcar entregado.

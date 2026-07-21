@@ -8,7 +8,10 @@ Estando parado en el detalle de una OV (`/Domains/{d}/ReceivedOrders/{idInDomain
 - Destino: OV existente o **crear OV nueva** (reusa `OVOperations.showCreationWizard`).
 
 ## Versión actual
-**0.2.0** — **publicado en producción 2026-06-01** (gh-pages, cache-bust con ext config `1.6.27`). Alcance: **solo reasigna el encabezado de la OT**.
+**0.2.1** — **publicado en producción 2026-07-14** (gh-pages, config `1.7.107`, deploy `10d4376`, commit feature `fa32ae9`). Alcance: **solo reasigna el encabezado de la OT**.
+
+### v0.2.1 (2026-07-14) — fix `customerFacingNotes` → `externalNotes`
+Steelhead renombró el campo de schema en `GenerateRecipesWorkOrderInput`: `customerFacingNotes` → `externalNotes`. Sin el fix, el payload de `CreateUpdateWorkOrdersChecked` mandaba un campo que el schema ya no reconoce. Fix: `wo-mover` ahora lee `wo.externalNotes ?? wo.customerFacingNotes ?? ''` (fallback defensivo por si la respuesta trae el nombre viejo) y escribe `externalNotes` en el input. Fue el arreglo #2 de esa sesión — el mismo rename tocó `po-reconciler.js` en el mismo commit (`fa32ae9`).
 
 ## Mecanismo y el hallazgo clave (scan 2026-06-01)
 "Mover una OT a otra OV editando el encabezado" = mutación **`CreateUpdateWorkOrdersChecked`** con el `id` de la WO **poblado** + `receivedOrderId` nuevo. Los campos del encabezado se traen con **`WorkOrderDialogQuery`** (`{workOrderId, receivedOrderId:-1, domainId}`) → `workOrderById` (name, customerByCustomerId.id, deadline, productByProductId.id, startedAt, type, blockPartialShipments, labelIds). La respuesta `createUpdateWorkOrdersChecked: []` = sin warnings = OK.

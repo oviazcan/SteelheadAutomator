@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Respuesta — Carga masiva Steelhead</title>
+</head>
+<body style="margin:0; padding:24px; background:#f4f5f7;">
+<div style="max-width:720px; margin:0 auto; background:#ffffff; padding:32px 36px; border-radius:8px; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#1f2933; font-size:15px; line-height:1.6;">
+
+  <p style="margin:0 0 16px;">Hola Maru,</p>
+
+  <p style="margin:0 0 16px;">Gracias por la revisión tan a detalle. Antes de entrar a cada punto, quiero poner un poco de contexto: las herramientas de carga masiva nacieron como un <strong>valor agregado</strong> que desarrollé por encima del alcance original del proyecto, precisamente para acelerar su adopción de Steelhead y ahorrarles trabajo manual de captura. Las atiendo con gusto, y abajo respondo cada pregunta con transparencia, separando lo que <strong>ya opera hoy</strong>, lo que conviene dejar para una <strong>siguiente iteración de mejoras</strong> (una vez adoptada esta versión y ya en vivo sobre Steelhead), y lo que es una <strong>definición que les corresponde a ustedes como organización</strong>.</p>
+
+  <p style="margin:0 0 12px;"><strong>Un marco que ayuda a ubicar varias respuestas.</strong> El esquema tiene tres piezas distintas, y conviene no confundirlas:</p>
+
+  <ol style="margin:0 0 16px; padding-left:22px;">
+    <li style="margin-bottom:8px;"><strong>La plantilla Excel (.xlsm)</strong> &mdash; la herramienta de <em>captura y preparación</em>. Aquí viven las listas desplegables, las fórmulas de cálculo y las validaciones de Excel. No es la base de datos.</li>
+    <li style="margin-bottom:8px;"><strong>La extensión de Chrome</strong> &mdash; el <em>puente</em>. Lee el archivo que genera la plantilla y escribe en Steelhead, aplicando una capa de validación y de prevención de duplicados.</li>
+    <li style="margin-bottom:0;"><strong>Steelhead (el ERP)</strong> &mdash; la <em>fuente de verdad / base de datos</em> real. La integridad, la trazabilidad y el gobierno de datos viven, en última instancia, aquí.</li>
+  </ol>
+
+  <p style="margin:0 0 24px;">Buena parte de tus preguntas (integridad, auditoría, recuperación, gobierno) tocan las tres capas, así que las separo cuando hace falta.</p>
+
+  <hr style="border:none; border-top:1px solid #e1e5ea; margin:0 0 24px;">
+
+  <!-- 1 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">1. Catálogos de listas desplegables</h3>
+  <ul style="margin:0 0 24px; padding-left:22px;">
+    <li style="margin-bottom:8px;"><strong>¿Se descargan junto con la plantilla?</strong> Los catálogos tienen su <strong>propio botón de descarga</strong> ("Descargar catálogos actualizados"), independiente del de la plantilla. Además, por solicitud de ustedes, el botón "Descargar plantilla" trae también los catálogos actualizados <strong>en el mismo paso</strong>, para no tener que bajarlos por separado en ese escenario. Dentro de la plantilla, la macro <strong>Refrescar Listas</strong> es la que actualiza las listas desplegables a partir de esos catálogos.</li>
+    <li style="margin-bottom:8px;"><strong>¿Cómo se garantiza que todos usen la misma información?</strong> Tanto la plantilla como los catálogos se descargan siempre desde <strong>un único origen</strong> (los botones de la extensión), que sirve la versión vigente. El riesgo real no es la descarga, sino que alguien conserve y reutilice una copia vieja &mdash; eso lo atacamos en el punto 6.</li>
+    <li style="margin-bottom:0;"><strong>¿Quién administra/actualiza/depura los catálogos?</strong> Aquí vale la pena ser claro sobre el origen: los catálogos son una <strong>traducción de los datos del IBMS</strong> (el sistema legacy). Se hizo el mejor esfuerzo de traducción, pero el equipo de ingeniería no tuvo tiempo de validarlos a fondo &mdash; de ahí la información que ustedes detectan como obsoleta o inconsistente. La <strong>administración y depuración de los catálogos es responsabilidad del equipo de ingeniería</strong>, y hoy se realiza directamente desde Steelhead. Lo hemos venido haciendo nosotros como equipo técnico a modo de apoyo, pero no es propiamente nuestra responsabilidad; conviene asignar formalmente un responsable interno y una cadencia de depuración.</li>
+  </ul>
+
+  <!-- 2 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">2. Automatización de cálculos y conversiones</h3>
+  <p style="margin:0 0 24px;">Coincido al 100% y, de hecho, así está diseñado: la plantilla ya <strong>automatiza los campos derivados por fórmula</strong> &mdash; conversiones de unidades, rangos de especificación (p. ej. espesores en µm), geometría, dimensiones, capacidad de racks, derivación del proceso a partir de las etiquetas y la expansión del bloque de productos. El operador captura los datos base y la plantilla calcula lo demás; no se teclean a mano. Si hay alguna conversión específica que hoy no esté automatizada y la quieran, la agregamos &mdash; es justo el tipo de cosa que se ajusta en la plantilla sin tocar la extensión.</p>
+
+  <!-- 3 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">3. Validación de tipos de datos</h3>
+  <p style="margin:0 0 10px;">Hoy operan varias capas de validación:</p>
+  <ul style="margin:0 0 12px; padding-left:22px;">
+    <li style="margin-bottom:8px;"><strong>En la plantilla:</strong> los campos de catálogo usan <strong>listas desplegables con validación de datos de Excel</strong> (no se puede teclear un valor fuera de la lista). La macro de exportación <strong>bloquea la salida</strong> si falta el modo, si hay un número de parte sin cliente, si en modo cotización se mezclan varios clientes, y avisa cuando se exceden ~2,000 filas.</li>
+    <li style="margin-bottom:0;"><strong>En la extensión:</strong> valida que los IDs de Steelhead existan, que el proceso exista (si no, pregunta en vez de romper), fuerza enteros donde Steelhead los exige, etc.</li>
+  </ul>
+  <p style="margin:0 0 24px;"><strong>Se puede endurecer aún más</strong> &mdash; por ejemplo, validación a nivel de celda en los campos numéricos y de fecha de captura libre ("solo número entero / decimal / fecha"). Lo dejo identificado como mejora para una <strong>siguiente iteración</strong>, una vez que esta versión esté adoptada y operando en vivo sobre Steelhead, para no cargar de cambios el arranque.</p>
+
+  <!-- 4 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">4. Protección de la estructura de la plantilla</h3>
+  <p style="margin:0 0 24px;">Buen punto, y es totalmente factible: Excel permite <strong>proteger la hoja</strong> dejando editables solo las celdas de captura y <strong>bloqueando encabezados, fórmulas y celdas calculadas</strong>, de modo que un cambio accidental quede impedido. Las listas desplegables ya protegen sus campos. La protección de hoja completa la <strong>agregamos en la siguiente iteración de mejoras</strong>, junto con el punto 3.</p>
+
+  <!-- 5 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">5. Uso de la opción "Forzar"</h3>
+  <p style="margin:0 0 10px;">Es importante entender qué hace, porque suena más agresivo de lo que es:</p>
+  <ul style="margin:0 0 12px; padding-left:22px;">
+    <li style="margin-bottom:8px;"><strong>Comportamiento normal (sin forzar):</strong> el sistema <em>evita</em> duplicar. Si ya existe un número de parte con el mismo nombre y cliente, lo <strong>actualiza</strong> en lugar de crear uno nuevo.</li>
+    <li style="margin-bottom:8px;"><strong>"Forzar duplicado":</strong> le indica al sistema "sé que ya existe uno; de todos modos crea un segundo número de parte distinto con el mismo nombre". Opcionalmente, "y archivar anterior" archiva el viejo (reemplazo controlado).</li>
+    <li style="margin-bottom:0;"><strong>¿Qué omite?</strong> No omite validaciones de tipo de dato ni de estructura. Lo único que "salta" es el emparejamiento automático contra el registro existente &mdash; la salvaguarda que normalmente reutilizaría el registro en vez de duplicarlo.</li>
+  </ul>
+  <p style="margin:0 0 10px;">Sobre permisos: la <strong>granularidad de permisos por opción no es algo que Steelhead ofrezca</strong> como funcionalidad, así que no es algo que se pueda restringir a nivel de rol dentro de la herramienta.</p>
+  <p style="margin:0 0 24px;"><strong>Mi recomendación:</strong> dado que esta opción fue útil para la carga masiva inicial pero <strong>ya no aporta mucho en la operación actual</strong>, propongo <strong>retirarla de la plantilla</strong>. Quitarla simplifica la herramienta y elimina de raíz la preocupación sobre su uso.</p>
+
+  <!-- 6 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">6. Control de versiones</h3>
+  <p style="margin:0 0 10px;">Primero una aclaración: la <strong>"vigencia de 30 días" se refiere a la validez de la cotización/precio</strong> (un campo de negocio que viaja a Steelhead: "válida hasta X días"), <strong>no a una caducidad de la plantilla</strong>. La plantilla no expira.</p>
+  <p style="margin:0 0 10px;">Sobre el control de versiones de la plantilla: la <strong>versión ya se muestra dentro de la plantilla</strong>, y todos la descargan desde un único origen (la extensión), que entrega siempre la versión vigente. En la práctica, quien descargue desde ahí trabaja con la versión actual.</p>
+  <p style="margin:0 0 24px;"><strong>Para reforzarlo en una siguiente vuelta</strong> proponemos: agregar la <strong>fecha</strong> junto a la versión, y que la extensión <strong>avise cuando alguien use una versión que no es la más reciente</strong> (manteniendo retrocompatibilidad, para que un archivo de versión previa siga cargando sin romperse). Lo dejamos para esa siguiente iteración, no para el arranque.</p>
+
+  <!-- 7 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">7. Integridad y seguridad de la información</h3>
+  <ul style="margin:0 0 12px; padding-left:22px;">
+    <li style="margin-bottom:8px;"><strong>Prevención de duplicados:</strong> es uno de los puntos más fuertes del diseño. Antes de cargar, la extensión clasifica cada número de parte con una cascada de <strong>cuatro criterios de coincidencia</strong> (por ID de Steelhead directo; por identificador de cotización IBMS; por clave compuesta de cliente + nombre + metal base + acabados; y, si hay ambigüedad, <strong>presenta los candidatos para que una persona decida</strong>). Si la parte ya existe, se actualiza en lugar de duplicarse.</li>
+    <li style="margin-bottom:0;"><strong>Consistencia:</strong> las listas desplegables cerradas evitan variantes de un mismo valor, y el orden de carga es determinista.</li>
+  </ul>
+  <p style="margin:0 0 8px;"><strong>Cómo se controla qué se escribe (importante):</strong> la herramienta <strong>no aplica "valores por defecto"</strong>. El comportamiento se define celda por celda, según lo que el operador ponga:</p>
+  <ul style="margin:0 0 12px; padding-left:22px;">
+    <li style="margin-bottom:6px;"><strong>Celda con dato</strong> &rarr; <strong>modifica</strong> ese campo en Steelhead con el valor capturado.</li>
+    <li style="margin-bottom:6px;"><strong>Celda vacía</strong> &rarr; <strong>no toca</strong> ese campo; <strong>conserva</strong> lo que el registro ya tenía en Steelhead.</li>
+    <li style="margin-bottom:0;"><strong>Celda con guión ("-")</strong> &rarr; <strong>borra</strong> ese dato en Steelhead (lo deja vacío de forma intencional).</li>
+  </ul>
+  <p style="margin:0 0 24px;">Por eso, los valores que ustedes quieren que "siempre vengan por defecto" <strong>aparecen ya escritos (repetidos) en la plantilla</strong>: no son un default oculto del sistema, sino un dato explícito que se carga como cualquier otro. Esto hace que el resultado sea predecible &mdash; lo que ven en la plantilla es exactamente lo que se va a escribir.</p>
+
+  <!-- 8 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">8. Trazabilidad y auditoría</h3>
+  <ul style="margin:0 0 12px; padding-left:22px;">
+    <li style="margin-bottom:8px;"><strong>¿Existe bitácora de auditoría?</strong> Sí. Cada parte que cambia durante una carga recibe un <strong>registro de auditoría dentro de Steelhead</strong> (campo "Control de Cambios") con: <strong>quién</strong> cargó, <strong>cuándo</strong> (fecha y hora) y <strong>qué tipo de cambio</strong> fue (Alta / Precio / Enriquecimiento). Queda persistido en el servidor de Steelhead.</li>
+    <li style="margin-bottom:8px;"><strong>¿Quién hizo la carga?</strong> Sí &mdash; se atribuye al <strong>usuario autenticado en Steelhead</strong> en ese momento (la extensión opera con la sesión del navegador del usuario).</li>
+    <li style="margin-bottom:0;"><strong>¿Qué se modificó y cuándo?</strong> Sí, a nivel de qué parte y cuándo. Además, <strong>cada corrida genera un reporte (Excel) descargable</strong> con el detalle de qué se procesó, las decisiones tomadas y los errores.</li>
+  </ul>
+  <p style="margin:0 0 24px;">Si lo desean, este registro se puede <strong>robustecer más adelante</strong> &mdash; por ejemplo, guardando el "antes vs. después" a nivel de campo. Lo dejamos como opción a definir según el nivel de auditoría que requieran.</p>
+
+  <!-- 9 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">9. Recuperación ante errores</h3>
+  <p style="margin:0 0 10px;">Con transparencia: hoy <strong>no existe un "deshacer" / rollback automático</strong> de una carga. Lo que sí mitiga el riesgo es que, si una corrida se interrumpe, <strong>se reanuda sin reprocesar</strong> lo ya hecho, y el <strong>reporte de errores</strong> indica exactamente qué partes fallaron.</p>
+  <p style="margin:0 0 24px;"><strong>Propuesta para una siguiente iteración:</strong> habilitar una <strong>nueva herramienta de "Descargar snapshot"</strong> que, antes de una carga, baje un <strong>respaldo en JSON</strong> de las partes que se van a tocar, de forma que sea fácilmente recuperable si algo sale mal. Eso convierte la recuperación en un paso autoservicio y deja un respaldo puntual antes de cada carga de riesgo.</p>
+
+  <!-- 10 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">10. Gobierno de datos</h3>
+  <p style="margin:0 0 24px;">Steelhead es el repositorio de datos maestros. La plantilla y la extensión <strong>aportan controles de calidad</strong> en la entrada (listas cerradas, deduplicación, semántica predecible de carga), pero el <strong>modelo de gobierno</strong> es una definición organizacional. Mi recomendación concreta: que <strong>Ecoplating designe un Data Owner</strong> que diseñe las políticas de calidad y propiedad de los datos maestros. De nuestro lado, con gusto los <strong>capacitamos en las implicaciones que tiene cada campo o dato</strong> cuando su calidad baja, para que esas políticas se construyan con pleno conocimiento del impacto operativo.</p>
+
+  <!-- 11 -->
+  <h3 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">11. Compatibilidad con futuras versiones de Steelhead</h3>
+  <p style="margin:0 0 10px;">Aquí quiero ser muy honesto sobre la naturaleza de estas herramientas, porque es importante para sus expectativas: <strong>estas funciones no son soportadas nativamente por Steelhead</strong>. La extensión opera contra la API de Steelhead usando unas "llaves" técnicas de acceso. Cuando el proveedor actualiza su sistema, esas <strong>llaves pueden cambiar; si cambian, la funcionalidad afectada se pierde temporalmente hasta que las actualizamos</strong>.</p>
+  <p style="margin:0 0 10px;">Dicho de forma realista: <strong>este mantenimiento es parte del diseño</strong>, no una falla. En la práctica, en un mal día cambian del orden de <strong>5 a 10 llaves</strong>, y resolverlo <strong>no toma más de ~30 minutos</strong>. Además tenemos una <strong>validación automática diaria</strong> que detecta estos cambios de forma proactiva, idealmente antes de que un usuario tope con el error.</p>
+  <p style="margin:0 0 16px;">Por el lado de la plantilla, el contrato con la extensión está <strong>desacoplado</strong>, así que los cambios de Steelhead normalmente se absorben del lado de la extensión sin tener que tocar la plantilla. La conclusión práctica: la herramienta es <strong>mantenible y rápida de restaurar</strong>, pero requiere un <strong>mantenimiento continuo inherente</strong> precisamente porque cubre funciones que Steelhead no ofrece por sí mismo.</p>
+  <p style="margin:0 0 24px;">Sobre la sostenibilidad de ese mantenimiento: está en mis planes <strong>capacitar al departamento de Sistemas</strong> para que sea capaz de realizar este mantenimiento por sí mismo cuando las llaves fallen. Mientras esa transferencia de conocimiento no se complete, <strong>quedo comprometido a resolver cualquier problema que surja</strong>, priorizando estas correcciones por encima del resto de actividades que el proyecto de Steelhead requiere para estabilizarse.</p>
+
+  <hr style="border:none; border-top:1px solid #e1e5ea; margin:0 0 24px;">
+
+  <h3 style="margin:0 0 12px; font-size:16px; color:#0b5cad;">En resumen</h3>
+
+  <p style="margin:0 0 8px;"><strong>Ya opera hoy:</strong></p>
+  <ul style="margin:0 0 16px; padding-left:22px;">
+    <li style="margin-bottom:6px;">Prevención de duplicados (cascada de 4 criterios), semántica de carga predecible (dato modifica / vacío conserva / guión borra), y automatización de cálculos y conversiones.</li>
+    <li style="margin-bottom:6px;">Auditoría en Steelhead (quién / cuándo / tipo de cambio) + reporte Excel por corrida.</li>
+    <li style="margin-bottom:0;">Distribución desde un único origen (plantilla + catálogos) y validación automática diaria de las "llaves" de la API.</li>
+  </ul>
+
+  <p style="margin:0 0 8px;"><strong>Para una siguiente iteración de mejoras</strong> (una vez adoptada esta versión y ya en vivo):</p>
+  <ul style="margin:0 0 16px; padding-left:22px;">
+    <li style="margin-bottom:6px;">Validación de tipo a nivel de celda (3) y protección de hoja (4).</li>
+    <li style="margin-bottom:6px;">Fecha junto a la versión + aviso de versión no vigente, con retrocompatibilidad (6).</li>
+    <li style="margin-bottom:6px;">Herramienta de "Descargar snapshot" para respaldo y recuperación autoservicio (9).</li>
+    <li style="margin-bottom:0;">Robustecer el log de auditoría a nivel de campo, si lo requieren (8).</li>
+  </ul>
+
+  <p style="margin:0 0 8px;"><strong>Definiciones que les corresponden como organización:</strong></p>
+  <ul style="margin:0 0 16px; padding-left:22px;">
+    <li style="margin-bottom:6px;">Responsable interno (ingeniería) para la administración y depuración de catálogos (1).</li>
+    <li style="margin-bottom:0;">Designar un Data Owner que diseñe las políticas de calidad de datos maestros; nosotros capacitamos sobre el impacto de cada campo (10).</li>
+  </ul>
+
+  <p style="margin:0 0 8px;"><strong>Recomendaciones:</strong></p>
+  <ul style="margin:0 0 16px; padding-left:22px;">
+    <li style="margin-bottom:0;">Retirar la opción "Forzar duplicado": ya no aporta valor en la operación actual y simplifica la herramienta (5).</li>
+  </ul>
+
+  <p style="margin:0 0 16px;">Como nota de fondo: tengan presente que estas herramientas de carga masiva son un <strong>complemento que ofrecí por encima del alcance original</strong> para facilitarles la operación, y que por su naturaleza (cubren funciones no nativas de Steelhead) requieren ese mantenimiento continuo que describí en el punto 11. Las sigo apoyando con gusto.</p>
+
+  <p style="margin:0 0 24px;">Quedo atento y con gusto lo revisamos a detalle en la reunión.</p>
+
+  <p style="margin:0;">Saludos,<br>Omar</p>
+
+</div>
+</body>
+</html>

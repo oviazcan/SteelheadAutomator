@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eco Plating — Browser Automations: Capability &amp; Risk Matrix</title>
+<style>
+  @media print {
+    @page { size: A4 landscape; margin: 9mm; }
+    body { background:#ffffff !important; padding:0 !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body style="margin:0; padding:24px; background:#f4f5f7;">
+<div style="max-width:1040px; margin:0 auto; background:#ffffff; padding:32px 36px; border-radius:8px; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#1f2933; font-size:15px; line-height:1.6;">
+
+  <h1 style="margin:0 0 6px; font-size:22px; color:#0b3d6b;">Eco Plating — Browser Automations</h1>
+  <p style="margin:0 0 20px; font-size:15px; color:#52606d;">Capability &amp; Risk Matrix &mdash; prepared for Steelhead as input to the upcoming <em>&ldquo;Automations&rdquo;</em> feature.</p>
+
+  <p style="margin:0 0 16px;">This matrix lists every browser-level tool Eco Plating uses today on top of Steelhead. It is organized around the two dimensions we agreed to evaluate: <strong>data-safety footprint</strong> and <strong>operational importance</strong>. These tools were built as a value-add to accelerate our Steelhead adoption and to cover operational needs the platform does not yet handle natively. Our intent in sharing this is to give your team a clear road map so the native <em>&ldquo;Automations&rdquo;</em> feature can absorb as much of this as possible.</p>
+
+  <!-- SAFETY MODEL -->
+  <div style="background:#eef5fb; border:1px solid #cfe2f3; border-radius:6px; padding:18px 20px; margin:0 0 24px;">
+    <h2 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">How these tools touch Steelhead (shared safety model)</h2>
+    <p style="margin:0 0 10px;">The following holds for <strong>every</strong> tool below and is the basis for the per-tool data-safety rating:</p>
+    <ul style="margin:0 0 10px; padding-left:22px;">
+      <li style="margin-bottom:8px;"><strong>Same session, same permissions.</strong> Everything runs inside the signed-in user&rsquo;s own browser session, with that user&rsquo;s existing role and permissions. The tools do only what the same person could do by hand in the UI &mdash; no admin/elevated access.</li>
+      <li style="margin-bottom:8px;"><strong>Platform&rsquo;s own operations.</strong> They reuse the very same operations the Steelhead web app itself issues; they do not open any private or undocumented channel. <strong>Your server-side validation and safeguards stay fully in effect.</strong></li>
+      <li style="margin-bottom:8px;"><strong>Conservative request volume.</strong> Bulk work is deliberately throttled (small batches, capped concurrency) to be gentle on the platform &mdash; not a flood of uncontrolled calls.</li>
+      <li style="margin-bottom:8px;"><strong>Mostly reversible &amp; auditable writes.</strong> The large majority of writes are reversible (archive, not hard-delete) and carry an audit record (who / when / what). The few higher-impact tools are marked <strong>&dagger;</strong> below and are explicitly gated behind a user confirmation step.</li>
+      <li style="margin-bottom:0;"><strong>Proactive break detection.</strong> An automated daily check detects when Steelhead rotates its operation identifiers, so affected tools are flagged and fixed quickly &mdash; usually before a user hits an error.</li>
+    </ul>
+    <p style="margin:0; font-size:13px; color:#52606d;"><strong>&dagger; Higher-impact operations</strong> (each requires explicit confirmation before running): <em>inventory-reset</em> (archives existing batches + creates new ones), <em>process-canon</em> apply mode (rewrites a process node tree via the platform&rsquo;s own <code>ProcureTree</code>), and <em>report-liberator</em>&rsquo;s optional empty-folder delete.</p>
+  </div>
+
+  <!-- LEGEND -->
+  <h2 style="margin:0 0 8px; font-size:15px; color:#0b5cad;">Legend</h2>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 28px; font-size:13px;">
+    <tr style="vertical-align:top;">
+      <td style="padding:4px 12px 4px 0; width:33%;"><strong>Native in Steelhead?</strong><br>
+        <span style="color:#b54708;">No</span> = no equivalent today.<br>
+        <span style="color:#9a6700;">Partial</span> = exists but per-record / buried / no bulk path.</td>
+      <td style="padding:4px 12px; width:34%;"><strong>Data access</strong><br>
+        <span style="color:#067647;">Read-only</span> = never modifies data.<br>
+        <span style="color:#067647;">Pre-fill</span> = fills a form the user reviews &amp; saves.<br>
+        <span style="color:#067647;">Triggers native</span> = invokes a built-in Steelhead action.<br>
+        <span style="color:#9a6700;">Write (rev.)</span> = writes, reversible + audited.<br>
+        <span style="color:#b54708;">Write &dagger;</span> = higher-impact, confirmation-gated.</td>
+      <td style="padding:4px 0 4px 12px; width:33%;"><strong>Importance</strong><br>
+        Critical / High / Medium / Low / One-time.<br>
+        <strong>Status</strong>: Production / Live-validated / Pending validation.<br>
+        <span style="background:#fff8e6; padding:0 4px;">Yellow rows</span> = planned, not yet built.</td>
+    </tr>
+  </table>
+
+  <!-- ============ CATEGORY A ============ -->
+  <h2 style="margin:0 0 4px; font-size:17px; color:#0b3d6b;">A. Bulk master-data load &amp; maintenance</h2>
+  <p style="margin:0 0 12px; color:#52606d; font-size:14px;">Loading and maintaining part numbers, specs, processes, files and pricing at scale.</p>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 26px; font-size:13px;">
+    <thead>
+      <tr style="background:#0b3d6b; color:#fff; text-align:left;">
+        <th style="padding:8px 10px; width:17%;">Tool (launcher name)</th>
+        <th style="padding:8px 10px; width:39%;">What it automates</th>
+        <th style="padding:8px 10px; width:10%;">Native?</th>
+        <th style="padding:8px 10px; width:16%;">Data access</th>
+        <th style="padding:8px 10px; width:18%;">Importance / Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>bulk-upload</strong><br><span style="color:#52606d;">Carga Masiva</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Bulk create/update of part numbers from Excel: metal, line, finishes, default process, quality specs/params, dimensions, and quotes/pricing &mdash; with an audit stamp per part.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Critical</strong><br><span style="color:#52606d;">Production (200&ndash;4,270/run)</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>spec-params-bulk</strong><br><span style="color:#52606d;">Carga masiva Spec Params</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Export all quality-spec parameters to Excel, edit acceptance ranges / sampling / requirement flags in bulk, and upload back with a pre-change diff.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Pending validation</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>spec-migrator</strong><br><span style="color:#52606d;">Ajuste Masivo de Specs</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Spec maintenance across parts: migrate to a newer spec version, assign pending params, resolve incompatible specs, and detect/clean duplicated parameters.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>archiver</strong><br><span style="color:#52606d;">Archivador de PNs</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Bulk archive/unarchive part numbers by combinable criteria (created/modified/last-used date, tags with AND/OR), with a count preview before running.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium-High</strong><br><span style="color:#52606d;">Live-validated</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>integrity-tiers</strong><br><span style="color:#52606d;">Auditor de PNs</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Scans all parts and detects duplicates at three severity tiers (exact quote-key, functional name+customer+metal+finishes, partial subset); bulk-archives the discards.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Production (5k&ndash;12k parts)</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>process-canon</strong> &dagger;<br><span style="color:#52606d;">Canon de Procesos</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Audits every manufacturing process against the 9-node canonical structure (in/out warehouse SPs, racking, ready-to-process scanner, drying, inspection &amp; packing) and, in apply mode, rewrites the process tree to conform and creates the missing scanner nodes.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">Read / Write &dagger;</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Critical</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>file-uploader</strong><br><span style="color:#52606d;">Cargador de Archivos</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Bulk-uploads files (drawings, specs, docs) and auto-links each one to its part number by matching the file name to the part name &mdash; upload + link in one pass.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Validated</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ CATEGORY B ============ -->
+  <h2 style="margin:0 0 4px; font-size:17px; color:#0b3d6b;">B. In-form entry assistants (auto-fill &amp; calculation)</h2>
+  <p style="margin:0 0 12px; color:#52606d; font-size:14px;">Reduce keystrokes and capture errors on existing Steelhead screens. Most only <em>pre-fill</em> fields the user then reviews and saves.</p>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 26px; font-size:13px;">
+    <thead>
+      <tr style="background:#0b3d6b; color:#fff; text-align:left;">
+        <th style="padding:8px 10px; width:17%;">Tool (launcher name)</th>
+        <th style="padding:8px 10px; width:39%;">What it automates</th>
+        <th style="padding:8px 10px; width:10%;">Native?</th>
+        <th style="padding:8px 10px; width:16%;">Data access</th>
+        <th style="padding:8px 10px; width:18%;">Importance / Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>create-order-autofill</strong><br><span style="color:#52606d;">Crear OV — Autofill</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">On sales-order creation, fills three required custom fields: billing legal entity (from the customer&rsquo;s tax catalog), currency, and the &ldquo;consolidate by product&rdquo; flag (auto-set for specific ship-to plants).</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Pending validation</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>proceso-calculator</strong><br><span style="color:#52606d;">Calculadora de Procesos</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">While creating/editing a part, suggests the correct production process from the metal + line + finish-tag combination (1,580-entry catalog); can add a missing combination to the shared catalog.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Pending deploy/validation</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>unit-autoconvert</strong><br><span style="color:#52606d;">Auto-conversión de Unidades</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">When editing a part&rsquo;s unit factors, auto-computes the equivalent units (KG&harr;LB, cm&sup2;&harr;dm&sup2;&harr;ft&sup2;) so price-by-weight/area factors stay consistent.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Pending validation</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>receiver-date-override</strong><br><span style="color:#52606d;">Fecha de Recibo</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Adds an editable &ldquo;actual received date/time&rdquo; on the customer-receiving modal, so a back-dated arrival is recorded at creation instead of edited afterward.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Production (issue tracked)</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>warehouse-location-prefill</strong><br><span style="color:#52606d;">Ubicación de Recibo</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Adds a header &ldquo;initial location&rdquo; on the receiving modal and propagates it to every line, instead of picking the location row by row.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium-High</strong><br><span style="color:#52606d;">Dev-validated</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>weight-quick-entry</strong><br><span style="color:#52606d;">Peso Rápido</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Adds an inline weight field (KG/LB by customer) next to the quantity field on each receiving line, so weight is captured in the same place.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Pending validation</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>sensor-status-autofill</strong><br><span style="color:#52606d;">Auto-asignar status (Sensores)</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">On maintenance sensor panels, auto-marks the active &ldquo;use for status&rdquo; parameter (assists when there are several candidates, skips when none).</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Pending validation</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea; background:#fff8e6;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>engineering-calc</strong><br><span style="display:inline-block; margin-top:4px; padding:1px 7px; background:#b54708; color:#fff; border-radius:10px; font-size:11px;">Planned</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Engineering helper that computes <strong>pieces per load</strong> (rack/barrel capacity) and the <strong>part&rsquo;s surface area</strong> from its geometry/dimensions, feeding price-by-area and load-capacity planning on the part. <em>Scope still being defined.</em></td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#5f6b7a;">TBD (planned)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Not yet developed</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea; background:#fff8e6;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>tank-autoroute</strong><br><span style="display:inline-block; margin-top:4px; padding:1px 7px; background:#b54708; color:#fff; border-radius:10px; font-size:11px;">Planned</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">When a work order is going to be produced on a <em>different production line</em> than its default, automatically re-routes the plating tanks/baths to that line&rsquo;s equivalent stations and adjusts the order&rsquo;s process path. <em>Scope still being defined.</em></td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#5f6b7a;">TBD (planned)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Not yet developed</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ CATEGORY C ============ -->
+  <h2 style="margin:0 0 4px; font-size:17px; color:#0b3d6b;">C. Billing, invoicing &amp; tax (SAT) compliance</h2>
+  <p style="margin:0 0 12px; color:#52606d; font-size:14px;">Accounting accuracy and Mexico-specific fiscal (SAT/CFDI) correctness on the invoicing flow.</p>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 26px; font-size:13px;">
+    <thead>
+      <tr style="background:#0b3d6b; color:#fff; text-align:left;">
+        <th style="padding:8px 10px; width:17%;">Tool (launcher name)</th>
+        <th style="padding:8px 10px; width:39%;">What it automates</th>
+        <th style="padding:8px 10px; width:10%;">Native?</th>
+        <th style="padding:8px 10px; width:16%;">Data access</th>
+        <th style="padding:8px 10px; width:18%;">Importance / Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>cfdi-attacher</strong><br><span style="color:#52606d;">Adjuntar CFDI</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">When sending the invoice email, automatically attaches the stamped <strong>CFDI XML</strong> (Mexican e-invoice) to each invoice in the message; if the XML can&rsquo;t be attached, it blocks the send rather than mail an incomplete invoice.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Triggers native</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Critical</strong> (fiscal)<br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>invoice-autofill</strong><br><span style="color:#52606d;">Invoice Autofill</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">On invoice creation, auto-fills the required accounting fields from the selected customer: AR/receivable account and the income account on each line (customer catalogs reach 60+ candidate accounts).</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Critical</strong><br><span style="color:#52606d;">Production &mdash; gates legacy retirement</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>bill-autofill</strong><br><span style="color:#52606d;">Bill Autofill</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">On vendor bills (AP), pre-fills the payable account, currency, exchange rate (looked up by invoice date) and per-line expense account, learning from prior saves.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Pre-fill</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>invoice-auto-regen</strong><br><span style="color:#52606d;">Auto-regenerar Facturas</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Detects SAT-stamped invoices whose PDF was generated <em>before</em> the stamp (missing the SAT seal, QR and fiscal folio) and flags them for regeneration so the PDF is complete and valid.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Triggers native</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong> (fiscal)<br><span style="color:#52606d;">Stable (post-fix)</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>invoice-listing-marker</strong><br><span style="color:#52606d;">Marcadores de Facturas</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Color-codes the invoice list: flags zero-amount invoices, credit notes (negative totals) and un-stamped drafts, so they&rsquo;re caught at a glance during month-end review.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Read-only</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>invoice-default-tab</strong><br><span style="color:#52606d;">Tab por defecto en Invoices</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Opens the Invoices section on the &ldquo;Packing Slips&rdquo; tab (Eco&rsquo;s start of the billing flow) instead of the default tab; respects the user&rsquo;s choice once they navigate.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Read-only</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Low</strong> (convenience)<br><span style="color:#52606d;">Production</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ CATEGORY D ============ -->
+  <h2 style="margin:0 0 4px; font-size:17px; color:#0b3d6b;">D. Purchasing &amp; order reconciliation (customer PO &harr; sales order)</h2>
+  <p style="margin:0 0 12px; color:#52606d; font-size:14px;">Turning customer POs (PDF / portal exports) into matched, validated sales orders. These use AI only to parse the incoming PO/portal document.</p>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 26px; font-size:13px;">
+    <thead>
+      <tr style="background:#0b3d6b; color:#fff; text-align:left;">
+        <th style="padding:8px 10px; width:17%;">Tool (launcher name)</th>
+        <th style="padding:8px 10px; width:39%;">What it automates</th>
+        <th style="padding:8px 10px; width:10%;">Native?</th>
+        <th style="padding:8px 10px; width:16%;">Data access</th>
+        <th style="padding:8px 10px; width:18%;">Importance / Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>portal-importer</strong><br><span style="color:#52606d;">Importador de Portales</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Imports a customer purchasing-portal export (e.g. Hubbell), reconciles each PO against Steelhead (exists / candidate / new), and creates the missing sales orders in batch &mdash; resolving part numbers with a learned mapping memory.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Read / Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Critical</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>po-comparator</strong><br><span style="color:#52606d;">Validador OC vs OV</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Reads the customer PO PDF, finds the matching sales order, and presents a line-by-line comparison (price / qty / partial / missing) so discrepancies are caught before production; can notify the team and re-order lines to match the PO.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Read / Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>po-reconciler</strong><br><span style="color:#52606d;">Reconciliador OV vs PO Schneider</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">For Schneider QRO: matches the temporary sales orders opened before the real SAP PO arrives, computes a re-assignment plan (which WOs move, which SO is renamed to the SAP number, remainder handling), shows it for approval, then executes it.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Read / Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Validated (needs supervision)</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea; background:#fff8e6;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>so-line-merge</strong><br><span style="display:inline-block; margin-top:4px; padding:1px 7px; background:#b54708; color:#fff; border-radius:10px; font-size:11px;">Planned</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Bulk-merges line rows within a sales order according to defined criteria (e.g. same part / product / price), consolidating many rows into one in a single pass instead of editing the order line by line. <em>Criteria and scope still being defined.</em></td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#5f6b7a;">TBD (planned)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Not yet developed</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ CATEGORY E ============ -->
+  <h2 style="margin:0 0 4px; font-size:17px; color:#0b3d6b;">E. Production, work orders &amp; inventory operations</h2>
+  <p style="margin:0 0 12px; color:#52606d; font-size:14px;">Shop-floor and inventory operations Steelhead handles one record at a time, done in bulk or in real time.</p>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 26px; font-size:13px;">
+    <thead>
+      <tr style="background:#0b3d6b; color:#fff; text-align:left;">
+        <th style="padding:8px 10px; width:17%;">Tool (launcher name)</th>
+        <th style="padding:8px 10px; width:39%;">What it automates</th>
+        <th style="padding:8px 10px; width:10%;">Native?</th>
+        <th style="padding:8px 10px; width:16%;">Data access</th>
+        <th style="padding:8px 10px; width:18%;">Importance / Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>paros-linea</strong><br><span style="color:#52606d;">Paro de Línea</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">A floating Andon button to register, time and close line-stop events (maintenance events) in real time from any workboard or WO &mdash; capturing area, equipment, reason and photo evidence. Feeds OEE directly.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Critical</strong> (OEE)<br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>wo-deadline-changer</strong><br><span style="color:#52606d;">Gestión Masiva de OT</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Selects work orders by multi-criteria filters (customer, part, product, process, SO, dates) and applies a new deadline or adds/removes tags in bulk &mdash; for mass re-prioritization.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>wo-mover</strong><br><span style="color:#52606d;">Mover OTs entre OVs</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">From a sales order, reassigns its work orders to another sales order of the same customer (existing or new) from a multi-select table, instead of editing each WO header individually.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Production (pending e2e)</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>inventory-reset</strong> &dagger;<br><span style="color:#52606d;">Reinicio de Inventario</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Two-phase inventory reset: archives all active batches of the selected inventory types, then creates fresh batches with starting quantities from a CSV &mdash; used at period close / audits. Confirmation-gated.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">Write &dagger;</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong><br><span style="color:#52606d;">Validated</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea; background:#fff8e6;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>warehouse-issue-slip</strong><br><span style="display:inline-block; margin-top:4px; padding:1px 7px; background:#b54708; color:#fff; border-radius:10px; font-size:11px;">Planned</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Bulk generation/registration of warehouse issue slips (&ldquo;vales de salida de almacén&rdquo;) when material leaves the warehouse, to tighten internal control over what was issued, for which order, and by whom. <em>Not billing-critical; reduces internal-control friction. Scope still being defined.</em></td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#5f6b7a;">TBD (planned)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Not yet developed</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ CATEGORY F ============ -->
+  <h2 style="margin:0 0 4px; font-size:17px; color:#0b3d6b;">F. Reports, exploration &amp; utilities</h2>
+  <p style="margin:0 0 12px; color:#52606d; font-size:14px;">Reporting convenience and project infrastructure.</p>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 26px; font-size:13px;">
+    <thead>
+      <tr style="background:#0b3d6b; color:#fff; text-align:left;">
+        <th style="padding:8px 10px; width:17%;">Tool (launcher name)</th>
+        <th style="padding:8px 10px; width:39%;">What it does</th>
+        <th style="padding:8px 10px; width:10%;">Native?</th>
+        <th style="padding:8px 10px; width:16%;">Data access</th>
+        <th style="padding:8px 10px; width:18%;">Importance / Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>report-regen</strong><br><span style="color:#52606d;">Regenerar Reportes</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">A one-click button to regenerate the reports database, with live progress and a shared cooldown timer &mdash; exposing a function that already exists but is buried in the UI.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Triggers native</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Low</strong> (convenience)<br><span style="color:#52606d;">Pending validation</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>report-liberator</strong> &dagger;<br><span style="color:#52606d;">Liberador de Reportes</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Admin maintenance for reports: bulk-unarchive, move reports out of folders to make them editable, and optionally delete empty folders (the delete step is the only irreversible action, and is confirmation-gated).</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.) &dagger;</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Low</strong> (admin)<br><span style="color:#52606d;">Validated</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>hash-scanner</strong><br><span style="color:#52606d;">Explorador Steelhead</span></td>
+        <td style="padding:8px 10px; vertical-align:top;">Internal infrastructure: passively observes our own session traffic to detect when Steelhead rotates its operation identifiers, so our tools stay in sync (sensitive values are sanitized before logging).</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#5f6b7a;">n/a (infra)</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Read-only</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Internal</strong><br><span style="color:#52606d;">Production</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ STANDALONE ============ -->
+  <h2 style="margin:0 0 4px; font-size:17px; color:#0b3d6b;">G. Standalone DevTools (no launcher icon)</h2>
+  <p style="margin:0 0 12px; color:#52606d; font-size:14px;">Not part of the extension launcher &mdash; one-off scripts the technical team runs by hand for recovery/audit. Listed for completeness; mostly read-only.</p>
+  <table style="width:100%; border-collapse:collapse; margin:0 0 26px; font-size:13px;">
+    <thead>
+      <tr style="background:#5a6b7b; color:#fff; text-align:left;">
+        <th style="padding:8px 10px; width:17%;">Tool</th>
+        <th style="padding:8px 10px; width:39%;">What it does</th>
+        <th style="padding:8px 10px; width:10%;">Native?</th>
+        <th style="padding:8px 10px; width:16%;">Data access</th>
+        <th style="padding:8px 10px; width:18%;">Importance / Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>audit-incomplete-pns</strong></td>
+        <td style="padding:8px 10px; vertical-align:top;">Compares the Steelhead catalog against the source load CSV and emits a recovery CSV of any gaps (tags, specs, racks, price, dimensions, process).</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Read-only</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>High</strong> (QA)<br><span style="color:#52606d;">Live-validated</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>process-deep-audit</strong></td>
+        <td style="padding:8px 10px; vertical-align:top;">Audits all processes (structure, cycle times, duplicates) and exports an Excel of findings with suggested actions. (Ships within the <em>process-canon</em> bundle.)</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Read-only</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Medium</strong><br><span style="color:#52606d;">Live-validated</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>dual-source-recovery</strong></td>
+        <td style="padding:8px 10px; vertical-align:top;">One-shot reconciliation of original quoting Excels vs the Steelhead report; emits a correction template (handled a specific data-migration incident).</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#b54708;">No</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#067647;">Read-only</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>One-time</strong><br><span style="color:#52606d;">Consumed</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>wb-produccion-access</strong></td>
+        <td style="padding:8px 10px; vertical-align:top;">Grants the &ldquo;WB Producción&rdquo; workboard to a pasted list of users at once (resolves names to IDs), vs. adding users one by one.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Low</strong> (admin)<br><span style="color:#52606d;">Live-validated</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #e1e5ea;">
+        <td style="padding:8px 10px; vertical-align:top;"><strong>archive-inventory-batch-statuses</strong></td>
+        <td style="padding:8px 10px; vertical-align:top;">Lists inventory-batch statuses, detects which have active batches, and bulk-archives the selected ones &mdash; diagnosing the generic error the native UI throws.</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Partial</td>
+        <td style="padding:8px 10px; vertical-align:top; color:#9a6700;">Write (rev.)</td>
+        <td style="padding:8px 10px; vertical-align:top;"><strong>Low</strong> (admin)<br><span style="color:#52606d;">Live-validated</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SUMMARY -->
+  <hr style="border:none; border-top:1px solid #e1e5ea; margin:0 0 22px;">
+  <h2 style="margin:0 0 10px; font-size:16px; color:#0b5cad;">At a glance</h2>
+  <ul style="margin:0 0 16px; padding-left:22px;">
+    <li style="margin-bottom:8px;"><strong>30 tools in the extension launcher + 5 standalone DevTools = 35 in use, across 7 categories</strong> &mdash; plus <strong>4 high-priority capabilities we&rsquo;ve identified but not yet built</strong> (<em>engineering-calc</em>, <em>tank-autoroute</em>, <em>so-line-merge</em>, <em>warehouse-issue-slip</em>).</li>
+    <li style="margin-bottom:8px;"><strong>The clear majority address gaps Steelhead has no native equivalent for today.</strong> Where it&rsquo;s marked &ldquo;Partial,&rdquo; the function exists but is per-record, buried in the UI, or has no bulk path.</li>
+    <li style="margin-bottom:8px;"><strong>Data-safety footprint is low by construction.</strong> A meaningful share are read-only or merely pre-fill forms the user saves; the rest write reversibly (archive, not delete) and audited. Only three tools (<strong>&dagger;</strong>: inventory-reset, process-canon apply, report-liberator&rsquo;s folder delete) perform higher-impact operations, and each is gated behind explicit user confirmation.</li>
+    <li style="margin-bottom:0;"><strong>The operationally load-bearing ones are specific:</strong> the billing flow (<em>cfdi-attacher</em>, <em>invoice-autofill</em>, <em>invoice-auto-regen</em>), order intake (<em>portal-importer</em>, <em>po-reconciler</em>), the part catalog (<em>bulk-upload</em>, <em>process-canon</em>) and shop-floor OEE (<em>paros-linea</em>). Billing in particular is part of why we cannot yet retire the legacy system &mdash; so these are where native parity matters most before any transition.</li>
+  </ul>
+
+  <p style="margin:0 0 6px; color:#52606d; font-size:13px;">Prepared by Omar Viazcán for Eco Plating &mdash; happy to walk Steelhead&rsquo;s engineering team through any tool in detail.</p>
+
+</div>
+</body>
+</html>

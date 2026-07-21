@@ -1,8 +1,19 @@
 # Applet `auto-router` — Auto-Ruteador de Órdenes
 
-> Versión: **0.2.0** (Fase 1 — motor + panel single-order + idempotencia + fix load-before-save).
-> Estado: **VALIDADO en vivo** (config 1.6.88). Run real OK: re-ruteo single-order graba correctamente.
-> Pendiente: Fase 2 (batch multi-orden), Fase 3 (auto-fill del modal nativo).
+> Versión: **0.2.0** (bitácora). **OJO discrepancia (confirmada 2026-07-15):** la constante
+> `VERSION` dentro de `remote/scripts/auto-router.js` sigue en `'0.1.0'` — nunca se bumpeó según
+> avanzaron las fases; el applet evolucionó vía bumps de `config.json` (deploys), no del literal
+> del script. No fuerces un número "corregido" en el código sin que alguien lo revise a propósito;
+> este doc usa `config.json`/gh-pages como fuente de verdad de qué está vivo.
+> Estado: **Fases 1, 2, 2b y 3 implementadas y deployadas** (motor + panel single-order + batch
+> multi-orden + captura desde el board + ruteo directo sin modal nativo + "rutear todas" + tooltip
+> de metal base en el board). **VALIDADO en vivo** solo hasta donde el doc lo registra explícitamente:
+> config 1.6.88 (re-ruteo single-order) y config 1.7.4 (tooltip enriquecido). Los deploys 1.7.5→1.7.10
+> (perf, fixes de selección, dark mode de modales) están confirmados como **deployados en gh-pages**
+> (`git log gh-pages --oneline -- scripts/auto-router*.js`) pero sin confirmación de run real
+> registrada en esta bitácora — ver §"Deploys posteriores (confirmado gh-pages)".
+> Config más reciente confirmado en gh-pages a 2026-07-15: **1.7.10** (`auto-router-panel.js`, dark mode).
+> Pendiente: Fase 0 (fidelidad opcional del test), validación en vivo de los deploys 1.7.5-1.7.10.
 
 ## Lección crítica: load-before-save (fix 1.6.88)
 El re-ruteo "no se grababa" si el modal de ruteo nativo se cerraba antes de aplicar. **Causa raíz**
@@ -127,6 +138,37 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
   del PN (`a[href*="/PartNumbers/<id>"]`) se pide bajo demanda con `GetPartNumber {partNumberId, usagesLimit:0}`
   (mismo patrón que `auditor.js`) y se cachea por parte → tooltip con el metal base. Columna+orden se descartó
   (requeriría traer el metal base de las ~1767 partes de golpe).
+- **Tooltip enriquecido v1.7.4 — inyección en el popover nativo + PS + prefetch + supresión del title nativo**
+  (`board-metal-tooltip.js`, reescrito). **VALIDADO en vivo** (config 1.7.4). El popover de Steelhead muestra
+  `PN → descripción → Metal base → PS` en un solo recuadro. Cadena del PS validada: `idInDomain 7053 → id interno
+  1283250 → customInputs.DatosRecibo.PackingSlip "1983-728-2-8280"`.
+  - **Supresión del title nativo (v1.7.4):** seguía saliendo el tooltip oscuro del navegador encima del popover.
+    El `title=` redundante NO estaba en el `<a>` (ese venía vacío) sino en el **`<div>` contenedor de la celda**
+    (`<div title="<PN>">`). `suppressNativeTitle(a)` remueve ese `title` cuando coincide exacto con el texto del
+    link (PN o lote) — se llama en `scanAnchors` y en el observer, así cubre filas iniciales + virtualización.
+  - **Bug de los 3 tooltips traslapados (fix):** la v1.7.0 creaba su PROPIO `.sa-bmt-tip` que se encimaba sobre el
+    MUI Tooltip nativo de Steelhead (`<div role="tooltip" id="<id>">` con PN + `<hr>` + descripción). Confirmado por
+    DevTools: ambos divs coexistían. **Fix:** ya NO se crea tooltip propio; se **INYECTAN** dos líneas dentro del
+    popover de Steelhead, así nunca se traslapa. El vínculo popover↔PN es `<a aria-labelledby="<id>">` ↔
+    `<div role="tooltip" id="<id>">`; el `href` del `<a>` da el `pnId`. (No había `title` nativo del navegador — el
+    `title` del `<a>` venía vacío.) Inyección con `textContent` (anti-XSS); idempotente vía `data-sa-pn` (MUI reusa
+    el popper para distintos PN → se re-inyecta si cambia).
+  - **PS (Packing Slip del cliente):** `customInputs.DatosRecibo.PackingSlip` del **batch de la fila**, vía
+    `GetInventoryBatch {id, limit:10, offset:0}` → `inventoryBatchById.customInputs.DatosRecibo.PackingSlip`. El
+    `batchId` sale del link `/Inventory/Batches/<id>` de la MISMA fila (`closest('tr,[data-index]')`). 1 batch por
+    fila normalmente → 1 PS; si hubiera varios, se concatenan con `, `. **Ojo (pendiente del agente):** en el scan
+    `GetInventoryBatch` usaba `id` INTERNO (ej. 1338941), no el del link (ej. 7053) — falta confirmar cuál acepta;
+    y dio http 502 transitorio (hash sin validar). `GetInventoryBatch` aún NO está en `config.json`.
+  - **Prefetch (lazy-load) "visibles + scroll":** un `MutationObserver` sobre `document.body` encola los
+    `a[href*="/PartNumbers/"]` que se añaden al DOM (filas que entran al viewport en la lista virtualizada) y
+    precarga metal+PS en background con pool de concurrencia 4 → el tooltip aparece instantáneo. Prefetch inicial
+    de lo visible al cargar. **NO** se trae todo el board de golpe (la bitácora ya había descartado las ~1767).
+  - **Memory hardening (skill `memory-hardening-applets`):** `SteelheadAPI.query` usa `fetch()` PROPIO (no el Apollo
+    client del host) → las respuestas NO entran al InMemoryCache del host. Por eso **EJE B no aplica**:
+    `apolloCacheDrain` (clearStore) rompería el board que el usuario está usando, y es un applet PASIVO co-residente
+    (no run intensivo) → tampoco detiene Datadog ni corre mem-monitor con modal de reload. **EJE A sí:** slim
+    responses (solo se guarda el string, el objeto GraphQL se descarta), caches `Map` topados FIFO (`CACHE_CAP=3000`)
+    y limpieza al cambiar de board (reset en `MutationObserver` por cambio de `location.pathname`).
 
 ## Diagnóstico del query pesado del Scheduling board (para un "Programador rápido")
 `RelatedSchedulingInformation` (hash `3d2f8583…`) es **el query más pesado** (~87 MB / 7 llamadas). El **98% del
@@ -138,10 +180,66 @@ Es `O(órdenes × relaciones)` → JOINs masivos server-side; **no es problema d
 Rápido" puede saltarse este query por completo**: traer solo la(s) orden(es) objetivo por-WO (KBs, como hace el
 auto-ruteador) y programar con `CreateManyScheduleTasks`/`CreateManyStationTasks` (mutaciones ligeras ya existentes).
 
-## Safari/iPad (bundle)
-Incluido en el bundle Safari/iPad **v0.4.0** (`safari/bundle.json`). Auto-inyecta su **FAB 🔀** (board de scheduling / tras interceptar el modal de ruteo) igual que en Chrome, y además expone **2 lanzadores en el popup**: "Auto-Ruteador" (`open-auto-router` → `AutoRouter.openPanel`) y "Auto-Ruteador — Batch" (`open-auto-router-batch` → `AutoRouter.openBatch`), vía el canal `popup → storage(saCommand) → bridge.js → sa-dispatcher.js` (allowlist `LAUNCH_FN`).
+## Fixes 2026-06-24 (feedback en vivo del usuario) — config 1.7.5/1.7.6
 
-**Gotcha aprovechado:** en Chrome el trigger de popup vive en `chrome.runtime.onMessage` (línea `listenManualTrigger`), que **NO existe en el MAIN world** (MV3) → esas acciones de popup están muertas en Chrome y auto-router solo corre por el FAB. En Safari el dispatcher usa `window.postMessage` (sí funciona en MAIN world), así que los lanzadores **sí operan**. `openPanel` degrada con gracia (alerta pidiendo abrir el modal de ruteo si no hay contexto capturado); `openBatch` es autocontenido (modal de pegar números). Scripts limpios de bloqueadores iOS (`a.download`/clipboard/IndexedDB). Peso: suma ~83 KB al bundle (→ ~870 KB total).
+**Lentitud reportada por Steelhead (crítico, config 1.7.5).** El prefetch del tooltip disparaba ~3 queries por PN **al hacer scroll** (miles en un board de ~1767). Se ELIMINÓ el prefetch masivo: el tooltip ahora es on-demand (solo al aparecer el popover nativo = hover real) + cache. Ver `board-metal-tooltip.js` y la nota de memory en este doc. HTML de comunicación a Steelhead en `docs/steelhead-extension-design-and-load-2026-06-24.html`.
+
+**FAB persistía fuera del board (1.7.5).** `auto-router.js`: al cambiar de `location.pathname` se limpia `captured = null` (además de `boardSelection`), así el FAB se quita al salir del board.
+
+**Selección fantasma "2-3" sin marcar (1.7.5).** `readBoardSelection` ahora RECONCILIA contra el DOM visible: quita de `boardSelection` las filas visibles desmarcadas (residuos de desmarcar/rutear). Las no visibles (virtualizadas) se conservan.
+
+**Bugs del motor: `T204→T204`, "Aplicar a 0", `T111` no aparece (1.7.6).** Causa raíz: el batch confundía la línea **default** (`detectSourceLine`) con la **actual** (`activeRoutes`). Para órdenes movidas (default≠actual) eso mostraba el default como origen, filtraba por `sourceLine!==destLine` (bloqueaba el botón) y `destinationLines` excluía mal la línea a devolver. **Fix (validado, datos reales = activeRoutes mixtas: tinas físicas de una línea + selector "-LI" de otra → detectar "la actual" es ambiguo):**
+- `AutoRouterEngine.destinationLines` ahora OFRECE TODAS las líneas selectoras (no excluye ninguna) → siempre puedes devolver a la original.
+- Conteo "tinas a re-rutear" y filtro "Aplicar" = `effectiveChangeCount` (tina deseada ≠ efectiva = `activeRoute ?? default`). Elegir la línea donde ya está → 0; cualquier otra aplica. Independiente de comparar líneas.
+- Origen mostrado = `currentLineCode` (tina física efectiva más frecuente, best-effort).
+- Default del dropdown = primera línea con cambios reales (evita arrancar en "0 tinas").
+- Golden test: 13/13 (34 rutas exactas + `effectiveChangeCount`/`currentLineCode`/`destinationLines` actualizado).
+
+**"Rutear todas" reinterpretado (1.7.6).** El FAB sin selección ahora rutea solo la **estación activa** (`?stationId` de la URL, que el selector de estación del board cambia), NO todo el board. CAP `REROUTE_STATION_CAP = 60`: arriba del cap pide selección (cargar cientos de árboles martillaría `/graphql`).
+
+## Deploys posteriores (confirmado gh-pages, `git log gh-pages -- scripts/auto-router*.js`)
+
+**Limpiar selección al cambiar de estación, no solo de board (config 1.7.7, commit `8032343`).**
+`auto-router.js`: `boardSelection` se limpiaba solo al cambiar `location.pathname` (cambio de board).
+El selector de **estación** dentro del mismo board (`?stationId=` en la URL) también debe limpiarla
+— si no, el badge/FAB del FAB 🔀 arrastraba selección "fantasma" de la estación anterior al cambiar
+de estación sin cambiar de board.
+
+**Dark mode de los modales inyectados (config 1.7.9 y 1.7.10).** Los dos modales propios del applet
+se restylearon a tema oscuro, en línea con la regla de diseño del repo (UI propia de la extensión
+SIEMPRE dark mode, para que el operador distinga de un vistazo que es UI nuestra y no una pantalla
+nativa de Steelhead, que son claras):
+- `auto-router-batch.js` → config **1.7.9**, commit `6822fa2` ("modal batch en modo oscuro").
+- `auto-router-panel.js` → config **1.7.10**, commit `f8456a8` ("modal panel single en modo oscuro").
+
+Sin detalle adicional capturado más allá del mensaje de commit (no hay nota de paleta específica
+distinta del estándar `#1c2430`/`#e6e9ee`/`#141a23`/`#13a36f` del repo); confirmar contraste en el
+próximo run real si hiciera falta ajuste.
+
+**Nota de cobertura:** ninguno de estos cuatro deploys (1.7.7, 1.7.9, 1.7.10, y tampoco 1.7.5/1.7.6
+documentados arriba en "Fixes 2026-06-24") tiene una entrada de "VALIDADO en vivo" registrada en esta
+bitácora — quedan como deployados-pero-no-confirmados-en-uso hasta que se anote lo contrario.
+
+## Fix 2026-07-15 — `destinationLines` seguía excluyendo la línea origen (regresión silenciosa)
+
+**Síntoma:** el golden test `auto-router-engine.test.js` estaba **ROJO** (`destinationLines` devolvía
+`['T107','T110','T205']`, el test esperaba `['T107','T110','T204','T205']` — faltaba la origen T204).
+La nota "Golden test: 13/13" de los fixes 1.7.6 se registró **sin correr la suite**: nunca estuvo verde
+tras ese commit. (Es exactamente el modo de fallo que `tools/run-tests.sh` existe para atrapar.)
+
+**Causa raíz:** el commit `0d223c3` documentó el nuevo diseño ("ofrecer TODAS las líneas, el conteo lo
+da `effectiveChangeCount`"), agregó `effectiveChangeCount`/`currentLineCode`, los adoptó en
+`auto-router-batch.js` (L50, L317) y reescribió el test — **pero dejó en el engine el bloque viejo de
+exclusión `set.delete(currentLine)` y su comentario**. El único caller (`auto-router-batch.js:280`)
+llama `destinationLines(cbt, wo.sourceLine)` **sin `activeRoutes`**, así que la exclusión borraba la
+línea origen (`sourceLine`) del dropdown → el bug Image #6 seguía vivo en producción: una orden en T204
+no ofrecía T204 para regresarla.
+
+**Fix:** se quitó el bloque de exclusión (`currentLine` + `set.delete`) y el param muerto `activeRoutes`
+de la firma; el comentario contradictorio se unificó. `destinationLines(candidatesByTreatment, sourceLine)`
+ahora devuelve **todas** las líneas del selector. **Golden test 13/13 REAL (verificado con `run-tests.sh`),
+suite 62/0.** No hay caller que dependa de la exclusión. Pendiente: deploy (el engine `remote/scripts` de
+`main` tiene la misma regresión; llevar el fix por `main` y coordinar con la versión viva).
 
 ## Fix 2026-07-15 — `destinationLines` seguía excluyendo la línea origen (regresión silenciosa)
 
