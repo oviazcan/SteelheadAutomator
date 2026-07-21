@@ -2,7 +2,7 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
-## feat 1.5.40 (2026-07-20) — Fast-path SOLO_PRECIO [DEPLOYADO config 1.7.162, flag OFF — PENDIENTE activar tras validación en vivo]
+## feat 1.5.40–1.5.41 (2026-07-20) — Fast-path SOLO_PRECIO [ACTIVO en producción, config 1.7.163, flag ON]
 Cuando una corrida solo cambia **precios** de PN que **ya existen** (cero enriquecimiento: ni
 specs/params/racks/dims/labels/predictivos), el atajo **salta STEP 6 (enrich)** e va directo a
 precios + STEP 8.
@@ -28,12 +28,14 @@ arrays vacíos), así que **el único guard nuevo es alrededor del `runPool` de 
   `pnLookup`, creación de precio (`SaveManyPartNumberPrices`), STEP 8 (default + archive), resume
   (`phase='enrich-done'` se marca igual) y el snapshot/restore del `finally` quedan **intactos**.
 
-**Estado (2026-07-20):** código **DEPLOYADO a producción** (config **1.7.162**, `bulk-upload.js`
-1.5.40 + `bulk-upload-parse.js`, firmados KMS, gh-pages sincronizado) con el **flag en OFF** — o
-sea inocuo: el pipeline corre byte-idéntico al previo. **Pendiente:** validación en vivo (activar
-`SOLO_PRECIO_FASTPATH_ENABLED=true` en una corrida solo-precio controlada; confirmar que NO se
-llama `SavePartNumber` de enrich y que el precio + default se aplican bien) → si OK, activar el
-flag ON + re-deploy.
+**Estado (2026-07-20):** **ACTIVO en producción** — `SOLO_PRECIO_FASTPATH_ENABLED=true`, `bulk-upload.js`
+1.5.41 + `bulk-upload-parse.js`, config **1.7.163**, firmados KMS, gh-pages sincronizado (verificado
+EN VIVO). El flag se activó por decisión del operador (1.5.40 se deployó primero con flag OFF en
+1.7.162; 1.5.41 lo prendió en 1.7.163). **A observar en la primera corrida solo-precio real:** que el
+panel muestre "STEP 6 enrich omitido (fast-path SOLO_PRECIO)" y que el precio + default se apliquen
+bien. **Para desactivar** si algo sale mal: poner el flag en `false` + re-deploy (`wb-deploy.sh`).
+El atajo solo se activa cuando `classifyRunIntent` da exactamente `SOLO_PRECIO` (todos existentes,
+precio, cero enriquecimiento); una sola fila con enrich o un PN nuevo lo desactiva (invariante testeado).
 
 ## Fix 2026-07-15 (retry AddParams) — incidente 20k: 429 sin reintento [config 1.7.121, DEPLOYADO]
 Corrida real de 20 831 NP → 19 errores. Diagnóstico y fix (verificado en vivo):
