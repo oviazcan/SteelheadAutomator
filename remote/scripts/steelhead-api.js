@@ -132,7 +132,16 @@ const SteelheadAPI = (() => {
       let detail = text;
       try {
         const parsed = JSON.parse(text);
-        if (Array.isArray(parsed.errors)) detail = parsed.errors.map((e, i) => `[${i + 1}] ${e.message}`).join(' | ');
+        if (Array.isArray(parsed.errors)) detail = parsed.errors.map((e, i) => {
+          // Cuando el server responde HTTP !ok con errors[] pero SIN message (p.ej.
+          // un 500 "mudo" por excepción no controlada del resolver), `e.message` es
+          // undefined y antes se perdía TODO el detalle (extensions/code/path) →
+          // el applet solo veía "[1] undefined". Preservamos el error completo en
+          // ese caso para poder diagnosticar. No afecta el caso normal (con message),
+          // así que los matchers de string existentes (conflicting/exclusion) siguen igual.
+          const m = e?.message;
+          return `[${i + 1}] ${(m != null && m !== '') ? m : JSON.stringify(e)}`;
+        }).join(' | ');
       } catch (_) { /* text no era JSON; usar crudo */ }
       const err = new Error(`HTTP ${response.status} en ${operationName}: ${detail.substring(0, 2000)}`);
       if (rotated) { err.persistedQueryRotated = true; err.rotatedOp = operationName; }

@@ -241,6 +241,29 @@ ahora devuelve **todas** las líneas del selector. **Golden test 13/13 REAL (ver
 suite 62/0.** No hay caller que dependa de la exclusión. Pendiente: deploy (el engine `remote/scripts` de
 `main` tiene la misma regresión; llevar el fix por `main` y coordinar con la versión viva).
 
+## Fix 2026-07-15 — `destinationLines` seguía excluyendo la línea origen (regresión silenciosa)
+
+**Síntoma:** el golden test `auto-router-engine.test.js` estaba **ROJO** (`destinationLines` devolvía
+`['T107','T110','T205']`, el test esperaba `['T107','T110','T204','T205']` — faltaba la origen T204).
+La nota "Golden test: 13/13" de los fixes 1.7.6 se registró **sin correr la suite**: nunca estuvo verde
+tras ese commit. (Es exactamente el modo de fallo que `tools/run-tests.sh` existe para atrapar.)
+
+**Causa raíz:** el commit `0d223c3` documentó el nuevo diseño ("ofrecer TODAS las líneas, el conteo lo
+da `effectiveChangeCount`"), agregó `effectiveChangeCount`/`currentLineCode`, los adoptó en
+`auto-router-batch.js` (L50, L317) y reescribió el test — **pero dejó en el engine el bloque viejo de
+exclusión `set.delete(currentLine)` y su comentario**. El único caller (`auto-router-batch.js:280`)
+llama `destinationLines(cbt, wo.sourceLine)` **sin `activeRoutes`**, así que la exclusión borraba la
+línea origen (`sourceLine`) del dropdown → el bug Image #6 seguía vivo en producción: una orden en T204
+no ofrecía T204 para regresarla.
+
+**Fix:** se quitó el bloque de exclusión (`currentLine` + `set.delete`) y el param muerto `activeRoutes`
+de la firma; el comentario contradictorio se unificó. `destinationLines(candidatesByTreatment, sourceLine)`
+ahora devuelve **todas** las líneas del selector. **Golden test 13/13 REAL (verificado con `run-tests.sh`),
+suite 62/0.** No hay caller que dependa de la exclusión. **DEPLOYADO a producción (config 1.7.120,
+tag `v1.7.120`, 2026-07-15); `auto-router-engine.js` en vivo ya sin `set.delete`.** El golden de `main`
+era la versión vieja (esperaba exclusión) → al deployar se actualizó al golden correcto; el batch de
+`main` ya usaba `effectiveChangeCount` (L50/L317), así que el comportamiento quedó coherente.
+
 ## Riesgos abiertos
 - **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
 - **Momentum** de enjuagues: best-effort por diseño (≈50% exacto en genéricos; las 22 rutas críticas son

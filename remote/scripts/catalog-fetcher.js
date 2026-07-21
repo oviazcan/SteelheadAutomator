@@ -344,7 +344,7 @@ const CatalogFetcher = (() => {
   }
 
   async function fetchProducts() {
-    const data = await api().query('SearchProducts', { searchQuery: '%%', first: 500 });
+    const data = await api().query('SearchProductsComprehensive', { searchQuery: '%%', first: 500 });
     const nodes = data?.searchProducts?.nodes || data?.pagedData?.nodes || [];
     const seen = new Set();
     const result = [];

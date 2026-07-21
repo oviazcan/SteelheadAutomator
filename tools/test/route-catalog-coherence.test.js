@@ -14,6 +14,13 @@ const EXPECTED = {
   GetAddPartsReceivedOrder: 'salesorders-ro-addparts',
   SensorDashboardQuery: 'maintenance-sensordashboards-detail',
   GetPurchaseOrderDetail: 'purchasing-po-detail',
+  GetReceivedOrdersWithReceivedOrderLineItems: 'invoices-packingslips-addinvoice',
+  GetAvailableUnits: 'partnumber-units-definenew',
+  SpecFieldsAndOptions: 'partnumber-add-spec',
+  GetInventoryInputSchema: 'inventory-input-schema',
+  AllInventoryBatchStatuses: 'receiving-customerparts-status',
+  GetPartNumberInventoryBatch: 'receiving-batch-detail',
+  OperatorMaintenanceNodeDialogQuery: 'maintenance-event-complete-step',
 };
 
 test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', () => {
@@ -23,7 +30,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 4 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 11 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });
@@ -41,4 +48,13 @@ test('rutas manuales de detalle: goto a la sub-entidad correcta + hrefMatches po
 test('rutas manuales de clic-botón: paso clickButton bilingüe', () => {
   assert.equal(cat.routes['salesorders-ro-edit'].steps[2].clickButton, 'edit sales order|editar orden de venta');
   assert.equal(cat.routes['salesorders-ro-addparts'].steps[2].clickButton, 'add parts \\(table\\)|agregar piezas \\(tabla\\)');
+});
+
+test('ruta de factura (interacción por aria-label): goto PackingSlips + clickFirst "Add Invoice"', () => {
+  const r = cat.routes['invoices-packingslips-addinvoice'];
+  assert.equal(r.steps[0].goto, '/Domains/{domain}/Invoices?mode=PackingSlips&roOffset=0');
+  // clic en el botón "Add Invoice" (aria-label, NO texto) → abre el modal que dispara la query.
+  // SEGURIDAD: la receta NUNCA clica "Crear Factura" (submit) → abre el modal y cierra sin guardar.
+  assert.match(r.steps[1].clickFirst, /Add Invoice/);
+  assert.deepEqual(r.captures, ['GetReceivedOrdersWithReceivedOrderLineItems']);
 });

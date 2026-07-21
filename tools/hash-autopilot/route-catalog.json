@@ -1,10 +1,12 @@
 {
   "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
   "_domainDefault": "344",
-  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder"],
+  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems", "GetAvailableUnits", "SpecFieldsAndOptions", "AllInventoryBatchStatuses", "OperatorMaintenanceNodeDialogQuery"],
+  "_docMaintCompleteStep": "SEGURIDAD (ruta maintenance-event-complete-step): clic 'Complete Step' abre el diálogo del operador que dispara OperatorMaintenanceNodeDialogQuery (LECTURA — carga motivos/sensores). La receta NO confirma la completación del step (no hay paso de submit dentro del diálogo) → NO completa ni muta el evento; solo abre el diálogo y el navegador cierra. Validado headless 2026-07-16.",
   "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
-  "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail"],
+  "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail", "GetInventoryInputSchema", "GetPartNumberInventoryBatch"],
   "_docManualRoute": "Ops de DETALLE cuya ruta auto-generada apuntaba MAL (hrefMatches por module, no por sub-entidad: /Purchasing/PurchaseOrders/<id> NO matchea /Purchasing/\\d+; y colision de routeId Maintenance/Nodes vs Maintenance/SensorDashboards). Rutas manuales validadas headless 2026-07-14. El generador las excluye del auto-agrupamiento (union con _interactionOps).",
+  "_docInvoiceSafety": "SEGURIDAD (ruta invoices-packingslips-addinvoice): clica 'Add Invoice' (aria-label, icono NoteAddIcon) de un packing slip → abre el modal de facturación que dispara GetReceivedOrdersWithReceivedOrderLineItems (query de LECTURA). Usa clickFirst por SELECTOR aria-label, no clickButton por texto. NUNCA extender a clicar 'Crear Factura' (DescriptionOutlinedIcon) ni ningún submit — CREARÍA una factura real. La receta solo abre el modal; el navegador se cierra sin guardar. Validada headless 2026-07-15, cero escrituras confirmado.",
   "routes": {
     "maintenance-sensordashboards-detail": {
       "type": "query",
@@ -325,8 +327,7 @@
       "captures": [
         "AllInventoryTypes",
         "ArchiveInventoryBatchStatus",
-        "ConfigureInventoryBatchStatusesQuery",
-        "GetInventoryInputSchema"
+        "ConfigureInventoryBatchStatusesQuery"
       ]
     },
     "invoices-detail": {
@@ -349,6 +350,86 @@
         "InvoiceByIdInDomain",
         "RouteInvoices",
         "UIGetIntegrationObject"
+      ]
+    },
+    "inventory-input-schema": {
+      "type": "query",
+      "module": "InventoryTypes",
+      "steps": [
+        { "goto": "/InventoryTypes/InventoryItemInputSchema" }
+      ],
+      "captures": [
+        "GetInventoryInputSchema"
+      ]
+    },
+    "receiving-customerparts-status": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        { "goto": "/Receiving/CustomerParts" },
+        { "clickFirst": "div.css-1owv9dy:has(svg[data-testid=\"KeyboardArrowDownIcon\"])" }
+      ],
+      "captures": [
+        "AllInventoryBatchStatuses"
+      ]
+    },
+    "receiving-batch-detail": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        { "goto": "/Receiving/Receivers" },
+        { "clickFirst": "a[href*='/Inventory/Batches/']", "hrefMatches": "/Inventory/Batches/\\d+" }
+      ],
+      "captures": [
+        "GetPartNumberInventoryBatch"
+      ]
+    },
+    "maintenance-event-complete-step": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        { "goto": "/Domains/{domain}/Maintenance/Events" },
+        { "clickFirst": "a[href*='/Maintenance/Events/']", "hrefMatches": "/Maintenance/Events/\\d+" },
+        { "clickButton": "complete step" }
+      ],
+      "captures": [
+        "OperatorMaintenanceNodeDialogQuery"
+      ]
+    },
+    "partnumber-units-definenew": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        { "goto": "/PartNumbers" },
+        { "goto": "/PartNumbers/3770957" },
+        { "clickButton": "define new|definir" }
+      ],
+      "captures": [
+        "GetAvailableUnits"
+      ]
+    },
+    "partnumber-add-spec": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        { "goto": "/PartNumbers" },
+        { "goto": "/PartNumbers/3770957" },
+        { "clickButton": "add spec|agregar spec" },
+        { "selectFirstOption": "[role=\"dialog\"] input[role=\"combobox\"]" }
+      ],
+      "captures": [
+        "SpecFieldsAndOptions"
+      ]
+    },
+    "invoices-packingslips-addinvoice": {
+      "type": "query",
+      "module": "Invoices",
+      "steps": [
+        { "goto": "/Domains/{domain}/Invoices?mode=PackingSlips&roOffset=0" },
+        { "clickFirst": "span[aria-label=\"Add Invoice\"] button" }
+      ],
+      "captures": [
+        "GetReceivedOrdersWithReceivedOrderLineItems"
       ]
     },
     "invoices-list": {
@@ -384,7 +465,6 @@
         "GetOtherSolisOnSoWithNoProductionAssociations",
         "GetPaymentLink",
         "GetPdfConfigsByType",
-        "GetReceivedOrdersWithReceivedOrderLineItems",
         "GetRecomputableAt",
         "GetUserEmailRecipients",
         "InvoiceLowCode",

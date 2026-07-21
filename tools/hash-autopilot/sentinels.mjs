@@ -71,12 +71,21 @@ export function pendingRepairs(journal) {
 // v1 soporta SOLO archived-mutate-restore con sentinela declarado; ephemeral
 // (destructivas) escala.
 export function planMutationCapture(mutationOp, sentinelsConfig, entityType) {
+  const ent = sentinelsConfig?.entities?.[entityType];
+  // CAPTURA-Y-ABORTA declarada en la entidad (_estrategia: 'capture-abort'): el handler marca
+  // la op en sink.abortOps ANTES de disparar y el interceptor ABORTA el request → CERO efecto
+  // SIEMPRE (no persiste), aunque la op sea destructiva (Delete…) o de prefijo desconocido
+  // (Generate…). El gate por prefijo (strategyFor) asume EJECUCIÓN real; para capture-abort NO
+  // aplica — el hash es solo el identificador de la persisted query y nunca se ejecuta la escritura.
+  if (ent && ent._estrategia === 'capture-abort') {
+    if (!ent.id) return { action: 'escalate', reason: `capture-abort sin id declarado para ${entityType}` };
+    return { action: 'run', strategy: 'capture-abort', entityType, sentinelId: ent.id };
+  }
   const strategy = strategyFor(mutationOp);
   if (strategy === 'no-auto') return { action: 'escalate', reason: `estrategia no-auto para ${mutationOp}` };
   if (strategy === 'ephemeral-create-destroy') {
     return { action: 'escalate', reason: `destructiva (ephemeral no soportado en v1): ${mutationOp}` };
   }
-  const ent = sentinelsConfig?.entities?.[entityType];
   if (!ent) return { action: 'escalate', reason: `sin sentinela declarado para entidad ${entityType}` };
   return { action: 'run', strategy, entityType, sentinelId: ent.id };
 }

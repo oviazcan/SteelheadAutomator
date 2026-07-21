@@ -232,6 +232,221 @@ async function editSalesOrderPoAndSave(page, value) {
   await dialog.locator('button').filter({ hasText: /^(SAVE|Guardar)$/i }).first().click({ timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(2000);
 }
+// ── partNumberPrice (modal individual): RETIRADO 2026-07-17 ──────────────────
+// El handler savePriceSentinelaAborted (modal "Part Number Price" individual) se
+// eliminó al UNIFICAR Steelhead las dos variantes de SaveManyPartNumberPrices en un
+// solo hash (72946d4d…, ver config.json). La captura de precios vive en el flujo de
+// COTIZACIÓN: quotePrice #288 → savePartsQuoteAborted, validado end-to-end headless
+// 2026-07-17. El andamiaje id:0 del modal era deuda redundante (nunca se ejecutaba:
+// mutEntityType lo saltaba por id falsy). Ver sentinels-config.json entidad quotePrice.
+
+// Navegación CLIENT-SIDE a la lista de Quotes. HALLAZGO 2026-07-17: el dashboard de quotes
+// NO hidrata por deep-link (searchQuery sale vacío, tanto headless como en navegador real);
+// SÍ hidrata navegando dentro del SPA ya cargado (home → clic al link /Quotes → la lista
+// rinde filas). El quote sentinela #288 (nombre 'Sentinela', reciente) aparece en la 1ª
+// página de la lista ACTIVA. Devuelve true si el <a> del quote {id} (con rev) aparece.
+async function openQuotesListAndFind(page, id, domain) {
+  await page.goto(`${BASE}/Domains/${domain}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForTimeout(3000);
+  await page.locator('a[href$="/Quotes"]').first().click({ timeout: 12000 }).catch(async () => {
+    await page.goto(`${BASE}/Domains/${domain}/Quotes`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  });
+  return page.locator(`a[href*="/Quotes/${id}/"]`).first()
+    .waitFor({ state: 'visible', timeout: 25000 }).then(() => true).catch(() => false);
+}
+
+// quotePrice: SaveManyPartNumberPrices — hash unificado VIVO 72946d4d (Steelhead fusionó las
+// dos variantes el 2026-07-17; el viejo batch 9da1874e murió y el 'individual' 72946d quedó como
+// el único). Se dispara desde la COTIZACIÓN sentinela #288. FLUJO REAL del
+// operador (2026-07-17): abrir el quote client-side → clic 'Edit this Part' (lapicito) → 'Save
+// Parts' se HABILITA solo → clic 'Save Parts' SIN editar nada → dispara el batch "tiro por viaje".
+// CLAVE: NO tocar Divisa/precio — editar rompe el estado y Save Parts se deshabilita (por eso la
+// captura fallaba antes). PRECONDICIÓN: el quote #288 DEBE estar ACTIVO (desarchivado); archivado
+// = read-only. El price-confirm-guard NO aparece (guard = modal individual 'Part Number Price', no
+// este 'Save Parts' del quote) y en headless no hay extensión.
+async function savePartsQuoteAborted(page, sink, { id, domain }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
+  const found = await openQuotesListAndFind(page, id, domain);
+  if (!found) throw new Error('quotePrice: el link del quote sentinela no apareció en la lista (¿archivado? ¿no hidrató?)');
+  await page.locator(`a[href*="/Quotes/${id}/"]`).first().click({ timeout: 10000 }).catch(() => {});
+  await page.locator('[aria-label="Edit this Part"]').first().waitFor({ state: 'visible', timeout: 25000 });
+  if (dbg) console.log('       [dbg] quote abierto → Edit this Part (sin editar nada)');
+  // Click REAL de Playwright (force: el div puede quedar "cubierto" para el hit-test, pero el
+  // click dispara el handler React; evaluate().click() a veces no lo activa → Save Parts no se
+  // habilitaba). Fallback a evaluate si el force falla.
+  await page.locator('[aria-label="Edit this Part"]').first().click({ force: true, timeout: 10000 }).catch(async () => {
+    await page.evaluate(() => { const d = [...document.querySelectorAll('[aria-label="Edit this Part"]')][0]; if (d) d.click(); });
+  });
+  await page.waitForTimeout(1500);
+  if (dbg) {
+    const st = await page.evaluate(() => [...document.querySelectorAll('button')].filter((b) => /^Save Parts$/i.test((b.textContent || '').trim())).map((b) => b.disabled)).catch(() => []);
+    console.log(`       [dbg] tras Edit: Save Parts botones=${JSON.stringify(st)}`);
+  }
+  // 'Save Parts' se habilita solo tras 'Edit this Part'. Clic REAL (force) tal cual (SIN editar)
+  // → dispara SaveManyPartNumberPrices → interceptor captura y ABORTA. Reintenta hasta capturar.
+  const d2 = Date.now() + 25000;
+  while (Date.now() < d2 && !(sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices)) {
+    await page.locator('button').filter({ hasText: /^Save Parts$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Save Parts → ${sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// workOrderPartCount: AddPartsToWorkOrders vía CAPTURA-Y-ABORTA. La mutation se dispara al
+// GUARDAR el modal "Ajustar Cantidad de Piezas de OT" (icono IsoIcon) de una OT en el detalle
+// de la OV Sentinela #1603. Marca la op en abortOps ANTES de tocar el DOM → el interceptor
+// registra el sha256Hash y ABORTA el request → cero persistencia (la OT no cambia de conteo,
+// verificado: sigue 1/1). Ancla del botón IDIOMA-INDEPENDIENTE (aria-label PRESENTE + IsoIcon;
+// el otro IsoIcon de la sección BOM no tiene aria-label; NO usa el texto). Verificado en vivo
+// 2026-07-17 (hash rotó a5cc8991→70d5a792). Ver sentinels-config.json entidad workOrderPartCount.
+async function saveWoPartCountAborted(page, sink, { url }) {
+  const dbg = process.env.SA_DBG;
+  // MARCAR la op ANTES de cualquier clic que pueda disparar el Save → aborta aunque salga antes.
+  if (sink && sink.abortOps) sink.abortOps.add('AddPartsToWorkOrders');
+  // navegar al detalle de la OV; hidrata tarde headless → espera ACTIVA al name "Sentinela".
+  await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
+    await page.waitForTimeout(1500);
+  }
+  if (dbg) console.log('       [dbg] OV detalle hidratado');
+  // botón IsoIcon "Ajustar Cantidad" — idioma-independiente: aria-label presente + IsoIcon.
+  const isoBtn = page.locator('button[aria-label]:has(svg[data-testid="IsoIcon"])').first();
+  await isoBtn.waitFor({ state: 'visible', timeout: 15000 });
+  await isoBtn.scrollIntoViewIfNeeded().catch(() => {});
+  await isoBtn.click({ timeout: 10000 });
+  // fail-closed: verificar que abrió el modal CORRECTO ("Ajustar Cantidad"/"Adjust…" bilingüe).
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Ajustar Cantidad|Adjust/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 15000 });
+  if (dbg) console.log('       [dbg] modal Ajustar Cantidad abierto');
+  // cambiar el "Conteo Deseado" a un valor != actual → habilita Guardar y construye la mutation.
+  // NO persiste (se aborta). El input es el único del dialog; fill maneja el setter de React.
+  await dialog.locator('input').first().fill('2').catch(() => {});
+  await page.waitForTimeout(700);
+  // Guardar/Save (bilingüe) → dispara AddPartsToWorkOrders → el interceptor captura y ABORTA.
+  await dialog.locator('button').filter({ hasText: /^(Guardar|Save)$/i }).first().click({ timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (dbg) console.log(`       [dbg] Save → ${sink && sink.hashes && sink.hashes.AddPartsToWorkOrders ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// ── Mutations de REPORTES (captura-y-aborta) ────────────────────────────────
+// Las 4 mutations del módulo Reporting rotaron el 2026-07-20 (report-liberator usa las 3 de
+// /Reporting/Edit; report-regen usa GenerateDuckDb). Se recapturan por CAPTURA-Y-ABORTA: se
+// marca la op en sink.abortOps ANTES de clicar el disparador → el interceptor registra el
+// sha256Hash y ABORTA el request → CERO efecto (no borra carpeta, no archiva, no crea reporte,
+// no regenera la DB). Doble candado: el loadObject verifica que existe el objeto "Sentinela"
+// (isSentinel fail-closed) + el abort. Selectores idioma-independientes por data-testid/aria-label
+// (el DOM real los trae en inglés aunque la UI esté en español); botones de modal bilingües.
+// Flujo y DOM confirmados por el operador 2026-07-20.
+const REPORTING_EDIT = '/Reporting/Edit';
+
+// Aísla la fila "Sentinela" del árbol de Saved Reports. Las clases jssNN del DOM que dio el
+// operador son JSS DINÁMICAS (cambian por sesión) → NO se pueden usar. Se FILTRA por
+// "Filter queries..." (el árbol es largo/virtualizado; la fila no está en el DOM hasta filtrar)
+// y se ancla por aria-label + innerText de la fila vía evaluate-mark: se marca con data-sa-rep
+// el svg[aria-label] cuya fila (ancestro) innerText==="Sentinela". Verificado headless 2026-07-20
+// (hit 1/1 tras filtrar, con la carpeta+reporte "Sentinela" persistentes creados por el operador).
+async function filterReportTree(page, term) {
+  const f = page.locator('input[placeholder*="ilter quer" i], input[placeholder*="iltrar" i]').first();
+  if (await f.count().catch(() => 0)) { await f.fill(term).catch(() => {}); await page.waitForTimeout(2000); }
+}
+async function markSentinelaAction(page, ariaLabel) {
+  return page.evaluate((aria) => {
+    document.querySelectorAll('[data-sa-rep]').forEach((e) => e.removeAttribute('data-sa-rep'));
+    for (const svg of document.querySelectorAll(`svg[aria-label="${aria}"]`)) {
+      let el = svg;
+      for (let i = 0; i < 6 && el; i++) { el = el.parentElement; if (el && el.innerText && el.innerText.trim() === 'Sentinela') { svg.setAttribute('data-sa-rep', '1'); return true; } }
+    }
+    return false;
+  }, ariaLabel).catch(() => false);
+}
+
+// GenerateDuckDb: botón "Regenerate Database" (CloudDownloadIcon) en /Reporting/Databases.
+async function generateDuckDbAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('GenerateDuckDb');
+  await page.goto(`${BASE}/Reporting/Databases`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const btnSel = 'button:has(svg[data-testid="CloudDownloadIcon"])';
+  await page.locator(btnSel).first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  const deadline = Date.now() + 25000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.GenerateDuckDb)) {
+    await page.locator(btnSel).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Regenerate DB → ${sink && sink.hashes && sink.hashes.GenerateDuckDb ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// DeleteFolderById: basura de la carpeta "Sentinela" → modal "Delete Folder" → Delete.
+async function deleteFolderSentinelaAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('DeleteFolderById');
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  await filterReportTree(page, 'Sentinela');
+  if (!(await markSentinelaAction(page, 'Delete folder'))) { if (dbg) console.log('       [dbg] carpeta Sentinela no hallada'); return; }
+  await page.locator('[data-sa-rep="1"]').scrollIntoViewIfNeeded().catch(() => {});
+  await page.locator('[data-sa-rep="1"]').click({ force: true, timeout: 10000 }).catch(() => {});
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Delete Folder|Eliminar/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.DeleteFolderById)) {
+    await dialog.locator('button').filter({ hasText: /^(Delete|Eliminar)$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Delete Folder → ${sink && sink.hashes && sink.hashes.DeleteFolderById ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// CreateUpdateReportWithPermissions: "Guardar informe" (SaveIcon) → nombre "Sentinela" → "Guardar como nuevo".
+async function saveReportAsNewAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('CreateUpdateReportWithPermissions');
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const saveBtn = page.locator('button:has(svg[data-testid="SaveIcon"])').first();
+  await saveBtn.waitFor({ state: 'visible', timeout: 25000 });
+  await saveBtn.click({ force: true, timeout: 10000 });
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Guardar informe|Save Report/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 12000 });
+  // input de NOMBRE (MUI, no los react-select de carpeta/permisos) → "Sentinela".
+  await dialog.locator('input.MuiOutlinedInput-input').first().fill('Sentinela').catch(() => {});
+  await page.waitForTimeout(500);
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.CreateUpdateReportWithPermissions)) {
+    await dialog.locator('button').filter({ hasText: /Guardar como nuevo|Save as New/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Save as New → ${sink && sink.hashes && sink.hashes.CreateUpdateReportWithPermissions ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// ArchiveReport: archivar la línea del reporte "Sentinela" (ArchiveIcon) → confirmar "Sí"/"Yes".
+async function archiveReportSentinelaAborted(page, sink) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('ArchiveReport');
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  await filterReportTree(page, 'Sentinela');
+  if (!(await markSentinelaAction(page, 'Archive report'))) { if (dbg) console.log('       [dbg] reporte Sentinela no hallado'); return; }
+  await page.locator('[data-sa-rep="1"]').scrollIntoViewIfNeeded().catch(() => {});
+  await page.locator('[data-sa-rep="1"]').click({ force: true, timeout: 10000 }).catch(() => {});
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /archive this report|archivar/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.ArchiveReport)) {
+    await dialog.locator('button').filter({ hasText: /^(Sí|Si|Yes)$/i }).first().click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] Archive Report → ${sink && sink.hashes && sink.hashes.ArchiveReport ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// Load compartido: verifica que la fila "Sentinela" del tipo dado existe (isSentinel fail-closed).
+async function loadReportingRow(page, ariaLabel) {
+  await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  await filterReportTree(page, 'Sentinela');
+  return { name: (await markSentinelaAction(page, ariaLabel)) ? 'Sentinela' : '' };
+}
+
 const HANDLERS = {
   partNumber: {
     async load(page, { url }) {
@@ -317,6 +532,42 @@ const HANDLERS = {
       await editSalesOrderPoAndSave(page, '');
     },
   },
+  quotePrice: {
+    // load: verifica que el quote sentinela existe (fail-closed). NO abre el quote — de eso
+    // se encarga el mutate (savePartsQuoteAborted). id COMPARTIDO con 'quote' (288): entityFor
+    // devuelve 'quote' para el load, pero el ciclo usa entityType='quotePrice' para mutate/restore.
+    async load(page, { id, domain }) {
+      // client-side (deep-link no hidrata). El link con rev sólo aparece si el quote está
+      // ACTIVO (desarchivado) — fail-closed: si no aparece, name='' → el ciclo NO muta.
+      const found = await openQuotesListAndFind(page, id, domain);
+      return { name: found ? 'Sentinela' : '' };
+    },
+    async mutate(page, ctx) { await savePartsQuoteAborted(page, ctx.sink, ctx); },
+    async restore(page, ctx) {
+      // Save Parts se ABORTÓ → nada persistió → nada que restaurar. Solo desmarcar la op.
+      if (ctx.sink && ctx.sink.abortOps) ctx.sink.abortOps.delete('SaveManyPartNumberPrices');
+    },
+  },
+  workOrderPartCount: {
+    // load: verifica que la OV Sentinela hidrata + su nombre contiene 'Sentinela' (isSentinel
+    // fail-closed). Si no hidrata / no es Sentinela → name='' → runMutationCycle NO muta.
+    async load(page, { url }) {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      let isSent = false;
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline && !isSent) {
+        isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+        if (!isSent) await page.waitForTimeout(500);
+      }
+      if (process.env.SA_DBG) console.log(`       [dbg] workOrderPartCount load isSentinela=${isSent}`);
+      return { name: isSent ? 'Sentinela' : '' };
+    },
+    async mutate(page, ctx) { await saveWoPartCountAborted(page, ctx.sink, ctx); },
+    async restore(page, { sink }) {
+      // Save abortado → nada persistió → nada que restaurar. Solo desmarcar la op (higiene del sink).
+      if (sink && sink.abortOps) sink.abortOps.delete('AddPartsToWorkOrders');
+    },
+  },
   maintenanceNode: {
     async load(page, { domain }) {
       // create-event-capture: no muta un nodo existente, crea un EVENTO sobre el nodo
@@ -341,6 +592,39 @@ const HANDLERS = {
       // podría dejar un evento sin archivar (fuga menor, evento sentinela inofensivo).
     },
   },
+  // ── REPORTES (captura-y-aborta) — cero efecto, restore solo desmarca la op del sink ──
+  reportGenerateDb: {
+    async load(page) {
+      await page.goto(`${BASE}/Reporting/Databases`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const ok = await page.locator('button:has(svg[data-testid="CloudDownloadIcon"])').first()
+        .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      return { name: ok ? 'Sentinela (regenerate-db capture-abort)' : '' };
+    },
+    async mutate(page, { sink }) { await generateDuckDbAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('GenerateDuckDb'); },
+  },
+  reportFolderDelete: {
+    async load(page) { return loadReportingRow(page, 'Delete folder'); },
+    async mutate(page, { sink }) { await deleteFolderSentinelaAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('DeleteFolderById'); },
+  },
+  reportSaveAsNew: {
+    async load(page) {
+      // No requiere el reporte Sentinela existente (crea uno nuevo y aborta): verifica el
+      // botón "Guardar informe" (contexto del editor de reportes) → isSentinel fail-closed.
+      await page.goto(`${BASE}/Reporting/Edit`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const ok = await page.locator('button:has(svg[data-testid="SaveIcon"])').first()
+        .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      return { name: ok ? 'Sentinela (save-as-new capture-abort)' : '' };
+    },
+    async mutate(page, { sink }) { await saveReportAsNewAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('CreateUpdateReportWithPermissions'); },
+  },
+  reportArchive: {
+    async load(page) { return loadReportingRow(page, 'Archive report'); },
+    async mutate(page, { sink }) { await archiveReportSentinelaAborted(page, sink); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('ArchiveReport'); },
+  },
 };
 
 // ── Ensamblado de deps para runMutationCycle ────────────────────────────────
@@ -355,8 +639,13 @@ export function makeDeps(config, sink) {
   return {
     readJournal() { try { return JSON.parse(readFileSync(JOURNAL_PATH, 'utf8')); } catch { return {}; } },
     writeJournal(j) { mkdirSync(dirname(JOURNAL_PATH), { recursive: true }); writeFileSync(JOURNAL_PATH, JSON.stringify(j, null, 2)); },
-    async loadObject(page, id) {
-      const found = entityFor(config, id);
+    async loadObject(page, id, entityType) {
+      // entityType explícito gana sobre entityFor: necesario cuando DOS entidades comparten
+      // id (quote y quotePrice = #288) — el ciclo sabe cuál handler de load usar. Sin él,
+      // entityFor devolvería el primero (quote/deep-link) y no el correcto (quotePrice/client-side).
+      const found = (entityType && config.entities[entityType])
+        ? { type: entityType, ent: config.entities[entityType] }
+        : entityFor(config, id);
       const h = found && HANDLERS[found.type];
       if (!h) return null;
       return h.load(page, { id, domain, url: resolveUrl(found.ent, id, domain) });

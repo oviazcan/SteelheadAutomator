@@ -2,21 +2,22 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
-## Sesión 2026-07-15 — Troceo #4 validado en 20 831 NP: fix crítico `pnLookup` TDZ (v1.5.39) + matcher de Espesor trim/numeric (config 1.7.119)
-
-**Bug crítico `pnLookup` TDZ → v1.5.39 (deploy config 1.7.117).** El troceo SOLO_PN #4 (v1.5.37) hacía `pnLookup.clear()` al inicio del cuerpo del `for` de lotes, pero `pnLookup` se declara con `const` MÁS ABAJO en ese mismo `for` → temporal dead zone → `"Cannot access 'pnLookup' before initialization"` (FATAL). Solo se disparaba con troceo activo (`doBatch=true`, >1000 filas SOLO_PN); en monolítico esa línea nunca corría, por eso los archivos chicos pasaban sin novedad. Se destapó recién en la corrida real de 20 831 NP. Fix: quitar el `.clear()` — es redundante porque `pnLookup` es LOCAL al cuerpo del `for` (cada lote crea su propio `new Map()` en cada iteración); `parts`/`pnStatus` sí se resetean ahí por ser de scope superior. Regresión: `tools/test/bulk-upload-pnlookup-tdz.test.js`.
-
-**Troceo #4 VALIDADO EN VIVO.** Corrida real de 20 831 NP SOLO_PN → 21 lotes, sin crash, con checkpoint + drain de Apollo entre lotes.
-
-**Resultado, sin pérdida de datos.** 20 831 procesados, 831 modificados, 1 162 params sincronizados, 1 048 params null archivados (cleanup 1.4.9) en 607 PNs, 20 831 desarchivados. 524 errores, TODOS "no aplicado" (el PN queda intacto) + 1 colisión auto-restaurada. Tiempo ~3.7 h (clasificación 26% + resolución por Id SH 19% = 45% del total; pendiente optimizar).
-
-**Análisis de los 524, confirmado headless contra el catálogo EN VIVO de SH:**
-- **410 Espesor** — 196 TRIM (el catálogo guarda el param con ESPACIO INICIAL, ej. BURNDY DI-EI-01/81 = `" 8 - 12 µm"`); 58 NUMERIC (ASTM B545 guarda `"5.0 - 8.0 µm"` vs CSV `"5 - 8 µm"`); 156 DATOS (rangos que NO existen en el catálogo, ej. RC Sn `"3 - 8 µm"`, `"2 - 5 µm"` — requieren que el operador corrija el CSV o dé de alta el param). El `µ` es U+00B5 en AMBOS lados — no era problema de codificación.
-- **113 spec no encontrada** en 9 specs (`F70F2 (Estaño Mate)` ×77, `GG QTLV 5115` ×17, `80065-DS-001 (ESTAÑO)` ×12, `F71B1`, `F50KD12`, `48057-006-01 (PLATA)`, `48121-140-03`, `40004-055-01 (PLATA)`, `A48057-030-02`) — no dadas de alta en SH; NFC limpio (el matcher ya normaliza acentos desde 1.5.38, esto no es regresión de ese fix).
-- **1 colisión HTTP 500** (`48108-047-56*`/RC Ni, specField "Apariencia Homogénea") — la compensación 1.5.35/36 restauró la spec previa sin pérdida de datos.
-- Confirmación vía query `SpecFieldsAndOptions` (hash `d6faffae…`) sobre RC Sn (specId 21315), BURNDY (20409), ASTM B545 (18536).
-
-**Fix del matcher de Espesor → `bulk-upload-parse.js` (deploy config 1.7.119).** `pickSpecParamPositional` ahora: (1) exacto TOLERANTE A ESPACIOS (`String(p.name).trim() === s`; antes solo trimeaba el lado del CSV); (2) fallback numérico vía helper nuevo `numSig` (números canónicos float + unidad; `"5 - 8 µm"` ≡ `"5.0 - 8.0 µm"`), aplicado SOLO si hay un único param que hace match (evita ambigüedad, no cruza `µm`/`mils`, respeta el orden posicional). Recupera 254 de los 410 (196 trim + 58 numeric) en corridas futuras; los 156 de DATOS siguen quedando `unmatched` — es el comportamiento correcto, ya que no existen en catálogo. Test: `tools/test/bulk-upload-espesor-match.test.js` (9/9) + no-regresión de parse (21/21).
+## Fix 2026-07-15 (retry AddParams) — incidente 20k: 429 sin reintento [config 1.7.121, DEPLOYADO]
+Corrida real de 20 831 NP → 19 errores. Diagnóstico y fix (verificado en vivo):
+- **18/19 = HTTP 429 (rate-limit de SH).** Root cause principal: `AddParamsToPartNumber`
+  (batch `bulk-upload.js:6661` + fallback `:6670`) **NO estaba envuelto en `withRetry`** → los
+  429/503/network escapaban al 1er intento (12 errores: spec `40004-014-01 (Estaño)` params
+  32594227/32596235). `SavePartNumber` sí tenía retry. Idempotente vía exclusion-constraint
+  (re-apply de param presente → skip silencioso). **FIX:** `withRetry` en batch y fallback.
+- **PN vacío en el reporte** (`AddParams ""`, `Archive dups ""`): los `errors.push` usaban
+  `part.pn` (vacío en la fase de sync) aunque los logs de ÉXITO ya usaban el fallback. **FIX:**
+  errores usan `part.pn || entry?.pn?.name || pnNode?.name || '?'` → el reporte dice QUÉ PN re-correr.
+- **6 "Archive dups" agotaron los 3 reintentos** por rate-limit SOSTENIDO → **+4º backoff (8s)**
+  en `retry.delaysMs` (`[1000,2000,4000,8000]`), ~15s con jitter antes de rendirse.
+- El **1 HTTP 500 restante** (colisión spec `48108-047-56*` / "Apariencia Homogénea") ya se maneja
+  bien: restaura la spec previa sin pérdida (solo revisar manual).
+- **Re-correr el mismo CSV es idempotente** (los ya-aplicados se saltan por exclusion-constraint;
+  los 19 fallidos reintentan). Con el fix vivo, esos 429 ahora se reintentan solos.
 
 ## Add 2026-07-13 (1.5.32) — aviso de REEMPLAZO de specs en el preview
 El operador podía sorprenderse: usar `-` en cualquiera de las 4 celdas de spec activa el **archive sentinel** (`hasArchiveSentinel`, `bulk-upload.js:5430`) → no solo agrega las specs listadas, sino que **archiva TODAS las que el PN ya tenga y no estén en el CSV** (reemplazo, no suma; solo borra en PN existentes). Fix: banner ámbar en `showPreview` (bajo la línea de conteos, junto al badge de intención F5) que cuenta las filas con `-` en specs y cuántas son PN existentes, y aclara "deja la celda VACÍA si solo quieres agregar". Mismo criterio de detección que la ejecución (`part.specs.some(s => s.name === '-')`). Aviso puro de UI, no toca la lógica de archivado. `renderPreview` no rompe si falla (try/catch).

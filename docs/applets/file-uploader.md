@@ -1,6 +1,6 @@
 # file-uploader — Cargador de Archivos
 
-**Versión actual:** 0.6.3 (backfill de portadas desde CSV — **validado en vivo** en prueba chica; fix Unicode NFC)
+**Versión actual:** 0.5.1 (convención `<PN>_<VISTA>_<num>` de guion simple + whitelist FRO/POS/LIZ/LDE/SUP/INF/ISO; portada = ISO si existe, si no la más grande)
 **Scripts:** `remote/scripts/steelhead-api.js`, `remote/scripts/file-uploader-core.js`, `remote/scripts/file-uploader.js`
 **Tests:** `tools/test/file-uploader-core.test.js` (18 golden, núcleo puro)
 **Handler:** `extension/background.js` → `upload-pn-files` (input `multiple`, no `webkitdirectory`)
@@ -18,12 +18,21 @@ Flujo por archivo: `POST /api/files` (binario) → `CreateUserFile` (registrar) 
 - **`file-uploader.js`** — orquestador (efectos). Agrupa archivos por PN, pagina la búsqueda, lee existentes, sube 1 vez y vincula a cada homónimo faltante. UI en dark mode + resumen no bloqueante.
 
 ## Convención de nombres (lo que produce Cowork)
-```
-<PN>__<descriptor>.<ext>
-```
+Se soportan **dos** convenciones (el extractor elige sola):
+
+**A) Doble guion bajo** `<PN>__<descriptor>.<ext>`
 - `VXC084N528YF53EC__front.jpg`, `80255-553-01__plano.pdf`
-- Doble guion bajo `__`. Sin `__` = el nombre completo (sin extensión) es el PN.
+- Doble guion bajo `__`. Corta en el primer `__`.
 - **Varios archivos por PN** = varios descriptores: `<PN>__front.jpg`, `<PN>__back.jpg`, `<PN>__plano.pdf`.
+
+**B) Guion simple con código de vista** `<PN>_<VISTA>_<consecutivo>.<ext>` (v0.5.0)
+- `NAT1219802_LIZ_02.JPG`, `MFR8991502_SUP_01.JPG` — foto por vista.
+- **Glosario oficial** (Instructivo de Fotografía de Piezas §5, "códigos fijos de tres letras") = `config.fileUploader.viewCodes`: **FRO** frente · **POS** atrás · **LIZ** lado izq. · **LDE** lado der. · **SUP** arriba · **INF** abajo · **ISO** perspectiva 3/4. Consecutivo `##` de 2 dígitos en el orden que pide la categoría (A/B/C/D). El instructivo obliga a reemplazar por `-` los caracteres no válidos del PN (espacio `" ' / \ : * ? < > |`), pero NO el `_`.
+- Se quita el sufijo `_<VISTA>_<num>` **solo si `<VISTA>` está en la whitelist** (case-insensitive). El PN es todo lo anterior.
+- **Whitelist obligatoria (no adivinar):** sin ella cortaríamos por error los **57/23,926** PNs de TLC que ya llevan `_` en su propio nombre. Un código de vista NO registrado ⇒ el nombre completo se toma como PN ⇒ "no encontrado" **con pista accionable** en el resumen (`unregisteredViewCode` sugiere agregar el código al config). Fail-safe: nunca mislink.
+- Varios archivos por PN = varias vistas: `<PN>_LIZ_02.jpg`, `<PN>_SUP_01.jpg`, `<PN>_LDE_04.jpg`.
+
+Sin ninguno de los dos separadores: el nombre completo (sin extensión) es el PN.
 
 ## Hallazgos validados en vivo (sesión 2026-06-25)
 Verificado contra el ERP (PN real `3027533` = `VXC084N528YF53EC`, TLC) y la DuckDB:
@@ -75,27 +84,15 @@ Integrado `host-cleanup-shared.js` (en el array de `scripts`). Aplica para el du
 - **EJE B — host:** `stopDatadogSessionReplay()` al iniciar el run; `createMemMonitor` con span `#sa-upl-mem` (warn 70% re-aplica DD stop, **guardrail 88% → `cancelRun` + detiene con checkpoint**, la idempotencia continúa al re-correr); `makePeriodicDrain(50)` al cierre de cada grupo; `apolloCacheDrain()` + `mem.stop()` en `finally`.
 - **Plan de validación:** correr una tanda de ~300-500 archivos reales y observar `#sa-upl-mem` estable (sin crecer sin tope); confirmar que el guardrail detiene y el resumen marca "Carga detenida (memoria)".
 
-## Display image automático (v0.5.0)
-El applet **marca foto principal** del PN para que aparezca en los tableros (sin display image, el PN no muestra foto). Diseño en `docs/superpowers/specs/2026-06-29-file-uploader-display-image-design.md`.
-
-- **Mutación:** `UpdatePartNumber({ id, displayImageId })` — misma persisted query que archivar (hash `af584fa8…`, vigente). `displayImageId` = `id` del vínculo `partNumberUserFile` (lo devuelve `CreatePartNumberUserFile` o se lee de `GetPartNumber.partNumberById.partNumberUserFilesByPartNumberId.nodes[].id`). Variable confirmada del front en scan `2026-06-29_135728`: `{id:3028120, displayImageId:964376}`.
-- **Qué foto** (`core.selectDisplayImage`, precedencia): (1) descriptor explícito de principal en el nombre `<PN>__PRINCIPAL/DI/FOTO/…` (gancho Cowork, tokens `principal|ppal|di|foto|photo|main|portada|display|cover` con frontera — `__difuminado` NO matchea); (2) si no, la **imagen más grande por bytes**; (3) **PN con una sola foto → esa**; excluye PDFs/planos (`core.isImageFile`); solo-PDFs → no marca.
-- **Respeta la existente:** solo marca si `partNumberById.displayImageId == null` (idempotente). Homónimos: marca en todos los que no tengan.
-- **Fallback de id:** si el create no devuelve `.id` o la foto se saltó (preexistente), relee `GetPartNumber` una vez (la foto ya vinculada trae su id). Confirmar en run real si el create devuelve `id` (camino feliz sin re-lectura).
-- **Resumen:** nueva línea "Display image marcada" (`results.displaySet`).
-- Tests: `selectDisplayImage`/`isImageFile`/`isPrincipalDescriptor`/`readDisplayState` (golden, 40/40).
-
-## Backfill de portadas desde CSV (v0.6.0)
-Marca la display image de lo **ya cargado** sin re-subir, leyendo el CSV de Cowork. Acción nueva en el popup: **"Marcar Portadas desde CSV"** (`fn: FileUploader.runBackfillFromPopup`, handler genérico — **no toca `extension/`**).
-
-- **CSV de Cowork** (columnas `PN, displayImage, tipo, fuente`): Cowork **ya decidió** la principal por PN (`displayImage`), con motivo (`tipo`: unico/foto/plano) y origen (`fuente`: heuristica). El backfill **solo aplica** esa decisión, no re-elige.
-- **Flujo** (`runBackfill`, reusa toda la infra de `run`: paginación, `withRetry`/`gate`, memory hardening): por fila → `findActivePNs(pn)` (homónimos→todos) → `getPNDetail`→`readDisplayState`; si el PN **no** tiene `displayImageId`, resuelve `fileIdByName.get(norm(displayImage))` y marca con `UpdatePartNumber`. Respeta portada existente; **no sube ni vincula nada**.
-- **Parser puro** `core.parseBackfillCsv` (header por nombre, comillas, BOM; 7 golden tests). Validado contra nombres reales (`__BRIGHT DIP.jpg`, `.JPG`↔`.jpg`).
-- **Reporte exportable:** PN no encontrado (activo), foto del CSV no vinculada, errores.
-- **Cubre activos Y archivados** (v0.6.1). Si `findActivePNs` no halla, busca con `findAnyPNs` (incluye archivados); `applyBackfillToPN` desarchiva→marca→re-archiva con el `archivedAt` crudo original (re-archivado SIEMPRE en `finally`; si falla, reporta "QUEDÓ DESARCHIVADO"). Contadores `unarchived/rearchived` en el resumen. Solo desarchiva si el PN realmente está archivado Y tiene la foto vinculada sin portada (no toca de más).
+## Portada (display image)
+`markDisplayImages` marca la foto principal de los PNs que NO tengan una (respeta la existente). Prioridad de `selectDisplayImage` (v0.5.1):
+1. **Vista ISO** (`_ISO_##` o `__iso`) → la más grande de esas. Regla del Instructivo: "la vista ISO nunca se omite" y es la 3/4 que mejor comunica el volumen.
+2. Si no hay ISO, descriptor de principal de la convención `__` (`__principal`/`__di`/`__foto`…) → la más grande de esas.
+3. Si no, la imagen más grande por bytes.
+4. Solo PDFs/planos (sin imagen) → no marca portada.
 
 ## Pendientes / mejoras
-- **Resolución (píxeles)** como desempate fino cuando los bytes empatan (YAGNI por ahora).
+- Nada bloqueante.
 - **Manifiesto CSV** (descartado por YAGNI): si el naming codificado se vuelve frágil, mapear archivo→PN explícito.
 
 ## Lecciones
@@ -103,11 +100,8 @@ Marca la display image de lo **ya cargado** sin re-subir, leyendo el CSV de Cowo
 - **CSS propio obligatorio (bug 2026-06-26).** El applet usaba las clases `.dl9-*` pero NO inyectaba su CSS; ese CSS lo definen otros applets (archiver/po-comparator/bulk-upload) cada uno con su `<style>`. file-uploader corre **aislado** (su array no incluye a ninguno de esos), así que el overlay de progreso y el resumen se creaban **invisibles** (sin `position:fixed`/fondo/centrado). Síntoma: "no mostró nada de resumen". La v0.1.0 lo tapaba con `alert()`. **Fix:** `ensureStyles()` inyecta un `<style id="sa-uploader-styles">` propio (idempotente) — no depender de otro applet. **Regla general:** cualquier applet que use clases `dl9-*` debe inyectar su propio CSS. La lógica de negocio NO estaba rota (se verificó en vivo que las fotos sí se vincularon, incl. fan-out a homónimos); era 100% un problema de UI.
 
 ## Historial
-- **0.6.3 (2026-06-29):** **fix Unicode NFC en `norm`** + **validado en vivo** (prueba chica 9 filas: 7 marcadas, 2/2 desarchivados→re-archivados, 1 homónimo, 2 PDF registrados). El único "no vinculada" fue `06100310003__ESTAÑO.jpg` (Ñ) — falso negativo: el archivo SÍ estaba vinculado (confirmado en el modal), pero macOS guarda el nombre en **NFD** y el CSV en **NFC** → `norm` no los igualaba. Fix: `String.normalize('NFC')` antes de trim/lowercase (ambos lados pasan por `norm`, así que coinciden). **111/6187 displayImage del CSV tienen NFC≠NFD** → sin el fix, 111 falsos "no vinculada" en el run completo. 2 golden tests nuevos.
-- **0.6.2 (2026-06-29):** backfill registra **portadas que son PDF/plano** aparte (`results.pdfDisplays`, línea en resumen + fila `portada_pdf` en el reporte). Decisión del usuario: marcarlas igual pero listarlas. CSV real `displayImage.csv` (6,187 PNs): 95 son `tipo=unico` con displayImage=PDF; los 856 `solo_plano` son imágenes (no PDFs). Fuentes: heuristica 4,675 + vision 1,512.
-- **0.6.1 (2026-06-29):** backfill cubre **archivados**. `applyBackfillToPN` (extraída): activos marca directo; archivados desarchiva→marca→re-archiva (`archivedAt` original, re-archivado en `finally`). `runBackfill` cae a `findAnyPNs` si no hay activos. Contadores `unarchived/rearchived`. Solo orquestador (core/config sin cambio).
-- **0.6.0 (2026-06-29):** **backfill de portadas desde CSV de Cowork.** Acción nueva "Marcar Portadas desde CSV" (handler genérico `fn`, sin tocar `extension/`). `core.parseBackfillCsv` (puro, 7 tests) + `runBackfill`/`runBackfillFromPopup`/`showBackfillSummary` reusando la infra de `run`. Marca display image de lo ya cargado SIN re-subir: por fila del CSV resuelve `displayImage→partNumberUserFile.id` vía `readDisplayState` y marca si el PN no tiene portada. v1 solo activos; reporte exportable. **Pendiente: action en config + deploy + run real.** Parser validado contra datos reales del CSV.
-- **0.5.0 (2026-06-29):** **display image automático.** Tras vincular un grupo, marca foto principal en los PNs sin portada (`UpdatePartNumber{displayImageId}`, misma persisted query que archivar — cero hashes nuevos). Selección pura en el core (`selectDisplayImage`: descriptor Cowork → mayor bytes → única foto; excluye PDFs) + `isImageFile`/`isPrincipalDescriptor`/`readDisplayState`, 40 golden tests. Respeta portada existente (idempotente), fan-out a homónimos, fallback de re-lectura del id. Mecanismo confirmado contra scan `2026-06-29_135728` (`UpdatePartNumber` vars `{id,displayImageId}`) + `GetPartNumber` hash == producción (trae `displayImageId` + `nodes[].id`). **Pendiente: deploy + run real** (verificar que el create devuelve `id`, que el tablero muestra la foto, e idempotencia en 2ª corrida).
+- **0.5.1 (2026-07-20):** portada = **vista ISO** si existe, si no la más grande (decisión del usuario). `isIsoView` detecta ISO en ambas convenciones (`_ISO_##` estructural y `__iso` con frontera); `selectDisplayImage` la prioriza. Se agregó cobertura de `selectDisplayImage`/`isIsoView` que no existía (+6 golden, 39 total).
+- **0.5.0 (2026-07-20):** soporte de la convención de guion simple `<PN>_<VISTA>_<consecutivo>` (además del `__` doble). Caso raíz: fotos de Collado `NAT1219802_LIZ_02.JPG` / `MFR8991502_SUP_01.JPG` daban "6 PN no encontrados" porque el extractor solo cortaba en `__` doble y tomaba el nombre completo como PN (los PNs `NAT1219802`/`MFR8991502` sí existen — confirmado en DuckDB TLC). `extractPNName(filename, viewCodes)` quita `_<VISTA>_<num>` solo si `<VISTA>` está en la whitelist `config.fileUploader.viewCodes` (protege los 57 PNs con `_` interno). `unregisteredViewCode` + resumen enriquecido: un código de vista no registrado se sugiere agregar al config en vez de un "no encontrado" mudo. Whitelist completa del Instructivo de Fotografía (§5): FRO/POS/LIZ/LDE/SUP/INF/ISO. Núcleo puro +15 golden (33 total).
 - **0.4.2 (2026-06-26):** `isTransientError` también reintenta `AbortError`/`aborted` (corte de red a media request). Validado: run de 500 con 1 solo error = un `AbortError` por desconexión del usuario; ahora el retry lo recupera. 22 golden tests.
 - **0.4.1 (2026-06-26):** fix HTTP 502 — `gate()` rate-limit (120ms) + `withRetry()` backoff en transitorios (`isTransientError` + 4 golden tests). Sin esto, ~72% de un run de 1159 falló con 502. Pendiente: deploy + re-validar escala.
 - **0.4.0 (2026-06-26):** memory hardening con `host-cleanup-shared` (slim, Datadog stop, mem monitor + guardrail 88% con checkpoint, drain cada 50). Para el full run. Pendiente: deploy (config estructural → `deploy.sh`).

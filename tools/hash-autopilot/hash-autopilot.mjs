@@ -4,15 +4,16 @@
 // route-catalog.json que las cubre (selectRoutes), abre chromium headless con la
 // cookie de sesión, corre SOLO esas rutas, intercepta /graphql y captura los
 // hashes que el frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
-import { classifyOp, planDeploy } from './hash-autopilot-core.mjs';
+import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention } from './hash-autopilot-core.mjs';
+import { classifyCycleOutcomes, formatSentinelAlert } from './sentinel-health.mjs';
 import { readConfigHashes } from './config-io.mjs';
-import { selectRoutes, opsToCapture, staleMutations } from './route-planner.mjs';
+import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
 import { appletsForOp, formatOpLine } from './applet-attribution.mjs';
 import { classifyProbe, summarizeProbes, gateByProbe } from './probe-classify.mjs';
@@ -51,9 +52,18 @@ function loadKnownOperations() {
   try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')).knownOperations || {}; }
   catch { return {}; }
 }
-// Session-sensitive: el validator (idp-token) no las puede ver → se capturan
-// SIEMPRE que haya release. El resto se capturan solo si el validator las marcó stale.
-const SESSION_SENSITIVE = ['AllCustomers', 'Customer', 'CurrentUser', 'GetPurchaseOrderDetail', 'AllSensorDashboards', 'SensorDashboardQuery'];
+// Session-sensitive ("enmascaradas"): el validator (idp-token) no las puede ver de
+// forma confiable → el motor headless las recaptura SIEMPRE. Fuente ÚNICA de verdad:
+// masked-ops.json (la MISMA lista que el validador skipea → sin huecos). Fail-safe:
+// si el archivo falta o está corrupto, listas vacías (el motor solo capturaría las
+// stale que marque el validator).
+function loadMaskedOps() {
+  try { return JSON.parse(readFileSync(join(__dirname, 'masked-ops.json'), 'utf8')); }
+  catch { return { queries: [], mutations: [] }; }
+}
+const MASKED_OPS = loadMaskedOps();
+const SESSION_SENSITIVE = maskedQueries(MASKED_OPS);
+const MASKED_MUTATIONS = maskedMutations(MASKED_OPS);
 
 // Lee el JSON del validator del día (lo escribe validate-hashes.py). Si no existe
 // (no corrió, o corrió sin stale), devuelve {stale:[]} → solo session-sensitive.
@@ -73,6 +83,11 @@ const domainNanoArg = args.find((a) => a.startsWith('--domain-nano='));
 const DOMAIN_NANO = domainNanoArg ? domainNanoArg.split('=')[1] : '1NFxmF';
 const onlyArg = args.find((a) => a.startsWith('--only='));
 const ONLY = onlyArg ? onlyArg.split('=')[1] : null;
+// --masked-only: recaptura SOLO las ops enmascaradas (session-sensitive de
+// masked-ops.json), sin depender del validador ni de stale. Lo corre el wrapper en
+// CADA tick, ANTES del gate por release, para que las enmascaradas se refresquen
+// siempre (no esperar a que truenen). El escaneo completo sigue tras el gate.
+const MASKED_ONLY = args.includes('--masked-only');
 // Fecha inyectable (para tests/reproducibilidad); default hoy.
 const dateArg = args.find((a) => a.startsWith('--date='));
 const RUN_DATE = dateArg ? dateArg.split('=')[1] : dateStrLocal(new Date());
@@ -104,7 +119,9 @@ export function makeRocpInit(tokens, domainNano) {
 
 async function main() {
   const catalog = JSON.parse(readFileSync(join(__dirname, 'route-catalog.json'), 'utf8'));
-  const validatorResult = loadValidatorResult(RUN_DATE);
+  // masked-only: ignora el validador (recaptura solo las enmascaradas). Completo:
+  // lee el resultado del validador del día para sumar las stale detectables por idp-token.
+  const validatorResult = MASKED_ONLY ? { stale: [] } : loadValidatorResult(RUN_DATE);
   const wantOps = opsToCapture(validatorResult, SESSION_SENSITIVE);
   const plan0 = selectRoutes(wantOps, catalog);
   const staleMuts = staleMutations(validatorResult);
@@ -116,7 +133,13 @@ async function main() {
     }
     return null;
   };
-  const capturableMuts = staleMuts.filter((op) => mutEntityType(op));
+  // Mutations a capturar por ciclo sentinela: las enmascaradas (SIEMPRE — el validador
+  // las skipea, solo el sentinela las cubre) + las stale del validador (modo completo).
+  // Filtradas a las que tienen sentinela ACTIVO (id real ≠ 0); las de id:0 se omiten
+  // (andamiaje pendiente de que el usuario cree el objeto Sentinela).
+  const capturableMuts = mutationsToCapture(validatorResult, MASKED_MUTATIONS, { maskedOnly: MASKED_ONLY })
+    .filter((op) => mutEntityType(op));
+  console.log(`Modo: ${MASKED_ONLY ? 'MASKED-ONLY (solo enmascaradas, sin gate)' : 'completo'}`);
   console.log(`Ops a capturar (${wantOps.length}): ${wantOps.join(', ')}`);
   console.log(`Rutas seleccionadas (${plan0.routes.length}): ${plan0.routes.map((r) => r.id).join(', ') || '(ninguna)'}`);
   if (plan0.uncovered.length) console.log(`⚠️ Queries stale SIN ruta en catálogo: ${plan0.uncovered.join(', ')} (Fase B)`);
@@ -143,7 +166,7 @@ async function main() {
     state: randomUUID(), domainNano: DOMAIN_NANO,
   });
   const page = await context.newPage();
-  const sink = { hashes: {}, data: {}, responseOk: {} };
+  const sink = { hashes: {}, data: {}, responseOk: {}, abortOps: new Set(), abortedOps: new Set() };
   await installInterceptor(page, sink);
 
   // Contexto ANTES de auto-corregir: leer /ProductUpdates para PISTAS de qué cambió
@@ -170,6 +193,9 @@ async function main() {
   }
 
   // ── Fase C: capturar mutations stale vía ciclos sentinela headless ──────────
+  // Acumula el desenlace de cada ciclo para detectar SENTINELAS ROTOS/ARCHIVADOS
+  // (identidad no verificada → antes abortaba en silencio; ahora alerta en el correo).
+  const cycleOutcomes = [];
   if (capturableMuts.length) {
     const { runMutationCycle } = await import('./mutation-runner.mjs');
     const { makeDeps } = await import('./mutation-deps.mjs');
@@ -191,6 +217,7 @@ async function main() {
         console.log(`→ ciclo mutation "${op}" sobre sentinela ${entityType}`);
         const res = await runMutationCycle(page, route, sentinelsConfig, sink, deps);
         console.log(`   ${res.captured ? 'capturó ' + op : 'no capturó (' + (res.reason || 'sin hash') + ')'}`);
+        cycleOutcomes.push({ ...res, op, entityType, sentinelId: sentinelsConfig.entities[entityType]?.id });
       } catch (e) {
         console.log(`  ⚠️ ciclo "${op}" falló: ${String(e).slice(0, 120)}`);
         await page.screenshot({ path: `/tmp/sa-cycle-fail-${op}.png`, fullPage: true }).catch(() => {});
@@ -205,6 +232,7 @@ async function main() {
   // verdad. Distingue rotación real de "el page.goto no disparó la op" (falsa
   // alarma que hacía llorar al correo). Fail-open si truena → gating desactivado.
   let probeVerdicts = {};
+  let abortLiveVigente = {}; // ops de captura-y-aborta cuyo liveHash el server reconoce (validadas)
   try {
     // CLAVE: quitar el interceptor ANTES de probar. Si sigue activo, captura las
     // requests del propio probe (que llevan el hash DEL CONFIG) y contamina
@@ -226,7 +254,31 @@ async function main() {
       console.log(`\n=== probe directo (señal primaria de rotación) ===`);
       console.log(`  🔺 STALE real: ${psum.stale.join(', ') || '(ninguna)'} | ✓ vigentes: ${psum.vigente.length} | ⚠️ auth/unknown: ${psum.auth.length + psum.unknown.length}`);
     }
-  } catch (e) { console.log(`(probe falló: ${String(e).slice(0, 80)} — fail-open, sin gating)`); probeVerdicts = {}; }
+    // Validar el liveHash de las mutations capturadas por CAPTURA-Y-ABORTA: como el
+    // request se abortó no hubo responseOk. Probar el liveHash directo (variables VACÍAS
+    // → error de validación de tipos, NO ejecuta la escritura) — si el server lo reconoce
+    // (classifyProbe 'vigente') el hash es VÁLIDO → isValidatedCapture lo trata como OK →
+    // classifyOp lo marca rotadoValidado → AUTO-DEPLOY (sin ojo humano; el request nunca
+    // escribió). Fail-safe: si el probe no confirma (stale/auth/unknown), queda sospechoso.
+    const abortEntries = [...sink.abortedOps]
+      .filter((op) => sink.hashes[op] && sink.hashes[op] !== cfgForProbe[op])
+      .map((op) => [op, sink.hashes[op]]);
+    if (abortEntries.length) {
+      const rawAbort = await probeOnPage(page, abortEntries);
+      // ADEMÁS probar el hash DEL CONFIG: solo es ROTACIÓN si el config está MUERTO. Si el
+      // config sigue vigente, liveHash≠cfg pero AMBOS registrados = DOS VARIANTES de la misma
+      // op (mismo operationName, distinto query text), NO una rotación → auto-deployar el
+      // liveHash pisaría la variante que el config usa (lección SaveManyPartNumberPrices
+      // 2026-07-17: el 'Save Parts' del quote da otra variante que el batch de bulk-upload).
+      const rawCfg = await probeOnPage(page, abortEntries.map(([op]) => [op, cfgForProbe[op]]).filter(([, h]) => h));
+      const cfgStale = {};
+      for (const r of rawCfg) cfgStale[r.op] = classifyProbe(r) === 'stale';
+      // 'vigente' SOLO por error de validación (hash registrado, NO ejecutó; !hasData) Y el
+      // config MUERTO (cfgStale). Fail-safe: cualquier duda → 'sospechoso' → revisión humana.
+      for (const r of rawAbort) if (classifyProbe(r) === 'vigente' && !r.hasData && cfgStale[r.op]) abortLiveVigente[r.op] = true;
+      console.log(`  probe liveHash (captura-y-aborta): vigente+cfgMuerto=${Object.keys(abortLiveVigente).join(', ') || '(ninguno)'}`);
+    }
+  } catch (e) { console.log(`(probe falló: ${String(e).slice(0, 80)} — fail-open, sin gating)`); probeVerdicts = {}; abortLiveVigente = {}; }
 
   await browser.close();
 
@@ -244,7 +296,9 @@ async function main() {
   const results = [...wantOps, ...capturableMuts].map((op) => {
     const liveHash = sink.hashes[op] ?? null;
     const cfgHash = cfgHashes[op] ?? null;
-    const ok = !!sink.responseOk[op];
+    // OK = el frontend obtuvo data (responseOk) O el probe del liveHash confirmó que el
+    // server lo reconoce (captura-y-aborta, sin respuesta que inspeccionar).
+    const ok = isValidatedCapture({ responseOk: sink.responseOk[op], abortProbeVigente: abortLiveVigente[op] });
     const verdict = classifyOp({ cfgHash, liveHash, http: ok ? 200 : null, shapeOk: ok });
     return { op, cfgHash, liveHash, responseOk: ok, verdict };
   });
@@ -322,6 +376,11 @@ async function main() {
     const appletsOf = (op) => appletsForOp(op, scriptSources, (knownOps[op] || {}).usedBy || '');
     const line = (op) => `   • ${formatOpLine(op, appletsOf(op))}`;
     const sec = [];
+    // Sentinela ROTO/ARCHIVADO (identidad no verificada en Fase C): un sentinela declarado
+    // que quedó archivado hace abortar su ciclo en silencio. Alerta accionable (desarchivar).
+    const sentinelBroken = classifyCycleOutcomes(cycleOutcomes).broken;
+    const sentinelAlert = formatSentinelAlert(sentinelBroken);
+    if (sentinelAlert) sec.push(sentinelAlert);
     if (deployed && plan.toDeploy.length) {
       sec.push(`✅ CORREGIDAS Y DEPLOYADAS (${plan.toDeploy.length}):\n${plan.toDeploy.map((r) => `   • ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash.slice(0, 8)}… — applets: ${appletsOf(r.op).join(', ') || '—'}`).join('\n')}`);
     }
@@ -348,9 +407,26 @@ async function main() {
     }
     if (sec.length) {
       const nCorregidas = deployed ? plan.toDeploy.length : 0;
-      const nPendientes = notCapturedEscalate.length + uncoveredNew.length + pendingMuts.length + plan.suspicious.length;
-      const tipo = plan.massBrake ? 'revision' : nPendientes === 0 ? 'exito' : nCorregidas > 0 ? 'revision' : 'fallo';
-      const asunto = `hash-autopilot: ${nCorregidas} corregida(s), ${nPendientes} pendiente(s)`;
+      // Conteo por SEVERIDAD (2026-07-20): antes el asunto sumaba 5 categorías
+      // heterogéneas en un solo "N pendiente(s)" → un sospechoso o un no-concluyente por
+      // blip de red pesaba igual que una rotación real y el número asustaba de más
+      // (ej. "9 pendiente(s)" cuando solo había 4 ops rotadas — ya corregidas). Ahora separa:
+      //   URGENTES = rotación REAL confirmada / accionable (probe stale, stale sin ruta,
+      //     mutation rota sin capturar, sentinela archivado).
+      //   POR REVISAR = señal blanda no confirmada (probe no concluyente por auth/red;
+      //     sospechoso = difiere del config pero sin data OK, típico de captura-y-aborta).
+      const nUrgentes = realStaleRows.length + uncoveredNew.length + pendingMuts.length + sentinelBroken.length;
+      const nPorRevisar = unconfirmedRows.length + plan.suspicious.length;
+      const nPendientes = nUrgentes + nPorRevisar;
+      // 'fallo' SOLO si hay urgentes sin corregir; solo-blandas → 'revision' (no alarmar).
+      const tipo = plan.massBrake ? 'revision'
+        : nPendientes === 0 ? 'exito'
+        : nUrgentes === 0 ? 'revision'
+        : nCorregidas > 0 ? 'revision'
+        : 'fallo';
+      const asunto = nPendientes === 0
+        ? `hash-autopilot: ${nCorregidas} corregida(s), 0 pendiente(s)`
+        : `hash-autopilot: ${nCorregidas} corregida(s), ${nUrgentes} urgente(s) / ${nPorRevisar} por revisar`;
       const ctx = formatUpdatesContext(productUpdates);
       const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}${ctx ? '\n\n' + ctx : ''}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
       // Correo SOLO en corrida productiva. En modo prueba (--dry-run/--no-deploy/--only)
@@ -361,6 +437,17 @@ async function main() {
         notify(tipo, asunto, cuerpo);
       }
     }
+  }
+  // Auto-limpieza del needs-attention: si este run resolvió ops que estaban escaladas en un
+  // needs-attention PREVIO (capturó ✓ vigente o deployó el rotado), quitarlas del archivo (o
+  // borrarlo si queda vacío) → el Nivel B no gasta una corrida confirmando algo ya arreglado
+  // (hallazgo de la corrida real 2026-07-17). Idempotente: sin archivo o sin cambios, no hace nada.
+  if (!DRY) {
+    const resolvedOps = [
+      ...results.filter((r) => r.verdict === 'vigente').map((r) => r.op),
+      ...(deployed ? plan.toDeploy.map((r) => r.op) : []),
+    ];
+    if (resolvedOps.length) pruneNeedsAttentionFile(resolvedOps);
   }
   return { results, plan, deployed };
 }
@@ -373,14 +460,25 @@ function notify(tipo, asunto, cuerpo) {
 function writeNeedsAttention(notCaptured, recipes, date) {
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
-    const findRecipe = (op) => Object.entries(recipes).find(([, r]) => (r.captures || []).includes(op));
-    const ops = notCaptured.map((r) => {
-      const rec = findRecipe(r.op);
-      return { op: r.op, recipeTried: rec ? rec[0] : null, steps: rec ? rec[1].steps : null, observed: 'la receta no disparó la op (0 capturas)' };
-    });
-    writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify({ date, ops }, null, 2));
-    console.log(`  señal de escalamiento escrita (${ops.length} op).`);
+    const payload = buildNeedsAttention(notCaptured, recipes, date);
+    writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify(payload, null, 2));
+    console.log(`  señal de escalamiento escrita (${payload.ops.length} op).`);
   } catch (e) { console.log(`(no se pudo escribir needs-attention: ${String(e).slice(0, 80)})`); }
+}
+
+// Poda del needs-attention.json de las ops que ESTE run ya resolvió. writeNeedsAttention
+// solo se llama cuando hay algo que escalar, así que un archivo VIEJO persistía aunque un
+// tick posterior recapturara bien; esto lo limpia (hallazgo corrida real 2026-07-17).
+function pruneNeedsAttentionFile(resolvedOps) {
+  const p = join(RESULTS_DIR, 'needs-attention.json');
+  let payload;
+  try { payload = JSON.parse(readFileSync(p, 'utf8')); } catch { return; } // no existe/corrupto → nada
+  const before = Array.isArray(payload.ops) ? payload.ops.length : 0;
+  const pruned = pruneNeedsAttention(payload, resolvedOps);
+  try {
+    if (pruned === null) { rmSync(p); if (before) console.log('  needs-attention.json limpiado (ops escaladas ya resueltas).'); }
+    else if (pruned.ops.length !== before) { writeFileSync(p, JSON.stringify(pruned, null, 2)); console.log(`  needs-attention.json podado: ${before}→${pruned.ops.length} ops pendientes.`); }
+  } catch (e) { console.log(`(no se pudo podar needs-attention: ${String(e).slice(0, 80)})`); }
 }
 
 function persistResult(obj) {

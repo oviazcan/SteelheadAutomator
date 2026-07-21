@@ -1,4 +1,5 @@
 {
+  "_deprecated": "2026-07-15 — SUPERSEDIDO por tools/hash-autopilot/masked-ops.json (fuente ÚNICA de verdad de las ops enmascaradas: queries + mutations). validate-hashes.py ahora lee masked-ops.json y solo cae a este archivo como FALLBACK si masked-ops falta. Se conserva por las razones documentadas (verifiedOn/reason). NO edites aquí para cambiar qué se skipea — edita masked-ops.json.",
   "_doc": "Operaciones que el validador NO debe marcar como STALE. Steelhead trata distinto al navegador oficial vs scripts externos para algunas operaciones sensibles a sesión: el hash es válido (verificado contra hash-scanner que captura desde el navegador), pero el endpoint responde 'Must provide a query string' cuando le pega un cliente que no sea el frontend de Apollo del browser. Para esas operaciones la única validación confiable es el scan en navegador, no este script.",
   "_format": "{ operation: nombre_de_op, reason: explicación, verifiedOn: YYYY-MM-DD }",
   "falseStale": [

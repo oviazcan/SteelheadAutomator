@@ -142,6 +142,14 @@ const SpecMigrator = (() => {
     }, 'UpdatePartNumberSpecParam');
   }
 
+  // ── Unarchive a single param on a PN (rollback de la normalización) ──
+  async function unarchiveParam(paramId) {
+    await api().query('UpdatePartNumberSpecParam', {
+      id: paramId,
+      archivedAt: null
+    }, 'UpdatePartNumberSpecParam');
+  }
+
   // ── Get classification names for a spec field param ──
   async function getParamClassifications(specFieldParamId, specFieldId) {
     try {
@@ -1029,6 +1037,11 @@ const SpecMigrator = (() => {
 
     // Phase 3: For each spec, fetch fields via SpecFieldsAndOptions
     const results = { assigned: 0, skippedFields: 0, skippedPNs: 0, conflicts: [], errors: [], autoAssigned: 0, assisted: 0 };
+    // Diagnóstico: contexto de cada PN que cae en "ya tenían param" (exclusion
+    // constraint). Al final hacemos GetPartNumber por cada uno para revelar si la
+    // fila del param está ARCHIVADA (choca con el índice único aunque searchPartNumbers
+    // lo liste como pendiente) — confirma la causa raíz sin escribir nada.
+    const skipContexts = [];
     const BATCH = 20;
 
     const specFields = [];
@@ -1132,7 +1145,11 @@ const SpecMigrator = (() => {
           updateProgress(`${field.fieldName}: ${pi + 1}-${Math.min(pi + PBATCH, field.pns.length)}/${field.pns.length}`, pct);
           const batchResults = await Promise.allSettled(batch.map(pn =>
             addSingleParamToPN(pn.id, field.specFieldId, param.id, field.isGeneric)
-              .then(status => ({ status, name: pn.name || pn.id }))
+              .then(status => ({ status, name: pn.name || pn.id, __pnId: pn.id }))
+              // Instrumentación diagnóstica: el error crudo NO trae el PN ni el field.
+              // Lo envolvemos con contexto (PN + spec/field/param) para que el modal y
+              // el reporte digan EXACTAMENTE qué combinación rompió el server.
+              .catch(e => { throw new Error(`PN "${pn.name || pn.id}" [${pn.id}] — ${field.specName}/${field.fieldName} → ${param.name}: ${String(e?.message || e)}`); })
           ));
           for (const r of batchResults) {
             if (r.status === 'fulfilled') {
@@ -1141,9 +1158,12 @@ const SpecMigrator = (() => {
                 fieldConflicts++;
                 results.conflicts.push(r.value.name);
               }
-              else results.skippedPNs++;
+              else {
+                results.skippedPNs++;
+                skipContexts.push({ pnId: r.value.__pnId, pnName: r.value.name, specFieldId: field.specFieldId, specFieldParamId: param.id, newParamName: param.name, isGeneric: field.isGeneric, specName: field.specName, fieldName: field.fieldName });
+              }
             } else {
-              results.errors.push(`${String(r.reason).substring(0, 150)}`);
+              results.errors.push(`${String(r.reason).substring(0, 400)}`);
             }
           }
         }
@@ -1181,15 +1201,19 @@ const SpecMigrator = (() => {
             const batchResults = await Promise.allSettled(batch.map(pnId => {
               const pnName = remainingPNs.find(p => p.id === pnId)?.name || pnId;
               return addSingleParamToPN(pnId, field.specFieldId, choice.paramId, field.isGeneric)
-                .then(status => ({ status, name: pnName }));
+                .then(status => ({ status, name: pnName, __pnId: pnId }))
+                .catch(e => { throw new Error(`PN "${pnName}" [${pnId}] — ${field.specName}/${field.fieldName} → ${choice.paramName}: ${String(e?.message || e)}`); });
             }));
             for (const r of batchResults) {
               if (r.status === 'fulfilled') {
                 if (r.value.status === 'ok') results.assigned++;
                 else if (r.value.status === 'conflict') results.conflicts.push(r.value.name);
-                else results.skippedPNs++;
+                else {
+                  results.skippedPNs++;
+                  skipContexts.push({ pnId: r.value.__pnId, pnName: r.value.name, specFieldId: field.specFieldId, specFieldParamId: choice.paramId, specName: field.specName, fieldName: field.fieldName });
+                }
               } else {
-                results.errors.push(`${String(r.reason).substring(0, 150)}`);
+                results.errors.push(`${String(r.reason).substring(0, 400)}`);
               }
             }
           }
@@ -1218,8 +1242,160 @@ const SpecMigrator = (() => {
     }
     log(`Errores: ${results.errors.length}`);
 
+    // Diagnóstico + detección de "falsos pendientes": PNs que caen en "ya tenían param"
+    // porque el field YA tiene una fila ACTIVA con distinto specFieldParamId (revisión
+    // previa de la spec, mismo nombre). searchPartNumbers los ve pendientes (compara por
+    // id), AddParams choca (constraint por specFieldId). Normalizar = archivar la vieja +
+    // reponer el param del catálogo vigente. Esta pasada es READ-ONLY (clasifica).
+    const SMN = (typeof window !== 'undefined' && window.SpecMigratorNormalize) || null;
+    const normalizables = [];
+    const nonEquivalent = [];
+    if (skipContexts.length && SMN) {
+      log(`\n=== DIAGNÓSTICO: ${skipContexts.length} PN(s) "ya tenían param" (colisión de constraint) — inspección read-only ===`);
+      for (const s of skipContexts) {
+        try {
+          const pn = await getPNDetail(s.pnId);
+          const rows = SMN.extractFieldRows(pn, s.specFieldId);
+          if (!rows.length) {
+            log(`  ${s.pnName} — ${s.specName}/${s.fieldName}: SIN fila para ese field en GetPartNumber (constraint por otra causa)`);
+            continue;
+          }
+          for (const p of rows) {
+            const wanted = String(p.paramId) === String(s.specFieldParamId) ? ' [ESTE es el que se intentó]' : '';
+            log(`  ${s.pnName} — ${s.specName}/${s.fieldName} → "${p.paramName}"${wanted}: archivedAt=${p.archivedAt ? p.archivedAt + ' (ARCHIVADO)' : 'NULL (ACTIVO)'}, processNodeId=${p.processNodeId ?? 'null'}, rowId=${p.id}`);
+          }
+          const plan = SMN.planFieldNormalization(rows, { newParamId: s.specFieldParamId, newParamName: s.newParamName });
+          const entry = { ...s, ...plan };
+          if (plan.action === 'normalize') normalizables.push(entry);
+          else if (plan.action === 'non-equivalent') { nonEquivalent.push(entry); log(`    ⚠ NO normalizable: el activo "${plan.oldParamName}" ≠ catálogo "${s.newParamName}" (cambiaría el valor — se deja intacto)`); }
+          else if (plan.action === 'ambiguous') log(`    ⚠ ${plan.activeRowIds.length} params activos en el field — lo maneja "Validar params duplicados", no normalización`);
+          else if (plan.action === 'no-active') log(`    ⚠ sin fila activa — es pendiente REAL (revisar aparte)`);
+        } catch (e) {
+          log(`  ${s.pnName}: diagnóstico falló — ${String(e?.message || e).substring(0, 120)}`);
+        }
+      }
+      log(`Diagnóstico: ${normalizables.length} normalizable(s), ${nonEquivalent.length} no-equivalente(s)`);
+    }
+
+    // Ofrecer normalización (ESCRITURA con preview + confirmación + rollback).
+    if (normalizables.length) {
+      const confirmed = await showNormalizePreview(normalizables, nonEquivalent);
+      if (confirmed) {
+        const normRes = await runNormalization(normalizables);
+        results.normalized = normRes;
+        showNormalizeSummary(normRes);
+        return results;
+      }
+    }
+
     showPendingParamsSummary(results);
     return results;
+  }
+
+  // ── Normalización de falsos pendientes: preview + ejecución + resumen ──
+  function showNormalizePreview(normalizables, nonEquivalent) {
+    return new Promise((resolve) => {
+      ensureStyles();
+      const ov = document.createElement('div');
+      ov.className = 'sa-specm-overlay';
+      const md = document.createElement('div');
+      md.className = 'sa-specm-modal';
+      md.style.background = '#1a1a2e';
+      const rowsHtml = normalizables.map(n =>
+        `<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #24304a">
+          <span style="color:#e2e8f0;font-weight:600">${escHtml(n.pnName)}</span>
+          <span style="color:#94a3b8"> · ${escHtml(n.specName)}/${escHtml(n.fieldName)}</span><br>
+          <span style="color:#64748b;font-size:11px">archiva activo rowId ${escHtml(String(n.oldRowId))} ("${escHtml(n.oldParamName)}") → repone "${escHtml(n.newParamName)}" (revisión vigente)</span>
+        </div>`).join('');
+      let neHtml = '';
+      if (nonEquivalent && nonEquivalent.length) {
+        neHtml = `<div style="margin-top:12px"><div style="font-size:12px;color:#f59e0b;font-weight:600">NO se tocan (${nonEquivalent.length} — valor distinto):</div>` +
+          nonEquivalent.map(n => `<div style="font-size:11px;color:#fbbf24;padding:1px 0">${escHtml(n.pnName)} · ${escHtml(n.specName)}/${escHtml(n.fieldName)}: "${escHtml(n.oldParamName)}" ≠ "${escHtml(n.newParamName)}"</div>`).join('') + `</div>`;
+      }
+      md.innerHTML = `
+        <h2 style="color:#8b5cf6">🔧 Normalizar params (revisión de spec)</h2>
+        <div style="font-size:13px;color:#cbd5e1;margin-bottom:12px">
+          Estos PNs YA tienen el valor correcto pero con un <b>ID de revisión anterior</b>. Se archivará la fila
+          activa vieja y se repondrá el param del catálogo vigente (mismo valor). <b>Reversible</b>: si reponer falla, se desarchiva el original (rollback).
+        </div>
+        <div style="max-height:340px;overflow-y:auto;background:#0f172a;border-radius:8px;padding:10px">
+          <div style="font-size:12px;color:#4ade80;font-weight:600;margin-bottom:6px">A normalizar (${normalizables.length}):</div>
+          ${rowsHtml}
+          ${neHtml}
+        </div>
+        <div class="sa-specm-btnrow">
+          <button class="sa-specm-btn sa-specm-btn-cancel" id="sa-norm-cancel">CANCELAR</button>
+          <button class="sa-specm-btn sa-specm-btn-exec" id="sa-norm-go">NORMALIZAR ${normalizables.length}</button>
+        </div>`;
+      ov.appendChild(md);
+      document.body.appendChild(ov);
+      document.getElementById('sa-norm-cancel').onclick = () => { ov.remove(); resolve(false); };
+      document.getElementById('sa-norm-go').onclick = () => { ov.remove(); resolve(true); };
+    });
+  }
+
+  async function runNormalization(normalizables) {
+    const res = { ok: [], errors: [], rolledBack: [] };
+    showProgressUI('Normalizando params', `0/${normalizables.length}`);
+    for (let i = 0; i < normalizables.length; i++) {
+      const n = normalizables[i];
+      const label = `${n.pnName} — ${n.specName}/${n.fieldName}`;
+      updateProgress(`${i + 1}/${normalizables.length} — ${n.pnName} · ${n.fieldName}`, (i / normalizables.length) * 100);
+      try {
+        // 1. Archivar la fila activa vieja (id de revisión anterior).
+        await archiveParam(n.oldRowId);
+        // 2. Reponer el param del catálogo vigente — el field ya quedó libre.
+        let status;
+        try {
+          status = await addSingleParamToPN(n.pnId, n.specFieldId, n.specFieldParamId, n.isGeneric);
+        } catch (addErr) {
+          // Rollback: desarchivar el original para no dejar el field vacío.
+          try { await unarchiveParam(n.oldRowId); res.rolledBack.push(label); } catch (_) {}
+          res.errors.push(`${label}: reponer falló (${String(addErr?.message || addErr).substring(0, 120)}) — rollback aplicado`);
+          continue;
+        }
+        if (status === 'ok') {
+          res.ok.push(label);
+          log(`  ✓ Normalizado: ${label} (archivado rowId ${n.oldRowId} → repuesto "${n.newParamName}")`);
+        } else {
+          // 'conflict'/'duplicate' tras archivar = inesperado → rollback.
+          try { await unarchiveParam(n.oldRowId); res.rolledBack.push(label); } catch (_) {}
+          res.errors.push(`${label}: reponer devolvió "${status}" tras archivar — rollback aplicado`);
+        }
+      } catch (e) {
+        res.errors.push(`${label}: archivar falló (${String(e?.message || e).substring(0, 120)})`);
+      }
+    }
+    removeUI();
+    log(`\n=== NORMALIZACIÓN: ${res.ok.length} OK, ${res.errors.length} errores, ${res.rolledBack.length} rollback ===`);
+    return res;
+  }
+
+  function showNormalizeSummary(res) {
+    ensureStyles();
+    const ov = document.createElement('div');
+    ov.className = 'sa-specm-overlay';
+    const md = document.createElement('div');
+    md.className = 'sa-specm-modal';
+    md.style.background = '#1a1a2e';
+    const hasErr = res.errors.length > 0;
+    let errHtml = '';
+    if (res.errors.length) {
+      errHtml = `<div style="margin-top:12px"><div style="font-size:12px;color:#ef4444;font-weight:600">Errores (${res.errors.length}):</div>` +
+        res.errors.slice(0, 15).map(e => `<div style="font-size:11px;color:#fca5a5;padding:1px 0">${escHtml(e)}</div>`).join('') + `</div>`;
+    }
+    md.innerHTML = `
+      <h2 style="color:${hasErr ? '#f59e0b' : '#4ade80'}">${hasErr ? '⚠️' : '✅'} Normalización ${hasErr ? 'con avisos' : 'completada'}</h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0">
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:700;color:#4ade80">${res.ok.length}</div><div style="font-size:11px;color:#94a3b8">Normalizados</div></div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:700;color:#f59e0b">${res.rolledBack.length}</div><div style="font-size:11px;color:#94a3b8">Rollback</div></div>
+        <div style="background:#0f172a;padding:12px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:700;color:#ef4444">${res.errors.length}</div><div style="font-size:11px;color:#94a3b8">Errores</div></div>
+      </div>
+      ${errHtml}
+      <div class="sa-specm-btnrow"><button class="sa-specm-btn sa-specm-btn-exec" id="sa-norm-close">CERRAR</button></div>`;
+    ov.appendChild(md);
+    document.body.appendChild(ov);
+    document.getElementById('sa-norm-close').onclick = () => ov.remove();
   }
 
   // ── Summary for pending params ──

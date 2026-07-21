@@ -32,7 +32,7 @@ export async function runMutationCycle(page, route, sentinelsConfig, sink, deps)
   let verified = false;
   try {
     // Verificación de identidad ANTES de mutar (fail-closed).
-    const obj = await deps.loadObject(page, plan.sentinelId);
+    const obj = await deps.loadObject(page, plan.sentinelId, entityType);
     if (!isSentinel(obj)) {
       return { captured: false, op, escalated: true, reason: 'objeto cargado NO es sentinela (identidad)' };
     }

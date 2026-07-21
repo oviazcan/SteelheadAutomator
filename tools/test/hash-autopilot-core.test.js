@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyOp, hasShape, planDeploy, missingCoverage } = require('../hash-autopilot/hash-autopilot-core.mjs');
+const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention } = require('../hash-autopilot/hash-autopilot-core.mjs');
 
 const R = (op, verdict) => ({ op, verdict, cfgHash: 'old', liveHash: verdict === 'vigente' ? 'old' : 'new' });
 
@@ -23,6 +23,25 @@ test('classifyOp: distinto + 200 pero sin shape → sospechoso', () => {
 });
 test('classifyOp: no capturado (liveHash null) → noCapturado', () => {
   assert.equal(classifyOp({ cfgHash: 'aaa', liveHash: null, http: null, shapeOk: false }), 'noCapturado');
+});
+
+test('isValidatedCapture: responseOk del frontend → true', () => {
+  assert.equal(isValidatedCapture({ responseOk: true }), true);
+});
+test('isValidatedCapture: captura-y-aborta con probe liveHash vigente → true (auto-deployable)', () => {
+  assert.equal(isValidatedCapture({ abortProbeVigente: true }), true);
+});
+test('isValidatedCapture: sin evidencia (abortado + probe no vigente) → false (sospechoso)', () => {
+  assert.equal(isValidatedCapture({}), false);
+  assert.equal(isValidatedCapture({ responseOk: false, abortProbeVigente: false }), false);
+});
+test('captura-y-aborta validada por probe: liveHash≠cfg → rotadoValidado (se auto-deploya)', () => {
+  const ok = isValidatedCapture({ abortProbeVigente: true });
+  assert.equal(classifyOp({ cfgHash: 'old', liveHash: 'new', http: ok ? 200 : null, shapeOk: ok }), 'rotadoValidado');
+});
+test('captura-y-aborta con probe NO vigente (stale/auth): liveHash≠cfg → sospechoso (no deploya)', () => {
+  const ok = isValidatedCapture({ abortProbeVigente: false });
+  assert.equal(classifyOp({ cfgHash: 'old', liveHash: 'new', http: ok ? 200 : null, shapeOk: ok }), 'sospechoso');
 });
 
 test('hasShape: todas las llaves presentes → true', () => {
@@ -65,4 +84,26 @@ test('missingCoverage: detecta ops target sin receta', () => {
 test('missingCoverage: todo cubierto → []', () => {
   const recipes = { r1: { captures: ['A', 'B'] } };
   assert.deepEqual(missingCoverage(recipes, ['A', 'B']), []);
+});
+
+test('pruneNeedsAttention: quita las ops resueltas y deja las pendientes', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }, { op: 'B' }, { op: 'C' }] };
+  const pruned = pruneNeedsAttention(payload, ['A', 'C']);
+  assert.deepEqual(pruned.ops.map((o) => o.op), ['B']);
+  assert.equal(pruned.date, 'd', 'preserva el resto del payload');
+});
+
+test('pruneNeedsAttention: todas resueltas → null (el caller borra el archivo)', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }, { op: 'B' }] };
+  assert.equal(pruneNeedsAttention(payload, ['A', 'B']), null);
+});
+
+test('pruneNeedsAttention: resolvedOps vacío → payload intacto', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }] };
+  assert.deepEqual(pruneNeedsAttention(payload, []).ops.map((o) => o.op), ['A']);
+});
+
+test('pruneNeedsAttention: payload nulo / sin ops → null (fail-safe)', () => {
+  assert.equal(pruneNeedsAttention(null, ['A']), null);
+  assert.equal(pruneNeedsAttention({ date: 'd' }, ['A']), null);
 });

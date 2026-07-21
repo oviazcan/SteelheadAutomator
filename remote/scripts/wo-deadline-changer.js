@@ -363,9 +363,9 @@ const WODeadlineChanger = (() => {
     const PH = { phaseNum: 1, phaseTotal: 3, phase: 'Catálogos' };
     const [prodResult, woCountResult] = await Promise.allSettled([
       (async () => {
-        const d = await api().query('SearchProducts', {
-          searchQuery: '', first: 500, offset: 0, includeArchived: 'NO'
-        }, 'SearchProducts');
+        const d = await api().query('SearchProductsComprehensive', {
+          searchQuery: '', first: 500, offset: 0
+        }, 'SearchProductsComprehensive');
         return d?.searchProducts?.nodes || d?.pagedData?.nodes || [];
       })(),
       fetchAllActiveWOs({}, (p) => {
