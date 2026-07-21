@@ -1,5 +1,15 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.41 (2026-07-20): FLAG ON del fast-path SOLO_PRECIO (SOLO_PRECIO_FASTPATH_ENABLED
+//   = true). Activado por decisión del operador. Ver la constante y su comentario más abajo.
+//
+// VERSION 1.5.40 (2026-07-20): FEAT — fast-path SOLO_PRECIO. Cuando una corrida solo cambia
+//   precios de PN existentes (cero enriquecimiento), salta STEP 6 (enrich) — un runPool que pega
+//   SavePartNumber por CADA PN sin nada que aplicar (N round-trips + REPLACE de arrays). Motor
+//   puro Parse.planSoloPrecioFastPath + 13 golden tests (2 invariantes de seguridad). runIntent
+//   se recalcula en execute() (vivía solo en showPreview). pnLookup/precio/STEP 8/resume/snapshot
+//   intactos. Guard mínimo: un `if (!fastPathSoloPrecio)` alrededor del runPool de STEP 6.
+//
 // VERSION 1.5.39 (2026-07-15): FIX crítico — "Cannot access 'pnLookup' before initialization"
 //   (FATAL) al ejecutar con troceo SOLO_PN activo (>1000 filas; destapado en corrida real de
 //   20k NP). El wrapper de lotes #4 (1.5.37) hacía `pnLookup.clear()` al inicio del cuerpo del
@@ -292,7 +302,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.40';
+  const VERSION = '1.5.41';
   const api = () => window.SteelheadAPI;
 
   // feat 1.5.40: FAST-PATH SOLO_PRECIO — cuando la corrida solo cambia precios de PN que
@@ -302,10 +312,12 @@ const BulkUpload = (() => {
   // arrays. Saltarlo no es solo más rápido: es más SEGURO (no toca datos que el CSV no trae).
   // STEP 6a/6b/7 ya son no-ops naturales en este caso (sus candidatos filtran por arrays
   // vacíos). El precio (SaveManyPartNumberPrices) y STEP 8 (default + archive) corren igual.
-  // DESHABILITADO hasta validación en vivo: con el flag en false el pipeline corre
-  // byte-idéntico al comportamiento previo (la rama `if (!fastPathSoloPrecio)` siempre entra).
-  // La DECISIÓN es una función pura testeada: Parse.planSoloPrecioFastPath (11 golden tests).
-  const SOLO_PRECIO_FASTPATH_ENABLED = false;
+  // ACTIVADO 2026-07-20 (1.5.41) por decisión del operador. Con el flag en true, una corrida
+  // clasificada SOLO_PRECIO salta STEP 6 (enrich). La DECISIÓN sigue siendo una función pura
+  // testeada: Parse.planSoloPrecioFastPath (13 golden tests, incl. 2 invariantes de seguridad
+  // que garantizan que UNA sola fila con enrich —o un PN nuevo— DESACTIVA el atajo, así que el
+  // enrich nunca se salta cuando hay algo que aplicar). Para desactivar: poner en false + deploy.
+  const SOLO_PRECIO_FASTPATH_ENABLED = true;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
   // Se importan con los MISMOS nombres locales para no tocar ningún call site.
