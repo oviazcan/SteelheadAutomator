@@ -407,9 +407,26 @@ async function main() {
     }
     if (sec.length) {
       const nCorregidas = deployed ? plan.toDeploy.length : 0;
-      const nPendientes = notCapturedEscalate.length + uncoveredNew.length + pendingMuts.length + plan.suspicious.length + sentinelBroken.length;
-      const tipo = plan.massBrake ? 'revision' : nPendientes === 0 ? 'exito' : nCorregidas > 0 ? 'revision' : 'fallo';
-      const asunto = `hash-autopilot: ${nCorregidas} corregida(s), ${nPendientes} pendiente(s)`;
+      // Conteo por SEVERIDAD (2026-07-20): antes el asunto sumaba 5 categorías
+      // heterogéneas en un solo "N pendiente(s)" → un sospechoso o un no-concluyente por
+      // blip de red pesaba igual que una rotación real y el número asustaba de más
+      // (ej. "9 pendiente(s)" cuando solo había 4 ops rotadas — ya corregidas). Ahora separa:
+      //   URGENTES = rotación REAL confirmada / accionable (probe stale, stale sin ruta,
+      //     mutation rota sin capturar, sentinela archivado).
+      //   POR REVISAR = señal blanda no confirmada (probe no concluyente por auth/red;
+      //     sospechoso = difiere del config pero sin data OK, típico de captura-y-aborta).
+      const nUrgentes = realStaleRows.length + uncoveredNew.length + pendingMuts.length + sentinelBroken.length;
+      const nPorRevisar = unconfirmedRows.length + plan.suspicious.length;
+      const nPendientes = nUrgentes + nPorRevisar;
+      // 'fallo' SOLO si hay urgentes sin corregir; solo-blandas → 'revision' (no alarmar).
+      const tipo = plan.massBrake ? 'revision'
+        : nPendientes === 0 ? 'exito'
+        : nUrgentes === 0 ? 'revision'
+        : nCorregidas > 0 ? 'revision'
+        : 'fallo';
+      const asunto = nPendientes === 0
+        ? `hash-autopilot: ${nCorregidas} corregida(s), 0 pendiente(s)`
+        : `hash-autopilot: ${nCorregidas} corregida(s), ${nUrgentes} urgente(s) / ${nPorRevisar} por revisar`;
       const ctx = formatUpdatesContext(productUpdates);
       const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}${ctx ? '\n\n' + ctx : ''}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
       // Correo SOLO en corrida productiva. En modo prueba (--dry-run/--no-deploy/--only)

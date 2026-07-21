@@ -10,7 +10,7 @@ set -euo pipefail
 TIPO="${1:?falta tipo}"
 ASUNTO="${2:?falta asunto}"
 CUERPO="${3:?falta cuerpo}"
-DEST_DEFAULT="oviazcan@gmail.com,msierra@ecoplating.com,ernesto.sanchez@proecoplating.com"
+DEST_DEFAULT="oviazcan@gmail.com,msierra@proecoplating.com,ernesto.sanchez@proecoplating.com"
 DESTS="${SA_NOTIFY_DEST:-$DEST_DEFAULT}"
 
 # Escapar comillas dobles y backslashes para AppleScript.

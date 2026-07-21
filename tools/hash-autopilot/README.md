@@ -249,4 +249,35 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 - Correo real: prueba de humo ✅ hecha (2026-07-17). Launchd de escalación: ✅ cargado.
 - Nivel B: ✅ **corrida real validada end-to-end 2026-07-17** (re-descubrimiento + trace + correo +
   guardrails). Wrapper corre con el login claude.ai (no la API key sin saldo). Auto-limpia el
-  needs-attention al recapturar. **No quedan pendientes accionables del hash-autopilot.**
+  needs-attention al recapturar.
+
+### Incidente + hallazgos 2026-07-20 (correo "0 corregida(s), 9 pendiente(s)")
+- **Qué pasó:** rotaron 4 mutations de reportes (`ArchiveReport`, `DeleteFolderById`,
+  `CreateUpdateReportWithPermissions`, `GenerateDuckDb`; las 4 dieron "Must provide a query string").
+  El ciclo sentinela recapturó 2 como *sospechosas* y 2 quedaron *no capturadas* → correo de las
+  14:32. **Ya corregidas por scan** (config avanzó a 1.7.155) y la corrida de las **19:25 salió
+  LIMPIA** (`authFailed:false`, todo "vigente", `toDeploy:[]`, `massBrake:false`). No era una alarma
+  viva al momento de revisar.
+- **El bounce del correo NO es del autopilot — era un DOMINIO MAL ESCRITO en el destinatario.**
+  `mailer-daemon@icloud.com` rebotó SOLO a `msierra@ecoplating.com` (Status 4.3.0 "server unavailable")
+  porque **ese dominio es incorrecto**: `ecoplating.com` no resuelve/no acepta correo. El correcto es
+  `msierra@proecoplating.com` (mismo dominio que Ernesto). ✅ **CORREGIDO 2026-07-20** en
+  `autopilot-notify.sh` (`DEST_DEFAULT`). Nota: `tools/notify-stale-hashes.sh` ya tenía el dominio
+  bueno; solo el autopilot-notify quedó con el viejo. Los otros 2 destinatarios (`oviazcan@gmail.com`,
+  `ernesto.sanchez@proecoplating.com`) nunca rebotaron.
+- **Hallazgo A — conteo del asunto infla la percepción de gravedad.** `nPendientes` (hash-autopilot.mjs
+  ~410) suma 5 categorías heterogéneas: `notCapturedEscalate + uncoveredNew + pendingMuts +
+  suspicious + sentinelBroken`. Un "no concluyente por blip de red/auth" pesa igual que una rotación
+  real → el número asusta de más. **Mejora sugerida (no urgente):** en el asunto distinguir
+  ROTACIÓN REAL de las categorías blandas (p.ej. "N urgentes / M por revisar").
+- **Hallazgo B — `needs-attention.json` puede quedar stale tras un fix por scan manual.** El motor
+  auto-limpia el needs-attention SOLO para ops que resolvió en ESE run (verdict 'vigente' o
+  deployadas). La corrida de las 19:25 solo probó QUERIES, no mutations; y las 4 mutations se
+  arreglaron por scan MANUAL (fuera del motor) → nunca pasaron por `pruneNeedsAttentionFile`. Por eso
+  `needs-attention.json` (14:32) sigue apuntando a `ArchiveReport`/`DeleteFolderById` ya vigentes. No
+  es peligroso: la escalación Nivel B, al correr sobre ellas, las probará, las verá vigentes y limpiará
+  (auto-sanador). Alternativa: correr el motor COMPLETO una vez (prueba mutations por probe directo y
+  auto-limpia), o borrar el `needs-attention.json` a mano si se confirma que las 4 están vigentes.
+
+**No quedan pendientes de código accionables del hash-autopilot** (los 2 hallazgos de arriba son
+mejoras de UX/higiene, no bugs que rompan la autonomía).
