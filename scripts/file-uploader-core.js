@@ -143,16 +143,34 @@
       d === t || (d.startsWith(t) && !/[a-z]/.test(d.charAt(t.length))));
   }
 
+  // ¿Es la vista ISO (isométrica 3/4)? La portada preferida: el Instructivo de
+  // Fotografía dice que "la vista ISO nunca se omite" → toda categoría la tiene y
+  // es la toma que mejor comunica el volumen. Detecta ISO en ambas convenciones:
+  //   · guion simple: <PN>_ISO_##  (view === 'ISO', estructural, no depende de config)
+  //   · doble: <PN>__iso…          (descriptor empieza con "iso" en frontera)
+  function isIsoView(filename) {
+    const s = String(filename == null ? '' : filename).replace(/\.[^.\/\\]+$/, '');
+    const idx = s.indexOf('__');
+    if (idx >= 0) {
+      const d = s.slice(idx + 2).trim().toLowerCase();
+      return d === 'iso' || (d.startsWith('iso') && !/[a-z]/.test(d.charAt(3)));
+    }
+    const parts = splitViewCoded(s);
+    return !!parts && parts.view === 'ISO';
+  }
+
   // De los archivos de un grupo (cada uno {name, size}), elige la foto principal:
-  //   1) si hay imágenes con descriptor de principal → la más grande de ESAS;
-  //   2) si no, la imagen más grande por bytes;
-  //   3) si no hay ninguna imagen (solo PDFs/planos) → null.
+  //   1) si hay vista ISO → la más grande de ESAS (regla de portada del instructivo);
+  //   2) si no, si hay imágenes con descriptor de principal (conv. "__") → la más grande de ESAS;
+  //   3) si no, la imagen más grande por bytes;
+  //   4) si no hay ninguna imagen (solo PDFs/planos) → null.
   // Desempate determinista: mayor size, luego name asc (estable para tests).
   function selectDisplayImage(files) {
     const imgs = (files || []).filter((x) => x && isImageFile(x.name));
     if (!imgs.length) return null;
+    const iso = imgs.filter((x) => isIsoView(x.name));
     const marked = imgs.filter((x) => isPrincipalDescriptor(x.name));
-    const pool = marked.length ? marked : imgs;
+    const pool = iso.length ? iso : (marked.length ? marked : imgs);
     return pool.slice().sort((a, b) =>
       (Number(b.size) || 0) - (Number(a.size) || 0) ||
       String(a.name).localeCompare(String(b.name)))[0];
@@ -225,7 +243,7 @@
     return rows;
   }
 
-  const api = { extractPNName, unregisteredViewCode, normViewCodes, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError, isImageFile, isPrincipalDescriptor, selectDisplayImage, readDisplayState, parseBackfillCsv };
+  const api = { extractPNName, unregisteredViewCode, normViewCodes, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError, isImageFile, isPrincipalDescriptor, isIsoView, selectDisplayImage, readDisplayState, parseBackfillCsv };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FileUploaderCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
