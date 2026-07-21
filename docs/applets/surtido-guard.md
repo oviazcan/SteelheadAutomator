@@ -1,15 +1,16 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.1.2** (config **1.7.158**, deployado a producción 2026-07-20). Estado: **toggle + bloqueo + MARCADO VERDE validados en vivo ✓**. El verde ahora es **idioma-indep** (ancla la tarjeta por `data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"`), **edge-to-edge** (tinte sólido `#e2f4ec` sobre el cuerpo blanco full-width — antes un box-shadow inset que ni se veía) y **rápido** (kick inmediato + reintentos + debounce por `requestAnimationFrame`; observer acotado). Pendiente: validación fina del bloqueo (falsos positivos prog/no-prog) y drag silencioso.
->
-> **Sesión 2026-07-20 (verde + perf, todo deployado):** el verde no aparecía → 3 causas encadenadas resueltas: (1) el gate `WB_PATH_RE=/^\/Domains\/\d+\/Workboards\/\d+/` sí matcheaba (`/Domains/344/Workboards/6234`), no era eso; (2) el CSS era `box-shadow inset 5px` casi invisible sobre el cuerpo blanco → cambiado a **tinte de fondo sólido `#e2f4ec` edge-to-edge** aplicado al **cuerpo blanco de la tarjeta** (`div[style*="background: rgb(255, 255, 255)"]` bajo el card root `[data-item-index]`); (3) tardaba en aparecer → `decorateCards` solo corría con el `MutationObserver` → añadido `kickDecorate()` (pinta al entrar + reintentos 0/150/400/900/1800/3000ms) y `scheduleDecorate` pasó de `setTimeout(200)` a `requestAnimationFrame`. **Perf del scroll:** el observer de `document.body` ya NO corre `applyModalGuard` (que hacía `querySelectorAll` de todo el doc cada 80ms) en cada mutación — solo cuando un **diálogo** se añade/quita (chequeo *shallow* `n.matches(DLG_ADD_SEL)`, sin recorrer el subárbol de cada tarjeta) y mientras hay modal abierto (`_dlgOpen`); el bloqueo real sigue cubierto por el interceptor de `GetRelatedScheduleData`. **Gotcha:** acotar el scan del verde a UNA lista (`cardList()`) rompió el multi-step (el board tiene VARIAS secciones/listas virtualizadas) → revertido a `document.querySelectorAll` (barato: atributo específico + DOM virtualizado + rAF). Deploys: config 1.7.150 (batch de anclas) → 1.7.158 (iteraciones del verde), firmados KMS, byte-a-byte verificado.
+> Versión: **0.2.0** (config bump en deploy). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓; el bloqueo aparece en vivo. v0.2.0 (2026-07-20): marcado INVERTIDO — NARANJA en las NO movibles (antes verde en las movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda anti-falsa-alarma con el set de la API. Pendiente: validación fina del bloqueo (falsos positivos prog/no-prog), drag silencioso y del naranja en vivo**.
 > Spec: [`docs/superpowers/specs/2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
 > Plan: [`docs/superpowers/plans/2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
 
 ## Qué resuelve
 En el Workboard **"Preparación de Surtido"** (`/Domains/<id>/Workboards/<n>`), step
 **"Preparando Surtido en Almacén"**, evita que el operador mueva piezas al siguiente proceso si la
-**orden de trabajo no está programada** en producción, y marca en **verde** las tarjetas que sí lo están.
+**orden de trabajo no está programada** en producción, y marca en **naranja** las tarjetas que **NO**
+se pueden mover (sin tarea programada). Las movibles (programadas) quedan sin marca (fondo blanco).
+> **v0.2.0 invirtió el marcado:** antes se pintaba de VERDE lo movible; ahora se pinta de NARANJA lo
+> NO movible (resalta la excepción/lo bloqueado). El **bloqueo** (capas 1-3) es idéntico y API-driven.
 
 **Programada = la pieza tiene una tarea en el programa** (la tarjeta muestra la sección
 "Tareas Programadas:" con tratamiento + estación + fecha-hora). El color del calendario rojo/verde es
@@ -25,9 +26,13 @@ de movimiento con un solo punto de enforcement:
    sale de un nodo de surtido con account **no** programado → no lo reenvía, responde error GraphQL sintético
    (`{errors:[{message}]}`) + toast. **Cubre el modal MOVER y el drag silencioso** (ambos disparan esa mutación).
 3. **Capa de modal** — agrisa los botones **Mover** / **Imprimir y Mover** (match por texto) + mensaje inline.
-4. **Marcado verde** (`decorateCards`) — ancla cada tarjeta por `data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"` (idioma-indep), sube al card root `[data-item-index]`, y si la tarjeta muestra "Tareas Programadas:" tinta su **cuerpo blanco full-width** con `sa-sg-green` (fondo sólido `#e2f4ec`, edge-to-edge). Fallback: TreeWalker por "Tareas Programadas:" (deuda bilingüe: única señal de UI). Dispara: `kickDecorate` (init + reintentos) + `MutationObserver` con `scheduleDecorate` por `requestAnimationFrame`.
+4. **Marcado naranja** — tarjetas SIN la señal DOM "Tareas Programadas:" / "Scheduled tasks:" (= NO
+   programadas = NO movibles) reciben fondo naranja (`sa-sg-orange`). **Señal bilingüe ES+EN.**
+   **Salvaguarda anti-falsa-alarma:** si NINGUNA tarjeta reconoce la señal pero la API sí reporta
+   programadas (`scheduledAccountIds.size>0`), la señal DOM se rompió → **no marca** (evita todo-naranja).
+   Decisión pura en el core (`hasScheduledCardSignal`/`isDomSignalBroken`/`shouldMarkNotMovable`).
 5. **Toggle** — en el popup (`toggle-surtido-guard` → `SurtidoGuard.toggleFromPopup`), no persistente,
-   **default ON cada carga**; se reactiva al recargar. El verde no se ve afectado por el toggle.
+   **default ON cada carga**; se reactiva al recargar. El naranja no se ve afectado por el toggle.
 
 **Política FAIL-SAFE:** ante dato faltante (account sin puente, set no cargado) **no bloquea**.
 
@@ -49,8 +54,9 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 
 ## Componentes
 - `remote/scripts/surtido-guard-core.js` — puro: `buildScheduledAccountSet`, `buildSurtidoNodeSet`,
-  `indexAccountNodeFromMoveVars`, `extractStepTransfers`, `shouldBlockMove`, `evaluateMove`.
-  Tests: `tools/test/surtido-guard-core.test.js` (13/13) + fixtures `tools/test/fixtures/surtido-guard-*.json`.
+  `indexAccountNodeFromMoveVars`, `extractStepTransfers`, `shouldBlockMove`, `evaluateMove` y (capa 4)
+  `hasScheduledCardSignal` (regex bilingüe), `isDomSignalBroken` (árbitro API), `shouldMarkNotMovable`.
+  Tests: `tools/test/surtido-guard-core.test.js` (16/16) + fixtures `tools/test/fixtures/surtido-guard-*.json`.
 - `remote/scripts/surtido-guard.js` — glue: interceptor, capa modal, marcado verde, toggle, memory hardening.
 - `remote/config.json` — app `surtido-guard` (`autoInject`, scripts, toggle action).
 
@@ -139,6 +145,23 @@ extensión; RED sin fix, GREEN con fix).
 **Regla general:** cualquier applet re-inyectable que NO esté en el mapa `globals` de `background.js` debe
 guardar su estado mutable en `window.__sa<App>*`, no en variables del closure — o el popup mutará una instancia
 distinta a la que tiene los interceptores latcheados.
+
+### Invertir un marcado por señal DOM agrava el riesgo del anclaje mono-idioma (v0.2.0, 2026-07-20)
+El marcado v0.1.x pintaba **verde** las tarjetas CON la señal "Tareas Programadas:". Al invertir a **naranja
+las que NO la tienen**, el failure mode cambió de signo: con el verde, si la señal no matcheaba (locale EN,
+cambio de texto de SH) simplemente **no se pintaba nada** (benigno); con el naranja, la ausencia de señal
+haría que **TODAS** las tarjetas se pinten (falsa alarma masiva "nada se puede mover"). Dos mitigaciones:
+1. **Anclaje bilingüe ES+EN** (`Tareas Programadas:` / `Scheduled tasks:`) — string EN provisto por el usuario,
+   no adivinado (regla dura del repo). Baja la probabilidad de "señal no matchea".
+2. **Árbitro con el dato de la API**: `isDomSignalBroken(anyCardScheduled, scheduledAccountIds.size)` — si
+   NINGUNA tarjeta reconoce la señal pero `GetRelatedScheduleData` sí trajo programadas, la señal DOM está
+   rota → no marcar (en vez de pintar todo). `scheduledAccountIds` vive en el closure de la instancia ORIGINAL
+   (la que tiene el interceptor y el observer latcheados), que es la misma que corre `decorateCards`, así que
+   el árbitro ve el set correcto. El color NO afecta el bloqueo real (API-driven), así que un color errado
+   confunde pero no permite mover lo que no se debe.
+
+**Lección transferible:** antes de invertir cualquier marcado heurístico "resaltar lo bueno" → "resaltar lo
+malo", revisa el failure mode del anclaje: resaltar la excepción amplifica los falsos positivos del ancla.
 
 ## Pendientes
 - **Validación en vivo del bloqueo real** (arriba). Riesgo a vigilar: **falsos positivos** (bloquear una

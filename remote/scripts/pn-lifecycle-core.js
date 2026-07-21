@@ -170,6 +170,69 @@
     } catch (e) { return { id: pn.id, status: 'error', error: String(e?.message || e).slice(0, 160) }; }
   }
 
+  // ── Modo "Pegar IDs": parseo puro de la lista pegada ──
+  // Acepta cualquier separador (saltos de línea, coma, tab, punto y coma, espacios) —
+  // así una columna de Excel, un CSV o texto suelto se pegan igual. Solo enteros
+  // POSITIVOS son IDs válidos; el resto (nombres, negativos, 0, decimales) va a `invalid`
+  // para avisar al operador. Dedup preservando el orden de 1ª aparición. Vacíos se ignoran.
+  function parsePastedIds(text) {
+    const tokens = String(text || '').split(/[\s,;]+/);
+    const ids = [], invalid = [], seen = new Set();
+    for (const tok of tokens) {
+      const t = tok.trim();
+      if (!t) continue;
+      if (/^\d+$/.test(t)) {
+        const n = parseInt(t, 10);
+        if (n > 0 && !seen.has(n)) { seen.add(n); ids.push(n); }
+        else if (n <= 0) invalid.push(t);
+      } else invalid.push(t);
+    }
+    return { ids, invalid };
+  }
+
+  // Resolución DIRIGIDA por Id SH (patrón fetchPNsByIdSh de bulk-upload): GetPartNumber(id)
+  // trae el nodo completo (mismo shape que AllPartNumbers) e incluye `archivedAt`, así el slim
+  // conoce el estado real de archivado (clave para archive/unarchive y para pegar mezclas
+  // activo+archivado). O(N ids) queries en pool acotado — sin escanear TODO el dominio.
+  // `opts.drain` (opcional) drena el Apollo cache por item; `opts.isStopped` corta la corrida.
+  async function fetchPNsByIds(ids, api, onProgress, opts = {}) {
+    const list = (ids || []).slice();
+    const total = list.length;
+    const concurrency = Math.max(1, opts.concurrency || 4);
+    const drain = typeof opts.drain === 'function' ? opts.drain : () => {};
+    const isStopped = typeof opts.isStopped === 'function' ? opts.isStopped : () => false;
+    const found = [], notFound = [];
+    if (!total) return { found, notFound };
+    let processed = 0, idx = 0;
+    await new Promise((resolve) => {
+      let active = 0;
+      function next() {
+        if (isStopped()) { if (active === 0) resolve(); return; }
+        while (active < concurrency && idx < list.length) {
+          const id = list[idx++];
+          active++;
+          Promise.resolve().then(async () => {
+            try {
+              const d = await api.query('GetPartNumber', { partNumberId: id });
+              const node = d && d.partNumberById;
+              if (node && node.id != null) found.push(slimPN(node, node.archivedAt != null));
+              else notFound.push(id);
+            } catch (_) { notFound.push(id); }
+          }).finally(() => {
+            active--; processed++;
+            if (onProgress) onProgress({ processed, total, found: found.length, notFound: notFound.length });
+            try { drain(); } catch (_) {}
+            if (isStopped() && active === 0) { resolve(); return; }
+            if (processed >= list.length && active === 0) resolve();
+            else next();
+          });
+        }
+      }
+      next();
+    });
+    return { found, notFound };
+  }
+
   const INCLUDE_FOR_ACTION = { validate: 'NO', unvalidate: 'NO', archive: 'NO', unarchive: 'EXCLUSIVELY' };
   async function pageAll(api, includeArchived, archivedFlag, onProgress, pageSize, seen, out, step, steps) {
     let offset = 0, total = null;
@@ -194,7 +257,7 @@
     return out;
   }
 
-  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify, isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput, INCLUDE_FOR_ACTION, fetchPNsForAction, DUP_RE, runOneItem };
+  const api = { slimPN, matchesLabels, applyFilters, discoverFacets, selectDuplicates, adaptForClassify, isInTargetState, buildValidationVars, optInsToDelete, buildArchiveInput, INCLUDE_FOR_ACTION, fetchPNsForAction, parsePastedIds, fetchPNsByIds, DUP_RE, runOneItem };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SteelheadPNLifecycleCore = api;
 })(typeof window !== 'undefined' ? window : null);
