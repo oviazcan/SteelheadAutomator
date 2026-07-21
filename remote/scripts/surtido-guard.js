@@ -58,9 +58,10 @@ const SurtidoGuard = (() => {
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
       'box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw;}',
       '.sa-sg-toast.err{border-left-color:#e8513a;}',
-      // Acento verde VISIBLE: barra izquierda + tinte de fondo (el box-shadow solo era casi
-      // invisible sobre el cuerpo blanco de la tarjeta). El tinte se aplica al div de contenido.
-      '.sa-sg-green{box-shadow:inset 6px 0 0 0 #13a36f !important;background:rgba(19,163,111,.12) !important;border-radius:4px;}',
+      // Verde EDGE-TO-EDGE: fondo verde claro SÓLIDO sobre el cuerpo blanco de la tarjeta
+      // (sin barra izquierda que se encimaba con el acento nativo). Sólido (no rgba) para que
+      // se vea parejo aunque SH tenga un fondo detrás.
+      '.sa-sg-green{background:#e2f4ec !important;}',
       '.sa-sg-msg{background:#3a1d1d;color:#f3c2c2;border:1px solid #6b2b2b;border-radius:8px;',
       'padding:10px 12px;margin:10px 0;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}'
     ].join('');
@@ -198,17 +199,24 @@ const SurtidoGuard = (() => {
     if (!isWorkboardPage()) return;
     const re = /Tareas Programadas:?/i;   // señal de "programada" (única señal de UI; deuda bilingüe)
     // ── Anclaje idioma-indep: cada tarjeta del Workboard expone el link de OV con
-    //    data-steelhead-component-id estable. Subimos al div de CONTENIDO (flex 1 1), que es
-    //    donde el tinte verde queda visible (el cuerpo blanco de la tarjeta no lo taparía).
+    //    data-steelhead-component-id estable. Subimos a la RAÍZ de la tarjeta y tintamos su
+    //    CUERPO BLANCO (span completo) → el verde queda EDGE-TO-EDGE y parejo (sa-sg-green usa
+    //    fondo verde SÓLIDO, no una barra ni semitransparente que se encimaba con el borde nativo).
     const soLinks = document.querySelectorAll(
       '[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]'
     );
     let resolved = 0;
     soLinks.forEach((soLink) => {
-      const content = soLink.closest('div[style*="flex: 1 1"]');
-      if (!content) return;
+      const cardRoot = soLink.closest('[data-item-index], [data-index]');
+      const scope = cardRoot || soLink.closest('div[style*="flex: 1 1"]');
+      if (!scope) return;
+      // Cuerpo blanco de la tarjeta (1er div con fondo blanco = full-width). Fallback al div de
+      // contenido si SH cambia el formato del inline-style.
+      const body = (cardRoot && cardRoot.querySelector('div[style*="background: rgb(255, 255, 255)"]'))
+                || soLink.closest('div[style*="flex: 1 1"]');
+      if (!body) return;
       resolved++;
-      content.classList.toggle('sa-sg-green', re.test(content.textContent || ''));
+      body.classList.toggle('sa-sg-green', re.test(scope.textContent || ''));
     });
     if (resolved) return;   // solo cortamos si de verdad marcamos por component-id
     // ── Fallback (sin component-id o sin div de contenido): TreeWalker por "Tareas Programadas:".
