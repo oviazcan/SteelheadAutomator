@@ -17,6 +17,7 @@ const EXPECTED = {
   GetReceivedOrdersWithReceivedOrderLineItems: 'invoices-packingslips-addinvoice',
   GetAvailableUnits: 'partnumber-units-definenew',
   SpecFieldsAndOptions: 'partnumber-add-spec',
+  SearchSpecsForSelect: 'partnumber-add-spec',
   GetInventoryInputSchema: 'inventory-input-schema',
   AllInventoryBatchStatuses: 'receiving-customerparts-status',
   GetPartNumberInventoryBatch: 'receiving-batch-detail',
@@ -30,7 +31,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 11 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 12 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });

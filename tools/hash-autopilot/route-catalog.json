@@ -1,7 +1,7 @@
 {
   "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
   "_domainDefault": "344",
-  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems", "GetAvailableUnits", "SpecFieldsAndOptions", "AllInventoryBatchStatuses", "OperatorMaintenanceNodeDialogQuery"],
+  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems", "GetAvailableUnits", "SpecFieldsAndOptions", "AllInventoryBatchStatuses", "OperatorMaintenanceNodeDialogQuery", "SearchSpecsForSelect"],
   "_docMaintCompleteStep": "SEGURIDAD (ruta maintenance-event-complete-step): clic 'Complete Step' abre el diálogo del operador que dispara OperatorMaintenanceNodeDialogQuery (LECTURA — carga motivos/sensores). La receta NO confirma la completación del step (no hay paso de submit dentro del diálogo) → NO completa ni muta el evento; solo abre el diálogo y el navegador cierra. Validado headless 2026-07-16.",
   "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
   "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail", "GetInventoryInputSchema", "GetPartNumberInventoryBatch"],
@@ -414,12 +414,14 @@
       "steps": [
         { "goto": "/PartNumbers" },
         { "goto": "/PartNumbers/3770957" },
-        { "clickButton": "add spec|agregar spec" },
+        { "clickButton": "add spec|agregar especificación|agregar spec" },
         { "selectFirstOption": "[role=\"dialog\"] input[role=\"combobox\"]" }
       ],
       "captures": [
+        "SearchSpecsForSelect",
         "SpecFieldsAndOptions"
-      ]
+      ],
+      "_nota": "NP Sentinela 3770957 (nombre 'Sentinela', domain 344/TLC), modal 'Agregar Especificación'. Dispara DOS ops de LECTURA: SearchSpecsForSelect al ABRIR el combobox 'Especificación' (verificado en vivo 2026-07-21: 2 disparos al abrir, pobló 7 opciones, hash f793b566), y SpecFieldsAndOptions al elegir la 1a opción. selectFirstOption NO clica 'Agregar Especificación' → NO agrega la spec al NP (lectura pura). SearchSpecsForSelect se movió aquí desde processes-detail, que dejó de dispararla (needs-attention 2026-07-20)."
     },
     "invoices-packingslips-addinvoice": {
       "type": "query",
@@ -626,7 +628,6 @@
         "GetSpecFields",
         "ProcessNodeDescriptionPartNumbersQuery",
         "RecipeNodesToCascadeTo",
-        "SearchSpecsForSelect",
         "SearchTags",
         "StationsByTreatmentId",
         "UpdateProcessNode",
