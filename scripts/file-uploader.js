@@ -12,6 +12,8 @@ const FileUploader = (() => {
 
   const api = () => window.SteelheadAPI;
   const core = () => window.FileUploaderCore;
+  // Códigos de vista de la convención <PN>_<VISTA>_<num> (guion simple), en config.
+  const viewCodes = () => (window.REMOTE_CONFIG && window.REMOTE_CONFIG.fileUploader && window.REMOTE_CONFIG.fileUploader.viewCodes) || [];
   const log = (m) => api().log(m);
   const warn = (m) => api().warn(m);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -219,15 +221,17 @@ const FileUploader = (() => {
     const results = {
       selected: files?.length || 0,
       uploaded: 0, linked: 0, skipped: 0, homonymGroups: 0, unarchived: 0, rearchived: 0, displaySet: 0,
-      notFound: [], truncated: [], errors: [], stopped: false,
+      notFound: [], truncated: [], errors: [], unregisteredCodes: {}, stopped: false,
     };
     if (!files?.length) return { error: 'No se seleccionaron archivos' };
     if (!core()) return { error: 'FileUploaderCore no disponible' };
 
-    // Agrupar por PN: varios archivos (front/back/plano) caen en el mismo PN.
+    // Agrupar por PN: varios archivos (front/back/plano, o LIZ/SUP/LDE) caen en el mismo PN.
+    // El extractor conoce la convención de guion simple <PN>_<VISTA>_<num> vía la whitelist de config.
+    const vc = viewCodes();
     const groups = new Map();
     for (const f of files) {
-      const pnName = core().extractPNName(f.name);
+      const pnName = core().extractPNName(f.name, vc);
       if (!groups.has(pnName)) groups.set(pnName, []);
       groups.get(pnName).push(f);
     }
@@ -278,7 +282,13 @@ const FileUploader = (() => {
             if (any.matches.length) {
               await processArchivedGroup(group, any.matches, results);
             } else {
-              for (const f of group) results.notFound.push({ fileName: f.name, pnName });
+              for (const f of group) {
+                results.notFound.push({ fileName: f.name, pnName });
+                // ¿El nombre parece <PN>_<VISTA>_<num> con un código de vista NO
+                // registrado? Lo sugerimos para el config (evita el "no encontrado" mudo).
+                const badCode = core().unregisteredViewCode(f.name, vc);
+                if (badCode) results.unregisteredCodes[badCode] = (results.unregisteredCodes[badCode] || 0) + 1;
+              }
               warn(`PN "${pnName}" no encontrado (${group.length} archivos)`);
             }
           }
@@ -534,6 +544,13 @@ const FileUploader = (() => {
       const names = [...new Set(r.notFound.map((x) => x.pnName))];
       const sample = names.slice(0, 10).map(esc).join(', ');
       detail += `<div style="margin-top:12px;font-size:12px;color:#94a3b8;border-top:1px solid #2a3441;padding-top:10px">No encontrados (${names.length} PN): ${sample}${names.length > 10 ? '…' : ''}</div>`;
+    }
+    // Pista accionable: nombres que parecen <PN>_<VISTA>_<num> con un código de
+    // vista que NO está en config.fileUploader.viewCodes → el PN quedó "escondido".
+    const badCodes = Object.keys(r.unregisteredCodes || {});
+    if (badCodes.length) {
+      const list = badCodes.map((c) => `${esc(c)} (${r.unregisteredCodes[c]})`).join(', ');
+      detail += `<div style="margin-top:8px;font-size:12px;color:#fcd34d">⚠️ Posibles códigos de vista NO registrados: ${list}. Si son válidos, agrégalos a <b>config.fileUploader.viewCodes</b> y vuelve a correr — el applet tomó el nombre completo como PN.</div>`;
     }
     if (r.errors.length) {
       detail += `<div style="margin-top:8px;font-size:12px;color:#fca5a5">${r.errors.slice(0, 6).map(esc).join('<br>')}${r.errors.length > 6 ? '<br>…' : ''}</div>`;

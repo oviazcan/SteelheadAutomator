@@ -6,19 +6,69 @@
 (function (root) {
   'use strict';
 
+  // Códigos de vista (whitelist de dominio, viven en config.fileUploader.viewCodes).
+  // Acepta array (["LIZ","LDE"]) o string ("LIZ, LDE") → Set en MAYÚSCULAS+trim.
+  function normViewCodes(viewCodes) {
+    const arr = Array.isArray(viewCodes)
+      ? viewCodes
+      : String(viewCodes == null ? '' : viewCodes).split(',');
+    const out = new Set();
+    for (const c of arr) {
+      const t = String(c == null ? '' : c).trim().toUpperCase();
+      if (t) out.add(t);
+    }
+    return out;
+  }
+
+  // Descompone un nombre-sin-extensión que use la convención de guion SIMPLE
+  // <PN>_<VISTA>_<consecutivo> (ej. "NAT1219802_LIZ_02"). Devuelve
+  // {pn, view, seq} o null si no calza el patrón. El `.*` es greedy → agarra el
+  // ÚLTIMO bloque _<letras>_<dígitos> como (vista,consecutivo), así un PN que ya
+  // trae "_" interno (ej. "ABC_12") sobrevive: "ABC_12_LIZ_03" → pn="ABC_12".
+  function splitViewCoded(sNoExt) {
+    const m = String(sNoExt == null ? '' : sNoExt).match(/^(.*)_([A-Za-z]{1,6})_(\d{1,4})$/);
+    if (!m || !m[1]) return null;
+    return { pn: m[1], view: m[2].toUpperCase(), seq: m[3] };
+  }
+
   // Nombre de archivo → nombre del PN.
-  // 1) quita la última extensión, 2) si hay "__" corta en el primero (descriptor),
-  // 3) si no, tolera el patrón de copia del legacy crudo (" (2)", " copy"), 4) trim.
-  function extractPNName(filename) {
+  // 1) quita la última extensión.
+  // 2) si hay "__" corta en el primero (convención <PN>__<descriptor>).
+  // 3) si NO hay "__" pero el nombre calza <PN>_<VISTA>_<num> Y <VISTA> es un
+  //    código de vista REGISTRADO (whitelist) → quita el sufijo (convención de
+  //    Cowork con guion simple). La whitelist es clave: sin ella cortaríamos por
+  //    error los NP que ya llevan "_" en su nombre (57/23,926 en TLC).
+  // 4) si no, tolera el patrón de copia del legacy crudo (" (2)", " copy").
+  // 5) trim.
+  function extractPNName(filename, viewCodes) {
     let s = String(filename == null ? '' : filename);
     s = s.replace(/\.[^.\/\\]+$/, ''); // última extensión
     const idx = s.indexOf('__');
     if (idx >= 0) {
-      s = s.slice(0, idx);
-    } else {
-      s = s.replace(/\s*\(\d+\)\s*$/, '').replace(/\s+copy\s*$/i, '');
+      return s.slice(0, idx).trim();
     }
+    const set = normViewCodes(viewCodes);
+    if (set.size) {
+      const parts = splitViewCoded(s);
+      if (parts && set.has(parts.view)) return parts.pn.trim();
+    }
+    s = s.replace(/\s*\(\d+\)\s*$/, '').replace(/\s+copy\s*$/i, '');
     return s.trim();
+  }
+
+  // Diagnóstico para el reporte de "no encontrados": si el nombre PARECE seguir
+  // la convención <PN>_<VISTA>_<num> pero <VISTA> NO está registrado, devuelve
+  // ese código (en MAYÚSCULAS) para sugerirle al operador agregarlo al config.
+  // Devuelve null si no parece view-coded o si el código sí está registrado.
+  // Evita el "no encontrado" mudo que confunde código-de-vista-nuevo con NP-inexistente.
+  function unregisteredViewCode(filename, viewCodes) {
+    let s = String(filename == null ? '' : filename).replace(/\.[^.\/\\]+$/, '');
+    if (s.indexOf('__') >= 0) return null;
+    const parts = splitViewCoded(s);
+    if (!parts) return null;
+    // el token de vista debe parecer un código (2-5 letras), no un consecutivo suelto
+    if (parts.view.length < 2 || parts.view.length > 5) return null;
+    return normViewCodes(viewCodes).has(parts.view) ? null : parts.view;
   }
 
   // NFC unifica acentos: macOS guarda nombres en NFD (Ñ = N+◌̃) y el CSV suele
@@ -175,7 +225,7 @@
     return rows;
   }
 
-  const api = { extractPNName, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError, isImageFile, isPrincipalDescriptor, selectDisplayImage, readDisplayState, parseBackfillCsv };
+  const api = { extractPNName, unregisteredViewCode, normViewCodes, selectMatchingPNs, existingOriginalNames, isAlreadyLinked, norm, isTransientError, isImageFile, isPrincipalDescriptor, selectDisplayImage, readDisplayState, parseBackfillCsv };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FileUploaderCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
