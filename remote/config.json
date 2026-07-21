@@ -1,6 +1,6 @@
 {
-  "version": "1.7.152",
-  "lastUpdated": "2026-07-20T18:29",
+  "version": "1.7.153",
+  "lastUpdated": "2026-07-20T19:08",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2544,7 +2544,7 @@
     "scripts/create-order-autofill-core.js": "188557e7ecf9759423ec54d4d0364dc33bf1303006b518c491e10ecabd7d0484",
     "scripts/create-order-autofill.js": "0981d9c51fa47fbab3ced3850af0c06dd429454eda3340b0da7b8330ee7327d7",
     "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077",
-    "scripts/file-uploader-core.js": "bd0208e4f16925f4690a1e451f9320f6cc69b5b847c6df3ef4ad49cb7b7d4749",
+    "scripts/file-uploader-core.js": "c59cc259fffacbef361ce3331fd384a0d6acd0a0f7c5e771ec04b215476c6fd5",
     "scripts/file-uploader.js": "fb3565a9dd4a49afc71cd569b0472a919312108cb85e47b05e3e79927d0966de",
     "scripts/hash-scanner.js": "0231fe5649b9eca4f56853eac94e950c30a38c518889bf622c444c8eb3a8f6a5",
     "scripts/host-cleanup-shared.js": "08a289903b13c93408163a11882ff6fc4f58021401846ba360c7501ba9ebb34e",
