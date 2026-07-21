@@ -238,9 +238,13 @@ const SurtidoGuard = (() => {
 
   // ── Scheduling de trabajo del DOM (debounced, idle) ──
   let decoTimer = null, guardTimer = null;
+  // Coalesce por FRAME (rAF) en vez de 200ms: al desplazar, la tarjeta nace blanca y se pinta
+  // en el siguiente frame (~16ms) en vez de 200ms después → casi imperceptible. decorateCards
+  // es idempotente y solo toca el fondo (no dispara este observer, que es childList).
   function scheduleDecorate() {
     if (decoTimer) return;
-    decoTimer = setTimeout(() => { decoTimer = null; try { decorateCards(); } catch (_) {} }, 200);
+    const raf = window.requestAnimationFrame || ((cb) => setTimeout(cb, 16));
+    decoTimer = raf(() => { decoTimer = null; try { decorateCards(); } catch (_) {} });
   }
   function scheduleModalGuard() {
     if (guardTimer) return;
