@@ -1,6 +1,6 @@
 {
-  "version": "1.7.153",
-  "lastUpdated": "2026-07-20T19:08",
+  "version": "1.7.154",
+  "lastUpdated": "2026-07-20T19:16",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2586,7 +2586,7 @@
     "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
     "scripts/steelhead-api.js": "60030bcd08ec1ca19893cf66e0675fc43f49ebb0fec4a3f3b5eb18da9c3dffda",
     "scripts/surtido-guard-core.js": "c2632afbc845d8a047274ddf2667782768868da9d0fb6ec4e78fe122f90a60f5",
-    "scripts/surtido-guard.js": "af73a7d060e19e4c1aacce4a04fdbaa5722bf3cc046669216c899d633683d838",
+    "scripts/surtido-guard.js": "d6bdfa5a8c6a4b48860a67c32a239605847db08dd054b50c64432a51aa35a345",
     "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633",
     "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11",
     "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
