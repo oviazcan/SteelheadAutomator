@@ -202,7 +202,8 @@ const SurtidoGuard = (() => {
     //    data-steelhead-component-id estable. Subimos a la RAÍZ de la tarjeta y tintamos su
     //    CUERPO BLANCO (span completo) → el verde queda EDGE-TO-EDGE y parejo (sa-sg-green usa
     //    fondo verde SÓLIDO, no una barra ni semitransparente que se encimaba con el borde nativo).
-    const soLinks = document.querySelectorAll(
+    // Scan acotado al contenedor de la lista (no todo el documento) → barato en cada frame.
+    const soLinks = (cardList() || document).querySelectorAll(
       '[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]'
     );
     let resolved = 0;
@@ -251,9 +252,38 @@ const SurtidoGuard = (() => {
     guardTimer = setTimeout(() => { guardTimer = null; try { applyModalGuard(); } catch (_) {} }, 80);
   }
 
+  // Contenedor de la lista virtualizada de tarjetas (react-virtuoso: items con data-item-index).
+  // Acota el scan del verde a la lista en vez de todo el documento (mucho más barato en scroll).
+  let _cardList = null;
+  function cardList() {
+    if (_cardList && _cardList.isConnected) return _cardList;
+    const item = document.querySelector('[data-item-index]');
+    _cardList = item ? item.parentElement : null;
+    return _cardList;
+  }
+
+  // Selectores del contenedor de diálogo (el modal "Mover Piezas" se portalea a body).
+  const DLG_ADD_SEL = '.MuiDialog-root, .MuiModal-root, [role="dialog"], [role="presentation"]';
+  let _dlgOpen = false;
+
   function observeDom() {
     if (window.__saSurtidoGuardObs) return;
-    const obs = new MutationObserver(() => { scheduleModalGuard(); scheduleDecorate(); });
+    const obs = new MutationObserver((muts) => {
+      // Modal: chequeo SHALLOW (n.matches) de nodos AÑADIDOS/QUITADOS — NO recorremos el
+      // subárbol de cada tarjeta en el scroll (eso era el costo: querySelector por tarjeta).
+      let addedDlg = false, removedDlg = false;
+      for (const m of muts) {
+        for (const n of m.addedNodes)   if (n.nodeType === 1 && n.matches && n.matches(DLG_ADD_SEL)) { addedDlg = true; break; }
+        for (const n of m.removedNodes) if (n.nodeType === 1 && n.matches && n.matches(DLG_ADD_SEL)) { removedDlg = true; break; }
+        if (addedDlg && removedDlg) break;
+      }
+      if (addedDlg) _dlgOpen = true;
+      // El candado del modal SOLO corre mientras hay un modal abierto (donde el board detrás no
+      // scrollea) → 0 querySelectorAll de documento durante el scroll normal de tarjetas.
+      if (_dlgOpen) scheduleModalGuard();
+      if (removedDlg && !document.querySelector('[role="dialog"], .MuiDialog-paper')) _dlgOpen = false;
+      scheduleDecorate();
+    });
     obs.observe(document.body, { childList: true, subtree: true });
     window.__saSurtidoGuardObs = obs;
   }
