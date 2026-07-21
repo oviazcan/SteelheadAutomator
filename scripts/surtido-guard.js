@@ -6,7 +6,7 @@
 //   1. Mapa "programada" + nodos de surtido + puente account→nodo (lee fetch)   — Task 4
 //   2. Enforcement: bloquea CreateManyPartsTransfersChecked (modal y drag)        — Task 5
 //   3. Capa de modal: agrisa "Mover" / "Imprimir y Mover"                         — Task 6
-//   4. Marcado verde de tarjetas programadas (señal DOM "Tareas Programadas:")    — Task 7
+//   4. Marcado naranja de tarjetas NO movibles (sin "Tareas Programadas:"/"Scheduled tasks:") — Task 7
 //   5. Toggle no persistente desde el popup (default ON cada carga)               — Task 3
 //   6. Memory hardening: observer debounced + teardown al salir del board         — Task 8
 const SurtidoGuard = (() => {
@@ -48,7 +48,7 @@ const SurtidoGuard = (() => {
     return { enabled: on };
   }
 
-  // ── Estilos (toast + acento verde + mensaje de modal) ──
+  // ── Estilos (toast + acento naranja + mensaje de modal) ──
   function injectStyles() {
     if (document.getElementById('sa-sg-style')) return;
     const css = [
@@ -58,10 +58,10 @@ const SurtidoGuard = (() => {
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
       'box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw;}',
       '.sa-sg-toast.err{border-left-color:#e8513a;}',
-      // Verde EDGE-TO-EDGE: fondo verde claro SÓLIDO sobre el cuerpo blanco de la tarjeta
-      // (sin barra izquierda que se encimaba con el acento nativo). Sólido (no rgba) para que
-      // se vea parejo aunque SH tenga un fondo detrás.
-      '.sa-sg-green{background:#e2f4ec !important;}',
+      // Naranja EDGE-TO-EDGE: fondo naranja claro SÓLIDO sobre el cuerpo blanco de la tarjeta
+      // NO movible (sin tarea programada). Sólido (no rgba) para que se vea parejo aunque SH
+      // tenga un fondo detrás. Señal de advertencia: "esta pieza no se puede mover".
+      '.sa-sg-orange{background:#fdd9a8 !important;}',
       '.sa-sg-msg{background:#3a1d1d;color:#f3c2c2;border:1px solid #6b2b2b;border-radius:8px;',
       'padding:10px 12px;margin:10px 0;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}'
     ].join('');
@@ -193,22 +193,24 @@ const SurtidoGuard = (() => {
     }
   }
 
-  // ── Marcado verde (heurístico): tarjeta con "Tareas Programadas:" → acento verde ──
+  // ── Marcado naranja (heurístico): tarjeta SIN "Tareas Programadas:"/"Scheduled tasks:" → NO
+  //    movible → acento naranja. Las movibles (programadas) quedan blancas (sin marca).
   // NOTA: se refina con el HTML real de la tarjeta (selector de contenedor) en validación en vivo.
   function decorateCards() {
     if (!isWorkboardPage()) return;
-    const re = /Tareas Programadas:?/i;   // señal de "programada" (única señal de UI; deuda bilingüe)
+    const core = Core();
     // ── Anclaje idioma-indep: cada tarjeta del Workboard expone el link de OV con
     //    data-steelhead-component-id estable. Subimos a la RAÍZ de la tarjeta y tintamos su
-    //    CUERPO BLANCO (span completo) → el verde queda EDGE-TO-EDGE y parejo (sa-sg-green usa
-    //    fondo verde SÓLIDO, no una barra ni semitransparente que se encimaba con el borde nativo).
+    //    CUERPO BLANCO (span completo) → el naranja queda EDGE-TO-EDGE y parejo (sa-sg-orange usa
+    //    fondo naranja SÓLIDO, no una barra ni semitransparente que se encimaba con el borde nativo).
     // Scan de TODO el documento: el Workboard tiene VARIAS secciones de step (cada una su
     // propia lista virtualizada), así que no se puede acotar a una sola. Es un atributo
     // específico sobre un DOM virtualizado (pocas tarjetas montadas) + rAF → barato.
     const soLinks = document.querySelectorAll(
       '[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]'
     );
-    let resolved = 0;
+    // Pase 1: resuelve (body, isScheduled) por tarjeta usando la señal DOM bilingüe.
+    const cards = [];
     soLinks.forEach((soLink) => {
       const cardRoot = soLink.closest('[data-item-index], [data-index]');
       const scope = cardRoot || soLink.closest('div[style*="flex: 1 1"]');
@@ -218,25 +220,16 @@ const SurtidoGuard = (() => {
       const body = (cardRoot && cardRoot.querySelector('div[style*="background: rgb(255, 255, 255)"]'))
                 || soLink.closest('div[style*="flex: 1 1"]');
       if (!body) return;
-      resolved++;
-      body.classList.toggle('sa-sg-green', re.test(scope.textContent || ''));
+      cards.push({ body, isScheduled: core.hasScheduledCardSignal(scope.textContent || '') });
     });
-    if (resolved) return;   // solo cortamos si de verdad marcamos por component-id
-    // ── Fallback (sin component-id o sin div de contenido): TreeWalker por "Tareas Programadas:".
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) => re.test(n.nodeValue || '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+    if (!cards.length) return;   // sin tarjetas resueltas por component-id → fail-safe: no marcar
+    // Pase 2: árbitro anti-falsa-alarma con el set de programadas de la API (GetRelatedScheduleData).
+    const anyScheduled = cards.some((c) => c.isScheduled);
+    const domSignalBroken = core.isDomSignalBroken(anyScheduled, scheduledAccountIds.size);
+    cards.forEach(({ body, isScheduled }) => {
+      body.classList.toggle('sa-sg-orange', core.shouldMarkNotMovable(isScheduled, domSignalBroken));
+      body.classList.remove('sa-sg-green');   // limpia el verde legado si una versión previa lo dejó
     });
-    let node;
-    while ((node = walker.nextNode())) {
-      // Sube hasta el contenedor de tarjeta (ancestro que también tenga "Proceso:" o "WO:").
-      let card = node.parentElement;
-      for (let i = 0; i < 8 && card; i++) {
-        const t = card.textContent || '';
-        if (/Proceso:/i.test(t) && /WO:/i.test(t)) break;
-        card = card.parentElement;
-      }
-      if (card) card.classList.add('sa-sg-green');
-    }
   }
 
   // ── Scheduling de trabajo del DOM (debounced, idle) ──
@@ -280,7 +273,7 @@ const SurtidoGuard = (() => {
     window.__saSurtidoGuardObs = obs;
   }
 
-  // Pinta el verde de INMEDIATO + reintentos escalonados. Sin esto, el primer decorate solo
+  // Pinta el naranja de INMEDIATO + reintentos escalonados. Sin esto, el primer decorate solo
   // ocurría cuando el MutationObserver detectaba un cambio; en un Workboard virtualizado (que
   // monta las tarjetas progresivamente) eso tardaba mucho en aparecer. decorateCards es
   // idempotente (toggle), así que reintentar es seguro.
@@ -322,7 +315,7 @@ const SurtidoGuard = (() => {
     if (!isWorkboardPage()) return;
     injectStyles();
     observeDom();
-    kickDecorate();                // pinta el verde ya, sin esperar al primer MutationObserver
+    kickDecorate();                // pinta el naranja ya, sin esperar al primer MutationObserver
     console.log('[SA] SurtidoGuard activo en', location.pathname);
   }
 
