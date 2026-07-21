@@ -171,3 +171,62 @@ test('archive: GetPartNumber → SavePartNumber → UpdatePartNumber; ya archiva
   await runOneItem({ id:5, name:'A', archived:true }, 'archive', api2, { validacionNodeIds:[], labelId:15646 });
   assert.ok(!calls2.includes('UpdatePartNumber'));
 });
+
+// ── Modo "Pegar IDs" (origen alterno: resolución dirigida por Id SH) ──
+const { parsePastedIds, fetchPNsByIds } = require('../../remote/scripts/pn-lifecycle-core.js');
+
+test('parsePastedIds: separadores mixtos, dedup, orden preservado', () => {
+  const r = parsePastedIds('12\n34, 56\t78;90  12');
+  assert.deepEqual(r.ids, [12, 34, 56, 78, 90]); // 12 duplicado se colapsa, orden de 1ª aparición
+  assert.deepEqual(r.invalid, []);
+});
+test('parsePastedIds: separa tokens no numéricos / negativos / cero', () => {
+  const r = parsePastedIds('10\nABC-123\n-5\n0\n  \n20\n3.5');
+  assert.deepEqual(r.ids, [10, 20]);
+  assert.deepEqual(r.invalid, ['ABC-123', '-5', '0', '3.5']); // vacíos se ignoran sin reportar
+});
+test('parsePastedIds: entrada vacía → todo vacío', () => {
+  const r = parsePastedIds('   \n\t ');
+  assert.deepEqual(r.ids, []);
+  assert.deepEqual(r.invalid, []);
+});
+test('parsePastedIds: tolera columna de Excel pegada (una por línea)', () => {
+  const r = parsePastedIds('1001\r\n1002\r\n1003\r\n');
+  assert.deepEqual(r.ids, [1001, 1002, 1003]);
+});
+
+test('fetchPNsByIds: resuelve found/notFound y lee archived de archivedAt', async () => {
+  const db = {
+    7:  { id:7, name:'A', archivedAt: null, customerByCustomerId:{id:9,name:'Fisher'} },
+    8:  { id:8, name:'B', archivedAt: '2026-05-01T00:00:00Z', customerByCustomerId:{id:9,name:'Fisher'} },
+    // 9 no existe (partNumberById null)
+  };
+  const api = { query: async (op, v) => {
+    assert.equal(op, 'GetPartNumber');
+    return { partNumberById: db[v.partNumberId] || null };
+  } };
+  const r = await fetchPNsByIds([7, 8, 9], api, null, { concurrency: 2 });
+  assert.deepEqual(r.found.map(p => p.id).sort((a,b)=>a-b), [7, 8]);
+  assert.deepEqual(r.notFound, [9]);
+  const a = r.found.find(p => p.id === 7), b = r.found.find(p => p.id === 8);
+  assert.equal(a.archived, false); // archivedAt null
+  assert.equal(b.archived, true);  // archivedAt presente
+  assert.equal(a.customer.name, 'Fisher'); // slim shape aplicado
+});
+test('fetchPNsByIds: error del query cae a notFound, no aborta el resto', async () => {
+  const api = { query: async (op, v) => {
+    if (v.partNumberId === 8) throw new Error('boom');
+    return { partNumberById: { id:v.partNumberId, name:'X', archivedAt:null } };
+  } };
+  const r = await fetchPNsByIds([7, 8, 9], api, null, { concurrency: 3 });
+  assert.deepEqual(r.found.map(p => p.id).sort((a,b)=>a-b), [7, 9]);
+  assert.deepEqual(r.notFound, [8]);
+});
+test('fetchPNsByIds: reporta progreso processed/total', async () => {
+  const api = { query: async (op, v) => ({ partNumberById: { id:v.partNumberId, name:'X', archivedAt:null } }) };
+  const seen = [];
+  const r = await fetchPNsByIds([1, 2, 3], api, (p) => seen.push(p), { concurrency: 1 });
+  assert.equal(r.found.length, 3);
+  assert.equal(seen[seen.length - 1].processed, 3);
+  assert.equal(seen[seen.length - 1].total, 3);
+});
