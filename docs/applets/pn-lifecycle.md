@@ -15,7 +15,7 @@ Las **4 acciones**:
 **Motivación:** al producir un NP archivado, Steelhead lo duplica. Por eso se prioriza **marcar validación** (mantener activo) sobre archivar; se archiva solo lo que no se requiere nunca.
 
 ## Versión / estado
-0.2.0 — **modo "Pegar IDs"** (origen alterno por Id SH, salta filtros). **28/28 tests** puros (`tools/test/pn-lifecycle.test.js`). Suite repo completa verde (706/706).
+0.2.0 — **modo "Pegar IDs"** (origen alterno por Id SH, salta filtros). **28/28 tests** puros (`tools/test/pn-lifecycle.test.js`), suite repo verde. **DEPLOYADO a producción 2026-07-20: config 1.7.159, tag `v1.7.159`, commit `b5514e4`** (scripts verificados EN VIVO en github.io). También integrado al **bundle Safari v0.5.8** como con-popup (commit `172947c`; pendiente recompilar en Xcode). **Pendiente: piloto en vivo** por acción (el operador lo probará después).
 0.1.0 — implementado con subagent-driven-development (plan `docs/superpowers/plans/2026-07-01-pn-lifecycle-manager.md`, spec `docs/superpowers/specs/2026-07-01-pn-lifecycle-manager-design.md`). **21/21 tests** puros. Review final sin Critical. **Pendiente: piloto en vivo** por acción (dry-run → 1-2 PNs) antes de uso masivo — el applet tiene dry-run + confirm obligatorios, así que el deploy solo lo pone disponible.
 
 ## Arquitectura
