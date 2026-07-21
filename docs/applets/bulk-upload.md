@@ -125,7 +125,7 @@ Refactor en 5 fases (F1 extracción/tests · F2 memory+storage · F3 UI panel ú
 
 **✅ VALIDADO EN VIVO (2026-06-07):** tras instalar la 1.6.4, snippet de DevTools en la tab de Steelhead imprimió `IndexedDB → 7 corridas` + `localStorage → vacío (✅ migrado)`. Confirma: datos en IDB (`sa_storage`/`kv`/`sa_load_history`), migración one-shot corrió y limpió localStorage. **Gotcha detectado en el proceso:** había un `steelhead-automator.zip` viejo (1.6.2, sin IndexedDB) suelto en la raíz del repo; recargar desde ESE archivo instalaba la versión vieja. Se borró del disco y se sacó del versionado de main — el único `.zip` válido vive en gh-pages (el del link `extensionZipUrl`).
 
-**Pendientes NO bloqueantes (próxima semana):** validación de corrida real F4 (`⏱️ Tiempos por fase` via `dumpPhaseTimings`, confirmar AddParams/SaveQuoteLines/isDefault end-to-end) · decisión fast-path SOLO_PRECIO (F5 ya clasifica + badge; falta el atajo real) · restyle F3 a panel anclado a la derecha · `precioAnterior` real para delta en `Detalle` de ControlCambios.
+**Pendientes NO bloqueantes (próxima semana):** validación de corrida real F4 (`⏱️ Tiempos por fase` via `dumpPhaseTimings`, confirmar AddParams/SaveQuoteLines/isDefault end-to-end) · ~~decisión fast-path SOLO_PRECIO (F5 ya clasifica + badge; falta el atajo real)~~ **✅ HECHO 2026-07-20: fast-path implementado + ACTIVO en producción (1.5.41, config 1.7.163) — ver §feat 1.5.40–1.5.41 arriba** · restyle F3 a panel anclado a la derecha · `precioAnterior` real para delta en `Detalle` de ControlCambios.
 
 **F1 — refactor estructural sin cambio de comportamiento (deployado, validado por usuario "se ve igual"):**
 - Extraídas las funciones PURAS a módulos testeables (`node --test`):
