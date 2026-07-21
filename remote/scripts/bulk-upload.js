@@ -292,8 +292,20 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.39';
+  const VERSION = '1.5.40';
   const api = () => window.SteelheadAPI;
+
+  // feat 1.5.40: FAST-PATH SOLO_PRECIO — cuando la corrida solo cambia precios de PN que
+  // YA existen (cero enriquecimiento: ni specs/params/racks/dims/labels/predictivos), salta
+  // STEP 6 (enrich) — un `runPool(parts, enrichWorker)` que pega SavePartNumber por CADA PN
+  // aunque no haya nada que aplicar (N round-trips ~0.4s c/u) y que además haría REPLACE de
+  // arrays. Saltarlo no es solo más rápido: es más SEGURO (no toca datos que el CSV no trae).
+  // STEP 6a/6b/7 ya son no-ops naturales en este caso (sus candidatos filtran por arrays
+  // vacíos). El precio (SaveManyPartNumberPrices) y STEP 8 (default + archive) corren igual.
+  // DESHABILITADO hasta validación en vivo: con el flag en false el pipeline corre
+  // byte-idéntico al comportamiento previo (la rama `if (!fastPathSoloPrecio)` siempre entra).
+  // La DECISIÓN es una función pura testeada: Parse.planSoloPrecioFastPath (11 golden tests).
+  const SOLO_PRECIO_FASTPATH_ENABLED = false;
 
   // F1 refactor: funciones puras extraídas a módulos testeables (node --test).
   // Se importan con los MISMOS nombres locales para no tocar ningún call site.
@@ -4477,6 +4489,20 @@ const BulkUpload = (() => {
         }
       }
 
+      // feat 1.5.40: decidir el fast-path SOLO_PRECIO. runIntent vive solo en showPreview (UI)
+      // y jamás llega aquí, así que lo RECALCULAMOS sobre parts/pnStatus YA filtrados a las
+      // filas que el operador confirmó. allExisting = todas las filas seleccionadas son
+      // 'existing' (si hubiera un PN nuevo, no es solo-precio). La decisión es pura y testeada;
+      // con SOLO_PRECIO_FASTPATH_ENABLED=false esto es siempre false → sin cambio de flujo.
+      const allExistingSel = parts.length > 0 && pnStatus.every(s => s && s.status === 'existing');
+      const runIntentExec = Parse.classifyRunIntent(parts, allExistingSel);
+      const fastPathSoloPrecio = (typeof Parse.planSoloPrecioFastPath === 'function')
+        && Parse.planSoloPrecioFastPath(runIntentExec, SOLO_PRECIO_FASTPATH_ENABLED);
+      if (fastPathSoloPrecio) {
+        log('⚡ Fast-path SOLO_PRECIO activo: se omite el enriquecimiento (STEP 6). Solo se aplican precios.');
+        addPanelLog('⚡ Fast-path SOLO_PRECIO: enriquecimiento (STEP 6) omitido');
+      }
+
       // ═══════════════════════════════════════
       // EXECUTION
       // ═══════════════════════════════════════
@@ -6272,13 +6298,22 @@ const BulkUpload = (() => {
         }
       }
 
-      await runPool(
-        parts,
-        enrichWorker,
-        enrichConcurrency,
-        (done, total) => { setPanelProgress(done, total); setPanelCounters(); setProgressBar(55 + Math.round((done / Math.max(total, 1)) * 20)); },
-        myRunId
-      );
+      // feat 1.5.40: fast-path SOLO_PRECIO salta el enrich (N round-trips SavePartNumber
+      // sobre PN existentes sin nada que aplicar). okSP queda 0 → stats.pnsModified=0 (correcto:
+      // el enrich no modificó nada). El precio y STEP 8 corren igual más abajo. Con el flag OFF
+      // esta rama SIEMPRE entra → idéntico al comportamiento previo.
+      if (!fastPathSoloPrecio) {
+        await runPool(
+          parts,
+          enrichWorker,
+          enrichConcurrency,
+          (done, total) => { setPanelProgress(done, total); setPanelCounters(); setProgressBar(55 + Math.round((done / Math.max(total, 1)) * 20)); },
+          myRunId
+        );
+      } else {
+        log('  STEP 6 (enrich) omitido: fast-path SOLO_PRECIO (0 enriquecimiento en el CSV).');
+        addPanelLog('STEP 6 enrich omitido (fast-path SOLO_PRECIO)');
+      }
       bailIfStale(myRunId);
       // Robustez C: exponer el conteo REAL de PNs modificados (SavePartNumber OK) al resumen,
       // para que "PNs modificados" refleje la operación clave y no se confunda con "PNs existentes"

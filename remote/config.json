@@ -1,6 +1,6 @@
 {
-  "version": "1.7.161",
-  "lastUpdated": "2026-07-20T22:05",
+  "version": "1.7.162",
+  "lastUpdated": "2026-07-20T22:07",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2537,7 +2537,7 @@
     "scripts/bulk-upload-cc.js": "20722ceedaec6208892cbff51fb1264d34a278ce7a41a3c5b4b6bb67d35b0a49",
     "scripts/bulk-upload-classify.js": "6ed19f27028976a39ff19ffc08705696f599c9c8559b70f234ab7a5557743abf",
     "scripts/bulk-upload-parse.js": "4976e24ae76513dd175f58daebb1f866fde695d2c03941fa1c7e084199229d8a",
-    "scripts/bulk-upload.js": "1699aeef5d9e9c2b74855a1fa86d51bbca310858d42cccf51152e1d0f629f04b",
+    "scripts/bulk-upload.js": "b14bac6169add05ef8378866209f8f878b739a2bbbd90ef416e56df410f9b2f5",
     "scripts/catalog-fetcher.js": "48f3f8a55ea94e7fa8626c95688cb7e9de7877fa14f7e5a52dda1490731cca63",
     "scripts/cfdi-attacher.js": "de1c2c4d530434be501fee9978c7945e681c62f10c23abbd6ad98aa925a485c8",
     "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c",
