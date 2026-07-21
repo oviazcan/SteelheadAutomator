@@ -111,3 +111,25 @@ test('evaluateMove: enforcement OFF deja pasar todo', () => {
   assert.strictEqual(r.block, false);
   assert.strictEqual(r.reason, 'disabled');
 });
+
+// ── Capa 4: marcado naranja de tarjetas NO movibles (bilingüe + salvaguarda) ──
+test('hasScheduledCardSignal: reconoce ES y EN, ignora ruido', () => {
+  assert.strictEqual(Core.hasScheduledCardSignal('… Tareas Programadas: T204 …'), true);
+  assert.strictEqual(Core.hasScheduledCardSignal('… Scheduled Tasks: T204 …'), true); // case-insensitive
+  assert.strictEqual(Core.hasScheduledCardSignal('Scheduled tasks'), true);
+  assert.strictEqual(Core.hasScheduledCardSignal('WO: 123  Proceso: Zinc'), false);
+  assert.strictEqual(Core.hasScheduledCardSignal(''), false);
+  assert.strictEqual(Core.hasScheduledCardSignal(null), false);
+});
+test('isDomSignalBroken: solo roto si ninguna tarjeta señala pero la API sí reporta', () => {
+  assert.strictEqual(Core.isDomSignalBroken(false, 5), true);  // señal DOM ausente + API tiene programadas
+  assert.strictEqual(Core.isDomSignalBroken(true, 5), false);  // alguna tarjeta señaló → señal viva
+  assert.strictEqual(Core.isDomSignalBroken(false, 0), false); // nada programado en API → no es rotura
+  assert.strictEqual(Core.isDomSignalBroken(true, 0), false);
+});
+test('shouldMarkNotMovable: naranja solo si no-programada y señal no rota', () => {
+  assert.strictEqual(Core.shouldMarkNotMovable(false, false), true);  // no programada, señal ok → naranja
+  assert.strictEqual(Core.shouldMarkNotMovable(true, false), false);  // programada → sin marca
+  assert.strictEqual(Core.shouldMarkNotMovable(false, true), false);  // señal rota → no marcar (fail-safe)
+  assert.strictEqual(Core.shouldMarkNotMovable(true, true), false);
+});
