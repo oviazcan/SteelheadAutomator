@@ -1,6 +1,6 @@
 # file-uploader — Cargador de Archivos
 
-**Versión actual:** 0.5.0 (soporte de convención `<PN>_<VISTA>_<num>` de guion simple; whitelist completa FRO/POS/LIZ/LDE/SUP/INF/ISO)
+**Versión actual:** 0.5.1 (convención `<PN>_<VISTA>_<num>` de guion simple + whitelist FRO/POS/LIZ/LDE/SUP/INF/ISO; portada = ISO si existe, si no la más grande)
 **Scripts:** `remote/scripts/steelhead-api.js`, `remote/scripts/file-uploader-core.js`, `remote/scripts/file-uploader.js`
 **Tests:** `tools/test/file-uploader-core.test.js` (18 golden, núcleo puro)
 **Handler:** `extension/background.js` → `upload-pn-files` (input `multiple`, no `webkitdirectory`)
@@ -84,8 +84,15 @@ Integrado `host-cleanup-shared.js` (en el array de `scripts`). Aplica para el du
 - **EJE B — host:** `stopDatadogSessionReplay()` al iniciar el run; `createMemMonitor` con span `#sa-upl-mem` (warn 70% re-aplica DD stop, **guardrail 88% → `cancelRun` + detiene con checkpoint**, la idempotencia continúa al re-correr); `makePeriodicDrain(50)` al cierre de cada grupo; `apolloCacheDrain()` + `mem.stop()` en `finally`.
 - **Plan de validación:** correr una tanda de ~300-500 archivos reales y observar `#sa-upl-mem` estable (sin crecer sin tope); confirmar que el guardrail detiene y el resumen marca "Carga detenida (memoria)".
 
+## Portada (display image)
+`markDisplayImages` marca la foto principal de los PNs que NO tengan una (respeta la existente). Prioridad de `selectDisplayImage` (v0.5.1):
+1. **Vista ISO** (`_ISO_##` o `__iso`) → la más grande de esas. Regla del Instructivo: "la vista ISO nunca se omite" y es la 3/4 que mejor comunica el volumen.
+2. Si no hay ISO, descriptor de principal de la convención `__` (`__principal`/`__di`/`__foto`…) → la más grande de esas.
+3. Si no, la imagen más grande por bytes.
+4. Solo PDFs/planos (sin imagen) → no marca portada.
+
 ## Pendientes / mejoras
-- **`display_image_id`:** el applet no marca foto principal del PN. Posible mejora: setear el primer `__front`/`__principal` como display image.
+- Nada bloqueante.
 - **Manifiesto CSV** (descartado por YAGNI): si el naming codificado se vuelve frágil, mapear archivo→PN explícito.
 
 ## Lecciones
@@ -93,6 +100,7 @@ Integrado `host-cleanup-shared.js` (en el array de `scripts`). Aplica para el du
 - **CSS propio obligatorio (bug 2026-06-26).** El applet usaba las clases `.dl9-*` pero NO inyectaba su CSS; ese CSS lo definen otros applets (archiver/po-comparator/bulk-upload) cada uno con su `<style>`. file-uploader corre **aislado** (su array no incluye a ninguno de esos), así que el overlay de progreso y el resumen se creaban **invisibles** (sin `position:fixed`/fondo/centrado). Síntoma: "no mostró nada de resumen". La v0.1.0 lo tapaba con `alert()`. **Fix:** `ensureStyles()` inyecta un `<style id="sa-uploader-styles">` propio (idempotente) — no depender de otro applet. **Regla general:** cualquier applet que use clases `dl9-*` debe inyectar su propio CSS. La lógica de negocio NO estaba rota (se verificó en vivo que las fotos sí se vincularon, incl. fan-out a homónimos); era 100% un problema de UI.
 
 ## Historial
+- **0.5.1 (2026-07-20):** portada = **vista ISO** si existe, si no la más grande (decisión del usuario). `isIsoView` detecta ISO en ambas convenciones (`_ISO_##` estructural y `__iso` con frontera); `selectDisplayImage` la prioriza. Se agregó cobertura de `selectDisplayImage`/`isIsoView` que no existía (+6 golden, 39 total).
 - **0.5.0 (2026-07-20):** soporte de la convención de guion simple `<PN>_<VISTA>_<consecutivo>` (además del `__` doble). Caso raíz: fotos de Collado `NAT1219802_LIZ_02.JPG` / `MFR8991502_SUP_01.JPG` daban "6 PN no encontrados" porque el extractor solo cortaba en `__` doble y tomaba el nombre completo como PN (los PNs `NAT1219802`/`MFR8991502` sí existen — confirmado en DuckDB TLC). `extractPNName(filename, viewCodes)` quita `_<VISTA>_<num>` solo si `<VISTA>` está en la whitelist `config.fileUploader.viewCodes` (protege los 57 PNs con `_` interno). `unregisteredViewCode` + resumen enriquecido: un código de vista no registrado se sugiere agregar al config en vez de un "no encontrado" mudo. Whitelist completa del Instructivo de Fotografía (§5): FRO/POS/LIZ/LDE/SUP/INF/ISO. Núcleo puro +15 golden (33 total).
 - **0.4.2 (2026-06-26):** `isTransientError` también reintenta `AbortError`/`aborted` (corte de red a media request). Validado: run de 500 con 1 solo error = un `AbortError` por desconexión del usuario; ahora el retry lo recupera. 22 golden tests.
 - **0.4.1 (2026-06-26):** fix HTTP 502 — `gate()` rate-limit (120ms) + `withRetry()` backoff en transitorios (`isTransientError` + 4 golden tests). Sin esto, ~72% de un run de 1159 falló con 502. Pendiente: deploy + re-validar escala.

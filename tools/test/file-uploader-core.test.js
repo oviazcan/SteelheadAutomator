@@ -112,6 +112,55 @@ test('normViewCodes: array y string → Set en MAYÚSCULAS, sin vacíos', () => 
   assert.equal(Core.normViewCodes(null).size, 0);
 });
 
+// ── selectDisplayImage: portada = ISO si existe, si no la más grande ─────────
+test('selectDisplayImage: prefiere la vista ISO aunque NO sea la más grande', () => {
+  const files = [
+    { name: 'NAT1219802_SUP_01.jpg', size: 3_000_000 }, // la más grande, pero no ISO
+    { name: 'NAT1219802_LDE_02.jpg', size: 2_000_000 },
+    { name: 'NAT1219802_ISO_04.jpg', size: 900_000 },   // ISO gana
+  ];
+  assert.equal(Core.selectDisplayImage(files).name, 'NAT1219802_ISO_04.jpg');
+});
+
+test('selectDisplayImage: sin ISO → la imagen más grande por bytes', () => {
+  const files = [
+    { name: 'NAT1219802_LIZ_02.jpg', size: 1_042_663 },
+    { name: 'NAT1219802_SUP_01.jpg', size: 1_190_519 },
+    { name: 'NAT1219802_LDE_04.jpg', size: 1_520_946 }, // caso real Collado (no hay ISO)
+  ];
+  assert.equal(Core.selectDisplayImage(files).name, 'NAT1219802_LDE_04.jpg');
+});
+
+test('selectDisplayImage: entre varias ISO, la más grande (desempate por nombre)', () => {
+  const files = [
+    { name: 'X_ISO_04.jpg', size: 500_000 },
+    { name: 'X_ISO_05.jpg', size: 800_000 },
+  ];
+  assert.equal(Core.selectDisplayImage(files).name, 'X_ISO_05.jpg');
+});
+
+test('selectDisplayImage: ISO detectada también en convención doble "__iso"', () => {
+  const files = [
+    { name: 'ABC__front.jpg', size: 2_000_000 },
+    { name: 'ABC__iso.jpg', size: 700_000 },
+  ];
+  assert.equal(Core.selectDisplayImage(files).name, 'ABC__iso.jpg');
+});
+
+test('selectDisplayImage: solo PDFs/planos (sin imagen) → null', () => {
+  assert.equal(Core.selectDisplayImage([{ name: 'ABC_ISO_04.pdf', size: 9_000_000 }]), null);
+  assert.equal(Core.selectDisplayImage([]), null);
+});
+
+test('isIsoView: reconoce ISO en ambas convenciones y descarta falsos positivos', () => {
+  assert.equal(Core.isIsoView('NAT1219802_ISO_04.jpg'), true);
+  assert.equal(Core.isIsoView('NAT1219802_iso_04.JPG'), true);
+  assert.equal(Core.isIsoView('ABC__ISO.jpg'), true);
+  assert.equal(Core.isIsoView('NAT1219802_SUP_01.jpg'), false);
+  assert.equal(Core.isIsoView('ABC__isometrico.jpg'), false); // "iso"+letra ≠ token ISO
+  assert.equal(Core.isIsoView('ISONORM_FRO_01.jpg'), false);  // PN empieza con "ISO" pero la vista es FRO
+});
+
 // ── selectMatchingPNs ───────────────────────────────────────────────────────
 test('selectMatchingPNs: devuelve TODOS los homónimos exactos, no solo el primero', () => {
   const nodes = [
