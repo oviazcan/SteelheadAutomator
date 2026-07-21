@@ -1,6 +1,6 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.2.0** (config bump en deploy). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓; el bloqueo aparece en vivo. v0.2.0 (2026-07-20): marcado INVERTIDO — NARANJA en las NO movibles (antes verde en las movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda anti-falsa-alarma con el set de la API. Pendiente: validación fina del bloqueo (falsos positivos prog/no-prog), drag silencioso y del naranja en vivo**.
+> Versión: **0.2.0** (DEPLOYADO 2026-07-20: config 1.7.160, tag `v1.7.160`, commit `1382d33`; `sa-sg-orange` verificado EN VIVO en github.io. Bundle Safari v0.5.8 lo hornea — commit `172947c`, pendiente recompilar Xcode). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓; el bloqueo aparece en vivo. v0.2.0 (2026-07-20): marcado INVERTIDO — NARANJA en las NO movibles (antes verde en las movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda anti-falsa-alarma con el set de la API. Pendiente: validación fina del bloqueo (falsos positivos prog/no-prog), drag silencioso y del naranja en vivo**.
 > Spec: [`docs/superpowers/specs/2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
 > Plan: [`docs/superpowers/plans/2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
 
