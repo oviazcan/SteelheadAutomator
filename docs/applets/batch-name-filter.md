@@ -1,6 +1,9 @@
 # batch-name-filter — Filtrar Lote por Nombre
 
-**Versión actual:** 0.1.0-wip — **Core + golden test 25/25 y glue escritos** (sintaxis OK). **PENDIENTE:** registrar el app + hash en `config.json`, firmar (KMS) y deploy (requiere aprobación del usuario). **Fase 2 (>10) BLOQUEADA** (ver abajo).
+**Versión actual:** 0.2.0 — **Fase 2 RESUELTA.** Fuente = `InventoryBatchViewQuery` (paginada,
+`name` estructurado, `hideCompleted:true`) → **supera el tope de 10** y hace matching exacto
+robusto (adiós regex + colisión numérica). Fix del panel (`position:fixed`) incluido. Core+glue+config
+listos, **30/30 tests**. (El deploy 1.7.167 previo usaba FilterSearch/≤10; este re-deploy lo reemplaza.)
 
 ## Decisiones de comportamiento (definidas con el usuario 2026-07-21)
 - **Reemplazar** el filtro de lote actual al aplicar (no acumular).
@@ -19,15 +22,29 @@ El header del Panel de Envío es un `div.MuiPaper-root` con `display:flex; flex-
 se inyecta **antes del hijo que contiene el toggle "KGM"/"LBR"** (códigos de unidad → anclaje
 estable, no depende del idioma). Fallback: append al header.
 
-## ⛔ Fase 2 (>10 lotes por nombre): BLOQUEADA — requiere sesión interactiva
-El tope de 10 es de `FilterSearch` (autocomplete). Para superar el tope hay que leer una query de
-inventory batches sin-tope. **Discovery headless NO viable:** `InventoryBatchViewQuery` /
-`GetInventoryBatch` / la pantalla `/Domains/<id>/Inventory` devuelven TODO el inventario sin filtro
-y **congelan el renderer** (probado repetidamente, incl. con AbortController + stream reader). La
-única vía es capturar la query **ya filtrada por nombre** cuando el OPERADOR aplica el filtro en la
-UI real (dataset reducido). Requiere una sesión corta con el usuario en la pantalla de Inventario.
-Candidatas con hash conocido (samples vacíos en el scan): `InventoryBatchViewQuery`
-`e4fc4cdf098f…`, `InventoryManagementQuery` `08b13f9dbc1a…`, `SearchInventoryItemsFilter` `0014563a…`.
+## ✅ Fase 2 RESUELTA (>10 lotes por nombre) — `InventoryBatchViewQuery`
+
+La fuente correcta (la encontró el usuario en el scan `2026-07-22_090514`): **`InventoryBatchViewQuery`**
+`e4fc4cdf098f41e10881a512e63ce6fb068bcd8d5bd57b8627c86e5fda025d44`.
+- Variables: `{ includeArchived:'NO', hideCompleted:true, orderBy:['CREATED_AT_DESC'], offset, first, searchQuery }`.
+- Respuesta: `data.pagedData.{ totalCount, nodes:[{ id(=dbId), idInDomain, name }] }`.
+- **`searchQuery`** filtra por substring del name; **`first`/`offset` paginan de verdad** (sin tope de 10).
+- El **`name` es estructurado** → matching exacto en cliente (`selectByExactName`), sin regex ni
+  colisión numérica. `name` limpio = "T-125" / "487577".
+
+**Validado en vivo (2026-07-22):** `searchQuery:'T-125'` con `hideCompleted:false` → **18 lotes**
+T-125 (vs 10 de FilterSearch = supera el tope); con `hideCompleted:true` → 1 (el único no-completado).
+
+**Decisión de producto (usuario):** en producción `hideCompleted:true` — en Packing Slips/Scheduling
+los lotes **completados no se pueden filtrar** (no muestran piezas), así que traerlos es inútil +
+menos eficiente. El `false` fue solo para la prueba del tope. El glue pagina con `first:200` y un cap
+de seguridad de 25 páginas.
+
+**Discovery headless de esta query:** llamarla SIN `searchQuery` devuelve los ~10k lotes y congela el
+renderer; con `searchQuery` filtrando la respuesta es chica y no congela. Por eso antes fallaba.
+
+**FilterSearch queda como fuente legada** (aún en el Core/tests para referencia); el glue usa
+InventoryBatchViewQuery. El hash `FilterSearchInventoryBatch` sigue en config pero ya no se consume.
 
 ## Qué es / problema
 

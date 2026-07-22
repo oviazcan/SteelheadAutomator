@@ -187,3 +187,47 @@ test('isShippingUrl: rechaza /Shipping/PackingSlips (ese es de invoice-autofill)
   assert.equal(Core.isShippingUrl('/Domains/344/PartNumbers'), false);
   assert.equal(Core.isShippingUrl('/Domains/344/ShippingFoo'), false);
 });
+
+// ---------- selectByExactName (fuente InventoryBatchViewQuery — name estructurado) ----------
+
+// Fixture REAL: pagedData.nodes de InventoryBatchViewQuery(searchQuery:'T-125', hideCompleted:false)
+// capturado en vivo 2026-07-22 → 18 lotes T-125 (FilterSearch solo daba 10 = supera el tope).
+const IBV_T125 = [
+  1422384, 1422383, 1412290, 1412289, 1412143, 1412153, 1412152, 1412151, 1412150,
+  1412149, 1412148, 1412147, 1412146, 1412145, 1412142, 1412141, 1412140, 1397259,
+].map((id, i) => ({ id, idInDomain: 16000 + i, name: 'T-125' }));
+
+test('selectByExactName: 18 lotes T-125 reales → 18 ids (supera el tope de 10 de FilterSearch)', () => {
+  const r = Core.selectByExactName(IBV_T125, 'T-125');
+  assert.equal(r.count, 18);
+  assert.deepEqual(r.ids, IBV_T125.map((n) => String(n.id)));
+});
+
+test('selectByExactName: name estructurado excluye superstrings y otros names (case-insensitive)', () => {
+  const nodes = [
+    { id: 1, idInDomain: 1, name: 'T-125' },
+    { id: 2, idInDomain: 2, name: 'T-1250' },   // superstring → fuera
+    { id: 3, idInDomain: 3, name: '210726' },   // otro → fuera
+    { id: 4, idInDomain: 4, name: 't-125' },    // case-insensitive → dentro
+  ];
+  assert.deepEqual(Core.selectByExactName(nodes, 'T-125').ids, ['1', '4']);
+});
+
+test('selectByExactName: name numérico EXACTO sin colisión (name limpio, no concatenado)', () => {
+  const nodes = [
+    { id: 10, idInDomain: 100, name: '487577' },
+    { id: 11, idInDomain: 101, name: '4875' },     // otro → fuera
+    { id: 12, idInDomain: 102, name: '1487577' },  // superstring → fuera
+  ];
+  assert.deepEqual(Core.selectByExactName(nodes, '487577').ids, ['10']);
+});
+
+test('selectByExactName: dedup + entrada no-array + nombre vacío seguros', () => {
+  assert.deepEqual(Core.selectByExactName([{ id: 5, name: 'X' }, { id: 5, name: 'X' }], 'X').ids, ['5']);
+  assert.deepEqual(Core.selectByExactName(null, 'X').ids, []);
+  assert.deepEqual(Core.selectByExactName([{ id: 5, name: 'X' }], '').ids, []);
+});
+
+test('normalizeName: trim + lowercase', () => {
+  assert.equal(Core.normalizeName('  T-125 '), 't-125');
+});
