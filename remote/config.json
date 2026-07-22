@@ -1,6 +1,6 @@
 {
-  "version": "1.7.166",
-  "lastUpdated": "2026-07-21T22:26",
+  "version": "1.7.167",
+  "lastUpdated": "2026-07-22T00:51",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -141,6 +141,7 @@
         "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0",
         "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db",
         "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de",
+        "FilterSearchInventoryBatch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9",
         "AllReports": "1f83add2747f8e0949a47ea4b6f95a67f8e1948a07fad9a5cf543d1ab4b8c00c",
         "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d",
         "AllQuotes": "40ee4d1cda66a7103f70df6c782f44d7b601420c4ea41c35aff27b46415f60d8",
@@ -688,6 +689,20 @@
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/proceso-calculator.js"
+      ],
+      "requiredPermissions": []
+    },
+    {
+      "id": "batch-name-filter",
+      "name": "Filtrar Lote por Nombre",
+      "subtitle": "Selecciona todos los lotes con el mismo nombre en el Panel de Envío",
+      "icon": "🏷️",
+      "category": "Herramientas",
+      "autoInject": true,
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/batch-name-filter-core.js",
+        "scripts/batch-name-filter.js"
       ],
       "requiredPermissions": []
     },
@@ -2531,6 +2546,8 @@
     "scripts/auto-router-engine.js": "72dce77ad562d657b8793d0a0bd27b110d4d0791c11886aaf8ff33cf0ab57700",
     "scripts/auto-router-panel.js": "07020fbd82ced16bc38e22a2a406d1e8ffc177a51f3993c4a7d03faf106e0f49",
     "scripts/auto-router.js": "6a2eed28ed8beb5b63fbb9022e56f5f5bf49ea788fad545bb76a6a830caae74c",
+    "scripts/batch-name-filter-core.js": "4be6d34badbcc67fdf81a852fba8e20c3eedfcd0dcfae2796a75073576e61e53",
+    "scripts/batch-name-filter.js": "5a99aa51ca1646b1adfd96fb847746ca921e72729055c81caa9332e1f9aa6fd7",
     "scripts/bill-autofill.js": "58750f899a5c1b40ce262297ccc81a7cfaf8feda6f8284bf6b096c74f136c6b9",
     "scripts/board-metal-tooltip.js": "5f57e72f2e1918285c45d8ac638cca43594c6326f86d3e7f26da1094698cc4ae",
     "scripts/bulk-upload-batch.js": "93ff56929eea67f5c79c35404601e827b785ab43d3fed633d2047ff3a7b2767e",
