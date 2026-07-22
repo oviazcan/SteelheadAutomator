@@ -333,11 +333,12 @@ async function main() {
   }
 
   // Sincroniza los rotados EXTERNOS (hash vive en OTRO repo — Reportes SH /
-  // PowerTools) escribiendo el hash nuevo en su archivo y commiteando ese repo.
-  // Cierra el hueco: el motor ya capturó y validó el liveHash (rotadoValidado);
-  // aquí lo APLICA en vez de solo avisar. Fail-safe: repo/archivo ausente → skip;
-  // sin push (deja el commit local para que el operador lo suba). SA_NO_EXTERNAL=1
-  // lo desactiva.
+  // PowerTools) escribiendo el hash nuevo en su archivo, commiteando Y PUSHEANDO
+  // ese repo. Autohealing SIN humanos en el loop: el motor ya capturó y validó el
+  // liveHash (rotadoValidado); aquí lo APLICA y lo sube. Fail-safe: repo/archivo
+  // ausente → skip; si el push falla, el commit local queda y se reporta (no tumba
+  // la corrida). SA_NO_EXTERNAL=1 desactiva todo; SA_NO_EXTERNAL_PUSH=1 solo omite
+  // el push (deja el commit local).
   let externalSync = null;
   if (!DRY && !NO_DEPLOY && !process.env.SA_NO_EXTERNAL && (plan.external || []).length) {
     try {
@@ -354,6 +355,17 @@ async function main() {
           execFileSync('git', ['-C', repo, 'add', ...rows.map((x) => x.file)], { stdio: 'inherit' });
           execFileSync('git', ['-C', repo, 'commit', '-m', msg], { stdio: 'inherit' });
           console.log(`✓ sync externo commiteado en ${repo}: ${ops.join(', ')}`);
+          // Push automático — el loop de autohealing no debe requerir un humano.
+          // Fail-safe: si el push truena (sin red/upstream/credenciales) el commit
+          // local persiste y se reporta; no aborta la corrida.
+          if (!process.env.SA_NO_EXTERNAL_PUSH) {
+            try {
+              execFileSync('git', ['-C', repo, 'push', 'origin', 'HEAD'], { stdio: 'inherit' });
+              console.log(`✓ push OK en ${repo}`);
+            } catch (e) {
+              console.log(`✗ push externo falló en ${repo} (exit ${e.status ?? '?'}) — commit local hecho, súbelo a mano`);
+            }
+          }
         } catch (e) {
           console.log(`✗ commit externo falló en ${repo} (exit ${e.status ?? '?'}) — archivo escrito, commitear a mano`);
         }
@@ -433,7 +445,7 @@ async function main() {
       const pendRows = plan.external.filter((r) => !synced.has(r.op));
       if (okRows.length) {
         const repos = [...new Set((externalSync?.changedRepos || []))].join(', ');
-        sec.push(`📦 SINCRONIZADAS EXTERNAS (${okRows.length}) — hash escrito + commiteado en otro repo (${repos}):\n${okRows.map((r) => `   • ${r.op}: → ${r.liveHash}`).join('\n')}\n   (commit local sin push — súbelo cuando quieras)`);
+        sec.push(`📦 SINCRONIZADAS EXTERNAS (${okRows.length}) — hash escrito, commiteado y PUSHEADO en otro repo (${repos}):\n${okRows.map((r) => `   • ${r.op}: → ${r.liveHash}`).join('\n')}`);
       }
       if (pendRows.length) {
         sec.push(`📦 ROTADAS EXTERNAS PENDIENTES (${pendRows.length}) — capturadas OK pero no sincronizadas (¿repo ausente, sin sink, o commit falló?). Pega el hash a mano:\n${pendRows.map((r) => `   • ${r.op}: → ${r.liveHash}`).join('\n')}`);
