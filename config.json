@@ -1,6 +1,6 @@
 {
-  "version": "1.7.169",
-  "lastUpdated": "2026-07-22T09:27",
+  "version": "1.7.170",
+  "lastUpdated": "2026-07-22T14:30",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -704,6 +704,19 @@
         "scripts/steelhead-api.js",
         "scripts/batch-name-filter-core.js",
         "scripts/batch-name-filter.js"
+      ],
+      "requiredPermissions": []
+    },
+    {
+      "id": "schedule-batch-highlighter",
+      "name": "Resaltar Lote en Programación",
+      "subtitle": "Resalta y marca todas las tareas de un lote (por nombre) en el Schedule Board",
+      "icon": "🏷️",
+      "category": "Herramientas",
+      "autoInject": true,
+      "scripts": [
+        "scripts/schedule-batch-highlighter-core.js",
+        "scripts/schedule-batch-highlighter.js"
       ],
       "requiredPermissions": []
     },
@@ -2595,6 +2608,8 @@
     "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b",
     "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409",
     "scripts/report-regen.js": "2f8bb3bbdea0074525b3b383c102d8ec3a649050596a7a9ae4c2a91cc2f6bad7",
+    "scripts/schedule-batch-highlighter-core.js": "81f4eae4bfba31e9f9c2cc9f2cb14d70a211000e6c185fcad3c8c86ac9b8533d",
+    "scripts/schedule-batch-highlighter.js": "64298afc95b1457a5e33b02b1a7108d3a249776c1801de77328218aefa998804",
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
     "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
     "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
