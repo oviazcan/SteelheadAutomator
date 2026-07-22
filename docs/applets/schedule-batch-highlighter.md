@@ -1,8 +1,13 @@
 # schedule-batch-highlighter — Resaltar Lote en Programación
 
-**Versión actual:** 0.1.0-wip — **core + golden test 12/12 y glue escritos** (sintaxis OK, suite
-814/814). **PENDIENTE:** validación en vivo del DOM (el navegador estuvo muy inestable en la sesión
-de desarrollo) y deploy.
+**Versión actual:** 0.1.1 (config **1.7.171**, tag `v1.7.171`) — **DEPLOYADO** ("a mi riesgo", decisión
+del operador). Core + golden test 12/12, glue firmado (KMS). **Fix v0.1.1 (2026-07-22):** el primer
+deploy vivo (1.7.170) mostró el panel pero fallaba con **"No encuentro la columna Received Batches"** —
+el header de esta tabla es un **`<strong>` dentro de un `<td>`** (MUI CSS-grid, no `<th>`), y el
+selector de detección solo cubría `th/div/span`. Fix: (1) el selector incluye `strong/td/b/a/p/label`
+y matchea el **nodo hoja**; (2) sube al **`<td>` ancestro** para medir su centro X (la columna del
+grid), NO el `<strong>` hoja (que solo mide el texto y desalinearía la comparación con la celda de
+datos). **PENDIENTE:** validar en vivo que ya detecta la columna y resalta/marca correctamente.
 
 ## Qué es / problema
 
@@ -39,9 +44,16 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
   handler nativo de selección, sin tocar React) — validado `false→true`.
 - **Pintar** la celda (backgroundColor + outline) — validado.
 - La tabla **virtualiza** → aviso de scroll.
-- Los headers **NO son `<th>`** → la columna se detecta por **alineación X del header** (el glue
-  busca el header "Received Batches", su centro X, y por fila toma la celda cuyo centro X esté más
-  cerca; tolerancia ~60px; si no hay header, no marca nada = fail-safe).
+- Los headers **NO son `<th>`**: la tabla es **MUI CSS-grid** (`display:grid`; header en `<thead>` y
+  filas de datos en `<tbody>` comparten las mismas columnas del grid vía `grid-area`). El header
+  "Received Batches" es un **`<strong>` hoja dentro de un `<td>`** →
+  `<thead><tr class="MuiTableRow-head"><td><div><strong>Received Batches</strong></div></td>`.
+  La columna se detecta por **alineación X**: el glue localiza el nodo hoja con "Received Batches",
+  **sube al `<td>` ancestro** (su ancho/posición = la columna del grid, igual que la celda de datos)
+  y toma su centro X; por fila elige la celda cuyo centro X esté más cerca (tolerancia ~60px). Si no
+  hay header, no marca nada = fail-safe. **Bug del 1er deploy (1.7.170):** el selector no incluía
+  `strong`/`td`, así que `centersX` salía vacío → fail-safe → "No encuentro la columna". Corregido en
+  0.1.1 (config 1.7.171).
 
 ## Arquitectura
 
