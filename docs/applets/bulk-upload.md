@@ -2,6 +2,24 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
+## Diagnóstico 2026-07-21 — corrida SOLO_PN de solo-precio (~24k filas): 40 errores `Enrich "" (cust:undefined) … sin entry en pnLookup` [SIN cambio de código; hallazgo + deuda]
+Corrida real del operador: CSV de **solo cambio de precios**, modo **SOLO_PN**, 25 lotes (~24 175 filas). Resultado: `ERRORES: 40`, todos con el mismo texto:
+`Enrich "" (cust:undefined) omitido: existing sin entry en pnLookup — probable SaveManyPNP rechazado en su quote. Re-correr este PN solo.`
+
+**Diagnóstico (verificado contra el código; NO se pudo ver el CSV — no estaba en `~/Downloads`, inferencia fuerte del parser + log):**
+- **Los precios de los PNs válidos SÍ se aplicaron.** Log por lote: `Precios standalone: 1000` + `SavePartNumber: 1000 OK, 0 retry` + `Paso 5a/5: Releyendo precios para fijar default`. Los 40 errores NO tumbaron el resto.
+- **Qué son los 40:** filas con **"Número de parte" vacío y "Cliente" vacío**, que sobrevivieron el filtro del parser SOLO porque traían algo en **"Id SH"** (`bulk-upload.js:1528` `if (!pn && !idShEarly) continue;`). Ese Id SH **no resolvió** a ningún PN (`:1993`/`:1996` — "Id SH no encontrado/inválido y sin PN para fallback") → status **`error`**.
+- **Cadena:** status `error` → en la construcción de `pnLookup` SOLO_PN (`:5300-5311`) cae al `else` (`pnId = newPnIds.get(...)` → undefined) → `if(!pnId) continue` → **sin entry**. Sin entry → (a) NO se creó precio standalone (`:5324` `if(!entry) continue`), (b) el `enrichWorker` (`:5467-5482`) reporta el error.
+- **El mensaje es ENGAÑOSO en SOLO_PN.** El `kind='existing'` es un default (`:5479` `status==='new'||'forceDup' ? 'NEW' : 'existing'` → todo lo demás cae en "existing"); NO es un PN existente. Y "probable SaveManyPNP rechazado en su quote" está redactado para el modo **COTIZACIÓN** (donde el precio vive en una quote) — en SOLO_PN NO hay quote. La causa real en SOLO_PN es: **la fila no resolvió a ningún PN** (Id SH huérfano + sin PN name + sin cliente).
+- **Por qué NO se activó el fast-path SOLO_PRECIO** (corrió el enrich completo, ~315 s/lote de "Releyendo precios"): `allExistingSel` (`:4509`) exige `pnStatus.every(s => s.status === 'existing')`; **una sola fila `error` lo vuelve false** → `classifyRunIntent` ≠ `SOLO_PRECIO` → atajo OFF. No es bug: es ineficiencia inducida por datos sucios (40 filas irresolubles bloquearon el atajo para las 24k).
+
+**Acción que se dio al operador:** localizar en el CSV las filas con "Id SH" con valor y "Número de parte" vacío (serán 40); el consejo del mensaje *"Re-correr este PN solo"* **no sirve** (no hay PN ni Id SH válido) — hay que corregir el origen (PN+cliente o el Id SH) y recargar solo esas 40; si eran basura, ignorar.
+
+**Deuda detectada (no accionada esta sesión):**
+1. **Mensaje de error por modo** en el `enrichWorker` (`:5480`): en SOLO_PN debería decir "fila no resolvió a ningún PN (Id SH huérfano / sin PN name)", no "SaveManyPNP rechazado en su quote" (que aplica solo a COTIZACIÓN). Y el consejo "Re-correr este PN solo" es inútil cuando `part.pn===''`.
+2. **Filas `error` arrastran el fast-path a OFF**: evaluar si `classifyRunIntent`/`allExistingSel` deberían ignorar filas ya marcadas `error` (que igual no se ejecutan), o al menos **avisar en el preview** "N filas en error desactivan el fast-path SOLO_PRECIO / no recibirán precio".
+3. **Visibilidad en el preview**: 40 filas `error` en 24k pasan desapercibidas; el preview debería resaltar el conteo de `error` antes de ejecutar (ligado al punto 2).
+
 ## feat 1.5.40–1.5.41 (2026-07-20) — Fast-path SOLO_PRECIO [ACTIVO en producción, config 1.7.163, flag ON]
 Cuando una corrida solo cambia **precios** de PN que **ya existen** (cero enriquecimiento: ni
 specs/params/racks/dims/labels/predictivos), el atajo **salta STEP 6 (enrich)** e va directo a
