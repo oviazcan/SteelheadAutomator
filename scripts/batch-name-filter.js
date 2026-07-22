@@ -104,8 +104,10 @@
     const ul = document.createElement('ul');
     matches.slice(0, 30).forEach((m) => {
       const li = document.createElement('li');
-      li.textContent = m.display;               // textContent → sin XSS
-      li.title = m.display;
+      // InventoryBatchView nodes: {id, idInDomain, name}; FilterSearch legado: {display}.
+      const label = m.display || ('#' + m.idInDomain + ' — ' + m.name);
+      li.textContent = label;                   // textContent → sin XSS
+      li.title = label;
       ul.appendChild(li);
     });
     p.appendChild(ul);
