@@ -1,13 +1,18 @@
 # schedule-batch-highlighter — Resaltar Lote en Programación
 
-**Versión actual:** 0.1.1 (config **1.7.171**, tag `v1.7.171`) — **DEPLOYADO** ("a mi riesgo", decisión
-del operador). Core + golden test 12/12, glue firmado (KMS). **Fix v0.1.1 (2026-07-22):** el primer
-deploy vivo (1.7.170) mostró el panel pero fallaba con **"No encuentro la columna Received Batches"** —
-el header de esta tabla es un **`<strong>` dentro de un `<td>`** (MUI CSS-grid, no `<th>`), y el
-selector de detección solo cubría `th/div/span`. Fix: (1) el selector incluye `strong/td/b/a/p/label`
-y matchea el **nodo hoja**; (2) sube al **`<td>` ancestro** para medir su centro X (la columna del
-grid), NO el `<strong>` hoja (que solo mide el texto y desalinearía la comparación con la celda de
-datos). **PENDIENTE:** validar en vivo que ya detecta la columna y resalta/marca correctamente.
+**Versión actual:** 0.1.2 (config **1.7.172**, tag `v1.7.172`) — **DEPLOYADO** ("a mi riesgo", decisión
+del operador). Core + golden test 12/12, glue firmado (KMS). **Validado en vivo (2026-07-22):** resalta
+y marca correctamente tras el fix de detección de columna. **Iteraciones sobre feedback del operador:**
+- **v0.1.1** — fix "No encuentro la columna": el header es un **`<strong>` dentro de un `<td>`** (MUI
+  CSS-grid, no `<th>`) y el selector solo cubría `th/div/span`. Fix: selector incluye
+  `strong/td/b/a/p/label` + matchea el **nodo hoja** + sube al **`<td>` ancestro** para medir el centro
+  X (la columna del grid), no el `<strong>` (que mide solo el texto y desalinearía).
+- **v0.1.2** — 3 ajustes de UX pedidos por el operador: (1) el panel flotante era **intrusivo** →
+  **buscador inline** en la barra de filtros nativa, tras el último filtro; (2) **Limpiar no
+  des-marcaba** (refs de checkbox recicladas por la virtualización) → barrido de filas visibles del
+  lote; (3) resaltado **verde pastel** (menos intenso, legible en la tabla clara).
+
+**PENDIENTE:** validar en vivo el buscador inline (posición tras SO) + que Limpiar ahora sí des-marca.
 
 ## Qué es / problema
 
@@ -34,7 +39,7 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
   scroll del virtualizador. Además no "ve" las filas no renderizadas.
 - **Resaltar + marcar checkbox** (ELEGIDO): no oculta nada → no pelea con la virtualización; no toca
   React internals → sobrevive a los updates de SH. Limitación: solo alcanza las filas presentes en
-  el DOM → el panel **AVISA que hay que hacer scroll** para marcar todas (decisión del usuario).
+  el DOM → el **tooltip del 🏷️ AVISA que hay que hacer scroll** para marcar todas (decisión del usuario).
 
 ## Mecánica confirmada en vivo (2026-07-22, Ecoplating TLC, Schedule Board 453)
 
@@ -61,16 +66,25 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
   `isScheduleBoardUrl` (gate), `extractBatchNames` (celda→nombres, soporta varios por celda),
   `rowMatchesBatchName` (match exacto por nombre, case-insensitive; excluye sub/superstrings),
   `countMatches`.
-- **`remote/scripts/schedule-batch-highlighter.js`** (glue) — **HECHO** (pendiente validar DOM en
-  vivo): **panel flotante** dark-mode `position:fixed` (NO inyectado en el header de React — insertar
-  entre hijos de un contenedor React del board congelaba la SPA); input de nombre con debounce;
-  detección de columna RB por alineación X; resalta filas coincidentes + marca sus checkboxes;
-  `MutationObserver` re-aplica al scrollear/re-render (virtualización); aviso de scroll; botón
-  Limpiar que **des-marca solo los checkboxes que pusimos nosotros** (`S.checkedByUs`, no toca los
-  que el operador marcó a mano); singleton `window.__saSBH`.
+- **`remote/scripts/schedule-batch-highlighter.js`** (glue): **buscador INLINE en la barra de filtros
+  nativa** (v0.1.2 — el panel flotante `position:fixed` de v0.1.0/0.1.1 era **demasiado intrusivo**
+  según el operador). Se ancla **"donde terminan los filtros oficiales"**: `svg[data-testid=
+  "FilterListIcon"]` (estable ante idioma) → su `<button>` → contenedor de filtros; inserta el widget
+  tras el **último `div[role="button"]`** (SO), idioma-agnóstico (no depende del texto del filtro).
+  Widget compacto: 🏷️ + input + contador + ✕, **estilo claro con acento verde** (#13a36f) para
+  integrarse a la barra nativa pero seguir siendo reconocible como de la extensión (enriquecimiento,
+  análogo a `board-metal-tooltip`; excepción documentada a la regla dark-mode). Aviso de scroll movido
+  al **tooltip** (`title`) del 🏷️/input, no en un bloque grande. `MutationObserver` **re-monta el
+  widget** si React lo borra (idempotente por id) **y** re-aplica el resaltado a filas nuevas al
+  scrollear. **Limpiar DES-MARCA** por **dos vías**: (1) referencias vivas `S.checkedByUs`; (2)
+  **barrido de filas visibles del lote** — necesario porque la tabla **VIRTUALIZA** y recicla los
+  checkbox al scrollear, dejando las referencias "muertas" (`document.contains`=false) y su fila
+  reciclada marcada (bug reportado por el operador). Resaltado **verde pastel `#dbf3e7`** (v0.1.2 bajó
+  la intensidad desde `#173a2b`, casi negro, ilegible en la tabla clara de SH). Singleton
+  `window.__saSBH`. Detección de columna RB por alineación X (ver §Mecánica).
 - **`config.json`** — app `schedule-batch-highlighter` registrado (`autoInject:true`, sin permisos,
-  scripts `[core, glue]` — **no usa `steelhead-api.js`**, es 100% DOM). **Pendiente:** firmar (KMS)
-  y deploy tras validación en vivo.
+  scripts `[core, glue]` — **no usa `steelhead-api.js`**, es 100% DOM). Firmado (KMS) y deployado
+  (config 1.7.172).
 
 ## Limitaciones conocidas
 
@@ -82,12 +96,15 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
   que un WO/SO homónimo no colisiona salvo que la detección de columna X caiga en otra columna
   (mitigado por la tolerancia de 60px y el resaltado visible que el operador revisa).
 
-## Plan de validación en vivo (pendiente — hacer antes de deploy)
+## Plan de validación en vivo
 
-- [ ] El panel flotante aparece en el Schedule Board.
-- [ ] Teclear "210726" → resalta las N filas con ese Received Batches (incluidas las homónimas que
-      el filtro nativo escondía) y marca sus checkboxes; contador correcto.
-- [ ] Scrollear → las filas nuevas se resaltan/marcan (observer).
-- [ ] Limpiar → quita resaltado y des-marca SOLO lo que marcó el applet (respeta selección manual).
-- [ ] No rompe la SPA (sin congelamientos por el panel flotante).
+- [x] **v0.1.1** Teclear "210726" → resalta las N filas con ese Received Batches (incluidas las
+      homónimas que el filtro nativo escondía) y marca sus checkboxes. **VALIDADO** (operador
+      2026-07-22, tras el fix de detección de columna).
+- [ ] **v0.1.2** El **buscador inline** aparece en la barra de filtros, tras el último filtro (SO).
+- [ ] **v0.1.2** **Limpiar** quita resaltado **y des-marca** los checkboxes de las filas visibles del
+      lote (bug de refs recicladas por virtualización — corregido con el barrido).
+- [ ] **v0.1.2** Resaltado verde pastel legible (menos intenso).
+- [ ] Scrollear → las filas nuevas se resaltan/marcan (observer) y el widget se mantiene/re-monta.
+- [ ] No rompe la SPA (sin congelamientos al inyectar en la barra nativa).
 - [ ] Nombre inexistente → 0 marcadas, sin efectos.
