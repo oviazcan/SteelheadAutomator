@@ -65,9 +65,13 @@ ignorar):**
   headless de un solo paso en `route-catalog.json` → `reporting-insights-detail`
   (el deep-link con query params SÍ hidrata). Hashes vivos capturados:
   `GetInsightsReportDetails` = `e0602e22…`, `GetInsightsReportColumnConfigs` =
-  `2f60d49b…` — **pendiente pegarlos en `steelhead_client.py` de Reportes SH**
-  (el hash-autopilot NO los auto-deploya: `planDeploy` los marca `external`
-  porque no viven en `remote/config.json`).
+  `2f60d49b…` — **APLICADOS a `steelhead_client.py`** (commit RSH `2dd9e04`,
+  verificados vivos).
+  **ACTUALIZACIÓN 2026-07-22:** el hash-autopilot ahora **SÍ sincroniza los hashes
+  externos automáticamente** — tras capturar+validar un `plan.external`, escribe el
+  hash en el archivo del otro repo (`external-sinks.json` + `external-sync.mjs`) y
+  commitea ahí (commit local, sin push; `SA_NO_EXTERNAL=1` lo desactiva). Ya no es
+  "pegar a mano". Requisito: que exista receta/sentinela que dispare la op.
 - `ReportVariables` — se dispara al abrir el panel Variables del editor (interacción).
 - `ArchivePerspectiveDashboardFolder` — solo definida.
 
