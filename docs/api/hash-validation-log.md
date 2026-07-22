@@ -794,3 +794,22 @@ Capturado headless con captura-y-aborta (editor de proceso /Processes/213861 →
 `CreateProcessNode` `a437bd9c…`→`9d7fe3d3…`, validado (HTTP 400 `$type required` = existe). Capturado headless con captura-y-aborta: /Processes/213861 → Edit → "New Child Node" → modal Name="Prueba" → Save (toda mutation abortada). **Lección DOM:** el botón "New Child Node" vive en y~1350 (fuera del viewport 1200) Y Playwright lo consideraba cubierto por barra sticky → NI scrollIntoView NI clic por coordenadas NI force funcionaron; SÍ funcionó `element.click()` por `page.evaluate` (dispara el onClick de React ignorando overlays) + viewport alto (1700). Patrón útil para futuros botones "no accionables".
 
 **Cierre 2026-07-16:** los 4 rotados resueltos — SearchProducts→SearchProductsComprehensive + CreateEditProcessDialogQuery (1.7.125), UpdateProcessNode (1.7.126), CreateProcessNode (1.7.128). Gate por release quitado (validador corre siempre).
+
+## 2026-07-21 — UpdateReportComponent recapturado (fuente: Reportes SH, NO extensión)
+
+Deploy **D3BF05CA** rotó varios hashes (mismo día ya se habían recapturado el CRUD
+de `ReportVariable` + `CreateReportConfig` desde el frontend). Se detectó también
+`UpdateReportComponent` stale ("Must provide a query string") al fijar la **vista
+default** de un reporte standalone (RPT-ALM-ANL-05 Transacciones de Inventario).
+
+- **Recaptura:** en vivo, interceptor de `fetch` sobre `app.gosteelhead.com/graphql`
+  al clickear la **estrellita ⭐** del panel Perspective (que dispara la mutación).
+  `a1949041…` → **`38ae60eb5dd0a44ac57e52a2f04f8572f37e73c2a53a23e1d54df9cb0ee27343`**.
+- **Fuente del hash:** vive **solo** en `Reportes SH/scripts/steelhead_client.py`
+  (ya actualizado + pusheado). **NO** está en la extensión (`remote/config.json`) ni
+  en PowerTools — **ningún applet usa `UpdateReportComponent`** → **sin cambio de
+  config.json, sin bump de version, sin deploy**. `GetReportComponentsAndConfigs`
+  (`4518ecef…`) verificado vigente en la misma sesión.
+- **Pendiente conocido:** `DeleteReportVariable` y hashes de dashboards/date-range/
+  insights no se recapturaron el 2026-07-21 (no se dispararon); recapturar cuando se
+  necesiten.
