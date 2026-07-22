@@ -54,9 +54,20 @@ ROCP) qué dispara cada op y si el hash rotó de verdad. Resultado:
 **B. Queries INOFENSIVAS — NO usadas en ningún script (4), solo definidas en
 `steelhead_client.py`. Su rotación no rompe nada; baja prioridad (limpiar o
 ignorar):**
-- `GetInsightsReportDetails`, `GetInsightsReportColumnConfigs` — los "INSIGHTS"
+- `GetInsightsReportDetails`, `GetInsightsReportColumnConfigs` — ~~los "INSIGHTS"
   de la UI de Reporting son **Sonar chats** (`GetSonarChatChannels`), NO Insights
-  Reports de datos → no hay objeto que dispare estas ops en el dominio.
+  Reports de datos → no hay objeto que dispare estas ops en el dominio.~~
+  **CORREGIDO 2026-07-22 (Nivel B):** SÍ hay objeto que las dispara. Los INSIGHTS
+  del sidebar de `/Reporting/View` son **reportes prefabricados de Steelhead**
+  agrupados en 6 categorías (Sales & Finance, Production, Supply Chain, Quality
+  Management, Shipping & Receiving, Other). Abrir uno navega a
+  `/Reporting/View?id=<INSIGHT_ID>&type=insight` y dispara **ambas** ops. Receta
+  headless de un solo paso en `route-catalog.json` → `reporting-insights-detail`
+  (el deep-link con query params SÍ hidrata). Hashes vivos capturados:
+  `GetInsightsReportDetails` = `e0602e22…`, `GetInsightsReportColumnConfigs` =
+  `2f60d49b…` — **pendiente pegarlos en `steelhead_client.py` de Reportes SH**
+  (el hash-autopilot NO los auto-deploya: `planDeploy` los marca `external`
+  porque no viven en `remote/config.json`).
 - `ReportVariables` — se dispara al abrir el panel Variables del editor (interacción).
 - `ArchivePerspectiveDashboardFolder` — solo definida.
 
