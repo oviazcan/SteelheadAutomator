@@ -42,31 +42,55 @@ mismos headers idp-token + cookies + apollo). Por lo tanto **`push_dashboard.py`
 hoy** — fallarían con `PersistedQueryNotFound`. (Precedente: `GenerateDuckDb`
 también estaba muerto en RSH; arreglado el mismo día, ver abajo.)
 
-### Las 18 ops rotadas (hash viejo en Reportes SH)
+### Las 18 rotadas, clasificadas por CRITICIDAD (investigación headless 2026-07-21)
 
-| Op | hash viejo (RSH) | hash nuevo (front) |
+Se verificó con Playwright headless (interceptor pre-carga del autopilot + tokens
+ROCP) qué dispara cada op y si el hash rotó de verdad. Resultado:
+
+**A. Queries USADAS — arregladas (2)** ✅ (commit RSH `9a8f3d1`):
+- `GetPerspectiveDashboards` `62f4eb7c…`→`f09b4f99…`
+- `GetPerspectiveDashboardFolders` `f193f682…`→`5fcab1f8…`
+
+**B. Queries INOFENSIVAS — NO usadas en ningún script (4), solo definidas en
+`steelhead_client.py`. Su rotación no rompe nada; baja prioridad (limpiar o
+ignorar):**
+- `GetInsightsReportDetails`, `GetInsightsReportColumnConfigs` — los "INSIGHTS"
+  de la UI de Reporting son **Sonar chats** (`GetSonarChatChannels`), NO Insights
+  Reports de datos → no hay objeto que dispare estas ops en el dominio.
+- `ReportVariables` — se dispara al abrir el panel Variables del editor (interacción).
+- `ArchivePerspectiveDashboardFolder` — solo definida.
+
+**C. Mutations USADAS — rompen las herramientas (12). ESTA es la prioridad real.**
+Requieren **captura-y-aborta** con sentinelas (patrón `sentinels-config.json`):
+
+| Op | usada por | sentinela |
 |---|---|---|
-| GetPerspectiveDashboards | `62f4eb7c…` | ✅ `f09b4f996236b6c497c56a65342237019a16bd6fa99d11f402398c42002b2f60` |
-| GetPerspectiveDashboardFolders | `f193f682…` | ✅ `5fcab1f8574d6d428e01de042e18b0d3a0614733fa3b25ee6db38e377ebb5ae3` |
-| GetPerspectiveDashboardComponents (*) | `6e6446f0…` | (pendiente — abrir un dashboard) |
-| CreatePerspectiveDashboard | `7f0319ba…` | (pendiente — captura-y-aborta) |
-| UpdatePerspectiveDashboard | `078db8ff…` | (pendiente — captura-y-aborta) |
-| ArchivePerspectiveDashboard | `3cb3c5d5…` | (pendiente — captura-y-aborta) |
-| CreatePerspectiveDashboardComponent | `eeaa1411…` | (pendiente — captura-y-aborta) |
-| UpdatePerspectiveDashboardComponent | `cf3fe668…` | (pendiente — captura-y-aborta) |
-| CreatePerspectiveDashboardFolder | `2563e9e2…` | (pendiente — captura-y-aborta) |
-| ArchivePerspectiveDashboardFolder | `b2e04213…` | (pendiente — captura-y-aborta) |
-| CreateReportComponent | `c8a2d186…` | (pendiente — captura-y-aborta) |
-| UpdateReportComponent | `a1949041…` | (pendiente — captura-y-aborta) |
-| GetInsightsReportDetails | `b87afdbf…` | (pendiente — abrir un insights report) |
-| GetInsightsReportColumnConfigs | `7534a244…` | (pendiente — columnas de insights) |
-| ReportVariables | `5ce0347c…` | (pendiente — editar variables de un reporte) |
-| CreateReportVariable | `89efe99e…` | (pendiente — captura-y-aborta) |
-| UpdateReportVariable | `68d55099…` | (pendiente — captura-y-aborta) |
-| DeleteReportVariable | `7d70dc83…` | (pendiente — captura-y-aborta) |
+| CreatePerspectiveDashboard | push_dashboard.py | dashboard "Sentinela" (crear-y-abortar) |
+| UpdatePerspectiveDashboard | push_dashboard.py | dashboard "Sentinela" |
+| ArchivePerspectiveDashboard | push_dashboard.py | dashboard "Sentinela" |
+| CreatePerspectiveDashboardComponent | push_dashboard.py | dashboard "Sentinela" |
+| UpdatePerspectiveDashboardComponent | push_dashboard.py | dashboard "Sentinela" |
+| CreatePerspectiveDashboardFolder | push_dashboard.py | folder "Sentinela" (crear-y-abortar) |
+| CreateReportComponent | push_dashboard.py | reporte "Sentinela" (id **4007**) |
+| UpdateReportComponent | push_dashboard.py | reporte "Sentinela" |
+| CreateReportVariable | push_variable.py | reporte "Sentinela" |
+| UpdateReportVariable | push_variable.py | reporte "Sentinela" |
+| DeleteReportVariable | push_variable.py | reporte "Sentinela" |
+| UpdateReportDateRange | set_date_range.py | reporte "Sentinela" |
 
-(*) `GetPerspectiveDashboardComponents` NO salió en las 18 (validó ok con su hash
-actual) — se lista aquí solo por familia; verificar.
+**NOTA sobre `GetPerspectiveDashboardComponents`:** NO rotó (front `6e6446f0…` ==
+RSH) — lo incluí por error en la investigación; se descarta.
+
+### Recursos descubiertos (útiles para la captura de mutations)
+- Infra headless VERIFICADA: Playwright + `installInterceptor` (soporta
+  captura-y-aborta) + tokens ROCP de `.cache/tokens.json` autentican y capturan.
+- Objetos reales en el dominio TLC/344: reporte **"Sentinela" id 4007**,
+  dashboards (ids 157/159/160…), folders (ids 108/109/110…). Falta un **dashboard
+  Sentinela** y un **folder Sentinela** (o capturar los Create con crear-y-abortar).
+- **Límite headless:** el contenido de `/Reporting/*` renderiza (networkidle+8s)
+  pero los formularios de edición (agregar componente, editar variable) son
+  difíciles de accionar a ciegas headless → cada mutation necesita afinar su
+  flujo, o capturarse con el hash-scanner en el navegador real.
 
 ### Estado de captura (2026-07-21)
 
