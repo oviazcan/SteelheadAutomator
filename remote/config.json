@@ -1,6 +1,6 @@
 {
-  "version": "1.7.168",
-  "lastUpdated": "2026-07-22T09:21",
+  "version": "1.7.169",
+  "lastUpdated": "2026-07-22T09:27",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2548,7 +2548,7 @@
     "scripts/auto-router-panel.js": "07020fbd82ced16bc38e22a2a406d1e8ffc177a51f3993c4a7d03faf106e0f49",
     "scripts/auto-router.js": "6a2eed28ed8beb5b63fbb9022e56f5f5bf49ea788fad545bb76a6a830caae74c",
     "scripts/batch-name-filter-core.js": "918ef9faf5b76c94467b43d36ee23df7addecee03aeeeb34d9cf328885d4a914",
-    "scripts/batch-name-filter.js": "8d44cac43b482b3c19b0c0b32383e96c9c04a2bef31ce8cb7a6de8e929da9db4",
+    "scripts/batch-name-filter.js": "b77dcb52fa6f9facf31f9f3153aed6b116ad81024ed2090f811fc7bf90441cc2",
     "scripts/bill-autofill.js": "58750f899a5c1b40ce262297ccc81a7cfaf8feda6f8284bf6b096c74f136c6b9",
     "scripts/board-metal-tooltip.js": "5f57e72f2e1918285c45d8ac638cca43594c6326f86d3e7f26da1094698cc4ae",
     "scripts/bulk-upload-batch.js": "93ff56929eea67f5c79c35404601e827b785ab43d3fed633d2047ff3a7b2767e",
