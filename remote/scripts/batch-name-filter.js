@@ -6,10 +6,10 @@
 // UX (definida con el usuario): mientras escribe se muestra un preview en vivo de los
 // lotes que coinciden; al dar ENTER se aplica automático (modo REEMPLAZAR el filtro).
 //
-// Fuente de datos (MVP): persisted query FilterSearch (key 'inventoryBatchIdFilter').
-// LIMITACIÓN: FilterSearch topa en 10 resultados y no pagina → si un nombre tiene >10
-// lotes, el preview avisa "10 o más" (Fase 2: fuente sin-tope, pendiente de captura con
-// el operador — las pantallas de inventario son demasiado pesadas para discovery headless).
+// Fuente de datos: persisted query InventoryBatchViewQuery (searchQuery + paginación real,
+// hideCompleted:true). Devuelve el `name` estructurado → matching exacto robusto y SIN el tope
+// de 10 de FilterSearch. En Packing Slips/Scheduling los lotes completados no se filtran, así
+// que hideCompleted:true es además lo correcto y más eficiente.
 //
 // Estado singleton en window.__saBNF (no en el closure) porque injectAppScripts re-evalúa
 // el IIFE en cada acción del popup (lección surtido-guard/price-guard).
@@ -24,7 +24,6 @@
   const STYLE_ID = 'sa-bnf-style';
   const PANEL_ID = 'sa-bnf-panel';
   const DEBOUNCE_MS = 300;
-  const HASH_KEY = 'FilterSearchInventoryBatch'; // key en config.hashes.queries para esta variante
 
   const S = (window.__saBNF = window.__saBNF || { seq: 0, lastQuery: '', lastResult: null });
 
@@ -40,7 +39,7 @@
       #${BOX_ID} .sa-bnf-inp::placeholder{color:#7f8b99;}
       #${BOX_ID} .sa-bnf-clear{background:#1c2430;color:#9aa7b5;border:1px solid #33404f;border-radius:6px;padding:4px 7px;font-size:12px;cursor:pointer;line-height:1;}
       #${BOX_ID} .sa-bnf-clear:hover{color:#e6e9ee;border-color:#13a36f;}
-      #${PANEL_ID}{position:absolute;top:calc(100% + 4px);left:0;min-width:260px;max-width:360px;background:#1c2430;color:#e6e9ee;border:1px solid #33404f;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:2147483600;padding:8px;font-size:12px;}
+      #${PANEL_ID}{position:fixed;min-width:260px;max-width:360px;background:#1c2430;color:#e6e9ee;border:1px solid #33404f;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:2147483600;padding:8px;font-size:12px;}
       #${PANEL_ID} .sa-bnf-head{color:#f0f3f7;font-weight:600;margin-bottom:6px;}
       #${PANEL_ID} .sa-bnf-hint{color:#9aa7b5;font-size:11px;margin-top:6px;}
       #${PANEL_ID} .sa-bnf-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;border-radius:6px;padding:5px 7px;margin-top:6px;font-size:11px;}
@@ -68,9 +67,19 @@
   }
 
   // ── render del preview ──
+  function positionPanel(box, p) {
+    const inp = box.querySelector('.sa-bnf-inp');
+    if (!inp) return;
+    const r = inp.getBoundingClientRect();
+    p.style.top = (r.bottom + 4) + 'px';
+    p.style.left = r.left + 'px';
+  }
+  // El panel vive en document.body (position:fixed) porque el header MuiPaper tiene
+  // overflow-y:hidden y recortaría un panel absolute anclado dentro del box.
   function ensurePanel(box) {
     let p = document.getElementById(PANEL_ID);
-    if (!p) { p = document.createElement('div'); p.id = PANEL_ID; box.appendChild(p); }
+    if (!p) { p = document.createElement('div'); p.id = PANEL_ID; document.body.appendChild(p); }
+    positionPanel(box, p);
     return p;
   }
   function hidePanel() { const p = document.getElementById(PANEL_ID); if (p) p.remove(); }
@@ -81,7 +90,7 @@
     const head = document.createElement('div');
     head.className = 'sa-bnf-head';
     if (!result) { head.textContent = 'Buscando…'; p.appendChild(head); return; }
-    const { matches, count, atLimit } = result;
+    const { matches, count, capped } = result;
     if (count === 0) {
       head.textContent = `Sin lotes «${name}»`;
       p.appendChild(head);
@@ -100,9 +109,9 @@
       ul.appendChild(li);
     });
     p.appendChild(ul);
-    if (atLimit) {
+    if (capped) {
       const w = document.createElement('div'); w.className = 'sa-bnf-warn';
-      w.textContent = '⚠️ 10 o más — puede haber más lotes no listados (límite de la búsqueda).';
+      w.textContent = '⚠️ Muchísimos lotes con este nombre; se aplican los primeros encontrados.';
       p.appendChild(w);
     }
     const hint = document.createElement('div'); hint.className = 'sa-bnf-hint';
@@ -110,14 +119,37 @@
     p.appendChild(hint);
   }
 
-  // ── FilterSearch (debounced, con token de secuencia) ──
+  // ── InventoryBatchViewQuery paginada (sin tope de 10; name estructurado) ──
+  // Trae los lotes NO-completados cuyo name contiene `name` (searchQuery, substring server-side).
+  async function fetchBatchesByName(name) {
+    const PAGE = Core.INVENTORY_BATCH_VIEW_PAGE;
+    const all = [];
+    let offset = 0;
+    let capped = false;
+    for (let guard = 0; guard < 25; guard++) { // cap duro 25*PAGE por seguridad
+      const data = await api().query('InventoryBatchViewQuery', {
+        includeArchived: 'NO', hideCompleted: true, orderBy: ['CREATED_AT_DESC'],
+        offset, first: PAGE, searchQuery: name,
+      }, 'InventoryBatchViewQuery');
+      const pd = data && data.pagedData;
+      const nodes = (pd && pd.nodes) || [];
+      all.push(...nodes);
+      const total = pd && pd.totalCount;
+      offset += PAGE;
+      if (nodes.length < PAGE) break;
+      if (total != null && all.length >= total) break;
+      if (guard === 24) capped = true;
+    }
+    return { nodes: all, capped };
+  }
+
+  // debounced, con token de secuencia
   async function runSearch(box, name) {
     const seq = ++S.seq;
     renderPreview(box, name, null); // "Buscando…"
-    let items = [];
+    let res;
     try {
-      const data = await api().query('FilterSearch', { key: Core.FILTER_KEY, searchQuery: name }, HASH_KEY);
-      items = (data && data.tableFilterSearch) || [];
+      res = await fetchBatchesByName(name);
     } catch (e) {
       if (seq !== S.seq) return;
       const p = ensurePanel(box); p.textContent = '';
@@ -126,7 +158,8 @@
       return;
     }
     if (seq !== S.seq) return; // llegó una búsqueda más nueva
-    const result = Core.selectExactMatches(items, name);
+    const result = Core.selectByExactName(res.nodes, name);
+    result.capped = res.capped;
     S.lastQuery = name; S.lastResult = result;
     renderPreview(box, name, result);
   }
