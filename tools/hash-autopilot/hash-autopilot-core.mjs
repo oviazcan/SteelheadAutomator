@@ -42,16 +42,23 @@ export function isValidatedCapture({ responseOk = false, abortProbeVigente = fal
 // contra captura corrupta / cookie de otro dominio) y pide revisión humana.
 export function planDeploy(results, opts = {}) {
   const threshold = opts.massBrakeThreshold ?? 6;
-  const rotated = results.filter((r) => r.verdict === 'rotadoValidado');
+  const rotatedAll = results.filter((r) => r.verdict === 'rotadoValidado');
+  // EXTERNOS: capturamos su hash vivo pero la op NO vive en remote/config.json (su
+  // hash está en OTRO repo — p.ej. Reportes SH `steelhead_client.py`, PowerTools).
+  // writeConfigHashes no las puede escribir (regex sin match) → deployarlas sería un
+  // bump+push de gh-pages SIN cambio real, y como su cfgHash sigue null se repetiría
+  // en CADA corrida. Se reportan aparte para que el operador sincronice el otro repo.
+  const external = rotatedAll.filter((r) => !r.cfgHash);
+  const rotated = rotatedAll.filter((r) => r.cfgHash);
   const suspicious = results.filter((r) => r.verdict === 'sospechoso');
   const notCaptured = results.filter((r) => r.verdict === 'noCapturado');
   if (rotated.length > threshold) {
     return {
-      toDeploy: [], suspicious, notCaptured, massBrake: true,
+      toDeploy: [], suspicious, notCaptured, external, massBrake: true,
       reason: `Freno de masa: ${rotated.length} > ${threshold} rotados en una corrida`,
     };
   }
-  return { toDeploy: rotated, suspicious, notCaptured, massBrake: false, reason: null };
+  return { toDeploy: rotated, suspicious, notCaptured, external, massBrake: false, reason: null };
 }
 
 // Construye el payload de needs-attention.json (Nivel B). Enriquece cada op con

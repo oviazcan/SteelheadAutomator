@@ -22,6 +22,10 @@ const EXPECTED = {
   AllInventoryBatchStatuses: 'receiving-customerparts-status',
   GetPartNumberInventoryBatch: 'receiving-batch-detail',
   OperatorMaintenanceNodeDialogQuery: 'maintenance-event-complete-step',
+  // Insights (Nivel B 2026-07-22): solo se disparan con el deep-link CON query params
+  // (?id=<INSIGHT>&type=insight); la ruta de pathname /Reporting/View NO las dispara.
+  GetInsightsReportDetails: 'reporting-insights-detail',
+  GetInsightsReportColumnConfigs: 'reporting-insights-detail',
 };
 
 test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', () => {
@@ -31,7 +35,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 12 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 14 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });
@@ -49,6 +53,12 @@ test('rutas manuales de detalle: goto a la sub-entidad correcta + hrefMatches po
 test('rutas manuales de clic-botón: paso clickButton bilingüe', () => {
   assert.equal(cat.routes['salesorders-ro-edit'].steps[2].clickButton, 'edit sales order|editar orden de venta');
   assert.equal(cat.routes['salesorders-ro-addparts'].steps[2].clickButton, 'add parts \\(table\\)|agregar piezas \\(tabla\\)');
+});
+
+test('ruta de insights: goto CON query params (?id=…&type=insight) — el pathname solo no basta', () => {
+  const r = cat.routes['reporting-insights-detail'];
+  assert.match(r.steps[0].goto, /^\/Reporting\/View\?id=[A-Z_]+&type=insight$/);
+  assert.deepEqual(r.captures, ['GetInsightsReportColumnConfigs', 'GetInsightsReportDetails']);
 });
 
 test('ruta de factura (interacción por aria-label): goto PackingSlips + clickFirst "Add Invoice"', () => {

@@ -76,6 +76,23 @@ test('planDeploy: exactamente 6 rotados NO dispara freno', () => {
   assert.equal(p.toDeploy.length, 6);
 });
 
+test('planDeploy: rotado SIN cfgHash (hash de otro repo) NO se deploya, va a external', () => {
+  const res = [
+    { op: 'GetInsightsReportDetails', verdict: 'rotadoValidado', cfgHash: null, liveHash: 'new' },
+    R('A', 'rotadoValidado'),
+  ];
+  const p = planDeploy(res, {});
+  assert.deepEqual(p.toDeploy.map((x) => x.op), ['A']);
+  assert.deepEqual(p.external.map((x) => x.op), ['GetInsightsReportDetails']);
+});
+test('planDeploy: los externos NO cuentan para el freno de masa', () => {
+  const res = Array.from({ length: 7 }, (_, i) => ({ op: 'EXT' + i, verdict: 'rotadoValidado', cfgHash: null, liveHash: 'new' }));
+  const p = planDeploy(res, {});
+  assert.equal(p.massBrake, false);
+  assert.deepEqual(p.toDeploy, []);
+  assert.equal(p.external.length, 7);
+});
+
 test('missingCoverage: detecta ops target sin receta', () => {
   const recipes = { r1: { captures: ['AllCustomers'] }, r2: { captures: ['Customer'] } };
   const target = ['AllCustomers', 'Customer', 'CurrentUser'];

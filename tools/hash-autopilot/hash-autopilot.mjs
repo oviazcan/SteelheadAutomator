@@ -313,6 +313,7 @@ async function main() {
   if (plan.massBrake) console.log(`\n⚠️ ${plan.reason} — NO se deploya nada (revisión humana).`);
   if (plan.toDeploy.length) console.log(`\n🔺 Rotados validados: ${plan.toDeploy.map((r) => r.op).join(', ')}${DRY ? ' (dry-run: no deploya)' : ''}`);
   if (plan.notCaptured.length) console.log(`· No capturados (receta por afinar): ${plan.notCaptured.map((r) => r.op).join(', ')}`);
+  if ((plan.external || []).length) console.log(`📦 Rotados EXTERNOS (hash fuera de remote/config.json — sincronizar el otro repo): ${plan.external.map((r) => `${r.op}=${r.liveHash}`).join(' ')}`);
 
   persistResult({ date: RUN_DATE, authFailed: false, results, plan, probeVerdicts, productUpdates: { entries: productUpdates.entries || [], url: productUpdates.url || '' } });
 
@@ -388,6 +389,12 @@ async function main() {
       const rotados = results.filter((r) => r.verdict === 'rotadoValidado').map((r) => r.op).join(', ');
       sec.push(`⚠️ FRENO DE MASA — NO se deployó (${plan.reason}):\n   Rotados detectados: ${rotados}\n   Revisa manualmente (posible captura corrupta o cambio grande de Steelhead).`);
     }
+    if ((plan.external || []).length) {
+      // Rotadas que el motor capturó pero NO puede deployar: su hash no vive en
+      // remote/config.json sino en otro repo (Reportes SH `steelhead_client.py`,
+      // PowerTools). Acción del operador: pegar el hash nuevo allá.
+      sec.push(`📦 ROTADAS EXTERNAS (${plan.external.length}) — capturadas OK, pero su hash NO vive en remote/config.json (está en otro repo: Reportes SH / PowerTools). Sincronízalo allá:\n${plan.external.map((r) => `   • ${r.op}: → ${r.liveHash}`).join('\n')}`);
+    }
     if (plan.suspicious.length) {
       sec.push(`⚠️ SOSPECHOSOS (${plan.suspicious.length}) — difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => line(r.op)).join('\n')}`);
     }
@@ -416,7 +423,9 @@ async function main() {
       //   POR REVISAR = señal blanda no confirmada (probe no concluyente por auth/red;
       //     sospechoso = difiere del config pero sin data OK, típico de captura-y-aborta).
       const nUrgentes = realStaleRows.length + uncoveredNew.length + pendingMuts.length + sentinelBroken.length;
-      const nPorRevisar = unconfirmedRows.length + plan.suspicious.length;
+      // Las externas son accionables pero NO urgentes para la extensión (no rompen
+      // ningún applet: su hash vive en otro repo) → cuentan como "por revisar".
+      const nPorRevisar = unconfirmedRows.length + plan.suspicious.length + (plan.external || []).length;
       const nPendientes = nUrgentes + nPorRevisar;
       // 'fallo' SOLO si hay urgentes sin corregir; solo-blandas → 'revision' (no alarmar).
       const tipo = plan.massBrake ? 'revision'
