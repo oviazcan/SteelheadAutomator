@@ -1,9 +1,16 @@
 # batch-name-filter — Filtrar Lote por Nombre
 
-**Versión actual:** 0.2.0 — **Fase 2 RESUELTA.** Fuente = `InventoryBatchViewQuery` (paginada,
-`name` estructurado, `hideCompleted:true`) → **supera el tope de 10** y hace matching exacto
-robusto (adiós regex + colisión numérica). Fix del panel (`position:fixed`) incluido. Core+glue+config
-listos, **30/30 tests**. (El deploy 1.7.167 previo usaba FilterSearch/≤10; este re-deploy lo reemplaza.)
+**Versión actual:** 0.2.1 — **VIVO y VALIDADO end-to-end en producción (config 1.7.169).**
+Fuente = `InventoryBatchViewQuery` (paginada, `name` estructurado, `hideCompleted:true`) →
+**supera el tope de 10** (probado con 18 T-125) y matching exacto robusto (adiós regex + colisión
+numérica). **30/30 tests.**
+
+**Validación en vivo (2026-07-22):** box en el header ✓; teclear un nombre → preview con la lista
+`#idInDomain — name` ✓; Enter → chips aplicados (probado: "C-21568" → 3 chips `#16083/#14635/#12780`) ✓;
+panel `position:fixed` (no recortado por el `overflow:hidden` del header) ✓.
+
+**Historial de deploys:** 1.7.167 (MVP FilterSearch ≤10) → **1.7.168** (Fase 2: InventoryBatchViewQuery
++ fix panel) → **1.7.169** (fix lista del preview: nodos sin `display` → `#idInDomain — name`).
 
 ## Decisiones de comportamiento (definidas con el usuario 2026-07-21)
 - **Reemplazar** el filtro de lote actual al aplicar (no acumular).
