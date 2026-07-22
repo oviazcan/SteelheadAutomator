@@ -29,7 +29,18 @@
   const FILTER_KEY = 'inventoryBatchIdFilter';   // `key` de FilterSearch (texto plano, estable)
   const URL_PARAM = 'inventoryBatchIdFilter';     // parámetro de la URL del panel
   const FILTER_SEARCH_HASH = '1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9';
-  const FILTER_SEARCH_LIMIT = 10;                 // tope duro observado de FilterSearch
+  const FILTER_SEARCH_LIMIT = 10;                 // tope duro de FilterSearch (fuente LEGADA, ver abajo)
+  // Fuente PREFERIDA: InventoryBatchViewQuery — pagina de verdad (first/offset, sin tope de 10)
+  // y devuelve el `name` ESTRUCTURADO (no concatenado) → matching exacto trivial y robusto.
+  // Variables: {includeArchived:'NO', hideCompleted:true, orderBy:['CREATED_AT_DESC'], offset, first, searchQuery}
+  //   · hideCompleted:true en producción: en Packing Slips/Scheduling los lotes COMPLETADOS no se
+  //     pueden filtrar (no muestran piezas listas), así que traerlos es inútil + menos eficiente.
+  //     (La prueba del tope usó hideCompleted:false para ver 18 T-125 vs los 10 de FilterSearch.)
+  //   · searchQuery filtra por substring del name → se refina a exacto en cliente (name estructurado).
+  // Respuesta: data.pagedData.{ totalCount, nodes:[{ id(=dbId), idInDomain, name }] }.
+  const INVENTORY_BATCH_VIEW_OP = 'InventoryBatchViewQuery';
+  const INVENTORY_BATCH_VIEW_HASH = 'e4fc4cdf098f41e10881a512e63ce6fb068bcd8d5bd57b8627c86e5fda025d44';
+  const INVENTORY_BATCH_VIEW_PAGE = 200;
   const SHIPPING_URL_RE = /^\/Domains\/\d+\/Shipping\/?(?:[?#]|$)/; // Panel de Envío, NO /Shipping/PackingSlips
 
   function isShippingUrl(pathname) {
@@ -73,6 +84,20 @@
     return { matches, ids, count: ids.length, atLimit: arr.length >= FILTER_SEARCH_LIMIT };
   }
 
+  // ── Fuente PREFERIDA (InventoryBatchViewQuery): matching por name ESTRUCTURADO ──
+  function normalizeName(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
+  // nodes: pagedData.nodes = [{ id, idInDomain, name }] → dbIds de los que tienen name EXACTO.
+  // searchQuery ya filtró por substring server-side; aquí exigimos igualdad exacta del name
+  // (limpio, sin idInDomain pegado) → sin regex ni colisión numérica.
+  function selectByExactName(nodes, targetName) {
+    const target = normalizeName(targetName);
+    if (!target) return { matches: [], ids: [], count: 0 };
+    const arr = Array.isArray(nodes) ? nodes : [];
+    const matches = arr.filter((n) => n && normalizeName(n.name) === target);
+    const ids = dedup(matches.map((m) => String(m.id)).filter(Boolean));
+    return { matches, ids, count: ids.length };
+  }
+
   // Lee los dbIds actuales del parámetro inventoryBatchIdFilter de una URL.
   function parseInventoryBatchIdFilter(url) {
     try {
@@ -108,9 +133,10 @@
 
   const api = {
     FILTER_SEARCH_OP, FILTER_KEY, URL_PARAM, FILTER_SEARCH_HASH, FILTER_SEARCH_LIMIT,
+    INVENTORY_BATCH_VIEW_OP, INVENTORY_BATCH_VIEW_HASH, INVENTORY_BATCH_VIEW_PAGE,
     SHIPPING_URL_RE,
-    isShippingUrl, escapeRegex, dedup, stripPnSuffix, matchesExactName,
-    selectExactMatches, parseInventoryBatchIdFilter, buildFilterUrl, buildClearUrl,
+    isShippingUrl, escapeRegex, dedup, stripPnSuffix, matchesExactName, normalizeName,
+    selectExactMatches, selectByExactName, parseInventoryBatchIdFilter, buildFilterUrl, buildClearUrl,
   };
   if (typeof window !== 'undefined') window.BatchNameFilterCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
