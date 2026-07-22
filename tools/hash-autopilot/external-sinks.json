@@ -1,0 +1,8 @@
+{
+  "_doc": "Destinos EXTERNOS que el hash-autopilot sincroniza además de remote/config.json. Cuando una op rotada (plan.external — verdict rotadoValidado, sin cfgHash) tiene su hash en OTRO repo, el motor escribe el hash nuevo en el/los archivo(s) cuyo texto contenga esa op. El formato clave:valor es idéntico a config.json (`\"Op\": \"<sha256>\"`), así que el mismo regex de writeConfigHashes aplica. Solo REEMPLAZA ops ya existentes (nunca crea). Fail-safe: si un repo/archivo no está en la máquina, se omite.",
+  "sinks": [
+    { "name": "reportes-sh", "repo": "/Users/oviazcan/Projects/Ecoplating/Reportes SH", "file": "scripts/steelhead_client.py" },
+    { "name": "powertools-lowcode", "repo": "/Users/oviazcan/Projects/Ecoplating/SteelheadPowerTools", "file": "sync/lowcode_sync.py" },
+    { "name": "powertools-maintenance", "repo": "/Users/oviazcan/Projects/Ecoplating/SteelheadPowerTools", "file": "sync/maintenance_plans_sync.py" }
+  ]
+}

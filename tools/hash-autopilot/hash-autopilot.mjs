@@ -4,7 +4,7 @@
 // route-catalog.json que las cubre (selectRoutes), abre chromium headless con la
 // cookie de sesión, corre SOLO esas rutas, intercepta /graphql y captura los
 // hashes que el frontend usa hoy. (Comparación vs config + deploy: Tasks 6-7.)
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
@@ -13,6 +13,7 @@ import { installInterceptor, runRecipe } from './recipe-runner.mjs';
 import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention } from './hash-autopilot-core.mjs';
 import { classifyCycleOutcomes, formatSentinelAlert } from './sentinel-health.mjs';
 import { readConfigHashes } from './config-io.mjs';
+import { syncExternalToSinks } from './external-sync.mjs';
 import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
 import { appletsForOp, formatOpLine } from './applet-attribution.mjs';
@@ -330,6 +331,39 @@ async function main() {
       console.log(`✗ auto-deploy falló (exit ${e.status ?? '?'}) — requiere revisión humana`);
     }
   }
+
+  // Sincroniza los rotados EXTERNOS (hash vive en OTRO repo — Reportes SH /
+  // PowerTools) escribiendo el hash nuevo en su archivo y commiteando ese repo.
+  // Cierra el hueco: el motor ya capturó y validó el liveHash (rotadoValidado);
+  // aquí lo APLICA en vez de solo avisar. Fail-safe: repo/archivo ausente → skip;
+  // sin push (deja el commit local para que el operador lo suba). SA_NO_EXTERNAL=1
+  // lo desactiva.
+  let externalSync = null;
+  if (!DRY && !NO_DEPLOY && !process.env.SA_NO_EXTERNAL && (plan.external || []).length) {
+    try {
+      const sinks = JSON.parse(readFileSync(join(__dirname, 'external-sinks.json'), 'utf8')).sinks || [];
+      const updates = Object.fromEntries(plan.external.map((r) => [r.op, r.liveHash]));
+      externalSync = syncExternalToSinks(updates, sinks, {
+        exists: existsSync, readFile: (p) => readFileSync(p, 'utf8'), writeFile: (p, c) => writeFileSync(p, c),
+      });
+      for (const repo of externalSync.changedRepos) {
+        const rows = externalSync.report.filter((x) => x.repo === repo && x.changed);
+        const ops = rows.flatMap((x) => x.applied);
+        const msg = `fix(hash-autopilot): sync ${ops.length} hash(es) rotado(s) desde SteelheadAutomator\n\n${ops.map((op) => `  ${op} -> ${updates[op]}`).join('\n')}\n\nCapturados y validados VIVOS por el hash-autopilot; sincronizados automaticamente.`;
+        try {
+          execFileSync('git', ['-C', repo, 'add', ...rows.map((x) => x.file)], { stdio: 'inherit' });
+          execFileSync('git', ['-C', repo, 'commit', '-m', msg], { stdio: 'inherit' });
+          console.log(`✓ sync externo commiteado en ${repo}: ${ops.join(', ')}`);
+        } catch (e) {
+          console.log(`✗ commit externo falló en ${repo} (exit ${e.status ?? '?'}) — archivo escrito, commitear a mano`);
+        }
+      }
+      if (externalSync.notFound.length) console.log(`⚠️ externas SIN sink declarado (op no está en ningún repo de external-sinks.json): ${externalSync.notFound.join(', ')}`);
+    } catch (e) {
+      console.log(`✗ sync externo falló: ${e.message}`);
+    }
+  }
+
   // Excluye los huecos conocidos (SESSION_SENSITIVE sin ruta) de la señal de
   // escalamiento y de la notificación — son estáticos, no un cambio de UI nuevo.
   const notCapturedNew = plan.notCaptured.filter((r) => !knownNoRoute.has(r.op));
@@ -390,10 +424,20 @@ async function main() {
       sec.push(`⚠️ FRENO DE MASA — NO se deployó (${plan.reason}):\n   Rotados detectados: ${rotados}\n   Revisa manualmente (posible captura corrupta o cambio grande de Steelhead).`);
     }
     if ((plan.external || []).length) {
-      // Rotadas que el motor capturó pero NO puede deployar: su hash no vive en
-      // remote/config.json sino en otro repo (Reportes SH `steelhead_client.py`,
-      // PowerTools). Acción del operador: pegar el hash nuevo allá.
-      sec.push(`📦 ROTADAS EXTERNAS (${plan.external.length}) — capturadas OK, pero su hash NO vive en remote/config.json (está en otro repo: Reportes SH / PowerTools). Sincronízalo allá:\n${plan.external.map((r) => `   • ${r.op}: → ${r.liveHash}`).join('\n')}`);
+      // Rotadas cuyo hash vive en OTRO repo (Reportes SH `steelhead_client.py`,
+      // PowerTools). El motor las SINCRONIZA automáticamente (escribe+commitea el
+      // otro repo). Reporta lo aplicado; si algo quedó sin sink o el commit falló,
+      // lo marca como pendiente de acción manual.
+      const synced = new Set((externalSync?.report || []).filter((x) => x.changed).flatMap((x) => x.applied));
+      const okRows = plan.external.filter((r) => synced.has(r.op));
+      const pendRows = plan.external.filter((r) => !synced.has(r.op));
+      if (okRows.length) {
+        const repos = [...new Set((externalSync?.changedRepos || []))].join(', ');
+        sec.push(`📦 SINCRONIZADAS EXTERNAS (${okRows.length}) — hash escrito + commiteado en otro repo (${repos}):\n${okRows.map((r) => `   • ${r.op}: → ${r.liveHash}`).join('\n')}\n   (commit local sin push — súbelo cuando quieras)`);
+      }
+      if (pendRows.length) {
+        sec.push(`📦 ROTADAS EXTERNAS PENDIENTES (${pendRows.length}) — capturadas OK pero no sincronizadas (¿repo ausente, sin sink, o commit falló?). Pega el hash a mano:\n${pendRows.map((r) => `   • ${r.op}: → ${r.liveHash}`).join('\n')}`);
+      }
     }
     if (plan.suspicious.length) {
       sec.push(`⚠️ SOSPECHOSOS (${plan.suspicious.length}) — difieren del config pero su respuesta no trajo data OK:\n${plan.suspicious.map((r) => line(r.op)).join('\n')}`);
