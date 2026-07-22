@@ -61,12 +61,21 @@
   }
 
   // ── detección de la columna Received Batches por alineación X del header ──
+  // El header de esta tabla (MUI CSS-grid) es un <td> y el texto vive en un <strong> hoja:
+  //   <thead><tr class="MuiTableRow-head"><td><div><strong>Received Batches</strong></div></td>
+  // Por eso el selector debe incluir strong/b/a/td además de div/span/th, y matchear el NODO HOJA.
   function getRBHeaderCentersX() {
-    const hdrs = Array.from(document.querySelectorAll('th,[role="columnheader"],div,span'))
+    const leaves = Array.from(document.querySelectorAll('th,td,[role="columnheader"],div,span,strong,b,a,p,label'))
       .filter((e) => e.children.length === 0 && /Received\s*Batch/i.test(e.textContent || '') && (e.textContent || '').trim().length < 25);
     const centers = [];
-    for (const h of hdrs) {
-      const r = h.getBoundingClientRect();
+    const seen = new Set();
+    for (const leaf of leaves) {
+      // Sube a la CELDA header (td/th) — su ancho/posición = la columna del grid, igual que la celda
+      // de datos. El <strong> hoja solo mide el texto (más angosto) y desalinearía la comparación.
+      const cell = leaf.closest('th,td,[role="columnheader"]') || leaf;
+      if (seen.has(cell)) continue;
+      seen.add(cell);
+      const r = cell.getBoundingClientRect();
       if (r.width > 0) centers.push(r.left + r.width / 2);
     }
     return centers;
