@@ -400,7 +400,7 @@ figure svg{display:block;width:100%;height:auto}
     slides.forEach(function(s,x){s.classList.toggle('active',x===i)});
     count.textContent=(i+1)+' / '+n;
     prog.style.width=((i+1)/n*100)+'%';
-    document.getElementById('deck').scrollTop=0;
+    document.getElementById('deck').scrollTop=0; try{window.scrollTo(0,0)}catch(e){}
   }
   function next(){show(i+1)} function prev(){show(i-1)}
   document.getElementById('next').addEventListener('click',next);
