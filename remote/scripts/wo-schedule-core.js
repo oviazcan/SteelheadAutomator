@@ -82,6 +82,31 @@
     return (wo && wo.id != null) ? wo.id : null;
   }
 
+  // Detalle enriquecido de UN PN desde el response de GetPartNumber:
+  //   { description, labels: [{ name, color }] }
+  // - description = partNumberById.descriptionMarkdown (ej. "CONECTOR").
+  // - labels ACTIVOS (node.archivedAt == null) de partNumberLabelsByPartNumberId.
+  // Fail-safe: shape inesperado → { description:'', labels:[] }.
+  function extractPartNumberDetail(input) {
+    const pn = (input && input.partNumberById) ? input.partNumberById
+             : (input && input.data && input.data.partNumberById) ? input.data.partNumberById
+             : null;
+    if (!pn || typeof pn !== 'object') return { description: '', labels: [] };
+    const description = (pn.descriptionMarkdown != null) ? String(pn.descriptionMarkdown).trim() : '';
+    const nodes = (pn.partNumberLabelsByPartNumberId && pn.partNumberLabelsByPartNumberId.nodes) || [];
+    const labels = [];
+    const seen = new Set();
+    nodes.forEach(function (n) {
+      if (!n || n.archivedAt != null) return;                 // archivada → fuera
+      const l = n.labelByLabelId; if (!l || l.name == null) return;
+      const key = String(l.name);
+      if (seen.has(key)) return;
+      seen.add(key);
+      labels.push({ name: String(l.name), color: (l.color != null ? String(l.color) : '') });
+    });
+    return { description: description, labels: labels };
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // Programación (índice workOrderId → tarea(s) agendada(s))
   // ══════════════════════════════════════════════════════════════════════════
@@ -336,7 +361,7 @@
   const api = {
     WO_INDEX_RE, WO_DETAIL_RE, DOMAIN_RE,
     isWorkOrdersIndexPath, isWorkOrderDetailPath, parseWorkOrderIdInDomain, parseDomainId,
-    extractPartNumbers, pnLink, extractWorkOrderGlobalId,
+    extractPartNumbers, pnLink, extractWorkOrderGlobalId, extractPartNumberDetail,
     buildScheduleIndex, resolveByWorkOrderId, resolveByAccountIds,
     stationNameMap, stationName,
     buildBoardScheduleIndex, resolveBoardScheduleForWO,
