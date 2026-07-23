@@ -102,3 +102,73 @@ test('planSoloPrecioFastPath: tolera argumentos raros sin lanzar', () => {
   assert.equal(P.planSoloPrecioFastPath('SOLO_PRECIO'), false); // flag ausente → falsy → false
   assert.equal(P.planSoloPrecioFastPath(), false);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// planSoloPrecioDecision — decisión de 3 estados: FULL | ASK | FASTPATH
+// ─────────────────────────────────────────────────────────────────────────────
+// Refina el gate del fast-path para el caso real: la plantilla "Limpiar Datos"
+// escribe `Validación = F` en todas las filas → parser: validacion1er = false (no null).
+// `classifyRunIntent`/`partHasEnrich` cuentan ese false como "enriquecimiento" (opt-out de
+// validación 1er recibo es un cambio de línea real, con semántica REPLACE), así que el
+// fast-path NUNCA se activaba en cargas de solo-precio hechas con plantilla.
+//
+// La decisión distingue por INTENCIÓN de la columna Validación en la corrida completa:
+//   - validacion1er === true  (activación EXPLÍCITA)          → FULL   (respetar, correr enrich)
+//   - validacion1er === false (F de plantilla / desactivar)   → ASK    (ambiguo → preguntar)
+//   - validacion1er === null  (columna vacía)                 → no aporta señal
+// Cualquier enrich REAL (specs/racks/dims/metalBase/…), un PN nuevo, o ausencia de precio
+// dominan y fuerzan FULL (invariantes de seguridad del atajo, intactos).
+
+test('planSoloPrecioDecision: flag OFF → SIEMPRE FULL (comportamiento actual intacto)', () => {
+  assert.equal(P.planSoloPrecioDecision([{ precio: 10 }], true, false), 'FULL');
+  assert.equal(P.planSoloPrecioDecision([{ precio: 10, validacion1er: false }], true, false), 'FULL');
+});
+
+test('planSoloPrecioDecision: solo-precio puro (validación vacía/null) → FASTPATH', () => {
+  assert.equal(P.planSoloPrecioDecision([{ precio: 10 }, { precio: 3 }], true, true), 'FASTPATH');
+  assert.equal(P.planSoloPrecioDecision([{ precio: 10, validacion1er: null }], true, true), 'FASTPATH');
+});
+
+test('planSoloPrecioDecision: solo-precio + Validación=F (validacion1er false) → ASK', () => {
+  const parts = [{ precio: 10, validacion1er: false }, { precio: 3, validacion1er: false }];
+  assert.equal(P.planSoloPrecioDecision(parts, true, true), 'ASK');
+});
+
+test('planSoloPrecioDecision: solo-precio + activación EXPLÍCITA (validacion1er true) → FULL', () => {
+  // El operador puso V/SÍ a propósito: correr completo para no perder la activación.
+  const parts = [{ precio: 10, validacion1er: true }];
+  assert.equal(P.planSoloPrecioDecision(parts, true, true), 'FULL');
+});
+
+test('planSoloPrecioDecision: mezcla activar+desactivar → FULL (la activación explícita domina)', () => {
+  const parts = [{ precio: 10, validacion1er: false }, { precio: 5, validacion1er: true }];
+  assert.equal(P.planSoloPrecioDecision(parts, true, true), 'FULL');
+});
+
+test('planSoloPrecioDecision: una sola fila con Validación=F en el lote → ASK (por-corrida)', () => {
+  const parts = [{ precio: 10 }, { precio: 5, validacion1er: false }, { precio: 1, validacion1er: null }];
+  assert.equal(P.planSoloPrecioDecision(parts, true, true), 'ASK');
+});
+
+// ── INVARIANTES DE SEGURIDAD (los mismos del atajo) ──
+test('SEGURIDAD: enrich REAL + Validación=F → FULL (el enrich domina sobre ASK)', () => {
+  const parts = [{ precio: 10, validacion1er: false, specs: [{ id: 1 }] }];
+  assert.equal(P.planSoloPrecioDecision(parts, true, true), 'FULL');
+});
+
+test('SEGURIDAD: un PN nuevo (allExisting=false) + Validación=F → FULL', () => {
+  const parts = [{ precio: 10, validacion1er: false }];
+  assert.equal(P.planSoloPrecioDecision(parts, false, true), 'FULL');
+});
+
+test('SEGURIDAD: sin precio → FULL aunque haya Validación=F', () => {
+  const parts = [{ validacion1er: false }];
+  assert.equal(P.planSoloPrecioDecision(parts, true, true), 'FULL');
+});
+
+test('planSoloPrecioDecision: tolera argumentos raros sin lanzar', () => {
+  assert.equal(P.planSoloPrecioDecision(null, true, true), 'FULL');   // sin parts → sin precio → FULL
+  assert.equal(P.planSoloPrecioDecision([], true, true), 'FULL');
+  assert.equal(P.planSoloPrecioDecision([{ precio: 1 }], true), 'FULL'); // flag ausente → FULL
+  assert.equal(P.planSoloPrecioDecision(), 'FULL');
+});

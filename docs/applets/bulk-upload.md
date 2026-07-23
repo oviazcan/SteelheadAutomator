@@ -2,23 +2,29 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
-## Diagnóstico 2026-07-21 — corrida SOLO_PN de solo-precio (~24k filas): 40 errores `Enrich "" (cust:undefined) … sin entry en pnLookup` [SIN cambio de código; hallazgo + deuda]
-Corrida real del operador: CSV de **solo cambio de precios**, modo **SOLO_PN**, 25 lotes (~24 175 filas). Resultado: `ERRORES: 40`, todos con el mismo texto:
-`Enrich "" (cust:undefined) omitido: existing sin entry en pnLookup — probable SaveManyPNP rechazado en su quote. Re-correr este PN solo.`
+## fix 1.5.42 (2026-07-22) — Fast-path SOLO_PRECIO bloqueado por `Validación=F` de plantilla [EN WORKBENCH, pendiente deploy]
 
-**Diagnóstico (verificado contra el código; NO se pudo ver el CSV — no estaba en `~/Downloads`, inferencia fuerte del parser + log):**
-- **Los precios de los PNs válidos SÍ se aplicaron.** Log por lote: `Precios standalone: 1000` + `SavePartNumber: 1000 OK, 0 retry` + `Paso 5a/5: Releyendo precios para fijar default`. Los 40 errores NO tumbaron el resto.
-- **Qué son los 40:** filas con **"Número de parte" vacío y "Cliente" vacío**, que sobrevivieron el filtro del parser SOLO porque traían algo en **"Id SH"** (`bulk-upload.js:1528` `if (!pn && !idShEarly) continue;`). Ese Id SH **no resolvió** a ningún PN (`:1993`/`:1996` — "Id SH no encontrado/inválido y sin PN para fallback") → status **`error`**.
-- **Cadena:** status `error` → en la construcción de `pnLookup` SOLO_PN (`:5300-5311`) cae al `else` (`pnId = newPnIds.get(...)` → undefined) → `if(!pnId) continue` → **sin entry**. Sin entry → (a) NO se creó precio standalone (`:5324` `if(!entry) continue`), (b) el `enrichWorker` (`:5467-5482`) reporta el error.
-- **El mensaje es ENGAÑOSO en SOLO_PN.** El `kind='existing'` es un default (`:5479` `status==='new'||'forceDup' ? 'NEW' : 'existing'` → todo lo demás cae en "existing"); NO es un PN existente. Y "probable SaveManyPNP rechazado en su quote" está redactado para el modo **COTIZACIÓN** (donde el precio vive en una quote) — en SOLO_PN NO hay quote. La causa real en SOLO_PN es: **la fila no resolvió a ningún PN** (Id SH huérfano + sin PN name + sin cliente).
-- **Por qué NO se activó el fast-path SOLO_PRECIO** (corrió el enrich completo, ~315 s/lote de "Releyendo precios"): `allExistingSel` (`:4509`) exige `pnStatus.every(s => s.status === 'existing')`; **una sola fila `error` lo vuelve false** → `classifyRunIntent` ≠ `SOLO_PRECIO` → atajo OFF. No es bug: es ineficiencia inducida por datos sucios (40 filas irresolubles bloquearon el atajo para las 24k).
+**Incidente (diagnóstico de corrida real).** Carga `Precios_V1.1` en modo SOLO_PN, **8238 PN de solo-precio** (identificados por Id SH, cero enriquecimiento). El reporte: `PNs procesados 8238`, **22 errores** todos `HTTP 429 en SavePartNumber`, 0 omitidas; todas las categorías de decisión (NEW/MODIFY Pase 1·2·3) en 0. Los precios **sí** se aplicaron (Paso 2/5 `SaveManyPartNumberPrices`, cero errores; corre **antes** del enrich). Pero el fast-path **no se activó** y corrió STEP 6 completo, con dos consecuencias:
+1. **22×HTTP 429** — rate-limit sostenido de SH ante la ráfaga de 8238 `SavePartNumber` innecesarios (el enrich es no-op en solo-precio salvo por el punto 2).
+2. **Desactivación silenciosa de "Validación 1er recibo"** en los PN que la tenían — la plantilla "Limpiar Datos" escribe `Validación=F` en todas las filas → `validacion1er=false` → `optInOuts:[]` → como `SavePartNumber` hace **REPLACE**, ese `[]` **borra** el opt-in. (Los 22 que fallaron con 429 se **salvaron**: su `SavePartNumber` no completó → conservaron la validación.)
 
-**Acción que se dio al operador:** localizar en el CSV las filas con "Id SH" con valor y "Número de parte" vacío (serán 40); el consejo del mensaje *"Re-correr este PN solo"* **no sirve** (no hay PN ni Id SH válido) — hay que corregir el origen (PN+cliente o el Id SH) y recargar solo esas 40; si eran basura, ignorar.
+**Causa raíz.** `partHasEnrich` cuenta `p.validacion1er !== null` como enriquecimiento (un opt-out de validación ES un cambio de línea real). La plantilla pone `F` explícito (no vacío), y `toBool("F")=false` con celda truthy ⇒ `validacion1er=false` (no null). Así `classifyRunIntent` da **ENRIQUECIMIENTO**, no `SOLO_PRECIO` ⇒ `planSoloPrecioFastPath=false` ⇒ nunca se salta STEP 6. **Es el mismo patrón del bug 1.5.29** (`Precio default=V` de plantilla tocaba precios sin querer): una columna con valor-por-defecto de plantilla contamina la clasificación. El fix 1.5.13 tapó la columna *vacía* (→ null=preservar), pero **no** el `"F"` explícito.
 
-**Deuda detectada (no accionada esta sesión):**
-1. **Mensaje de error por modo** en el `enrichWorker` (`:5480`): en SOLO_PN debería decir "fila no resolvió a ningún PN (Id SH huérfano / sin PN name)", no "SaveManyPNP rechazado en su quote" (que aplica solo a COTIZACIÓN). Y el consejo "Re-correr este PN solo" es inútil cuando `part.pn===''`.
-2. **Filas `error` arrastran el fast-path a OFF**: evaluar si `classifyRunIntent`/`allExistingSel` deberían ignorar filas ya marcadas `error` (que igual no se ejecutan), o al menos **avisar en el preview** "N filas en error desactivan el fast-path SOLO_PRECIO / no recibirán precio".
-3. **Visibilidad en el preview**: 40 filas `error` en 24k pasan desapercibidas; el preview debería resaltar el conteo de `error` antes de ejecutar (ligado al punto 2).
+**Fix (mínimamente invasivo, sin tocar `decideOptInOuts`).**
+- Nueva decisión pura de 3 estados: **`Parse.planSoloPrecioDecision(parts, allExisting, flagEnabled)` → `'FASTPATH' | 'ASK' | 'FULL'`**. Distingue la validación por **VALOR** en la corrida completa:
+  - `validacion1er === true` (activación **explícita** del operador) → **FULL** (correr enrich; saltarlo perdería la activación deseada).
+  - `validacion1er === false` (la `F` de plantilla / desactivación) → **ASK** (ambiguo → preguntar).
+  - `validacion1er === null` (columna vacía) → sin señal.
+  - Enrich de línea REAL (specs/racks/dims/metalBase/…), un PN nuevo (`allExisting=false`), o sin precio **dominan → FULL** (invariantes de seguridad intactos).
+- Refactor: se extrajo **`partHasEnrichLine`** (enrich sin la señal de validación); `partHasEnrich = partHasEnrichLine || validacion1er≠null` — **comportamiento byte-idéntico** (`classifyRunIntent` y su badge sin cambios).
+- **Modal `askFastPathSoloPrecio`** (dark-mode, patrón `askResumeOrFresh`) en `execute()` **antes de cualquier escritura**: **⚡ Fast-path (solo precio)** / **Correr completo** / **Cancelar** (cancel → `hidePanel()`+return, sin tocar nada). `FASTPATH` va directo (como hoy); `FULL` corre el pipeline completo (byte-idéntico).
+- No se toca `decideOptInOuts`: quien elija "Correr completo" conserva la semántica `false→[]` (desactivación explícita).
+
+**Tests.** `bulk-upload-solo-precio-fastpath.test.js` pasó de 13 → **23 casos** (+10 para `planSoloPrecioDecision`: FASTPATH/ASK/FULL, mezcla activar+desactivar, por-corrida, y los 3 invariantes de seguridad enrich/PN-nuevo/sin-precio). Suite repo-wide **779/779**.
+
+**Decisión de producto (confirmada con el operador):** modal de confirmación por corrida (no activación automática silenciosa) — mantiene control y no cambia el comportamiento a espaldas de nadie. No se recuperó la validación de la corrida del 2026-07-22 (el operador confirmó que no la usa; el precio quedó OK).
+
+**Pendiente:** deploy con `wb-deploy.sh bulk-upload …` + `wb-deploy.sh bulk-upload-parse …` (2 scripts) y validar el modal en vivo en la próxima carga solo-precio con plantilla. **Follow-up no bloqueante:** mejorar el badge del preview para reflejar el caso 'ASK' (hoy muestra ENRIQUECIMIENTO); persistir la elección del modal en `resumeState` para no re-preguntar en reanudaciones.
 
 ## feat 1.5.40–1.5.41 (2026-07-20) — Fast-path SOLO_PRECIO [ACTIVO en producción, config 1.7.163, flag ON]
 Cuando una corrida solo cambia **precios** de PN que **ya existen** (cero enriquecimiento: ni
@@ -1604,7 +1610,7 @@ deja 1 row con `processNodeId=null` por SpecField y archiva el resto.
 `Int` para `specFieldId/specFieldParamId`; el script (y el bulk-upload
 nuevo) hacen `Number(...)` antes de mandar.
 
-### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
+### Pendiente de validación
 - [ ] Re-correr una carga masiva real con CSV mixto (sfpId nuevo + sfpId
       viejo en mismo SpecField) y confirmar via DevTools que el PN queda
       con 1 sólo row por SpecField, todos `processNodeId=null`.
@@ -1649,7 +1655,7 @@ genuinamente 0 archivados detectados.
   `inventoryItemId`, uno archivado + uno activo) necesita tie-break explícito.
   Mismo patrón que `pnByKey` en audit-incomplete-pns 2026-05-23.
 
-### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
+### Pendiente de validación
 - [ ] Re-correr recovery del CSV reducido de 404 incompletos con 1.4.31. El log
       debe mostrar `Pre-fetched predictivos existentes de 424 PNs (T nodos,
       A archivados detectados)` con A > 0 si hay archivados, y
@@ -1734,7 +1740,7 @@ y por eso SavePartNumber los creó limpios.
   (audit) son indispensables — confiar solo en HTTP 200 ocultó el bug por
   ~3 versiones (1.4.27 → 1.4.29).
 
-### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
+### Pendiente de validación
 - [ ] Re-cargar CSV recovery 1.4.30 (o el original P3) — verificar log
       `Predictivos desarchivados: N/N` y re-audit que `predictive missing`
       baje a ~0 (solo deberían quedar los 22 buckets `duplicateQuoteIBMS`
@@ -1783,7 +1789,7 @@ no permitía decir "para todas las que siguen, ya sabes qué quiero".
   es lo natural — el operador piensa en términos de "la decisión que tomé para
   toda la corrida", no "por cliente".
 
-### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
+### Pendiente de validación
 - [ ] Probar en re-carga del CSV de recovery 1.4.28+ — marcar "modificar +
       aplicar a todas" en la primera cotización SCHNEIDER existente y verificar
       que las ~424 siguientes no muestran modal y se ejecutan automáticas con
