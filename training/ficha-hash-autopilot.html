@@ -106,7 +106,7 @@ td code{white-space:nowrap}
 
   <div class="tldr">
     <p class="ct">En una frase</p>
-    <p>Steelhead identifica cada consulta con un <strong>código</strong> en vez de con su texto completo (un párrafo largo); cuando actualiza su software ese código cambia (“rota”) y nuestras herramientas se quedan hablando en un idioma que el servidor ya no entiende. <strong>Hash-Autopilot</strong> detecta el corte, descubre el código nuevo navegando el ERP como lo haría un humano, lo valida y lo publica —solo— en las tres herramientas que lo usan.</p>
+    <p>Para pedirle datos al ERP, la extensión usa una <strong>llave</strong> (un código corto) por cada operación. Cuando Steelhead actualiza su software, <strong>cambia la cerradura</strong> y la llave vieja deja de abrir. <strong>Hash-Autopilot</strong> detecta el corte, <strong>deduce la nueva llave</strong> abriendo la puerta como lo haría un usuario real, la valida y la reparte —sola— en las tres herramientas que la usan.</p>
   </div>
 
   <!-- ===================== 01 ===================== -->
@@ -116,8 +116,8 @@ td code{white-space:nowrap}
   <p>Cuando la aplicación de Steelhead le pide datos a su servidor, <strong>no manda la pregunta completa</strong> (que puede ser un párrafo largo de código). Manda solo un <strong>código de 64 caracteres</strong> —un “hash” SHA-256— que identifica esa pregunta exacta. El servidor ya tiene guardada la pregunta completa asociada a ese código, así que basta con decir “dame el resultado del código X”. Es más rápido, viaja menos información, y el texto de la consulta queda del lado del servidor.</p>
 
   <div class="callout meta">
-    <p class="ct">Analogía — el número de plato del menú</p>
-    <p>En vez de decirle al mesero <em>“quiero la hamburguesa doble con queso, sin cebolla, término medio”</em>, dices <strong>“quiero el plato #47”</strong>. Tú y la cocina acordaron de antemano qué es el 47. Es más rápido para todos y no tienes que repetir la receta completa cada vez. El <strong>hash es ese número de plato</strong>; la consulta completa es la receta que la cocina tiene guardada.</p>
+    <p class="ct">Analogía — la llave y la cerradura</p>
+    <p>Cada operación del ERP es como una <strong>puerta</strong>. Para abrirla, la extensión no describe la petición completa cada vez: usa una <strong>llave</strong> —un código corto que el servidor reconoce como “ábrele esta puerta”—. El <strong>hash es esa llave</strong>; la consulta completa es la puerta que abre. Es más rápido y el detalle de la petición se queda del lado del servidor.</p>
   </div>
 
   <figure class="diagram">
@@ -131,38 +131,38 @@ td code{white-space:nowrap}
       <!-- arrow -->
       <line x1="180" y1="87" x2="270" y2="87" stroke="var(--accent)" stroke-width="2" marker-end="url(#agreen)"/>
       <rect x="150" y="120" width="140" height="24" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
-      <text x="220" y="136" text-anchor="middle" class="svg-m" font-size="11" fill="var(--accent-ink)">“dame el plato #47”</text>
+      <text x="220" y="136" text-anchor="middle" class="svg-m" font-size="11" fill="var(--accent-ink)">uso mi llave</text>
       <!-- server -->
       <rect x="270" y="52" width="150" height="70" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
       <text x="345" y="76" text-anchor="middle" class="svg-t" font-size="13" font-weight="700">Servidor SH</text>
-      <text x="345" y="95" text-anchor="middle" class="svg-mut" font-size="10">Recetario:</text>
-      <text x="345" y="109" text-anchor="middle" class="svg-m" font-size="10" fill="var(--accent-ink)">#47 = GetPartNumber</text>
-      <text x="345" y="164" text-anchor="middle" class="svg-t" font-size="12" fill="var(--accent-ink)">✓ responde con los datos</text>
+      <text x="345" y="95" text-anchor="middle" class="svg-mut" font-size="10">Cerradura:</text>
+      <text x="345" y="109" text-anchor="middle" class="svg-m" font-size="10" fill="var(--accent-ink)">llave → GetPartNumber</text>
+      <text x="345" y="164" text-anchor="middle" class="svg-t" font-size="12" fill="var(--accent-ink)">✓ abre y entrega los datos</text>
 
       <!-- ROTADO -->
       <text x="600" y="26" text-anchor="middle" class="svg-t" font-weight="800" font-size="15" fill="var(--danger)">Tras una actualización de Steelhead</text>
       <rect x="450" y="52" width="150" height="70" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
       <text x="525" y="80" text-anchor="middle" class="svg-t" font-size="13" font-weight="700">Extensión</text>
-      <text x="525" y="100" text-anchor="middle" class="svg-mut" font-size="11">(sigue pidiendo #47)</text>
+      <text x="525" y="100" text-anchor="middle" class="svg-mut" font-size="11">(usa la llave vieja)</text>
       <line x1="600" y1="87" x2="690" y2="87" stroke="var(--danger)" stroke-width="2" marker-end="url(#ared)"/>
       <rect x="570" y="120" width="140" height="24" rx="12" fill="var(--danger-wash)" stroke="var(--danger)"/>
-      <text x="640" y="136" text-anchor="middle" class="svg-m" font-size="11" fill="var(--danger)">“el plato #47…”</text>
+      <text x="640" y="136" text-anchor="middle" class="svg-m" font-size="11" fill="var(--danger)">llave vieja…</text>
       <rect x="690" y="52" width="80" height="70" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
       <text x="730" y="82" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Servidor</text>
-      <text x="730" y="99" text-anchor="middle" class="svg-mut" font-size="10">menú</text>
-      <text x="730" y="111" text-anchor="middle" class="svg-mut" font-size="10">reimpreso</text>
+      <text x="730" y="99" text-anchor="middle" class="svg-mut" font-size="10">cerradura</text>
+      <text x="730" y="111" text-anchor="middle" class="svg-mut" font-size="10">cambiada</text>
       <!-- error -->
       <rect x="470" y="200" width="300" height="56" rx="9" fill="var(--danger-wash)" stroke="var(--danger)"/>
       <text x="620" y="222" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--danger)">HTTP 400</text>
       <text x="620" y="242" text-anchor="middle" class="svg-m" font-size="11" fill="var(--danger)">“Must provide a query string.”</text>
-      <text x="620" y="284" text-anchor="middle" class="svg-mut" font-size="11">= “no existe el plato 47, dime qué quieres”</text>
+      <text x="620" y="284" text-anchor="middle" class="svg-mut" font-size="11">= “esta llave ya no abre esta puerta”</text>
 
       <defs>
         <marker id="agreen" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker>
         <marker id="ared" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--danger)"/></marker>
       </defs>
     </svg>
-    <figcaption>El mismo código funciona hasta que Steelhead “reimprime el menú”. No es un bug nuestro: es cómo funciona la técnica de <em>persisted queries</em>.</figcaption>
+    <figcaption>La misma llave abre hasta que Steelhead cambia la cerradura. No es un bug nuestro: es cómo funciona la técnica de <em>persisted queries</em>.</figcaption>
   </figure>
 
   <!-- ===================== 02 ===================== -->
@@ -298,7 +298,7 @@ td code{white-space:nowrap}
 
   <div class="callout meta">
     <p class="ct">Analogía — el freno de masa</p>
-    <p>Si de golpe parece que <em>“todo el menú cambió a la vez”</em>, es más probable que el mesero se haya equivocado de restaurante que que el restaurante haya reimpreso todo. Ante esa señal, el sistema no actualiza nada por su cuenta: pide que un humano lo revise.</p>
+    <p>Si de golpe parece que cambiaron <em>“todas las cerraduras a la vez”</em>, es más probable que nos hayamos equivocado de edificio que que de verdad las recambiaran todas. Ante esa señal, el sistema no actualiza nada por su cuenta: pide que un humano lo revise.</p>
   </div>
 
   <!-- ===================== 06 ===================== -->

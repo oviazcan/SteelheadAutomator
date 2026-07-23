@@ -121,23 +121,23 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 
 - **Mensaje único:** la extensión le habla al ERP con códigos cortos, no con preguntas completas.
 - **Texto:**
-  - Título: **Cómo le hablamos al ERP: el “número de plato”**
-  - Bullets: “Steelhead identifica cada consulta con un **código** de 64 caracteres (un ‘hash’)” · “Es más
-    rápido y el texto completo queda privado” · “La técnica se llama *persisted queries*”.
-- **Visual:** extensión → “dame el plato #47” → servidor con un recetario (#47 = GetPartNumber).
-- **Metáfora:** el **número de plato del menú**: pides “el 47” en vez de recitar la receta completa.
-- **Notas:** siembra la semilla para el slide 8 (qué pasa cuando el menú cambia).
+  - Título: **Cómo le hablamos al ERP: llaves y cerraduras**
+  - Bullets: “Cada consulta al ERP se abre con una **llave**: un código de 64 caracteres (el ‘hash’)” · “Es más
+    rápido y el detalle de la petición queda del lado del servidor” · “La técnica se llama *persisted queries*”.
+- **Visual:** extensión → “uso mi llave” → servidor con la cerradura (llave → GetPartNumber).
+- **Metáfora:** la **llave y la cerradura**: usas una llave (código corto) en vez de describir la petición completa.
+- **Notas:** siembra la semilla para el slide 8 (qué pasa cuando cambian la cerradura).
 
-## Slide 8 — Cuando el menú cambia: rotación (teaser de la ficha)
+## Slide 8 — Cuando cambian la cerradura: rotación (teaser de la ficha)
 
-- **Mensaje único:** Steelhead cambia esos códigos sin avisar, y un robot los repara solos.
+- **Mensaje único:** Steelhead cambia la cerradura sin avisar, y un robot deduce la nueva llave solo.
 - **Texto:**
-  - Título: **Cuando Steelhead “reimprime el menú”**
-  - Bullets: “Una actualización de Steelhead cambia los códigos → el viejo deja de servir (`HTTP 400`)” ·
-    “Un robot, **Hash-Autopilot**, lo detecta y captura el código nuevo” · “Lo publica solo, en 3 proyectos
+  - Título: **Cuando Steelhead cambia la cerradura**
+  - Bullets: “Una actualización de Steelhead cambia la cerradura → la llave vieja deja de servir (`HTTP 400`)” ·
+    “Un robot, **Hash-Autopilot**, lo detecta y deduce la nueva llave” · “Lo publica solo, en 3 proyectos
     a la vez, cada hora”.
 - **Visual:** mini-versión del ciclo de 5 etapas (Detectar → Recapturar → Validar → Publicar → Notificar).
-- **Metáfora:** un **cerrajero automático** que nota que tu credencial falló y la reprograma sin que
+- **Metáfora:** un **cerrajero automático** que nota que la llave ya no abre y deduce la nueva sin que
   muevas un dedo.
 - **Notas:** “Si quieren el detalle fino, hay una **ficha profunda** dedicada a esto.” (No profundizar aquí.)
 
@@ -213,8 +213,8 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 - **Mensaje único:** los cuatro conceptos que resumen todo.
 - **Texto:**
   - Título: **Cuatro ideas para llevarse**
-  - Bullets: 1) **Cascarón + cerebro**: la inteligencia vive en el servidor, se actualiza sola. 2) **Menú de
-    platos**: le hablamos al ERP con códigos; cuando cambian, un robot los repara. 3) **Sello de lacre**: nada
+  - Bullets: 1) **Cascarón + cerebro**: la inteligencia vive en el servidor, se actualiza sola. 2) **Llaves y
+    cerraduras**: le hablamos al ERP con llaves; cuando cambian la cerradura, un robot deduce la nueva. 3) **Sello de lacre**: nada
     se ejecuta sin firma válida. 4) **Ante la duda, pregunta**: la política de seguridad de la carga masiva.
 - **Visual:** los 4 íconos/metáforas juntos.
 - **Notas:** cerrar invitando a las fichas profundas y los manuales; abrir preguntas.
@@ -227,9 +227,9 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 |---|---|
 | Remote script loader / cascarón | Decodificador de TV que baja su firmware; Netflix en la tele |
 | `main` vs `gh-pages` | Cocina de pruebas vs. menú servido |
-| Persisted query / hash | Número de plato del menú (#47) |
-| Rotación de hash (HTTP 400) | El restaurante reimprime el menú; “no existe el plato 47” |
-| Hash-Autopilot | Cerrajero automático que reprograma tu credencial |
+| Persisted query / hash | La llave que abre una puerta (operación) |
+| Rotación de hash (HTTP 400) | Steelhead cambia la cerradura; “esta llave ya no abre” |
+| Hash-Autopilot | Cerrajero automático que deduce la nueva llave |
 | Sentinela / captura-y-aborta | Maniquí “PRUEBA” que se pasa por caja y se anula antes de cobrar |
 | Firma ECDSA / KMS | Sello de lacre / holograma; llave en la bóveda de Google |
 | classifyRunIntent | Triage médico |
