@@ -1,6 +1,6 @@
 # wo-schedule-button — Programación INLINE en la ficha de Orden de Trabajo
 
-**Versión:** 0.3.0 — **readout inline (sin click), F1 conectada con `WorkOrderSchedule`**. Core compartido `wo-schedule-core` 18/18 golden.
+**Versión:** 0.4.0 — readout como **texto que envuelve** (no caja/botón) + **un 📅 por tarea/estación** (accionable en Fase 2). F1 conectada con `WorkOrderSchedule`. Core compartido `wo-schedule-core` 21/21 golden.
 **Categoría:** Órdenes de Trabajo · **autoInject:true** · ruta: `/Domains/<d>/WorkOrders/<idInDomain>` (ficha individual)
 
 ## Qué hace
@@ -22,9 +22,9 @@ Pedido por producción (2026-07-23): en iPad la tarjeta "Cliente" (que contiene 
 - **Interceptor:** la propia ficha dispara `WorkOrderSchedule` al cargar (~4.6MB). Un patch de `window.fetch` (guard `__saWoSchedFetchPatched`, world MAIN) **captura esa respuesta** (clone → `buildBoardScheduleIndex`), la guarda con TTL (120s) y evita el fetch propio. Si no aparece en una ventana corta (6×300ms), se hace fetch propio como **fallback**. Solo se guarda el índice slim; el raw se descarta. Estilo `board-metal-tooltip`/`surtido-guard` (interceptor pasivo).
 - Render: estación · fecha/hora local (`es-MX`) · estado (`scheduleStatusLabel`: QUEUED→"En cola", etc.). **Multi-tratamiento:** si la OT se agenda en varias líneas, se muestran **TODAS las tareas apiladas** (clase `sa-wosched-multi`), ordenadas por fecha; tooltip con la lista numerada.
 
-## UI
+## UI (v0.4.0 — texto + 📅 por tarea)
 
-Readout integrado a la barra CLARA nativa, con **acento verde `#13a36f`** (fondo `#eef6f2`, texto `#0d6b49`) → se ve "de la extensión". Estados: cargando (gris itálica), normal (verde), sin programar (gris), error (rojo). `textContent` (no innerHTML de datos). `max-width` + ellipsis (nombres de estación largos).
+Ya **no es una caja/chip**: es **texto plano** que envuelve (`overflow-wrap:anywhere`, sin ellipsis → se ve completo), con **una fila por tarea = `📅` + texto** (`estación · fecha · estado`). El **📅 es el elemento accionable**: hay **uno por cada estación/paso** donde la OT está programada, y en **Fase 2** su click abrirá el modal para programar **ese** paso (por eso cada 📅 guarda `data-sa-station-id`/`data-sa-schedule-id`/`data-sa-task-id`). Fase 1: `cursor:default` + tooltip "próximamente". `max-width:min(46vw,460px)`, apilado vertical. Estados: cargando/sin-programar (gris itálica), error (rojo). `textContent` (no innerHTML). Sin programar → **1 📅** como entrada para programar en Fase 2. **Motivo del cambio (usuario):** la chip truncaba el texto ("…") y no se veía completa; y debe haber tantos 📅 como estaciones.
 
 ## Fase 2 (hito aparte — crear programación)
 
