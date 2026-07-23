@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SteelheadAutomator 101 — presentación</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--danger:#e0655a;--danger-wash:#251512}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+/* deck stage */
+.deck{position:fixed;inset:0 0 56px 0;display:grid;place-items:center;padding:clamp(20px,4vw,64px)}
+.slide{display:none;width:100%;max-width:960px;animation:fade .32s ease}
+.slide.active{display:block}
+@media (prefers-reduced-motion:reduce){.slide{animation:none}}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.kicker{font-size:.74rem;text-transform:uppercase;letter-spacing:.16em;font-weight:800;color:var(--faint);margin:0 0 14px;display:flex;gap:12px;align-items:center}
+.kicker .no{font-family:var(--mono);color:var(--accent-ink)}
+.kicker.ku{color:var(--ku)} .kicker.ti{color:var(--ti)} .kicker.bi{color:var(--bi)}
+h1.title{font-size:clamp(2.4rem,6vw,4rem);line-height:1.02;letter-spacing:-.03em;margin:0 0 18px;font-weight:800;text-wrap:balance}
+h2.head{font-size:clamp(1.7rem,4.2vw,2.8rem);line-height:1.08;letter-spacing:-.02em;margin:0 0 22px;font-weight:800;text-wrap:balance;max-width:20ch}
+.lead{font-size:clamp(1.05rem,2vw,1.35rem);color:var(--muted);max-width:52ch;margin:0}
+ul.pts{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:14px;max-width:42ch}
+ul.pts li{position:relative;padding-left:32px;font-size:clamp(1rem,1.9vw,1.28rem);line-height:1.4}
+ul.pts li::before{content:"";position:absolute;left:0;top:.5em;width:12px;height:12px;border-radius:3px;background:var(--accent)}
+ul.pts.ti li::before{background:var(--ti)} ul.pts.ku li::before{background:var(--ku)}
+ul.pts b{font-weight:800}
+code{font-family:var(--mono);font-size:.86em;background:var(--hair);padding:1px 6px;border-radius:5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:clamp(20px,4vw,48px);align-items:center}
+@media (max-width:820px){.two{grid-template-columns:1fr;gap:22px}}
+.meta-strip{margin-top:26px;display:flex;gap:12px;align-items:flex-start;background:color-mix(in srgb,var(--steel) 6%,var(--paper));border-left:4px solid var(--steel);border-radius:10px;padding:13px 16px;max-width:60ch}
+.meta-strip .ic{font-size:1.1rem;flex:0 0 auto}
+.meta-strip .tx{font-size:.98rem;color:var(--ink)}
+.meta-strip .tx b{color:var(--steel)}
+figure{margin:0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:18px;box-shadow:0 8px 30px -14px rgba(24,34,49,.25)}
+figure svg{display:block;width:100%;height:auto}
+.svg-t{fill:var(--ink)} .svg-mut{fill:var(--muted)}
+/* title slide */
+.slide.cover{text-align:left}
+.cover .brand{display:flex;align-items:center;gap:12px;margin-bottom:30px}
+.cover .bm{width:40px;height:40px;border-radius:9px;background:var(--steel);display:grid;place-items:center}
+.cover .bm span{color:#fff;font-weight:800;font-family:var(--mono)}
+.cover .bn{font-weight:700;letter-spacing:.02em}
+.cover .foot{margin-top:34px;color:var(--faint);font-size:.95rem;display:flex;gap:18px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 11px;border-radius:999px;background:var(--ti-wash);color:var(--ti)}
+/* families grid (slide 12) */
+.fam{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px}
+@media (max-width:820px){.fam{grid-template-columns:repeat(2,1fr)}}
+.fam .f{background:var(--paper);border:1px solid var(--hair);border-radius:11px;padding:14px;font-size:.95rem;font-weight:600}
+.fam .f small{display:block;font-weight:400;color:var(--faint);font-size:.8rem;margin-top:3px}
+.fam .f .ig{font-size:1.3rem;display:block;margin-bottom:6px}
+/* audience cards (slide 13) */
+.auds{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+@media (max-width:820px){.auds{grid-template-columns:1fr}}
+.aud{background:var(--paper);border:1px solid var(--hair);border-top:4px solid var(--c);border-radius:12px;padding:18px}
+.aud.ku{--c:var(--ku)} .aud.ti{--c:var(--ti)} .aud.bi{--c:var(--bi)}
+.aud h3{margin:0 0 4px;font-size:1.12rem} .aud .w{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--c);margin-bottom:8px}
+.aud ol{margin:0;padding-left:1.1em;font-size:.92rem;color:var(--muted)} .aud li{margin:.25rem 0}
+/* takeaways (slide 14) */
+.takes{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:8px}
+@media (max-width:820px){.takes{grid-template-columns:1fr}}
+.take{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:18px;display:flex;gap:14px}
+.take .n{font-family:var(--mono);font-weight:800;font-size:1.4rem;color:var(--accent-ink);flex:0 0 auto}
+.take b{display:block;margin-bottom:2px}
+.take span{color:var(--muted);font-size:.95rem}
+/* chrome */
+.chrome{position:fixed;left:0;right:0;bottom:0;height:56px;background:var(--paper);border-top:1px solid var(--hair);display:flex;align-items:center;gap:14px;padding:0 18px;z-index:5}
+.chrome .name{font-size:.82rem;color:var(--faint);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chrome .spacer{flex:1}
+.chrome .count{font-family:var(--mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.chrome button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--hair-2);background:var(--ground);color:var(--ink);border-radius:8px;padding:7px 14px;cursor:pointer}
+.chrome button:hover{border-color:var(--accent);color:var(--accent-ink)}
+.chrome button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.progress{position:fixed;top:0;left:0;height:3px;background:var(--accent);width:0;z-index:6;transition:width .3s ease}
+.hint{position:fixed;top:10px;right:14px;font-size:.72rem;color:var(--faint);z-index:6}
+@media print{
+  :root{--ground:#fff;--paper:#fff}
+  body{overflow:visible}
+  .deck{position:static;inset:auto;display:block;padding:0}
+  .slide{display:block!important;max-width:none;break-inside:avoid;break-after:page;padding:24px 0;border-bottom:1px solid #ccc;animation:none}
+  .chrome,.progress,.hint{display:none!important}
+  figure{box-shadow:none;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="hint">← → para navegar</div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 COVER -->
+  <section class="slide active cover">
+    <div class="brand"><span class="bm"><span>SA</span></span><span class="bn">SteelheadAutomator</span></div>
+    <h1 class="title">SteelheadAutomator<br>101</h1>
+    <p class="lead">Cómo funciona por fuera y por dentro — sin necesidad de ser programador.</p>
+    <div class="foot"><span class="badge">Presentación · perenne</span><span>Sesión de capacitación · 30–40 min</span></div>
+  </section>
+
+  <!-- 2 PROBLEMA -->
+  <section class="slide">
+    <p class="kicker"><span class="no">02</span> El punto de partida</p>
+    <h2 class="head">El dolor: captura manual, miles de veces</h2>
+    <div class="two">
+      <ul class="pts">
+        <li>Dar de alta cientos o miles de números de parte, <b>uno por uno</b></li>
+        <li>Cotizaciones, precios, specs, facturas… en pantallas repetitivas</li>
+        <li>Un error se cuela <b>sin que nadie lo note</b></li>
+      </ul>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>Imagínalo:</b> llenar 8,000 formularios idénticos en un mostrador, uno por uno. Esa es la tarea que se automatiza.</span></div>
+    </div>
+  </section>
+
+  <!-- 3 QUÉ ES -->
+  <section class="slide">
+    <p class="kicker"><span class="no">03</span> La herramienta</p>
+    <h2 class="head">Qué es SteelheadAutomator</h2>
+    <ul class="pts">
+      <li>Una <b>extensión de Chrome</b> que se instala en el navegador</li>
+      <li>Automatiza <b>~41 tareas</b> dentro del ERP Steelhead (<code>app.gosteelhead.com</code>)</li>
+      <li>Desde carga masiva hasta autocompletar facturas y calcular cargas</li>
+    </ul>
+    <div class="meta-strip"><span class="ic">🎨</span><span class="tx">Su interfaz es <b>oscura a propósito</b>: para que el operador distinga de un vistazo que es la extensión y no una pantalla nativa de Steelhead (que son claras).</span></div>
+  </section>
+
+  <!-- 4 GRAN IDEA -->
+  <section class="slide">
+    <p class="kicker"><span class="no">04</span> ⭐ La idea clave</p>
+    <h2 class="head">Cascarón + cerebro remoto</h2>
+    <div class="two">
+      <div>
+        <ul class="pts">
+          <li>La caja instalada <b>casi nunca cambia</b></li>
+          <li>Toda la lógica vive en un servidor (GitHub Pages)</li>
+          <li>La extensión la <b>descarga y ejecuta</b> cada vez</li>
+        </ul>
+        <div class="meta-strip"><span class="ic">💡</span><span class="tx">Como un <b>decodificador de TV</b> que baja su firmware del servidor: la caja física no cambia, el contenido sí.</span></div>
+      </div>
+      <figure>
+        <svg viewBox="0 0 380 250" role="img" aria-label="La extensión descarga su código de GitHub Pages y lo ejecuta sobre Steelhead">
+          <defs><marker id="a1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker></defs>
+          <rect x="20" y="20" width="150" height="52" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="95" y="42" text-anchor="middle" class="svg-t" font-size="13" font-weight="700">Extensión</text>
+          <text x="95" y="60" text-anchor="middle" class="svg-mut" font-size="11">“cascarón”</text>
+          <rect x="210" y="20" width="150" height="52" rx="9" fill="var(--accent-wash)" stroke="var(--accent)"/>
+          <text x="285" y="42" text-anchor="middle" class="svg-t" font-size="13" font-weight="700" fill="var(--accent-ink)">GitHub Pages</text>
+          <text x="285" y="60" text-anchor="middle" class="svg-mut" font-size="11">“cerebro”</text>
+          <line x1="170" y1="38" x2="208" y2="38" stroke="var(--accent)" stroke-width="2" marker-end="url(#a1)"/>
+          <line x1="210" y1="56" x2="172" y2="56" stroke="var(--accent)" stroke-width="2" marker-end="url(#a1)"/>
+          <text x="190" y="30" text-anchor="middle" class="svg-mut" font-size="9">pide</text>
+          <text x="190" y="72" text-anchor="middle" class="svg-mut" font-size="9">código + firma</text>
+          <rect x="115" y="160" width="150" height="52" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="190" y="182" text-anchor="middle" class="svg-t" font-size="13" font-weight="700">ERP Steelhead</text>
+          <text x="190" y="200" text-anchor="middle" class="svg-mut" font-size="11">la pantalla del operador</text>
+          <line x1="95" y1="72" x2="160" y2="158" stroke="var(--accent)" stroke-width="2" marker-end="url(#a1)"/>
+          <text x="98" y="120" class="svg-mut" font-size="10">ejecuta sobre</text>
+        </svg>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 5 POR QUÉ IMPORTA -->
+  <section class="slide">
+    <p class="kicker"><span class="no">05</span> La consecuencia</p>
+    <h2 class="head">Por qué se construyó así</h2>
+    <ul class="pts">
+      <li>Corregir un bug = editar el <b>cerebro</b>, no reinstalar 20 navegadores</li>
+      <li>Todos reciben la mejora <b>al instante</b></li>
+      <li>Se itera <b>varias veces por semana</b>, sin trámites de tienda de extensiones</li>
+    </ul>
+    <div class="meta-strip"><span class="ic">📡</span><span class="tx">Un cambio en el centro se propaga a todos los navegadores a la vez — como cuando una app de tu tele se actualiza sola de un día para otro.</span></div>
+  </section>
+
+  <!-- 6 DEPLOY -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">06</span> Para el Jefe de TI</p>
+    <h2 class="head">Del borrador a producción, en un paso seguro</h2>
+    <div class="two">
+      <div>
+        <ul class="pts ti">
+          <li><code>main</code> = <b>cocina de pruebas</b> (borrador privado)</li>
+          <li><code>gh-pages</code> = el <b>menú que sí se sirve</b></li>
+          <li>Un script: corre pruebas → firma → publica → deja punto de restauración</li>
+        </ul>
+        <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>Clave:</b> editar el borrador NO afecta usuarios. Solo publicarlo lo hace.</span></div>
+      </div>
+      <figure>
+        <svg viewBox="0 0 380 220" role="img" aria-label="Flujo de publicación de main a gh-pages y a las extensiones">
+          <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--ti)"/></marker></defs>
+          <rect x="20" y="30" width="150" height="60" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="95" y="54" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">main</text>
+          <text x="95" y="72" text-anchor="middle" class="svg-mut" font-size="10">cocina de pruebas</text>
+          <rect x="210" y="30" width="150" height="60" rx="9" fill="var(--ti-wash)" stroke="var(--ti)"/>
+          <text x="285" y="54" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--ti)">gh-pages</text>
+          <text x="285" y="72" text-anchor="middle" class="svg-mut" font-size="10">menú servido</text>
+          <line x1="170" y1="60" x2="208" y2="60" stroke="var(--ti)" stroke-width="2" marker-end="url(#a2)"/>
+          <text x="190" y="24" text-anchor="middle" class="svg-mut" font-size="9">deploy.sh</text>
+          <text x="190" y="104" text-anchor="middle" class="svg-mut" font-size="9">tests·firma·espejo</text>
+          <rect x="115" y="150" width="150" height="52" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="190" y="172" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Extensiones</text>
+          <text x="190" y="190" text-anchor="middle" class="svg-mut" font-size="10">de todos los usuarios</text>
+          <line x1="285" y1="90" x2="220" y2="148" stroke="var(--ti)" stroke-width="2" marker-end="url(#a2)"/>
+        </svg>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 7 HASHES -->
+  <section class="slide">
+    <p class="kicker"><span class="no">07</span> Cómo le hablamos al ERP</p>
+    <h2 class="head">El “número de plato” del menú</h2>
+    <div class="two">
+      <div>
+        <ul class="pts">
+          <li>Steelhead identifica cada consulta con un <b>código</b> de 64 caracteres (un “hash”)</li>
+          <li>Es más rápido y el texto completo queda <b>privado</b></li>
+          <li>La técnica se llama <b>persisted queries</b></li>
+        </ul>
+        <div class="meta-strip"><span class="ic">💡</span><span class="tx">En vez de recitar “hamburguesa doble con queso sin cebolla”, pides <b>“el plato #47”</b>. Tú y la cocina ya saben qué es.</span></div>
+      </div>
+      <figure>
+        <svg viewBox="0 0 380 180" role="img" aria-label="La extensión pide el plato 47 y el servidor tiene el recetario">
+          <defs><marker id="a3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker></defs>
+          <rect x="20" y="40" width="130" height="60" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="85" y="66" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Extensión</text>
+          <text x="85" y="84" text-anchor="middle" class="svg-mut" font-size="10">el comensal</text>
+          <line x1="150" y1="70" x2="228" y2="70" stroke="var(--accent)" stroke-width="2" marker-end="url(#a3)"/>
+          <rect x="150" y="105" width="120" height="22" rx="11" fill="var(--accent-wash)" stroke="var(--accent)"/>
+          <text x="210" y="120" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--accent-ink)">“el plato #47”</text>
+          <rect x="230" y="30" width="130" height="80" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="295" y="52" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Servidor</text>
+          <text x="295" y="72" text-anchor="middle" class="svg-mut" font-size="9">Recetario:</text>
+          <text x="295" y="88" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--accent-ink)">#47 = GetPartNumber</text>
+        </svg>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 8 ROTACIÓN -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">08</span> El mantenimiento invisible</p>
+    <h2 class="head">Cuando Steelhead “reimprime el menú”</h2>
+    <ul class="pts ti">
+      <li>Una actualización de Steelhead cambia los códigos → el viejo falla (<code>HTTP 400</code>)</li>
+      <li>Un robot, <b>Hash-Autopilot</b>, lo detecta y captura el código nuevo</li>
+      <li>Lo publica solo, en <b>3 proyectos a la vez</b>, cada hora</li>
+    </ul>
+    <div class="two" style="margin-top:22px">
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx">Un <b>cerrajero automático</b> que nota que tu credencial falló y la reprograma sin que muevas un dedo.</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:var(--muted)">
+        <span style="background:var(--ti-wash);color:var(--ti);padding:6px 12px;border-radius:8px;font-weight:700">Detectar</span>→
+        <span style="background:var(--ti-wash);color:var(--ti);padding:6px 12px;border-radius:8px;font-weight:700">Recapturar</span>→
+        <span style="background:var(--ti-wash);color:var(--ti);padding:6px 12px;border-radius:8px;font-weight:700">Validar</span>→
+        <span style="background:var(--ti-wash);color:var(--ti);padding:6px 12px;border-radius:8px;font-weight:700">Publicar</span>→
+        <span style="background:var(--ti-wash);color:var(--ti);padding:6px 12px;border-radius:8px;font-weight:700">Notificar</span>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:18px;font-size:1rem">→ El detalle completo está en la <b>ficha profunda de Hash-Autopilot</b>.</p>
+  </section>
+
+  <!-- 9 SEGURIDAD -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">09</span> Seguridad</p>
+    <h2 class="head">El sello que nadie puede falsificar</h2>
+    <div class="two">
+      <div>
+        <ul class="pts ti">
+          <li>Cada publicación se <b>firma criptográficamente</b> (ECDSA P-256)</li>
+          <li>La llave privada vive en una <b>bóveda de Google</b> (KMS), nunca en el código</li>
+          <li>La extensión rechaza cualquier script sin el sello correcto — <b>fail-closed</b></li>
+        </ul>
+        <div class="meta-strip"><span class="ic">💡</span><span class="tx">Un <b>sello de lacre</b>: aunque un atacante cambiara el script en GitHub, el falso no llevaría el sello genuino de la bóveda.</span></div>
+      </div>
+      <figure>
+        <svg viewBox="0 0 380 240" role="img" aria-label="La bóveda firma, la extensión verifica y rechaza si el sello no es válido">
+          <defs><marker id="a4" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--steel)"/></marker></defs>
+          <rect x="20" y="20" width="150" height="52" rx="9" fill="var(--ti-wash)" stroke="var(--ti)"/>
+          <text x="95" y="42" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--ti)">Bóveda KMS</text>
+          <text x="95" y="60" text-anchor="middle" class="svg-mut" font-size="10">llave privada 🔒</text>
+          <line x1="95" y1="72" x2="95" y2="106" stroke="var(--steel)" stroke-width="2" marker-end="url(#a4)"/>
+          <text x="130" y="92" class="svg-mut" font-size="9">firma</text>
+          <rect x="20" y="108" width="150" height="46" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="95" y="135" text-anchor="middle" class="svg-t" font-size="11" font-weight="700">config + firma</text>
+          <line x1="170" y1="130" x2="210" y2="130" stroke="var(--steel)" stroke-width="2" marker-end="url(#a4)"/>
+          <rect x="212" y="100" width="150" height="62" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+          <text x="287" y="124" text-anchor="middle" class="svg-t" font-size="11" font-weight="700">Extensión</text>
+          <text x="287" y="142" text-anchor="middle" class="svg-mut" font-size="9">verifica con llave pública</text>
+          <path d="M212 175 h150" stroke="none"/>
+          <rect x="70" y="188" width="110" height="38" rx="9" fill="var(--accent-wash)" stroke="var(--accent)"/>
+          <text x="125" y="205" text-anchor="middle" class="svg-t" font-size="10" font-weight="700" fill="var(--accent-ink)">✓ sello válido</text>
+          <text x="125" y="219" text-anchor="middle" class="svg-mut" font-size="9">ejecuta</text>
+          <rect x="200" y="188" width="120" height="38" rx="9" fill="var(--danger-wash)" stroke="var(--danger)"/>
+          <text x="260" y="205" text-anchor="middle" class="svg-t" font-size="10" font-weight="700" fill="var(--danger)">✕ sello inválido</text>
+          <text x="260" y="219" text-anchor="middle" class="svg-mut" font-size="9">no ejecuta nada</text>
+          <line x1="270" y1="162" x2="130" y2="186" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#a4)"/>
+          <line x1="290" y1="162" x2="260" y2="186" stroke="var(--danger)" stroke-width="1.5" marker-end="url(#a4)"/>
+        </svg>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 10 APPLET -->
+  <section class="slide">
+    <p class="kicker bi"><span class="no">10</span> De qué está hecho</p>
+    <h2 class="head">La anatomía de una herramienta</h2>
+    <ul class="pts">
+      <li><b>Núcleo puro</b>: las reglas, sin tocar la red; se prueba solo (cientos de tests automáticos)</li>
+      <li><b>Orquestador</b>: conecta el núcleo con el ERP y con la pantalla</li>
+      <li>Una entrada en el <b>catálogo</b> (<code>config.json</code>) lo registra y lo firma</li>
+    </ul>
+    <div class="meta-strip"><span class="ic">💡</span><span class="tx">El <b>golden test</b> es una foto de referencia: “la calculadora debe dar exactamente estos números que verificamos a mano”. Es lo que deja cambiar rápido sin romper reglas viejas.</span></div>
+  </section>
+
+  <!-- 11 BULK UPLOAD -->
+  <section class="slide">
+    <p class="kicker ku"><span class="no">11</span> El applet estrella</p>
+    <h2 class="head">Carga Masiva: triage + carril express</h2>
+    <ul class="pts ku">
+      <li>Toma un <b>Excel</b> con miles de filas → lo carga al ERP</li>
+      <li><b>Clasifica la intención</b> de la corrida (triage): ¿solo precio? ¿enriquecimiento? ¿alta?</li>
+      <li>Si es solo-precio, toma un <b>carril express</b>; ante ambigüedad, <b>pregunta</b> antes de escribir</li>
+    </ul>
+    <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>Triage médico</b> (clasificar antes de tratar) + <b>carril express de aduana</b> (“nada que declarar más que el precio”). El detalle, en su ficha profunda.</span></div>
+  </section>
+
+  <!-- 12 PANORAMA -->
+  <section class="slide">
+    <p class="kicker"><span class="no">12</span> Panorama</p>
+    <h2 class="head">Todo lo que sabe hacer, de un vistazo</h2>
+    <div class="fam">
+      <div class="f"><span class="ig">📦</span>Carga y datos masivos<small>Excel → ERP</small></div>
+      <div class="f"><span class="ig">🏷️</span>Ciclo de vida de PNs<small>alta, archivo, precio</small></div>
+      <div class="f"><span class="ig">📋</span>Órdenes y ruteo<small>cotizaciones, OTs</small></div>
+      <div class="f"><span class="ig">🧾</span>Facturación<small>autollenado, regen</small></div>
+      <div class="f"><span class="ig">🏭</span>Inventario y programación<small>lotes, surtido</small></div>
+      <div class="f"><span class="ig">⚙️</span>Procesos y producción<small>cargas, estaciones</small></div>
+      <div class="f"><span class="ig">📈</span>Sensores y reportes<small>dashboards, DuckDB</small></div>
+      <div class="f"><span class="ig">🔧</span>Mantenimiento del sistema<small>hashes, auditoría</small></div>
+    </div>
+    <p class="lead" style="margin-top:22px;font-size:1rem">~41 applets en total — la lista completa y versionada vive en el <b>Inventario de Applets</b> (documento vivo).</p>
+  </section>
+
+  <!-- 13 RUTAS -->
+  <section class="slide">
+    <p class="kicker"><span class="no">13</span> Cómo seguir</p>
+    <h2 class="head">Tu ruta según tu rol</h2>
+    <div class="auds">
+      <div class="aud ku"><div class="w">Key User</div><h3>Usas la extensión</h3><ol><li>Manual del Operador</li><li>Ficha: Carga Masiva</li><li>Esta presentación</li></ol></div>
+      <div class="aud ti"><div class="w">Jefe de TI</div><h3>Administras</h3><ol><li>Esta presentación</li><li>Manual del Administrador</li><li>Ficha: Hash-Autopilot</li></ol></div>
+      <div class="aud bi"><div class="w">Gerente de BI</div><h3>Referencia</h3><ol><li>Inventario de Applets</li><li>Glosario técnico</li><li>Ambas fichas profundas</li></ol></div>
+    </div>
+    <div class="meta-strip"><span class="ic">🧭</span><span class="tx">Todo está indexado en el documento <b>“Empieza aquí”</b>, el mapa del paquete.</span></div>
+  </section>
+
+  <!-- 14 CIERRE -->
+  <section class="slide">
+    <p class="kicker"><span class="no">14</span> Cierre</p>
+    <h2 class="head">Cuatro ideas para llevarse</h2>
+    <div class="takes">
+      <div class="take"><span class="n">1</span><div><b>Cascarón + cerebro</b><span>La inteligencia vive en el servidor y se actualiza sola.</span></div></div>
+      <div class="take"><span class="n">2</span><div><b>Menú de platos</b><span>Le hablamos al ERP con códigos; cuando cambian, un robot los repara.</span></div></div>
+      <div class="take"><span class="n">3</span><div><b>Sello de lacre</b><span>Nada se ejecuta sin una firma criptográfica válida.</span></div></div>
+      <div class="take"><span class="n">4</span><div><b>Ante la duda, pregunta</b><span>La política de seguridad de la carga masiva: no adivinar.</span></div></div>
+    </div>
+    <div class="meta-strip"><span class="ic">📚</span><span class="tx">¿Quieres profundizar? Las <b>fichas profundas</b> y los <b>manuales</b> te esperan. ¡Gracias!</span></div>
+  </section>
+
+</div>
+
+<div class="chrome">
+  <span class="name">SteelheadAutomator 101</span>
+  <span class="spacer"></span>
+  <button id="prev" aria-label="Anterior">← Anterior</button>
+  <span class="count" id="count">1 / 14</span>
+  <button id="next" aria-label="Siguiente">Siguiente →</button>
+</div>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var i=0, n=slides.length;
+  var count=document.getElementById('count'), prog=document.getElementById('prog');
+  function show(k){
+    i=Math.max(0,Math.min(n-1,k));
+    slides.forEach(function(s,x){s.classList.toggle('active',x===i)});
+    count.textContent=(i+1)+' / '+n;
+    prog.style.width=((i+1)/n*100)+'%';
+    document.getElementById('deck').scrollTop=0;
+  }
+  function next(){show(i+1)} function prev(){show(i-1)}
+  document.getElementById('next').addEventListener('click',next);
+  document.getElementById('prev').addEventListener('click',prev);
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();next()}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prev()}
+    else if(e.key==='Home'){show(0)} else if(e.key==='End'){show(n-1)}
+  });
+  show(0);
+})();
+</script>
+</body>
+</html>
