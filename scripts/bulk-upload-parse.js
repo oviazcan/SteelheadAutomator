@@ -113,7 +113,11 @@
   // Opera sobre los `parts` ya parseados (no sobre rows/COLS) — más robusto al layout v10/v11.
   // partHasEnrich = el part trae CUALQUIER columna de enriquecimiento con dato O dash (ambos son
   // intención de cambio de línea; solo el vacío no cuenta). El criterio espeja el de showPreview.
-  function partHasEnrich(p) {
+  // partHasEnrichLine — enriquecimiento "de LÍNEA" (specs/labels/racks/dims/metalBase/…),
+  // SIN incluir la señal de `validacion1er`. Se separa de partHasEnrich porque la validación
+  // 1er recibo tiene una intención distinguible por VALOR (true=activar vs false=plantilla)
+  // que planSoloPrecioDecision necesita tratar aparte. Ver esa función.
+  function partHasEnrichLine(p) {
     if (!p) return false;
     const arr = (a) => Array.isArray(a) && a.length > 0;
     const dimsHave = p.dims && Object.values(p.dims).some(v => v != null);
@@ -121,8 +125,13 @@
     const ucHave = uc.kgm != null || uc.cmk != null || uc.lm != null || uc.minPzasLote != null;
     return arr(p.labels) || arr(p.specs) || arr(p.racks) || arr(p.predictiveUsage) || arr(p.products)
       || dimsHave || ucHave
-      || !!p.metalBase || !!p.pnAlterno || !!p.codigoSAT || !!p.procesoOverride
-      || (p.validacion1er !== null && p.validacion1er !== undefined);
+      || !!p.metalBase || !!p.pnAlterno || !!p.codigoSAT || !!p.procesoOverride;
+  }
+
+  function partHasEnrich(p) {
+    if (!p) return false;
+    // Comportamiento intacto: enrich de línea O cualquier señal de validación (dato o dash).
+    return partHasEnrichLine(p) || (p.validacion1er !== null && p.validacion1er !== undefined);
   }
 
   // classifyRunIntent — clasifica la corrida completa.
@@ -151,6 +160,38 @@
   // previo (no-regresión). Es puro a propósito: toda la decisión de riesgo es testeable.
   function planSoloPrecioFastPath(runIntent, flagEnabled) {
     return !!flagEnabled && runIntent === 'SOLO_PRECIO';
+  }
+
+  // planSoloPrecioDecision — decisión de 3 estados para el fast-path SOLO_PRECIO, que refina
+  // planSoloPrecioFastPath para el caso de la plantilla "Limpiar Datos": ésta escribe
+  // `Validación = F` en TODAS las filas, y el parser lo vuelve `validacion1er = false` (no null).
+  // Ese false es "opt-out de validación 1er recibo" (enrich real con semántica REPLACE), así que
+  // classifyRunIntent lo cuenta como ENRIQUECIMIENTO → el atajo NUNCA se activaba en cargas de
+  // solo-precio hechas con plantilla (incidente 2026-07-22: 8238 SavePartNumber innecesarios →
+  // 22×HTTP 429 + borrado silencioso de la validación en los PN que la tenían).
+  //
+  // Distingue la intención de la columna Validación en la CORRIDA COMPLETA:
+  //   - validacion1er === true  → activación EXPLÍCITA del operador → FULL (no saltar; el enrich
+  //                                la aplica; saltarla la perdería).
+  //   - validacion1er === false → 'F' de plantilla / desactivación → AMBIGUO → ASK (preguntar).
+  //   - validacion1er === null  → columna vacía → sin señal.
+  // Cualquier enrich de línea REAL (specs/racks/dims/metalBase/…), un PN nuevo (allExisting=false),
+  // o la ausencia de precio DOMINAN y fuerzan FULL (invariantes de seguridad del atajo).
+  //
+  // Devuelve: 'FASTPATH' (saltar enrich directo) | 'ASK' (confirmar con el operador) | 'FULL'
+  // (pipeline completo, comportamiento actual). Con flagEnabled falsy → SIEMPRE 'FULL'.
+  function planSoloPrecioDecision(parts, allExisting, flagEnabled) {
+    if (!flagEnabled) return 'FULL';
+    let hasPrice = false, hasEnrichLine = false, hasActivar = false, hasDesactivar = false;
+    for (const p of (parts || [])) {
+      if (!p) continue;
+      if (p.precio != null) hasPrice = true;
+      if (partHasEnrichLine(p)) hasEnrichLine = true;
+      if (p.validacion1er === true) hasActivar = true;
+      else if (p.validacion1er === false) hasDesactivar = true;
+    }
+    if (!hasPrice || !allExisting || hasEnrichLine || hasActivar) return 'FULL';
+    return hasDesactivar ? 'ASK' : 'FASTPATH';
   }
 
   // resolveDimSelections — compone el array final de dimensionCustomValueIds que
@@ -260,7 +301,7 @@
 
   const api = {
     toBool, isDash, resolveStr, resolveNum, cell, cellNum, parseCSV, buildDimensions,
-    partHasEnrich, classifyRunIntent, planSoloPrecioFastPath, resolveDimSelections, pickSpecParamId, pickSpecParamPositional,
+    partHasEnrich, partHasEnrichLine, classifyRunIntent, planSoloPrecioFastPath, planSoloPrecioDecision, resolveDimSelections, pickSpecParamId, pickSpecParamPositional,
     PRICE_UNIT_MAP, PREDICTIVE_MATERIALS, HEADER_KEYS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
