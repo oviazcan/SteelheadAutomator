@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Empieza aquí — Paquete de capacitación SteelheadAutomator</title>
+<style>
+/* ============================================================
+   Sistema de diseño canónico — SteelheadAutomator / capacitación
+   Estética: manual técnico de campo. Neutros acero, acento verde
+   del producto, codificación por audiencia. Light-first, imprimible.
+   ============================================================ */
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6;   /* Key User */
+  --ti:#2f6f9f; --ti-wash:#e8f0f7;   /* Jefe de TI */
+  --bi:#7d4f9c; --bi-wash:#f0e9f6;   /* Gerente de BI */
+  --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0;
+    --faint:#7d8ea0; --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3;
+    --accent:#25b884; --accent-ink:#3fd39c; --accent-wash:#12211b;
+    --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+    --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10;
+    --danger:#e0655a; --danger-wash:#251512;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="light"]{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a; --faint:#7b8a99;
+  --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52; --accent:#0f8f61; --accent-ink:#0b6f4b;
+  --accent-wash:#e7f5ee; --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6; --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+}
+:root[data-theme="dark"]{
+  --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+  --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+  --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+  --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10; --danger:#e0655a; --danger-wash:#251512;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+.wrap{max-width:960px; margin:0 auto; padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+/* ---------- masthead ---------- */
+.masthead{
+  border-bottom:2px solid var(--steel); padding:40px 0 22px; margin-bottom:8px;
+}
+.eyebrow{
+  font-size:.72rem; text-transform:uppercase; letter-spacing:.14em;
+  color:var(--faint); font-weight:700; margin:0 0 10px;
+}
+.masthead h1{
+  font-size:clamp(1.9rem,4.4vw,2.6rem); line-height:1.08; letter-spacing:-.02em;
+  margin:0 0 8px; text-wrap:balance; color:var(--ink); font-weight:800;
+}
+.masthead .sub{font-size:1.12rem; color:var(--muted); margin:0; max-width:60ch}
+.masthead .brandbar{display:flex; align-items:center; gap:10px; margin-bottom:18px}
+.brandmark{
+  width:26px; height:26px; border-radius:6px; background:var(--steel);
+  display:grid; place-items:center; flex:0 0 auto;
+}
+.brandmark span{color:#fff; font-weight:800; font-size:.9rem; font-family:var(--mono)}
+.brandname{font-weight:700; letter-spacing:.02em; font-size:.95rem}
+.brandname em{color:var(--accent-ink); font-style:normal}
+/* ---------- badges ---------- */
+.badge{
+  display:inline-flex; align-items:center; gap:6px; font-size:.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.06em; padding:3px 9px; border-radius:999px;
+  border:1px solid transparent; white-space:nowrap;
+}
+.badge.vivo{background:var(--accent-wash); color:var(--accent-ink); border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.badge.perenne{background:var(--ti-wash); color:var(--ti); border-color:color-mix(in srgb,var(--ti) 30%,transparent)}
+.badge.dot::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+/* ---------- freshness banner ---------- */
+.freshness{
+  display:flex; gap:14px; align-items:flex-start; margin:22px 0 6px;
+  background:var(--accent-wash); border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);
+  border-left:4px solid var(--accent); border-radius:10px; padding:14px 16px; font-size:.92rem;
+}
+.freshness .ic{flex:0 0 auto; color:var(--accent-ink); margin-top:1px}
+.freshness b{color:var(--accent-ink)}
+.freshness code{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+/* ---------- typography blocks ---------- */
+h2.sec{
+  font-size:1.5rem; letter-spacing:-.01em; margin:52px 0 4px; padding-top:8px;
+  font-weight:800; color:var(--ink); text-wrap:balance;
+}
+h2.sec .num{
+  font-family:var(--mono); font-size:.9rem; color:var(--accent-ink); font-weight:700;
+  border:1px solid var(--hair-2); border-radius:6px; padding:1px 7px; margin-right:10px; vertical-align:.15em;
+}
+.sec-lead{color:var(--muted); margin:.4rem 0 1.4rem; max-width:var(--measure)}
+p{margin:0 0 1rem; max-width:var(--measure)}
+strong{font-weight:700}
+a{color:var(--accent-ink); text-decoration:underline; text-underline-offset:2px; text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+code{font-family:var(--mono); font-size:.86em; background:var(--hair); padding:1px 5px; border-radius:5px}
+ul,ol{max-width:var(--measure); padding-left:1.25em}
+li{margin:.3rem 0}
+/* ---------- cards / grid ---------- */
+.grid{display:grid; gap:18px}
+.grid.cols-3{grid-template-columns:repeat(3,1fr)}
+@media (max-width:820px){.grid.cols-3{grid-template-columns:1fr}}
+.card{
+  background:var(--paper); border:1px solid var(--hair); border-radius:12px;
+  padding:20px; box-shadow:var(--shadow);
+}
+/* audience card */
+.acard{border-top:4px solid var(--aud,var(--steel)); display:flex; flex-direction:column; gap:2px}
+.acard.ku{--aud:var(--ku)} .acard.ti{--aud:var(--ti)} .acard.bi{--aud:var(--bi)}
+.acard .who{font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; font-weight:800; color:var(--aud)}
+.acard h3{margin:.15rem 0 .1rem; font-size:1.24rem; letter-spacing:-.01em}
+.acard .youare{font-size:.92rem; color:var(--muted); margin:0 0 14px; font-style:italic}
+.path{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px}
+.path li{display:flex; gap:10px; align-items:baseline; margin:0}
+.path .rank{
+  font-family:var(--mono); font-size:.68rem; font-weight:700; color:#fff; background:var(--aud);
+  border-radius:5px; padding:1px 6px; flex:0 0 auto; letter-spacing:.02em;
+}
+.path .doc{font-weight:600}
+.path .doc small{display:block; font-weight:400; color:var(--faint); font-size:.82rem}
+/* ---------- convention split ---------- */
+.split{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+@media (max-width:820px){.split{grid-template-columns:1fr}}
+.conv{border-radius:12px; padding:20px; border:1px solid var(--hair); background:var(--paper)}
+.conv.v{border-left:4px solid var(--accent)} .conv.p{border-left:4px solid var(--ti)}
+.conv h3{margin:0 0 4px; font-size:1.12rem; display:flex; align-items:center; gap:10px}
+.conv .lede{color:var(--muted); font-size:.94rem; margin:.2rem 0 .8rem}
+.conv ul{font-size:.92rem; margin:0}
+/* ---------- contents table ---------- */
+.tablewrap{overflow-x:auto; border:1px solid var(--hair); border-radius:12px; box-shadow:var(--shadow)}
+table{border-collapse:collapse; width:100%; font-size:.92rem; background:var(--paper); min-width:640px}
+thead th{
+  text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:var(--faint);
+  font-weight:700; padding:12px 14px; border-bottom:2px solid var(--hair-2); background:var(--ground);
+}
+tbody td{padding:11px 14px; border-bottom:1px solid var(--hair); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.chip{display:inline-block; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:6px; white-space:nowrap}
+.chip.ku{background:var(--ku-wash); color:var(--ku)} .chip.ti{background:var(--ti-wash); color:var(--ti)}
+.chip.bi{background:var(--bi-wash); color:var(--bi)} .chip.all{background:var(--hair); color:var(--muted)}
+.tag-v{color:var(--accent-ink); font-weight:700} .tag-p{color:var(--ti); font-weight:700}
+/* ---------- callouts ---------- */
+.callout{
+  border-radius:10px; padding:14px 16px 14px 46px; position:relative; margin:20px 0;
+  font-size:.94rem; border:1px solid var(--hair); background:var(--paper);
+}
+.callout .ct{font-weight:700; margin:0 0 3px; font-size:.82rem; text-transform:uppercase; letter-spacing:.05em}
+.callout::before{position:absolute; left:14px; top:14px; font-size:1.1rem; line-height:1}
+.callout.tip{border-left:4px solid var(--accent); background:var(--accent-wash)}
+.callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓"; color:var(--accent-ink); font-weight:800}
+.callout.info{border-left:4px solid var(--ti); background:var(--ti-wash)}
+.callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ"; color:var(--ti); font-weight:800}
+/* ---------- footer ---------- */
+.foot{margin-top:64px; padding-top:22px; border-top:1px solid var(--hair-2); color:var(--faint);
+  font-size:.85rem; display:flex; flex-wrap:wrap; gap:8px 20px; align-items:center; justify-content:space-between}
+.foot .meta{display:flex; gap:16px; flex-wrap:wrap}
+/* ---------- print ---------- */
+@media print{
+  :root{--ground:#fff; --paper:#fff; --shadow:none}
+  body{font-size:11.5pt}
+  .wrap{max-width:none; padding:0}
+  .card,.conv,.tablewrap,.freshness,.callout{break-inside:avoid}
+  h2.sec{break-after:avoid}
+  a{color:var(--ink); text-decoration:none}
+  .noprint{display:none !important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>SA</span></span>
+      <span class="brandname">Steelhead<em>Automator</em> · Paquete de capacitación y referencia</span>
+    </div>
+    <p class="eyebrow">Empieza aquí — el mapa del paquete</p>
+    <h1>Qué es este paquete y cómo se lee según tu rol</h1>
+    <p class="sub">Ocho documentos, tres audiencias, una sola idea: entender <strong>qué hace</strong> SteelheadAutomator, <strong>cómo está construido</strong> y <strong>cómo se opera</strong>, sin necesidad de fondo técnico previo.</p>
+  </header>
+
+  <div class="freshness noprint" style="border-left-color:var(--ti); background:var(--ti-wash); border-color:color-mix(in srgb,var(--ti) 30%,transparent)">
+    <span class="ic" aria-hidden="true">📌</span>
+    <div><b style="color:var(--ti)">Este documento es PERENNE.</b> Explica conceptos y rutas de lectura que casi no cambian. Los conteos exactos (“~41 applets”, versiones) viven en los documentos marcados <span class="badge vivo dot" style="vertical-align:1px">Vivo</span>, que sí se actualizan con cada release.</div>
+  </div>
+
+  <p class="measure" style="margin-top:26px">SteelheadAutomator es una <strong>extensión de Chrome</strong> que se instala en el navegador del operador y automatiza tareas repetitivas dentro del ERP <strong>Steelhead</strong> (<code>app.gosteelhead.com</code>): cargar cientos o miles de cotizaciones y números de parte de un jalón, archivar, calcular cargas, autocompletar facturas, y unas cuarenta tareas más. La particularidad —que este paquete explica a fondo— es que la extensión es un <strong>“cascarón”</strong>: la caja instalada casi nunca cambia, mientras que <em>toda su inteligencia</em> vive en un servidor y se actualiza sola, sin reinstalar nada.</p>
+
+  <!-- ============ CONVENCIÓN VIVO / PERENNE ============ -->
+  <h2 class="sec"><span class="num">01</span>La convención que debes conocer antes de imprimir</h2>
+  <p class="sec-lead measure">Cada documento del paquete está marcado con una de dos etiquetas. La distinción importa <strong>especialmente si vas a imprimir</strong>: lo “vivo” caduca; lo “perenne”, no.</p>
+
+  <div class="split">
+    <div class="conv v">
+      <h3><span class="badge vivo dot">Documento vivo</span></h3>
+      <p class="lede">Refleja el estado <em>actual</em> del sistema: versiones, conteos, hashes, lista de applets.</p>
+      <ul>
+        <li>Cambia con cada actualización del producto (varias por semana).</li>
+        <li>Lleva un <strong>banner de frescura</strong> con la versión y la fecha del corte.</li>
+        <li>Si lo imprimes, anota la fecha: una copia impresa es una <strong>foto de un momento</strong>, no la verdad viva.</li>
+        <li>Ejemplos: <em>Inventario de Applets</em>.</li>
+      </ul>
+    </div>
+    <div class="conv p">
+      <h3><span class="badge perenne dot">Documento perenne</span></h3>
+      <p class="lede">Enseña <em>modelos mentales</em> y patrones estables: cómo funciona, no cuántos hay hoy.</p>
+      <ul>
+        <li>No necesita re-emitirse cada release; envejece muy despacio.</li>
+        <li>Cuando menciona cifras lo hace en <strong>relativo</strong> (“~40 applets; ver el Inventario vivo”).</li>
+        <li>Puedes imprimirlo con confianza y reutilizarlo por mucho tiempo.</li>
+        <li>Ejemplos: este Mapa, la presentación 101, los manuales, el glosario, las fichas profundas.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Cómo comprobar la “versión viva” en cualquier momento</p>
+    <strong>Operador / Key User:</strong> abre el menú de la extensión — la versión aparece ahí. &nbsp;·&nbsp; <strong>Administrador / TI:</strong> corre <code>tools/deploy-status.sh</code>, que imprime la versión de tu rama, de <code>main</code>, de <code>gh-pages</code> y la que está <em>viva</em> en internet, y verifica que coincidan.
+  </div>
+
+  <!-- ============ AUDIENCIAS ============ -->
+  <h2 class="sec"><span class="num">02</span>Tres audiencias, tres rutas de lectura</h2>
+  <p class="sec-lead measure">Cada color te acompaña por todo el paquete: cuando veas tu color en un encabezado o una tarjeta, esa sección está pensada para ti. Empieza por donde te toca; lo demás está disponible cuando lo necesites.</p>
+
+  <div class="grid cols-3">
+    <!-- Key User -->
+    <article class="card acard ku">
+      <span class="who">Key User · Operador</span>
+      <h3>Usas la extensión a diario</h3>
+      <p class="youare">“Aprendo rápido y soy estructurado; muéstrame ejemplos concretos y qué pasa cuando doy clic.”</p>
+      <ul class="path">
+        <li><span class="rank">01</span><span class="doc">Manual del Operador<small>Instalar, usar, paso a paso + fichas breves de cada applet</small></span></li>
+        <li><span class="rank">02</span><span class="doc">Ficha profunda: Carga Masiva<small>El applet estrella del día a día, con ejemplos reales</small></span></li>
+        <li><span class="rank">03</span><span class="doc">Presentación 101<small>Para ver el “por qué” detrás de lo que operas</small></span></li>
+      </ul>
+    </article>
+    <!-- Jefe de TI -->
+    <article class="card acard ti">
+      <span class="who">Jefe de TI · Infraestructura</span>
+      <h3>Administras y respondes por el sistema</h3>
+      <p class="youare">“Sé de infraestructura, no de desarrollo. Dame precisión técnica, diagramas, flujos y modos de falla.”</p>
+      <ul class="path">
+        <li><span class="rank">01</span><span class="doc">Presentación 101<small>El modelo completo: cascarón, deploy, seguridad</small></span></li>
+        <li><span class="rank">02</span><span class="doc">Manual del Administrador<small>Deploy, hashes, firma/KMS, incidentes, rollback</small></span></li>
+        <li><span class="rank">03</span><span class="doc">Ficha profunda: Hash-Autopilot<small>Cómo se auto-reparan las conexiones al ERP</small></span></li>
+      </ul>
+    </article>
+    <!-- Gerente de BI -->
+    <article class="card acard bi">
+      <span class="who">Gerente de BI · Datos</span>
+      <h3>Exiges precisión y referencia profesional</h3>
+      <p class="youare">“Necesito los datos exactos como referencia, aunque no los entienda todos al inicio.”</p>
+      <ul class="path">
+        <li><span class="rank">01</span><span class="doc">Inventario de Applets <span class="badge vivo" style="font-size:.6rem; padding:1px 6px; vertical-align:1px">Vivo</span><small>La tabla autoritativa: qué existe, versión, estado</small></span></li>
+        <li><span class="rank">02</span><span class="doc">Glosario técnico<small>Cada término en lenguaje llano, con su metáfora</small></span></li>
+        <li><span class="rank">03</span><span class="doc">Ambas fichas profundas<small>El detalle de los dos temas más complejos</small></span></li>
+      </ul>
+    </article>
+  </div>
+
+  <!-- ============ CONTENIDO DEL PAQUETE ============ -->
+  <h2 class="sec"><span class="num">03</span>El paquete completo, de un vistazo</h2>
+  <p class="sec-lead measure">Ocho piezas organizadas en cinco “capas”, de lo más conceptual a lo más detallado. La columna <em>Longevidad</em> te dice si conviene imprimirlo hoy o consultarlo siempre en su versión viva.</p>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Publicación por fases</p>
+    Este paquete se construye por etapas. <strong>Fase 1 (ya publicada):</strong> este Mapa, la Presentación 101, el Inventario y la ficha de Hash-Autopilot — con enlace “Abrir” abajo. <strong>Fase 2 (próximamente):</strong> los dos manuales, el Glosario y la ficha de Carga Masiva.
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Capa</th><th>Documento</th><th>Audiencia principal</th><th>Longevidad</th><th>Para qué sirve</th><th>Abrir</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>0</td><td><strong>Mapa “Empieza aquí”</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Este documento: qué leer según tu rol.</td><td><span style="color:var(--faint);font-size:.8rem;white-space:nowrap">Estás aquí</span></td></tr>
+        <tr><td>1</td><td><strong>SteelheadAutomator 101</strong></td><td><span class="chip all">Todos</span> <span class="chip ti">TI</span></td><td><span class="tag-p">Perenne</span></td><td>Los conceptos: cascarón + cerebro remoto, deploy, seguridad, applets.</td><td><a href="101-deck.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>2</td><td><strong>Manual del Operador</strong></td><td><span class="chip ku">Key User</span></td><td><span class="tag-p">Perenne</span></td><td>Instalar y usar; ejemplos paso a paso + ficha breve de cada applet.</td><td><span style="color:var(--faint);font-size:.8rem;white-space:nowrap">Próximamente</span></td></tr>
+        <tr><td>2</td><td><strong>Manual del Administrador</strong></td><td><span class="chip ti">Jefe de TI</span></td><td><span class="tag-p">Perenne</span></td><td>Arquitectura, deploy, hashes, firma/KMS, incidentes, rollback.</td><td><span style="color:var(--faint);font-size:.8rem;white-space:nowrap">Próximamente</span></td></tr>
+        <tr><td>3</td><td><strong>Inventario de Applets</strong></td><td><span class="chip bi">Gerente BI</span></td><td><span class="tag-v">Vivo</span></td><td>Tabla autoritativa y versionada de todo lo que el sistema hace hoy.</td><td><a href="inventario-applets.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>3</td><td><strong>Glosario técnico</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Cada término (hash, deploy, KMS…) en lenguaje llano, con metáfora.</td><td><span style="color:var(--faint);font-size:.8rem;white-space:nowrap">Próximamente</span></td></tr>
+        <tr><td>4</td><td><strong>Ficha profunda: Hash-Autopilot</strong></td><td><span class="chip ti">TI</span> <span class="chip bi">BI</span></td><td><span class="tag-p">Perenne</span></td><td>El “cerrajero automático” que mantiene viva la conexión con el ERP.</td><td><a href="ficha-hash-autopilot.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>4</td><td><strong>Ficha profunda: Carga Masiva</strong></td><td><span class="chip ku">Key User</span> <span class="chip bi">BI</span></td><td><span class="tag-p">Perenne</span></td><td>El “triage + carril express” de la carga masiva de datos.</td><td><span style="color:var(--faint);font-size:.8rem;white-space:nowrap">Próximamente</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Sugerencia de recorrido para la sesión de capacitación</p>
+    Arranca todos juntos con la <strong>Presentación 101</strong> (30–40 min) para compartir el mismo modelo mental. Después, cada quien profundiza por su ruta. Las <strong>fichas profundas</strong> se reservan para quien quiera el detalle fino de los dos temas más complejos del sistema.
+  </div>
+
+  <footer class="foot">
+    <div class="meta">
+      <span><span class="badge perenne dot">Perenne</span></span>
+      <span>Paquete de capacitación SteelheadAutomator · Mapa v1</span>
+    </div>
+    <div class="meta">
+      <span>Corte de referencia: 23 jul 2026</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

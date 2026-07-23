@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventario de Applets — SteelheadAutomator (documento vivo)</title>
+<style>
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6;
+  --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{--ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+    --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+    --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+    --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10; --danger:#e0655a; --danger-wash:#251512;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);}
+}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;}
+*{box-sizing:border-box}
+body{margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.58; -webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px; margin:0 auto; padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--steel); padding:40px 0 22px}
+.brandbar{display:flex; align-items:center; gap:10px; margin-bottom:16px}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--bi);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(1.9rem,4.4vw,2.5rem);line-height:1.08;letter-spacing:-.02em;margin:0 0 8px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.08rem;color:var(--muted);margin:0;max-width:62ch}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.badge.vivo{background:var(--accent-wash);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.badge.dot::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+/* freshness — prominent for a LIVE doc */
+.freshness{display:flex;gap:14px;align-items:flex-start;margin:24px 0 6px;background:var(--accent-wash);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-left:5px solid var(--accent);border-radius:10px;padding:16px 18px;font-size:.95rem}
+.freshness .ic{flex:0 0 auto;color:var(--accent-ink);margin-top:1px;font-size:1.2rem}
+.freshness b{color:var(--accent-ink)}
+.freshness code{background:color-mix(in srgb,var(--accent) 14%,transparent);font-family:var(--mono);font-size:.85em;padding:1px 5px;border-radius:5px}
+/* stat row */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:26px 0 8px}
+@media (max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+.stat .n{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+.stat .l{font-size:.78rem;color:var(--muted);margin-top:6px;line-height:1.35}
+.stat.a .n{color:var(--accent-ink)}
+h2.sec{font-size:1.32rem;letter-spacing:-.01em;margin:44px 0 4px;font-weight:800;display:flex;align-items:center;gap:12px;text-wrap:balance}
+h2.sec .catdot{width:12px;height:12px;border-radius:3px;background:var(--catc,var(--steel));flex:0 0 auto}
+.sec-lead{color:var(--muted);margin:.3rem 0 1rem;max-width:var(--measure);font-size:.95rem}
+p{margin:0 0 1rem;max-width:var(--measure)}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px}
+a{color:var(--accent-ink);text-underline-offset:2px}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin-bottom:8px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:720px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground);position:sticky;top:0;z-index:1}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:color-mix(in srgb,var(--bi) 5%,transparent)}
+.appname{font-weight:700;color:var(--ink)}
+.appid{font-family:var(--mono);font-size:.78rem;color:var(--faint);display:block;margin-top:2px}
+.ver{font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--steel)}
+.st{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.st.live{background:var(--accent-wash);color:var(--accent-ink)}
+.st.tool{background:var(--ti-wash);color:var(--ti)}
+.st.mod{background:var(--hair);color:var(--muted)}
+.desc{color:var(--muted);font-size:.9rem}
+.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0 4px}
+.controls input{flex:1;min-width:220px;font:inherit;font-size:.95rem;padding:10px 14px;border:1px solid var(--hair-2);border-radius:9px;background:var(--paper);color:var(--ink)}
+.controls input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.controls .hint{font-size:.82rem;color:var(--faint)}
+.callout{border-radius:10px;padding:14px 16px 14px 46px;position:relative;margin:20px 0;font-size:.93rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:700;margin:0 0 3px;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+.callout::before{position:absolute;left:14px;top:14px;font-size:1.1rem;line-height:1}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠";color:var(--warn)}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:.82rem;color:var(--muted);margin:10px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.foot{margin-top:60px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.nores{padding:18px;color:var(--faint);font-style:italic;display:none}
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  body{font-size:10.5pt}.wrap{max-width:none;padding:0}
+  .noprint{display:none!important}.tablewrap{break-inside:auto}tr{break-inside:avoid}
+  thead th{position:static}h2.sec{break-after:avoid}a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>SA</span></span>
+      <span class="brandname">Steelhead<em>Automator</em> · Paquete de capacitación y referencia</span>
+      <span style="flex:1"></span><a href="00-mapa-empieza-aqui.html" style="font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Referencia · Documento vivo</p>
+    <h1>Inventario de Applets</h1>
+    <p class="sub">El catálogo autoritativo de todo lo que SteelheadAutomator sabe hacer hoy: cada herramienta, su versión y su propósito, agrupadas por función.</p>
+  </header>
+
+  <div class="freshness">
+    <span class="ic" aria-hidden="true">🕒</span>
+    <div>
+      <b>Documento VIVO — corte al 23 de julio de 2026.</b> Refleja la configuración del sistema en <code>config.json v1.7.176</code> (extensión <code>v1.6.6</code>). El sistema evoluciona <b>varias veces por semana</b>: versiones y conteos cambian.
+      <b>Si imprimes esta hoja, es una foto de este momento.</b> La verdad viva está en <code>remote/config.json</code>; para verla al instante corre <code>tools/deploy-status.sh</code>.
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat a"><div class="n">~41</div><div class="l">Apps registradas en <code>config.json</code> (incluye ayudantes compartidos y variantes de bundle)</div></div>
+    <div class="stat"><div class="n">~77</div><div class="l">Archivos de código <code>remote/scripts/*.js</code> que las componen</div></div>
+    <div class="stat"><div class="n">35</div><div class="l">Applets y herramientas documentados en este inventario</div></div>
+    <div class="stat"><div class="n">8</div><div class="l">Categorías funcionales (ver secciones abajo)</div></div>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Cómo leer las versiones</p>
+    El número de versión es <strong>interno</strong> (versionado semántico del equipo). Un número bajo (p. ej. <code>0.1.0</code>) indica que el applet es <strong>reciente</strong> o tiene alcance acotado, <em>no</em> que esté incompleto: muchos con versión baja ya están validados en producción. La columna <strong>Estado</strong> distingue lo que vive dentro de la extensión (<span class="st live">En la extensión</span>) de las herramientas sueltas de mantenimiento (<span class="st tool">Herramienta DevTools</span>) y los módulos internos (<span class="st mod">Módulo</span>).
+  </div>
+
+  <div class="controls noprint">
+    <input id="q" type="search" placeholder="Filtrar por nombre, id o descripción… (p. ej. 'factura', 'carga', 'precio')" aria-label="Filtrar inventario">
+    <span class="hint" id="count"></span>
+  </div>
+
+  <!-- ============ 1. CARGA Y DATOS MASIVOS ============ -->
+  <h2 class="sec" style="--catc:var(--ku)"><span class="catdot"></span>1 · Carga y datos masivos</h2>
+  <p class="sec-lead">Herramientas que cargan o ajustan grandes volúmenes de datos de números de parte de un jalón, desde un Excel o sobre lo ya existente.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Applet</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Carga Masiva</span><span class="appid">bulk-upload</span></td><td class="ver">1.5.42</td><td><span class="st live">En la extensión</span></td><td class="desc">Carga masiva de cotizaciones y números de parte desde una plantilla Excel: precios, specs, etiquetas, dimensiones, racks y más. El applet más complejo del sistema (ver su ficha profunda).</td></tr>
+      <tr><td><span class="appname">Ajuste Masivo de Specs</span><span class="appid">spec-params-bulk</span></td><td class="ver">0.9.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Alta y ajuste masivo de parámetros de especificación técnica sobre muchos números de parte.</td></tr>
+      <tr><td><span class="appname">Validador / Normalizador de Params</span><span class="appid">spec-migrator · validate-duplicate-params</span></td><td class="ver">0.5.5</td><td><span class="st live">En la extensión</span></td><td class="desc">Bundle “Ajuste Masivo”: detecta y corrige parámetros duplicados y “falsos pendientes” (params activos de una revisión anterior de la spec), con vista previa y rollback.</td></tr>
+      <tr><td><span class="appname">Specs en Números de Parte</span><span class="appid">pn-specs-column</span></td><td class="ver">0.2.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Agrega una columna en la lista de números de parte que muestra las specs y parámetros de cada uno, con enlaces directos.</td></tr>
+      <tr><td><span class="appname">Cargador de Archivos</span><span class="appid">file-uploader</span></td><td class="ver">0.5.1</td><td><span class="st live">En la extensión</span></td><td class="desc">Carga masiva de fotos a números de parte por convención de nombre de archivo, con deduplicación contra lo ya existente.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ============ 2. NÚMEROS DE PARTE — CICLO DE VIDA ============ -->
+  <h2 class="sec" style="--catc:var(--ku)"><span class="catdot"></span>2 · Números de parte — ciclo de vida</h2>
+  <p class="sec-lead">Gestión del estado de los números de parte: alta, validación, archivado, precios y unidades.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Applet</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Gestor de Ciclo de Vida de PNs</span><span class="appid">pn-lifecycle</span></td><td class="ver">0.2.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Cuatro acciones sobre números de parte —marcar/quitar validación, desarchivar, archivar (borrado)— con dos orígenes: escanear el dominio con filtros, o pegar IDs directos. Siempre con dry-run + confirmación + vista previa.</td></tr>
+      <tr><td><span class="appname">Archivador Masivo</span><span class="appid">archiver</span></td><td class="ver">1.0.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Archiva o desarchiva números de parte filtrando por etiquetas (Y/O), con fecha opcional.</td></tr>
+      <tr><td><span class="appname">Candado de Confirmación de Precio</span><span class="appid">price-confirm-guard</span></td><td class="ver">0.1.4</td><td><span class="st live">En la extensión</span></td><td class="desc">Al guardar un precio desde el modal nativo, exige reconfirmarlo (tipo contraseña), muestra la divisa y el equivalente por pieza, y bloquea si falta la divisa. Previene errores de captura de precio.</td></tr>
+      <tr><td><span class="appname">Auto-conversión de Unidades</span><span class="appid">unit-autoconvert</span></td><td class="ver">0.1.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Toggle que auto-completa las unidades “por pieza” en el modal de definición de unidades, con enrutamiento dinámico de campos.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ============ 3. ÓRDENES, COTIZACIONES Y RUTEO ============ -->
+  <h2 class="sec" style="--catc:var(--ti)"><span class="catdot"></span>3 · Órdenes, cotizaciones y ruteo</h2>
+  <p class="sec-lead">Creación y manejo de órdenes de venta, cotizaciones y órdenes de trabajo, incluyendo el ruteo entre líneas de producción.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Applet</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Autollenado de Creación de Orden</span><span class="appid">create-order-autofill</span></td><td class="ver">0.1.3</td><td><span class="st live">En la extensión</span></td><td class="desc">Autocompleta el modal de “Crear Orden de Venta / Cotización” a partir del cliente seleccionado.</td></tr>
+      <tr><td><span class="appname">Auto-Ruteador</span><span class="appid">auto-router</span></td><td class="ver">0.1.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Re-rutea una orden de trabajo entre líneas (p. ej. T204→T205) aplicando reglas de bypass, coincidencia de rol y reúso de proceso, con vista previa editable.</td></tr>
+      <tr><td><span class="appname">Mover Órdenes de Trabajo</span><span class="appid">wo-mover</span></td><td class="ver">0.2.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Reasigna el encabezado de órdenes de trabajo entre órdenes de venta.</td></tr>
+      <tr><td><span class="appname">Completar / Descompletar OTs</span><span class="appid">wo-completer</span></td><td class="ver">0.1.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Marca o desmarca órdenes de trabajo como completadas de forma masiva.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ============ 4. FACTURACIÓN ============ -->
+  <h2 class="sec" style="--catc:var(--ti)"><span class="catdot"></span>4 · Facturación</h2>
+  <p class="sec-lead">Automatización del flujo de facturas y su regeneración.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Applet</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Autollenado de Facturas</span><span class="appid">invoice-autofill</span></td><td class="ver">0.5.65</td><td><span class="st live">En la extensión</span></td><td class="desc">Autocompleta datos de la factura, incluyendo el emparejamiento de cuenta por divisa (reconoce “M.N.” = pesos, no solo el código ISO).</td></tr>
+      <tr><td><span class="appname">Auto-regeneración de Facturas</span><span class="appid">invoice-auto-regen</span></td><td class="ver">0.5.37</td><td><span class="st live">En la extensión</span></td><td class="desc">Regenera facturas automáticamente cuando corresponde.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ============ 5. INVENTARIO, SURTIDO Y PROGRAMACIÓN ============ -->
+  <h2 class="sec" style="--catc:var(--ti)"><span class="catdot"></span>5 · Inventario, surtido y programación</h2>
+  <p class="sec-lead">Control de lotes, surtido de almacén, recibos y el tablero de programación.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Applet</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Candado de Surtido Programado</span><span class="appid">surtido-guard</span></td><td class="ver">0.2.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Bloquea mover piezas NO programadas del paso de surtido al siguiente proceso; marca en naranja las tarjetas no movibles. Fail-safe ante datos faltantes.</td></tr>
+      <tr><td><span class="appname">Filtrar Lote por Nombre</span><span class="appid">batch-name-filter</span></td><td class="ver">0.2.1</td><td><span class="st live">En la extensión</span></td><td class="desc">En el Panel de Envío, selecciona de un jalón todos los lotes con un mismo nombre exacto, superando el tope de 10 del filtro nativo.</td></tr>
+      <tr><td><span class="appname">Resaltar Lote en Programación</span><span class="appid">schedule-batch-highlighter</span></td><td class="ver">0.1.3</td><td><span class="st live">En la extensión</span></td><td class="desc">Workaround de un bug del filtro nativo del Schedule Board con lotes homónimos: resalta y marca todas las filas del mismo nombre en vez de esconder las demás.</td></tr>
+      <tr><td><span class="appname">Prellenado de Ubicación de Almacén</span><span class="appid">warehouse-location-prefill</span></td><td class="ver">0.5.80</td><td><span class="st live">En la extensión</span></td><td class="desc">Prellena la ubicación de almacén al recibir material.</td></tr>
+      <tr><td><span class="appname">Captura Rápida de Peso</span><span class="appid">weight-quick-entry</span></td><td class="ver">0.5.81</td><td><span class="st live">En la extensión</span></td><td class="desc">Acelera la captura de peso en el recibo de material.</td></tr>
+      <tr><td><span class="appname">Ajuste de Fecha de Recibo</span><span class="appid">receiver-date-override</span></td><td class="ver">0.5.68</td><td><span class="st live">En la extensión</span></td><td class="desc">Permite fijar la fecha del recibo de material.</td></tr>
+      <tr><td><span class="appname">Vale de Almacén</span><span class="appid">vale-almacen</span></td><td class="ver">0.1.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Panel para emitir un vale de almacén multi-línea (artículo + cantidad + usuario) como evento de mantenimiento estructurado y auditable.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ============ 6. PROCESOS Y PRODUCCIÓN ============ -->
+  <h2 class="sec" style="--catc:var(--accent)"><span class="catdot"></span>6 · Procesos y producción</h2>
+  <p class="sec-lead">Cálculo de cargas, configuración de estaciones, auditoría de procesos y el modelo canónico de procesos.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Applet</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Calculadora de Piezas por Carga</span><span class="appid">load-calculator</span></td><td class="ver">0.2.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Configura datos maestros de tina/línea por estación y calcula piezas por carga (cuadrícula/área/barril), validado contra un Excel de referencia. Persiste el resultado en el número de parte.</td></tr>
+      <tr><td><span class="appname">Calculadora de Proceso</span><span class="appid">proceso-calculator</span></td><td class="ver">0.1.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Cálculos sobre el proceso por defecto de un número de parte.</td></tr>
+      <tr><td><span class="appname">Auditoría Profunda de Procesos</span><span class="appid">process-deep-audit</span></td><td class="ver">0.8.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Audita en profundidad la estructura de procesos.</td></tr>
+      <tr><td><span class="appname">Canon de Procesos</span><span class="appid">process-canon</span></td><td class="ver">varios</td><td><span class="st mod">Módulo</span></td><td class="desc">Módulo compartido que construye el árbol de procesos (9 nodos top-level) para descubrimiento y mutaciones. Lo usan otros applets; no se opera directo.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ============ 7. SENSORES, MANTENIMIENTO Y REPORTES ============ -->
+  <h2 class="sec" style="--catc:var(--accent)"><span class="catdot"></span>7 · Sensores, mantenimiento y reportes</h2>
+  <p class="sec-lead">Dashboards de sensores, estatus de mantenimiento y regeneración de reportes del ERP.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Applet</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Autollenado de Estatus de Sensor</span><span class="appid">sensor-status-autofill</span></td><td class="ver">0.5.58</td><td><span class="st live">En la extensión</span></td><td class="desc">Autocompleta el estatus de sensores.</td></tr>
+      <tr><td><span class="appname">Auto-ocultar Sensores + Aislar</span><span class="appid">sensor-graph-hide-all</span></td><td class="ver">0.2.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Al entrar a un dashboard de sensores esconde todos, para que el operador destape solo el que quiere ver; incluye combo para aislar un sensor.</td></tr>
+      <tr><td><span class="appname">Regenerar Reportes</span><span class="appid">report-regen</span></td><td class="ver">0.3.0</td><td><span class="st live">En la extensión</span></td><td class="desc">Botón que regenera la base de datos de reportes (DuckDB) del dominio, con cooldown global y aviso de la última regeneración al pasar el cursor.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ============ 8. MANTENIMIENTO DEL SISTEMA + HERRAMIENTAS SUELTAS ============ -->
+  <h2 class="sec" style="--catc:var(--steel)"><span class="catdot"></span>8 · Mantenimiento del sistema y herramientas sueltas</h2>
+  <p class="sec-lead">Utilerías internas del equipo. Las <span class="st tool">Herramienta DevTools</span> <strong>no</strong> viven en la extensión: se pegan a mano en la consola del navegador cuando se necesitan.</p>
+  <div class="tablewrap"><table class="inv">
+    <thead><tr><th>Herramienta</th><th>Versión</th><th>Estado</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><span class="appname">Escáner de Hashes</span><span class="appid">hash-scanner</span></td><td class="ver">0.6.23</td><td><span class="st live">En la extensión</span></td><td class="desc">Captura los “hashes” de las consultas al ERP (con datos sensibles redactados) para actualizarlos cuando Steelhead los rota. Insumo del sistema hash-autopilot (ver ficha profunda).</td></tr>
+      <tr><td><span class="appname">Niveles de Integridad de Duplicados</span><span class="appid">integrity-tiers</span></td><td class="ver">1.5.3</td><td><span class="st mod">Módulo</span></td><td class="desc">Módulo de detección de duplicados por niveles, con UI en el auditor.</td></tr>
+      <tr><td><span class="appname">Auditar PNs Incompletos</span><span class="appid">audit-incomplete-pns</span></td><td class="ver">2026-05-26</td><td><span class="st tool">Herramienta DevTools</span></td><td class="desc">Escaneo de números de parte incompletos por niveles.</td></tr>
+      <tr><td><span class="appname">Recuperación de Doble Fuente</span><span class="appid">dual-source-recovery</span></td><td class="ver">1.0.2</td><td><span class="st tool">Herramienta DevTools</span></td><td class="desc">Recupera y limpia datos preservando el formato (Title Case, residuos “(seleccione)”).</td></tr>
+      <tr><td><span class="appname">Acceso a Workboard Producción</span><span class="appid">wb-produccion-access</span></td><td class="ver">1.0.0</td><td><span class="st tool">Herramienta DevTools</span></td><td class="desc">Da acceso al Workboard de Producción a una lista de usuarios por nombre, sin tocar otros permisos.</td></tr>
+      <tr><td><span class="appname">Archivar Estatus de Lotes</span><span class="appid">archive-inventory-batch-statuses</span></td><td class="ver">1.0.0</td><td><span class="st tool">Herramienta DevTools</span></td><td class="desc">Archiva estatus de lotes de inventario, detectando cuáles están en uso antes de intentarlo.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="nores" id="nores">Sin resultados para tu filtro. Prueba con otro término.</div>
+
+  <div class="legend">
+    <span><span class="st live">En la extensión</span> corre dentro de SteelheadAutomator</span>
+    <span><span class="st tool">Herramienta DevTools</span> se pega a mano en la consola</span>
+    <span><span class="st mod">Módulo</span> pieza interna compartida</span>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Fuera de este inventario</p>
+    Los <strong>Power Tools / Low-Code</strong> (hooks de automatización de bajo código) se movieron a un repositorio dedicado, <code>SteelheadPowerTools</code>, en junio de 2026. Ya no forman parte de la extensión y tienen su propia documentación.
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge vivo dot">Documento vivo</span> &nbsp; Inventario de Applets · SteelheadAutomator</div>
+    <div>Corte: 23 jul 2026 · config <code style="font-size:.85em">v1.7.176</code></div>
+  </footer>
+
+</div>
+<script>
+(function(){
+  var q=document.getElementById('q'), count=document.getElementById('count'),
+      nores=document.getElementById('nores');
+  var rows=[].slice.call(document.querySelectorAll('table.inv tbody tr'));
+  var total=rows.length;
+  function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+  function apply(){
+    var t=norm(q.value.trim()); var shown=0;
+    rows.forEach(function(r){
+      var hit = !t || norm(r.textContent).indexOf(t)>-1;
+      r.style.display = hit?'':'none'; if(hit) shown++;
+    });
+    // hide category blocks with no visible rows
+    document.querySelectorAll('table.inv').forEach(function(tb){
+      var vis=[].slice.call(tb.querySelectorAll('tbody tr')).some(function(r){return r.style.display!=='none'});
+      var block=tb.closest('.tablewrap'); var h=block.previousElementSibling;
+      while(h && !(h.tagName==='H2')) h=h.previousElementSibling;
+      var lead=block.previousElementSibling;
+      block.style.display=vis?'':'none';
+      if(h) h.style.display=vis?'':'none';
+      if(lead && lead.classList.contains('sec-lead')) lead.style.display=vis?'':'none';
+    });
+    nores.style.display = shown?'none':'block';
+    count.textContent = t ? (shown+' de '+total+' coinciden') : (total+' herramientas');
+  }
+  q.addEventListener('input',apply); apply();
+})();
+</script>
+</body>
+</html>

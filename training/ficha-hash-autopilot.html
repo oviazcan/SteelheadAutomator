@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha profunda: Hash-Autopilot — SteelheadAutomator</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.bi{background:var(--bi-wash);color:var(--bi)}
+.audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+/* figures */
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:820px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+/* callouts */
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+/* stages */
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+/* role summaries */
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.bi{border-top:4px solid var(--bi)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.bi .who{color:var(--bi)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar"><span class="brandmark"><span>SA</span></span><span class="brandname">Steelhead<em>Automator</em> · Ficha profunda</span><span style="flex:1"></span><a href="00-mapa-empieza-aqui.html" style="font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a></div>
+    <p class="eyebrow">Cómo el sistema se auto-repara solo</p>
+    <h1>Hash-Autopilot: el cerrajero automático</h1>
+    <p class="sub">Por qué la conexión con el ERP se “rompe” de vez en cuando por diseño de Steelhead, y cómo un robot la vuelve a armar sola —en tres proyectos a la vez— sin que nadie mueva un dedo.</p>
+    <div class="audchips">
+      <span class="audchip ti">Jefe de TI</span>
+      <span class="audchip bi">Gerente de BI</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">En una frase</p>
+    <p>Steelhead identifica cada consulta con un <strong>código</strong> en vez de con su texto completo (un párrafo largo); cuando actualiza su software ese código cambia (“rota”) y nuestras herramientas se quedan hablando en un idioma que el servidor ya no entiende. <strong>Hash-Autopilot</strong> detecta el corte, descubre el código nuevo navegando el ERP como lo haría un humano, lo valida y lo publica —solo— en las tres herramientas que lo usan.</p>
+  </div>
+
+  <!-- ===================== 01 ===================== -->
+  <h2 class="sec"><span class="num">01</span>¿Qué es un “hash” y por qué existe?</h2>
+  <p class="sec-lead measure">Antes de entender la avería, hay que entender la pieza que se avería. La palabra técnica es <em>persisted query</em> (“consulta persistida”); la idea es sencilla.</p>
+
+  <p>Cuando la aplicación de Steelhead le pide datos a su servidor, <strong>no manda la pregunta completa</strong> (que puede ser un párrafo largo de código). Manda solo un <strong>código de 64 caracteres</strong> —un “hash” SHA-256— que identifica esa pregunta exacta. El servidor ya tiene guardada la pregunta completa asociada a ese código, así que basta con decir “dame el resultado del código X”. Es más rápido, viaja menos información, y el texto de la consulta queda del lado del servidor.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — el número de plato del menú</p>
+    <p>En vez de decirle al mesero <em>“quiero la hamburguesa doble con queso, sin cebolla, término medio”</em>, dices <strong>“quiero el plato #47”</strong>. Tú y la cocina acordaron de antemano qué es el 47. Es más rápido para todos y no tienes que repetir la receta completa cada vez. El <strong>hash es ese número de plato</strong>; la consulta completa es la receta que la cocina tiene guardada.</p>
+  </div>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 800 300" role="img" aria-label="Diagrama: operación normal contra rotación del hash">
+      <!-- NORMAL -->
+      <text x="200" y="26" text-anchor="middle" class="svg-t" font-weight="800" font-size="15" fill="var(--accent-ink)">Operación normal</text>
+      <!-- client -->
+      <rect x="30" y="52" width="150" height="70" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="105" y="80" text-anchor="middle" class="svg-t" font-size="13" font-weight="700">Extensión</text>
+      <text x="105" y="100" text-anchor="middle" class="svg-mut" font-size="11">(el cliente)</text>
+      <!-- arrow -->
+      <line x1="180" y1="87" x2="270" y2="87" stroke="var(--accent)" stroke-width="2" marker-end="url(#agreen)"/>
+      <rect x="150" y="120" width="140" height="24" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="220" y="136" text-anchor="middle" class="svg-m" font-size="11" fill="var(--accent-ink)">“dame el plato #47”</text>
+      <!-- server -->
+      <rect x="270" y="52" width="150" height="70" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="345" y="76" text-anchor="middle" class="svg-t" font-size="13" font-weight="700">Servidor SH</text>
+      <text x="345" y="95" text-anchor="middle" class="svg-mut" font-size="10">Recetario:</text>
+      <text x="345" y="109" text-anchor="middle" class="svg-m" font-size="10" fill="var(--accent-ink)">#47 = GetPartNumber</text>
+      <text x="345" y="164" text-anchor="middle" class="svg-t" font-size="12" fill="var(--accent-ink)">✓ responde con los datos</text>
+
+      <!-- ROTADO -->
+      <text x="600" y="26" text-anchor="middle" class="svg-t" font-weight="800" font-size="15" fill="var(--danger)">Tras una actualización de Steelhead</text>
+      <rect x="450" y="52" width="150" height="70" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="525" y="80" text-anchor="middle" class="svg-t" font-size="13" font-weight="700">Extensión</text>
+      <text x="525" y="100" text-anchor="middle" class="svg-mut" font-size="11">(sigue pidiendo #47)</text>
+      <line x1="600" y1="87" x2="690" y2="87" stroke="var(--danger)" stroke-width="2" marker-end="url(#ared)"/>
+      <rect x="570" y="120" width="140" height="24" rx="12" fill="var(--danger-wash)" stroke="var(--danger)"/>
+      <text x="640" y="136" text-anchor="middle" class="svg-m" font-size="11" fill="var(--danger)">“el plato #47…”</text>
+      <rect x="690" y="52" width="80" height="70" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="730" y="82" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Servidor</text>
+      <text x="730" y="99" text-anchor="middle" class="svg-mut" font-size="10">menú</text>
+      <text x="730" y="111" text-anchor="middle" class="svg-mut" font-size="10">reimpreso</text>
+      <!-- error -->
+      <rect x="470" y="200" width="300" height="56" rx="9" fill="var(--danger-wash)" stroke="var(--danger)"/>
+      <text x="620" y="222" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--danger)">HTTP 400</text>
+      <text x="620" y="242" text-anchor="middle" class="svg-m" font-size="11" fill="var(--danger)">“Must provide a query string.”</text>
+      <text x="620" y="284" text-anchor="middle" class="svg-mut" font-size="11">= “no existe el plato 47, dime qué quieres”</text>
+
+      <defs>
+        <marker id="agreen" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker>
+        <marker id="ared" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--danger)"/></marker>
+      </defs>
+    </svg>
+    <figcaption>El mismo código funciona hasta que Steelhead “reimprime el menú”. No es un bug nuestro: es cómo funciona la técnica de <em>persisted queries</em>.</figcaption>
+  </figure>
+
+  <!-- ===================== 02 ===================== -->
+  <h2 class="sec"><span class="num">02</span>La “rotación”: cuando el código deja de servir</h2>
+  <p>Steelhead, sin avisar, de vez en cuando actualiza su software (porque cambió una pantalla, un campo o una consulta). Cuando eso pasa, el código viejo deja de existir en su registro, y cualquiera que lo siga usando recibe:</p>
+  <div class="callout danger">
+    <p class="ct">El síntoma exacto</p>
+    <p><code>HTTP 400 · "Must provide a query string."</code> &nbsp;→&nbsp; en español: <em>“no sé qué me estás pidiendo, mándame la pregunta completa”</em>. En el sistema llamamos a esto <strong>rotación de hash</strong>. Para el operador se ve como “el applet dejó de funcionar de repente”.</p>
+  </div>
+  <p>Hay una trampa diagnóstica importante: <strong>ese mismo error 400 aparece por dos causas distintas</strong>, y hay que distinguirlas antes de actuar:</p>
+  <ul>
+    <li><strong>Rotación</strong> (lo común): la consulta sigue existiendo pero con un código nuevo. Solución: capturar el código nuevo. <em>Esto es lo que automatiza Hash-Autopilot.</em></li>
+    <li><strong>Deprecación dura</strong> (raro): Steelhead retiró esa consulta por completo. No hay código nuevo que capturar; hay que migrar el applet a una consulta “prima hermana” que sí siga viva. <em>Esto requiere intervención humana.</em></li>
+  </ul>
+
+  <!-- ===================== 03 ===================== -->
+  <h2 class="sec"><span class="num">03</span>Hash-Autopilot: el robot que repara solo</h2>
+  <p class="sec-lead measure">Es un proceso que corre <strong>cada hora, sin intervención</strong>, en una Mac dedicada. Su trabajo tiene cinco etapas.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 800 210" role="img" aria-label="Las cinco etapas del hash-autopilot">
+      <defs><marker id="afl" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--ti)"/></marker></defs>
+      <!-- 5 stages as pipeline -->
+      <g font-size="11">
+        <!-- stage template positions -->
+        <rect x="10"  y="60" width="135" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <rect x="175" y="60" width="135" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <rect x="340" y="60" width="135" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <rect x="505" y="60" width="135" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <rect x="670" y="60" width="120" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <!-- numbers -->
+        <circle cx="30" cy="52" r="13" fill="var(--ti)"/><text x="30" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">1</text>
+        <circle cx="195" cy="52" r="13" fill="var(--ti)"/><text x="195" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">2</text>
+        <circle cx="360" cy="52" r="13" fill="var(--ti)"/><text x="360" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">3</text>
+        <circle cx="525" cy="52" r="13" fill="var(--ti)"/><text x="525" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">4</text>
+        <circle cx="690" cy="52" r="13" fill="var(--ti)"/><text x="690" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">5</text>
+        <!-- titles -->
+        <text x="77"  y="90"  text-anchor="middle" class="svg-t" font-weight="700">Detectar</text>
+        <text x="77"  y="108" text-anchor="middle" class="svg-mut">qué se rompió</text>
+        <text x="77"  y="123" text-anchor="middle" class="svg-mut" font-size="10">(el validador)</text>
+        <text x="242" y="90"  text-anchor="middle" class="svg-t" font-weight="700">Re-capturar</text>
+        <text x="242" y="108" text-anchor="middle" class="svg-mut">el código nuevo</text>
+        <text x="242" y="123" text-anchor="middle" class="svg-mut" font-size="10">(navegador oculto)</text>
+        <text x="407" y="90"  text-anchor="middle" class="svg-t" font-weight="700">Validar</text>
+        <text x="407" y="108" text-anchor="middle" class="svg-mut">que es real</text>
+        <text x="407" y="123" text-anchor="middle" class="svg-mut" font-size="10">(no un espejismo)</text>
+        <text x="572" y="90"  text-anchor="middle" class="svg-t" font-weight="700">Publicar</text>
+        <text x="572" y="108" text-anchor="middle" class="svg-mut">a 3 proyectos</text>
+        <text x="572" y="123" text-anchor="middle" class="svg-mut" font-size="10">(commit + push)</text>
+        <text x="730" y="90"  text-anchor="middle" class="svg-t" font-weight="700">Notificar</text>
+        <text x="730" y="108" text-anchor="middle" class="svg-mut">por correo</text>
+        <!-- connectors -->
+        <line x1="145" y1="100" x2="173" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#afl)"/>
+        <line x1="310" y1="100" x2="338" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#afl)"/>
+        <line x1="475" y1="100" x2="503" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#afl)"/>
+        <line x1="640" y1="100" x2="668" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#afl)"/>
+      </g>
+      <text x="400" y="180" text-anchor="middle" class="svg-mut" font-size="11">Corre automáticamente cada hora · un “latido” avisa a la nube si el robot deja de correr</text>
+    </svg>
+    <figcaption>El ciclo completo, de detectar el corte a publicar el arreglo, sin humanos en el camino feliz.</figcaption>
+  </figure>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Detectar — el validador</h4><p>Un script prueba cada código conocido contra el servidor y anota cuáles ya no responden. Algunas consultas “sensibles a la sesión” dan falsos positivos, así que esas se re-capturan siempre, sin esperar a que truenen.</p></div></li>
+    <li><span class="k">2</span><div><h4>Re-capturar — el motor con navegador oculto</h4><p>Abre un navegador invisible ya logueado (con los mismos tokens de sesión que usa el navegador real) y, como usa el motor real del ERP, ve exactamente lo que vería un humano. Hay dos caminos según el tipo de operación (ver abajo).</p></div></li>
+    <li><span class="k">3</span><div><h4>Validar — que el código nuevo sea real</h4><p>Capturar un código distinto no basta: podría ser ruido. El motor exige evidencia (una respuesta con datos, o una prueba directa contra el servidor) antes de confiar en él.</p></div></li>
+    <li><span class="k">4</span><div><h4>Publicar — escribe, confirma y sube</h4><p>Actualiza el archivo de configuración de la extensión y —si el código vive en otro proyecto— también los archivos de Reportes SH y PowerTools, con <em>commit</em> y <em>push</em> automáticos a cada repositorio.</p></div></li>
+    <li><span class="k">5</span><div><h4>Notificar — un correo consolidado</h4><p>Qué se corrigió y desplegó, qué se sincronizó, qué quedó sospechoso (necesita ojo humano) y qué es urgente. El asunto separa “urgente” de “por revisar” para no inflar alarmas.</p></div></li>
+  </ol>
+
+  <h3 class="sub">Los dos caminos de la etapa 2: leer vs. escribir</h3>
+  <p>No todas las operaciones se “ven pasar” igual, así que el motor tiene dos estrategias:</p>
+  <ul>
+    <li><strong>Consultas de lectura</strong> (ej. “traer la lista de clientes”): se disparan con solo <em>navegar</em> a la pantalla correcta. Un “mapa de rutas” (<code>route-catalog</code>, ~69 rutas) le dice al motor <em>“para ver esta operación, ve a esta pantalla y haz este clic”</em>.</li>
+    <li><strong>Operaciones de escritura</strong> (ej. “guardar un pedido”): estas no se pueden ver sin <em>ejecutarlas</em> de verdad. Aquí entran los <strong>“sentinelas”</strong>: objetos de prueba reales marcados con el nombre literal <code>Sentinela</code> (~12 entidades: piezas, cotizaciones, órdenes…). El motor los usa para disparar la operación, pero con salvaguardas.</li>
+  </ul>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — el maniquí de pruebas en la caja registradora</p>
+    <p>Para verificar que la caja de una tienda funciona sin arriesgar una venta real, se usa un producto ficticio marcado <strong>“PRUEBA”</strong>: se pasa por la caja, se confirma que el sistema lo reconoce, y <strong>se anula el ticket antes de que se cobre</strong>. Eso es la técnica <em>captura-y-aborta</em>: para las escrituras delicadas (borrar una carpeta, agregar piezas a una orden), el motor deja que el navegador <em>arme</em> la petición —así ve el código que va a usar— pero la <strong>intercepta y cancela antes de que llegue al servidor</strong>. Cero cambios reales quedan guardados.</p>
+  </div>
+  <p>Además, antes de tocar cualquier sentinela, el motor <strong>verifica su identidad</strong>: si el objeto ya no se llama exactamente “Sentinela” (alguien lo archivó o renombró), el ciclo se cancela solo en vez de mutar algo al azar. Es un diseño <em>fail-closed</em>: ante la duda, no toca nada.</p>
+
+  <!-- ===================== 04 ===================== -->
+  <h2 class="sec"><span class="num">04</span>Un arreglo, tres proyectos: fuentes y deduplicación</h2>
+  <p class="sec-lead measure">El mismo código de consulta puede vivir <strong>duplicado en tres proyectos distintos</strong>, porque los tres hablan con el mismo servidor de Steelhead. Hash-Autopilot los mantiene sincronizados a los tres.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 800 260" role="img" aria-label="Las tres fuentes de hashes y su deduplicación">
+      <defs><marker id="afu" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--steel)"/></marker></defs>
+      <!-- 3 sources -->
+      <rect x="30" y="30" width="200" height="52" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="45" y="55" class="svg-t" font-size="12" font-weight="700">Extensión</text>
+      <text x="45" y="71" class="svg-mut" font-size="10" font-family="var(--mono)">config.json · ~180 ops</text>
+      <rect x="30" y="104" width="200" height="52" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="45" y="129" class="svg-t" font-size="12" font-weight="700">Reportes SH</text>
+      <text x="45" y="145" class="svg-mut" font-size="10" font-family="var(--mono)">steelhead_client.py · ~40</text>
+      <rect x="30" y="178" width="200" height="52" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="45" y="203" class="svg-t" font-size="12" font-weight="700">PowerTools</text>
+      <text x="45" y="219" class="svg-mut" font-size="10" font-family="var(--mono)">sync/*.py · ~22</text>
+      <!-- arrows to funnel -->
+      <line x1="230" y1="56"  x2="330" y2="120" stroke="var(--steel)" stroke-width="2" marker-end="url(#afu)"/>
+      <line x1="230" y1="130" x2="330" y2="130" stroke="var(--steel)" stroke-width="2" marker-end="url(#afu)"/>
+      <line x1="230" y1="204" x2="330" y2="140" stroke="var(--steel)" stroke-width="2" marker-end="url(#afu)"/>
+      <!-- funnel -->
+      <rect x="335" y="96" width="170" height="72" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="420" y="124" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--accent-ink)">Deduplicar</text>
+      <text x="420" y="142" text-anchor="middle" class="svg-mut" font-size="10">por (operación, código)</text>
+      <text x="420" y="157" text-anchor="middle" class="svg-mut" font-size="10">242 → 232 únicos</text>
+      <!-- to validator -->
+      <line x1="505" y1="132" x2="590" y2="132" stroke="var(--accent)" stroke-width="2" marker-end="url(#agr2)"/>
+      <defs><marker id="agr2" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker></defs>
+      <rect x="595" y="106" width="175" height="52" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="682" y="130" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Validador</text>
+      <text x="682" y="147" text-anchor="middle" class="svg-mut" font-size="10">prueba una sola vez c/u</text>
+    </svg>
+    <figcaption>Si dos proyectos usan la misma operación con el mismo código, se prueba una sola vez. Si la tienen con códigos distintos (“drift”), se prueban ambos: cada uno podría estar vivo o muerto por separado.</figcaption>
+  </figure>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — tres agendas telefónicas</p>
+    <p>La extensión, Reportes SH y PowerTools son <strong>tres agendas</strong> con el mismo contacto anotado. A veces con el mismo número, a veces desactualizado. El sistema no marca dos veces el mismo número solo porque está en dos agendas; pero si detecta que dos agendas tienen números <em>distintos</em> para el mismo contacto, sospecha que una quedó vieja y revisa ambas.</p>
+  </div>
+
+  <!-- ===================== 05 ===================== -->
+  <h2 class="sec"><span class="num">05</span>Salvaguardas: por qué no se descontrola</h2>
+  <p>Un robot que edita código de producción solo necesita frenos. Tiene tres:</p>
+  <ul>
+    <li><strong>Freno de masa.</strong> Si en una sola corrida parece que se rompieron <em>más de 6</em> códigos a la vez, el motor <strong>no despliega nada</strong> y pide revisión humana — tantos cambios juntos casi siempre significan una captura corrupta (p. ej. sesión equivocada), no una rotación legítima.</li>
+    <li><strong>Latido y vigía.</strong> El motor manda un “latido” a la nube en cada corrida; un vigía en GitHub avisa por correo si no ve el latido en más de 3 horas (por si la Mac se apagó).</li>
+    <li><strong>Escalación con IA.</strong> Si una <em>ruta de navegación</em> deja de funcionar (porque Steelhead rediseñó una pantalla), un segundo proceso intenta re-descubrir la receta rota de forma autónoma usando Claude, dejando registro de lo que probó.</li>
+  </ul>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — el freno de masa</p>
+    <p>Si de golpe parece que <em>“todo el menú cambió a la vez”</em>, es más probable que el mesero se haya equivocado de restaurante que que el restaurante haya reimpreso todo. Ante esa señal, el sistema no actualiza nada por su cuenta: pide que un humano lo revise.</p>
+  </div>
+
+  <!-- ===================== 06 ===================== -->
+  <h2 class="sec"><span class="num">06</span>Banderas de control (para el administrador)</h2>
+  <p class="sec-lead measure">Interruptores para correr el proceso en modos acotados o de prueba, sin tocar código.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Bandera</th><th>Efecto</th></tr></thead>
+      <tbody>
+        <tr><td><code>--dry-run</code></td><td>Corre todo el análisis pero <strong>no despliega ni notifica</strong> — solo muestra qué haría.</td></tr>
+        <tr><td><code>--masked-only</code></td><td>Re-captura solo las operaciones “sensibles a la sesión”, sin depender del validador.</td></tr>
+        <tr><td><code>--only=&lt;Op&gt;</code></td><td>Aísla el ciclo a una sola operación (para depurar una en particular).</td></tr>
+        <tr><td><code>SA_NO_EXTERNAL=1</code></td><td>Desactiva la sincronización a los repos externos (Reportes SH / PowerTools); el arreglo se queda solo en la extensión.</td></tr>
+        <tr><td><code>SA_NO_EXTERNAL_PUSH=1</code></td><td>Escribe y confirma en los repos externos, pero <strong>no</strong> hace <em>push</em> (alguien lo sube a mano después).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===================== resúmenes por rol ===================== -->
+  <h2 class="sec"><span class="num">07</span>Lo esencial, según tu rol</h2>
+  <div class="roles">
+    <div class="role ti">
+      <div class="who">Para el Jefe de TI</div>
+      <p>Es un pipeline de mantenimiento programado (cron horario) sobre una dependencia externa que rota sin previo aviso. Automatiza detección, re-captura headless (Playwright + sesión real), validación, y <em>commit/push</em> a tres repositorios. Frenos de seguridad: umbral de masa, verificación de identidad fail-closed, heartbeat + watchdog. La única intervención humana esperada es ante deprecaciones duras o rutas de navegación rotas — y para eso hay correo y una escalación asistida por IA.</p>
+    </div>
+    <div class="role bi">
+      <div class="who">Para la Gerente de BI</div>
+      <p>La dependencia con Steelhead es frágil por diseño de su API (códigos que cambian). En vez de que eso se traduzca en “el applet dejó de funcionar” y horas de captura manual, el sistema se auto-repara en minutos y deja <strong>rastro auditable</strong> de cada cambio (commits, correos). Cifras de referencia: 3 fuentes, ~232 operaciones únicas monitoreadas, corrida cada hora, umbral de seguridad de 6 rotaciones simultáneas.</p>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">De dónde salen estas cifras</p>
+    <p>Los conteos (~180 / ~40 / ~22 ops, ~69 rutas, ~12 sentinelas, ~232 únicos) son del corte de la exploración de julio 2026 y <strong>cambian con el tiempo</strong>. Este documento es perenne en sus <em>conceptos</em>; para números exactos vigentes, consulta el estado del sistema con el administrador.</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Ficha profunda: Hash-Autopilot · SteelheadAutomator</div>
+    <div>Conceptos estables · cifras al corte de jul 2026</div>
+  </footer>
+
+</div>
+</body>
+</html>
