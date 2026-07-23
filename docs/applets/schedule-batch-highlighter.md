@@ -1,6 +1,6 @@
 # schedule-batch-highlighter — Resaltar Lote en Programación
 
-**Versión actual:** 0.1.2 (config **1.7.172**, tag `v1.7.172`) — **DEPLOYADO** ("a mi riesgo", decisión
+**Versión actual:** 0.1.3 (config **1.7.173**, tag `v1.7.173`) — **DEPLOYADO** ("a mi riesgo", decisión
 del operador). Core + golden test 12/12, glue firmado (KMS). **Validado en vivo (2026-07-22):** resalta
 y marca correctamente tras el fix de detección de columna. **Iteraciones sobre feedback del operador:**
 - **v0.1.1** — fix "No encuentro la columna": el header es un **`<strong>` dentro de un `<td>`** (MUI
@@ -11,6 +11,10 @@ y marca correctamente tras el fix de detección de columna. **Iteraciones sobre 
   **buscador inline** en la barra de filtros nativa, tras el último filtro; (2) **Limpiar no
   des-marcaba** (refs de checkbox recicladas por la virtualización) → barrido de filas visibles del
   lote; (3) resaltado **verde pastel** (menos intenso, legible en la tabla clara).
+- **v0.1.3** — descubribilidad del aviso: **ícono ⓘ visible** (verde, junto al contador) con el
+  tooltip antes escondido solo en el 🏷️; el texto ahora **recomienda ORDENAR la tabla por la columna
+  "Received Batches"** (clic en su encabezado) para que los homónimos queden juntos → un solo scroll
+  los cubre a todos (mitiga la limitación de virtualización, tanto al marcar como al des-marcar).
 
 **PENDIENTE:** validar en vivo el buscador inline (posición tras SO) + que Limpiar ahora sí des-marca.
 
@@ -84,7 +88,7 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
   `window.__saSBH`. Detección de columna RB por alineación X (ver §Mecánica).
 - **`config.json`** — app `schedule-batch-highlighter` registrado (`autoInject:true`, sin permisos,
   scripts `[core, glue]` — **no usa `steelhead-api.js`**, es 100% DOM). Firmado (KMS) y deployado
-  (config 1.7.172).
+  (config 1.7.173).
 
 ## Limitaciones conocidas
 
