@@ -126,3 +126,11 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
 - [ ] No rompe la SPA a lo largo de una sesión larga (sin congelamientos por el re-montaje del widget) —
       observación continua; sin incidentes reportados hasta ahora.
 - [ ] Nombre inexistente → 0 marcadas, sin efectos (caso borde, no reportado explícitamente).
+
+## Safari/iPad
+En el bundle desde **v0.5.9** (2026-07-23). Clasificación: **directo / autoInject / sin lanzador** — el buscador inline
+se auto-inyecta en la barra de filtros del Schedule Board por su propio gate (`autoInject:true`), así que basta agregar el
+`id` a `safari/bundle.json.applets[]`; no requiere cablear `LAUNCHERS`/`LAUNCH_FN`. Sin bloqueadores iOS: es **100% DOM**
+(resaltado + `cb.click()` + `MutationObserver`), no usa `steelhead-api.js`, ni `a.download`, ni portapapeles, ni
+`chrome.storage`. Deps en el bundle: `schedule-batch-highlighter-core.js`, `schedule-batch-highlighter.js`. **Tras editar
+el applet → recompilar en Xcode** (el bundle es estático).

@@ -102,6 +102,13 @@
   </section>
 
   <section class="card">
+    <h2>Actualización · Bundle v0.5.9 — +2 auto-inyectados de piso</h2>
+    <p>Entraron al bundle <code>batch-name-filter</code> (<strong>Filtrar Lote por Nombre</strong> — box inline en el header del Panel de Envío <code>/Domains/&lt;id&gt;/Shipping</code>) y <code>schedule-batch-highlighter</code> (<strong>Resaltar Lote en Programación</strong> — buscador inline en la barra de filtros del Schedule Board). Ambos <strong>directo / <code>autoInject:true</code> / sin lanzador</strong> (se activan por su propio gate inline; basta agregar el <code>id</code> a <code>bundle.json.applets[]</code>, sin cablear <code>LAUNCHERS</code>/<code>LAUNCH_FN</code>) y ambos <strong>VALIDADOS en vivo</strong> (2026-07-22/23). Total: <strong>29 applets</strong>, 8 lanzadores.</p>
+    <div class="callout tip"><p><span class="label">Sin bloqueadores iOS:</span> <code>batch-name-filter</code> consulta por <code>fetch</code> nativo (<code>InventoryBatchViewQuery</code>) y aplica por <strong>recarga de la SPA</strong>; <code>schedule-batch-highlighter</code> es <strong>100% DOM</strong> (resaltado + <code>cb.click()</code> + <code>MutationObserver</code>). Ninguno usa <code>a.download</code>, portapapeles ni <code>chrome.storage</code>. Peso del bundle concatenado: <strong>~1.24 MB</strong>.</p></div>
+    <div class="callout warn"><p><span class="label">Descartados de esta pasada:</span> <code>hash-scanner</code> (dev-tool), <code>inventory-reset</code>/<code>po-comparator</code>/<code>report-liberator</code> (admin/oficina que dependen de subir archivos o portapapeles, no de piso) y los 8 con bloqueador de descarga (<code>a.download</code> no opera en iOS). <strong>Pendiente: recompilar en Xcode</strong> (el bundle es estático).</p></div>
+  </section>
+
+  <section class="card">
     <h2>Resumen</h2>
     <p>El <strong>48 % de los applets son portables como content script directo</strong>. Los <strong>8 de valor alto son todos "directo" y de esfuerzo bajo/medio</strong>, así que el Bundle v1 puede ser ambicioso sin tocar la arquitectura de popup. <strong>La ruta crítica es la infraestructura de empaquetado</strong> (wrapper Xcode + build script), no adaptar el código de los applets.</p>
     <div class="callout note"><p><span class="label">Insight:</span> los applets que pediste para iPad (mejoras de UI, autofills, colores, bloqueo, paros de línea, XML en facturas) caen casi todos en "directo". Los de popup son fase 2; los descartados son herramientas de escritorio (carga masiva, auditorías batch, importadores con descarga de archivos).</p></div>
