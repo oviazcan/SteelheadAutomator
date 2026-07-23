@@ -227,6 +227,11 @@ xcrun safari-web-extension-converter safari/extension \
 
   <section class="step" id="p3">
     <div class="step-head"><div class="badge">3</div><div><h2>Instalar en el iPad</h2><p class="sub">Por cable, desde Xcode</p></div></div>
+    <div class="callout warn">
+      <p><span class="label">⚠️ Requisito previo en el iPad — <code>Ajustes → Privacidad y seguridad</code> (dos toggles distintos)</span></p>
+      <p><strong>Modo de Aislamiento («modo hermético») = OFF.</strong> Con él encendido iPadOS bloquea instalar apps de desarrollo/perfiles y, <strong>verificado en piso (2026-07-23), <code>app.gosteelhead.com</code> ni siquiera carga</strong> (ese modo inhabilita tecnologías web complejas). Apágalo en <code>Modo de Aislamiento → Desactivar el Modo de Aislamiento → Desactivar y reiniciar</code> (<strong>el reinicio es obligatorio</strong>). Déjalo apagado de forma permanente en el iPad que use Steelhead; reactivarlo vuelve a tumbar el sitio.</p>
+      <p><strong>Modo Desarrollador = ON</strong> (iPadOS 16+). El interruptor solo aparece tras conectar el iPad a Xcode (o <code>Window → Devices and Simulators</code>). Actívalo en <code>Modo Desarrollador</code> → el iPad pide <strong>reiniciar</strong> → tras reiniciar, confirma <strong>Activar</strong>. Sin esto, la app firmada con Apple ID no corre.</p>
+    </div>
     <ol class="steps">
       <li>Conecta el iPad por cable. En el iPad, toca <strong>Confiar</strong> (“Trust This Computer”).</li>
       <li>En Xcode, barra superior: <strong>destino</strong> = tu iPad (no un simulador), <strong>esquema</strong> = la app <code>Candado Surtido</code>.</li>
