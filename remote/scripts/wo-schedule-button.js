@@ -55,6 +55,10 @@ const WoScheduleButton = (() => {
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;}',
       '#' + INLINE_ID + ' .sa-wosched-ico{flex:0 0 auto;}',
       '#' + INLINE_ID + ' .sa-wosched-txt{overflow:hidden;text-overflow:ellipsis;}',
+      // Multi-línea: una OT multi-tratamiento agenda varias tareas → se apilan.
+      '#' + INLINE_ID + '.sa-wosched-multi{align-items:flex-start;white-space:normal;}',
+      '#' + INLINE_ID + '.sa-wosched-multi .sa-wosched-txt{display:flex;flex-direction:column;gap:1px;}',
+      '#' + INLINE_ID + ' .sa-wosched-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;}',
       '#' + INLINE_ID + '.sa-wosched-none{border-color:#c7ccd1;background:#f3f4f6;color:#6b7280;}',
       '#' + INLINE_ID + '.sa-wosched-loading{border-color:#c7ccd1;background:#f3f4f6;color:#8a97a5;font-style:italic;}',
       '#' + INLINE_ID + '.sa-wosched-err{border-color:#e0b4ab;background:#fbeeeb;color:#b04a3a;}',
@@ -115,12 +119,20 @@ const WoScheduleButton = (() => {
 
   function renderInline(el, tasks) {
     if (!el) return;
+    const txt = el.querySelector('.sa-wosched-txt');
     if (!tasks || !tasks.length) { setInlineText(el, 'sa-wosched-none', 'Sin programar', 'Esta OT no está programada.'); return; }
-    let text = taskText(tasks[0]);
-    if (tasks.length > 1) text += '  (+' + (tasks.length - 1) + ')';
-    // tooltip con todas las tareas
     const title = tasks.map(function (t, i) { return (i + 1) + ') ' + taskText(t); }).join('\n');
-    setInlineText(el, '', text, title);
+    if (tasks.length === 1) { setInlineText(el, '', taskText(tasks[0]), title); return; }
+    // TODAS las tareas apiladas (una por línea/tratamiento), ordenadas por fecha.
+    el.className = 'sa-wosched-multi';
+    if (txt) {
+      txt.textContent = '';
+      tasks.forEach(function (t) {
+        const line = document.createElement('span'); line.className = 'sa-wosched-line'; line.textContent = taskText(t);
+        txt.appendChild(line);
+      });
+    }
+    el.title = title;
   }
 
   // ── Carga de datos ───────────────────────────────────────────────────────────

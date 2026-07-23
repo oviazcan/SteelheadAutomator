@@ -72,6 +72,8 @@ const WoListingColumns = (() => {
       '.sa-wocol-count{font-weight:400;color:#9aa7b5;font-size:10px;}',
       'th.sa-wocol-pn,th.sa-wocol-sched{border-left:1px dashed #c7ccd1 !important;white-space:nowrap;}',
       'td.sa-wocol-pn,td.sa-wocol-sched{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;}',
+      // Borde derecho punteado en la ÚLTIMA de nuestras columnas → frontera clara con las nativas.
+      'th.sa-wocol-edge,td.sa-wocol-edge{border-right:1px dashed #c7ccd1 !important;}',
       'td.sa-wocol-pn{min-width:120px;max-width:280px;}',
       'td.sa-wocol-sched{min-width:150px;max-width:300px;}',
       '.sa-wocol-pn-item{margin:0 0 4px 0;}',
@@ -81,8 +83,10 @@ const WoListingColumns = (() => {
       '.sa-wocol-chips{display:block;margin-top:2px;line-height:1.5;}',
       '.sa-wocol-chip{display:inline-block;border:1px solid #cfd6dd;border-radius:8px;padding:0 6px;',
       'margin:1px 4px 1px 0;font-size:10px;font-weight:600;white-space:nowrap;vertical-align:middle;}',
+      '.sa-wocol-sched-item{padding:2px 0;}',
+      '.sa-wocol-sched-item + .sa-wocol-sched-item{border-top:1px dashed #e1e5ea;}',
       '.sa-wocol-sched-st{font-weight:600;color:#0d6b49;font-size:12px;display:block;}',
-      '.sa-wocol-sched-meta{color:#5a6b7a;font-size:11px;}',
+      '.sa-wocol-sched-meta{color:#5a6b7a;font-size:11px;display:block;}',
       '.sa-wocol-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
       '.sa-wocol-err{color:#b04a3a;font-size:12px;}',
       '.sa-wocol-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;',
@@ -169,6 +173,8 @@ const WoListingColumns = (() => {
       .map(function (c) { return row.querySelector(':scope > .' + c.cls); })
       .filter(Boolean);
     if (!desired.length) return;
+    // La última de nuestras columnas lleva el borde derecho (frontera con las nativas).
+    desired.forEach(function (c, i) { c.classList.toggle('sa-wocol-edge', i === desired.length - 1); });
     let ok = true;
     for (let i = 0; i < desired.length; i++) { if (row.children[i] !== desired[i]) { ok = false; break; } }
     if (ok) return;
@@ -272,17 +278,17 @@ const WoListingColumns = (() => {
   function renderSchedCell(td, tasks) {
     td.setAttribute('data-sa-state', 'done'); td.textContent = '';
     if (!tasks || !tasks.length) { td.appendChild(mutedSpan('no programada')); return; }
-    const t = tasks[0];
-    const st = document.createElement('span'); st.className = 'sa-wocol-sched-st';
-    st.textContent = t.stationName || ('estación ' + (t.stationId != null ? t.stationId : '?'));
-    td.appendChild(st);
-    const meta = document.createElement('span'); meta.className = 'sa-wocol-sched-meta';
-    const when = fmtLocalDateTime(t.expectedStartTime);
-    const status = Core().scheduleStatusLabel(t.status);
-    let m = [when, status].filter(Boolean).join(' · ');
-    if (tasks.length > 1) m += '  (+' + (tasks.length - 1) + ')';
-    meta.textContent = m;
-    td.appendChild(meta);
+    // TODAS las tareas apiladas (una OT multi-tratamiento se agenda en varias líneas).
+    tasks.forEach(function (t) {
+      const item = document.createElement('div'); item.className = 'sa-wocol-sched-item';
+      const st = document.createElement('span'); st.className = 'sa-wocol-sched-st';
+      st.textContent = t.stationName || ('estación ' + (t.stationId != null ? t.stationId : '?'));
+      item.appendChild(st);
+      const meta = document.createElement('span'); meta.className = 'sa-wocol-sched-meta';
+      meta.textContent = [fmtLocalDateTime(t.expectedStartTime), Core().scheduleStatusLabel(t.status)].filter(Boolean).join(' · ');
+      item.appendChild(meta);
+      td.appendChild(item);
+    });
   }
 
   function fmtLocalDateTime(iso) {
