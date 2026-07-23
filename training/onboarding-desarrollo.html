@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding de Desarrollo (Windows + Mac) — SteelheadAutomator</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.bi{background:var(--bi-wash);color:var(--bi)}
+.audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{font-family:var(--mono);font-size:.83rem;background:var(--paper);border:1px solid var(--hair);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);max-width:none;line-height:1.55;position:relative}
+pre code{background:none;padding:0;font-size:1em}
+.prewrap{position:relative;margin:16px 0}
+.copybtn{position:absolute;top:8px;right:8px;font-family:var(--sans);font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:var(--ground);color:var(--muted);border:1px solid var(--hair-2);border-radius:6px;padding:4px 8px;cursor:pointer}
+.copybtn:hover{color:var(--ink);border-color:var(--faint)}
+.copybtn.copied{color:var(--accent-ink);border-color:var(--accent)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+/* toc */
+.toc{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:18px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.toc .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 10px}
+.toc ol{columns:2;column-gap:28px;padding-left:1.1em;margin:0;max-width:none}
+.toc li{margin:.28rem 0;font-size:.92rem;break-inside:avoid}
+.toc a{color:var(--ink);text-decoration:none}
+.toc a:hover{color:var(--accent-ink)}
+@media (max-width:640px){.toc ol{columns:1}}
+/* callouts */
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout p+p{margin-top:.6rem}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.callout ul,.callout ol{max-width:none}
+/* stages */
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.88rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+/* role summaries */
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.impact{border-top:4px solid var(--accent)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.impact .who{color:var(--accent-ink)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+/* essentials / checklist */
+.essentials{background:var(--paper);border:1px solid var(--hair-2);border-radius:14px;padding:24px 26px;margin:28px 0;box-shadow:var(--shadow)}
+.essentials h3{margin:0 0 14px;font-size:1.05rem;color:var(--ti)}
+.essentials ul{max-width:none;margin:0;padding-left:0;list-style:none}
+.essentials li{margin:.55rem 0;padding-left:30px;position:relative}
+.essentials li::before{content:"☐";position:absolute;left:0;top:0;font-size:1.05rem;color:var(--faint)}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.noprint{}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,.essentials,.toc,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar"><span class="brandmark"><span>SA</span></span><span class="brandname">Steelhead<em>Automator</em> · Onboarding</span><span style="flex:1"></span><a href="00-mapa-empieza-aqui.html" style="font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a></div>
+    <p class="eyebrow">Montar el entorno y echar a andar el harness</p>
+    <h1>Guía de Onboarding de Desarrollo<br>(Windows + Mac)</h1>
+    <p class="sub">Para trasladar el <strong>desarrollo y mantenimiento</strong> del repo a otra persona o equipo: clonar, instalar, probar, desarrollar, desplegar y mantener los hashes. Verificado contra el código real del repo, no contra intención.</p>
+    <div class="audchips">
+      <span class="audchip ti">Desarrollo / Mantenimiento</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Los comandos concretos envejecen; el repo no</p>
+    <p>Esta guía cita rutas, flags y versiones <strong>exactas</strong> del repo al corte de esta redacción (2026-07-23). Eso es intencional — es lo que hace la guía accionable — pero también significa que puede quedarse atrás cuando el código cambie. <strong>Ante cualquier discrepancia entre esta guía y lo que ves en pantalla, gana el código</strong>: los scripts en <code>tools/</code> son la fuente de verdad, no este documento. Los puntos marcados <strong>⚠️ confirmar con el equipo</strong> son cosas que no pude verificar en los archivos — no las asumas, pregúntalas.</p>
+  </div>
+
+  <div class="tldr">
+    <p class="ct">En una frase</p>
+    <p>Clonas el repo, corres <code>tools/install-hooks.sh</code> una vez, editas JavaScript vanilla en <code>remote/scripts/</code>, corres <code>tools/run-tests.sh</code> antes de tocar nada más, y cuando quieres que un cambio llegue a los operadores corres <code>tools/deploy.sh</code> (o <code>tools/wb-deploy.sh</code> si trabajas en un worktree) — que bumpea versión, firma con KMS, espeja a <code>gh-pages</code> y publica. Nada de lo que edites en <code>main</code> afecta a nadie hasta ese paso.</p>
+  </div>
+
+  <div class="toc">
+    <p class="ct">Contenido</p>
+    <ol>
+      <li><a href="#panorama">Panorama de la arquitectura para desarrollar</a></li>
+      <li><a href="#prereq">Prerequisitos por sistema operativo</a></li>
+      <li><a href="#codigo">Obtener el código</a></li>
+      <li><a href="#instalacion">Instalación</a></li>
+      <li><a href="#pruebas">Correr las pruebas</a></li>
+      <li><a href="#ciclo">El ciclo de desarrollo</a></li>
+      <li><a href="#worktrees">Trabajo con worktrees</a></li>
+      <li><a href="#deploy">Deploy a producción</a></li>
+      <li><a href="#firma">Firma y KMS</a></li>
+      <li><a href="#autopilot">Hash-Autopilot</a></li>
+      <li><a href="#winmac">Diferencias Windows vs Mac</a></li>
+      <li><a href="#checklist">Checklist de entorno listo</a></li>
+    </ol>
+  </div>
+
+  <!-- ===================== 01 ===================== -->
+  <h2 class="sec" id="panorama"><span class="num">01</span>Panorama de la arquitectura para desarrollar</h2>
+  <p class="sec-lead measure">El detalle conceptual completo vive en el <a href="manual-administrador.html">Manual del Administrador</a> y en la <a href="ficha-hash-autopilot.html">Ficha profunda: Hash-Autopilot</a>. Aquí solo lo que necesitas para orientarte antes de tocar código.</p>
+
+  <p>El sistema tiene dos mitades con ciclos de vida distintos:</p>
+  <ul>
+    <li><strong><code>extension/</code></strong> — el <em>cascarón</em>: una extensión Chrome MV3 empaquetada (manifest, <code>background.js</code>, <code>content.js</code>, <code>popup.html/js</code>). Se instala una vez y casi no cambia.</li>
+    <li><strong><code>remote/</code></strong> — el <em>cerebro</em>: los scripts de cada applet (<code>remote/scripts/*.js</code>) y el catálogo de configuración (<code>remote/config.json</code>, hashes de persisted queries + versión). Se publican en la rama <code>gh-pages</code> (servida por GitHub Pages) y el cascarón los descarga <strong>en tiempo de ejecución</strong>.</li>
+  </ul>
+
+  <div class="callout danger">
+    <p class="ct">El hallazgo que cambia cómo pruebas localmente</p>
+    <p><code>extension/background.js</code> tiene <strong>hardcodeada</strong> la URL de origen de los scripts remotos: <code>const REMOTE_BASE_URL = 'https://oviazcan.github.io/SteelheadAutomator'</code>. Esto significa que aunque cargues la extensión "descomprimida" desde tu clon local (<code>chrome://extensions</code> → Cargar descomprimida → carpeta <code>extension/</code>), <strong>el applet que se ejecuta en el navegador sigue siendo el que vive en <code>gh-pages</code> — NO tu copia local de <code>remote/</code></strong>. Editar <code>remote/scripts/foo.js</code> en tu clon no cambia lo que ve el navegador hasta que lo despliegues.</p>
+    <p>No hay un comando tipo <code>npm run dev</code> con recarga en caliente contra tu copia local. El flujo real de prueba es: (a) cubrir la lógica con el golden test puro (sección 5) — la vía principal —, o (b) desplegar de verdad a <code>gh-pages</code> y probar en vivo. Hay un truco documentado en planes viejos (<code>docs/superpowers/plans/2026-05-07-receiver-date-override.md</code>, <code>2026-05-18-process-duplicates.md</code>): levantar <code>python3 -m http.server</code> sirviendo <code>remote/</code> localmente, apuntar temporalmente <code>REMOTE_BASE_URL</code> a <code>http://localhost:&lt;puerto&gt;</code> y agregar ese origen a <code>host_permissions</code> de <code>manifest.json</code> — pero <strong>no es un flujo con script propio en <code>tools/</code>, y hay que revertirlo antes de comitear</strong>. ⚠️ confirmar con el equipo si existe/conviene formalizar un modo "dev server".</p>
+  </div>
+
+  <p>Reglas de desarrollo que aplican a todo <code>remote/scripts/*.js</code> (detalladas en <code>CLAUDE.md</code> raíz):</p>
+  <ul>
+    <li><strong>JavaScript vanilla</strong> — sin React, sin frameworks, sin bundlers (nada de <code>npm run build</code> del lado de la extensión).</li>
+    <li><strong>Código y variables en inglés; documentación y UI en español.</strong></li>
+    <li><strong>UI propia siempre en dark mode</strong> (<code>#1c2430</code> base, <code>#e6e9ee</code> texto, acento <code>#13a36f</code>) — para que el operador distinga de un vistazo la UI de la extensión de las pantallas nativas de Steelhead, que son claras.</li>
+    <li><strong>Núcleo puro + golden test.</strong> La lógica de negocio de cada applet se separa en un módulo <code>*-core.js</code> / <code>*-engine.js</code> sin DOM ni red, con su archivo de test en <code>tools/test/</code>. Ver sección 5.</li>
+    <li><strong>Constantes de dominio en <code>config.json</code></strong>, no hardcodeadas en el script.</li>
+  </ul>
+
+  <p>Estructura del repo (raíz), verificada contra el árbol actual:</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Carpeta</th><th>Qué contiene</th></tr></thead>
+      <tbody>
+        <tr><td><code>extension/</code></td><td>Extensión Chrome MV3 (cascarón). <code>manifest.json</code>, <code>background.js</code> (service worker + verificación de integridad), <code>content.js</code>, <code>popup.html/js</code>.</td></tr>
+        <tr><td><code>remote/</code></td><td><code>config.json</code> + <code>config.sig</code> (firma), <code>scripts/*.js</code> (77 archivos al corte de hoy, no todos publicados — solo los referenciados en <code>config.apps[].scripts</code>), <code>templates/</code> (los <code>.xlsm</code> de carga masiva).</td></tr>
+        <tr><td><code>tools/</code></td><td>Scripts de mantenimiento local: deploy, tests, hash-autopilot, utilidades DevTools standalone (no forman parte de la extensión).</td></tr>
+        <tr><td><code>tools/hash-autopilot/</code></td><td>Proyecto Node (ESM) aparte, con su propio <code>package.json</code>, que regenera hashes de persisted queries de forma desatendida.</td></tr>
+        <tr><td><code>tools/test/</code></td><td>Suite canónica de golden tests (<code>*.test.js</code>, <code>node --test</code>).</td></tr>
+        <tr><td><code>skills/</code></td><td>Notas reutilizables sobre la API de Steelhead (mapa de API, patrones, scraping de hashes).</td></tr>
+        <tr><td><code>docs/</code></td><td><code>applets/</code> (bitácora por applet), <code>api/</code> (playbooks de API), <code>architecture/</code> (patrones DOM, rollback), <code>training/</code> (este paquete).</td></tr>
+        <tr><td><code>vbas/</code></td><td>Fuente en texto plano de las macros VBA de la plantilla de carga masiva (<code>Module1.txt</code>, <code>Module2.txt</code>, …).</td></tr>
+        <tr><td><code>safari/</code></td><td>Bundle para el Safari/iPad companion (fuera de alcance de esta guía — ver <code>safari/README.md</code> si te toca mantenerlo).</td></tr>
+        <tr><td><code>.githooks/</code></td><td><code>pre-push</code> — el candado que impide publicar <code>gh-pages</code> desincronizado. Ver sección 4.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>No hay <code>README.md</code> en la raíz — el índice para humanos es <code>CLAUDE.md</code> (pensado para que Claude Code lo cargue como contexto, pero es legible directo). <code>INSTALAR.md</code> es la guía de instalación para el <strong>usuario final</strong> (Key User), no para desarrollo.</p>
+
+  <!-- ===================== 02 ===================== -->
+  <h2 class="sec" id="prereq"><span class="num">02</span>Prerequisitos por sistema operativo</h2>
+  <p class="sec-lead measure">No todo lo de esta tabla es obligatorio para todos: la última columna dice cuándo de verdad lo necesitas.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Herramienta</th><th>Windows</th><th>macOS</th><th>¿Cuándo la necesitas?</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Git</strong></td><td>Git for Windows (trae Git Bash)</td><td>Xcode CLT o Homebrew</td><td>Siempre.</td></tr>
+        <tr><td><strong>Bash</strong></td><td><strong>Git Bash</strong> (con Git for Windows) o WSL2 — PowerShell/cmd <em>no</em> corren los scripts de <code>tools/*.sh</code> directamente</td><td>Terminal.app / iTerm con zsh (nativo)</td><td>Siempre que uses algo de <code>tools/</code> (deploy, tests, hooks). Ver §11 — no todos los scripts son portables tal cual a Windows.</td></tr>
+        <tr><td><strong>Node.js</strong></td><td>instalador oficial o <code>winget</code>/<code>nvm-windows</code></td><td>Homebrew o <code>nvm</code></td><td>Siempre — <code>node --test</code> corre la suite JS, y el hash-autopilot es un proyecto Node/ESM.</td></tr>
+        <tr><td><strong>Python 3</strong></td><td>instalador oficial o <code>winget</code></td><td>Homebrew o el del sistema</td><td>Para los scripts <code>.py</code> de <code>tools/</code> y la mitad Python de la suite de tests (<code>pytest</code>).</td></tr>
+        <tr><td><strong>Google Chrome</strong></td><td>sí</td><td>sí</td><td>Siempre — es el navegador objetivo; "Cargar descomprimida" para probar la extensión.</td></tr>
+        <tr><td><strong>Microsoft Excel</strong></td><td>sí (nativo)</td><td>sí (Excel para Mac — sandbox distinto, ver §11)</td><td>Solo si vas a tocar las macros VBA de la plantilla de carga masiva (<code>vbas/*.txt</code>, <code>remote/templates/*.xlsm</code>).</td></tr>
+        <tr><td><strong>gcloud SDK</strong></td><td>instalador oficial</td><td>Homebrew o instalador oficial</td><td><strong>Obligatorio para desplegar</strong> cualquier cambio a <code>remote/scripts/</code> o <code>remote/config.json</code> — no es opcional, ver §9.</td></tr>
+        <tr><td><strong>Playwright / Chromium</strong></td><td>se instala solo (<code>npm run install-browser</code>)</td><td>se instala solo</td><td>Solo si vas a correr o mantener <code>tools/hash-autopilot/</code>.</td></tr>
+        <tr><td><strong>gh CLI</strong> (GitHub)</td><td><code>winget install GitHub.cli</code></td><td>Homebrew</td><td>Opcional — solo lo usa <code>tools/notify-stale-hashes.sh</code> para abrir issues de rotación de hashes. No es requisito para desarrollo normal.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Versiones exactas — ⚠️ confirmar con el equipo</p>
+    <p>El repo <strong>no fija versión mínima</strong> de Node ni Python (no hay <code>engines</code> en ningún <code>package.json</code>, ni <code>.nvmrc</code>, ni <code>.python-version</code>). Lo único con señal de versión es el workflow de CI (<code>.github/workflows/tests.yml</code>): usa <strong>Node 22</strong> (<code>actions/setup-node@v4</code>) y <strong>Python 3.9</strong> (con un comentario en el propio workflow: "matchea el entorno local del dev"). La máquina donde redacté esta guía corre Node <code>v25.8.2</code>. No asumas que cualquier versión reciente funciona sin probar — corre <code>tools/run-tests.sh</code> apenas instales para confirmar que tu combinación funciona.</p>
+  </div>
+
+  <!-- ===================== 03 ===================== -->
+  <h2 class="sec" id="codigo"><span class="num">03</span>Obtener el código</h2>
+
+  <div class="prewrap"><pre><code>git clone https://github.com/oviazcan/SteelheadAutomator.git
+cd SteelheadAutomator</code></pre></div>
+
+  <p>Para desarrollo de applets normal, esto es <strong>todo</strong> lo que necesitas clonar. Pero si vas a mantener el <strong>hash-autopilot</strong> (sección 10) — que sincroniza hashes de persisted queries con otros dos proyectos — necesitas clonar también los repos hermanos, en la <strong>disposición exacta de carpetas</strong> que el código espera (varios scripts tienen la ruta hardcodeada, no la derivan de tu <code>$HOME</code>):</p>
+
+  <div class="prewrap"><pre><code>~/Projects/Ecoplating/
+├── SteelheadAutomator/     (este repo)
+├── Reportes SH/            (nota: el nombre trae un ESPACIO — entrecomilla en shell)
+└── SteelheadPowerTools/    (github.com/oviazcan/SteelheadPowerTools)</code></pre></div>
+
+  <div class="callout danger">
+    <p class="ct">Rutas absolutas hardcodeadas a una sola cuenta — ⚠️ confirmar con el equipo</p>
+    <p>Varios archivos del hash-autopilot no derivan la ruta de los repos hermanos desde <code>$HOME</code>/<code>os.homedir()</code> — la tienen escrita <strong>literal</strong> como <code>/Users/oviazcan/Projects/Ecoplating/…</code>:</p>
+    <ul>
+      <li><code>tools/hash-autopilot/hash-autopilot.mjs</code> (línea ~100, <code>TOKENS_PATH</code>) — de ahí lee los tokens de sesión para autenticarse.</li>
+      <li><code>tools/hash-autopilot/external-sinks.json</code> — los tres destinos externos donde escribe hashes rotados.</li>
+      <li><code>tools/hash_sources.py</code> — <code>REPORTES_SH_CLIENT</code> y <code>POWERTOOLS_ROOT</code>.</li>
+      <li>Los <code>.plist</code> de <code>tools/launchd/</code> que agendan la corrida horaria (<code>WorkingDirectory</code> y <code>ProgramArguments</code>).</li>
+    </ul>
+    <p>En la práctica, el hash-autopilot agendado (cron) hoy vive en <strong>una sola Mac dedicada</strong> ligada a esa cuenta. Si otra persona va a correrlo (aunque sea en modo <code>--dry-run</code>) en otra máquina — con otro nombre de usuario, o en Windows/Linux —, tiene que <strong>editar esas rutas primero</strong> o replicar exactamente <code>/Users/oviazcan/…</code> en su sistema. No es un bug pequeño de "olvidé generalizar": es una decisión implícita de que esta pieza corre en una máquina fija. Pregúntale al equipo cuál es el plan si esa máquina cambia.</p>
+  </div>
+
+  <!-- ===================== 04 ===================== -->
+  <h2 class="sec" id="instalacion"><span class="num">04</span>Instalación</h2>
+
+  <h3 class="sub">1. Instala los git hooks (obligatorio, una vez por clon)</h3>
+  <div class="prewrap"><pre><code>tools/install-hooks.sh</code></pre></div>
+  <p>Copia todo lo que hay en <code>.githooks/</code> al directorio de hooks <strong>común</strong> del repo (<code>git rev-parse --git-common-dir</code>), así que aplica a todos los worktrees que crees después, sin volver a correrlo — excepto si editas un hook, ahí sí hay que re-instalarlo. Hoy solo hay un hook: <code>pre-push</code>, que al pushear <code>gh-pages</code> bloquea el push si (a) no espeja <code>main:remote/</code> byte a byte, (b) <code>config.json</code> <code>version</code> no sube respecto a lo publicado, o (c) <code>config.sig</code> no verifica contra la llave pública embebida. Sin este hook instalado, un <code>git push origin gh-pages</code> a mano podría dejar la extensión de los operadores rota o desincronizada sin que nadie lo note hasta que alguien reporte un applet caído.</p>
+
+  <h3 class="sub">2. Dependencias Node (solo dentro de <code>tools/hash-autopilot/</code>)</h3>
+  <p>La raíz del repo <strong>no tiene <code>package.json</code></strong> — no hay <code>npm install</code> a nivel repo. El único proyecto Node con dependencias declaradas es el hash-autopilot:</p>
+  <div class="prewrap"><pre><code>cd tools/hash-autopilot
+npm install
+npm run install-browser   # playwright install chromium — solo si vas a correrlo</code></pre></div>
+  <p>Instala solo si vas a trabajar en la sección 10. Para editar applets y correr la suite de tests no lo necesitas.</p>
+
+  <h3 class="sub">3. Dependencias Python (ad hoc, sin manifiesto)</h3>
+  <p>Tampoco hay <code>requirements.txt</code> ni <code>pyproject.toml</code>. Los paquetes de terceros que de verdad usan los scripts de <code>tools/*.py</code> son, verificado por <code>grep</code> de imports:</p>
+  <div class="prewrap"><pre><code>pip install pytest openpyxl</code></pre></div>
+  <p><code>pytest</code> corre los tests <code>tools/test_*.py</code>; <code>openpyxl</code> lo usan los scripts que leen/escriben <code>.xlsx</code> (catálogos, snapshots). El propio CI instala exactamente estos dos (<code>python -m pip install --quiet pytest openpyxl</code>).</p>
+
+  <div class="callout warn">
+    <p class="ct">Sin <code>pytest</code>, la suite se salta la mitad en silencio</p>
+    <p>Verificado en vivo: si <code>pytest</code> no está instalado, <code>tools/run-tests.sh</code> imprime <code>"(pytest no disponible — omito Python…)"</code> y aun así reporta <strong>"suite VERDE"</strong> — porque el veredicto solo cuenta lo que corrió. No confundas "verde" con "toda la suite pasó"; confirma que ves la línea <code>▶ Python (pytest)</code> corriendo casos, no solo el aviso de que se omitió.</p>
+  </div>
+
+  <h3 class="sub">4. Solo si vas a desplegar: gcloud + acceso a KMS</h3>
+  <p>Ver sección 9 completa — no es opcional si tu trabajo incluye publicar cambios a <code>gh-pages</code>.</p>
+
+  <!-- ===================== 05 ===================== -->
+  <h2 class="sec" id="pruebas"><span class="num">05</span>Correr las pruebas</h2>
+
+  <div class="prewrap"><pre><code>tools/run-tests.sh              # corre todo, resumen
+tools/run-tests.sh -v            # salida completa de cada archivo
+tools/run-tests.sh --no-python   # solo JS, si no tienes pytest a la mano</code></pre></div>
+
+  <p>Corrí la suite ahora mismo desde este worktree para dar una cifra real, no una de bitácora vieja: <strong>71 archivos JS, 0 rojos</strong> (<code>tools/test/*.test.js</code> + los legacy <code>tools/test_*.js</code> de la raíz), Python omitido en este entorno por falta de <code>pytest</code>. Esa cifra sube con el tiempo — no la tomes como un número fijo, solo como evidencia de que el comando funciona y de qué se ve un run verde.</p>
+
+  <p>Qué cubre: los <strong>golden tests</strong> de los módulos puros de cada applet (<code>*-core.js</code>, <code>*-engine.js</code>, <code>*-classify.js</code>, etc.) — la lógica de negocio aislada de DOM y de red. Cada <code>.test.js</code> se corre <strong>aislado</strong> vía <code>node --test &lt;archivo&gt;</code> (no <code>node --test &lt;directorio&gt;</code>, que según el comentario del propio script no resuelve el directorio en Node 25) porque algunos applets cargan el IIFE completo en un sandbox <code>vm</code> y correrlos juntos compartiría estado de módulos entre tests.</p>
+
+  <p>Esta suite es el <strong>gate de calidad del deploy</strong>: <code>tools/deploy.sh</code> y <code>tools/wb-deploy.sh</code> la corren automáticamente antes de tocar producción y <strong>abortan si sale roja</strong> (bypass de emergencia: <code>SH_SKIP_TESTS=1</code>, úsalo sabiendo por qué). También corre en CI (<code>.github/workflows/tests.yml</code>) en cada push/PR que toque <code>remote/scripts/**</code>, <code>tools/**</code> o <code>.github/workflows/**</code> — con Node 22 y Python 3.9, e instala <code>pytest</code>+<code>openpyxl</code> antes.</p>
+
+  <!-- ===================== 06 ===================== -->
+  <h2 class="sec" id="ciclo"><span class="num">06</span>El ciclo de desarrollo</h2>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Editas</h4><p>Casi siempre en <code>remote/scripts/&lt;applet&gt;.js</code> (+ su módulo puro <code>*-core.js</code> si aplica) y, si agregas un applet o un hash nuevo, en <code>remote/config.json</code>. Editar en <code>main</code> (o en cualquier rama/worktree) <strong>no afecta a ningún operador</strong> hasta que despliegues — ver la advertencia de la sección 1 sobre por qué "cargar descomprimida" tampoco basta para ver tu cambio en vivo.</p></div></li>
+    <li><span class="k">2</span><div><h4>Escribes/actualizas el golden test</h4><p>Si tocaste lógica de negocio, el módulo puro correspondiente en <code>tools/test/&lt;applet&gt;-core.test.js</code> (o el que aplique) debe reflejarlo. La skill <code>nuevo-applet</code> trae el scaffold de "core puro + golden test + bitácora" para un applet desde cero.</p></div></li>
+    <li><span class="k">3</span><div><h4>Corres la suite</h4><p><code>tools/run-tests.sh</code>. Si sale roja, no sigas — arréglala antes de desplegar (el deploy la vuelve a correr y aborta igual).</p></div></li>
+    <li><span class="k">4</span><div><h4>Pruebas en el navegador (si aplica)</h4><p>Chrome → <code>chrome://extensions</code> → activa "Modo de desarrollador" → "Cargar descomprimida" → selecciona la carpeta <code>extension/</code>. Confirma en el popup que dice "Conectado". Recuerda: para ver un cambio de <code>remote/scripts/</code> reflejado ahí, primero tiene que estar publicado en <code>gh-pages</code> (sección 8) — o usar el workaround del servidor local de la sección 1.</p></div></li>
+    <li><span class="k">5</span><div><h4>Despliegas</h4><p><code>tools/deploy.sh</code> (desde el worktree de <code>main</code>) o <code>tools/wb-deploy.sh</code> (desde otro worktree). Ver sección 8.</p></div></li>
+    <li><span class="k">6</span><div><h4>Actualizas la bitácora</h4><p>Cada applet tiene su bitácora en <code>docs/applets/&lt;applet&gt;.md</code>, indexada desde <code>CLAUDE.md</code>. La skill <code>wrap</code> ayuda a reconciliarla al cerrar una sesión de trabajo.</p></div></li>
+  </ol>
+
+  <div class="callout meta">
+    <p class="ct">Nota Windows — descarga de zips y antivirus</p>
+    <p><code>INSTALAR.md</code> (la guía para el usuario final) documenta que <strong>McAfee en Windows a veces renombra <code>.js</code> a <code>.j_</code></strong> al descomprimir el zip distribuido de la extensión, y hay que quitarles el guion bajo a mano. Esto es sobre el <em>zip empaquetado</em> que se distribuye a operadores, no sobre un <code>git clone</code> — pero si en algún punto empaquetas y pruebas el <code>.zip</code> en una máquina Windows con McAfee, es el primer sospechoso si los scripts "desaparecen".</p>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Construir el <code>.zip</code> distribuible — ⚠️ confirmar con el equipo</p>
+    <p>No encontré un script en <code>tools/</code> que empaquete <code>extension/</code> en el <code>steelhead-automator.zip</code> que se distribuye (mencionado en <code>INSTALAR.md</code> y publicado en <code>gh-pages</code>). El proceso de empaquetado parece manual. Antes de que te toque republicar el <code>.zip</code> (solo aplica cuando cambia código de <code>extension/</code>, no de <code>remote/</code>), confirma con el equipo el procedimiento exacto.</p>
+  </div>
+
+  <!-- ===================== 07 ===================== -->
+  <h2 class="sec" id="worktrees"><span class="num">07</span>Trabajo con worktrees (trabajo paralelo)</h2>
+  <p class="sec-lead measure">Para correr dos sesiones de desarrollo (dos personas, o dos hilos de Claude Code) sobre el mismo repo sin pisarse, el repo usa <strong>git worktrees</strong> — cada uno es un directorio aislado en su propia rama, compartiendo el mismo <code>.git</code>.</p>
+
+  <div class="prewrap"><pre><code>tools/new-worktree.sh &lt;feature-name&gt; [branch-base]
+# ejemplo:
+tools/new-worktree.sh dup-validator-tier4
+# resultado: ../SteelheadAutomator-dup-validator-tier4 en rama wt/dup-validator-tier4</code></pre></div>
+
+  <p>Este mismo documento vive en un worktree llamado <code>workbench</code> (rama <code>workbench</code>, checkout en <code>.claude/worktrees/workbench/</code> del repo principal) — un banco de trabajo persistente separado de <code>main</code>, con sus propias reglas locales en <code>CLAUDE.local.md</code> (no versionado).</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Hot file</th><th>Por qué duele editarlo en paralelo</th></tr></thead>
+      <tbody>
+        <tr><td><code>remote/config.json</code></td><td>Bump de versión + hashes compartidos — casi seguro choca si dos sesiones lo tocan a la vez.</td></tr>
+        <tr><td><code>CLAUDE.md</code></td><td>Índice de applets + reglas globales — mismo problema.</td></tr>
+        <tr><td>rama <code>gh-pages</code></td><td>Es el espejo de deploy — solo una sesión debe estar deployando a la vez.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout danger">
+    <p class="ct">Si deployas DESDE un worktree que no es <code>main</code></p>
+    <p><strong>No</strong> lleves el script a mano con <code>git show workbench:remote/scripts/foo.js &gt; …</code> + <code>tools/deploy.sh</code>. <code>deploy.sh</code> hace <code>git add remote/</code> en el worktree de <code>main</code>, así que arrastraría dentro de tu commit de deploy cualquier <strong>WIP sin commitear</strong> que otra sesión tenga ahí (pasó de verdad: casi mezcla el WIP de otra feature con un deploy no relacionado). Usa en su lugar:</p>
+    <div class="prewrap"><pre><code>SH_ALLOW_DEPLOY=1 tools/wb-deploy.sh &lt;script-sin-.js&gt; "&lt;mensaje&gt;" [--minor|--set X.Y.Z]</code></pre></div>
+    <p><code>wb-deploy.sh</code> resguarda automáticamente la WIP de <code>main</code> (patch + <code>git stash</code>), aplica <strong>solo tu script</strong>, bumpea desde la versión ya commiteada de <code>main</code>, y restaura la WIP al final (con trap de recuperación si algo falla). <code>SH_ALLOW_DEPLOY=1</code> es obligatorio: hay un guard de usuario (fuera de este repo, en <code>~/.claude/sh-workbench-guard.sh</code>) que bloquea push/checkout de <code>main</code> desde un worktree que no sea el suyo, salvo que lo pases explícito. Es <strong>un script por corrida</strong> — si cambiaste varios, corre <code>wb-deploy.sh</code> una vez por cada uno.</p>
+  </div>
+
+  <!-- ===================== 08 ===================== -->
+  <h2 class="sec" id="deploy"><span class="num">08</span>Deploy a producción</h2>
+  <p class="sec-lead measure">La extensión fetchea <code>config.json</code> + <code>scripts/*.js</code> desde <strong>GitHub Pages</strong> (rama <code>gh-pages</code>) en tiempo de ejecución. Desplegar = poner ahí el contenido nuevo, en sync byte a byte con <code>main:remote/</code>.</p>
+
+  <div class="prewrap"><pre><code>tools/deploy.sh "fix(applet-x): descripción"          # bump patch
+tools/deploy.sh "feat(applet-x): ..." --minor          # bump minor
+tools/deploy.sh "chore: ..." --set 1.7.0               # versión exacta
+tools/deploy.sh "..." --check proceso-calculator       # verifica ese script tras publicar</code></pre></div>
+
+  <p>Qué hace, en orden (leído directo del script): (1) localiza el worktree en <code>main</code> y exige que esté limpio salvo cambios bajo <code>remote/</code>, y al día con <code>origin/main</code>; (2) corre <code>tools/run-tests.sh</code> como gate — aborta si sale roja; (3) bumpea <code>version</code>/<code>lastUpdated</code> de <code>remote/config.json</code>; (4) sella <code>scriptIntegrity</code> + firma con KMS si <code>SA_KMS_KEY</code> está en el entorno (sección 9); (5) commit en <code>main</code>; (6) espeja <code>main:remote/</code> → <code>gh-pages</code> (self-healing: re-sincroniza aunque hubiera drift previo) y commitea ahí; (7) push de <strong>ambas</strong> ramas; (8) crea un tag <code>vX.Y.Z</code> (ancla de rollback); (9) si pasaste <code>--check</code>, corre <code>check-deploy.sh</code>; (10) hace un <em>smoke-check</em> de la firma <strong>en vivo</strong> contra la pública embebida — si no verifica, el script sale con error antes de que te vayas confiado.</p>
+
+  <p>Solo se publican los scripts <strong>referenciados en <code>config.apps[].scripts</code></strong> — los <code>.js</code> de <code>remote/scripts/</code> que nadie referencia (helpers de build, módulos que solo usa un test) no se empujan a <code>gh-pages</code>.</p>
+
+  <h3 class="sub">Verificar el estado, sin adivinar</h3>
+  <div class="prewrap"><pre><code>tools/deploy-status.sh</code></pre></div>
+  <p>Imprime la versión de <code>config.json</code> en tu rama actual, en <code>main</code>, en <code>gh-pages</code> y en el sitio <strong>EN VIVO</strong>, y valida el invariante byte a byte. Es de solo lectura. <strong>Nunca concluyas el estado de deploy mirando el <code>config.json</code> de una rama de trabajo</strong> — puede estar desfasada respecto a <code>main</code>/<code>gh-pages</code>.</p>
+
+  <div class="prewrap"><pre><code>tools/check-deploy.sh [&lt;script-name&gt;]   # default: bulk-upload</code></pre></div>
+  <p>Compara MD5 + <code>version</code>/<code>VERSION</code> local vs lo que GitHub Pages sirve ahora mismo, y te da un snippet para pegar en DevTools que confirma que Chrome ya cargó la versión nueva.</p>
+
+  <h3 class="sub">El candado: <code>pre-push</code></h3>
+  <p>Instalado por <code>tools/install-hooks.sh</code> (sección 4). Al pushear <code>refs/heads/gh-pages</code>, aborta si <code>gh-pages</code> no espeja <code>main:remote/</code> byte a byte, si <code>config.json</code> <code>version</code> no sube respecto a lo publicado (excepto en pushes solo-docs, que no tocan <code>config.json</code>/<code>scripts/</code>), o si <code>config.sig</code> no verifica. No hay forma de saltártelo intencionalmente desde <code>deploy.sh</code>/<code>wb-deploy.sh</code> — si algo falla ahí, es una señal real de drift o de firma faltante, no un falso positivo a ignorar.</p>
+
+  <h3 class="sub">Rollback</h3>
+  <div class="prewrap"><pre><code>tools/rollback.sh --list          # tags de deploy disponibles, más reciente primero
+tools/rollback.sh v1.7.118        # revierte gh-pages al estado de ese deploy</code></pre></div>
+  <p>Cada deploy exitoso queda anclado a un tag <code>vX.Y.Z</code> sobre el commit de <code>main</code> del bump — son, de facto, el CHANGELOG del proyecto (<code>git tag -l 'v*' --sort=-version:refname</code>). <code>rollback.sh</code> pide que escribas el tag para confirmar, y re-espeja <code>&lt;tag&gt;:remote/</code> → <code>gh-pages</code> con el mismo mecanismo self-healing del deploy normal. <strong>Importante: solo revierte <code>gh-pages</code></strong> — <code>main</code> sigue en el commit "malo", así que el siguiente <code>deploy.sh</code> volvería a introducir el problema si no arreglas <code>main</code> primero (<code>git revert</code>). Detalle completo en <a href="../architecture/rollback.md"><code>docs/architecture/rollback.md</code></a> (Markdown, para consumo técnico).</p>
+
+  <!-- ===================== 09 ===================== -->
+  <h2 class="sec" id="firma"><span class="num">09</span>Firma y KMS (para poder desplegar)</h2>
+
+  <div class="callout danger">
+    <p class="ct">Esto ya NO es opcional — verificado en el repo actual</p>
+    <p>La documentación de setup (<code>docs/deploy-signing-setup.md</code>) describe la firma como algo que se activa "cuando <code>SA_KMS_KEY</code> está seteada" y avisa que sin ella el deploy sale "sin firmar". Pero verifiqué el estado <strong>real</strong> de este repo hoy: la llave pública real (no un placeholder) ya está embebida en <code>extension/integrity-pubkey.js</code>, y <code>remote/config.sig</code> ya trae una firma real en <code>gh-pages</code>. Es decir, <strong>la Fase 2 (fail-closed) ya está viva</strong>. Consecuencia práctica: el chequeo de firma del hook <code>pre-push</code> (paso 4 del hook, sección 8) corre <strong>siempre</strong> y compara <code>config.sig</code> contra el <code>config.json</code> que estás pusheando. Si desplegás un cambio a <code>remote/scripts/</code> o <code>remote/config.json</code> <strong>sin</strong> <code>SA_KMS_KEY</code> en el entorno, <code>deploy.sh</code>/<code>wb-deploy.sh</code> avisan "deploy SIN firmar" y siguen adelante — pero <code>config.sig</code> se queda desactualizado respecto al <code>config.json</code> nuevo, y el <code>push origin gh-pages</code> <strong>fallará</strong> bloqueado por el hook. En la práctica: <strong>no puedes publicar un cambio de código sin acceso a la llave KMS.</strong> (Los deploys solo-docs, como los del propio paquete de capacitación, no tocan <code>config.json</code>/<code>scripts/</code> y por eso no disparan este problema.)</p>
+  </div>
+
+  <p>La llave privada vive en <strong>GCP KMS del proyecto del cliente</strong> (nunca en el repo ni en un laptop): proyecto <code>steelhead-ecoplating</code>, key ring <code>steelhead-automator</code>, llave <code>config-signing</code> v1 (<code>EC_SIGN_P256_SHA256</code>). El runbook completo de setup está en <a href="../deploy-signing-setup.md"><code>docs/deploy-signing-setup.md</code></a>; aquí solo el resumen operativo:</p>
+
+  <h3 class="sub">Para que TÚ puedas firmar (pídeselo a quien tenga acceso hoy)</h3>
+  <div class="callout info">
+    <p class="ct">Quién puede darte de alta — ⚠️ confirmar con el equipo</p>
+    <p>Al corte de esta guía, el permiso <code>roles/cloudkms.signerVerifier</code> sobre la llave está concedido <strong>únicamente a <code>oviazcan@gmail.com</code></strong> (confirmado en el comentario del <code>.plist</code> que agenda el hash-autopilot). Si eres nuevo en el equipo, necesitas que esa persona corra esto por ti — no puedes auto-otorgarte el permiso:</p>
+  </div>
+  <div class="prewrap"><pre><code>gcloud kms keys add-iam-policy-binding config-signing \
+  --location=global --keyring=steelhead-automator --project=steelhead-ecoplating \
+  --member="user:&lt;tu-correo&gt;" --role="roles/cloudkms.signerVerifier"</code></pre></div>
+
+  <h3 class="sub">Deploy firmado, día a día</h3>
+  <div class="prewrap"><pre><code>export SA_KMS_KEY="projects/steelhead-ecoplating/locations/global/keyRings/steelhead-automator/cryptoKeys/config-signing/cryptoKeyVersions/1"
+tools/deploy.sh "fix(applet-x): descripción"   # seal + smoke-check automáticos</code></pre></div>
+  <p>Requiere <code>gcloud auth login</code> (o application-default) con la cuenta que tiene el permiso de arriba. <code>tools/seal-config.mjs</code> calcula <code>scriptIntegrity</code> por script, firma con KMS, y produce <code>config.sig</code> — esto lo llama <code>deploy.sh</code>/<code>wb-deploy.sh</code> automáticamente, no lo corres a mano.</p>
+
+  <h3 class="sub">Al salir alguien del equipo (handoff)</h3>
+  <div class="prewrap"><pre><code>gcloud kms keys remove-iam-policy-binding config-signing \
+  --location=global --keyring=steelhead-automator --project=steelhead-ecoplating \
+  --member="user:&lt;correo-que-sale&gt;" --role="roles/cloudkms.signerVerifier"</code></pre></div>
+  <p>Eso es todo — sin re-generar la llave, sin transferir archivos, sin republicar la extensión.</p>
+
+  <!-- ===================== 10 ===================== -->
+  <h2 class="sec" id="autopilot"><span class="num">10</span>Hash-Autopilot (para mantener los hashes)</h2>
+  <p class="sec-lead measure">Detalle conceptual completo — con analogías y diagramas — en la <a href="ficha-hash-autopilot.html">Ficha profunda: Hash-Autopilot</a>. Aquí, lo operativo para quien vaya a mantenerlo o correrlo a mano.</p>
+
+  <p>Es un proyecto Node/ESM independiente en <code>tools/hash-autopilot/</code>, con su propio <code>package.json</code> (única dependencia: <code>playwright ^1.57.0</code>). Abre un Chromium <strong>headless</strong> ya autenticado, navega/ejecuta las operaciones de Steelhead, captura los hashes de persisted queries que usa el frontend, y si detecta que uno rotó, lo valida y lo despliega solo.</p>
+
+  <div class="prewrap"><pre><code>cd tools/hash-autopilot
+npm install
+npm run install-browser     # playwright install chromium (cross-platform)
+
+npm run dry-run              # clasifica, NO deploya ni notifica
+npm start                    # auto-deploya + notifica (= node hash-autopilot.mjs)
+
+# flags:
+node hash-autopilot.mjs --dry-run --domain=344 --only=&lt;Op&gt; --date=YYYY-MM-DD --masked-only</code></pre></div>
+
+  <div class="callout warn">
+    <p class="ct">Auth: depende del repo hermano "Reportes SH"</p>
+    <p>El motor inyecta tokens OAuth desde <code>Reportes SH/.cache/tokens.json</code> (mantenidos frescos por el flujo de <code>steelhead_auth</code> de ese otro repo — ver la skill <code>steelhead-auth</code>) en el <code>localStorage</code> del Chromium headless antes de cargar la app, para arrancar ya logueado sin flujo OAuth interactivo. Si el cache venció, el motor avisa "corre steelhead_auth.py" — ese script vive en <strong>el otro repo</strong>, no aquí.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Flag / variable</th><th>Efecto</th></tr></thead>
+      <tbody>
+        <tr><td><code>--dry-run</code></td><td>Clasifica todo pero no despliega ni notifica.</td></tr>
+        <tr><td><code>--masked-only</code></td><td>Solo re-captura las operaciones "sensibles a la sesión" (dan falso-stale al validador Python), sin depender de <code>validate-hashes.py</code>.</td></tr>
+        <tr><td><code>--only=&lt;Op&gt;</code></td><td>Aísla el ciclo a una sola operación, para depurar.</td></tr>
+        <tr><td><code>SA_NO_EXTERNAL=1</code></td><td>Desactiva la sincronización a los repos externos (Reportes SH / PowerTools).</td></tr>
+        <tr><td><code>SA_NO_EXTERNAL_PUSH=1</code></td><td>Escribe y confirma en los repos externos, pero no hace <code>push</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub">Agendado (macOS únicamente — <code>launchd</code>)</h3>
+  <div class="prewrap"><pre><code>cp tools/launchd/com.ecoplating.steelhead-hash-autopilot.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ecoplating.steelhead-hash-autopilot.plist
+launchctl list | grep hash-autopilot</code></pre></div>
+  <p>Corre cada hora (minuto :23). Un segundo <code>.plist</code> (<code>com.ecoplating.steelhead-escalation.plist</code>, minuto :53) dispara una escalación asistida por Claude cuando una ruta de navegación deja de capturar. <strong><code>launchd</code> es exclusivo de macOS</strong> — no hay equivalente en el repo para agendar esto en Windows (Task Scheduler) o Linux (cron/systemd); si el plan es correr el autopilot agendado en otra plataforma, hay que construir ese agendador desde cero.</p>
+
+  <p>Un vigía separado corre en <strong>la nube de GitHub</strong> (no en la Mac), a propósito, para poder detectar si la Mac se apagó: <code>.github/workflows/heartbeat-watchdog.yml</code> revisa un latido que el motor empuja a la rama <code>ops/heartbeat</code> en cada corrida; si no lo ve en &gt;3h, abre un issue.</p>
+
+  <!-- ===================== 11 ===================== -->
+  <h2 class="sec" id="winmac"><span class="num">11</span>Diferencias Windows vs Mac</h2>
+  <p class="sec-lead measure">Todo lo que verifiqué que se comporta distinto entre los dos sistemas, en un solo lugar.</p>
+
+  <h3 class="sub">Las herramientas de <code>tools/*.sh</code> asumen macOS/BSD en dos puntos concretos</h3>
+  <div class="callout danger">
+    <p class="ct">Verificado leyendo el código — no probado en vivo en Windows/WSL</p>
+    <p><code>tools/deploy.sh</code> y <code>tools/wb-deploy.sh</code> bumpean la versión con <code>sed -i '' -E "…"</code> — sintaxis de edición-en-sitio de <strong>BSD sed</strong> (el propio comentario del script dice <em>"sed in-place portable (macOS/BSD)"</em>). GNU sed (el que trae Linux y WSL2 por default) interpreta <code>-i ''</code> distinto: el <code>''</code> se consume como el patrón del script en vez de como sufijo de backup, así que el bump de versión <strong>no haría lo esperado</strong> corrido tal cual bajo GNU sed.</p>
+    <p><code>tools/check-deploy.sh</code> usa <code>md5 -q</code> — el binario <code>md5</code> con ese flag es de macOS; Linux trae <code>md5sum</code> en su lugar, con salida distinta.</p>
+    <p>El resto de los scripts que reviso esta guía (<code>install-hooks.sh</code>, <code>new-worktree.sh</code>, <code>run-tests.sh</code>, <code>deploy-status.sh</code>, <code>rollback.sh</code>) no usan estas llamadas específicas de BSD y deberían correr igual bajo Bash en Linux/WSL — pero no lo verifiqué ejecutándolos ahí. <strong>⚠️ confirmar con el equipo</strong> antes de asumir que <code>deploy.sh</code>/<code>wb-deploy.sh</code>/<code>check-deploy.sh</code> funcionan sin ajuste desde WSL2; en la práctica hoy, el deploy real se hace desde macOS.</p>
+  </div>
+
+  <h3 class="sub">Macros VBA de la plantilla de carga masiva</h3>
+  <p>La plantilla <code>.xlsm</code> (<code>remote/templates/Plantilla_CargaMasiva_v12.xlsm</code> y su variante <code>_compatibilidad</code> para Excel 2019) tiene diferencias de comportamiento documentadas en <a href="../applets/bulk-upload.md"><code>docs/applets/bulk-upload.md</code></a>:</p>
+  <ul>
+    <li><strong>Sandbox de archivos de Excel para Mac.</strong> Al correr la macro "Refrescar Listas", Excel-Mac pide <strong>"conceder acceso"</strong> archivo por archivo cuando el VBA lee <em>metadata</em> (<code>FileDateTime</code>) de un archivo no autorizado — aunque no sea el que se va a abrir. Windows no sandboxea <code>FileDateTime</code>, así que ahí no pasa. Fix aplicado (Module2 v14, <code>vbas/Module2.txt</code>): elegir el catálogo más reciente <strong>por el nombre del archivo</strong> (fecha ISO en el nombre, ordenable como texto) en vez de por fecha de modificación en disco — así solo se toca el archivo ganador.</li>
+    <li><code>GrantAccessToMultipleFiles</code> se evita <strong>a propósito</strong>: según el código, no habilita <code>Open</code> en esta configuración de Excel para Mac.</li>
+    <li><strong>Pérdida de acentos en Mac.</strong> El VBA normaliza <code>Ó→O</code> porque Excel para Mac a veces pierde acentos en comparaciones de texto que Windows sí preserva.</li>
+    <li><strong>BOM del CSV exportado.</strong> <code>SaveAs FileFormat:=62</code> (CSV UTF-8) da terminadores de línea CRLF estables en ambos sistemas, pero Excel-Windows agrega un BOM UTF-8 (<code>EF BB BF</code>) al inicio del archivo y Excel-Mac a veces no. Si siempre exportas desde la misma máquina es consistente; si comparas/diffeas CSVs generados en máquinas distintas, los bytes iniciales pueden no coincidir.</li>
+    <li><strong>Editar el VBA.</strong> El editor se abre con <kbd>Alt+F11</kbd> en Windows; en Mac es <kbd>Option (⌥)+F11</kbd> o el menú Herramientas → Macros. La fuente en texto plano vive en <code>vbas/*.txt</code> para diff/versión — el operador instala pegando el contenido en el módulo correspondiente del <code>.xlsm</code>.</li>
+    <li><strong>Trasplante de <code>vbaProject.bin</code>.</strong> Como un <code>.xlsm</code> es un zip, un cambio que toca <strong>un solo módulo</strong> se puede propagar extrayendo/reinyectando el binario <code>xl/vbaProject.bin</code> entre copias del archivo (verificado antes con <code>olevba -c</code> que solo cambió el módulo esperado). Esto es una técnica ad hoc documentada una vez en la bitácora, <strong>no un script mantenido en <code>tools/</code></strong> — y no es transportable entre la plantilla normal y la de compatibilidad porque sus <code>vbaProject.bin</code> difieren en más de un módulo.</li>
+    <li>Los <code>.xlsm</code> de <code>templates/</code> se despliegan a <code>gh-pages</code> <strong>a mano</strong> — <code>deploy.sh</code> y el hook <code>pre-push</code> solo gestionan <code>config.json</code> + <code>scripts/**.js</code>. Si tocas la plantilla, el commit en <code>gh-pages</code> debe ir <strong>en el mismo push</strong> que un bump de <code>config.version</code> (el hook exige que la versión suba en cada push a esa rama).</li>
+  </ul>
+
+  <h3 class="sub">Shell y rutas</h3>
+  <ul>
+    <li>Todos los scripts de <code>tools/</code> son Bash (<code>#!/usr/bin/env bash</code>). En Windows, córrelos desde <strong>Git Bash</strong> (incluido con Git for Windows) o WSL2 — no desde PowerShell ni <code>cmd.exe</code> directamente.</li>
+    <li>El nombre de carpeta del repo hermano <code>Reportes SH</code> trae un <strong>espacio</strong> — entrecomíllalo en cualquier comando de shell (<code>cd "Reportes SH"</code>).</li>
+    <li>macOS (el shell de referencia de este repo, según <code>CLAUDE.local.md</code>) usa <strong>zsh</strong> por default desde Catalina; los scripts de <code>tools/</code> declaran <code>#!/usr/bin/env bash</code> explícito así que corren igual con zsh como shell interactivo.</li>
+  </ul>
+
+  <!-- ===================== 12 ===================== -->
+  <h2 class="sec" id="checklist"><span class="num">12</span>Checklist de "entorno listo"</h2>
+
+  <div class="essentials">
+    <h3>Antes de decir que tu entorno está montado</h3>
+    <ul>
+      <li>Clonaste el repo (<code>git clone https://github.com/oviazcan/SteelheadAutomator.git</code>) y — si vas a mantener el hash-autopilot — también <code>Reportes SH</code> y <code>SteelheadPowerTools</code> como carpetas hermanas.</li>
+      <li>Corriste <code>tools/install-hooks.sh</code> y confirmaste que <code>pre-push</code> existe en el directorio de hooks común del repo.</li>
+      <li>Node y Python 3 instalados; corriste <code>node --version</code> / <code>python3 --version</code> y los anotaste (no hay versión mínima fijada en el repo — documenta la tuya).</li>
+      <li><code>pip install pytest openpyxl</code> hecho.</li>
+      <li><code>tools/run-tests.sh</code> corre y sale verde, con la sección <code>▶ Python (pytest)</code> ejecutando casos de verdad (no solo el aviso de "omito Python").</li>
+      <li>Cargaste la extensión descomprimida en Chrome (<code>chrome://extensions</code> → Modo desarrollador → Cargar descomprimida → <code>extension/</code>) y el popup dice "Conectado".</li>
+      <li>Corriste <code>tools/deploy-status.sh</code> al menos una vez para saber leer el ground-truth de versión antes de asumir que algo "ya está vivo".</li>
+      <li><strong>Solo si vas a desplegar código:</strong> <code>gcloud</code> instalado, autenticado, con permiso <code>roles/cloudkms.signerVerifier</code> confirmado por quien administra hoy la llave; <code>SA_KMS_KEY</code> exportado en tu shell.</li>
+      <li><strong>Solo si vas a mantener el hash-autopilot:</strong> <code>tools/hash-autopilot/</code> con <code>npm install</code> + <code>npm run install-browser</code> hechos; confirmaste (o ajustaste) las rutas absolutas hardcodeadas a los repos hermanos.</li>
+      <li><strong>Solo si vas a tocar la plantilla de carga masiva:</strong> Excel instalado, revisaste <code>vbas/*.txt</code> y entiendes las diferencias de sandbox Mac/Windows de la sección 11.</li>
+      <li>Leíste <code>CLAUDE.md</code> (raíz) completo al menos una vez — es el índice maestro y las reglas globales de desarrollo.</li>
+    </ul>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">Si algo de esta guía no calza con lo que ves</p>
+    <p>Repite: el código gana. Empieza por <code>CLAUDE.md</code> (raíz) y los scripts de <code>tools/</code> — están comentados con la intención de que se lean directo, no solo de que se ejecuten.</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Onboarding de Desarrollo · SteelheadAutomator</div>
+    <div>Verificado contra el repo · corte 2026-07-23</div>
+  </footer>
+
+</div>
+<script class="noprint">
+document.querySelectorAll('pre').forEach(function(pre){
+  var btn = document.createElement('button');
+  btn.className = 'copybtn noprint';
+  btn.type = 'button';
+  btn.textContent = 'Copiar';
+  btn.addEventListener('click', function(){
+    var text = pre.textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function(){
+        btn.textContent = 'Copiado ✓';
+        btn.classList.add('copied');
+        setTimeout(function(){ btn.textContent = 'Copiar'; btn.classList.remove('copied'); }, 1600);
+      });
+    }
+  });
+  pre.appendChild(btn);
+});
+</script>
+</body>
+</html>

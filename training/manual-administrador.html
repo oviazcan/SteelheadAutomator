@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual del Administrador — SteelheadAutomator</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.bi{background:var(--bi-wash);color:var(--bi)}
+.audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{font-family:var(--mono);font-size:.85rem;background:var(--paper);border:1px solid var(--hair);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);max-width:none;line-height:1.5}
+pre code{background:none;padding:0}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+/* toc */
+.toc{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:18px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.toc .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 10px}
+.toc ol{columns:2;column-gap:28px;padding-left:1.1em;margin:0;max-width:none}
+.toc li{margin:.28rem 0;font-size:.92rem;break-inside:avoid}
+.toc a{color:var(--ink);text-decoration:none}
+.toc a:hover{color:var(--accent-ink)}
+@media (max-width:640px){.toc ol{columns:1}}
+/* figures */
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:820px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+/* callouts */
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+/* stages */
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+/* role summaries */
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.impact{border-top:4px solid var(--accent)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.impact .who{color:var(--accent-ink)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+/* essentials box */
+.essentials{background:var(--paper);border:1px solid var(--hair-2);border-radius:14px;padding:24px 26px;margin:28px 0;box-shadow:var(--shadow)}
+.essentials h3{margin:0 0 14px;font-size:1.05rem;color:var(--ti)}
+.essentials ul{max-width:none;margin:0;padding-left:1.2em}
+.essentials li{margin:.5rem 0}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,.essentials,.toc{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar"><span class="brandmark"><span>SA</span></span><span class="brandname">Steelhead<em>Automator</em> · Manual del Administrador</span><span style="flex:1"></span><a href="00-mapa-empieza-aqui.html" style="font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a></div>
+    <p class="eyebrow">Administración y operación del sistema</p>
+    <h1>Manual del Administrador</h1>
+    <p class="sub">Arquitectura, deploy, rotación de hashes, firma criptográfica, distribución y respuesta a incidentes — lo que el Jefe de TI necesita para operar y responder por SteelheadAutomator sin depender de quien lo construyó.</p>
+    <div class="audchips">
+      <span class="audchip ti">Jefe de TI</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">En una frase</p>
+    <p>SteelheadAutomator es un <strong>cascarón</strong> instalado en Chrome que en cada arranque baja su “cerebro” —los scripts que hacen el trabajo— desde GitHub Pages, verifica su <strong>firma criptográfica</strong> antes de ejecutarlo, y habla con el ERP de Steelhead con las mismas credenciales de sesión del operador. Publicar un cambio es un <code>deploy.sh</code>; revertirlo es un <code>rollback.sh</code>; y la avería más común del sistema —un código de operación que Steelhead “rota”— se repara sola.</p>
+  </div>
+
+  <div class="toc">
+    <p class="ct">Contenido</p>
+    <ol>
+      <li><a href="#s1">Panorama para el administrador</a></li>
+      <li><a href="#s2">Arquitectura: cascarón + cerebro remoto</a></li>
+      <li><a href="#s3">Del borrador a producción</a></li>
+      <li><a href="#s4">Rollback</a></li>
+      <li><a href="#s5">Hashes y su rotación</a></li>
+      <li><a href="#s6">Seguridad: la firma criptográfica</a></li>
+      <li><a href="#s7">Distribución y actualización</a></li>
+      <li><a href="#s8">Dependencias y modos de falla</a></li>
+      <li><a href="#s9">Playbook de incidentes</a></li>
+      <li><a href="#s10">Lo esencial para el Jefe de TI</a></li>
+    </ol>
+  </div>
+
+  <!-- ===================== 01 ===================== -->
+  <h2 class="sec" id="s1"><span class="num">01</span>Panorama para el administrador</h2>
+  <p class="sec-lead measure">SteelheadAutomator automatiza tareas repetitivas dentro de Steelhead ERP (<code>app.gosteelhead.com</code>) — carga masiva de cotizaciones, números de parte, ruteo, validaciones de captura, y otras ~41 herramientas (“applets”). No es una aplicación aparte con su propio backend: es una <strong>extensión de Chrome</strong> que inyecta código dentro de la pestaña donde el operador ya tiene sesión abierta, y ese código habla con el mismo servidor GraphQL que usa la interfaz nativa de Steelhead.</p>
+  <p>Para el Jefe de TI, esto tiene tres implicaciones directas:</p>
+  <ul>
+    <li><strong>No hay backend propio que mantener.</strong> No hay servidor, base de datos ni sesión que administrar aparte de la del navegador — la autenticación es la cookie de sesión que el operador ya tiene al usar Steelhead.</li>
+    <li><strong>El código que corre en la máquina del operador no vive fijo en su máquina.</strong> Se descarga en cada arranque desde un hosting externo (GitHub Pages). Eso hace los arreglos instantáneos (no hay que reinstalar nada), pero también significa que la disponibilidad de ese hosting es una dependencia real del sistema (ver §8).</li>
+    <li><strong>La superficie de ataque relevante es la integridad del código remoto</strong>, no una base de datos o un login propios. Por eso el control central de este manual es la firma criptográfica (§6).</li>
+  </ul>
+  <div class="callout info">
+    <p class="ct">Fuera de alcance de este documento</p>
+    <p>Este manual cubre <strong>administración y operación</strong> del sistema ya construido: deploy, rollback, hashes, firma, distribución, incidentes. El <strong>montaje del entorno de desarrollo</strong> (clonar el repo, instalar dependencias, correr la suite de pruebas local, configurar el cron de Hash-Autopilot desde cero) se cubre en la <strong>Guía de Onboarding</strong> aparte, dirigida a quien va a desarrollar o dar mantenimiento al código.</p>
+  </div>
+
+  <!-- ===================== 02 ===================== -->
+  <h2 class="sec" id="s2"><span class="num">02</span>Arquitectura: cascarón + cerebro remoto</h2>
+  <p class="sec-lead measure">La pieza conceptual que explica casi todo lo demás en este manual.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — el decodificador de TV</p>
+    <p>La extensión instalada en Chrome es como un <strong>decodificador de TV de paga</strong>: la caja física en casa del operador no “sabe” programas, solo sabe <em>bajar el firmware</em> y ejecutarlo. La inteligencia —qué botones muestra, qué automatiza cada applet, qué validaciones aplica— vive en un servidor remoto (aquí, <strong>GitHub Pages</strong>). Actualizar el decodificador no requiere ir a la casa del operador: se actualiza el firmware del lado del proveedor y la caja lo recoge en el siguiente encendido.</p>
+  </div>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 820 380" role="img" aria-label="Diagrama de contexto: operador, navegador, extensión, GitHub Pages, ERP Steelhead y KMS">
+      <defs>
+        <marker id="mk1" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--ti)"/></marker>
+        <marker id="mk2" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker>
+        <marker id="mk3" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--steel)"/></marker>
+      </defs>
+
+      <!-- operador -->
+      <rect x="20" y="150" width="110" height="60" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="75" y="176" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Operador</text>
+      <text x="75" y="193" text-anchor="middle" class="svg-mut" font-size="10">humano</text>
+
+      <line x1="130" y1="180" x2="168" y2="180" stroke="var(--ti)" stroke-width="2" marker-end="url(#mk1)"/>
+
+      <!-- navegador -->
+      <rect x="170" y="120" width="180" height="130" rx="12" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="260" y="142" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Chrome</text>
+      <rect x="186" y="154" width="148" height="42" rx="8" fill="var(--ti-wash)" stroke="var(--ti)"/>
+      <text x="260" y="172" text-anchor="middle" class="svg-t" font-size="11" font-weight="700" fill="var(--ti)">Extensión (cascarón)</text>
+      <text x="260" y="187" text-anchor="middle" class="svg-mut" font-size="9">MV3 · service worker</text>
+      <rect x="186" y="204" width="148" height="34" rx="8" fill="var(--ground)" stroke="var(--hair-2)"/>
+      <text x="260" y="225" text-anchor="middle" class="svg-mut" font-size="10">pestaña app.gosteelhead.com</text>
+
+      <line x1="350" y1="175" x2="392" y2="115" stroke="var(--ti)" stroke-width="2" marker-end="url(#mk1)"/>
+      <text x="380" y="100" text-anchor="middle" class="svg-mut" font-size="9.5">fetch config.json</text>
+      <text x="380" y="112" text-anchor="middle" class="svg-mut" font-size="9.5">+ config.sig + scripts</text>
+
+      <!-- GitHub Pages -->
+      <rect x="394" y="30" width="190" height="72" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="489" y="54" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--accent-ink)">GitHub Pages</text>
+      <text x="489" y="70" text-anchor="middle" class="svg-mut" font-size="10">rama gh-pages</text>
+      <text x="489" y="85" text-anchor="middle" class="svg-mut" font-size="9">“el cerebro remoto”</text>
+
+      <line x1="489" y1="102" x2="489" y2="130" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="3,3"/>
+      <!-- KMS -->
+      <rect x="614" y="30" width="180" height="72" rx="12" fill="var(--ku-wash)" stroke="var(--ku)"/>
+      <text x="704" y="54" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--ku)">Google Cloud KMS</text>
+      <text x="704" y="70" text-anchor="middle" class="svg-mut" font-size="10">llave privada</text>
+      <text x="704" y="85" text-anchor="middle" class="svg-mut" font-size="9">firma cada deploy</text>
+      <line x1="584" y1="66" x2="612" y2="66" stroke="var(--ku)" stroke-width="2" marker-end="url(#mk3)"/>
+      <text x="598" y="56" text-anchor="middle" class="svg-mut" font-size="9">firma</text>
+
+      <!-- flujo de vuelta: extensión ejecuta y verifica -->
+      <rect x="360" y="130" width="220" height="46" rx="8" fill="var(--ti-wash)" stroke="var(--ti)"/>
+      <text x="470" y="148" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="700" fill="var(--ti)">verifica firma ECDSA (pública)</text>
+      <text x="470" y="163" text-anchor="middle" class="svg-mut" font-size="9.5">fail-closed si no cuadra</text>
+      <line x1="470" y1="176" x2="335" y2="204" stroke="var(--ti)" stroke-width="2" marker-end="url(#mk1)"/>
+      <text x="420" y="197" text-anchor="middle" class="svg-mut" font-size="9">new Function() · world:MAIN</text>
+
+      <!-- ERP -->
+      <line x1="334" y1="221" x2="480" y2="221" stroke="var(--steel)" stroke-width="2" marker-end="url(#mk3)"/>
+      <rect x="484" y="196" width="230" height="52" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="599" y="218" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">ERP Steelhead</text>
+      <text x="599" y="234" text-anchor="middle" class="svg-mut" font-size="10" font-family="var(--mono)">POST /graphql · cookie de sesión</text>
+      <text x="470" y="266" text-anchor="middle" class="svg-mut" font-size="9.5">la extensión corre EN la pestaña de Steelhead —</text>
+      <text x="470" y="279" text-anchor="middle" class="svg-mut" font-size="9.5">mismo contexto JS, mismas credenciales del operador</text>
+
+      <!-- caption bottom notes -->
+      <rect x="20" y="300" width="774" height="64" rx="10" fill="var(--ground)" stroke="var(--hair)"/>
+      <text x="407" y="322" text-anchor="middle" class="svg-t" font-size="11" font-weight="700">No hay backend propio ni base de datos del lado de SteelheadAutomator</text>
+      <text x="407" y="340" text-anchor="middle" class="svg-mut" font-size="10">La “cuenta” es la cookie del operador en Steelhead · la “inteligencia” vive en gh-pages · la “confianza” la ancla KMS</text>
+      <text x="407" y="356" text-anchor="middle" class="svg-mut" font-size="9.5">Si gh-pages no responde, la extensión no tiene qué ejecutar (ver §8, dependencias)</text>
+    </svg>
+    <figcaption>Cuatro actores, una sola fuente de verdad para el código: gh-pages. La confianza en ese código la sostiene la firma que ancla KMS (§6).</figcaption>
+  </figure>
+
+  <h3 class="sub">Las dos ramas que importan</h3>
+  <p>Todo el repositorio vive en git, pero para el administrador solo dos ramas tienen efecto operativo:</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Rama</th><th>Qué es</th><th>¿Afecta a usuarios?</th></tr></thead>
+      <tbody>
+        <tr><td><code>main</code></td><td>Rama de desarrollo. Aquí se edita <code>remote/</code> (scripts + <code>config.json</code>).</td><td><strong>No.</strong> Es “cocina de pruebas” — nada de lo que se cambia aquí llega a un operador hasta el siguiente paso.</td></tr>
+        <tr><td><code>gh-pages</code></td><td>Rama publicada. GitHub Pages sirve su contenido en <code>https://oviazcan.github.io/SteelheadAutomator/</code>.</td><td><strong>Sí, en vivo.</strong> Es “el menú que sí se sirve”: lo que está aquí es literalmente lo que la extensión de cada operador va a descargar y ejecutar en su próximo arranque.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>gh-pages</code> debe quedar en sincronía <strong>byte a byte</strong> con el contenido de <code>remote/</code> de <code>main</code> en el momento del deploy — no es una copia aproximada, es un espejo exacto. Ese invariante es lo que verifica <code>tools/deploy-status.sh</code> (§3).</p>
+
+  <!-- ===================== 03 ===================== -->
+  <h2 class="sec" id="s3"><span class="num">03</span>Del borrador a producción</h2>
+  <p class="sec-lead measure">Publicar un cambio es un solo comando atómico. Nunca se edita <code>gh-pages</code> a mano.</p>
+
+  <pre><code>tools/deploy.sh "fix(applet-x): descripción del cambio"</code></pre>
+
+  <p>Ese único comando hace, en orden, toda la secuencia:</p>
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Gate de pruebas</h4><p>Corre la suite de tests del repo (<code>tools/run-tests.sh</code>). <strong>Si algo falla, el deploy se aborta ahí mismo</strong> — nada llega a producción con pruebas rojas.</p></div></li>
+    <li><span class="k">2</span><div><h4>Cache-bust</h4><p>Sube el campo <code>version</code> de <code>remote/config.json</code> (p. ej. <code>1.7.176</code> → <code>1.7.177</code>). Ese número es la señal que hace que cada extensión instalada note que hay algo nuevo que descargar y recargue sus scripts — sin ese bump, el navegador podría seguir sirviendo la copia en caché.</p></div></li>
+    <li><span class="k">3</span><div><h4>Firma con KMS</h4><p>Calcula la huella SHA-256 de cada script y firma <code>config.json</code> con la llave privada en Google Cloud KMS (produce <code>config.sig</code>). Detalle completo en §6.</p></div></li>
+    <li><span class="k">4</span><div><h4>Commit en <code>main</code></h4><p>Deja registrado el cambio de código con el mensaje que se le dio al comando.</p></div></li>
+    <li><span class="k">5</span><div><h4>Espejo a <code>gh-pages</code></h4><p>Copia <code>main:remote/</code> → la raíz de <code>gh-pages</code> byte a byte (estructura aplanada: <code>remote/scripts/foo.js</code> → <code>scripts/foo.js</code>). Es <strong>self-healing</strong>: si <code>gh-pages</code> tenía drift de un deploy manual anterior, este paso lo corrige también, no solo aplica el diff del cambio actual.</p></div></li>
+    <li><span class="k">6</span><div><h4>Push de ambas ramas + tag</h4><p>Sube <code>main</code> y <code>gh-pages</code>, y crea un tag <code>vX.Y.Z</code> sobre el commit de <code>main</code> — ese tag es el ancla de rollback (§4) y, acumulado, el changelog del sistema.</p></div></li>
+    <li><span class="k">7</span><div><h4>Verificación en vivo</h4><p>Espera la propagación de GitHub Pages y confirma contra el sitio real que la versión nueva quedó publicada y que la firma verifica con la llave pública embebida.</p></div></li>
+  </ol>
+
+  <div class="callout info">
+    <p class="ct">Tiempos de propagación</p>
+    <p>GitHub Pages publica el contenido nuevo en <strong>~30 a 60 segundos</strong> después del push. Cada extensión instalada lo recoge en su siguiente arranque de pestaña (o al recargarla manualmente desde <code>chrome://extensions</code>) gracias al cache-bust del paso 2. No hay que reinstalar nada del lado del operador.</p>
+  </div>
+
+  <h3 class="sub">Verificar el estado sin adivinar</h3>
+  <p>Antes de asumir si un cambio “ya está vivo”, la pregunta se responde con un comando, no mirando el <code>config.json</code> de una rama de trabajo cualquiera (puede estar desfasado):</p>
+  <pre><code>tools/deploy-status.sh</code></pre>
+  <p>Imprime cuatro números de versión —el de la rama actual, el de <code>main</code>, el de <code>gh-pages</code>, y el que está <strong>realmente sirviendo GitHub Pages ahora mismo</strong>— y verifica que el invariante byte a byte entre <code>main:remote/</code> y <code>gh-pages</code> se cumpla. Si algo no cuadra, lo señala explícitamente en vez de dejarlo pasar en silencio.</p>
+
+  <div class="callout warn">
+    <p class="ct">Regla dura</p>
+    <p><code>gh-pages</code> nunca se edita a mano. Hay un hook <code>pre-push</code> instalado (<code>.githooks/pre-push</code>) que <strong>bloquea</strong> el push si <code>gh-pages</code> no espeja exactamente <code>main:remote/</code>, o si la firma no verifica. El único camino soportado es <code>deploy.sh</code> (o, para equipos de desarrollo aislados en un worktree, su variante <code>wb-deploy.sh</code> — detalle de desarrollo, fuera de alcance de este manual).</p>
+  </div>
+
+  <!-- ===================== 04 ===================== -->
+  <h2 class="sec" id="s4"><span class="num">04</span>Rollback</h2>
+  <p class="sec-lead measure">Cada bump de versión deja un ancla. Revertir es tan atómico como publicar.</p>
+  <p>Cada corrida de <code>deploy.sh</code> crea un tag de git <code>vX.Y.Z</code> sobre el commit exacto de <code>main</code> que se publicó. Ese tag contiene el <code>remote/</code> completo tal como quedó en producción en ese momento — es, acumulado, el <strong>changelog</strong> del sistema: no hace falta mantener un archivo aparte, la lista de tags con sus mensajes de commit ya lo es.</p>
+
+  <pre><code>tools/rollback.sh --list          # tags de deploy disponibles, más reciente primero
+tools/rollback.sh v1.7.118        # revierte gh-pages al estado exacto de ese deploy</code></pre>
+
+  <p><code>rollback.sh</code> valida el tag, muestra la versión viva contra el destino y pide confirmar escribiendo el tag antes de tocar nada. Después re-espeja <code>&lt;tag&gt;:remote/</code> → <code>gh-pages</code> con el mismo mecanismo self-healing de <code>deploy.sh</code> (elimina scripts huérfanos que no existían en ese tag) y hace commit + push <strong>solo de <code>gh-pages</code></strong>.</p>
+
+  <div class="callout warn">
+    <p class="ct">El rollback no toca <code>main</code></p>
+    <p><code>main</code> sigue apuntando al commit que causó el problema. Si el siguiente <code>deploy.sh</code> corre sin corregir eso primero, <strong>re-introduce el bug</strong> (porque vuelve a espejar <code>main:remote/</code>). Antes de deployar de nuevo hay que revertir o corregir el commit malo en <code>main</code>. El rollback del <code>.zip</code> de la extensión empaquetada (si el deploy malo tocó <code>extension/</code>) es un procedimiento aparte — republicar el zip de la versión anterior — porque el <code>.zip</code> no se mueve con <code>deploy.sh</code>.</p>
+  </div>
+
+  <!-- ===================== 05 ===================== -->
+  <h2 class="sec" id="s5"><span class="num">05</span>Hashes y su rotación</h2>
+  <p class="sec-lead measure">La avería más frecuente del sistema, y la única que se repara sola.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — la llave y la cerradura</p>
+    <p>Para pedir datos al ERP, la extensión no manda la pregunta completa cada vez: manda un <strong>código corto</strong> (un hash SHA-256, técnica llamada <em>persisted queries</em>) que el servidor de Steelhead ya asocia a esa consulta exacta. Ese código es una <strong>llave</strong> que abre una <strong>puerta</strong> específica. Cuando Steelhead actualiza su propio software, a veces <strong>cambia la cerradura</strong>: el código viejo deja de servir y la respuesta es <code>HTTP 400 "Must provide a query string."</code> — en español, “no reconozco lo que me estás pidiendo”.</p>
+  </div>
+
+  <p>Esto no es un bug de SteelheadAutomator: es consecuencia de cómo Steelhead implementa su API. La reparación la hace un proceso automático propio: <strong>Hash-Autopilot</strong>, un “cerrajero automático” que corre cada hora, sin intervención humana:</p>
+  <ol>
+    <li><strong>Detecta</strong> qué códigos ya no responden (un validador los prueba contra el servidor real).</li>
+    <li><strong>Re-captura</strong> el código nuevo abriendo un navegador oculto, ya logueado, y navegando la ruta mínima que dispara esa operación (o, para escrituras, usando objetos de prueba marcados “Sentinela” con captura-y-aborta: arma la petición para ver su código, pero la cancela antes de que se guarde nada real).</li>
+    <li><strong>Valida</strong> que el código nuevo es real, no ruido.</li>
+    <li><strong>Publica</strong> el arreglo con commit y push automáticos — a la extensión, y también a los dos repos hermanos que comparten hashes (Reportes SH y PowerTools).</li>
+    <li><strong>Notifica</strong> por correo qué se corrigió, qué quedó pendiente de revisión humana, y qué es urgente.</li>
+  </ol>
+
+  <p>Tiene frenos de seguridad: si en una sola corrida parecen romperse más de 6 códigos a la vez, <strong>no despliega nada</strong> y pide revisión humana (eso casi siempre significa una captura corrupta, no una rotación real). Y manda un “latido” a la nube en cada corrida — si un vigía externo no lo ve en más de 3 horas, avisa por correo de que el robot pudo haberse detenido.</p>
+
+  <div class="callout tip">
+    <p class="ct">Detalle completo</p>
+    <p>El mecanismo interno de Hash-Autopilot (las cinco etapas, la deduplicación entre los tres proyectos, los dos caminos lectura/escritura, todas las salvaguardas y las banderas de control) está documentado a fondo en la <a href="ficha-hash-autopilot.html">Ficha profunda de Hash-Autopilot</a>. Este manual solo cubre lo que el Jefe de TI necesita saber para <em>confiar</em> en que el sistema se repara solo y reconocer cuándo <em>no</em> lo hace (§9).</p>
+  </div>
+
+  <!-- ===================== 06 ===================== -->
+  <h2 class="sec" id="s6"><span class="num">06</span>Seguridad: la firma criptográfica</h2>
+  <p class="sec-lead measure">La extensión ejecuta código descargado de internet en cada arranque. Esto es lo que impide que ese código sea confiable solo porque “vino del repo correcto”.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — el sello de lacre</p>
+    <p>Cada publicación de <code>config.json</code> lleva un <strong>sello de lacre</strong>: una firma ECDSA que solo se puede producir con la llave privada, guardada en la <strong>bóveda de Google</strong> (Cloud KMS, en el proyecto GCP del cliente, nunca en el repositorio). La extensión trae la llave <strong>pública</strong> embebida y, antes de ejecutar cualquier script, rompe el sello: si la firma no cuadra con lo que descargó, <strong>no ejecuta nada</strong> — ni siquiera actualiza su copia en caché. Ante la duda, la puerta se queda cerrada (<em>fail-closed</em>).</p>
+  </div>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 800 230" role="img" aria-label="Cadena de firma: KMS firma, gh-pages publica, la extensión verifica, fail-closed">
+      <defs><marker id="sc1" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--ku)"/></marker>
+      <marker id="sc2" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--ti)"/></marker></defs>
+
+      <!-- KMS -->
+      <rect x="20" y="70" width="160" height="80" rx="10" fill="var(--ku-wash)" stroke="var(--ku)"/>
+      <text x="100" y="98" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--ku)">GCP KMS</text>
+      <text x="100" y="114" text-anchor="middle" class="svg-mut" font-size="10">llave privada</text>
+      <text x="100" y="129" text-anchor="middle" class="svg-mut" font-size="9">ECDSA P-256</text>
+      <text x="100" y="142" text-anchor="middle" class="svg-mut" font-size="9">nunca sale de aquí</text>
+
+      <line x1="180" y1="110" x2="222" y2="110" stroke="var(--ku)" stroke-width="2" marker-end="url(#sc1)"/>
+      <text x="200" y="98" text-anchor="middle" class="svg-mut" font-size="9">deploy.sh firma</text>
+
+      <!-- gh-pages con sig -->
+      <rect x="224" y="70" width="180" height="80" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="314" y="98" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--accent-ink)">gh-pages</text>
+      <text x="314" y="115" text-anchor="middle" class="svg-mut" font-size="9.5" font-family="var(--mono)">config.json</text>
+      <text x="314" y="130" text-anchor="middle" class="svg-mut" font-size="9.5" font-family="var(--mono)">config.sig</text>
+      <text x="314" y="144" text-anchor="middle" class="svg-mut" font-size="9" font-family="var(--mono)">scriptIntegrity{sha256}</text>
+
+      <line x1="404" y1="110" x2="446" y2="110" stroke="var(--ti)" stroke-width="2" marker-end="url(#sc2)"/>
+      <text x="425" y="98" text-anchor="middle" class="svg-mut" font-size="9">fetch</text>
+
+      <!-- extension verifica -->
+      <rect x="448" y="60" width="190" height="100" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+      <text x="543" y="84" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--ti)">Extensión</text>
+      <text x="543" y="100" text-anchor="middle" class="svg-mut" font-size="9.5">verifica firma con</text>
+      <text x="543" y="113" text-anchor="middle" class="svg-mut" font-size="9.5">la pública embebida</text>
+      <text x="543" y="130" text-anchor="middle" class="svg-mut" font-size="9.5">↓ verifica sha256</text>
+      <text x="543" y="144" text-anchor="middle" class="svg-mut" font-size="9.5">de cada script</text>
+
+      <!-- dos resultados -->
+      <line x1="638" y1="90" x2="680" y2="55" stroke="var(--accent)" stroke-width="2" marker-end="url(#sc2)"/>
+      <line x1="638" y1="130" x2="680" y2="165" stroke="var(--danger)" stroke-width="2" marker-end="url(#sc2)"/>
+
+      <rect x="684" y="24" width="106" height="52" rx="8" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="737" y="46" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="700" fill="var(--accent-ink)">Cuadra</text>
+      <text x="737" y="61" text-anchor="middle" class="svg-mut" font-size="9">ejecuta (new Function)</text>
+
+      <rect x="684" y="140" width="106" height="60" rx="8" fill="var(--danger-wash)" stroke="var(--danger)"/>
+      <text x="737" y="162" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="700" fill="var(--danger)">No cuadra</text>
+      <text x="737" y="177" text-anchor="middle" class="svg-mut" font-size="9">no ejecuta, no</text>
+      <text x="737" y="189" text-anchor="middle" class="svg-mut" font-size="9">actualiza caché</text>
+
+      <text x="410" y="215" text-anchor="middle" class="svg-mut" font-size="10">fail-closed: ante la duda, no se ejecuta nada</text>
+    </svg>
+    <figcaption>La llave privada nunca sale de KMS. Un atacante con acceso al repositorio o a gh-pages puede alterar el contenido, pero no puede producir una firma válida sin la llave.</figcaption>
+  </figure>
+
+  <h3 class="sub">Los componentes</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Pieza</th><th>Rol</th></tr></thead>
+      <tbody>
+        <tr><td>Llave privada</td><td>Vive en <strong>Google Cloud KMS</strong>, en el proyecto GCP del <strong>cliente</strong> (no de quien desarrolla). El handoff de esta pieza es un cambio de permisos IAM, no una transferencia de archivo.</td></tr>
+        <tr><td>Llave pública</td><td>Embebida dentro de la extensión (<code>extension/integrity-pubkey.js</code>). Es la raíz de confianza del lado del cliente.</td></tr>
+        <tr><td><code>config.sig</code></td><td>Archivo separado con la firma de <code>config.json</code>, publicado junto a él en <code>gh-pages</code>.</td></tr>
+        <tr><td><code>scriptIntegrity</code></td><td>Dentro de <code>config.json</code>: una huella SHA-256 por script. Una vez que la firma del <code>config.json</code> verifica, esas huellas quedan confiables y cada script se valida contra la suya antes de ejecutarse.</td></tr>
+        <tr><td>Break-glass</td><td>Interruptor manual en el popup de la extensión (Configuración → Seguridad) para desactivar la verificación en un incidente. <strong>Apagado por default.</strong> Es la última línea de defensa — el arreglo real de un incidente de firma es volver a publicar con una firma correcta, no dejar el break-glass encendido.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Caveat de versión — la protección no es universal todavía</p>
+    <p>La verificación fail-closed <strong>solo está activa a partir de la extensión v1.6.6</strong> (versión en la que se embebió la llave pública real y se republicó el paquete). Cada equipo queda protegido <strong>al actualizar</strong> a esa versión o una posterior — el rollout es <strong>gradual, máquina por máquina</strong>, disparado por el banner de actualización (§7). Los equipos que sigan en una versión anterior a v1.6.6 operan en modo <strong>fail-open</strong>: no verifican firma, igual que antes de que este control existiera. Confirmar que el parque de equipos está en v1.6.6+ es una tarea de administración recurrente, no un evento único.</p>
+  </div>
+
+  <!-- ===================== 07 ===================== -->
+  <h2 class="sec" id="s7"><span class="num">07</span>Distribución y actualización de la extensión</h2>
+  <p>La extensión se distribuye como un archivo <code>.zip</code> de instalación manual (“unlisted”), publicado en <code>gh-pages</code>, con una guía de instalación (<code>install-guide.html</code>) para quien la instala por primera vez.</p>
+
+  <div class="callout info">
+    <p class="ct">Por qué no está en la Chrome Web Store</p>
+    <p>La arquitectura de carga remota (<code>new Function</code> sobre código bajado en runtime) es incompatible con las políticas de revisión de la Chrome Web Store para MV3. Es una decisión de arquitectura consciente, no un pendiente — la distribución vía <code>.zip</code> es el canal soportado.</p>
+  </div>
+
+  <p>El campo <code>extensionVersion</code> dentro de <code>config.json</code> es el disparador del banner “actualiza tu extensión” que ve el operador. Ese campo <strong>solo cambia cuando cambió código dentro de <code>extension/</code></strong> (el cascarón mismo) y se republicó el <code>.zip</code> — no cada vez que se deploya un applet nuevo en <code>remote/</code> (eso lo cubre el cache-bust de <code>version</code>, §3, y no requiere que el operador reinstale nada).</p>
+  <p>En otras palabras: hay <strong>dos ciclos de actualización distintos</strong> y es importante no confundirlos como administrador:</p>
+  <ul>
+    <li><strong>Cambios en <code>remote/</code></strong> (la mayoría): invisibles para el operador salvo por el efecto del applet — se recogen solos en el siguiente arranque de pestaña.</li>
+    <li><strong>Cambios en <code>extension/</code></strong> (poco frecuentes): requieren que el operador vea el banner, descargue el <code>.zip</code> nuevo y lo recargue manualmente en <code>chrome://extensions</code>. Es el único camino por el que un equipo llega a v1.6.6+ y activa la protección de firma (§6).</li>
+  </ul>
+
+  <!-- ===================== 08 ===================== -->
+  <h2 class="sec" id="s8"><span class="num">08</span>Dependencias y modos de falla</h2>
+  <p class="sec-lead measure">Tres sistemas externos de los que SteelheadAutomator depende para operar. Ninguno lo controla el equipo de desarrollo.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Dependencia</th><th>Para qué se usa</th><th>Si falla</th><th>Cobertura</th></tr></thead>
+      <tbody>
+        <tr><td><strong>GitHub Pages</strong></td><td>Hospeda el “cerebro” — <code>config.json</code>, <code>config.sig</code> y todos los scripts.</td><td>La extensión no tiene qué descargar ni ejecutar; ningún applet funciona hasta que Pages vuelva a responder.</td><td>Sin mitigación automática — es la razón por la que el repositorio <strong>no debe volverse privado</strong> sin antes migrar el hosting: eso rompería la extensión para todos.</td></tr>
+        <tr><td><strong>API GraphQL de Steelhead</strong></td><td>El ERP mismo — cada operación que hace un applet.</td><td>La rotación de hashes (§5) es el modo de falla más común y ya está cubierto. Una caída total del ERP afecta por igual a la interfaz nativa de Steelhead y a la extensión.</td><td>Hash-Autopilot (rotaciones) + validador diario. Caídas totales del ERP no son responsabilidad de SteelheadAutomator.</td></tr>
+        <tr><td><strong>Google Cloud KMS</strong></td><td>Firma cada deploy (§6).</td><td>Sin acceso a KMS, <code>deploy.sh</code> aborta el paso de firma (o publica sin firmar, si así se configura explícitamente) — no bloquea deploys de emergencia, pero deja esa publicación sin el sello de confianza.</td><td>Acceso IAM administrado por el cliente; el handoff de esta pieza es exactamente eso: permisos, no archivos.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub">Monitoreo activo</h3>
+  <p>Dos procesos corren sin intervención y son la primera línea de defensa contra estos modos de falla:</p>
+  <ul>
+    <li><strong>Hash-Autopilot</strong> (cron horario) — detecta y repara rotaciones de hash; manda su propio “latido” a un vigía que avisa si deja de correr.</li>
+    <li><strong>Validador diario de hashes</strong> — corre independiente del autopilot, prueba cada operación conocida contra el servidor real y notifica por correo si algo quedó roto.</li>
+  </ul>
+
+  <!-- ===================== 09 ===================== -->
+  <h2 class="sec" id="s9"><span class="num">09</span>Playbook de incidentes</h2>
+
+  <h3 class="sub">Síntoma: "Must provide a query string." (HTTP 400)</h3>
+  <p>Un operador reporta que un applet “dejó de funcionar de repente” y, al revisar la consola o el error mostrado, aparece exactamente ese mensaje.</p>
+  <ol>
+    <li><strong>Diagnóstico:</strong> esto es un hash rotado (§5), <em>no</em> un bug del código de SteelheadAutomator. Es esperado que ocurra de tanto en tanto — es consecuencia de cómo Steelhead versiona su API.</li>
+    <li><strong>Primera acción: no acción.</strong> Hash-Autopilot corre cada hora; en la mayoría de los casos, el problema se resuelve solo antes de que un humano intervenga.</li>
+    <li><strong>Confirmar que el sistema está reaccionando:</strong> correr <code>tools/deploy-status.sh</code> para ver la versión publicada más reciente. Si hay un deploy de Hash-Autopilot posterior a la hora del reporte, ya está en camino o resuelto.</li>
+    <li><strong>Si pasan varias horas sin resolverse</strong>, revisar el correo de notificación de Hash-Autopilot — puede haber activado el freno de masa (más de 6 rotaciones simultáneas) o encontrado una <strong>deprecación dura</strong>: Steelhead retiró la consulta por completo, no solo le cambió el código. Eso sí requiere intervención humana — migrar el applet a una consulta equivalente que siga viva.</li>
+    <li><strong>Verificar el latido:</strong> si el vigía de Hash-Autopilot no ha visto un “latido” reciente, el proceso mismo pudo haberse detenido (p. ej. la máquina que lo corre se apagó) — ese es un incidente de infraestructura distinto al de un hash rotado, y sí necesita atención directa.</li>
+  </ol>
+
+  <h3 class="sub">Cuándo interviene un humano de verdad</h3>
+  <ul>
+    <li><strong>Deprecación dura</strong> de una operación (no hay código nuevo que capturar porque la consulta ya no existe en el servidor).</li>
+    <li><strong>Ruta de navegación rota:</strong> Hash-Autopilot re-captura hashes de lectura navegando pantallas reales; si Steelhead rediseña una pantalla, esa ruta puede dejar de disparar la operación esperada. El sistema intenta una escalación asistida antes de rendirse, pero puede requerir ajuste manual de la ruta.</li>
+    <li><strong>Freno de masa activado</strong> (>6 rotaciones de golpe en una sola corrida) — casi siempre señal de una captura corrupta (sesión equivocada, por ejemplo), no de una rotación legítima masiva. Requiere revisión antes de permitir el siguiente deploy automático.</li>
+    <li><strong>Firma que no verifica</strong> tras un deploy — el smoke-check de <code>deploy.sh</code> lo señala; no se debe activar el break-glass como solución permanente, sino re-publicar con la firma correcta.</li>
+    <li><strong>GitHub Pages o KMS caídos</strong> — fuera del control del sistema; escalar al proveedor correspondiente.</li>
+  </ul>
+
+  <!-- ===================== 10 ===================== -->
+  <h2 class="sec" id="s10"><span class="num">10</span>Lo esencial para el Jefe de TI</h2>
+  <div class="essentials">
+    <h3>Si solo te quedas con esto</h3>
+    <ul>
+      <li><strong>No hay backend propio.</strong> La extensión usa la cookie de sesión del operador contra <code>app.gosteelhead.com/graphql</code>. La superficie a administrar es la integridad del código remoto, no una base de datos.</li>
+      <li><strong>Publicar = <code>tools/deploy.sh</code>.</strong> Atómico: pruebas → cache-bust → firma KMS → commit → espejo a <code>gh-pages</code> → push → tag → verificación en vivo. Nunca se edita <code>gh-pages</code> a mano (hay un hook que lo bloquea).</li>
+      <li><strong>Revertir = <code>tools/rollback.sh &lt;tag&gt;</code>.</strong> Cada deploy deja un tag; los tags son el changelog. El rollback solo toca <code>gh-pages</code> — <code>main</code> hay que corregirlo aparte.</li>
+      <li><strong>Verificar estado = <code>tools/deploy-status.sh</code>.</strong> Nunca concluir el estado de un deploy mirando el <code>config.json</code> de una rama de trabajo.</li>
+      <li><strong>El código está firmado con ECDSA P-256</strong>, llave privada en KMS del cliente, verificación fail-closed en la extensión — <strong>pero solo desde la v1.6.6</strong>. Confirmar que el parque de equipos está actualizado es tarea recurrente de administración, no un evento único.</li>
+      <li><strong>El síntoma más común es <code>HTTP 400 "Must provide a query string."</code></strong> — un hash rotado. Se repara solo (Hash-Autopilot, cron horario); casi nunca requiere intervención humana. Cuando sí la requiere, es porque Steelhead deprecó algo por completo o rediseñó una pantalla que rompió una ruta de captura.</li>
+      <li><strong>La dependencia externa que sí puede tumbar todo</strong> es GitHub Pages: si el hosting del cerebro remoto desaparece, la extensión no tiene qué ejecutar. No volver privado el repositorio sin antes resolver esto.</li>
+    </ul>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Manual del Administrador · SteelheadAutomator</div>
+    <div>Conceptos estables · cifras de referencia al corte de jul 2026</div>
+  </footer>
+
+</div>
+</body>
+</html>
