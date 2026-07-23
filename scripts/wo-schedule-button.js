@@ -1,66 +1,63 @@
-// Botón "Programación" en la ficha individual de Orden de Trabajo — glue DOM.
-// En /Domains/<d>/WorkOrders/<idInDomain> inyecta un botón en el header, ENTRE
-// "EDITAR DETALLES" y "ABRIR PDF", que abre un panel dark-mode con la programación de
-// la OT (cuándo/dónde). Motivo: en iPad la tarjeta "Cliente" (con el ícono 📅 nativo)
-// se colapsa y deja de verse; el botón arriba da acceso inmediato e independiente.
+// Programación INLINE en la ficha de Orden de Trabajo — glue DOM.
+// En /Domains/<d>/WorkOrders/<idInDomain> muestra, DIRECTO en el header (entre "EDITAR
+// DETALLES" y "ABRIR PDF"), la programación de la OT: "📅 <estación · fecha · estado>".
+// NO requiere click: la info sale sola al entrar a la ficha. Motivo: en iPad la tarjeta
+// "Cliente" (con el ícono 📅 nativo) se colapsa; este readout arriba la muestra siempre.
 //
-// Anclaje: handle semántico ESTABLE `data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON"`
-// (idioma-agnóstico; "Abrir PDF" es el 1er elemento del grupo derecho del header, así
-// que insertar ANTES de él lo deja justo entre "Editar Detalles" y "Abrir PDF").
+// FASE 2 (a futuro): cuando se pueda PROGRAMAR desde aquí, el 📅 se vuelve clicable y
+// abrirá un modal de programación intencional (por eso el elemento ya lleva el 📅 al inicio).
 //
-// Estado FASE 1 (consulta): el panel muestra el resumen de la OT (nombre + fecha límite,
-// vía el query `WorkOrder` ya en config) y la programación real (cuándo/dónde). La LECTURA
-// de la tarea agendada está detrás de SCHEDULE_READ_ENABLED hasta capturar la query del
-// board que mapea workOrderId→tarea (ver bitácora). FASE 2 (crear programación) es aparte.
+// Datos: WorkOrder({idInDomain}) → workOrderId GLOBAL; WorkOrderSchedule({domainId,
+// workOrderId}) → board COMPLETO → WoScheduleCore.buildBoardScheduleIndex → tareas de la OT.
+// Para NO bajar ~4.6MB por ficha, se INTERCEPTA la WorkOrderSchedule que la propia ficha
+// dispara (patrón surtido-guard); solo se hace fetch propio como fallback si no aparece.
 //
-// Auto-inyectado (autoInject:true). Singleton en window.__saWoSchedBtn* para sobrevivir la
+// Auto-inyectado (autoInject:true). Singleton en window.__saWoSched* para sobrevivir la
 // re-inyección del IIFE.
 const WoScheduleButton = (() => {
   'use strict';
 
   const Core = () => window.WoScheduleCore;
 
-  const BTN_ID = 'sa-wosched-btn';
+  const INLINE_ID = 'sa-wosched-inline';
   const PDF_ANCHOR = '[data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON"]';
+  const BOARD_TTL_MS = 120000;    // frescura del índice de programación capturado/fetcheado
+  const WAIT_STEPS = 6, WAIT_MS = 300;   // ventana para que el interceptor capture la nativa
 
-  // Lectura de programación ACTIVA: query `WorkOrderSchedule({domainId, workOrderId})`
-  // (hash en config) → board completo → WoScheduleCore.buildBoardScheduleIndex → tareas
-  // de la WO. Shape confirmado en scan real 2026-07-23.
-  const SCHEDULE_READ_ENABLED = true;
-
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function onDetail() { return Core().isWorkOrderDetailPath(location.pathname); }
   function currentWoIdInDomain() { return Core().parseWorkOrderIdInDomain(location.pathname); }
+
+  // Índice de programación del board (compartido; capturado por el interceptor o fetcheado).
+  function boardState() {
+    if (!window.__saWoSchedBoard) window.__saWoSchedBoard = { idx: null, at: 0, domainId: null };
+    return window.__saWoSchedBoard;
+  }
+  function boardFresh(domainId) {
+    const b = boardState();
+    return b.idx && b.domainId === domainId && (Date.now() - b.at) < BOARD_TTL_MS;
+  }
+  function setBoard(idx, domainId) {
+    const b = boardState(); b.idx = idx; b.domainId = domainId; b.at = Date.now();
+  }
+  // cache de tareas resueltas por idInDomain (para no recomputar al re-render/nav)
+  function resolvedCache() { if (!window.__saWoSchedResolved) window.__saWoSchedResolved = new Map(); return window.__saWoSchedResolved; }
 
   // ── Estilos ────────────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById('sa-wosched-style')) return;
     const css = [
-      // Botón integrado a la barra clara nativa, pero con acento verde (= UI de la extensión).
-      '#' + BTN_ID + '{display:inline-flex;align-items:center;gap:6px;cursor:pointer;',
+      // Readout inline integrado a la barra clara nativa, con acento verde (= UI de la extensión).
+      '#' + INLINE_ID + '{display:inline-flex;align-items:center;gap:6px;',
       'border:1px solid #13a36f;border-radius:6px;background:#eef6f2;color:#0d6b49;',
-      'font-weight:600;font-size:13px;padding:5px 12px;margin:0 6px;white-space:nowrap;flex-shrink:0;',
+      'font-weight:600;font-size:12.5px;padding:4px 10px;margin:0 6px;white-space:nowrap;',
+      'max-width:340px;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;',
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;}',
-      '#' + BTN_ID + ':hover{background:#e0f0e8;border-color:#0d6b49;}',
-      // Panel dark-mode (UI propia — regla de diseño).
-      '.sa-wosched-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483640;',
-      'display:flex;align-items:center;justify-content:center;',
-      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}',
-      '.sa-wosched-panel{background:#1c2430;color:#e6e9ee;border:1px solid #33404f;border-radius:10px;',
-      'max-width:520px;width:92%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 14px 44px rgba(0,0,0,.55);}',
-      '.sa-wosched-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #2b3645;}',
-      '.sa-wosched-head h2{margin:0;font-size:16px;font-weight:700;color:#e6e9ee;}',
-      '.sa-wosched-x{cursor:pointer;color:#9aa7b5;font-size:22px;line-height:1;border:none;background:none;padding:0 4px;}',
-      '.sa-wosched-x:hover{color:#e6e9ee;}',
-      '.sa-wosched-body{padding:16px 18px;overflow-y:auto;font-size:13.5px;line-height:1.5;}',
-      '.sa-wosched-row{display:flex;gap:8px;margin:0 0 8px 0;}',
-      '.sa-wosched-k{color:#9aa7b5;min-width:120px;flex:0 0 auto;}',
-      '.sa-wosched-v{color:#e6e9ee;font-weight:600;}',
-      '.sa-wosched-sched{margin-top:12px;padding:12px;border-radius:8px;background:#141a23;border:1px solid #2b3645;}',
-      '.sa-wosched-sched .lbl{color:#13a36f;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;}',
-      '.sa-wosched-muted{color:#8a97a5;font-style:italic;}',
-      '.sa-wosched-task{padding:6px 0;border-top:1px dashed #2b3645;}',
-      '.sa-wosched-task:first-of-type{border-top:none;}',
-      '.sa-wosched-err{color:#e08a7a;}',
+      '#' + INLINE_ID + ' .sa-wosched-ico{flex:0 0 auto;}',
+      '#' + INLINE_ID + ' .sa-wosched-txt{overflow:hidden;text-overflow:ellipsis;}',
+      '#' + INLINE_ID + '.sa-wosched-none{border-color:#c7ccd1;background:#f3f4f6;color:#6b7280;}',
+      '#' + INLINE_ID + '.sa-wosched-loading{border-color:#c7ccd1;background:#f3f4f6;color:#8a97a5;font-style:italic;}',
+      '#' + INLINE_ID + '.sa-wosched-err{border-color:#e0b4ab;background:#fbeeeb;color:#b04a3a;}',
     ].join('');
     const s = document.createElement('style');
     s.id = 'sa-wosched-style';
@@ -68,194 +65,172 @@ const WoScheduleButton = (() => {
     document.head.appendChild(s);
   }
 
-  // ── Botón en el header ───────────────────────────────────────────────────────
-  function buildButton() {
+  // ── Elemento inline en el header ─────────────────────────────────────────────
+  function buildInline() {
     injectStyles();
-    const btn = document.createElement('button');
-    btn.id = BTN_ID;
-    btn.type = 'button';
-    btn.title = 'Ver la programación de esta Orden de Trabajo';
-    const ico = document.createElement('span'); ico.textContent = '📅';
-    const txt = document.createElement('span'); txt.textContent = 'Programación';
-    btn.appendChild(ico); btn.appendChild(txt);
-    btn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openPanel(); });
-    return btn;
+    const el = document.createElement('div');
+    el.id = INLINE_ID;
+    el.className = 'sa-wosched-loading';
+    el.title = 'Programación de esta Orden de Trabajo';
+    const ico = document.createElement('span'); ico.className = 'sa-wosched-ico'; ico.textContent = '📅';
+    const txt = document.createElement('span'); txt.className = 'sa-wosched-txt'; txt.textContent = 'Programación…';
+    el.appendChild(ico); el.appendChild(txt);
+    return el;
   }
 
-  function ensureButton() {
-    if (!onDetail()) return;
-    if (document.getElementById(BTN_ID)) return;   // idempotente
+  function ensureInline() {
+    if (!onDetail()) return null;
+    let el = document.getElementById(INLINE_ID);
+    if (el) return el;
     const pdf = document.querySelector(PDF_ANCHOR);
-    if (!pdf || !pdf.parentElement) return;        // header aún no renderiza: observer reintenta
-    pdf.parentElement.insertBefore(buildButton(), pdf);
+    if (!pdf || !pdf.parentElement) return null;   // header aún no renderiza: observer reintenta
+    el = buildInline();
+    pdf.parentElement.insertBefore(el, pdf);
+    return el;
   }
 
-  function removeButton() {
-    const b = document.getElementById(BTN_ID); if (b) b.remove();
+  function removeInline() { const el = document.getElementById(INLINE_ID); if (el) el.remove(); }
+
+  function setInlineText(el, cls, text, title) {
+    if (!el) return;
+    el.className = cls;
+    const txt = el.querySelector('.sa-wosched-txt');
+    if (txt) txt.textContent = text;
+    el.title = title || 'Programación de esta Orden de Trabajo';
   }
 
-  // ── Panel dark-mode ──────────────────────────────────────────────────────────
-  function closePanel() {
-    const ov = document.getElementById('sa-wosched-ov'); if (ov) ov.remove();
-  }
-
-  function openPanel() {
-    injectStyles();
-    closePanel();
-    const woId = currentWoIdInDomain();
-    const ov = document.createElement('div');
-    ov.className = 'sa-wosched-ov'; ov.id = 'sa-wosched-ov';
-    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closePanel(); });
-
-    const panel = document.createElement('div'); panel.className = 'sa-wosched-panel';
-    const head = document.createElement('div'); head.className = 'sa-wosched-head';
-    const h2 = document.createElement('h2'); h2.textContent = 'Programación — OT ' + (woId != null ? woId : '');
-    const x = document.createElement('button'); x.className = 'sa-wosched-x'; x.textContent = '×';
-    x.addEventListener('click', closePanel);
-    head.appendChild(h2); head.appendChild(x);
-
-    const body = document.createElement('div'); body.className = 'sa-wosched-body'; body.id = 'sa-wosched-body';
-    const loading = document.createElement('div'); loading.className = 'sa-wosched-muted'; loading.textContent = 'Cargando…';
-    body.appendChild(loading);
-
-    panel.appendChild(head); panel.appendChild(body);
-    ov.appendChild(panel);
-    document.body.appendChild(ov);
-
-    // ESC cierra.
-    const onKey = function (e) { if (e.key === 'Escape') { closePanel(); document.removeEventListener('keydown', onKey); } };
-    document.addEventListener('keydown', onKey);
-
-    loadPanel(woId, body);
-  }
-
-  async function loadPanel(woIdInDomain, body) {
-    const api = window.SteelheadAPI;
-    let wo = null;
-    try {
-      const data = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
-      wo = (data && data.workOrderByIdInDomain) || null;
-    } catch (e) {
-      renderPanelError(body, e);
-      return;
-    }
-    const schedBox = renderPanel(body, woIdInDomain, wo);
-    // Programación real: WorkOrderSchedule necesita el workOrderId GLOBAL (wo.id), no idInDomain.
-    if (SCHEDULE_READ_ENABLED && schedBox && wo && wo.id != null) {
-      loadSchedule(schedBox, wo.id);
-    }
-  }
-
-  // Fetch del board + filtrado a la WO + render. Errores aquí NO tumban el panel (el
-  // resumen de la OT ya se mostró).
-  async function loadSchedule(box, woGlobalId) {
-    const api = window.SteelheadAPI;
-    const domainId = Core().parseDomainId(location.pathname);
-    try {
-      const data = await api.query('WorkOrderSchedule', { domainId: domainId, workOrderId: woGlobalId }, 'WorkOrderSchedule');
-      const idx = Core().buildBoardScheduleIndex(data);
-      const tasks = Core().resolveBoardScheduleForWO(idx, woGlobalId);
-      renderScheduleTasks(box, tasks);
-    } catch (e) {
-      box.textContent = '';
-      const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'Programación (cuándo / dónde)'; box.appendChild(lbl);
-      const err = document.createElement('div'); err.className = 'sa-wosched-err';
-      err.textContent = (e && e.persistedQueryRotated)
-        ? '⚠️ El hash de WorkOrderSchedule rotó — avísale a Claude.'
-        : '⚠️ No se pudo cargar la programación: ' + (e && e.message ? e.message : 'error');
-      box.appendChild(err);
-    }
-  }
-
-  function renderPanelError(body, e) {
-    body.textContent = '';
-    const err = document.createElement('div'); err.className = 'sa-wosched-err';
-    err.textContent = (e && e.persistedQueryRotated)
-      ? '⚠️ El hash de WorkOrder rotó — avísale a Claude para actualizarlo.'
-      : '⚠️ No se pudo cargar la OT: ' + (e && e.message ? e.message : 'error');
-    body.appendChild(err);
-  }
-
-  function row(k, v) {
-    const r = document.createElement('div'); r.className = 'sa-wosched-row';
-    const kk = document.createElement('div'); kk.className = 'sa-wosched-k'; kk.textContent = k;
-    const vv = document.createElement('div'); vv.className = 'sa-wosched-v'; vv.textContent = (v != null && v !== '') ? String(v) : '—';
-    r.appendChild(kk); r.appendChild(vv);
-    return r;
-  }
-
-  // Fecha legible localizada (glue puede usar Date; el core da el fallback determinista).
-  function fmtDeadline(iso) {
+  // Fecha/hora local (glue usa Date; el core da el fallback determinista).
+  function fmtLocal(iso) {
     if (!iso) return '';
-    try {
-      const d = new Date(iso);
-      if (!isNaN(d.getTime())) return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch (_) {}
-    const p = Core().parseIsoParts(iso);
-    return p ? (p.d + '/' + p.mo + '/' + p.y) : iso;
-  }
-
-  // Devuelve el <div> del bloque de programación (para que loadSchedule lo llene).
-  function renderPanel(body, woIdInDomain, wo) {
-    body.textContent = '';
-    body.appendChild(row('Orden de Trabajo', woIdInDomain));
-    if (wo) {
-      if (wo.name) body.appendChild(row('Nombre', wo.name));
-      body.appendChild(row('Fecha Límite', fmtDeadline(wo.deadline)));
-    }
-
-    // Bloque de PROGRAMACIÓN (cuándo/dónde).
-    const box = document.createElement('div'); box.className = 'sa-wosched-sched';
-    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'Programación (cuándo / dónde)';
-    box.appendChild(lbl);
-    const m = document.createElement('div'); m.className = 'sa-wosched-muted'; m.textContent = 'Buscando programación…';
-    box.appendChild(m);
-    body.appendChild(box);
-    return box;
-  }
-
-  // Fecha/hora localizada (glue usa Date; el core da el fallback determinista).
-  function fmtLocalDateTime(iso) {
-    if (!iso) return '';
-    try {
-      const d = new Date(iso);
-      if (!isNaN(d.getTime())) return d.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    } catch (_) {}
+    try { const d = new Date(iso); if (!isNaN(d.getTime())) return d.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (_) {}
     return Core().formatShortDateTime(iso);
   }
+  function taskText(t) {
+    const parts = [];
+    if (t.stationName) parts.push(t.stationName);
+    const w = fmtLocal(t.expectedStartTime); if (w) parts.push(w);
+    const s = Core().scheduleStatusLabel(t.status); if (s) parts.push(s);
+    return parts.join(' · ') || '(programada)';
+  }
 
-  function renderScheduleTasks(box, tasks) {
-    box.textContent = '';
-    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'Programación (cuándo / dónde)';
-    box.appendChild(lbl);
-    if (!tasks || !tasks.length) {
-      const m = document.createElement('div'); m.className = 'sa-wosched-muted'; m.textContent = 'Esta OT no está programada.';
-      box.appendChild(m);
+  function renderInline(el, tasks) {
+    if (!el) return;
+    if (!tasks || !tasks.length) { setInlineText(el, 'sa-wosched-none', 'Sin programar', 'Esta OT no está programada.'); return; }
+    let text = taskText(tasks[0]);
+    if (tasks.length > 1) text += '  (+' + (tasks.length - 1) + ')';
+    // tooltip con todas las tareas
+    const title = tasks.map(function (t, i) { return (i + 1) + ') ' + taskText(t); }).join('\n');
+    setInlineText(el, '', text, title);
+  }
+
+  // ── Carga de datos ───────────────────────────────────────────────────────────
+  async function loadInline(woIdInDomain, el) {
+    const cachedTasks = resolvedCache().get(woIdInDomain);
+    if (cachedTasks) { renderInline(el, cachedTasks); return; }
+
+    const api = window.SteelheadAPI;
+    const domainId = Core().parseDomainId(location.pathname);
+    let woGlobalId = null;
+    try {
+      const data = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
+      woGlobalId = Core().extractWorkOrderGlobalId(data);
+      if (woGlobalId == null && data && data.workOrderByIdInDomain) woGlobalId = data.workOrderByIdInDomain.id;
+    } catch (e) {
+      setInlineText(el, 'sa-wosched-err', 'Error', 'No se pudo cargar la OT: ' + (e && e.message ? e.message : 'error'));
       return;
     }
-    tasks.forEach(function (t) {
-      const item = document.createElement('div'); item.className = 'sa-wosched-task';
-      const est = document.createElement('div');
-      est.appendChild(mk('sa-wosched-v', t.stationName || '(estación ' + (t.stationId != null ? t.stationId : '?') + ')'));
-      item.appendChild(est);
-      const meta = document.createElement('div'); meta.className = 'sa-wosched-muted';
-      const when = fmtLocalDateTime(t.expectedStartTime);
-      const status = Core().scheduleStatusLabel(t.status);
-      meta.textContent = [when, status].filter(Boolean).join(' · ');
-      item.appendChild(meta);
-      box.appendChild(item);
-    });
+    if (woGlobalId == null) { setInlineText(el, 'sa-wosched-none', 'Sin programar'); return; }
+
+    let idx;
+    try { idx = await ensureBoardIndex(domainId, woGlobalId); }
+    catch (e) {
+      setInlineText(el, 'sa-wosched-err', 'Error', (e && e.persistedQueryRotated)
+        ? 'El hash de WorkOrderSchedule rotó — avísale a Claude.'
+        : 'No se pudo cargar la programación: ' + (e && e.message ? e.message : 'error'));
+      return;
+    }
+    const tasks = Core().resolveBoardScheduleForWO(idx, woGlobalId);
+    resolvedCache().set(woIdInDomain, tasks);
+    // el DOM pudo cambiar (SPA nav) mientras esperábamos → re-ancla si sigue en la misma ficha
+    const live = (currentWoIdInDomain() === woIdInDomain) ? (document.getElementById(INLINE_ID) || el) : null;
+    if (live) renderInline(live, tasks);
   }
 
-  function mk(cls, text) {
-    const s = document.createElement('span'); s.className = cls; s.textContent = text; return s;
+  // Devuelve el índice del board: usa el capturado (interceptor) si está fresco; si no,
+  // le da una ventana corta al interceptor (la ficha suele dispararlo) y, en última
+  // instancia, hace fetch propio.
+  async function ensureBoardIndex(domainId, woGlobalId) {
+    if (boardFresh(domainId)) return boardState().idx;
+    for (let i = 0; i < WAIT_STEPS; i++) { await sleep(WAIT_MS); if (boardFresh(domainId)) return boardState().idx; }
+    const api = window.SteelheadAPI;
+    const data = await api.query('WorkOrderSchedule', { domainId: domainId, workOrderId: woGlobalId }, 'WorkOrderSchedule');
+    const idx = Core().buildBoardScheduleIndex(data);
+    setBoard(idx, domainId);   // el raw (~4.6MB) se descarta al salir de scope; solo queda el índice slim
+    return idx;
   }
 
-  // ── Montaje idempotente + observer acotado + navegación SPA ───────────────────
+  // ── Interceptor de la WorkOrderSchedule nativa (evita el doble fetch de 4.6MB) ──
+  function patchFetch() {
+    if (window.__saWoSchedFetchPatched) return;
+    window.__saWoSchedFetchPatched = true;
+    const orig = window.fetch;
+    window.fetch = function (input, init) {
+      let isWos = false, domainId = null;
+      try {
+        const url = (typeof input === 'string') ? input : (input && input.url) || '';
+        const body = (init && typeof init.body === 'string') ? init.body : '';
+        const hay = body || url;   // POST → body; GET APQ → url (?operationName=…)
+        if (hay.indexOf('WorkOrderSchedule') !== -1) {
+          isWos = true;
+          const dm = hay.match(/domainId(?:"\s*:\s*|=)(\d+)/);
+          domainId = dm ? parseInt(dm[1], 10) : Core().parseDomainId(location.pathname);
+        }
+      } catch (_) {}
+      const p = orig.apply(this, arguments);
+      if (isWos) {
+        p.then(function (resp) {
+          try {
+            resp.clone().json().then(function (j) {
+              try {
+                const data = (j && j.data) ? j.data : j;
+                if (data && data.allSchedules) { setBoard(Core().buildBoardScheduleIndex(data), domainId); refreshCurrent(); }
+              } catch (_) {}
+            }).catch(function () {});
+          } catch (_) {}
+        }).catch(function () {});
+      }
+      return p;
+    };
+  }
+
+  // Re-render del readout de la ficha actual cuando el interceptor captura datos nuevos.
+  function refreshCurrent() {
+    if (!onDetail()) return;
+    const woId = currentWoIdInDomain();
+    if (woId == null) return;
+    const b = boardState();
+    if (!b.idx) return;
+    const el = document.getElementById(INLINE_ID); if (!el) return;
+    // resolvemos con el índice fresco (necesitamos el woGlobalId; si ya está en cache, re-render directo)
+    // si no lo tenemos, loadInline lo obtendrá (y usará el board fresco).
+    resolvedCache().delete(woId);
+    loadInline(woId, el);
+  }
+
+  // ── Montaje idempotente + observer + navegación SPA ──────────────────────────
   let obsTimer = null;
   function scheduleEnsure() {
     if (obsTimer) return;
-    obsTimer = setTimeout(function () { obsTimer = null; try { ensureButton(); } catch (_) {} }, 120);
+    obsTimer = setTimeout(function () {
+      obsTimer = null;
+      try {
+        const el = ensureInline();
+        if (el && el.className.indexOf('sa-wosched-loading') !== -1 && !el.getAttribute('data-sa-loading')) {
+          const woId = currentWoIdInDomain();
+          if (woId != null) { el.setAttribute('data-sa-loading', '1'); loadInline(woId, el); }
+        }
+      } catch (_) {}
+    }, 120);
   }
 
   function observe() {
@@ -269,34 +244,32 @@ const WoScheduleButton = (() => {
     if (window.__saWoSchedUrlListener) return;
     window.__saWoSchedUrlListener = true;
     const fire = function () { window.dispatchEvent(new Event('sa-wosched-urlchange')); };
-    ['pushState', 'replaceState'].forEach(function (m) {
-      const orig = history[m];
-      history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; };
-    });
+    ['pushState', 'replaceState'].forEach(function (m) { const orig = history[m]; history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; }; });
     window.addEventListener('popstate', fire);
     window.addEventListener('sa-wosched-urlchange', function () {
-      closePanel();
-      if (onDetail()) { ensureButton(); } else { removeButton(); }
+      removeInline();   // se re-crea para la nueva ficha (evita mostrar datos de la anterior)
+      if (onDetail()) scheduleEnsure();
     });
   }
 
   function init() {
     if (window.__saWoSchedInit) return;
     window.__saWoSchedInit = true;
+    patchFetch();               // ANTES de que la ficha dispare la nativa
     installUrlChangeListener();
     observe();
-    if (onDetail()) ensureButton();
-    console.log('[SA] WoScheduleButton activo (botón Programación en la ficha de OT)');
+    if (onDetail()) scheduleEnsure();
+    console.log('[SA] WoScheduleButton activo (readout de programación inline en la ficha de OT)');
   }
 
-  // Handler de popup (además del botón del header): abre el panel si estamos en una ficha.
+  // Popup: informa el estado (no abre modal en Fase 1).
   function openFromPopup() {
-    if (!onDetail()) { return { ok: false, reason: 'No estás en la ficha de una OT.' }; }
-    openPanel();
-    return { ok: true };
+    if (!onDetail()) return { ok: false, reason: 'No estás en la ficha de una OT.' };
+    scheduleEnsure();
+    return { ok: true, note: 'La programación se muestra inline en el header (📅). El modal de programación intencional llega en la Fase 2.' };
   }
 
-  return { init, openFromPopup, _openPanel: openPanel };
+  return { init, openFromPopup };
 })();
 
 if (typeof window !== 'undefined') {

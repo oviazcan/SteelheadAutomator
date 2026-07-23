@@ -156,7 +156,20 @@ const WoListingColumns = (() => {
     });
   }
 
-  // ── Columnas (siempre al final, orden canónico [pn, sched]) ──────────────────
+  // ── Columnas (siempre al INICIO de la fila, orden canónico [pn, sched]) ───────
+  // A diferencia de pn-specs (que van al final), aquí el usuario las quiere al inicio.
+  // moveToFront() reordena SOLO si no están ya en su lugar (evita churn/loop del observer).
+  function moveToFront(row) {
+    const desired = COLS.filter(function (c) { return c.on(); })
+      .map(function (c) { return row.querySelector(':scope > .' + c.cls); })
+      .filter(Boolean);
+    if (!desired.length) return;
+    let ok = true;
+    for (let i = 0; i < desired.length; i++) { if (row.children[i] !== desired[i]) { ok = false; break; } }
+    if (ok) return;
+    for (let i = desired.length - 1; i >= 0; i--) row.insertBefore(desired[i], row.firstChild);
+  }
+
   function ensureHeaderCells(table) {
     const headRow = table.querySelector('thead tr');
     if (!headRow) return;
@@ -170,8 +183,8 @@ const WoListingColumns = (() => {
         th.setAttribute('scope', 'col');
         th.textContent = col.label;
       }
-      headRow.appendChild(th);   // reposiciona al final, en orden de COLS
     });
+    moveToFront(headRow);
   }
 
   function ensureBodyCells(table) {
@@ -193,8 +206,8 @@ const WoListingColumns = (() => {
           if (woIdInDomain != null) td.setAttribute('data-sa-woid', String(woIdInDomain));
           fillCellInitial(col.key, td, woIdInDomain, cached);
         }
-        tr.appendChild(td);   // reposiciona al final, en orden
       });
+      moveToFront(tr);   // reposiciona al INICIO, en orden [pn, sched]
     });
     return toFetch;
   }
