@@ -1,10 +1,9 @@
-# Cobertura multi-repo del validador de hashes (2026-07-21)
+# Cobertura multi-repo del validador + autohealing (2026-07-21 → 22)
 
-## Qué cambió
+## 1. El validador valida las 3 fuentes de hashes
 
-`tools/validate-hashes.py` ahora valida los persisted-query hashes de **las 3
-fuentes** que consumen la API de Steelhead con hashes propios, no solo la
-extensión:
+`tools/validate-hashes.py` valida los persisted-query hashes de **las 3 fuentes**
+que consumen la API de Steelhead con hashes propios, no solo la extensión:
 
 | Fuente | Origen del hash | # ops |
 |---|---|---|
@@ -13,140 +12,102 @@ extensión:
 | `powertools` | `SteelheadPowerTools/sync/lowcode_sync.py` + `maintenance_plans_sync.py` | 22 |
 
 Dedup por `(op, hash)` → **232 items únicos** (52 externas nuevas). Cada `stale`
-reporta su `[source]`. Las fuentes externas son **opcionales** (degradan a `{}`
-si el repo no existe en la máquina).
+reporta su `[source]`. Fuentes externas **opcionales** (degradan a `{}` si el repo
+no está en la máquina). Módulo puro `tools/hash_sources.py` (`extract_py_hashes` /
+`infer_kind` / `build_validation_items`), auto-test `python3 tools/hash_sources.py`.
+Commit main `fe0e132`.
 
-Módulo puro `tools/hash_sources.py` (`extract_py_hashes` / `infer_kind` /
-`build_validation_items`) con auto-test: `python3 tools/hash_sources.py`.
+## 2. Autohealing SIN humanos en el loop (2026-07-22)
 
-10 ops están **compartidas** (mismo hash en extensión + Reportes SH, dedupeadas):
-`AllPartNumbers, AllReports, ArchiveReport, CreateUpdateReportWithPermissions,
-DeleteFolderById, GenerateDuckDb, GetRecomputableAt, GetStation, JobQuery,
-UpdateStationInputs`.
+El hash-autopilot **captura, valida, ESCRIBE, commitea Y PUSHEA** el hash rotado
+en el repo que lo usa — no solo la extensión:
+- Hashes de `remote/config.json` → deploy normal (config + gh-pages, firmado).
+- Hashes **externos** (`plan.external`: rotadoValidado, sin `cfgHash`) → escribe en
+  `steelhead_client.py` / `sync/*.py`, `git commit` + `git push origin HEAD` en ese
+  repo. Piezas: `external-sinks.json` (registro de destinos) + `external-sync.mjs`
+  (`applyHashesToText` puro que reusa el regex de `writeConfigHashes`; solo reemplaza
+  ops existentes; idempotente; fail-safe si el repo no está). 7 golden en
+  `tools/test/external-sync.test.js`.
+- Flags: `SA_NO_EXTERNAL=1` desactiva todo el sync externo; `SA_NO_EXTERNAL_PUSH=1`
+  omite solo el push (deja el commit local).
+- Commits main: `a5da68f` (sync) + `8ccbd28` (push automático).
 
-## Hallazgo: 18 hashes ROTADOS en Reportes SH
+**Requisito para que el ciclo sea automático de punta a punta:** que exista
+receta/sentinela que dispare la op headless. Las queries de dashboards/insights ya
+tienen receta (`route-catalog.json`); las **12 mutations de Reporting NO tienen
+sentinela aún** → hoy se capturan con el hash-scanner, pero una vez capturadas el
+autopilot ya las sincroniza+pushea solo. Armar esos sentinelas (dashboard/folder
+Sentinela + reporte 4007) es el follow-up para cerrar la automatización de mutations.
 
-La 1ª corrida del validador extendido detectó **18 stale, todos de
-`reportes-sh`**. Confirmado que son **rotaciones REALES** (no falsos positivos
-session-sensitive) por **ground-truth del frontend** (Apollo del navegador):
+## 3. Hallazgo: 18 hashes ROTADOS en Reportes SH — TODOS RESUELTOS
 
-| Op | front (vivo) | Reportes SH (muerto) | ¿? |
-|---|---|---|---|
-| `GetPerspectiveDashboards` | `f09b4f99…` | `62f4eb7c…` | **rotó** |
-| `GetPerspectiveDashboardFolders` | `5fcab1f8…` | `f193f682…` | **rotó** |
-| `AllReports` | `1f83add2…` | `1f83add2…` | vigente (no stale) |
+La 1ª corrida del validador multi-repo detectó **18 stale, todos de `reportes-sh`**.
+Confirmadas rotaciones **reales** por ground-truth del frontend (Apollo). **Reportes
+SH quedó 100%: las 18 aplicadas, verificadas vivas y pusheadas.**
 
-El método `client.call()` de Reportes SH es idéntico al probe (mismo payload,
-mismos headers idp-token + cookies + apollo). Por lo tanto **`push_dashboard.py`,
-`push_variable.py` y las herramientas de insights de Reportes SH están rotas
-hoy** — fallarían con `PersistedQueryNotFound`. (Precedente: `GenerateDuckDb`
-también estaba muerto en RSH; arreglado el mismo día, ver abajo.)
-
-### Las 18 rotadas, clasificadas por CRITICIDAD (investigación headless 2026-07-21)
-
-Se verificó con Playwright headless (interceptor pre-carga del autopilot + tokens
-ROCP) qué dispara cada op y si el hash rotó de verdad. Resultado:
-
-**A. Queries USADAS — arregladas (2)** ✅ (commit RSH `9a8f3d1`):
-- `GetPerspectiveDashboards` `62f4eb7c…`→`f09b4f99…`
-- `GetPerspectiveDashboardFolders` `f193f682…`→`5fcab1f8…`
-
-**B. Queries INOFENSIVAS — NO usadas en ningún script (4), solo definidas en
-`steelhead_client.py`. Su rotación no rompe nada; baja prioridad (limpiar o
-ignorar):**
-- `GetInsightsReportDetails`, `GetInsightsReportColumnConfigs` — ~~los "INSIGHTS"
-  de la UI de Reporting son **Sonar chats** (`GetSonarChatChannels`), NO Insights
-  Reports de datos → no hay objeto que dispare estas ops en el dominio.~~
-  **CORREGIDO 2026-07-22 (Nivel B):** SÍ hay objeto que las dispara. Los INSIGHTS
-  del sidebar de `/Reporting/View` son **reportes prefabricados de Steelhead**
-  agrupados en 6 categorías (Sales & Finance, Production, Supply Chain, Quality
-  Management, Shipping & Receiving, Other). Abrir uno navega a
-  `/Reporting/View?id=<INSIGHT_ID>&type=insight` y dispara **ambas** ops. Receta
-  headless de un solo paso en `route-catalog.json` → `reporting-insights-detail`
-  (el deep-link con query params SÍ hidrata). Hashes vivos capturados:
-  `GetInsightsReportDetails` = `e0602e22…`, `GetInsightsReportColumnConfigs` =
-  `2f60d49b…` — **APLICADOS a `steelhead_client.py`** (commit RSH `2dd9e04`,
-  verificados vivos).
-  **ACTUALIZACIÓN 2026-07-22:** el hash-autopilot ahora **SÍ sincroniza los hashes
-  externos automáticamente** — tras capturar+validar un `plan.external`, escribe el
-  hash en el archivo del otro repo (`external-sinks.json` + `external-sync.mjs`) y
-  commitea ahí (commit local, sin push; `SA_NO_EXTERNAL=1` lo desactiva). Ya no es
-  "pegar a mano". Requisito: que exista receta/sentinela que dispare la op.
-- `ReportVariables` — se dispara al abrir el panel Variables del editor (interacción).
-- `ArchivePerspectiveDashboardFolder` — solo definida.
-
-**C. Mutations USADAS — rompen las herramientas (12). ESTA es la prioridad real.**
-Requieren **captura-y-aborta** con sentinelas (patrón `sentinels-config.json`):
-
-| Op | usada por | sentinela |
+### Queries (6) — todas vivas
+| Op | viejo → nuevo | commit RSH |
 |---|---|---|
-| CreatePerspectiveDashboard | push_dashboard.py | dashboard "Sentinela" (crear-y-abortar) |
-| UpdatePerspectiveDashboard | push_dashboard.py | dashboard "Sentinela" |
-| ArchivePerspectiveDashboard | push_dashboard.py | dashboard "Sentinela" |
-| CreatePerspectiveDashboardComponent | push_dashboard.py | dashboard "Sentinela" |
-| UpdatePerspectiveDashboardComponent | push_dashboard.py | dashboard "Sentinela" |
-| CreatePerspectiveDashboardFolder | push_dashboard.py | folder "Sentinela" (crear-y-abortar) |
-| CreateReportComponent | push_dashboard.py | reporte "Sentinela" (id **4007**) |
-| UpdateReportComponent | push_dashboard.py | reporte "Sentinela" |
-| CreateReportVariable | push_variable.py | reporte "Sentinela" |
-| UpdateReportVariable | push_variable.py | reporte "Sentinela" |
-| DeleteReportVariable | push_variable.py | reporte "Sentinela" |
-| UpdateReportDateRange | set_date_range.py | reporte "Sentinela" |
+| GetPerspectiveDashboards | `62f4eb7c`→`f09b4f99` | `9a8f3d1` |
+| GetPerspectiveDashboardFolders | `f193f682`→`5fcab1f8` | `9a8f3d1` |
+| GetInsightsReportDetails | `b87afdbf`→`e0602e22` | `2dd9e04` |
+| GetInsightsReportColumnConfigs | `7534a244`→`2f60d49b` | `2dd9e04` |
+| ReportVariables | (ya estaba vivo `a4c8af2b`) | — |
+| ArchivePerspectiveDashboardFolder | `b2e04213`→`50bfa783` | `58e2129` |
 
-**NOTA sobre `GetPerspectiveDashboardComponents`:** NO rotó (front `6e6446f0…` ==
-RSH) — lo incluí por error en la investigación; se descarta.
+### Mutations (12) — todas vivas (probe final 12/12)
+| Op | viejo → nuevo | commit RSH | usada por |
+|---|---|---|---|
+| CreatePerspectiveDashboard | `7f0319ba`→`0b94c382` | `58e2129` | push_dashboard.py |
+| UpdatePerspectiveDashboard | `078db8ff`→`fa5cfa5b` | `58e2129` | push_dashboard.py |
+| ArchivePerspectiveDashboard | `3cb3c5d5`→`ab770ff6` | `58e2129` | push_dashboard.py |
+| CreatePerspectiveDashboardComponent | `eeaa1411`→`01a37bb0` | `58e2129` | push_dashboard.py |
+| UpdatePerspectiveDashboardComponent | `cf3fe668`→`60e413a5` | `aa63b90` | push_dashboard.py |
+| CreatePerspectiveDashboardFolder | `2563e9e2`→`4134f4c8` | `58e2129` | push_dashboard.py |
+| CreateReportComponent | `c8a2d186`→`9c7fbbd6` | `19ed6f8` | push_dashboard.py |
+| UpdateReportComponent | (ya vivo `38ae60eb`) | — | push_dashboard.py |
+| CreateReportVariable | (ya vivo `076b80d5`) | — | push_variable.py |
+| UpdateReportVariable | (ya vivo `800c2a98`) | — | push_variable.py |
+| DeleteReportVariable | `7d70dc83`→`914379fe` | `aa63b90` | push_variable.py |
+| UpdateReportDateRange | `e296b1d2`→`0ded430d` | `58e2129` | set_date_range.py |
 
-### Recursos descubiertos (útiles para la captura de mutations)
-- Infra headless VERIFICADA: Playwright + `installInterceptor` (soporta
-  captura-y-aborta) + tokens ROCP de `.cache/tokens.json` autentican y capturan.
-- Objetos reales en el dominio TLC/344: reporte **"Sentinela" id 4007**,
-  dashboards (ids 157/159/160…), folders (ids 108/109/110…). Falta un **dashboard
+También `GenerateDuckDb` `8f29d420`→`f412b9ec` (commit `3c69434`, arregla
+`regenerate_duckdb.py`). Los hashes nuevos salieron del **hash-scanner** (scans
+2026-07-22 12:13/12:15/14:14/17:37) + captura headless de las 2 queries de
+dashboards; cada uno se verificó VIVO con probe idp-token antes de aplicar.
+
+## 4. Correcciones de diagnóstico (dos errores míos, corregidos)
+
+- **`GetPerspectiveDashboardComponents` NO rotó** (front `6e6446f0` == RSH). Lo
+  incluí por error; se descarta. → los rotados reales fueron 18, no 19.
+- **`CreateReportComponent` NO estaba deprecada.** Primero concluí "consolidada en
+  UpdateReportComponent" porque no salía en los scans y la ⭐ solo dispara Update.
+  **Falso:** `CreateReportComponent` se dispara con el botón **"+ ADD COMPONENT"**
+  de la vista Perspective de un reporte (agrega otro panel/vista del mismo reporte;
+  cada panel puede ir a un dashboard combinado). Firma `{reportId}` **intacta** →
+  `push_dashboard.py` (`ensure_report_component`) **NO necesita cambios de código**,
+  solo el hash nuevo. Lección: no concluir "deprecada" por ausencia en el scan sin
+  probar el flujo correcto.
+- **Insights NO son Sonar chats.** Los INSIGHTS del sidebar de `/Reporting/View`
+  son reportes prefabricados de Steelhead (6 categorías). Abrir uno →
+  `/Reporting/View?id=<ID>&type=insight` dispara ambas ops. Receta
+  `reporting-insights-detail` en `route-catalog.json` (Nivel B).
+
+## 5. Infra headless verificada (para automatizar mutations a futuro)
+
+- Playwright + `installInterceptor` (soporta captura-y-aborta) + tokens ROCP de
+  `.cache/tokens.json` autentican y capturan headless. El interceptor es
+  **pre-navegación** → captura queries de carga (lo que el hook post-carga de la
+  extensión no puede).
+- Objetos reales dominio TLC/344: reporte **"Sentinela" id 4007**, dashboards
+  (157/159/160…), folders (108/109/110…). Para las mutations faltaría un **dashboard
   Sentinela** y un **folder Sentinela** (o capturar los Create con crear-y-abortar).
-- **Límite headless:** el contenido de `/Reporting/*` renderiza (networkidle+8s)
-  pero los formularios de edición (agregar componente, editar variable) son
-  difíciles de accionar a ciegas headless → cada mutation necesita afinar su
-  flujo, o capturarse con el hash-scanner en el navegador real.
+- Límite: los formularios de edición de `/Reporting/*` son difíciles de accionar a
+  ciegas headless → por eso hoy las mutations se capturan con el hash-scanner en el
+  navegador real.
 
-### Estado de captura (2026-07-21)
+## 6. Estado del cron
 
-**Arreglados (3):** `GetPerspectiveDashboards`, `GetPerspectiveDashboardFolders`
-(commit RSH `9a8f3d1`) + `GenerateDuckDb` (commit `3c69434`). Los 2 dashboards se
-capturaron de la carga de `/Reporting/View` y se verificaron vivos contra el
-server.
-
-**Bloqueo de la captura manual para los 16 restantes** (por qué NO se pudo vía
-Claude-in-Chrome automatizado):
-1. **Screenshots/read_page fallan en `/Reporting/*`**: la página nunca alcanza
-   `document_idle` (polling de reportes) → `executeScript` timeout. Solo
-   `javascript_tool` responde.
-2. **Apollo cachea las queries de carga**: `GetPerspectiveDashboardComponents`,
-   `GetInsights*` y `ReportVariables` se disparan al CARGAR la vista. El hook de
-   `fetch` se instala POST-carga (no hay forma de inyectarlo pre-carga con la
-   extensión) → clics client-side no re-disparan (cache) y no se capturan.
-3. **Las 12 mutations** requieren disparar una escritura real (captura-y-aborta).
-
-**Vías robustas para los 16 (elegir una):**
-- **(recomendada) hash-scanner** — el operador abre Steelhead con la extensión,
-  corre el applet "Hash Scanner", navega Reporting/Insights + **crea/edita un
-  dashboard y una variable de prueba** (dispara queries + mutations); el scanner
-  intercepta pre-carga y captura TODO. Descargar `scan_results_*.json` y
-  extraer los 16 por `operationName`.
-- **hash-autopilot headless** — agregar recetas para las 16 (Playwright instala
-  el interceptor PRE-navegación → sí captura las queries de carga; mutations vía
-  sentinelas captura-y-aborta). Es el patrón de raíz reutilizable, pero requiere
-  integrar Reportes SH como fuente del autopilot (hoy solo cubre la extensión).
-
-Luego reemplazar los 16 en `Reportes SH/scripts/steelhead_client.py`.
-
-## Ya arreglado el 2026-07-21
-
-- **`GenerateDuckDb`**: `8f29d420…` (muerto) → `f412b9eca03309b5ea9cfa20090b4f0c75f1e30632b6a02cda119fde3418daa0`
-  (vivo, ya usado por la extensión). Commit en Reportes SH: `3c69434`.
-  Arregla `regenerate_duckdb.py`.
-
-## Nota para el cron
-
-El validador extendido ahora sale **exit 1** mientras existan las 18 rotaciones
-de Reportes SH. `notify-stale-hashes.sh` las agrupará por `source`. Al arreglar
-los 18 hashes en Reportes SH, la corrida vuelve a 0 stale (asumiendo la extensión
-y PowerTools vigentes).
+Con las 18 aplicadas, el validador vuelve a **0 stale** (asumiendo extensión y
+PowerTools vigentes). Cuando algo rote de nuevo en cualquiera de los 3 repos, el
+autopilot lo sincroniza+pushea solo (§2).
