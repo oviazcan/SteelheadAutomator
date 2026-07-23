@@ -239,3 +239,7 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 
 > Mantén estas metáforas idénticas entre el deck, los manuales y las fichas: la repetición del mismo
 > vocabulario es lo que hace que el modelo mental “pegue”.
+
+---
+
+_Documento elaborado por [Omar Viazcán](mailto:oviazcan@capazconsultoria.com) · [Capaz Consultoría](https://capazconsultoria.com)._
