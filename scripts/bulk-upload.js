@@ -314,7 +314,7 @@ const BulkUpload = (() => {
   //   SaveQuoteLines fallarían. Antes de editar la movemos a DOMAIN.revertStageId (editable);
   //   STEP 9 la regresa a "Ganada". revert-from-active = CreateQuoteStageChange a un stage
   //   no-active (no hay mutation dedicada). Las cotizaciones NUEVAS no revierten (nacen editables).
-  const VERSION = '1.5.41';
+  const VERSION = '1.5.42';
   const api = () => window.SteelheadAPI;
 
   // feat 1.5.40: FAST-PATH SOLO_PRECIO — cuando la corrida solo cambia precios de PN que
