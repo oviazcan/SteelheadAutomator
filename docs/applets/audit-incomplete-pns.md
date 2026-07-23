@@ -34,7 +34,7 @@ Aparecen en el conteo por tipo de issue (línea 1413, `i.field + (i.key ? ':'+i.
 - **Criterios de auditoría deben reflejar la regla actual de bulk-upload, no la histórica.** El check "PN sin params" cubría 1.4.0, no la regla 1.4.38. Cada vez que cambia la regla de bulk-upload, audit-incomplete-pns debe revisar criterios.
 - **Defensa por skip en lugar de assume**: si la query no resuelve un nested field, mejor saltar el param que crashear o emitir un falso positivo masivo.
 
-### Pendiente de validación
+### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador)
 - [ ] Correr audit sobre un lote conocido con duplicados (PNs pre-1.4.38) y verificar que `duplicateParams` aparezca en el summary y CSV. PN 3027938 / 3027939 son candidatos históricos.
 - [ ] Confirmar que post-recarga con bulk-upload 1.4.38, el conteo `duplicateParams: 0` y `paramProcessNode: 0`.
 
@@ -144,7 +144,7 @@ Ambas llamadas cambian `usagesLimit: 1` → `usagesLimit: 100`.
   específicos, otros 4 materiales en 0), sospecha paginación o filtro de la query
   antes que datos sucios.
 
-### Pendiente de validación
+### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador)
 - [ ] Re-correr audit (no recovery del CSV, no toca bulk-upload) sobre P3 con
       `usagesLimit:100`. Incompletos esperados: bajar de 404 a ~5-15 (los reales:
       el huérfano fila 99, los 21 duplicateQuoteIBMS pendientes de DELETE manual,

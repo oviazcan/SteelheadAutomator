@@ -1604,7 +1604,7 @@ deja 1 row con `processNodeId=null` por SpecField y archiva el resto.
 `Int` para `specFieldId/specFieldParamId`; el script (y el bulk-upload
 nuevo) hacen `Number(...)` antes de mandar.
 
-### Pendiente de validación
+### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
 - [ ] Re-correr una carga masiva real con CSV mixto (sfpId nuevo + sfpId
       viejo en mismo SpecField) y confirmar via DevTools que el PN queda
       con 1 sólo row por SpecField, todos `processNodeId=null`.
@@ -1649,7 +1649,7 @@ genuinamente 0 archivados detectados.
   `inventoryItemId`, uno archivado + uno activo) necesita tie-break explícito.
   Mismo patrón que `pnByKey` en audit-incomplete-pns 2026-05-23.
 
-### Pendiente de validación
+### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
 - [ ] Re-correr recovery del CSV reducido de 404 incompletos con 1.4.31. El log
       debe mostrar `Pre-fetched predictivos existentes de 424 PNs (T nodos,
       A archivados detectados)` con A > 0 si hay archivados, y
@@ -1734,7 +1734,7 @@ y por eso SavePartNumber los creó limpios.
   (audit) son indispensables — confiar solo en HTTP 200 ocultó el bug por
   ~3 versiones (1.4.27 → 1.4.29).
 
-### Pendiente de validación
+### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
 - [ ] Re-cargar CSV recovery 1.4.30 (o el original P3) — verificar log
       `Predictivos desarchivados: N/N` y re-audit que `predictive missing`
       baje a ~0 (solo deberían quedar los 22 buckets `duplicateQuoteIBMS`
@@ -1783,7 +1783,7 @@ no permitía decir "para todas las que siguen, ya sabes qué quiero".
   es lo natural — el operador piensa en términos de "la decisión que tomé para
   toda la corrida", no "por cliente".
 
-### Pendiente de validación
+### Validación — ✅ COMPLETADA 2026-07-22 (confirmación del operador; features en producción intensiva desde su release)
 - [ ] Probar en re-carga del CSV de recovery 1.4.28+ — marcar "modificar +
       aplicar a todas" en la primera cotización SCHNEIDER existente y verificar
       que las ~424 siguientes no muestran modal y se ejecutan automáticas con

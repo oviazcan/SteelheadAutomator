@@ -22,7 +22,7 @@ Previo 1.1.0 — **feedback de progreso** (barra en carga + ejecución): % real 
 > **Desarchivar = 2 pasadas.** El scan recorre el catálogo dos veces (activos para el diff, luego archivados). Desde 1.2.1 el progreso lo refleja con "Paso 1/2" / "Paso 2/2" y barra continua, en vez de recorrer 0→100% dos veces.
 
 ## Estado de deploy (2026-06-04)
-- **Feedback de progreso (1.1.0) desplegado a `gh-pages`** (byte-exact verificado, propagado). `remote/config.json` `version` **1.6.37**. Spec/plan en `docs/superpowers/{specs,plans}/2026-06-04-archiver-progress-feedback*`. Tests `node --test tools/test/archiver.test.js` → **16/16**. Pendiente: piloto DOM (recargar extensión → ver barra en carga y al ejecutar).
+- **Feedback de progreso (1.1.0) desplegado a `gh-pages`** (byte-exact verificado, propagado). `remote/config.json` `version` **1.6.37**. Spec/plan en `docs/superpowers/{specs,plans}/2026-06-04-archiver-progress-feedback*`. Tests `node --test tools/test/archiver.test.js` → **16/16**. **✅ Piloto DOM validado 2026-07-22** (barra visible en carga y al ejecutar; confirmación del operador).
 - Deploy previo (filtro etiquetas) byte-exact. `version` **1.6.34**, `extensionVersion` **1.6.3**.
   - La `1.6.30` que se había bumpeado chocó con un avance paralelo de `main` (que ya había usado 1.6.30 y subió a 1.6.33 con 10 hashes recapturados + bill-autofill). Se reintegró `main` **preservando esos 10 hashes** y se re-bumpeó a 1.6.34.
 - Commits: `main` → `8bde8ab`; deploy `gh-pages` → `024bb51`.
