@@ -16,7 +16,9 @@ y marca correctamente tras el fix de detección de columna. **Iteraciones sobre 
   "Received Batches"** (clic en su encabezado) para que los homónimos queden juntos → un solo scroll
   los cubre a todos (mitiga la limitación de virtualización, tanto al marcar como al des-marcar).
 
-**PENDIENTE:** validar en vivo el buscador inline (posición tras SO) + que Limpiar ahora sí des-marca.
+**VALIDADO END-TO-END (2026-07-22):** el operador confirmó ("ya quedó") el buscador inline (posición
+tras SO), el resaltado verde pastel, que **Limpiar ya des-marca**, y el ícono ⓘ con el tooltip de
+scroll + recomendación de ordenar. **Sin pendientes de validación abiertos.**
 
 ## Qué es / problema
 
@@ -105,10 +107,12 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
 - [x] **v0.1.1** Teclear "210726" → resalta las N filas con ese Received Batches (incluidas las
       homónimas que el filtro nativo escondía) y marca sus checkboxes. **VALIDADO** (operador
       2026-07-22, tras el fix de detección de columna).
-- [ ] **v0.1.2** El **buscador inline** aparece en la barra de filtros, tras el último filtro (SO).
-- [ ] **v0.1.2** **Limpiar** quita resaltado **y des-marca** los checkboxes de las filas visibles del
-      lote (bug de refs recicladas por virtualización — corregido con el barrido).
-- [ ] **v0.1.2** Resaltado verde pastel legible (menos intenso).
-- [ ] Scrollear → las filas nuevas se resaltan/marcan (observer) y el widget se mantiene/re-monta.
-- [ ] No rompe la SPA (sin congelamientos al inyectar en la barra nativa).
-- [ ] Nombre inexistente → 0 marcadas, sin efectos.
+- [x] **v0.1.2** El **buscador inline** aparece en la barra de filtros, tras el último filtro (SO).
+      **VALIDADO** (operador 2026-07-22, "ya quedó").
+- [x] **v0.1.2** **Limpiar** quita resaltado **y des-marca** los checkboxes de las filas visibles del
+      lote (bug de refs recicladas por virtualización — corregido con el barrido). **VALIDADO** (operador 2026-07-22).
+- [x] **v0.1.2** Resaltado verde pastel legible (menos intenso). **VALIDADO** (operador 2026-07-22).
+- [x] **v0.1.3** Ícono ⓘ con tooltip de scroll + recomendación de ordenar. **VALIDADO** (operador 2026-07-22).
+- [ ] No rompe la SPA a lo largo de una sesión larga (sin congelamientos por el re-montaje del widget) —
+      observación continua; sin incidentes reportados hasta ahora.
+- [ ] Nombre inexistente → 0 marcadas, sin efectos (caso borde, no reportado explícitamente).
