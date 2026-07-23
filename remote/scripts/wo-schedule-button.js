@@ -47,21 +47,18 @@ const WoScheduleButton = (() => {
   function injectStyles() {
     if (document.getElementById('sa-wosched-style')) return;
     const css = [
-      // Readout inline integrado a la barra clara nativa, con acento verde (= UI de la extensión).
-      '#' + INLINE_ID + '{display:inline-flex;align-items:center;gap:6px;',
-      'border:1px solid #13a36f;border-radius:6px;background:#eef6f2;color:#0d6b49;',
-      'font-weight:600;font-size:12.5px;padding:4px 10px;margin:0 6px;white-space:nowrap;',
-      'max-width:340px;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;',
-      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.2;}',
-      '#' + INLINE_ID + ' .sa-wosched-ico{flex:0 0 auto;}',
-      '#' + INLINE_ID + ' .sa-wosched-txt{overflow:hidden;text-overflow:ellipsis;}',
-      // Multi-línea: una OT multi-tratamiento agenda varias tareas → se apilan.
-      '#' + INLINE_ID + '.sa-wosched-multi{align-items:flex-start;white-space:normal;}',
-      '#' + INLINE_ID + '.sa-wosched-multi .sa-wosched-txt{display:flex;flex-direction:column;gap:1px;}',
-      '#' + INLINE_ID + ' .sa-wosched-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;}',
-      '#' + INLINE_ID + '.sa-wosched-none{border-color:#c7ccd1;background:#f3f4f6;color:#6b7280;}',
-      '#' + INLINE_ID + '.sa-wosched-loading{border-color:#c7ccd1;background:#f3f4f6;color:#8a97a5;font-style:italic;}',
-      '#' + INLINE_ID + '.sa-wosched-err{border-color:#e0b4ab;background:#fbeeeb;color:#b04a3a;}',
+      // Readout como TEXTO (no caja/botón): una fila por tarea = 📅 + texto que envuelve.
+      // El 📅 es el elemento accionable (Fase 2: click → programar ESE paso de la OT).
+      '#' + INLINE_ID + '{display:inline-flex;flex-direction:column;gap:2px;margin:0 8px;',
+      'max-width:min(46vw,460px);vertical-align:middle;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}',
+      '#' + INLINE_ID + ' .sa-wosched-row2{display:flex;align-items:flex-start;gap:5px;font-size:12.5px;line-height:1.3;}',
+      // 📅 accionable (Fase 1: informativo; Fase 2: cursor:pointer + click).
+      '#' + INLINE_ID + ' .sa-wosched-cal{flex:0 0 auto;font-size:14px;line-height:1.25;cursor:default;user-select:none;}',
+      // Texto plano que ENVUELVE (sin ellipsis, sin truncar) → se ve completo.
+      '#' + INLINE_ID + ' .sa-wosched-txt2{white-space:normal;overflow-wrap:anywhere;color:#243244;font-weight:500;}',
+      '#' + INLINE_ID + ' .sa-wosched-txt2.muted{color:#6b7280;font-style:italic;font-weight:400;}',
+      '#' + INLINE_ID + ' .sa-wosched-txt2.err{color:#b04a3a;font-weight:500;}',
     ].join('');
     const s = document.createElement('style');
     s.id = 'sa-wosched-style';
@@ -74,11 +71,7 @@ const WoScheduleButton = (() => {
     injectStyles();
     const el = document.createElement('div');
     el.id = INLINE_ID;
-    el.className = 'sa-wosched-loading';
-    el.title = 'Programación de esta Orden de Trabajo';
-    const ico = document.createElement('span'); ico.className = 'sa-wosched-ico'; ico.textContent = '📅';
-    const txt = document.createElement('span'); txt.className = 'sa-wosched-txt'; txt.textContent = 'Programación…';
-    el.appendChild(ico); el.appendChild(txt);
+    renderLoading(el);
     return el;
   }
 
@@ -95,13 +88,27 @@ const WoScheduleButton = (() => {
 
   function removeInline() { const el = document.getElementById(INLINE_ID); if (el) el.remove(); }
 
-  function setInlineText(el, cls, text, title) {
-    if (!el) return;
-    el.className = cls;
-    const txt = el.querySelector('.sa-wosched-txt');
-    if (txt) txt.textContent = text;
-    el.title = title || 'Programación de esta Orden de Trabajo';
+  // Una fila = 📅 + texto. El 📅 es el elemento accionable (Fase 2: al capturar la
+  // mutación, su click programará ESE paso de la OT). Guarda la tarea en data-attrs.
+  function addRow(el, text, opts) {
+    opts = opts || {};
+    const row = document.createElement('div'); row.className = 'sa-wosched-row2';
+    const cal = document.createElement('span'); cal.className = 'sa-wosched-cal'; cal.textContent = '📅';
+    cal.title = opts.calTitle || 'Programación intencional (crear/editar): próximamente (Fase 2).';
+    if (opts.task) {
+      const t = opts.task;
+      if (t.stationId != null) cal.setAttribute('data-sa-station-id', String(t.stationId));
+      if (t.scheduleId != null) cal.setAttribute('data-sa-schedule-id', String(t.scheduleId));
+      if (t.taskId != null) cal.setAttribute('data-sa-task-id', String(t.taskId));
+    }
+    const txt = document.createElement('span');
+    txt.className = 'sa-wosched-txt2' + (opts.muted ? ' muted' : '') + (opts.err ? ' err' : '');
+    txt.textContent = text;
+    row.appendChild(cal); row.appendChild(txt);
+    el.appendChild(row);
   }
+  function renderLoading(el) { if (!el) return; el.textContent = ''; el.title = 'Programación de esta OT'; addRow(el, 'Programación…', { muted: true }); }
+  function renderError(el, msg) { if (!el) return; el.textContent = ''; el.title = msg; addRow(el, msg, { err: true }); }
 
   // Fecha/hora local (glue usa Date; el core da el fallback determinista).
   function fmtLocal(iso) {
@@ -119,20 +126,15 @@ const WoScheduleButton = (() => {
 
   function renderInline(el, tasks) {
     if (!el) return;
-    const txt = el.querySelector('.sa-wosched-txt');
-    if (!tasks || !tasks.length) { setInlineText(el, 'sa-wosched-none', 'Sin programar', 'Esta OT no está programada.'); return; }
-    const title = tasks.map(function (t, i) { return (i + 1) + ') ' + taskText(t); }).join('\n');
-    if (tasks.length === 1) { setInlineText(el, '', taskText(tasks[0]), title); return; }
-    // TODAS las tareas apiladas (una por línea/tratamiento), ordenadas por fecha.
-    el.className = 'sa-wosched-multi';
-    if (txt) {
-      txt.textContent = '';
-      tasks.forEach(function (t) {
-        const line = document.createElement('span'); line.className = 'sa-wosched-line'; line.textContent = taskText(t);
-        txt.appendChild(line);
-      });
+    el.textContent = '';
+    if (!tasks || !tasks.length) {
+      el.title = 'Esta OT no está programada.';
+      addRow(el, 'Sin programar', { muted: true, calTitle: 'Programar esta OT: próximamente (Fase 2).' });
+      return;
     }
-    el.title = title;
+    // Un 📅 por tarea/estación (Fase 2: cada 📅 programa ESE paso de la OT).
+    tasks.forEach(function (t) { addRow(el, taskText(t), { task: t }); });
+    el.title = tasks.map(function (t, i) { return (i + 1) + ') ' + taskText(t); }).join('\n');
   }
 
   // ── Carga de datos ───────────────────────────────────────────────────────────
@@ -148,15 +150,15 @@ const WoScheduleButton = (() => {
       woGlobalId = Core().extractWorkOrderGlobalId(data);
       if (woGlobalId == null && data && data.workOrderByIdInDomain) woGlobalId = data.workOrderByIdInDomain.id;
     } catch (e) {
-      setInlineText(el, 'sa-wosched-err', 'Error', 'No se pudo cargar la OT: ' + (e && e.message ? e.message : 'error'));
+      renderError(el, 'No se pudo cargar la OT: ' + (e && e.message ? e.message : 'error'));
       return;
     }
-    if (woGlobalId == null) { setInlineText(el, 'sa-wosched-none', 'Sin programar'); return; }
+    if (woGlobalId == null) { renderInline(el, []); return; }
 
     let idx;
     try { idx = await ensureBoardIndex(domainId, woGlobalId); }
     catch (e) {
-      setInlineText(el, 'sa-wosched-err', 'Error', (e && e.persistedQueryRotated)
+      renderError(el, (e && e.persistedQueryRotated)
         ? 'El hash de WorkOrderSchedule rotó — avísale a Claude.'
         : 'No se pudo cargar la programación: ' + (e && e.message ? e.message : 'error'));
       return;
@@ -237,7 +239,7 @@ const WoScheduleButton = (() => {
       obsTimer = null;
       try {
         const el = ensureInline();
-        if (el && el.className.indexOf('sa-wosched-loading') !== -1 && !el.getAttribute('data-sa-loading')) {
+        if (el && !el.getAttribute('data-sa-loading')) {   // carga una vez por montaje
           const woId = currentWoIdInDomain();
           if (woId != null) { el.setAttribute('data-sa-loading', '1'); loadInline(woId, el); }
         }
