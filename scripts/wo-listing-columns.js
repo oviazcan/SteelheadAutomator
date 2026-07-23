@@ -187,6 +187,7 @@ const WoListingColumns = (() => {
         th.className = (nativeTh ? nativeTh.className + ' ' : '') + col.cls;
         th.setAttribute('scope', 'col');
         th.textContent = col.label;
+        headRow.appendChild(th);   // adjunta al DOM; moveToFront lo reposiciona al inicio
       }
     });
     moveToFront(headRow);
@@ -210,6 +211,7 @@ const WoListingColumns = (() => {
           td.className = (nativeTd ? nativeTd.className + ' ' : '') + col.cls;
           if (woIdInDomain != null) td.setAttribute('data-sa-woid', String(woIdInDomain));
           fillCellInitial(col.key, td, woIdInDomain, cached);
+          tr.appendChild(td);   // adjunta al DOM; moveToFront lo reposiciona al inicio
         }
       });
       moveToFront(tr);   // reposiciona al INICIO, en orden [pn, sched]
