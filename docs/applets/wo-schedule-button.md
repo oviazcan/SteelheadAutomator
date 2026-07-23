@@ -20,7 +20,7 @@ Pedido por producción (2026-07-23): en iPad la tarjeta "Cliente" (que contiene 
 - `WorkOrder({idInDomain})` (hash `fc41042e…`) → **workOrderId GLOBAL** (`wo.id`).
 - Índice del board: `WorkOrderSchedule({domainId, workOrderId})` (hash `7b1b1127…`) → board COMPLETO → `WoScheduleCore.buildBoardScheduleIndex` (índice slim, con `stationByStationId.name` embebido) → `resolveBoardScheduleForWO(woGlobalId)`. El link WO→tarea es `element.recipeNodeByRecipeNodeId.workOrderId`.
 - **Interceptor:** la propia ficha dispara `WorkOrderSchedule` al cargar (~4.6MB). Un patch de `window.fetch` (guard `__saWoSchedFetchPatched`, world MAIN) **captura esa respuesta** (clone → `buildBoardScheduleIndex`), la guarda con TTL (120s) y evita el fetch propio. Si no aparece en una ventana corta (6×300ms), se hace fetch propio como **fallback**. Solo se guarda el índice slim; el raw se descarta. Estilo `board-metal-tooltip`/`surtido-guard` (interceptor pasivo).
-- Render: estación · fecha/hora local (`es-MX`) · estado (`scheduleStatusLabel`: QUEUED→"En cola", etc.); `(+N)` + tooltip con todas las tareas si hay varias.
+- Render: estación · fecha/hora local (`es-MX`) · estado (`scheduleStatusLabel`: QUEUED→"En cola", etc.). **Multi-tratamiento:** si la OT se agenda en varias líneas, se muestran **TODAS las tareas apiladas** (clase `sa-wosched-multi`), ordenadas por fecha; tooltip con la lista numerada.
 
 ## UI
 

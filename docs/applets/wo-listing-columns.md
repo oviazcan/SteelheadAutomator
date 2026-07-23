@@ -1,6 +1,6 @@
 # wo-listing-columns — Columnas en el listado de Órdenes de Trabajo
 
-**Versión:** 0.4.0 — columna PN con **etiquetas como chips**; columnas **al INICIO** de la tabla. Core compartido `wo-schedule-core` 21/21 golden.
+**Versión:** 0.5.0 — Programación muestra **TODAS las tareas apiladas** (OT multi-tratamiento se agenda en varias líneas) + **borde punteado derecho** (clase `sa-wocol-edge` en la última columna nuestra = frontera con las nativas). PN con etiquetas como chips; columnas **al INICIO**. Core `wo-schedule-core` 21/21 golden. **Fix 0.4.1:** las columnas no se veían al moverlas al inicio (la celda nueva no se adjuntaba; `moveToFront` solo reordena las ya adjuntas) → se adjunta al crear.
 **Categoría:** Órdenes de Trabajo · **autoInject:true** · ruta: `/Domains/<d>/WorkOrders` (index, NO la ficha `/WorkOrders/:id`)
 
 ## Qué hace
