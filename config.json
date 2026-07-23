@@ -1,6 +1,6 @@
 {
-  "version": "1.7.180",
-  "lastUpdated": "2026-07-23T15:17",
+  "version": "1.7.181",
+  "lastUpdated": "2026-07-23T15:29",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -109,6 +109,7 @@
         "SearchProductsComprehensive": "b3e2b9c63285487866fe098c936cd37e60ffff373a9fa9e30296574cffcfbba0",
         "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91",
         "GetPartNumber": "5efd689d8d92151ea510256828f17cbe10b815dd8dce2bd1dd51ef55bb9a0faf",
+        "GetPartNumberForPartNumberPage": "34ed9de74300219ae0af48c77640e080e0ad7c5b3b2a442d63901d6742846ac4",
         "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109",
         "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a",
         "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b",
@@ -2697,9 +2698,9 @@
     "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
     "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9",
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
-    "scripts/wo-listing-columns.js": "1aa291ce5319a7d6be81d75658954983929a4995a5ed3d6dca1d77c715e6bf5e",
+    "scripts/wo-listing-columns.js": "7a408c2bda6f6243f0e4d6b28a4894282c49e42b205951c54e66eb07a00974c0",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
     "scripts/wo-schedule-button.js": "bffb6fec411a67b925b50469f491ad04cc75dc7268a417d6b541da32effcd113",
-    "scripts/wo-schedule-core.js": "09cdb819c23b4fc7287295721413428583f36a34a47ca8f59889f9f62b5913e6"
+    "scripts/wo-schedule-core.js": "00f8f963bae1a18bea1d0aee50462b6a8a383a775b9d4e425e4339f93352d52a"
   }
 }

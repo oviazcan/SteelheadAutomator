@@ -74,8 +74,13 @@ const WoListingColumns = (() => {
       'td.sa-wocol-pn,td.sa-wocol-sched{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;}',
       'td.sa-wocol-pn{min-width:120px;max-width:280px;}',
       'td.sa-wocol-sched{min-width:150px;max-width:300px;}',
-      'a.sa-wocol-pn-link{color:#0969da;cursor:pointer;text-decoration:none;display:inline-block;margin:1px 6px 1px 0;font-size:12px;}',
+      '.sa-wocol-pn-item{margin:0 0 4px 0;}',
+      '.sa-wocol-pn-item:last-child{margin-bottom:0;}',
+      'a.sa-wocol-pn-link{color:#0969da;cursor:pointer;text-decoration:none;display:inline-block;font-size:12px;font-weight:600;}',
       'a.sa-wocol-pn-link:hover{text-decoration:underline;}',
+      '.sa-wocol-chips{display:block;margin-top:2px;line-height:1.5;}',
+      '.sa-wocol-chip{display:inline-block;border:1px solid #cfd6dd;border-radius:8px;padding:0 6px;',
+      'margin:1px 4px 1px 0;font-size:10px;font-weight:600;white-space:nowrap;vertical-align:middle;}',
       '.sa-wocol-sched-st{font-weight:600;color:#0d6b49;font-size:12px;display:block;}',
       '.sa-wocol-sched-meta{color:#5a6b7a;font-size:11px;}',
       '.sa-wocol-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
@@ -230,11 +235,36 @@ const WoListingColumns = (() => {
     td.setAttribute('data-sa-state', 'done'); td.textContent = '';
     if (!pns || !pns.length) { td.appendChild(mutedSpan('sin PN')); return; }
     pns.forEach(function (pn) {
+      const item = document.createElement('div'); item.className = 'sa-wocol-pn-item';
       const a = document.createElement('a'); a.className = 'sa-wocol-pn-link'; a.textContent = pn.name;
       const href = Core().pnLink(pn.id);
       if (href) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; }
-      td.appendChild(a);
+      item.appendChild(a);
+      // Chips de etiquetas (2º query ligero GetPartNumberForPartNumberPage; se llenan al resolver).
+      const detail = detailCache().get(pn.id);
+      if (detail && detail.labels && detail.labels.length) {
+        const chips = document.createElement('span'); chips.className = 'sa-wocol-chips';
+        detail.labels.forEach(function (l) {
+          const c = document.createElement('span'); c.className = 'sa-wocol-chip'; c.textContent = l.name;
+          if (l.color && /^#[0-9a-fA-F]{3,8}$/.test(l.color)) {
+            c.style.backgroundColor = l.color; c.style.borderColor = l.color; c.style.color = pickTextColor(l.color);
+          }
+          chips.appendChild(c);
+        });
+        item.appendChild(chips);
+      }
+      td.appendChild(item);
     });
+  }
+
+  // Blanco o gris oscuro según luminancia del fondo (chips legibles con cualquier color).
+  function pickTextColor(hex) {
+    let h = hex.replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const r = parseInt(h.substr(0, 2), 16), g = parseInt(h.substr(2, 2), 16), b = parseInt(h.substr(4, 2), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return '#1c2430';
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.6 ? '#1c2430' : '#ffffff';
   }
 
   function renderSchedCell(td, tasks) {
@@ -322,6 +352,7 @@ const WoListingColumns = (() => {
       fetchRow(woId).then(function (rowData) {
         cache().set(woId, rowData);
         fillRow(woId, rowData, false);
+        if (isPnOn()) enqueueDetails((rowData.pns || []).map(function (p) { return p.id; }));   // chips de etiquetas
         if (isSchedOn()) maybeLoadBoard();   // ya tenemos un woGlobalId → dispara el board
       }).catch(function (e) {
         fillRow(woId, null, true);
@@ -333,6 +364,64 @@ const WoListingColumns = (() => {
         pump();
       });
     }
+  }
+
+  // ── 2º query LIGERO por PN: etiquetas como chips (GetPartNumberForPartNumberPage) ──
+  // Sin descripción (esa solo vive en GetPartNumber, 504 campos → mucho peso; decisión
+  // del usuario: priorizar chips de etiquetas y dejar la descripción).
+  function detailCache() { if (!window.__saWoPnDetail) window.__saWoPnDetail = new Map(); return window.__saWoPnDetail; }
+  function detailPool() { if (!window.__saWoPnDetailPool) window.__saWoPnDetailPool = { queue: [], inFlight: 0, lastLaunch: 0 }; return window.__saWoPnDetailPool; }
+
+  function enqueueDetails(pnIds) {
+    if (!isPnOn()) return;
+    const p = detailPool(); const seen = new Set(p.queue);
+    pnIds.forEach(function (id) { if (id != null && !seen.has(id) && !detailCache().has(id)) { p.queue.push(id); seen.add(id); } });
+    pumpDetails();
+  }
+  async function fetchDetail(pnId) {
+    const api = window.SteelheadAPI;
+    for (let attempt = 0; attempt < RETRY_BACKOFF.length; attempt++) {
+      if (attempt) await new Promise(function (r) { setTimeout(r, RETRY_BACKOFF[attempt]); });
+      try {
+        const data = await api.query('GetPartNumberForPartNumberPage', { partNumberId: pnId }, 'GetPartNumberForPartNumberPage');
+        return { labels: Core().extractPartNumberDetail(data).labels };   // slim
+      } catch (e) { if (attempt === RETRY_BACKOFF.length - 1 || !isTransient(e)) throw e; }
+    }
+  }
+  function pumpDetails() {
+    const p = detailPool();
+    if (!isPnOn() || !onIndex()) return;
+    while (p.inFlight < MAX_CONC && p.queue.length) {
+      const wait = p.lastLaunch + MIN_GAP_MS - Date.now();
+      if (wait > 0) { setTimeout(pumpDetails, wait + 5); return; }
+      const pnId = p.queue.shift(); p.inFlight++; p.lastLaunch = Date.now();
+      fetchDetail(pnId).then(function (d) {
+        detailCache().set(pnId, d);
+        repaintPnCellsWith(pnId);
+      }).catch(function (e) {
+        if (e && e.persistedQueryRotated) toast('⚠️ El hash de GetPartNumberForPartNumberPage rotó — avísale a Claude.');
+        else console.warn('[SA] wo-cols: labels PN ' + pnId + ' falló:', e && e.message);
+      }).then(function () {
+        p.inFlight--;
+        try { if (pool().drain) pool().drain(); } catch (_) {}
+        pumpDetails();
+      });
+    }
+  }
+  // Re-pinta la celda PN de las WOs cuyo cache incluye este pnId (mete/actualiza los chips).
+  function repaintPnCellsWith(pnId) {
+    document.querySelectorAll('td.sa-wocol-pn[data-sa-woid]').forEach(function (td) {
+      const woIdInDomain = parseInt(td.getAttribute('data-sa-woid'), 10);
+      const cached = cache().get(woIdInDomain);
+      if (cached && cached.pns && cached.pns.some(function (p) { return p.id === pnId; })) renderPnCell(td, cached.pns);
+    });
+  }
+  // Encola las etiquetas de todos los PN conocidos (al activar el toggle sobre filas ya cacheadas).
+  function enqueueKnownDetails() {
+    if (!isPnOn()) return;
+    const ids = [];
+    cache().forEach(function (v) { if (v && v.pns) v.pns.forEach(function (p) { ids.push(p.id); }); });
+    if (ids.length) enqueueDetails(ids);
   }
 
   // ── Índice de programación del board (UNA sola llamada por página) ───────────
@@ -402,6 +491,7 @@ const WoListingColumns = (() => {
     ensureHeaderCells(table);
     const toFetch = ensureBodyCells(table);
     if (toFetch.length) enqueue(toFetch);
+    if (isPnOn()) enqueueKnownDetails();   // chips para filas ya cacheadas (p.ej. al activar el toggle)
     if (isSchedOn()) { if (board().state === 'ready') fillAllSchedCells(); else maybeLoadBoard(); }
     updateCount();
   }
@@ -421,6 +511,7 @@ const WoListingColumns = (() => {
   }
   function deactivate() {
     const p = pool(); p.queue.length = 0;
+    detailPool().queue.length = 0;
     teardownObserver(); stopMonitor(); removeColumns(); refreshToggleUI();
   }
 
@@ -436,6 +527,7 @@ const WoListingColumns = (() => {
       activate();
     } else {
       toast(label + ': DESACTIVADO');
+      if (kind === 'pn') detailPool().queue.length = 0;   // corta la carga de etiquetas
       removeColumnClass(kind === 'pn' ? 'sa-wocol-pn' : 'sa-wocol-sched');
       if (!anyOn()) deactivate();
       else { refreshToggleUI(); syncColumns(); }
@@ -459,6 +551,7 @@ const WoListingColumns = (() => {
       else {
         deactivate(); cache().clear();
         window.__saWoBoard = { idx: null, state: 'idle' };   // libera el índice al salir
+        window.__saWoPnDetail = new Map(); window.__saWoPnDetailPool = { queue: [], inFlight: 0, lastLaunch: 0 };
         const bar = document.getElementById('sa-wocol-bar'); if (bar) bar.remove();
       }
     });
