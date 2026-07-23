@@ -53,6 +53,16 @@
     return arr.reduce((acc, r) => acc + (rowMatchesBatchName(r && r.cellText, targetName) ? 1 : 0), 0);
   }
 
+  // ── migración de versiones ──
+  // Id del nodo que monta la versión ACTUAL (buscador inline en la barra de filtros nativa).
+  const ACTIVE_NODE_ID = 'sa-sbh-inline';
+  // Ids de nodos que montaron versiones ANTERIORES de este applet y que el glue actual debe LIMPIAR
+  // al reinyectarse: en la SPA de larga vida el remote loader recarga el script SIN recargar la página,
+  // así que un nodo con id distinto dejado por una versión previa queda HUÉRFANO en el DOM. v0.1.0/0.1.1
+  // montaban un panel FLOTANTE 'sa-sbh-panel' (position:fixed) que coexistía con el inline nuevo.
+  // Invariante: NUNCA debe contener ACTIVE_NODE_ID (no removernos a nosotros mismos).
+  const LEGACY_NODE_IDS = ['sa-sbh-panel'];
+
   const api = {
     SCHEDULE_BOARD_URL_RE,
     isScheduleBoardUrl,
@@ -60,6 +70,8 @@
     extractBatchNames,
     rowMatchesBatchName,
     countMatches,
+    ACTIVE_NODE_ID,
+    LEGACY_NODE_IDS,
   };
   if (typeof window !== 'undefined') window.ScheduleBatchHighlighterCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
