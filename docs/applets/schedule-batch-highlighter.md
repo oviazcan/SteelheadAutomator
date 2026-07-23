@@ -12,6 +12,7 @@ glue firmado (KMS). **Iteraciones sobre feedback del operador:**
   compartido → short-circuit dejaba al inline sin sus reglas en una reinyección en caliente). Core 14/14.
   Lección general: **todo applet que cambie el id de su nodo raíz entre versiones debe limpiar los ids
   legacy al montar** (mismo espíritu que los latches singleton de surtido-guard/price-confirm-guard).
+  **VALIDADO EN VIVO (operador 2026-07-23):** "ya quedó, ya no salen los dos" tras recargar la pestaña.
 - **v0.1.1** — fix "No encuentro la columna": el header es un **`<strong>` dentro de un `<td>`** (MUI
   CSS-grid, no `<th>`) y el selector solo cubría `th/div/span`. Fix: selector incluye
   `strong/td/b/a/p/label` + matchea el **nodo hoja** + sube al **`<td>` ancestro** para medir el centro
