@@ -2,7 +2,7 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
-## fix 1.5.42 (2026-07-22) — Fast-path SOLO_PRECIO bloqueado por `Validación=F` de plantilla [EN WORKBENCH, pendiente deploy]
+## fix 1.5.42 (2026-07-22) — Fast-path SOLO_PRECIO bloqueado por `Validación=F` de plantilla [DEPLOYADO, config 1.7.176, firmado KMS, verificado EN VIVO]
 
 **Incidente (diagnóstico de corrida real).** Carga `Precios_V1.1` en modo SOLO_PN, **8238 PN de solo-precio** (identificados por Id SH, cero enriquecimiento). El reporte: `PNs procesados 8238`, **22 errores** todos `HTTP 429 en SavePartNumber`, 0 omitidas; todas las categorías de decisión (NEW/MODIFY Pase 1·2·3) en 0. Los precios **sí** se aplicaron (Paso 2/5 `SaveManyPartNumberPrices`, cero errores; corre **antes** del enrich). Pero el fast-path **no se activó** y corrió STEP 6 completo, con dos consecuencias:
 1. **22×HTTP 429** — rate-limit sostenido de SH ante la ráfaga de 8238 `SavePartNumber` innecesarios (el enrich es no-op en solo-precio salvo por el punto 2).
@@ -24,7 +24,9 @@ Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Mod
 
 **Decisión de producto (confirmada con el operador):** modal de confirmación por corrida (no activación automática silenciosa) — mantiene control y no cambia el comportamiento a espaldas de nadie. No se recuperó la validación de la corrida del 2026-07-22 (el operador confirmó que no la usa; el precio quedó OK).
 
-**Pendiente:** deploy con `wb-deploy.sh bulk-upload …` + `wb-deploy.sh bulk-upload-parse …` (2 scripts) y validar el modal en vivo en la próxima carga solo-precio con plantilla. **Follow-up no bloqueante:** mejorar el badge del preview para reflejar el caso 'ASK' (hoy muestra ENRIQUECIMIENTO); persistir la elección del modal en `resumeState` para no re-preguntar en reanudaciones.
+**Deploy (HECHO 2026-07-22).** Desplegado desde `workbench` con `wb-deploy.sh` en 2 corridas (parse primero — superset compatible; luego bulk-upload) + una 3ª por el bump de `const VERSION` 1.5.41→1.5.42 que se había pasado. Config **1.7.163→1.7.176**, suite verde (71 archivos) + firma KMS en cada corrida. Verificado EN VIVO: `deploy-status.sh` = main = gh-pages = LIVE = 1.7.176 (invariante byte-a-byte ✓); `curl` a GitHub Pages confirma `planSoloPrecioDecision`/`partHasEnrichLine` en parse y `askFastPathSoloPrecio` + `const VERSION='1.5.42'` en bulk-upload. Commits main: `7d24736` (parse), `29f2a5d` (modal+execute), `be66f21` (VERSION), `db5a496` (bitácora+índice+tests). Workbench: `b69f336`.
+
+**Pendiente REAL:** validar el **modal en vivo** en la próxima carga solo-precio hecha con plantilla (`Validación=F`) — el operador debe ver "⚡ ¿Fast-path de solo precio?" y elegir; no se puede ejercitar sin la sesión del ERP. **Follow-up no bloqueante:** mejorar el badge del preview para reflejar el caso 'ASK' (hoy muestra ENRIQUECIMIENTO); persistir la elección del modal en `resumeState` para no re-preguntar en reanudaciones.
 
 ## feat 1.5.40–1.5.41 (2026-07-20) — Fast-path SOLO_PRECIO [ACTIVO en producción, config 1.7.163, flag ON]
 Cuando una corrida solo cambia **precios** de PN que **ya existen** (cero enriquecimiento: ni
