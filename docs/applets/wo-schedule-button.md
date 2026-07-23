@@ -1,52 +1,44 @@
-# wo-schedule-button — Botón "Programación" en la ficha de Orden de Trabajo
+# wo-schedule-button — Programación INLINE en la ficha de Orden de Trabajo
 
-**Versión:** 0.2.0 — **Fase 1 (consulta) CONECTADA con `WorkOrderSchedule`, sin deploy**. Core compartido `wo-schedule-core` 18/18 golden.
+**Versión:** 0.3.0 — **readout inline (sin click), F1 conectada con `WorkOrderSchedule`**. Core compartido `wo-schedule-core` 18/18 golden.
 **Categoría:** Órdenes de Trabajo · **autoInject:true** · ruta: `/Domains/<d>/WorkOrders/<idInDomain>` (ficha individual)
 
 ## Qué hace
 
-En la ficha de una OT inyecta un **botón "📅 Programación"** en el header, **ENTRE "EDITAR DETALLES" y "ABRIR PDF"**, que abre un panel dark-mode con la programación de la OT (cuándo/dónde).
+En la ficha de una OT muestra, **DIRECTO en el header** (entre "EDITAR DETALLES" y "ABRIR PDF"), un readout **"📅 &lt;estación · fecha/hora local · estado&gt;"** de la programación de la OT. **NO requiere click** — la info sale sola al entrar a la ficha. "Sin programar" si no hay tarea.
 
-Pedido por producción (2026-07-23): en iPad la tarjeta "Cliente" (que contiene el ícono 📅 nativo) se **colapsa** y deja de verse de inmediato → un botón arriba da acceso inmediato e independiente de esa tarjeta.
+Pedido por producción (2026-07-23): en iPad la tarjeta "Cliente" (que contiene el ícono 📅 nativo) se **colapsa** y deja de verse → este readout arriba la muestra siempre, sin depender de esa tarjeta ni de un click.
+
+**Decisión de UX (a pedido del usuario):** a diferencia del diseño inicial (botón → modal), la Fase 1 es un **readout pasivo inline** con el 📅 al inicio. **Fase 2:** cuando se pueda PROGRAMAR desde aquí, el 📅 se vuelve **clicable** y abrirá el modal de programación intencional.
 
 ## Anclaje (handle semántico estable — sin texto bilingüe)
 
-El header expone `data-steelhead-component-id` estables (mejor ancla posible, idioma-agnóstica). "Abrir PDF" = `WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON`, y es el **primer** elemento del grupo derecho del header; "Editar Detalles" es el último del grupo izquierdo. → Insertar el botón **antes de** `WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON` lo deja exactamente entre ambos:
+`data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON"` (idioma-agnóstico). "Abrir PDF" es el 1er elemento del grupo derecho del header; "Editar Detalles" el último del izquierdo. → Insertar el readout **antes de** `WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON` lo deja exactamente entre ambos. Montaje idempotente por `id` + `MutationObserver` (re-monta si React borra el nodo) + parche `pushState/replaceState/popstate` (re-evalúa al navegar entre fichas). Verificado contra el HTML real del header (2026-07-23).
 
-```js
-const pdf = document.querySelector('[data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON"]');
-pdf.parentElement.insertBefore(miBoton, pdf);
-```
+## Datos + interceptor (evita el doble fetch de 4.6MB)
 
-Montaje **idempotente** por `id` + `MutationObserver` (re-monta si React borra el nodo) + parche `pushState/replaceState/popstate` (re-evalúa al navegar entre fichas en la SPA). Verificado contra el HTML real del header (2026-07-23).
+- `WorkOrder({idInDomain})` (hash `fc41042e…`) → **workOrderId GLOBAL** (`wo.id`).
+- Índice del board: `WorkOrderSchedule({domainId, workOrderId})` (hash `7b1b1127…`) → board COMPLETO → `WoScheduleCore.buildBoardScheduleIndex` (índice slim, con `stationByStationId.name` embebido) → `resolveBoardScheduleForWO(woGlobalId)`. El link WO→tarea es `element.recipeNodeByRecipeNodeId.workOrderId`.
+- **Interceptor:** la propia ficha dispara `WorkOrderSchedule` al cargar (~4.6MB). Un patch de `window.fetch` (guard `__saWoSchedFetchPatched`, world MAIN) **captura esa respuesta** (clone → `buildBoardScheduleIndex`), la guarda con TTL (120s) y evita el fetch propio. Si no aparece en una ventana corta (6×300ms), se hace fetch propio como **fallback**. Solo se guarda el índice slim; el raw se descarta. Estilo `board-metal-tooltip`/`surtido-guard` (interceptor pasivo).
+- Render: estación · fecha/hora local (`es-MX`) · estado (`scheduleStatusLabel`: QUEUED→"En cola", etc.); `(+N)` + tooltip con todas las tareas si hay varias.
 
-## UI (regla de diseño)
+## UI
 
-- **Botón:** integrado a la barra CLARA nativa, con **acento verde `#13a36f`** (fondo `#eef6f2`, texto `#0d6b49`) → se ve "de la extensión" sin romper la barra.
-- **Panel:** **dark-mode** (`#1c2430`/`#e6e9ee`/`#13a36f`, patrón `auto-router-panel.js`) — overlay + cierre por click-fuera / `×` / Esc. `textContent` (no innerHTML de datos).
+Readout integrado a la barra CLARA nativa, con **acento verde `#13a36f`** (fondo `#eef6f2`, texto `#0d6b49`) → se ve "de la extensión". Estados: cargando (gris itálica), normal (verde), sin programar (gris), error (rojo). `textContent` (no innerHTML de datos). `max-width` + ellipsis (nombres de estación largos).
 
-## Estado por fase
+## Fase 2 (hito aparte — crear programación)
 
-- **FASE 1 (consultar programación) — CONECTADA.** Al abrir el panel: (1) `WorkOrder({idInDomain})` (hash `fc41042e…`) → **workOrderId GLOBAL** (`wo.id`) + nombre + **Fecha Límite** (localizada `es-MX`); (2) `WorkOrderSchedule({domainId, workOrderId})` (hash `7b1b1127…`, capturado 2026-07-23) → **board completo** (todas las tareas del schedule del dominio) → `WoScheduleCore.buildBoardScheduleIndex` → `resolveBoardScheduleForWO(woGlobalId)` → render de tareas: **estación** (nombre embebido en `stationByStationId.name`) · **fecha/hora** local · **estado** (`scheduleStatusLabel`: QUEUED→"En cola", etc.). "Esta OT no está programada" si vacío. Robusto en iPad (no depende de la tarjeta Cliente ni del 📅 nativo).
-  - **Nota de peso:** `WorkOrderSchedule` devuelve ~4.6MB (el board entero, no solo la OT — 767 tareas + allCustomers/allStations/allPartLocations). Es 1 llamada al abrir el panel (lo mismo que carga el modal nativo). El link WO→tarea es `element.recipeNodeByRecipeNodeId.workOrderId`.
-- **FASE 2 (crear programación — hito aparte):** el panel ganaría modo "crear/editar" (estación + fecha/hora) que dispara la **mutación de creación** (sin capturar aún — terreno virgen). Alta en `hash-autopilot` (sentinela / captura-y-aborta).
-
-## Captura — estado
-
-- **Fase 1: RESUELTA.** `WorkOrderSchedule` capturado (scan 2026-07-23_144219), hash en config, ruta de regeneración en `route-catalog.json` (`workorders-detail` → se dispara al navegar a la ficha).
-- **Fase 2: pendiente.** `hash-scanner` sobre una OT **sin programar** → abrir "Programar", agendar de prueba, guardar → capturar la mutación de creación.
-- **Descartadas:** `RelatedSchedulingTreatments` (`b4ea3a2c…`) = solo metadata de tratamientos, no la programación; `RelatedSchedulingInformation`/`ScheduleInformationById`/`GetScheduleBoard` quedaron servidas de caché (sin body) — no necesarias, `WorkOrderSchedule` cubre el caso.
+El 📅 se vuelve clicable → modal dark-mode de programación intencional (estación + fecha/hora) que dispara la **mutación de creación** (sin capturar aún — terreno virgen). Captura con `hash-scanner` sobre una OT sin programar → agendar de prueba → guardar. Alta en `hash-autopilot` (sentinela / captura-y-aborta).
 
 ## Arquitectura
 
 | Archivo | Rol |
 |---|---|
-| `remote/scripts/wo-schedule-core.js` | Motor puro **compartido** con `wo-listing-columns`. Aquí usa: `isWorkOrderDetailPath`, `parseWorkOrderIdInDomain`, `parseIsoParts`, y (Fase 1) `buildScheduleIndex`/`resolveByAccountIds`/`stationNameMap`/`formatScheduleCell`. |
-| `remote/scripts/wo-schedule-button.js` | Glue DOM: botón en el header, panel dark-mode, fetch de `WorkOrder`, (Fase 1) fetch del board. |
-| `tools/test/wo-schedule-core.test.js` | 13 golden tests (índice de programación contra el shape real de `GetRelatedScheduleData`). |
+| `remote/scripts/wo-schedule-core.js` | Motor puro **compartido** con `wo-listing-columns`: `isWorkOrderDetailPath`, `parseWorkOrderIdInDomain`, `parseDomainId`, `extractWorkOrderGlobalId`, `buildBoardScheduleIndex`, `resolveBoardScheduleForWO`, `scheduleStatusLabel`, `formatShortDateTime`. |
+| `remote/scripts/wo-schedule-button.js` | Glue DOM: readout inline en el header, interceptor de `WorkOrderSchedule`, fetch de `WorkOrder` + fallback. |
+| `tools/test/wo-schedule-core.test.js` | 18 golden tests. |
 
-## Plan de validación (pendiente)
+## Plan de validación
 
-- **Core:** 13/13 golden ✓.
-- **En vivo (operador, foreground):** ficha `/WorkOrders/15194` → botón entre EDITAR DETALLES y ABRIR PDF → panel con nombre + Fecha Límite. Tras Fase 1: tarea agendada real.
-- **Deploy:** `tools/deploy.sh "feat(wo-schedule-button): ..." --check wo-schedule-button`. No deployado aún (se entrega junto con la programación).
+- **Core:** 18/18 golden ✓.
+- **En vivo (operador):** ficha `/WorkOrders/<id>` → readout 📅 entre EDITAR DETALLES y ABRIR PDF con la programación real (o "Sin programar"). Confirmar que el interceptor evita el doble fetch (una sola `WorkOrderSchedule` en la red).

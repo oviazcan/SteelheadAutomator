@@ -1,11 +1,11 @@
 # wo-listing-columns — Columnas en el listado de Órdenes de Trabajo
 
-**Versión:** 0.2.0 — **columnas PN + Programación conectadas, sin deploy**. Core compartido `wo-schedule-core` 18/18 golden.
+**Versión:** 0.3.0 — columnas **al INICIO** de la tabla (a pedido del usuario, distinto de pn-specs). Core compartido `wo-schedule-core` 18/18 golden.
 **Categoría:** Órdenes de Trabajo · **autoInject:true** · ruta: `/Domains/<d>/WorkOrders` (index, NO la ficha `/WorkOrders/:id`)
 
 ## Qué hace
 
-En el listado `https://app.gosteelhead.com/Domains/<d>/WorkOrders`, agrega **dos columnas opt-in** (dos toggles en una barra dark-mode antes de la tabla; también en el popup):
+En el listado `https://app.gosteelhead.com/Domains/<d>/WorkOrders`, agrega **dos columnas opt-in** (dos toggles en una barra dark-mode antes de la tabla; también en el popup). **A diferencia de `pn-specs-column` (que van al final), estas van al INICIO** (primeras columnas, izquierda) — `moveToFront()` las mantiene como las primeras celdas en cada sync (reordena solo si hace falta, sin churn del observer):
 
 - **🔩 "Número de Parte"** — cada PN como **link** a su ficha (`/PartNumbers/<id>`, pestaña nueva). Soporta **N PNs** concatenados (hoy 1 por OT).
 - **📅 "Programación"** — **estación · fecha/hora local · estado** de la tarea agendada de la OT.
