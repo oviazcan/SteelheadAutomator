@@ -149,6 +149,7 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
   - Bullets: “Cada publicación se **firma criptográficamente** (ECDSA P-256)” · “La llave privada vive en
     una bóveda de Google (KMS), nunca en el código” · “La extensión rechaza cualquier script sin el sello
     correcto — *fail-closed*”.
+  - **Nota en la slide (caveat, ámbar):** *Aplica desde la extensión **v1.6.6**. Cada equipo queda protegido al **actualizar** a esa versión (o posterior); los que sigan en una anterior aún no tienen la verificación activada.*
 - **Visual (Mermaid de referencia):**
   ```mermaid
   flowchart LR
