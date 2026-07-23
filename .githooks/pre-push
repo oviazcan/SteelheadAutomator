@@ -37,10 +37,21 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
   done < <(git ls-tree -r --name-only "$local_sha" -- scripts/ 2>/dev/null | grep -E '\.js$')
 
+  # ¿Cambió la SUPERFICIE de la extensión (config.json o scripts/) vs lo PUBLICADO?
+  # Un push que solo agrega/edita OTROS archivos (p.ej. documentación en training/)
+  # no invalida ningún caché de la extensión, así que NO exige bump de versión.
+  # Fail-safe: si la extensión sí cambió, o no se puede determinar, ext_changed=1.
+  ext_changed=1
+  if [ "$remote_sha" != "$ZERO" ] \
+     && git diff --quiet "$remote_sha" "$local_sha" -- config.json scripts/ 2>/dev/null; then
+    ext_changed=0
+  fi
+
   # 3) version-bump: el deploy debe AUMENTAR config.version vs lo PUBLICADO.
   #    La version es el cache-bust de la extensión; repetir o bajar el número deja
   #    a los usuarios con scripts viejos cacheados (el deploy no los alcanza).
-  if [ "$remote_sha" != "$ZERO" ]; then
+  #    SOLO se exige cuando la extensión (config.json/scripts) realmente cambió.
+  if [ "$remote_sha" != "$ZERO" ] && [ "$ext_changed" = 1 ]; then
     cfgver() { grep -m1 '"version"' | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'; }
     newv=$(git show "$local_sha:config.json" 2>/dev/null | cfgver)
     oldv=$(git show "$remote_sha:config.json" 2>/dev/null | cfgver)
@@ -75,6 +86,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     echo "   (o re-sincroniza: git show main:remote/... > scripts/...; git show main:remote/config.json > config.json)"
     exit 1
   fi
+  [ "$ext_changed" = 0 ] && echo "  ✓ pre-push: push solo-docs (no toca config.json/scripts) — bump de versión no requerido"
   echo "  ✓ pre-push: gh-pages espeja $mainref:remote/ (config + scripts .js)"
 done
 exit 0
