@@ -1390,6 +1390,7 @@
         "WorkOrderCertReportCount",
         "WorkOrderDialogQuery",
         "WorkOrderRelatedLinksCount",
+        "WorkOrderSchedule",
         "WorkPartsInfoWrapperQuery"
       ]
     },
