@@ -17,14 +17,14 @@
   cliente es de acabado de metales: Steelhead = acero, Ecoplating = electroplateado).
 - **Paleta:** neutros acero (fondo casi blanco `#f7f9fb`, tinta `#182231`, acero estructural `#2b3f52`),
   **acento verde del producto `#0f8f61`** (amarra el deck a la propia UI de la extensión). Codificación por
-  audiencia: Key User = clay `#c0632e`, Jefe de TI = azul acero `#2f6f9f`, Gerente de BI = ciruela `#7d4f9c`.
+  audiencia: Key User = clay `#c0632e`, Jefe de TI = azul acero `#2f6f9f`.
 - **Tipografía:** sans humanista para títulos y cuerpo; **monoespaciada** para códigos/identificadores
   (hashes, nombres de operación) — son parte del contenido, no decoración.
 - **Regla de oro:** un mensaje por slide, mucho diagrama, poco texto. Prioriza lo visual sobre la longitud.
 
 ## Audiencia y duración
 
-Mixta (Key User, Jefe de TI, Gerente de BI) en una sola sesión de **30–40 min**. Arranca a todos con el
+Mixta (Key User y Jefe de TI) en una sola sesión de **30–40 min**. Arranca a todos con el
 mismo modelo mental; al final cada quien sigue por su ruta (ver slide 14 y el Mapa “Empieza aquí”).
 
 ## Arco narrativo (por qué este orden)
@@ -40,7 +40,7 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 - **Mensaje único:** este es el mapa mental de cómo funciona SteelheadAutomator.
 - **Texto:**
   - Título: **SteelheadAutomator 101**
-  - Subtítulo: *Cómo funciona por fuera y por dentro — sin necesidad de ser programador.*
+  - Subtítulo: *Cómo funciona por fuera y por dentro.*
   - Pie: logo/marca · fecha de la sesión.
 - **Visual:** portada limpia, marca “SA” en un cuadro acero, mucho aire. Sin diagramas.
 - **Notas del orador:** “En los próximos 30 minutos van a entender qué es esta herramienta, cómo se
@@ -174,7 +174,7 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 - **Visual:** diagrama de anatomía: [core puro + golden test] + [orquestador] + [entrada en config].
 - **Metáfora:** el **golden test** = una foto de referencia contra la que se compara (“debe dar
   exactamente estos números que verificamos a mano”).
-- **Notas:** para BI: esto es lo que permite cambiar rápido sin romper reglas viejas.
+- **Notas:** subrayar que esto es lo que permite cambiar rápido sin romper reglas viejas.
 
 ## Slide 11 — El más complejo: Carga Masiva (teaser de la ficha)
 
@@ -203,9 +203,9 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 - **Mensaje único:** cada rol tiene una ruta de lectura y un color.
 - **Texto:**
   - Título: **Tu ruta según tu rol**
-  - 3 columnas: **Key User** → Manual del Operador + ficha Carga Masiva · **Jefe de TI** → 101 + Manual del
-    Administrador + ficha Hash-Autopilot · **Gerente de BI** → Inventario + Glosario + ambas fichas.
-- **Visual:** 3 tarjetas con el color de cada audiencia (como en el Mapa).
+  - 2 columnas: **Key User** → Manual del Operador + ficha Carga Masiva + 101 · **Jefe de TI** → 101 + Manual del
+    Administrador + ficha Hash-Autopilot. De consulta para ambos: Inventario y Glosario.
+- **Visual:** 2 tarjetas con el color de cada audiencia (como en el Mapa).
 - **Notas:** “Todo esto está en el documento ‘Empieza aquí’, que es su índice.”
 
 ## Slide 14 — Cierre: 4 ideas para llevarse
