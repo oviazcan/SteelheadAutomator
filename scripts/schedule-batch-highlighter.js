@@ -30,7 +30,7 @@
   const STYLE_ID = 'sa-sbh-style';
   const HL_CLASS = 'sa-sbh-hl';        // clase marcadora en filas/celdas resaltadas
   const DEBOUNCE_MS = 250;
-  const SCROLL_HINT = 'La tabla solo carga las filas visibles: recorre la lista con scroll para resaltar y marcar todas.';
+  const SCROLL_HINT = 'Consejo: primero ORDENA la tabla por la columna "Received Batches" (clic en su encabezado) para que los lotes con el mismo nombre queden juntos. Además, la tabla solo carga las filas visibles: recorre la lista con scroll para resaltar y marcar todas.';
 
   const S = (window.__saSBH = window.__saSBH || {
     query: '',
@@ -55,6 +55,8 @@
       #${INLINE_ID} input.sa-sbh-inp::placeholder{color:#9aa7b5;}
       #${INLINE_ID} .sa-sbh-count{font-size:12px;font-weight:700;color:#13a36f;min-width:10px;}
       #${INLINE_ID} .sa-sbh-count.warn{color:#d9822b;}
+      #${INLINE_ID} .sa-sbh-info{cursor:help;color:#13a36f;font-size:13px;line-height:1;font-weight:700;}
+      #${INLINE_ID} .sa-sbh-info:hover{color:#0e8659;}
       #${INLINE_ID} .sa-sbh-x{cursor:pointer;color:#9aa7b5;font-size:12px;line-height:1;padding:0 1px;}
       #${INLINE_ID} .sa-sbh-x:hover{color:#d9534f;}
       tr.${HL_CLASS} > td{background:#dbf3e7 !important;}
@@ -112,6 +114,13 @@
     count.className = 'sa-sbh-count';
     count.title = SCROLL_HINT;
     wrap.appendChild(count);
+
+    const info = document.createElement('span');
+    info.className = 'sa-sbh-info';
+    info.textContent = 'ⓘ';
+    info.title = SCROLL_HINT;
+    info.setAttribute('aria-label', SCROLL_HINT);
+    wrap.appendChild(info);
 
     const x = document.createElement('span');
     x.className = 'sa-sbh-x';
