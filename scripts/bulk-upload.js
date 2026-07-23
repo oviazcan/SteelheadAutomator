@@ -1,5 +1,17 @@
 // Steelhead Bulk Upload — Pipeline hardened para cargas masivas (18k+ filas)
 //
+// VERSION 1.5.42 (2026-07-22): FIX — el fast-path SOLO_PRECIO no se activaba en cargas hechas
+//   con la plantilla "Limpiar Datos", porque ésta escribe Validación=F en todas las filas y el
+//   parser lo vuelve validacion1er=false (no null); classifyRunIntent lo cuenta como
+//   ENRIQUECIMIENTO → nunca era SOLO_PRECIO. Incidente 2026-07-22: corrida de 8238 PN solo-precio
+//   corrió STEP 6 completo → 22×HTTP 429 + desactivó silenciosamente la validación 1er recibo
+//   (Validación=F ⇒ optInOuts:[] ⇒ REPLACE la borra) en los PN que la tenían. Fix: nueva decisión
+//   pura de 3 estados Parse.planSoloPrecioDecision('FASTPATH'|'ASK'|'FULL') que distingue la
+//   validación por VALOR (true=activación explícita→FULL, false=plantilla→ASK, null→sin señal) +
+//   modal askFastPathSoloPrecio que pregunta al operador (fast-path vs correr completo vs cancelar)
+//   ANTES de escribir nada. +10 golden tests (23 en el archivo del fast-path). No cambia
+//   decideOptInOuts (quien corra "completo" conserva la semántica de desactivación explícita).
+//
 // VERSION 1.5.41 (2026-07-20): FLAG ON del fast-path SOLO_PRECIO (SOLO_PRECIO_FASTPATH_ENABLED
 //   = true). Activado por decisión del operador. Ver la constante y su comentario más abajo.
 //
@@ -874,6 +886,37 @@ const BulkUpload = (() => {
       modal.querySelector('#dl9-resume-yes').onclick = () => { removeOverlay(overlay); resolve('resume'); };
       modal.querySelector('#dl9-resume-fresh').onclick = () => { removeOverlay(overlay); resolve('fresh'); };
       modal.querySelector('#dl9-resume-cancel').onclick = () => { removeOverlay(overlay); resolve('cancel'); };
+    });
+  }
+
+  // askFastPathSoloPrecio — modal de confirmación cuando la corrida es de SOLO PRECIO pero
+  // trae la columna Validación=F (planSoloPrecioDecision === 'ASK'). Deja que el operador
+  // elija entre tomar el atajo (no tocar validación, sin SavePartNumber innecesarios) o correr
+  // el pipeline completo (que aplica la desactivación de validación 1er recibo). Ver el fix del
+  // incidente 2026-07-22. Resuelve a 'fastpath' | 'full' | 'cancel' (cancel aborta la corrida).
+  function askFastPathSoloPrecio(total, desactCount) {
+    return new Promise(resolve => {
+      injectStyles(); const { overlay, modal } = createOverlay();
+      modal.innerHTML = `
+        <h2>⚡ ¿Fast-path de solo precio?</h2>
+        <p class="dl9-sub">Esta carga cambia <b>solo precios</b> de números de parte que ya existen — no trae specs, etiquetas ni dimensiones. Pero la plantilla incluye <b>Validación&nbsp;=&nbsp;F</b> en las filas.</p>
+        <div class="dl9-stats">
+          <div class="dl9-stat"><b>PNs en la corrida:</b> ${escHtml(String(total))}</div>
+          <div class="dl9-stat"><b>Filas con Validación=F:</b> ${escHtml(String(desactCount))}</div>
+        </div>
+        <h3>Qué hace cada opción</h3>
+        <table>
+          <tr><td><b style="color:#4ade80">⚡ Fast-path</b></td><td>Aplica solo precio + precio default. <b>No toca</b> la validación 1er recibo ni corre el enriquecimiento. Más rápido y sin riesgo de rate-limit (429).</td></tr>
+          <tr><td><b style="color:#facc15">Correr completo</b></td><td>Pipeline normal. <b>Desactiva la validación 1er recibo</b> de los PN que la tengan (Validación=F ⇒ opt-out) y hace un <code>SavePartNumber</code> por PN (puede toparse HTTP&nbsp;429).</td></tr>
+        </table>
+        <div class="dl9-btnrow">
+          <button class="dl9-btn dl9-btn-cancel" id="dl9-fp-cancel">CANCELAR</button>
+          <button class="dl9-btn" id="dl9-fp-full" style="background:#475569;color:#e2e8f0">CORRER COMPLETO</button>
+          <button class="dl9-btn dl9-btn-exec" id="dl9-fp-fast" style="background:#13a36f;color:white">⚡ FAST-PATH (SOLO PRECIO)</button>
+        </div>`;
+      modal.querySelector('#dl9-fp-fast').onclick = () => { removeOverlay(overlay); resolve('fastpath'); };
+      modal.querySelector('#dl9-fp-full').onclick = () => { removeOverlay(overlay); resolve('full'); };
+      modal.querySelector('#dl9-fp-cancel').onclick = () => { removeOverlay(overlay); resolve('cancel'); };
     });
   }
 
@@ -4501,15 +4544,39 @@ const BulkUpload = (() => {
         }
       }
 
-      // feat 1.5.40: decidir el fast-path SOLO_PRECIO. runIntent vive solo en showPreview (UI)
-      // y jamás llega aquí, así que lo RECALCULAMOS sobre parts/pnStatus YA filtrados a las
-      // filas que el operador confirmó. allExisting = todas las filas seleccionadas son
-      // 'existing' (si hubiera un PN nuevo, no es solo-precio). La decisión es pura y testeada;
-      // con SOLO_PRECIO_FASTPATH_ENABLED=false esto es siempre false → sin cambio de flujo.
+      // feat 1.5.40 + fix 2026-07-22: decidir el fast-path SOLO_PRECIO. runIntent vive solo en
+      // showPreview (UI) y jamás llega aquí, así que lo RECALCULAMOS sobre parts/pnStatus YA
+      // filtrados a las filas que el operador confirmó. allExisting = todas las filas
+      // seleccionadas son 'existing' (si hubiera un PN nuevo, no es solo-precio).
+      //
+      // planSoloPrecioDecision (pura, testeada) da 3 estados: 'FASTPATH' (atajo directo),
+      // 'FULL' (pipeline completo, byte-idéntico al previo) y 'ASK'. 'ASK' ocurre cuando la
+      // corrida sería solo-precio salvo por la columna Validación=F de plantilla (que el pipeline
+      // completo interpretaría como opt-out y borraría la validación 1er recibo vía REPLACE —
+      // incidente 2026-07-22). En ese caso preguntamos al operador ANTES de cualquier escritura.
       const allExistingSel = parts.length > 0 && pnStatus.every(s => s && s.status === 'existing');
       const runIntentExec = Parse.classifyRunIntent(parts, allExistingSel);
-      const fastPathSoloPrecio = (typeof Parse.planSoloPrecioFastPath === 'function')
-        && Parse.planSoloPrecioFastPath(runIntentExec, SOLO_PRECIO_FASTPATH_ENABLED);
+      let fastPathSoloPrecio = false;
+      if (typeof Parse.planSoloPrecioDecision === 'function') {
+        const decision = Parse.planSoloPrecioDecision(parts, allExistingSel, SOLO_PRECIO_FASTPATH_ENABLED);
+        if (decision === 'FASTPATH') {
+          fastPathSoloPrecio = true;
+        } else if (decision === 'ASK') {
+          const desactCount = parts.filter(p => p && p.validacion1er === false).length;
+          const choice = await askFastPathSoloPrecio(parts.length, desactCount);
+          if (choice === 'cancel') {
+            hidePanel();
+            log('Cancelado por usuario en modal de fast-path SOLO_PRECIO (antes de escribir nada).');
+            return;
+          }
+          fastPathSoloPrecio = (choice === 'fastpath');
+          log(`Fast-path SOLO_PRECIO: el operador eligió "${choice === 'fastpath' ? 'atajo (solo precio)' : 'correr completo'}".`);
+        }
+        // decision === 'FULL' → fastPathSoloPrecio queda false (pipeline completo).
+      } else if (typeof Parse.planSoloPrecioFastPath === 'function') {
+        // Fallback a la decisión de 2 estados si el script viejo aún no expone la de 3.
+        fastPathSoloPrecio = Parse.planSoloPrecioFastPath(runIntentExec, SOLO_PRECIO_FASTPATH_ENABLED);
+      }
       if (fastPathSoloPrecio) {
         log('⚡ Fast-path SOLO_PRECIO activo: se omite el enriquecimiento (STEP 6). Solo se aplican precios.');
         addPanelLog('⚡ Fast-path SOLO_PRECIO: enriquecimiento (STEP 6) omitido');
