@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha profunda: Carga Masiva — SteelheadAutomator</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.bi{background:var(--bi-wash);color:var(--bi)}
+.audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+/* figures */
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:900px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+/* callouts */
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+/* stages */
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+/* role summaries */
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+.roles.three{grid-template-columns:1fr 1fr 1fr}
+@media (max-width:760px){.roles{grid-template-columns:1fr}.roles.three{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.impact{border-top:4px solid var(--accent)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.impact .who{color:var(--accent-ink)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+/* badge pill (intención de la corrida) */
+.pill{display:inline-block;padding:2px 10px;border-radius:10px;color:#fff;font-size:.72rem;font-weight:700;white-space:nowrap}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar"><span class="brandmark"><span>SA</span></span><span class="brandname">Steelhead<em>Automator</em> · Ficha profunda</span><span style="flex:1"></span><a href="00-mapa-empieza-aqui.html" style="font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a></div>
+    <p class="eyebrow" style="color:var(--ku)">El applet más complejo, a fondo</p>
+    <h1>Carga Masiva: triage + carril express</h1>
+    <p class="sub">Cómo un Excel de miles de filas se convierte en cotizaciones, números de parte y precios dentro de Steelhead — y por qué, antes de escribir una sola línea, el sistema clasifica la intención de cada corrida y decide si puede tomar un atajo.</p>
+    <div class="audchips">
+      <span class="audchip" style="background:var(--ku-wash);color:var(--ku)">Key User</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">En una frase</p>
+    <p>Carga Masiva toma un Excel con miles de filas —una por número de parte— y las sube a Steelhead: crea cotizaciones, crea o modifica números de parte, guarda precios, archiva y desarchiva. Es el applet más complejo del paquete porque antes de tocar nada <strong>clasifica la intención</strong> de la corrida completa y usa atajos de seguridad diseñados para no borrar datos por accidente.</p>
+  </div>
+
+  <!-- ===================== 01 ===================== -->
+  <h2 class="sec"><span class="num">01</span>Qué hace, visto desde el operador</h2>
+  <p class="sec-lead measure">Carga Masiva reemplaza el trabajo de abrir cada número de parte uno por uno en Steelhead para darle de alta, ponerle precio o completar sus datos.</p>
+
+  <p>El operador llena una plantilla Excel controlada —una fila por número de parte (PN)— con lo que quiere cargar: precio, cliente, specs, etiquetas, dimensiones, procesos, racks. La extensión toma ese archivo, lo interpreta y ejecuta, en el orden correcto, todas las llamadas que Steelhead necesita para reflejarlo: crear la cotización, crear o encontrar el PN, guardar el precio, aplicar el enriquecimiento de línea, fijar el precio por default, archivar lo que corresponda.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía</p>
+    <p>Es la diferencia entre llenar <strong>8,000 formularios uno por uno</strong> y <strong>entregar una lista a un empleado muy metódico</strong> que la procesa solo — pero ese empleado necesita <strong>reglas clarísimas</strong> para no borrar por accidente lo que ya existía. La mayor parte de la complejidad del applet no está en subir datos rápido: está en escribirle esas reglas al empleado.</p>
+  </div>
+
+  <!-- ===================== 02 ===================== -->
+  <h2 class="sec"><span class="num">02</span>El flujo, paso a paso</h2>
+  <p class="sec-lead measure">Desde que el operador descarga la plantilla hasta que ve el reporte final, la corrida pasa por ocho momentos.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Descargar la plantilla</h4><p>El operador descarga el <code>.xlsm</code> desde el menú del Automator. Trae los catálogos reales de Steelhead cargados en los dropdowns (clientes, procesos, etiquetas, unidades).</p></div></li>
+    <li><span class="k">2</span><div><h4>Llenar filas</h4><p>Una fila = un número de parte. La macro <strong>"Limpiar Datos"</strong> resetea la hoja preservando fórmulas y repone los valores por defecto de cada combo cuando hace falta empezar de cero.</p></div></li>
+    <li><span class="k">3</span><div><h4>Exportar a CSV</h4><p>La macro <code>ExportarCSV</code> convierte la hoja en el archivo que la extensión va a leer.</p></div></li>
+    <li><span class="k">4</span><div><h4>Cargar el CSV</h4><p>El operador pega o sube el CSV en el panel de Carga Masiva, ya dentro de Steelhead.</p></div></li>
+    <li><span class="k">5</span><div><h4>Preview</h4><p>Muestra cuántas filas son PN nuevos vs. existentes, un <strong>badge con la intención detectada</strong> de la corrida, avisos ámbar si algo va a <strong>reemplazar</strong> specs, y —si hay una corrida previa sin terminar— un modal "Reanudar vs. Empezar de cero".</p></div></li>
+    <li><span class="k">6</span><div><h4>Posible pregunta</h4><p>Si la corrida parece de solo-precio pero la plantilla trae una señal ambigua, aparece el modal <strong>"⚡ ¿Fast-path de solo precio?"</strong> — antes de escribir nada.</p></div></li>
+    <li><span class="k">7</span><div><h4>Ejecución</h4><p>Un panel anclado muestra la fase en curso, el progreso y el contador de errores, paso por paso.</p></div></li>
+    <li><span class="k">8</span><div><h4>Resultado</h4><p>Reporte final —PNs procesados, errores con motivo legible, liga a la cotización— y la corrida queda registrada en el <strong>Historial de Cargas</strong> (guardado local en el navegador), desde donde se puede descargar el CSV de corrección.</p></div></li>
+  </ol>
+
+  <h3 class="sub">Vista técnica, de un vistazo</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 960 270" role="img" aria-label="Diagrama: del Excel a Steelhead, pasando por el triage y el carril express">
+      <defs>
+        <marker id="dA-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--steel)"/></marker>
+        <marker id="dA-arrow-g" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker>
+      </defs>
+      <!-- Excel -->
+      <rect x="10" y="97" width="110" height="62" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="65" y="123" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Plantilla</text>
+      <text x="65" y="139" text-anchor="middle" class="svg-mut" font-size="10" font-family="var(--mono)">.xlsm</text>
+      <line x1="120" y1="128" x2="148" y2="128" stroke="var(--steel)" stroke-width="2" marker-end="url(#dA-arrow)"/>
+      <!-- CSV -->
+      <rect x="150" y="97" width="100" height="62" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="200" y="123" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">CSV</text>
+      <text x="200" y="139" text-anchor="middle" class="svg-mut" font-size="10">ExportarCSV</text>
+      <line x1="250" y1="128" x2="278" y2="128" stroke="var(--steel)" stroke-width="2" marker-end="url(#dA-arrow)"/>
+      <!-- Parse -->
+      <rect x="280" y="97" width="120" height="62" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="340" y="123" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Parse</text>
+      <text x="340" y="139" text-anchor="middle" class="svg-mut" font-size="9" font-family="var(--mono)">bulk-upload-parse.js</text>
+      <line x1="400" y1="128" x2="428" y2="128" stroke="var(--steel)" stroke-width="2" marker-end="url(#dA-arrow)"/>
+      <!-- Triage -->
+      <rect x="430" y="97" width="130" height="62" rx="10" fill="var(--ku-wash)" stroke="var(--ku)"/>
+      <text x="495" y="123" text-anchor="middle" class="svg-t" font-size="12" font-weight="700" fill="var(--ku)">Triage</text>
+      <text x="495" y="139" text-anchor="middle" font-size="9" font-family="var(--mono)" fill="var(--ku)">classifyRunIntent</text>
+      <!-- Fork -->
+      <line x1="560" y1="115" x2="600" y2="55" stroke="var(--accent)" stroke-width="2" marker-end="url(#dA-arrow-g)"/>
+      <line x1="560" y1="141" x2="600" y2="212" stroke="var(--steel)" stroke-width="2" marker-end="url(#dA-arrow)"/>
+      <rect x="600" y="18" width="175" height="55" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="687" y="40" text-anchor="middle" class="svg-t" font-size="11" font-weight="700" fill="var(--accent-ink)">Carril express</text>
+      <text x="687" y="56" text-anchor="middle" class="svg-mut" font-size="10">salta STEP 6 (enrich)</text>
+      <rect x="600" y="187" width="175" height="55" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="687" y="209" text-anchor="middle" class="svg-t" font-size="11" font-weight="700">Completo</text>
+      <text x="687" y="225" text-anchor="middle" class="svg-mut" font-size="10">STEPS 1–9 (o 1–5 SOLO_PN)</text>
+      <!-- converge -->
+      <line x1="775" y1="45" x2="800" y2="115" stroke="var(--accent)" stroke-width="2" marker-end="url(#dA-arrow-g)"/>
+      <line x1="775" y1="214" x2="800" y2="145" stroke="var(--steel)" stroke-width="2" marker-end="url(#dA-arrow)"/>
+      <!-- final -->
+      <rect x="800" y="97" width="150" height="62" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="875" y="120" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Steelhead</text>
+      <text x="875" y="136" text-anchor="middle" class="svg-mut" font-size="9">lotes de 20 · SaveManyPNP</text>
+      <text x="875" y="150" text-anchor="middle" class="svg-mut" font-size="9">+ reintentos ante 429</text>
+    </svg>
+    <figcaption>El triage decide la ruta antes de que se escriba una sola línea; ambas rutas convergen en las mismas llamadas por lotes contra Steelhead.</figcaption>
+  </figure>
+
+  <!-- ===================== 03 ===================== -->
+  <h2 class="sec"><span class="num">03</span>Anatomía de los módulos</h2>
+  <p class="sec-lead measure">El código se divide en un orquestador (el único que toca el ERP de verdad) y cinco módulos puros que solo deciden — no escriben nada.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Módulo</th><th>Rol</th><th>Analogía</th></tr></thead>
+      <tbody>
+        <tr><td><code>bulk-upload.js</code></td><td>Orquestador: panel, pipeline de STEPS, llamadas a la API, reanudación, memoria, reintentos.</td><td>El <strong>capataz</strong> que ejecuta la obra.</td></tr>
+        <tr><td><code>bulk-upload-parse.js</code></td><td>Núcleo puro de parseo: lee el CSV, normaliza booleanos, interpreta el comodín <code>-</code>, clasifica la intención de la corrida (<code>classifyRunIntent</code>, <code>planSoloPrecioDecision</code>).</td><td>El <strong>traductor</strong>.</td></tr>
+        <tr><td><code>bulk-upload-classify.js</code></td><td>Matching de PNs: decide si una fila corresponde a un PN nuevo o a uno ya existente.</td><td>El <strong>archivista</strong>.</td></tr>
+        <tr><td><code>bulk-upload-build.js</code></td><td>Armado del payload: encapsula la regla preservar / borrar / reemplazar antes de mandarla a Steelhead.</td><td>El <strong>redactor que no pisa lo que no debía</strong>.</td></tr>
+        <tr><td><code>bulk-upload-cc.js</code></td><td>Control de Cambios: bitácora de auditoría (ALTA / PRECIO / ENRIQUECIMIENTO) grabada en cada PN.</td><td>El <strong>notario</strong>.</td></tr>
+        <tr><td><code>bulk-upload-batch.js</code></td><td>Troceo de corridas largas en lotes, con checkpoint entre uno y otro, para no saturar la memoria del navegador.</td><td><strong>Reparte la mudanza en viajes</strong>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Por qué la separación importa</p>
+    <p>Los cinco módulos puros no ejecutan ninguna llamada al ERP: reciben datos y devuelven una decisión, así que se pueden poner a prueba miles de veces sin ningún riesgo. Solo <code>bulk-upload.js</code> toca Steelhead de verdad. La suite de pruebas automáticas del repositorio está en <strong>779 casos</strong> (cifra al corte de este documento; crece con cada fix), y una porción importante congela específicamente reglas de seguridad de Carga Masiva — por ejemplo, los 23 casos que verifican cada rama del carril express de solo-precio (sección 06).</p>
+  </div>
+
+  <!-- ===================== 04 ===================== -->
+  <h2 class="sec"><span class="num">04</span>El flujo de STEPS: dos modos</h2>
+  <p class="sec-lead measure">Según la columna "Modo" del CSV, la corrida sigue una de dos secuencias.</p>
+
+  <h3 class="sub">Modo COTIZACIÓN+NP (9 pasos)</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Paso</th><th>Qué hace</th></tr></thead>
+      <tbody>
+        <tr><td><code>1</code></td><td>Prepara las cotizaciones (mapa cliente → cotización).</td></tr>
+        <tr><td><code>2</code></td><td>Crea los PNs nuevos con un payload mínimo, solo para obtener su id.</td></tr>
+        <tr><td><code>3</code></td><td>Crea o reanuda las cotizaciones por cliente, en chunks; dentro corre <code>SaveManyPNP</code> en <strong>lotes de 20</strong>.</td></tr>
+        <tr><td><code>4.5</code></td><td>Desarchiva los PNs que llegan archivados.</td></tr>
+        <tr><td><code>5</code></td><td>Archiva las specs marcadas para reemplazo.</td></tr>
+        <tr><td><code>6</code></td><td><strong>ENRICH</strong> — <code>SavePartNumber</code> por cada PN: specs, etiquetas, dimensiones, metal base, proceso, unidades. <em>Este es el paso que el carril express se salta.</em></td></tr>
+        <tr><td><code>6a</code></td><td>Predictivos de material.</td></tr>
+        <tr><td><code>6b</code></td><td>Sincronización de parámetros de spec.</td></tr>
+        <tr><td><code>7</code></td><td>Racks.</td></tr>
+        <tr><td><code>7b</code></td><td>Borra precios si la celda de precio trae <code>-</code>.</td></tr>
+        <tr><td><code>8</code></td><td>Fija el precio default y archiva/desarchiva según corresponda.</td></tr>
+        <tr><td><code>9</code></td><td>Mueve la(s) cotización(es) a la etapa "Ganada".</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub">Modo SOLO_PN (5 pasos)</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Paso</th><th>Qué hace</th></tr></thead>
+      <tbody>
+        <tr><td><code>1</code></td><td>Mapa de PNs.</td></tr>
+        <tr><td><code>2</code></td><td>Crea precios standalone en <strong>lotes de 20</strong>.</td></tr>
+        <tr><td><code>3</code></td><td>Enrich (equivalente al STEP 6 de arriba; también se salta con el carril express).</td></tr>
+        <tr><td><code>4</code></td><td>Racks.</td></tr>
+        <tr><td><code>5</code></td><td>Archivado + precio default.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">Un orden que importa</p>
+    <p>En ambos modos, el <strong>precio corre siempre antes del enrich</strong>. Por eso, en el incidente del 22 de julio de 2026 (sección 06), los precios se aplicaron correctamente aunque el enrich generara errores de saturación: eran pasos distintos, y el que falló fue el segundo.</p>
+  </div>
+
+  <!-- ===================== 05 ===================== -->
+  <h2 class="sec"><span class="num">05</span>El triage: <code>classifyRunIntent</code></h2>
+  <p class="sec-lead measure">Antes de correr cualquier STEP, una función pura mira la corrida completa y decide qué tipo de corrida es.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — triage médico</p>
+    <p><code>classifyRunIntent</code> es el <strong>triage</strong> de la corrida: antes de tratar a los miles de PN, el sistema los clasifica en un vistazo — ¿esto es solo un cambio de precio, un ajuste de línea, un enriquecimiento completo, o un alta? — y el tratamiento que sigue (qué pasos corren, qué atajos se habilitan) depende de esa clasificación, no al revés.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Clasificación</th><th>Condición</th><th>Efecto</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill" style="background:#16a34a">💲 Solo precio</span></td><td>Trae precio, cero enriquecimiento, y todos los PN ya existen.</td><td>Habilita el carril express (sección 06).</td></tr>
+        <tr><td><span class="pill" style="background:#2563eb">✏️ Ajuste de línea</span></td><td>Trae enriquecimiento pero <strong>no</strong> trae precio.</td><td>Pipeline completo.</td></tr>
+        <tr><td><span class="pill" style="background:#7c3aed">📝 Enriquecimiento</span></td><td>Trae enriquecimiento, con o sin precio.</td><td>Pipeline completo.</td></tr>
+        <tr><td><span class="pill" style="background:#64748b">➕ Alta</span></td><td>Ni precio ni enriquecimiento (típico de PN nuevos sin más datos).</td><td>Pipeline completo.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>El resultado se muestra como <strong>badge en el preview</strong>, antes de que el operador confirme ejecutar: es la primera línea de defensa contra sorpresas. Si el badge no coincide con lo que el operador esperaba cargar, es la señal de revisar el CSV antes de seguir.</p>
+
+  <!-- ===================== 06 ===================== -->
+  <h2 class="sec"><span class="num">06</span>El carril express: fast-path SOLO_PRECIO</h2>
+  <p class="sec-lead measure">Cuando una corrida completa se clasifica como solo-precio, el applet puede saltarse el paso más caro y más riesgoso del pipeline.</p>
+
+  <p><strong>El problema que resuelve.</strong> El STEP 6 (enrich) hace un <code>SavePartNumber</code> por <strong>cada PN</strong>, aunque no haya nada nuevo que aplicarle. En una corrida de miles de PN eso son miles de round-trips — lento — y <code>SavePartNumber</code> hace <strong>REPLACE</strong> de arrays: un valor vacío mandado por accidente borra lo que ya existía — riesgoso. El carril express salta el STEP 6 completo cuando la corrida entera se clasificó como <code>SOLO_PRECIO</code>.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — carril express de aduana</p>
+    <p>Es el <strong>carril express de aduana</strong> ("nada que declarar más que el precio"): saltas abrir la maleta completa en cada uno de los 8,000 pasajeros. Pero un solo PN nuevo, o una sola fila con enriquecimiento real, manda <strong>TODA la corrida</strong> a la fila completa — es un invariante de seguridad, no una excepción que se pueda forzar por accidente.</p>
+  </div>
+
+  <div class="callout danger">
+    <p class="ct">Incidente — 22 de julio de 2026</p>
+    <p>Una carga real de <strong>8,238 PN de solo-precio</strong> no activó el carril express y corrió el STEP 6 completo. Consecuencia: <strong>22 errores HTTP 429</strong> (saturación de Steelhead por la ráfaga de <code>SavePartNumber</code> innecesarios) y la <strong>desactivación silenciosa</strong> de "Validación 1er recibo" en los PN que la tenían. Causa raíz: la macro "Limpiar Datos" de la plantilla deja la columna <strong>Validación = F</strong> en todas las filas, y esa "F" se interpretó como un cambio real de intención del operador — así que el atajo nunca se activaba en cargas hechas con la plantilla estándar.</p>
+  </div>
+
+  <p>El fix introdujo un patrón de <strong>3 estados</strong>. En vez de decidir solo "sí atajo / no atajo", la decisión distingue qué tan real es la señal de la columna Validación en la corrida completa:</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Estado</th><th>Cuándo</th><th>Qué pasa</th></tr></thead>
+      <tbody>
+        <tr><td><code>FASTPATH</code></td><td>Sin ninguna señal de Validación (columna vacía) — y se cumplen las demás condiciones de solo-precio.</td><td>Salta el STEP 6 directo, sin preguntar.</td></tr>
+        <tr><td><code>ASK</code></td><td>Alguna fila trae Validación = F — la "F" que deja la plantilla al correr "Limpiar Datos" (ambigua: ¿desactivación real o residuo de plantilla?).</td><td>Modal <strong>"⚡ ¿Fast-path de solo precio?"</strong> pregunta al operador antes de escribir nada.</td></tr>
+        <tr><td><code>FULL</code></td><td>Alguna fila activa Validación explícitamente (= verdadero), o hay enriquecimiento de línea real, o algún PN es nuevo, o falta el precio.</td><td>Pipeline completo — invariantes de seguridad, no se pueden saltar.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 900 480" role="img" aria-label="Árbol de decisión FASTPATH, ASK o FULL para el carril express de solo-precio">
+      <defs>
+        <marker id="dB-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--steel)"/></marker>
+      </defs>
+      <!-- D1 -->
+      <rect x="320" y="18" width="290" height="72" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="465" y="46" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">¿Enrich real, PN nuevo,</text>
+      <text x="465" y="63" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">o falta el precio?</text>
+      <text x="465" y="80" text-anchor="middle" class="svg-mut" font-size="9">(en CUALQUIER fila de la corrida)</text>
+      <line x1="610" y1="54" x2="648" y2="54" stroke="var(--steel)" stroke-width="2" marker-end="url(#dB-arrow)"/>
+      <text x="628" y="46" text-anchor="middle" class="svg-mut" font-size="10" font-weight="700">SÍ</text>
+      <rect x="650" y="18" width="220" height="72" rx="10" fill="var(--danger-wash)" stroke="var(--danger)"/>
+      <text x="760" y="48" text-anchor="middle" class="svg-t" font-size="13" font-weight="800" fill="var(--danger)">FULL</text>
+      <text x="760" y="66" text-anchor="middle" class="svg-mut" font-size="10">pipeline completo</text>
+      <line x1="465" y1="90" x2="465" y2="128" stroke="var(--steel)" stroke-width="2" marker-end="url(#dB-arrow)"/>
+      <text x="483" y="112" class="svg-mut" font-size="10" font-weight="700">NO</text>
+
+      <!-- D2 -->
+      <rect x="320" y="130" width="290" height="72" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="465" y="158" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">¿Algún renglón activa</text>
+      <text x="465" y="175" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Validación (= verdadero)?</text>
+      <text x="465" y="192" text-anchor="middle" class="svg-mut" font-size="9">activación explícita del operador</text>
+      <line x1="610" y1="166" x2="648" y2="166" stroke="var(--steel)" stroke-width="2" marker-end="url(#dB-arrow)"/>
+      <text x="628" y="158" text-anchor="middle" class="svg-mut" font-size="10" font-weight="700">SÍ</text>
+      <rect x="650" y="130" width="220" height="72" rx="10" fill="var(--danger-wash)" stroke="var(--danger)"/>
+      <text x="760" y="160" text-anchor="middle" class="svg-t" font-size="13" font-weight="800" fill="var(--danger)">FULL</text>
+      <text x="760" y="178" text-anchor="middle" class="svg-mut" font-size="10">no saltar la activación</text>
+      <line x1="465" y1="202" x2="465" y2="240" stroke="var(--steel)" stroke-width="2" marker-end="url(#dB-arrow)"/>
+      <text x="483" y="224" class="svg-mut" font-size="10" font-weight="700">NO</text>
+
+      <!-- D3 -->
+      <rect x="320" y="242" width="290" height="72" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="465" y="270" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">¿Algún renglón trae</text>
+      <text x="465" y="287" text-anchor="middle" class="svg-t" font-size="12" font-weight="700">Validación = F (plantilla)?</text>
+      <text x="465" y="304" text-anchor="middle" class="svg-mut" font-size="9">la "F" que deja "Limpiar Datos"</text>
+      <line x1="610" y1="278" x2="648" y2="278" stroke="var(--steel)" stroke-width="2" marker-end="url(#dB-arrow)"/>
+      <text x="628" y="270" text-anchor="middle" class="svg-mut" font-size="10" font-weight="700">SÍ</text>
+      <rect x="650" y="242" width="220" height="72" rx="10" fill="var(--warn-wash)" stroke="var(--warn)"/>
+      <text x="760" y="272" text-anchor="middle" class="svg-t" font-size="13" font-weight="800" fill="var(--warn)">ASK</text>
+      <text x="760" y="290" text-anchor="middle" class="svg-mut" font-size="10">modal ⚡ pregunta antes de correr</text>
+      <line x1="465" y1="314" x2="465" y2="352" stroke="var(--steel)" stroke-width="2" marker-end="url(#dB-arrow)"/>
+      <text x="483" y="336" class="svg-mut" font-size="10" font-weight="700">NO</text>
+
+      <!-- FASTPATH -->
+      <rect x="320" y="354" width="290" height="72" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="465" y="386" text-anchor="middle" class="svg-t" font-size="14" font-weight="800" fill="var(--accent-ink)">FASTPATH</text>
+      <text x="465" y="404" text-anchor="middle" class="svg-mut" font-size="10">salta STEP 6 directo, sin preguntar</text>
+      <text x="465" y="418" text-anchor="middle" class="svg-mut" font-size="9">(columna Validación vacía = sin señal)</text>
+    </svg>
+    <figcaption>Guard-clauses en cadena: cualquier señal de riesgo real fuerza FULL de inmediato; solo la ambigüedad de la plantilla pasa por ASK.</figcaption>
+  </figure>
+
+  <p>El fix agregó 10 casos nuevos al golden test del fast-path (de 13 a <strong>23 casos</strong>), cubriendo los tres estados y sus combinaciones, sobre la suite repo-wide de 779/779. La decisión de producto fue mantener el modal de confirmación por corrida en vez de una activación silenciosa: conserva el control del operador sin cambiar el comportamiento a sus espaldas.</p>
+
+  <!-- ===================== 07 ===================== -->
+  <h2 class="sec"><span class="num">07</span>La plantilla Excel</h2>
+  <p class="sec-lead measure">Un formulario controlado, no una hoja libre: los dropdowns vienen de los catálogos reales de Steelhead, y una macro exporta la hoja a CSV.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Grupo de columnas</th><th>Ejemplos</th></tr></thead>
+      <tbody>
+        <tr><td>Identificación</td><td>Id SH, Cliente, PN</td></tr>
+        <tr><td>Flags de estado</td><td>Archivado, Validación, Forzar, Archivar</td></tr>
+        <tr><td>Precio</td><td>Precio, Unidad, Divisa, Precio default (V/F)</td></tr>
+        <tr><td>Clasificación de línea</td><td>Línea, Metal base, Proceso, hasta 5 Etiquetas</td></tr>
+        <tr><td>Specs</td><td>Specs y sus parámetros</td></tr>
+        <tr><td>Unidades y dimensiones</td><td>Conversiones de unidad, dimensiones físicas</td></tr>
+        <tr><td>Racks</td><td>Tipo y cantidad por rack</td></tr>
+        <tr><td>Predictivos</td><td>Uso predictivo de material</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="measure" style="color:var(--faint);font-size:.88rem">La plantilla vigente trae ~73 columnas en total; la tabla agrupa por función, no columna por columna.</p>
+
+  <h3 class="sub">Qué es "Validación"</h3>
+  <p>Es el opt-in de <strong>"Validación de 1er recibo"</strong> (el campo interno se llama <code>optInOuts</code>). Steelhead lo guarda como una lista que se <strong>reemplaza completa</strong> en cada <code>SavePartNumber</code> — mandar "vacío" borra la que ya existía en el PN.</p>
+
+  <h3 class="sub">Qué es "Limpiar Datos"</h3>
+  <p>Es la macro que resetea la hoja preservando fórmulas y repone valores por defecto de cada combo: Divisa = USD, Cantidad = 1, Precio default = V, entre otros — pensada para dejar la plantilla lista para una carga nueva sin arrastrar datos de la anterior.</p>
+
+  <div class="callout warn">
+    <p class="ct">Lección repetida</p>
+    <p>Cuando una columna de la plantilla trae un <strong>valor por defecto</strong> (Precio default = V, o Validación = F) en vez de quedar vacía, ese valor puede <strong>contaminar la clasificación automática</strong> de la intención de la corrida — el sistema no puede distinguir "el operador lo quiso así" de "así lo dejó la macro". Ya pasó dos veces con columnas distintas. La solución nunca ha sido automatizar a ciegas: es <strong>degradar a preguntar</strong> cuando el valor es ambiguo, en vez de adivinar.</p>
+  </div>
+
+  <!-- ===================== 08 ===================== -->
+  <h2 class="sec"><span class="num">08</span>Lotes de 20 y reintentos ante saturación</h2>
+  <p class="sec-lead measure">Miles de PN no se mandan de un jalón: van en grupos, y cada grupo sabe qué hacer si Steelhead responde "espera".</p>
+
+  <p>Los precios y las líneas se mandan a Steelhead en grupos de <strong>20</strong> (<code>SaveManyPNP</code>), una llamada por grupo, con progreso visible por lote en el panel. Si un lote falla, se registra en el reporte y el resto de la corrida sigue — un lote roto no detiene los demás.</p>
+
+  <div class="callout meta">
+    <p class="ct">Analogía — tocar la puerta</p>
+    <p>El reintento es <strong>como tocar una puerta</strong>: si te dicen "espera, estamos saturados" (HTTP 429), esperas 1s, luego 2s, luego 4s, y vuelves a tocar con cortesía —con algo de aleatoriedad para no chocar con los otros procesos que están tocando al mismo tiempo—. Pero si te dicen <strong>"ese registro ya existe"</strong> (error de constraint), no insistes: ya está, no hay nada que reintentar.</p>
+  </div>
+
+  <p>En números: hasta 3–4 reintentos con backoff exponencial <strong>1s → 2s → 4s (→ 8s)</strong> y jitter de ±25% sobre cada espera. Solo se reintentan errores de saturación o de red (429, 502, 503, 504, timeouts); nunca se reintentan errores de <em>constraint</em> (el registro ya existe) — esos son idempotentes por diseño, insistir no cambia el resultado.</p>
+
+  <p>Dos corridas reales confirman por qué el reintento importa: una de 20,831 PN (2026-07-15) tuvo 18 de 19 errores por saturación en un punto del pipeline que todavía no tenía reintento — se corrigió agregándolo. La del incidente de 8,238 PN (2026-07-22, sección 06) generó 22 errores 429 precisamente por la ráfaga de llamadas que el carril express estaba pensado para evitar.</p>
+
+  <!-- ===================== 09 ===================== -->
+  <h2 class="sec"><span class="num">09</span>Por qué es el más complejo</h2>
+  <p class="sec-lead measure">Cinco factores se combinan en un solo applet, y ninguno se puede quitar sin perder seguridad.</p>
+
+  <ul>
+    <li>Clasifica intención y hace <strong>matching de identidad</strong> (¿esta fila es un PN nuevo o uno existente?) antes de escribir una sola línea.</li>
+    <li>Habla con una API que hace <strong>REEMPLAZO</strong>, no fusión: cualquier omisión en el payload puede borrar datos existentes en silencio.</li>
+    <li>Corre contra <strong>rate-limiting real</strong> del ERP — miles de llamadas necesitan ritmo, no solo velocidad.</li>
+    <li>Sostiene corridas de miles de PN que duran minutos, con <strong>reanudación</strong> tras crash y gestión activa de memoria del navegador.</li>
+    <li>Ejecuta una <strong>máquina de estados de 9 pasos</strong> (o 5, según el modo) con checkpoints intermedios.</li>
+    <li>Y encima de todo eso, aplica una política simple pero exigente: <strong>ante la ambigüedad, pregunta — no adivines.</strong></li>
+  </ul>
+
+  <div class="roles three">
+    <div class="role ku">
+      <div class="who">Para el Key User</div>
+      <p>La plantilla es un formulario, no una hoja libre: respeta los dropdowns y deja vacías las columnas que no vas a tocar (vacío = preservar; <code>-</code> = borrar; un dato = reemplazar). El badge del preview te dice qué intención detectó el sistema — si no coincide con lo que esperabas cargar, para y revisa el CSV antes de ejecutar. Si aparece el modal "⚡ ¿Fast-path de solo precio?", es porque la corrida es ambigua: tu elección decide si corre rápido o completo. Y si algo falla a medio camino, el Historial de Cargas tiene el CSV de corrección listo para descargar.</p>
+    </div>
+    <div class="role ti">
+      <div class="who">Para el Jefe de TI</div>
+      <p>Pipeline de 9 pasos (5 en SOLO_PN) sobre una API con semántica REPLACE y rate-limiting real, con checkpoints de reanudación y troceo por memoria en corridas largas. La complejidad está concentrada en un orquestador que sí ejecuta contra el ERP, respaldado por cinco módulos puros de decisión (matching, payload, auditoría, batching, clasificación) cubiertos por golden tests. La política de diseño constante: cualquier señal ambigua de la plantilla degrada a preguntarle al operador en vez de asumir — nunca se automatiza silenciosamente sobre un caso incierto.</p>
+    </div>
+    <div class="role impact">
+      <div class="who">Impacto para la operación</div>
+      <p>Cada capa de complejidad existe porque ya causó un incidente real sin ella: precios pisados sin querer, validaciones borradas en silencio, corridas saturando el ERP. El resultado es un applet que puede procesar miles de PN sin supervisión línea por línea, y que cuando algo sale mal, lo dice —con un reporte legible, no con datos corrompidos en silencio—.</p>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">De dónde salen estas cifras</p>
+    <p>Los conteos (~73 columnas, 779 pruebas repo-wide, 23 golden tests del fast-path, lotes de 20, hasta 4 reintentos) son del corte de julio de 2026 y <strong>cambian con el tiempo</strong> — la suite de pruebas en particular solo crece. Este documento es perenne en sus <em>conceptos</em> (el triage, el carril express, la semántica REPLACE, la política de preguntar ante la ambigüedad); para cifras exactas vigentes, consulta al administrador.</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Ficha profunda: Carga Masiva · SteelheadAutomator</div>
+    <div>Conceptos estables · cifras al corte de jul 2026</div>
+  </footer>
+
+</div>
+</body>
+</html>
