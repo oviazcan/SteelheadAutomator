@@ -13,7 +13,7 @@
 > (`git log gh-pages --oneline -- scripts/auto-router*.js`) pero sin confirmación de run real
 > registrada en esta bitácora — ver §"Deploys posteriores (confirmado gh-pages)".
 > Config más reciente confirmado en gh-pages a 2026-07-15: **1.7.10** (`auto-router-panel.js`, dark mode).
-> Pendiente: Fase 0 (fidelidad opcional del test), validación en vivo de los deploys 1.7.5-1.7.10.
+> Validación en vivo de los deploys 1.7.5-1.7.10: **✅ confirmada por el operador 2026-07-22**. Pendiente (opcional): Fase 0 (fidelidad del test).
 
 ## Lección crítica: load-before-save (fix 1.6.88)
 El re-ruteo "no se grababa" si el modal de ruteo nativo se cerraba antes de aplicar. **Causa raíz**

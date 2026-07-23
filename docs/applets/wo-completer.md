@@ -1,6 +1,6 @@
 # Bitácora — `wo-completer` (Completar / Descompletar OTs)
 
-**Versión actual:** 0.1.0 (el applet no tiene constante `VERSION` interna; el estado de deploy se referencia por versión de `config.json`). **Deployado** en config `1.7.38` el 2026-06-30 — app + 3 hashes + 2 scripts en vivo y verificados. **Fix posterior en config `1.7.39`** (2026-06-30, deploy `139b450`, commit feature `e0a83c5`): **pendiente run real**
+**Versión actual:** 0.1.0 (el applet no tiene constante `VERSION` interna; el estado de deploy se referencia por versión de `config.json`). **Deployado** en config `1.7.38` el 2026-06-30 — app + 3 hashes + 2 scripts en vivo y verificados. **Fix posterior en config `1.7.39`** (2026-06-30, deploy `139b450`, commit feature `e0a83c5`): **✅ run real VALIDADO 2026-07-22** (confirmación del operador)
 **Categoría:** Órdenes de Trabajo · **Popup** (`fn: WOCompleter.open`, sin `autoInject`)
 **Diseño:** [`docs/superpowers/specs/2026-06-30-wo-completer-design.md`](../superpowers/specs/2026-06-30-wo-completer-design.md)
 

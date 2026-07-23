@@ -158,7 +158,7 @@ El único riesgo es duplicar timers/observers en re-inyección → cubierto por:
 tools/deploy.sh "feat(report-regen): botón de regeneración de reportes en header (v0.1.0)" --check report-regen
 ```
 
-## Plan de validación en vivo (PENDIENTE)
+## Plan de validación en vivo — ✅ COMPLETADO (run real OK operador 2026-07-17, confirmado 2026-07-22)
 
 1. **Permiso:** confirmar que el botón aparece para un usuario con `MANAGE_REPORTING` y NO aparece para
    uno sin él. Validar que `CurrentUser.currentManagedPermissions` sigue devolviendo el array (el control

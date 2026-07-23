@@ -59,7 +59,7 @@ Valores string entre comillas con escape `\"`/`\\`. Parser: `SteelheadValeEngine
 ## Inferencia de línea/equipo
 Prioridad: (1) línea inferible del nombre del nodo raíz (`T\d{2,3}` → match contra equipos → dropdown **bloqueado** 🔒); (2) contexto del tablero (`WorkboardById`/headings/`localStorage`, prellenado editable); (3) selección manual. El equipo es **obligatorio** (botón "Cargar artículos" deshabilitado sin equipo + nodo + quien recoge).
 
-## Plan de validación en vivo (pendiente — run real)
+## Plan de validación en vivo — ✅ COMPLETADO (run real OK operador 2026-07-17, confirmado 2026-07-22)
 1. Deploy: toca `config.json` (app + hashes) → **`deploy.sh` desde `main`** (NO `wb-deploy.sh`), coordinando que no haya WIP ajeno en `remote/` de main. `tools/deploy-status.sh` antes/después.
 2. FAB 📦 aparece en `/Domains/344/Workboards/*`, `…/WorkOrders/*` y (confirmar segmentos exactos) Mantenimiento / Tableros de sensores / Inventario; ajustar `ALLOWED_PATH_RE` si difieren.
 3. Panel: dropdown lista las raíces de surtimiento; al elegir una con línea inferible el equipo queda bloqueado; sin equipo+nodo+recoge, "Cargar artículos" deshabilitado.

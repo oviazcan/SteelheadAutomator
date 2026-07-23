@@ -57,7 +57,7 @@ Cerrado el pendiente "Segunda vista de creación de OV". El usuario indicó la p
 
 **Módulo puro nuevo** `create-order-autofill-core.js` (`window.CreateOrderAutofillCore` / `module.exports`): `normalizeForMatch`, `cleanCustomerName`, `extractCustomerIdInDomain`, `pickCustomerFromSingleValues`, `scoreOptionMatch`. Golden test `tools/test/create-order-autofill-core.test.js` (9 casos, incluye el caso Divisa `"USD"` vs `"USD - Dólar americano"`). El core va en `config.apps[].scripts` ANTES del applet.
 
-**Validación:** core 9/9 verde + réplica del singleValue real del modal → `pickCustomerFromSingleValues` saca `idInDomain: 10`. Deployado a gh-pages (config **1.7.59**, verificado en vivo byte-a-byte + `create-order-autofill-core.js` publicado HTTP 200). **Pendiente:** corrida real end-to-end en el modal (que el operador confirme que se llenan Razón Social + Divisa).
+**Validación:** core 9/9 verde + réplica del singleValue real del modal → `pickCustomerFromSingleValues` saca `idInDomain: 10`. Deployado a gh-pages (config **1.7.59**, verificado en vivo byte-a-byte + `create-order-autofill-core.js` publicado HTTP 200). **✅ Corrida real end-to-end VALIDADA** (operador 2026-07-17, confirmado 2026-07-22): se llenan Razón Social + Divisa.
 
 **Safari/iPad:** el applet ya estaba en el bundle; el rebuild tomó el core nuevo (`tools/build-safari.sh`, bundle `0.5.0 → 0.5.1`, build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático). **2026-07-09 (bundle 0.5.3):** el rebuild tomó también el cambio de la 2ª pantalla SalesOrders (gate URL + heading bilingüe); mismo requisito de recompilar en Xcode.
 

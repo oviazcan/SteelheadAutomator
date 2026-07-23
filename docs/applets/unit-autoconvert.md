@@ -1,6 +1,6 @@
 # Applet: `unit-autoconvert` — Auto-conversión de Unidades
 
-**Versión actual:** 0.1.0 (código completo; **pendiente validación en vivo**)
+**Versión actual:** 0.1.0 (código completo; **✅ validado en vivo 2026-07-22**, confirmación del operador)
 **Archivo:** `remote/scripts/unit-autoconvert.js` (+ `unit-autoconvert-core.js` puro, golden tests en `tools/test/unit-autoconvert-core.test.js`)
 **Global:** `window.UnitAutoConvert` · estado por sesión en `window.__saUac`
 

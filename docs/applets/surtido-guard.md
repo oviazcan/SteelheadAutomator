@@ -1,6 +1,6 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.2.0** (DEPLOYADO 2026-07-20: config 1.7.160, tag `v1.7.160`, commit `1382d33`; `sa-sg-orange` verificado EN VIVO en github.io. Bundle Safari v0.5.8 lo hornea — commit `172947c`, pendiente recompilar Xcode). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓; el bloqueo aparece en vivo. v0.2.0 (2026-07-20): marcado INVERTIDO — NARANJA en las NO movibles (antes verde en las movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda anti-falsa-alarma con el set de la API. Pendiente: validación fina del bloqueo (falsos positivos prog/no-prog), drag silencioso y del naranja en vivo**.
+> Versión: **0.2.0** (DEPLOYADO 2026-07-20: config 1.7.160, tag `v1.7.160`, commit `1382d33`; `sa-sg-orange` verificado EN VIVO en github.io. Bundle Safari v0.5.8 lo hornea — commit `172947c`, pendiente recompilar Xcode). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓; el bloqueo aparece en vivo. v0.2.0 (2026-07-20): marcado INVERTIDO — NARANJA en las NO movibles (antes verde en las movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda anti-falsa-alarma con el set de la API. **✅ VALIDADO en vivo 2026-07-22** (confirmación del operador): bloqueo fino (sin falsos positivos prog/no-prog), drag silencioso y marcado naranja**.
 > Spec: [`docs/superpowers/specs/2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
 > Plan: [`docs/superpowers/plans/2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
 
@@ -60,7 +60,7 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 - `remote/scripts/surtido-guard.js` — glue: interceptor, capa modal, marcado verde, toggle, memory hardening.
 - `remote/config.json` — app `surtido-guard` (`autoInject`, scripts, toggle action).
 
-## Plan de validación en vivo (pendiente)
+## Plan de validación en vivo — ✅ COMPLETADO 2026-07-22 (confirmación del operador)
 1. **Mapa**: en el board, `window.SurtidoGuard._getState()` debe mostrar `scheduled`>0 y `surtido` con el/los recipeNodeId.
 2. **Bloqueo modal**: abrir ⇄ de una WO **no programada** + MOVER → no se mueve, toast rojo, botones grises.
    Una WO **programada** → se mueve normal (cuidar falsos positivos).
@@ -115,8 +115,8 @@ interceptor captura el nodo de surtido y **bloquea mover una pieza no programada
 guía (warning de `world`; error "Embedded binary's bundle identifier is not prefixed…" → la extensión debe ser
 `<bundleId-app>.Extension`).
 
-**Pendiente de validación (crítico, descarta falsos positivos):** probar una pieza **PROGRAMADA** cuando haya
-una en el board → debe **moverse normal** (no bloquearse). Ese test confirma además que `GetRelatedScheduleData`
+**✅ Validado en vivo 2026-07-22 (confirmación del operador) — sin falsos positivos:** una pieza **PROGRAMADA** en el board
+se **mueve normal** (no se bloquea). El run confirmó además que `GetRelatedScheduleData`
 sí se captura y puebla `scheduled` (hoy no se pudo distinguir "vacío correcto" de "no capturado"). Vinculado al
 riesgo del **fail-safe silencioso**: el mapa de programadas (`buildScheduledAccountSet`) devuelve `Set` vacío
 sin error si el shape cambia → pendiente telemetría/alerta cuando el set sale vacío en un board de surtido.
@@ -169,5 +169,5 @@ malo", revisa el failure mode del anclaje: resaltar la excepción amplifica los 
 - **HTML fino de la tarjeta**: el marcado verde usa heurística (sube desde "Tareas Programadas:" hasta un
   ancestro con "Proceso:" + "WO:"); capturar el `outerHTML` de una tarjeta del step para un selector exacto
   y, si se quiere, el 🔒 en no programadas.
-- **Confirmar** que el drag silencioso efectivamente commitea por `CreateManyPartsTransfersChecked` (lo más
-  probable; validar en vivo).
+- **Confirmar** que el drag silencioso efectivamente commitea por `CreateManyPartsTransfersChecked`
+  (**confirmado en vivo 2026-07-22**).

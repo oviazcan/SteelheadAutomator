@@ -1,6 +1,6 @@
 # Applet: `load-calculator` — Calculadora de Piezas por Carga
 
-**Versión actual:** 0.2.0 (**Fase 1 validada en vivo** + **Fase 2a/2b**: calculadora en el modal de Rack Types. F2a: intercepta `CreateEditPartsPerRackTypeQuery`, resuelve línea→estación→params+barriles, dims del Geometry Type, área DMK; al elegir Rack Type calcula (BARRIL/RACK) y autollenan "Parts Per Rack". F2b: **Persistir en el PN** = `DatosPlanificacion.PiezasCarga` + Control de Cambios vía **`UpdatePartNumber {id, customInputs}`** (input PARCIAL, no toca acabados/specs/dims/precios — evita el riesgo de `SavePartNumber` completo), con confirmación previa. **Pendiente validación en vivo de F2a/F2b.**)
+**Versión actual:** 0.2.0 (**Fase 1 validada en vivo** + **Fase 2a/2b**: calculadora en el modal de Rack Types. F2a: intercepta `CreateEditPartsPerRackTypeQuery`, resuelve línea→estación→params+barriles, dims del Geometry Type, área DMK; al elegir Rack Type calcula (BARRIL/RACK) y autollenan "Parts Per Rack". F2b: **Persistir en el PN** = `DatosPlanificacion.PiezasCarga` + Control de Cambios vía **`UpdatePartNumber {id, customInputs}`** (input PARCIAL, no toca acabados/specs/dims/precios — evita el riesgo de `SavePartNumber` completo), con confirmación previa. **✅ F2a/F2b VALIDADO en vivo 2026-07-22** (confirmación del operador).)
 **Archivos:** `remote/scripts/load-calculator.js` (configurador, popup) · `remote/scripts/load-calculator-modal.js` (F2a/F2b, autoInject) · `remote/scripts/load-calculator-engine.js` (motor puro) · `remote/scripts/load-calculator-stations.js` (núcleo puro)
 **Tests:** `tools/test/load-calculator-engine.test.js` (12) · `tools/test/load-calculator-stations.test.js` (18) — 30 verdes
 **Global:** `window.LoadCalculator` (`openStationConfig`) · `window.LoadCalculatorEngine` · `window.LoadCalculatorStations` · `window.LoadCalculatorModal` (auto)
@@ -65,7 +65,7 @@ Geometría (fase 2, ya en config): `geometryGenericaId:831`, `geometryDimensions
 3. **RMW no-destructivo** tanto en schema como en customInputs (REPLACE total en SH).
 4. **Bulk por línea = N×GetStation** (para leer cada `customInputs` existente; `AllStations` no trae customInputs). Aceptable para datos maestros; fase 2 podría usar un GetStation slim.
 
-## Plan de validación (pendiente — en vivo)
+## Plan de validación en vivo — ✅ COMPLETADO 2026-07-22 (F1 + F2a/F2b, confirmación del operador)
 1. Abrir el popup → "Configurar Estaciones". El panel lista estaciones y detecta si el schema tiene los campos.
 2. Clic "Extender esquema" → verificar en SH que el schema de estación ahora tiene los 10 campos (sin perder Capacidad/DivisaManoObra/NombreAnterior).
 3. Modo **estación**: elegir una, capturar params, Guardar → `GetStation` confirma `customInputs` con los nuevos valores + los previos intactos.
