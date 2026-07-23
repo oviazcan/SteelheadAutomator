@@ -1,13 +1,15 @@
 # wo-listing-columns — Columnas en el listado de Órdenes de Trabajo
 
-**Versión:** 0.3.0 — columnas **al INICIO** de la tabla (a pedido del usuario, distinto de pn-specs). Core compartido `wo-schedule-core` 18/18 golden.
+**Versión:** 0.4.0 — columna PN con **etiquetas como chips**; columnas **al INICIO** de la tabla. Core compartido `wo-schedule-core` 21/21 golden.
 **Categoría:** Órdenes de Trabajo · **autoInject:true** · ruta: `/Domains/<d>/WorkOrders` (index, NO la ficha `/WorkOrders/:id`)
 
 ## Qué hace
 
 En el listado `https://app.gosteelhead.com/Domains/<d>/WorkOrders`, agrega **dos columnas opt-in** (dos toggles en una barra dark-mode antes de la tabla; también en el popup). **A diferencia de `pn-specs-column` (que van al final), estas van al INICIO** (primeras columnas, izquierda) — `moveToFront()` las mantiene como las primeras celdas en cada sync (reordena solo si hace falta, sin churn del observer):
 
-- **🔩 "Número de Parte"** — cada PN como **link** a su ficha (`/PartNumbers/<id>`, pestaña nueva). Soporta **N PNs** concatenados (hoy 1 por OT).
+- **🔩 "Número de Parte"** — cada PN como **link** a su ficha (`/PartNumbers/<id>`, pestaña nueva) + sus **etiquetas como chips** (con el color real de cada label). Soporta **N PNs** concatenados (hoy 1 por OT).
+  - Chips vía **2º query LIGERO** `GetPartNumberForPartNumberPage({partNumberId})` (hash `34ed9de7…`; `partNumberLabelsByPartNumberId.nodes[].labelByLabelId.{name,color}`, sin archivadas). Pool aparte + repintado al resolver.
+  - **Descripción DESCARTADA (decisión del usuario):** `descriptionMarkdown` solo vive en `GetPartNumber` (504 campos → mucho peso). Se priorizan los chips con la query ligera. `pickTextColor` da texto legible sobre cualquier color de label.
 - **📅 "Programación"** — **estación · fecha/hora local · estado** de la tarea agendada de la OT.
 
 Pedido por producción (2026-07-23): ver el PN directo en el listado (con link a su ficha "como cuando entras a la ficha individual") y la programación de cada OT.

@@ -90,6 +90,43 @@ test('extractWorkOrderGlobalId: id global desde la respuesta de PN', () => {
   assert.equal(Core.extractWorkOrderGlobalId({}), null);
 });
 
+// extractPartNumberDetail: labels (con color, sin archivadas) + descripción.
+// Shape canónico partNumberById.partNumberLabelsByPartNumberId.nodes[].labelByLabelId.{name,color}
+// (igual en GetPartNumberForPartNumberPage —ligera, sin descriptionMarkdown— y GetPartNumber —pesada—).
+test('extractPartNumberDetail: labels activos con color + descripción', () => {
+  const heavy = {
+    partNumberById: {
+      descriptionMarkdown: 'CONECTOR',
+      partNumberLabelsByPartNumberId: {
+        nodes: [
+          { archivedAt: null, labelByLabelId: { name: 'Industrial', color: '#1a237e' } },
+          { archivedAt: null, labelByLabelId: { name: 'SRG', color: '#827717' } },
+          { archivedAt: '2026-01-01T00:00:00Z', labelByLabelId: { name: 'Vieja', color: '#000' } }, // archivada → fuera
+          { archivedAt: null, labelByLabelId: { name: 'Industrial', color: '#1a237e' } },            // dup → colapsa
+        ],
+      },
+    },
+  };
+  const d = Core.extractPartNumberDetail(heavy);
+  assert.equal(d.description, 'CONECTOR');
+  assert.deepEqual(d.labels, [{ name: 'Industrial', color: '#1a237e' }, { name: 'SRG', color: '#827717' }]);
+});
+
+test('extractPartNumberDetail: query LIGERA sin descripción → description vacía', () => {
+  const light = { data: { partNumberById: {
+    id: 3631582, name: 'X',
+    partNumberLabelsByPartNumberId: { nodes: [{ labelByLabelId: { name: 'Decapado', color: '#795548' } }] },
+  } } };
+  const d = Core.extractPartNumberDetail(light);
+  assert.equal(d.description, '');
+  assert.deepEqual(d.labels, [{ name: 'Decapado', color: '#795548' }]);
+});
+
+test('extractPartNumberDetail: fail-safe', () => {
+  assert.deepEqual(Core.extractPartNumberDetail(null), { description: '', labels: [] });
+  assert.deepEqual(Core.extractPartNumberDetail({ partNumberById: {} }), { description: '', labels: [] });
+});
+
 // ── Programación ────────────────────────────────────────────────────────────
 // Fixture fiel al shape de GetRelatedScheduleData (surtido-guard-capture2.json).
 const SCHEDULE = {

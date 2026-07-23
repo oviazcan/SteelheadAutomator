@@ -1345,6 +1345,22 @@
         "AllWorkboards"
       ]
     },
+    "partnumbers-detail": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        {
+          "goto": "/PartNumbers"
+        },
+        {
+          "clickFirst": "a[href*='/PartNumbers/']",
+          "hrefMatches": "/PartNumbers/\\d+"
+        }
+      ],
+      "captures": [
+        "GetPartNumberForPartNumberPage"
+      ]
+    },
     "workorders-detail": {
       "type": "query",
       "module": "WorkOrders",
