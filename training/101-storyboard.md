@@ -140,6 +140,7 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 - **Metáfora:** un **cerrajero automático** que nota que la llave ya no abre y deduce la nueva sin que
   muevas un dedo.
 - **Notas:** “Si quieren el detalle fino, hay una **ficha profunda** dedicada a esto.” (No profundizar aquí.)
+- **Human-in-the-loop (agregar como bullet extra o slide corta):** aclarar que Hash-Autopilot repara el **caso común** pero **no el 100%** — hay casos (rutas de captura no probadas, deprecaciones, objetos de prueba rotos, demasiadas rotaciones de golpe) donde **entra un humano**: recupera la nueva llave con el **escáner de Steelhead** y se la pasa a **Claude**, que hace el ajuste y lo despliega. (Ver el Runbook — recuperar hashes a mano.)
 
 ## Slide 9 — La seguridad: el sello de lacre
 
@@ -231,7 +232,7 @@ cómo seguir. Se sube de lo concreto (dolor del operador) a lo abstracto (arquit
 | Persisted query / hash | La llave que abre una puerta (operación) |
 | Rotación de hash (HTTP 400) | Steelhead cambia la cerradura; “esta llave ya no abre” |
 | Hash-Autopilot | Cerrajero automático que deduce la nueva llave |
-| Sentinela / captura-y-aborta | Maniquí “PRUEBA” que se pasa por caja y se anula antes de cobrar |
+| Centinela / captura-y-aborta | Maniquí “PRUEBA” que se pasa por caja y se anula antes de cobrar |
 | Firma ECDSA / KMS | Sello de lacre / holograma; llave en la bóveda de Google |
 | classifyRunIntent | Triage médico |
 | Fast-path SOLO_PRECIO | Carril express de aduana |
