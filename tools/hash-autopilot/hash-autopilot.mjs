@@ -126,7 +126,7 @@ async function main() {
   const wantOps = opsToCapture(validatorResult, SESSION_SENSITIVE);
   const plan0 = selectRoutes(wantOps, catalog);
   const staleMuts = staleMutations(validatorResult);
-  // Fase C: mutations stale con sentinela declarado (entidad con la op en _para/opsGroup + id real).
+  // Fase C: mutations stale con centinela declarado (entidad con la op en _para/opsGroup + id real).
   const sentinelsConfig = JSON.parse(readFileSync(join(__dirname, 'sentinels-config.json'), 'utf8'));
   const mutEntityType = (op) => {
     for (const [type, e] of Object.entries(sentinelsConfig.entities || {})) {
@@ -134,17 +134,17 @@ async function main() {
     }
     return null;
   };
-  // Mutations a capturar por ciclo sentinela: las enmascaradas (SIEMPRE — el validador
-  // las skipea, solo el sentinela las cubre) + las stale del validador (modo completo).
-  // Filtradas a las que tienen sentinela ACTIVO (id real ≠ 0); las de id:0 se omiten
-  // (andamiaje pendiente de que el usuario cree el objeto Sentinela).
+  // Mutations a capturar por ciclo centinela: las enmascaradas (SIEMPRE — el validador
+  // las skipea, solo el centinela las cubre) + las stale del validador (modo completo).
+  // Filtradas a las que tienen centinela ACTIVO (id real ≠ 0); las de id:0 se omiten
+  // (andamiaje pendiente de que el usuario cree el objeto Centinela).
   const capturableMuts = mutationsToCapture(validatorResult, MASKED_MUTATIONS, { maskedOnly: MASKED_ONLY })
     .filter((op) => mutEntityType(op));
   console.log(`Modo: ${MASKED_ONLY ? 'MASKED-ONLY (solo enmascaradas, sin gate)' : 'completo'}`);
   console.log(`Ops a capturar (${wantOps.length}): ${wantOps.join(', ')}`);
   console.log(`Rutas seleccionadas (${plan0.routes.length}): ${plan0.routes.map((r) => r.id).join(', ') || '(ninguna)'}`);
   if (plan0.uncovered.length) console.log(`⚠️ Queries stale SIN ruta en catálogo: ${plan0.uncovered.join(', ')} (Fase B)`);
-  if (staleMuts.length) console.log(`⚠️ Mutations stale (Fase C — ciclo sentinela): ${staleMuts.join(', ')}`);
+  if (staleMuts.length) console.log(`⚠️ Mutations stale (Fase C — ciclo centinela): ${staleMuts.join(', ')}`);
 
   // Ops que sabemos que aún NO tienen ruta (session-sensitive sin cobertura en el
   // catálogo) → hueco conocido pendiente de Fase B. Se loguean pero NO generan
@@ -193,8 +193,8 @@ async function main() {
     }
   }
 
-  // ── Fase C: capturar mutations stale vía ciclos sentinela headless ──────────
-  // Acumula el desenlace de cada ciclo para detectar SENTINELAS ROTOS/ARCHIVADOS
+  // ── Fase C: capturar mutations stale vía ciclos centinela headless ──────────
+  // Acumula el desenlace de cada ciclo para detectar CENTINELAS ROTOS/ARCHIVADOS
   // (identidad no verificada → antes abortaba en silencio; ahora alerta en el correo).
   const cycleOutcomes = [];
   if (capturableMuts.length) {
@@ -203,7 +203,7 @@ async function main() {
     const deps = makeDeps(sentinelsConfig, sink);
     // Reparar ciclos sucios de una corrida previa interrumpida ANTES de abrir nuevos.
     for (const rep of pendingRepairs(deps.readJournal())) {
-      console.log(`  ⚠️ ciclo sentinela sucio previo: ${rep.entityType}/${rep.op} — restaurando`);
+      console.log(`  ⚠️ ciclo centinela sucio previo: ${rep.entityType}/${rep.op} — restaurando`);
       try {
         await deps.doRestore(page, { sentinel: { entityType: rep.entityType } });
         deps.writeJournal(journalClose(deps.readJournal(), rep.entityType));
@@ -212,10 +212,10 @@ async function main() {
     for (const op of capturableMuts) {
       if (ONLY && op !== ONLY) continue;
       const entityType = mutEntityType(op);
-      if (DRY) { console.log(`→ (dry) ciclo mutation "${op}" sobre sentinela ${entityType} #${sentinelsConfig.entities[entityType].id}`); continue; }
+      if (DRY) { console.log(`→ (dry) ciclo mutation "${op}" sobre centinela ${entityType} #${sentinelsConfig.entities[entityType].id}`); continue; }
       const route = { captures: [op], sentinel: { entityType } };
       try {
-        console.log(`→ ciclo mutation "${op}" sobre sentinela ${entityType}`);
+        console.log(`→ ciclo mutation "${op}" sobre centinela ${entityType}`);
         const res = await runMutationCycle(page, route, sentinelsConfig, sink, deps);
         console.log(`   ${res.captured ? 'capturó ' + op : 'no capturó (' + (res.reason || 'sin hash') + ')'}`);
         cycleOutcomes.push({ ...res, op, entityType, sentinelId: sentinelsConfig.entities[entityType]?.id });
@@ -393,7 +393,7 @@ async function main() {
   const unconfirmedRows = notCapturedNew.filter((r) => gate.unconfirmed.includes(r.op));
   if (gate.falseAlarms.length) console.log(`  (falsas alarmas suprimidas — probe=vigente: ${gate.falseAlarms.join(', ')})`);
 
-  // Mutations stale que el ciclo sentinela NO resolvió (sin handler DOM, o el ciclo
+  // Mutations stale que el ciclo centinela NO resolvió (sin handler DOM, o el ciclo
   // no capturó el hash) → siguen requiriendo captura manual. Las que Fase C SÍ
   // capturó/deployó ya salen en "CORREGIDAS Y DEPLOYADAS" y NO deben reportarse
   // como pendientes (bug 2026-07-09: antes se listaban TODAS las staleMuts → el
@@ -423,7 +423,7 @@ async function main() {
     const appletsOf = (op) => appletsForOp(op, scriptSources, (knownOps[op] || {}).usedBy || '');
     const line = (op) => `   • ${formatOpLine(op, appletsOf(op))}`;
     const sec = [];
-    // Sentinela ROTO/ARCHIVADO (identidad no verificada en Fase C): un sentinela declarado
+    // Centinela ROTO/ARCHIVADO (identidad no verificada en Fase C): un centinela declarado
     // que quedó archivado hace abortar su ciclo en silencio. Alerta accionable (desarchivar).
     const sentinelBroken = classifyCycleOutcomes(cycleOutcomes).broken;
     const sentinelAlert = formatSentinelAlert(sentinelBroken);
@@ -466,7 +466,7 @@ async function main() {
       sec.push(`❌ QUERIES SIN RUTA (${uncoveredNew.length}) — stale sin ruta en route-catalog.json:\n${uncoveredNew.map((op) => line(op)).join('\n')}`);
     }
     if (pendingMuts.length) {
-      sec.push(`🔧 MUTATIONS ROTADAS SIN CAPTURAR (${pendingMuts.length}) — el ciclo sentinela no las resolvió (sin handler DOM o el ciclo no capturó el hash); requieren captura manual:\n${pendingMuts.map((op) => line(op)).join('\n')}`);
+      sec.push(`🔧 MUTATIONS ROTADAS SIN CAPTURAR (${pendingMuts.length}) — el ciclo centinela no las resolvió (sin handler DOM o el ciclo no capturó el hash); requieren captura manual:\n${pendingMuts.map((op) => line(op)).join('\n')}`);
     }
     if (sec.length) {
       const nCorregidas = deployed ? plan.toDeploy.length : 0;
@@ -475,7 +475,7 @@ async function main() {
       // blip de red pesaba igual que una rotación real y el número asustaba de más
       // (ej. "9 pendiente(s)" cuando solo había 4 ops rotadas — ya corregidas). Ahora separa:
       //   URGENTES = rotación REAL confirmada / accionable (probe stale, stale sin ruta,
-      //     mutation rota sin capturar, sentinela archivado).
+      //     mutation rota sin capturar, centinela archivado).
       //   POR REVISAR = señal blanda no confirmada (probe no concluyente por auth/red;
       //     sospechoso = difiere del config pero sin data OK, típico de captura-y-aborta).
       const nUrgentes = realStaleRows.length + uncoveredNew.length + pendingMuts.length + sentinelBroken.length;

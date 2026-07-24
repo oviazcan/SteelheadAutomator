@@ -1,21 +1,21 @@
 // tools/hash-autopilot/sentinel-health.mjs
-// Núcleo PURO (sin red/DOM): clasifica los resultados de los ciclos sentinela para
-// distinguir un sentinela ROTO (archivado / renombrado → falla la verificación de
+// Núcleo PURO (sin red/DOM): clasifica los resultados de los ciclos centinela para
+// distinguir un centinela ROTO (archivado / renombrado → falla la verificación de
 // identidad isSentinel) de un simple "no capturó (sin hash)".
 //
-// POR QUÉ: un sentinela declarado que el operador archiva por accidente hace que el
+// POR QUÉ: un centinela declarado que el operador archiva por accidente hace que el
 // ciclo aborte fail-closed en SILENCIO (runMutationCycle devuelve escalated con
-// reason de identidad, hoy solo va a consola). Un sentinela archivado sale read-only
+// reason de identidad, hoy solo va a consola). Un centinela archivado sale read-only
 // → isSentinel=false → nunca se recaptura su op → si esa op rota, se descubre tarde.
 // Esto lo convierte en una ALERTA accionable en el correo del motor.
 
-// Razones de runMutationCycle que delatan identidad rota (sentinela archivado/movido).
-// Ver mutation-runner.runMutationCycle: 'objeto cargado NO es sentinela (identidad)'.
-const IDENTITY_FAIL = /no es sentinela|identidad/i;
+// Razones de runMutationCycle que delatan identidad rota (centinela archivado/movido).
+// Ver mutation-runner.runMutationCycle: 'objeto cargado NO es centinela (identidad)'.
+const IDENTITY_FAIL = /no es centinela|identidad/i;
 
 // classifyCycleOutcomes(results) → { broken, captured, other }.
 // results = [{ op, entityType, captured, escalated, reason }] (uno por ciclo intentado).
-//  - broken: abortó por identidad → sentinela probablemente ARCHIVADO/renombrado.
+//  - broken: abortó por identidad → centinela probablemente ARCHIVADO/renombrado.
 //  - captured: capturó el hash (sano).
 //  - other: no capturó por otra razón (sin hash, dry-run, gate) → NO es alerta de salud.
 export function classifyCycleOutcomes(results) {
@@ -33,7 +33,7 @@ export function classifyCycleOutcomes(results) {
 export function formatSentinelAlert(broken) {
   if (!broken || !broken.length) return '';
   const lines = broken.map(
-    (b) => `   • ${b.op} (sentinela ${b.entityType || '?'} #${b.sentinelId ?? '?'}): ${b.reason || 'identidad no verificada'}`
+    (b) => `   • ${b.op} (centinela ${b.entityType || '?'} #${b.sentinelId ?? '?'}): ${b.reason || 'identidad no verificada'}`
   );
-  return `🚨 SENTINELA ROTO/ARCHIVADO (${broken.length}) — el ciclo abortó fail-closed porque el objeto de prueba NO pasó la verificación de identidad (típicamente porque quedó ARCHIVADO → sale read-only, o lo renombraron). Su(s) op(s) dejará(n) de recapturarse hasta repararlo. Acción: DESARCHIVA el sentinela y verifica que su nombre contenga "Sentinela":\n${lines.join('\n')}`;
+  return `🚨 CENTINELA ROTO/ARCHIVADO (${broken.length}) — el ciclo abortó fail-closed porque el objeto de prueba NO pasó la verificación de identidad (típicamente porque quedó ARCHIVADO → sale read-only, o lo renombraron). Su(s) op(s) dejará(n) de recapturarse hasta repararlo. Acción: DESARCHIVA el centinela y verifica que su nombre contenga "Centinela":\n${lines.join('\n')}`;
 }

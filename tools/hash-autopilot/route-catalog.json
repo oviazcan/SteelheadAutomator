@@ -431,7 +431,7 @@
         "SearchSpecsForSelect",
         "SpecFieldsAndOptions"
       ],
-      "_nota": "NP Sentinela 3770957 (nombre 'Sentinela', domain 344/TLC), modal 'Agregar Especificación'. Dispara DOS ops de LECTURA: SearchSpecsForSelect al ABRIR el combobox 'Especificación' (verificado en vivo 2026-07-21: 2 disparos al abrir, pobló 7 opciones, hash f793b566), y SpecFieldsAndOptions al elegir la 1a opción. selectFirstOption NO clica 'Agregar Especificación' → NO agrega la spec al NP (lectura pura). SearchSpecsForSelect se movió aquí desde processes-detail, que dejó de dispararla (needs-attention 2026-07-20)."
+      "_nota": "NP Centinela 3770957 (nombre 'Centinela', domain 344/TLC), modal 'Agregar Especificación'. Dispara DOS ops de LECTURA: SearchSpecsForSelect al ABRIR el combobox 'Especificación' (verificado en vivo 2026-07-21: 2 disparos al abrir, pobló 7 opciones, hash f793b566), y SpecFieldsAndOptions al elegir la 1a opción. selectFirstOption NO clica 'Agregar Especificación' → NO agrega la spec al NP (lectura pura). SearchSpecsForSelect se movió aquí desde processes-detail, que dejó de dispararla (needs-attention 2026-07-20)."
     },
     "invoices-packingslips-addinvoice": {
       "type": "query",

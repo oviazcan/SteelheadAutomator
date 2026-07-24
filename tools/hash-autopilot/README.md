@@ -17,31 +17,31 @@ falso-stale al cliente externo (idp-token). Ver diseño:
 4. Auto-deploya los `rotadoValidado` (con salvaguardas) y notifica por correo.
    Si una receta no captura, deja señal para el cron de Claude (ver `ESCALATION.md`).
 
-## Fase C: mutations vía ciclos sentinela (2026-07-08 ✅)
+## Fase C: mutations vía ciclos centinela (2026-07-08 ✅)
 
 Las MUTATIONS rotadas no se capturan navegando (no hay "receta" pasiva): hay que
-EJECUTARLAS. El motor corre ciclos **sentinela** headless sobre objetos de prueba
-(nombre "Sentinela", `sentinels-config.json`) — fail-closed (verifica identidad antes
+EJECUTARLAS. El motor corre ciclos **centinela** headless sobre objetos de prueba
+(nombre "Centinela", `sentinels-config.json`) — fail-closed (verifica identidad antes
 de mutar), reversible (restaura/limpia SIEMPRE en `finally`), con journal idempotente.
 Deps DOM en `mutation-deps.mjs`, orquestador en `mutation-runner.mjs`. Tras el loop de
-queries, corre un ciclo por mutation stale con sentinela declarado; las capturadas entran
+queries, corre un ciclo por mutation stale con centinela declarado; las capturadas entran
 al mismo pipeline de deploy + al MISMO correo.
 
-Mutations cubiertas por ciclo sentinela (validadas end-to-end):
+Mutations cubiertas por ciclo centinela (validadas end-to-end):
 
-| Mutation | Sentinela | Acción que la dispara (¡el sink es el juez!) |
+| Mutation | Centinela | Acción que la dispara (¡el sink es el juez!) |
 |---|---|---|
 | `UpdatePartNumber` | PN #3770957 | toggle del checkbox **"Archived"** del PN (NO el Save del modal → ese es `SavePartNumber`) |
 | `UpdateQuote` | quote #288 | editar **External Notes** de la cotización (NO archivar → eso es `ArchiveUnArchiveQuote`, ni está en config) |
-| `CreateReceivedOrder` | OV nueva | **crear** una OV "Sentinela" (modal Nueva OV) + archivarla después (create-capture-cleanup) |
-| `CreateMaintenanceEvent` | nodo #55 | **New Maintenance Event → Node → combobox "Sentinela" → Save & Begin** |
+| `CreateReceivedOrder` | OV nueva | **crear** una OV "Centinela" (modal Nueva OV) + archivarla después (create-capture-cleanup) |
+| `CreateMaintenanceEvent` | nodo #55 | **New Maintenance Event → Node → combobox "Centinela" → Save & Begin** |
 | `CreateMaintenanceEventComment` | nodo #55 | escribir en **"Write a comment…" → Submit** (dentro del evento) |
 | `UpdateMaintenanceEvent` | nodo #55 | toggle del checkbox **"Archived" del EVENTO** (NO completar el evento; el toggle además limpia) |
 | `AddPartsToWorkOrders` | OV #1603 → OT #13678 | **CAPTURA-Y-ABORTA** (escritura): modal **"Ajustar Cantidad de Piezas de OT"** (icono IsoIcon) → cambiar el *Conteo Deseado* → **Guardar**. El Save dispara **SOLO** `AddPartsToWorkOrders`; `MovePartsToRecipeNodeId`/`SearchLocationsOnPath` son queries de **preview** del modal (no del Save, no escriben). Cero persistencia (OT sigue 1/1). |
 
-Los 3 de mantenimiento se capturan en **un solo flujo** (crear evento → comentar → archivar) sobre el nodo sentinela ACTIVO; el sink es compartido, así que si las 3 están stale, el 1er ciclo captura las 3 y los siguientes hacen no-op. El nodo #55 **debe quedar activo (no archivado)** para que el combobox lo encuentre — el deep-link a un nodo archivado NO hidrata.
+Los 3 de mantenimiento se capturan en **un solo flujo** (crear evento → comentar → archivar) sobre el nodo centinela ACTIVO; el sink es compartido, así que si las 3 están stale, el 1er ciclo captura las 3 y los siguientes hacen no-op. El nodo #55 **debe quedar activo (no archivado)** para que el combobox lo encuentre — el deep-link a un nodo archivado NO hidrata.
 
-**Dominio:** `344` es **TLC (Toluca)**, NO MTY — MTY es otro dominio sin datos aún. Todos los sentinelas viven en 344/TLC.
+**Dominio:** `344` es **TLC (Toluca)**, NO MTY — MTY es otro dominio sin datos aún. Todos los centinelas viven en 344/TLC.
 
 Lecciones (todas costaron corridas):
 - **El sink es el juez**: la acción "obvia" casi siempre dispara OTRA mutation. `SA_DBG=1` imprime el sink tras cada ciclo → así se descubre la acción real.
@@ -122,7 +122,7 @@ reportó "0 rotado"). Ahora se **recapturan SIEMPRE**, desacopladas del gate por
   ni de stale. Lo corre `run-hash-autopilot.sh` en CADA tick, ANTES del gate por
   release (el escaneo completo sigue tras el gate). Validado en vivo 2026-07-15:
   capturó las 5 queries, probe 5 vigentes / 0 stale.
-- **Mutation de precios** (`SaveManyPartNumberPrices`): por ciclo **sentinela** sobre la
+- **Mutation de precios** (`SaveManyPartNumberPrices`): por ciclo **centinela** sobre la
   COTIZACIÓN `quotePrice` #288 (handler `savePartsQuoteAborted`), **validado end-to-end
   headless 2026-07-17**. Steelhead **unificó** las dos variantes en un solo hash (`72946d4d…`);
   el andamiaje del modal individual (`partNumberPrice` id:0) se **retiró** (2026-07-17).
@@ -149,13 +149,13 @@ tras la revisión contra el CÓDIGO (varios ya estaban resueltos en el código p
    del *input* exigiría un catálogo frágil de inputs por-applet (se rompe cuando el applet cambia) para
    un beneficio marginal. Se reabre solo si aparece un caso que las 3 salvaguardas no cubran.
 4. **Ops con MÚLTIPLES variantes — ✅ HECHO.** `SaveManyPartNumberPrices` unificó batch+individual en
-   `72946d4d…`; el andamiaje redundante `partNumberPrice` id:0 (+ handler `savePriceSentinelaAborted`)
+   `72946d4d…`; el andamiaje redundante `partNumberPrice` id:0 (+ handler `savePriceCentinelaAborted`)
    se **retiró** de `sentinels-config.json` y `mutation-deps.mjs`. Test `masked-ops-coherence` blinda
    que no reaparezca. El hardening "auto-deploy solo si el cfg está MUERTO" sigue cubriendo variantes.
-5. **Alerta de sentinela declarado archivado — ✅ HECHO.** Módulo puro `sentinel-health.mjs`
+5. **Alerta de centinela declarado archivado — ✅ HECHO.** Módulo puro `sentinel-health.mjs`
    (`classifyCycleOutcomes`/`formatSentinelAlert`, 6 tests): cuando un ciclo aborta por identidad
-   (sentinela ARCHIVADO → read-only → `isSentinel`=false), el motor lo reporta como sección
-   **🚨 SENTINELA ROTO/ARCHIVADO** en el correo (antes: abort silencioso a consola) con la acción
+   (centinela ARCHIVADO → read-only → `isSentinel`=false), el motor lo reporta como sección
+   **🚨 CENTINELA ROTO/ARCHIVADO** en el correo (antes: abort silencioso a consola) con la acción
    de desarchivar. Cuenta como pendiente en el asunto.
 6. **Nivel B — `claude -p` REAL + auth del cron — 🔶 PARCIAL (a/b hechos; c = corrida real).**
    (a) ✅ **BUG encontrado y corregido:** en el entorno del launchd `claude` NO resolvía (PATH sin
@@ -207,22 +207,22 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 
 - Enmascaradas recapturadas siempre (masked-ops.json): `AllCustomers`, `Customer`,
   `CurrentUser`, `AllSensorDashboards`, `SensorDashboardQuery` + mutation
-  `SaveManyPartNumberPrices` (sentinela `quotePrice` #288, validado end-to-end 2026-07-17).
-- Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
+  `SaveManyPartNumberPrices` (centinela `quotePrice` #288, validado end-to-end 2026-07-17).
+- Mutations con ciclo centinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
 - **Mutations de REPORTES por CAPTURA-Y-ABORTA — VALIDADAS 4/4 headless (2026-07-20):**
   `GenerateDuckDb` (botón "Regenerate Database" en `/Reporting/Databases`), `DeleteFolderById`,
   `CreateUpdateReportWithPermissions`, `ArchiveReport` (los 3 en `/Reporting/Edit`). Entidades
   `reportGenerateDb`/`reportFolderDelete`/`reportSaveAsNew`/`reportArchive` en sentinels-config.
-  **Requisito:** una CARPETA "Sentinela" + un REPORTE "Sentinela" **persistentes** (activos) en
+  **Requisito:** una CARPETA "Centinela" + un REPORTE "Centinela" **persistentes** (activos) en
   `/Reporting/Edit` — el flujo de captura manual del operador los consume, así que deben quedar
   vivos para el ciclo. Anclaje SIN clases jss (son dinámicas): filtro "Filter queries..." +
-  evaluate-mark (svg[aria-label] cuya fila innerText==="Sentinela"). Gate `capture-abort` en
+  evaluate-mark (svg[aria-label] cuya fila innerText==="Centinela"). Gate `capture-abort` en
   `sentinels.mjs` permite correr destructivas (Delete…) y no-auto (Generate…) porque el abort da
   cero efecto. Rotaron 2026-07-20; corregidas por scan (config 1.7.149) + GenerateDuckDb 1.7.151.
 - **Mutation por CAPTURA-Y-ABORTA validada headless END-TO-END: `AddPartsToWorkOrders`**
-  (sentinela `workOrderPartCount` = OV #1603 "Sentinela" → OT #13678; handler
+  (centinela `workOrderPartCount` = OV #1603 "Centinela" → OT #13678; handler
   `saveWoPartCountAborted` en `mutation-deps.mjs`). A diferencia de las de precios
   (`partNumberPrice`/`quotePrice`, andamiadas/bloqueadas por hidratación del quote), la OV
   **SÍ hidrata headless** → el ciclo captura de punta a punta. **AUTO-DEPLOYABLE** (2026-07-17):
@@ -244,8 +244,8 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
   (`invoices-packingslips-addinvoice`). Validación headless: **3/3 capturan con `responseOk`,
   hashes == config**. El STOPGAP del hash-scanner ya NO es necesario para estas. `recipe-runner`
   soporta `clickFirst`/`clickButton`/`selectFirstOption` (navegación client-side multi-paso).
-- Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Sentinela" activas rezagadas.
-  Salud de sentinelas: `sentinel-health.mjs` alerta si un sentinela declarado quedó archivado.
+- Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Centinela" activas rezagadas.
+  Salud de centinelas: `sentinel-health.mjs` alerta si un centinela declarado quedó archivado.
 - Correo real: prueba de humo ✅ hecha (2026-07-17). Launchd de escalación: ✅ cargado.
 - Nivel B: ✅ **corrida real validada end-to-end 2026-07-17** (re-descubrimiento + trace + correo +
   guardrails). Wrapper corre con el login claude.ai (no la API key sin saldo). Auto-limpia el
@@ -254,7 +254,7 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 ### Incidente + hallazgos 2026-07-20 (correo "0 corregida(s), 9 pendiente(s)")
 - **Qué pasó:** rotaron 4 mutations de reportes (`ArchiveReport`, `DeleteFolderById`,
   `CreateUpdateReportWithPermissions`, `GenerateDuckDb`; las 4 dieron "Must provide a query string").
-  El ciclo sentinela recapturó 2 como *sospechosas* y 2 quedaron *no capturadas* → correo de las
+  El ciclo centinela recapturó 2 como *sospechosas* y 2 quedaron *no capturadas* → correo de las
   14:32. **Ya corregidas por scan** (config avanzó a 1.7.155) y la corrida de las **19:25 salió
   LIMPIA** (`authFailed:false`, todo "vigente", `toDeploy:[]`, `massBrake:false`). No era una alarma
   viva al momento de revisar.

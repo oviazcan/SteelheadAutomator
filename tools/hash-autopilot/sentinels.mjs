@@ -1,5 +1,5 @@
 // tools/hash-autopilot/sentinels.mjs
-// Núcleos PUROS del ciclo sentinela (sin red/DOM). La integración headless los
+// Núcleos PUROS del ciclo centinela (sin red/DOM). La integración headless los
 // consume pero nunca actúa sin su aprobación. Fail-closed por diseño.
 
 export const SENTINEL_MARKER = '__SA_SENTINEL__';
@@ -25,9 +25,8 @@ export function cycleNext(state, event) {
 // nulos → false (no mutar).
 export function isSentinel(obj) {
   if (!obj || typeof obj !== 'object') return false;
-  // acepta "Sentinela" (nombre heredado) y "Centinela" (spelling correcto en español) —
-  // transición dual mientras se renombran los objetos del ERP; no rompe lo existente.
-  const hay = (s) => typeof s === 'string' && (s.includes(SENTINEL_MARKER) || /[sc]entinela/i.test(s));
+  // el marcador visible del objeto es "Centinela" (español correcto). Fail-closed: datos raros → false.
+  const hay = (s) => typeof s === 'string' && (s.includes(SENTINEL_MARKER) || /centinela/i.test(s));
   if (hay(obj.name) || hay(obj.displayName)) return true;
   if (Array.isArray(obj.tags) && obj.tags.some(hay)) return true;
   if (obj.customInputs && typeof obj.customInputs === 'object') {
@@ -70,7 +69,7 @@ export function pendingRepairs(journal) {
 }
 
 // ── Gate de seguridad: ¿se puede capturar esta mutation? (Task 5) ───────────
-// v1 soporta SOLO archived-mutate-restore con sentinela declarado; ephemeral
+// v1 soporta SOLO archived-mutate-restore con centinela declarado; ephemeral
 // (destructivas) escala.
 export function planMutationCapture(mutationOp, sentinelsConfig, entityType) {
   const ent = sentinelsConfig?.entities?.[entityType];
@@ -88,6 +87,6 @@ export function planMutationCapture(mutationOp, sentinelsConfig, entityType) {
   if (strategy === 'ephemeral-create-destroy') {
     return { action: 'escalate', reason: `destructiva (ephemeral no soportado en v1): ${mutationOp}` };
   }
-  if (!ent) return { action: 'escalate', reason: `sin sentinela declarado para entidad ${entityType}` };
+  if (!ent) return { action: 'escalate', reason: `sin centinela declarado para entidad ${entityType}` };
   return { action: 'run', strategy, entityType, sentinelId: ent.id };
 }

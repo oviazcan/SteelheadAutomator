@@ -5,7 +5,7 @@ const { classifyCycleOutcomes, formatSentinelAlert } = require('../hash-autopilo
 
 test('classifyCycleOutcomes: separa broken (identidad) / captured / other', () => {
   const results = [
-    { op: 'UpdateReceivedOrder', entityType: 'receivedOrderEdit', captured: false, escalated: true, reason: 'objeto cargado NO es sentinela (identidad)' },
+    { op: 'UpdateReceivedOrder', entityType: 'receivedOrderEdit', captured: false, escalated: true, reason: 'objeto cargado NO es centinela (identidad)' },
     { op: 'CreateMaintenanceEvent', entityType: 'maintenanceNode', captured: true },
     { op: 'AddPartsToWorkOrders', entityType: 'workOrderPartCount', captured: false, reason: 'sin hash' },
   ];
@@ -29,7 +29,7 @@ test('classifyCycleOutcomes: escalated por OTRA razón (no identidad) NO es brok
   const { broken, other } = classifyCycleOutcomes([
     { op: 'DeleteThing', escalated: true, reason: 'destructiva (ephemeral no soportado en v1)' },
   ]);
-  assert.equal(broken.length, 0, 'una escalación no-identidad no es un sentinela roto');
+  assert.equal(broken.length, 0, 'una escalación no-identidad no es un centinela roto');
   assert.equal(other.length, 1);
 });
 
@@ -46,9 +46,9 @@ test('formatSentinelAlert: vacío → cadena vacía (sin sección en el correo)'
 
 test('formatSentinelAlert: incluye op, entityType, id y la acción de desarchivar', () => {
   const txt = formatSentinelAlert([
-    { op: 'UpdateReceivedOrder', entityType: 'receivedOrderEdit', sentinelId: 1594, reason: 'objeto cargado NO es sentinela (identidad)' },
+    { op: 'UpdateReceivedOrder', entityType: 'receivedOrderEdit', sentinelId: 1594, reason: 'objeto cargado NO es centinela (identidad)' },
   ]);
-  assert.match(txt, /SENTINELA ROTO\/ARCHIVADO \(1\)/);
+  assert.match(txt, /CENTINELA ROTO\/ARCHIVADO \(1\)/);
   assert.match(txt, /UpdateReceivedOrder/);
   assert.match(txt, /receivedOrderEdit #1594/);
   assert.match(txt, /DESARCHIVA/);
