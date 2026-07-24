@@ -1,9 +1,9 @@
-// tools/hash-autopilot/cleanup-sentinela-ovs.mjs
-// Archiva TODAS las OV "Sentinela" activas que un ciclo de CreateReceivedOrder
+// tools/hash-autopilot/cleanup-sentinela-ovs.mjs  (nombre de archivo heredado; el objeto es "Centinela")
+// Archiva TODAS las OV "Centinela" activas que un ciclo de CreateReceivedOrder
 // haya dejado sin archivar (p.ej. cuando el dashboard no hidrató a tiempo en el
 // restore). Reusa la auth del motor (ROCP) + el doRestore de receivedOrder de
 // mutation-deps. Idempotente y no-destructivo (solo toca objetos con nombre
-// "Sentinela"). Uso: SA_DBG=1 node cleanup-sentinela-ovs.mjs [--domain-nano=1NFxmF]
+// "Centinela"). Uso: SA_DBG=1 node cleanup-sentinela-ovs.mjs [--domain-nano=1NFxmF]
 import { chromium } from 'playwright';
 import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
@@ -27,7 +27,7 @@ await context.addInitScript(makeRocpInit(tokens, DOMAIN_NANO), {
 });
 const page = await context.newPage();
 const deps = makeDeps(sentinelsConfig, { hashes: {}, data: {}, responseOk: {} });
-console.log('→ archivando OV "Sentinela" activas…');
+console.log('→ archivando OV "Centinela" activas…');
 await deps.doRestore(page, { sentinel: { entityType: 'receivedOrder' } });
 await browser.close();
 console.log('✓ cleanup hecho');

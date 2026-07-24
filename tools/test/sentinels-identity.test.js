@@ -10,17 +10,17 @@ test('isSentinel: marca en tags → true', () => {
   assert.equal(isSentinel({ tags: ['x', SENTINEL_MARKER] }), true);
 });
 test('isSentinel: marca en customInputs anidado → true', () => {
-  assert.equal(isSentinel({ customInputs: { Datos: { nota: `sentinela ${SENTINEL_MARKER}` } } }), true);
+  assert.equal(isSentinel({ customInputs: { Datos: { nota: `centinela ${SENTINEL_MARKER}` } } }), true);
 });
 test('isSentinel: sin marca → false (fail-closed)', () => {
   assert.equal(isSentinel({ name: 'Cliente Real S.A.' }), false);
   assert.equal(isSentinel({}), false);
   assert.equal(isSentinel(null), false);
 });
-test('isSentinel: reconoce la palabra "Sentinela" en el nombre (marcador del usuario)', () => {
-  assert.equal(isSentinel({ name: 'PN Sentinela QA' }), true);
-  assert.equal(isSentinel({ name: 'sentinela' }), true);              // case-insensitive
-  assert.equal(isSentinel({ name: 'Nodo Sentinela archivado' }), true);
+test('isSentinel: reconoce la palabra "Centinela" en el nombre (marcador del usuario)', () => {
+  assert.equal(isSentinel({ name: 'PN Centinela QA' }), true);
+  assert.equal(isSentinel({ name: 'centinela' }), true);              // case-insensitive
+  assert.equal(isSentinel({ name: 'Nodo Centinela archivado' }), true);
   assert.equal(isSentinel({ name: 'Cliente Real 123' }), false);      // sigue fail-closed
 });
 

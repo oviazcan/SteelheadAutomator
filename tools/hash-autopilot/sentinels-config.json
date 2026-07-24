@@ -1,12 +1,12 @@
 {
-  "_doc": "Objetos de prueba SENTINELA (su nombre contiene 'Sentinela') sobre los que el hash-autopilot ejecuta ciclos de captura de mutations en Fase C. NUNCA apuntar a datos reales. Reemplaza los id:0 por los IDs reales de tus sentinelas antes de correr una captura.",
-  "_seguridad": "El runner verifica DOBLE: el id viene de aquí Y el objeto cargado debe pasar isSentinel (nombre con 'Sentinela'). Si no, escala sin mutar.",
+  "_doc": "Objetos de prueba CENTINELA (su nombre contiene 'Centinela') sobre los que el hash-autopilot ejecuta ciclos de captura de mutations en Fase C. NUNCA apuntar a datos reales. Reemplaza los id:0 por los IDs reales de tus centinelas antes de correr una captura.",
+  "_seguridad": "El runner verifica DOBLE: el id viene de aquí Y el objeto cargado debe pasar isSentinel (nombre con 'Centinela'). Si no, escala sin mutar.",
   "domain": 344,
   "entities": {
     "partNumber": {
       "id": 3770957,
       "screenPath": "/PartNumbers/{id}",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "UpdatePartNumber"
       ],
@@ -16,7 +16,7 @@
     "quote": {
       "id": 288,
       "screenPath": "/Domains/{domain}/Quotes/{id}",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "UpdateQuote"
       ],
@@ -25,27 +25,27 @@
     "receivedOrder": {
       "id": 1585,
       "screenPath": "/Domains/{domain}/SalesOrders/{id}",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "CreateReceivedOrder"
       ],
       "_estrategia": "create-capture-cleanup",
-      "_nota": "Create no muta un existente: crea una OV nueva marcada 'Sentinela' y luego la archiva."
+      "_nota": "Create no muta un existente: crea una OV nueva marcada 'Centinela' y luego la archiva."
     },
     "receivedOrderEdit": {
       "id": 1594,
       "screenPath": "/Domains/{domain}/SalesOrders/{id}",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "UpdateReceivedOrder"
       ],
       "_estrategia": "edit-restore",
-      "_nota": "OV Sentinela 1594 (nombre 'Sentinela'). DEBE estar DESARCHIVADA para hidratar; si se archiva, el load da isSentinela=false y el ciclo ABORTA fail-closed (no muta) → desarchivarla para reactivar. El handler abre 'Edit Sales Order' → cambia el PO# → SAVE (dispara UpdateReceivedOrder) → restaura el PO# a vacío. CICLO VALIDADO headless 2026-07-15: capturó d9e88576→b3602b2d y el restore dejó el PO# vacío (verificado)."
+      "_nota": "OV Centinela 1594 (nombre 'Centinela'). DEBE estar DESARCHIVADA para hidratar; si se archiva, el load da isCentinela=false y el ciclo ABORTA fail-closed (no muta) → desarchivarla para reactivar. El handler abre 'Edit Sales Order' → cambia el PO# → SAVE (dispara UpdateReceivedOrder) → restaura el PO# a vacío. CICLO VALIDADO headless 2026-07-15: capturó d9e88576→b3602b2d y el restore dejó el PO# vacío (verificado)."
     },
     "maintenanceNode": {
       "id": 55,
       "screenPath": "/Domains/{domain}/Maintenance",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "archived": false,
       "opsGroup": [
         "CreateMaintenanceEvent",
@@ -53,22 +53,22 @@
         "UpdateMaintenanceEvent"
       ],
       "_estrategia": "create-event-capture",
-      "_nota": "Nodo ACTIVO (no archivado): el handler crea un evento sobre el nodo 'Sentinela' (New Maintenance Event -> Node -> combobox Sentinela -> Save & Begin), comenta y completa -> dispara los 3 hashes en un solo flujo; luego archiva el evento. El handler navega a /Maintenance (no al detalle del nodo) y elige el nodo por NOMBRE en el combobox (fail-closed)."
+      "_nota": "Nodo ACTIVO (no archivado): el handler crea un evento sobre el nodo 'Centinela' (New Maintenance Event -> Node -> combobox Centinela -> Save & Begin), comenta y completa -> dispara los 3 hashes en un solo flujo; luego archiva el evento. El handler navega a /Maintenance (no al detalle del nodo) y elige el nodo por NOMBRE en el combobox (fail-closed)."
     },
     "quotePrice": {
       "id": 288,
       "screenPath": "/Domains/{domain}/Quotes/{id}",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "SaveManyPartNumberPrices"
       ],
       "_estrategia": "quote-saveparts-abort",
-      "_nota": "id:288 ACTIVO — ruta VALIDADA end-to-end headless (2026-07-17). El quote sentinela #288 DEBE quedar ACTIVO (desarchivado); archivado = read-only (ese era el bloqueo histórico, NO la 'hidratación lenta'). Hidratación RESUELTA con navegación CLIENT-SIDE (openQuotesListAndFind: home → clic link /Quotes → la lista rinde filas; el deep-link con searchQuery NO hidrata). FLUJO REAL (operador): 'Edit this Part' → 'Save Parts' se habilita solo → clic 'Save Parts' SIN editar nada → dispara el batch. CLAVE que costó: (1) NO editar Divisa/precio (romperlo deshabilita Save Parts); (2) el click debe ser Playwright click({force}) — evaluate().click() NO activa el handler React (por eso fallaba). Fix loadObject: entityType gana sobre entityFor (id COMPARTIDO con 'quote' #288). HALLAZGO CRÍTICO: Steelhead UNIFICÓ las 2 variantes — el viejo 'batch' 9da1874e MURIÓ; el hash vivo es 72946d4d (era el 'individual'), y ACEPTA el shape de bulk-upload (input.partNumberPrices array; probe: server responde 'No part number prices to create/update' = valida el shape, no lo rechaza). Deployado (arregla bulk-upload que usaba 9da1874e muerto). El price-confirm-guard NO aplica headless (sin extensión) ni a este 'Save Parts' del quote (guard = modal individual 'Part Number Price'); en el navegador REAL clicar Save Parts con la extensión congela el tab, por eso la captura va SOLO headless."
+      "_nota": "id:288 ACTIVO — ruta VALIDADA end-to-end headless (2026-07-17). El quote centinela #288 DEBE quedar ACTIVO (desarchivado); archivado = read-only (ese era el bloqueo histórico, NO la 'hidratación lenta'). Hidratación RESUELTA con navegación CLIENT-SIDE (openQuotesListAndFind: home → clic link /Quotes → la lista rinde filas; el deep-link con searchQuery NO hidrata). FLUJO REAL (operador): 'Edit this Part' → 'Save Parts' se habilita solo → clic 'Save Parts' SIN editar nada → dispara el batch. CLAVE que costó: (1) NO editar Divisa/precio (romperlo deshabilita Save Parts); (2) el click debe ser Playwright click({force}) — evaluate().click() NO activa el handler React (por eso fallaba). Fix loadObject: entityType gana sobre entityFor (id COMPARTIDO con 'quote' #288). HALLAZGO CRÍTICO: Steelhead UNIFICÓ las 2 variantes — el viejo 'batch' 9da1874e MURIÓ; el hash vivo es 72946d4d (era el 'individual'), y ACEPTA el shape de bulk-upload (input.partNumberPrices array; probe: server responde 'No part number prices to create/update' = valida el shape, no lo rechaza). Deployado (arregla bulk-upload que usaba 9da1874e muerto). El price-confirm-guard NO aplica headless (sin extensión) ni a este 'Save Parts' del quote (guard = modal individual 'Part Number Price'); en el navegador REAL clicar Save Parts con la extensión congela el tab, por eso la captura va SOLO headless."
     },
     "workOrder": {
       "id": 11677,
       "screenPath": "/Domains/{domain}/WorkOrders/{id}",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "(futuras mutations de OT)"
       ]
@@ -76,12 +76,12 @@
     "workOrderPartCount": {
       "id": 1603,
       "screenPath": "/Domains/{domain}/SalesOrders/{id}",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "AddPartsToWorkOrders"
       ],
       "_estrategia": "capture-abort",
-      "_nota": "OV Sentinela 1603 (nombre 'Sentinela'), contiene la OT #13678. AddPartsToWorkOrders se dispara al GUARDAR el modal 'Ajustar Cantidad de Piezas de OT' (icono IsoIcon) de la OT en el detalle de la OV → CAPTURA-Y-ABORTA (sink.abortOps): el handler marca la op ANTES de clicar Guardar, el interceptor registra el sha256Hash y ABORTA el request → cero persistencia (la OT sigue en Cant. 1/1, verificado). DOBLE candado: la OV se llama 'Sentinela' (isSentinel fail-closed) + aborta. Ancla del botón IDIOMA-INDEPENDIENTE: 'button[aria-label]:has(svg[data-testid=\"IsoIcon\"])' (el otro IsoIcon de la sección BOM NO tiene aria-label → no matchea; NO se usa el TEXTO del aria-label, solo su presencia). Input: único del dialog (Playwright fill maneja el setter React); Guardar/Save bilingüe. AUTO-DEPLOYABLE: como el request se aborta no hay responseOk, pero el motor PRUEBA el liveHash capturado con variables VACÍAS (validación de tipos, sin ejecutar la escritura) y si el server lo reconoce (classifyProbe 'vigente') lo trata como validado → rotadoValidado → AUTO-DEPLOY (cero escritura en todo el ciclo; ver isValidatedCapture). VERIFICADO EN VIVO 2026-07-17: hash rotó a5cc8991→70d5a792 (probe directo: reconoce 70d5a792, a5cc8991 da 'Must provide a query string'); primer deploy a mano, y el path de auto-deploy validado end-to-end (config revertido → 'rotadoValidado'). usedBy: po-reconciler, wo-completer."
+      "_nota": "OV Centinela 1603 (nombre 'Centinela'), contiene la OT #13678. AddPartsToWorkOrders se dispara al GUARDAR el modal 'Ajustar Cantidad de Piezas de OT' (icono IsoIcon) de la OT en el detalle de la OV → CAPTURA-Y-ABORTA (sink.abortOps): el handler marca la op ANTES de clicar Guardar, el interceptor registra el sha256Hash y ABORTA el request → cero persistencia (la OT sigue en Cant. 1/1, verificado). DOBLE candado: la OV se llama 'Centinela' (isSentinel fail-closed) + aborta. Ancla del botón IDIOMA-INDEPENDIENTE: 'button[aria-label]:has(svg[data-testid=\"IsoIcon\"])' (el otro IsoIcon de la sección BOM NO tiene aria-label → no matchea; NO se usa el TEXTO del aria-label, solo su presencia). Input: único del dialog (Playwright fill maneja el setter React); Guardar/Save bilingüe. AUTO-DEPLOYABLE: como el request se aborta no hay responseOk, pero el motor PRUEBA el liveHash capturado con variables VACÍAS (validación de tipos, sin ejecutar la escritura) y si el server lo reconoce (classifyProbe 'vigente') lo trata como validado → rotadoValidado → AUTO-DEPLOY (cero escritura en todo el ciclo; ver isValidatedCapture). VERIFICADO EN VIVO 2026-07-17: hash rotó a5cc8991→70d5a792 (probe directo: reconoce 70d5a792, a5cc8991 da 'Must provide a query string'); primer deploy a mano, y el path de auto-deploy validado end-to-end (config revertido → 'rotadoValidado'). usedBy: po-reconciler, wo-completer."
     },
     "reportGenerateDb": {
       "id": "reporting-generate-db",
@@ -91,38 +91,38 @@
         "GenerateDuckDb"
       ],
       "_estrategia": "capture-abort",
-      "_nota": "GenerateDuckDb (usedBy report-regen) por CAPTURA-Y-ABORTA en /Reporting/Databases → botón 'Regenerate Database' (svg[data-testid=\"CloudDownloadIcon\"]). Se marca la op en abortOps ANTES de clicar → el interceptor aborta → NO regenera la DB. Sin objeto Sentinela (botón global); el load verifica el botón presente. id string (no numérico) — no se usa en la URL, solo para pasar el gate (mutEntityType exige id truthy). Rotó 2026-07-20 (cfg 8f29d420 muerto). El gate 'no-auto' (Generate… no matchea prefijos) lo permite por _estrategia:capture-abort."
+      "_nota": "GenerateDuckDb (usedBy report-regen) por CAPTURA-Y-ABORTA en /Reporting/Databases → botón 'Regenerate Database' (svg[data-testid=\"CloudDownloadIcon\"]). Se marca la op en abortOps ANTES de clicar → el interceptor aborta → NO regenera la DB. Sin objeto Centinela (botón global); el load verifica el botón presente. id string (no numérico) — no se usa en la URL, solo para pasar el gate (mutEntityType exige id truthy). Rotó 2026-07-20 (cfg 8f29d420 muerto). El gate 'no-auto' (Generate… no matchea prefijos) lo permite por _estrategia:capture-abort."
     },
     "reportFolderDelete": {
-      "id": "reporting-folder-sentinela",
+      "id": "reporting-folder-centinela",
       "screenPath": "/Reporting/Edit",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "DeleteFolderById"
       ],
       "_estrategia": "capture-abort",
-      "_nota": "DeleteFolderById (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre la CARPETA 'Sentinela' del árbol de Saved Reports en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Sentinela') + svg[aria-label='Delete folder']. Clic basura → modal 'Delete Folder' → botón Delete/Eliminar → aborta (NO borra). Doble candado: fila anclada a 'Sentinela' exacto (isSentinel) + abort. Destructiva (Delete…): el gate la permite SOLO por _estrategia:capture-abort. Rotó 2026-07-20 (cfg 282f83cf muerto). Requiere una carpeta 'Sentinela' persistente en /Reporting/Edit."
+      "_nota": "DeleteFolderById (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre la CARPETA 'Centinela' del árbol de Saved Reports en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Centinela') + svg[aria-label='Delete folder']. Clic basura → modal 'Delete Folder' → botón Delete/Eliminar → aborta (NO borra). Doble candado: fila anclada a 'Centinela' exacto (isSentinel) + abort. Destructiva (Delete…): el gate la permite SOLO por _estrategia:capture-abort. Rotó 2026-07-20 (cfg 282f83cf muerto). Requiere una carpeta 'Centinela' persistente en /Reporting/Edit."
     },
     "reportSaveAsNew": {
       "id": "reporting-save-as-new",
       "screenPath": "/Reporting/Edit",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "CreateUpdateReportWithPermissions"
       ],
       "_estrategia": "capture-abort",
-      "_nota": "CreateUpdateReportWithPermissions (usedBy report-liberator) por CAPTURA-Y-ABORTA en /Reporting/Edit → botón 'Guardar informe'/'Save Report' (svg[data-testid=\"SaveIcon\"]) → modal → input nombre (MuiOutlinedInput) = 'Sentinela' → botón 'Guardar como nuevo'/'Save as New' → aborta (NO crea el reporte). No requiere objeto existente; el load verifica el botón 'Guardar informe'. Rotó 2026-07-20 (cfg 6c7753a4 muerto)."
+      "_nota": "CreateUpdateReportWithPermissions (usedBy report-liberator) por CAPTURA-Y-ABORTA en /Reporting/Edit → botón 'Guardar informe'/'Save Report' (svg[data-testid=\"SaveIcon\"]) → modal → input nombre (MuiOutlinedInput) = 'Centinela' → botón 'Guardar como nuevo'/'Save as New' → aborta (NO crea el reporte). No requiere objeto existente; el load verifica el botón 'Guardar informe'. Rotó 2026-07-20 (cfg 6c7753a4 muerto)."
     },
     "reportArchive": {
-      "id": "reporting-report-sentinela",
+      "id": "reporting-report-centinela",
       "screenPath": "/Reporting/Edit",
-      "marker": "Sentinela",
+      "marker": "Centinela",
       "_para": [
         "ArchiveReport"
       ],
       "_estrategia": "capture-abort",
-      "_nota": "ArchiveReport (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre el REPORTE 'Sentinela' en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Sentinela') + svg[aria-label='Archive report']. Clic archivar → modal 'Confirmar' ('Are you sure you wish to archive this report?') → botón 'Sí'/'Yes' → aborta (NO archiva). Doble candado: fila 'Sentinela' exacta + abort. Rotó 2026-07-20 (cfg 796eb308 muerto). Requiere un reporte 'Sentinela' persistente en /Reporting/Edit."
+      "_nota": "ArchiveReport (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre el REPORTE 'Centinela' en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Centinela') + svg[aria-label='Archive report']. Clic archivar → modal 'Confirmar' ('Are you sure you wish to archive this report?') → botón 'Sí'/'Yes' → aborta (NO archiva). Doble candado: fila 'Centinela' exacta + abort. Rotó 2026-07-20 (cfg 796eb308 muerto). Requiere un reporte 'Centinela' persistente en /Reporting/Edit."
     }
   },
-  "_dominio": "TLC/344 (Toluca — los sentinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
+  "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
 }

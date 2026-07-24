@@ -1,6 +1,6 @@
 // tools/hash-autopilot/mutation-deps.mjs
 // deps headless por entidad para runMutationCycle. Cada handler sabe cargar,
-// mutar y restaurar SU objeto sentinela vía Playwright. Los helpers puros
+// mutar y restaurar SU objeto centinela vía Playwright. Los helpers puros
 // (entityFor/resolveUrl) son testeables sin navegador; los handlers DOM se
 // validan en corrida supervisada.
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
@@ -24,10 +24,10 @@ export function resolveUrl(ent, id, domain) {
 }
 
 // ── Handlers DOM por entidad ────────────────────────────────────────────────
-// partNumber: el sentinela "Sentinela" vive ARCHIVADO. El TOGGLE del checkbox
+// partNumber: el centinela "Centinela" vive ARCHIVADO. El TOGGLE del checkbox
 // "Archived" dispara UpdatePartNumber (update de archivedAt) — NO el Save del modal
 // (ese dispara SavePartNumber, verificado por el sink). Desarchivar captura la mutation;
-// re-archivar restaura. loadObject verifica name="Sentinela" (isSentinel fail-closed).
+// re-archivar restaura. loadObject verifica name="Centinela" (isSentinel fail-closed).
 function archivedRow(page) {
   return page.locator('div.css-re0j1l', { hasText: 'Archived:' })
     .locator('xpath=following-sibling::div[1]').first();
@@ -86,12 +86,12 @@ async function editExternalNote(page, id, domain, value) {
 }
 // ── receivedOrder (OV): create-capture-cleanup ─────────────────────────────
 // CreateReceivedOrder se dispara al CREAR una OV vacía (paso 1 del flujo, playbook
-// portal-importer). Cada corrida crea una OV "Sentinela" y archiva la recién creada
+// portal-importer). Cada corrida crea una OV "Centinela" y archiva la recién creada
 // (limpieza). El modal pide OC#, Cliente y 2 custom inputs obligatorios (Razón Social, Divisa).
 // dashboard SIMPLE (sin searchQuery en la URL — el deep-link con searchQuery no hidrata las
-// filas). Las OV "Sentinela" (recientes, orderBy Created desc) salen al inicio; filtro por td.
+// filas). Las OV "Centinela" (recientes, orderBy Created desc) salen al inicio; filtro por td.
 const OV_DASH = (domain) => `${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`;
-async function createSentinelaOV(page, domain) {
+async function createCentinelaOV(page, domain) {
   const dbg = process.env.SA_DBG;
   await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
@@ -102,7 +102,7 @@ async function createSentinelaOV(page, domain) {
   await page.waitForTimeout(2500);
   if (dbg) console.log('       [dbg] modal Nueva OV abierto');
   // OC#: input con AssignmentIcon adornment (independiente del idioma)
-  await page.locator('.MuiInputBase-root:has(svg[data-testid="AssignmentIcon"]) input').first().fill('Sentinela');
+  await page.locator('.MuiInputBase-root:has(svg[data-testid="AssignmentIcon"]) input').first().fill('Centinela');
   // Cliente (react-select): label "Cliente:"/"Customer:" → el react-select siguiente
   const cliente = page.locator('p', { hasText: /^(Cliente|Customer):/ }).locator('xpath=following-sibling::div[1]').locator('input[role="combobox"]').first();
   await cliente.click();
@@ -120,8 +120,8 @@ async function createSentinelaOV(page, domain) {
   await page.waitForTimeout(6000); // dar tiempo a que la OV nueva se indexe antes de archivarla
   if (dbg) console.log('       [dbg] Guardar clickeado');
 }
-async function archiveSentinelaOVs(page, domain) {
-  // archivar TODAS las OV "Sentinela" activas (la 1594 de referencia está archivada → sólo
+async function archiveCentinelaOVs(page, domain) {
+  // archivar TODAS las OV "Centinela" activas (la 1594 de referencia está archivada → sólo
   // aparecen las creadas por el ciclo). Loop hasta que no queden — evita acumular basura.
   const dbg = process.env.SA_DBG;
   for (let i = 0; i < 12; i++) {
@@ -133,12 +133,12 @@ async function archiveSentinelaOVs(page, domain) {
         .waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
     }
     if (dbg && i === 0) {
-      const sentRows = await page.locator('tr:has(td:has-text("Sentinela")), tr:has(td:has-text("Centinela"))').count().catch(() => -1);
+      const sentRows = await page.locator('tr:has(td:has-text("Centinela"))').count().catch(() => -1);
       console.log(`       [dbg] OV_DASH archivar: hydrated=${ok} sentRows=${sentRows}`);
       await page.screenshot({ path: '/tmp/sa-ov-archive.png', fullPage: true }).catch(() => {});
     }
-    const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"], tr:has(td:has-text("Sentinela")) button[aria-label="Archive"], tr:has(td:has-text("Centinela")) button[aria-label="Archivar"], tr:has(td:has-text("Centinela")) button[aria-label="Archive"]').first();
-    if (!(await archBtn.count().catch(() => 0))) { if (dbg) console.log(`       [dbg] OVs Sentinela archivadas: ${i}`); break; }
+    const archBtn = page.locator('tr:has(td:has-text("Centinela")) button[aria-label="Archivar"], tr:has(td:has-text("Centinela")) button[aria-label="Archive"]').first();
+    if (!(await archBtn.count().catch(() => 0))) { if (dbg) console.log(`       [dbg] OVs Centinela archivadas: ${i}`); break; }
     await archBtn.click({ timeout: 10000 });
     await page.waitForTimeout(1000);
     const yes = page.locator('[role="dialog"]').getByRole('button', { name: /^(yes|sí|si|confirmar|archivar|archive)$/i }).first();
@@ -149,10 +149,10 @@ async function archiveSentinelaOVs(page, domain) {
 // ── maintenanceNode: create-event-capture ──────────────────────────────────
 // Los 3 hashes (CreateMaintenanceEvent / CreateMaintenanceEventComment /
 // UpdateMaintenanceEvent) se disparan al CREAR un evento de mantenimiento sobre el
-// nodo sentinela y recorrer su ciclo (comentar + completar). UN solo flujo captura
+// nodo centinela y recorrer su ciclo (comentar + completar). UN solo flujo captura
 // los 3; como el sink es compartido en el run, cuando ya están los 3 los ciclos
 // siguientes hacen no-op (no crean otro evento). Al final se ARCHIVA el evento
-// (limpieza). Fail-closed: si no aparece la opción "Sentinela" en el combobox del
+// (limpieza). Fail-closed: si no aparece la opción "Centinela" en el combobox del
 // nodo, aborta SIN crear evento (no toca datos reales).
 const MAINT_OPS = ['CreateMaintenanceEvent', 'CreateMaintenanceEventComment', 'UpdateMaintenanceEvent'];
 async function archiveCurrentMaintenanceEvent(page) {
@@ -170,7 +170,7 @@ async function archiveCurrentMaintenanceEvent(page) {
   }
   return false;
 }
-async function createMaintenanceEventOnSentinela(page, domain, sink) {
+async function createMaintenanceEventOnCentinela(page, domain, sink) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.hashes && MAINT_OPS.every((op) => sink.hashes[op])) {
     if (dbg) console.log('       [dbg] maint: 3 ops ya en sink → skip (no crea otro evento)');
@@ -187,18 +187,18 @@ async function createMaintenanceEventOnSentinela(page, domain, sink) {
   // toggle "Node" del grupo (Event puede abrir por equipo o por nodo)
   await dialog.locator('button', { hasText: /^Node$/ }).first().click({ timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(1200);
-  // combobox react-select "Select a node": escribir "Sentinela" y elegir la opción (fail-closed)
+  // combobox react-select "Select a node": escribir "Centinela" y elegir la opción (fail-closed)
   const combo = dialog.locator('input[role="combobox"]').first();
   await combo.click();
-  await combo.fill('Sentinela');
+  await combo.fill('Centinela');
   await page.waitForTimeout(2000);
-  const opt = page.locator('[role="option"]', { hasText: /Sentinela/i }).first();
+  const opt = page.locator('[role="option"]', { hasText: /Centinela/i }).first();
   if (!(await opt.count().catch(() => 0))) {
-    throw new Error('fail-closed: no apareció opción "Sentinela" en el combobox de nodo — no se crea evento');
+    throw new Error('fail-closed: no apareció opción "Centinela" en el combobox de nodo — no se crea evento');
   }
   await opt.click({ timeout: 8000 });
   await page.waitForTimeout(800);
-  if (dbg) console.log('       [dbg] maint: nodo Sentinela seleccionado');
+  if (dbg) console.log('       [dbg] maint: nodo Centinela seleccionado');
   // Save & Begin → CreateMaintenanceEvent
   await page.locator('button', { hasText: /Save & Begin/ }).first().click({ timeout: 12000 });
   await page.waitForTimeout(4000);
@@ -217,7 +217,7 @@ async function createMaintenanceEventOnSentinela(page, domain, sink) {
 // receivedOrderEdit: UpdateReceivedOrder se dispara al GUARDAR el header de una OV
 // EXISTENTE en el modal "Edit Sales Order" (botón SAVE). Cambiamos el PO# (campo inocuo,
 // placeholder estable) y lo restauramos. Modal + PO# + SAVE VALIDADOS headless
-// (2026-07-14); el CICLO completo requiere una OV Sentinela real (id en config, hoy 0).
+// (2026-07-14); el CICLO completo requiere una OV Centinela real (id en config, hoy 0).
 // Deuda bilingüe: el placeholder "…PO# or PO Name" y el selector de NAME son EN-only.
 async function editSalesOrderPoAndSave(page, value) {
   const openBtn = page.locator('button, [role="button"]').filter({ hasText: /edit sales order|editar orden de venta/i }).first();
@@ -233,7 +233,7 @@ async function editSalesOrderPoAndSave(page, value) {
   await page.waitForTimeout(2000);
 }
 // ── partNumberPrice (modal individual): RETIRADO 2026-07-17 ──────────────────
-// El handler savePriceSentinelaAborted (modal "Part Number Price" individual) se
+// El handler savePriceCentinelaAborted (modal "Part Number Price" individual) se
 // eliminó al UNIFICAR Steelhead las dos variantes de SaveManyPartNumberPrices en un
 // solo hash (72946d4d…, ver config.json). La captura de precios vive en el flujo de
 // COTIZACIÓN: quotePrice #288 → savePartsQuoteAborted, validado end-to-end headless
@@ -243,7 +243,7 @@ async function editSalesOrderPoAndSave(page, value) {
 // Navegación CLIENT-SIDE a la lista de Quotes. HALLAZGO 2026-07-17: el dashboard de quotes
 // NO hidrata por deep-link (searchQuery sale vacío, tanto headless como en navegador real);
 // SÍ hidrata navegando dentro del SPA ya cargado (home → clic al link /Quotes → la lista
-// rinde filas). El quote sentinela #288 (nombre 'Sentinela', reciente) aparece en la 1ª
+// rinde filas). El quote centinela #288 (nombre 'Centinela', reciente) aparece en la 1ª
 // página de la lista ACTIVA. Devuelve true si el <a> del quote {id} (con rev) aparece.
 async function openQuotesListAndFind(page, id, domain) {
   await page.goto(`${BASE}/Domains/${domain}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -257,7 +257,7 @@ async function openQuotesListAndFind(page, id, domain) {
 
 // quotePrice: SaveManyPartNumberPrices — hash unificado VIVO 72946d4d (Steelhead fusionó las
 // dos variantes el 2026-07-17; el viejo batch 9da1874e murió y el 'individual' 72946d quedó como
-// el único). Se dispara desde la COTIZACIÓN sentinela #288. FLUJO REAL del
+// el único). Se dispara desde la COTIZACIÓN centinela #288. FLUJO REAL del
 // operador (2026-07-17): abrir el quote client-side → clic 'Edit this Part' (lapicito) → 'Save
 // Parts' se HABILITA solo → clic 'Save Parts' SIN editar nada → dispara el batch "tiro por viaje".
 // CLAVE: NO tocar Divisa/precio — editar rompe el estado y Save Parts se deshabilita (por eso la
@@ -268,7 +268,7 @@ async function savePartsQuoteAborted(page, sink, { id, domain }) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
   const found = await openQuotesListAndFind(page, id, domain);
-  if (!found) throw new Error('quotePrice: el link del quote sentinela no apareció en la lista (¿archivado? ¿no hidrató?)');
+  if (!found) throw new Error('quotePrice: el link del quote centinela no apareció en la lista (¿archivado? ¿no hidrató?)');
   await page.locator(`a[href*="/Quotes/${id}/"]`).first().click({ timeout: 10000 }).catch(() => {});
   await page.locator('[aria-label="Edit this Part"]').first().waitFor({ state: 'visible', timeout: 25000 });
   if (dbg) console.log('       [dbg] quote abierto → Edit this Part (sin editar nada)');
@@ -295,7 +295,7 @@ async function savePartsQuoteAborted(page, sink, { id, domain }) {
 
 // workOrderPartCount: AddPartsToWorkOrders vía CAPTURA-Y-ABORTA. La mutation se dispara al
 // GUARDAR el modal "Ajustar Cantidad de Piezas de OT" (icono IsoIcon) de una OT en el detalle
-// de la OV Sentinela #1603. Marca la op en abortOps ANTES de tocar el DOM → el interceptor
+// de la OV Centinela #1603. Marca la op en abortOps ANTES de tocar el DOM → el interceptor
 // registra el sha256Hash y ABORTA el request → cero persistencia (la OT no cambia de conteo,
 // verificado: sigue 1/1). Ancla del botón IDIOMA-INDEPENDIENTE (aria-label PRESENTE + IsoIcon;
 // el otro IsoIcon de la sección BOM no tiene aria-label; NO usa el texto). Verificado en vivo
@@ -304,11 +304,11 @@ async function saveWoPartCountAborted(page, sink, { url }) {
   const dbg = process.env.SA_DBG;
   // MARCAR la op ANTES de cualquier clic que pueda disparar el Save → aborta aunque salga antes.
   if (sink && sink.abortOps) sink.abortOps.add('AddPartsToWorkOrders');
-  // navegar al detalle de la OV; hidrata tarde headless → espera ACTIVA al name "Sentinela".
+  // navegar al detalle de la OV; hidrata tarde headless → espera ACTIVA al name "Centinela".
   await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    if (await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
+    if (await page.evaluate(() => /Centinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
     await page.waitForTimeout(1500);
   }
   if (dbg) console.log('       [dbg] OV detalle hidratado');
@@ -336,28 +336,28 @@ async function saveWoPartCountAborted(page, sink, { url }) {
 // /Reporting/Edit; report-regen usa GenerateDuckDb). Se recapturan por CAPTURA-Y-ABORTA: se
 // marca la op en sink.abortOps ANTES de clicar el disparador → el interceptor registra el
 // sha256Hash y ABORTA el request → CERO efecto (no borra carpeta, no archiva, no crea reporte,
-// no regenera la DB). Doble candado: el loadObject verifica que existe el objeto "Sentinela"
+// no regenera la DB). Doble candado: el loadObject verifica que existe el objeto "Centinela"
 // (isSentinel fail-closed) + el abort. Selectores idioma-independientes por data-testid/aria-label
 // (el DOM real los trae en inglés aunque la UI esté en español); botones de modal bilingües.
 // Flujo y DOM confirmados por el operador 2026-07-20.
 const REPORTING_EDIT = '/Reporting/Edit';
 
-// Aísla la fila "Sentinela" del árbol de Saved Reports. Las clases jssNN del DOM que dio el
+// Aísla la fila "Centinela" del árbol de Saved Reports. Las clases jssNN del DOM que dio el
 // operador son JSS DINÁMICAS (cambian por sesión) → NO se pueden usar. Se FILTRA por
 // "Filter queries..." (el árbol es largo/virtualizado; la fila no está en el DOM hasta filtrar)
 // y se ancla por aria-label + innerText de la fila vía evaluate-mark: se marca con data-sa-rep
-// el svg[aria-label] cuya fila (ancestro) innerText==="Sentinela". Verificado headless 2026-07-20
-// (hit 1/1 tras filtrar, con la carpeta+reporte "Sentinela" persistentes creados por el operador).
+// el svg[aria-label] cuya fila (ancestro) innerText==="Centinela". Verificado headless 2026-07-20
+// (hit 1/1 tras filtrar, con la carpeta+reporte "Centinela" persistentes creados por el operador).
 async function filterReportTree(page, term) {
   const f = page.locator('input[placeholder*="ilter quer" i], input[placeholder*="iltrar" i]').first();
   if (await f.count().catch(() => 0)) { await f.fill(term).catch(() => {}); await page.waitForTimeout(2000); }
 }
-async function markSentinelaAction(page, ariaLabel) {
+async function markCentinelaAction(page, ariaLabel) {
   return page.evaluate((aria) => {
     document.querySelectorAll('[data-sa-rep]').forEach((e) => e.removeAttribute('data-sa-rep'));
     for (const svg of document.querySelectorAll(`svg[aria-label="${aria}"]`)) {
       let el = svg;
-      for (let i = 0; i < 6 && el; i++) { el = el.parentElement; if (el && el.innerText && /^[sc]entinela$/i.test(el.innerText.trim())) { svg.setAttribute('data-sa-rep', '1'); return true; } }
+      for (let i = 0; i < 6 && el; i++) { el = el.parentElement; if (el && el.innerText && /^centinela$/i.test(el.innerText.trim())) { svg.setAttribute('data-sa-rep', '1'); return true; } }
     }
     return false;
   }, ariaLabel).catch(() => false);
@@ -378,14 +378,14 @@ async function generateDuckDbAborted(page, sink) {
   if (dbg) console.log(`       [dbg] Regenerate DB → ${sink && sink.hashes && sink.hashes.GenerateDuckDb ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
-// DeleteFolderById: basura de la carpeta "Sentinela" → modal "Delete Folder" → Delete.
-async function deleteFolderSentinelaAborted(page, sink) {
+// DeleteFolderById: basura de la carpeta "Centinela" → modal "Delete Folder" → Delete.
+async function deleteFolderCentinelaAborted(page, sink) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('DeleteFolderById');
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await filterReportTree(page, 'Sentinela');
-  if (!(await markSentinelaAction(page, 'Delete folder'))) { if (dbg) console.log('       [dbg] carpeta Sentinela no hallada'); return; }
+  await filterReportTree(page, 'Centinela');
+  if (!(await markCentinelaAction(page, 'Delete folder'))) { if (dbg) console.log('       [dbg] carpeta Centinela no hallada'); return; }
   await page.locator('[data-sa-rep="1"]').scrollIntoViewIfNeeded().catch(() => {});
   await page.locator('[data-sa-rep="1"]').click({ force: true, timeout: 10000 }).catch(() => {});
   const dialog = page.locator('[role="dialog"]').filter({ hasText: /Delete Folder|Eliminar/i }).first();
@@ -398,7 +398,7 @@ async function deleteFolderSentinelaAborted(page, sink) {
   if (dbg) console.log(`       [dbg] Delete Folder → ${sink && sink.hashes && sink.hashes.DeleteFolderById ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
-// CreateUpdateReportWithPermissions: "Guardar informe" (SaveIcon) → nombre "Sentinela" → "Guardar como nuevo".
+// CreateUpdateReportWithPermissions: "Guardar informe" (SaveIcon) → nombre "Centinela" → "Guardar como nuevo".
 async function saveReportAsNewAborted(page, sink) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('CreateUpdateReportWithPermissions');
@@ -408,8 +408,8 @@ async function saveReportAsNewAborted(page, sink) {
   await saveBtn.click({ force: true, timeout: 10000 });
   const dialog = page.locator('[role="dialog"]').filter({ hasText: /Guardar informe|Save Report/i }).first();
   await dialog.waitFor({ state: 'visible', timeout: 12000 });
-  // input de NOMBRE (MUI, no los react-select de carpeta/permisos) → "Sentinela".
-  await dialog.locator('input.MuiOutlinedInput-input').first().fill('Sentinela').catch(() => {});
+  // input de NOMBRE (MUI, no los react-select de carpeta/permisos) → "Centinela".
+  await dialog.locator('input.MuiOutlinedInput-input').first().fill('Centinela').catch(() => {});
   await page.waitForTimeout(500);
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.CreateUpdateReportWithPermissions)) {
@@ -419,14 +419,14 @@ async function saveReportAsNewAborted(page, sink) {
   if (dbg) console.log(`       [dbg] Save as New → ${sink && sink.hashes && sink.hashes.CreateUpdateReportWithPermissions ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
-// ArchiveReport: archivar la línea del reporte "Sentinela" (ArchiveIcon) → confirmar "Sí"/"Yes".
-async function archiveReportSentinelaAborted(page, sink) {
+// ArchiveReport: archivar la línea del reporte "Centinela" (ArchiveIcon) → confirmar "Sí"/"Yes".
+async function archiveReportCentinelaAborted(page, sink) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('ArchiveReport');
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await filterReportTree(page, 'Sentinela');
-  if (!(await markSentinelaAction(page, 'Archive report'))) { if (dbg) console.log('       [dbg] reporte Sentinela no hallado'); return; }
+  await filterReportTree(page, 'Centinela');
+  if (!(await markCentinelaAction(page, 'Archive report'))) { if (dbg) console.log('       [dbg] reporte Centinela no hallado'); return; }
   await page.locator('[data-sa-rep="1"]').scrollIntoViewIfNeeded().catch(() => {});
   await page.locator('[data-sa-rep="1"]').click({ force: true, timeout: 10000 }).catch(() => {});
   const dialog = page.locator('[role="dialog"]').filter({ hasText: /archive this report|archivar/i }).first();
@@ -439,12 +439,12 @@ async function archiveReportSentinelaAborted(page, sink) {
   if (dbg) console.log(`       [dbg] Archive Report → ${sink && sink.hashes && sink.hashes.ArchiveReport ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
-// Load compartido: verifica que la fila "Sentinela" del tipo dado existe (isSentinel fail-closed).
+// Load compartido: verifica que la fila "Centinela" del tipo dado existe (isSentinel fail-closed).
 async function loadReportingRow(page, ariaLabel) {
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.locator('input[placeholder*="ilter quer" i]').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await filterReportTree(page, 'Sentinela');
-  return { name: (await markSentinelaAction(page, ariaLabel)) ? 'Sentinela' : '' };
+  await filterReportTree(page, 'Centinela');
+  return { name: (await markCentinelaAction(page, ariaLabel)) ? 'Centinela' : '' };
 }
 
 const HANDLERS = {
@@ -481,7 +481,7 @@ const HANDLERS = {
       await editExternalNote(page, id, domain, 'SA-SENTINEL-CAP');
     },
     async restore(page, { id, domain }) {
-      // restaurar el valor base del sentinela ('.') → deja el quote como estaba
+      // restaurar el valor base del centinela ('.') → deja el quote como estaba
       await editExternalNote(page, id, domain, '.');
     },
   },
@@ -490,57 +490,57 @@ const HANDLERS = {
       // salvaguarda C.3 (create-capture-cleanup): NO requiere una OV existente (la 1594 de
       // referencia está archivada). Verifica que el dashboard de OVs carga en el dominio correcto
       // (botón crear OV = MuiButton-contained con AddIcon presente) → contexto OK, fail-closed.
-      // La OV se CREA marcada "Sentinela" y se archiva; la salvaguarda real es esa marca.
+      // La OV se CREA marcada "Centinela" y se archiva; la salvaguarda real es esa marca.
       await page.goto(`${BASE}/Domains/${domain}/SalesOrders?receivedOrderStatusFilter=OPEN`, { waitUntil: 'domcontentloaded' });
       const newBtn = page.locator('button:has(svg[data-testid="AddIcon"])').first();
       await newBtn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
       const hasNewBtn = await page.locator('button:has(svg[data-testid="AddIcon"])').count().catch(() => 0);
       if (process.env.SA_DBG) console.log(`       [dbg] OV dash: addIcon btns=${hasNewBtn}`);
-      return { name: hasNewBtn ? 'Sentinela (create-capture)' : '' };
+      return { name: hasNewBtn ? 'Centinela (create-capture)' : '' };
     },
     async mutate(page, { domain }) {
-      // crear una OV nueva "Sentinela" → dispara CreateReceivedOrder
-      await createSentinelaOV(page, domain);
+      // crear una OV nueva "Centinela" → dispara CreateReceivedOrder
+      await createCentinelaOV(page, domain);
     },
     async restore(page, { domain }) {
-      // archivar TODAS las OV Sentinela creadas por el ciclo (limpieza) — SIEMPRE
-      await archiveSentinelaOVs(page, domain);
+      // archivar TODAS las OV Centinela creadas por el ciclo (limpieza) — SIEMPRE
+      await archiveCentinelaOVs(page, domain);
     },
   },
   receivedOrderEdit: {
     async load(page, { id, domain }) {
-      // OV EXISTENTE marcada "Sentinela" (edit-restore). Fail-closed: si el detalle NO
-      // contiene "Sentinela", name='' → runMutationCycle NO muta ni restaura.
+      // OV EXISTENTE marcada "Centinela" (edit-restore). Fail-closed: si el detalle NO
+      // contiene "Centinela", name='' → runMutationCycle NO muta ni restaura.
       // Espera ACTIVA a que el nombre renderice: el detalle de OV hidrata tarde y un
-      // timeout fijo daba FALSO NEGATIVO (isSentinela=false sobre una OV que SÍ lo es).
+      // timeout fijo daba FALSO NEGATIVO (isCentinela=false sobre una OV que SÍ lo es).
       await page.goto(`${BASE}/Domains/${domain}/SalesOrders/${id}`, { waitUntil: 'domcontentloaded' });
       let isSent = false;
       const deadline = Date.now() + 15000;
       while (Date.now() < deadline && !isSent) {
-        isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+        isSent = await page.evaluate(() => /Centinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
         if (!isSent) await page.waitForTimeout(500);
       }
-      if (process.env.SA_DBG) console.log(`       [dbg] receivedOrderEdit load id=${id} isSentinela=${isSent}`);
-      return { name: isSent ? 'Sentinela' : '' };
+      if (process.env.SA_DBG) console.log(`       [dbg] receivedOrderEdit load id=${id} isCentinela=${isSent}`);
+      return { name: isSent ? 'Centinela' : '' };
     },
     async mutate(page) {
       // cambio real del PO# → SAVE dispara UpdateReceivedOrder
       await editSalesOrderPoAndSave(page, 'SA-SENTINEL-CAP');
     },
     async restore(page) {
-      // restaurar el PO# a vacío (base del sentinela) — SIEMPRE
+      // restaurar el PO# a vacío (base del centinela) — SIEMPRE
       await editSalesOrderPoAndSave(page, '');
     },
   },
   quotePrice: {
-    // load: verifica que el quote sentinela existe (fail-closed). NO abre el quote — de eso
+    // load: verifica que el quote centinela existe (fail-closed). NO abre el quote — de eso
     // se encarga el mutate (savePartsQuoteAborted). id COMPARTIDO con 'quote' (288): entityFor
     // devuelve 'quote' para el load, pero el ciclo usa entityType='quotePrice' para mutate/restore.
     async load(page, { id, domain }) {
       // client-side (deep-link no hidrata). El link con rev sólo aparece si el quote está
       // ACTIVO (desarchivado) — fail-closed: si no aparece, name='' → el ciclo NO muta.
       const found = await openQuotesListAndFind(page, id, domain);
-      return { name: found ? 'Sentinela' : '' };
+      return { name: found ? 'Centinela' : '' };
     },
     async mutate(page, ctx) { await savePartsQuoteAborted(page, ctx.sink, ctx); },
     async restore(page, ctx) {
@@ -549,18 +549,18 @@ const HANDLERS = {
     },
   },
   workOrderPartCount: {
-    // load: verifica que la OV Sentinela hidrata + su nombre contiene 'Sentinela' (isSentinel
-    // fail-closed). Si no hidrata / no es Sentinela → name='' → runMutationCycle NO muta.
+    // load: verifica que la OV Centinela hidrata + su nombre contiene 'Centinela' (isSentinel
+    // fail-closed). Si no hidrata / no es Centinela → name='' → runMutationCycle NO muta.
     async load(page, { url }) {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       let isSent = false;
       const deadline = Date.now() + 20000;
       while (Date.now() < deadline && !isSent) {
-        isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+        isSent = await page.evaluate(() => /Centinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
         if (!isSent) await page.waitForTimeout(500);
       }
-      if (process.env.SA_DBG) console.log(`       [dbg] workOrderPartCount load isSentinela=${isSent}`);
-      return { name: isSent ? 'Sentinela' : '' };
+      if (process.env.SA_DBG) console.log(`       [dbg] workOrderPartCount load isCentinela=${isSent}`);
+      return { name: isSent ? 'Centinela' : '' };
     },
     async mutate(page, ctx) { await saveWoPartCountAborted(page, ctx.sink, ctx); },
     async restore(page, { sink }) {
@@ -571,25 +571,25 @@ const HANDLERS = {
   maintenanceNode: {
     async load(page, { domain }) {
       // create-event-capture: no muta un nodo existente, crea un EVENTO sobre el nodo
-      // sentinela. Verifica que la pantalla de Mantenimiento carga (botón "New
+      // centinela. Verifica que la pantalla de Mantenimiento carga (botón "New
       // Maintenance Event" presente) → contexto OK. La salvaguarda real es seleccionar
-      // el nodo "Sentinela" por nombre en el combobox (fail-closed si no aparece).
+      // el nodo "Centinela" por nombre en el combobox (fail-closed si no aparece).
       await page.goto(`${BASE}/Domains/${domain}/Maintenance`, { waitUntil: 'domcontentloaded' });
       const btn = page.locator('button', { hasText: /New Maintenance Event/ }).first();
       await btn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
       const ok = await page.locator('button', { hasText: /New Maintenance Event/ }).count().catch(() => 0);
       if (process.env.SA_DBG) console.log(`       [dbg] maint dash: newEventBtn=${ok}`);
-      return { name: ok ? 'Sentinela (maint-capture)' : '' };
+      return { name: ok ? 'Centinela (maint-capture)' : '' };
     },
     async mutate(page, { domain, sink }) {
-      // crear evento + comentar + completar sobre el nodo Sentinela → dispara los 3
-      await createMaintenanceEventOnSentinela(page, domain, sink);
+      // crear evento + comentar + completar sobre el nodo Centinela → dispara los 3
+      await createMaintenanceEventOnCentinela(page, domain, sink);
     },
     async restore() {
       // no-op: el mutate ya archiva el evento creado con el mismo toggle que dispara
       // UpdateMaintenanceEvent (self-clean). Evitamos re-buscar un checkbox aquí para
       // no clicar por error otro checkbox si la página navegó. Un run INTERRUMPIDO
-      // podría dejar un evento sin archivar (fuga menor, evento sentinela inofensivo).
+      // podría dejar un evento sin archivar (fuga menor, evento centinela inofensivo).
     },
   },
   // ── REPORTES (captura-y-aborta) — cero efecto, restore solo desmarca la op del sink ──
@@ -598,31 +598,31 @@ const HANDLERS = {
       await page.goto(`${BASE}/Reporting/Databases`, { waitUntil: 'domcontentloaded' }).catch(() => {});
       const ok = await page.locator('button:has(svg[data-testid="CloudDownloadIcon"])').first()
         .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
-      return { name: ok ? 'Sentinela (regenerate-db capture-abort)' : '' };
+      return { name: ok ? 'Centinela (regenerate-db capture-abort)' : '' };
     },
     async mutate(page, { sink }) { await generateDuckDbAborted(page, sink); },
     async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('GenerateDuckDb'); },
   },
   reportFolderDelete: {
     async load(page) { return loadReportingRow(page, 'Delete folder'); },
-    async mutate(page, { sink }) { await deleteFolderSentinelaAborted(page, sink); },
+    async mutate(page, { sink }) { await deleteFolderCentinelaAborted(page, sink); },
     async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('DeleteFolderById'); },
   },
   reportSaveAsNew: {
     async load(page) {
-      // No requiere el reporte Sentinela existente (crea uno nuevo y aborta): verifica el
+      // No requiere el reporte Centinela existente (crea uno nuevo y aborta): verifica el
       // botón "Guardar informe" (contexto del editor de reportes) → isSentinel fail-closed.
       await page.goto(`${BASE}/Reporting/Edit`, { waitUntil: 'domcontentloaded' }).catch(() => {});
       const ok = await page.locator('button:has(svg[data-testid="SaveIcon"])').first()
         .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
-      return { name: ok ? 'Sentinela (save-as-new capture-abort)' : '' };
+      return { name: ok ? 'Centinela (save-as-new capture-abort)' : '' };
     },
     async mutate(page, { sink }) { await saveReportAsNewAborted(page, sink); },
     async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('CreateUpdateReportWithPermissions'); },
   },
   reportArchive: {
     async load(page) { return loadReportingRow(page, 'Archive report'); },
-    async mutate(page, { sink }) { await archiveReportSentinelaAborted(page, sink); },
+    async mutate(page, { sink }) { await archiveReportCentinelaAborted(page, sink); },
     async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('ArchiveReport'); },
   },
 };

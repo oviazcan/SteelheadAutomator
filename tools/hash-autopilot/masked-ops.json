@@ -1,6 +1,6 @@
 {
   "_doc": "FUENTE ÚNICA DE VERDAD de las operaciones 'enmascaradas' (session-sensitive). El validador Python (validate-hashes.py, cliente externo con idp-token) NO las puede validar de forma confiable: Steelhead responde 'Must provide a query string' a clientes que no son el Apollo del navegador para estas ops sensibles a sesión (a veces intermitente). Por eso el validador las SKIPEA. El hash-autopilot headless (Apollo real del frontend) las RECAPTURA SIEMPRE — en cada corrida, DESACOPLADO del gate por release (modo --masked-only) — y auto-deploya si rotaron. Antes esta lista vivía DUPLICADA y DIVERGENTE en tools/hash-validator-whitelist.json (validador) y en el array SESSION_SENSITIVE hardcodeado en hash-autopilot.mjs; este archivo las unifica. Regla de oro: el validador skipea EXACTAMENTE lo que el motor recaptura → sin huecos.",
-  "_regla": "queries → se recapturan navegando (route-catalog.json). mutations → se recapturan por CICLO SENTINELA (ejecutar la mutation sobre un objeto de prueba 'Sentinela'); ver sentinels-config.json. Una op NO va aquí si el validador Python la valida bien (p.ej. GetPurchaseOrderDetail sale 'ok' consistente) — esa la cubre el flujo normal por stale.",
+  "_regla": "queries → se recapturan navegando (route-catalog.json). mutations → se recapturan por CICLO CENTINELA (ejecutar la mutation sobre un objeto de prueba 'Centinela'); ver sentinels-config.json. Una op NO va aquí si el validador Python la valida bien (p.ej. GetPurchaseOrderDetail sale 'ok' consistente) — esa la cubre el flujo normal por stale.",
   "queries": [
     "AllCustomers",
     "Customer",
@@ -17,7 +17,7 @@
     "AllCustomers": "ROTÓ el 2026-07-03 (66e271f6→8d4dfe69) y el validador reportó 0 rotado por estar whitelisted → carga masiva trajo 0 clientes. Ejemplo canónico del hueco que motiva la recaptura-siempre.",
     "AllSensorDashboards": "session-sensitive; usado por sensor-status-autofill in-page.",
     "SensorDashboardQuery": "session-sensitive; ruta headless maintenance-sensordashboards-detail validada 2026-07-14.",
-    "SaveManyPartNumberPrices": "MUTATION de PRECIOS (crítica). No se detecta pasivamente: solo se dispara al guardar un precio. Se recaptura por CICLO SENTINELA (guardar precio en un PN 'Sentinela'). Antes se llamaba SaveManyPNP_Quote/SaveManyPNP_PN (renombradas 2026-07-07). Requiere PN Sentinela declarado en sentinels-config.json para activarse."
+    "SaveManyPartNumberPrices": "MUTATION de PRECIOS (crítica). No se detecta pasivamente: solo se dispara al guardar un precio. Se recaptura por CICLO CENTINELA (guardar precio en un PN 'Centinela'). Antes se llamaba SaveManyPNP_Quote/SaveManyPNP_PN (renombradas 2026-07-07). Requiere PN Centinela declarado en sentinels-config.json para activarse."
   },
   "_removidas": {
     "GetPurchaseOrder": "MUERTA: renombrada por Steelhead a GetPurchaseOrderDetail; ya no existe en config.json. Estaba en la vieja whitelist del validador sin efecto (el validador itera sobre config, no la probaba).",

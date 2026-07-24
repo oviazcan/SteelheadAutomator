@@ -1,7 +1,7 @@
 // tools/test/masked-ops-coherence.test.js
 // Blinda la FUENTE ÚNICA DE VERDAD de ops enmascaradas (masked-ops.json) contra
 // regresiones: que cuadre con config.json (existen), route-catalog.json (las queries
-// tienen ruta headless) y sentinels-config.json (las mutations tienen sentinela).
+// tienen ruta headless) y sentinels-config.json (las mutations tienen centinela).
 // Sin esto, un typo o una op muerta reintroduce el desajuste whitelist ↔ SESSION_SENSITIVE.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -53,27 +53,27 @@ test('masked-ops: cada query enmascarada tiene AL MENOS una ruta headless que la
   }
 });
 
-test('masked-ops: cada mutation enmascarada tiene un sentinela declarado (aunque id:0 = andamiaje)', () => {
+test('masked-ops: cada mutation enmascarada tiene un centinela declarado (aunque id:0 = andamiaje)', () => {
   const sentinelOps = new Set();
   for (const e of Object.values(sentinels.entities || {})) {
     for (const op of (e._para || [])) sentinelOps.add(op);
     for (const op of (e.opsGroup || [])) sentinelOps.add(op);
   }
   for (const op of masked.mutations) {
-    assert.ok(sentinelOps.has(op), `mutation enmascarada SIN sentinela en sentinels-config: ${op}`);
+    assert.ok(sentinelOps.has(op), `mutation enmascarada SIN centinela en sentinels-config: ${op}`);
   }
 });
 
 test('sentinels-config: SaveManyPartNumberPrices apunta al flujo de cotización (quotePrice), variante única unificada', () => {
   // Steelhead UNIFICÓ las dos variantes de SaveManyPartNumberPrices en un solo hash (72946d4d…,
-  // el que quedó vivo; el viejo batch 9da1874e murió). La captura vive en la COTIZACIÓN sentinela
+  // el que quedó vivo; el viejo batch 9da1874e murió). La captura vive en la COTIZACIÓN centinela
   // #288 ("Edit this Part" → "Save Parts" SIN editar → captura-y-aborta), validada end-to-end
   // headless 2026-07-17. El andamiaje del modal individual (partNumberPrice id:0) se RETIRÓ.
   const qp = sentinels.entities.quotePrice;
   assert.ok(qp, 'falta la entidad quotePrice');
   assert.ok((qp._para || []).includes('SaveManyPartNumberPrices'), 'quotePrice debe declarar SaveManyPartNumberPrices');
   assert.equal(qp._estrategia, 'quote-saveparts-abort', 'quotePrice usa la estrategia de cotización (no el modal)');
-  assert.ok(qp.id && qp.id !== 0, 'quotePrice debe tener un id de sentinela ACTIVO (≠0)');
+  assert.ok(qp.id && qp.id !== 0, 'quotePrice debe tener un id de centinela ACTIVO (≠0)');
   // El modal individual quedó retirado (deuda de variante redundante) — NO debe reaparecer.
   assert.equal(sentinels.entities.partNumberPrice, undefined, 'partNumberPrice (modal individual) fue retirado');
 });
