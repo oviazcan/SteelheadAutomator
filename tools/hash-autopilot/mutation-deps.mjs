@@ -439,6 +439,49 @@ async function archiveReportCentinelaAborted(page, sink) {
   if (dbg) console.log(`       [dbg] Archive Report → ${sink && sink.hashes && sink.hashes.ArchiveReport ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
+// ── Mutation de INVOICE PDF (captura-y-aborta) ──────────────────────────────
+// CreateInvoicePdf (usedBy invoice-auto-regen) rotó 2026-07-24 sin sentinela declarado → el
+// ciclo no tenía handler y escalaba a captura manual. Se recaptura por CAPTURA-Y-ABORTA sobre
+// el PRIMER invoice del dashboard: se marca la op en sink.abortOps ANTES de disparar → el
+// interceptor registra el sha256Hash y ABORTA el request → CERO efecto (no regenera el PDF).
+// SIN objeto Centinela (el operador aprobó usar el primer invoice; abort = cero efecto, no
+// destructivo). Flujo/selectores tomados del propio applet invoice-auto-regen.js (icono
+// RestorePageOutlinedIcon → CONFIRMAR). El load devuelve name 'Centinela (...)' para pasar el
+// isSentinel fail-closed del runner (la seguridad real es el abort, no la identidad — igual que
+// reportGenerateDb, botón global sin objeto).
+async function createInvoicePdfAborted(page, { domain, sink }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('CreateInvoicePdf');
+  await page.goto(`${BASE}/Domains/${domain}/Invoices`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.locator('.MuiDataGrid-row').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  // Abrir el PRIMER invoice: clic en el ancestro clickeable de la 1a celda "#<n>" (mismo mecanismo
+  // que _findRowOpenTarget del applet — la fila/celda abre un modal, no un <a> de detalle).
+  await page.evaluate(() => {
+    const leaf = [...document.querySelectorAll('.MuiDataGrid-cell, a, span, div, td')]
+      .find((el) => el.children.length === 0 && /^#\d+$/.test((el.textContent || '').trim()));
+    if (!leaf) return false;
+    let cur = leaf;
+    for (let i = 0; i < 8 && cur; i++) {
+      if (cur.tagName === 'A' || cur.onclick || cur.getAttribute?.('role') === 'button') { cur.click(); return true; }
+      cur = cur.parentElement;
+    }
+    leaf.click();
+    return true;
+  }).catch(() => {});
+  const icon = page.locator('svg[data-testid="RestorePageOutlinedIcon"]').first();
+  await icon.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.CreateInvoicePdf)) {
+    await icon.click({ force: true, timeout: 5000 }).catch(() => {});
+    // El clic al icono abre un submodal de confirmación → botón CONFIRMAR/Confirm dispara CreateInvoicePdf.
+    const confirm = page.locator('button').filter({ hasText: /^(Confirmar|Confirm)$/i }).first();
+    await confirm.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+    await confirm.click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] CreateInvoicePdf → ${sink && sink.hashes && sink.hashes.CreateInvoicePdf ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
 // Load compartido: verifica que la fila "Centinela" del tipo dado existe (isSentinel fail-closed).
 async function loadReportingRow(page, ariaLabel) {
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -624,6 +667,17 @@ const HANDLERS = {
     async load(page) { return loadReportingRow(page, 'Archive report'); },
     async mutate(page, { sink }) { await archiveReportCentinelaAborted(page, sink); },
     async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('ArchiveReport'); },
+  },
+  // ── INVOICE PDF (captura-y-aborta) — cero efecto, restore solo desmarca la op del sink ──
+  invoicePdf: {
+    async load(page, { domain }) {
+      await page.goto(`${BASE}/Domains/${domain}/Invoices`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const ok = await page.locator('.MuiDataGrid-row').first()
+        .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      return { name: ok ? 'Centinela (invoice-pdf capture-abort)' : '' };
+    },
+    async mutate(page, ctx) { await createInvoicePdfAborted(page, ctx); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('CreateInvoicePdf'); },
   },
 };
 

@@ -122,6 +122,16 @@
       ],
       "_estrategia": "capture-abort",
       "_nota": "ArchiveReport (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre el REPORTE 'Centinela' en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Centinela') + svg[aria-label='Archive report']. Clic archivar → modal 'Confirmar' ('Are you sure you wish to archive this report?') → botón 'Sí'/'Yes' → aborta (NO archiva). Doble candado: fila 'Centinela' exacta + abort. Rotó 2026-07-20 (cfg 796eb308 muerto). Requiere un reporte 'Centinela' persistente en /Reporting/Edit."
+    },
+    "invoicePdf": {
+      "id": "invoice-first-in-list",
+      "screenPath": "/Domains/{domain}/Invoices",
+      "marker": "(primer invoice del dashboard, sin objeto Centinela)",
+      "_para": [
+        "CreateInvoicePdf"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "CreateInvoicePdf (usedBy invoice-auto-regen) por CAPTURA-Y-ABORTA sobre el PRIMER invoice del dashboard /Domains/{domain}/Invoices. Flujo tomado del propio applet invoice-auto-regen: abrir el primer invoice (clic en la fila del DataGrid → modal) → icono 'RestorePageOutlinedIcon' (regenerar PDF) → botón CONFIRMAR/Confirm → dispara CreateInvoicePdf → el interceptor lo marca en sink.abortOps y ABORTA el request → NO regenera el PDF (cero efecto). SIN objeto Centinela: el operador aprobó (2026-07-24) usar el primer invoice porque capture-abort NO es destructivo; la seguridad viene del abort, no de la identidad (mismo criterio que reportGenerateDb, botón global sin objeto). El load devuelve name 'Centinela (...)' para pasar isSentinel fail-closed. id string (no numérico, no se usa en URL) solo para pasar el gate (mutEntityType exige id truthy). Selector del icono: svg[data-testid=\"RestorePageOutlinedIcon\"] (invoice-auto-regen.js:810); confirm bilingüe /^(Confirmar|Confirm)$/i. AUTO-DEPLOYABLE: sin responseOk (se aborta), el motor prueba el liveHash con variables vacías → si el server lo reconoce (classifyProbe 'vigente') → rotadoValidado → auto-deploy (isValidatedCapture)."
     }
   },
   "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
