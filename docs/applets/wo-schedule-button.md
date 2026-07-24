@@ -54,10 +54,38 @@ Objetivo: cada **📅** clicable → modal dark-mode → programar/fijar **sin a
 - El extractor `buildBoardScheduleIndex` ya guarda `cycleTimeMinutes`/`treatmentTimeMinutes` (necesarios para el update).
 - Cada 📅 del readout ya guarda `data-sa-task-id`/`data-sa-schedule-id`/`data-sa-station-id`.
 
-### Pendiente para cablear Fase 2
-1. **Payload de `CreateManyScheduleTasks`** (lo provee el usuario): capturar el request de una creación real (o DevTools Network del POST) — para el botón "crear" en OT sin tareas.
-2. **Hashes a config + rutas de regeneración**: `UpdateManyScheduleTasks` (y luego Create/Delete) van a `config.mutations` **con** su ruta de regeneración en `hash-autopilot` (centinela captura-y-aborta sobre una OT/tarea "Centinela" — requiere capturar el DOM del calendario/modal nativo). **Deuda hasta entonces** (por eso el hash del Update NO se metió aún a config).
-3. **UI**: 📅 clicable → modal dark-mode (fecha/hora `datetime-local` → ISO UTC en el glue) + 2 botones (intencional / reacomodar-con-advertencia) + confirmación antes de escribir + refresh del readout tras éxito.
+### Payloads capturados (scan 2026-07-23_185855, ScheduleBoard 454)
+
+**UPDATE `UpdateManyScheduleTasks`** (hash `14c097944a…`) — LIGERO, para FIJAR una tarea existente:
+```
+{ scheduledTasks: [{ id, scheduleId, stationId, expectedStartTime,
+  totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes, isIntentional }] }
+```
+Resp `{mnUpdateScheduleTaskById}`. Es update-por-id (echo de todos los campos + cambia fecha + `isIntentional`).
+
+**CREATE `CreateManyScheduleTasks`** (hash `9039afe7…`) — PESADO, para crear en OT sin tarea. Forma DISTINTA (anidado en `mnScheduleTask`, con ELEMENTOS):
+```
+{ scheduledTasks: { mnScheduleTask: [{
+    scheduleId, treatmentId, stationId, expectedStartTime,
+    totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes,
+    isIntentional:false, status:"UNSCHEDULED",
+    scheduleTaskElementsByScheduleTaskId: { nodes: [{
+      partSetUuid, recipeNodeId, partNumberId, rackIdLineage, rackTypeIdLineage,
+      partCount, partsPerBatch, relatedPartTransferAccounts:[{ id, partCount }]
+    }] } }] },
+  scheduleIdFilter: { equalTo: <scheduleId> } }
+```
+Requiere ENSAMBLAR por WO: `treatmentId`, `recipeNodeId`, `partNumberId`, `partSetUuid`, `partCount`, `partsPerBatch`, `relatedPartTransferAccounts.id` (el account del paso). Fuentes: `SchedulablePartLocations` (recipeNodeId/partNumberId/stationId), `WorkOrder.currentPartsTransferAccounts` (account). **Sin mapear aún:** origen de `treatmentId`, los `times`, y `partSetUuid` (¿generado en cliente?). **Riesgo** de crear tareas malformadas.
+
+**`UpdateManyStationTasks`** (hash `de13ff5f…`) = ventanas de disponibilidad de ESTACIÓN (con `rrule`), parte del reschedule; NO es tarea de WO. **Reschedule** = combinación (más datos) de Create/Update/Delete + UpdateStation; no hay mutación nueva.
+
+### Fasado propuesto
+- **Fase 2a (LISTA para cablear, bajo riesgo):** 📅 clicable → modal dark-mode (fecha/hora) → **UpdateManyScheduleTasks** (`isIntentional:true`) sobre una tarea EXISTENTE. Cubre el caso común (OT ya auto-agendada). Core `buildScheduleTaskUpdateInput` ✔ + tests. Falta: hash a config + regen route + UI + confirmación + refresh.
+- **Fase 2b (compleja, riesgo):** CREATE en OT sin tarea → mapear origen de `treatmentId`/`times`/`partSetUuid`, ensamblar elementos desde `SchedulablePartLocations`+`WorkOrder`, validar en vivo. Core `buildScheduleTaskCreateInput` pendiente (hasta mapear fuentes).
+- **Fase 2c (destructiva):** reschedule (reacomoda todo) → modal de advertencia. Última.
+
+### Rutas de regeneración (deuda)
+Los hashes de mutación (`UpdateManyScheduleTasks`, luego Create/Delete/UpdateStation) van a `config.mutations` **con** ruta en `hash-autopilot` (centinela captura-y-aborta; requiere DOM del calendario/modal nativo). Deuda hasta cablear.
 
 ## Arquitectura
 
