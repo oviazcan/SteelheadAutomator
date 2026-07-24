@@ -108,6 +108,78 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Lote(s) (inventory batch) de la WO — desde el response de WorkOrder (ficha)
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkOrder({idInDomain}) es la query de la ficha (hash fc41042e, ya en config,
+  // la usa también wo-schedule-button). Por cada cuenta de la WO trae el lote + su
+  // Packing Slip del cliente + el receptor con la fecha real de recibido:
+  //   workOrderByIdInDomain.currentPartsTransferAccounts.nodes[]
+  //     .inventoryAccountByInventoryAccountId
+  //       .inventoryBatchByInventoryBatchId.{ id, idInDomain, name,
+  //           customInputs.DatosRecibo.PackingSlip,
+  //           inventoryItemByInventoryItemId.partNumberByPartNumberId.id }  ← pnId → link anidado
+  //       .receiverBomItemByReceiverBomItemId.receiverByReceiverId.receivedAt  ← fecha de recibido
+  // Devuelve [{ id, idInDomain, name, packingSlip, receivedAt, partNumberId }]
+  // (dedup por batch id, preserva orden; una WO puede ligar varios lotes). SLIM: solo
+  // los campos que se muestran → el response de 1156 campos se descarta tras extraer.
+  // Fail-safe: shape inesperado → [].
+  function extractWorkOrderBatches(input) {
+    const wo = (input && input.workOrderByIdInDomain) ? input.workOrderByIdInDomain
+             : (input && input.data && input.data.workOrderByIdInDomain) ? input.data.workOrderByIdInDomain
+             : null;
+    if (!wo || typeof wo !== 'object') return [];
+    const nodes = (wo.currentPartsTransferAccounts && wo.currentPartsTransferAccounts.nodes) || [];
+    const out = [];
+    const seen = new Set();
+    nodes.forEach(function (n) {
+      const acc = n && n.inventoryAccountByInventoryAccountId;
+      if (!acc) return;
+      const batch = acc.inventoryBatchByInventoryBatchId;
+      if (!batch || batch.id == null) return;
+      if (seen.has(batch.id)) return;   // dedup por batch id (varias cuentas → mismo lote)
+      seen.add(batch.id);
+      // pnId para el link anidado /PartNumbers/<pn>/Inventory/Batches/<idInDomain>
+      let partNumberId = null;
+      const item = batch.inventoryItemByInventoryItemId;
+      const pn = item && item.partNumberByPartNumberId;
+      if (pn && pn.id != null) partNumberId = pn.id;
+      // fecha de recibido: receptor ligado a la cuenta del lote (receivedAt real, no createdAt)
+      let receivedAt = null;
+      const rbi = acc.receiverBomItemByReceiverBomItemId;
+      const rcv = rbi && rbi.receiverByReceiverId;
+      if (rcv && rcv.receivedAt != null) receivedAt = String(rcv.receivedAt);
+      out.push({
+        id: batch.id,
+        idInDomain: batch.idInDomain != null ? batch.idInDomain : null,
+        name: (batch.name != null && batch.name !== '') ? String(batch.name) : ('Lote ' + batch.id),
+        packingSlip: packingSlipFromCI(batch.customInputs),
+        receivedAt: receivedAt,
+        partNumberId: partNumberId,
+      });
+    });
+    return out;
+  }
+
+  // customInputs del lote puede venir como objeto o como string JSON (el server varía).
+  // → DatosRecibo.PackingSlip ('' si falta o no parsea). Mismo criterio que board-metal-tooltip.
+  function packingSlipFromCI(ci) {
+    let o = ci;
+    if (typeof ci === 'string') { try { o = JSON.parse(ci); } catch (_) { o = null; } }
+    return (o && o.DatosRecibo && o.DatosRecibo.PackingSlip != null && o.DatosRecibo.PackingSlip !== '')
+      ? String(o.DatosRecibo.PackingSlip) : '';
+  }
+
+  // Link a la ficha del lote. Preferido: /PartNumbers/<pnId>/Inventory/Batches/<idInDomain>
+  // (forma REAL que renderiza SH → navegable). Sin pnId → forma bare /Inventory/Batches/<idInDomain>.
+  // null si no hay idInDomain.
+  function batchLink(idInDomain, partNumberId) {
+    if (idInDomain == null) return null;
+    return (partNumberId != null)
+      ? '/PartNumbers/' + partNumberId + '/Inventory/Batches/' + idInDomain
+      : '/Inventory/Batches/' + idInDomain;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Programación (índice workOrderId → tarea(s) agendada(s))
   // ══════════════════════════════════════════════════════════════════════════
   // Del response de GetRelatedScheduleData construye un índice:
@@ -393,6 +465,7 @@
     WO_INDEX_RE, WO_DETAIL_RE, DOMAIN_RE,
     isWorkOrdersIndexPath, isWorkOrderDetailPath, parseWorkOrderIdInDomain, parseDomainId,
     extractPartNumbers, pnLink, extractWorkOrderGlobalId, extractPartNumberDetail,
+    extractWorkOrderBatches, batchLink,
     buildScheduleIndex, resolveByWorkOrderId, resolveByAccountIds,
     stationNameMap, stationName,
     buildBoardScheduleIndex, resolveBoardScheduleForWO,

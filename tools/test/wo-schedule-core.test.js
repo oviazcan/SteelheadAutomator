@@ -336,3 +336,95 @@ test('buildBoardScheduleIndex: incluye cycle/treatmentTimeMinutes (para el updat
   assert.equal(t.cycleTimeMinutes, 2.05);
   assert.equal(t.treatmentTimeMinutes, 3.1);
 });
+
+// ── Lote(s) de la WO (extractWorkOrderBatches + batchLink) ─────────────────────
+// Fixture fiel al response de WorkOrder({idInDomain}): un lote real (RG-M377597 / 11169)
+// con Packing Slip del cliente + receptor con receivedAt.
+const WO_BATCH_SINGLE = {
+  workOrderByIdInDomain: {
+    id: 1911753, idInDomain: 15194,
+    currentPartsTransferAccounts: {
+      nodes: [
+        {
+          inventoryAccountByInventoryAccountId: {
+            inventoryBatchByInventoryBatchId: {
+              id: 500123, idInDomain: 11169, name: 'RG-M377597',
+              customInputs: { DatosRecibo: { PackingSlip: 'PS-8842', numeroContenedores: 3 } },
+              inventoryItemByInventoryItemId: { partNumberByPartNumberId: { id: 3781602, name: 'SGE11074C7' } },
+            },
+            receiverBomItemByReceiverBomItemId: {
+              receiverByReceiverId: { id: 77, idInDomain: 12, receivedAt: '2026-07-18T15:30:00+00:00', createdAt: '2026-07-20T09:00:00+00:00' },
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+test('extractWorkOrderBatches: un lote con PS + fecha de recibido + pnId', () => {
+  const b = Core.extractWorkOrderBatches(WO_BATCH_SINGLE);
+  assert.equal(b.length, 1);
+  assert.deepEqual(b[0], {
+    id: 500123, idInDomain: 11169, name: 'RG-M377597',
+    packingSlip: 'PS-8842', receivedAt: '2026-07-18T15:30:00+00:00', partNumberId: 3781602,
+  });
+});
+
+test('extractWorkOrderBatches: receivedAt viene del receptor, NO de createdAt', () => {
+  const b = Core.extractWorkOrderBatches(WO_BATCH_SINGLE);
+  assert.equal(b[0].receivedAt, '2026-07-18T15:30:00+00:00'); // receivedAt, no createdAt
+});
+
+test('extractWorkOrderBatches: multi-lote, dedup por batch id, envuelto en data', () => {
+  const input = { data: { workOrderByIdInDomain: { currentPartsTransferAccounts: { nodes: [
+    { inventoryAccountByInventoryAccountId: { inventoryBatchByInventoryBatchId: { id: 1, idInDomain: 10, name: 'L-A', customInputs: {} }, receiverBomItemByReceiverBomItemId: null } },
+    { inventoryAccountByInventoryAccountId: { inventoryBatchByInventoryBatchId: { id: 2, idInDomain: 20, name: 'L-B', customInputs: {} } } },
+    { inventoryAccountByInventoryAccountId: { inventoryBatchByInventoryBatchId: { id: 1, idInDomain: 10, name: 'L-A', customInputs: {} } } }, // dup → colapsa
+  ] } } } };
+  const b = Core.extractWorkOrderBatches(input);
+  assert.equal(b.length, 2);
+  assert.deepEqual(b.map(x => x.name), ['L-A', 'L-B']);
+  assert.equal(b[0].packingSlip, ''); // sin PS
+  assert.equal(b[0].receivedAt, null); // sin receptor
+  assert.equal(b[0].partNumberId, null); // sin inventoryItem
+});
+
+test('extractWorkOrderBatches: customInputs como STRING JSON', () => {
+  const input = { workOrderByIdInDomain: { currentPartsTransferAccounts: { nodes: [
+    { inventoryAccountByInventoryAccountId: { inventoryBatchByInventoryBatchId: {
+      id: 9, idInDomain: 90, name: 'L-STR',
+      customInputs: JSON.stringify({ DatosRecibo: { PackingSlip: 'PS-STR' } }),
+    } } },
+  ] } } };
+  assert.equal(Core.extractWorkOrderBatches(input)[0].packingSlip, 'PS-STR');
+});
+
+test('extractWorkOrderBatches: sin nombre → "Lote <id>"; PS vacío → ""', () => {
+  const input = { workOrderByIdInDomain: { currentPartsTransferAccounts: { nodes: [
+    { inventoryAccountByInventoryAccountId: { inventoryBatchByInventoryBatchId: {
+      id: 7, idInDomain: 70, name: '', customInputs: { DatosRecibo: { PackingSlip: '' } },
+    } } },
+  ] } } };
+  const b = Core.extractWorkOrderBatches(input)[0];
+  assert.equal(b.name, 'Lote 7');
+  assert.equal(b.packingSlip, '');
+});
+
+test('extractWorkOrderBatches: fail-safe (shape inesperado / cuenta sin lote → [])', () => {
+  assert.deepEqual(Core.extractWorkOrderBatches(null), []);
+  assert.deepEqual(Core.extractWorkOrderBatches({}), []);
+  assert.deepEqual(Core.extractWorkOrderBatches({ workOrderByIdInDomain: {} }), []);
+  // cuenta sin inventoryAccount, y cuenta sin batch → se ignoran
+  assert.deepEqual(Core.extractWorkOrderBatches({ workOrderByIdInDomain: { currentPartsTransferAccounts: { nodes: [
+    { inventoryAccountByInventoryAccountId: null },
+    { inventoryAccountByInventoryAccountId: { inventoryBatchByInventoryBatchId: null } },
+  ] } } }), []);
+});
+
+test('batchLink: anidado con pnId, bare sin pnId, null sin idInDomain', () => {
+  assert.equal(Core.batchLink(11169, 3781602), '/PartNumbers/3781602/Inventory/Batches/11169');
+  assert.equal(Core.batchLink(11169, null), '/Inventory/Batches/11169');
+  assert.equal(Core.batchLink(11169), '/Inventory/Batches/11169');
+  assert.equal(Core.batchLink(null, 3781602), null);
+});

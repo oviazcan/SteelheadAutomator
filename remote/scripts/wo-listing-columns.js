@@ -24,6 +24,7 @@ const WoListingColumns = (() => {
 
   const PN_KEY = 'sa_wo_pn_col_enabled';       // persistente, default OFF
   const SCHED_KEY = 'sa_wo_sched_col_enabled'; // persistente, default OFF
+  const LOTE_KEY = 'sa_wo_lote_col_enabled';   // persistente, default OFF
   const MAX_CONC = 4;
   const MIN_GAP_MS = 130;
   const RETRY_BACKOFF = [0, 800, 2500];
@@ -32,6 +33,7 @@ const WoListingColumns = (() => {
   const COLS = [
     { key: 'pn',    cls: 'sa-wocol-pn',    label: 'Número de Parte', on: isPnOn },
     { key: 'sched', cls: 'sa-wocol-sched', label: 'Programación',    on: isSchedOn },
+    { key: 'lote',  cls: 'sa-wocol-lote',  label: 'Lote',            on: isLoteOn },
   ];
 
   // ── Estado persistente / singleton ─────────────────────────────────────────
@@ -39,7 +41,10 @@ const WoListingColumns = (() => {
   function setFlag(k, v) { try { localStorage.setItem(k, v ? '1' : '0'); } catch (_) {} }
   function isPnOn() { return getFlag(PN_KEY); }
   function isSchedOn() { return getFlag(SCHED_KEY); }
-  function anyOn() { return isPnOn() || isSchedOn(); }
+  function isLoteOn() { return getFlag(LOTE_KEY); }
+  function anyOn() { return isPnOn() || isSchedOn() || isLoteOn(); }
+  function isOnFor(kind) { return kind === 'pn' ? isPnOn() : kind === 'sched' ? isSchedOn() : isLoteOn(); }
+  function keyFor(kind) { return kind === 'pn' ? PN_KEY : kind === 'sched' ? SCHED_KEY : LOTE_KEY; }
   function onIndex() { return Core().isWorkOrdersIndexPath(location.pathname); }
 
   // Cache slim por idInDomain: { pns:[{id,name}], woGlobalId }.
@@ -70,12 +75,19 @@ const WoListingColumns = (() => {
       '.sa-wocol-toggle.on .sa-wocol-sw{background:#13a36f;}',
       '.sa-wocol-toggle.on .sa-wocol-sw::after{transform:translateX(12px);}',
       '.sa-wocol-count{font-weight:400;color:#9aa7b5;font-size:10px;}',
-      'th.sa-wocol-pn,th.sa-wocol-sched{border-left:1px dashed #c7ccd1 !important;white-space:nowrap;}',
-      'td.sa-wocol-pn,td.sa-wocol-sched{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;}',
+      'th.sa-wocol-pn,th.sa-wocol-sched,th.sa-wocol-lote{border-left:1px dashed #c7ccd1 !important;white-space:nowrap;}',
+      'td.sa-wocol-pn,td.sa-wocol-sched,td.sa-wocol-lote{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;}',
       // Borde derecho punteado en la ÚLTIMA de nuestras columnas → frontera clara con las nativas.
       'th.sa-wocol-edge,td.sa-wocol-edge{border-right:1px dashed #c7ccd1 !important;}',
       'td.sa-wocol-pn{min-width:120px;max-width:280px;}',
       'td.sa-wocol-sched{min-width:150px;max-width:300px;}',
+      'td.sa-wocol-lote{min-width:150px;max-width:320px;}',
+      '.sa-wocol-lote-item{padding:2px 0;}',
+      '.sa-wocol-lote-item + .sa-wocol-lote-item{border-top:1px dashed #e1e5ea;margin-top:3px;padding-top:3px;}',
+      'a.sa-wocol-lote-link{color:#0969da;cursor:pointer;text-decoration:none;font-size:12px;font-weight:600;display:inline-block;}',
+      'a.sa-wocol-lote-link:hover{text-decoration:underline;}',
+      '.sa-wocol-lote-meta{color:#5a6b7a;font-size:11px;display:block;line-height:1.35;}',
+      '.sa-wocol-lote-meta b{color:#3a4a58;font-weight:600;}',
       '.sa-wocol-pn-item{margin:0 0 4px 0;}',
       '.sa-wocol-pn-item:last-child{margin-bottom:0;}',
       'a.sa-wocol-pn-link{color:#0969da;cursor:pointer;text-decoration:none;display:inline-block;font-size:12px;font-weight:600;}',
@@ -114,13 +126,15 @@ const WoListingColumns = (() => {
   function getTable() { return document.querySelector('table.MuiTable-root, table'); }
 
   function buildToggle(kind, label, icon) {
-    const on = kind === 'pn' ? isPnOn() : isSchedOn();
+    const on = isOnFor(kind);
     const wrap = document.createElement('div');
     wrap.className = 'sa-wocol-toggle' + (on ? ' on' : '');
     wrap.id = 'sa-wocol-toggle-' + kind;
     wrap.title = kind === 'pn'
       ? 'Muestra el Número de Parte de cada OT (1 consulta por OT visible).'
-      : 'Muestra la programación (estación · fecha · estado) de cada OT (1 consulta del tablero por página).';
+      : kind === 'sched'
+        ? 'Muestra la programación (estación · fecha · estado) de cada OT (1 consulta del tablero por página).'
+        : 'Muestra el Lote de cada OT: nombre (idInDomain), PS Cliente y fecha de recibido (1 consulta por OT visible).';
     const sw = document.createElement('span'); sw.className = 'sa-wocol-sw';
     const txt = document.createElement('span'); txt.textContent = icon + ' ' + label;
     const cnt = document.createElement('span'); cnt.className = 'sa-wocol-count'; cnt.id = 'sa-wocol-count-' + kind;
@@ -141,6 +155,7 @@ const WoListingColumns = (() => {
     bar.id = 'sa-wocol-bar';
     bar.appendChild(buildToggle('pn', 'Núm. de Parte', '🔩'));
     bar.appendChild(buildToggle('sched', 'Programación', '📅'));
+    bar.appendChild(buildToggle('lote', 'Lote', '📦'));
     const mem = document.createElement('span'); mem.className = 'sa-wocol-count'; mem.id = 'sa-wocol-mem'; bar.appendChild(mem);
     anchor.parentElement ? anchor.parentElement.insertBefore(bar, anchor) : anchor.insertBefore(bar, anchor.firstChild);
     refreshToggleUI();
@@ -149,14 +164,15 @@ const WoListingColumns = (() => {
   function refreshToggleUI() {
     const tp = document.getElementById('sa-wocol-toggle-pn'); if (tp) tp.classList.toggle('on', isPnOn());
     const ts = document.getElementById('sa-wocol-toggle-sched'); if (ts) ts.classList.toggle('on', isSchedOn());
+    const tl = document.getElementById('sa-wocol-toggle-lote'); if (tl) tl.classList.toggle('on', isLoteOn());
     updateCount();
   }
 
   function updateCount() {
-    ['pn', 'sched'].forEach(function (k) {
+    ['pn', 'sched', 'lote'].forEach(function (k) {
       const c = document.getElementById('sa-wocol-count-' + k);
       if (!c) return;
-      const on = k === 'pn' ? isPnOn() : isSchedOn();
+      const on = isOnFor(k);
       if (!on) { c.textContent = ''; return; }
       const total = document.querySelectorAll('td.sa-wocol-' + k).length;
       const done = document.querySelectorAll('td.sa-wocol-' + k + '[data-sa-state="done"]').length;
@@ -189,7 +205,7 @@ const WoListingColumns = (() => {
       if (!col.on()) { if (th) th.remove(); return; }
       if (!th) {
         th = document.createElement('th');
-        const nativeTh = headRow.querySelector('th:not(.sa-wocol-pn):not(.sa-wocol-sched)');
+        const nativeTh = headRow.querySelector('th:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
         th.className = (nativeTh ? nativeTh.className + ' ' : '') + col.cls;
         th.setAttribute('scope', 'col');
         th.textContent = col.label;
@@ -206,14 +222,15 @@ const WoListingColumns = (() => {
       const link = tr.querySelector('td a[href*="/WorkOrders/"]');
       const woIdInDomain = link ? Core().parseWorkOrderIdInDomain(link.getAttribute('href') || link.href) : null;
       const cached = woIdInDomain ? cache().get(woIdInDomain) : null;
-      if (woIdInDomain && !cached && anyOn()) toFetch.push(woIdInDomain);
+      // El cache PartNumbers alimenta SOLO pn+sched. Lote usa su propio pool (WorkOrder).
+      if (woIdInDomain && !cached && (isPnOn() || isSchedOn())) toFetch.push(woIdInDomain);
 
       COLS.forEach(function (col) {
         let td = tr.querySelector(':scope > .' + col.cls);
         if (!col.on()) { if (td) td.remove(); return; }
         if (!td) {
           td = document.createElement('td');
-          const nativeTd = tr.querySelector('td:not(.sa-wocol-pn):not(.sa-wocol-sched)');
+          const nativeTd = tr.querySelector('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
           td.className = (nativeTd ? nativeTd.className + ' ' : '') + col.cls;
           if (woIdInDomain != null) td.setAttribute('data-sa-woid', String(woIdInDomain));
           fillCellInitial(col.key, td, woIdInDomain, cached);
@@ -229,10 +246,13 @@ const WoListingColumns = (() => {
     if (woIdInDomain == null) { markNa(td); return; }
     if (kind === 'pn') {
       if (cached) renderPnCell(td, cached.pns); else pending(td);
-    } else { // sched
+    } else if (kind === 'sched') {
       if (cached && cached.woGlobalId != null && board().state === 'ready') {
         renderSchedCell(td, Core().resolveBoardScheduleForWO(board().idx, cached.woGlobalId));
       } else { pending(td); }
+    } else { // lote (cache propio: WorkOrder por WO)
+      const lc = loteCache().get(woIdInDomain);
+      if (lc) renderLoteCell(td, lc.batches); else pending(td);
     }
   }
 
@@ -297,11 +317,40 @@ const WoListingColumns = (() => {
     return Core().formatShortDateTime(iso);
   }
 
+  // ── Render de la celda Lote (nombre (idInDomain) link · PS Cliente · fecha recibido) ──
+  function renderLoteCell(td, batches) {
+    td.setAttribute('data-sa-state', 'done'); td.textContent = '';
+    if (!batches || !batches.length) { td.appendChild(mutedSpan('sin lote')); return; }
+    // Una WO puede ligar varios lotes → apilados (cada uno con su PS y fecha).
+    batches.forEach(function (b) {
+      const item = document.createElement('div'); item.className = 'sa-wocol-lote-item';
+      const a = document.createElement('a'); a.className = 'sa-wocol-lote-link';
+      a.textContent = b.name + (b.idInDomain != null ? ' (' + b.idInDomain + ')' : '');
+      const href = Core().batchLink(b.idInDomain, b.partNumberId);
+      if (href) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; }
+      item.appendChild(a);
+      if (b.packingSlip) item.appendChild(loteMeta('PS: ', b.packingSlip));       // textContent → anti-XSS
+      if (b.receivedAt) item.appendChild(loteMeta('Recibido: ', fmtLocalDate(b.receivedAt)));
+      td.appendChild(item);
+    });
+  }
+  function loteMeta(label, value) {
+    const s = document.createElement('span'); s.className = 'sa-wocol-lote-meta';
+    const b = document.createElement('b'); b.textContent = label; s.appendChild(b);
+    s.appendChild(document.createTextNode(value));
+    return s;
+  }
+  function fmtLocalDate(iso) {
+    if (!iso) return '';
+    try { const d = new Date(iso); if (!isNaN(d.getTime())) return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (_) {}
+    return Core().formatShortDateTime(iso);
+  }
+
   function renderCellError(td) { td.setAttribute('data-sa-state', 'error'); td.textContent = ''; const e = document.createElement('span'); e.className = 'sa-wocol-err'; e.textContent = '⚠️ error'; td.appendChild(e); }
   function mutedSpan(t) { const s = document.createElement('span'); s.className = 'sa-wocol-muted'; s.textContent = t; return s; }
 
   function removeColumns() {
-    document.querySelectorAll('.sa-wocol-pn, .sa-wocol-sched').forEach(function (el) { el.remove(); });
+    document.querySelectorAll('.sa-wocol-pn, .sa-wocol-sched, .sa-wocol-lote').forEach(function (el) { el.remove(); });
   }
   function removeColumnClass(cls) { document.querySelectorAll('.' + cls).forEach(function (el) { el.remove(); }); }
 
@@ -432,6 +481,69 @@ const WoListingColumns = (() => {
     if (ids.length) enqueueDetails(ids);
   }
 
+  // ── Query por WO: Lote (WorkOrder → currentPartsTransferAccounts, SLIM) ──────
+  // WorkOrder({idInDomain}) es la query de la ficha (1156 campos): pesada. Extraemos
+  // SLIM {batches:[{id,idInDomain,name,packingSlip,receivedAt,partNumberId}]} y el raw
+  // sale de scope de inmediato (EJE A: slim responses, no guardar el response completo).
+  // Pool propio con la misma disciplina de concurrencia que el de PartNumbers.
+  function loteCache() { if (!window.__saWoLoteCache) window.__saWoLoteCache = new Map(); return window.__saWoLoteCache; }
+  function lotePool() { if (!window.__saWoLotePool) window.__saWoLotePool = { queue: [], inFlight: 0, lastLaunch: 0 }; return window.__saWoLotePool; }
+
+  function enqueueLote(ids) {
+    if (!isLoteOn()) return;
+    const p = lotePool(); const seen = new Set(p.queue);
+    ids.forEach(function (id) { if (id != null && !seen.has(id) && !loteCache().has(id)) { p.queue.push(id); seen.add(id); } });
+    pumpLote();
+  }
+  // Encola los lotes de las filas visibles aún no cacheadas (al activar el toggle o paginar).
+  function enqueueVisibleLote() {
+    if (!isLoteOn()) return;
+    const ids = [];
+    document.querySelectorAll('td.sa-wocol-lote[data-sa-woid]').forEach(function (td) {
+      const id = parseInt(td.getAttribute('data-sa-woid'), 10);
+      if (!isNaN(id) && !loteCache().has(id)) ids.push(id);
+    });
+    if (ids.length) enqueueLote(ids);
+  }
+  async function fetchLote(woIdInDomain) {
+    const api = window.SteelheadAPI;
+    for (let attempt = 0; attempt < RETRY_BACKOFF.length; attempt++) {
+      if (attempt) await new Promise(function (r) { setTimeout(r, RETRY_BACKOFF[attempt]); });
+      try {
+        const data = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
+        return { batches: Core().extractWorkOrderBatches(data) };   // SLIM; el raw se descarta
+      } catch (e) { if (attempt === RETRY_BACKOFF.length - 1 || !isTransient(e)) throw e; }
+    }
+  }
+  function pumpLote() {
+    const p = lotePool();
+    if (!isLoteOn() || !onIndex()) return;
+    while (p.inFlight < MAX_CONC && p.queue.length) {
+      const wait = p.lastLaunch + MIN_GAP_MS - Date.now();
+      if (wait > 0) { setTimeout(pumpLote, wait + 5); return; }
+      const woId = p.queue.shift(); p.inFlight++; p.lastLaunch = Date.now();
+      try { if (Cleanup() && !window.__sa_dd_stopped) Cleanup().stopDatadogSessionReplay(); } catch (_) {}
+      fetchLote(woId).then(function (slim) {
+        loteCache().set(woId, slim);
+        fillLoteCells(woId, slim.batches, false);
+      }).catch(function (e) {
+        fillLoteCells(woId, null, true);
+        if (e && e.persistedQueryRotated) toast('⚠️ El hash de WorkOrder rotó — avísale a Claude.');
+        else console.warn('[SA] wo-cols: lote ' + woId + ' falló:', e && e.message);
+      }).then(function () {
+        p.inFlight--;
+        try { if (pool().drain) pool().drain(); } catch (_) {}   // Apollo drain tras query pesada
+        pumpLote();
+      });
+    }
+  }
+  function fillLoteCells(woIdInDomain, batches, isError) {
+    document.querySelectorAll('td.sa-wocol-lote[data-sa-woid="' + woIdInDomain + '"]').forEach(function (td) {
+      if (isError) renderCellError(td); else renderLoteCell(td, batches);
+    });
+    updateCount();
+  }
+
   // ── Índice de programación del board (UNA sola llamada por página) ───────────
   function firstWoGlobalId() {
     let found = null;
@@ -501,6 +613,7 @@ const WoListingColumns = (() => {
     if (toFetch.length) enqueue(toFetch);
     if (isPnOn()) enqueueKnownDetails();   // chips para filas ya cacheadas (p.ej. al activar el toggle)
     if (isSchedOn()) { if (board().state === 'ready') fillAllSchedCells(); else maybeLoadBoard(); }
+    if (isLoteOn()) enqueueVisibleLote();
     updateCount();
   }
 
@@ -520,15 +633,16 @@ const WoListingColumns = (() => {
   function deactivate() {
     const p = pool(); p.queue.length = 0;
     detailPool().queue.length = 0;
+    lotePool().queue.length = 0;
     teardownObserver(); stopMonitor(); removeColumns(); refreshToggleUI();
   }
 
   function toggle(kind) {
-    const key = kind === 'pn' ? PN_KEY : SCHED_KEY;
+    const key = keyFor(kind);
     const next = !getFlag(key);
     setFlag(key, next);
     refreshToggleUI();
-    const label = kind === 'pn' ? '🔩 Núm. de Parte' : '📅 Programación';
+    const label = kind === 'pn' ? '🔩 Núm. de Parte' : kind === 'sched' ? '📅 Programación' : '📦 Lote';
     if (next) {
       toast(label + ': ACTIVADO — cargando…');
       if (kind === 'sched') { board().state = 'idle'; }  // recarga el board si hace falta
@@ -536,15 +650,17 @@ const WoListingColumns = (() => {
     } else {
       toast(label + ': DESACTIVADO');
       if (kind === 'pn') detailPool().queue.length = 0;   // corta la carga de etiquetas
-      removeColumnClass(kind === 'pn' ? 'sa-wocol-pn' : 'sa-wocol-sched');
+      if (kind === 'lote') lotePool().queue.length = 0;   // corta la carga de lotes
+      removeColumnClass('sa-wocol-' + kind);
       if (!anyOn()) deactivate();
       else { refreshToggleUI(); syncColumns(); }
     }
-    return { pn: isPnOn(), sched: isSchedOn() };
+    return { pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn() };
   }
 
   function toggleFromPopup() { return toggle('pn'); }
   function toggleSchedFromPopup() { return toggle('sched'); }
+  function toggleLoteFromPopup() { return toggle('lote'); }
 
   // ── Navegación SPA ─────────────────────────────────────────────────────────
   function installUrlChangeListener() {
@@ -560,6 +676,7 @@ const WoListingColumns = (() => {
         deactivate(); cache().clear();
         window.__saWoBoard = { idx: null, state: 'idle' };   // libera el índice al salir
         window.__saWoPnDetail = new Map(); window.__saWoPnDetailPool = { queue: [], inFlight: 0, lastLaunch: 0 };
+        window.__saWoLoteCache = new Map(); window.__saWoLotePool = { queue: [], inFlight: 0, lastLaunch: 0 };
         const bar = document.getElementById('sa-wocol-bar'); if (bar) bar.remove();
       }
     });
@@ -574,13 +691,14 @@ const WoListingColumns = (() => {
   }
 
   return {
-    init, toggle, toggleFromPopup, toggleSchedFromPopup,
+    init, toggle, toggleFromPopup, toggleSchedFromPopup, toggleLoteFromPopup,
     _getState: function () {
-      const p = pool(), b = board();
+      const p = pool(), b = board(), lp = lotePool();
       return {
-        pn: isPnOn(), sched: isSchedOn(), onIndex: onIndex(),
-        rows: document.querySelectorAll('td.sa-wocol-pn, td.sa-wocol-sched').length,
+        pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn(), onIndex: onIndex(),
+        rows: document.querySelectorAll('td.sa-wocol-pn, td.sa-wocol-sched, td.sa-wocol-lote').length,
         cached: cache().size, queue: p.queue.length, inFlight: p.inFlight, board: b.state,
+        loteCached: loteCache().size, loteQueue: lp.queue.length, loteInFlight: lp.inFlight,
       };
     },
   };
