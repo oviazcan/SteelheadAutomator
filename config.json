@@ -1,6 +1,6 @@
 {
-  "version": "1.7.187",
-  "lastUpdated": "2026-07-24T08:24",
+  "version": "1.7.188",
+  "lastUpdated": "2026-07-24T16:34",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -107,7 +107,7 @@
         "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3",
         "SearchUnits": "0a23ee49dd85ae9bb0285f3f9ed2e45a3b8e73e5f4a76c559cf1bdf9f02bd2b8",
         "SearchProductsComprehensive": "b3e2b9c63285487866fe098c936cd37e60ffff373a9fa9e30296574cffcfbba0",
-        "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91",
+        "SearchPartNumbers": "e65235b5f0b6b5aeff8691955c6d842343cef568968bc1e8d63516301a78df32",
         "GetPartNumber": "5efd689d8d92151ea510256828f17cbe10b815dd8dce2bd1dd51ef55bb9a0faf",
         "GetPartNumberForPartNumberPage": "34ed9de74300219ae0af48c77640e080e0ad7c5b3b2a442d63901d6742846ac4",
         "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109",
