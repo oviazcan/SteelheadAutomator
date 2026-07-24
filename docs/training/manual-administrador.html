@@ -299,10 +299,10 @@ tools/rollback.sh v1.7.118        # revierte gh-pages al estado exacto de ese de
     <p>Para pedir datos al ERP, la extensión no manda la pregunta completa cada vez: manda un <strong>código corto</strong> (un hash SHA-256, técnica llamada <em>persisted queries</em>) que el servidor de Steelhead ya asocia a esa consulta exacta. Ese código es una <strong>llave</strong> que abre una <strong>puerta</strong> específica. Cuando Steelhead actualiza su propio software, a veces <strong>cambia la cerradura</strong>: el código viejo deja de servir y la respuesta es <code>HTTP 400 "Must provide a query string."</code> — en español, “no reconozco lo que me estás pidiendo”.</p>
   </div>
 
-  <p>Esto no es un bug de SteelheadAutomator: es consecuencia de cómo Steelhead implementa su API. La reparación la hace un proceso automático propio: <strong>Hash-Autopilot</strong>, un “cerrajero automático” que corre cada hora, sin intervención humana:</p>
+  <p>Esto no es un bug de SteelheadAutomator: es consecuencia de cómo Steelhead implementa su API. La reparación la hace un proceso automático propio: <strong>Hash-Autopilot</strong>, un “cerrajero automático” que corre cada hora y, en el caso común, <strong>sin intervención humana</strong> (aunque no cubre el 100% de los casos — ver §9):</p>
   <ol>
     <li><strong>Detecta</strong> qué códigos ya no responden (un validador los prueba contra el servidor real).</li>
-    <li><strong>Re-captura</strong> el código nuevo abriendo un navegador oculto, ya logueado, y navegando la ruta mínima que dispara esa operación (o, para escrituras, usando objetos de prueba marcados “Sentinela” con captura-y-aborta: arma la petición para ver su código, pero la cancela antes de que se guarde nada real).</li>
+    <li><strong>Re-captura</strong> el código nuevo abriendo un navegador oculto, ya logueado, y navegando la ruta mínima que dispara esa operación (o, para escrituras, usando objetos de prueba marcados “Centinela” con captura-y-aborta: arma la petición para ver su código, pero la cancela antes de que se guarde nada real).</li>
     <li><strong>Valida</strong> que el código nuevo es real, no ruido.</li>
     <li><strong>Publica</strong> el arreglo con commit y push automáticos — a la extensión, y también a los dos repos hermanos que comparten hashes (Reportes SH y PowerTools).</li>
     <li><strong>Notifica</strong> por correo qué se corrigió, qué quedó pendiente de revisión humana, y qué es urgente.</li>
@@ -452,6 +452,11 @@ tools/rollback.sh v1.7.118        # revierte gh-pages al estado exacto de ese de
     <li><strong>Firma que no verifica</strong> tras un deploy — el smoke-check de <code>deploy.sh</code> lo señala; no se debe activar el break-glass como solución permanente, sino re-publicar con la firma correcta.</li>
     <li><strong>GitHub Pages o KMS caídos</strong> — fuera del control del sistema; escalar al proveedor correspondiente.</li>
   </ul>
+
+  <div class="callout info">
+    <p class="ct">Cómo recuperar un hash a mano</p>
+    <p>Cuando el robot no puede (cualquiera de los casos de arriba), el procedimiento concreto —recuperar el hash con el <strong>escáner de Steelhead</strong> y entregárselo a Claude para que lo ajuste y lo despliegue— está paso a paso en el <strong><a href="runbook-hashes.html">Runbook — recuperar hashes a mano (escáner + Claude)</a></strong>.</p>
+  </div>
 
   <!-- ===================== 10 ===================== -->
   <h2 class="sec" id="s10"><span class="num">10</span>Lo esencial para el Jefe de TI</h2>
