@@ -5,6 +5,14 @@ Job desatendido que **valida y regenera** los hashes session-sensitive de Steelh
 falso-stale al cliente externo (idp-token). Ver diseño:
 `docs/superpowers/specs/2026-07-03-hash-autopilot-design.md`.
 
+> **Nota de nomenclatura (2026-07-23).** El marcador de los objetos de prueba en el ERP se llama
+> **«Centinela»** (español correcto; antes estaba mal escrito como «Sentinela»). El código acepta
+> **solo** `/centinela/i` (`isSentinel` en `sentinels.mjs`) y los objetos del ERP se renombraron a
+> «Centinela» (verificado en vivo: el ciclo encontró la cotización «Centinela» #288). Los
+> identificadores en **inglés** (`isSentinel`, `formatSentinelAlert`, `SENTINEL_MARKER`) se quedan en
+> inglés por convención. **`cleanup-sentinela-ovs.mjs` conserva su nombre de archivo heredado a
+> propósito** (renombrarlo arriesga romper su invocación) — su contenido y el objeto que toca sí son «Centinela».
+
 ## Cómo funciona
 
 1. Abre Chromium **headless** ya logueado (ver Auth) y corre las recetas de
