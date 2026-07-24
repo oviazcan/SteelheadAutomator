@@ -106,7 +106,7 @@ td code{white-space:nowrap}
 
   <div class="tldr">
     <p class="ct">En una frase</p>
-    <p>Para pedirle datos al ERP, la extensión usa una <strong>llave</strong> (un código corto) por cada operación. Cuando Steelhead actualiza su software, <strong>cambia la cerradura</strong> y la llave vieja deja de abrir. <strong>Hash-Autopilot</strong> detecta el corte, <strong>deduce la nueva llave</strong> abriendo la puerta como lo haría un usuario real, la valida y la reparte —sola— en las tres herramientas que la usan.</p>
+    <p>Para pedirle datos al ERP, la extensión usa una <strong>llave</strong> (un código corto) por cada operación. Cuando Steelhead actualiza su software, <strong>cambia la cerradura</strong> y la llave vieja deja de abrir. <strong>Hash-Autopilot</strong> detecta el corte, <strong>deduce la nueva llave</strong> abriendo la puerta como lo haría un usuario real, la valida y la reparte —sola— en las tres herramientas que la usan. Repara solo el <strong>caso común</strong>; para lo demás —rutas no probadas, deprecaciones, centinelas rotos— <strong>eventualmente entra un humano</strong> (§06).</p>
   </div>
 
   <!-- ===================== 01 ===================== -->
@@ -237,14 +237,14 @@ td code{white-space:nowrap}
   <p>No todas las operaciones se “ven pasar” igual, así que el motor tiene dos estrategias:</p>
   <ul>
     <li><strong>Consultas de lectura</strong> (ej. “traer la lista de clientes”): se disparan con solo <em>navegar</em> a la pantalla correcta. Un “mapa de rutas” (<code>route-catalog</code>, ~69 rutas) le dice al motor <em>“para ver esta operación, ve a esta pantalla y haz este clic”</em>.</li>
-    <li><strong>Operaciones de escritura</strong> (ej. “guardar un pedido”): estas no se pueden ver sin <em>ejecutarlas</em> de verdad. Aquí entran los <strong>“sentinelas”</strong>: objetos de prueba reales marcados con el nombre literal <code>Sentinela</code> (~12 entidades: piezas, cotizaciones, órdenes…). El motor los usa para disparar la operación, pero con salvaguardas.</li>
+    <li><strong>Operaciones de escritura</strong> (ej. “guardar un pedido”): estas no se pueden ver sin <em>ejecutarlas</em> de verdad. Aquí entran los <strong>“centinelas”</strong>: objetos de prueba reales marcados con el nombre literal <code>Centinela</code> (~12 entidades: piezas, cotizaciones, órdenes…). El motor los usa para disparar la operación, pero con salvaguardas.</li>
   </ul>
 
   <div class="callout meta">
     <p class="ct">Analogía — el maniquí de pruebas en la caja registradora</p>
     <p>Para verificar que la caja de una tienda funciona sin arriesgar una venta real, se usa un producto ficticio marcado <strong>“PRUEBA”</strong>: se pasa por la caja, se confirma que el sistema lo reconoce, y <strong>se anula el ticket antes de que se cobre</strong>. Eso es la técnica <em>captura-y-aborta</em>: para las escrituras delicadas (borrar una carpeta, agregar piezas a una orden), el motor deja que el navegador <em>arme</em> la petición —así ve el código que va a usar— pero la <strong>intercepta y cancela antes de que llegue al servidor</strong>. Cero cambios reales quedan guardados.</p>
   </div>
-  <p>Además, antes de tocar cualquier sentinela, el motor <strong>verifica su identidad</strong>: si el objeto ya no se llama exactamente “Sentinela” (alguien lo archivó o renombró), el ciclo se cancela solo en vez de mutar algo al azar. Es un diseño <em>fail-closed</em>: ante la duda, no toca nada.</p>
+  <p>Además, antes de tocar cualquier centinela, el motor <strong>verifica su identidad</strong>: si el objeto ya no se llama exactamente “Centinela” (alguien lo archivó o renombró), el ciclo se cancela solo en vez de mutar algo al azar. Es un diseño <em>fail-closed</em>: ante la duda, no toca nada.</p>
 
   <!-- ===================== 04 ===================== -->
   <h2 class="sec"><span class="num">04</span>Un arreglo, tres proyectos: fuentes y deduplicación</h2>
@@ -301,8 +301,29 @@ td code{white-space:nowrap}
     <p>Si de golpe parece que cambiaron <em>“todas las cerraduras a la vez”</em>, es más probable que nos hayamos equivocado de edificio que que de verdad las recambiaran todas. Ante esa señal, el sistema no actualiza nada por su cuenta: pide que un humano lo revise.</p>
   </div>
 
-  <!-- ===================== 06 ===================== -->
-  <h2 class="sec"><span class="num">06</span>Banderas de control (para el administrador)</h2>
+  <!-- ===================== 06 (humano) ===================== -->
+  <h2 class="sec"><span class="num">06</span>El robot no lo hace todo: cuándo entra el humano</h2>
+  <p class="sec-lead measure">Hash-Autopilot está desplegado y repara <strong>solo</strong> muchísimos casos — pero <strong>no el 100%</strong>. Hay rutas de captura no probadas y fallas propias del proceso donde, tarde o temprano, hace falta una persona. Conviene tenerlo claro: no es un sistema que "ya nunca haya que tocar".</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Situación</th><th>Por qué el robot no puede solo</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Ruta de navegación rota</strong></td><td>Steelhead rediseñó una pantalla → la “receta” para llegar a esa operación deja de funcionar. Un segundo proceso intenta re-descubrirla con IA, pero puede no lograrlo → humano.</td></tr>
+        <tr><td><strong>Operación sin receta de captura</strong></td><td>Un applet nuevo cuyo hash nunca se enseñó a capturar de forma automática (“deuda”). El robot no sabe cómo dispararlo → hay que capturarlo a mano.</td></tr>
+        <tr><td><strong>Deprecación dura</strong></td><td>Steelhead retiró la operación por completo — no hay llave nueva que deducir; hay que migrar el applet a una “prima hermana” que sí siga viva.</td></tr>
+        <tr><td><strong>Centinela roto</strong></td><td>El objeto de prueba se archivó o renombró → el ciclo se cancela solo (fail-closed) hasta que alguien lo repare.</td></tr>
+        <tr><td><strong>Freno de masa (&gt;6 a la vez)</strong></td><td>Demasiadas rotaciones juntas → el robot no despliega por su cuenta y pide revisión humana.</td></tr>
+        <tr><td><strong>Captura no validada</strong></td><td>Capturó algo pero no pasó la validación → no despliega hasta que un humano lo confirme.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout info">
+    <p class="ct">El plan B cuando el robot no puede</p>
+    <p>Para esos casos hay un procedimiento manual claro: el administrador <strong>recupera el hash con el escáner de Steelhead</strong> y se lo entrega a Claude para que haga el ajuste y lo despliegue. Está paso a paso en el <strong><a href="runbook-hashes.html">Runbook — recuperar hashes a mano (escáner + Claude)</a></strong>.</p>
+  </div>
+
+  <!-- ===================== 07 ===================== -->
+  <h2 class="sec"><span class="num">07</span>Banderas de control (para el administrador)</h2>
   <p class="sec-lead measure">Interruptores para correr el proceso en modos acotados o de prueba, sin tocar código.</p>
   <div class="tablewrap">
     <table>
@@ -318,7 +339,7 @@ td code{white-space:nowrap}
   </div>
 
   <!-- ===================== resúmenes por rol ===================== -->
-  <h2 class="sec"><span class="num">07</span>Lo esencial</h2>
+  <h2 class="sec"><span class="num">08</span>Lo esencial</h2>
   <div class="roles">
     <div class="role ti">
       <div class="who">Para el Jefe de TI</div>
@@ -332,7 +353,7 @@ td code{white-space:nowrap}
 
   <div class="callout info">
     <p class="ct">De dónde salen estas cifras</p>
-    <p>Los conteos (~180 / ~40 / ~22 ops, ~69 rutas, ~12 sentinelas, ~232 únicos) son del corte de la exploración de julio 2026 y <strong>cambian con el tiempo</strong>. Este documento es perenne en sus <em>conceptos</em>; para números exactos vigentes, consulta el estado del sistema con el administrador.</p>
+    <p>Los conteos (~180 / ~40 / ~22 ops, ~69 rutas, ~12 centinelas, ~232 únicos) son del corte de la exploración de julio 2026 y <strong>cambian con el tiempo</strong>. Este documento es perenne en sus <em>conceptos</em>; para números exactos vigentes, consulta el estado del sistema con el administrador.</p>
   </div>
 
   <footer class="foot">

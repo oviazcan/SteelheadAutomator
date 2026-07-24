@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runbook — recuperar hashes a mano — SteelheadAutomator</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.bi{background:var(--bi-wash);color:var(--bi)}
+.audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{font-family:var(--mono);font-size:.83rem;background:var(--paper);border:1px solid var(--hair);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);max-width:none;line-height:1.55;position:relative}
+pre code{background:none;padding:0;font-size:1em}
+.prewrap{position:relative;margin:16px 0}
+.copybtn{position:absolute;top:8px;right:8px;font-family:var(--sans);font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:var(--ground);color:var(--muted);border:1px solid var(--hair-2);border-radius:6px;padding:4px 8px;cursor:pointer}
+.copybtn:hover{color:var(--ink);border-color:var(--faint)}
+.copybtn.copied{color:var(--accent-ink);border-color:var(--accent)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+/* figures */
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:820px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+/* callouts */
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+/* stages */
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.stages pre{margin:8px 0 0}
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+/* essentials */
+.essentials{background:var(--paper);border:1px solid var(--hair-2);border-radius:14px;padding:24px 26px;margin:28px 0;box-shadow:var(--shadow)}
+.essentials h3{margin:0 0 14px;font-size:1.05rem;color:var(--ti)}
+.essentials ul{max-width:none;margin:0;padding-left:1.2em}
+.essentials li{margin:.5rem 0}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,.essentials,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar"><span class="brandmark"><span>SA</span></span><span class="brandname">Steelhead<em>Automator</em> · Runbook</span><span style="flex:1"></span><a href="00-mapa-empieza-aqui.html" style="font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a></div>
+    <p class="eyebrow">Cuando el cerrajero automático necesita una mano</p>
+    <h1>Runbook — recuperar hashes a mano (escáner + Claude)</h1>
+    <p class="sub">El procedimiento para los casos que Hash-Autopilot, por diseño, no resuelve solo: capturar la llave nueva con el Explorador Steelhead y dársela a Claude para que la aplique y la publique.</p>
+    <div class="audchips">
+      <span class="audchip ti">Jefe de TI</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">En una frase</p>
+    <p>Hash-Autopilot repara solo la enorme mayoría de las rotaciones de hash, cada hora, sin que nadie intervenga. Pero está diseñado con frenos: hay rutas que no existen todavía, centinelas que se rompen, operaciones sin receta, y umbrales de seguridad que a propósito piden revisión humana. Cuando eso pasa, el procedimiento es: <strong>capturas la llave nueva con el escáner</strong> de la extensión y <strong>se la entregas a Claude</strong>, que la compara, la actualiza y publica el arreglo.</p>
+  </div>
+
+  <!-- ===================== 01 ===================== -->
+  <h2 class="sec"><span class="num">01</span>Cuándo necesitas esto</h2>
+  <p class="sec-lead measure">Hash-Autopilot no es un mejor-esfuerzo: corre cada hora, valida las tres fuentes que usan hashes propios (extensión, Reportes SH, PowerTools) y resuelve solo la mayoría de las rotaciones antes de que alguien lo note. Pero está construido para reconocer sus propios límites y detenerse a pedir ayuda en vez de arriesgarse a romper algo en producción. Estos son esos límites, por diseño:</p>
+
+  <ul>
+    <li><strong>Deprecación dura.</strong> Steelhead retiró la operación por completo — no existe un hash nuevo que capturar porque la consulta ya no vive en su servidor. Hay que migrar el applet a una operación "prima hermana" que siga viva; eso es una decisión de criterio, no un dato que el motor pueda deducir solo. Precedente real: <code>CurrentUser</code> se deprecó en abril de 2026 y hubo que pivotar a <code>CurrentUserDetails</code>.</li>
+    <li><strong>Ruta de navegación rota.</strong> El motor re-captura hashes de lectura navegando pantallas reales de Steelhead siguiendo una "receta" fija. Si Steelhead rediseña esa pantalla, la receta puede dejar de disparar la operación esperada. Hay una escalación asistida por IA que intenta re-descubrir la ruta sola antes de rendirse, pero no siempre lo logra.</li>
+    <li><strong>Operación sin receta ni centinela todavía (deuda).</strong> Cada operación nueva necesita que alguien le enseñe al motor cómo dispararla — navegando (si es lectura) o con un objeto de prueba llamado "Centinela" (si es escritura). Mientras eso no exista, la operación depende de captura manual. Caso vigente hoy: las <strong>12 mutations de Reporting</strong> (crear/editar reportes y tableros) todavía no tienen centinela armado.</li>
+    <li><strong>Centinela roto o archivado.</strong> El motor dispara mutations sobre objetos de prueba reales marcados literalmente "Centinela". Si alguien archiva o renombra ese objeto por error, el motor se niega a mutar (diseño <em>fail-closed</em>: ante la duda, no toca nada) y avisa por correo en vez de arriesgarse.</li>
+    <li><strong>Freno de masa activado.</strong> Si en una sola corrida parece que se rompieron más de 6 operaciones a la vez, el motor <strong>no despliega nada</strong> — es mucho más probable una captura corrupta (p. ej. sesión equivocada) que una rotación masiva real. Pide revisión antes de dejarlo seguir.</li>
+    <li><strong>Captura "sospechosa" o no concluyente.</strong> El motor exige evidencia de que el hash nuevo de verdad funciona antes de confiar en él. Si no consigue esa evidencia, lo deja pendiente de revisión en vez de publicarlo a ciegas.</li>
+  </ul>
+
+  <div class="callout warn">
+    <p class="ct">No es 100% autónomo — y no debería serlo</p>
+    <p>Aunque el sistema hoy detecta y repara la mayoría de las mutaciones solo, y corre con vigilancia externa (latido + vigía), un robot que edita código de producción sin ningún freno sería más peligroso que uno que a veces se detiene. Los seis casos de arriba son, a propósito, los que quedan fuera de su alcance automático.</p>
+  </div>
+
+  <div class="callout meta">
+    <p class="ct">No es hipotético</p>
+    <p>El 2026-07-20 rotaron de golpe 4 mutations de Reporting que todavía no tenían centinela armado. El motor no pudo repararlas solo — se corrigieron con exactamente el procedimiento de este documento: escáner + Claude. Es el caso de uso real más reciente de este runbook, no un escenario de manual.</p>
+  </div>
+
+  <!-- ===================== 02 ===================== -->
+  <h2 class="sec"><span class="num">02</span>Qué es "recuperar un hash"</h2>
+  <p>Para pedirle datos al ERP, la extensión no manda la pregunta completa cada vez: manda un código corto —un hash— que el servidor de Steelhead ya tiene asociado a esa consulta exacta. Es una <strong>llave</strong> que abre una <strong>puerta</strong> (una operación del ERP). Cuando Steelhead actualiza su software, a veces <strong>cambia la cerradura</strong>: la llave vieja deja de abrir, y la respuesta es <code>HTTP 400 "Must provide a query string."</code></p>
+  <p>"Recuperar el hash" es observar qué llave nueva usa el <strong>frontend real</strong> de Steelhead cuando un humano navega y dispara esa operación exacta — y copiarla. El <strong>Explorador Steelhead</strong> (el escáner de la extensión) hace justo eso: se sienta a escuchar el tráfico entre tu navegador y el servidor mientras tú navegas normalmente, sin modificar ninguna petición, y anota cada llave que ve pasar.</p>
+
+  <!-- ===================== 03 ===================== -->
+  <h2 class="sec"><span class="num">03</span>Paso a paso: correr el escáner en Steelhead</h2>
+  <p class="sec-lead measure">Pensado para un administrador en Windows. Chrome y la extensión funcionan idénticos en Windows y en Mac — lo único que cambia es dónde Windows guarda el archivo al final (paso 5).</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Abre Chrome y entra a Steelhead</h4><p>Ve a <code>app.gosteelhead.com</code> con tu sesión iniciada normalmente. El escáner usa tu misma cookie de sesión — no necesita ningún login especial.</p></div></li>
+    <li><span class="k">2</span><div><h4>Abre la extensión → Herramientas → "Explorador Steelhead"</h4><p>Clic en el ícono de SteelheadAutomator en la barra de Chrome. Dentro del popup, busca la categoría <strong>Herramientas</strong> y entra a <strong>Explorador Steelhead 🔍</strong> ("Captura de APIs").</p></div></li>
+    <li><span class="k">3</span><div><h4>Clic en "Iniciar Captura"</h4><p>Desde ese instante la extensión intercepta cada petición GraphQL que Chrome le manda a Steelhead — solo observa, no altera nada. Mientras está activa, el mismo botón cambia su texto a "Detener Captura".</p></div></li>
+    <li><span class="k">4</span><div><h4>Navega a la pantalla o acción exacta que truena</h4><p>Este es el paso que de verdad importa: tienes que <strong>reproducir la acción</strong> donde vive la operación rota, para que el frontend real de Steelhead la dispare y el escáner la vea pasar. No basta con "estar dentro" de Steelhead en general — si el error salió al abrir un Sensor Dashboard, abre un Sensor Dashboard real; si salió al guardar una cotización, guarda una cotización real.</p></div></li>
+    <li><span class="k">5</span><div><h4>Clic en "Detener Captura"</h4><p>La extensión descarga automáticamente un archivo <code>scan_results_&lt;fecha&gt;_&lt;hora&gt;.json</code> a tu carpeta de <strong>Descargas</strong> — en Windows, típicamente <code>C:\Users\&lt;tu usuario&gt;\Downloads\</code> (o "Descargas" si Windows está en español) — sin que tengas que guardarlo tú a mano. Si Chrome está configurado para preguntar dónde guardar cada archivo, confirma esa misma carpeta.</p></div></li>
+    <li><span class="k">6</span><div><h4>Confirma que sí capturó lo que necesitas</h4><p>Abre el <code>.json</code> (el Bloc de notas alcanza) y busca el nombre de la operación rota con <code>Ctrl+F</code>. Si tienes <code>jq</code> a la mano (viene con Git Bash o WSL), este atajo es más rápido:</p>
+      <div class="prewrap"><pre><code>jq '.scanResults["&lt;NombreDeLaOperacion&gt;"] | {hash, lastHttpStatus, errorCount}' scan_results_*.json</code></pre></div>
+      <p>Si <code>hash</code> viene lleno y <code>lastHttpStatus</code> es <code>200</code>, la captura sirvió. Si sigue en <code>400</code> o la operación ni aparece, esa pantalla no fue la que la dispara — repite el paso 4 en la acción correcta.</p>
+    </div></li>
+  </ol>
+
+  <!-- ===================== 04 ===================== -->
+  <h2 class="sec"><span class="num">04</span>Rotación vs. deprecación dura</h2>
+  <p class="sec-lead measure">Las dos causas dan <strong>exactamente el mismo error</strong> — <code>HTTP 400 "Must provide a query string."</code> — así que hay que distinguirlas con el scan antes de actuar. Confundirlas cuesta tiempo: no sirve de nada "actualizar" un hash que Steelhead ya no reconoce en absoluto.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Señal en el scan</th><th>Rotación (lo común)</th><th>Deprecación dura (rara)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Qué encuentras</strong></td><td>La operación aparece con un hash <strong>distinto</strong> al que ya tiene <code>remote/config.json</code>, con <code>lastHttpStatus: 200</code> y datos reales.</td><td>La operación aparece con el <strong>mismo</strong> hash que ya está en config (o no aparece del todo), y sigue respondiendo <code>400</code>.</td></tr>
+        <tr><td><strong>Qué significa</strong></td><td>Steelhead cambió la cerradura, pero la puerta —la consulta— sigue existiendo. Solo hay que actualizar el código.</td><td>Steelhead retiró la puerta por completo. No hay llave nueva que capturar porque ya no hay nada que abrir.</td></tr>
+        <tr><td><strong>Qué hacer</strong></td><td>Actualizar el hash en <code>remote/config.json</code> (y en Reportes SH / PowerTools si la operación también vive ahí) + deploy.</td><td>Buscar una operación "prima hermana" que siga viva y migrar el applet a usarla. Es una decisión de criterio — no hay atajo automático.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===================== 05 ===================== -->
+  <h2 class="sec"><span class="num">05</span>Cómo entregárselo a Claude</h2>
+  <p class="sec-lead measure">El "harness" que hace el trabajo pesado es el mismo Claude Code que ya opera este repo. Abre una sesión de Claude Code en el repositorio (en tu Mac, o donde tengas el entorno — ver §06) y pégale esto, con tus datos:</p>
+
+  <div class="prewrap"><pre><code>Recuperé un scan de hashes con el Explorador Steelhead:
+&lt;RUTA AL ARCHIVO scan_results_....json, p. ej. C:\Users\tuusuario\Downloads\scan_results_2026-07-23_143022.json&gt;
+
+La operación que se rompió es: &lt;NOMBRE DE LA OPERACIÓN, ej. SensorDashboardQuery&gt;
+(si no lo sabes, dime que revises TODO el archivo contra remote/config.json)
+
+Compara ese scan contra remote/config.json de este repo, y si la operación
+también vive en Reportes SH (steelhead_client.py) o SteelheadPowerTools
+(sync/*.py), revisa esos también. Dime para cada una si es una ROTACIÓN
+(hash nuevo, HTTP 200 en el scan) o si parece DEPRECACIÓN (mismo hash o
+sigue en HTTP 400) — en ese segundo caso no actualices nada todavía,
+solo repórtamelo.
+
+Antes de deployar: muéstrame exactamente qué vas a cambiar (operación,
+hash viejo → hash nuevo, en qué archivo). Cuando yo confirme, corre el
+deploy y verifica que quedó publicado en vivo.</code></pre></div>
+
+  <p>Claude lee el JSON, lo compara contra la fuente de verdad de cada repo, y te muestra el diff antes de tocar nada — no asumas que va a deployar sin pedirte luz verde; si en algún momento parece que va a saltarse esa confirmación, pídesela explícitamente.</p>
+
+  <!-- ===================== 06 ===================== -->
+  <h2 class="sec"><span class="num">06</span>El escáner sí corre en Windows — el deploy, hoy, no tan directo</h2>
+
+  <div class="callout warn">
+    <p class="ct">⚠️ Confirmar el flujo de deploy desde Windows</p>
+    <p>Todo lo de las secciones 03-05 corre igual en Windows que en Mac — el escáner es 100% Chrome, sin nada específico de sistema operativo. Lo que <strong>no está probado hoy</strong> es correr el <strong>deploy</strong> (<code>tools/deploy.sh</code>) desde una máquina Windows nativa:</p>
+    <ul style="max-width:none;margin:.6rem 0 0">
+      <li>Los scripts de deploy usan sintaxis de <strong>macOS/BSD</strong> (<code>sed -i ''</code>, <code>md5 -q</code>) que no corre igual bajo el <code>sed</code>/GNU de Linux o WSL2 sin ajuste.</li>
+      <li>La firma de cada publicación usa el <strong>CLI de <code>gcloud</code></strong> contra la llave privada en Google Cloud KMS — exige que esa máquina esté autenticada con acceso al proyecto, algo que hoy solo está configurado en la Mac del equipo.</li>
+    </ul>
+  </div>
+
+  <p>Tres caminos, de más simple a más trabajo:</p>
+  <ul>
+    <li><strong>Recomendado hoy: separa captura de publicación.</strong> Corre el escáner en Windows (§03), y pásale el <code>scan_results_….json</code> —por archivo compartido, Slack o correo— a quien tenga la Mac con el entorno de deploy y el acceso a KMS ya listo. Esa persona corre la sesión de Claude (§05) ahí.</li>
+    <li><strong>Si de plano se necesita deployar desde Windows:</strong> instalar WSL2, adaptar <code>deploy.sh</code>/<code>check-deploy.sh</code> a sintaxis GNU (<code>sed -i</code> sin comillas vacías, <code>md5sum</code> en vez de <code>md5 -q</code>), e instalar y autenticar el CLI de <code>gcloud</code> con acceso a la llave de KMS en esa máquina. Pídeselo a Claude — es un ajuste de scripts, no un cambio de arquitectura.</li>
+    <li><strong>Alternativa sin tocar nada:</strong> que quien ya tiene acceso a KMS corra el deploy de forma remota (una sesión de Claude Code en la Mac) mientras el administrador en Windows solo aporta el archivo capturado.</li>
+  </ul>
+
+  <!-- ===================== 07 ===================== -->
+  <h2 class="sec"><span class="num">07</span>El flujo completo</h2>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 800 230" role="img" aria-label="Flujo: escáner en Steelhead a verificación en vivo">
+      <defs><marker id="rfl" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--ti)"/></marker></defs>
+      <g font-size="11">
+        <rect x="10"  y="60" width="135" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <rect x="175" y="60" width="135" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <rect x="340" y="60" width="135" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <rect x="505" y="60" width="135" height="80" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+        <rect x="670" y="60" width="120" height="80" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <circle cx="30" cy="52" r="13" fill="var(--ti)"/><text x="30" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">1</text>
+        <circle cx="195" cy="52" r="13" fill="var(--ti)"/><text x="195" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">2</text>
+        <circle cx="360" cy="52" r="13" fill="var(--ti)"/><text x="360" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">3</text>
+        <circle cx="525" cy="52" r="13" fill="var(--accent)"/><text x="525" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">4</text>
+        <circle cx="690" cy="52" r="13" fill="var(--ti)"/><text x="690" y="56" text-anchor="middle" fill="#fff" font-weight="800" font-family="var(--mono)">5</text>
+        <text x="77"  y="88"  text-anchor="middle" class="svg-t" font-weight="700">Navegas y</text>
+        <text x="77"  y="103" text-anchor="middle" class="svg-t" font-weight="700">capturas</text>
+        <text x="77"  y="122" text-anchor="middle" class="svg-mut" font-size="10">Explorador Steelhead</text>
+        <text x="242" y="88"  text-anchor="middle" class="svg-t" font-weight="700">Cae en</text>
+        <text x="242" y="103" text-anchor="middle" class="svg-t" font-weight="700">Descargas</text>
+        <text x="242" y="122" text-anchor="middle" class="svg-mut" font-size="10">scan_results…json</text>
+        <text x="407" y="88"  text-anchor="middle" class="svg-t" font-weight="700">Se lo das</text>
+        <text x="407" y="103" text-anchor="middle" class="svg-t" font-weight="700">a Claude</text>
+        <text x="407" y="122" text-anchor="middle" class="svg-mut" font-size="10">el prompt de §05</text>
+        <text x="572" y="88"  text-anchor="middle" class="svg-t" font-weight="700" fill="var(--accent-ink)">Claude actualiza</text>
+        <text x="572" y="103" text-anchor="middle" class="svg-t" font-weight="700" fill="var(--accent-ink)">+ corre el deploy</text>
+        <text x="572" y="122" text-anchor="middle" class="svg-mut" font-size="10">confirma antes de publicar</text>
+        <text x="730" y="88"  text-anchor="middle" class="svg-t" font-weight="700">Verificas</text>
+        <text x="730" y="103" text-anchor="middle" class="svg-t" font-weight="700">en vivo</text>
+        <text x="730" y="122" text-anchor="middle" class="svg-mut" font-size="10">deploy-status.sh</text>
+        <line x1="145" y1="100" x2="173" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#rfl)"/>
+        <line x1="310" y1="100" x2="338" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#rfl)"/>
+        <line x1="475" y1="100" x2="503" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#rfl)"/>
+        <line x1="640" y1="100" x2="668" y2="100" stroke="var(--ti)" stroke-width="2" marker-end="url(#rfl)"/>
+      </g>
+      <text x="400" y="180" text-anchor="middle" class="svg-mut" font-size="11">Pasos 1-2 corren en cualquier sistema operativo, Windows incluido</text>
+      <text x="400" y="200" text-anchor="middle" class="svg-mut" font-size="11">El paso 4 (publicar) hoy vive cómodo en la Mac con acceso a KMS — ver §06</text>
+    </svg>
+    <figcaption>De la captura en el navegador a la verificación en vivo. El único paso donde SteelheadAutomator hoy necesita un entorno específico es el 4.</figcaption>
+  </figure>
+
+  <!-- ===================== esencial ===================== -->
+  <div class="essentials">
+    <h3>Si solo te quedas con esto</h3>
+    <ul>
+      <li><strong>Este runbook es para el 10% de los casos</strong> que Hash-Autopilot, a propósito, no resuelve solo: deprecación dura, ruta de navegación rota, operación sin receta/centinela, centinela roto, freno de masa, o captura sospechosa (§01).</li>
+      <li><strong>El escáner:</strong> popup de la extensión → Herramientas → Explorador Steelhead → "Iniciar Captura" → reproduces la acción exacta que truena → "Detener Captura" → el archivo se descarga solo a tu carpeta de Descargas.</li>
+      <li><strong>Distingue rotación de deprecación</strong> antes de actuar (§04): mismo error HTTP, causas distintas — solo el scan te dice cuál es.</li>
+      <li><strong>Dale el archivo a Claude</strong> con el prompt de §05. Claude compara, muestra el diff, y solo deploya cuando tú confirmas.</li>
+      <li><strong>Windows captura sin problema; el deploy, hoy, confírmalo primero</strong> (§06) — la sintaxis de los scripts y el acceso a KMS están calibrados para la Mac del equipo.</li>
+    </ul>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Runbook — recuperar hashes a mano · SteelheadAutomator</div>
+    <div>Procedimiento verificado contra el código · corte 2026-07-23</div>
+
+      <div style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)"><a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a><span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span></div>
+    </footer>
+
+</div>
+<script class="noprint">
+document.querySelectorAll('pre').forEach(function(pre){
+  var btn = document.createElement('button');
+  btn.className = 'copybtn noprint';
+  btn.type = 'button';
+  btn.textContent = 'Copiar';
+  btn.addEventListener('click', function(){
+    var text = pre.textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function(){
+        btn.textContent = 'Copiado ✓';
+        btn.classList.add('copied');
+        setTimeout(function(){ btn.textContent = 'Copiar'; btn.classList.remove('copied'); }, 1600);
+      });
+    }
+  });
+  pre.appendChild(btn);
+});
+</script>
+</body>
+</html>
