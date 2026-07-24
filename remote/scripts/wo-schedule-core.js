@@ -288,6 +288,9 @@
           isIntentional: !!task.isIntentional,
           treatmentId: task.treatmentId != null ? task.treatmentId : null,
           totalTimeMinutes: task.totalTimeMinutes != null ? task.totalTimeMinutes : null,
+          // Necesarios para reconstruir el input de UpdateManyScheduleTasks (Fase 2).
+          cycleTimeMinutes: task.cycleTimeMinutes != null ? task.cycleTimeMinutes : null,
+          treatmentTimeMinutes: task.treatmentTimeMinutes != null ? task.treatmentTimeMinutes : null,
         };
         const els = (task.scheduleTaskElementsByScheduleTaskId && task.scheduleTaskElementsByScheduleTaskId.nodes) || [];
         // Une los workOrderId de los elementos de la tarea (una tarea puede agrupar varios).
@@ -358,6 +361,34 @@
     return s;
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // FASE 2 — programación INTENCIONAL (fijar una tarea existente): input de la
+  // mutación UpdateManyScheduleTasks. Confirmado en scan real (button:Update en la
+  // ficha): { scheduledTasks: [{ id, scheduleId, stationId, expectedStartTime,
+  //   totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes, isIntentional }] }.
+  // STATIC-SCHEDULED = isIntentional:true. Es UPDATE por id (NO crea) → la tarea debe
+  // existir (auto-agendada). Para crear desde cero: CreateManyScheduleTasks (payload aparte).
+  // ══════════════════════════════════════════════════════════════════════════
+  // Echo de TODOS los campos existentes de la tarea (el server los espera) + override de
+  // expectedStartTime + isIntentional. `expectedStartTime` debe ir en ISO UTC (…Z).
+  // overrides: { expectedStartTime?, isIntentional? (default true) }. null si falta id.
+  function buildScheduleTaskUpdateInput(task, overrides) {
+    overrides = overrides || {};
+    if (!task || task.taskId == null) return null;
+    return {
+      scheduledTasks: [{
+        id: task.taskId,
+        scheduleId: task.scheduleId,
+        stationId: task.stationId,
+        expectedStartTime: (overrides.expectedStartTime != null) ? overrides.expectedStartTime : task.expectedStartTime,
+        totalTimeMinutes: task.totalTimeMinutes,
+        cycleTimeMinutes: task.cycleTimeMinutes,
+        treatmentTimeMinutes: task.treatmentTimeMinutes,
+        isIntentional: (overrides.isIntentional != null) ? !!overrides.isIntentional : true,
+      }],
+    };
+  }
+
   const api = {
     WO_INDEX_RE, WO_DETAIL_RE, DOMAIN_RE,
     isWorkOrdersIndexPath, isWorkOrderDetailPath, parseWorkOrderIdInDomain, parseDomainId,
@@ -366,6 +397,7 @@
     stationNameMap, stationName,
     buildBoardScheduleIndex, resolveBoardScheduleForWO,
     formatScheduleTaskLine, scheduleStatusLabel, formatBoardScheduleCell,
+    buildScheduleTaskUpdateInput,
     parseIsoParts, formatShortDateTime, formatScheduleCell,
   };
   if (typeof window !== 'undefined') window.WoScheduleCore = api;

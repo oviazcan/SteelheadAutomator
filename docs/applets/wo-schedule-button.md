@@ -32,9 +32,32 @@ Pedido por producción (2026-07-23): en iPad la tarjeta "Cliente" (que contiene 
 
 Ya **no es una caja/chip**: es **texto plano** que envuelve (`overflow-wrap:anywhere`, sin ellipsis → se ve completo), con **una fila por tarea = `📅` + texto** (`estación · fecha · estado`). El **📅 es el elemento accionable**: hay **uno por cada estación/paso** donde la OT está programada, y en **Fase 2** su click abrirá el modal para programar **ese** paso (por eso cada 📅 guarda `data-sa-station-id`/`data-sa-schedule-id`/`data-sa-task-id`). Fase 1: `cursor:default` + tooltip "próximamente". `max-width:min(46vw,460px)`, apilado vertical. Estados: cargando/sin-programar (gris itálica), error (rojo). `textContent` (no innerHTML). Sin programar → **1 📅** como entrada para programar en Fase 2. **Motivo del cambio (usuario):** la chip truncaba el texto ("…") y no se veía completa; y debe haber tantos 📅 como estaciones.
 
-## Fase 2 (hito aparte — crear programación)
+## Fase 2 — programación intencional desde la ficha (hallazgos + estado)
 
-El 📅 se vuelve clicable → modal dark-mode de programación intencional (estación + fecha/hora) que dispara la **mutación de creación** (sin capturar aún — terreno virgen). Captura con `hash-scanner` sobre una OT sin programar → agendar de prueba → guardar. Alta en `hash-autopilot` (centinela / captura-y-aborta).
+Objetivo: cada **📅** clicable → modal dark-mode → programar/fijar **sin abrir el calendario nativo** (el paso que el usuario quiere ahorrar). Diseño acordado: **dos botones de confirmación** — (1) fijar/mover a **intencional** con fecha/hora (esta tarea); (2) además **reacomodar** (reschedule, DESTRUCTIVO → modal de advertencia de que el resto del schedule se recorre).
+
+### Mutaciones (scan 2026-07-23, ScheduleBoard 454 + ficha OT 14983)
+
+| Mutación | Hash | Estado | Notas |
+|---|---|---|---|
+| **`UpdateManyScheduleTasks`** | `14c097944a…` | **payload CAPTURADO** (button:Update en la ficha) | Input chico (~245B): `{scheduledTasks:[{id, scheduleId, stationId, expectedStartTime, totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes, isIntentional}]}`. Resp 98B `{mnUpdateScheduleTaskById}`. **UPDATE por id** (`…ById`) → NO crea; la tarea debe existir. `isIntentional:true` = STATIC-SCHEDULED. |
+| `CreateManyScheduleTasks` | `9039afe7…` | **payload PENDIENTE** (nunca capturado, vars vacías) | Para crear en OT sin tareas. El usuario proveerá el payload. |
+| `DeleteManyScheduleTasks` | `ecfa83fe…` | payload pendiente | Parte del reschedule. |
+| `UpdateManyStationTasks` | `de13ff5f…` | payload pendiente | Parte del reschedule. |
+
+**Deducción (¿el Update crea?): NO.** Evidencia observada: el Save del board dispara **Create + Update + Delete por SEPARADO** (si el Update fuera upsert, no existiría un Create aparte) + la resp `…ById` = update-por-id. No se hizo write-test a ciegas (riesgo de tarea fantasma en prod). → Para crear hace falta `CreateManyScheduleTasks`.
+
+**Reschedule (botón 2, destructivo):** = la combinación `Create+Update+Delete+UpdateStation` que dispara el Save del board (reacomoda todo). Payloads aún sin capturar. Requiere **modal de advertencia**. Hito posterior.
+
+### Listo (base segura, SIN escrituras ni deploy)
+- Core `WoScheduleCore.buildScheduleTaskUpdateInput(task, {expectedStartTime, isIntentional})` → arma el input del update (echo de todos los campos + override fecha + `isIntentional:true`), **fiel al payload real**. Tests golden.
+- El extractor `buildBoardScheduleIndex` ya guarda `cycleTimeMinutes`/`treatmentTimeMinutes` (necesarios para el update).
+- Cada 📅 del readout ya guarda `data-sa-task-id`/`data-sa-schedule-id`/`data-sa-station-id`.
+
+### Pendiente para cablear Fase 2
+1. **Payload de `CreateManyScheduleTasks`** (lo provee el usuario): capturar el request de una creación real (o DevTools Network del POST) — para el botón "crear" en OT sin tareas.
+2. **Hashes a config + rutas de regeneración**: `UpdateManyScheduleTasks` (y luego Create/Delete) van a `config.mutations` **con** su ruta de regeneración en `hash-autopilot` (centinela captura-y-aborta sobre una OT/tarea "Centinela" — requiere capturar el DOM del calendario/modal nativo). **Deuda hasta entonces** (por eso el hash del Update NO se metió aún a config).
+3. **UI**: 📅 clicable → modal dark-mode (fecha/hora `datetime-local` → ISO UTC en el glue) + 2 botones (intencional / reacomodar-con-advertencia) + confirmación antes de escribir + refresh del readout tras éxito.
 
 ## Arquitectura
 

@@ -290,3 +290,49 @@ test('formatScheduleTaskLine + formatBoardScheduleCell', () => {
   assert.equal(Core.formatBoardScheduleCell(t), 'T108-LI Níquel Electroless (13) · 15/07 21:15 · En cola  (+1)');
   assert.equal(Core.formatBoardScheduleCell([]), '—');
 });
+
+// ── FASE 2: input de UpdateManyScheduleTasks (programación intencional) ────────
+// Fiel al payload REAL capturado (button:Update en la ficha, scan 2026-07-23_185855).
+test('buildScheduleTaskUpdateInput: echo de campos + override fecha + isIntentional:true', () => {
+  const task = {
+    taskId: 86745, scheduleId: 454, stationId: 12101,
+    expectedStartTime: '2026-07-22T20:00:00.000Z',
+    totalTimeMinutes: 5, cycleTimeMinutes: 0.0009090909090909091, treatmentTimeMinutes: 0.0009090909090909705,
+    isIntentional: false, stationName: 'X', status: 'QUEUED',
+  };
+  const input = Core.buildScheduleTaskUpdateInput(task, { expectedStartTime: '2026-07-22T22:00:00.000Z' });
+  assert.deepEqual(input, {
+    scheduledTasks: [{
+      id: 86745, scheduleId: 454, stationId: 12101,
+      expectedStartTime: '2026-07-22T22:00:00.000Z',
+      totalTimeMinutes: 5, cycleTimeMinutes: 0.0009090909090909091, treatmentTimeMinutes: 0.0009090909090909705,
+      isIntentional: true,
+    }],
+  });
+});
+
+test('buildScheduleTaskUpdateInput: sin override usa la fecha actual; puede des-intencionalizar', () => {
+  const task = { taskId: 1, scheduleId: 454, stationId: 9, expectedStartTime: '2026-07-01T00:00:00.000Z', totalTimeMinutes: 5, cycleTimeMinutes: 1, treatmentTimeMinutes: 1 };
+  const a = Core.buildScheduleTaskUpdateInput(task, {});
+  assert.equal(a.scheduledTasks[0].expectedStartTime, '2026-07-01T00:00:00.000Z');
+  assert.equal(a.scheduledTasks[0].isIntentional, true);
+  const b = Core.buildScheduleTaskUpdateInput(task, { isIntentional: false });
+  assert.equal(b.scheduledTasks[0].isIntentional, false);
+});
+
+test('buildScheduleTaskUpdateInput: null si falta taskId', () => {
+  assert.equal(Core.buildScheduleTaskUpdateInput(null, {}), null);
+  assert.equal(Core.buildScheduleTaskUpdateInput({ scheduleId: 1 }, {}), null);
+});
+
+test('buildBoardScheduleIndex: incluye cycle/treatmentTimeMinutes (para el update)', () => {
+  const wos = { allSchedules: { nodes: [{ id: 454, validScheduleTasks: { nodes: [{
+    id: 5, expectedStartTime: '2026-07-15T21:15:00+00:00', stationId: 12088, status: 'QUEUED',
+    totalTimeMinutes: 66, cycleTimeMinutes: 2.05, treatmentTimeMinutes: 3.1,
+    stationByStationId: { id: 12088, name: 'T108' },
+    scheduleTaskElementsByScheduleTaskId: { nodes: [{ recipeNodeByRecipeNodeId: { workOrderId: 999 } }] },
+  }] } }] } };
+  const t = Core.resolveBoardScheduleForWO(Core.buildBoardScheduleIndex(wos), 999)[0];
+  assert.equal(t.cycleTimeMinutes, 2.05);
+  assert.equal(t.treatmentTimeMinutes, 3.1);
+});
