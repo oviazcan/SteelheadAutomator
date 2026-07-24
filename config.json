@@ -1,6 +1,6 @@
 {
-  "version": "1.7.185",
-  "lastUpdated": "2026-07-23T18:51",
+  "version": "1.7.186",
+  "lastUpdated": "2026-07-23T20:25",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2701,6 +2701,6 @@
     "scripts/wo-listing-columns.js": "96266f72dd11f231e6bb1e566fa91c02c3e58691f80514b6e673e78eea87c6f1",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
     "scripts/wo-schedule-button.js": "cccb9da9544142b72973877a5c77dbdd5ddb7489990cf04cc10e493b30824df8",
-    "scripts/wo-schedule-core.js": "00f8f963bae1a18bea1d0aee50462b6a8a383a775b9d4e425e4339f93352d52a"
+    "scripts/wo-schedule-core.js": "cfa1defc28aa9505a6fea2d673952bf87cb063367bfb37166fe005860ec0cd68"
   }
 }
