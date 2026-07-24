@@ -133,11 +133,11 @@ async function archiveSentinelaOVs(page, domain) {
         .waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
     }
     if (dbg && i === 0) {
-      const sentRows = await page.locator('tr:has(td:has-text("Sentinela"))').count().catch(() => -1);
+      const sentRows = await page.locator('tr:has(td:has-text("Sentinela")), tr:has(td:has-text("Centinela"))').count().catch(() => -1);
       console.log(`       [dbg] OV_DASH archivar: hydrated=${ok} sentRows=${sentRows}`);
       await page.screenshot({ path: '/tmp/sa-ov-archive.png', fullPage: true }).catch(() => {});
     }
-    const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"], tr:has(td:has-text("Sentinela")) button[aria-label="Archive"]').first();
+    const archBtn = page.locator('tr:has(td:has-text("Sentinela")) button[aria-label="Archivar"], tr:has(td:has-text("Sentinela")) button[aria-label="Archive"], tr:has(td:has-text("Centinela")) button[aria-label="Archivar"], tr:has(td:has-text("Centinela")) button[aria-label="Archive"]').first();
     if (!(await archBtn.count().catch(() => 0))) { if (dbg) console.log(`       [dbg] OVs Sentinela archivadas: ${i}`); break; }
     await archBtn.click({ timeout: 10000 });
     await page.waitForTimeout(1000);
@@ -357,7 +357,7 @@ async function markSentinelaAction(page, ariaLabel) {
     document.querySelectorAll('[data-sa-rep]').forEach((e) => e.removeAttribute('data-sa-rep'));
     for (const svg of document.querySelectorAll(`svg[aria-label="${aria}"]`)) {
       let el = svg;
-      for (let i = 0; i < 6 && el; i++) { el = el.parentElement; if (el && el.innerText && el.innerText.trim() === 'Sentinela') { svg.setAttribute('data-sa-rep', '1'); return true; } }
+      for (let i = 0; i < 6 && el; i++) { el = el.parentElement; if (el && el.innerText && /^[sc]entinela$/i.test(el.innerText.trim())) { svg.setAttribute('data-sa-rep', '1'); return true; } }
     }
     return false;
   }, ariaLabel).catch(() => false);

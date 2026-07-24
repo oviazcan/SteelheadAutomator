@@ -24,6 +24,13 @@ test('isSentinel: reconoce la palabra "Sentinela" en el nombre (marcador del usu
   assert.equal(isSentinel({ name: 'Cliente Real 123' }), false);      // sigue fail-closed
 });
 
+test('isSentinel: acepta también "Centinela" (spelling correcto, transición dual)', () => {
+  assert.equal(isSentinel({ name: 'PN Centinela QA' }), true);
+  assert.equal(isSentinel({ name: 'centinela' }), true);              // case-insensitive
+  assert.equal(isSentinel({ name: 'Nodo Centinela archivado' }), true);
+  assert.equal(isSentinel({ name: 'Cliente Real S.A.' }), false);     // sigue fail-closed
+});
+
 test('strategyFor: Delete/Remove → ephemeral', () => {
   assert.equal(strategyFor('DeletePartNumber'), 'ephemeral-create-destroy');
   assert.equal(strategyFor('RemoveLabelUser'), 'ephemeral-create-destroy');
