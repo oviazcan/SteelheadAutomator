@@ -114,7 +114,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
     </div>
     <p class="eyebrow">Documento perenne · Glosario</p>
     <h1>Glosario técnico</h1>
-    <p class="sub">Cada término del sistema de reportería — de la fotografía semanal a las trampas más finas del SQL — explicado en lenguaje llano, con su metáfora cuando la tiene. Para Key Users y para Jefes de TI: el mismo vocabulario, sin condescendencia.</p>
+    <p class="sub">Cada término del sistema de reportería — de la base de reportería a las trampas más finas del SQL — explicado en lenguaje llano, con su metáfora cuando la tiene. Para Key Users y para Jefes de TI: el mismo vocabulario, sin condescendencia.</p>
   </header>
 
   <div class="freshness noprint" style="border-left-color:var(--ti);background:var(--ti-wash);border-color:color-mix(in srgb,var(--ti) 30%,transparent)">
@@ -143,9 +143,15 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
     <div class="terms">
 
       <article class="term">
-        <h3><code>Snapshot</code> / fotografía semanal</h3>
-        <p>Una copia congelada de la base de datos de Steelhead, guardada en un solo archivo <code>.duckdb</code>. Se genera automáticamente cada <strong>lunes a las 07:00</strong> (el schedule <code>scripts/weekly_snapshot.sh</code>), y es sobre esa copia —no contra el ERP en vivo— que corren todos los reportes en local.</p>
-        <p class="metaphor"><b>Metáfora:</b> la <strong>fotografía semanal de la planta</strong>. No ves la planta en tiempo real; ves el retrato más reciente que se tomó de ella.</p>
+        <h3><code>Base de reportería</code> (reporting database)</h3>
+        <p>La copia de los datos que Steelhead mantiene <strong>del lado del servidor</strong> y sobre la que corren los reportes <strong>publicados</strong> —los que abre el usuario dentro de Steelhead—. No es el ERP transaccional en vivo: es una copia optimizada para consulta. Steelhead la <strong>regenera sola cada madrugada</strong> (≈2–6 am); y quien tenga el permiso <strong>MANAGE Reports</strong> (<code>MANAGE_REPORTING_SETTINGS</code>) puede <strong>regenerarla al momento</strong>, con un enfriamiento de ~20 min entre una y otra. Como es <strong>una sola copia compartida</strong> por planta, cuando alguien la regenera, <strong>todos</strong> ven los datos frescos.</p>
+        <p class="metaphor"><b>Metáfora:</b> la <strong>foto que se renueva sola</strong>: el retrato más reciente de la planta, que se actualiza cada madrugada o cuando alguien con permiso pide uno nuevo.</p>
+      </article>
+
+      <article class="term">
+        <h3><code>Snapshot</code> / banco de pruebas local</h3>
+        <p>Una copia de la base de datos de Steelhead guardada en un solo archivo <code>.duckdb</code> en la máquina de <strong>desarrollo</strong>. El repo la regenera cada <strong>lunes a las 07:00</strong> (el schedule <code>scripts/weekly_snapshot.sh</code>), y es sobre ella —no contra el ERP en vivo— que se <strong>escriben y prueban</strong> los reportes en local. Es del entorno de desarrollo: <strong>no</strong> es lo que determina la frescura de lo que ven los usuarios (eso es la <em>base de reportería</em>, arriba).</p>
+        <p class="metaphor"><b>Metáfora:</b> la <strong>copia de trabajo del laboratorio</strong>: el retrato que se bajó para trabajar sobre él con calma, aparte de la línea.</p>
       </article>
 
       <article class="term">

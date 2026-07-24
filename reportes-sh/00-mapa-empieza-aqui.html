@@ -198,10 +198,10 @@ tbody tr:last-child td{border-bottom:none}
 
   <div class="freshness noprint" style="border-left-color:var(--ti); background:var(--ti-wash); border-color:color-mix(in srgb,var(--ti) 30%,transparent)">
     <span class="ic" aria-hidden="true">📌</span>
-    <div><b style="color:var(--ti)">Este documento es PERENNE.</b> Explica conceptos y rutas de lectura que casi no cambian. Los conteos exactos (“~102 reportes”, versiones) viven en los documentos marcados <span class="badge vivo dot" style="vertical-align:1px">Vivo</span>, que sí se actualizan cada vez que se agregan o modifican reportes.</div>
+    <div><b style="color:var(--ti)">Este documento es PERENNE.</b> Explica conceptos y rutas de lectura que casi no cambian. Los conteos exactos (“~100 reportes”, versiones) viven en los documentos marcados <span class="badge vivo dot" style="vertical-align:1px">Vivo</span>, que sí se actualizan cada vez que se agregan o modifican reportes.</div>
   </div>
 
-  <p class="measure" style="margin-top:26px">Reportes SH es el sistema de <strong>reportería personalizada</strong> del ERP <strong>Steelhead</strong> (<code>app.gosteelhead.com</code>) para Ecoplating. Cada semana baja una <strong>“fotografía” completa</strong> de los datos del ERP a un archivo local, corre sobre ella los reportes escritos a la medida (SQL), y los <strong>publica de vuelta dentro de Steelhead</strong> para que cada área los consulte con sus propios filtros. Hoy son <strong>~102 reportes</strong> —producción, ventas, calidad, inventario, contabilidad, mantenimiento y más— vivos en las dos plantas: <strong>TLC</strong> (Tlalnepantla) y <strong>MTY</strong> (Monterrey).</p>
+  <p class="measure" style="margin-top:26px">Reportes SH es el sistema de <strong>reportería personalizada</strong> del ERP <strong>Steelhead</strong> (<code>app.gosteelhead.com</code>) para Ecoplating. Escribe reportes a la medida (SQL) y los <strong>publica dentro de Steelhead</strong>, donde corren sobre su <strong>base de reportería</strong> —una copia de los datos que Steelhead <strong>refresca sola cada madrugada</strong>— para que cada área los consulte con sus propios filtros. El desarrollo de esos reportes se hace aparte, sobre un <strong>banco de pruebas local</strong> (una copia DuckDB del ERP). Hoy son <strong>~100 reportes</strong> —producción, ventas, calidad, inventario, contabilidad, mantenimiento y más— vivos en las dos plantas: <strong>TLC</strong> (Tlalnepantla) y <strong>MTY</strong> (Monterrey).</p>
 
   <!-- ============ CONVENCIÓN VIVO / PERENNE ============ -->
   <h2 class="sec"><span class="num">01</span>La convención que debes conocer antes de imprimir</h2>
@@ -223,7 +223,7 @@ tbody tr:last-child td{border-bottom:none}
       <p class="lede">Enseña <em>modelos mentales</em> y patrones estables: cómo funciona, no cuántos hay hoy.</p>
       <ul>
         <li>No necesita re-emitirse con cada reporte nuevo; envejece muy despacio.</li>
-        <li>Cuando menciona cifras lo hace en <strong>relativo</strong> (“~102 reportes; ver el Inventario vivo”).</li>
+        <li>Cuando menciona cifras lo hace en <strong>relativo</strong> (“~100 reportes; ver el Inventario vivo”).</li>
         <li>Puedes imprimirlo con confianza y reutilizarlo por mucho tiempo.</li>
         <li>Ejemplos: este Mapa, la presentación 101, los manuales, el glosario, las fichas profundas.</li>
       </ul>
@@ -256,9 +256,9 @@ tbody tr:last-child td{border-bottom:none}
     <article class="card acard ti">
       <span class="who">Jefe de TI · Administrador del sistema</span>
       <h3>Mantienes vivo el sistema de reportes</h3>
-      <p class="youare">Vienes de sistemas/infraestructura. Respondes por la fotografía semanal, la publicación de reportes, la sincronización entre plantas y las credenciales del ERP.</p>
+      <p class="youare">Vienes de sistemas/infraestructura. Respondes por el banco de pruebas (snapshot semanal de desarrollo), la publicación de reportes, la sincronización entre plantas y las credenciales del ERP.</p>
       <ul class="path">
-        <li><span class="rank">01</span><span class="doc">Presentación 101<small>El modelo completo: fotografía, pull/push, banco vs. línea</small></span></li>
+        <li><span class="rank">01</span><span class="doc">Presentación 101<small>El modelo completo: la copia que se refresca sola, pull/push, banco vs. línea</small></span></li>
         <li><span class="rank">02</span><span class="doc">Manual del Administrador<small>Snapshot semanal, publicar reportes, sincronizar TLC↔MTY, credenciales, hashes</small></span></li>
         <li><span class="rank">03</span><span class="doc">Ficha profunda: La ventana de fechas<small>El error de huso horario que tocó 53 reportes, y su patrón</small></span></li>
       </ul>
@@ -282,10 +282,10 @@ tbody tr:last-child td{border-bottom:none}
       </thead>
       <tbody>
         <tr><td>0</td><td><strong>Mapa “Empieza aquí”</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Este documento: qué leer según tu rol.</td><td><span style="color:var(--faint);font-size:.8rem;white-space:nowrap">Estás aquí</span></td></tr>
-        <tr><td>1</td><td><strong>Reportes SH 101</strong></td><td><span class="chip all">Todos</span> <span class="chip ti">TI</span></td><td><span class="tag-p">Perenne</span></td><td>Los conceptos: la fotografía semanal, pull/push, banco vs. línea, plantas gemelas.</td><td><a href="101-deck.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>1</td><td><strong>Reportes SH 101</strong></td><td><span class="chip all">Todos</span> <span class="chip ti">TI</span></td><td><span class="tag-p">Perenne</span></td><td>Los conceptos: la copia que se refresca sola, pull/push, banco vs. línea, plantas gemelas.</td><td><a href="101-deck.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
         <tr><td>2</td><td><strong>Manual del Operador</strong></td><td><span class="chip ku">Key User</span></td><td><span class="tag-p">Perenne</span></td><td>Abrir, filtrar y leer un reporte; fichas breves por familia.</td><td><a href="manual-operador.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
         <tr><td>2</td><td><strong>Manual del Administrador</strong></td><td><span class="chip ti">Jefe de TI</span></td><td><span class="tag-p">Perenne</span></td><td>Snapshot semanal, publicar reportes, sincronizar plantas, credenciales, hashes.</td><td><a href="manual-administrador.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
-        <tr><td>3</td><td><strong>Inventario de Reportes</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-v">Vivo</span></td><td>Tabla autoritativa de los ~102 reportes que hoy corren en las dos plantas.</td><td><a href="inventario-reportes.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>3</td><td><strong>Inventario de Reportes</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-v">Vivo</span></td><td>Tabla autoritativa de los ~100 reportes que hoy corren en las dos plantas.</td><td><a href="inventario-reportes.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
         <tr><td>3</td><td><strong>Glosario técnico</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Cada término (snapshot, hash, vista, dropdown…) en lenguaje llano, con metáfora.</td><td><a href="glosario.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
         <tr><td>3</td><td><strong>Gobernanza de datos</strong></td><td><span class="chip all">Todos</span> <span class="chip ti">TI</span></td><td><span class="tag-p">Perenne</span></td><td>La placa <code>RPT-DEP-TIPO-NN</code> a detalle: departamentos y dueños, tipos, versionamiento, capas y ciclo de vida.</td><td><a href="gobernanza-datos.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
         <tr><td>3</td><td><strong>Guía de Vistas y Dashboards Perspective</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Reporte vs. vista vs. dashboard, el catálogo de gráficas, y el editor “config” control por control (incluidas las expresiones).</td><td><a href="guia-perspective.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>

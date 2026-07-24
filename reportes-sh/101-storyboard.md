@@ -6,7 +6,7 @@
 > la metáfora y las notas del orador. El deck HTML de primer borrador ya construido vive en
 > `101-deck.html` — úsalo como referencia visual viva.
 >
-> **Documento perenne.** Enseña conceptos estables. Las cifras van en *relativo* (“~102 reportes”); el
+> **Documento perenne.** Enseña conceptos estables. Las cifras van en *relativo* (“~100 reportes”); el
 > conteo exacto vive en el `inventario-reportes.html` (documento vivo).
 
 ---
@@ -29,7 +29,7 @@ mismo modelo mental; al final cada quien sigue por su ruta (ver slide 13 y el Ma
 
 ## Arco narrativo (por qué este orden)
 
-Problema → solución de una frase → **la gran idea** (la fotografía semanal + banco vs. línea) → sus
+Problema → solución de una frase → **la gran idea** (la foto que se renueva sola + banco vs. línea) → sus
 consecuencias (el ciclo, las placas, las plantas gemelas) → de qué está hecho (reporte → vista →
 dashboard) → los temas delicados como *teaser* → panorama → cómo seguir. Se sube de lo concreto (el
 dolor de cruzar datos a mano) a lo abstracto (la arquitectura) y se aterriza.
@@ -64,30 +64,35 @@ dolor de cruzar datos a mano) a lo abstracto (la arquitectura) y se aterriza.
 - **Mensaje único:** Reportes SH es la capa de reportería a la medida de Steelhead.
 - **Texto:**
   - Título: **Qué es Reportes SH**
-  - Bullets: “~102 reportes escritos a la medida sobre los datos del ERP” · “Cada uno responde una pregunta de
+  - Bullets: “~100 reportes escritos a la medida sobre los datos del ERP” · “Cada uno responde una pregunta de
     negocio concreta y se abre dentro de Steelhead” · “Con filtros propios: fechas, cliente, línea, turno…”.
 - **Visual:** el mismo mapa de islas de la slide 2, ahora conectadas por un solo puente rotulado “Reportes SH”.
 - **Notas:** “No es otro sistema que abrir: los reportes viven dentro de Steelhead, donde ya trabajan.”
 
-## Slide 4 — LA GRAN IDEA: la fotografía semanal  ⭐
+## Slide 4 — LA GRAN IDEA: la foto que se renueva sola  ⭐
 
-- **Mensaje único:** los reportes no corren sobre el ERP vivo; corren sobre una copia congelada que se
-  baja cada semana.
+- **Mensaje único:** los reportes no corren sobre el ERP vivo; corren sobre una copia que Steelhead
+  mantiene aparte y refresca sola cada madrugada (y bajo demanda, con permiso).
 - **Texto:**
-  - Título: **La idea clave: la fotografía semanal**
-  - Bullets: “Cada semana se baja una **fotografía completa** de los datos del ERP a un solo archivo” ·
-    “Los reportes corren sobre esa foto, no sobre el ERP en vivo” · “Consultar la foto **no molesta** a la
-    operación en tiempo real”.
+  - Título: **La idea clave: la foto que se renueva sola**
+  - Bullets: “Los reportes corren sobre la **base de reportería** de Steelhead —una copia de los datos—,
+    no sobre el ERP en vivo” · “Steelhead la **regenera sola cada madrugada** (≈2–6 am)” · “Quien tenga el
+    permiso **MANAGE Reports** puede regenerarla **al momento** (con ~20 min entre una y otra), y esa copia
+    fresca la ven **todos**”.
 - **Visual (flujo de referencia):**
   ```
-  [ERP Steelhead en vivo] --(1) fotografía semanal--> [Copia congelada (un archivo)]
-  [Copia congelada] --(2) corren--> [Los ~102 reportes]
+  [ERP Steelhead en vivo] --(1) regenera: madrugada + a demanda--> [Base de reportería (copia compartida, solo lectura)]
+  [Base de reportería] --(2) corren--> [Los ~100 reportes]
   ```
-- **Metáfora:** un supervisor toma una **foto del estado de las tinas** al cierre de turno para su bitácora;
-  después analiza la foto con calma, sin tener que parar la línea para medir otra vez.
-- **Notas:** este es el concepto más importante del deck. Deténte aquí. La consecuencia clave: un dato “de
-  hoy” no aparece hasta la **próxima** fotografía. Es un intercambio a propósito: frescura semanal a cambio
-  de no cargar el ERP en vivo.
+- **Metáfora:** no miras las tinas en tiempo real: revisas la **foto más reciente** del estado de la planta,
+  que se renueva sola cada madrugada. ¿Necesitas una foto al momento? Quien tenga permiso toma una nueva —y
+  esa foto la ven todos.
+- **Notas:** este es el concepto más importante del deck. Deténte aquí. La consecuencia clave: un dato
+  capturado hoy aparece **tras la próxima regeneración** — mañana de madrugada, o de inmediato si alguien
+  con permiso la fuerza. Es un intercambio a propósito: consultar sin cargar el ERP en vivo. **Ojo — no
+  confundir con el snapshot semanal del repo:** ése es el banco de pruebas de *desarrollo* (ver Manual del
+  Administrador), NO lo que determina la frescura que ve el usuario. En el 101 el snapshot semanal no se
+  menciona, a propósito, para no confundir.
 
 ## Slide 5 — Por qué se construyó así
 
@@ -183,13 +188,16 @@ dolor de cruzar datos a mano) a lo abstracto (la arquitectura) y se aterriza.
 
 ## Slide 12 — Panorama de lo que hace
 
-- **Mensaje único:** son ~102 reportes en 14 departamentos.
+- **Mensaje único:** son ~100 reportes en 14 departamentos, legibles en dos cortes: por departamento y por tipo.
 - **Texto:**
   - Título: **Todo lo que cubre, de un vistazo**
   - Bullets (departamentos con más reportes): Producción · Ingeniería · Ventas · Almacén · Calidad · Compras ·
     Mantenimiento · Contabilidad · y más (RRHH, Sistemas, CxC/CxP, Laboratorio, Procesos).
-- **Visual:** mosaico de tarjetas, una por departamento, con su conteo; nota “~102 reportes — lista completa en el Inventario vivo”.
-- **Notas:** NO leer los 102; solo mostrar la amplitud. Remitir al Inventario para el detalle.
+  - Segunda lectura, **por tipo** (el `TIPO` de la placa, slide 7): **Analíticas** (~51, KPIs y cruces) ·
+    **Catálogos** (~37, listas maestras) · **Control** (~10, seguimiento diario). Suman el mismo universo.
+- **Visual:** mosaico de tarjetas por departamento con su conteo; debajo, separado por una línea, una tira de
+  3 tarjetas por tipo (Analíticas / Catálogos / Control). Nota “~100 reportes — lista completa en el Inventario vivo”.
+- **Notas:** NO leer los 100; solo mostrar la amplitud y las dos formas de cortarlo. Remitir al Inventario para el detalle.
 
 ## Slide 13 — Cómo se lee este paquete (recap del Mapa)
 
@@ -206,8 +214,9 @@ dolor de cruzar datos a mano) a lo abstracto (la arquitectura) y se aterriza.
 - **Mensaje único:** los cuatro conceptos que resumen todo.
 - **Texto:**
   - Título: **Cuatro ideas para llevarse**
-  - Bullets: 1) **La fotografía semanal**: los reportes corren sobre una copia congelada del ERP, de solo
-    lectura. 2) **Bajar → escribir → publicar**: el ciclo con que nace cada reporte. 3) **Plantas gemelas**:
+  - Bullets: 1) **La foto que se renueva sola**: los reportes corren sobre una copia de solo lectura que
+    Steelhead refresca cada madrugada (o al momento, con permiso). 2) **Bajar → escribir → publicar**: el
+    ciclo con que nace cada reporte. 3) **Plantas gemelas**:
     todo reporte existe igual en TLC y MTY. 4) **Banco vs. línea real**: se verifica en vivo, porque el banco
     de pruebas a veces engaña.
 - **Visual:** los 4 íconos/metáforas juntos (foto · ciclo · plantas gemelas · banco/línea).
@@ -219,7 +228,8 @@ dolor de cruzar datos a mano) a lo abstracto (la arquitectura) y se aterriza.
 
 | Concepto técnico | Metáfora del deck |
 |---|---|
-| Snapshot / copia DuckDB | La fotografía semanal de la planta |
+| Base de reportería de Steelhead (producción) | La foto que se renueva sola de la planta (madrugada + a demanda) |
+| Snapshot DuckDB local del repo (desarrollo) | La copia de trabajo del laboratorio — NO se muestra en el 101 |
 | Copia de solo lectura | La foto con candado: se mira, no se altera |
 | Bajar definiciones y foto (*pull*) | Recoger las fotos reveladas del laboratorio |
 | Publicar el reporte (*push*) | Colgar el reporte en el tablero de la línea |

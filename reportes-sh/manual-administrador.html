@@ -97,7 +97,7 @@ tbody tr:last-child td{border-bottom:none}
     </div>
     <p class="eyebrow">Manual · Jefe de TI</p>
     <h1>Cómo se opera Reportes SH en productivo</h1>
-    <p class="sub">La fotografía semanal, publicar un reporte, sincronizar las plantas gemelas, credenciales y qué hacer cuando Steelhead cambia la cerradura. Nivel operación — el montaje del entorno de desarrollo vive en <code>ONBOARDING.md</code>.</p>
+    <p class="sub">Dónde corren los reportes en productivo, el banco de pruebas semanal, publicar un reporte, sincronizar las plantas gemelas, credenciales y qué hacer cuando Steelhead cambia la cerradura. Nivel operación — el montaje del entorno de desarrollo vive en <code>ONBOARDING.md</code>.</p>
     <div class="audchips">
       <span class="audchip ti">Jefe de TI</span>
       <span class="audchip p">Documento perenne</span>
@@ -106,7 +106,13 @@ tbody tr:last-child td{border-bottom:none}
 
   <div class="tldr measure" style="max-width:none">
     <p class="ct">En pocas palabras</p>
-    <p>Reportes SH corre en un ciclo semanal: <strong>recoger la fotografía</strong> del ERP (snapshot DuckDB), <strong>correr y editar SQL</strong> en el banco de pruebas local, y <strong>publicar</strong> de vuelta a Steelhead en las dos plantas gemelas (TLC y MTY). Este manual documenta las cinco piezas que hay que mantener vivas: el snapshot automático, el flujo de publicación, la sincronización entre plantas, las credenciales, y qué hacer cuando Steelhead rota los hashes de sus operaciones GraphQL.</p>
+    <p>En <strong>productivo</strong>, los reportes que abren los usuarios corren dentro de Steelhead, sobre su <strong>base de reportería</strong> —una copia que Steelhead regenera sola cada madrugada, y bajo demanda con permiso—. Aparte, tú operas un <strong>ciclo de desarrollo semanal</strong>: <strong>recoger la fotografía</strong> del ERP (snapshot DuckDB), <strong>correr y editar SQL</strong> en el banco de pruebas local, y <strong>publicar</strong> de vuelta a Steelhead en las dos plantas gemelas (TLC y MTY). Este manual documenta las cinco piezas que hay que mantener vivas: el snapshot automático, el flujo de publicación, la sincronización entre plantas, las credenciales, y qué hacer cuando Steelhead rota los hashes de sus operaciones GraphQL.</p>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Dos copias distintas — no las confundas</p>
+    <p><strong>La base de reportería (producción).</strong> Los reportes que abren los usuarios <em>no</em> corren sobre tu snapshot local: corren dentro de Steelhead, sobre su <strong>base de reportería</strong> (una copia server-side de los datos, motor DuckDB 1.5.2). Steelhead la <strong>regenera sola cada madrugada (≈2–6 am)</strong>; y cualquiera con el permiso <strong>MANAGE Reports</strong> (<code>MANAGE_REPORTING_SETTINGS</code> — <em>“regenerate the reporting database”</em>) puede regenerarla <strong>al momento</strong>, con ~20 min de enfriamiento entre una y otra. Es <strong>una sola copia compartida</strong> por planta: la regeneración de una persona la ven <strong>todos</strong>. Ésa es la frescura que percibe el usuario.</p>
+    <p><strong>El snapshot semanal (desarrollo).</strong> Lo que baja <code>weekly_snapshot.sh</code> es una copia local para tu banco de pruebas, sólo para escribir y validar SQL sin tocar producción. Dato útil: <code>regenerate_duckdb.py</code> dispara <em>esa misma regeneración server-side</em> (<code>GenerateDuckDb</code>) y baja el resultado — por eso respeta el mismo enfriamiento (<code>GetRecomputableAt</code>, <em>“si la base ya se puede volver a regenerar”</em>) que la corrida de madrugada.</p>
   </div>
 
   <!-- ============ 01 EL PIPELINE ============ -->
@@ -197,8 +203,8 @@ tbody tr:last-child td{border-bottom:none}
   </div>
 
   <!-- ============ 03 LA FOTOGRAFÍA SEMANAL ============ -->
-  <h2 class="sec"><span class="num">03</span>La fotografía semanal</h2>
-  <p class="sec-lead measure">El snapshot que alimenta todo el banco de pruebas se toma solo, cada semana. Rara vez hay que intervenir, pero hay que saber verificarlo y saber correrlo a mano.</p>
+  <h2 class="sec"><span class="num">03</span>La fotografía semanal (banco de pruebas)</h2>
+  <p class="sec-lead measure">El snapshot que alimenta todo el banco de pruebas <strong>de desarrollo</strong> se toma solo, cada semana. Es distinto de la <em>base de reportería</em> de producción (el recuadro “Dos copias distintas”, arriba): esto es sólo tu copia local para editar SQL. Rara vez hay que intervenir, pero hay que saber verificarlo y saber correrlo a mano.</p>
 
   <h3 class="sub">Cómo corre (automático)</h3>
   <p class="measure">Un <code>launchd</code> agendado dispara <code>scripts/weekly_snapshot.sh</code> cada <strong>lunes 07:00</strong> (si la Mac está dormida a esa hora, corre al despertar). El wrapper hace dos cosas, en orden, por los dos dominios:</p>
