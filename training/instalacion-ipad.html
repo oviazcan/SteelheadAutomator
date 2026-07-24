@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instalación en las iPads (Apple) — Paquete de capacitación</title>
+<style>
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6;
+  --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6;
+  --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0;
+    --faint:#7d8ea0; --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3;
+    --accent:#25b884; --accent-ink:#3fd39c; --accent-wash:#12211b;
+    --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+    --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10;
+    --danger:#e0655a; --danger-wash:#251512;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="light"]{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a; --faint:#7b8a99;
+  --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52; --accent:#0f8f61; --accent-ink:#0b6f4b;
+  --accent-wash:#e7f5ee; --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6; --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+}
+:root[data-theme="dark"]{
+  --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+  --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+  --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+  --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10; --danger:#e0655a; --danger-wash:#251512;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans);
+  font-size:17px; line-height:1.62; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+.wrap{max-width:920px; margin:0 auto; padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti); padding:40px 0 22px; margin-bottom:8px}
+.masthead .brandbar{display:flex; align-items:center; gap:10px 16px; margin-bottom:18px; flex-wrap:wrap}
+.brandmark{width:26px; height:26px; border-radius:6px; background:var(--steel); display:grid; place-items:center; flex:0 0 auto}
+.brandmark span{color:#fff; font-weight:800; font-size:.9rem; font-family:var(--mono)}
+.brandname{font-weight:700; letter-spacing:.02em; font-size:.95rem}
+.brandname em{color:var(--accent-ink); font-style:normal}
+.eyebrow{font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; color:var(--ti); font-weight:800; margin:0 0 10px}
+.masthead h1{font-size:clamp(1.9rem,4.4vw,2.6rem); line-height:1.08; letter-spacing:-.02em; margin:0 0 8px; text-wrap:balance; font-weight:800}
+.masthead .sub{font-size:1.12rem; color:var(--muted); margin:0; max-width:64ch}
+.audchips{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap}
+.audchip{font-size:.7rem; font-weight:700; padding:3px 10px; border-radius:999px; text-transform:uppercase; letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash); color:var(--ti)} .audchip.p{background:var(--ti-wash); color:var(--ti)}
+.badge{display:inline-flex; align-items:center; gap:6px; font-size:.72rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.06em; padding:3px 9px; border-radius:999px; border:1px solid transparent; white-space:nowrap}
+.badge.perenne{background:var(--ti-wash); color:var(--ti); border-color:color-mix(in srgb,var(--ti) 30%,transparent)}
+.badge.dot::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+.freshness{display:flex; gap:14px; align-items:flex-start; margin:22px 0 6px;
+  background:var(--warn-wash); border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);
+  border-left:4px solid var(--warn); border-radius:10px; padding:14px 16px; font-size:.92rem}
+.freshness .ic{flex:0 0 auto; margin-top:1px}
+.freshness b{color:var(--warn)}
+h2.sec{font-size:1.5rem; letter-spacing:-.01em; margin:52px 0 4px; padding-top:8px; font-weight:800; text-wrap:balance}
+h2.sec .num{font-family:var(--mono); font-size:.9rem; color:var(--ti); font-weight:700;
+  border:1px solid var(--hair-2); border-radius:6px; padding:1px 7px; margin-right:10px; vertical-align:.15em}
+h3.sub{font-size:1.16rem; margin:30px 0 6px; letter-spacing:-.01em; font-weight:700}
+.sec-lead{color:var(--muted); margin:.4rem 0 1.3rem; max-width:var(--measure)}
+p{margin:0 0 1rem; max-width:var(--measure)}
+strong{font-weight:700}
+a{color:var(--accent-ink); text-decoration:underline; text-underline-offset:2px; text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+code{font-family:var(--mono); font-size:.86em; background:var(--hair); padding:1px 5px; border-radius:5px; word-break:break-word}
+pre{background:var(--paper); border:1px solid var(--hair-2); border-radius:10px; padding:14px 16px; overflow-x:auto; font-family:var(--mono); font-size:.82rem; line-height:1.5; margin:16px 0; max-width:none}
+pre code{background:none; padding:0; font-size:1em}
+ul,ol{max-width:var(--measure); padding-left:1.25em} li{margin:.32rem 0}
+.grid{display:grid; gap:18px}
+.grid.cols-2{grid-template-columns:repeat(2,1fr)}
+@media (max-width:820px){.grid.cols-2{grid-template-columns:1fr}}
+.card{background:var(--paper); border:1px solid var(--hair); border-radius:12px; padding:20px; box-shadow:var(--shadow)}
+.phase{display:flex; flex-direction:column; gap:2px; border-top:4px solid var(--pc,var(--steel))}
+.phase.now{--pc:var(--warn)} .phase.next{--pc:var(--accent)}
+.phase .tag{display:inline-flex; align-items:center; gap:6px; font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; font-weight:800; margin-bottom:6px}
+.phase.now .tag{color:var(--warn)} .phase.next .tag{color:var(--accent-ink)}
+.phase h3{margin:.1rem 0 .1rem; font-size:1.12rem; letter-spacing:-.01em}
+.phase .when{font-size:.84rem; color:var(--faint); margin:0 0 10px; font-style:italic}
+.phase p{font-size:.9rem; margin:0 0 8px; max-width:none}
+.phase ul{font-size:.88rem; margin:.2rem 0 0} .phase li{margin:.2rem 0}
+figure.diagram{margin:26px 0; background:var(--paper); border:1px solid var(--hair); border-radius:14px; padding:20px 18px 8px; box-shadow:var(--shadow); overflow-x:auto}
+figure.diagram svg{display:block; width:100%; height:auto; min-width:560px; max-width:820px; margin:0 auto}
+figure.diagram figcaption{font-size:.85rem; color:var(--faint); text-align:center; margin-top:10px; padding:0 8px 6px}
+.svg-t{font-family:var(--sans); fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px; padding:14px 16px 14px 46px; position:relative; margin:20px 0; font-size:.94rem; border:1px solid var(--hair); background:var(--paper); max-width:none}
+.callout .ct{font-weight:800; margin:0 0 3px; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em}
+.callout p{max-width:none; margin:.3rem 0 0}
+.callout::before{position:absolute; left:14px; top:14px; font-size:1.1rem; line-height:1}
+.callout.meta{border-left:4px solid var(--steel); background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti); background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ"; color:var(--ti); font-weight:800}
+.callout.warn{border-left:4px solid var(--warn); background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger); background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent); background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓"; color:var(--accent-ink); font-weight:800}
+.stages{list-style:none; padding:0; margin:24px 0; display:flex; flex-direction:column; gap:2px}
+.stages li{display:grid; grid-template-columns:44px 1fr; gap:16px; padding:16px 0; border-bottom:1px solid var(--hair); align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px; height:38px; border-radius:9px; background:var(--ti); color:#fff; display:grid; place-items:center; font-weight:800; font-family:var(--mono); font-size:1rem}
+.stages h4{margin:0 0 3px; font-size:1.06rem}
+.stages p{margin:0 0 6px; font-size:.93rem; color:var(--muted); max-width:none}
+.stages code{font-size:.82em}
+.tablewrap{overflow-x:auto; border:1px solid var(--hair); border-radius:12px; box-shadow:var(--shadow); margin:20px 0}
+table{border-collapse:collapse; width:100%; font-size:.9rem; background:var(--paper); min-width:560px}
+thead th{text-align:left; font-size:.68rem; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:700; padding:11px 14px; border-bottom:2px solid var(--hair-2); background:var(--ground)}
+tbody td{padding:11px 14px; border-bottom:1px solid var(--hair); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td .t{font-weight:700}
+.foot{margin-top:64px; padding-top:22px; border-top:1px solid var(--hair-2); color:var(--faint);
+  font-size:.85rem; display:flex; flex-wrap:wrap; gap:8px 20px; align-items:center; justify-content:space-between}
+.foot .meta{display:flex; gap:16px; flex-wrap:wrap}
+.doc-credit{flex-basis:100%; margin-top:10px; padding-top:12px; border-top:1px solid var(--hair); display:flex; align-items:center; gap:12px; font-size:.78rem; color:var(--faint)}
+.doc-credit a{color:var(--accent-ink); text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px; width:auto; display:block}
+@media print{
+  :root{--ground:#fff; --paper:#fff; --shadow:none}
+  body{font-size:11.5pt}
+  .wrap{max-width:none; padding:0}
+  .card,.phase,.tablewrap,.freshness,.callout,figure.diagram,.stages li,pre{break-inside:avoid}
+  figure.diagram svg{min-width:0}
+  h2.sec,h3.sub{break-after:avoid}
+  a{color:var(--ink); text-decoration:none}
+  .noprint{display:none !important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>SA</span></span>
+      <span class="brandname">Steelhead<em>Automator</em> · Paquete de capacitación y referencia</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Distribución iPad — de la firma de 7 días al MDM</p>
+    <h1>Instalación de la extensión en las iPads</h1>
+    <p class="sub">Cómo se instala hoy en las 60 iPads con firma de desarrollador (que caduca a los 7 días), y cómo será cuando Apple apruebe la cuenta de desarrollador de Ecoplating y se distribuya por MDM, sin caducidad y sin tocar dispositivo por dispositivo.</p>
+    <div class="audchips">
+      <span class="audchip ti">Jefe de TI</span>
+      <span class="audchip ti">Desarrollo</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="freshness noprint">
+    <span class="ic" aria-hidden="true">⏳</span>
+    <div><b>Estado actual (verifica antes de asumir):</b> la cuenta <strong>Apple Developer</strong> de Ecoplating está <strong>en revisión por Apple</strong> (<em>in review</em>). Mientras se aprueba, la instalación va por la <strong>Fase A</strong> (firma de desarrollador, caduca a 7 días). Al aprobarse, se habilita la <strong>Fase B</strong> (MDM, sin caducidad).</div>
+  </div>
+
+  <p class="measure" style="margin-top:26px">En iPad <strong>no existe Chrome con extensiones</strong>. Para llevar la misma automatización a las tabletas, la extensión se <strong>reempaqueta como extensión de Safari dentro de una app de iPadOS</strong>. Esa app se firma con una cuenta de Apple y se instala en cada iPad. Este documento explica el proceso —<strong>hoy</strong> y <strong>a futuro</strong>— para las 60 iPads de piso.</p>
+
+  <!-- ============ 01 ============ -->
+  <h2 class="sec"><span class="num">01</span>Por qué las iPads son un caso aparte</h2>
+  <p class="sec-lead measure">La versión de Chrome y la de iPad comparten el mismo código, pero se distribuyen de formas muy distintas. Tres diferencias marcan todo lo demás.</p>
+
+  <ol class="stages">
+    <li><span class="k" style="background:var(--steel)">A</span><div><h4>La misma extensión, empaquetada como app de Safari</h4><p>El mismo código de los applets se “hornea” en un paquete estático (<code>tools/build-safari.sh</code>) y se envuelve, con la herramienta de Apple, en un proyecto de <strong>Xcode</strong> que produce una app + su extensión de Safari. No se reescribe nada: es la misma fuente.</p></div></li>
+    <li><span class="k" style="background:var(--steel)">B</span><div><h4>Apple no permite el “cerebro remoto”</h4><p>En Chrome, la extensión baja y ejecuta su lógica desde internet. Apple <strong>prohíbe ejecutar código descargado</strong>, así que en iPad <strong>todos los applets viajan dentro de la app</strong> (paquete estático). <strong>Consecuencia clave:</strong> cambiar un applet en iPad exige <strong>recompilar y redistribuir la app</strong> — a diferencia de Chrome, que se actualiza con un <code>git push</code>.</p></div></li>
+    <li><span class="k" style="background:var(--steel)">C</span><div><h4>…pero las “llaves” (hashes) sí se refrescan solas</h4><p>Lo único que la app baja de internet en tiempo real es la <strong>configuración</strong> (los hashes de conexión al ERP), que es <strong>dato, no código</strong> — y eso Apple sí lo permite. Por eso una <strong>rotación de hash NO obliga a recompilar</strong>: la app la recoge sola. Solo el <em>código</em> de un applet nuevo obliga a recompilar.</p></div></li>
+  </ol>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 820 300" role="img" aria-label="Pipeline de construcción para iPad frente al canal de Chrome">
+      <defs>
+        <marker id="ip-a" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--steel)"/></marker>
+        <marker id="ip-g" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker>
+        <marker id="ip-t" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--ti)"/></marker>
+      </defs>
+      <!-- fuente única -->
+      <rect x="24" y="118" width="150" height="66" rx="12" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="99" y="146" text-anchor="middle" class="svg-t" font-size="12" font-weight="800">Fuente única</text>
+      <text x="99" y="163" text-anchor="middle" class="svg-mut svg-m" font-size="9">scripts + config.json</text>
+
+      <!-- canal iPad (arriba) -->
+      <text x="300" y="34" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="800" fill="var(--steel)">CANAL iPad · requiere Mac + Xcode</text>
+      <line x1="174" y1="140" x2="214" y2="80" stroke="var(--steel)" stroke-width="2" marker-end="url(#ip-a)"/>
+      <rect x="216" y="52" width="140" height="52" rx="10" fill="color-mix(in srgb,var(--steel) 8%,var(--paper))" stroke="var(--steel)"/>
+      <text x="286" y="74" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="700">build-safari.sh</text>
+      <text x="286" y="90" text-anchor="middle" class="svg-mut" font-size="9">paquete estático</text>
+      <line x1="356" y1="78" x2="396" y2="78" stroke="var(--steel)" stroke-width="2" marker-end="url(#ip-a)"/>
+      <rect x="398" y="52" width="130" height="52" rx="10" fill="color-mix(in srgb,var(--steel) 8%,var(--paper))" stroke="var(--steel)"/>
+      <text x="463" y="74" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="700">Xcode</text>
+      <text x="463" y="90" text-anchor="middle" class="svg-mut" font-size="9">app + firma Apple</text>
+      <line x1="528" y1="78" x2="568" y2="78" stroke="var(--steel)" stroke-width="2" marker-end="url(#ip-a)"/>
+      <rect x="570" y="48" width="176" height="60" rx="12" fill="var(--ti-wash)" stroke="var(--ti)"/>
+      <text x="658" y="72" text-anchor="middle" class="svg-t" font-size="12" font-weight="800" fill="var(--ti)">60 iPads</text>
+      <text x="658" y="90" text-anchor="middle" class="svg-mut" font-size="9">Safari + la extensión</text>
+
+      <!-- config en caliente -->
+      <rect x="216" y="126" width="312" height="34" rx="8" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="372" y="148" text-anchor="middle" class="svg-t" font-size="10" font-weight="700" fill="var(--accent-ink)">config.json (hashes) — se refresca en caliente, sin recompilar</text>
+      <line x1="528" y1="143" x2="576" y2="110" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="4,3" marker-end="url(#ip-g)"/>
+
+      <!-- canal Chrome (abajo, contraste) -->
+      <text x="300" y="212" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="800" fill="var(--accent-ink)">CANAL Chrome · sin Xcode</text>
+      <line x1="150" y1="184" x2="216" y2="240" stroke="var(--accent)" stroke-width="2" marker-end="url(#ip-g)"/>
+      <rect x="216" y="224" width="180" height="46" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="306" y="245" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="700" fill="var(--accent-ink)">git push → GitHub Pages</text>
+      <text x="306" y="261" text-anchor="middle" class="svg-mut" font-size="9">actualiza a todos en segundos</text>
+      <line x1="396" y1="247" x2="460" y2="247" stroke="var(--accent)" stroke-width="2" marker-end="url(#ip-g)"/>
+      <rect x="462" y="228" width="150" height="40" rx="10" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="537" y="252" text-anchor="middle" class="svg-t" font-size="11" font-weight="700">Chrome de escritorio</text>
+    </svg>
+    <figcaption>Dos canales desde la misma fuente. El de iPad pasa por Xcode y firma de Apple; el de Chrome es un <code>git push</code>. Los hashes se refrescan solos en ambos.</figcaption>
+  </figure>
+
+  <!-- ============ 02 ============ -->
+  <h2 class="sec"><span class="num">02</span>El panorama: dos fases</h2>
+  <p class="sec-lead measure">La distribución a las 60 iPads pasa por dos etapas. La primera funciona hoy pero es trabajosa; la segunda es el destino, y se desbloquea cuando Apple apruebe la cuenta de Ecoplating.</p>
+
+  <div class="grid cols-2">
+    <article class="card phase now">
+      <span class="tag">⏳ Ahora · Fase A</span>
+      <h3>Firma de desarrollador</h3>
+      <p class="when">Vigente mientras la cuenta está en revisión</p>
+      <p>Se instala desde una Mac con Xcode, firmando con un Apple ID. Rápido de montar, <strong>sin costo</strong>, pero la firma <strong>caduca a los 7 días</strong>: hay que reinstalar cada semana en cada iPad.</p>
+      <ul>
+        <li>Costo: <strong>$0</strong></li>
+        <li>Caducidad: <strong>7 días</strong></li>
+        <li>Alcance: manual, iPad por iPad</li>
+      </ul>
+    </article>
+    <article class="card phase next">
+      <span class="tag">✓ Después · Fase B</span>
+      <h3>Distribución por MDM</h3>
+      <p class="when">Al aprobarse la cuenta Apple Developer</p>
+      <p>Un sistema de gestión de dispositivos (MDM) instala y actualiza la app <strong>silenciosamente</strong> en las 60 iPads, <strong>sin caducidad</strong> y sin tocar cada una. Es el modelo definitivo para una flota.</p>
+      <ul>
+        <li>Costo: cuenta ~$99/año + MDM (aprox.)</li>
+        <li>Caducidad: <strong>ninguna</strong></li>
+        <li>Alcance: centralizado, las 60 a la vez</li>
+      </ul>
+    </article>
+  </div>
+
+  <div class="callout meta">
+    <p class="ct">Analogía</p>
+    <p>La <strong>Fase A</strong> es un <strong>pase de visitante que caduca cada semana</strong>: entra, pero hay que renovarlo a mano, dispositivo por dispositivo. La <strong>Fase B</strong> es el <strong>llavero corporativo</strong>: el MDM da acceso permanente y renueva solo, para toda la flota, desde un panel central.</p>
+  </div>
+
+  <!-- ============ 03 ============ -->
+  <h2 class="sec"><span class="num">03</span>Fase A — Instalar hoy (firma de desarrollador, 7 días)</h2>
+  <p class="sec-lead measure">Este es el procedimiento vigente mientras Apple aprueba la cuenta. Se hace desde una Mac con Xcode, con cada iPad conectado por cable.</p>
+
+  <div class="callout info">
+    <p class="ct">Antes de empezar necesitas</p>
+    <p><strong>(1)</strong> una <strong>Mac con Xcode completo</strong> instalado (no basta “Command Line Tools”); <strong>(2)</strong> un <strong>Apple ID</strong> (gratuito sirve para esta fase); <strong>(3)</strong> el <strong>cable</strong> para conectar cada iPad; <strong>(4)</strong> los iPads con <strong>iPadOS 17 o superior</strong> (lo requiere el modo en que corren los applets). El detalle técnico paso a paso vive en <code>docs/deploy-safari.md</code> del repositorio.</p>
+  </div>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Generar el paquete y el proyecto de Xcode</h4><p>Desde la Mac, se corre el build para hornear el paquete estático y luego el convertidor de Apple para generar el proyecto de Xcode:</p>
+      <pre><code>tools/build-safari.sh          # hornea el paquete de applets
+xcrun safari-web-extension-converter safari/extension \
+  --project-location safari/xcode --ios-only --copy-resources --no-open</code></pre></div></li>
+    <li><span class="k">2</span><div><h4>Firmar en Xcode</h4><p>Se abre el proyecto y, en <strong>cada</strong> target (la app y su extensión): <em>Signing &amp; Capabilities</em> → activar <strong>“Automatically manage signing”</strong> → elegir el <strong>Team</strong> (el Apple ID; aparece como <em>Personal Team</em>). Si marca conflicto de identificador, se ajusta a uno único.</p></div></li>
+    <li><span class="k">3</span><div><h4>Instalar en el iPad</h4><p>Conectar el iPad por cable, aceptar <strong>“Confiar en esta computadora”</strong>, elegir el iPad como destino en Xcode y pulsar <strong>Product → Run</strong>. La app se copia al dispositivo.</p></div></li>
+    <li><span class="k">4</span><div><h4>Confiar en el perfil (solo la 1ª vez)</h4><p>En el iPad: <strong>Ajustes → General → VPN y gestión de dispositivos → [el Apple ID] → Confiar</strong>. iPadOS bloquea las apps de desarrollador hasta que se confía el perfil.</p></div></li>
+    <li><span class="k">5</span><div><h4>Activar la extensión en Safari</h4><p><strong>Ajustes → Apps → Safari → Extensiones</strong> → activar la extensión. Luego, en la página del ERP, tocar el ícono <strong>ᴀA</strong> → <em>Gestionar extensiones</em> → <strong>Permitir</strong> (conviene “Permitir siempre” para el sitio).</p></div></li>
+  </ol>
+
+  <div class="callout warn">
+    <p class="ct">Dos trampas que cuestan una tarde si no se saben</p>
+    <p><strong>1. No dejes el depurador de Xcode conectado.</strong> Con el debugger adjunto, Safari se queda sin memoria y se cierra a los ~5 minutos en el iPad. Instala con Xcode y luego <strong>abre Safari por su cuenta</strong> (o desmarca “Debug executable” en el esquema). No es la app: es el sobrecosto del depurador.<br>
+    <strong>2. iPadOS 17+ es requisito.</strong> El modo en que corren los applets (para poder lanzarlos desde el menú) necesita iPadOS 17 o superior. En versiones anteriores hay un modo de respaldo que sacrifica esos lanzadores.</p>
+  </div>
+
+  <div class="callout danger">
+    <p class="ct">El costo real de la Fase A a 60 iPads</p>
+    <p>La firma gratuita <strong>caduca a los 7 días</strong>: al octavo, la app deja de abrir y “la extensión desaparece” sin explicación para el operador. A 60 iPads, reinstalar cada semana es <strong>inviable a mediano plazo</strong>. Por eso la Fase A es un <strong>puente</strong> mientras Apple aprueba la cuenta — no el destino.</p>
+  </div>
+
+  <!-- ============ 04 ============ -->
+  <h2 class="sec"><span class="num">04</span>Fase B — Distribución por MDM (el destino)</h2>
+  <p class="sec-lead measure">Cuando Apple apruebe la cuenta Apple Developer de Ecoplating, se pasa al modelo definitivo: la app se distribuye por un MDM que la instala y actualiza sola en toda la flota.</p>
+
+  <h3 class="sub">Qué se necesita</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Pieza</th><th>Qué es</th><th>Costo aprox.</th></tr></thead>
+      <tbody>
+        <tr><td><span class="t">Cuenta Apple Developer <em>Organization</em></span></td><td>A nombre de Ecoplating, con su D-U-N-S. <strong>Es la que está en revisión hoy.</strong></td><td>~$99 / año</td></tr>
+        <tr><td><span class="t">Apple Business Manager (ABM)</span></td><td>Portal de Apple para empresas: vincula los iPads corporativos y permite publicar la app como “Custom App” privada.</td><td>Gratis</td></tr>
+        <tr><td><span class="t">Un MDM</span></td><td>El sistema que empuja e instala la app en las 60 iPads. La recomendación por costo/beneficio es <strong>Mosyle</strong>; <strong>Apple Business Essentials</strong> es la alternativa “más oficial”.</td><td>~$700–2,200 / año <span style="color:var(--faint)">(según el MDM)</span></td></tr>
+        <tr><td><span class="t">Una Mac con Xcode</span></td><td>Compilar la app solo corre en macOS. Se usa cada vez que cambia el <em>código</em> de un applet (no para hashes).</td><td>Reutilizable / única vez</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:.86rem;color:var(--faint)">La elección final del MDM y el modelo exacto de la flota los define el equipo de TI de Ecoplating. <em>⚠️ Confirmar con el equipo</em> si el MDM ya fue contratado y si los iPads ya están enrolados en ABM.</p>
+
+  <h3 class="sub">Cómo queda la operación</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 820 210" role="img" aria-label="Flujo de distribución por MDM: cuenta Developer, App Store Connect, ABM y MDM hacia las 60 iPads">
+      <defs>
+        <marker id="mdm-g" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker>
+      </defs>
+      <rect x="24" y="80" width="150" height="60" rx="12" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="99" y="104" text-anchor="middle" class="svg-t" font-size="11" font-weight="800">Mac + Xcode</text>
+      <text x="99" y="121" text-anchor="middle" class="svg-mut" font-size="9">compila y firma la app</text>
+
+      <line x1="174" y1="110" x2="212" y2="110" stroke="var(--accent)" stroke-width="2" marker-end="url(#mdm-g)"/>
+      <rect x="214" y="80" width="150" height="60" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="289" y="102" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="800" fill="var(--accent-ink)">App Store Connect</text>
+      <text x="289" y="119" text-anchor="middle" class="svg-mut" font-size="9">Custom App (privada)</text>
+
+      <line x1="364" y1="110" x2="402" y2="110" stroke="var(--accent)" stroke-width="2" marker-end="url(#mdm-g)"/>
+      <rect x="404" y="80" width="150" height="60" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="479" y="102" text-anchor="middle" class="svg-t" font-size="10.5" font-weight="800" fill="var(--accent-ink)">ABM + MDM</text>
+      <text x="479" y="119" text-anchor="middle" class="svg-mut" font-size="9">panel central de TI</text>
+
+      <line x1="554" y1="110" x2="592" y2="110" stroke="var(--accent)" stroke-width="2.4" marker-end="url(#mdm-g)"/>
+      <rect x="594" y="72" width="176" height="76" rx="12" fill="var(--ti-wash)" stroke="var(--ti)"/>
+      <text x="682" y="98" text-anchor="middle" class="svg-t" font-size="13" font-weight="800" fill="var(--ti)">60 iPads</text>
+      <text x="682" y="117" text-anchor="middle" class="svg-mut" font-size="9">instalación silenciosa</text>
+      <text x="682" y="131" text-anchor="middle" class="svg-mut" font-size="9">sin caducidad</text>
+
+      <text x="410" y="176" text-anchor="middle" class="svg-mut" font-size="9.5">El MDM empuja e actualiza la app a toda la flota sin tocar cada iPad. La firma no caduca.</text>
+    </svg>
+    <figcaption>El modelo definitivo: se publica una vez, el MDM la instala y la mantiene al día en las 60 iPads.</figcaption>
+  </figure>
+
+  <div class="callout tip">
+    <p class="ct">Qué cambia para el operador</p>
+    <p>Nada visible, salvo que <strong>la extensión deja de “desaparecer” cada semana</strong>. La app se mantiene instalada y actualizada sola; el operador solo la usa.</p>
+  </div>
+
+  <!-- ============ 05 ============ -->
+  <h2 class="sec"><span class="num">05</span>Operación continua: qué obliga a recompilar y qué no</h2>
+  <p class="sec-lead measure">La duda más frecuente del día a día. La respuesta ahorra recompilaciones innecesarias — y evita sorpresas.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Situación</th><th>¿Recompilar en Xcode + redistribuir?</th></tr></thead>
+      <tbody>
+        <tr><td>Steelhead rota un hash (cambia una “cerradura”)</td><td><strong style="color:var(--accent-ink)">No.</strong> La app recoge la nueva configuración sola desde internet (es dato, no código).</td></tr>
+        <tr><td>Se corrige o mejora el <em>código</em> de un applet ya existente</td><td><strong style="color:var(--warn)">Sí.</strong> El código viaja dentro de la app; hay que rehornear, recompilar y redistribuir.</td></tr>
+        <tr><td>Se agrega un applet nuevo al bundle de iPad</td><td><strong style="color:var(--warn)">Sí.</strong> Igual que arriba.</td></tr>
+        <tr><td>Cambio que solo afecta al canal de Chrome de escritorio</td><td><strong style="color:var(--accent-ink)">No toca iPad.</strong> Son canales independientes.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Gobernanza — administrado por Ecoplating, no por el consultor</p>
+    <p>El esquema queda a nombre de <strong>Ecoplating</strong> (con su D-U-N-S) y lo administra el <strong>Jefe de TI del cliente</strong> desde el panel del MDM. El único requisito recurrente propio del canal iPad es <strong>disponer de una Mac con Xcode</strong> para recompilar cuando cambie el código de un applet (los hashes no la necesitan). El consultor no queda en el camino crítico. <span style="color:var(--faint)">El detalle de costos y la comparación de MDM están en la decisión de arquitectura del repositorio (<code>docs/architecture/ipad-distribution-decision.html</code>).</span></p>
+  </div>
+
+  <footer class="foot">
+    <div class="meta">
+      <span><span class="badge perenne dot">Perenne</span></span>
+      <span>Instalación en las iPads · SteelheadAutomator</span>
+    </div>
+    <div class="meta">
+      <span>Corte de referencia: 23 jul 2026 · cuenta Developer <em>in review</em></span>
+    </div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
