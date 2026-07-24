@@ -1,6 +1,12 @@
 # wo-schedule-button — Programación INLINE en la ficha de Orden de Trabajo
 
-**Versión:** 0.4.0 — readout como **texto que envuelve** (no caja/botón) + **un 📅 por tarea/estación** (accionable en Fase 2). F1 conectada con `WorkOrderSchedule`. Core compartido `wo-schedule-core` 21/21 golden.
+**Versión:** 0.5.0 — **prioridad de carga #1**: el fetch de programación arranca lo antes posible (prefetch en init + `wo-schedule-button` movido al FRENTE de `apps[]` para que su interceptor se instale antes que paro-de-línea/vale-de-almacén). Readout como **texto que envuelve** (no caja/botón) + **un 📅 por tarea/estación** (accionable en Fase 2). F1 conectada con `WorkOrderSchedule`. Core compartido `wo-schedule-core` 21/21 golden.
+
+## Prioridad de carga (v0.5.0)
+
+El supervisor típicamente escanea un QR en piso → entra a la ficha de la OT → quiere ver **a qué hora está programada**. Ese dato es el **#1**, más que hacer un vale de almacén o registrar un paro de línea. Por eso:
+- **`wo-schedule-button` va PRIMERO en `apps[]`** (index 0). El loader (`background.js`) inyecta los `autoInject` **secuencialmente en orden de `apps[]`** (`for (const app of autoApps) await injectAppScripts`), así que ir primero = su `patchFetch` se instala antes de que la ficha dispare la `WorkOrderSchedule` nativa → el interceptor la **cacha** (sin doble fetch) y se pinta apenas llega.
+- **Prefetch en `init()`**: dispara el fetch (`WorkOrder`→id global + `WorkOrderSchedule`) **sin esperar a que renderice el header**. `ensureResolved` memoiza + dedupe en-vuelo, así el prefetch temprano y el render on-mount comparten UN solo fetch (nunca doble). El readout se pinta en cuanto el header aparece (o antes, si ya resolvió).
 **Categoría:** Órdenes de Trabajo · **autoInject:true** · ruta: `/Domains/<d>/WorkOrders/<idInDomain>` (ficha individual)
 
 ## Qué hace
