@@ -138,33 +138,50 @@ const WoScheduleButton = (() => {
   }
 
   // ── Carga de datos ───────────────────────────────────────────────────────────
-  async function loadInline(woIdInDomain, el) {
-    const cachedTasks = resolvedCache().get(woIdInDomain);
-    if (cachedTasks) { renderInline(el, cachedTasks); return; }
-
-    const api = window.SteelheadAPI;
-    const domainId = Core().parseDomainId(location.pathname);
-    let woGlobalId = null;
-    try {
+  // Resuelve las tareas de la OT UNA sola vez (memoizado + dedupe en-vuelo) → así el
+  // PREFETCH temprano (en init, sin esperar al header) y el render on-mount comparten el
+  // mismo fetch (nunca doble). Es el dato #1: arranca lo antes posible.
+  function inflight() { if (!window.__saWoSchedInflight) window.__saWoSchedInflight = new Map(); return window.__saWoSchedInflight; }
+  function ensureResolved(woIdInDomain) {
+    if (resolvedCache().has(woIdInDomain)) return Promise.resolve(resolvedCache().get(woIdInDomain));
+    if (inflight().has(woIdInDomain)) return inflight().get(woIdInDomain);
+    const p = (async function () {
+      const api = window.SteelheadAPI;
+      const domainId = Core().parseDomainId(location.pathname);
       const data = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
-      woGlobalId = Core().extractWorkOrderGlobalId(data);
+      let woGlobalId = Core().extractWorkOrderGlobalId(data);
       if (woGlobalId == null && data && data.workOrderByIdInDomain) woGlobalId = data.workOrderByIdInDomain.id;
-    } catch (e) {
-      renderError(el, 'No se pudo cargar la OT: ' + (e && e.message ? e.message : 'error'));
-      return;
-    }
-    if (woGlobalId == null) { renderInline(el, []); return; }
+      if (woGlobalId == null) { resolvedCache().set(woIdInDomain, []); return []; }
+      const idx = await ensureBoardIndex(domainId, woGlobalId);
+      const tasks = Core().resolveBoardScheduleForWO(idx, woGlobalId);
+      resolvedCache().set(woIdInDomain, tasks);
+      return tasks;
+    })();
+    inflight().set(woIdInDomain, p);
+    const done = function () { inflight().delete(woIdInDomain); };
+    p.then(done, done);
+    return p;
+  }
 
-    let idx;
-    try { idx = await ensureBoardIndex(domainId, woGlobalId); }
+  // Dispara el fetch YA (sin esperar al header). Si el readout ya está montado, lo pinta.
+  function prefetch(woIdInDomain) {
+    if (woIdInDomain == null) return;
+    ensureResolved(woIdInDomain).then(function (tasks) {
+      if (currentWoIdInDomain() !== woIdInDomain) return;
+      const el = document.getElementById(INLINE_ID);
+      if (el) renderInline(el, tasks);
+    }).catch(function () { /* el render on-mount reintenta y muestra el error */ });
+  }
+
+  async function loadInline(woIdInDomain, el) {
+    let tasks;
+    try { tasks = await ensureResolved(woIdInDomain); }
     catch (e) {
       renderError(el, (e && e.persistedQueryRotated)
-        ? 'El hash de WorkOrderSchedule rotó — avísale a Claude.'
+        ? 'El hash de WorkOrderSchedule/WorkOrder rotó — avísale a Claude.'
         : 'No se pudo cargar la programación: ' + (e && e.message ? e.message : 'error'));
       return;
     }
-    const tasks = Core().resolveBoardScheduleForWO(idx, woGlobalId);
-    resolvedCache().set(woIdInDomain, tasks);
     // el DOM pudo cambiar (SPA nav) mientras esperábamos → re-ancla si sigue en la misma ficha
     const live = (currentWoIdInDomain() === woIdInDomain) ? (document.getElementById(INLINE_ID) || el) : null;
     if (live) renderInline(live, tasks);
@@ -228,6 +245,7 @@ const WoScheduleButton = (() => {
     // resolvemos con el índice fresco (necesitamos el woGlobalId; si ya está en cache, re-render directo)
     // si no lo tenemos, loadInline lo obtendrá (y usará el board fresco).
     resolvedCache().delete(woId);
+    inflight().delete(woId);
     loadInline(woId, el);
   }
 
@@ -241,6 +259,8 @@ const WoScheduleButton = (() => {
         const el = ensureInline();
         if (el && !el.getAttribute('data-sa-loading')) {   // carga una vez por montaje
           const woId = currentWoIdInDomain();
+          // PRIORIDAD: la programación es el dato #1 (supervisor escanea QR → "¿a qué hora
+          // está programada?"). Arranca YA, sin diferir ni esperar idle.
           if (woId != null) { el.setAttribute('data-sa-loading', '1'); loadInline(woId, el); }
         }
       } catch (_) {}
@@ -262,7 +282,7 @@ const WoScheduleButton = (() => {
     window.addEventListener('popstate', fire);
     window.addEventListener('sa-wosched-urlchange', function () {
       removeInline();   // se re-crea para la nueva ficha (evita mostrar datos de la anterior)
-      if (onDetail()) scheduleEnsure();
+      if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); }   // fetch YA
     });
   }
 
@@ -272,7 +292,9 @@ const WoScheduleButton = (() => {
     patchFetch();               // ANTES de que la ficha dispare la nativa
     installUrlChangeListener();
     observe();
-    if (onDetail()) scheduleEnsure();
+    // Dato #1: dispara el fetch de programación YA en init (sin esperar al header),
+    // para que sea de lo primero que carga (antes que vale-almacén / paro-de-línea).
+    if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); }
     console.log('[SA] WoScheduleButton activo (readout de programación inline en la ficha de OT)');
   }
 
