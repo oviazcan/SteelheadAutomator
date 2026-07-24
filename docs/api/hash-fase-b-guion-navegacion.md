@@ -37,4 +37,4 @@
 ## Notas
 - **No hace falta video.** El scanner registra pathname + el botón/link que clicaste; el clic y la pantalla quedan guardados solos.
 - Entre más detalles abras (no solo listas), más queries se capturan. Las pantallas de **detalle** (abrir 1 objeto) son las que disparan las queries "por id".
-- Las **mutations** (guardar/archivar/borrar) NO se capturan navegando — esas son Fase C (ciclo sentinela). Este guion es solo para **queries**.
+- Las **mutations** (guardar/archivar/borrar) NO se capturan navegando — esas son Fase C (ciclo centinela). Este guion es solo para **queries**.

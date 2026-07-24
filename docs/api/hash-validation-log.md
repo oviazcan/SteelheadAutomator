@@ -762,9 +762,9 @@ Ninguno de los 7 ops rotados tenía receta de captura headless en `click-recipes
 | `GetStation` | `/Stations/{id}` (fila de `/Stations`) | client-side nav (clic en fila) |
 | `CreateEditReceivedOrderDialogQuery` | SalesOrder detalle → botón "Editar Orden de Venta" | clic interacción |
 | `GetAddPartsReceivedOrder` | SalesOrder detalle → botón "Agregar Piezas (Tabla)" | clic interacción |
-| `UpdateReceivedOrder` | SalesOrder → botón "Guardar" | **mutation → ciclo sentinela** (no navegable) |
+| `UpdateReceivedOrder` | SalesOrder → botón "Guardar" | **mutation → ciclo centinela** (no navegable) |
 
-Las 3 de goto (`AllQuotes`/`AllStations`/`GetDomain`) son las candidatas más fáciles; las de detalle necesitan el WIP de navegación client-side de `wt/hash-selfheal` (viewport 1680×1200 + clic real en `<Link>`, sin re-`goto`), aún sin validar en vivo. `UpdateReceivedOrder` requiere declarar sentinela (patrón Fase C).
+Las 3 de goto (`AllQuotes`/`AllStations`/`GetDomain`) son las candidatas más fáciles; las de detalle necesitan el WIP de navegación client-side de `wt/hash-selfheal` (viewport 1680×1200 + clic real en `<Link>`, sin re-`goto`), aún sin validar en vivo. `UpdateReceivedOrder` requiere declarar centinela (patrón Fase C).
 
 ## 2026-07-16 — 4 rotado(s); 2 queries CORREGIDAS+deploy 1.7.125 (SearchProducts→SearchProductsComprehensive)
 
@@ -775,9 +775,9 @@ Validador manual (config 1.7.124): 175 ok / 4 stale / 1 skipped / 0 unknown / 0 
 |---|---|---|---|
 | `SearchProducts` | query | **RENOMBRADA por SH a `SearchProductsComprehensive`** (goto /Products). Misma key `searchProducts.nodes` + misma shape; vars `searchQuery,first,offset` (compatibles, `offset` opcional nuevo). Hash `b3e2b9c6…`. Renombrada en config + 3 applets (catalog-fetcher, bulk-upload, wo-deadline-changer; en wo-deadline se quitó `includeArchived` que la op nueva no declara). | ✅ deploy 1.7.125 |
 | `CreateEditProcessDialogQuery` | query | Rotación de hash `de4bc7fb…`→`231d4dc7…` (/Processes → lápiz "Edit Process"). process-shared. | ✅ deploy 1.7.125 |
-| `CreateProcessNode` | mutation | process-canon. Sin sentinela → captura manual pendiente (flujo: /Processes/<id> → Edit → editar nodo → guardar). | ⏳ pendiente |
+| `CreateProcessNode` | mutation | process-canon. Sin centinela → captura manual pendiente (flujo: /Processes/<id> → Edit → editar nodo → guardar). | ⏳ pendiente |
 | `UpdateProcessNode` | mutation | process-canon. Idem. | ⏳ pendiente |
-| `SaveManyPartNumberPrices` | mutation | skipped (whitelist, sentinela precios). | — |
+| `SaveManyPartNumberPrices` | mutation | skipped (whitelist, centinela precios). | — |
 
 **Chrome:** recargar extensión (config cachea ~5 min). **Safari/iPad:** el renombre tocó CÓDIGO de applets (catalog-fetcher, bulk-upload) → requiere rebundle si se usan en iPad (el bridge solo refresca hashes, no el código).
 

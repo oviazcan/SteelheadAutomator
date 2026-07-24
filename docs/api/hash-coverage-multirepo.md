@@ -33,11 +33,11 @@ en el repo que lo usa — no solo la extensión:
 - Commits main: `a5da68f` (sync) + `8ccbd28` (push automático).
 
 **Requisito para que el ciclo sea automático de punta a punta:** que exista
-receta/sentinela que dispare la op headless. Las queries de dashboards/insights ya
+receta/centinela que dispare la op headless. Las queries de dashboards/insights ya
 tienen receta (`route-catalog.json`); las **12 mutations de Reporting NO tienen
-sentinela aún** → hoy se capturan con el hash-scanner, pero una vez capturadas el
-autopilot ya las sincroniza+pushea solo. Armar esos sentinelas (dashboard/folder
-Sentinela + reporte 4007) es el follow-up para cerrar la automatización de mutations.
+centinela aún** → hoy se capturan con el hash-scanner, pero una vez capturadas el
+autopilot ya las sincroniza+pushea solo. Armar esos centinelas (dashboard/folder
+Centinela + reporte 4007) es el follow-up para cerrar la automatización de mutations.
 
 ## 3. Hallazgo: 18 hashes ROTADOS en Reportes SH — TODOS RESUELTOS
 
@@ -99,9 +99,9 @@ dashboards; cada uno se verificó VIVO con probe idp-token antes de aplicar.
   `.cache/tokens.json` autentican y capturan headless. El interceptor es
   **pre-navegación** → captura queries de carga (lo que el hook post-carga de la
   extensión no puede).
-- Objetos reales dominio TLC/344: reporte **"Sentinela" id 4007**, dashboards
+- Objetos reales dominio TLC/344: reporte **"Centinela" id 4007**, dashboards
   (157/159/160…), folders (108/109/110…). Para las mutations faltaría un **dashboard
-  Sentinela** y un **folder Sentinela** (o capturar los Create con crear-y-abortar).
+  Centinela** y un **folder Centinela** (o capturar los Create con crear-y-abortar).
 - Límite: los formularios de edición de `/Reporting/*` son difíciles de accionar a
   ciegas headless → por eso hoy las mutations se capturan con el hash-scanner en el
   navegador real.
