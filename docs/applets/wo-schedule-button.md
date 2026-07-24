@@ -34,7 +34,7 @@ Ya **no es una caja/chip**: es **texto plano** que envuelve (`overflow-wrap:anyw
 
 ## Fase 2 (hito aparte — crear programación)
 
-El 📅 se vuelve clicable → modal dark-mode de programación intencional (estación + fecha/hora) que dispara la **mutación de creación** (sin capturar aún — terreno virgen). Captura con `hash-scanner` sobre una OT sin programar → agendar de prueba → guardar. Alta en `hash-autopilot` (sentinela / captura-y-aborta).
+El 📅 se vuelve clicable → modal dark-mode de programación intencional (estación + fecha/hora) que dispara la **mutación de creación** (sin capturar aún — terreno virgen). Captura con `hash-scanner` sobre una OT sin programar → agendar de prueba → guardar. Alta en `hash-autopilot` (centinela / captura-y-aborta).
 
 ## Arquitectura
 

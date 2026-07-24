@@ -146,7 +146,7 @@ git commit -m "feat(hash-autopilot): route-planner selectRoutes (set-cover selec
 - Consumes: el JSON que escribe `validate-hashes.py` en `tools/.hash-validation/<date>.json`, con forma `{stale: [{kind, operation, hash}], skipped: [{operation}], ...}`.
 - Produces:
   - `opsToCapture(validatorResult: {stale?: {operation: string}[]}, sessionSensitive: string[]): string[]` — unión deduplicada de `stale[].operation` (solo las `kind === 'query'` se capturan en Fase A; ver nota) + `sessionSensitive`. Orden: alfabético (determinista).
-  - **Nota Fase A:** las mutations stale se **excluyen** de la captura (no hay ciclo sentinela aún) pero se devuelven aparte vía `staleMutations(validatorResult)` para reportarlas en el correo.
+  - **Nota Fase A:** las mutations stale se **excluyen** de la captura (no hay ciclo centinela aún) pero se devuelven aparte vía `staleMutations(validatorResult)` para reportarlas en el correo.
   - `staleMutations(validatorResult): string[]` — `stale[]` con `kind === 'mutation'`, alfabético.
 
 - [ ] **Step 1: Write the failing test**
@@ -199,7 +199,7 @@ Expected: FAIL — `opsToCapture is not a function`.
 
 // Ops a capturar esta corrida: queries stale detectadas por el validator
 // UNIÓN las session-sensitive (que el validator no puede ver → siempre por release).
-// Las mutations stale NO se capturan en Fase A (no hay ciclo sentinela); se
+// Las mutations stale NO se capturan en Fase A (no hay ciclo centinela); se
 // reportan aparte con staleMutations().
 export function opsToCapture(validatorResult, sessionSensitive) {
   const stale = (validatorResult && validatorResult.stale) || [];
@@ -394,7 +394,7 @@ Al final del bloque de notificaciones (después de la línea 151, antes del `ret
       notify('fallo', `${plan0.uncovered.length} query(s) stale sin ruta`, `El validator marcó estas queries rotadas pero no hay ruta en route-catalog.json (pendiente Fase B):\n${plan0.uncovered.map((op) => `• ${op}`).join('\n')}`);
     }
     if (staleMuts.length) {
-      notify('revision', `${staleMuts.length} mutation(s) rotada(s)`, `El validator marcó estas MUTATIONS rotadas. Fase C (ciclo sentinela) aún no implementada — captura manual por ahora:\n${staleMuts.map((op) => `• ${op}`).join('\n')}`);
+      notify('revision', `${staleMuts.length} mutation(s) rotada(s)`, `El validator marcó estas MUTATIONS rotadas. Fase C (ciclo centinela) aún no implementada — captura manual por ahora:\n${staleMuts.map((op) => `• ${op}`).join('\n')}`);
     }
 ```
 
@@ -514,7 +514,7 @@ git commit -m "docs(hash-autopilot): v2 Fase A — procedimiento de corte del va
 - §6 detección selectiva + session-sensitive siempre → Task 2 (`opsToCapture`) ✓
 - §5 fusión 1 job + 1 correo → Tasks 4-5 ✓
 - §9 Fase A alcance (queries, descargar validator) → Tasks 4-6 ✓
-- §7 sentinela/mutations → **fuera de Fase A** (Fase C; Task 4 solo reporta stale-mutations) ✓ (intencional)
+- §7 centinela/mutations → **fuera de Fase A** (Fase C; Task 4 solo reporta stale-mutations) ✓ (intencional)
 - §8 discovery → **Fase B** (plan aparte) ✓ (intencional)
 
 **Placeholder scan:** Sin TBD/TODO en pasos ejecutables. El conteo de tests en Task 6 Step 3 se anota "ajustar al real" — el ejecutor corre y ve el número; no es un placeholder de diseño.

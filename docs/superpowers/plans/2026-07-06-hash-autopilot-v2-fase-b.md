@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Universo de queries a cubrir:** `remote/config.json` → `steelhead.hashes.queries` (113). Mutations (69) se mapean pero su ejecución/sentinela es Fase C — en Fase B solo se registra su ruta/`entityType` si el scan las captura.
+- **Universo de queries a cubrir:** `remote/config.json` → `steelhead.hashes.queries` (113). Mutations (69) se mapean pero su ejecución/centinela es Fase C — en Fase B solo se registra su ruta/`entityType` si el scan las captura.
 - **Formato de `route-catalog.json`** (de Fase A): `{routes: {[id]: {type, module, steps[], captures[], sentinel?}}}`. `selectRoutes` (Fase A) hace set-cover sobre `captures`. El generador debe emitir exactamente esa forma.
 - **Sanitización del scanner es sagrada:** el breadcrumb/pathname pasa por el `sanitizeValue` key-level existente (`SENSITIVE_KEY_PATTERN`, `TOKEN_URL_PATTERN`, truncado > 500). Nunca capturar payloads en el breadcrumb — solo selector/rol/texto corto del control.
 - **UI DARK MODE** no aplica (el scanner no tiene UI nueva).

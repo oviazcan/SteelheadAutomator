@@ -24,8 +24,8 @@ Pasos:
    - **Query** → agrega/verifica una ruta en `tools/hash-autopilot/route-catalog.json`
      (`goto` a la pantalla; `clickFirst`/`clickButton` si requiere abrir un modal). Si la
      op solo se dispara desde una interacción (no navegando), agrégala a `_interactionOps`.
-   - **Mutation** → declara un sentinela en `tools/hash-autopilot/sentinels-config.json`
-     (objeto de prueba "Sentinela") con su handler DOM en `mutation-deps.mjs`; para
+   - **Mutation** → declara un centinela en `tools/hash-autopilot/sentinels-config.json`
+     (objeto de prueba "Centinela") con su handler DOM en `mutation-deps.mjs`; para
      escrituras que NO deban persistir, usa **captura-y-aborta** (`sink.abortOps`).
    - Confirma la ruta en vivo (`node hash-autopilot.mjs --only=<Op> --dry-run` o
      `--no-deploy` para mutations) y déjala anotada en la bitácora del applet.

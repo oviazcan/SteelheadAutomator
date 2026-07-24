@@ -87,5 +87,5 @@ El re-descubrimiento automático de una UI que cambió es genuinamente frágil (
 ## 10. Fuera de alcance (YAGNI)
 
 - No re-descubre ops que nunca tuvieron receta y requieren conocimiento de negocio (esas escalan directo).
-- No modifica el modelo de datos ni los handlers de mutations sentinela (eso es trabajo humano deliberado).
+- No modifica el modelo de datos ni los handlers de mutations centinela (eso es trabajo humano deliberado).
 - No corre en cloud (requiere el entorno local).
